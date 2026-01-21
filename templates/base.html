@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or "排产系统" }}</title>
+  <style>
+    body { font-family: Arial, "Microsoft YaHei", sans-serif; margin: 24px; }
+    header { margin-bottom: 16px; }
+    nav a { margin-right: 12px; }
+    .container { max-width: 1080px; }
+    .card { border: 1px solid #ddd; padding: 16px; border-radius: 8px; margin-bottom: 16px; }
+    .muted { color: #666; }
+    .error { color: #b00020; }
+    .success { color: #1b5e20; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f6f6f6; text-align: left; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+    .badge-new { background: #e8f5e9; }
+    .badge-update { background: #fff3e0; }
+    .badge-unchanged { background: #eceff1; }
+    .badge-skip { background: #ede7f6; }
+    .badge-error { background: #ffebee; }
+    pre { background: #f8f8f8; padding: 8px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <nav>
+        <a href="{{ url_for('dashboard.index') }}">首页</a>
+        <a href="{{ url_for('personnel.list_page') }}">人员管理</a>
+        <a href="{{ url_for('excel_demo.index') }}">Excel 导入演示</a>
+      </nav>
+      <div class="muted">Win7 单机版（V1）：离线运行</div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="card">
+          {% for category, message in messages %}
+            <div class="{{ 'error' if category=='error' else 'success' }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>
+

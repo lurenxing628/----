@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>{{ title or "发生错误" }}</h2>
+    <p class="error"><strong>错误码：</strong>{{ code or "未知" }}</p>
+    <p class="error"><strong>提示：</strong>{{ message or "发生未知错误，请查看日志。" }}</p>
+
+    {% if details %}
+      <h3>详细信息</h3>
+      <pre>{{ details | tojson_zh(2) }}</pre>
+    {% endif %}
+
+    <p class="muted">如果需要排查：请查看 <code>logs/aps.log</code> 与 <code>logs/aps_error.log</code>。</p>
+  </div>
+{% endblock %}
+

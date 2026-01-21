@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>人员详情</h2>
+    <p class="muted">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
+  </div>
+
+  <div class="card">
+    <h3>基本信息</h3>
+    <form method="post" action="{{ url_for('personnel.update_operator', operator_id=operator.operator_id) }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>工号</label><br/>
+          <input value="{{ operator.operator_id }}" disabled>
+        </div>
+        <div>
+          <label>姓名</label><br/>
+          <input name="name" required value="{{ operator.name }}">
+        </div>
+        <div>
+          <label>状态</label><br/>
+          <select name="status">
+            {% for v, label in status_options %}
+              <option value="{{ v }}" {% if operator.status == v %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="flex:1; min-width:240px;">
+          <label>备注</label><br/>
+          <input name="remark" value="{{ operator.remark or '' }}">
+        </div>
+        <div>
+          <button type="submit">保存</button>
+          <a style="margin-left:10px;" href="{{ url_for('personnel.list_page') }}">返回列表</a>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>可操作设备</h3>
+    <p class="muted">说明：这里维护人员-设备关联（底层写入 OperatorMachine 表）。</p>
+
+    {% if linked_machines and linked_machines|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:140px;">设备编号</th>
+            <th>设备名称</th>
+            <th style="width:120px;">设备状态</th>
+            <th style="width:120px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in linked_machines %}
+            <tr>
+              <td>{{ m.machine_id }}</td>
+              <td>{{ m.machine_name or '-' }}</td>
+              <td>{{ m.status_zh }}</td>
+              <td>
+                <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}">
+                  <input type="hidden" name="machine_id" value="{{ m.machine_id }}">
+                  <button type="submit">解除关联</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无关联设备。</div>
+    {% endif %}
+
+    <hr/>
+    <h4>添加设备关联</h4>
+    {% if available_machines and available_machines|length > 0 %}
+      <form method="post" action="{{ url_for('personnel.add_link', operator_id=operator.operator_id) }}">
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+          <div>
+            <label>选择设备</label><br/>
+            <select name="machine_id" required>
+              {% for m in available_machines %}
+                <option value="{{ m.machine_id }}">{{ m.machine_id }} - {{ m.machine_name }}（{{ m.status_zh }}）</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <button type="submit">添加关联</button>
+          </div>
+        </div>
+      </form>
+    {% else %}
+      <div class="muted">暂无可选设备（可能尚未维护设备信息，或已全部关联）。</div>
+    {% endif %}
+  </div>
+
+{% endblock %}
+

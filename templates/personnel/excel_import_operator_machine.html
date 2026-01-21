@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>人员设备关联（Excel）</h2>
+    <p class="muted">导入/导出字段：工号、设备编号。导入前会校验人员/设备是否存在，并给出中文提示。</p>
+    <div style="margin-top:8px;">
+      <a href="{{ export_url }}">导出当前数据（人员设备关联.xlsx）</a>
+      <span class="muted">（导出会写入操作留痕）</span>
+    </div>
+  </div>
+
+  {% include "components/excel_import.html" with context %}
+
+  <div class="card">
+    <h3>当前关联数据（OperatorMachine）</h3>
+    {% if existing_list and existing_list|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th>工号</th>
+            <th>姓名</th>
+            <th>设备编号</th>
+            <th>设备名称</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in existing_list %}
+            <tr>
+              <td>{{ r["工号"] }}</td>
+              <td>{{ r["姓名"] or '-' }}</td>
+              <td>{{ r["设备编号"] }}</td>
+              <td>{{ r["设备名称"] or '-' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无关联数据（可先在人员详情页添加，或通过 Excel 导入）。</div>
+    {% endif %}
+  </div>
+
+  <script src="{{ url_for('static', filename='js/excel_handler.js') }}"></script>
+{% endblock %}
+

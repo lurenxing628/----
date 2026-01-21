@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+  {% include "components/excel_import.html" with context %}
+
+  <div class="card">
+    <h3>当前 Operators（用于演示预览差异）</h3>
+    <p class="muted">说明：这里展示的是数据库中的人员数据（Operators 表）。你可以先导入一次，再重复导入观察 UPDATE/UNCHANGED/SKIP。</p>
+
+    {% if existing_list and existing_list|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th>工号</th>
+            <th>姓名</th>
+            <th>状态</th>
+            <th>备注</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in existing_list %}
+            <tr>
+              <td>{{ r["工号"] }}</td>
+              <td>{{ r["姓名"] }}</td>
+              <td>{{ r["状态"] }}</td>
+              <td>{{ r["备注"] }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无数据（可先下载模板并导入）。</div>
+    {% endif %}
+  </div>
+
+  <script src="{{ url_for('static', filename='js/excel_handler.js') }}"></script>
+{% endblock %}
+

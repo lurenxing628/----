@@ -1,0 +1,80 @@
+{# 通用 Excel 导入组件（上传 → 预览 → 确认导入） #}
+
+<div class="card">
+  <h2>{{ title or "Excel 导入" }}</h2>
+  <p class="muted">
+    说明：本组件用于复用“上传→预览→确认导入”交互。预览阶段会标注 NEW/UPDATE/ERROR 等状态，便于排查数据问题。
+  </p>
+
+  <div style="margin-bottom:12px;">
+    <a href="{{ template_download_url }}" target="_blank">下载模板</a>
+  </div>
+
+  <form action="{{ preview_url }}" method="post" enctype="multipart/form-data">
+    <div style="margin-bottom:12px;">
+      <label>导入模式：</label>
+      <select name="mode">
+        <option value="overwrite" {% if mode=='overwrite' %}selected{% endif %}>覆盖（相同ID更新）</option>
+        <option value="append" {% if mode=='append' %}selected{% endif %}>追加（已存在则跳过）</option>
+        <option value="replace" {% if mode=='replace' %}selected{% endif %}>替换（清空后导入）</option>
+      </select>
+    </div>
+    <div style="margin-bottom:12px;">
+      <input type="file" name="file" accept=".xlsx" required>
+      <button type="submit">上传并预览</button>
+    </div>
+    <div class="muted">
+      常见问题：如果提示“读取失败/被占用”，请先关闭 Excel 后重试。
+    </div>
+  </form>
+</div>
+
+{% if preview_rows %}
+  <div class="card">
+    <h3>导入预览</h3>
+    <p class="muted">提示：row_num 是 Excel 的真实行号（标题行+1）。</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:90px;">行号</th>
+          <th style="width:120px;">状态</th>
+          <th style="width:260px;">提示</th>
+          <th>数据</th>
+          <th>变更字段</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in preview_rows %}
+          <tr>
+            <td>{{ r.row_num }}</td>
+            <td>
+              {% if r.status.value == 'new' %}<span class="badge badge-new">NEW</span>{% endif %}
+              {% if r.status.value == 'update' %}<span class="badge badge-update">UPDATE</span>{% endif %}
+              {% if r.status.value == 'unchanged' %}<span class="badge badge-unchanged">UNCHANGED</span>{% endif %}
+              {% if r.status.value == 'skip' %}<span class="badge badge-skip">SKIP</span>{% endif %}
+              {% if r.status.value == 'error' %}<span class="badge badge-error">ERROR</span>{% endif %}
+            </td>
+            <td class="{{ 'error' if r.status.value == 'error' else '' }}">{{ r.message }}</td>
+            <td><pre>{{ r.data | tojson_zh(2) }}</pre></td>
+            <td>
+              {% if r.changes %}
+                <pre>{{ r.changes | tojson_zh(2) }}</pre>
+              {% else %}
+                <span class="muted">-</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <form action="{{ confirm_url }}" method="post" style="margin-top:12px;">
+      <input type="hidden" name="mode" value="{{ mode }}">
+      <input type="hidden" name="filename" value="{{ filename }}">
+      <textarea name="raw_rows_json" style="display:none;">{{ raw_rows_json }}</textarea>
+      <button type="submit">确认导入（写入数据库）</button>
+    </form>
+  </div>
+{% endif %}
+

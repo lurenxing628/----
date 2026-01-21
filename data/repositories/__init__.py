@@ -1,0 +1,44 @@
+"""
+数据访问层（Repositories）。
+
+约束：
+- V1 不引入 ORM；统一使用 sqlite3 + repository 封装
+- 服务层（core/services）应只依赖 repo，不直接写 SQL
+"""
+
+from .base_repo import BaseRepository
+from .operator_repo import OperatorRepository
+from .op_type_repo import OpTypeRepository
+from .machine_repo import MachineRepository
+from .operator_machine_repo import OperatorMachineRepository
+from .supplier_repo import SupplierRepository
+from .part_repo import PartRepository
+from .part_operation_repo import PartOperationRepository
+from .external_group_repo import ExternalGroupRepository
+from .batch_repo import BatchRepository
+from .batch_operation_repo import BatchOperationRepository
+from .schedule_repo import ScheduleRepository
+from .calendar_repo import CalendarRepository
+from .config_repo import ConfigRepository
+from .operation_log_repo import OperationLogRepository
+from .schedule_history_repo import ScheduleHistoryRepository
+
+__all__ = [
+    "BaseRepository",
+    "OperatorRepository",
+    "OpTypeRepository",
+    "MachineRepository",
+    "OperatorMachineRepository",
+    "SupplierRepository",
+    "PartRepository",
+    "PartOperationRepository",
+    "ExternalGroupRepository",
+    "BatchRepository",
+    "BatchOperationRepository",
+    "ScheduleRepository",
+    "CalendarRepository",
+    "ConfigRepository",
+    "OperationLogRepository",
+    "ScheduleHistoryRepository",
+]
+

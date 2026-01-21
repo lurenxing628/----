@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>人员管理</h2>
+    <p class="muted">说明：这里维护人员基本信息，以及人员可操作的设备关联（人员-设备关联表）。</p>
+    <div style="margin-top:8px;">
+      <strong>Excel：</strong>
+      <a href="{{ url_for('personnel.excel_operator_page') }}">人员基本信息（导入/导出）</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('personnel.excel_link_page') }}">人员设备关联（导入/导出）</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>新增人员</h3>
+    <form method="post" action="{{ url_for('personnel.create_operator') }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>工号</label><br/>
+          <input name="operator_id" required placeholder="如：OP001">
+        </div>
+        <div>
+          <label>姓名</label><br/>
+          <input name="name" required placeholder="如：张三">
+        </div>
+        <div>
+          <label>状态</label><br/>
+          <select name="status">
+            {% for v, label in status_options %}
+              <option value="{{ v }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="flex:1; min-width:240px;">
+          <label>备注</label><br/>
+          <input name="remark" placeholder="可选">
+        </div>
+        <div>
+          <button type="submit">添加人员</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>人员列表</h3>
+    {% if operators and operators|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:120px;">工号</th>
+            <th style="width:160px;">姓名</th>
+            <th style="width:120px;">状态</th>
+            <th>可操作设备</th>
+            <th style="width:120px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in operators %}
+            <tr>
+              <td><a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}">{{ r.operator_id }}</a></td>
+              <td>{{ r.name }}</td>
+              <td>{{ r.status_zh }}</td>
+              <td>
+                {% if r.machine_text %}
+                  {{ r.machine_text }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td><a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}">查看/编辑</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无人员数据（可先新增或通过 Excel 导入）。</div>
+    {% endif %}
+  </div>
+
+{% endblock %}
+

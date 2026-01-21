@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+
+# SQLite / runtime data
+db/*.db
+db/*.sqlite
+!db/.gitkeep
+
+logs/*.log
+logs/*.log.*
+!logs/.gitkeep
+
+backups/*.db
+!backups/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+
