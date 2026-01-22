@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import time
 from typing import Any, Dict, List, Optional
 
-from flask import Blueprint, flash, g, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -448,6 +449,26 @@ def excel_operator_confirm():
 def excel_operator_template():
     start = time.time()
 
+    template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "人员基本信息.xlsx")
+    if os.path.exists(template_path):
+        time_cost_ms = int((time.time() - start) * 1000)
+        log_excel_export(
+            op_logger=getattr(g, "op_logger", None),
+            module="personnel",
+            target_type="operator",
+            template_or_export_type="人员基本信息模板.xlsx",
+            filters={},
+            row_count=1,
+            time_range={},
+            time_cost_ms=time_cost_ms,
+        )
+        return send_file(
+            template_path,
+            as_attachment=True,
+            download_name="人员基本信息.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
     import openpyxl
 
     wb = openpyxl.Workbook()
@@ -657,6 +678,26 @@ def excel_link_confirm():
 @bp.get("/excel/links/template")
 def excel_link_template():
     start = time.time()
+    template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "人员设备关联.xlsx")
+    if os.path.exists(template_path):
+        time_cost_ms = int((time.time() - start) * 1000)
+        log_excel_export(
+            op_logger=getattr(g, "op_logger", None),
+            module="personnel",
+            target_type="operator_machine",
+            template_or_export_type="人员设备关联模板.xlsx",
+            filters={},
+            row_count=1,
+            time_range={},
+            time_cost_ms=time_cost_ms,
+        )
+        return send_file(
+            template_path,
+            as_attachment=True,
+            download_name="人员设备关联.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
     import openpyxl
 
     wb = openpyxl.Workbook()

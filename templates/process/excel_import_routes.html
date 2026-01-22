@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>零件工艺路线（Excel）</h2>
+    <p class="muted">
+      说明：导入确认后，会对每条“工艺路线字符串”执行解析并生成零件工序模板（PartOperations）与外部工序组（ExternalGroups）。
+      解析失败的行会统计为错误，不会写入模板。
+    </p>
+    <div style="margin-top:8px;">
+      <a href="{{ export_url }}">导出当前数据（零件工艺路线.xlsx）</a>
+      <span class="muted">（导入/导出会写入操作留痕）</span>
+    </div>
+    <div style="margin-top:8px;">
+      <a href="{{ url_for('process.list_parts') }}">返回工艺管理</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.excel_part_ops_page') }}">导出零件工序模板（零件工序模板.xlsx）</a>
+    </div>
+  </div>
+
+  {% include "components/excel_import.html" with context %}
+
+  <div class="card">
+    <h3>当前零件数据（Parts）</h3>
+    {% if existing_list and existing_list|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th>图号</th>
+            <th>名称</th>
+            <th>工艺路线字符串</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in existing_list %}
+            <tr>
+              <td>{{ r["图号"] }}</td>
+              <td>{{ r["名称"] }}</td>
+              <td>{{ r["工艺路线字符串"] or '-' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无数据（可先下载模板并导入）。</div>
+    {% endif %}
+  </div>
+
+  <script src="{{ url_for('static', filename='js/excel_handler.js') }}"></script>
+{% endblock %}
+

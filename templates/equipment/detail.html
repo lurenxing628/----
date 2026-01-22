@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>设备详情</h2>
+    <p class="muted">设备编号：<strong>{{ machine.machine_id }}</strong>　设备名称：<strong>{{ machine.name }}</strong></p>
+  </div>
+
+  <div class="card">
+    <h3>基本信息</h3>
+    <form method="post" action="{{ url_for('equipment.update_machine', machine_id=machine.machine_id) }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>设备编号</label><br/>
+          <input value="{{ machine.machine_id }}" disabled>
+        </div>
+        <div>
+          <label>设备名称</label><br/>
+          <input name="name" required value="{{ machine.name }}">
+        </div>
+        <div>
+          <label>工种</label><br/>
+          <select name="op_type_id">
+            <option value="" {% if not machine.op_type_id %}selected{% endif %}>（未设置）</option>
+            {% for v, label in op_type_options %}
+              <option value="{{ v }}" {% if machine.op_type_id == v %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>状态</label><br/>
+          <select name="status">
+            {% for v, label in status_options %}
+              <option value="{{ v }}" {% if machine.status == v %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="flex:1; min-width:240px;">
+          <label>备注</label><br/>
+          <input name="remark" value="{{ machine.remark or '' }}">
+        </div>
+        <div>
+          <button type="submit">保存</button>
+          <a style="margin-left:10px;" href="{{ url_for('equipment.list_page') }}">返回列表</a>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>可操作人员</h3>
+    <p class="muted">说明：这里维护设备-人员关联（底层写入 OperatorMachine 表）。</p>
+
+    {% if linked_operators and linked_operators|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:140px;">工号</th>
+            <th>姓名</th>
+            <th style="width:120px;">人员状态</th>
+            <th style="width:120px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for op in linked_operators %}
+            <tr>
+              <td>{{ op.operator_id }}</td>
+              <td>{{ op.operator_name or '-' }}</td>
+              <td>{{ op.status_zh }}</td>
+              <td>
+                <form method="post" action="{{ url_for('equipment.remove_link', machine_id=machine.machine_id) }}">
+                  <input type="hidden" name="operator_id" value="{{ op.operator_id }}">
+                  <button type="submit">解除关联</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无关联人员。</div>
+    {% endif %}
+
+    <hr/>
+    <h4>添加人员关联</h4>
+    {% if available_operators and available_operators|length > 0 %}
+      <form method="post" action="{{ url_for('equipment.add_link', machine_id=machine.machine_id) }}">
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+          <div>
+            <label>选择人员</label><br/>
+            <select name="operator_id" required>
+              {% for op in available_operators %}
+                <option value="{{ op.operator_id }}">{{ op.operator_id }} - {{ op.operator_name }}（{{ op.status_zh }}）</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <button type="submit">添加关联</button>
+          </div>
+        </div>
+      </form>
+    {% else %}
+      <div class="muted">暂无可选人员（可能尚未维护人员信息，或已全部关联）。</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>停机计划</h3>
+    <p class="muted">说明：停机计划表示设备在某时间段不可用（预留停机原因）。此功能与“设备状态（可用/维修/停用）”并存。</p>
+
+    {% if downtime_rows and downtime_rows|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:80px;">ID</th>
+            <th style="width:200px;">开始</th>
+            <th style="width:200px;">结束</th>
+            <th style="width:160px;">原因</th>
+            <th>备注</th>
+            <th style="width:120px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in downtime_rows %}
+            <tr>
+              <td>{{ d.id }}</td>
+              <td>{{ d.start_time }}</td>
+              <td>{{ d.end_time }}</td>
+              <td>{{ d.reason_code or '-' }}</td>
+              <td>{{ d.reason_detail or '-' }}</td>
+              <td>
+                <form method="post" action="{{ url_for('equipment.cancel_downtime', machine_id=machine.machine_id, downtime_id=d.id) }}">
+                  <button type="submit">取消</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无停机计划。</div>
+    {% endif %}
+
+    <hr/>
+    <h4>新增停机</h4>
+    <form method="post" action="{{ url_for('equipment.create_downtime', machine_id=machine.machine_id) }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>开始时间</label><br/>
+          <input name="start_time" required placeholder="如：2026-01-22 08:00" style="min-width:220px;">
+        </div>
+        <div>
+          <label>结束时间</label><br/>
+          <input name="end_time" required placeholder="如：2026-01-22 12:00" style="min-width:220px;">
+        </div>
+        <div>
+          <label>停机原因</label><br/>
+          <select name="reason_code">
+            {% for v, label in downtime_reason_options %}
+              <option value="{{ v }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="flex:1; min-width:240px;">
+          <label>原因备注（可选）</label><br/>
+          <input name="reason_detail" placeholder="可选：更具体的停机原因说明">
+        </div>
+        <div>
+          <button type="submit">新增</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+{% endblock %}
+

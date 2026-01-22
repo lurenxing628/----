@@ -20,6 +20,7 @@ from .enums import (
 from .operator import Operator
 from .op_type import OpType
 from .machine import Machine
+from .machine_downtime import MachineDowntime
 from .operator_machine import OperatorMachine
 from .supplier import Supplier
 from .part import Part
@@ -48,6 +49,7 @@ __all__ = [
     "Operator",
     "OpType",
     "Machine",
+    "MachineDowntime",
     "OperatorMachine",
     "Supplier",
     "Part",

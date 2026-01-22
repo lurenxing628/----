@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+"""
+排序策略系统（Phase 7 / P7-01）。
+
+文档参考：开发文档.md -> 10. 排产算法 -> 10.1/10.2
+"""
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import date, datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+
+class SortStrategy(Enum):
+    PRIORITY_FIRST = "priority_first"
+    DUE_DATE_FIRST = "due_date_first"
+    WEIGHTED = "weighted"
+    FIFO = "fifo"
+
+
+@dataclass
+class BatchForSort:
+    """用于排序的批次信息（从 Batch 标准化得到）。"""
+
+    batch_id: str
+    priority: str  # normal/urgent/critical
+    due_date: Optional[date] = None
+    ready_status: str = "no"  # yes/no/partial
+    created_at: Optional[datetime] = None
+
+
+class BaseSortStrategy(ABC):
+    """排序策略基类。"""
+
+    @abstractmethod
+    def sort(self, batches: List[BatchForSort]) -> List[BatchForSort]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_name(self) -> str:
+        raise NotImplementedError
+
+
+class PriorityFirstStrategy(BaseSortStrategy):
+    """优先级优先：critical > urgent > normal，同优先级按交期升序，同交期按批次号。"""
+
+    PRIORITY_ORDER = {"critical": 0, "urgent": 1, "normal": 2}
+
+    def sort(self, batches: List[BatchForSort]) -> List[BatchForSort]:
+        def sort_key(batch: BatchForSort):
+            priority_rank = self.PRIORITY_ORDER.get((batch.priority or "").strip(), 99)
+            due_rank = batch.due_date if batch.due_date else date.max
+            return (priority_rank, due_rank, batch.batch_id)
+
+        return sorted(batches, key=sort_key)
+
+    def get_name(self) -> str:
+        return "优先级优先"
+
+
+class DueDateFirstStrategy(BaseSortStrategy):
+    """交期优先：交期早的优先，无交期的排最后；同交期按优先级，同优先级按批次号。"""
+
+    PRIORITY_ORDER = {"critical": 0, "urgent": 1, "normal": 2}
+
+    def sort(self, batches: List[BatchForSort]) -> List[BatchForSort]:
+        def sort_key(batch: BatchForSort):
+            has_due = 0 if batch.due_date else 1  # 无交期的排最后
+            due_rank = batch.due_date if batch.due_date else date.max
+            priority_rank = self.PRIORITY_ORDER.get((batch.priority or "").strip(), 99)
+            return (has_due, due_rank, priority_rank, batch.batch_id)
+
+        return sorted(batches, key=sort_key)
+
+    def get_name(self) -> str:
+        return "交期优先"
+
+
+class WeightedStrategy(BaseSortStrategy):
+    """
+权重混合（加权评分后降序）：
+score = priority_weight×priority_score + due_weight×due_score + ready_weight×ready_score
+"""
+
+    PRIORITY_SCORE = {"critical": 100, "urgent": 60, "normal": 20}
+    READY_SCORE = {"yes": 100, "partial": 50, "no": 0}
+
+    def __init__(self, priority_weight: float = 0.4, due_weight: float = 0.5, ready_weight: float = 0.1):
+        self.priority_weight = float(priority_weight)
+        self.due_weight = float(due_weight)
+        self.ready_weight = float(ready_weight)
+
+    def sort(self, batches: List[BatchForSort]) -> List[BatchForSort]:
+        today = date.today()
+
+        def calc_score(batch: BatchForSort) -> float:
+            pr = (batch.priority or "").strip()
+            rs = (batch.ready_status or "").strip()
+            priority_score = self.PRIORITY_SCORE.get(pr, 0)
+            ready_score = self.READY_SCORE.get(rs, 0)
+
+            if batch.due_date:
+                days_left = (batch.due_date - today).days
+                due_score = 100 - min(max(days_left, 0), 100)
+            else:
+                due_score = 0
+
+            return (self.priority_weight * priority_score) + (self.due_weight * due_score) + (self.ready_weight * ready_score)
+
+        # 分数降序，同分按批次号升序（稳定）
+        return sorted(batches, key=lambda b: (-calc_score(b), b.batch_id))
+
+    def get_name(self) -> str:
+        return "权重混合"
+
+
+class FIFOStrategy(BaseSortStrategy):
+    """先进先出：按创建时间升序，同时间按批次号。"""
+
+    def sort(self, batches: List[BatchForSort]) -> List[BatchForSort]:
+        def sort_key(batch: BatchForSort):
+            created = batch.created_at if batch.created_at else datetime.max
+            return (created, batch.batch_id)
+
+        return sorted(batches, key=sort_key)
+
+    def get_name(self) -> str:
+        return "先进先出"
+
+
+class StrategyFactory:
+    """策略工厂。"""
+
+    _strategies = {
+        SortStrategy.PRIORITY_FIRST: PriorityFirstStrategy,
+        SortStrategy.DUE_DATE_FIRST: DueDateFirstStrategy,
+        SortStrategy.WEIGHTED: WeightedStrategy,
+        SortStrategy.FIFO: FIFOStrategy,
+    }
+
+    @classmethod
+    def create(cls, strategy: SortStrategy, **kwargs) -> BaseSortStrategy:
+        strategy_class = cls._strategies.get(strategy)
+        if not strategy_class:
+            raise ValueError(f"Unknown strategy: {strategy}")
+
+        if strategy == SortStrategy.WEIGHTED:
+            return strategy_class(**kwargs)
+        return strategy_class()
+
+    @classmethod
+    def get_available_strategies(cls) -> List[Dict[str, str]]:
+        return [{"key": s.value, "name": cls.create(s).get_name()} for s in SortStrategy]
+
+
+def parse_strategy(value: Any, default: SortStrategy = SortStrategy.PRIORITY_FIRST) -> SortStrategy:
+    """
+把字符串/枚举解析为 SortStrategy（容错：非法返回 default）。
+"""
+    if isinstance(value, SortStrategy):
+        return value
+    try:
+        return SortStrategy(str(value))
+    except Exception:
+        return default
+

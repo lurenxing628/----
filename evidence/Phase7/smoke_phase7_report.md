@@ -1,0 +1,41 @@
+# Phase7（排产算法 / M3）冒烟测试报告
+
+- 测试时间：2026-01-23 00:18:05
+- Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
+- 项目根目录（自动识别）：`D:\Github\APS Test`
+
+## 0. 测试环境
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_kqvgon3h`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_kqvgon3h\aps_phase7_test.db`
+
+## 1. 基础数据准备（工种/供应商/资源）
+
+## 2. 工艺模板准备（含 merged 外部组）
+
+## 3. 批次创建（从模板复制生成工序）
+- 已创建批次：B_CAL/B001/B002/B_EXT
+
+## 4. 工序补充（内部工序设备/人员/工时）
+- 内部工序资源已补全（设备/人员均为 active 且符合 OperatorMachine）
+
+## 5. 工作日历约束：短班次 + 停工（用于验证跨天）
+- 已配置：2026-01-21 2h，2026-01-22 停工
+
+## 6. 排产执行：策略切换 + 落库 + 留痕
+- priority_first（B_CAL）：version=1 result_status=success scheduled_ops=1
+- 日历跨天校验：B_CAL end_time=2026-01-23 09:00:00（期望 2026-01-23 09:00:00）
+- due_date_first：version=2 result_status=success overdue=1
+- 人员冲突校验：B001_05 [2026-02-02 09:00:00~2026-02-02 13:00:00]  B002_05 [2026-02-02 13:00:00~2026-02-03 09:00:00]（期望不重叠）
+- merged 外部组校验：start=2026-02-02 09:00:00 end=2026-02-05 09:00:00 span_days=3.0（期望 3.0）
+- 超期预警校验：B_EXT 已出现在 overdue_batches
+- weighted：version=3 strategy_params={'priority_weight': 0.4, 'due_weight': 0.5, 'ready_weight': 0.1}
+- fifo：version=4
+
+## 7. 留痕核对（ScheduleHistory / OperationLogs）
+- ScheduleHistory 最近 4 条：[(4, 'fifo', 'success'), (3, 'weighted', 'success'), (2, 'due_date_first', 'success'), (1, 'priority_first', 'success')]
+- ScheduleHistory.result_summary 字段校验：包含 overdue_batches/strategy_params
+- OperationLogs(schedule) 最近 4 条：[(4, '4'), (3, '3'), (2, '2'), (1, '1')]
+
+## 结论
+- 通过：Phase7（排产算法 / M3）冒烟测试通过（策略切换/双资源冲突/日历/外部合并周期/落库/留痕）。
+- 总耗时：1793 ms

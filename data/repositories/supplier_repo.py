@@ -42,17 +42,33 @@ class SupplierRepository(BaseRepository):
         return s
 
     def update(self, supplier_id: str, updates: Dict[str, Any]) -> None:
-        self.execute(
-            "UPDATE Suppliers SET name = COALESCE(?, name), op_type_id = COALESCE(?, op_type_id), default_days = COALESCE(?, default_days), status = COALESCE(?, status), remark = COALESCE(?, remark) WHERE supplier_id = ?",
-            (
-                updates.get("name"),
-                updates.get("op_type_id"),
-                updates.get("default_days"),
-                updates.get("status"),
-                updates.get("remark"),
-                supplier_id,
-            ),
-        )
+        """
+        更新供应商。
+
+        说明：
+        - 只更新 updates 中出现的字段
+        - 允许显式清空 op_type_id/remark 为 NULL（便于后续调整绑定关系）
+        """
+        if not updates:
+            return
+
+        allowed = {"name", "op_type_id", "default_days", "status", "remark"}
+        set_parts: List[str] = []
+        params: List[Any] = []
+
+        for key in ("name", "op_type_id", "default_days", "status", "remark"):
+            if key not in allowed:
+                continue
+            if key in updates:
+                set_parts.append(f"{key} = ?")
+                params.append(updates.get(key))
+
+        if not set_parts:
+            return
+
+        params.append(supplier_id)
+        sql = f"UPDATE Suppliers SET {', '.join(set_parts)} WHERE supplier_id = ?"
+        self.execute(sql, tuple(params))
 
     def delete(self, supplier_id: str) -> None:
         self.execute("DELETE FROM Suppliers WHERE supplier_id = ?", (supplier_id,))

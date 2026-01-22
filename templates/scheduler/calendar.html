@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2>工作日历配置</h2>
+        <p class="muted">
+          说明：用于后续排产算法的“工作时间/效率/允许排产的优先级”约束。
+          未配置日期会按默认规则兜底（工作日 8 小时，周末不排产）。
+        </p>
+      </div>
+      <div>
+        <a href="{{ url_for('scheduler.excel_calendar_page') }}">工作日历（Excel 导入/导出）</a>
+        <span class="muted">｜</span>
+        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>新增 / 更新某一天</h3>
+    <form method="post" action="{{ url_for('scheduler.calendar_upsert') }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>日期</label><br/>
+          <input name="date" required placeholder="YYYY-MM-DD" style="width:160px;">
+        </div>
+        <div>
+          <label>类型</label><br/>
+          <select name="day_type">
+            <option value="workday">工作日</option>
+            <option value="weekend">周末</option>
+            <option value="holiday">节假日</option>
+          </select>
+        </div>
+        <div>
+          <label>可用工时（小时）</label><br/>
+          <input name="shift_hours" placeholder="如：8" style="width:140px;">
+        </div>
+        <div>
+          <label>效率（>0）</label><br/>
+          <input name="efficiency" placeholder="如：1.0" style="width:140px;">
+        </div>
+        <div>
+          <label>允许普通件</label><br/>
+          <select name="allow_normal">
+            <option value="yes">是</option>
+            <option value="no">否</option>
+          </select>
+        </div>
+        <div>
+          <label>允许急件/特急</label><br/>
+          <select name="allow_urgent">
+            <option value="yes">是</option>
+            <option value="no">否</option>
+          </select>
+        </div>
+        <div style="flex:1; min-width:220px;">
+          <label>说明</label><br/>
+          <input name="remark" placeholder="可选">
+        </div>
+        <div>
+          <button type="submit">保存</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>已配置日历（WorkCalendar）</h3>
+    {% if rows and rows|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:140px;">日期</th>
+            <th style="width:120px;">类型</th>
+            <th style="width:120px;">可用工时</th>
+            <th style="width:120px;">效率</th>
+            <th style="width:140px;">允许普通件</th>
+            <th style="width:140px;">允许急件</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>{{ r.date }}</td>
+              <td>{{ r.day_type_zh }}</td>
+              <td>{{ r.shift_hours }}</td>
+              <td>{{ r.efficiency }}</td>
+              <td>{{ '是' if r.allow_normal == 'yes' else '否' }}</td>
+              <td>{{ '是' if r.allow_urgent == 'yes' else '否' }}</td>
+              <td>{% if r.remark %}{{ r.remark }}{% else %}<span class="muted">-</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无显式配置的日历记录（算法会使用默认规则兜底）。</div>
+    {% endif %}
+  </div>
+{% endblock %}
+

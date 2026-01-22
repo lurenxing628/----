@@ -33,6 +33,9 @@ class MachineRepository(BaseRepository):
         rows = self.fetchall(sql, tuple(params))
         return [Machine.from_row(r) for r in rows]
 
+    def exists(self, machine_id: str) -> bool:
+        return bool(self.fetchvalue("SELECT 1 FROM Machines WHERE machine_id = ? LIMIT 1", (machine_id,)))
+
     def create(self, machine: Union[Machine, Dict[str, Any]]) -> Machine:
         m = machine if isinstance(machine, Machine) else Machine.from_row(machine)
         self.execute(
@@ -42,16 +45,35 @@ class MachineRepository(BaseRepository):
         return m
 
     def update(self, machine_id: str, updates: Dict[str, Any]) -> None:
-        self.execute(
-            "UPDATE Machines SET name = COALESCE(?, name), op_type_id = COALESCE(?, op_type_id), status = COALESCE(?, status), remark = COALESCE(?, remark), updated_at = CURRENT_TIMESTAMP WHERE machine_id = ?",
-            (
-                updates.get("name"),
-                updates.get("op_type_id"),
-                updates.get("status"),
-                updates.get("remark"),
-                machine_id,
-            ),
-        )
+        """
+        更新设备信息。
+
+        说明：
+        - 只更新 updates 中出现的字段
+        - 允许把 op_type_id/remark 显式清空为 NULL（updates['op_type_id']=None）
+        """
+        if not updates:
+            return
+
+        allowed = {"name", "op_type_id", "status", "remark"}
+        set_parts: List[str] = []
+        params: List[Any] = []
+
+        for key in ("name", "op_type_id", "status", "remark"):
+            if key not in allowed:
+                continue
+            if key in updates:
+                set_parts.append(f"{key} = ?")
+                params.append(updates.get(key))
+
+        if not set_parts:
+            return
+
+        set_parts.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(machine_id)
+
+        sql = f"UPDATE Machines SET {', '.join(set_parts)} WHERE machine_id = ?"
+        self.execute(sql, tuple(params))
 
     def delete(self, machine_id: str) -> None:
         self.execute("DELETE FROM Machines WHERE machine_id = ?", (machine_id,))

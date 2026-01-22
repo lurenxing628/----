@@ -90,40 +90,60 @@ class BatchOperationRepository(BaseRepository):
         return bo
 
     def update(self, op_id: int, updates: Dict[str, Any]) -> None:
-        self.execute(
-            """
-            UPDATE BatchOperations
-            SET
-              piece_id = COALESCE(?, piece_id),
-              seq = COALESCE(?, seq),
-              op_type_id = COALESCE(?, op_type_id),
-              op_type_name = COALESCE(?, op_type_name),
-              source = COALESCE(?, source),
-              machine_id = COALESCE(?, machine_id),
-              operator_id = COALESCE(?, operator_id),
-              supplier_id = COALESCE(?, supplier_id),
-              setup_hours = COALESCE(?, setup_hours),
-              unit_hours = COALESCE(?, unit_hours),
-              ext_days = COALESCE(?, ext_days),
-              status = COALESCE(?, status)
-            WHERE id = ?
-            """,
-            (
-                updates.get("piece_id"),
-                updates.get("seq"),
-                updates.get("op_type_id"),
-                updates.get("op_type_name"),
-                updates.get("source"),
-                updates.get("machine_id"),
-                updates.get("operator_id"),
-                updates.get("supplier_id"),
-                updates.get("setup_hours"),
-                updates.get("unit_hours"),
-                updates.get("ext_days"),
-                updates.get("status"),
-                int(op_id),
-            ),
-        )
+        """
+        更新批次工序（允许显式清空字段为 NULL）。
+
+        说明：
+        - 只更新 updates 中出现的字段
+        - 允许把 machine_id/operator_id/supplier_id/ext_days 等显式清空为 NULL
+          （否则 COALESCE 会导致无法“取消选择/清空”）
+        """
+        if not updates:
+            return
+
+        allowed = {
+            "piece_id",
+            "seq",
+            "op_type_id",
+            "op_type_name",
+            "source",
+            "machine_id",
+            "operator_id",
+            "supplier_id",
+            "setup_hours",
+            "unit_hours",
+            "ext_days",
+            "status",
+        }
+        set_parts: List[str] = []
+        params: List[Any] = []
+
+        for key in (
+            "piece_id",
+            "seq",
+            "op_type_id",
+            "op_type_name",
+            "source",
+            "machine_id",
+            "operator_id",
+            "supplier_id",
+            "setup_hours",
+            "unit_hours",
+            "ext_days",
+            "status",
+        ):
+            if key not in allowed:
+                continue
+            if key in updates:
+                set_parts.append(f"{key} = ?")
+                params.append(updates.get(key))
+
+        if not set_parts:
+            return
+
+        params.append(int(op_id))
+        sql = f"UPDATE BatchOperations SET {', '.join(set_parts)} WHERE id = ?"
+        self.execute(sql, tuple(params))
 
     def delete(self, op_id: int) -> None:
         self.execute("DELETE FROM BatchOperations WHERE id = ?", (int(op_id),))

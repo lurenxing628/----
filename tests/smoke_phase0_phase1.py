@@ -7,14 +7,30 @@ import traceback
 
 
 def find_repo_root():
+    """
+    约定：用户机器常见路径为 D:\\Github\\<项目>，且根目录包含 app.py 与 schema.sql。
+    为了兼容本地/CI/不同目录结构，增加 fallback：使用当前 tests/ 的上一级作为 repo_root。
+    """
+    # 1) 优先：tests/ 的上一级目录（脚本与代码同仓库时最可靠）
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(here, ".."))
+    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
+        return repo_root
+
+    # 2) 兼容：按既有约定扫描 D:\Github
     base = r"D:\Github"
-    for d in os.listdir(base):
-        p = os.path.join(base, d)
-        if not os.path.isdir(p):
-            continue
-        if os.path.exists(os.path.join(p, "app.py")) and os.path.exists(os.path.join(p, "schema.sql")):
-            return p
-    raise RuntimeError("未找到项目根目录：要求在 D:\\Github 下存在包含 app.py 与 schema.sql 的目录")
+    try:
+        if os.path.isdir(base):
+            for d in os.listdir(base):
+                p = os.path.join(base, d)
+                if not os.path.isdir(p):
+                    continue
+                if os.path.exists(os.path.join(p, "app.py")) and os.path.exists(os.path.join(p, "schema.sql")):
+                    return p
+    except Exception:
+        pass
+
+    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def write_report(path, lines):

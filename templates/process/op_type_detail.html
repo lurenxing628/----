@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>工种详情</h2>
+    <p class="muted">工种ID：<strong>{{ op_type.op_type_id }}</strong>　工种名称：<strong>{{ op_type.name }}</strong></p>
+    <div style="margin-top:8px;">
+      <a href="{{ url_for('process.op_types_page') }}">返回工种列表</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.list_parts') }}">返回工艺管理</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>基本信息</h3>
+    <form method="post" action="{{ url_for('process.update_op_type', op_type_id=op_type.op_type_id) }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>工种ID</label><br/>
+          <input value="{{ op_type.op_type_id }}" disabled>
+        </div>
+        <div>
+          <label>工种名称</label><br/>
+          <input name="name" required value="{{ op_type.name }}">
+        </div>
+        <div>
+          <label>归属</label><br/>
+          <select name="category">
+            <option value="internal" {% if op_type.category=='internal' %}selected{% endif %}>内部</option>
+            <option value="external" {% if op_type.category=='external' %}selected{% endif %}>外部</option>
+          </select>
+        </div>
+        <div style="flex:1; min-width:240px;">
+          <label>备注</label><br/>
+          <input name="remark" value="{{ op_type.remark or '' }}">
+        </div>
+        <div>
+          <button type="submit">保存</button>
+        </div>
+      </div>
+    </form>
+  </div>
+{% endblock %}
+

@@ -9,10 +9,14 @@ from core.infrastructure.logging import AppLogger, OperationLogger
 from core.infrastructure.errors import register_error_handlers
 from core.infrastructure.database import get_connection, ensure_schema
 from core.infrastructure.backup import BackupManager
+from core.services.common.excel_templates import ensure_excel_templates
 
 from web.routes.dashboard import bp as dashboard_bp
 from web.routes.excel_demo import bp as excel_demo_bp
 from web.routes.personnel import bp as personnel_bp
+from web.routes.equipment import bp as equipment_bp
+from web.routes.process import bp as process_bp
+from web.routes.scheduler import bp as scheduler_bp
 
 
 def create_app() -> Flask:
@@ -33,6 +37,15 @@ def create_app() -> Flask:
     os.makedirs(app.config["LOG_DIR"], exist_ok=True)
     os.makedirs(app.config["BACKUP_DIR"], exist_ok=True)
     os.makedirs(app.config["EXCEL_TEMPLATE_DIR"], exist_ok=True)
+
+    # Excel 模板：按开发文档交付要求，确保 templates_excel/ 下有固定模板文件（缺失则生成）
+    try:
+        stats = ensure_excel_templates(app.config["EXCEL_TEMPLATE_DIR"])
+        if stats.get("created"):
+            app.logger.info(f"已生成 Excel 模板：{len(stats.get('created', []))} 个")
+    except Exception as e:
+        # 不阻断启动：模板下载接口仍可动态生成兜底
+        app.logger.warning(f"生成 Excel 模板失败（将使用动态模板兜底）：{e}")
 
     # 文件日志（用户可用于排障：中文信息）
     app_logger = AppLogger(
@@ -71,6 +84,9 @@ def create_app() -> Flask:
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(excel_demo_bp, url_prefix="/excel-demo")
     app.register_blueprint(personnel_bp, url_prefix="/personnel")
+    app.register_blueprint(equipment_bp, url_prefix="/equipment")
+    app.register_blueprint(process_bp, url_prefix="/process")
+    app.register_blueprint(scheduler_bp, url_prefix="/scheduler")
 
     # 退出自动备份（不启后台线程）
     backup_manager = BackupManager(

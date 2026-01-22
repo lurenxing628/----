@@ -1,15 +1,15 @@
-# requirements.txt - Win7 单机版（Python 3.8）
+# requirements.txt (Python 3.8, V1: openpyxl-only)
 #
-# Web框架
+# Web framework
 Flask==2.3.3
 Werkzeug==2.3.7
 #
-# Excel处理（V1：openpyxl-only）
+# Excel (V1: openpyxl-only)
 openpyxl==3.0.10
 #
-# 日期处理
+# Date utilities
 python-dateutil==2.8.2
 #
-# 打包（仅开发机/打包机需要，目标机不需要）
-# PyInstaller==4.10  # 不要用5.x/6.x
+# Packaging (dev/build machine only; end-user machine does not need Python)
+# PyInstaller==4.10  # do not use 5.x/6.x
 

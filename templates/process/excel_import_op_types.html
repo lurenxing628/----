@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>工种配置（Excel）</h2>
+    <p class="muted">支持：下载模板 → 上传预览 → 确认导入 → 导出。提示信息尽量中文，便于排查。</p>
+    <div style="margin-top:8px;">
+      <a href="{{ export_url }}">导出当前数据（工种配置.xlsx）</a>
+      <span class="muted">（导入/导出会写入操作留痕）</span>
+    </div>
+    <div style="margin-top:8px;">
+      <a href="{{ url_for('process.op_types_page') }}">返回工种配置页面</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.list_parts') }}">返回工艺管理</a>
+    </div>
+  </div>
+
+  {% include "components/excel_import.html" with context %}
+
+  <div class="card">
+    <h3>当前工种数据（OpTypes）</h3>
+    {% if existing_list and existing_list|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th>工种ID</th>
+            <th>工种名称</th>
+            <th>归属</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in existing_list %}
+            <tr>
+              <td>{{ r["工种ID"] }}</td>
+              <td>{{ r["工种名称"] }}</td>
+              <td>{{ r["归属"] }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无数据（可先下载模板并导入）。</div>
+    {% endif %}
+  </div>
+
+  <script src="{{ url_for('static', filename='js/excel_handler.js') }}"></script>
+{% endblock %}
+

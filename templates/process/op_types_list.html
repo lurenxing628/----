@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>工种配置</h2>
+    <p class="muted">说明：用于识别“内部/外部”工序。解析工艺路线时，未识别工种将默认标记为外部工序，并产生警告。</p>
+    <div style="margin-top:8px;">
+      <a href="{{ url_for('process.list_parts') }}">返回工艺管理</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.suppliers_page') }}">供应商配置</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.excel_op_type_page') }}">Excel 导入/导出</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>新增工种</h3>
+    <form method="post" action="{{ url_for('process.create_op_type') }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>工种ID</label><br/>
+          <input name="op_type_id" required placeholder="如：OT001">
+        </div>
+        <div>
+          <label>工种名称</label><br/>
+          <input name="name" required placeholder="如：数车/数铣/钳/标印/总检">
+        </div>
+        <div>
+          <label>归属</label><br/>
+          <select name="category">
+            <option value="internal">内部</option>
+            <option value="external">外部</option>
+          </select>
+        </div>
+        <div style="flex:1; min-width:240px;">
+          <label>备注</label><br/>
+          <input name="remark" placeholder="可选">
+        </div>
+        <div>
+          <button type="submit">添加工种</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>工种列表</h3>
+    {% if op_types and op_types|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:140px;">工种ID</th>
+            <th style="width:220px;">工种名称</th>
+            <th style="width:120px;">归属</th>
+            <th>备注</th>
+            <th style="width:160px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in op_types %}
+            <tr>
+              <td><a href="{{ url_for('process.op_type_detail', op_type_id=r.op_type_id) }}">{{ r.op_type_id }}</a></td>
+              <td>{{ r.name }}</td>
+              <td>{{ '内部' if r.category=='internal' else '外部' }}</td>
+              <td>{{ r.remark or '-' }}</td>
+              <td>
+                <a href="{{ url_for('process.op_type_detail', op_type_id=r.op_type_id) }}">查看/编辑</a>
+                <span class="muted">｜</span>
+                <form method="post" action="{{ url_for('process.delete_op_type', op_type_id=r.op_type_id) }}" style="display:inline;">
+                  <button type="submit">删除</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无工种数据。</div>
+    {% endif %}
+  </div>
+{% endblock %}
+

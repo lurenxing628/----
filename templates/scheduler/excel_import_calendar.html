@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>工作日历（Excel）</h2>
+    <p class="muted">支持：下载模板 → 上传预览 → 确认导入 → 导出。提示信息尽量中文，便于排查。</p>
+    <div style="margin-top:8px;">
+      <a href="{{ export_url }}">导出当前数据（工作日历.xlsx）</a>
+      <span class="muted">（导出会写入操作留痕）</span>
+    </div>
+  </div>
+
+  {% include "components/excel_import.html" with context %}
+
+  <div class="card">
+    <h3>当前日历数据（WorkCalendar）</h3>
+    {% if existing_list and existing_list|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:140px;">日期</th>
+            <th style="width:120px;">类型</th>
+            <th style="width:120px;">可用工时</th>
+            <th style="width:120px;">效率</th>
+            <th style="width:140px;">允许普通件</th>
+            <th style="width:140px;">允许急件</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in existing_list %}
+            <tr>
+              <td>{{ r["日期"] }}</td>
+              <td>{{ r["类型"] }}</td>
+              <td>{{ r["可用工时"] }}</td>
+              <td>{{ r["效率"] }}</td>
+              <td>{{ r["允许普通件"] }}</td>
+              <td>{{ r["允许急件"] }}</td>
+              <td>{% if r["说明"] %}{{ r["说明"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无显式配置（算法会使用默认规则兜底）。</div>
+    {% endif %}
+  </div>
+
+  <script src="{{ url_for('static', filename='js/excel_handler.js') }}"></script>
+{% endblock %}
+

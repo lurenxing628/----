@@ -56,35 +56,54 @@ class PartOperationRepository(BaseRepository):
         return po
 
     def update(self, part_no: str, seq: int, updates: Dict[str, Any]) -> None:
-        self.execute(
-            """
-            UPDATE PartOperations
-            SET
-              op_type_id = COALESCE(?, op_type_id),
-              op_type_name = COALESCE(?, op_type_name),
-              source = COALESCE(?, source),
-              supplier_id = COALESCE(?, supplier_id),
-              ext_days = COALESCE(?, ext_days),
-              ext_group_id = COALESCE(?, ext_group_id),
-              setup_hours = COALESCE(?, setup_hours),
-              unit_hours = COALESCE(?, unit_hours),
-              status = COALESCE(?, status)
-            WHERE part_no = ? AND seq = ?
-            """,
-            (
-                updates.get("op_type_id"),
-                updates.get("op_type_name"),
-                updates.get("source"),
-                updates.get("supplier_id"),
-                updates.get("ext_days"),
-                updates.get("ext_group_id"),
-                updates.get("setup_hours"),
-                updates.get("unit_hours"),
-                updates.get("status"),
-                part_no,
-                int(seq),
-            ),
-        )
+        """
+        更新零件工序模板。
+
+        说明：
+        - 只更新 updates 中出现的字段
+        - 允许显式清空字段为 NULL（例如 ext_days/ext_group_id/supplier_id）
+          这是实现 external group 的 separate/merged 存储规则所必需的。
+        """
+        if not updates:
+            return
+
+        allowed = {
+            "op_type_id",
+            "op_type_name",
+            "source",
+            "supplier_id",
+            "ext_days",
+            "ext_group_id",
+            "setup_hours",
+            "unit_hours",
+            "status",
+        }
+        set_parts: List[str] = []
+        params: List[Any] = []
+
+        for key in (
+            "op_type_id",
+            "op_type_name",
+            "source",
+            "supplier_id",
+            "ext_days",
+            "ext_group_id",
+            "setup_hours",
+            "unit_hours",
+            "status",
+        ):
+            if key not in allowed:
+                continue
+            if key in updates:
+                set_parts.append(f"{key} = ?")
+                params.append(updates.get(key))
+
+        if not set_parts:
+            return
+
+        params.extend([part_no, int(seq)])
+        sql = f"UPDATE PartOperations SET {', '.join(set_parts)} WHERE part_no = ? AND seq = ?"
+        self.execute(sql, tuple(params))
 
     def mark_deleted(self, part_no: str, seq: int) -> None:
         """逻辑删除：status=deleted（符合文档“active/deleted”）。"""

@@ -45,6 +45,26 @@ CREATE TABLE IF NOT EXISTS Machines (
     FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id)
 );
 
+-- 设备停机时间段（预留停机原因；用于“设备资源不可用区间”）
+-- 说明：
+-- - 与 Machines.status（长期状态）并存：status=active 表示该时间段有效；cancelled 表示已取消
+-- - start_time/end_time 建议使用 ISO 格式：YYYY-MM-DD HH:MM:SS（便于排序/比较）
+CREATE TABLE IF NOT EXISTS MachineDowntimes (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    machine_id      TEXT NOT NULL,
+    start_time      DATETIME NOT NULL,
+    end_time        DATETIME NOT NULL,
+    reason_code     TEXT,                       -- 预留：maintenance/breakdown/power/tooling/other
+    reason_detail   TEXT,                       -- 预留：原因备注
+    status          TEXT DEFAULT 'active',       -- active/cancelled
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (machine_id) REFERENCES Machines(machine_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_machine_downtimes_machine ON MachineDowntimes(machine_id);
+CREATE INDEX IF NOT EXISTS idx_machine_downtimes_time ON MachineDowntimes(start_time, end_time);
+
 -- 人员-设备关联（与设备模块共享）
 CREATE TABLE IF NOT EXISTS OperatorMachine (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

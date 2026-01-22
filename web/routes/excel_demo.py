@@ -1,9 +1,10 @@
 import io
 import json
+import os
 import time
 from typing import Dict, Any, List
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, send_file, g
+from flask import Blueprint, current_app, render_template, request, flash, redirect, url_for, send_file, g
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -257,6 +258,26 @@ def download_template():
     下载“人员基本信息.xlsx”模板（演示用）：列名与文档一致（工号/姓名/状态/备注）。
     """
     start = time.time()
+    template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "人员基本信息.xlsx")
+    if os.path.exists(template_path):
+        time_cost_ms = int((time.time() - start) * 1000)
+        log_excel_export(
+            op_logger=g.op_logger,
+            module="excel_demo",
+            target_type="operator",
+            template_or_export_type="人员基本信息模板.xlsx",
+            filters={},
+            row_count=1,
+            time_range={},
+            time_cost_ms=time_cost_ms,
+        )
+        return send_file(
+            template_path,
+            as_attachment=True,
+            download_name="人员基本信息.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
     import openpyxl
 
     wb = openpyxl.Workbook()

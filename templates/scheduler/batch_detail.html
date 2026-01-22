@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2>批次详情：{{ batch.batch_id }}</h2>
+        <div class="muted">
+          图号：<strong>{{ batch.part_no }}</strong>
+          {% if batch.part_name %}<span class="muted">（{{ batch.part_name }}）</span>{% endif %}
+          <span class="muted">｜</span>
+          数量：<strong>{{ batch.quantity }}</strong>
+          <span class="muted">｜</span>
+          交期：{% if batch.due_date %}<strong>{{ batch.due_date }}</strong>{% else %}<span class="muted">-</span>{% endif %}
+          <span class="muted">｜</span>
+          优先级：<strong>{{ priority_zh }}</strong>
+          <span class="muted">｜</span>
+          齐套：<strong>{{ ready_status_zh }}</strong>
+          <span class="muted">｜</span>
+          状态：<strong>{{ batch_status_zh }}</strong>
+        </div>
+      </div>
+      <div>
+        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>批次工序（可编辑补充）</h3>
+    <p class="muted">
+      提示：内部工序需补充“设备/人员/工时”；外部工序需补充“供应商/周期”。若外部工序属于“合并周期”外部组，将禁止逐道设置周期，并提示到工艺管理中配置。
+      <br/>
+      约束：内部工序的“设备/人员”选择受【人员-设备关联（OperatorMachine）】限制（双向联动）。若下拉无可选项，请先到【人员管理】或【设备管理】维护“可操作关系”。
+    </p>
+    <div style="margin-top:8px;">
+      <form method="post" action="{{ url_for('scheduler.generate_ops', batch_id=batch.batch_id) }}"
+            onsubmit="return confirm('将根据当前零件工序模板重建该批次工序（会清空已填写的设备/人员/工时/周期等补充信息）。确定继续？');">
+        <button type="submit">从模板重建工序（慎用）</button>
+        <span class="muted">用于模板变更后同步（会覆盖已有补充信息）</span>
+      </form>
+    </div>
+
+    {% if operations and operations|length > 0 %}
+      <table style="margin-top:12px;">
+        <thead>
+          <tr>
+            <th style="width:140px;">工序编码</th>
+            <th style="width:80px;">工序</th>
+            <th style="width:160px;">工种</th>
+            <th style="width:100px;">归属</th>
+            <th style="width:200px;">设备</th>
+            <th style="width:200px;">人员</th>
+            <th style="width:120px;">换型(h)</th>
+            <th style="width:120px;">单件(h)</th>
+            <th style="width:220px;">供应商</th>
+            <th style="width:140px;">外协周期(天)</th>
+            <th style="width:120px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for op in operations %}
+            <form id="opform_{{ op.id }}" method="post" action="{{ url_for('scheduler.update_op', op_id=op.id) }}"></form>
+            <tr {% if op.source == 'internal' %}data-linkage-row="1" data-op-id="{{ op.id }}" data-op-code="{{ op.op_code }}"{% endif %}>
+              <td>{{ op.op_code }}</td>
+              <td>{{ op.seq }}</td>
+              <td>{{ op.op_type_name }}</td>
+              <td>
+                {% if op.source == 'internal' %}内部{% else %}外部{% endif %}
+              </td>
+              <td>
+                {% if op.source == 'internal' %}
+                  <select name="machine_id" form="opform_{{ op.id }}" class="js-machine-select">
+                    <option value="">（未选择）</option>
+                    {% for opt in machine_options %}
+                      <option
+                        value="{{ opt['value'] }}"
+                        {% if op.machine_id == opt['value'] %}selected{% endif %}
+                        {% if opt.get('disabled') %}disabled data-static-disabled="1"{% endif %}
+                      >{{ opt['label'] }}</option>
+                    {% endfor %}
+                  </select>
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if op.source == 'internal' %}
+                  <select name="operator_id" form="opform_{{ op.id }}" class="js-operator-select">
+                    <option value="">（未选择）</option>
+                    {% for opt in operator_options %}
+                      <option
+                        value="{{ opt['value'] }}"
+                        {% if op.operator_id == opt['value'] %}selected{% endif %}
+                        {% if opt.get('disabled') %}disabled data-static-disabled="1"{% endif %}
+                      >{{ opt['label'] }}</option>
+                    {% endfor %}
+                  </select>
+                  <div class="muted js-linkage-hint" style="margin-top:4px; display:none;"></div>
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if op.source == 'internal' %}
+                  <input name="setup_hours" form="opform_{{ op.id }}" value="{{ op.setup_hours }}" style="width:90px;">
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if op.source == 'internal' %}
+                  <input name="unit_hours" form="opform_{{ op.id }}" value="{{ op.unit_hours }}" style="width:90px;">
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if op.source == 'external' %}
+                  <select name="supplier_id" form="opform_{{ op.id }}">
+                    <option value="">（未选择）</option>
+                    {% for v, label in supplier_options %}
+                      <option value="{{ v }}" {% if op.supplier_id == v %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  {% if op.merge_hint and op.merge_hint.merge_mode == 'merged' %}
+                    <div class="muted" style="margin-top:4px;">
+                      合并周期组：{{ op.merge_hint.template_ext_group_id }}（组周期：{{ op.merge_hint.group_total_days or '未设置' }} 天）
+                    </div>
+                  {% endif %}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if op.source == 'external' %}
+                  {% if op.merge_hint and op.merge_hint.merge_mode == 'merged' %}
+                    <input name="ext_days" form="opform_{{ op.id }}" value="" style="width:110px;" disabled>
+                    <div class="muted" style="margin-top:4px;">该工序周期由“外部组合并周期”控制</div>
+                  {% else %}
+                    <input name="ext_days" form="opform_{{ op.id }}" value="{{ op.ext_days }}" style="width:110px;">
+                  {% endif %}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                <button type="submit" form="opform_{{ op.id }}">保存</button>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">该批次尚未生成工序。你可以点击“从模板重建工序”生成。</div>
+    {% endif %}
+  </div>
+
+  <script>
+    // 设备/人员双向联动：只允许选择 OperatorMachine 已维护的人机组合。
+    // 说明：
+    // - 前端仅做“减少误选”；最终以服务端校验为准（保存不匹配会报中文错误）。
+    // - 为避免过重，本页仅注入“本页涉及资源”的映射（后端已裁剪）。
+    const machineOperators = {{ machine_operators|tojson }};
+    const operatorMachines = {{ operator_machines|tojson }};
+
+    function _setSelectOptionsByAllowed(selectEl, allowedSet) {
+      if (!selectEl) return;
+      const options = Array.from(selectEl.options || []);
+      for (const opt of options) {
+        // 空选项永远可用
+        if (!opt.value) {
+          opt.disabled = false;
+          continue;
+        }
+        // 后端标记为“不可用”的选项（停用/维修等）永远保持 disabled
+        if (opt.dataset && opt.dataset.staticDisabled === "1") {
+          opt.disabled = true;
+          continue;
+        }
+        // 未触发过滤：全部启用
+        if (!allowedSet) {
+          opt.disabled = false;
+          continue;
+        }
+        opt.disabled = !allowedSet.has(opt.value);
+      }
+    }
+
+    function _applyLinkageForRow(rowEl) {
+      const mSel = rowEl.querySelector(".js-machine-select");
+      const oSel = rowEl.querySelector(".js-operator-select");
+      const hint = rowEl.querySelector(".js-linkage-hint");
+
+      if (!mSel || !oSel || !hint) return;
+
+      const machineId = (mSel.value || "").trim();
+      const operatorId = (oSel.value || "").trim();
+
+      const allowedOps = machineId ? new Set(machineOperators[machineId] || []) : null;
+      const allowedMcs = operatorId ? new Set(operatorMachines[operatorId] || []) : null;
+
+      _setSelectOptionsByAllowed(oSel, allowedOps);
+      _setSelectOptionsByAllowed(mSel, allowedMcs);
+
+      let msg = "";
+      if (machineId && allowedOps && allowedOps.size === 0) {
+        msg = `设备“${machineId}”尚未配置可操作人员（请先在人员/设备管理维护关联）。`;
+      }
+      if (operatorId && allowedMcs && allowedMcs.size === 0) {
+        msg = `人员“${operatorId}”尚未配置可操作设备（请先在人员/设备管理维护关联）。`;
+      }
+      if (machineId && operatorId) {
+        const ok = Array.isArray(machineOperators[machineId]) && machineOperators[machineId].includes(operatorId);
+        if (!ok) {
+          const opCode = rowEl.dataset ? (rowEl.dataset.opCode || "") : "";
+          msg =
+            `当前设备/人员组合不匹配：${machineId} × ${operatorId}` +
+            (opCode ? `（工序 ${opCode}）` : "") +
+            "。保存时系统将提示错误，请改选匹配项或清空其中一个。";
+        }
+      }
+
+      if (msg) {
+        hint.textContent = msg;
+        hint.style.display = "block";
+      } else {
+        hint.textContent = "";
+        hint.style.display = "none";
+      }
+    }
+
+    function _initLinkage() {
+      const rows = document.querySelectorAll('tr[data-linkage-row=\"1\"]');
+      for (const row of rows) {
+        const mSel = row.querySelector(".js-machine-select");
+        const oSel = row.querySelector(".js-operator-select");
+        if (!mSel || !oSel) continue;
+        mSel.addEventListener("change", () => _applyLinkageForRow(row));
+        oSel.addEventListener("change", () => _applyLinkageForRow(row));
+        _applyLinkageForRow(row);
+      }
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", _initLinkage);
+    } else {
+      _initLinkage();
+    }
+  </script>
+{% endblock %}
+

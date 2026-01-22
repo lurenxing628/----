@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>供应商配置（Excel）</h2>
+    <p class="muted">支持：下载模板 → 上传预览 → 确认导入 → 导出。外部工序解析时可按工种自动匹配默认供应商与默认周期。</p>
+    <div style="margin-top:8px;">
+      <a href="{{ export_url }}">导出当前数据（供应商配置.xlsx）</a>
+      <span class="muted">（导入/导出会写入操作留痕）</span>
+    </div>
+    <div style="margin-top:8px;">
+      <a href="{{ url_for('process.suppliers_page') }}">返回供应商配置页面</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.list_parts') }}">返回工艺管理</a>
+    </div>
+  </div>
+
+  {% include "components/excel_import.html" with context %}
+
+  <div class="card">
+    <h3>当前供应商数据（Suppliers）</h3>
+    {% if existing_list and existing_list|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th>供应商ID</th>
+            <th>名称</th>
+            <th>对应工种</th>
+            <th>默认周期</th>
+            <th>状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in existing_list %}
+            <tr>
+              <td>{{ r["供应商ID"] }}</td>
+              <td>{{ r["名称"] }}</td>
+              <td>{{ r["对应工种"] or '-' }}</td>
+              <td>{{ r["默认周期"] }}</td>
+              <td>{{ r["状态"] }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无数据（可先下载模板并导入）。</div>
+    {% endif %}
+  </div>
+
+  <script src="{{ url_for('static', filename='js/excel_handler.js') }}"></script>
+{% endblock %}
+

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>工艺管理</h2>
+    <p class="muted">说明：这里维护零件工艺模板（工艺路线解析、内外部工序识别、外部组合并周期设置），以及工种/供应商配置。</p>
+    <div style="margin-top:8px;">
+      <strong>配置入口：</strong>
+      <a href="{{ url_for('process.op_types_page') }}">工种配置</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.suppliers_page') }}">供应商配置</a>
+    </div>
+    <div style="margin-top:8px;">
+      <strong>Excel：</strong>
+      <a href="{{ url_for('process.excel_routes_page') }}">零件工艺路线（导入/导出）</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.excel_part_ops_page') }}">零件工序模板（导出）</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.excel_op_type_page') }}">工种配置（导入/导出）</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.excel_supplier_page') }}">供应商配置（导入/导出）</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>新增零件</h3>
+    <form method="post" action="{{ url_for('process.create_part') }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>图号</label><br/>
+          <input name="part_no" required placeholder="如：A1234">
+        </div>
+        <div>
+          <label>名称</label><br/>
+          <input name="part_name" required placeholder="如：壳体-大">
+        </div>
+        <div style="flex:1; min-width:320px;">
+          <label>工艺路线字符串（可选，填写后会尝试自动解析）</label><br/>
+          <input name="route_raw" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
+        </div>
+        <div style="flex:1; min-width:200px;">
+          <label>备注</label><br/>
+          <input name="remark" placeholder="可选">
+        </div>
+        <div>
+          <button type="submit">添加零件</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>零件工艺模板</h3>
+    {% if parts and parts|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:140px;">图号</th>
+            <th style="width:220px;">名称</th>
+            <th>工艺路线</th>
+            <th style="width:120px;">解析状态</th>
+            <th style="width:120px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in parts %}
+            <tr>
+              <td><a href="{{ url_for('process.part_detail', part_no=r.part_no) }}">{{ r.part_no }}</a></td>
+              <td>{{ r.part_name }}</td>
+              <td>
+                {% if r.route_short %}
+                  {{ r.route_short }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>{{ r.route_parsed_zh }}</td>
+              <td><a href="{{ url_for('process.part_detail', part_no=r.part_no) }}">查看/编辑</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无零件数据（可先新增或通过 Excel 导入）。</div>
+    {% endif %}
+  </div>
+{% endblock %}
+

@@ -46,28 +46,33 @@ class ExternalGroupRepository(BaseRepository):
         return g
 
     def update(self, group_id: str, updates: Dict[str, Any]) -> None:
-        self.execute(
-            """
-            UPDATE ExternalGroups
-            SET
-              start_seq = COALESCE(?, start_seq),
-              end_seq = COALESCE(?, end_seq),
-              merge_mode = COALESCE(?, merge_mode),
-              total_days = COALESCE(?, total_days),
-              supplier_id = COALESCE(?, supplier_id),
-              remark = COALESCE(?, remark)
-            WHERE group_id = ?
-            """,
-            (
-                updates.get("start_seq"),
-                updates.get("end_seq"),
-                updates.get("merge_mode"),
-                updates.get("total_days"),
-                updates.get("supplier_id"),
-                updates.get("remark"),
-                group_id,
-            ),
-        )
+        """
+        更新外部工序组。
+
+        说明：
+        - 只更新 updates 中出现的字段
+        - 允许显式清空 total_days/supplier_id/remark 为 NULL（用于 separate/merged 切换）
+        """
+        if not updates:
+            return
+
+        allowed = {"start_seq", "end_seq", "merge_mode", "total_days", "supplier_id", "remark"}
+        set_parts: List[str] = []
+        params: List[Any] = []
+
+        for key in ("start_seq", "end_seq", "merge_mode", "total_days", "supplier_id", "remark"):
+            if key not in allowed:
+                continue
+            if key in updates:
+                set_parts.append(f"{key} = ?")
+                params.append(updates.get(key))
+
+        if not set_parts:
+            return
+
+        params.append(group_id)
+        sql = f"UPDATE ExternalGroups SET {', '.join(set_parts)} WHERE group_id = ?"
+        self.execute(sql, tuple(params))
 
     def delete(self, group_id: str) -> None:
         self.execute("DELETE FROM ExternalGroups WHERE group_id = ?", (group_id,))

@@ -10,6 +10,7 @@ from .base_repo import BaseRepository
 from .operator_repo import OperatorRepository
 from .op_type_repo import OpTypeRepository
 from .machine_repo import MachineRepository
+from .machine_downtime_repo import MachineDowntimeRepository
 from .operator_machine_repo import OperatorMachineRepository
 from .supplier_repo import SupplierRepository
 from .part_repo import PartRepository
@@ -28,6 +29,7 @@ __all__ = [
     "OperatorRepository",
     "OpTypeRepository",
     "MachineRepository",
+    "MachineDowntimeRepository",
     "OperatorMachineRepository",
     "SupplierRepository",
     "PartRepository",

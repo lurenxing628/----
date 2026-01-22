@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>供应商配置</h2>
+    <p class="muted">说明：外部工序可按“对应工种”自动匹配默认供应商与默认周期（天）。</p>
+    <div style="margin-top:8px;">
+      <a href="{{ url_for('process.list_parts') }}">返回工艺管理</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.op_types_page') }}">工种配置</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('process.excel_supplier_page') }}">Excel 导入/导出</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>新增供应商</h3>
+    <form method="post" action="{{ url_for('process.create_supplier') }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>供应商ID</label><br/>
+          <input name="supplier_id" required placeholder="如：S001">
+        </div>
+        <div>
+          <label>名称</label><br/>
+          <input name="name" required placeholder="如：外协-表处理厂">
+        </div>
+        <div>
+          <label>对应工种（可选）</label><br/>
+          <select name="op_type_id">
+            <option value="">（不绑定）</option>
+            {% for v, label in op_type_options %}
+              <option value="{{ v }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>默认周期（天）</label><br/>
+          <input name="default_days" value="1" style="width:120px;">
+        </div>
+        <div>
+          <label>状态</label><br/>
+          <select name="status">
+            {% for v, label in status_options %}
+              <option value="{{ v }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="flex:1; min-width:240px;">
+          <label>备注</label><br/>
+          <input name="remark" placeholder="可选">
+        </div>
+        <div>
+          <button type="submit">添加供应商</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>供应商列表</h3>
+    {% if suppliers and suppliers|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:140px;">供应商ID</th>
+            <th style="width:240px;">名称</th>
+            <th style="width:160px;">对应工种</th>
+            <th style="width:120px;">默认周期（天）</th>
+            <th style="width:120px;">状态</th>
+            <th>备注</th>
+            <th style="width:160px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in suppliers %}
+            <tr>
+              <td><a href="{{ url_for('process.supplier_detail', supplier_id=r.supplier_id) }}">{{ r.supplier_id }}</a></td>
+              <td>{{ r.name }}</td>
+              <td>
+                {% if r.op_type_name %}
+                  {{ r.op_type_name }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>{{ r.default_days }}</td>
+              <td>{{ r.status_zh }}</td>
+              <td>{{ r.remark or '-' }}</td>
+              <td>
+                <a href="{{ url_for('process.supplier_detail', supplier_id=r.supplier_id) }}">查看/编辑</a>
+                <span class="muted">｜</span>
+                <form method="post" action="{{ url_for('process.delete_supplier', supplier_id=r.supplier_id) }}" style="display:inline;">
+                  <button type="submit">删除</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无供应商数据。</div>
+    {% endif %}
+  </div>
+{% endblock %}
+

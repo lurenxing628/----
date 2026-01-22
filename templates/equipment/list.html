@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>设备管理</h2>
+    <p class="muted">说明：这里维护设备基本信息，以及设备可操作人员的关联（人员-设备关联表）。</p>
+    <div style="margin-top:8px;">
+      <strong>Excel：</strong>
+      <a href="{{ url_for('equipment.excel_machine_page') }}">设备信息（导入/导出）</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('equipment.excel_link_page') }}">设备人员关联（导入/导出）</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>新增设备</h3>
+    <form method="post" action="{{ url_for('equipment.create_machine') }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>设备编号</label><br/>
+          <input name="machine_id" required placeholder="如：CNC-01">
+        </div>
+        <div>
+          <label>设备名称</label><br/>
+          <input name="name" required placeholder="如：数控车床1">
+        </div>
+        <div>
+          <label>工种</label><br/>
+          <select name="op_type_id">
+            <option value="">（未设置）</option>
+            {% for v, label in op_type_options %}
+              <option value="{{ v }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>状态</label><br/>
+          <select name="status">
+            {% for v, label in status_options %}
+              <option value="{{ v }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="flex:1; min-width:240px;">
+          <label>备注</label><br/>
+          <input name="remark" placeholder="可选">
+        </div>
+        <div>
+          <button type="submit">添加设备</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>设备列表</h3>
+    {% if machines and machines|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:140px;">设备编号</th>
+            <th style="width:220px;">设备名称</th>
+            <th style="width:160px;">工种</th>
+            <th style="width:120px;">状态</th>
+            <th>可操作人员</th>
+            <th style="width:120px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in machines %}
+            <tr>
+              <td><a href="{{ url_for('equipment.detail_page', machine_id=r.machine_id) }}">{{ r.machine_id }}</a></td>
+              <td>{{ r.name }}</td>
+              <td>
+                {% if r.op_type_name %}
+                  {{ r.op_type_name }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>{{ r.status_zh }}</td>
+              <td>
+                {% if r.operator_text %}
+                  {{ r.operator_text }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td><a href="{{ url_for('equipment.detail_page', machine_id=r.machine_id) }}">查看/编辑</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无设备数据（可先新增或通过 Excel 导入）。</div>
+    {% endif %}
+  </div>
+
+{% endblock %}
+
