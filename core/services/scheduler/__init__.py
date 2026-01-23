@@ -14,7 +14,8 @@ Phase 6 范围：
 from .batch_service import BatchService
 from .calendar_service import CalendarService
 from .config_service import ConfigService
+from .gantt_service import GanttService
 from .schedule_service import ScheduleService
 
-__all__ = ["BatchService", "CalendarService", "ConfigService", "ScheduleService"]
+__all__ = ["BatchService", "CalendarService", "ConfigService", "GanttService", "ScheduleService"]
 

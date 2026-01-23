@@ -3,11 +3,19 @@
   <div class="card">
     <h2>排产调度（Phase 6）</h2>
     <p class="muted">
-      说明：本阶段先完成批次/工序/日历/配置的基础能力（不包含 Phase 7 的排产算法与甘特图）。
-      批次创建后可从“零件工序模板（工艺管理）”复制生成批次工序。
+      说明：本模块包含批次/工序补充/工作日历/策略配置，并提供排产（Phase 7）与可视化（Phase 8）。
+      批次创建后可从“零件工序模板（工艺管理）”复制生成批次工序；补全工序信息后即可执行排产。
     </p>
     <div style="margin-top:8px;">
       <strong>入口：</strong>
+      <a href="{{ url_for('scheduler.batches_page') }}">待排批次</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
+      <span class="muted">｜</span>
       <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
       <span class="muted">｜</span>
       <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
@@ -204,6 +212,10 @@
       {% if status == 'pending' %}
         <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
           <button type="submit">执行排产</button>
+          <button type="submit" formaction="{{ url_for('scheduler.simulate_schedule') }}"
+                  onclick="return confirm('将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？');">
+            模拟排产（插单模拟）
+          </button>
           <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
           <span class="muted">提示：若内部工序未补全设备/人员/工时，将被判定为排产失败并提示原因。</span>
         </div>

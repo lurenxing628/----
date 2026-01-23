@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>系统管理 - 备份/恢复</h2>
+    <p class="muted">提示：恢复会替换当前数据库文件；恢复前系统会自动生成一份 <code>before_restore</code> 备份。</p>
+
+    <div style="margin-bottom: 12px;">
+      <a href="{{ url_for('system.backup_page') }}">备份/恢复</a>
+      &nbsp;|&nbsp;
+      <a href="{{ url_for('system.logs_page') }}">操作日志</a>
+      &nbsp;|&nbsp;
+      <a href="{{ url_for('system.history_page') }}">排产历史</a>
+    </div>
+
+    <form method="post" action="{{ url_for('system.backup_create') }}" style="display:inline-block;margin-right:12px;">
+      <button type="submit">手动备份</button>
+    </form>
+
+    <form method="post" action="{{ url_for('system.backup_cleanup') }}" style="display:inline-block;">
+      <button type="submit">清理过期备份（保留 {{ keep_days }} 天）</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>备份列表</h3>
+    {% if not backups %}
+      <p class="muted">暂无备份文件。你可以先点击“手动备份”。</p>
+    {% else %}
+      <table>
+        <thead>
+          <tr>
+            <th>文件名</th>
+            <th>创建时间</th>
+            <th>大小(MB)</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in backups %}
+            <tr>
+              <td><code>{{ b.filename }}</code></td>
+              <td>{{ b.created_at }}</td>
+              <td>{{ b.size_mb }}</td>
+              <td>
+                <form method="post" action="{{ url_for('system.backup_restore') }}" style="display:inline-block;"
+                      onsubmit="return confirm('确认从该备份恢复数据库？恢复会覆盖当前数据。');">
+                  <input type="hidden" name="filename" value="{{ b.filename }}">
+                  <button type="submit">恢复</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+{% endblock %}
+

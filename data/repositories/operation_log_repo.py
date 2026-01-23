@@ -23,6 +23,8 @@ class OperationLogRepository(BaseRepository):
         module: Optional[str] = None,
         action: Optional[str] = None,
         log_level: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
     ) -> List[OperationLog]:
         sql = "SELECT id, log_time, log_level, module, action, target_type, target_id, operator, detail, error_code, error_message FROM OperationLogs"
         params: List[Any] = []
@@ -36,6 +38,12 @@ class OperationLogRepository(BaseRepository):
         if log_level:
             where.append("log_level = ?")
             params.append(log_level)
+        if start_time:
+            where.append("log_time >= ?")
+            params.append(start_time)
+        if end_time:
+            where.append("log_time <= ?")
+            params.append(end_time)
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY id DESC LIMIT ?"

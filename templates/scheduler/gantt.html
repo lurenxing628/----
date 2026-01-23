@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/frappe-gantt.css') }}">
+  <style>
+    /* 颜色：按优先级区分（Frappe Gantt 通过 custom_class 挂到 .bar-wrapper 上） */
+    .bar-wrapper.priority-normal .bar { fill: #90a4ae; }
+    .bar-wrapper.priority-urgent .bar { fill: #ff9800; }
+    .bar-wrapper.priority-critical .bar { fill: #d32f2f; }
+    .bar-wrapper.overdue .bar { stroke: #b00020; stroke-width: 1.2; }
+
+    /* 标签略小一些，避免太拥挤 */
+    .gantt .bar-label { font-size: 12px; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2>甘特图（{{ '设备视图' if view=='machine' else '人员视图' }}）</h2>
+        <div class="muted">
+          周范围：<strong>{{ week_start }}</strong> ～ <strong>{{ week_end }}</strong>
+          <span class="muted">｜</span>
+          版本：<strong>{{ version }}</strong>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div>
+        <label>视图</label><br/>
+        <a href="{{ url_for('scheduler.gantt_page', view='machine', week_start=week_start, offset=0, version=version) }}">设备视图</a>
+        <span class="muted">｜</span>
+        <a href="{{ url_for('scheduler.gantt_page', view='operator', week_start=week_start, offset=0, version=version) }}">人员视图</a>
+      </div>
+
+      <div>
+        <label>周切换</label><br/>
+        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=week_start, offset=offset-1, version=version) }}">← 上周</a>
+        <span class="muted">｜</span>
+        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=week_start, offset=0, version=version) }}">回到本周</a>
+        <span class="muted">｜</span>
+        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=week_start, offset=offset+1, version=version) }}">下周 →</a>
+      </div>
+
+      <div>
+        <form method="get" action="{{ url_for('scheduler.gantt_page') }}" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+          <input type="hidden" name="view" value="{{ view }}">
+          <div>
+            <label>指定周（任意日期，系统会自动归到周一）</label><br/>
+            <input name="week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD" style="width:160px;">
+          </div>
+          <div>
+            <label>版本</label><br/>
+            {% if versions and versions|length > 0 %}
+              <select name="version" style="width:240px;">
+                {% for v in versions %}
+                  <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
+                    v{{ v.version }}（{{ v.schedule_time }} / {{ v.strategy }} / {{ v.result_status or '-' }}）
+                  </option>
+                {% endfor %}
+              </select>
+            {% else %}
+              <input name="version" value="{{ version }}" style="width:160px;">
+              <div class="muted" style="margin-top:4px;">暂无排产历史（可先去“待排批次”执行一次排产/模拟）。</div>
+            {% endif %}
+          </div>
+          <div>
+            <button type="submit">加载</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <p class="muted" style="margin-top:10px;">
+      提示：颜色表示优先级（普通/急件/特急），红色边框表示该批次在该版本中被判定为“超期”。
+      若看不到条形，请先在【排产调度】执行排产生成 Schedule 数据。
+    </p>
+  </div>
+
+  <div class="card">
+    <div id="ganttEmpty" class="muted" style="display:none;">暂无排程数据（该周/该版本）。</div>
+    <div id="ganttError" class="error" style="display:none;"></div>
+    <div id="gantt"></div>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{{ url_for('static', filename='js/frappe-gantt.min.js') }}"></script>
+  <script>
+    window.__APS_GANTT__ = {
+      dataUrl: {{ data_url|tojson }},
+      view: {{ view|tojson }},
+      weekStart: {{ week_start|tojson }},
+      offset: {{ offset|tojson }},
+      version: {{ version|tojson }}
+    };
+  </script>
+  <script src="{{ url_for('static', filename='js/gantt.js') }}"></script>
+{% endblock %}
+

@@ -319,6 +319,7 @@ class ScheduleService:
         batch_ids: List[str],
         start_dt: Any = None,
         created_by: Optional[str] = None,
+        simulate: bool = False,
     ) -> Dict[str, Any]:
         """
         执行排产并落库（Schedule）+ 留痕（ScheduleHistory + OperationLogs）。
@@ -327,6 +328,9 @@ class ScheduleService:
         - 版本号：从 ScheduleHistory.max(version)+1 递增
         - Schedule 写入、状态更新、ScheduleHistory 写入：**单事务原子**
         - OperationLogs：由于 OperationLogger 内部会 commit()，因此放到事务提交后写入，避免破坏原子性
+        - simulate=True 时：用于“插单模拟/模拟排产”
+          - 仍会落库到新版本（Schedule + ScheduleHistory），确保可追溯
+          - 但不会更新 Batches/BatchOperations 的状态（避免污染正式状态）
         """
         if not batch_ids:
             raise ValidationError("请至少选择 1 个批次执行排产。", field="batch_ids")
@@ -461,10 +465,13 @@ class ScheduleService:
             result_status = "partial"
         else:
             result_status = "failed"
+        if simulate:
+            result_status = "simulated"
 
         # result_summary（JSON）：按文档固定键名（至少包含 strategy_params / overdue_batches）
         time_cost_ms = int((time.time() - t0) * 1000)
         result_summary_obj: Dict[str, Any] = {
+            "is_simulation": bool(simulate),
             "version": version,
             "strategy": used_strategy.value,
             "strategy_params": used_params or {},
@@ -505,27 +512,28 @@ class ScheduleService:
             if schedule_rows:
                 self.schedule_repo.bulk_create(schedule_rows)
 
-            # 批次工序：成功排到的置 scheduled；失败的保持原状态（便于继续补全）
-            scheduled_op_ids = {int(r.op_id) for r in results if r and r.op_id}
-            for op in operations:
-                if not op.id:
-                    continue
-                if int(op.id) in scheduled_op_ids:
-                    self.op_repo.update(int(op.id), {"status": "scheduled"})
+            if not simulate:
+                # 批次工序：成功排到的置 scheduled；失败的保持原状态（便于继续补全）
+                scheduled_op_ids = {int(r.op_id) for r in results if r and r.op_id}
+                for op in operations:
+                    if not op.id:
+                        continue
+                    if int(op.id) in scheduled_op_ids:
+                        self.op_repo.update(int(op.id), {"status": "scheduled"})
 
-            # 批次：若本批次所有工序都排到 -> scheduled，否则保持 pending
-            by_batch_total: Dict[str, int] = {}
-            by_batch_scheduled: Dict[str, int] = {}
-            for op in operations:
-                by_batch_total[op.batch_id] = by_batch_total.get(op.batch_id, 0) + 1
-                if op.id and int(op.id) in scheduled_op_ids:
-                    by_batch_scheduled[op.batch_id] = by_batch_scheduled.get(op.batch_id, 0) + 1
+                # 批次：若本批次所有工序都排到 -> scheduled，否则保持 pending
+                by_batch_total: Dict[str, int] = {}
+                by_batch_scheduled: Dict[str, int] = {}
+                for op in operations:
+                    by_batch_total[op.batch_id] = by_batch_total.get(op.batch_id, 0) + 1
+                    if op.id and int(op.id) in scheduled_op_ids:
+                        by_batch_scheduled[op.batch_id] = by_batch_scheduled.get(op.batch_id, 0) + 1
 
-            for bid, b in batches.items():
-                total = by_batch_total.get(bid, 0)
-                ok = by_batch_scheduled.get(bid, 0)
-                new_status = BatchStatus.SCHEDULED.value if total > 0 and ok == total else BatchStatus.PENDING.value
-                self.batch_repo.update(bid, {"status": new_status})
+                for bid, b in batches.items():
+                    total = by_batch_total.get(bid, 0)
+                    ok = by_batch_scheduled.get(bid, 0)
+                    new_status = BatchStatus.SCHEDULED.value if total > 0 and ok == total else BatchStatus.PENDING.value
+                    self.batch_repo.update(bid, {"status": new_status})
 
             # 排产历史留痕（DB）
             self.history_repo.create(
@@ -543,6 +551,7 @@ class ScheduleService:
         # 操作日志留痕（OperationLogs）：放到事务后（避免内部 commit 干扰原子性）
         if self.op_logger is not None:
             detail = {
+                "is_simulation": bool(simulate),
                 "version": int(version),
                 "strategy": used_strategy.value,
                 "strategy_params": used_params or {},
@@ -558,13 +567,14 @@ class ScheduleService:
             }
             self.op_logger.info(
                 module="scheduler",
-                action="schedule",
+                action="simulate" if simulate else "schedule",
                 target_type="schedule",
                 target_id=str(version),
                 detail=detail,
             )
 
         return {
+            "is_simulation": bool(simulate),
             "version": int(version),
             "strategy": used_strategy.value,
             "strategy_params": used_params or {},

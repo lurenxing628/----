@@ -14,6 +14,8 @@ from .scheduler_bp import bp
 from . import scheduler_pages as _pages  # noqa: F401
 from . import scheduler_excel_calendar as _excel_calendar  # noqa: F401
 from . import scheduler_excel_batches as _excel_batches  # noqa: F401
+from . import scheduler_gantt as _gantt  # noqa: F401
+from . import scheduler_week_plan as _week_plan  # noqa: F401
 
 __all__ = ["bp"]
 

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>系统管理 - 操作日志（OperationLogs）</h2>
+    <p class="muted">说明：可按时间/模块/动作筛选。detail 为 JSON 时会展开显示（中文可读）。</p>
+
+    <div style="margin-bottom: 12px;">
+      <a href="{{ url_for('system.backup_page') }}">备份/恢复</a>
+      &nbsp;|&nbsp;
+      <a href="{{ url_for('system.logs_page') }}">操作日志</a>
+      &nbsp;|&nbsp;
+      <a href="{{ url_for('system.history_page') }}">排产历史</a>
+    </div>
+
+    <form method="get" action="{{ url_for('system.logs_page') }}">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+        <div>
+          <div class="muted">开始时间</div>
+          <input name="start_time" value="{{ filters.start_time }}" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS" style="width:260px;">
+        </div>
+        <div>
+          <div class="muted">结束时间</div>
+          <input name="end_time" value="{{ filters.end_time }}" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS" style="width:260px;">
+        </div>
+        <div>
+          <div class="muted">模块(module)</div>
+          <input name="module" value="{{ filters.module }}" placeholder="例如：system/scheduler/process" style="width:180px;">
+        </div>
+        <div>
+          <div class="muted">动作(action)</div>
+          <input name="action" value="{{ filters.action }}" placeholder="例如：import/export/schedule" style="width:180px;">
+        </div>
+        <div>
+          <div class="muted">级别(level)</div>
+          <select name="log_level">
+            {% set lv = filters.log_level %}
+            <option value="" {{ 'selected' if not lv else '' }}>全部</option>
+            <option value="INFO" {{ 'selected' if lv=='INFO' else '' }}>INFO</option>
+            <option value="WARN" {{ 'selected' if lv=='WARN' else '' }}>WARN</option>
+            <option value="ERROR" {{ 'selected' if lv=='ERROR' else '' }}>ERROR</option>
+          </select>
+        </div>
+        <div>
+          <div class="muted">条数(limit)</div>
+          <input name="limit" value="{{ filters.limit }}" style="width:80px;">
+        </div>
+        <div>
+          <button type="submit">查询</button>
+          <a href="{{ url_for('system.logs_page') }}" class="muted" style="margin-left:8px;">重置</a>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>查询结果</h3>
+    {% if not rows %}
+      <p class="muted">暂无记录。</p>
+    {% else %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>时间</th>
+            <th>级别</th>
+            <th>模块</th>
+            <th>动作</th>
+            <th>目标</th>
+            <th>错误</th>
+            <th>详情(detail)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>{{ r.id }}</td>
+              <td>{{ r.log_time }}</td>
+              <td>{{ r.log_level }}</td>
+              <td><code>{{ r.module }}</code></td>
+              <td><code>{{ r.action }}</code></td>
+              <td>
+                {% if r.target_type %}
+                  <div><code>{{ r.target_type }}</code></div>
+                {% endif %}
+                {% if r.target_id %}
+                  <div class="muted"><code>{{ r.target_id }}</code></div>
+                {% endif %}
+              </td>
+              <td>
+                {% if r.error_code or r.error_message %}
+                  <div class="error"><code>{{ r.error_code }}</code> {{ r.error_message }}</div>
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if r.detail_obj %}
+                  <pre>{{ r.detail_obj | tojson_zh(2) }}</pre>
+                {% elif r.detail %}
+                  <pre>{{ r.detail }}</pre>
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+{% endblock %}
+

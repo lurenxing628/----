@@ -24,6 +24,7 @@
     .badge-error { background: #ffebee; }
     pre { background: #f8f8f8; padding: 8px; overflow-x: auto; }
   </style>
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
   <div class="container">
@@ -34,6 +35,7 @@
         <a href="{{ url_for('equipment.list_page') }}">设备管理</a>
         <a href="{{ url_for('process.list_parts') }}">工艺管理</a>
         <a href="{{ url_for('scheduler.batches_page') }}">排产调度</a>
+        <a href="{{ url_for('system.backup_page') }}">系统管理</a>
         <a href="{{ url_for('excel_demo.index') }}">Excel 导入演示</a>
       </nav>
       <div class="muted">Win7 单机版（V1）：离线运行</div>
@@ -51,6 +53,7 @@
 
     {% block content %}{% endblock %}
   </div>
+  {% block extra_scripts %}{% endblock %}
 </body>
 </html>
 

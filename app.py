@@ -17,6 +17,7 @@ from web.routes.personnel import bp as personnel_bp
 from web.routes.equipment import bp as equipment_bp
 from web.routes.process import bp as process_bp
 from web.routes.scheduler import bp as scheduler_bp
+from web.routes.system import bp as system_bp
 
 
 def create_app() -> Flask:
@@ -87,6 +88,7 @@ def create_app() -> Flask:
     app.register_blueprint(equipment_bp, url_prefix="/equipment")
     app.register_blueprint(process_bp, url_prefix="/process")
     app.register_blueprint(scheduler_bp, url_prefix="/scheduler")
+    app.register_blueprint(system_bp, url_prefix="/system")
 
     # 退出自动备份（不启后台线程）
     backup_manager = BackupManager(

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2>周计划（导出）</h2>
+        <div class="muted">
+          周范围：<strong>{{ week_start }}</strong> ～ <strong>{{ week_end }}</strong>
+          <span class="muted">｜</span>
+          版本：<strong>{{ version }}</strong>
+        </div>
+      </div>
+      <div>
+        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div>
+        <label>指定周（任意日期，系统会自动归到周一）</label><br/>
+        <input name="week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD" style="width:160px;">
+      </div>
+      <div>
+        <label>版本</label><br/>
+        {% if versions and versions|length > 0 %}
+          <select name="version" style="width:260px;">
+            {% for v in versions %}
+              <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
+                v{{ v.version }}（{{ v.schedule_time }} / {{ v.strategy }} / {{ v.result_status or '-' }}）
+              </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <input name="version" value="{{ version }}" style="width:160px;">
+          <div class="muted" style="margin-top:4px;">暂无排产历史（请先执行排产生成版本）。</div>
+        {% endif %}
+      </div>
+      <div>
+        <button type="submit">查询</button>
+      </div>
+      <div style="flex:1;"></div>
+      <div>
+        <a href="{{ export_url }}">导出周计划表.xlsx</a>
+      </div>
+    </form>
+    <p class="muted" style="margin-top:10px;">
+      导出字段：日期 / 批次号 / 图号 / 工序 / 设备 / 人员 / 时段。跨天工序会按天拆分为多行。
+      导出动作会写入系统留痕（OperationLogs action=export）。
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>预览（前 50 行 / 共 {{ total_rows }} 行）</h3>
+    {% if preview_rows and preview_rows|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:120px;">日期</th>
+            <th style="width:120px;">批次号</th>
+            <th style="width:140px;">图号</th>
+            <th style="width:80px;">工序</th>
+            <th>设备</th>
+            <th>人员</th>
+            <th style="width:140px;">时段</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in preview_rows %}
+            <tr>
+              <td>{{ r['日期'] }}</td>
+              <td>{{ r['批次号'] }}</td>
+              <td>{{ r['图号'] }}</td>
+              <td>{{ r['工序'] }}</td>
+              <td>{{ r['设备'] }}</td>
+              <td>{{ r['人员'] }}</td>
+              <td>{{ r['时段'] }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无数据（该周/该版本没有排程记录）。</div>
+    {% endif %}
+  </div>
+{% endblock %}
+
