@@ -27,6 +27,10 @@
           </select>
         </div>
         <div>
+          <label>类别（可选）</label><br/>
+          <input name="category" value="{{ machine.category or '' }}" placeholder="如：CNC / 铣床 / 装配" style="width:180px;">
+        </div>
+        <div>
           <label>状态</label><br/>
           <select name="status">
             {% for v, label in status_options %}
@@ -106,6 +110,9 @@
   <div class="card">
     <h3>停机计划</h3>
     <p class="muted">说明：停机计划表示设备在某时间段不可用（预留停机原因）。此功能与“设备状态（可用/维修/停用）”并存。</p>
+    <div style="margin-top:6px;">
+      <a href="{{ url_for('equipment.downtime_batch_page') }}">批量停机计划（按设备/类别/全部）</a>
+    </div>
 
     {% if downtime_rows and downtime_rows|length > 0 %}
       <table>

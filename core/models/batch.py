@@ -14,7 +14,8 @@ class Batch:
     quantity: int = 0
     due_date: Optional[str] = None  # YYYY-MM-DD（SQLite DATE）
     priority: str = "normal"  # normal/urgent/critical
-    ready_status: str = "no"  # yes/no/partial
+    ready_status: str = "yes"  # yes/no/partial
+    ready_date: Optional[str] = None  # YYYY-MM-DD（SQLite DATE）；可选，表示最早可开工日
     status: str = "pending"  # pending/scheduled/processing/completed/cancelled
     remark: Optional[str] = None
     created_at: Optional[str] = None
@@ -30,7 +31,8 @@ class Batch:
             quantity=int(qty) if qty is not None and qty != "" else 0,
             due_date=get(row, "due_date"),
             priority=str(get(row, "priority") or "normal"),
-            ready_status=str(get(row, "ready_status") or "no"),
+            ready_status=str(get(row, "ready_status") or "yes"),
+            ready_date=get(row, "ready_date"),
             status=str(get(row, "status") or "pending"),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),
@@ -47,6 +49,7 @@ class Batch:
                 "due_date": self.due_date,
                 "priority": self.priority,
                 "ready_status": self.ready_status,
+                "ready_date": self.ready_date,
                 "status": self.status,
                 "remark": self.remark,
                 "created_at": self.created_at,

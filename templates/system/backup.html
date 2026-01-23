@@ -12,12 +12,59 @@
       <a href="{{ url_for('system.history_page') }}">排产历史</a>
     </div>
 
+    <h3 style="margin-top:10px;">自动任务设置（按请求触发）</h3>
+    <p class="muted">说明：为避免后台线程占用资源，自动备份/自动清理在“有请求访问系统时”才会触发；内部有节流（不会每次请求都执行）。</p>
+
+    {% set st_ab = job_state.auto_backup if job_state else None %}
+    {% set st_bc = job_state.auto_backup_cleanup if job_state else None %}
+
+    <form method="post" action="{{ url_for('system.backup_settings') }}" style="margin-bottom:12px;">
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+        <div style="min-width:360px;">
+          <div><b>自动备份</b></div>
+          <label>
+            <input type="checkbox" name="auto_backup_enabled" {{ 'checked' if settings and settings.auto_backup_enabled=='yes' else '' }}>
+            启用
+          </label>
+          <div class="muted" style="margin-top:6px;">
+            间隔（分钟）：
+            <input name="auto_backup_interval_minutes" value="{{ settings.auto_backup_interval_minutes if settings else '60' }}" style="width:90px;">
+            <span style="margin-left:8px;">上次执行：{{ st_ab.last_run_time if st_ab and st_ab.last_run_time else '-' }}</span>
+          </div>
+        </div>
+
+        <div style="min-width:420px;">
+          <div><b>自动清理备份（保留策略）</b></div>
+          <label>
+            <input type="checkbox" name="auto_backup_cleanup_enabled" {{ 'checked' if settings and settings.auto_backup_cleanup_enabled=='yes' else '' }}>
+            启用
+          </label>
+          <div class="muted" style="margin-top:6px;">
+            保留天数：
+            <input name="auto_backup_keep_days" value="{{ settings.auto_backup_keep_days if settings else keep_days }}" style="width:90px;">
+            <span style="margin-left:12px;">间隔（分钟）：</span>
+            <input name="auto_backup_cleanup_interval_minutes" value="{{ settings.auto_backup_cleanup_interval_minutes if settings else '1440' }}" style="width:90px;">
+            <span style="margin-left:8px;">上次执行：{{ st_bc.last_run_time if st_bc and st_bc.last_run_time else '-' }}</span>
+          </div>
+        </div>
+
+        <div>
+          <button type="submit">保存设置</button>
+        </div>
+      </div>
+    </form>
+
     <form method="post" action="{{ url_for('system.backup_create') }}" style="display:inline-block;margin-right:12px;">
       <button type="submit">手动备份</button>
     </form>
 
     <form method="post" action="{{ url_for('system.backup_cleanup') }}" style="display:inline-block;">
       <button type="submit">清理过期备份（保留 {{ keep_days }} 天）</button>
+    </form>
+
+    <form id="backupBatchDeleteForm" method="post" action="{{ url_for('system.backup_delete_batch') }}" style="display:inline-block;margin-left:12px;"
+          onsubmit="return confirm('确认批量删除选中的备份文件？删除后不可恢复。');">
+      <button type="submit">批量删除选中</button>
     </form>
   </div>
 
@@ -29,6 +76,12 @@
       <table>
         <thead>
           <tr>
+            <th style="width:60px;">
+              <label class="muted">
+                <input type="checkbox" onclick="toggleAllBackups(this)">
+                全选
+              </label>
+            </th>
             <th>文件名</th>
             <th>创建时间</th>
             <th>大小(MB)</th>
@@ -38,6 +91,9 @@
         <tbody>
           {% for b in backups %}
             <tr>
+              <td>
+                <input type="checkbox" name="filenames" value="{{ b.filename }}" form="backupBatchDeleteForm">
+              </td>
               <td><code>{{ b.filename }}</code></td>
               <td>{{ b.created_at }}</td>
               <td>{{ b.size_mb }}</td>
@@ -47,6 +103,11 @@
                   <input type="hidden" name="filename" value="{{ b.filename }}">
                   <button type="submit">恢复</button>
                 </form>
+                <form method="post" action="{{ url_for('system.backup_delete') }}" style="display:inline-block;margin-left:6px;"
+                      onsubmit="return confirm('确认删除该备份文件？删除后不可恢复。');">
+                  <input type="hidden" name="filename" value="{{ b.filename }}">
+                  <button type="submit">删除</button>
+                </form>
               </td>
             </tr>
           {% endfor %}
@@ -54,5 +115,14 @@
       </table>
     {% endif %}
   </div>
+
+  <script>
+    function toggleAllBackups(source) {
+      const items = document.querySelectorAll('input[name="filenames"][form="backupBatchDeleteForm"]');
+      for (const it of items) {
+        it.checked = source.checked;
+      }
+    }
+  </script>
 {% endblock %}
 

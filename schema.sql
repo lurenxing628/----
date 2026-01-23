@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS Machines (
     machine_id      TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
     op_type_id      TEXT,
+    category        TEXT,                       -- 设备类别（用于“按类别停机/筛选”等）
     status          TEXT DEFAULT 'active',
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -52,6 +53,8 @@ CREATE TABLE IF NOT EXISTS Machines (
 CREATE TABLE IF NOT EXISTS MachineDowntimes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     machine_id      TEXT NOT NULL,
+    scope_type      TEXT DEFAULT 'machine',      -- machine/category/all（V1.1 预留；当前实现会展开为“按设备逐条写入”）
+    scope_value     TEXT,                        -- scope 的取值：machine_id / category / '*'（可空）
     start_time      DATETIME NOT NULL,
     end_time        DATETIME NOT NULL,
     reason_code     TEXT,                       -- 预留：maintenance/breakdown/power/tooling/other
@@ -168,7 +171,8 @@ CREATE TABLE IF NOT EXISTS Batches (
     quantity        INTEGER NOT NULL,
     due_date        DATE,
     priority        TEXT DEFAULT 'normal',
-    ready_status    TEXT DEFAULT 'no',
+    ready_status    TEXT DEFAULT 'yes',
+    ready_date      DATE,                       -- 齐套日期（可选）：最早可开工日期（YYYY-MM-DD）
     status          TEXT DEFAULT 'pending',
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -218,6 +222,8 @@ CREATE TABLE IF NOT EXISTS Schedule (
 CREATE TABLE IF NOT EXISTS WorkCalendar (
     date            DATE PRIMARY KEY,
     day_type        TEXT DEFAULT 'workday',
+    shift_start     TEXT,                       -- 班次开始（HH:MM，可选；默认 08:00）
+    shift_end       TEXT,                       -- 班次结束（HH:MM，可选；用于推导 shift_hours）
     shift_hours     REAL DEFAULT 8,
     efficiency      REAL DEFAULT 1.0,
     allow_normal    TEXT DEFAULT 'yes',
@@ -232,6 +238,28 @@ CREATE TABLE IF NOT EXISTS ScheduleConfig (
     description     TEXT,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ============================================================
+-- System Settings / Jobs（系统管理：自动备份/自动清理等）
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS SystemConfig (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    config_key      TEXT NOT NULL UNIQUE,
+    config_value    TEXT NOT NULL,
+    description     TEXT,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS SystemJobState (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_key         TEXT NOT NULL UNIQUE,
+    last_run_time   DATETIME,
+    last_run_detail TEXT,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_system_job_state_time ON SystemJobState(last_run_time);
 
 CREATE INDEX IF NOT EXISTS idx_batches_status ON Batches(status);
 CREATE INDEX IF NOT EXISTS idx_batches_priority ON Batches(priority);

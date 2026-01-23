@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
@@ -16,6 +16,7 @@ from data.repositories import (
     BatchRepository,
     ExternalGroupRepository,
     MachineRepository,
+    MachineDowntimeRepository,
     OperatorMachineRepository,
     OperatorRepository,
     PartOperationRepository,
@@ -318,6 +319,7 @@ class ScheduleService:
         self,
         batch_ids: List[str],
         start_dt: Any = None,
+        end_date: Any = None,
         created_by: Optional[str] = None,
         simulate: bool = False,
     ) -> Dict[str, Any]:
@@ -350,8 +352,20 @@ class ScheduleService:
             raise ValidationError("请至少选择 1 个批次执行排产。", field="batch_ids")
 
         t0 = time.time()
-        start_dt_norm = self._normalize_datetime(start_dt) or datetime.now()
+        start_dt_norm = self._normalize_datetime(start_dt)
+        if start_dt_norm is None:
+            tomorrow = (datetime.now() + timedelta(days=1)).date()
+            start_dt_norm = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 8, 0, 0)
         created_by_text = self._normalize_text(created_by) or "system"
+
+        end_date_norm = None
+        if end_date is not None and str(end_date).strip() != "":
+            dt = self._normalize_datetime(end_date)
+            if not dt:
+                raise ValidationError("end_date 格式不合法（期望：YYYY-MM-DD）", field="end_date")
+            end_date_norm = dt.date()
+            if end_date_norm < start_dt_norm.date():
+                raise ValidationError("end_date 不能早于 start_dt 所在日期", field="end_date")
 
         # 读取配置与日历服务（避免从包 __init__ 导入导致循环）
         from .calendar_service import CalendarService
@@ -368,6 +382,12 @@ class ScheduleService:
             b = self._get_batch_or_raise(bid)
             batches[bid] = b
             operations.extend(self.op_repo.list_by_batch(bid))
+
+        # 仅允许排产“齐套=yes”的批次（其余直接提示，不参与排产）
+        not_ready = [bid for bid, b in batches.items() if (self._normalize_text(getattr(b, "ready_status", None)) or "") != "yes"]
+        if not_ready:
+            sample = "，".join(not_ready[:20])
+            raise ValidationError(f"以下批次未齐套（ready_status!=yes），禁止排产：{sample}", field="齐套")
 
         # 构建算法输入（补充 merged 外部组信息）
         algo_ops: List[ScheduleService._OpForScheduleAlgo] = []
@@ -417,8 +437,33 @@ class ScheduleService:
             strategy_params = {
                 "priority_weight": float(cfg.priority_weight),
                 "due_weight": float(cfg.due_weight),
-                "ready_weight": float(cfg.ready_weight),
             }
+
+        # 预加载停机区间（按设备维度展开后的记录），用于算法避让
+        downtime_map: Dict[str, List[Tuple[datetime, datetime]]] = {}
+        try:
+            dt_repo = MachineDowntimeRepository(self.conn, logger=self.logger)
+            start_str = self._format_dt(start_dt_norm)
+            machine_ids = sorted(
+                {
+                    (op.machine_id or "").strip()
+                    for op in algo_ops
+                    if (op.source or "").strip() == SourceType.INTERNAL.value and (op.machine_id or "").strip()
+                }
+            )
+            for mid in machine_ids:
+                rows = dt_repo.list_active_after(mid, start_str)
+                intervals: List[Tuple[datetime, datetime]] = []
+                for d in rows:
+                    st = self._normalize_datetime(d.start_time)
+                    et = self._normalize_datetime(d.end_time)
+                    if st and et and et > st:
+                        intervals.append((st, et))
+                if intervals:
+                    intervals.sort(key=lambda x: x[0])
+                    downtime_map[mid] = intervals
+        except Exception:
+            downtime_map = {}
 
         results, summary, used_strategy, used_params = scheduler.schedule(
             operations=algo_ops,
@@ -426,6 +471,8 @@ class ScheduleService:
             strategy=strategy_enum,
             strategy_params=strategy_params,
             start_dt=start_dt_norm,
+            end_date=end_date_norm,
+            machine_downtimes=downtime_map,
         )
 
         # 超期预警：批次预计完工时间 vs due_date
@@ -477,6 +524,7 @@ class ScheduleService:
             "strategy_params": used_params or {},
             "selected_batch_ids": list(normalized),
             "start_time": self._format_dt(start_dt_norm),
+            "end_date": end_date_norm.isoformat() if end_date_norm else None,
             "counts": {
                 "batch_count": len(batches),
                 "op_count": len(algo_ops),

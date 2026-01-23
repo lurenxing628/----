@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from .sort_strategies import BatchForSort, SortStrategy, StrategyFactory, parse_strategy
@@ -101,6 +101,8 @@ class GreedyScheduler:
         strategy: Optional[SortStrategy] = None,
         strategy_params: Optional[Dict[str, Any]] = None,
         start_dt: Optional[datetime] = None,
+        end_date: Any = None,
+        machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         """
         执行排产。
@@ -113,6 +115,10 @@ class GreedyScheduler:
         errors: List[str] = []
 
         base_time = start_dt or datetime.now()
+        end_d = _parse_date(end_date)
+        end_dt_exclusive: Optional[datetime] = None
+        if end_d:
+            end_dt_exclusive = datetime(end_d.year, end_d.month, end_d.day, 0, 0, 0) + timedelta(days=1)
 
         # 获取排序策略：优先使用调用方传入，其次从配置读取
         if strategy is None:
@@ -129,7 +135,10 @@ class GreedyScheduler:
         used_params: Dict[str, Any] = {}
         if strategy == SortStrategy.WEIGHTED:
             if strategy_params is not None:
-                used_params = dict(strategy_params)
+                used_params = {
+                    "priority_weight": float(strategy_params.get("priority_weight", 0.4)),
+                    "due_weight": float(strategy_params.get("due_weight", 0.5)),
+                }
             elif self.config is not None:
                 def _cfg_float(key: str, default: float) -> float:
                     try:
@@ -140,10 +149,9 @@ class GreedyScheduler:
                 used_params = {
                     "priority_weight": _cfg_float("priority_weight", 0.4),
                     "due_weight": _cfg_float("due_weight", 0.5),
-                    "ready_weight": _cfg_float("ready_weight", 0.1),
                 }
             else:
-                used_params = {"priority_weight": 0.4, "due_weight": 0.5, "ready_weight": 0.1}
+                used_params = {"priority_weight": 0.4, "due_weight": 0.5}
         else:
             used_params = dict(strategy_params or {})
 
@@ -156,7 +164,8 @@ class GreedyScheduler:
                     batch_id=str(getattr(b, "batch_id", "") or ""),
                     priority=str(getattr(b, "priority", "") or "normal"),
                     due_date=_parse_date(getattr(b, "due_date", None)),
-                    ready_status=str(getattr(b, "ready_status", "") or "no"),
+                    ready_status=str(getattr(b, "ready_status", "") or "yes"),
+                    ready_date=_parse_date(getattr(b, "ready_date", None)),
                     created_at=_parse_datetime(getattr(b, "created_at", None)),
                 )
             )
@@ -177,7 +186,22 @@ class GreedyScheduler:
         # 资源占用追踪（V1 简化：只追踪“最后占用结束时间”足以满足冲突错开示例）
         machine_timeline: Dict[str, List[Tuple[datetime, datetime]]] = {}
         operator_timeline: Dict[str, List[Tuple[datetime, datetime]]] = {}
-        batch_progress: Dict[str, datetime] = {}  # batch_id -> 最后完成时间
+        batch_progress: Dict[str, datetime] = {}  # batch_id -> 最后完成时间（初始化会考虑 ready_date）
+
+        # 批次“齐套日期（ready_date）”：作为批次最早可开工时间下限
+        # 约定：ready_date 为空 -> 视为已齐套；不为空 -> 最早从该日班次开始排产
+        for b in batches.values():
+            bid = str(getattr(b, "batch_id", "") or "")
+            rd = getattr(b, "ready_date", None)
+            rd_d = _parse_date(rd)
+            if bid and rd_d:
+                dt0 = datetime(rd_d.year, rd_d.month, rd_d.day, 0, 0, 0)
+                try:
+                    p = getattr(b, "priority", None)
+                    dt_ready = self.calendar.adjust_to_working_time(dt0, priority=p)
+                except Exception:
+                    dt_ready = dt0
+                batch_progress[bid] = max(batch_progress.get(bid, base_time), dt_ready)
 
         # 外部组合并周期缓存：同一 batch 的同一 ext_group_id 只推进一次
         external_group_cache: Dict[Tuple[str, str], Tuple[datetime, datetime]] = {}
@@ -185,6 +209,7 @@ class GreedyScheduler:
         results: List[ScheduleResult] = []
         scheduled_count = 0
         failed_count = 0
+        blocked_batches: set = set()
 
         for op in sorted_ops:
             try:
@@ -193,13 +218,28 @@ class GreedyScheduler:
                     failed_count += 1
                     errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'}：找不到所属批次 {bid}")
                     continue
+                if bid in blocked_batches:
+                    failed_count += 1
+                    continue
 
                 batch = batches[bid]
 
                 if (getattr(op, "source", "internal") or "internal").strip() == "external":
-                    result = self._schedule_external(op, batch, batch_progress, external_group_cache, base_time, errors)
+                    result, blocked = self._schedule_external(
+                        op, batch, batch_progress, external_group_cache, base_time, errors, end_dt_exclusive
+                    )
                 else:
-                    result = self._schedule_internal(op, batch, batch_progress, machine_timeline, operator_timeline, base_time, errors)
+                    result, blocked = self._schedule_internal(
+                        op,
+                        batch,
+                        batch_progress,
+                        machine_timeline,
+                        operator_timeline,
+                        base_time,
+                        errors,
+                        end_dt_exclusive,
+                        machine_downtimes,
+                    )
 
                 if result and result.start_time and result.end_time:
                     results.append(result)
@@ -207,7 +247,8 @@ class GreedyScheduler:
                     scheduled_count += 1
                 else:
                     failed_count += 1
-                    errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'} 排产失败")
+                    if blocked:
+                        blocked_batches.add(bid)
             except Exception as e:
                 failed_count += 1
                 op_code = getattr(op, "op_code", "-") or "-"
@@ -236,7 +277,8 @@ class GreedyScheduler:
         external_group_cache: Dict[Tuple[str, str], Tuple[datetime, datetime]],
         base_time: datetime,
         errors: List[str],
-    ) -> Optional[ScheduleResult]:
+        end_dt_exclusive: Optional[datetime],
+    ) -> Tuple[Optional[ScheduleResult], bool]:
         """排产外部工序：不占资源，只占用自然日周期。"""
         bid = str(getattr(op, "batch_id", "") or "")
         prev_end = batch_progress.get(bid, base_time)
@@ -257,12 +299,20 @@ class GreedyScheduler:
                     total_days_f = None
                 if not total_days_f or total_days_f <= 0:
                     errors.append(f"外部组合并周期未设置或不合法：批次 {bid} 组 {ext_group_id} total_days={total_days!r}")
-                    return None
+                    return None, False
                 start = prev_end
                 end = self.calendar.add_calendar_days(start, total_days_f)
                 external_group_cache[cache_key] = (start, end)
 
-            return ScheduleResult(
+            if end_dt_exclusive is not None and end >= end_dt_exclusive:
+                deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d")
+                errors.append(
+                    f"排产窗口截止到 {deadline}：外协组 {ext_group_id}（批次 {bid}）预计完工 {end.strftime('%Y-%m-%d %H:%M')} 超出窗口"
+                )
+                return None, True
+
+            return (
+                ScheduleResult(
                 op_id=int(getattr(op, "id", 0) or 0),
                 op_code=str(getattr(op, "op_code", "") or ""),
                 batch_id=bid,
@@ -270,6 +320,8 @@ class GreedyScheduler:
                 start_time=start,
                 end_time=end,
                 source="external",
+                ),
+                False,
             )
 
         # separate（或无组）：按单道工序 ext_days 推进
@@ -282,18 +334,28 @@ class GreedyScheduler:
             ext_days_f = 1.0
         if ext_days_f <= 0:
             errors.append(f"外协周期不合法：工序 {getattr(op, 'op_code', '-') or '-'} ext_days={ext_days!r}")
-            return None
+            return None, False
 
         start = prev_end
         end = self.calendar.add_calendar_days(start, ext_days_f)
-        return ScheduleResult(
-            op_id=int(getattr(op, "id", 0) or 0),
-            op_code=str(getattr(op, "op_code", "") or ""),
-            batch_id=bid,
-            seq=int(getattr(op, "seq", 0) or 0),
-            start_time=start,
-            end_time=end,
-            source="external",
+        if end_dt_exclusive is not None and end >= end_dt_exclusive:
+            deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d")
+            errors.append(
+                f"排产窗口截止到 {deadline}：外协工序 {getattr(op, 'op_code', '-') or '-'}（批次 {bid}）预计完工 {end.strftime('%Y-%m-%d %H:%M')} 超出窗口"
+            )
+            return None, True
+
+        return (
+            ScheduleResult(
+                op_id=int(getattr(op, "id", 0) or 0),
+                op_code=str(getattr(op, "op_code", "") or ""),
+                batch_id=bid,
+                seq=int(getattr(op, "seq", 0) or 0),
+                start_time=start,
+                end_time=end,
+                source="external",
+            ),
+            False,
         )
 
     def _schedule_internal(
@@ -305,7 +367,9 @@ class GreedyScheduler:
         operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
         base_time: datetime,
         errors: List[str],
-    ) -> Optional[ScheduleResult]:
+        end_dt_exclusive: Optional[datetime],
+        machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
+    ) -> Tuple[Optional[ScheduleResult], bool]:
         """排产内部工序：设备+人员双重资源约束 + 工作日历。"""
         bid = str(getattr(op, "batch_id", "") or "")
 
@@ -314,7 +378,7 @@ class GreedyScheduler:
         if not machine_id or not operator_id:
             op_code = getattr(op, "op_code", "-") or "-"
             errors.append(f"内部工序未补全资源，无法排产：工序 {op_code}（machine_id/operator_id 必填）")
-            return None
+            return None, False
 
         prev_end = batch_progress.get(bid, base_time)
 
@@ -332,10 +396,10 @@ class GreedyScheduler:
             total_hours = float(setup_hours) + float(unit_hours) * float(qty)
         except Exception:
             errors.append(f"工时不合法：工序 {getattr(op, 'op_code', '-') or '-'} setup={setup_hours!r} unit={unit_hours!r} qty={qty!r}")
-            return None
+            return None, False
         if total_hours < 0:
             errors.append(f"工时不能为负：工序 {getattr(op, 'op_code', '-') or '-'} total_hours={total_hours}")
-            return None
+            return None, False
 
         efficiency = 1.0
         try:
@@ -345,21 +409,56 @@ class GreedyScheduler:
         if efficiency and efficiency > 0 and efficiency < 1.0:
             total_hours = total_hours / efficiency
 
+        # 先算一次完工时间
         end = self.calendar.add_working_hours(earliest, total_hours, priority=priority)
+
+        # 停机避让：若工序区间与停机区间重叠，则把开始时间推到停机结束后再重算
+        dt_list = []
+        if machine_downtimes and machine_id:
+            dt_list = machine_downtimes.get(machine_id) or []
+        if dt_list:
+            guard = 0
+            while guard < 50:
+                guard += 1
+                overlapped = None
+                for ds, de in dt_list:
+                    if end <= ds or earliest >= de:
+                        continue
+                    overlapped = (ds, de)
+                    break
+                if not overlapped:
+                    break
+                # 推到停机结束，并再次对齐工作日历
+                earliest = max(earliest, overlapped[1])
+                earliest = self.calendar.adjust_to_working_time(earliest, priority=priority)
+                end = self.calendar.add_working_hours(earliest, total_hours, priority=priority)
+            if guard >= 50:
+                errors.append(f"停机避让迭代过多：工序 {getattr(op, 'op_code', '-') or '-'}（批次 {bid}）")
+                return None, False
+
+        if end_dt_exclusive is not None and end >= end_dt_exclusive:
+            deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d")
+            errors.append(
+                f"排产窗口截止到 {deadline}：内部工序 {getattr(op, 'op_code', '-') or '-'}（批次 {bid}）预计完工 {end.strftime('%Y-%m-%d %H:%M')} 超出窗口"
+            )
+            return None, True
 
         self._occupy_resource(machine_timeline, machine_id, earliest, end)
         self._occupy_resource(operator_timeline, operator_id, earliest, end)
 
-        return ScheduleResult(
-            op_id=int(getattr(op, "id", 0) or 0),
-            op_code=str(getattr(op, "op_code", "") or ""),
-            batch_id=bid,
-            seq=int(getattr(op, "seq", 0) or 0),
-            machine_id=machine_id,
-            operator_id=operator_id,
-            start_time=earliest,
-            end_time=end,
-            source="internal",
+        return (
+            ScheduleResult(
+                op_id=int(getattr(op, "id", 0) or 0),
+                op_code=str(getattr(op, "op_code", "") or ""),
+                batch_id=bid,
+                seq=int(getattr(op, "seq", 0) or 0),
+                machine_id=machine_id,
+                operator_id=operator_id,
+                start_time=earliest,
+                end_time=end,
+                source="internal",
+            ),
+            False,
         )
 
     @staticmethod

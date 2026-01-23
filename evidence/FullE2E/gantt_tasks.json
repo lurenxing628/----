@@ -1,0 +1,50 @@
+{
+  "meta": {
+    "version": 1,
+    "week_start": "2026-01-26"
+  },
+  "tasks": [
+    {
+      "custom_class": "priority-urgent",
+      "dependencies": "",
+      "end": "2026-01-26 10:00:00",
+      "id": "B001_05",
+      "meta": {
+        "batch_id": "B001",
+        "due_date": "Thu, 31 Dec 2099 00:00:00 GMT",
+        "group_key": "MC001",
+        "machine": "MC001 CNC-01",
+        "op_type_name": "数铣",
+        "operator": "OP001 张三",
+        "part_no": "A1234",
+        "priority": "urgent",
+        "seq": 5,
+        "source": "internal"
+      },
+      "name": "B001_05 MC001 CNC-01 OP001 张三",
+      "progress": 0,
+      "start": "2026-01-26 08:00:00"
+    },
+    {
+      "custom_class": "priority-urgent",
+      "dependencies": "",
+      "end": "2026-01-28 10:00:00",
+      "id": "B001_35",
+      "meta": {
+        "batch_id": "B001",
+        "due_date": "Thu, 31 Dec 2099 00:00:00 GMT",
+        "group_key": "外协/未分配",
+        "machine": "外协 外协-标印厂",
+        "op_type_name": "标印",
+        "operator": "外协/未分配",
+        "part_no": "A1234",
+        "priority": "urgent",
+        "seq": 35,
+        "source": "external"
+      },
+      "name": "B001_35 外协 外协-标印厂 外协/未分配",
+      "progress": 0,
+      "start": "2026-01-26 10:00:00"
+    }
+  ]
+}

@@ -260,6 +260,76 @@ def set_status(operator_id: str):
     return redirect(url_for("personnel.detail_page", operator_id=op.operator_id))
 
 
+@bp.post("/<operator_id>/delete")
+def delete_operator(operator_id: str):
+    svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
+    try:
+        svc.delete(operator_id)
+        flash(f"已删除人员：{operator_id}", "success")
+    except AppError as e:
+        flash(e.message, "error")
+    return redirect(url_for("personnel.list_page"))
+
+
+@bp.post("/bulk/status")
+def bulk_set_status():
+    """
+    批量设置人员状态（active/inactive）。
+    """
+    status = (request.form.get("status") or "").strip()
+    operator_ids = request.form.getlist("operator_ids")
+    if not operator_ids:
+        flash("请至少选择 1 个人员。", "error")
+        return redirect(url_for("personnel.list_page"))
+    if status not in ("active", "inactive"):
+        raise ValidationError("状态不合法（允许：active / inactive）", field="status")
+
+    svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
+    ok = 0
+    failed: List[str] = []
+    for oid in operator_ids:
+        try:
+            svc.set_status(oid, status=status)
+            ok += 1
+        except Exception:
+            failed.append(str(oid))
+            continue
+
+    flash(f"批量状态更新完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
+    if failed:
+        sample = "，".join(failed[:10])
+        flash(f"失败人员（最多展示 10 个）：{sample}", "warning")
+    return redirect(url_for("personnel.list_page"))
+
+
+@bp.post("/bulk/delete")
+def bulk_delete():
+    """
+    批量删除人员（受引用保护；建议优先批量“停用”）。
+    """
+    operator_ids = request.form.getlist("operator_ids")
+    if not operator_ids:
+        flash("请至少选择 1 个人员。", "error")
+        return redirect(url_for("personnel.list_page"))
+
+    svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
+    ok = 0
+    failed: List[str] = []
+    for oid in operator_ids:
+        try:
+            svc.delete(oid)
+            ok += 1
+        except Exception:
+            failed.append(str(oid))
+            continue
+
+    flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
+    if failed:
+        sample = "，".join(failed[:10])
+        flash(f"删除失败（最多展示 10 个）：{sample}。常见原因：被批次工序/排程引用，请改为“停用”。", "warning")
+    return redirect(url_for("personnel.list_page"))
+
+
 @bp.post("/<operator_id>/link/add")
 def add_link(operator_id: str):
     machine_id = request.form.get("machine_id")

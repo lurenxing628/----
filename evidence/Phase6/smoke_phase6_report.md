@@ -1,14 +1,17 @@
 # Phase6（Scheduler：批次/工序/日历/配置）冒烟测试报告
 
-- 测试时间：2026-01-22 23:31:30
+- 测试时间：2026-01-24 00:55:56
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_fldrd1dw`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_fldrd1dw\aps_phase6_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_kjpnz4ab`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_kjpnz4ab\aps_phase6_test.db`
 
 ## 1. 准备基础数据（工艺模板/资源）
+
+## 1.1 批次创建：模板缺失时自动解析 route_raw
+- 自动解析：PartOperations=2 BatchOperations=2（期望均 > 0）
 
 ## 2. 批次创建事务：失败回滚（不留脏数据）
 - 触发预期异常：code=1003 message=数据已存在，不能重复添加（唯一性约束冲突）。
@@ -22,7 +25,7 @@
 - 维护设备不可用：设备“MC002”当前状态为“maintain”，不可用于排产。
 - 停用人员不可用：人员“OP002”当前状态为“inactive”，不可用于排产。
 - 写入后：machine=MC001 operator=OP001 setup=0.5 unit=0.2
-- 人机不匹配限制生效：人员“OP001”未被配置为可操作设备“MC003”（工序 B001_05 / ID=2）。请先在【人员管理】或【设备管理】中维护人机关联（OperatorMachine）后再排产。
+- 人机不匹配限制生效：人员“OP001”未被配置为可操作设备“MC003”（工序 B001_05 / ID=4）。请先在【人员管理】或【设备管理】中维护人机关联（OperatorMachine）后再排产。
 - 清空后：machine_id=None operator_id=None（期望均为 NULL）
 
 ## 5. 工序补充：外部工序（合并周期限制）
@@ -39,4 +42,4 @@
 
 ## 结论
 - 通过：Phase6（Scheduler 基础能力）冒烟测试通过（事务/工序补充/日历/配置）。
-- 总耗时：1497 ms
+- 总耗时：2319 ms

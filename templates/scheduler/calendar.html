@@ -34,6 +34,14 @@
           </select>
         </div>
         <div>
+          <label>班次开始</label><br/>
+          <input type="time" name="shift_start" value="08:00" style="width:140px;">
+        </div>
+        <div>
+          <label>班次结束（可选）</label><br/>
+          <input type="time" name="shift_end" style="width:140px;">
+        </div>
+        <div>
           <label>可用工时（小时）</label><br/>
           <input name="shift_hours" placeholder="如：8" style="width:140px;">
         </div>
@@ -74,6 +82,8 @@
           <tr>
             <th style="width:140px;">日期</th>
             <th style="width:120px;">类型</th>
+            <th style="width:120px;">班次开始</th>
+            <th style="width:120px;">班次结束</th>
             <th style="width:120px;">可用工时</th>
             <th style="width:120px;">效率</th>
             <th style="width:140px;">允许普通件</th>
@@ -86,6 +96,8 @@
             <tr>
               <td>{{ r.date }}</td>
               <td>{{ r.day_type_zh }}</td>
+              <td>{{ r.shift_start or '08:00' }}</td>
+              <td>{% if r.shift_end %}{{ r.shift_end }}{% else %}<span class="muted">-</span>{% endif %}</td>
               <td>{{ r.shift_hours }}</td>
               <td>{{ r.efficiency }}</td>
               <td>{{ '是' if r.allow_normal == 'yes' else '否' }}</td>

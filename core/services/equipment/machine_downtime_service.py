@@ -126,6 +126,8 @@ class MachineDowntimeService:
             d = self.repo.create(
                 {
                     "machine_id": mc_id,
+                    "scope_type": "machine",
+                    "scope_value": mc_id,
                     "start_time": st_db,
                     "end_time": et_db,
                     "reason_code": rc,
@@ -134,6 +136,98 @@ class MachineDowntimeService:
                 }
             )
         return d
+
+    def create_by_scope(
+        self,
+        *,
+        scope_type: Any,
+        scope_value: Any = None,
+        start_time: Any,
+        end_time: Any,
+        reason_code: Any = None,
+        reason_detail: Any = None,
+        only_active_machines: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        按范围批量创建停机计划：
+        - scope_type=machine：scope_value=machine_id
+        - scope_type=category：scope_value=Machines.category
+        - scope_type=all：scope_value 可空/'*'
+
+        说明：
+        - 为兼容现有 schema 外键（MachineDowntimes.machine_id -> Machines.machine_id），当前实现会把范围展开为“按设备逐条写入”。
+        - 对每台设备做重叠检测；重叠的会跳过并返回失败列表（其余仍会创建）。
+        """
+        st = self._parse_datetime(start_time, field="停机开始时间")
+        et = self._parse_datetime(end_time, field="停机结束时间")
+        if et <= st:
+            raise ValidationError("“停机结束时间”必须晚于“停机开始时间”", field="停机结束时间")
+
+        st_db = self._to_db_datetime(st)
+        et_db = self._to_db_datetime(et)
+
+        rc = self._normalize_text(reason_code) or "maintenance"
+        if rc not in self.VALID_REASON_CODES:
+            raise ValidationError("“停机原因”不合法", field="停机原因")
+        rd = self._normalize_text(reason_detail)
+
+        stype = (self._normalize_text(scope_type) or "").strip()
+        if stype not in ("machine", "category", "all"):
+            raise ValidationError("scope_type 不合法（允许：machine / category / all）", field="scope_type")
+
+        sval = self._normalize_text(scope_value)
+        target_machine_ids: List[str] = []
+
+        if stype == "machine":
+            if not sval:
+                raise ValidationError("scope_value 不能为空（machine 模式）", field="scope_value")
+            self._ensure_machine_exists(sval)
+            target_machine_ids = [sval]
+        elif stype == "category":
+            if not sval:
+                raise ValidationError("scope_value 不能为空（category 模式）", field="scope_value")
+            ms = self.machine_repo.list(status="active" if only_active_machines else None, category=sval)
+            target_machine_ids = [m.machine_id for m in ms]
+        else:
+            ms = self.machine_repo.list(status="active" if only_active_machines else None)
+            target_machine_ids = [m.machine_id for m in ms]
+            sval = sval or "*"
+
+        if not target_machine_ids:
+            raise BusinessError(ErrorCode.NOT_FOUND, "未找到符合范围的设备，无法创建停机计划。")
+
+        created_ids: List[int] = []
+        skipped_overlap: List[str] = []
+
+        with self.tx_manager.transaction():
+            for mid in target_machine_ids:
+                if self.repo.has_overlap(mid, start_time=st_db, end_time=et_db, exclude_id=None):
+                    skipped_overlap.append(mid)
+                    continue
+                d = self.repo.create(
+                    {
+                        "machine_id": mid,
+                        "scope_type": stype,
+                        "scope_value": sval,
+                        "start_time": st_db,
+                        "end_time": et_db,
+                        "reason_code": rc,
+                        "reason_detail": rd,
+                        "status": "active",
+                    }
+                )
+                if d.id is not None:
+                    created_ids.append(int(d.id))
+
+        return {
+            "scope_type": stype,
+            "scope_value": sval,
+            "start_time": st_db,
+            "end_time": et_db,
+            "created_count": len(created_ids),
+            "created_ids": created_ids[:50],
+            "skipped_overlap": skipped_overlap,
+        }
 
     def cancel(self, downtime_id: Any, machine_id: Any = None) -> None:
         d = self.get(downtime_id)

@@ -109,11 +109,26 @@ def main():
         )
         conn.commit()
 
+        batch_svc = BatchService(conn, logger=None, op_logger=None)
+
+        # 1.1) 模板缺失时：批次创建自动解析 route_raw 并生成模板
+        lines.append("")
+        lines.append("## 1.1 批次创建：模板缺失时自动解析 route_raw")
+        conn.execute(
+            "INSERT INTO Parts (part_no, part_name, route_raw, route_parsed) VALUES (?, ?, ?, ?)",
+            ("P_AUTO", "自动解析件", "5数铣10数铣", "no"),
+        )
+        conn.commit()
+        b_auto = batch_svc.create_batch_from_template(batch_id="B_AUTO", part_no="P_AUTO", quantity=1, priority="normal", ready_status="yes")
+        ops_auto = batch_svc.list_operations("B_AUTO")
+        tmpl_cnt = conn.execute("SELECT COUNT(1) AS c FROM PartOperations WHERE part_no='P_AUTO'").fetchone()["c"]
+        lines.append(f"- 自动解析：PartOperations={tmpl_cnt} BatchOperations={len(ops_auto)}（期望均 > 0）")
+        if tmpl_cnt <= 0 or len(ops_auto) <= 0:
+            raise RuntimeError("模板缺失自动解析失败：未生成 PartOperations 或 BatchOperations")
+
         # 2) 批次创建事务：失败时不留脏数据
         lines.append("")
         lines.append("## 2. 批次创建事务：失败回滚（不留脏数据）")
-
-        batch_svc = BatchService(conn, logger=None, op_logger=None)
         # 先插入一个“干扰”批次与工序，使得 op_code 全局唯一冲突
         batch_svc.create(batch_id="DUMMY", part_no="A1234", quantity=1, priority="normal", ready_status="no")
         conn.execute(

@@ -1,12 +1,12 @@
 # Phase7（排产算法 / M3）冒烟测试报告
 
-- 测试时间：2026-01-23 00:18:05
+- 测试时间：2026-01-24 00:56:05
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_kqvgon3h`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_kqvgon3h\aps_phase7_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_9yvuca_u`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_9yvuca_u\aps_phase7_test.db`
 
 ## 1. 基础数据准备（工种/供应商/资源）
 
@@ -28,7 +28,7 @@
 - 人员冲突校验：B001_05 [2026-02-02 09:00:00~2026-02-02 13:00:00]  B002_05 [2026-02-02 13:00:00~2026-02-03 09:00:00]（期望不重叠）
 - merged 外部组校验：start=2026-02-02 09:00:00 end=2026-02-05 09:00:00 span_days=3.0（期望 3.0）
 - 超期预警校验：B_EXT 已出现在 overdue_batches
-- weighted：version=3 strategy_params={'priority_weight': 0.4, 'due_weight': 0.5, 'ready_weight': 0.1}
+- weighted：version=3 strategy_params={'priority_weight': 0.4, 'due_weight': 0.5}
 - fifo：version=4
 
 ## 7. 留痕核对（ScheduleHistory / OperationLogs）
@@ -38,4 +38,4 @@
 
 ## 结论
 - 通过：Phase7（排产算法 / M3）冒烟测试通过（策略切换/双资源冲突/日历/外部合并周期/落库/留痕）。
-- 总耗时：1793 ms
+- 总耗时：2554 ms

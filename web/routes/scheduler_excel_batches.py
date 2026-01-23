@@ -36,7 +36,16 @@ from .scheduler_utils import (
 def excel_batches_page():
     svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = {
-        b.batch_id: {"批次号": b.batch_id, "图号": b.part_no, "数量": b.quantity, "交期": b.due_date, "优先级": b.priority, "齐套": b.ready_status, "备注": b.remark}
+        b.batch_id: {
+            "批次号": b.batch_id,
+            "图号": b.part_no,
+            "数量": b.quantity,
+            "交期": b.due_date,
+            "优先级": b.priority,
+            "齐套": b.ready_status,
+            "齐套日期": getattr(b, "ready_date", None),
+            "备注": b.remark,
+        }
         for b in svc.list()
     }  # type: ignore[misc]
     return render_template(
@@ -73,13 +82,24 @@ def excel_batches_preview():
             item["优先级"] = _normalize_batch_priority(item.get("优先级"))
         if "齐套" in item:
             item["齐套"] = _normalize_ready_status(item.get("齐套"))
+        if "齐套日期" in item:
+            item["齐套日期"] = _normalize_due_date(item.get("齐套日期"))
         if "交期" in item:
             item["交期"] = _normalize_due_date(item.get("交期"))
         normalized_rows.append(item)
 
     svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = {
-        b.batch_id: {"批次号": b.batch_id, "图号": b.part_no, "数量": b.quantity, "交期": b.due_date, "优先级": b.priority, "齐套": b.ready_status, "备注": b.remark}
+        b.batch_id: {
+            "批次号": b.batch_id,
+            "图号": b.part_no,
+            "数量": b.quantity,
+            "交期": b.due_date,
+            "优先级": b.priority,
+            "齐套": b.ready_status,
+            "齐套日期": getattr(b, "ready_date", None),
+            "备注": b.remark,
+        }
         for b in svc.list()
     }
 
@@ -114,6 +134,7 @@ def excel_batches_preview():
         if row["齐套"] not in ("yes", "no", "partial"):
             return "“齐套”不合法（允许：yes/no/partial；或中文：齐套/未齐套/部分齐套）"
 
+        row["齐套日期"] = _normalize_due_date(row.get("齐套日期"))
         row["交期"] = _normalize_due_date(row.get("交期"))
         return None
 
@@ -200,6 +221,7 @@ def excel_batches_confirm():
         row["齐套"] = _normalize_ready_status(row.get("齐套"))
         if row["齐套"] not in ("yes", "no", "partial"):
             return "“齐套”不合法（允许：yes/no/partial；或中文：齐套/未齐套/部分齐套）"
+        row["齐套日期"] = _normalize_due_date(row.get("齐套日期"))
         row["交期"] = _normalize_due_date(row.get("交期"))
         return None
 
@@ -208,7 +230,16 @@ def excel_batches_confirm():
         rows=rows,
         id_column="批次号",
         existing_data={
-            k: {"批次号": v.batch_id, "图号": v.part_no, "数量": v.quantity, "交期": v.due_date, "优先级": v.priority, "齐套": v.ready_status, "备注": v.remark}
+            k: {
+                "批次号": v.batch_id,
+                "图号": v.part_no,
+                "数量": v.quantity,
+                "交期": v.due_date,
+                "优先级": v.priority,
+                "齐套": v.ready_status,
+                "齐套日期": getattr(v, "ready_date", None),
+                "备注": v.remark,
+            }
             for k, v in existing.items()
         },
         validators=[validate_row],
@@ -237,7 +268,9 @@ def excel_batches_confirm():
             qty = int(pr.data.get("数量"))
             dd = pr.data.get("交期")
             prio = str(pr.data.get("优先级") or "normal").strip()
-            ready = str(pr.data.get("齐套") or "no").strip()
+            # 齐套可缺省：默认视为 yes
+            ready = str(pr.data.get("齐套") or "yes").strip()
+            ready_date = pr.data.get("齐套日期")
             remark = pr.data.get("备注")
 
             if mode == ImportMode.APPEND and bid in existing:
@@ -257,6 +290,7 @@ def excel_batches_confirm():
                         "due_date": dd,
                         "priority": prio,
                         "ready_status": ready,
+                        "ready_date": ready_date,
                         "remark": remark,
                     },
                 )
@@ -271,6 +305,7 @@ def excel_batches_confirm():
                         "due_date": dd,
                         "priority": prio,
                         "ready_status": ready,
+                        "ready_date": ready_date,
                         "status": "pending",
                         "remark": remark,
                     }
@@ -286,6 +321,7 @@ def excel_batches_confirm():
                     due_date=_normalize_due_date(dd),
                     priority=prio,
                     ready_status=ready,
+                    ready_date=_normalize_due_date(ready_date),
                     remark=(str(remark).strip() if remark is not None and str(remark).strip() else None),
                     rebuild_ops=True,
                 )
@@ -343,8 +379,8 @@ def excel_batches_template():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
-    ws.append(["批次号", "图号", "数量", "交期", "优先级", "齐套", "备注"])
-    ws.append(["B001", "A1234", 50, "2026-01-25", "urgent", "yes", "示例"])
+    ws.append(["批次号", "图号", "数量", "交期", "优先级", "齐套", "齐套日期", "备注"])
+    ws.append(["B001", "A1234", 50, "2026-01-25", "urgent", "yes", "2026-01-24", "示例"])
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -379,9 +415,9 @@ def excel_batches_export():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
-    ws.append(["批次号", "图号", "数量", "交期", "优先级", "齐套", "备注"])
+    ws.append(["批次号", "图号", "数量", "交期", "优先级", "齐套", "齐套日期", "备注"])
     for b in rows:
-        ws.append([b.batch_id, b.part_no, b.quantity, b.due_date, b.priority, b.ready_status, b.remark])
+        ws.append([b.batch_id, b.part_no, b.quantity, b.due_date, b.priority, b.ready_status, getattr(b, "ready_date", None), b.remark])
 
     output = io.BytesIO()
     wb.save(output)

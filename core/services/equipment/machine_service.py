@@ -123,6 +123,7 @@ class MachineService:
         machine_id: Any,
         name: Any,
         op_type_id: Any = None,
+        category: Any = None,
         status: Any = "active",
         remark: Any = None,
     ) -> Machine:
@@ -130,6 +131,7 @@ class MachineService:
             machine_id=machine_id, name=name, status=status, op_type_id=op_type_id
         )
         mc_remark = self._normalize_text(remark)
+        mc_category = self._normalize_text(category)
 
         if self.repo.exists(mc_id):
             raise BusinessError(ErrorCode.MACHINE_ALREADY_EXISTS, f"设备编号“{mc_id}”已存在，不能重复添加。")
@@ -140,6 +142,7 @@ class MachineService:
                     "machine_id": mc_id,
                     "name": mc_name,
                     "op_type_id": mc_op_type_id,
+                    "category": mc_category,
                     "status": mc_status or MachineStatus.ACTIVE.value,
                     "remark": mc_remark,
                 }
@@ -151,6 +154,7 @@ class MachineService:
         machine_id: Any,
         name: Any = None,
         op_type_id: Any = None,
+        category: Any = None,
         status: Any = None,
         remark: Any = None,
     ) -> Machine:
@@ -177,6 +181,9 @@ class MachineService:
                 updates["op_type_id"] = None
         if remark is not None:
             updates["remark"] = self._normalize_text(remark)  # 允许显式清空为 NULL
+        if category is not None:
+            # 允许显式清空
+            updates["category"] = self._normalize_text(category)
 
         with self.tx_manager.transaction():
             self.repo.update(mc_id, updates)

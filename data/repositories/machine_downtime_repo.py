@@ -13,7 +13,7 @@ class MachineDowntimeRepository(BaseRepository):
     def get(self, downtime_id: int) -> Optional[MachineDowntime]:
         row = self.fetchone(
             """
-            SELECT id, machine_id, start_time, end_time, reason_code, reason_detail,
+            SELECT id, machine_id, scope_type, scope_value, start_time, end_time, reason_code, reason_detail,
                    status, created_at, updated_at
             FROM MachineDowntimes
             WHERE id = ?
@@ -24,7 +24,7 @@ class MachineDowntimeRepository(BaseRepository):
 
     def list_by_machine(self, machine_id: str, include_cancelled: bool = False) -> List[MachineDowntime]:
         sql = """
-            SELECT id, machine_id, start_time, end_time, reason_code, reason_detail,
+            SELECT id, machine_id, scope_type, scope_value, start_time, end_time, reason_code, reason_detail,
                    status, created_at, updated_at
             FROM MachineDowntimes
             WHERE machine_id = ?
@@ -34,6 +34,24 @@ class MachineDowntimeRepository(BaseRepository):
             sql += " AND status = 'active'"
         sql += " ORDER BY start_time DESC, id DESC"
         rows = self.fetchall(sql, tuple(params))
+        return [MachineDowntime.from_row(r) for r in rows]
+
+    def list_active_after(self, machine_id: str, start_time: str) -> List[MachineDowntime]:
+        """
+        列出某设备在 start_time 之后仍可能影响排产的有效停机区间（end_time > start_time）。
+        """
+        rows = self.fetchall(
+            """
+            SELECT id, machine_id, scope_type, scope_value, start_time, end_time, reason_code, reason_detail,
+                   status, created_at, updated_at
+            FROM MachineDowntimes
+            WHERE machine_id = ?
+              AND status = 'active'
+              AND end_time > ?
+            ORDER BY start_time ASC, id ASC
+            """,
+            (machine_id, start_time),
+        )
         return [MachineDowntime.from_row(r) for r in rows]
 
     def has_overlap(
@@ -66,11 +84,13 @@ class MachineDowntimeRepository(BaseRepository):
         self.execute(
             """
             INSERT INTO MachineDowntimes
-            (machine_id, start_time, end_time, reason_code, reason_detail, status)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (machine_id, scope_type, scope_value, start_time, end_time, reason_code, reason_detail, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 d.machine_id,
+                d.scope_type,
+                d.scope_value,
                 d.start_time,
                 d.end_time,
                 d.reason_code,

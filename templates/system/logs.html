@@ -12,6 +12,36 @@
       <a href="{{ url_for('system.history_page') }}">排产历史</a>
     </div>
 
+    <h3 style="margin-top:10px;">日志自动清理（保留策略，按请求触发）</h3>
+    <p class="muted">说明：自动清理只会在“有请求访问系统时”按分钟间隔触发；内部有保底保留与限额，避免过度清理与占用性能。</p>
+
+    {% set st_lc = job_state.auto_log_cleanup if job_state else None %}
+
+    <form method="post" action="{{ url_for('system.logs_settings') }}" style="margin-bottom:12px;">
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+        <div>
+          <label>
+            <input type="checkbox" name="auto_log_cleanup_enabled" {{ 'checked' if settings and settings.auto_log_cleanup_enabled=='yes' else '' }}>
+            启用自动清理
+          </label>
+        </div>
+        <div class="muted">
+          保留天数：
+          <input name="auto_log_cleanup_keep_days" value="{{ settings.auto_log_cleanup_keep_days if settings else '30' }}" style="width:90px;">
+        </div>
+        <div class="muted">
+          间隔（分钟）：
+          <input name="auto_log_cleanup_interval_minutes" value="{{ settings.auto_log_cleanup_interval_minutes if settings else '60' }}" style="width:90px;">
+        </div>
+        <div class="muted">
+          上次执行：{{ st_lc.last_run_time if st_lc and st_lc.last_run_time else '-' }}
+        </div>
+        <div>
+          <button type="submit">保存设置</button>
+        </div>
+      </div>
+    </form>
+
     <form method="get" action="{{ url_for('system.logs_page') }}">
       <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
         <div>
@@ -50,6 +80,11 @@
         </div>
       </div>
     </form>
+
+    <form id="logsBatchDeleteForm" method="post" action="{{ url_for('system.logs_delete_batch') }}" style="margin-top:10px;"
+          onsubmit="return confirm('确认批量删除选中的操作日志？删除后不可恢复。');">
+      <button type="submit">批量删除选中</button>
+    </form>
   </div>
 
   <div class="card">
@@ -60,6 +95,12 @@
       <table>
         <thead>
           <tr>
+            <th style="width:60px;">
+              <label class="muted">
+                <input type="checkbox" onclick="toggleAllLogs(this)">
+                全选
+              </label>
+            </th>
             <th>ID</th>
             <th>时间</th>
             <th>级别</th>
@@ -68,11 +109,15 @@
             <th>目标</th>
             <th>错误</th>
             <th>详情(detail)</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
           {% for r in rows %}
             <tr>
+              <td>
+                <input type="checkbox" name="log_ids" value="{{ r.id }}" form="logsBatchDeleteForm">
+              </td>
               <td>{{ r.id }}</td>
               <td>{{ r.log_time }}</td>
               <td>{{ r.log_level }}</td>
@@ -102,11 +147,26 @@
                   <span class="muted">-</span>
                 {% endif %}
               </td>
+              <td>
+                <form method="post" action="{{ url_for('system.logs_delete') }}" onsubmit="return confirm('确认删除该日志？删除后不可恢复。');">
+                  <input type="hidden" name="log_id" value="{{ r.id }}">
+                  <button type="submit">删除</button>
+                </form>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     {% endif %}
   </div>
+
+  <script>
+    function toggleAllLogs(source) {
+      const items = document.querySelectorAll('input[name="log_ids"][form="logsBatchDeleteForm"]');
+      for (const it of items) {
+        it.checked = source.checked;
+      }
+    }
+  </script>
 {% endblock %}
 

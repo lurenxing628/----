@@ -101,21 +101,47 @@ class GanttService:
         v = int(self.history_repo.get_latest_version() or 0)
         return v if v > 0 else 1
 
-    def resolve_week_range(self, week_start: Optional[str] = None, offset_weeks: int = 0) -> WeekRange:
+    def resolve_week_range(
+        self,
+        week_start: Optional[str] = None,
+        offset_weeks: int = 0,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> WeekRange:
         """
-        计算周范围（默认周一~周日）。
+        计算显示范围：
+        - 优先使用 start_date/end_date（区间模式，包含起止日）
+        - 否则使用 week_start + offset_weeks（周模式，周一~周日）
 
         参数：
         - week_start：可选，期望为 YYYY-MM-DD；若不传则以“今天所在周”的周一为起点
         - offset_weeks：周偏移（-1 上周，+1 下周）
+        - start_date/end_date：可选，期望为 YYYY-MM-DD；若提供则优先使用
         """
+        sd = _parse_date(start_date) if start_date else None
+        ed = _parse_date(end_date) if end_date else None
+        if sd or ed:
+            # 区间模式：默认 start_date=明天；end_date 未填则默认 7 天窗口
+            if not sd:
+                sd = date.today() + timedelta(days=1)
+            if not ed:
+                ed = sd + timedelta(days=6)
+            if ed < sd:
+                raise ValidationError("end_date 不能早于 start_date", field="end_date")
+
+            start_dt = datetime(sd.year, sd.month, sd.day, 0, 0, 0)
+            end_dt_exclusive = datetime(ed.year, ed.month, ed.day, 0, 0, 0) + timedelta(days=1)
+            return WeekRange(week_start_date=sd, week_end_date=ed, start_dt=start_dt, end_dt_exclusive=end_dt_exclusive)
+
+        # 周模式
         if week_start:
             d = _parse_date(week_start)
             if not d:
                 raise ValidationError("week_start 格式不合法（期望：YYYY-MM-DD）", field="week_start")
             monday = _monday_of(d)
         else:
-            monday = _monday_of(date.today())
+            # 默认：明天所在周（便于用户“从明天开始看排程”）
+            monday = _monday_of(date.today() + timedelta(days=1))
 
         try:
             offset_weeks_int = int(offset_weeks)
@@ -177,6 +203,8 @@ class GanttService:
         view: str,
         week_start: Optional[str] = None,
         offset_weeks: int = 0,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
         version: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
@@ -187,7 +215,7 @@ class GanttService:
         if view not in ("machine", "operator"):
             raise ValidationError("view 不合法（允许：machine/operator）", field="view")
 
-        wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks)
+        wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
         ver = int(version) if version is not None and str(version).strip() != "" else self.get_latest_version_or_1()
 
         rows = self.schedule_repo.list_overlapping_with_details(wr.start_str, wr.end_exclusive_str, ver)
@@ -273,13 +301,15 @@ class GanttService:
         *,
         week_start: Optional[str] = None,
         offset_weeks: int = 0,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
         version: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         返回周计划行（用于页面预览与导出）。
         字段：日期/批次号/图号/工序/设备/人员/时段
         """
-        wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks)
+        wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
         ver = int(version) if version is not None and str(version).strip() != "" else self.get_latest_version_or_1()
 
         rows = self.schedule_repo.list_overlapping_with_details(wr.start_str, wr.end_exclusive_str, ver)

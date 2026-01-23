@@ -124,6 +124,44 @@ class OperatorService:
     def set_status(self, operator_id: Any, status: Any) -> Operator:
         return self.update(operator_id=operator_id, status=status)
 
+    def delete(self, operator_id: Any) -> None:
+        """
+        删除人员（物理删除）。
+
+        保护策略：
+        - 若人员已被 BatchOperations 或 Schedule 引用，则禁止删除（避免排产数据断链/外键失败）
+        - 建议改用“停用（inactive）”
+        """
+        op_id, _, _ = self._validate_operator_fields(operator_id=operator_id, name=None, status=None, allow_partial=True)
+        if not op_id:
+            raise ValidationError("“工号”不能为空", field="工号")
+        self._get_or_raise(op_id)
+
+        # 若被批次工序引用，则禁止删除
+        row = self.conn.execute(
+            "SELECT 1 FROM BatchOperations WHERE operator_id = ? LIMIT 1",
+            (op_id,),
+        ).fetchone()
+        if row is not None:
+            raise BusinessError(
+                ErrorCode.OPERATOR_IN_USE,
+                "该人员已被批次工序引用，不能删除。请先解除引用或改为“停用”。",
+            )
+
+        # 若被排程引用，则禁止删除（否则会触发 Schedule.operator_id 外键错误）
+        row2 = self.conn.execute(
+            "SELECT 1 FROM Schedule WHERE operator_id = ? LIMIT 1",
+            (op_id,),
+        ).fetchone()
+        if row2 is not None:
+            raise BusinessError(
+                ErrorCode.OPERATOR_IN_USE,
+                "该人员已被排程结果引用，不能删除。请改为“停用”。",
+            )
+
+        with self.tx_manager.transaction():
+            self.repo.delete(op_id)
+
     # -------------------------
     # Excel 相关辅助（按中文列名）
     # -------------------------

@@ -1,19 +1,19 @@
 # Phase0+Phase1 冒烟测试报告
 
-- 测试时间：2026-01-21 23:20:53
+- 测试时间：2026-01-24 00:54:24
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 - Flask：2.3.3
 - openpyxl：3.0.10
 
 ## 0. 测试环境与目录
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_ow33esyr`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_ow33esyr\aps_test.db`
-- 测试日志目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_ow33esyr\logs`
-- 测试备份目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_ow33esyr\backups`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_bnf9er5q`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_bnf9er5q\aps_test.db`
+- 测试日志目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_bnf9er5q\logs`
+- 测试备份目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_bnf9er5q\backups`
 
 ## 1. Schema 检查
-- 表数量：19
+- 表数量：20
 - 是否存在 OperationLogs：True
 - 是否存在 ResourceLocks：False
 
@@ -42,24 +42,24 @@
 - OperationLogs 写入校验：excel_demo import 记录数=2（期望 >= 1）
 
 ## 5. 备份检查
-- 手动触发备份：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_ow33esyr\backups\aps_backup_20260121_232056_auto_test.db`
+- 手动触发备份：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_bnf9er5q\backups\aps_backup_20260124_005428_auto_test.db`
 - backups 文件数：1
 
 ## 6. 文件日志检查（用户排障）
-- aps.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_ow33esyr\logs\aps.log`）
-- aps_error.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_ow33esyr\logs\aps_error.log`）
+- aps.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_bnf9er5q\logs\aps.log`）
+- aps_error.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_bnf9er5q\logs\aps_error.log`）
 
 ### aps.log 摘录（最后 20 行）
 ```
-2026-01-21 23:20:55 [INFO] app [database.py:40]: 数据库结构检查完成（已确保所有表存在）。
-2026-01-21 23:20:55 [INFO] app [app.py:106]: 应用启动完成。
-2026-01-21 23:20:55 [INFO] app [database.py:40]: 数据库结构检查完成（已确保所有表存在）。
-2026-01-21 23:20:55 [INFO] app [app.py:106]: 应用启动完成。
-2026-01-21 23:20:56 [INFO] app [logging.py:132]: [excel_demo] 操作：export（operator ）
-2026-01-21 23:20:56 [INFO] app [logging.py:132]: [excel_demo] 操作：import（operator ）
-2026-01-21 23:20:56 [INFO] app [logging.py:132]: [excel_demo] 操作：import（operator ）
+2026-01-24 00:54:27 [INFO] app [database.py:42]: 数据库结构检查完成（已确保所有表存在）。
+2026-01-24 00:54:27 [INFO] app [app.py:110]: 应用启动完成。
+2026-01-24 00:54:27 [INFO] app [database.py:42]: 数据库结构检查完成（已确保所有表存在）。
+2026-01-24 00:54:27 [INFO] app [app.py:110]: 应用启动完成。
+2026-01-24 00:54:27 [INFO] app [logging.py:132]: [excel_demo] 操作：export（operator ）
+2026-01-24 00:54:28 [INFO] app [logging.py:132]: [excel_demo] 操作：import（operator ）
+2026-01-24 00:54:28 [INFO] app [logging.py:132]: [excel_demo] 操作：import（operator ）
 ```
 
 ## 结论
 - 通过：Phase0+Phase1 核心链路冒烟测试通过（Schema/Excel/留痕/Web/备份）。
-- 总耗时：2212 ms
+- 总耗时：3118 ms

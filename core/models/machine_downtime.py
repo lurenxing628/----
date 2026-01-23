@@ -18,6 +18,8 @@ class MachineDowntime:
 
     id: Optional[int] = None
     machine_id: str = ""
+    scope_type: str = "machine"  # machine/category/all（预留）
+    scope_value: Optional[str] = None
     start_time: str = ""
     end_time: str = ""
     reason_code: Optional[str] = None
@@ -36,6 +38,8 @@ class MachineDowntime:
         return cls(
             id=_id,
             machine_id=str(get(row, "machine_id") or ""),
+            scope_type=str(get(row, "scope_type") or "machine"),
+            scope_value=get(row, "scope_value"),
             start_time=str(get(row, "start_time") or ""),
             end_time=str(get(row, "end_time") or ""),
             reason_code=get(row, "reason_code"),
@@ -50,6 +54,8 @@ class MachineDowntime:
             {
                 "id": self.id,
                 "machine_id": self.machine_id,
+                "scope_type": self.scope_type,
+                "scope_value": self.scope_value,
                 "start_time": self.start_time,
                 "end_time": self.end_time,
                 "reason_code": self.reason_code,

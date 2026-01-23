@@ -17,7 +17,7 @@ class DayPolicy:
     某天的排产策略（从 WorkCalendar 推导）。
 
     说明：
-    - shift_start 固定为 08:00（V1 简化）
+    - shift_start 可配置（默认 08:00）
     - shift_hours=0 视为不可排产日
     - allow_normal/allow_urgent 控制普通/急件是否允许排在该日
       - critical 视作 urgent（更严格时可单独扩展字段）
@@ -76,6 +76,22 @@ class CalendarService:
             return float(value)
         except Exception:
             raise ValidationError(f"“{field}”必须是数字", field=field)
+
+    @staticmethod
+    def _normalize_hhmm(value: Any, field: str, allow_none: bool = True) -> Optional[str]:
+        """
+        时间标准化为 HH:MM（支持 HH:MM / HH:MM:SS）。
+        """
+        if value is None or (isinstance(value, str) and value.strip() == ""):
+            return None if allow_none else "08:00"
+        s = str(value).strip()
+        for fmt in ("%H:%M:%S", "%H:%M"):
+            try:
+                t = datetime.strptime(s, fmt).time()
+                return t.strftime("%H:%M")
+            except Exception:
+                continue
+        raise ValidationError(f"“{field}”格式不合法（期望：HH:MM）", field=field)
 
     @staticmethod
     def _normalize_date(value: Any) -> str:
@@ -141,6 +157,8 @@ class CalendarService:
         date_value: Any,
         day_type: Any = None,
         shift_hours: Any = None,
+        shift_start: Any = None,
+        shift_end: Any = None,
         efficiency: Any = None,
         allow_normal: Any = None,
         allow_urgent: Any = None,
@@ -164,9 +182,30 @@ class CalendarService:
         au = self._normalize_yesno(allow_urgent, field="允许急件")
         rmk = self._normalize_text(remark)
 
+        ss = self._normalize_hhmm(shift_start, field="班次开始", allow_none=True) or "08:00"
+        se = self._normalize_hhmm(shift_end, field="班次结束", allow_none=True)
+        # 若给了起止时间，则用其推导可用工时
+        if se:
+            st_t = datetime.strptime(ss, "%H:%M")
+            et_t = datetime.strptime(se, "%H:%M")
+            if et_t <= st_t:
+                raise ValidationError("“班次结束”必须晚于“班次开始”", field="班次结束")
+            sh = (et_t - st_t).total_seconds() / 3600.0
+        else:
+            # 没填结束时间：根据 shift_hours 推导一个用于展示的 shift_end（不跨天）
+            try:
+                st_t = datetime.strptime(ss, "%H:%M")
+                et_t = st_t + timedelta(hours=float(sh or 0.0))
+                if et_t.date() == st_t.date():
+                    se = et_t.time().strftime("%H:%M")
+            except Exception:
+                se = None
+
         cal = WorkCalendar(
             date=d,
             day_type=dt,
+            shift_start=ss,
+            shift_end=se,
             shift_hours=float(sh),
             efficiency=float(eff),
             allow_normal=an,
@@ -228,6 +267,27 @@ class CalendarService:
         efficiency = float(cal.efficiency or 1.0)
         if efficiency <= 0:
             efficiency = 1.0
+
+        # shift_start/shift_end：默认 08:00；若提供 shift_end 则优先用其推导 shift_hours
+        ss = (cal.shift_start or "").strip() if getattr(cal, "shift_start", None) else ""
+        if not ss:
+            ss = "08:00"
+        try:
+            ss_t = datetime.strptime(ss, "%H:%M").time()
+        except Exception:
+            ss_t = time(8, 0, 0)
+
+        se = (cal.shift_end or "").strip() if getattr(cal, "shift_end", None) else ""
+        if se:
+            try:
+                se_t = datetime.strptime(se, "%H:%M").time()
+                st_dt = datetime.combine(date.fromisoformat(cal.date), ss_t)
+                et_dt = datetime.combine(date.fromisoformat(cal.date), se_t)
+                if et_dt > st_dt:
+                    shift_hours = (et_dt - st_dt).total_seconds() / 3600.0
+            except Exception:
+                pass
+
         return DayPolicy(
             date_str=cal.date,
             day_type=cal.day_type,
@@ -235,12 +295,19 @@ class CalendarService:
             efficiency=efficiency,
             allow_normal=cal.allow_normal,
             allow_urgent=cal.allow_urgent,
+            shift_start=ss_t,
         )
 
-    def get_efficiency(self, dt: datetime) -> float:
+    def get_efficiency(self, dt: datetime, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> float:
         return float(self._policy_for_datetime(dt).efficiency or 1.0)
 
-    def adjust_to_working_time(self, dt: datetime, priority: Optional[str] = None) -> datetime:
+    def adjust_to_working_time(
+        self,
+        dt: datetime,
+        priority: Optional[str] = None,
+        machine_id: Optional[str] = None,
+        operator_id: Optional[str] = None,
+    ) -> datetime:
         """
         把任意时间调整到“允许排产的工作时间窗口内”的最早时刻。
         """
@@ -267,7 +334,14 @@ class CalendarService:
                 continue
             return cur
 
-    def add_working_hours(self, start: datetime, hours: float, priority: Optional[str] = None) -> datetime:
+    def add_working_hours(
+        self,
+        start: datetime,
+        hours: float,
+        priority: Optional[str] = None,
+        machine_id: Optional[str] = None,
+        operator_id: Optional[str] = None,
+    ) -> datetime:
         """
         从 start 开始，按“工作时间窗口”累加指定工时，返回结束时间。
         - 会自动跳过非工作日/非工作时段
@@ -323,7 +397,7 @@ class CalendarService:
 
         return cur
 
-    def add_calendar_days(self, start: datetime, days: float) -> datetime:
+    def add_calendar_days(self, start: datetime, days: float, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
         """
         自然日累加（外协周期使用）：不受工作日历影响。
         - days 支持小数

@@ -15,12 +15,20 @@
           优先级：<strong>{{ priority_zh }}</strong>
           <span class="muted">｜</span>
           齐套：<strong>{{ ready_status_zh }}</strong>
+          {% if batch.ready_date %}
+            <span class="muted">（齐套日期：<strong>{{ batch.ready_date }}</strong>）</span>
+          {% endif %}
           <span class="muted">｜</span>
           状态：<strong>{{ batch_status_zh }}</strong>
         </div>
       </div>
       <div>
         <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
+        <span class="muted">｜</span>
+        <form method="post" action="{{ url_for('scheduler.delete_batch', batch_id=batch.batch_id) }}" style="display:inline;"
+              onsubmit="return confirm('确定删除批次 {{ batch.batch_id }} 吗？将级联删除批次工序与排程记录（若存在）。');">
+          <button type="submit">删除批次</button>
+        </form>
       </div>
     </div>
   </div>
@@ -35,8 +43,8 @@
     <div style="margin-top:8px;">
       <form method="post" action="{{ url_for('scheduler.generate_ops', batch_id=batch.batch_id) }}"
             onsubmit="return confirm('将根据当前零件工序模板重建该批次工序（会清空已填写的设备/人员/工时/周期等补充信息）。确定继续？');">
-        <button type="submit">从模板重建工序（慎用）</button>
-        <span class="muted">用于模板变更后同步（会覆盖已有补充信息）</span>
+        <button type="submit">从零件模板重建工序（会覆盖补充信息）</button>
+        <span class="muted">用于模板变更后同步（会清空已填写的设备/人员/工时/周期等补充信息）</span>
       </form>
     </div>
 

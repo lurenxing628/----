@@ -1,12 +1,12 @@
 # Phase5（工艺管理模块）冒烟测试报告
 
-- 测试时间：2026-01-21 23:21:05
+- 测试时间：2026-01-24 00:55:11
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_7u6ck_yr`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_7u6ck_yr\aps_phase5_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_gicfw41s`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_gicfw41s\aps_phase5_test.db`
 
 ## 1. Schema 检查（Phase5 相关表）
 - 是否存在 OpTypes：True
@@ -61,4 +61,4 @@
 
 ## 结论
 - 通过：Phase5（工艺管理模块）冒烟测试通过（解析器/边界用例/模板保存/合并周期/删除规则）。
-- 总耗时：1500 ms
+- 总耗时：2206 ms

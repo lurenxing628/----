@@ -28,12 +28,14 @@ def gantt_page():
     """
     view = (request.args.get("view") or "machine").strip()
     week_start = (request.args.get("week_start") or "").strip() or None
+    start_date = (request.args.get("start_date") or "").strip() or None
+    end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
     version_raw = (request.args.get("version") or "").strip()
     version: Optional[int] = int(version_raw) if version_raw else None
 
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset)
+    wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
     ver = version if version is not None else svc.get_latest_version_or_1()
 
     versions = ScheduleHistoryRepository(g.db).list_versions(limit=30)
@@ -44,6 +46,8 @@ def gantt_page():
         view=view,
         week_start=wr.week_start_date.isoformat(),
         week_end=wr.week_end_date.isoformat(),
+        start_date=wr.week_start_date.isoformat(),
+        end_date=wr.week_end_date.isoformat(),
         offset=offset,
         version=ver,
         versions=versions,
@@ -58,13 +62,17 @@ def gantt_data():
     """
     view = (request.args.get("view") or "machine").strip()
     week_start = (request.args.get("week_start") or "").strip() or None
+    start_date = (request.args.get("start_date") or "").strip() or None
+    end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
     version_raw = (request.args.get("version") or "").strip()
     version: Optional[int] = int(version_raw) if version_raw else None
 
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     try:
-        data: Dict[str, Any] = svc.get_gantt_tasks(view=view, week_start=week_start, offset_weeks=offset, version=version)
+        data: Dict[str, Any] = svc.get_gantt_tasks(
+            view=view, week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date, version=version
+        )
         return jsonify({"success": True, "data": data})
     except AppError as e:
         return jsonify({"success": False, "error": {"code": e.code, "message": e.message}}), 400

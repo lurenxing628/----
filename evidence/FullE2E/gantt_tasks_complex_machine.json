@@ -1,0 +1,282 @@
+{
+  "meta": {
+    "version": 1,
+    "week_start": "2026-01-26",
+    "view": "machine"
+  },
+  "tasks": [
+    {
+      "id": "B001_05",
+      "name": "B001_05 MC001 CNC-01 OP001 张三",
+      "start": "2026-01-26 08:00:00",
+      "end": "2026-01-26 13:18:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-critical overdue",
+      "meta": {
+        "batch_id": "B001",
+        "part_no": "P_A",
+        "seq": 5,
+        "op_type_name": "数铣",
+        "source": "internal",
+        "machine": "MC001 CNC-01",
+        "operator": "OP001 张三",
+        "group_key": "MC001",
+        "priority": "critical",
+        "due_date": "2026-01-27"
+      }
+    },
+    {
+      "id": "B002_05",
+      "name": "B002_05 MC001 CNC-01 OP001 张三",
+      "start": "2026-01-30 10:24:00",
+      "end": "2026-01-30 12:30:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-urgent overdue",
+      "meta": {
+        "batch_id": "B002",
+        "part_no": "P_A",
+        "seq": 5,
+        "op_type_name": "数铣",
+        "source": "internal",
+        "machine": "MC001 CNC-01",
+        "operator": "OP001 张三",
+        "group_key": "MC001",
+        "priority": "urgent",
+        "due_date": "2026-01-29"
+      }
+    },
+    {
+      "id": "B001_20",
+      "name": "B001_20 MC002 CNC-02 OP001 张三",
+      "start": "2026-01-26 15:24:00",
+      "end": "2026-01-29 10:42:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-critical overdue",
+      "meta": {
+        "batch_id": "B001",
+        "part_no": "P_A",
+        "seq": 20,
+        "op_type_name": "数铣",
+        "source": "internal",
+        "machine": "MC002 CNC-02",
+        "operator": "OP001 张三",
+        "group_key": "MC002",
+        "priority": "critical",
+        "due_date": "2026-01-27"
+      }
+    },
+    {
+      "id": "B101_10",
+      "name": "B101_10 MC002 CNC-02 OP001 张三",
+      "start": "2026-01-29 10:42:00",
+      "end": "2026-01-30 10:24:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-urgent overdue",
+      "meta": {
+        "batch_id": "B101",
+        "part_no": "P_B",
+        "seq": 10,
+        "op_type_name": "数铣",
+        "source": "internal",
+        "machine": "MC002 CNC-02",
+        "operator": "OP001 张三",
+        "group_key": "MC002",
+        "priority": "urgent",
+        "due_date": "2026-01-27"
+      }
+    },
+    {
+      "id": "B002_20",
+      "name": "B002_20 MC002 CNC-02 OP001 张三",
+      "start": "2026-01-30 13:48:00",
+      "end": "2026-01-30 15:54:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-urgent overdue",
+      "meta": {
+        "batch_id": "B002",
+        "part_no": "P_A",
+        "seq": 20,
+        "op_type_name": "数铣",
+        "source": "internal",
+        "machine": "MC002 CNC-02",
+        "operator": "OP001 张三",
+        "group_key": "MC002",
+        "priority": "urgent",
+        "due_date": "2026-01-29"
+      }
+    },
+    {
+      "id": "B001_10",
+      "name": "B001_10 MC003 钳工台 OP003 王五",
+      "start": "2026-01-26 13:18:00",
+      "end": "2026-01-26 15:24:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-critical overdue",
+      "meta": {
+        "batch_id": "B001",
+        "part_no": "P_A",
+        "seq": 10,
+        "op_type_name": "钳",
+        "source": "internal",
+        "machine": "MC003 钳工台",
+        "operator": "OP003 王五",
+        "group_key": "MC003",
+        "priority": "critical",
+        "due_date": "2026-01-27"
+      }
+    },
+    {
+      "id": "B101_05",
+      "name": "B101_05 MC003 钳工台 OP002 李四",
+      "start": "2026-01-26 15:24:00",
+      "end": "2026-01-29 09:30:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-urgent overdue",
+      "meta": {
+        "batch_id": "B101",
+        "part_no": "P_B",
+        "seq": 5,
+        "op_type_name": "钳",
+        "source": "internal",
+        "machine": "MC003 钳工台",
+        "operator": "OP002 李四",
+        "group_key": "MC003",
+        "priority": "urgent",
+        "due_date": "2026-01-27"
+      }
+    },
+    {
+      "id": "B002_10",
+      "name": "B002_10 MC003 钳工台 OP003 王五",
+      "start": "2026-01-30 12:30:00",
+      "end": "2026-01-30 13:48:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-urgent overdue",
+      "meta": {
+        "batch_id": "B002",
+        "part_no": "P_A",
+        "seq": 10,
+        "op_type_name": "钳",
+        "source": "internal",
+        "machine": "MC003 钳工台",
+        "operator": "OP003 王五",
+        "group_key": "MC003",
+        "priority": "urgent",
+        "due_date": "2026-01-29"
+      }
+    },
+    {
+      "id": "B102_05",
+      "name": "B102_05 MC003 钳工台 OP002 李四",
+      "start": "2026-01-30 13:48:00",
+      "end": "2026-02-02 00:00:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-normal overdue",
+      "meta": {
+        "batch_id": "B102",
+        "part_no": "P_B",
+        "seq": 5,
+        "op_type_name": "钳",
+        "source": "internal",
+        "machine": "MC003 钳工台",
+        "operator": "OP002 李四",
+        "group_key": "MC003",
+        "priority": "normal",
+        "due_date": "2026-01-30"
+      }
+    },
+    {
+      "id": "B001_35",
+      "name": "B001_35 外协 外协-标印厂 外协/未分配",
+      "start": "2026-01-29 10:42:00",
+      "end": "2026-02-01 10:42:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-critical overdue",
+      "meta": {
+        "batch_id": "B001",
+        "part_no": "P_A",
+        "seq": 35,
+        "op_type_name": "标印",
+        "source": "external",
+        "machine": "外协 外协-标印厂",
+        "operator": "外协/未分配",
+        "group_key": "外协/未分配",
+        "priority": "critical",
+        "due_date": "2026-01-27"
+      }
+    },
+    {
+      "id": "B001_40",
+      "name": "B001_40 外协 外协-总检厂 外协/未分配",
+      "start": "2026-01-29 10:42:00",
+      "end": "2026-02-01 10:42:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-critical overdue",
+      "meta": {
+        "batch_id": "B001",
+        "part_no": "P_A",
+        "seq": 40,
+        "op_type_name": "总检",
+        "source": "external",
+        "machine": "外协 外协-总检厂",
+        "operator": "外协/未分配",
+        "group_key": "外协/未分配",
+        "priority": "critical",
+        "due_date": "2026-01-27"
+      }
+    },
+    {
+      "id": "B002_35",
+      "name": "B002_35 外协 外协-标印厂 外协/未分配",
+      "start": "2026-01-30 15:54:00",
+      "end": "2026-02-02 00:00:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-urgent overdue",
+      "meta": {
+        "batch_id": "B002",
+        "part_no": "P_A",
+        "seq": 35,
+        "op_type_name": "标印",
+        "source": "external",
+        "machine": "外协 外协-标印厂",
+        "operator": "外协/未分配",
+        "group_key": "外协/未分配",
+        "priority": "urgent",
+        "due_date": "2026-01-29"
+      }
+    },
+    {
+      "id": "B002_40",
+      "name": "B002_40 外协 外协-总检厂 外协/未分配",
+      "start": "2026-01-30 15:54:00",
+      "end": "2026-02-02 00:00:00",
+      "progress": 0,
+      "dependencies": "",
+      "custom_class": "priority-urgent overdue",
+      "meta": {
+        "batch_id": "B002",
+        "part_no": "P_A",
+        "seq": 40,
+        "op_type_name": "总检",
+        "source": "external",
+        "machine": "外协 外协-总检厂",
+        "operator": "外协/未分配",
+        "group_key": "外协/未分配",
+        "priority": "urgent",
+        "due_date": "2026-01-29"
+      }
+    }
+  ]
+}

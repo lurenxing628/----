@@ -44,10 +44,15 @@
 
   <div class="card">
     <h3>人员列表</h3>
+    <div class="muted" style="margin-bottom:8px;">
+      批量操作：可批量停用/启用/删除。若人员已被批次工序或排程引用，将禁止删除（请改为停用）。
+    </div>
+    <form id="bulkForm" method="post" action="{{ url_for('personnel.bulk_set_status') }}"></form>
     {% if operators and operators|length > 0 %}
       <table>
         <thead>
           <tr>
+            <th style="width:60px;">选</th>
             <th style="width:120px;">工号</th>
             <th style="width:160px;">姓名</th>
             <th style="width:120px;">状态</th>
@@ -58,6 +63,9 @@
         <tbody>
           {% for r in operators %}
             <tr>
+              <td>
+                <input type="checkbox" name="operator_ids" value="{{ r.operator_id }}" class="js-bulk-check" form="bulkForm">
+              </td>
               <td><a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}">{{ r.operator_id }}</a></td>
               <td>{{ r.name }}</td>
               <td>{{ r.status_zh }}</td>
@@ -68,11 +76,47 @@
                   <span class="muted">-</span>
                 {% endif %}
               </td>
-              <td><a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}">查看/编辑</a></td>
+              <td>
+                <a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}">查看/编辑</a>
+                <span class="muted">｜</span>
+                <form method="post" action="{{ url_for('personnel.delete_operator', operator_id=r.operator_id) }}" style="display:inline;"
+                      onsubmit="return confirm('确定删除人员 {{ r.operator_id }} 吗？若已被排产数据引用将删除失败，建议改为停用。');">
+                  <button type="submit">删除</button>
+                </form>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+
+      <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 人</span>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <select name="status" form="bulkForm">
+            <option value="active">批量设为：在岗</option>
+            <option value="inactive">批量设为：停用/休假</option>
+          </select>
+          <button type="submit" form="bulkForm" formaction="{{ url_for('personnel.bulk_set_status') }}">批量更新状态</button>
+          <button type="submit" form="bulkForm" formaction="{{ url_for('personnel.bulk_delete') }}"
+                  onclick="return confirm('确定批量删除所选人员吗？若存在引用将删除失败；一般建议先批量停用。');">
+            批量删除
+          </button>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          function updateCount() {
+            const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
+            const cnt = checks.filter(x => x && x.checked).length;
+            const el = document.getElementById("jsSelectedCount");
+            if (el) el.textContent = String(cnt);
+          }
+          const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
+          for (const c of checks) c.addEventListener("change", updateCount);
+          updateCount();
+        })();
+      </script>
     {% else %}
       <div class="muted">暂无人员数据（可先新增或通过 Excel 导入）。</div>
     {% endif %}

@@ -8,6 +8,8 @@
       <a href="{{ url_for('equipment.excel_machine_page') }}">设备信息（导入/导出）</a>
       <span class="muted">｜</span>
       <a href="{{ url_for('equipment.excel_link_page') }}">设备人员关联（导入/导出）</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('equipment.downtime_batch_page') }}">批量停机计划</a>
     </div>
   </div>
 
@@ -33,6 +35,10 @@
           </select>
         </div>
         <div>
+          <label>类别（可选）</label><br/>
+          <input name="category" placeholder="如：CNC / 铣床 / 装配" style="width:180px;">
+        </div>
+        <div>
           <label>状态</label><br/>
           <select name="status">
             {% for v, label in status_options %}
@@ -53,10 +59,15 @@
 
   <div class="card">
     <h3>设备列表</h3>
+    <div class="muted" style="margin-bottom:8px;">
+      批量操作：可批量切换状态/删除。若设备已被批次工序或排程引用，将禁止删除（请改为停用或维修）。
+    </div>
+    <form id="bulkForm" method="post" action="{{ url_for('equipment.bulk_set_status') }}"></form>
     {% if machines and machines|length > 0 %}
       <table>
         <thead>
           <tr>
+            <th style="width:60px;">选</th>
             <th style="width:140px;">设备编号</th>
             <th style="width:220px;">设备名称</th>
             <th style="width:160px;">工种</th>
@@ -68,6 +79,9 @@
         <tbody>
           {% for r in machines %}
             <tr>
+              <td>
+                <input type="checkbox" name="machine_ids" value="{{ r.machine_id }}" class="js-bulk-check" form="bulkForm">
+              </td>
               <td><a href="{{ url_for('equipment.detail_page', machine_id=r.machine_id) }}">{{ r.machine_id }}</a></td>
               <td>{{ r.name }}</td>
               <td>
@@ -85,11 +99,48 @@
                   <span class="muted">-</span>
                 {% endif %}
               </td>
-              <td><a href="{{ url_for('equipment.detail_page', machine_id=r.machine_id) }}">查看/编辑</a></td>
+              <td>
+                <a href="{{ url_for('equipment.detail_page', machine_id=r.machine_id) }}">查看/编辑</a>
+                <span class="muted">｜</span>
+                <form method="post" action="{{ url_for('equipment.delete_machine', machine_id=r.machine_id) }}" style="display:inline;"
+                      onsubmit="return confirm('确定删除设备 {{ r.machine_id }} 吗？若已被排产数据引用将删除失败，建议改为停用/维修。');">
+                  <button type="submit">删除</button>
+                </form>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+
+      <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 台设备</span>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <select name="status" form="bulkForm">
+            <option value="active">批量设为：可用</option>
+            <option value="maintain">批量设为：维修</option>
+            <option value="inactive">批量设为：停用</option>
+          </select>
+          <button type="submit" form="bulkForm" formaction="{{ url_for('equipment.bulk_set_status') }}">批量更新状态</button>
+          <button type="submit" form="bulkForm" formaction="{{ url_for('equipment.bulk_delete') }}"
+                  onclick="return confirm('确定批量删除所选设备吗？若存在引用将删除失败；一般建议先批量停用/维修。');">
+            批量删除
+          </button>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          function updateCount() {
+            const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
+            const cnt = checks.filter(x => x && x.checked).length;
+            const el = document.getElementById("jsSelectedCount");
+            if (el) el.textContent = String(cnt);
+          }
+          const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
+          for (const c of checks) c.addEventListener("change", updateCount);
+          updateCount();
+        })();
+      </script>
     {% else %}
       <div class="muted">暂无设备数据（可先新增或通过 Excel 导入）。</div>
     {% endif %}

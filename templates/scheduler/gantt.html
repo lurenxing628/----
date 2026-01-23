@@ -20,7 +20,7 @@
       <div>
         <h2>甘特图（{{ '设备视图' if view=='machine' else '人员视图' }}）</h2>
         <div class="muted">
-          周范围：<strong>{{ week_start }}</strong> ～ <strong>{{ week_end }}</strong>
+          显示范围：<strong>{{ week_start }}</strong> ～ <strong>{{ week_end }}</strong>
           <span class="muted">｜</span>
           版本：<strong>{{ version }}</strong>
         </div>
@@ -35,9 +35,9 @@
     <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
       <div>
         <label>视图</label><br/>
-        <a href="{{ url_for('scheduler.gantt_page', view='machine', week_start=week_start, offset=0, version=version) }}">设备视图</a>
+        <a href="{{ url_for('scheduler.gantt_page', view='machine', week_start=week_start, offset=0, version=version, start_date=start_date, end_date=end_date) }}">设备视图</a>
         <span class="muted">｜</span>
-        <a href="{{ url_for('scheduler.gantt_page', view='operator', week_start=week_start, offset=0, version=version) }}">人员视图</a>
+        <a href="{{ url_for('scheduler.gantt_page', view='operator', week_start=week_start, offset=0, version=version, start_date=start_date, end_date=end_date) }}">人员视图</a>
       </div>
 
       <div>
@@ -52,6 +52,14 @@
       <div>
         <form method="get" action="{{ url_for('scheduler.gantt_page') }}" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
           <input type="hidden" name="view" value="{{ view }}">
+          <div>
+            <label>排产区间（起）</label><br/>
+            <input type="date" name="start_date" value="{{ start_date }}" style="width:160px;">
+          </div>
+          <div>
+            <label>排产区间（止）</label><br/>
+            <input type="date" name="end_date" value="{{ end_date }}" style="width:160px;">
+          </div>
           <div>
             <label>指定周（任意日期，系统会自动归到周一）</label><br/>
             <input name="week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD" style="width:160px;">
@@ -97,6 +105,8 @@
       dataUrl: {{ data_url|tojson }},
       view: {{ view|tojson }},
       weekStart: {{ week_start|tojson }},
+      startDate: {{ start_date|tojson }},
+      endDate: {{ end_date|tojson }},
       offset: {{ offset|tojson }},
       version: {{ version|tojson }}
     };

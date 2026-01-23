@@ -1,7 +1,7 @@
 import atexit
 import json
 import os
-from flask import Flask, g
+from flask import Flask, g, request
 from markupsafe import Markup
 
 from config import config as config_map
@@ -65,9 +65,30 @@ def create_app() -> Flask:
     # 每请求 DB 连接（避免跨线程）
     @app.before_request
     def _open_db():
+        # 静态资源不需要 DB（减少不必要开销，也避免触发自动维护）
+        try:
+            if request.path and str(request.path).startswith("/static"):
+                return
+        except Exception:
+            pass
         if "db" not in g:
             g.db = get_connection(app.config["DATABASE_PATH"])
             g.op_logger = OperationLogger(g.db, logger=app.logger)
+            # 系统维护（按请求触发：自动备份/自动清理等；内部带节流）
+            try:
+                from core.services.system import SystemMaintenanceService
+
+                _ = SystemMaintenanceService.run_if_due(
+                    g.db,
+                    db_path=app.config["DATABASE_PATH"],
+                    backup_dir=app.config["BACKUP_DIR"],
+                    backup_keep_days_default=int(app.config.get("BACKUP_KEEP_DAYS", 7)),
+                    logger=app.logger,
+                    op_logger=getattr(g, "op_logger", None),
+                )
+            except Exception as e:
+                # 不阻断请求：只记错误日志
+                app.logger.error(f"系统维护任务执行失败（已忽略）：{e}")
 
     @app.teardown_appcontext
     def _close_db(_exc):

@@ -13,6 +13,8 @@
     const url = new URL(cfg.dataUrl || "", window.location.origin);
     if (cfg.view) url.searchParams.set("view", cfg.view);
     if (cfg.weekStart) url.searchParams.set("week_start", cfg.weekStart);
+    if (cfg.startDate) url.searchParams.set("start_date", cfg.startDate);
+    if (cfg.endDate) url.searchParams.set("end_date", cfg.endDate);
     if (typeof cfg.offset !== "undefined") url.searchParams.set("offset", String(cfg.offset));
     if (cfg.version) url.searchParams.set("version", String(cfg.version));
 
@@ -68,7 +70,8 @@
     try {
       const container = document.querySelector(".gantt-container");
       if (container && gantt && gantt.gantt_start) {
-        const target = new Date(String(cfg.weekStart || "") + " 00:00:00");
+        const anchor = String(cfg.startDate || cfg.weekStart || "");
+        const target = new Date(anchor + " 00:00:00");
         const diffHours = (target.getTime() - gantt.gantt_start.getTime()) / 3600000.0;
         const px = (diffHours / gantt.options.step) * gantt.options.column_width - gantt.options.column_width;
         container.scrollLeft = Math.max(0, Math.floor(px));

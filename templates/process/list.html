@@ -50,10 +50,15 @@
 
   <div class="card">
     <h3>零件工艺模板</h3>
+    <div class="muted" style="margin-bottom:8px;">
+      批量操作：可批量删除零件。若零件已被批次引用，将禁止删除（避免排产数据断链）。
+    </div>
+    <form id="bulkForm" method="post" action="{{ url_for('process.bulk_delete_parts') }}"></form>
     {% if parts and parts|length > 0 %}
       <table>
         <thead>
           <tr>
+            <th style="width:60px;">选</th>
             <th style="width:140px;">图号</th>
             <th style="width:220px;">名称</th>
             <th>工艺路线</th>
@@ -64,6 +69,9 @@
         <tbody>
           {% for r in parts %}
             <tr>
+              <td>
+                <input type="checkbox" name="part_nos" value="{{ r.part_no }}" class="js-bulk-check" form="bulkForm">
+              </td>
               <td><a href="{{ url_for('process.part_detail', part_no=r.part_no) }}">{{ r.part_no }}</a></td>
               <td>{{ r.part_name }}</td>
               <td>
@@ -74,11 +82,40 @@
                 {% endif %}
               </td>
               <td>{{ r.route_parsed_zh }}</td>
-              <td><a href="{{ url_for('process.part_detail', part_no=r.part_no) }}">查看/编辑</a></td>
+              <td>
+                <a href="{{ url_for('process.part_detail', part_no=r.part_no) }}">查看/编辑</a>
+                <span class="muted">｜</span>
+                <form method="post" action="{{ url_for('process.delete_part', part_no=r.part_no) }}" style="display:inline;"
+                      onsubmit="return confirm('确定删除零件 {{ r.part_no }} 吗？若已被批次引用将删除失败。');">
+                  <button type="submit">删除</button>
+                </form>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+
+      <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个零件</span>
+        <button type="submit" form="bulkForm" formaction="{{ url_for('process.bulk_delete_parts') }}"
+                onclick="return confirm('确定批量删除所选零件吗？若存在批次引用将删除失败。');">
+          批量删除
+        </button>
+      </div>
+
+      <script>
+        (function () {
+          function updateCount() {
+            const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
+            const cnt = checks.filter(x => x && x.checked).length;
+            const el = document.getElementById("jsSelectedCount");
+            if (el) el.textContent = String(cnt);
+          }
+          const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
+          for (const c of checks) c.addEventListener("change", updateCount);
+          updateCount();
+        })();
+      </script>
     {% else %}
       <div class="muted">暂无零件数据（可先新增或通过 Excel 导入）。</div>
     {% endif %}

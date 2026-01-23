@@ -12,7 +12,7 @@ class BatchRepository(BaseRepository):
 
     def get(self, batch_id: str) -> Optional[Batch]:
         row = self.fetchone(
-            "SELECT batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status, remark, created_at, updated_at FROM Batches WHERE batch_id = ?",
+            "SELECT batch_id, part_no, part_name, quantity, due_date, priority, ready_status, ready_date, status, remark, created_at, updated_at FROM Batches WHERE batch_id = ?",
             (batch_id,),
         )
         return Batch.from_row(row) if row else None
@@ -23,7 +23,7 @@ class BatchRepository(BaseRepository):
         priority: Optional[str] = None,
         part_no: Optional[str] = None,
     ) -> List[Batch]:
-        sql = "SELECT batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status, remark, created_at, updated_at FROM Batches"
+        sql = "SELECT batch_id, part_no, part_name, quantity, due_date, priority, ready_status, ready_date, status, remark, created_at, updated_at FROM Batches"
         params: List[Any] = []
         where = []
         if status:
@@ -49,8 +49,8 @@ class BatchRepository(BaseRepository):
         self.execute(
             """
             INSERT INTO Batches
-            (batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status, remark)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (batch_id, part_no, part_name, quantity, due_date, priority, ready_status, ready_date, status, remark)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 b.batch_id,
@@ -60,6 +60,7 @@ class BatchRepository(BaseRepository):
                 b.due_date,
                 b.priority,
                 b.ready_status,
+                b.ready_date,
                 b.status,
                 b.remark,
             ),
@@ -77,6 +78,7 @@ class BatchRepository(BaseRepository):
               due_date = COALESCE(?, due_date),
               priority = COALESCE(?, priority),
               ready_status = COALESCE(?, ready_status),
+              ready_date = COALESCE(?, ready_date),
               status = COALESCE(?, status),
               remark = COALESCE(?, remark),
               updated_at = CURRENT_TIMESTAMP
@@ -89,6 +91,7 @@ class BatchRepository(BaseRepository):
                 updates.get("due_date"),
                 updates.get("priority"),
                 updates.get("ready_status"),
+                updates.get("ready_date"),
                 updates.get("status"),
                 updates.get("remark"),
                 batch_id,

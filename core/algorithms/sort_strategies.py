@@ -27,7 +27,8 @@ class BatchForSort:
     batch_id: str
     priority: str  # normal/urgent/critical
     due_date: Optional[date] = None
-    ready_status: str = "no"  # yes/no/partial
+    ready_status: str = "yes"  # yes/no/partial（当前排产仅允许 yes；此字段保留供未来扩展）
+    ready_date: Optional[date] = None
     created_at: Optional[datetime] = None
 
 
@@ -81,25 +82,24 @@ class DueDateFirstStrategy(BaseSortStrategy):
 class WeightedStrategy(BaseSortStrategy):
     """
 权重混合（加权评分后降序）：
-score = priority_weight×priority_score + due_weight×due_score + ready_weight×ready_score
+score = priority_weight×priority_score + due_weight×due_score
+
+说明：
+- V1.1 起，“齐套权重”作为预留字段，不参与当前排序（排产本身只排齐套批次）
 """
 
     PRIORITY_SCORE = {"critical": 100, "urgent": 60, "normal": 20}
-    READY_SCORE = {"yes": 100, "partial": 50, "no": 0}
 
-    def __init__(self, priority_weight: float = 0.4, due_weight: float = 0.5, ready_weight: float = 0.1):
+    def __init__(self, priority_weight: float = 0.4, due_weight: float = 0.5):
         self.priority_weight = float(priority_weight)
         self.due_weight = float(due_weight)
-        self.ready_weight = float(ready_weight)
 
     def sort(self, batches: List[BatchForSort]) -> List[BatchForSort]:
         today = date.today()
 
         def calc_score(batch: BatchForSort) -> float:
             pr = (batch.priority or "").strip()
-            rs = (batch.ready_status or "").strip()
             priority_score = self.PRIORITY_SCORE.get(pr, 0)
-            ready_score = self.READY_SCORE.get(rs, 0)
 
             if batch.due_date:
                 days_left = (batch.due_date - today).days
@@ -107,7 +107,7 @@ score = priority_weight×priority_score + due_weight×due_score + ready_weight×
             else:
                 due_score = 0
 
-            return (self.priority_weight * priority_score) + (self.due_weight * due_score) + (self.ready_weight * ready_score)
+            return (self.priority_weight * priority_score) + (self.due_weight * due_score)
 
         # 分数降序，同分按批次号升序（稳定）
         return sorted(batches, key=lambda b: (-calc_score(b), b.batch_id))
@@ -147,7 +147,11 @@ class StrategyFactory:
             raise ValueError(f"Unknown strategy: {strategy}")
 
         if strategy == SortStrategy.WEIGHTED:
-            return strategy_class(**kwargs)
+            # V1.1：忽略 ready_weight（预留字段，不参与当前排序）
+            return strategy_class(
+                priority_weight=kwargs.get("priority_weight", 0.4),
+                due_weight=kwargs.get("due_weight", 0.5),
+            )
         return strategy_class()
 
     @classmethod

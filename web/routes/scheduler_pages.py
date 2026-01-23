@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import re
+from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from flask import flash, g, redirect, render_template, request, url_for
 
-from core.infrastructure.errors import AppError
+from core.infrastructure.errors import AppError, ValidationError
 from core.services.scheduler import BatchService, CalendarService, ConfigService, ScheduleService
 from data.repositories import MachineRepository, OperatorRepository, PartRepository, ScheduleHistoryRepository, SupplierRepository
 
@@ -63,6 +65,7 @@ def batches_page():
         strategies=strategies,
         latest_history=latest_history,
         latest_summary=latest_summary,
+        default_start_dt=(datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d 08:00"),
     )
 
 
@@ -73,12 +76,13 @@ def create_batch():
     quantity = request.form.get("quantity")
     due_date = request.form.get("due_date") or None
     priority = request.form.get("priority") or "normal"
-    ready_status = request.form.get("ready_status") or "no"
+    ready_status = request.form.get("ready_status") or "yes"
+    ready_date = request.form.get("ready_date") or None
     remark = request.form.get("remark") or None
-    auto_gen = (request.form.get("auto_generate_ops") or "").strip().lower() in ("1", "true", "on", "yes")
 
     batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    if auto_gen:
+    try:
+        # 创建批次默认强制生成工序（从零件模板；缺模板时会尝试自动解析 route_raw）
         b = batch_svc.create_batch_from_template(
             batch_id=batch_id,
             part_no=part_no,
@@ -86,23 +90,15 @@ def create_batch():
             due_date=due_date,
             priority=priority,
             ready_status=ready_status,
+            ready_date=ready_date,
             remark=remark,
             rebuild_ops=False,
         )
         flash(f"已创建批次并生成工序：{b.batch_id}（共 {len(batch_svc.list_operations(b.batch_id))} 道工序）", "success")
-    else:
-        b = batch_svc.create(
-            batch_id=batch_id,
-            part_no=part_no,
-            quantity=quantity,
-            due_date=due_date,
-            priority=priority,
-            ready_status=ready_status,
-            remark=remark,
-        )
-        flash(f"已创建批次：{b.batch_id}", "success")
-
-    return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))
+        return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))
+    except AppError as e:
+        flash(e.message, "error")
+        return redirect(url_for("scheduler.batches_page"))
 
 
 @bp.get("/batches/<batch_id>")
@@ -214,6 +210,133 @@ def batch_detail(batch_id: str):
     )
 
 
+@bp.post("/batches/<batch_id>/delete")
+def delete_batch(batch_id: str):
+    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    try:
+        batch_svc.delete(batch_id)
+        flash(f"已删除批次：{batch_id}", "success")
+        return redirect(url_for("scheduler.batches_page"))
+    except AppError as e:
+        flash(e.message, "error")
+        return redirect(url_for("scheduler.batch_detail", batch_id=batch_id))
+
+
+@bp.post("/batches/bulk/delete")
+def bulk_delete_batches():
+    batch_ids = request.form.getlist("batch_ids")
+    if not batch_ids:
+        flash("请至少选择 1 个批次。", "error")
+        return redirect(url_for("scheduler.batches_page"))
+
+    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    ok = 0
+    failed: List[str] = []
+    for bid in batch_ids:
+        try:
+            batch_svc.delete(bid)
+            ok += 1
+        except Exception:
+            failed.append(str(bid))
+            continue
+
+    flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
+    if failed:
+        sample = "，".join(failed[:10])
+        flash(f"删除失败（最多展示 10 个）：{sample}", "warning")
+    return redirect(url_for("scheduler.batches_page"))
+
+
+def _next_batch_id_like(src: str, exists_fn) -> str:
+    """
+    将批次号末尾数字 +1，并在冲突时继续 +1，直到可用。
+    示例：B001 -> B002；B009 -> B010。
+    """
+    s = (src or "").strip()
+    m = re.match(r"^(.*?)(\d+)$", s)
+    if not m:
+        raise ValueError("批次号末尾必须包含数字，才能自动 +1（如：B001）")
+    prefix, num_text = m.group(1), m.group(2)
+    width = len(num_text)
+    n = int(num_text)
+    guard = 0
+    while True:
+        guard += 1
+        if guard > 10000:
+            raise ValueError("无法生成新批次号：尝试次数过多")
+        n += 1
+        cand = f"{prefix}{n:0{width}d}"
+        if not exists_fn(cand):
+            return cand
+
+
+@bp.post("/batches/bulk/copy")
+def bulk_copy_batches():
+    batch_ids = request.form.getlist("batch_ids")
+    if not batch_ids:
+        flash("请至少选择 1 个批次。", "error")
+        return redirect(url_for("scheduler.batches_page"))
+
+    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    ok = 0
+    failed: List[str] = []
+    mappings: List[str] = []
+    for bid in batch_ids:
+        try:
+            new_id = _next_batch_id_like(str(bid), exists_fn=lambda x: batch_svc.batch_repo.get(x) is not None)
+            b2 = batch_svc.copy_batch(bid, new_id)
+            ok += 1
+            mappings.append(f"{bid}→{b2.batch_id}")
+        except Exception as e:
+            failed.append(f"{bid}（{e}）")
+            continue
+
+    flash(f"批量复制完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
+    if mappings:
+        flash("复制结果（最多 10 条）：" + "，".join(mappings[:10]), "success")
+    if failed:
+        flash("失败原因（最多 5 条）：" + "；".join(failed[:5]), "warning")
+    return redirect(url_for("scheduler.batches_page"))
+
+
+@bp.post("/batches/bulk/update")
+def bulk_update_batches():
+    batch_ids = request.form.getlist("batch_ids")
+    if not batch_ids:
+        flash("请至少选择 1 个批次。", "error")
+        return redirect(url_for("scheduler.batches_page"))
+
+    priority = (request.form.get("bulk_priority") or "").strip() or None
+    due_date = (request.form.get("bulk_due_date") or "").strip() or None
+    remark = request.form.get("bulk_remark")
+    remark = (remark.strip() if remark is not None else None) or None
+
+    if priority is None and due_date is None and remark is None:
+        flash("未填写任何要批量修改的字段（优先级/交期/备注）。", "error")
+        return redirect(url_for("scheduler.batches_page"))
+
+    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    ok = 0
+    failed: List[str] = []
+    for bid in batch_ids:
+        try:
+            batch_svc.update(
+                batch_id=bid,
+                due_date=due_date if due_date is not None else None,
+                priority=priority if priority is not None else None,
+                remark=remark if remark is not None else None,
+            )
+            ok += 1
+        except Exception as e:
+            failed.append(f"{bid}（{e}）")
+            continue
+
+    flash(f"批量修改完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
+    if failed:
+        flash("失败原因（最多 5 条）：" + "；".join(failed[:5]), "warning")
+    return redirect(url_for("scheduler.batches_page"))
+
+
 @bp.post("/batches/<batch_id>/generate-ops")
 def generate_ops(batch_id: str):
     batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
@@ -267,9 +390,11 @@ def run_schedule():
     执行排产（Phase 7）。
     """
     batch_ids = request.form.getlist("batch_ids")
+    start_dt = request.form.get("start_dt") or None
+    end_date = request.form.get("end_date") or None
     sch_svc = ScheduleService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     try:
-        result = sch_svc.run_schedule(batch_ids=batch_ids, created_by="web")
+        result = sch_svc.run_schedule(batch_ids=batch_ids, start_dt=start_dt, end_date=end_date, created_by="web")
         ver = result.get("version")
         summary = result.get("summary") or {}
         overdue = result.get("overdue_batches") or []
@@ -305,12 +430,23 @@ def update_config():
     strategy = request.form.get("sort_strategy")
     cfg_svc.set_strategy(strategy)
 
-    # 权重：若用户填写则更新；否则保持不变
+    # 权重（仅暴露：优先级/交期；齐套权重为预留字段，当前不参与排产）
     pw = request.form.get("priority_weight")
     dw = request.form.get("due_weight")
-    rw = request.form.get("ready_weight")
-    if pw is not None and dw is not None and rw is not None and (str(pw).strip() or str(dw).strip() or str(rw).strip()):
-        cfg_svc.set_weights(pw, dw, rw, require_sum_1=True)
+    if (pw is not None and str(pw).strip()) or (dw is not None and str(dw).strip()):
+        cur = cfg_svc.get_snapshot()
+        # 允许只填一个：未填的用当前值
+        pw_v = str(pw).strip() if pw is not None and str(pw).strip() else str(cur.priority_weight)
+        dw_v = str(dw).strip() if dw is not None and str(dw).strip() else str(cur.due_weight)
+        # 统一归一化（支持 0~1 或 0~100%）
+        pw_f = cfg_svc._normalize_weight(pw_v, field="优先级权重")  # type: ignore[attr-defined]
+        dw_f = cfg_svc._normalize_weight(dw_v, field="交期权重")  # type: ignore[attr-defined]
+        rw_f = 1.0 - pw_f - dw_f
+        if rw_f < -1e-9:
+            raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
+        # 防御：浮点误差
+        rw_f = max(0.0, float(rw_f))
+        cfg_svc.set_weights(pw_f, dw_f, rw_f, require_sum_1=True)
 
     flash("排产策略配置已保存。", "success")
     return redirect(url_for("scheduler.batches_page"))
@@ -338,6 +474,8 @@ def calendar_upsert():
     date_value = request.form.get("date")
     day_type = request.form.get("day_type")
     shift_hours = request.form.get("shift_hours")
+    shift_start = request.form.get("shift_start")
+    shift_end = request.form.get("shift_end")
     efficiency = request.form.get("efficiency")
     allow_normal = request.form.get("allow_normal")
     allow_urgent = request.form.get("allow_urgent")
@@ -348,6 +486,8 @@ def calendar_upsert():
         date_value=date_value,
         day_type=day_type,
         shift_hours=shift_hours,
+        shift_start=shift_start,
+        shift_end=shift_end,
         efficiency=efficiency,
         allow_normal=allow_normal,
         allow_urgent=allow_urgent,

@@ -28,16 +28,18 @@ def _get_int_arg(name: str, default: int = 0) -> int:
 @bp.get("/week-plan")
 def week_plan_page():
     week_start = (request.args.get("week_start") or "").strip() or None
+    start_date = (request.args.get("start_date") or "").strip() or None
+    end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
     version_raw = (request.args.get("version") or "").strip()
     version: Optional[int] = int(version_raw) if version_raw else None
 
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset)
+    wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
     ver = version if version is not None else svc.get_latest_version_or_1()
 
     versions = ScheduleHistoryRepository(g.db).list_versions(limit=30)
-    data = svc.get_week_plan_rows(week_start=wr.week_start_date.isoformat(), offset_weeks=0, version=ver)
+    data = svc.get_week_plan_rows(start_date=wr.week_start_date.isoformat(), end_date=wr.week_end_date.isoformat(), version=ver)
 
     rows = data.get("rows") or []
     preview_rows = rows[:50]
@@ -47,12 +49,16 @@ def week_plan_page():
         title="周计划（导出）",
         week_start=wr.week_start_date.isoformat(),
         week_end=wr.week_end_date.isoformat(),
+        start_date=wr.week_start_date.isoformat(),
+        end_date=wr.week_end_date.isoformat(),
         offset=offset,
         version=ver,
         versions=versions,
         preview_rows=preview_rows,
         total_rows=len(rows),
-        export_url=url_for("scheduler.week_plan_export", week_start=wr.week_start_date.isoformat(), offset=0, version=ver),
+        export_url=url_for(
+            "scheduler.week_plan_export", start_date=wr.week_start_date.isoformat(), end_date=wr.week_end_date.isoformat(), version=ver
+        ),
     )
 
 
@@ -60,13 +66,17 @@ def week_plan_page():
 def week_plan_export():
     start = time.time()
     week_start = (request.args.get("week_start") or "").strip() or None
+    start_date = (request.args.get("start_date") or "").strip() or None
+    end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
     version_raw = (request.args.get("version") or "").strip()
     version: Optional[int] = int(version_raw) if version_raw else None
 
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     try:
-        data = svc.get_week_plan_rows(week_start=week_start, offset_weeks=offset, version=version)
+        data = svc.get_week_plan_rows(
+            week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date, version=version
+        )
         rows = data.get("rows") or []
         ver = int(data.get("version") or 1)
         ws = data.get("week_start")
@@ -122,13 +132,15 @@ def simulate_schedule():
     - 不更新批次/工序状态（避免污染正式状态）
     """
     batch_ids = request.form.getlist("batch_ids")
+    start_dt = request.form.get("start_dt") or None
+    end_date = request.form.get("end_date") or None
     if not batch_ids:
         flash("请至少选择 1 个批次进行模拟排产。", "error")
         return redirect(url_for("scheduler.batches_page"))
 
     sch_svc = ScheduleService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     try:
-        result = sch_svc.run_schedule(batch_ids=batch_ids, created_by="web", simulate=True)
+        result = sch_svc.run_schedule(batch_ids=batch_ids, start_dt=start_dt, end_date=end_date, created_by="web", simulate=True)
         ver = int(result.get("version") or 1)
         flash(f"模拟排产完成：生成版本 {ver}（不影响批次状态）。", "success")
 

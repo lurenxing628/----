@@ -19,6 +19,14 @@
   <div class="card">
     <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
       <div>
+        <label>排产区间（起）</label><br/>
+        <input type="date" name="start_date" value="{{ start_date }}" style="width:160px;">
+      </div>
+      <div>
+        <label>排产区间（止）</label><br/>
+        <input type="date" name="end_date" value="{{ end_date }}" style="width:160px;">
+      </div>
+      <div>
         <label>指定周（任意日期，系统会自动归到周一）</label><br/>
         <input name="week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD" style="width:160px;">
       </div>

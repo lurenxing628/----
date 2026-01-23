@@ -12,13 +12,18 @@ class MachineRepository(BaseRepository):
 
     def get(self, machine_id: str) -> Optional[Machine]:
         row = self.fetchone(
-            "SELECT machine_id, name, op_type_id, status, remark, created_at, updated_at FROM Machines WHERE machine_id = ?",
+            "SELECT machine_id, name, op_type_id, category, status, remark, created_at, updated_at FROM Machines WHERE machine_id = ?",
             (machine_id,),
         )
         return Machine.from_row(row) if row else None
 
-    def list(self, status: Optional[str] = None, op_type_id: Optional[str] = None) -> List[Machine]:
-        sql = "SELECT machine_id, name, op_type_id, status, remark, created_at, updated_at FROM Machines"
+    def list(
+        self,
+        status: Optional[str] = None,
+        op_type_id: Optional[str] = None,
+        category: Optional[str] = None,
+    ) -> List[Machine]:
+        sql = "SELECT machine_id, name, op_type_id, category, status, remark, created_at, updated_at FROM Machines"
         params: List[Any] = []
         where = []
         if status:
@@ -27,6 +32,9 @@ class MachineRepository(BaseRepository):
         if op_type_id:
             where.append("op_type_id = ?")
             params.append(op_type_id)
+        if category:
+            where.append("category = ?")
+            params.append(category)
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY machine_id"
@@ -39,8 +47,8 @@ class MachineRepository(BaseRepository):
     def create(self, machine: Union[Machine, Dict[str, Any]]) -> Machine:
         m = machine if isinstance(machine, Machine) else Machine.from_row(machine)
         self.execute(
-            "INSERT INTO Machines (machine_id, name, op_type_id, status, remark) VALUES (?, ?, ?, ?, ?)",
-            (m.machine_id, m.name, m.op_type_id, m.status, m.remark),
+            "INSERT INTO Machines (machine_id, name, op_type_id, category, status, remark) VALUES (?, ?, ?, ?, ?, ?)",
+            (m.machine_id, m.name, m.op_type_id, m.category, m.status, m.remark),
         )
         return m
 
@@ -55,11 +63,11 @@ class MachineRepository(BaseRepository):
         if not updates:
             return
 
-        allowed = {"name", "op_type_id", "status", "remark"}
+        allowed = {"name", "op_type_id", "category", "status", "remark"}
         set_parts: List[str] = []
         params: List[Any] = []
 
-        for key in ("name", "op_type_id", "status", "remark"):
+        for key in ("name", "op_type_id", "category", "status", "remark"):
             if key not in allowed:
                 continue
             if key in updates:

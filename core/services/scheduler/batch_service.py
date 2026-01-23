@@ -50,18 +50,31 @@ class BatchService:
         """
         交期（due_date）存储为 SQLite DATE，V1 以字符串 `YYYY-MM-DD` 为主。
         - 允许为空
-        - 允许传入 datetime/date（会转为 ISO 格式）
+        - 支持字符串：YYYY-MM-DD / YYYY/MM/DD / YYYY-MM-DD HH:MM(:SS) / YYYY-MM-DDTHH:MM
+        - 支持 datetime/date
         """
         if value is None:
             return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        # datetime/date 兜底
-        try:
+        from datetime import date as _date, datetime as _dt
+
+        if isinstance(value, _dt):
+            return value.date().isoformat()
+        if isinstance(value, _date):
             return value.isoformat()
+
+        v = str(value).strip()
+        if not v:
+            return None
+        v = v.replace("/", "-")
+        # 允许带时间：只取日期部分
+        if "T" in v:
+            v = v.split("T", 1)[0]
+        if " " in v:
+            v = v.split(" ", 1)[0]
+        try:
+            return _dt.strptime(v, "%Y-%m-%d").date().isoformat()
         except Exception:
-            return str(value)
+            raise ValidationError("日期格式不合法（期望：YYYY-MM-DD）", field="日期")
 
     @staticmethod
     def _validate_enum(value: Optional[str], allowed: Tuple[str, ...], field: str) -> Optional[str]:
@@ -115,7 +128,8 @@ class BatchService:
         quantity: Any,
         due_date: Any = None,
         priority: Any = BatchPriority.NORMAL.value,
-        ready_status: Any = ReadyStatus.NO.value,
+        ready_status: Any = ReadyStatus.YES.value,
+        ready_date: Any = None,
         status: Any = BatchStatus.PENDING.value,
         remark: Any = None,
         part_name: Any = None,
@@ -125,7 +139,8 @@ class BatchService:
         qty = self._normalize_int(quantity, field="数量", allow_none=False)
         dd = self._normalize_date(due_date)
         pr = self._normalize_text(priority) or BatchPriority.NORMAL.value
-        rs = self._normalize_text(ready_status) or ReadyStatus.NO.value
+        rs = self._normalize_text(ready_status) or ReadyStatus.YES.value
+        rd = self._normalize_date(ready_date)
         st = self._normalize_text(status) or BatchStatus.PENDING.value
         rmk = self._normalize_text(remark)
 
@@ -170,6 +185,7 @@ class BatchService:
                     "due_date": dd,
                     "priority": pr,
                     "ready_status": rs,
+                    "ready_date": rd,
                     "status": st,
                     "remark": rmk,
                 }
@@ -196,6 +212,7 @@ class BatchService:
         due_date: Any = None,
         priority: Any = None,
         ready_status: Any = None,
+        ready_date: Any = None,
         status: Any = None,
         remark: Any = None,
         part_name: Any = None,
@@ -241,6 +258,9 @@ class BatchService:
             self._validate_enum(rs, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
             updates["ready_status"] = rs
 
+        if ready_date is not None:
+            updates["ready_date"] = self._normalize_date(ready_date)
+
         if status is not None:
             st = self._normalize_text(status)
             self._validate_enum(
@@ -284,6 +304,75 @@ class BatchService:
         with self.tx_manager.transaction():
             self.batch_repo.delete(bid)
 
+    def copy_batch(self, source_batch_id: Any, new_batch_id: Any) -> Batch:
+        """
+        复制批次（含批次工序），用于批量复制/快速建相似批次。
+
+        规则：
+        - 新批次 status 固定为 pending
+        - 新批次工序 status 固定为 pending（不复制 scheduled 等状态）
+        - 其它字段尽量保持一致（图号/数量/交期/优先级/齐套/备注/工序补充信息等）
+        """
+        src = self._normalize_text(source_batch_id)
+        dst = self._normalize_text(new_batch_id)
+        if not src:
+            raise ValidationError("“源批次号”不能为空", field="源批次号")
+        if not dst:
+            raise ValidationError("“新批次号”不能为空", field="新批次号")
+        if src == dst:
+            raise ValidationError("新批次号不能与源批次号相同", field="新批次号")
+
+        b = self._get_or_raise(src)
+        if self.batch_repo.get(dst):
+            raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS, f"批次号“{dst}”已存在，不能复制。")
+
+        ops = self.batch_op_repo.list_by_batch(src)
+        with self.tx_manager.transaction():
+            # 创建新批次
+            self.batch_repo.create(
+                {
+                    "batch_id": dst,
+                    "part_no": b.part_no,
+                    "part_name": b.part_name,
+                    "quantity": int(b.quantity),
+                    "due_date": b.due_date,
+                    "priority": b.priority,
+                    "ready_status": b.ready_status,
+                    "ready_date": b.ready_date,
+                    "status": BatchStatus.PENDING.value,
+                    "remark": b.remark,
+                }
+            )
+
+            # 复制工序（重新生成 op_code，保持 seq/piece_id，其它字段尽量拷贝）
+            for op in ops:
+                seq = int(op.seq or 0)
+                piece = op.piece_id
+                if piece:
+                    op_code = f"{dst}_{seq:02d}_{piece}"
+                else:
+                    op_code = f"{dst}_{seq:02d}"
+                self.batch_op_repo.create(
+                    {
+                        "op_code": op_code,
+                        "batch_id": dst,
+                        "piece_id": piece,
+                        "seq": seq,
+                        "op_type_id": op.op_type_id,
+                        "op_type_name": op.op_type_name,
+                        "source": op.source,
+                        "machine_id": op.machine_id,
+                        "operator_id": op.operator_id,
+                        "supplier_id": op.supplier_id,
+                        "setup_hours": float(op.setup_hours or 0.0),
+                        "unit_hours": float(op.unit_hours or 0.0),
+                        "ext_days": float(op.ext_days) if op.ext_days is not None and op.ext_days != "" else None,
+                        "status": "pending",
+                    }
+                )
+
+        return self._get_or_raise(dst)
+
     # -------------------------
     # 批次工序生成（P6-01：关键事务边界）
     # -------------------------
@@ -294,7 +383,8 @@ class BatchService:
         quantity: Any,
         due_date: Any = None,
         priority: Any = BatchPriority.NORMAL.value,
-        ready_status: Any = ReadyStatus.NO.value,
+        ready_status: Any = ReadyStatus.YES.value,
+        ready_date: Any = None,
         remark: Any = None,
         rebuild_ops: bool = False,
     ) -> Batch:
@@ -317,7 +407,8 @@ class BatchService:
             raise ValidationError("“数量”必须大于 0", field="数量")
 
         pr = self._normalize_text(priority) or BatchPriority.NORMAL.value
-        rs = self._normalize_text(ready_status) or ReadyStatus.NO.value
+        rs = self._normalize_text(ready_status) or ReadyStatus.YES.value
+        rd = self._normalize_date(ready_date)
         self._validate_enum(pr, (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value), "优先级")
         self._validate_enum(rs, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
 
@@ -327,10 +418,26 @@ class BatchService:
 
         template_ops = self.part_op_repo.list_by_part(pn, include_deleted=False)
         if not template_ops:
-            raise BusinessError(
-                ErrorCode.ROUTE_PARSE_ERROR,
-                "该零件尚未生成工序模板，无法创建批次工序。请先在工艺管理中解析工艺路线并保存模板。",
-            )
+            # 若模板缺失：尝试从 Parts.route_raw 自动解析并保存模板（减少“创建批次报错”）
+            rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
+            if rr:
+                try:
+                    from core.services.process.part_service import PartService
+
+                    PartService(self.conn, logger=self.logger, op_logger=self.op_logger).reparse_and_save(part_no=pn, route_raw=rr)
+                except Exception as e:
+                    raise BusinessError(
+                        ErrorCode.ROUTE_PARSE_ERROR,
+                        "该零件尚未生成工序模板，且自动解析失败。请到【工艺管理-工序模板】中检查工艺路线并重新解析。",
+                        cause=e,
+                    )
+                template_ops = self.part_op_repo.list_by_part(pn, include_deleted=False)
+
+            if not template_ops:
+                raise BusinessError(
+                    ErrorCode.ROUTE_PARSE_ERROR,
+                    "该零件尚未生成工序模板，无法创建批次工序。请先在【工艺管理-工序模板】中解析工艺路线并保存模板。",
+                )
 
         with self.tx_manager.transaction():
             self.create_batch_from_template_no_tx(
@@ -340,6 +447,7 @@ class BatchService:
                 due_date=self._normalize_date(due_date),
                 priority=pr,
                 ready_status=rs,
+                ready_date=rd,
                 remark=self._normalize_text(remark),
                 rebuild_ops=rebuild_ops,
             )
@@ -354,6 +462,7 @@ class BatchService:
         due_date: Optional[str],
         priority: str,
         ready_status: str,
+        ready_date: Optional[str],
         remark: Optional[str],
         rebuild_ops: bool = False,
     ) -> None:
@@ -373,7 +482,7 @@ class BatchService:
             raise ValidationError("“数量”必须大于 0", field="数量")
 
         pr = self._normalize_text(priority) or BatchPriority.NORMAL.value
-        rs = self._normalize_text(ready_status) or ReadyStatus.NO.value
+        rs = self._normalize_text(ready_status) or ReadyStatus.YES.value
         self._validate_enum(pr, (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value), "优先级")
         self._validate_enum(rs, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
 
@@ -383,10 +492,28 @@ class BatchService:
 
         template_ops = self.part_op_repo.list_by_part(pn, include_deleted=False)
         if not template_ops:
-            raise BusinessError(
-                ErrorCode.ROUTE_PARSE_ERROR,
-                "该零件尚未生成工序模板，无法创建批次工序。请先在工艺管理中解析工艺路线并保存模板。",
-            )
+            rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
+            if rr:
+                try:
+                    from core.services.process.part_service import PartService
+
+                    # no_tx：在外部事务中覆盖保存模板（避免嵌套事务）
+                    PartService(self.conn, logger=self.logger, op_logger=self.op_logger).upsert_and_parse_no_tx(
+                        part_no=pn, part_name=part.part_name or pn, route_raw=rr
+                    )
+                except Exception as e:
+                    raise BusinessError(
+                        ErrorCode.ROUTE_PARSE_ERROR,
+                        "该零件尚未生成工序模板，且自动解析失败。请到【工艺管理-工序模板】中检查工艺路线并重新解析。",
+                        cause=e,
+                    )
+                template_ops = self.part_op_repo.list_by_part(pn, include_deleted=False)
+
+            if not template_ops:
+                raise BusinessError(
+                    ErrorCode.ROUTE_PARSE_ERROR,
+                    "该零件尚未生成工序模板，无法创建批次工序。请先在【工艺管理-工序模板】中解析工艺路线并保存模板。",
+                )
 
         # 允许 rebuild：先删后建（但只影响同一个 batch_id）
         if self.batch_repo.get(bid):
@@ -404,6 +531,7 @@ class BatchService:
                     "due_date": due_date,
                     "priority": pr,
                     "ready_status": rs,
+                    "ready_date": self._normalize_date(ready_date),
                     "status": BatchStatus.PENDING.value,
                     "remark": remark,
                 }

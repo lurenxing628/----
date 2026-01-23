@@ -99,7 +99,7 @@ def main():
     _assert_status(lines, "GET /system/history", client.get("/system/history"), 200)
 
     lines.append("")
-    lines.append("## 2. 备份→删除→恢复闭环（含 before_restore）")
+    lines.append("## 2. 备份文件：创建/删除/批量删除/恢复闭环（含 before_restore）")
 
     # 2.1 手动备份（页面动作）
     resp = client.post("/system/backup/create", data={}, follow_redirects=True)
@@ -131,6 +131,38 @@ def main():
             conn.close()
         except Exception:
             pass
+
+    # 2.2 备份删除（单个）
+    time.sleep(1.1)
+    resp = client.post("/system/backup/create", data={}, follow_redirects=True)
+    _assert_status(lines, "POST /system/backup/create#2 (follow redirects)", resp, 200)
+    backups2 = sorted([f for f in os.listdir(test_backups) if f.startswith("aps_backup_") and f.endswith(".db")], reverse=True)
+    if len(backups2) < 2:
+        raise RuntimeError("第二个备份文件未生成（期望 >= 2 个）")
+    to_delete_one = backups2[0] if backups2[0] != manual_backup else backups2[1]
+    resp = client.post("/system/backup/delete", data={"filename": to_delete_one}, follow_redirects=True)
+    _assert_status(lines, "POST /system/backup/delete (follow redirects)", resp, 200)
+    if os.path.exists(os.path.join(test_backups, to_delete_one)):
+        raise RuntimeError("备份删除失败：文件仍存在")
+    lines.append(f"- 备份删除：通过（{to_delete_one} 已删除）")
+
+    # 2.3 备份批量删除
+    time.sleep(1.1)
+    resp = client.post("/system/backup/create", data={}, follow_redirects=True)
+    _assert_status(lines, "POST /system/backup/create#3 (follow redirects)", resp, 200)
+    backups3 = sorted([f for f in os.listdir(test_backups) if f.startswith("aps_backup_") and f.endswith(".db")], reverse=True)
+    if not backups3:
+        raise RuntimeError("未找到第三个备份文件用于批量删除")
+    to_delete_batch = backups3[0]
+    if to_delete_batch == manual_backup:
+        if len(backups3) < 2:
+            raise RuntimeError("批量删除测试缺少可删除备份文件")
+        to_delete_batch = backups3[1]
+    resp = client.post("/system/backup/delete-batch", data={"filenames": [to_delete_batch]}, follow_redirects=True)
+    _assert_status(lines, "POST /system/backup/delete-batch (follow redirects)", resp, 200)
+    if os.path.exists(os.path.join(test_backups, to_delete_batch)):
+        raise RuntimeError("备份批量删除失败：文件仍存在")
+    lines.append(f"- 备份批量删除：通过（{to_delete_batch} 已删除）")
 
     # 2.3 删除数据（模拟误操作/回滚需求）
     conn = get_connection(test_db)
@@ -223,7 +255,7 @@ def main():
             pass
 
     lines.append("")
-    lines.append("## 4. 日志筛选（按时间）与排产历史展示")
+    lines.append("## 4. 日志筛选（按时间）与排产历史展示 + 日志删除/批量删除")
     # 4.1 插入一条很早的日志，用于时间筛选验证
     conn = get_connection(test_db)
     try:
@@ -276,6 +308,156 @@ def main():
             pass
 
     _assert_status(lines, "GET /system/history?version=1", client.get("/system/history?version=1"), 200)
+
+    # 4.4 删除单条日志（页面动作）
+    conn = get_connection(test_db)
+    try:
+        row = conn.execute(
+            "SELECT id FROM OperationLogs WHERE module='system' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if not row:
+            raise RuntimeError("未找到可删除的操作日志记录（module=system）")
+        del_id = int(row["id"])
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    resp = client.post("/system/logs/delete", data={"log_id": str(del_id)}, follow_redirects=True)
+    _assert_status(lines, "POST /system/logs/delete (follow redirects)", resp, 200)
+    conn = get_connection(test_db)
+    try:
+        still = conn.execute("SELECT 1 FROM OperationLogs WHERE id = ?", (del_id,)).fetchone()
+        if still is not None:
+            raise RuntimeError("日志删除失败：记录仍存在")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    lines.append(f"- 日志删除：通过（id={del_id} 已删除）")
+
+    # 4.5 批量删除日志（页面动作）
+    conn = get_connection(test_db)
+    try:
+        rows = conn.execute("SELECT id FROM OperationLogs WHERE module='system' ORDER BY id DESC LIMIT 3").fetchall()
+        ids = [int(r["id"]) for r in rows if r and r["id"] is not None]
+        ids = ids[:2] if len(ids) >= 2 else ids[:1]
+        if not ids:
+            raise RuntimeError("批量删除日志测试：找不到可删除日志")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    resp = client.post("/system/logs/delete-batch", data={"log_ids": [str(x) for x in ids]}, follow_redirects=True)
+    _assert_status(lines, "POST /system/logs/delete-batch (follow redirects)", resp, 200)
+    conn = get_connection(test_db)
+    try:
+        still = conn.execute(
+            f"SELECT COUNT(1) FROM OperationLogs WHERE id IN ({','.join(['?']*len(ids))})",
+            tuple(ids),
+        ).fetchone()[0]
+        if int(still) != 0:
+            raise RuntimeError("日志批量删除失败：仍有记录存在")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    lines.append(f"- 日志批量删除：通过（ids={ids} 已删除）")
+
+    lines.append("")
+    lines.append("## 5. 自动任务（按请求触发）：自动备份 / 自动清理备份 / 自动清理日志")
+
+    from core.services.system import SystemMaintenanceService
+
+    # 5.1 配置自动备份 + 自动清理备份（不 follow_redirects，避免立即触发）
+    resp = client.post(
+        "/system/backup/settings",
+        data={
+            "auto_backup_enabled": "on",
+            "auto_backup_interval_minutes": "1",
+            "auto_backup_cleanup_enabled": "on",
+            "auto_backup_keep_days": "7",
+            "auto_backup_cleanup_interval_minutes": "1",
+        },
+        follow_redirects=False,
+    )
+    _assert_status(lines, "POST /system/backup/settings", resp, 302)
+
+    # 构造一个“过期”备份文件，等待自动清理删除
+    old_name2 = "aps_backup_20000102_000000_auto.db"
+    old_path2 = os.path.join(test_backups, old_name2)
+    with open(old_path2, "wb") as f:
+        f.write(b"")
+    old_mtime2 = time.time() - 30 * 24 * 3600
+    os.utime(old_path2, (old_mtime2, old_mtime2))
+
+    # 系统维护带节流：等待超过阈值再触发一次请求
+    time.sleep(SystemMaintenanceService.CHECK_THROTTLE_SECONDS + 1)
+    _assert_status(lines, "GET /system/backup (trigger maintenance)", client.get("/system/backup"), 200)
+
+    # 5.2 验证自动备份生成（*_auto.db）
+    auto_backups = [f for f in os.listdir(test_backups) if f.startswith("aps_backup_") and "_auto.db" in f]
+    if not auto_backups:
+        raise RuntimeError("自动备份未触发：未发现 *_auto.db")
+    lines.append(f"- 自动备份：通过（{len(auto_backups)} 个，示例：{auto_backups[0]}）")
+
+    # 5.3 验证自动清理备份生效（old_name2 被删除）
+    if os.path.exists(old_path2):
+        raise RuntimeError("自动清理备份未生效：过期备份仍存在")
+    lines.append("- 自动清理备份：通过（过期文件已删除）")
+
+    # 5.4 准备足够多的日志并开启自动清理（保证总量 > MIN_KEEP_LOGS 才会删）
+    conn = get_connection(test_db)
+    try:
+        for i in range(20):
+            conn.execute(
+                "INSERT INTO OperationLogs (log_time, log_level, module, action, detail) VALUES (?, ?, ?, ?, ?)",
+                (
+                    f"2000-01-01 00:00:{i:02d}",
+                    "INFO",
+                    "system",
+                    "backup",
+                    json.dumps({"note": "old", "i": i}, ensure_ascii=False),
+                ),
+            )
+        for i in range(60):
+            conn.execute(
+                "INSERT INTO OperationLogs (log_level, module, action, detail) VALUES (?, ?, ?, ?)",
+                ("INFO", "system", "backup", json.dumps({"note": "new", "i": i}, ensure_ascii=False)),
+            )
+        conn.commit()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    resp = client.post(
+        "/system/logs/settings",
+        data={"auto_log_cleanup_enabled": "on", "auto_log_cleanup_keep_days": "1", "auto_log_cleanup_interval_minutes": "1"},
+        follow_redirects=False,
+    )
+    _assert_status(lines, "POST /system/logs/settings", resp, 302)
+
+    time.sleep(SystemMaintenanceService.CHECK_THROTTLE_SECONDS + 1)
+    _assert_status(lines, "GET /system/logs (trigger maintenance)", client.get("/system/logs"), 200)
+
+    conn = get_connection(test_db)
+    try:
+        old_cnt = int(conn.execute("SELECT COUNT(1) FROM OperationLogs WHERE log_time LIKE '2000-%'").fetchone()[0])
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    if old_cnt >= 20:
+        raise RuntimeError("日志自动清理未生效：2000 年旧日志数量未减少")
+    lines.append(f"- 自动清理日志：通过（2000 年旧日志剩余 {old_cnt} 条 < 20）")
 
     lines.append("")
     lines.append("## 结论")

@@ -216,6 +216,42 @@ def update_part(part_no: str):
     return redirect(url_for("process.part_detail", part_no=part_no))
 
 
+@bp.post("/parts/<part_no>/delete")
+def delete_part(part_no: str):
+    svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
+    try:
+        svc.delete(part_no)
+        flash(f"已删除零件：{part_no}", "success")
+    except AppError as e:
+        flash(e.message, "error")
+    return redirect(url_for("process.list_parts"))
+
+
+@bp.post("/parts/bulk/delete")
+def bulk_delete_parts():
+    part_nos = request.form.getlist("part_nos")
+    if not part_nos:
+        flash("请至少选择 1 个零件。", "error")
+        return redirect(url_for("process.list_parts"))
+
+    svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
+    ok = 0
+    failed: List[str] = []
+    for pn in part_nos:
+        try:
+            svc.delete(pn)
+            ok += 1
+        except Exception:
+            failed.append(str(pn))
+            continue
+
+    flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
+    if failed:
+        sample = "，".join(failed[:10])
+        flash(f"删除失败（最多展示 10 个）：{sample}。常见原因：已被批次引用，请先删除/调整批次或停止引用。", "warning")
+    return redirect(url_for("process.list_parts"))
+
+
 @bp.post("/parts/<part_no>/reparse")
 def reparse_part(part_no: str):
     route_raw = request.form.get("route_raw")

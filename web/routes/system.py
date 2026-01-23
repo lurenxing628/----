@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, current_app, flash, g, redirect, render_template, request, url_for
 
@@ -12,7 +12,8 @@ from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.logging import OperationLogger
-from data.repositories import OperationLogRepository, ScheduleHistoryRepository
+from core.services.system import SystemConfigService
+from data.repositories import OperationLogRepository, ScheduleHistoryRepository, SystemJobStateRepository
 
 
 bp = Blueprint("system", __name__)
@@ -89,13 +90,31 @@ def _safe_int(value: Optional[str], field: str, default: int, min_v: int, max_v:
     return v
 
 
-def _get_backup_manager() -> BackupManager:
+def _get_backup_manager(keep_days: Optional[int] = None) -> BackupManager:
     return BackupManager(
         db_path=current_app.config["DATABASE_PATH"],
         backup_dir=current_app.config["BACKUP_DIR"],
-        keep_days=int(current_app.config.get("BACKUP_KEEP_DAYS", 7)),
+        keep_days=int(keep_days) if keep_days is not None else int(current_app.config.get("BACKUP_KEEP_DAYS", 7)),
         logger=current_app.logger,
     )
+
+def _get_system_cfg_snapshot():
+    svc = SystemConfigService(g.db, logger=current_app.logger)
+    return svc.get_snapshot(backup_keep_days_default=int(current_app.config.get("BACKUP_KEEP_DAYS", 7)))
+
+
+def _get_job_state_map() -> Dict[str, Any]:
+    repo = SystemJobStateRepository(g.db)
+    def _get(key: str) -> Optional[Dict[str, Any]]:
+        it = repo.get(key)
+        return it.to_dict() if it else None
+
+    return {
+        "auto_backup": _get("auto_backup"),
+        "auto_backup_cleanup": _get("auto_backup_cleanup"),
+        "auto_log_cleanup": _get("auto_log_cleanup"),
+    }
+
 
 
 def _validate_backup_filename(filename: str) -> str:
@@ -120,19 +139,24 @@ def index():
 
 @bp.get("/backup")
 def backup_page():
-    mgr = _get_backup_manager()
+    cfg = _get_system_cfg_snapshot()
+    keep_days = int(cfg.auto_backup_keep_days)
+    mgr = _get_backup_manager(keep_days=keep_days)
     backups = mgr.list_backups()
     return render_template(
         "system/backup.html",
         title="系统管理 - 备份/恢复",
         backups=backups,
-        keep_days=int(current_app.config.get("BACKUP_KEEP_DAYS", 7)),
+        keep_days=keep_days,
+        settings=cfg.to_dict(),
+        job_state=_get_job_state_map(),
     )
 
 
 @bp.post("/backup/create")
 def backup_create():
-    mgr = _get_backup_manager()
+    cfg = _get_system_cfg_snapshot()
+    mgr = _get_backup_manager(keep_days=int(cfg.auto_backup_keep_days))
     path = mgr.backup(suffix="manual")
     filename = os.path.basename(path)
     size_mb = None
@@ -157,10 +181,102 @@ def backup_create():
     flash(f"已创建备份：{filename}", "success")
     return redirect(url_for("system.backup_page"))
 
+@bp.post("/backup/settings")
+def backup_settings():
+    """
+    保存备份页的自动任务设置（按请求触发：自动备份/自动清理备份）。
+    """
+    svc = SystemConfigService(g.db, logger=current_app.logger)
+    svc.update_backup_settings(
+        auto_backup_enabled=request.form.get("auto_backup_enabled"),
+        auto_backup_interval_minutes=request.form.get("auto_backup_interval_minutes"),
+        auto_backup_cleanup_enabled=request.form.get("auto_backup_cleanup_enabled"),
+        auto_backup_keep_days=request.form.get("auto_backup_keep_days"),
+        auto_backup_cleanup_interval_minutes=request.form.get("auto_backup_cleanup_interval_minutes"),
+    )
+    flash("备份自动任务设置已保存。", "success")
+    return redirect(url_for("system.backup_page"))
+
+
+@bp.post("/backup/delete")
+def backup_delete():
+    filename = _validate_backup_filename(request.form.get("filename") or "")
+    backup_dir = current_app.config["BACKUP_DIR"]
+    backup_path = os.path.join(backup_dir, filename)
+    if not os.path.exists(backup_path):
+        flash(f"备份文件不存在：{filename}", "error")
+        return redirect(url_for("system.backup_page"))
+    try:
+        os.remove(backup_path)
+        if getattr(g, "op_logger", None) is not None:
+            g.op_logger.info(
+                module="system",
+                action="backup_delete",
+                target_type="backup",
+                target_id=filename,
+                detail={"filename": filename, "mode": "manual"},
+            )
+        flash(f"已删除备份：{filename}", "success")
+    except Exception as e:
+        flash(f"删除失败：{e}", "error")
+    return redirect(url_for("system.backup_page"))
+
+
+@bp.post("/backup/delete-batch")
+def backup_delete_batch():
+    filenames = request.form.getlist("filenames")
+    if not filenames:
+        flash("请至少选择 1 个备份文件。", "error")
+        return redirect(url_for("system.backup_page"))
+
+    backup_dir = current_app.config["BACKUP_DIR"]
+    ok = 0
+    failed: List[str] = []
+    deleted: List[str] = []
+    for raw in filenames:
+        try:
+            fn = _validate_backup_filename(raw)
+        except Exception:
+            failed.append(str(raw))
+            continue
+        p = os.path.join(backup_dir, fn)
+        if not os.path.exists(p):
+            failed.append(fn)
+            continue
+        try:
+            os.remove(p)
+            ok += 1
+            deleted.append(fn)
+        except Exception:
+            failed.append(fn)
+            continue
+
+    if getattr(g, "op_logger", None) is not None:
+        g.op_logger.info(
+            module="system",
+            action="backup_delete",
+            target_type="backup",
+            target_id=None,
+            detail={
+                "mode": "batch",
+                "deleted_count": int(ok),
+                "failed_count": int(len(failed)),
+                "deleted_sample": deleted[:20],
+                "failed_sample": failed[:20],
+            },
+        )
+
+    flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
+    if failed:
+        sample = "，".join(failed[:10])
+        flash(f"删除失败（最多展示 10 个）：{sample}", "warning")
+    return redirect(url_for("system.backup_page"))
+
 
 @bp.post("/backup/cleanup")
 def backup_cleanup():
-    mgr = _get_backup_manager()
+    cfg = _get_system_cfg_snapshot()
+    mgr = _get_backup_manager(keep_days=int(cfg.auto_backup_keep_days))
     before = mgr.list_backups()
     mgr.cleanup_old_backups()
     after = mgr.list_backups()
@@ -172,7 +288,7 @@ def backup_cleanup():
             action="cleanup",
             target_type="backup",
             target_id=None,
-            detail={"keep_days": int(mgr.keep_days), "removed_count": int(removed)},
+            detail={"keep_days": int(mgr.keep_days), "removed_count": int(removed), "mode": "manual"},
         )
 
     flash(f"已清理过期备份：删除 {removed} 个（保留 {mgr.keep_days} 天内的备份）。", "success")
@@ -280,6 +396,8 @@ def logs_page():
         "system/logs.html",
         title="系统管理 - 操作日志",
         rows=view_rows,
+        settings=_get_system_cfg_snapshot().to_dict(),
+        job_state=_get_job_state_map(),
         filters={
             "start_time": start_time or "",
             "end_time": end_time or "",
@@ -289,6 +407,72 @@ def logs_page():
             "limit": str(limit),
         },
     )
+
+
+@bp.post("/logs/settings")
+def logs_settings():
+    svc = SystemConfigService(g.db, logger=current_app.logger)
+    svc.update_logs_settings(
+        auto_log_cleanup_enabled=request.form.get("auto_log_cleanup_enabled"),
+        auto_log_cleanup_keep_days=request.form.get("auto_log_cleanup_keep_days"),
+        auto_log_cleanup_interval_minutes=request.form.get("auto_log_cleanup_interval_minutes"),
+    )
+    flash("日志自动清理设置已保存。", "success")
+    return redirect(url_for("system.logs_page"))
+
+
+@bp.post("/logs/delete")
+def logs_delete():
+    log_id = _safe_int(request.form.get("log_id"), field="log_id", default=0, min_v=1, max_v=10**12)
+    repo = OperationLogRepository(g.db)
+    deleted = repo.delete_by_id(int(log_id))
+    if deleted <= 0:
+        flash(f"未找到日志：ID={log_id}", "warning")
+        return redirect(url_for("system.logs_page"))
+
+    if getattr(g, "op_logger", None) is not None:
+        g.op_logger.info(
+            module="system",
+            action="logs_delete",
+            target_type="operation_log",
+            target_id=str(log_id),
+            detail={"mode": "manual", "deleted_ids": [int(log_id)], "deleted_count": 1},
+        )
+    flash(f"已删除日志：ID={log_id}", "success")
+    return redirect(url_for("system.logs_page"))
+
+
+@bp.post("/logs/delete-batch")
+def logs_delete_batch():
+    raw_ids = request.form.getlist("log_ids")
+    if not raw_ids:
+        flash("请至少选择 1 条日志。", "error")
+        return redirect(url_for("system.logs_page"))
+
+    ids: List[int] = []
+    for x in raw_ids:
+        try:
+            ids.append(int(str(x).strip()))
+        except Exception:
+            continue
+    ids = [x for x in ids if x > 0]
+    if not ids:
+        flash("选择的日志 ID 不合法。", "error")
+        return redirect(url_for("system.logs_page"))
+
+    repo = OperationLogRepository(g.db)
+    deleted = repo.delete_by_ids(ids)
+    if getattr(g, "op_logger", None) is not None:
+        g.op_logger.info(
+            module="system",
+            action="logs_delete",
+            target_type="operation_log",
+            target_id=None,
+            detail={"mode": "batch", "deleted_count": int(deleted), "deleted_ids_sample": ids[:30]},
+        )
+
+    flash(f"批量删除完成：成功 {deleted}。", "success" if deleted else "warning")
+    return redirect(url_for("system.logs_page"))
 
 
 @bp.get("/history")

@@ -12,20 +12,20 @@ class CalendarRepository(BaseRepository):
 
     def get(self, date: str) -> Optional[WorkCalendar]:
         row = self.fetchone(
-            "SELECT date, day_type, shift_hours, efficiency, allow_normal, allow_urgent, remark FROM WorkCalendar WHERE date = ?",
+            "SELECT date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark FROM WorkCalendar WHERE date = ?",
             (date,),
         )
         return WorkCalendar.from_row(row) if row else None
 
     def list_all(self) -> List[WorkCalendar]:
         rows = self.fetchall(
-            "SELECT date, day_type, shift_hours, efficiency, allow_normal, allow_urgent, remark FROM WorkCalendar ORDER BY date"
+            "SELECT date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark FROM WorkCalendar ORDER BY date"
         )
         return [WorkCalendar.from_row(r) for r in rows]
 
     def list_range(self, start_date: str, end_date: str) -> List[WorkCalendar]:
         rows = self.fetchall(
-            "SELECT date, day_type, shift_hours, efficiency, allow_normal, allow_urgent, remark FROM WorkCalendar WHERE date >= ? AND date <= ? ORDER BY date",
+            "SELECT date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark FROM WorkCalendar WHERE date >= ? AND date <= ? ORDER BY date",
             (start_date, end_date),
         )
         return [WorkCalendar.from_row(r) for r in rows]
@@ -34,17 +34,29 @@ class CalendarRepository(BaseRepository):
         c = calendar if isinstance(calendar, WorkCalendar) else WorkCalendar.from_row(calendar)
         self.execute(
             """
-            INSERT INTO WorkCalendar (date, day_type, shift_hours, efficiency, allow_normal, allow_urgent, remark)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO WorkCalendar (date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(date) DO UPDATE SET
               day_type=excluded.day_type,
+              shift_start=excluded.shift_start,
+              shift_end=excluded.shift_end,
               shift_hours=excluded.shift_hours,
               efficiency=excluded.efficiency,
               allow_normal=excluded.allow_normal,
               allow_urgent=excluded.allow_urgent,
               remark=excluded.remark
             """,
-            (c.date, c.day_type, c.shift_hours, c.efficiency, c.allow_normal, c.allow_urgent, c.remark),
+            (
+                c.date,
+                c.day_type,
+                c.shift_start,
+                c.shift_end,
+                c.shift_hours,
+                c.efficiency,
+                c.allow_normal,
+                c.allow_urgent,
+                c.remark,
+            ),
         )
         return c
 

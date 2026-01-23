@@ -65,17 +65,13 @@
           <input name="due_weight" value="{{ cfg.due_weight }}" style="width:180px;">
         </div>
         <div>
-          <label>齐套权重（0~1 或 0~100%）</label><br/>
-          <input name="ready_weight" value="{{ cfg.ready_weight }}" style="width:180px;">
-        </div>
-        <div>
           <button type="submit">保存配置</button>
         </div>
       </div>
     </form>
     <form method="post" action="{{ url_for('scheduler.restore_config_default') }}" style="margin-top:8px;">
       <button type="submit">恢复默认</button>
-      <span class="muted">默认：priority=0.4，due=0.5，ready=0.1</span>
+      <span class="muted">默认：priority=0.4，due=0.5（齐套权重预留，不参与当前排产）</span>
     </form>
   </div>
 
@@ -115,21 +111,18 @@
         <div>
           <label>齐套</label><br/>
           <select name="ready_status">
-            <option value="no">未齐套</option>
+            <option value="yes" selected>齐套（默认）</option>
             <option value="partial">部分齐套</option>
-            <option value="yes">齐套</option>
+            <option value="no">未齐套</option>
           </select>
+        </div>
+        <div>
+          <label>齐套日期（可选）</label><br/>
+          <input name="ready_date" placeholder="YYYY-MM-DD" style="width:160px;">
         </div>
         <div style="flex:1; min-width:220px;">
           <label>备注</label><br/>
           <input name="remark" placeholder="可选">
-        </div>
-        <div>
-          <label>创建后生成工序</label><br/>
-          <select name="auto_generate_ops">
-            <option value="1" selected>是（推荐）</option>
-            <option value="0">否（仅创建批次）</option>
-          </select>
         </div>
         <div>
           <button type="submit">创建批次</button>
@@ -210,14 +203,58 @@
       </table>
 
       {% if status == 'pending' %}
+        <div style="margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+          <div>
+            <label class="muted">排产开始时间（默认明天 08:00）</label><br/>
+            <input name="start_dt" value="{{ default_start_dt }}" placeholder="YYYY-MM-DD HH:MM" style="width:200px;">
+          </div>
+          <div>
+            <label class="muted">排产截止日期（可选）</label><br/>
+            <input name="end_date" placeholder="YYYY-MM-DD" style="width:160px;">
+          </div>
+          <div class="muted" style="flex:1; min-width:240px;">
+            说明：若设置截止日期，排产结果一旦超过该日期将判为失败并提示原因。
+          </div>
+        </div>
         <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
           <button type="submit">执行排产</button>
           <button type="submit" formaction="{{ url_for('scheduler.simulate_schedule') }}"
                   onclick="return confirm('将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？');">
             模拟排产（插单模拟）
           </button>
+          <button type="submit" formaction="{{ url_for('scheduler.bulk_copy_batches') }}"
+                  onclick="return confirm('将把所选批次逐个复制一份（批次号末尾数字自动 +1，其它尽量保持一致）。确定继续？');">
+            复制所选批次
+          </button>
+          <button type="submit" formaction="{{ url_for('scheduler.bulk_delete_batches') }}"
+                  onclick="return confirm('确定删除所选批次吗？将级联删除批次工序与排程记录（若存在）。');">
+            删除所选批次
+          </button>
+          <button type="submit" formaction="{{ url_for('scheduler.bulk_update_batches') }}"
+                  onclick="return confirm('确定批量修改所选批次吗？仅会修改你填写的字段。');">
+            批量修改
+          </button>
           <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
           <span class="muted">提示：若内部工序未补全设备/人员/工时，将被判定为排产失败并提示原因。</span>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+          <div>
+            <label class="muted">批量优先级（可选）</label><br/>
+            <select name="bulk_priority">
+              <option value="">（不修改）</option>
+              <option value="normal">普通</option>
+              <option value="urgent">急件</option>
+              <option value="critical">特急</option>
+            </select>
+          </div>
+          <div>
+            <label class="muted">批量交期（可选）</label><br/>
+            <input name="bulk_due_date" placeholder="YYYY-MM-DD" style="width:160px;">
+          </div>
+          <div style="flex:1; min-width:220px;">
+            <label class="muted">批量备注（可选）</label><br/>
+            <input name="bulk_remark" placeholder="填写则覆盖备注（留空则不修改）">
+          </div>
         </div>
         </form>
 

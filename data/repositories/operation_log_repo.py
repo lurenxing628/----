@@ -72,3 +72,15 @@ class OperationLogRepository(BaseRepository):
             ),
         )
 
+    def delete_by_id(self, log_id: int) -> int:
+        cur = self.execute("DELETE FROM OperationLogs WHERE id = ?", (int(log_id),))
+        return int(cur.rowcount or 0)
+
+    def delete_by_ids(self, log_ids: List[int]) -> int:
+        ids = [int(x) for x in (log_ids or []) if str(x).strip() != ""]
+        if not ids:
+            return 0
+        placeholders = ",".join(["?"] * len(ids))
+        cur = self.execute(f"DELETE FROM OperationLogs WHERE id IN ({placeholders})", tuple(ids))
+        return int(cur.rowcount or 0)
+

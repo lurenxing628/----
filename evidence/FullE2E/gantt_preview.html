@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>甘特图预览（version 1）</title>
+  <link rel="stylesheet" href="../../static/css/frappe-gantt.css"/>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Arial, "Microsoft YaHei", sans-serif; margin: 16px; }
+    .meta { color: #666; margin: 8px 0 16px; }
+    .wrap { border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px; }
+    #gantt { overflow-x: auto; }
+    .hint { color: #999; font-size: 12px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h2>甘特图预览（machine 视图）</h2>
+  <div class="meta">
+    <div>version：<b>1</b></div>
+    <div>week_start：<b>2026-01-26</b></div>
+    <div>tasks：<b>2</b></div>
+  </div>
+  <div class="wrap">
+    <div id="gantt"></div>
+  </div>
+  <div class="hint">提示：这是从本次排产结果生成的 tasks；样式来自仓库内置 Frappe Gantt 0.6.1 资源。</div>
+
+  <script src="../../static/js/frappe-gantt.min.js"></script>
+  <script>
+    const tasks = [{"custom_class": "priority-urgent", "dependencies": "", "end": "2026-01-26 10:00:00", "id": "B001_05", "meta": {"batch_id": "B001", "due_date": "Thu, 31 Dec 2099 00:00:00 GMT", "group_key": "MC001", "machine": "MC001 CNC-01", "op_type_name": "数铣", "operator": "OP001 张三", "part_no": "A1234", "priority": "urgent", "seq": 5, "source": "internal"}, "name": "B001_05 MC001 CNC-01 OP001 张三", "progress": 0, "start": "2026-01-26 08:00:00"}, {"custom_class": "priority-urgent", "dependencies": "", "end": "2026-01-28 10:00:00", "id": "B001_35", "meta": {"batch_id": "B001", "due_date": "Thu, 31 Dec 2099 00:00:00 GMT", "group_key": "外协/未分配", "machine": "外协 外协-标印厂", "op_type_name": "标印", "operator": "外协/未分配", "part_no": "A1234", "priority": "urgent", "seq": 35, "source": "external"}, "name": "B001_35 外协 外协-标印厂 外协/未分配", "progress": 0, "start": "2026-01-26 10:00:00"}];
+    // Frappe Gantt 期望 start/end 为可被 Date.parse 的字符串（我们给的是 YYYY-MM-DD HH:MM:SS）
+    const gantt = new Gantt("#gantt", tasks, {
+      view_mode: "Day",
+      language: "zh",
+    });
+  </script>
+</body>
+</html>

@@ -101,7 +101,8 @@ def _normalize_ready_status(value: Any) -> str:
         return "partial"
     if v in ("未齐套", "否", "no"):
         return "no"
-    return v or "no"
+    # V1.1：齐套默认视为 yes（可缺省）
+    return v or "yes"
 
 
 def _normalize_due_date(value: Any) -> Optional[str]:
