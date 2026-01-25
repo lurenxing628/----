@@ -35,6 +35,8 @@ from .system_config import SystemConfig
 from .operation_log import OperationLog
 from .schedule_history import ScheduleHistory
 from .system_job_state import SystemJobState
+from .material import Material
+from .batch_material import BatchMaterial
 
 __all__ = [
     # enums
@@ -66,5 +68,7 @@ __all__ = [
     "OperationLog",
     "ScheduleHistory",
     "SystemJobState",
+    "Material",
+    "BatchMaterial",
 ]
 

@@ -200,12 +200,17 @@ def main():
     )
     _assert_status(lines, "POST /equipment/excel/machines/confirm", resp2, 200)
 
+    # 严格模式：存在错误行时，确认导入应被拒绝（不写入任何设备）
+    html2 = resp2.data.decode("utf-8", errors="ignore")
+    if "导入被拒绝" not in html2:
+        raise RuntimeError("设备 Excel 确认导入未按严格模式拒绝（期望出现“导入被拒绝”提示）")
+
     conn = get_connection(test_db)
     try:
         cnt = conn.execute("SELECT COUNT(1) FROM Machines WHERE machine_id IN ('MC001','MC002')").fetchone()[0]
-        lines.append(f"- Machines 写入校验：MC001/MC002 行数={cnt}（期望 2）")
-        if cnt != 2:
-            raise RuntimeError("设备确认导入未写入 Machines 表")
+        lines.append(f"- 严格拒绝校验：MC001/MC002 行数={cnt}（期望 0）")
+        if cnt != 0:
+            raise RuntimeError("严格拒绝失败：存在错误行时仍写入了 Machines 表")
 
         logs = _query_recent_logs(conn, module="equipment", action="import", target_type="machine", limit=10)
         lines.append(f"- OperationLogs 校验（equipment/import/machine）：{len(logs)} 条（期望 >= 1）")
@@ -216,6 +221,35 @@ def main():
         # 应包含错误样本（因为我们构造了 1 条 ERROR）
         if not isinstance(d.get("errors_sample"), list) or len(d.get("errors_sample")) < 1:
             raise RuntimeError("设备导入留痕 errors_sample 期望至少 1 条")
+    finally:
+        conn.close()
+
+    # 再用“全合法”数据导入一次，应成功写入
+    machines_rows_ok = [
+        {"设备编号": "MC001", "设备名称": "CNC-01", "工种": None, "状态": "active"},
+        {"设备编号": "MC002", "设备名称": "CNC-02", "工种": None, "状态": "maintain"},
+    ]
+    buf_ok = _make_xlsx_bytes(["设备编号", "设备名称", "工种", "状态"], machines_rows_ok)
+    resp_ok = client.post(
+        "/equipment/excel/machines/preview",
+        data={"mode": "overwrite", "file": (buf_ok, "machines_ok.xlsx")},
+        content_type="multipart/form-data",
+    )
+    _assert_status(lines, "POST /equipment/excel/machines/preview（valid）", resp_ok, 200)
+    raw_rows_json_ok = _extract_raw_rows_json(resp_ok.data.decode("utf-8", errors="ignore"))
+    resp_ok2 = client.post(
+        "/equipment/excel/machines/confirm",
+        data={"mode": "overwrite", "filename": "machines_ok.xlsx", "raw_rows_json": raw_rows_json_ok},
+        follow_redirects=True,
+    )
+    _assert_status(lines, "POST /equipment/excel/machines/confirm（valid）", resp_ok2, 200)
+
+    conn = get_connection(test_db)
+    try:
+        cnt = conn.execute("SELECT COUNT(1) FROM Machines WHERE machine_id IN ('MC001','MC002')").fetchone()[0]
+        lines.append(f"- Machines 写入校验：MC001/MC002 行数={cnt}（期望 2）")
+        if cnt != 2:
+            raise RuntimeError("设备确认导入未写入 Machines 表")
     finally:
         conn.close()
 
@@ -263,12 +297,17 @@ def main():
     )
     _assert_status(lines, "POST /personnel/excel/operators/confirm", resp2, 200)
 
+    # 严格模式：存在错误行时，确认导入应被拒绝（不写入任何人员）
+    html2 = resp2.data.decode("utf-8", errors="ignore")
+    if "导入被拒绝" not in html2:
+        raise RuntimeError("人员 Excel 确认导入未按严格模式拒绝（期望出现“导入被拒绝”提示）")
+
     conn = get_connection(test_db)
     try:
         cnt = conn.execute("SELECT COUNT(1) FROM Operators WHERE operator_id IN ('OP100','OP101')").fetchone()[0]
-        lines.append(f"- Operators 写入校验：OP100/OP101 行数={cnt}（期望 2）")
-        if cnt != 2:
-            raise RuntimeError("人员确认导入未写入 Operators 表")
+        lines.append(f"- 严格拒绝校验：OP100/OP101 行数={cnt}（期望 0）")
+        if cnt != 0:
+            raise RuntimeError("严格拒绝失败：存在错误行时仍写入了 Operators 表")
 
         logs = _query_recent_logs(conn, module="personnel", action="import", target_type="operator", limit=10)
         lines.append(f"- OperationLogs 校验（personnel/import/operator）：{len(logs)} 条（期望 >= 1）")
@@ -278,6 +317,35 @@ def main():
         _require_keys(d, import_keys, "人员导入留痕(detail)")
         if not isinstance(d.get("errors_sample"), list) or len(d.get("errors_sample")) < 1:
             raise RuntimeError("人员导入留痕 errors_sample 期望至少 1 条")
+    finally:
+        conn.close()
+
+    # 再用“全合法”数据导入一次，应成功写入
+    operators_rows_ok = [
+        {"工号": "OP100", "姓名": "测试员A", "状态": "active", "备注": "web_smoke"},
+        {"工号": "OP101", "姓名": "测试员B", "状态": "inactive", "备注": None},
+    ]
+    buf_ok = _make_xlsx_bytes(["工号", "姓名", "状态", "备注"], operators_rows_ok)
+    resp_ok = client.post(
+        "/personnel/excel/operators/preview",
+        data={"mode": "overwrite", "file": (buf_ok, "operators_ok.xlsx")},
+        content_type="multipart/form-data",
+    )
+    _assert_status(lines, "POST /personnel/excel/operators/preview（valid）", resp_ok, 200)
+    raw_rows_json_ok = _extract_raw_rows_json(resp_ok.data.decode("utf-8", errors="ignore"))
+    resp_ok2 = client.post(
+        "/personnel/excel/operators/confirm",
+        data={"mode": "overwrite", "filename": "operators_ok.xlsx", "raw_rows_json": raw_rows_json_ok},
+        follow_redirects=True,
+    )
+    _assert_status(lines, "POST /personnel/excel/operators/confirm（valid）", resp_ok2, 200)
+
+    conn = get_connection(test_db)
+    try:
+        cnt = conn.execute("SELECT COUNT(1) FROM Operators WHERE operator_id IN ('OP100','OP101')").fetchone()[0]
+        lines.append(f"- Operators 写入校验：OP100/OP101 行数={cnt}（期望 2）")
+        if cnt != 2:
+            raise RuntimeError("人员确认导入未写入 Operators 表")
     finally:
         conn.close()
 
@@ -321,6 +389,48 @@ def main():
     )
     _assert_status(lines, "POST /personnel/excel/links/confirm", resp2, 200)
 
+    # 严格模式：存在错误行时，确认导入应被拒绝（不写入任何关联）
+    html2 = resp2.data.decode("utf-8", errors="ignore")
+    if "导入被拒绝" not in html2:
+        raise RuntimeError("人员设备关联 Excel 确认导入未按严格模式拒绝（期望出现“导入被拒绝”提示）")
+
+    conn = get_connection(test_db)
+    try:
+        cnt = conn.execute(
+            "SELECT COUNT(1) FROM OperatorMachine WHERE operator_id='OP100' AND machine_id='MC001'"
+        ).fetchone()[0]
+        lines.append(f"- 严格拒绝校验：OP100-MC001 行数={cnt}（期望 0）")
+        if cnt != 0:
+            raise RuntimeError("严格拒绝失败：存在错误行时仍写入了 OperatorMachine 表")
+
+        logs = _query_recent_logs(conn, module="personnel", action="import", target_type="operator_machine", limit=10)
+        lines.append(f"- OperationLogs 校验（personnel/import/operator_machine）：{len(logs)} 条（期望 >= 1）")
+        if len(logs) < 1:
+            raise RuntimeError("人员设备关联导入留痕缺失（OperationLogs personnel/import/operator_machine）")
+        d = _parse_detail_json(logs[0]["detail"])
+        _require_keys(d, ["filename", "mode", "time_cost_ms"], "人员设备关联导入留痕(detail)")
+    finally:
+        conn.close()
+
+    # 再用“全合法”数据导入一次，应成功写入关联
+    link_rows_ok = [
+        {"工号": "OP100", "设备编号": "MC001"},  # OK
+    ]
+    buf_ok = _make_xlsx_bytes(["工号", "设备编号"], link_rows_ok)
+    resp_ok = client.post(
+        "/personnel/excel/links/preview",
+        data={"mode": "overwrite", "file": (buf_ok, "op_links_ok.xlsx")},
+        content_type="multipart/form-data",
+    )
+    _assert_status(lines, "POST /personnel/excel/links/preview（valid）", resp_ok, 200)
+    raw_rows_json_ok = _extract_raw_rows_json(resp_ok.data.decode("utf-8", errors="ignore"))
+    resp_ok2 = client.post(
+        "/personnel/excel/links/confirm",
+        data={"mode": "overwrite", "filename": "op_links_ok.xlsx", "raw_rows_json": raw_rows_json_ok},
+        follow_redirects=True,
+    )
+    _assert_status(lines, "POST /personnel/excel/links/confirm（valid）", resp_ok2, 200)
+
     conn = get_connection(test_db)
     try:
         cnt = conn.execute(
@@ -329,13 +439,6 @@ def main():
         lines.append(f"- OperatorMachine 写入校验：OP100-MC001 行数={cnt}（期望 1）")
         if cnt != 1:
             raise RuntimeError("人员设备关联确认导入未写入 OperatorMachine 表")
-
-        logs = _query_recent_logs(conn, module="personnel", action="import", target_type="operator_machine", limit=10)
-        lines.append(f"- OperationLogs 校验（personnel/import/operator_machine）：{len(logs)} 条（期望 >= 1）")
-        if len(logs) < 1:
-            raise RuntimeError("人员设备关联导入留痕缺失（OperationLogs personnel/import/operator_machine）")
-        d = _parse_detail_json(logs[0]["detail"])
-        _require_keys(d, ["filename", "mode", "time_cost_ms"], "人员设备关联导入留痕(detail)")
     finally:
         conn.close()
 

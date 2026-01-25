@@ -29,6 +29,7 @@ def _parse_dt(value: Any) -> Optional[datetime]:
     s = str(value).strip().replace("/", "-")
     if not s:
         return None
+    s = s.replace("T", " ").replace("：", ":")
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
         try:
             return datetime.strptime(s, fmt)

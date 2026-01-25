@@ -16,7 +16,7 @@ from .system_config_service import SystemConfigService
 def _parse_db_dt(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
-    v = str(value).strip()
+    v = str(value).strip().replace("：", ":")
     if not v:
         return None
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
@@ -173,9 +173,11 @@ class SystemMaintenanceService:
             return False, {"due": False, "last_run_time": last_run}
 
         mgr = BackupManager(db_path=db_path, backup_dir=backup_dir, keep_days=int(keep_days), logger=logger)
+        t0 = time.time()
         try:
             path = mgr.backup(suffix="auto")
             filename = os.path.basename(path)
+            time_cost_ms = int((time.time() - t0) * 1000)
             size_mb = None
             try:
                 size_mb = round(os.stat(path).st_size / 1024 / 1024, 2)
@@ -188,18 +190,41 @@ class SystemMaintenanceService:
                     action="backup",
                     target_type="backup",
                     target_id=filename,
-                    detail={"filename": filename, "suffix": "auto", "size_mb": size_mb, "mode": "auto"},
+                    detail={
+                        "filename": filename,
+                        "suffix": "auto",
+                        "size_mb": size_mb,
+                        "mode": "auto",
+                        "time_cost_ms": time_cost_ms,
+                    },
                 )
 
             job_repo.set_last_run(
                 cls.JOB_AUTO_BACKUP,
                 last_run_time=_fmt_db_dt(now),
-                last_run_detail=json.dumps({"filename": filename, "size_mb": size_mb}, ensure_ascii=False),
+                last_run_detail=json.dumps({"filename": filename, "size_mb": size_mb, "time_cost_ms": time_cost_ms}, ensure_ascii=False),
             )
             return True, {"due": True, "created": filename}
         except Exception as e:
             if logger:
                 logger.error(f"自动备份失败：{e}")
+            time_cost_ms = int((time.time() - t0) * 1000)
+            if op_logger is not None:
+                op_logger.error(
+                    module="system",
+                    action="backup",
+                    target_type="backup",
+                    target_id=None,
+                    detail={"mode": "auto", "time_cost_ms": time_cost_ms},
+                    error_code="auto_backup_failed",
+                    error_message=str(e),
+                )
+            # 记录失败原因（避免用户只看到“没执行过/不知道为什么”）
+            job_repo.set_last_run(
+                cls.JOB_AUTO_BACKUP,
+                last_run_time=_fmt_db_dt(now),
+                last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
+            )
             return False, {"due": True, "error": str(e)}
 
     @classmethod
@@ -251,12 +276,14 @@ class SystemMaintenanceService:
         if not due:
             return False, {"due": False, "last_run_time": last_run}
 
+        t0 = time.time()
         try:
             removed, meta = cls._cleanup_backups_with_limit(
                 backup_dir=str(backup_dir),
                 keep_days=int(keep_days),
                 max_delete=int(cls.MAX_BACKUP_DELETE_PER_RUN),
             )
+            time_cost_ms = int((time.time() - t0) * 1000)
             if op_logger is not None:
                 op_logger.info(
                     module="system",
@@ -268,18 +295,35 @@ class SystemMaintenanceService:
                         "keep_days": int(keep_days),
                         "removed_count": int(removed),
                         "max_delete_per_run": int(cls.MAX_BACKUP_DELETE_PER_RUN),
+                        "time_cost_ms": time_cost_ms,
                         **meta,
                     },
                 )
             job_repo.set_last_run(
                 cls.JOB_AUTO_BACKUP_CLEANUP,
                 last_run_time=_fmt_db_dt(now),
-                last_run_detail=json.dumps({"removed_count": removed, **meta}, ensure_ascii=False),
+                last_run_detail=json.dumps({"removed_count": removed, "time_cost_ms": time_cost_ms, **meta}, ensure_ascii=False),
             )
             return True, {"due": True, "removed_count": int(removed), **meta}
         except Exception as e:
             if logger:
                 logger.error(f"自动清理备份失败：{e}")
+            time_cost_ms = int((time.time() - t0) * 1000)
+            if op_logger is not None:
+                op_logger.error(
+                    module="system",
+                    action="cleanup",
+                    target_type="backup",
+                    target_id=None,
+                    detail={"mode": "auto", "time_cost_ms": time_cost_ms},
+                    error_code="auto_backup_cleanup_failed",
+                    error_message=str(e),
+                )
+            job_repo.set_last_run(
+                cls.JOB_AUTO_BACKUP_CLEANUP,
+                last_run_time=_fmt_db_dt(now),
+                last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
+            )
             return False, {"due": True, "error": str(e)}
 
     @classmethod
@@ -338,6 +382,7 @@ class SystemMaintenanceService:
         if not due:
             return False, {"due": False, "last_run_time": last_run}
 
+        t0 = time.time()
         try:
             deleted, meta = cls._cleanup_operation_logs_with_limit(
                 conn,
@@ -345,6 +390,7 @@ class SystemMaintenanceService:
                 min_keep_logs=int(cls.MIN_KEEP_LOGS),
                 max_delete=int(cls.MAX_LOG_DELETE_PER_RUN),
             )
+            time_cost_ms = int((time.time() - t0) * 1000)
             if op_logger is not None:
                 op_logger.info(
                     module="system",
@@ -357,17 +403,34 @@ class SystemMaintenanceService:
                         "deleted_count": int(deleted),
                         "min_keep_logs": int(cls.MIN_KEEP_LOGS),
                         "max_delete_per_run": int(cls.MAX_LOG_DELETE_PER_RUN),
+                        "time_cost_ms": time_cost_ms,
                         **meta,
                     },
                 )
             job_repo.set_last_run(
                 cls.JOB_AUTO_LOG_CLEANUP,
                 last_run_time=_fmt_db_dt(now),
-                last_run_detail=json.dumps({"deleted_count": deleted, **meta}, ensure_ascii=False),
+                last_run_detail=json.dumps({"deleted_count": deleted, "time_cost_ms": time_cost_ms, **meta}, ensure_ascii=False),
             )
             return True, {"due": True, "deleted_count": int(deleted), **meta}
         except Exception as e:
             if logger:
                 logger.error(f"自动清理操作日志失败：{e}")
+            time_cost_ms = int((time.time() - t0) * 1000)
+            if op_logger is not None:
+                op_logger.error(
+                    module="system",
+                    action="logs_cleanup",
+                    target_type="operation_log",
+                    target_id=None,
+                    detail={"mode": "auto", "time_cost_ms": time_cost_ms},
+                    error_code="auto_log_cleanup_failed",
+                    error_message=str(e),
+                )
+            job_repo.set_last_run(
+                cls.JOB_AUTO_LOG_CLEANUP,
+                last_run_time=_fmt_db_dt(now),
+                last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
+            )
             return False, {"due": True, "error": str(e)}
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -8,7 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.algorithms import GreedyScheduler, SortStrategy
+from core.algorithms import BatchForSort, GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
+from core.algorithms.evaluation import compute_metrics, objective_score
 from core.models import Batch, BatchOperation, ExternalGroup, PartOperation
 from core.models.enums import BatchStatus, MergeMode, OperatorStatus, SourceType
 from data.repositories import (
@@ -117,7 +119,7 @@ class ScheduleService:
         s = str(value).strip()
         if not s:
             return None
-        s = s.replace("/", "-")
+        s = s.replace("/", "-").replace("T", " ").replace("：", ":")
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
             try:
                 return datetime.strptime(s, fmt)
@@ -133,6 +135,7 @@ class ScheduleService:
         op_code: str
         batch_id: str
         seq: int
+        op_type_name: Optional[str]
         source: str
         machine_id: Optional[str]
         operator_id: Optional[str]
@@ -407,6 +410,7 @@ class ScheduleService:
                     op_code=op.op_code,
                     batch_id=op.batch_id,
                     seq=int(op.seq or 0),
+                    op_type_name=getattr(op, "op_type_name", None),
                     source=op.source,
                     machine_id=op.machine_id,
                     operator_id=op.operator_id,
@@ -422,9 +426,124 @@ class ScheduleService:
 
         # 生成版本号（递增）
         latest = self.history_repo.get_latest_version()
-        version = int(latest) + 1
+        prev_version = int(latest or 0)
+        version = prev_version + 1
 
-        # 执行算法
+        # -------------------------
+        # 可选优化项：冻结窗口（硬约束，默认关闭）
+        # - 复用上一版本在“窗口内”的排程结果，不再重排
+        # - 为保证批次前后约束：按批次 seq 前缀冻结（冻结到窗口内出现的最大 seq）
+        # -------------------------
+        frozen_op_ids: set = set()
+        seed_results: List[Any] = []
+        algo_warnings: List[str] = []
+        if (
+            getattr(cfg, "freeze_window_enabled", "no") == "yes"
+            and int(getattr(cfg, "freeze_window_days", 0) or 0) > 0
+            and prev_version > 0
+        ):
+            freeze_days = int(getattr(cfg, "freeze_window_days", 0) or 0)
+            freeze_end = start_dt_norm + timedelta(days=freeze_days)
+            freeze_end_str = self._format_dt(freeze_end)
+
+            op_by_id: Dict[int, BatchOperation] = {int(op.id): op for op in operations if op and op.id}
+            op_ids_all = sorted(list(op_by_id.keys()))
+
+            # 查询上一版本在窗口内的排程（仅查本次选中批次的工序）
+            schedule_map: Dict[int, Dict[str, Any]] = {}
+            try:
+                chunk_size = 900  # sqlite 默认变量上限 999，留余量
+                for i in range(0, len(op_ids_all), chunk_size):
+                    chunk = op_ids_all[i : i + chunk_size]
+                    placeholders = ",".join(["?"] * len(chunk))
+                    rows = self.conn.execute(
+                        f"""
+                        SELECT op_id, machine_id, operator_id, start_time, end_time
+                        FROM Schedule
+                        WHERE version = ?
+                          AND op_id IN ({placeholders})
+                          AND start_time < ?
+                        """,
+                        tuple([int(prev_version)] + [int(x) for x in chunk] + [freeze_end_str]),
+                    ).fetchall()
+                    for r in rows:
+                        try:
+                            schedule_map[int(r["op_id"])] = dict(r)
+                        except Exception:
+                            continue
+            except Exception as e:
+                schedule_map = {}
+                algo_warnings.append(f"冻结窗口启用但读取上一版本排程失败：{e}")
+
+            # 冻结到窗口内出现的最大 seq（按批次前缀冻结）
+            if schedule_map:
+                max_seq_by_batch: Dict[str, int] = {}
+                seed_tmp: Dict[int, Dict[str, Any]] = {}
+                for oid in schedule_map.keys():
+                    op0 = op_by_id.get(int(oid))
+                    if not op0:
+                        continue
+                    bid = str(op0.batch_id or "")
+                    seq0 = int(op0.seq or 0)
+                    if seq0 <= 0:
+                        continue
+                    max_seq_by_batch[bid] = max(max_seq_by_batch.get(bid, 0), seq0)
+
+                for bid, max_seq in max_seq_by_batch.items():
+                    if max_seq <= 0:
+                        continue
+                    prefix = [int(op.id) for op in operations if op and op.id and op.batch_id == bid and int(op.seq or 0) <= max_seq]
+                    missing = [oid for oid in prefix if oid not in schedule_map]
+                    if missing:
+                        sample = ", ".join([str(x) for x in missing[:5]])
+                        algo_warnings.append(f"冻结窗口跳过批次 {bid}：上一版本缺少前缀工序排程（示例 op_id={sample}）")
+                        continue
+                    # 校验时间有效（否则不冻结该批次，避免“冻结但无有效区间”导致工序丢失）
+                    invalid_oid = None
+                    for oid in prefix:
+                        row = schedule_map.get(int(oid)) or {}
+                        st = self._normalize_datetime(row.get("start_time"))
+                        et = self._normalize_datetime(row.get("end_time"))
+                        if not st or not et or et <= st:
+                            invalid_oid = int(oid)
+                            break
+                        seed_tmp[int(oid)] = {"row": row, "start_time": st, "end_time": et}
+                    if invalid_oid is not None:
+                        algo_warnings.append(f"冻结窗口跳过批次 {bid}：上一版本工序时间无效（op_id={invalid_oid}）")
+                        # 清理该批次临时缓存
+                        for oid in prefix:
+                            seed_tmp.pop(int(oid), None)
+                        continue
+                    for oid in prefix:
+                        frozen_op_ids.add(int(oid))
+
+                # 生成 seed_results（用于算法占用资源 + 新版本回写）
+                for oid in sorted(list(frozen_op_ids)):
+                    op0 = op_by_id.get(int(oid))
+                    row = (seed_tmp.get(int(oid)) or {}).get("row") if schedule_map else None
+                    st = (seed_tmp.get(int(oid)) or {}).get("start_time")
+                    et = (seed_tmp.get(int(oid)) or {}).get("end_time")
+                    if not op0 or not row or not st or not et:
+                        continue
+                    seed_results.append(
+                        {
+                            "op_id": int(oid),
+                            "op_code": op0.op_code,
+                            "batch_id": op0.batch_id,
+                            "seq": int(op0.seq or 0),
+                            "machine_id": row.get("machine_id"),
+                            "operator_id": row.get("operator_id"),
+                            "start_time": st,
+                            "end_time": et,
+                            "source": (op0.source or "internal").strip(),
+                            "op_type_name": getattr(op0, "op_type_name", None),
+                        }
+                    )
+
+                # 排序（便于人类阅读/留痕）
+                seed_results.sort(key=lambda x: (x.get("start_time") or datetime.min, x.get("op_id") or 0))
+
+        # 执行算法（支持 improve：多起点 + 目标函数 + 时间预算）
         scheduler = GreedyScheduler(calendar_service=cal_svc, config_service=cfg_svc, logger=self.logger)
         strategy_enum: Optional[SortStrategy] = None
         try:
@@ -465,15 +584,240 @@ class ScheduleService:
         except Exception:
             downtime_map = {}
 
-        results, summary, used_strategy, used_params = scheduler.schedule(
-            operations=algo_ops,
-            batches=batches,
-            strategy=strategy_enum,
-            strategy_params=strategy_params,
-            start_dt=start_dt_norm,
-            end_date=end_date_norm,
-            machine_downtimes=downtime_map,
-        )
+        # 过滤掉冻结工序（由 seed_results 复用）
+        algo_ops_to_schedule = [x for x in algo_ops if int(getattr(x, "id", 0) or 0) not in frozen_op_ids]
+
+        algo_mode = (getattr(cfg, "algo_mode", "greedy") or "greedy").strip()
+        objective_name = (getattr(cfg, "objective", "min_overdue") or "min_overdue").strip()
+        time_budget_seconds = int(getattr(cfg, "time_budget_seconds", 20) or 20)
+        time_budget_seconds = max(1, int(time_budget_seconds))
+
+        # 统一构造排序输入（用于 multi-start / 扰动）
+        def _parse_date(value: Any) -> Optional[Any]:
+            if value is None:
+                return None
+            if hasattr(value, "date"):
+                try:
+                    return value.date()
+                except Exception:
+                    pass
+            s = str(value).strip().replace("/", "-")
+            if not s:
+                return None
+            try:
+                return datetime.strptime(s, "%Y-%m-%d").date()
+            except Exception:
+                return None
+
+        batch_for_sort: List[BatchForSort] = []
+        for b in batches.values():
+            batch_for_sort.append(
+                BatchForSort(
+                    batch_id=str(getattr(b, "batch_id", "") or ""),
+                    priority=str(getattr(b, "priority", "") or "normal"),
+                    due_date=_parse_date(getattr(b, "due_date", None)),
+                    ready_status=str(getattr(b, "ready_status", "") or "yes"),
+                    ready_date=_parse_date(getattr(b, "ready_date", None)),
+                    created_at=self._normalize_datetime(getattr(b, "created_at", None)),
+                )
+            )
+
+        def _build_order(strategy_enum: SortStrategy, params: Dict[str, Any]) -> List[str]:
+            sorter0 = StrategyFactory.create(strategy_enum, **(params or {}))
+            return [x.batch_id for x in sorter0.sort(batch_for_sort)]
+
+        # multi-start：策略集（先用当前策略，再补全其它策略）
+        if algo_mode == "improve":
+            keys = [cfg.sort_strategy] + [k for k in cfg_svc.VALID_STRATEGIES if k != cfg.sort_strategy]  # type: ignore[attr-defined]
+        else:
+            keys = [cfg.sort_strategy]
+
+        best = None
+        attempts: List[Dict[str, Any]] = []
+        improvement_trace: List[Dict[str, Any]] = []
+
+        t_begin = time.time()
+        deadline = t_begin + (time_budget_seconds if algo_mode == "improve" else 10_000_000)
+
+        # GreedyScheduler 需要 seed_results 为 ScheduleResult：这里转换一次
+        seed_sr_list: List[ScheduleResult] = []
+        if seed_results:
+            for x in seed_results:
+                try:
+                    seed_sr_list.append(
+                        ScheduleResult(
+                            op_id=int(x.get("op_id") or 0),
+                            op_code=str(x.get("op_code") or ""),
+                            batch_id=str(x.get("batch_id") or ""),
+                            seq=int(x.get("seq") or 0),
+                            machine_id=(str(x.get("machine_id") or "") or None),
+                            operator_id=(str(x.get("operator_id") or "") or None),
+                            start_time=x.get("start_time"),
+                            end_time=x.get("end_time"),
+                            source=str(x.get("source") or "internal"),
+                            op_type_name=(str(x.get("op_type_name") or "") or None),
+                        )
+                    )
+                except Exception:
+                    continue
+
+        # 执行策略轮询
+        for k in keys:
+            if time.time() > deadline:
+                break
+            try:
+                strat = SortStrategy(k)
+            except Exception:
+                continue
+            params: Dict[str, Any] = {}
+            if strat == SortStrategy.WEIGHTED:
+                params = {
+                    "priority_weight": float(cfg.priority_weight),
+                    "due_weight": float(cfg.due_weight),
+                }
+            order = _build_order(strat, params)
+            res, summ, used_strat, used_params = scheduler.schedule(
+                operations=algo_ops_to_schedule,
+                batches=batches,
+                strategy=strat,
+                strategy_params=params,
+                start_dt=start_dt_norm,
+                end_date=end_date_norm,
+                machine_downtimes=downtime_map,
+                batch_order_override=order,
+                seed_results=seed_sr_list,
+            )
+            metrics = compute_metrics(res, batches)
+            score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
+            attempts.append(
+                {
+                    "tag": f"strategy:{k}",
+                    "strategy": used_strat.value,
+                    "score": list(score),
+                    "failed_ops": int(summ.failed_ops),
+                    "metrics": metrics.to_dict(),
+                }
+            )
+            cand = {
+                "results": res,
+                "summary": summ,
+                "strategy": used_strat,
+                "params": used_params,
+                "order": order,
+                "metrics": metrics,
+                "score": score,
+            }
+            if best is None or score < best["score"]:
+                best = cand
+                if len(improvement_trace) < 200:
+                    improvement_trace.append(
+                        {
+                            "elapsed_ms": int((time.time() - t_begin) * 1000),
+                            "tag": f"strategy:{k}",
+                            "strategy": used_strat.value,
+                            "score": list(score),
+                            "metrics": metrics.to_dict(),
+                        }
+                    )
+
+        # 局部搜索（可选）：在 best batch_order 上做随机 swap/insert
+        if algo_mode == "improve" and best is not None and len(best.get("order") or []) >= 2:
+            rnd = random.Random(int(version))
+            cur_order = list(best["order"])
+            cur_strat = best["strategy"]
+            cur_params = dict(best["params"] or {})
+            it = 0
+            it_limit = max(200, min(5000, int(time_budget_seconds) * 20))
+            while time.time() <= deadline and it < it_limit:
+                it += 1
+                cand_order = list(cur_order)
+                n = len(cand_order)
+                move = "swap" if rnd.random() < 0.6 else "insert"
+                if move == "swap":
+                    i, j = rnd.sample(range(n), 2)
+                    cand_order[i], cand_order[j] = cand_order[j], cand_order[i]
+                else:
+                    i = rnd.randrange(n)
+                    j = rnd.randrange(n)
+                    x = cand_order.pop(i)
+                    cand_order.insert(j, x)
+
+                res, summ, used_strat, used_params = scheduler.schedule(
+                    operations=algo_ops_to_schedule,
+                    batches=batches,
+                    strategy=cur_strat,
+                    strategy_params=cur_params,
+                    start_dt=start_dt_norm,
+                    end_date=end_date_norm,
+                    machine_downtimes=downtime_map,
+                    batch_order_override=cand_order,
+                    seed_results=seed_sr_list,
+                )
+                metrics = compute_metrics(res, batches)
+                score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
+                if score < best["score"]:
+                    best = {
+                        "results": res,
+                        "summary": summ,
+                        "strategy": used_strat,
+                        "params": used_params,
+                        "order": cand_order,
+                        "metrics": metrics,
+                        "score": score,
+                    }
+                    cur_order = list(cand_order)
+                    if len(improvement_trace) < 200:
+                        improvement_trace.append(
+                            {
+                                "elapsed_ms": int((time.time() - t_begin) * 1000),
+                                "tag": f"local:{move}",
+                                "strategy": used_strat.value,
+                                "score": list(score),
+                                "metrics": metrics.to_dict(),
+                            }
+                        )
+                    # 记录少量轨迹，避免 result_summary 过大
+                    if len(attempts) < 12:
+                        attempts.append(
+                            {
+                                "tag": f"local:{move}",
+                                "strategy": used_strat.value,
+                                "score": list(score),
+                                "failed_ops": int(summ.failed_ops),
+                                "metrics": metrics.to_dict(),
+                            }
+                        )
+
+        if best is None:
+            # 理论上不会发生；兜底为原始单次
+            results, summary, used_strategy, used_params = scheduler.schedule(
+                operations=algo_ops_to_schedule,
+                batches=batches,
+                strategy=strategy_enum,
+                strategy_params=strategy_params,
+                start_dt=start_dt_norm,
+                end_date=end_date_norm,
+                machine_downtimes=downtime_map,
+                seed_results=seed_sr_list,
+            )
+            best_metrics = compute_metrics(results, batches)
+            best_score = (float(summary.failed_ops),) + objective_score(objective_name, best_metrics)
+            best_order = _build_order(strategy_enum or SortStrategy.PRIORITY_FIRST, used_params or {})
+        else:
+            results = best["results"]
+            summary = best["summary"]
+            used_strategy = best["strategy"]
+            used_params = best["params"]
+            best_metrics = best["metrics"]
+            best_score = best["score"]
+            best_order = best["order"]
+
+        # 把“冻结窗口相关 warning”合并到算法 warning 中
+        if algo_warnings:
+            try:
+                summary.warnings.extend(algo_warnings)  # type: ignore[attr-defined]
+            except Exception:
+                pass
 
         # 超期预警：批次预计完工时间 vs due_date
         overdue_items: List[Dict[str, Any]] = []
@@ -517,11 +861,43 @@ class ScheduleService:
 
         # result_summary（JSON）：按文档固定键名（至少包含 strategy_params / overdue_batches）
         time_cost_ms = int((time.time() - t0) * 1000)
+        frozen_batch_ids = sorted(
+            {
+                str(op.batch_id or "")
+                for op in operations
+                if op and op.id and int(op.id) in frozen_op_ids and str(op.batch_id or "").strip()
+            }
+        )
         result_summary_obj: Dict[str, Any] = {
             "is_simulation": bool(simulate),
             "version": version,
             "strategy": used_strategy.value,
             "strategy_params": used_params or {},
+            "algo": {
+                "mode": algo_mode,
+                "objective": objective_name,
+                "time_budget_seconds": int(time_budget_seconds),
+                "hard_constraints": [
+                    "precedence",
+                    "calendar",
+                    "resource_machine_operator",
+                    "downtime_avoid",
+                ]
+                + (["freeze_window"] if getattr(cfg, "freeze_window_enabled", "no") == "yes" else []),
+                "soft_objectives": [objective_name],
+                "best_score": list(best_score) if best_score is not None else None,
+                "metrics": best_metrics.to_dict() if best_metrics is not None else None,
+                "best_batch_order": list(best_order or []),
+                "attempts": (attempts or [])[:12],
+                "improvement_trace": (improvement_trace or [])[:200],
+                "freeze_window": {
+                    "enabled": getattr(cfg, "freeze_window_enabled", "no"),
+                    "days": int(getattr(cfg, "freeze_window_days", 0) or 0),
+                    "frozen_op_count": int(len(frozen_op_ids)),
+                    "frozen_batch_count": int(len(frozen_batch_ids)),
+                    "frozen_batch_ids_sample": frozen_batch_ids[:20],
+                },
+            },
             "selected_batch_ids": list(normalized),
             "start_time": self._format_dt(start_dt_norm),
             "end_date": end_date_norm.isoformat() if end_date_norm else None,
@@ -550,7 +926,7 @@ class ScheduleService:
                     "operator_id": r.operator_id,
                     "start_time": self._format_dt(r.start_time),
                     "end_time": self._format_dt(r.end_time),
-                    "lock_status": "unlocked",
+                    "lock_status": "locked" if int(r.op_id) in frozen_op_ids else "unlocked",
                     "version": int(version),
                 }
             )
@@ -603,6 +979,7 @@ class ScheduleService:
                 "version": int(version),
                 "strategy": used_strategy.value,
                 "strategy_params": used_params or {},
+                "algo": result_summary_obj.get("algo"),
                 "batch_ids": list(normalized),
                 "batch_count": len(batches),
                 "op_count": len(algo_ops),

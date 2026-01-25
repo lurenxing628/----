@@ -1,15 +1,15 @@
 # Full E2E（从 Excel 导入开始→排产→甘特/周计划→系统管理）验收报告
 
-- 测试时间：2026-01-24 00:56:47
+- 测试时间：2026-01-25 20:58:45
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境（隔离目录）
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_m_2tyhq2`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_m_2tyhq2\aps_full_e2e.db`
-- logs：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_m_2tyhq2\logs`
-- backups：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_m_2tyhq2\backups`
-- templates_excel：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_m_2tyhq2\templates_excel`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_pekg4ky3`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_pekg4ky3\aps_full_e2e.db`
+- logs：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_pekg4ky3\logs`
+- backups：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_pekg4ky3\backups`
+- templates_excel：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_pekg4ky3\templates_excel`
 
 ## 1. 基础页面可访问性（用于确认路由装配）
 - GET /：200
@@ -69,7 +69,7 @@
 - Schedule 行数：2（version=1，期望 >=1）
 - 甘特周起点（按排程起始时间）：2026-01-26
 - Batches.status：scheduled（期望 scheduled）
-- OperationLogs（schedule）：log_id=30 keys_ok
+- OperationLogs（schedule）：log_id=32 keys_ok
 
 ## 9. 甘特图与周计划（/scheduler/gantt/data + /scheduler/week-plan/export）
 - GET /scheduler/gantt：200
@@ -82,9 +82,24 @@
 - GET /system/history?version=1：200
 - GET /system/backup：200
 
+## 10.A 报表中心抽检（页面可访问）
+- GET /reports/：200
+- GET /reports/overdue：200
+- GET /reports/utilization：200
+- GET /reports/downtime：200
+
+## 10.X 物料模块 MVP（物料→批次需求→齐套回写）
+- GET /material/materials：200
+- 选取批次：B001
+- POST /material/materials/create (follow redirects)：200
+- POST /material/batches/<bid>/requirements/add (follow redirects)：200
+- 加入物料需求后批次齐套：no ready_date=None
+- POST /material/requirements/<id>/update (follow redirects)：200
+- 齐套后批次齐套：yes ready_date=2026-01-25
+
 ## 11. 留痕抽检（OperationLogs.detail 键名对齐开发文档）
 - OperationLogs 抽检：通过（import/export/schedule 关键键名齐全）
 
 ## 结论
 - 通过：Full E2E（从 Excel 导入开始→排产→甘特/周计划→系统管理）链路跑通。
-- 总耗时：4075 ms
+- 总耗时：3746 ms

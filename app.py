@@ -1,6 +1,7 @@
 import atexit
 import json
 import os
+import sys
 from flask import Flask, g, request
 from markupsafe import Markup
 
@@ -10,6 +11,7 @@ from core.infrastructure.errors import register_error_handlers
 from core.infrastructure.database import get_connection, ensure_schema
 from core.infrastructure.backup import BackupManager
 from core.services.common.excel_templates import ensure_excel_templates
+from core.plugins import PluginManager
 
 from web.routes.dashboard import bp as dashboard_bp
 from web.routes.excel_demo import bp as excel_demo_bp
@@ -18,13 +20,29 @@ from web.routes.equipment import bp as equipment_bp
 from web.routes.process import bp as process_bp
 from web.routes.scheduler import bp as scheduler_bp
 from web.routes.system import bp as system_bp
+from web.routes.material import bp as material_bp
+from web.routes.reports import bp as reports_bp
+
+
+def _runtime_base_dir() -> str:
+    """
+    获取运行根目录：
+    - 源码运行：仓库根目录（app.py 所在目录）
+    - PyInstaller onedir：exe 所在目录
+    """
+    return os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(__file__)
 
 
 def create_app() -> Flask:
     env = os.environ.get("APS_ENV") or "default"
     cfg_class = config_map.get(env) or config_map["default"]
 
-    app = Flask(__name__, static_folder="static", template_folder="templates")
+    base_dir = _runtime_base_dir()
+    static_dir = os.path.join(base_dir, "static")
+    templates_dir = os.path.join(base_dir, "templates")
+
+    # 注意：打包后 templates/static 与 exe 同目录，因此这里用绝对路径，避免 Flask 以模块 root_path 为基准导致找不到资源
+    app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)
     app.config.from_object(cfg_class)
 
     # Jinja 过滤器：JSON 输出（确保中文可读）
@@ -59,8 +77,39 @@ def create_app() -> Flask:
     app.logger.handlers = app_logger.logger.handlers
     app.logger.setLevel(app_logger.logger.level)
 
-    # DB schema
-    ensure_schema(app.config["DATABASE_PATH"], app.logger)
+    # DB schema（打包后 schema.sql 与 exe 同目录；若缺失则回退到默认路径）
+    schema_path = os.path.join(base_dir, "schema.sql")
+    ensure_schema(
+        app.config["DATABASE_PATH"],
+        app.logger,
+        schema_path=schema_path if os.path.exists(schema_path) else None,
+        backup_dir=app.config.get("BACKUP_DIR"),
+    )
+
+    # 可选插件/可选依赖：vendor/ 注入 + plugins/ 动态加载（失败可回退，状态可观测）
+    plugin_status = None
+    try:
+        conn0 = get_connection(app.config["DATABASE_PATH"])
+        try:
+            plugin_status = PluginManager.load_from_base_dir(base_dir, conn=conn0, logger=app.logger)
+            try:
+                OperationLogger(conn0, logger=app.logger).info(
+                    "plugins",
+                    "load",
+                    target_type="runtime",
+                    target_id="plugins",
+                    detail=plugin_status,
+                )
+            except Exception:
+                pass
+        finally:
+            try:
+                conn0.close()
+            except Exception:
+                pass
+    except Exception:
+        plugin_status = PluginManager.load_from_base_dir(base_dir, conn=None, logger=app.logger)
+    app.config["PLUGIN_STATUS"] = plugin_status
 
     # 每请求 DB 连接（避免跨线程）
     @app.before_request
@@ -109,6 +158,8 @@ def create_app() -> Flask:
     app.register_blueprint(equipment_bp, url_prefix="/equipment")
     app.register_blueprint(process_bp, url_prefix="/process")
     app.register_blueprint(scheduler_bp, url_prefix="/scheduler")
+    app.register_blueprint(material_bp, url_prefix="/material")
+    app.register_blueprint(reports_bp, url_prefix="/reports")
     app.register_blueprint(system_bp, url_prefix="/system")
 
     # 退出自动备份（不启后台线程）

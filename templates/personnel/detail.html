@@ -39,7 +39,10 @@
 
   <div class="card">
     <h3>可操作设备</h3>
-    <p class="muted">说明：这里维护人员-设备关联（底层写入 OperatorMachine 表）。</p>
+    <p class="muted">
+      说明：这里维护人员-设备关联（底层写入 OperatorMachine 表）。
+      可选字段：技能等级（beginner/normal/expert）与主操设备（同一人员仅允许 1 台主操设备）。
+    </p>
 
     {% if linked_machines and linked_machines|length > 0 %}
       <table>
@@ -48,17 +51,38 @@
             <th style="width:140px;">设备编号</th>
             <th>设备名称</th>
             <th style="width:120px;">设备状态</th>
-            <th style="width:120px;">操作</th>
+            <th style="width:140px;">技能等级</th>
+            <th style="width:120px;">主操</th>
+            <th style="width:220px;">操作</th>
           </tr>
         </thead>
         <tbody>
           {% for m in linked_machines %}
+            <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_link', operator_id=operator.operator_id) }}"></form>
             <tr>
               <td>{{ m.machine_id }}</td>
               <td>{{ m.machine_name or '-' }}</td>
               <td>{{ m.status_zh }}</td>
               <td>
-                <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}">
+                <input type="hidden" name="machine_id" value="{{ m.machine_id }}" form="linkform_{{ loop.index0 }}">
+                <select name="skill_level" form="linkform_{{ loop.index0 }}">
+                  {% set cur = m.skill_level or 'normal' %}
+                  {% for v, label in skill_level_options %}
+                    <option value="{{ v }}" {% if cur == v %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td>
+                <label class="muted">
+                  <input type="checkbox" name="is_primary" value="yes" form="linkform_{{ loop.index0 }}"
+                         {{ 'checked' if (m.is_primary or 'no') == 'yes' else '' }}>
+                  主操
+                </label>
+              </td>
+              <td>
+                <button type="submit" form="linkform_{{ loop.index0 }}">保存</button>
+                <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}" style="display:inline-block;margin-left:6px;"
+                      onsubmit="return confirm('确认解除该关联？');">
                   <input type="hidden" name="machine_id" value="{{ m.machine_id }}">
                   <button type="submit">解除关联</button>
                 </form>

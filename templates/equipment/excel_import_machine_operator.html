@@ -2,7 +2,10 @@
 {% block content %}
   <div class="card">
     <h2>设备人员关联（Excel）</h2>
-    <p class="muted">导入/导出字段：设备编号、工号。导入前会校验设备/人员是否存在，并给出中文提示。</p>
+    <p class="muted">
+      导入/导出字段：设备编号、工号；可选字段：技能等级（beginner/normal/expert）、主操设备（yes/no）。
+      导入前会校验设备/人员是否存在，并给出中文提示。
+    </p>
     <div style="margin-top:8px;">
       <a href="{{ export_url }}">导出当前数据（设备人员关联.xlsx）</a>
       <span class="muted">（导出会写入操作留痕）</span>
@@ -21,6 +24,8 @@
             <th>设备名称</th>
             <th>工号</th>
             <th>姓名</th>
+            <th>技能等级</th>
+            <th>主操设备</th>
           </tr>
         </thead>
         <tbody>
@@ -30,6 +35,8 @@
               <td>{{ r["设备名称"] or '-' }}</td>
               <td>{{ r["工号"] }}</td>
               <td>{{ r["姓名"] or '-' }}</td>
+              <td>{{ r["技能等级"] or '-' }}</td>
+              <td>{{ r["主操设备"] or '-' }}</td>
             </tr>
           {% endfor %}
         </tbody>

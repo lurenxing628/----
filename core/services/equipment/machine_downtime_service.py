@@ -53,7 +53,7 @@ class MachineDowntimeService:
         v = MachineDowntimeService._normalize_text(value)
         if not v:
             raise ValidationError(f"“{field}”不能为空", field=field)
-        s = v.replace("/", "-").replace("T", " ")
+        s = v.replace("/", "-").replace("T", " ").replace("：", ":")
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
             try:
                 return datetime.strptime(s, fmt)

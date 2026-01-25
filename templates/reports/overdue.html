@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>报表 - 超期清单</h2>
+    <p class="muted">说明：按指定排产版本（Schedule.version）统计“完工日期晚于交期”的批次。</p>
+    <div style="margin-top:8px;">
+      <a href="{{ url_for('reports.index') }}">← 返回报表中心</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>筛选</h3>
+    <form method="get" action="{{ url_for('reports.overdue_page') }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>排产版本</label><br/>
+          <select name="version" style="min-width:220px;">
+            {% for it in versions %}
+              <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
+                v{{ it.version }}（{{ it.schedule_time }} / {{ it.result_status or '-' }}）
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <button type="submit">查询</button>
+          <a style="margin-left:10px;" href="{{ url_for('reports.overdue_export', version=version) }}">导出 Excel</a>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>结果（{{ count }}）</h3>
+    {% if not rows %}
+      <div class="muted">暂无超期批次。</div>
+    {% else %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:140px;">批次号</th>
+            <th style="width:140px;">图号</th>
+            <th>名称</th>
+            <th style="width:120px;">数量</th>
+            <th style="width:140px;">交期</th>
+            <th style="width:200px;">完工时间</th>
+            <th style="width:120px;">超期(天)</th>
+            <th style="width:120px;">超期(小时)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}">{{ r.batch_id }}</a></td>
+              <td>{{ r.part_no or '-' }}</td>
+              <td>{{ r.part_name or '-' }}</td>
+              <td>{{ r.quantity or '-' }}</td>
+              <td>{{ r.due_date }}</td>
+              <td>{{ r.finish_time }}</td>
+              <td>{{ r.delay_days }}</td>
+              <td>{{ r.delay_hours }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+{% endblock %}
+

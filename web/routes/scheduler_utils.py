@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-import io
+import os
+import tempfile
 from typing import Any, Dict, List, Optional
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.services.common.excel_service import ImportMode
+from core.services.common.excel_backend_factory import get_excel_backend
 
 
 def _parse_mode(value: str) -> ImportMode:
@@ -42,39 +44,18 @@ def _read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
     if not data:
         raise AppError(ErrorCode.EXCEL_FORMAT_ERROR, "上传文件为空，请重新选择。")
 
-    import openpyxl
-
-    tmp = io.BytesIO(data)
-    tmp.seek(0)
-
+    # 统一走 backend.read(file_path)，以支持可选 pandas 后端
+    fd, tmp_path = tempfile.mkstemp(prefix="aps_upload_", suffix=".xlsx")
     try:
-        wb = openpyxl.load_workbook(tmp, data_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows:
-            return []
-
-        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
-        parsed_rows: List[Dict[str, Any]] = []
-        for raw in rows[1:]:
-            if raw is None or all(v is None or str(v).strip() == "" for v in raw):
-                continue
-            item: Dict[str, Any] = {}
-            for idx, key in enumerate(headers):
-                if not key:
-                    continue
-                val = raw[idx] if idx < len(raw) else None
-                if isinstance(val, str):
-                    val = val.strip()
-                    if val == "":
-                        val = None
-                item[key] = val
-            parsed_rows.append(item)
-        return parsed_rows
-    except AppError:
-        raise
-    except Exception as e:
-        raise AppError(ErrorCode.EXCEL_READ_ERROR, "读取 Excel 失败，请确认文件未损坏且未被占用。", cause=e)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        backend = get_excel_backend()
+        return backend.read(tmp_path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
 
 
 # -------------------------

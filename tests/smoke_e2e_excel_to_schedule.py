@@ -536,6 +536,98 @@ def main():
         _assert_status(lines, "GET /system/backup", client.get("/system/backup"), 200)
 
         # ============================================================
+        # 10.A) 报表中心：页面可访问
+        # ============================================================
+        lines.append("")
+        lines.append("## 10.A 报表中心抽检（页面可访问）")
+        _assert_status(lines, "GET /reports/", client.get("/reports/"), 200)
+        _assert_status(lines, "GET /reports/overdue", client.get(f"/reports/overdue?version={version}"), 200)
+        _assert_status(
+            lines,
+            "GET /reports/utilization",
+            client.get(f"/reports/utilization?version={version}&start_date={week_start}&end_date={week_start}"),
+            200,
+        )
+        _assert_status(
+            lines,
+            "GET /reports/downtime",
+            client.get(f"/reports/downtime?version={version}&start_date={week_start}&end_date={week_start}"),
+            200,
+        )
+
+        # ============================================================
+        # 10.X) 物料模块 MVP：物料主数据 + 批次物料需求 + 齐套回写
+        # ============================================================
+        lines.append("")
+        lines.append("## 10.X 物料模块 MVP（物料→批次需求→齐套回写）")
+        _assert_status(lines, "GET /material/materials", client.get("/material/materials"), 200)
+
+        # 取一个已有批次用于验证回写（避免依赖固定批次号）
+        conn = get_connection(test_db)
+        try:
+            row = conn.execute("SELECT batch_id FROM Batches ORDER BY batch_id LIMIT 1").fetchone()
+            if not row:
+                raise RuntimeError("缺少批次数据用于物料模块验证")
+            bid = row["batch_id"]
+        finally:
+            conn.close()
+        lines.append(f"- 选取批次：{bid}")
+
+        # 新增物料
+        resp = client.post(
+            "/material/materials/create",
+            data={"material_id": "MAT_E2E", "name": "测试物料", "spec": "E2E", "unit": "kg", "stock_qty": "0", "status": "active"},
+            follow_redirects=True,
+        )
+        _assert_status(lines, "POST /material/materials/create (follow redirects)", resp, 200)
+
+        # 新增批次物料需求：先不齐套（available < required）
+        resp = client.post(
+            f"/material/batches/{bid}/requirements/add",
+            data={"material_id": "MAT_E2E", "required_qty": "10", "available_qty": "0"},
+            follow_redirects=True,
+        )
+        _assert_status(lines, "POST /material/batches/<bid>/requirements/add (follow redirects)", resp, 200)
+
+        conn = get_connection(test_db)
+        try:
+            st = conn.execute("SELECT ready_status, ready_date FROM Batches WHERE batch_id=?", (bid,)).fetchone()
+            if not st:
+                raise RuntimeError("批次不存在（用于物料验证）")
+            lines.append(f"- 加入物料需求后批次齐套：{st['ready_status']} ready_date={st['ready_date']}")
+            if st["ready_status"] not in ("no", "partial"):
+                raise RuntimeError(f"物料未齐套时批次 ready_status 异常：{st['ready_status']}")
+
+            bm = conn.execute(
+                "SELECT id FROM BatchMaterials WHERE batch_id=? AND material_id=? ORDER BY id DESC LIMIT 1",
+                (bid, "MAT_E2E"),
+            ).fetchone()
+            if not bm:
+                raise RuntimeError("未生成 BatchMaterials 记录")
+            bm_id = int(bm["id"])
+        finally:
+            conn.close()
+
+        # 更新到料：使其齐套（available >= required），应回写批次 ready_status=yes 且 ready_date 非空
+        resp = client.post(
+            f"/material/requirements/{bm_id}/update",
+            data={"batch_id": bid, "required_qty": "10", "available_qty": "10"},
+            follow_redirects=True,
+        )
+        _assert_status(lines, "POST /material/requirements/<id>/update (follow redirects)", resp, 200)
+
+        conn = get_connection(test_db)
+        try:
+            st2 = conn.execute("SELECT ready_status, ready_date FROM Batches WHERE batch_id=?", (bid,)).fetchone()
+            lines.append(f"- 齐套后批次齐套：{st2['ready_status']} ready_date={st2['ready_date']}")
+            if st2["ready_status"] != "yes":
+                raise RuntimeError(f"物料齐套后批次 ready_status 异常：{st2['ready_status']}")
+            if not st2["ready_date"]:
+                raise RuntimeError("物料齐套后批次 ready_date 为空（期望写入）")
+        finally:
+            conn.close()
+
+        # ============================================================
         # 11) 留痕抽检：关键 Excel 导入/导出 是否按文档键名写 detail
         # ============================================================
         lines.append("")

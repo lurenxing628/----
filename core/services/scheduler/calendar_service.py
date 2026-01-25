@@ -84,7 +84,7 @@ class CalendarService:
         """
         if value is None or (isinstance(value, str) and value.strip() == ""):
             return None if allow_none else "08:00"
-        s = str(value).strip()
+        s = str(value).strip().replace("：", ":")
         for fmt in ("%H:%M:%S", "%H:%M"):
             try:
                 t = datetime.strptime(s, fmt).time()
@@ -272,6 +272,7 @@ class CalendarService:
         ss = (cal.shift_start or "").strip() if getattr(cal, "shift_start", None) else ""
         if not ss:
             ss = "08:00"
+        ss = ss.replace("：", ":")
         try:
             ss_t = datetime.strptime(ss, "%H:%M").time()
         except Exception:
@@ -279,6 +280,7 @@ class CalendarService:
 
         se = (cal.shift_end or "").strip() if getattr(cal, "shift_end", None) else ""
         if se:
+            se = se.replace("：", ":")
             try:
                 se_t = datetime.strptime(se, "%H:%M").time()
                 st_dt = datetime.combine(date.fromisoformat(cal.date), ss_t)

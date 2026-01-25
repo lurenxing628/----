@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block extra_head %}
+  <style>
+    .kpi-grid { display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; }
+    .kpi-box { border:1px solid #eee; padding:10px; border-radius:8px; min-width:220px; }
+    .kpi-title { color:#666; font-size:12px; }
+    .kpi-value { font-size:22px; font-weight:700; margin-top:4px; }
+    .kpi-delta { color:#666; font-size:12px; margin-top:2px; }
+
+    .bar { height:10px; background:#eee; border-radius:999px; overflow:hidden; width:220px; }
+    .bar > div { height:10px; background:#1976d2; }
+    .tag { font-family: monospace; }
+    .svg-wrap { max-width: 760px; }
+    .svg-title { margin-top:10px; margin-bottom:4px; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2>排产优化分析（离线）</h2>
+        <div class="muted">
+          说明：本页从 <code>ScheduleHistory.result_summary</code> 中读取 <code>algo</code> 留痕，并用纯 HTML/SVG 展示排产效果与优化过程（Win7 无网可用）。
+        </div>
+      </div>
+      <div>
+        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <form method="get" action="{{ url_for('scheduler.analysis_page') }}" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+      <div>
+        <label>选择版本</label><br/>
+        {% if versions and versions|length > 0 %}
+          <select name="version" style="min-width:260px;">
+            {% for v in versions %}
+              <option value="{{ v.version }}" {% if selected and (selected.version|int)==(v.version|int) %}selected{% endif %}>
+                v{{ v.version }}（{{ v.schedule_time }} / {{ v.strategy }} / {{ v.result_status or '-' }}）
+              </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <span class="muted">暂无排产历史（请先执行一次排产/模拟）。</span>
+        {% endif %}
+      </div>
+      <div>
+        <button type="submit">加载</button>
+      </div>
+      {% if selected %}
+        <div class="muted" style="margin-left:8px;">
+          <a href="{{ url_for('scheduler.gantt_page', view='machine', version=selected.version) }}">查看甘特图-设备</a>
+          <span class="muted">｜</span>
+          <a href="{{ url_for('scheduler.gantt_page', view='operator', version=selected.version) }}">甘特图-人员</a>
+        </div>
+      {% endif %}
+    </form>
+  </div>
+
+  {% if selected %}
+    <div class="card">
+      <h3>版本概览：v{{ selected.version }}</h3>
+      <div class="muted">
+        时间：<strong>{{ selected.schedule_time }}</strong>
+        <span class="muted">｜</span>
+        策略：<code>{{ selected.strategy }}</code>
+        <span class="muted">｜</span>
+        状态：<code>{{ selected.result_status }}</code>
+        <span class="muted">｜</span>
+        创建人：{{ selected.created_by or '-' }}
+      </div>
+
+      {% set algo = (selected_summary.algo if selected_summary and selected_summary.algo else {}) %}
+      <div class="muted" style="margin-top:6px;">
+        模式：<code>{{ algo.mode or '-' }}</code>
+        <span class="muted">｜</span>
+        目标函数：<code>{{ algo.objective or '-' }}</code>
+        <span class="muted">｜</span>
+        时间预算：<code>{{ algo.time_budget_seconds or '-' }}</code> 秒（建议 ≤180；越大越慢）
+        <span class="muted">｜</span>
+        实际耗时：<code>{{ selected_summary.time_cost_ms if selected_summary else '-' }}</code> ms
+      </div>
+
+      {% if selected_metrics %}
+        {% set m = selected_metrics %}
+        <div class="kpi-grid">
+          <div class="kpi-box">
+            <div class="kpi-title">超期批次数（overdue_count）</div>
+            <div class="kpi-value">{{ m.get('overdue_count', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('overdue_count', 0) - prev_metrics.get('overdue_count', 0)) %}
+              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d }}</div>
+            {% endif %}
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">总拖期（小时）（total_tardiness_hours）</div>
+            <div class="kpi-value">{{ m.get('total_tardiness_hours', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('total_tardiness_hours', 0) - prev_metrics.get('total_tardiness_hours', 0)) %}
+              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+            {% endif %}
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">makespan（小时）（makespan_hours）</div>
+            <div class="kpi-value">{{ m.get('makespan_hours', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('makespan_hours', 0) - prev_metrics.get('makespan_hours', 0)) %}
+              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+            {% endif %}
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">换型次数（changeover_count）</div>
+            <div class="kpi-value">{{ m.get('changeover_count', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('changeover_count', 0) - prev_metrics.get('changeover_count', 0)) %}
+              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d }}</div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="muted" style="margin-top:8px;">
+          注：attempts 条形图当前按 <code>{{ objective_key }}</code> 展示（条越长表示该指标越大；目标函数是“越小越好”）。
+        </div>
+      {% else %}
+        <div class="muted" style="margin-top:8px;">该版本未发现 <code>algo.metrics</code>（可能是较旧版本产生的历史记录）。</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>优化过程（attempts 采样）</h3>
+      {% if trace_chart %}
+        <div class="svg-title">改进曲线（best improvement trace，x=elapsed_ms，y={{ objective_key }}）</div>
+        <div class="svg-wrap">
+          <svg viewBox="0 0 {{ trace_chart.width }} {{ trace_chart.height }}" width="100%" height="{{ trace_chart.height }}">
+            <polyline points="{{ trace_chart.points }}" fill="none" stroke="#1565c0" stroke-width="2"></polyline>
+            <circle cx="{{ trace_chart.last_x }}" cy="{{ trace_chart.last_y }}" r="3" fill="#1565c0"></circle>
+          </svg>
+        </div>
+        <div class="muted">min={{ trace_chart.y_min|round(4) }} max={{ trace_chart.y_max|round(4) }}</div>
+      {% endif %}
+      {% if attempts and attempts|length > 0 %}
+        <table>
+          <thead>
+            <tr>
+              <th>排序</th>
+              <th>tag</th>
+              <th>strategy</th>
+              <th>failed_ops</th>
+              <th>{{ objective_key }}</th>
+              <th>条形</th>
+              <th>score（字典序）</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in attempts %}
+              {% set mm = r.metrics if r.metrics else {} %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td class="tag">{{ r.tag }}</td>
+                <td><code>{{ r.strategy }}</code></td>
+                <td>{{ r.failed_ops }}</td>
+                <td>
+                  {% if objective_key in mm %}
+                    {{ mm[objective_key] }}
+                  {% else %}
+                    {{ r.primary_value }}
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="bar"><div style="width: {{ r.bar_pct }}%;"></div></div>
+                </td>
+                <td><code>{{ r.score }}</code></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="muted" style="margin-top:8px;">
+          提示：attempts 为采样留痕（数量受限，避免 result_summary 过大）；最终最优以 <code>algo.metrics / algo.best_score</code> 为准。
+        </div>
+      {% else %}
+        <div class="muted">该版本未记录 attempts（可能是非 improve 模式，或旧版本历史）。</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>版本趋势（最近 {{ trend_rows|length }} 个有指标的版本）</h3>
+      {% if trend_rows and trend_rows|length > 1 %}
+        <div class="muted">范围：v{{ trend_rows[0].version }} ～ v{{ trend_rows[-1].version }}</div>
+
+        {% if trend_charts.overdue %}
+          <div class="svg-title">超期批次数（overdue_count）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.overdue.width }} {{ trend_charts.overdue.height }}" width="100%" height="{{ trend_charts.overdue.height }}">
+              <polyline points="{{ trend_charts.overdue.points }}" fill="none" stroke="#1976d2" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.overdue.last_x }}" cy="{{ trend_charts.overdue.last_y }}" r="3" fill="#1976d2"></circle>
+            </svg>
+          </div>
+          <div class="muted">min={{ trend_charts.overdue.y_min|round(4) }} max={{ trend_charts.overdue.y_max|round(4) }}</div>
+        {% endif %}
+
+        {% if trend_charts.tardiness %}
+          <div class="svg-title">总拖期（小时）（total_tardiness_hours）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.tardiness.width }} {{ trend_charts.tardiness.height }}" width="100%" height="{{ trend_charts.tardiness.height }}">
+              <polyline points="{{ trend_charts.tardiness.points }}" fill="none" stroke="#7b1fa2" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.tardiness.last_x }}" cy="{{ trend_charts.tardiness.last_y }}" r="3" fill="#7b1fa2"></circle>
+            </svg>
+          </div>
+          <div class="muted">min={{ trend_charts.tardiness.y_min|round(4) }} max={{ trend_charts.tardiness.y_max|round(4) }}</div>
+        {% endif %}
+
+        {% if trend_charts.makespan %}
+          <div class="svg-title">makespan（小时）（makespan_hours）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.makespan.width }} {{ trend_charts.makespan.height }}" width="100%" height="{{ trend_charts.makespan.height }}">
+              <polyline points="{{ trend_charts.makespan.points }}" fill="none" stroke="#ef6c00" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.makespan.last_x }}" cy="{{ trend_charts.makespan.last_y }}" r="3" fill="#ef6c00"></circle>
+            </svg>
+          </div>
+          <div class="muted">min={{ trend_charts.makespan.y_min|round(4) }} max={{ trend_charts.makespan.y_max|round(4) }}</div>
+        {% endif %}
+
+        {% if trend_charts.changeover %}
+          <div class="svg-title">换型次数（changeover_count）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.changeover.width }} {{ trend_charts.changeover.height }}" width="100%" height="{{ trend_charts.changeover.height }}">
+              <polyline points="{{ trend_charts.changeover.points }}" fill="none" stroke="#2e7d32" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.changeover.last_x }}" cy="{{ trend_charts.changeover.last_y }}" r="3" fill="#2e7d32"></circle>
+            </svg>
+          </div>
+          <div class="muted">min={{ trend_charts.changeover.y_min|round(4) }} max={{ trend_charts.changeover.y_max|round(4) }}</div>
+        {% endif %}
+      {% else %}
+        <div class="muted">暂无可用趋势数据（需要至少 2 个包含 <code>algo.metrics</code> 的版本）。</div>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}
+

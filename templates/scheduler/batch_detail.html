@@ -170,6 +170,59 @@
     // - 为避免过重，本页仅注入“本页涉及资源”的映射（后端已裁剪）。
     const machineOperators = {{ machine_operators|tojson }};
     const operatorMachines = {{ operator_machines|tojson }};
+    const machineOperatorMeta = {{ machine_operator_meta|tojson }};
+    const preferPrimarySkill = {{ 'true' if prefer_primary_skill=='yes' else 'false' }};
+
+    function _skillScore(skillLevel) {
+      const v = (skillLevel || "").toString().toLowerCase();
+      if (v === "expert") return 2;
+      if (v === "normal") return 1;
+      if (v === "beginner") return 0;
+      return 0;
+    }
+
+    function _reorderOperatorOptionsByPreference(selectEl, machineId, allowedOps) {
+      if (!preferPrimarySkill) return;
+      if (!selectEl) return;
+      const mc = (machineId || "").trim();
+      if (!mc) return;
+
+      const metaMap = machineOperatorMeta && machineOperatorMeta[mc] ? machineOperatorMeta[mc] : {};
+      const selected = selectEl.value || "";
+      const opts = Array.from(selectEl.options || []);
+      if (opts.length <= 2) return;
+
+      const emptyOpts = opts.filter(o => !o.value);
+      const others = opts.filter(o => !!o.value);
+
+      function _rank(opt) {
+        const val = opt.value || "";
+        const staticDisabled = (opt.dataset && opt.dataset.staticDisabled === "1") ? 1 : 0;
+        const allowed = allowedOps ? (allowedOps.has(val) ? 0 : 1) : 0;
+        const meta = (metaMap && metaMap[val]) ? metaMap[val] : {};
+        const primary = (meta.is_primary === "yes") ? 0 : 1;
+        const skill = -_skillScore(meta.skill_level);
+        return [staticDisabled, allowed, primary, skill, val];
+      }
+
+      others.sort((a, b) => {
+        const ra = _rank(a);
+        const rb = _rank(b);
+        for (let i = 0; i < ra.length; i++) {
+          if (ra[i] < rb[i]) return -1;
+          if (ra[i] > rb[i]) return 1;
+        }
+        return 0;
+      });
+
+      const frag = document.createDocumentFragment();
+      for (const o of emptyOpts) frag.appendChild(o);
+      for (const o of others) frag.appendChild(o);
+      selectEl.appendChild(frag);
+
+      // 保持已选值
+      try { selectEl.value = selected; } catch (e) {}
+    }
 
     function _setSelectOptionsByAllowed(selectEl, allowedSet) {
       if (!selectEl) return;
@@ -209,6 +262,7 @@
 
       _setSelectOptionsByAllowed(oSel, allowedOps);
       _setSelectOptionsByAllowed(mSel, allowedMcs);
+      _reorderOperatorOptionsByPreference(oSel, machineId, allowedOps);
 
       let msg = "";
       if (machineId && allowedOps && allowedOps.size === 0) {

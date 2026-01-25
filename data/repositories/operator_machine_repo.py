@@ -67,3 +67,18 @@ class OperatorMachineRepository(BaseRepository):
     def delete(self, link_id: int) -> None:
         self.execute("DELETE FROM OperatorMachine WHERE id = ?", (link_id,))
 
+    def update_fields(self, operator_id: str, machine_id: str, *, skill_level: str, is_primary: str) -> int:
+        cur = self.execute(
+            """
+            UPDATE OperatorMachine
+            SET skill_level = ?, is_primary = ?
+            WHERE operator_id = ? AND machine_id = ?
+            """,
+            (skill_level, is_primary, operator_id, machine_id),
+        )
+        return int(getattr(cur, "rowcount", 0) or 0)
+
+    def clear_primary_for_operator(self, operator_id: str) -> int:
+        cur = self.execute("UPDATE OperatorMachine SET is_primary = 'no' WHERE operator_id = ?", (operator_id,))
+        return int(getattr(cur, "rowcount", 0) or 0)
+

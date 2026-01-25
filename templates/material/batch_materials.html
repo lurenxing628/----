@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>物料管理 - 批次物料需求（齐套判定）</h2>
+    <p class="muted">
+      说明：维护批次的物料需求与到料数量；系统会自动判定齐套并回写到批次的 <code>ready_status/ready_date</code>。
+      若某批次没有任何物料需求行，则系统不会接管其 ready_status（保留人工/Excel 值）。
+    </p>
+    <div style="margin-top:8px;">
+      <a href="{{ url_for('material.materials_page') }}">← 物料主数据</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('scheduler.batches_page') }}">排产调度</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>选择批次</h3>
+    <form method="get" action="{{ url_for('material.batch_materials_page') }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div style="min-width:360px;">
+          <label>批次</label><br/>
+          <select name="batch_id" style="min-width:360px;">
+            <option value="">（请选择批次）</option>
+            {% for v, label in batch_options %}
+              <option value="{{ v }}" {% if batch_id == v %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <button type="submit">查看</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {% if batch %}
+    <div class="card">
+      <h3>批次信息</h3>
+      <div class="muted">
+        批次：<strong>{{ batch.batch_id }}</strong>
+        <span class="muted">｜</span>
+        图号：<strong>{{ batch.part_no }}</strong>
+        <span class="muted">｜</span>
+        数量：<strong>{{ batch.quantity }}</strong>
+        <span class="muted">｜</span>
+        当前齐套：<strong>{{ batch.ready_status or '-' }}</strong>
+        {% if batch.ready_date %}
+          <span class="muted">（齐套日期：{{ batch.ready_date }}）</span>
+        {% endif %}
+        <span class="muted">｜</span>
+        <a href="{{ url_for('scheduler.batch_detail', batch_id=batch.batch_id) }}">打开批次详情</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>新增物料需求</h3>
+      {% if not material_options %}
+        <div class="muted">暂无可用物料（请先在“物料主数据”新增物料）。</div>
+      {% else %}
+        <form method="post" action="{{ url_for('material.batch_material_add', batch_id=batch.batch_id) }}">
+          <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+            <div style="min-width:320px;">
+              <label>物料</label><br/>
+              <select name="material_id" required style="min-width:320px;">
+                <option value="">（请选择）</option>
+                {% for v, label in material_options %}
+                  <option value="{{ v }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>需求数量</label><br/>
+              <input name="required_qty" required placeholder="如：10" style="width:120px;">
+            </div>
+            <div>
+              <label>到料数量</label><br/>
+              <input name="available_qty" value="0" style="width:120px;">
+            </div>
+            <div>
+              <button type="submit">新增</button>
+            </div>
+          </div>
+        </form>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>物料需求列表</h3>
+      {% if not requirements %}
+        <div class="muted">该批次暂无物料需求。新增后系统会自动判定齐套并回写批次。</div>
+      {% else %}
+        <table>
+          <thead>
+            <tr>
+              <th style="width:80px;">ID</th>
+              <th style="width:140px;">物料ID</th>
+              <th style="width:200px;">名称</th>
+              <th style="width:160px;">规格</th>
+              <th style="width:120px;">单位</th>
+              <th style="width:140px;">需求数量</th>
+              <th style="width:140px;">到料数量</th>
+              <th style="width:120px;">齐套</th>
+              <th style="width:220px;">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in requirements %}
+              <form id="bmform_{{ loop.index0 }}" method="post" action="{{ url_for('material.batch_material_update', bm_id=r.id) }}"></form>
+              <tr>
+                <td>{{ r.id }}</td>
+                <td><code>{{ r.material_id }}</code></td>
+                <td>{{ r.material_name or '-' }}</td>
+                <td>{{ r.spec or '-' }}</td>
+                <td>{{ r.unit or '-' }}</td>
+                <td>
+                  <input name="batch_id" value="{{ batch.batch_id }}" form="bmform_{{ loop.index0 }}" type="hidden">
+                  <input name="required_qty" value="{{ r.required_qty }}" form="bmform_{{ loop.index0 }}" style="width:110px;">
+                </td>
+                <td>
+                  <input name="available_qty" value="{{ r.available_qty }}" form="bmform_{{ loop.index0 }}" style="width:110px;">
+                </td>
+                <td>{{ r.ready_status or '-' }}</td>
+                <td>
+                  <button type="submit" form="bmform_{{ loop.index0 }}">保存</button>
+                  <form method="post" action="{{ url_for('material.batch_material_delete', bm_id=r.id) }}" style="display:inline-block;margin-left:6px;"
+                        onsubmit="return confirm('确认删除该物料需求？');">
+                    <input type="hidden" name="batch_id" value="{{ batch.batch_id }}">
+                    <button type="submit">删除</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}
+

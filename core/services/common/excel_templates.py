@@ -35,8 +35,8 @@ def get_default_templates() -> List[Dict[str, Any]]:
         },
         {
             "filename": "人员设备关联.xlsx",
-            "headers": ["工号", "设备编号"],
-            "sample_rows": [["OP001", "CNC-01"]],
+            "headers": ["工号", "设备编号", "技能等级", "主操设备"],
+            "sample_rows": [["OP001", "CNC-01", "normal", "yes"]],
         },
         # 设备
         {
@@ -46,8 +46,8 @@ def get_default_templates() -> List[Dict[str, Any]]:
         },
         {
             "filename": "设备人员关联.xlsx",
-            "headers": ["设备编号", "工号"],
-            "sample_rows": [["CNC-01", "OP001"]],
+            "headers": ["设备编号", "工号", "技能等级", "主操设备"],
+            "sample_rows": [["CNC-01", "OP001", "normal", "yes"]],
         },
         # 工艺
         {

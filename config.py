@@ -1,10 +1,14 @@
 import os
+import sys
 
 
 class Config:
     """应用配置（V1 最终）"""
 
-    BASE_DIR = os.path.dirname(__file__)
+    # 运行根目录：
+    # - 开发/源码运行：仓库根目录（config.py 所在目录）
+    # - PyInstaller onedir 打包后：exe 所在目录（确保 db/logs/backups/templates/static 等均落在交付目录中）
+    BASE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(__file__)
 
     # 基础配置
     SECRET_KEY = os.environ.get("SECRET_KEY") or "aps-dev-key"

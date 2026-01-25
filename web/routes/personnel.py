@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import tempfile
 import time
 from typing import Any, Dict, List, Optional
 
@@ -11,8 +12,8 @@ from flask import Blueprint, current_app, flash, g, redirect, render_template, r
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
+from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
-from core.services.common.openpyxl_backend import OpenpyxlBackend
 from core.services.personnel import OperatorMachineService, OperatorService
 from data.repositories import MachineRepository, OperatorRepository
 
@@ -55,39 +56,17 @@ def _read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
     if not data:
         raise AppError(ErrorCode.EXCEL_FORMAT_ERROR, "上传文件为空，请重新选择。")
 
-    import openpyxl
-
-    tmp = io.BytesIO(data)
-    tmp.seek(0)
-
+    fd, tmp_path = tempfile.mkstemp(prefix="aps_upload_", suffix=".xlsx")
     try:
-        wb = openpyxl.load_workbook(tmp, data_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows:
-            return []
-
-        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
-        parsed_rows: List[Dict[str, Any]] = []
-        for raw in rows[1:]:
-            if raw is None or all(v is None or str(v).strip() == "" for v in raw):
-                continue
-            item: Dict[str, Any] = {}
-            for idx, key in enumerate(headers):
-                if not key:
-                    continue
-                val = raw[idx] if idx < len(raw) else None
-                if isinstance(val, str):
-                    val = val.strip()
-                    if val == "":
-                        val = None
-                item[key] = val
-            parsed_rows.append(item)
-        return parsed_rows
-    except AppError:
-        raise
-    except Exception as e:
-        raise AppError(ErrorCode.EXCEL_READ_ERROR, "读取 Excel 失败，请确认文件未损坏且未被占用。", cause=e)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        backend = get_excel_backend()
+        return backend.read(tmp_path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
 
 
 def _validate_operator_excel_row(row: Dict[str, Any]) -> Optional[str]:
@@ -209,6 +188,8 @@ def detail_page(operator_id: str):
                 "machine_name": (m.name if m else None),
                 "status": (m.status if m else None),
                 "status_zh": _machine_status_zh(m.status) if m else "-",
+                "skill_level": getattr(l, "skill_level", None),
+                "is_primary": getattr(l, "is_primary", None),
             }
         )
 
@@ -234,6 +215,7 @@ def detail_page(operator_id: str):
         status_options=[("active", "在岗"), ("inactive", "停用/休假")],
         linked_machines=linked_machines,
         available_machines=available_machines,
+        skill_level_options=[("beginner", "初级"), ("normal", "普通"), ("expert", "熟练")],
     )
 
 
@@ -339,6 +321,18 @@ def add_link(operator_id: str):
     return redirect(url_for("personnel.detail_page", operator_id=operator_id))
 
 
+@bp.post("/<operator_id>/link/update")
+def update_link(operator_id: str):
+    machine_id = request.form.get("machine_id")
+    skill_level = request.form.get("skill_level")
+    # checkbox：未勾选时 form 中不存在该 key
+    is_primary = "yes" if request.form.get("is_primary") else "no"
+    svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
+    svc.update_link_fields(operator_id=operator_id, machine_id=machine_id, skill_level=skill_level, is_primary=is_primary)
+    flash("已更新关联字段（技能等级/主操设备）。", "success")
+    return redirect(url_for("personnel.detail_page", operator_id=operator_id))
+
+
 @bp.post("/<operator_id>/link/remove")
 def remove_link(operator_id: str):
     machine_id = request.form.get("machine_id")
@@ -388,7 +382,7 @@ def excel_operator_preview():
     op_svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = op_svc.build_existing_for_excel()
 
-    svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = svc.preview_import(
         rows=rows,
         id_column="工号",
@@ -445,7 +439,7 @@ def excel_operator_confirm():
     op_svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = op_svc.build_existing_for_excel()
 
-    excel_svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="工号",
@@ -453,6 +447,28 @@ def excel_operator_confirm():
         validators=[_validate_operator_excel_row],
         mode=mode,
     )
+
+    # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
+    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    if error_rows:
+        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        flash(
+            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
+            "error",
+        )
+        return render_template(
+            "personnel/excel_import_operator.html",
+            title="人员基本信息 - Excel 导入/导出",
+            existing_list=list(existing.values()),
+            preview_rows=preview_rows,
+            raw_rows_json=json.dumps(rows, ensure_ascii=False),
+            mode=mode.value,
+            filename=filename,
+            preview_url=url_for("personnel.excel_operator_preview"),
+            confirm_url=url_for("personnel.excel_operator_confirm"),
+            template_download_url=url_for("personnel.excel_operator_template"),
+            export_url=url_for("personnel.excel_operator_export"),
+        )
 
     # 落库：忽略 ERROR 行
     tx = TransactionManager(g.db)
@@ -581,7 +597,7 @@ def excel_operator_export():
         {"工号": r["operator_id"], "姓名": r["name"], "状态": r["status"], "备注": r["remark"]} for r in rows
     ]
 
-    # OpenpyxlBackend.write 需要文件路径；这里直接用 openpyxl 写入内存
+    # 导出到浏览器：这里直接用 openpyxl 写入内存（无需落地文件）
     import openpyxl
 
     wb = openpyxl.Workbook()
@@ -625,7 +641,8 @@ def excel_link_page():
     # 当前关联展示（用于用户核对）
     rows = g.db.execute(
         """
-        SELECT om.operator_id, o.name AS operator_name, om.machine_id, m.name AS machine_name
+        SELECT om.operator_id, o.name AS operator_name, om.machine_id, m.name AS machine_name,
+               om.skill_level, om.is_primary
         FROM OperatorMachine om
         LEFT JOIN Operators o ON o.operator_id = om.operator_id
         LEFT JOIN Machines m ON m.machine_id = om.machine_id
@@ -633,7 +650,14 @@ def excel_link_page():
         """
     ).fetchall()
     existing_list = [
-        {"工号": r["operator_id"], "姓名": r["operator_name"], "设备编号": r["machine_id"], "设备名称": r["machine_name"]}
+        {
+            "工号": r["operator_id"],
+            "姓名": r["operator_name"],
+            "设备编号": r["machine_id"],
+            "设备名称": r["machine_name"],
+            "技能等级": r["skill_level"],
+            "主操设备": r["is_primary"],
+        }
         for r in rows
     ]
 
@@ -679,7 +703,8 @@ def excel_link_preview():
     # 刷新 existing list
     existing_rows = g.db.execute(
         """
-        SELECT om.operator_id, o.name AS operator_name, om.machine_id, m.name AS machine_name
+        SELECT om.operator_id, o.name AS operator_name, om.machine_id, m.name AS machine_name,
+               om.skill_level, om.is_primary
         FROM OperatorMachine om
         LEFT JOIN Operators o ON o.operator_id = om.operator_id
         LEFT JOIN Machines m ON m.machine_id = om.machine_id
@@ -687,7 +712,14 @@ def excel_link_preview():
         """
     ).fetchall()
     existing_list = [
-        {"工号": r["operator_id"], "姓名": r["operator_name"], "设备编号": r["machine_id"], "设备名称": r["machine_name"]}
+        {
+            "工号": r["operator_id"],
+            "姓名": r["operator_name"],
+            "设备编号": r["machine_id"],
+            "设备名称": r["machine_name"],
+            "技能等级": r["skill_level"],
+            "主操设备": r["is_primary"],
+        }
         for r in existing_rows
     ]
 
@@ -725,6 +757,53 @@ def excel_link_confirm():
 
     link_svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
     preview_rows = link_svc.preview_import_links(rows=rows, mode=mode)
+
+    # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
+    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    if error_rows:
+        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        flash(
+            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
+            "error",
+        )
+
+        # 刷新 existing list（与 preview 保持一致）
+        existing_rows = g.db.execute(
+            """
+            SELECT om.operator_id, o.name AS operator_name, om.machine_id, m.name AS machine_name,
+                   om.skill_level, om.is_primary
+            FROM OperatorMachine om
+            LEFT JOIN Operators o ON o.operator_id = om.operator_id
+            LEFT JOIN Machines m ON m.machine_id = om.machine_id
+            ORDER BY om.operator_id, om.machine_id
+            """
+        ).fetchall()
+        existing_list = [
+            {
+                "工号": r["operator_id"],
+                "姓名": r["operator_name"],
+                "设备编号": r["machine_id"],
+                "设备名称": r["machine_name"],
+                "技能等级": r["skill_level"],
+                "主操设备": r["is_primary"],
+            }
+            for r in existing_rows
+        ]
+
+        return render_template(
+            "personnel/excel_import_operator_machine.html",
+            title="人员设备关联 - Excel 导入/导出",
+            existing_list=existing_list,
+            preview_rows=preview_rows,
+            raw_rows_json=json.dumps(rows, ensure_ascii=False),
+            mode=mode.value,
+            filename=filename,
+            preview_url=url_for("personnel.excel_link_preview"),
+            confirm_url=url_for("personnel.excel_link_confirm"),
+            template_download_url=url_for("personnel.excel_link_template"),
+            export_url=url_for("personnel.excel_link_export"),
+        )
+
     stats = link_svc.apply_import_links(preview_rows=preview_rows, mode=mode)
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -773,8 +852,8 @@ def excel_link_template():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
-    ws.append(["工号", "设备编号"])
-    ws.append(["OP001", "CNC-01"])
+    ws.append(["工号", "设备编号", "技能等级", "主操设备"])
+    ws.append(["OP001", "CNC-01", "normal", "yes"])
 
     output = io.BytesIO()
     wb.save(output)
@@ -803,16 +882,18 @@ def excel_link_template():
 @bp.get("/excel/links/export")
 def excel_link_export():
     start = time.time()
-    rows = g.db.execute("SELECT operator_id, machine_id FROM OperatorMachine ORDER BY operator_id, machine_id").fetchall()
+    rows = g.db.execute(
+        "SELECT operator_id, machine_id, skill_level, is_primary FROM OperatorMachine ORDER BY operator_id, machine_id"
+    ).fetchall()
 
     import openpyxl
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
-    ws.append(["工号", "设备编号"])
+    ws.append(["工号", "设备编号", "技能等级", "主操设备"])
     for r in rows:
-        ws.append([r["operator_id"], r["machine_id"]])
+        ws.append([r["operator_id"], r["machine_id"], r["skill_level"], r["is_primary"]])
 
     output = io.BytesIO()
     wb.save(output)

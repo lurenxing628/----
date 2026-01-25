@@ -3,7 +3,9 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import time
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
@@ -11,8 +13,8 @@ from flask import current_app, flash, g, redirect, render_template, request, sen
 from core.infrastructure.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
+from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
-from core.services.common.openpyxl_backend import OpenpyxlBackend
 from core.services.scheduler import BatchService
 from data.repositories import PartRepository
 
@@ -30,6 +32,47 @@ from .scheduler_utils import (
 # ============================================================
 # Excel：批次信息（Batches）
 # ============================================================
+
+
+def _normalize_batch_date_cell(value: Any, field_label: str) -> Dict[str, Any]:
+    """
+    批次 Excel 的日期字段校验/标准化（交期/齐套日期）。
+
+    规则：
+    - 允许：Excel 日期单元格（date/datetime）或字符串 `YYYY-MM-DD` / `YYYY/MM/DD`
+    - 自动规范化为：`YYYY-MM-DD`
+    - 禁止：在日期字段里夹带时间（如 `2026-01-25 08:00`、`2026-01-25T08:00`）
+    """
+    if value is None:
+        return {"value": None, "error": None}
+
+    if isinstance(value, datetime):
+        return {"value": value.date().isoformat(), "error": None}
+    if isinstance(value, date):
+        return {"value": value.isoformat(), "error": None}
+
+    s = str(value).strip()
+    if not s:
+        return {"value": None, "error": None}
+
+    # 禁止把时间填进“日期”字段
+    if "T" in s or " " in s:
+        return {
+            "value": None,
+            "error": f"“{field_label}”不合法：日期字段不允许包含时间（当前值：{s}）。请仅填写日期：YYYY-MM-DD 或 YYYY/MM/DD（例：2026-01-25）。",
+        }
+
+    m = re.match(r"^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$", s)
+    if not m:
+        return {"value": None, "error": f"“{field_label}”不合法：期望格式 YYYY-MM-DD 或 YYYY/MM/DD（当前值：{s}）。"}
+
+    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    try:
+        v = datetime(y, mo, d).date().isoformat()
+    except Exception:
+        return {"value": None, "error": f"“{field_label}”不合法：日期值不存在（当前值：{s}）。期望：YYYY-MM-DD 或 YYYY/MM/DD。"}
+
+    return {"value": v, "error": None}
 
 
 @bp.get("/excel/batches")
@@ -134,11 +177,19 @@ def excel_batches_preview():
         if row["齐套"] not in ("yes", "no", "partial"):
             return "“齐套”不合法（允许：yes/no/partial；或中文：齐套/未齐套/部分齐套）"
 
-        row["齐套日期"] = _normalize_due_date(row.get("齐套日期"))
-        row["交期"] = _normalize_due_date(row.get("交期"))
+        # 日期字段：严格校验并标准化（允许 YYYY/MM/DD；禁止夹带时间）
+        ready_res = _normalize_batch_date_cell(row.get("齐套日期"), field_label="齐套日期")
+        if ready_res.get("error"):
+            return str(ready_res.get("error"))
+        row["齐套日期"] = ready_res.get("value")
+
+        due_res = _normalize_batch_date_cell(row.get("交期"), field_label="交期")
+        if due_res.get("error"):
+            return str(due_res.get("error"))
+        row["交期"] = due_res.get("value")
         return None
 
-    excel_svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=normalized_rows,
         id_column="批次号",
@@ -221,11 +272,19 @@ def excel_batches_confirm():
         row["齐套"] = _normalize_ready_status(row.get("齐套"))
         if row["齐套"] not in ("yes", "no", "partial"):
             return "“齐套”不合法（允许：yes/no/partial；或中文：齐套/未齐套/部分齐套）"
-        row["齐套日期"] = _normalize_due_date(row.get("齐套日期"))
-        row["交期"] = _normalize_due_date(row.get("交期"))
+
+        ready_res = _normalize_batch_date_cell(row.get("齐套日期"), field_label="齐套日期")
+        if ready_res.get("error"):
+            return str(ready_res.get("error"))
+        row["齐套日期"] = ready_res.get("value")
+
+        due_res = _normalize_batch_date_cell(row.get("交期"), field_label="交期")
+        if due_res.get("error"):
+            return str(due_res.get("error"))
+        row["交期"] = due_res.get("value")
         return None
 
-    excel_svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="批次号",
@@ -245,6 +304,42 @@ def excel_batches_confirm():
         validators=[validate_row],
         mode=mode,
     )
+
+    # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
+    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    if error_rows:
+        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        flash(f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}", "error")
+
+        # 重新构建 existing_list，回显预览表格（用户可直接定位问题行）
+        existing_list = [
+            {
+                "批次号": v.batch_id,
+                "图号": v.part_no,
+                "数量": v.quantity,
+                "交期": v.due_date,
+                "优先级": v.priority,
+                "齐套": v.ready_status,
+                "齐套日期": getattr(v, "ready_date", None),
+                "备注": v.remark,
+            }
+            for v in existing.values()
+        ]
+        existing_list.sort(key=lambda x: str(x.get("批次号") or ""))
+
+        return render_template(
+            "scheduler/excel_import_batches.html",
+            title="批次信息 - Excel 导入/导出",
+            existing_list=existing_list,
+            preview_rows=preview_rows,
+            raw_rows_json=json.dumps(rows, ensure_ascii=False),
+            mode=mode.value,
+            filename=filename,
+            preview_url=url_for("scheduler.excel_batches_preview"),
+            confirm_url=url_for("scheduler.excel_batches_confirm"),
+            template_download_url=url_for("scheduler.excel_batches_template"),
+            export_url=url_for("scheduler.excel_batches_export"),
+        )
 
     tx = TransactionManager(g.db)
     new_count = update_count = skip_count = error_count = 0

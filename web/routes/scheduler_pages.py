@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import flash, g, redirect, render_template, request, url_for
 
@@ -12,6 +12,78 @@ from core.services.scheduler import BatchService, CalendarService, ConfigService
 from data.repositories import MachineRepository, OperatorRepository, PartRepository, ScheduleHistoryRepository, SupplierRepository
 
 from .scheduler_bp import bp, _batch_status_zh, _day_type_zh, _priority_zh, _ready_zh
+
+
+def _safe_float(v: Any, default: float = 0.0) -> float:
+    try:
+        if v is None or str(v).strip() == "":
+            return float(default)
+        return float(v)
+    except Exception:
+        return float(default)
+
+
+def _safe_int(v: Any, default: int = 0) -> int:
+    try:
+        if v is None or str(v).strip() == "":
+            return int(default)
+        return int(float(v))
+    except Exception:
+        return int(default)
+
+
+def _extract_metrics_from_summary(summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    algo = summary.get("algo") if isinstance(summary, dict) else None
+    if isinstance(algo, dict):
+        m = algo.get("metrics")
+        if isinstance(m, dict) and m:
+            return m
+    return None
+
+
+def _build_svg_polyline(values: List[Tuple[int, float]], *, width: int = 520, height: int = 120, pad: int = 18) -> Optional[Dict[str, Any]]:
+    """
+    把 (x_label, y) 序列转为简单折线图（SVG polyline）。
+    - 不依赖任何外部 JS/库，适合 Win7 离线环境。
+    """
+    if not values:
+        return None
+    vals = [(int(x), float(y)) for x, y in values]
+    if len(vals) < 2:
+        return None
+
+    ys = [y for _, y in vals]
+    y_min = min(ys)
+    y_max = max(ys)
+    rng = (y_max - y_min) if (y_max - y_min) != 0 else 1.0
+
+    xs = [x for x, _ in vals]
+    x_min = min(xs)
+    x_max = max(xs)
+    x_rng = (x_max - x_min) if (x_max - x_min) != 0 else 1.0
+    x_span = float(width - 2 * pad)
+    y_span = float(height - 2 * pad)
+
+    pts: List[Tuple[float, float]] = []
+    for x0, y in vals:
+        xx = float(pad) + ((float(x0) - float(x_min)) / float(x_rng)) * x_span
+        # y 越大越靠上：反向映射到画布坐标
+        yy = float(height - pad) - ((float(y) - float(y_min)) / rng) * y_span
+        pts.append((xx, yy))
+
+    points_str = " ".join([f"{round(x, 2)},{round(y, 2)}" for x, y in pts])
+    last_xy = pts[-1]
+    return {
+        "width": int(width),
+        "height": int(height),
+        "pad": int(pad),
+        "points": points_str,
+        "y_min": float(y_min),
+        "y_max": float(y_max),
+        "last_x": float(last_xy[0]),
+        "last_y": float(last_xy[1]),
+        "x_labels": [x for x, _ in vals],
+    }
 
 
 @bp.get("/")
@@ -167,6 +239,7 @@ def batch_detail(batch_id: str):
 
     machine_operators: Dict[str, List[str]] = {}
     operator_machines: Dict[str, List[str]] = {}
+    machine_operator_meta: Dict[str, Dict[str, Dict[str, Any]]] = {}
     if machine_ids_needed and operator_ids_needed:
         m_list = sorted(machine_ids_needed)
         o_list = sorted(operator_ids_needed)
@@ -174,7 +247,7 @@ def batch_detail(batch_id: str):
         o_placeholders = ",".join(["?"] * len(o_list))
         link_rows = g.db.execute(
             f"""
-            SELECT machine_id, operator_id
+            SELECT machine_id, operator_id, skill_level, is_primary
             FROM OperatorMachine
             WHERE machine_id IN ({m_placeholders}) AND operator_id IN ({o_placeholders})
             ORDER BY machine_id, operator_id
@@ -186,6 +259,10 @@ def batch_detail(batch_id: str):
             op_id = r["operator_id"]
             machine_operators.setdefault(mc_id, []).append(op_id)
             operator_machines.setdefault(op_id, []).append(mc_id)
+            machine_operator_meta.setdefault(mc_id, {})[op_id] = {
+                "skill_level": r["skill_level"],
+                "is_primary": r["is_primary"],
+            }
 
     view_ops: List[Dict[str, Any]] = []
     for op in ops:
@@ -207,6 +284,8 @@ def batch_detail(batch_id: str):
         supplier_options=supplier_options,
         machine_operators=machine_operators,
         operator_machines=operator_machines,
+        machine_operator_meta=machine_operator_meta,
+        prefer_primary_skill=ConfigService(g.db).get_snapshot().prefer_primary_skill,
     )
 
 
@@ -429,6 +508,19 @@ def update_config():
     cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     strategy = request.form.get("sort_strategy")
     cfg_svc.set_strategy(strategy)
+    cfg_svc.set_prefer_primary_skill(request.form.get("prefer_primary_skill"))
+
+    # 算法增强（默认关闭 improve）
+    algo_mode = request.form.get("algo_mode")
+    if algo_mode is not None:
+        cfg_svc.set_algo_mode(algo_mode)
+    objective = request.form.get("objective")
+    if objective is not None:
+        cfg_svc.set_objective(objective)
+    tb = request.form.get("time_budget_seconds")
+    if tb is not None and str(tb).strip():
+        cfg_svc.set_time_budget_seconds(tb)
+    cfg_svc.set_freeze_window(request.form.get("freeze_window_enabled"), request.form.get("freeze_window_days"))
 
     # 权重（仅暴露：优先级/交期；齐套权重为预留字段，当前不参与排产）
     pw = request.form.get("priority_weight")
@@ -458,6 +550,185 @@ def restore_config_default():
     cfg_svc.restore_default()
     flash("已恢复默认权重与策略。", "success")
     return redirect(url_for("scheduler.batches_page"))
+
+
+@bp.get("/analysis")
+def analysis_page():
+    """
+    排产效果/优化分析：
+    - 展示 result_summary.algo 中的指标、尝试列表（attempts），以及最近版本趋势。
+    - 不依赖外网与第三方图表库（Win7 离线可用）。
+    """
+    repo = ScheduleHistoryRepository(g.db)
+    versions = repo.list_versions(limit=50)
+
+    ver_raw = (request.args.get("version") or "").strip()
+    selected_ver: Optional[int] = None
+    if ver_raw:
+        try:
+            selected_ver = int(ver_raw)
+        except Exception:
+            raise ValidationError("version 不合法（期望整数）", field="version")
+    else:
+        if versions:
+            try:
+                selected_ver = int(versions[0]["version"])
+            except Exception:
+                selected_ver = None
+
+    # 趋势：取最近若干条 history（去重 version），抽取 algo.metrics
+    raw_hist = repo.list_recent(limit=400)
+    by_ver: Dict[int, Dict[str, Any]] = {}
+    for h in raw_hist:
+        d = h.to_dict()
+        ver = _safe_int(d.get("version"), default=0)
+        if ver <= 0 or ver in by_ver:
+            continue
+        rs = d.get("result_summary") or ""
+        try:
+            summary = json.loads(rs) if rs else {}
+        except Exception:
+            summary = {}
+        metrics = _extract_metrics_from_summary(summary) or None
+        if not metrics:
+            continue
+        algo = summary.get("algo") if isinstance(summary, dict) else None
+        algo = algo if isinstance(algo, dict) else {}
+        by_ver[int(ver)] = {
+            "version": int(ver),
+            "schedule_time": d.get("schedule_time"),
+            "strategy": d.get("strategy"),
+            "result_status": d.get("result_status"),
+            "algo_mode": algo.get("mode"),
+            "objective": algo.get("objective"),
+            "metrics": metrics,
+        }
+
+    trend_all = sorted(by_ver.values(), key=lambda x: int(x.get("version") or 0))
+    trend_rows = trend_all[-30:] if len(trend_all) > 30 else trend_all
+
+    def _mval(row: Dict[str, Any], key: str) -> float:
+        m = row.get("metrics") or {}
+        if not isinstance(m, dict):
+            return 0.0
+        return _safe_float(m.get(key), default=0.0)
+
+    trend_charts = {
+        "overdue": _build_svg_polyline([(r["version"], _mval(r, "overdue_count")) for r in trend_rows]),
+        "tardiness": _build_svg_polyline([(r["version"], _mval(r, "total_tardiness_hours")) for r in trend_rows]),
+        "makespan": _build_svg_polyline([(r["version"], _mval(r, "makespan_hours")) for r in trend_rows]),
+        "changeover": _build_svg_polyline([(r["version"], _mval(r, "changeover_count")) for r in trend_rows]),
+    }
+
+    selected = None
+    selected_summary = None
+    selected_metrics = None
+    prev_metrics = None
+    attempts_rows: List[Dict[str, Any]] = []
+    objective_key = "overdue_count"
+    trace_chart = None
+    if selected_ver is not None:
+        item = repo.get_by_version(int(selected_ver))
+        if item:
+            selected = item.to_dict()
+            rs = selected.get("result_summary") or ""
+            try:
+                selected_summary = json.loads(rs) if rs else {}
+            except Exception:
+                selected_summary = None
+            if isinstance(selected_summary, dict):
+                selected_metrics = _extract_metrics_from_summary(selected_summary)
+                algo = selected_summary.get("algo") if isinstance(selected_summary, dict) else None
+                algo = algo if isinstance(algo, dict) else {}
+                obj = str(algo.get("objective") or "min_overdue").strip()
+                if obj == "min_tardiness":
+                    objective_key = "total_tardiness_hours"
+                elif obj == "min_changeover":
+                    objective_key = "changeover_count"
+                else:
+                    objective_key = "overdue_count"
+
+                attempts = algo.get("attempts") if isinstance(algo, dict) else None
+                if isinstance(attempts, list):
+                    for a in attempts:
+                        if not isinstance(a, dict):
+                            continue
+                        m = a.get("metrics") if isinstance(a.get("metrics"), dict) else {}
+                        score = a.get("score") if isinstance(a.get("score"), list) else []
+                        attempts_rows.append(
+                            {
+                                "tag": a.get("tag") or "-",
+                                "strategy": a.get("strategy") or "-",
+                                "failed_ops": _safe_int(a.get("failed_ops"), default=0),
+                                "score": score,
+                                "metrics": m,
+                                "primary_value": _safe_float(m.get(objective_key), default=0.0) if isinstance(m, dict) else 0.0,
+                            }
+                        )
+
+                # 改进轨迹：仅记录“找到更优解”的点（按 elapsed_ms 展示）
+                trace = algo.get("improvement_trace") if isinstance(algo, dict) else None
+                trace_values: List[Tuple[int, float]] = []
+                if isinstance(trace, list):
+                    for t in trace:
+                        if not isinstance(t, dict):
+                            continue
+                        ms = _safe_int(t.get("elapsed_ms"), default=0)
+                        mm = t.get("metrics") if isinstance(t.get("metrics"), dict) else {}
+                        pv = _safe_float(mm.get(objective_key), default=0.0) if isinstance(mm, dict) else 0.0
+                        trace_values.append((int(ms), float(pv)))
+                if len(trace_values) >= 2:
+                    trace_values.sort(key=lambda x: x[0])
+                    trace_chart = _build_svg_polyline(trace_values, width=520, height=120, pad=18)
+
+                # 前一版本（有指标的最近一个版本）
+                if trend_all:
+                    prev = None
+                    for r in reversed(trend_all):
+                        if int(r.get("version") or 0) < int(selected_ver):
+                            prev = r
+                            break
+                    if prev and isinstance(prev.get("metrics"), dict):
+                        prev_metrics = prev.get("metrics")
+
+    # attempts：按 score 字典序排序（越小越好），并计算条形宽度（值越大条越长）
+    def _score_key(score: Any) -> Tuple[float, ...]:
+        if not isinstance(score, list) or not score:
+            return (float("inf"),)
+        out: List[float] = []
+        for x in score:
+            try:
+                out.append(float(x))
+            except Exception:
+                out.append(float("inf"))
+        return tuple(out)
+
+    attempts_rows_sorted = sorted(attempts_rows, key=lambda r: _score_key(r.get("score")))
+    max_primary = 0.0
+    if attempts_rows_sorted:
+        max_primary = max([_safe_float(r.get("primary_value"), default=0.0) for r in attempts_rows_sorted] + [0.0])
+    if selected_metrics and isinstance(selected_metrics, dict):
+        max_primary = max(max_primary, _safe_float(selected_metrics.get(objective_key), default=0.0))
+    if max_primary <= 0:
+        max_primary = 0.0
+    for r in attempts_rows_sorted:
+        v = _safe_float(r.get("primary_value"), default=0.0)
+        r["bar_pct"] = 0.0 if max_primary <= 0 else float(round((v / max_primary) * 100.0, 4))
+
+    return render_template(
+        "scheduler/analysis.html",
+        title="排产优化分析",
+        versions=versions,
+        selected=selected,
+        selected_summary=selected_summary,
+        selected_metrics=selected_metrics,
+        prev_metrics=prev_metrics,
+        objective_key=objective_key,
+        attempts=attempts_rows_sorted,
+        trace_chart=trace_chart,
+        trend_rows=trend_rows,
+        trend_charts=trend_charts,
+    )
 
 
 @bp.get("/calendar")

@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 from datetime import datetime
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, current_app, flash, g, redirect, render_template, request, url_for
@@ -12,8 +13,9 @@ from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.logging import OperationLogger
+from core.infrastructure.transaction import TransactionManager
 from core.services.system import SystemConfigService
-from data.repositories import OperationLogRepository, ScheduleHistoryRepository, SystemJobStateRepository
+from data.repositories import OperationLogRepository, ScheduleHistoryRepository, SystemConfigRepository, SystemJobStateRepository
 
 
 bp = Blueprint("system", __name__)
@@ -22,20 +24,30 @@ bp = Blueprint("system", __name__)
 def _parse_dt(value: str, field: str) -> Tuple[datetime, bool]:
     """
     解析时间参数：
-    - 支持 YYYY-MM-DD
-    - 支持 YYYY-MM-DD HH:MM:SS
+    - 支持 YYYY-MM-DD / YYYY/MM/DD
+    - 支持 YYYY-MM-DD HH:MM(:SS)
+    - 支持 HTML datetime-local：YYYY-MM-DDTHH:MM(:SS)
+    - 支持中文冒号：08：00
     返回：(dt, is_date_only)
     """
     v = (value or "").strip()
     if not v:
         raise ValidationError("时间不能为空", field=field)
 
+    v = v.replace("/", "-").replace("T", " ").replace("：", ":")
     try:
-        if len(v) == 10:
+        # 日期（允许月/日不补零）
+        if re.match(r"^\d{4}-\d{1,2}-\d{1,2}$", v):
             return datetime.strptime(v, "%Y-%m-%d"), True
-        return datetime.strptime(v, "%Y-%m-%d %H:%M:%S"), False
+        # 时间（允许 HH:MM 或 HH:MM:SS，小时允许不补零）
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return datetime.strptime(v, fmt), False
+            except Exception:
+                continue
+        raise ValueError("no fmt")
     except Exception:
-        raise ValidationError("时间格式不正确（允许：YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS）", field=field)
+        raise ValidationError("时间格式不正确（允许：YYYY-MM-DD / YYYY/MM/DD / YYYY-MM-DD HH:MM(:SS)）", field=field)
 
 
 def _normalize_time_range(start_raw: Optional[str], end_raw: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -107,7 +119,15 @@ def _get_job_state_map() -> Dict[str, Any]:
     repo = SystemJobStateRepository(g.db)
     def _get(key: str) -> Optional[Dict[str, Any]]:
         it = repo.get(key)
-        return it.to_dict() if it else None
+        if not it:
+            return None
+        d = it.to_dict()
+        raw = d.get("last_run_detail")
+        try:
+            d["last_run_detail_obj"] = json.loads(raw) if raw else None
+        except Exception:
+            d["last_run_detail_obj"] = None
+        return d
 
     return {
         "auto_backup": _get("auto_backup"),
@@ -143,6 +163,8 @@ def backup_page():
     keep_days = int(cfg.auto_backup_keep_days)
     mgr = _get_backup_manager(keep_days=keep_days)
     backups = mgr.list_backups()
+    from core.services.system import SystemMaintenanceService
+    plugin_status = current_app.config.get("PLUGIN_STATUS")
     return render_template(
         "system/backup.html",
         title="系统管理 - 备份/恢复",
@@ -150,6 +172,10 @@ def backup_page():
         keep_days=keep_days,
         settings=cfg.to_dict(),
         job_state=_get_job_state_map(),
+        plugin_status=plugin_status,
+        maintenance_limits={
+            "max_backup_delete_per_run": int(SystemMaintenanceService.MAX_BACKUP_DELETE_PER_RUN),
+        },
     )
 
 
@@ -195,6 +221,37 @@ def backup_settings():
         auto_backup_cleanup_interval_minutes=request.form.get("auto_backup_cleanup_interval_minutes"),
     )
     flash("备份自动任务设置已保存。", "success")
+    return redirect(url_for("system.backup_page"))
+
+
+@bp.post("/plugins/toggle")
+def plugin_toggle():
+    """
+    保存插件开关（写入 SystemConfig：plugin.<id>.enabled）。
+
+    说明：插件是在应用启动时加载，因此修改后需要重启应用才能生效。
+    """
+    plugin_id = (request.form.get("plugin_id") or "").strip()
+    if not plugin_id:
+        flash("缺少 plugin_id。", "error")
+        return redirect(url_for("system.backup_page"))
+
+    enabled = "yes" if (request.form.get("enabled") or "").strip().lower() in ("on", "yes", "true", "1") else "no"
+    key = f"plugin.{plugin_id}.enabled"
+    repo = SystemConfigRepository(g.db, logger=current_app.logger)
+    with TransactionManager(g.db).transaction():
+        repo.set(key, enabled, description=None)
+
+    if getattr(g, "op_logger", None) is not None:
+        g.op_logger.info(
+            module="plugins",
+            action="toggle",
+            target_type="plugin",
+            target_id=plugin_id,
+            detail={"enabled": enabled, "note": "修改后需重启应用生效"},
+        )
+
+    flash(f"插件开关已保存：{plugin_id} = {enabled}（重启后生效）", "success")
     return redirect(url_for("system.backup_page"))
 
 
@@ -326,7 +383,11 @@ def backup_restore():
 
     # 恢复后确保 schema（索引/新表）
     try:
-        ensure_schema(current_app.config["DATABASE_PATH"], current_app.logger)
+        ensure_schema(
+            current_app.config["DATABASE_PATH"],
+            current_app.logger,
+            backup_dir=current_app.config.get("BACKUP_DIR"),
+        )
     except Exception as e:
         current_app.logger.warning(f"恢复后 ensure_schema 失败（不阻断）：{e}")
 
@@ -392,12 +453,17 @@ def logs_page():
         d["detail_obj"] = detail_obj
         view_rows.append(d)
 
+    from core.services.system import SystemMaintenanceService
     return render_template(
         "system/logs.html",
         title="系统管理 - 操作日志",
         rows=view_rows,
         settings=_get_system_cfg_snapshot().to_dict(),
         job_state=_get_job_state_map(),
+        maintenance_limits={
+            "max_log_delete_per_run": int(SystemMaintenanceService.MAX_LOG_DELETE_PER_RUN),
+            "min_keep_logs": int(SystemMaintenanceService.MIN_KEEP_LOGS),
+        },
         filters={
             "start_time": start_time or "",
             "end_time": end_time or "",

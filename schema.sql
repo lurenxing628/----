@@ -8,6 +8,21 @@
 PRAGMA foreign_keys = ON;
 
 -- ============================================================
+-- Schema Version（用于轻量迁移/回滚）
+-- 约定：
+--   - version 从 0 开始递增
+--   - 应用启动时会根据 version 执行必要迁移，并在迁移前自动备份（若提供 backup_dir）
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS SchemaVersion (
+    id              INTEGER PRIMARY KEY CHECK (id = 1),
+    version         INTEGER NOT NULL,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0);
+
+-- ============================================================
 -- Personnel Module
 -- ============================================================
 

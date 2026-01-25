@@ -253,6 +253,42 @@ def main():
     )
     _assert_status(lines, "POST /scheduler/excel/batches/confirm", resp2, 200)
 
+    # 严格模式：存在错误行时，确认导入应被拒绝（不写入任何批次）
+    html2 = resp2.data.decode("utf-8", errors="ignore")
+    if "导入被拒绝" not in html2:
+        raise RuntimeError("批次 Excel 确认导入未按严格模式拒绝（期望出现“导入被拒绝”提示）")
+
+    conn = get_connection(test_db)
+    try:
+        cnt = conn.execute("SELECT COUNT(1) FROM Batches WHERE batch_id='B001'").fetchone()[0]
+        op_cnt = conn.execute("SELECT COUNT(1) FROM BatchOperations WHERE batch_id='B001'").fetchone()[0]
+        lines.append(f"- 严格拒绝校验：B001 batch_cnt={cnt} ops_cnt={op_cnt}（期望 batch_cnt=0 ops_cnt=0）")
+        if cnt != 0 or op_cnt != 0:
+            raise RuntimeError("严格拒绝失败：存在错误行时仍写入了 Batches/BatchOperations")
+    finally:
+        conn.close()
+
+    # 再用“全合法”数据导入一次，应成功写入并自动生成工序
+    batch_rows_ok = [
+        {"批次号": "B001", "图号": "A1234", "数量": 50, "交期": "2026-01-25", "优先级": "urgent", "齐套": "yes", "备注": "web_smoke"},
+    ]
+    buf_ok = _make_xlsx_bytes(["批次号", "图号", "数量", "交期", "优先级", "齐套", "备注"], batch_rows_ok)
+    resp_ok = client.post(
+        "/scheduler/excel/batches/preview",
+        data={"mode": "overwrite", "file": (buf_ok, "batches_ok.xlsx")},
+        content_type="multipart/form-data",
+    )
+    _assert_status(lines, "POST /scheduler/excel/batches/preview（valid）", resp_ok, 200)
+    html_ok = resp_ok.data.decode("utf-8", errors="ignore")
+    raw_rows_json_ok = _extract_raw_rows_json(html_ok)
+
+    resp_ok2 = client.post(
+        "/scheduler/excel/batches/confirm",
+        data={"mode": "overwrite", "filename": "batches_ok.xlsx", "raw_rows_json": raw_rows_json_ok, "auto_generate_ops": "1"},
+        follow_redirects=True,
+    )
+    _assert_status(lines, "POST /scheduler/excel/batches/confirm（valid）", resp_ok2, 200)
+
     conn = get_connection(test_db)
     try:
         cnt = conn.execute("SELECT COUNT(1) FROM Batches WHERE batch_id='B001'").fetchone()[0]
@@ -356,6 +392,40 @@ def main():
         follow_redirects=True,
     )
     _assert_status(lines, "POST /scheduler/excel/calendar/confirm", resp2, 200)
+
+    # 严格模式：存在错误行时，确认导入应被拒绝（不写入任何日历）
+    html2 = resp2.data.decode("utf-8", errors="ignore")
+    if "导入被拒绝" not in html2:
+        raise RuntimeError("工作日历 Excel 确认导入未按严格模式拒绝（期望出现“导入被拒绝”提示）")
+
+    conn = get_connection(test_db)
+    try:
+        cnt = conn.execute("SELECT COUNT(1) FROM WorkCalendar WHERE date='2026-01-21'").fetchone()[0]
+        lines.append(f"- 严格拒绝校验：2026-01-21 行数={cnt}（期望 0）")
+        if cnt != 0:
+            raise RuntimeError("严格拒绝失败：存在错误行时仍写入了 WorkCalendar 表")
+    finally:
+        conn.close()
+
+    # 再用“全合法”数据导入一次，应成功写入
+    cal_rows_ok = [
+        {"日期": "2026-01-21", "类型": "workday", "可用工时": 8, "效率": 1.0, "允许普通件": "yes", "允许急件": "yes", "说明": "web_smoke"},
+    ]
+    buf_ok = _make_xlsx_bytes(["日期", "类型", "可用工时", "效率", "允许普通件", "允许急件", "说明"], cal_rows_ok)
+    resp_ok = client.post(
+        "/scheduler/excel/calendar/preview",
+        data={"mode": "overwrite", "file": (buf_ok, "calendar_ok.xlsx")},
+        content_type="multipart/form-data",
+    )
+    _assert_status(lines, "POST /scheduler/excel/calendar/preview（valid）", resp_ok, 200)
+    raw_rows_json_ok = _extract_raw_rows_json(resp_ok.data.decode("utf-8", errors="ignore"))
+
+    resp_ok2 = client.post(
+        "/scheduler/excel/calendar/confirm",
+        data={"mode": "overwrite", "filename": "calendar_ok.xlsx", "raw_rows_json": raw_rows_json_ok},
+        follow_redirects=True,
+    )
+    _assert_status(lines, "POST /scheduler/excel/calendar/confirm（valid）", resp_ok2, 200)
 
     conn = get_connection(test_db)
     try:

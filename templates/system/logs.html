@@ -14,6 +14,9 @@
 
     <h3 style="margin-top:10px;">日志自动清理（保留策略，按请求触发）</h3>
     <p class="muted">说明：自动清理只会在“有请求访问系统时”按分钟间隔触发；内部有保底保留与限额，避免过度清理与占用性能。</p>
+    {% if maintenance_limits %}
+      <p class="muted">保底/限额：至少保留最近 {{ maintenance_limits.min_keep_logs }} 条日志；单次自动清理最多删除 {{ maintenance_limits.max_log_delete_per_run }} 条。</p>
+    {% endif %}
 
     {% set st_lc = job_state.auto_log_cleanup if job_state else None %}
 
@@ -36,6 +39,12 @@
         <div class="muted">
           上次执行：{{ st_lc.last_run_time if st_lc and st_lc.last_run_time else '-' }}
         </div>
+        {% if st_lc and st_lc.last_run_detail_obj %}
+          <div class="muted" style="min-width:420px;">
+            上次结果：
+            <pre style="margin:6px 0 0 0;max-height:120px;overflow:auto;">{{ st_lc.last_run_detail_obj | tojson_zh(2) }}</pre>
+          </div>
+        {% endif %}
         <div>
           <button type="submit">保存设置</button>
         </div>

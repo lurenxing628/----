@@ -32,6 +32,7 @@ class ScheduleResult:
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     source: str = "internal"  # internal/external
+    op_type_name: Optional[str] = None
 
 
 @dataclass
@@ -73,7 +74,7 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     s = str(value).strip()
     if not s:
         return None
-    s = s.replace("/", "-")
+    s = s.replace("/", "-").replace("T", " ").replace("：", ":")
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
         try:
             return datetime.strptime(s, fmt)
@@ -103,6 +104,8 @@ class GreedyScheduler:
         start_dt: Optional[datetime] = None,
         end_date: Any = None,
         machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
+        batch_order_override: Optional[List[str]] = None,
+        seed_results: Optional[List[ScheduleResult]] = None,
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         """
         执行排产。
@@ -155,7 +158,7 @@ class GreedyScheduler:
         else:
             used_params = dict(strategy_params or {})
 
-        # 排序批次
+        # 排序批次（允许外部覆盖 batch order，用于 multi-start / 局部扰动）
         sorter = StrategyFactory.create(strategy, **used_params)
         batch_list: List[BatchForSort] = []
         for b in batches.values():
@@ -170,7 +173,17 @@ class GreedyScheduler:
                 )
             )
         sorted_batches = sorter.sort(batch_list)
-        batch_order = {b.batch_id: i for i, b in enumerate(sorted_batches)}
+        if batch_order_override:
+            order_list = [str(x).strip() for x in batch_order_override if str(x).strip()]
+            # 过滤不存在的批次，并把漏掉的批次补到末尾（按 sorter 的默认顺序）
+            order_list = [bid for bid in order_list if bid in batches]
+            existed = set(order_list)
+            for b in sorted_batches:
+                if b.batch_id not in existed:
+                    order_list.append(b.batch_id)
+            batch_order = {bid: i for i, bid in enumerate(order_list)}
+        else:
+            batch_order = {b.batch_id: i for i, b in enumerate(sorted_batches)}
 
         # 按批次优先级和工序顺序排序工序（稳定）
         def _op_key(op: Any):
@@ -210,6 +223,23 @@ class GreedyScheduler:
         scheduled_count = 0
         failed_count = 0
         blocked_batches: set = set()
+        seed_count = 0
+
+        # 预置（冻结窗口等场景）：把已存在的排程作为“固定结果”写入 results，并占用资源
+        if seed_results:
+            for sr in seed_results:
+                if not sr or not sr.start_time or not sr.end_time:
+                    continue
+                results.append(sr)
+                scheduled_count += 1
+                seed_count += 1
+                bid = str(sr.batch_id or "")
+                if bid:
+                    batch_progress[bid] = max(batch_progress.get(bid, base_time), sr.end_time)
+                if (sr.source or "").strip() == "internal":
+                    if sr.machine_id and sr.operator_id:
+                        self._occupy_resource(machine_timeline, sr.machine_id, sr.start_time, sr.end_time)
+                        self._occupy_resource(operator_timeline, sr.operator_id, sr.start_time, sr.end_time)
 
         for op in sorted_ops:
             try:
@@ -256,9 +286,10 @@ class GreedyScheduler:
                 self.logger.exception(f"工序 {op_code} 排产异常")
 
         duration = (datetime.now() - t0).total_seconds()
+        total_ops = int(len(sorted_ops) + seed_count)
         summary = ScheduleSummary(
             success=(failed_count == 0),
-            total_ops=len(sorted_ops),
+            total_ops=total_ops,
             scheduled_ops=scheduled_count,
             failed_ops=failed_count,
             warnings=warnings,
@@ -266,7 +297,7 @@ class GreedyScheduler:
             duration_seconds=duration,
         )
 
-        self.logger.info(f"排产结束：成功={scheduled_count}/{len(sorted_ops)} 失败={failed_count} 耗时={duration:.2f}s")
+        self.logger.info(f"排产结束：成功={scheduled_count}/{total_ops} 失败={failed_count} 耗时={duration:.2f}s")
         return results, summary, strategy, used_params
 
     def _schedule_external(
@@ -320,6 +351,7 @@ class GreedyScheduler:
                 start_time=start,
                 end_time=end,
                 source="external",
+                op_type_name=str(getattr(op, "op_type_name", None) or "") or None,
                 ),
                 False,
             )
@@ -354,6 +386,7 @@ class GreedyScheduler:
                 start_time=start,
                 end_time=end,
                 source="external",
+                op_type_name=str(getattr(op, "op_type_name", None) or "") or None,
             ),
             False,
         )
@@ -382,10 +415,8 @@ class GreedyScheduler:
 
         prev_end = batch_progress.get(bid, base_time)
 
-        machine_available = self._get_resource_available(machine_timeline, machine_id, base_time)
-        operator_available = self._get_resource_available(operator_timeline, operator_id, base_time)
-        earliest = max(prev_end, machine_available, operator_available)
-
+        # 先从“批次前序完工/起算时间”出发，再做资源避让（支持已有区间占用/冻结窗口）
+        earliest = max(prev_end, base_time)
         priority = getattr(batch, "priority", None)
         earliest = self.calendar.adjust_to_working_time(earliest, priority=priority)
 
@@ -409,32 +440,36 @@ class GreedyScheduler:
         if efficiency and efficiency > 0 and efficiency < 1.0:
             total_hours = total_hours / efficiency
 
-        # 先算一次完工时间
-        end = self.calendar.add_working_hours(earliest, total_hours, priority=priority)
-
-        # 停机避让：若工序区间与停机区间重叠，则把开始时间推到停机结束后再重算
-        dt_list = []
+        # 资源/停机避让：若区间与“设备/人员/停机”任一已占用区间重叠，则把开始时间推到重叠区间结束后再重算
+        dt_list: List[Tuple[datetime, datetime]] = []
         if machine_downtimes and machine_id:
             dt_list = machine_downtimes.get(machine_id) or []
-        if dt_list:
-            guard = 0
-            while guard < 50:
-                guard += 1
-                overlapped = None
-                for ds, de in dt_list:
-                    if end <= ds or earliest >= de:
-                        continue
-                    overlapped = (ds, de)
-                    break
-                if not overlapped:
-                    break
-                # 推到停机结束，并再次对齐工作日历
-                earliest = max(earliest, overlapped[1])
-                earliest = self.calendar.adjust_to_working_time(earliest, priority=priority)
-                end = self.calendar.add_working_hours(earliest, total_hours, priority=priority)
-            if guard >= 50:
-                errors.append(f"停机避让迭代过多：工序 {getattr(op, 'op_code', '-') or '-'}（批次 {bid}）")
-                return None, False
+
+        guard = 0
+        end = self.calendar.add_working_hours(earliest, total_hours, priority=priority)
+        while guard < 200:
+            guard += 1
+
+            shift_to: Optional[datetime] = None
+            m_shift = self._find_overlap_shift_end(machine_timeline.get(machine_id) or [], earliest, end)
+            o_shift = self._find_overlap_shift_end(operator_timeline.get(operator_id) or [], earliest, end)
+            d_shift = self._find_overlap_shift_end(dt_list, earliest, end)
+            for x in (m_shift, o_shift, d_shift):
+                if x is None:
+                    continue
+                if shift_to is None or x > shift_to:
+                    shift_to = x
+
+            if shift_to is None:
+                break
+
+            earliest = max(earliest, shift_to)
+            earliest = self.calendar.adjust_to_working_time(earliest, priority=priority)
+            end = self.calendar.add_working_hours(earliest, total_hours, priority=priority)
+
+        if guard >= 200:
+            errors.append(f"资源/停机避让迭代过多：工序 {getattr(op, 'op_code', '-') or '-'}（批次 {bid}）")
+            return None, False
 
         if end_dt_exclusive is not None and end >= end_dt_exclusive:
             deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d")
@@ -457,6 +492,7 @@ class GreedyScheduler:
                 start_time=earliest,
                 end_time=end,
                 source="internal",
+                op_type_name=str(getattr(op, "op_type_name", None) or "") or None,
             ),
             False,
         )
@@ -484,4 +520,21 @@ class GreedyScheduler:
         if not resource_id:
             return
         timeline.setdefault(resource_id, []).append((start, end))
+
+    @staticmethod
+    def _find_overlap_shift_end(
+        segments: List[Tuple[datetime, datetime]],
+        start: datetime,
+        end: datetime,
+    ) -> Optional[datetime]:
+        """
+        若 [start, end) 与 segments 中任意区间重叠，返回“需要推迟到的最晚结束时刻”（max end）。
+        """
+        shift: Optional[datetime] = None
+        for s, e in segments or []:
+            if end <= s or start >= e:
+                continue
+            if shift is None or e > shift:
+                shift = e
+        return shift
 

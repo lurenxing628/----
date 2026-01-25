@@ -23,3 +23,12 @@ backups/*.db
 .vscode/
 .idea/
 
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Optional dependency drop-in folders (keep placeholder if needed)
+vendor/**
+!vendor/.gitkeep
+

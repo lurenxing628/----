@@ -92,12 +92,85 @@ def main():
         lines.append("")
         lines.append("## 1. Schema 检查")
         lines.append(f"- 表数量：{len(tables)}")
+        lines.append(f"- 是否存在 SchemaVersion：{'SchemaVersion' in tables}")
         lines.append(f"- 是否存在 OperationLogs：{'OperationLogs' in tables}")
         lines.append(f"- 是否存在 ResourceLocks：{'ResourceLocks' in tables}")
         if "ResourceLocks" in tables:
             raise RuntimeError("发现 ResourceLocks 表：V1 明确不应存在")
+        if "SchemaVersion" not in tables:
+            raise RuntimeError("缺少 SchemaVersion 表：无法进行版本化迁移/回滚")
+        row = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
+        v = int(row[0]) if row else 0
+        lines.append(f"- SchemaVersion.version：{v}")
+        if v < 1:
+            raise RuntimeError(f"SchemaVersion.version 异常：{v}（期望 >= 1）")
     finally:
         conn.close()
+
+    # 1.1) 迁移机制验证（构造“旧库”缺列场景，确认：迁移前备份 + 缺列补齐 + SchemaVersion 升级）
+    lines.append("")
+    lines.append("## 1.1 Schema 迁移机制（缺列补齐 + 迁移前备份）")
+
+    import sqlite3
+
+    old_db = os.path.join(tmpdir, "aps_old_schema.db")
+    migrate_backups = os.path.join(tmpdir, "backups_migrate")
+    os.makedirs(migrate_backups, exist_ok=True)
+
+    # 构造最小旧表：故意缺少 Batches.ready_date / Machines.category
+    conn0 = sqlite3.connect(old_db)
+    try:
+        conn0.executescript(
+            """
+            PRAGMA foreign_keys = OFF;
+            CREATE TABLE Batches (
+                batch_id        TEXT PRIMARY KEY,
+                part_no         TEXT NOT NULL,
+                part_name       TEXT,
+                quantity        INTEGER NOT NULL,
+                due_date        DATE,
+                priority        TEXT DEFAULT 'normal',
+                ready_status    TEXT DEFAULT 'yes',
+                status          TEXT DEFAULT 'pending',
+                remark          TEXT
+            );
+
+            CREATE TABLE Machines (
+                machine_id      TEXT PRIMARY KEY,
+                name            TEXT NOT NULL,
+                op_type_id      TEXT,
+                status          TEXT DEFAULT 'active',
+                remark          TEXT
+            );
+            """
+        )
+        conn0.commit()
+    finally:
+        conn0.close()
+
+    # 对旧库执行 ensure_schema（应触发：SchemaVersion=0 -> 迁移到当前版本，并生成 before_migrate 备份）
+    ensure_schema(old_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=migrate_backups)
+
+    backup_files = [f for f in os.listdir(migrate_backups) if "before_migrate_v0_to_v1" in f and f.endswith(".db")]
+    lines.append(f"- 迁移前备份文件数（before_migrate_v0_to_v1）：{len(backup_files)}")
+    if not backup_files:
+        raise RuntimeError("未生成迁移前备份（before_migrate_v0_to_v1）")
+
+    conn1 = get_connection(old_db)
+    try:
+        cols_batches = [r[1] for r in conn1.execute("PRAGMA table_info(Batches)").fetchall()]
+        cols_machines = [r[1] for r in conn1.execute("PRAGMA table_info(Machines)").fetchall()]
+        if "ready_date" not in cols_batches:
+            raise RuntimeError("迁移后仍缺少 Batches.ready_date")
+        if "category" not in cols_machines:
+            raise RuntimeError("迁移后仍缺少 Machines.category")
+        row = conn1.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
+        v = int(row[0]) if row else 0
+        lines.append(f"- 旧库迁移后 SchemaVersion.version：{v}")
+        if v < 1:
+            raise RuntimeError(f"旧库迁移后 SchemaVersion.version 异常：{v}（期望 >= 1）")
+    finally:
+        conn1.close()
 
     # 2) OpenpyxlBackend 读写 + ExcelService 预览
     from core.services.common.openpyxl_backend import OpenpyxlBackend

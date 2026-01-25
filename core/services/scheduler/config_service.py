@@ -14,6 +14,12 @@ class ScheduleConfigSnapshot:
     priority_weight: float
     due_weight: float
     ready_weight: float
+    prefer_primary_skill: str  # yes/no：工序补充页优先推荐主操/高技能人员
+    algo_mode: str  # greedy/improve
+    time_budget_seconds: int  # 用户可自由设置（建议 <=180）
+    objective: str  # min_overdue/min_tardiness/min_changeover
+    freeze_window_enabled: str  # yes/no
+    freeze_window_days: int  # >=0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -21,6 +27,12 @@ class ScheduleConfigSnapshot:
             "priority_weight": self.priority_weight,
             "due_weight": self.due_weight,
             "ready_weight": self.ready_weight,
+            "prefer_primary_skill": self.prefer_primary_skill,
+            "algo_mode": self.algo_mode,
+            "time_budget_seconds": int(self.time_budget_seconds),
+            "objective": self.objective,
+            "freeze_window_enabled": self.freeze_window_enabled,
+            "freeze_window_days": int(self.freeze_window_days),
         }
 
 
@@ -33,7 +45,16 @@ class ConfigService:
     DEFAULT_DUE_WEIGHT = 0.5
     DEFAULT_READY_WEIGHT = 0.1
 
+    # 算法增强（V1.1：默认关闭“改进模式”）
+    DEFAULT_ALGO_MODE = "greedy"  # greedy/improve
+    DEFAULT_TIME_BUDGET_SECONDS = 20  # 用户可自由设置（建议 <=180）
+    DEFAULT_OBJECTIVE = "min_overdue"
+    DEFAULT_FREEZE_WINDOW_ENABLED = "no"
+    DEFAULT_FREEZE_WINDOW_DAYS = 0
+
     VALID_STRATEGIES = ("priority_first", "due_date_first", "weighted", "fifo")
+    VALID_ALGO_MODES = ("greedy", "improve")
+    VALID_OBJECTIVES = ("min_overdue", "min_tardiness", "min_changeover")
 
     STRATEGY_NAME_ZH = {
         "priority_first": "优先级优先",
@@ -98,6 +119,18 @@ class ConfigService:
             to_set.append(("due_weight", str(self.DEFAULT_DUE_WEIGHT), "权重模式-交期权重"))
         if "ready_weight" not in existing:
             to_set.append(("ready_weight", str(self.DEFAULT_READY_WEIGHT), "权重模式-齐套权重"))
+        if "prefer_primary_skill" not in existing:
+            to_set.append(("prefer_primary_skill", "no", "工序补充页：优先推荐主操/高技能人员（yes/no）"))
+        if "algo_mode" not in existing:
+            to_set.append(("algo_mode", self.DEFAULT_ALGO_MODE, "算法模式：greedy/improve（improve=多起点+目标函数+时间预算）"))
+        if "time_budget_seconds" not in existing:
+            to_set.append(("time_budget_seconds", str(self.DEFAULT_TIME_BUDGET_SECONDS), "算法时间预算（秒；仅 improve 模式生效；建议<=180）"))
+        if "objective" not in existing:
+            to_set.append(("objective", self.DEFAULT_OBJECTIVE, "目标函数：min_overdue/min_tardiness/min_changeover"))
+        if "freeze_window_enabled" not in existing:
+            to_set.append(("freeze_window_enabled", self.DEFAULT_FREEZE_WINDOW_ENABLED, "冻结窗口开关（yes/no）：复用上一版本窗口内排程"))
+        if "freeze_window_days" not in existing:
+            to_set.append(("freeze_window_days", str(self.DEFAULT_FREEZE_WINDOW_DAYS), "冻结窗口天数（>=0；仅 freeze_window_enabled=yes 生效）"))
 
         if not to_set:
             return
@@ -139,7 +172,45 @@ class ConfigService:
         pw = _get_float("priority_weight", self.DEFAULT_PRIORITY_WEIGHT)
         dw = _get_float("due_weight", self.DEFAULT_DUE_WEIGHT)
         rw = _get_float("ready_weight", self.DEFAULT_READY_WEIGHT)
-        return ScheduleConfigSnapshot(sort_strategy=strategy, priority_weight=pw, due_weight=dw, ready_weight=rw)
+
+        raw_pref = self.repo.get_value("prefer_primary_skill", default="no")
+        pref = "yes" if str(raw_pref or "").strip().lower() in ("yes", "y", "true", "1", "on") else "no"
+
+        algo_mode = (self.repo.get_value("algo_mode", default=self.DEFAULT_ALGO_MODE) or self.DEFAULT_ALGO_MODE).strip()
+        if algo_mode not in self.VALID_ALGO_MODES:
+            algo_mode = self.DEFAULT_ALGO_MODE
+
+        obj = (self.repo.get_value("objective", default=self.DEFAULT_OBJECTIVE) or self.DEFAULT_OBJECTIVE).strip()
+        if obj not in self.VALID_OBJECTIVES:
+            obj = self.DEFAULT_OBJECTIVE
+
+        def _get_int(key: str, default: int) -> int:
+            raw = self.repo.get_value(key, default=str(default))
+            try:
+                return int(float(raw)) if raw is not None else int(default)
+            except Exception:
+                return int(default)
+
+        time_budget = _get_int("time_budget_seconds", int(self.DEFAULT_TIME_BUDGET_SECONDS))
+        time_budget = max(1, int(time_budget))
+
+        fw_enabled_raw = self.repo.get_value("freeze_window_enabled", default=self.DEFAULT_FREEZE_WINDOW_ENABLED)
+        fw_enabled = "yes" if str(fw_enabled_raw or "").strip().lower() in ("yes", "y", "true", "1", "on") else "no"
+        fw_days = _get_int("freeze_window_days", int(self.DEFAULT_FREEZE_WINDOW_DAYS))
+        fw_days = max(0, int(fw_days))
+
+        return ScheduleConfigSnapshot(
+            sort_strategy=strategy,
+            priority_weight=pw,
+            due_weight=dw,
+            ready_weight=rw,
+            prefer_primary_skill=pref,
+            algo_mode=algo_mode,
+            time_budget_seconds=int(time_budget),
+            objective=obj,
+            freeze_window_enabled=fw_enabled,
+            freeze_window_days=int(fw_days),
+        )
 
     # -------------------------
     # 更新
@@ -173,4 +244,61 @@ class ConfigService:
             self.repo.set("priority_weight", str(self.DEFAULT_PRIORITY_WEIGHT), description="权重模式-优先级权重")
             self.repo.set("due_weight", str(self.DEFAULT_DUE_WEIGHT), description="权重模式-交期权重")
             self.repo.set("ready_weight", str(self.DEFAULT_READY_WEIGHT), description="权重模式-齐套权重")
+            self.repo.set("prefer_primary_skill", "no", description="工序补充页：优先推荐主操/高技能人员（yes/no）")
+            self.repo.set("algo_mode", self.DEFAULT_ALGO_MODE, description="算法模式：greedy/improve（improve=多起点+目标函数+时间预算）")
+            self.repo.set("time_budget_seconds", str(self.DEFAULT_TIME_BUDGET_SECONDS), description="算法时间预算（秒；仅 improve 模式生效；建议<=180）")
+            self.repo.set("objective", self.DEFAULT_OBJECTIVE, description="目标函数：min_overdue/min_tardiness/min_changeover")
+            self.repo.set("freeze_window_enabled", self.DEFAULT_FREEZE_WINDOW_ENABLED, description="冻结窗口开关（yes/no）：复用上一版本窗口内排程")
+            self.repo.set("freeze_window_days", str(self.DEFAULT_FREEZE_WINDOW_DAYS), description="冻结窗口天数（>=0；仅 freeze_window_enabled=yes 生效）")
+
+    def set_prefer_primary_skill(self, value: Any) -> None:
+        """
+        工序补充页偏好开关：
+        - yes：优先推荐/排序主操设备与高技能人员
+        - no：保持默认顺序
+        """
+        v = str(value or "").strip().lower()
+        yes_no = "yes" if v in ("yes", "y", "true", "1", "on") else "no"
+        with self.tx_manager.transaction():
+            self.repo.set("prefer_primary_skill", yes_no, description="工序补充页：优先推荐主操/高技能人员（yes/no）")
+
+    def set_algo_mode(self, value: Any) -> None:
+        v = str(value or "").strip().lower()
+        if v not in self.VALID_ALGO_MODES:
+            raise ValidationError("算法模式不合法（允许：greedy / improve）", field="algo_mode")
+        with self.tx_manager.transaction():
+            self.repo.set("algo_mode", v, description="算法模式：greedy/improve（improve=多起点+目标函数+时间预算）")
+
+    def set_time_budget_seconds(self, value: Any) -> None:
+        if value is None or str(value).strip() == "":
+            raise ValidationError("时间预算不能为空", field="time_budget_seconds")
+        try:
+            v = int(float(value))
+        except Exception:
+            raise ValidationError("时间预算必须是整数（秒）", field="time_budget_seconds")
+        v = max(1, int(v))
+        with self.tx_manager.transaction():
+            self.repo.set("time_budget_seconds", str(v), description="算法时间预算（秒；仅 improve 模式生效；建议<=180）")
+
+    def set_objective(self, value: Any) -> None:
+        v = str(value or "").strip()
+        if v not in self.VALID_OBJECTIVES:
+            raise ValidationError("目标函数不合法（允许：min_overdue / min_tardiness / min_changeover）", field="objective")
+        with self.tx_manager.transaction():
+            self.repo.set("objective", v, description="目标函数：min_overdue/min_tardiness/min_changeover")
+
+    def set_freeze_window(self, enabled: Any, days: Any) -> None:
+        en = str(enabled or "").strip().lower()
+        en_yesno = "yes" if en in ("yes", "y", "true", "1", "on") else "no"
+        if days is None or str(days).strip() == "":
+            d = 0
+        else:
+            try:
+                d = int(float(days))
+            except Exception:
+                raise ValidationError("冻结窗口天数必须是整数", field="freeze_window_days")
+        d = max(0, int(d))
+        with self.tx_manager.transaction():
+            self.repo.set("freeze_window_enabled", en_yesno, description="冻结窗口开关（yes/no）：复用上一版本窗口内排程")
+            self.repo.set("freeze_window_days", str(d), description="冻结窗口天数（>=0；仅 freeze_window_enabled=yes 生效）")
 

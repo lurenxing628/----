@@ -1,6 +1,6 @@
 # Phase0~Phase6 Web + Excel 端到端冒烟测试报告
 
-- 测试时间：2026-01-24 00:56:20
+- 测试时间：2026-01-25 21:45:24
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
@@ -20,8 +20,11 @@
 - GET /scheduler/excel/batches/template：200 content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 - POST /scheduler/excel/batches/preview：200
 - POST /scheduler/excel/batches/confirm：200
+- 严格拒绝校验：B001 batch_cnt=0 ops_cnt=0（期望 batch_cnt=0 ops_cnt=0）
+- POST /scheduler/excel/batches/preview（valid）：200
+- POST /scheduler/excel/batches/confirm（valid）：200
 - Batches/BatchOperations 写入校验：B001 batch_cnt=1 ops_cnt=2（期望 batch_cnt=1 ops_cnt>=1）
-- OperationLogs 校验（scheduler/import/batch）：2 条（期望 >= 1）
+- OperationLogs 校验（scheduler/import/batch）：3 条（期望 >= 1）
 - GET /scheduler/excel/batches/export：200 content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 - OperationLogs 校验（scheduler/export/batch）：2 条（期望 >= 1）
 
@@ -35,11 +38,14 @@
 - GET /scheduler/excel/calendar/template：200 content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 - POST /scheduler/excel/calendar/preview：200
 - POST /scheduler/excel/calendar/confirm：200
+- 严格拒绝校验：2026-01-21 行数=0（期望 0）
+- POST /scheduler/excel/calendar/preview（valid）：200
+- POST /scheduler/excel/calendar/confirm（valid）：200
 - WorkCalendar 写入校验：2026-01-21 行数=1（期望 1）
-- OperationLogs 校验（scheduler/import/calendar）：2 条（期望 >= 1）
+- OperationLogs 校验（scheduler/import/calendar）：3 条（期望 >= 1）
 - GET /scheduler/excel/calendar/export：200 content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 - OperationLogs 校验（scheduler/export/calendar）：2 条（期望 >= 1）
 
 ## 结论
 - 通过：Phase0~Phase6 Web+Excel 关键链路端到端冒烟测试通过（含 Scheduler）。
-- 总耗时：3760 ms
+- 总耗时：3079 ms

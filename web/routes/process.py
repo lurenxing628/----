@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import tempfile
 import time
 from typing import Any, Dict, List, Optional
 
@@ -11,8 +12,8 @@ from flask import Blueprint, current_app, flash, g, redirect, render_template, r
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
+from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
-from core.services.common.openpyxl_backend import OpenpyxlBackend
 from core.services.process import ExternalGroupService, OpTypeService, PartService, SupplierService
 from data.repositories import OpTypeRepository, SupplierRepository
 
@@ -79,39 +80,17 @@ def _read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
     if not data:
         raise AppError(ErrorCode.EXCEL_FORMAT_ERROR, "上传文件为空，请重新选择。")
 
-    import openpyxl
-
-    tmp = io.BytesIO(data)
-    tmp.seek(0)
-
+    fd, tmp_path = tempfile.mkstemp(prefix="aps_upload_", suffix=".xlsx")
     try:
-        wb = openpyxl.load_workbook(tmp, data_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows:
-            return []
-
-        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
-        parsed_rows: List[Dict[str, Any]] = []
-        for raw in rows[1:]:
-            if raw is None or all(v is None or str(v).strip() == "" for v in raw):
-                continue
-            item: Dict[str, Any] = {}
-            for idx, key in enumerate(headers):
-                if not key:
-                    continue
-                val = raw[idx] if idx < len(raw) else None
-                if isinstance(val, str):
-                    val = val.strip()
-                    if val == "":
-                        val = None
-                item[key] = val
-            parsed_rows.append(item)
-        return parsed_rows
-    except AppError:
-        raise
-    except Exception as e:
-        raise AppError(ErrorCode.EXCEL_READ_ERROR, "读取 Excel 失败，请确认文件未损坏且未被占用。", cause=e)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        backend = get_excel_backend()
+        return backend.read(tmp_path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
 
 
 @bp.get("/")
@@ -527,7 +506,7 @@ def excel_op_type_preview():
         row["归属"] = cat
         return None
 
-    excel_svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="工种ID",
@@ -596,7 +575,7 @@ def excel_op_type_confirm():
         row["归属"] = cat
         return None
 
-    excel_svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="工种ID",
@@ -604,6 +583,28 @@ def excel_op_type_confirm():
         validators=[validate_row],
         mode=mode,
     )
+
+    # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
+    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    if error_rows:
+        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        flash(
+            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
+            "error",
+        )
+        return render_template(
+            "process/excel_import_op_types.html",
+            title="工种配置 - Excel 导入/导出",
+            existing_list=list(existing.values()),
+            preview_rows=preview_rows,
+            raw_rows_json=json.dumps(rows, ensure_ascii=False),
+            mode=mode.value,
+            filename=filename,
+            preview_url=url_for("process.excel_op_type_preview"),
+            confirm_url=url_for("process.excel_op_type_confirm"),
+            template_download_url=url_for("process.excel_op_type_template"),
+            export_url=url_for("process.excel_op_type_export"),
+        )
 
     tx = TransactionManager(g.db)
     op_repo = OpTypeRepository(g.db)
@@ -866,7 +867,7 @@ def excel_supplier_preview():
 
         return None
 
-    excel_svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="供应商ID",
@@ -947,7 +948,7 @@ def excel_supplier_confirm():
             return e.message
         return None
 
-    excel_svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="供应商ID",
@@ -955,6 +956,28 @@ def excel_supplier_confirm():
         validators=[validate_row],
         mode=mode,
     )
+
+    # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
+    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    if error_rows:
+        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        flash(
+            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
+            "error",
+        )
+        return render_template(
+            "process/excel_import_suppliers.html",
+            title="供应商配置 - Excel 导入/导出",
+            existing_list=list(existing.values()),
+            preview_rows=preview_rows,
+            raw_rows_json=json.dumps(rows, ensure_ascii=False),
+            mode=mode.value,
+            filename=filename,
+            preview_url=url_for("process.excel_supplier_preview"),
+            confirm_url=url_for("process.excel_supplier_confirm"),
+            template_download_url=url_for("process.excel_supplier_template"),
+            export_url=url_for("process.excel_supplier_export"),
+        )
 
     tx = TransactionManager(g.db)
     s_repo = SupplierRepository(g.db)
@@ -1193,7 +1216,7 @@ def excel_routes_preview():
             return f"工艺路线格式不合法：{msg}"
         return None
 
-    excel_svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="图号",
@@ -1262,7 +1285,7 @@ def excel_routes_confirm():
             return f"工艺路线格式不合法：{msg}"
         return None
 
-    excel_svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="图号",
@@ -1270,6 +1293,28 @@ def excel_routes_confirm():
         validators=[validate_row],
         mode=mode,
     )
+
+    # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
+    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    if error_rows:
+        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        flash(
+            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
+            "error",
+        )
+        return render_template(
+            "process/excel_import_routes.html",
+            title="零件工艺路线 - Excel 导入/导出",
+            existing_list=list(existing.values()),
+            preview_rows=preview_rows,
+            raw_rows_json=json.dumps(rows, ensure_ascii=False),
+            mode=mode.value,
+            filename=filename,
+            preview_url=url_for("process.excel_routes_preview"),
+            confirm_url=url_for("process.excel_routes_confirm"),
+            template_download_url=url_for("process.excel_routes_template"),
+            export_url=url_for("process.excel_routes_export"),
+        )
 
     tx = TransactionManager(g.db)
     new_count = update_count = skip_count = error_count = 0

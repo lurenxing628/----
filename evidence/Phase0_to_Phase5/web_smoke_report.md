@@ -1,6 +1,6 @@
 # Phase0~Phase5 Web + Excel 端到端冒烟测试报告
 
-- 测试时间：2026-01-24 00:56:20
+- 测试时间：2026-01-25 18:48:09
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
@@ -14,8 +14,11 @@
 - GET /equipment/excel/machines/template：200 content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 - POST /equipment/excel/machines/preview：200
 - POST /equipment/excel/machines/confirm：200
+- 严格拒绝校验：MC001/MC002 行数=0（期望 0）
+- OperationLogs 校验（equipment/import/machine）：1 条（期望 >= 1）
+- POST /equipment/excel/machines/preview（valid）：200
+- POST /equipment/excel/machines/confirm（valid）：200
 - Machines 写入校验：MC001/MC002 行数=2（期望 2）
-- OperationLogs 校验（equipment/import/machine）：2 条（期望 >= 1）
 - GET /equipment/excel/machines/export：200 content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 - OperationLogs 校验（equipment/export/machine）：2 条（期望 >= 1）
 
@@ -23,8 +26,11 @@
 - GET /personnel/excel/operators/template：200 content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 - POST /personnel/excel/operators/preview：200
 - POST /personnel/excel/operators/confirm：200
+- 严格拒绝校验：OP100/OP101 行数=0（期望 0）
+- OperationLogs 校验（personnel/import/operator）：1 条（期望 >= 1）
+- POST /personnel/excel/operators/preview（valid）：200
+- POST /personnel/excel/operators/confirm（valid）：200
 - Operators 写入校验：OP100/OP101 行数=2（期望 2）
-- OperationLogs 校验（personnel/import/operator）：2 条（期望 >= 1）
 - GET /personnel/excel/operators/export：200 content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 - OperationLogs 校验（personnel/export/operator）：2 条（期望 >= 1）
 
@@ -32,8 +38,11 @@
 - GET /personnel/excel/links/template：200 content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 - POST /personnel/excel/links/preview：200
 - POST /personnel/excel/links/confirm：200
+- 严格拒绝校验：OP100-MC001 行数=0（期望 0）
+- OperationLogs 校验（personnel/import/operator_machine）：1 条（期望 >= 1）
+- POST /personnel/excel/links/preview（valid）：200
+- POST /personnel/excel/links/confirm（valid）：200
 - OperatorMachine 写入校验：OP100-MC001 行数=1（期望 1）
-- OperationLogs 校验（personnel/import/operator_machine）：2 条（期望 >= 1）
 - GET /personnel/excel/links/export：200 content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 
 ## 5. 工艺管理：工种/供应商/工艺路线 Excel（上传→预览→确认→导出）
@@ -52,4 +61,4 @@
 
 ## 结论
 - 通过：Phase0~Phase5 Web+Excel 关键链路端到端冒烟测试通过。
-- 总耗时：4022 ms
+- 总耗时：3386 ms

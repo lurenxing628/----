@@ -1,3 +1,4 @@
+import json as _json
 import os
 import tempfile
 import time
@@ -201,7 +202,12 @@ def main():
             raise RuntimeError("日历跨天计算不符合预期")
 
         # 6.2 due_date_first：对 B001/B002/B_EXT 进行排产（验证双资源冲突错开 + 外部组）
+        # 同时开启“改进模式”：多起点 + 目标函数 + 时间预算（V1.1）
         cfg_svc.set_strategy("due_date_first")
+        cfg_svc.set_algo_mode("improve")
+        cfg_svc.set_time_budget_seconds(5)
+        cfg_svc.set_objective("min_overdue")
+        cfg_svc.set_freeze_window("no", 0)
         r2 = sch_svc.run_schedule(batch_ids=["B001", "B002", "B_EXT"], start_dt="2026-02-02 08:00:00", created_by="smoke")
         lines.append(f"- due_date_first：version={r2['version']} result_status={r2['result_status']} overdue={len(r2['overdue_batches'])}")
 
@@ -259,6 +265,26 @@ def main():
             raise RuntimeError("超期预警未包含 B_EXT（期望超期）")
         lines.append("- 超期预警校验：B_EXT 已出现在 overdue_batches")
 
+        # result_summary：应包含 algo 指标/批次顺序/尝试记录
+        rs2 = _json.loads(conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (r2["version"],)).fetchone()["result_summary"] or "{}")
+        if not rs2.get("algo") or not rs2["algo"].get("metrics") or not rs2["algo"].get("best_batch_order"):
+            raise RuntimeError("result_summary 缺少 algo 留痕（metrics/best_batch_order）")
+        lines.append(f"- result_summary.algo 留痕：mode={rs2['algo'].get('mode')} objective={rs2['algo'].get('objective')} metrics={rs2['algo'].get('metrics')}")
+
+        # 6.2b 冻结窗口：复用上一版本窗口内排程（V1.1）
+        cfg_svc.set_freeze_window("yes", 1)
+        r2b = sch_svc.run_schedule(batch_ids=["B001", "B002", "B_EXT"], start_dt="2026-02-02 08:00:00", created_by="smoke")
+        locked_cnt = conn.execute("SELECT COUNT(1) AS c FROM Schedule WHERE version=? AND lock_status='locked'", (r2b["version"],)).fetchone()["c"]
+        if int(locked_cnt or 0) <= 0:
+            raise RuntimeError("冻结窗口未写入 locked 排程记录（期望 lock_status=locked）")
+        rs2b = _json.loads(conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (r2b["version"],)).fetchone()["result_summary"] or "{}")
+        if not rs2b.get("algo") or not rs2b["algo"].get("freeze_window") or int(rs2b["algo"]["freeze_window"].get("frozen_op_count") or 0) <= 0:
+            raise RuntimeError("冻结窗口未写入 result_summary.algo.freeze_window 留痕（frozen_op_count）")
+        lines.append(f"- 冻结窗口校验：version={r2b['version']} locked_cnt={locked_cnt} frozen_op_count={rs2b['algo']['freeze_window'].get('frozen_op_count')}")
+        # 关闭冻结窗口，避免影响后续策略切换
+        cfg_svc.set_freeze_window("no", 0)
+        cfg_svc.set_algo_mode("greedy")
+
         # 6.3 weighted：切换权重后再次跑（验证可切换 + 留痕 strategy_params）
         cfg_svc.set_strategy("weighted")
         cfg_svc.set_weights(0.4, 0.5, 0.1, require_sum_1=True)
@@ -275,15 +301,12 @@ def main():
         # 7) 留痕核对：ScheduleHistory + OperationLogs
         lines.append("")
         lines.append("## 7. 留痕核对（ScheduleHistory / OperationLogs）")
-        hist = conn.execute("SELECT id, version, strategy, result_status, result_summary FROM ScheduleHistory ORDER BY id DESC LIMIT 4").fetchall()
-        lines.append(f"- ScheduleHistory 最近 4 条：{[(r['version'], r['strategy'], r['result_status']) for r in hist]}")
+        hist = conn.execute("SELECT id, version, strategy, result_status, result_summary FROM ScheduleHistory ORDER BY id DESC LIMIT 6").fetchall()
+        lines.append(f"- ScheduleHistory 最近 6 条：{[(r['version'], r['strategy'], r['result_status']) for r in hist]}")
         strategies = [r["strategy"] for r in hist]
         for k in ("priority_first", "due_date_first", "weighted", "fifo"):
             if k not in strategies:
                 raise RuntimeError(f"ScheduleHistory 缺少策略留痕：{k}")
-
-        # result_summary JSON 必含 overdue_batches/strategy_params（至少对某些策略）
-        import json as _json
 
         rs = _json.loads(hist[0]["result_summary"] or "{}")
         if "overdue_batches" not in rs or "strategy_params" not in rs:

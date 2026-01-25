@@ -14,6 +14,9 @@
 
     <h3 style="margin-top:10px;">自动任务设置（按请求触发）</h3>
     <p class="muted">说明：为避免后台线程占用资源，自动备份/自动清理在“有请求访问系统时”才会触发；内部有节流（不会每次请求都执行）。</p>
+    {% if maintenance_limits %}
+      <p class="muted">限额：单次自动清理最多删除 {{ maintenance_limits.max_backup_delete_per_run }} 个备份文件（避免一次请求删太多）。</p>
+    {% endif %}
 
     {% set st_ab = job_state.auto_backup if job_state else None %}
     {% set st_bc = job_state.auto_backup_cleanup if job_state else None %}
@@ -31,6 +34,12 @@
             <input name="auto_backup_interval_minutes" value="{{ settings.auto_backup_interval_minutes if settings else '60' }}" style="width:90px;">
             <span style="margin-left:8px;">上次执行：{{ st_ab.last_run_time if st_ab and st_ab.last_run_time else '-' }}</span>
           </div>
+          {% if st_ab and st_ab.last_run_detail_obj %}
+            <div class="muted" style="margin-top:6px;">
+              上次结果：
+              <pre style="margin:6px 0 0 0;max-height:120px;overflow:auto;">{{ st_ab.last_run_detail_obj | tojson_zh(2) }}</pre>
+            </div>
+          {% endif %}
         </div>
 
         <div style="min-width:420px;">
@@ -46,6 +55,12 @@
             <input name="auto_backup_cleanup_interval_minutes" value="{{ settings.auto_backup_cleanup_interval_minutes if settings else '1440' }}" style="width:90px;">
             <span style="margin-left:8px;">上次执行：{{ st_bc.last_run_time if st_bc and st_bc.last_run_time else '-' }}</span>
           </div>
+          {% if st_bc and st_bc.last_run_detail_obj %}
+            <div class="muted" style="margin-top:6px;">
+              上次结果：
+              <pre style="margin:6px 0 0 0;max-height:120px;overflow:auto;">{{ st_bc.last_run_detail_obj | tojson_zh(2) }}</pre>
+            </div>
+          {% endif %}
         </div>
 
         <div>
@@ -113,6 +128,81 @@
           {% endfor %}
         </tbody>
       </table>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>可选插件/可选依赖状态</h3>
+    <p class="muted">
+      说明：插件来自交付目录下的 <code>plugins/</code>；可选依赖可投放到 <code>vendor/</code> 并在启动时注入 <code>sys.path</code>。
+      修改插件开关后需重启应用才能生效。
+    </p>
+    {% if plugin_status %}
+      <div class="muted" style="margin-top:6px;">
+        loaded_at：{{ plugin_status.loaded_at or '-' }}<br/>
+        plugins_dir：<code>{{ plugin_status.plugins_dir or '-' }}</code><br/>
+        vendor_paths：
+        {% if plugin_status.vendor_paths %}
+          <ul style="margin:6px 0 0 18px;">
+            {% for p in plugin_status.vendor_paths %}
+              <li><code>{{ p }}</code></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <span>-</span>
+        {% endif %}
+      </div>
+
+      <div class="muted" style="margin-top:6px;">
+        已注册能力：{{ (plugin_status.registry.capabilities | length) if plugin_status.registry and plugin_status.registry.capabilities else 0 }}
+      </div>
+
+      {% if plugin_status.statuses and (plugin_status.statuses | length) > 0 %}
+        <table style="margin-top:10px;">
+          <thead>
+            <tr>
+              <th style="width:200px;">插件</th>
+              <th style="width:140px;">版本</th>
+              <th style="width:120px;">开关</th>
+              <th style="width:120px;">已加载</th>
+              <th>能力/错误</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in plugin_status.statuses %}
+              <tr>
+                <td><code>{{ s.plugin_id }}</code><br/><span class="muted">{{ s.name }}</span></td>
+                <td>{{ s.version or '-' }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('system.plugin_toggle') }}">
+                    <input type="hidden" name="plugin_id" value="{{ s.plugin_id }}">
+                    <label class="muted">
+                      <input type="checkbox" name="enabled" {{ 'checked' if s.enabled == 'yes' else '' }}>
+                      enabled
+                    </label>
+                    <button type="submit" style="margin-left:6px;">保存</button>
+                  </form>
+                </td>
+                <td>{{ s.loaded }}</td>
+                <td>
+                  {% if s.error %}
+                    <div class="muted" style="max-width:520px;">
+                      <pre style="margin:0;max-height:160px;overflow:auto;">{{ s.error }}</pre>
+                    </div>
+                  {% else %}
+                    <span class="muted">capabilities：</span>
+                    {{ s.capabilities | join(', ') if s.capabilities else '-' }}
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="muted" style="margin-top:8px;">未发现插件文件（plugins/ 下无可加载的 *.py）。</div>
+      {% endif %}
+    {% else %}
+      <div class="muted">插件状态未加载。</div>
     {% endif %}
   </div>
 

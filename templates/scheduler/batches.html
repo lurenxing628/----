@@ -14,6 +14,8 @@
       <span class="muted">｜</span>
       <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
       <span class="muted">｜</span>
+      <a href="{{ url_for('scheduler.analysis_page') }}">排产优化分析</a>
+      <span class="muted">｜</span>
       <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
       <span class="muted">｜</span>
       <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
@@ -39,6 +41,15 @@
           超期：{{ latest_summary.overdue_batches.count or 0 }} 个
         </div>
       {% endif %}
+      {% if latest_summary and latest_summary.algo and latest_summary.algo.metrics %}
+        <div class="muted" style="margin-top:6px;">
+          指标：拖期 {{ latest_summary.algo.metrics.total_tardiness_hours or 0 }} 小时，
+          makespan {{ latest_summary.algo.metrics.makespan_hours or 0 }} 小时，
+          换型 {{ latest_summary.algo.metrics.changeover_count or 0 }} 次
+          <span class="muted">｜</span>
+          模式：{{ latest_summary.algo.mode or '-' }} / {{ latest_summary.algo.objective or '-' }}
+        </div>
+      {% endif %}
     {% else %}
       <div class="muted">暂无排产历史（Phase 7 执行排产后会在此展示）。</div>
     {% endif %}
@@ -57,6 +68,25 @@
           </select>
         </div>
         <div>
+          <label>算法模式</label><br/>
+          <select name="algo_mode">
+            <option value="greedy" {% if cfg.algo_mode == 'greedy' %}selected{% endif %}>贪心（快速）</option>
+            <option value="improve" {% if cfg.algo_mode == 'improve' %}selected{% endif %}>改进（多起点+目标函数）</option>
+          </select>
+        </div>
+        <div>
+          <label>目标函数</label><br/>
+          <select name="objective">
+            <option value="min_overdue" {% if cfg.objective == 'min_overdue' %}selected{% endif %}>最少超期</option>
+            <option value="min_tardiness" {% if cfg.objective == 'min_tardiness' %}selected{% endif %}>最少拖期小时</option>
+            <option value="min_changeover" {% if cfg.objective == 'min_changeover' %}selected{% endif %}>最少换型次数</option>
+          </select>
+        </div>
+        <div>
+          <label>时间预算（秒，建议≤180）</label><br/>
+          <input name="time_budget_seconds" value="{{ cfg.time_budget_seconds }}" style="width:140px;">
+        </div>
+        <div>
           <label>优先级权重（0~1 或 0~100%）</label><br/>
           <input name="priority_weight" value="{{ cfg.priority_weight }}" style="width:180px;">
         </div>
@@ -65,13 +95,27 @@
           <input name="due_weight" value="{{ cfg.due_weight }}" style="width:180px;">
         </div>
         <div>
+          <label class="muted">
+            <input type="checkbox" name="freeze_window_enabled" {{ 'checked' if cfg.freeze_window_enabled=='yes' else '' }}>
+            冻结窗口
+          </label><br/>
+          <input name="freeze_window_days" value="{{ cfg.freeze_window_days }}" style="width:90px;">
+          <span class="muted">天（复用上一版本窗口内排程）</span>
+        </div>
+        <div>
+          <label class="muted">
+            <input type="checkbox" name="prefer_primary_skill" {{ 'checked' if cfg.prefer_primary_skill=='yes' else '' }}>
+            工序补充页：优先推荐主操/高技能人员
+          </label>
+        </div>
+        <div>
           <button type="submit">保存配置</button>
         </div>
       </div>
     </form>
     <form method="post" action="{{ url_for('scheduler.restore_config_default') }}" style="margin-top:8px;">
       <button type="submit">恢复默认</button>
-      <span class="muted">默认：priority=0.4，due=0.5（齐套权重预留，不参与当前排产）</span>
+      <span class="muted">默认：algo=greedy；objective=min_overdue；预算=20s；冻结窗口关闭；priority=0.4，due=0.5（齐套权重预留，不参与当前排产）</span>
     </form>
   </div>
 

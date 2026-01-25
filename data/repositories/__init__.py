@@ -25,6 +25,8 @@ from .system_config_repo import SystemConfigRepository
 from .operation_log_repo import OperationLogRepository
 from .schedule_history_repo import ScheduleHistoryRepository
 from .system_job_state_repo import SystemJobStateRepository
+from .material_repo import MaterialRepository
+from .batch_material_repo import BatchMaterialRepository
 
 __all__ = [
     "BaseRepository",
@@ -46,5 +48,7 @@ __all__ = [
     "OperationLogRepository",
     "ScheduleHistoryRepository",
     "SystemJobStateRepository",
+    "MaterialRepository",
+    "BatchMaterialRepository",
 ]
 

@@ -11,8 +11,8 @@ from flask import current_app, flash, g, redirect, render_template, request, sen
 from core.infrastructure.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
+from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
-from core.services.common.openpyxl_backend import OpenpyxlBackend
 from core.services.scheduler import CalendarService
 
 from .scheduler_bp import bp
@@ -102,11 +102,11 @@ def excel_calendar_preview():
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
         if not row.get("日期") or str(row.get("日期")).strip() == "":
             return "“日期”不能为空"
-        # 简单格式校验（YYYY-MM-DD）
-        ds = str(row.get("日期")).strip().replace("/", "-")
-        if len(ds) < 8:
-            return "“日期”格式不合法（期望：YYYY-MM-DD）"
-        row["日期"] = ds
+        # 严格日期校验（允许 YYYY/MM/DD；统一写回 YYYY-MM-DD）
+        try:
+            row["日期"] = CalendarService._normalize_date(row.get("日期"))  # type: ignore[attr-defined]
+        except ValidationError as e:
+            return e.message
 
         row["类型"] = _normalize_day_type(row.get("类型"))
         if row["类型"] not in ("workday", "weekend", "holiday"):
@@ -146,7 +146,7 @@ def excel_calendar_preview():
 
         return None
 
-    excel_svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=normalized_rows,
         id_column="日期",
@@ -215,8 +215,10 @@ def excel_calendar_confirm():
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
         if not row.get("日期") or str(row.get("日期")).strip() == "":
             return "“日期”不能为空"
-        ds = str(row.get("日期")).strip().replace("/", "-")
-        row["日期"] = ds
+        try:
+            row["日期"] = CalendarService._normalize_date(row.get("日期"))  # type: ignore[attr-defined]
+        except ValidationError as e:
+            return e.message
         row["类型"] = _normalize_day_type(row.get("类型"))
         if row["类型"] not in ("workday", "weekend", "holiday"):
             return "“类型”不合法（允许：workday/weekend/holiday；或中文：工作日/周末/节假日）"
@@ -254,7 +256,7 @@ def excel_calendar_confirm():
             return "“允许急件”不合法（允许：yes/no；或中文：是/否）"
         return None
 
-    excel_svc = ExcelService(backend=OpenpyxlBackend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="日期",
@@ -262,6 +264,28 @@ def excel_calendar_confirm():
         validators=[validate_row],
         mode=mode,
     )
+
+    # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
+    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    if error_rows:
+        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        flash(
+            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
+            "error",
+        )
+        return render_template(
+            "scheduler/excel_import_calendar.html",
+            title="工作日历 - Excel 导入/导出",
+            existing_list=list(existing.values()),
+            preview_rows=preview_rows,
+            raw_rows_json=json.dumps(rows, ensure_ascii=False),
+            mode=mode.value,
+            filename=filename,
+            preview_url=url_for("scheduler.excel_calendar_preview"),
+            confirm_url=url_for("scheduler.excel_calendar_confirm"),
+            template_download_url=url_for("scheduler.excel_calendar_template"),
+            export_url=url_for("scheduler.excel_calendar_export"),
+        )
 
     tx = TransactionManager(g.db)
     new_count = update_count = skip_count = error_count = 0
