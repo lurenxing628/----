@@ -1,12 +1,12 @@
 # Phase7（排产算法 / M3）冒烟测试报告
 
-- 测试时间：2026-01-25 21:45:14
+- 测试时间：2026-01-25 23:42:13
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_x6zhk6rc`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_x6zhk6rc\aps_phase7_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_xdnglsl9`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_xdnglsl9\aps_phase7_test.db`
 
 ## 1. 基础数据准备（工种/供应商/资源）
 
@@ -28,9 +28,9 @@
 - 人员冲突校验：B001_05 [2026-02-02 09:00:00~2026-02-02 13:00:00]  B002_05 [2026-02-02 13:00:00~2026-02-03 09:00:00]（期望不重叠）
 - merged 外部组校验：start=2026-02-02 09:00:00 end=2026-02-05 09:00:00 span_days=3.0（期望 3.0）
 - 超期预警校验：B_EXT 已出现在 overdue_batches
-- result_summary.algo 留痕：mode=improve objective=min_overdue metrics={'overdue_count': 1, 'total_tardiness_hours': 57.0003, 'makespan_hours': 73.0, 'changeover_count': 0}
+- result_summary.algo 留痕：mode=improve objective=min_overdue metrics={'overdue_count': 1, 'total_tardiness_hours': 57.0003, 'makespan_hours': 73.0, 'changeover_count': 0, 'weighted_tardiness_hours': 114.0006, 'makespan_internal_hours': 25.0, 'machine_used_count': 2, 'operator_used_count': 1, 'machine_busy_hours_total': 25.0, 'operator_busy_hours_total': 25.0, 'machine_util_avg': 0.5, 'operator_util_avg': 1.0, 'machine_load_cv': 0.6, 'operator_load_cv': 0.0}
 - 冻结窗口校验：version=3 locked_cnt=5 frozen_op_count=5
-- weighted：version=4 strategy_params={'priority_weight': 0.4, 'due_weight': 0.5}
+- weighted：version=4 strategy_params={'priority_weight': 0.4, 'due_weight': 0.5, 'dispatch_mode': 'batch_order', 'dispatch_rule': 'slack', 'auto_assign_enabled': 'no'}
 - fifo：version=5
 
 ## 7. 留痕核对（ScheduleHistory / OperationLogs）
@@ -40,4 +40,4 @@
 
 ## 结论
 - 通过：Phase7（排产算法 / M3）冒烟测试通过（策略切换/双资源冲突/日历/外部合并周期/落库/留痕）。
-- 总耗时：2752 ms
+- 总耗时：2916 ms

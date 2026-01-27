@@ -135,6 +135,7 @@ class ScheduleService:
         op_code: str
         batch_id: str
         seq: int
+        op_type_id: Optional[str]
         op_type_name: Optional[str]
         source: str
         machine_id: Optional[str]
@@ -386,6 +387,13 @@ class ScheduleService:
             batches[bid] = b
             operations.extend(self.op_repo.list_by_batch(bid))
 
+        # 自动分配资源：记录哪些内部工序原本缺省 machine/operator（便于在“非模拟”时回写补全）
+        missing_internal_resource_op_ids = {
+            int(op.id)
+            for op in operations
+            if op and op.id and (op.source or "").strip() == SourceType.INTERNAL.value and ((op.machine_id or "").strip() == "" or (op.operator_id or "").strip() == "")
+        }
+
         # 仅允许排产“齐套=yes”的批次（其余直接提示，不参与排产）
         not_ready = [bid for bid, b in batches.items() if (self._normalize_text(getattr(b, "ready_status", None)) or "") != "yes"]
         if not_ready:
@@ -410,6 +418,7 @@ class ScheduleService:
                     op_code=op.op_code,
                     batch_id=op.batch_id,
                     seq=int(op.seq or 0),
+                    op_type_id=getattr(op, "op_type_id", None),
                     op_type_name=getattr(op, "op_type_name", None),
                     source=op.source,
                     machine_id=op.machine_id,
@@ -445,6 +454,7 @@ class ScheduleService:
             freeze_days = int(getattr(cfg, "freeze_window_days", 0) or 0)
             freeze_end = start_dt_norm + timedelta(days=freeze_days)
             freeze_end_str = self._format_dt(freeze_end)
+            start_str = self._format_dt(start_dt_norm)
 
             op_by_id: Dict[int, BatchOperation] = {int(op.id): op for op in operations if op and op.id}
             op_ids_all = sorted(list(op_by_id.keys()))
@@ -462,9 +472,10 @@ class ScheduleService:
                         FROM Schedule
                         WHERE version = ?
                           AND op_id IN ({placeholders})
+                          AND start_time >= ?
                           AND start_time < ?
                         """,
-                        tuple([int(prev_version)] + [int(x) for x in chunk] + [freeze_end_str]),
+                        tuple([int(prev_version)] + [int(x) for x in chunk] + [start_str, freeze_end_str]),
                     ).fetchall()
                     for r in rows:
                         try:
@@ -518,16 +529,19 @@ class ScheduleService:
                         frozen_op_ids.add(int(oid))
 
                 # 生成 seed_results（用于算法占用资源 + 新版本回写）
-                for oid in sorted(list(frozen_op_ids)):
-                    op0 = op_by_id.get(int(oid))
-                    row = (seed_tmp.get(int(oid)) or {}).get("row") if schedule_map else None
-                    st = (seed_tmp.get(int(oid)) or {}).get("start_time")
-                    et = (seed_tmp.get(int(oid)) or {}).get("end_time")
-                    if not op0 or not row or not st or not et:
+                for oid in sorted(frozen_op_ids):
+                    op0 = op_by_id.get(oid)
+                    seed = seed_tmp.get(oid)
+                    if not op0 or not seed:
+                        continue
+                    row = seed.get("row")
+                    st = seed.get("start_time")
+                    et = seed.get("end_time")
+                    if not row or not st or not et:
                         continue
                     seed_results.append(
                         {
-                            "op_id": int(oid),
+                            "op_id": oid,
                             "op_code": op0.op_code,
                             "batch_id": op0.batch_id,
                             "seq": int(op0.seq or 0),
@@ -583,6 +597,135 @@ class ScheduleService:
                     downtime_map[mid] = intervals
         except Exception:
             downtime_map = {}
+
+        # 自动分配资源（可选）：预加载“可用资源池”（避免算法层重复查库）
+        resource_pool: Optional[Dict[str, Any]] = None
+        auto_assign_enabled = getattr(cfg, "auto_assign_enabled", "no") == "yes"
+        if auto_assign_enabled:
+            try:
+                # 仅考虑 active 资源
+                machines = self.machine_repo.list(status="active")
+                active_machines = {str(m.machine_id or "").strip() for m in machines if m and str(m.machine_id or "").strip()}
+
+                # 仅对本次排产涉及的 op_type_id 构建映射（缺省/为空则退化为全量）
+                op_type_ids = {
+                    str(getattr(o, "op_type_id", "") or "").strip()
+                    for o in algo_ops
+                    if (getattr(o, "source", "") or "").strip() == SourceType.INTERNAL.value and str(getattr(o, "op_type_id", "") or "").strip()
+                }
+                machines_by_op_type: Dict[str, List[str]] = {}
+                for m in machines:
+                    mid = str(m.machine_id or "").strip()
+                    ot = str(m.op_type_id or "").strip()
+                    if not mid or mid not in active_machines:
+                        continue
+                    if op_type_ids and ot and ot not in op_type_ids:
+                        continue
+                    machines_by_op_type.setdefault(ot, []).append(mid)
+
+                active_ops = {str(o.operator_id or "").strip() for o in self.operator_repo.list(status="active") if o and str(o.operator_id or "").strip()}
+
+                # OperatorMachine：一次性取出，按设备聚合（并按“主操/技能”做轻量排序）
+                rows = self.conn.execute(
+                    "SELECT operator_id, machine_id, skill_level, is_primary FROM OperatorMachine"
+                ).fetchall()
+                operators_by_machine: Dict[str, List[Tuple[int, str]]] = {}  # machine_id -> [(rank, operator_id)]
+                machines_by_operator: Dict[str, List[str]] = {}
+                pair_rank: Dict[Tuple[str, str], int] = {}
+
+                def _skill_rank(v: Any) -> int:
+                    """
+                    技能等级排序（数值越小越优）。
+
+                    兼容：
+                    - 新口径：beginner/normal/expert（见 OperatorMachineService）
+                    - 旧口径：low/normal/high（历史数据/脚本）
+                    - 常见中文：初级/普通/熟练（以及 高级/专家/一般/中级/新手）
+                    """
+                    s0 = str(v or "").strip()
+                    if s0 == "":
+                        return 9
+                    low = s0.lower()
+                    if low in ("expert", "high", "skilled"):
+                        return 0
+                    if low in ("normal",):
+                        return 1
+                    if low in ("beginner", "low"):
+                        return 2
+                    if s0 in ("熟练", "高级", "专家"):
+                        return 0
+                    if s0 in ("普通", "一般", "中级"):
+                        return 1
+                    if s0 in ("初级", "新手"):
+                        return 2
+                    return 9
+
+                for r in rows:
+                    oid = str(r["operator_id"] or "").strip()
+                    mid = str(r["machine_id"] or "").strip()
+                    if not oid or not mid:
+                        continue
+                    if mid not in active_machines:
+                        continue
+                    if oid not in active_ops:
+                        continue
+                    is_primary = str(r["is_primary"] or "").strip().lower()
+                    sr = _skill_rank(r["skill_level"])
+                    rank = (0 if is_primary in ("yes", "y", "true", "1", "on") else 1) * 10 + sr
+                    operators_by_machine.setdefault(mid, []).append((int(rank), oid))
+                    machines_by_operator.setdefault(oid, []).append(mid)
+                    pair_rank[(oid, mid)] = int(rank)
+
+                # 排序：rank 越小越优（主操优先，其次高技能）
+                operators_by_machine_sorted: Dict[str, List[str]] = {}
+                for mid, items in operators_by_machine.items():
+                    items.sort(key=lambda x: (x[0], x[1]))
+                    operators_by_machine_sorted[mid] = [oid for _, oid in items]
+
+                resource_pool = {
+                    "machines_by_op_type": machines_by_op_type,
+                    "operators_by_machine": operators_by_machine_sorted,
+                    "machines_by_operator": machines_by_operator,
+                    "pair_rank": pair_rank,
+                }
+            except Exception as e:
+                resource_pool = None
+                # 不阻断排产：自动分配降级为关闭，但要让用户/日志可观测
+                try:
+                    algo_warnings.append("自动分配资源池构建失败，已降级为不自动分配（请查看日志）。")
+                except Exception:
+                    pass
+                if self.logger:
+                    try:
+                        self.logger.warning(f"自动分配资源池构建失败，已降级为不自动分配：{e}")
+                    except Exception:
+                        pass
+
+        # auto-assign 启用时：停机区间需要覆盖“候选设备”，否则算法可能误排到停机段内
+        if auto_assign_enabled and resource_pool and isinstance(resource_pool.get("operators_by_machine"), dict):
+            try:
+                dt_repo = MachineDowntimeRepository(self.conn, logger=self.logger)
+                start_str = self._format_dt(start_dt_norm)
+                extra_mids = sorted(
+                    {
+                        str(mid).strip()
+                        for mid in (resource_pool.get("operators_by_machine") or {}).keys()
+                        if str(mid).strip() and str(mid).strip() not in downtime_map
+                    }
+                )
+                for mid in extra_mids:
+                    rows = dt_repo.list_active_after(mid, start_str)
+                    intervals: List[Tuple[datetime, datetime]] = []
+                    for d in rows:
+                        st = self._normalize_datetime(d.start_time)
+                        et = self._normalize_datetime(d.end_time)
+                        if st and et and et > st:
+                            intervals.append((st, et))
+                    if intervals:
+                        intervals.sort(key=lambda x: x[0])
+                        downtime_map[mid] = intervals
+            except Exception:
+                pass
 
         # 过滤掉冻结工序（由 seed_results 复用）
         algo_ops_to_schedule = [x for x in algo_ops if int(getattr(x, "id", 0) or 0) not in frozen_op_ids]
@@ -661,7 +804,102 @@ class ScheduleService:
                 except Exception:
                     continue
 
-        # 执行策略轮询
+        # improve：规则随机化（派工规则）+ 多起点
+        dispatch_mode_cfg = (getattr(cfg, "dispatch_mode", None) or "batch_order").strip() or "batch_order"
+        dispatch_rule_cfg = (getattr(cfg, "dispatch_rule", None) or "slack").strip() or "slack"
+        if algo_mode == "improve" and dispatch_mode_cfg == "sgs":
+            dispatch_rules = [dispatch_rule_cfg] + [x for x in cfg_svc.VALID_DISPATCH_RULES if x != dispatch_rule_cfg]  # type: ignore[attr-defined]
+        else:
+            dispatch_rules = [dispatch_rule_cfg]
+
+        # 可选：OR-Tools 高质量起点（瓶颈子问题）
+        if algo_mode == "improve" and getattr(cfg, "ortools_enabled", "no") == "yes":
+            try:
+                from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
+
+                remaining = float(deadline - time.time())
+                tl_cfg = int(getattr(cfg, "ortools_time_limit_seconds", 5) or 5)
+                tl = max(1, min(int(tl_cfg), int(remaining)))
+                ort_order = try_solve_bottleneck_batch_order(
+                    operations=algo_ops_to_schedule,
+                    batches=batches,
+                    start_dt=start_dt_norm,
+                    time_limit_seconds=tl,
+                    logger=self.logger,
+                )
+                if ort_order and time.time() <= deadline:
+                    # 用当前策略（仅用于“补齐 order 未覆盖的批次”）
+                    try:
+                        ort_strat = SortStrategy(cfg.sort_strategy)
+                    except Exception:
+                        ort_strat = SortStrategy.PRIORITY_FIRST
+                    ort_params: Dict[str, Any] = {}
+                    if ort_strat == SortStrategy.WEIGHTED:
+                        ort_params = {
+                            "priority_weight": float(cfg.priority_weight),
+                            "due_weight": float(cfg.due_weight),
+                        }
+                    res, summ, used_strat, used_params = scheduler.schedule(
+                        operations=algo_ops_to_schedule,
+                        batches=batches,
+                        strategy=ort_strat,
+                        strategy_params=ort_params,
+                        start_dt=start_dt_norm,
+                        end_date=end_date_norm,
+                        machine_downtimes=downtime_map,
+                        batch_order_override=list(ort_order),
+                        seed_results=seed_sr_list,
+                        dispatch_mode=dispatch_mode_cfg,
+                        dispatch_rule=dispatch_rule_cfg,
+                        resource_pool=resource_pool,
+                    )
+                    metrics = compute_metrics(res, batches)
+                    score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
+                    attempts.append(
+                        {
+                            "tag": f"ortools:bottleneck|{dispatch_mode_cfg}:{dispatch_rule_cfg}",
+                            "strategy": used_strat.value,
+                            "dispatch_mode": dispatch_mode_cfg,
+                            "dispatch_rule": dispatch_rule_cfg,
+                            "score": list(score),
+                            "failed_ops": int(summ.failed_ops),
+                            "metrics": metrics.to_dict(),
+                        }
+                    )
+                    cand = {
+                        "results": res,
+                        "summary": summ,
+                        "strategy": used_strat,
+                        "params": used_params,
+                        "dispatch_mode": dispatch_mode_cfg,
+                        "dispatch_rule": dispatch_rule_cfg,
+                        "order": list(ort_order),
+                        "metrics": metrics,
+                        "score": score,
+                    }
+                    if best is None or score < best["score"]:
+                        best = cand
+                        if len(improvement_trace) < 200:
+                            improvement_trace.append(
+                                {
+                                    "elapsed_ms": int((time.time() - t_begin) * 1000),
+                                    "tag": f"ortools:bottleneck|{dispatch_mode_cfg}:{dispatch_rule_cfg}",
+                                    "strategy": used_strat.value,
+                                    "dispatch_mode": dispatch_mode_cfg,
+                                    "dispatch_rule": dispatch_rule_cfg,
+                                    "score": list(score),
+                                    "metrics": metrics.to_dict(),
+                                }
+                            )
+            except Exception as e:
+                # 可选项失败不阻断主流程
+                if self.logger:
+                    try:
+                        self.logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{e}")
+                    except Exception:
+                        pass
+
+        # 执行策略轮询（multi-start）
         for k in keys:
             if time.time() > deadline:
                 break
@@ -669,56 +907,69 @@ class ScheduleService:
                 strat = SortStrategy(k)
             except Exception:
                 continue
-            params: Dict[str, Any] = {}
+            params0: Dict[str, Any] = {}
             if strat == SortStrategy.WEIGHTED:
-                params = {
+                params0 = {
                     "priority_weight": float(cfg.priority_weight),
                     "due_weight": float(cfg.due_weight),
                 }
-            order = _build_order(strat, params)
-            res, summ, used_strat, used_params = scheduler.schedule(
-                operations=algo_ops_to_schedule,
-                batches=batches,
-                strategy=strat,
-                strategy_params=params,
-                start_dt=start_dt_norm,
-                end_date=end_date_norm,
-                machine_downtimes=downtime_map,
-                batch_order_override=order,
-                seed_results=seed_sr_list,
-            )
-            metrics = compute_metrics(res, batches)
-            score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
-            attempts.append(
-                {
-                    "tag": f"strategy:{k}",
-                    "strategy": used_strat.value,
-                    "score": list(score),
-                    "failed_ops": int(summ.failed_ops),
-                    "metrics": metrics.to_dict(),
+
+            for dr in dispatch_rules:
+                if time.time() > deadline:
+                    break
+                order = _build_order(strat, params0)
+                res, summ, used_strat, used_params = scheduler.schedule(
+                    operations=algo_ops_to_schedule,
+                    batches=batches,
+                    strategy=strat,
+                    strategy_params=params0,
+                    start_dt=start_dt_norm,
+                    end_date=end_date_norm,
+                    machine_downtimes=downtime_map,
+                    batch_order_override=order,
+                    seed_results=seed_sr_list,
+                    dispatch_mode=dispatch_mode_cfg,
+                    dispatch_rule=dr,
+                    resource_pool=resource_pool,
+                )
+                metrics = compute_metrics(res, batches)
+                score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
+                attempts.append(
+                    {
+                        "tag": f"start:{k}|{dispatch_mode_cfg}:{dr}",
+                        "strategy": used_strat.value,
+                        "dispatch_mode": dispatch_mode_cfg,
+                        "dispatch_rule": dr,
+                        "score": list(score),
+                        "failed_ops": int(summ.failed_ops),
+                        "metrics": metrics.to_dict(),
+                    }
+                )
+                cand = {
+                    "results": res,
+                    "summary": summ,
+                    "strategy": used_strat,
+                    "params": used_params,
+                    "dispatch_mode": dispatch_mode_cfg,
+                    "dispatch_rule": dr,
+                    "order": order,
+                    "metrics": metrics,
+                    "score": score,
                 }
-            )
-            cand = {
-                "results": res,
-                "summary": summ,
-                "strategy": used_strat,
-                "params": used_params,
-                "order": order,
-                "metrics": metrics,
-                "score": score,
-            }
-            if best is None or score < best["score"]:
-                best = cand
-                if len(improvement_trace) < 200:
-                    improvement_trace.append(
-                        {
-                            "elapsed_ms": int((time.time() - t_begin) * 1000),
-                            "tag": f"strategy:{k}",
-                            "strategy": used_strat.value,
-                            "score": list(score),
-                            "metrics": metrics.to_dict(),
-                        }
-                    )
+                if best is None or score < best["score"]:
+                    best = cand
+                    if len(improvement_trace) < 200:
+                        improvement_trace.append(
+                            {
+                                "elapsed_ms": int((time.time() - t_begin) * 1000),
+                                "tag": f"start:{k}|{dispatch_mode_cfg}:{dr}",
+                                "strategy": used_strat.value,
+                                "dispatch_mode": dispatch_mode_cfg,
+                                "dispatch_rule": dr,
+                                "score": list(score),
+                                "metrics": metrics.to_dict(),
+                            }
+                        )
 
         # 局部搜索（可选）：在 best batch_order 上做随机 swap/insert
         if algo_mode == "improve" and best is not None and len(best.get("order") or []) >= 2:
@@ -726,21 +977,53 @@ class ScheduleService:
             cur_order = list(best["order"])
             cur_strat = best["strategy"]
             cur_params = dict(best["params"] or {})
+            cur_dispatch_mode = str(best.get("dispatch_mode") or dispatch_mode_cfg)
+            cur_dispatch_rule = str(best.get("dispatch_rule") or dispatch_rule_cfg)
             it = 0
             it_limit = max(200, min(5000, int(time_budget_seconds) * 20))
+            no_improve = 0
+            restart_after = max(50, min(800, int(it_limit / 8) if it_limit > 0 else 200))
             while time.time() <= deadline and it < it_limit:
                 it += 1
                 cand_order = list(cur_order)
                 n = len(cand_order)
-                move = "swap" if rnd.random() < 0.6 else "insert"
+                r0 = rnd.random()
+                if r0 < 0.55:
+                    move = "swap"
+                elif r0 < 0.85:
+                    move = "insert"
+                else:
+                    move = "block"
                 if move == "swap":
                     i, j = rnd.sample(range(n), 2)
                     cand_order[i], cand_order[j] = cand_order[j], cand_order[i]
-                else:
+                elif move == "insert":
                     i = rnd.randrange(n)
                     j = rnd.randrange(n)
                     x = cand_order.pop(i)
                     cand_order.insert(j, x)
+                else:
+                    # block move：抽取一段连续区间移动到另一位置
+                    if n >= 4:
+                        i = rnd.randrange(n - 1)
+                        max_len = min(6, n - i)
+                        ln = rnd.randrange(2, max_len + 1)
+                        block = cand_order[i : i + ln]
+                        del cand_order[i : i + ln]
+                        j = rnd.randrange(len(cand_order) + 1)
+                        for t in reversed(block):
+                            cand_order.insert(j, t)
+                    else:
+                        # n<4 时 block move 会退化为空操作；改用 swap，避免浪费一次迭代
+                        i, j = rnd.sample(range(n), 2)
+                        cand_order[i], cand_order[j] = cand_order[j], cand_order[i]
+                        move = "swap_fallback"
+
+                # 兜底：避免空迭代（例如 insert 选到 i==j，或 block 回插原位）
+                if cand_order == cur_order and n >= 2:
+                    i, j = rnd.sample(range(n), 2)
+                    cand_order[i], cand_order[j] = cand_order[j], cand_order[i]
+                    move = "swap_fallback"
 
                 res, summ, used_strat, used_params = scheduler.schedule(
                     operations=algo_ops_to_schedule,
@@ -752,6 +1035,9 @@ class ScheduleService:
                     machine_downtimes=downtime_map,
                     batch_order_override=cand_order,
                     seed_results=seed_sr_list,
+                    dispatch_mode=cur_dispatch_mode,
+                    dispatch_rule=cur_dispatch_rule,
+                    resource_pool=resource_pool,
                 )
                 metrics = compute_metrics(res, batches)
                 score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
@@ -761,17 +1047,22 @@ class ScheduleService:
                         "summary": summ,
                         "strategy": used_strat,
                         "params": used_params,
+                        "dispatch_mode": cur_dispatch_mode,
+                        "dispatch_rule": cur_dispatch_rule,
                         "order": cand_order,
                         "metrics": metrics,
                         "score": score,
                     }
                     cur_order = list(cand_order)
+                    no_improve = 0
                     if len(improvement_trace) < 200:
                         improvement_trace.append(
                             {
                                 "elapsed_ms": int((time.time() - t_begin) * 1000),
                                 "tag": f"local:{move}",
                                 "strategy": used_strat.value,
+                                "dispatch_mode": cur_dispatch_mode,
+                                "dispatch_rule": cur_dispatch_rule,
                                 "score": list(score),
                                 "metrics": metrics.to_dict(),
                             }
@@ -782,11 +1073,33 @@ class ScheduleService:
                             {
                                 "tag": f"local:{move}",
                                 "strategy": used_strat.value,
+                                "dispatch_mode": cur_dispatch_mode,
+                                "dispatch_rule": cur_dispatch_rule,
                                 "score": list(score),
                                 "failed_ops": int(summ.failed_ops),
                                 "metrics": metrics.to_dict(),
                             }
                         )
+                else:
+                    no_improve += 1
+
+                # 多次重启（轻量 ILS）：长时间无改进则从 best 出发做随机 shake
+                if no_improve >= restart_after and best is not None:
+                    no_improve = 0
+                    cur_order = list(best.get("order") or cur_order)
+                    # small shake：有限次 swap/insert
+                    shake = rnd.randint(3, 8)
+                    for _ in range(shake):
+                        if len(cur_order) < 2:
+                            break
+                        if rnd.random() < 0.6:
+                            i, j = rnd.sample(range(len(cur_order)), 2)
+                            cur_order[i], cur_order[j] = cur_order[j], cur_order[i]
+                        else:
+                            i = rnd.randrange(len(cur_order))
+                            j = rnd.randrange(len(cur_order))
+                            x = cur_order.pop(i)
+                            cur_order.insert(j, x)
 
         if best is None:
             # 理论上不会发生；兜底为原始单次
@@ -799,6 +1112,7 @@ class ScheduleService:
                 end_date=end_date_norm,
                 machine_downtimes=downtime_map,
                 seed_results=seed_sr_list,
+                resource_pool=resource_pool,
             )
             best_metrics = compute_metrics(results, batches)
             best_score = (float(summary.failed_ops),) + objective_score(objective_name, best_metrics)
@@ -829,6 +1143,9 @@ class ScheduleService:
             if (cur is None) or (r.end_time > cur):
                 finish_by_batch[r.batch_id] = r.end_time
 
+        invalid_due_count = 0
+        invalid_due_ids_sample: List[str] = []
+        invalid_due_raw_sample: List[str] = []
         for bid, b in batches.items():
             due = self._normalize_text(b.due_date)
             if not due:
@@ -836,6 +1153,11 @@ class ScheduleService:
             try:
                 due_date = datetime.strptime(due.replace("/", "-"), "%Y-%m-%d").date()
             except Exception:
+                invalid_due_count += 1
+                if len(invalid_due_ids_sample) < 10:
+                    invalid_due_ids_sample.append(str(bid))
+                if len(invalid_due_raw_sample) < 5:
+                    invalid_due_raw_sample.append(f"{bid}={due!r}")
                 continue
             finish = finish_by_batch.get(bid)
             if not finish:
@@ -848,6 +1170,20 @@ class ScheduleService:
                         "finish_time": self._format_dt(finish),
                     }
                 )
+
+        if invalid_due_count > 0:
+            sample_ids = "，".join(invalid_due_ids_sample[:10])
+            msg = f"存在 {invalid_due_count} 个批次 due_date 格式不合法，已忽略超期判断（示例批次：{sample_ids}）"
+            try:
+                summary.warnings.append(msg)
+            except Exception:
+                pass
+            if self.logger:
+                try:
+                    raw_sample = "；".join(invalid_due_raw_sample[:5])
+                    self.logger.warning(f"{msg}；示例原始 due_date：{raw_sample}")
+                except Exception:
+                    pass
 
         # result_status：success/partial/failed
         if summary.success:
@@ -903,7 +1239,8 @@ class ScheduleService:
             "end_date": end_date_norm.isoformat() if end_date_norm else None,
             "counts": {
                 "batch_count": len(batches),
-                "op_count": len(algo_ops),
+                # 与调度器 summary 同口径（包含 seed_results；并考虑 seed 与 operations 去重过滤）
+                "op_count": int(summary.total_ops),
                 "scheduled_ops": summary.scheduled_ops,
                 "failed_ops": summary.failed_ops,
             },
@@ -939,11 +1276,23 @@ class ScheduleService:
             if not simulate:
                 # 批次工序：成功排到的置 scheduled；失败的保持原状态（便于继续补全）
                 scheduled_op_ids = {int(r.op_id) for r in results if r and r.op_id}
+                assigned_by_op_id: Dict[int, Dict[str, Any]] = {
+                    int(r.op_id): {"machine_id": r.machine_id, "operator_id": r.operator_id}
+                    for r in results
+                    if r and int(getattr(r, "op_id", 0) or 0) > 0 and (r.source or "").strip() == SourceType.INTERNAL.value
+                }
                 for op in operations:
                     if not op.id:
                         continue
                     if int(op.id) in scheduled_op_ids:
                         self.op_repo.update(int(op.id), {"status": "scheduled"})
+                        # 自动分配补全：仅在原本缺省资源时回写 machine/operator（避免覆盖人工已选）
+                        if int(op.id) in missing_internal_resource_op_ids:
+                            assign = assigned_by_op_id.get(int(op.id)) or {}
+                            mc = (assign.get("machine_id") or "").strip()
+                            oid = (assign.get("operator_id") or "").strip()
+                            if mc and oid:
+                                self.op_repo.update(int(op.id), {"machine_id": mc, "operator_id": oid})
 
                 # 批次：若本批次所有工序都排到 -> scheduled，否则保持 pending
                 by_batch_total: Dict[str, int] = {}
@@ -965,7 +1314,7 @@ class ScheduleService:
                     "version": int(version),
                     "strategy": used_strategy.value,
                     "batch_count": len(batches),
-                    "op_count": len(algo_ops),
+                    "op_count": int(summary.total_ops),
                     "result_status": result_status,
                     "result_summary": result_summary_json,
                     "created_by": created_by_text,
@@ -982,7 +1331,7 @@ class ScheduleService:
                 "algo": result_summary_obj.get("algo"),
                 "batch_ids": list(normalized),
                 "batch_count": len(batches),
-                "op_count": len(algo_ops),
+                "op_count": int(summary.total_ops),
                 "scheduled_ops": summary.scheduled_ops,
                 "failed_ops": summary.failed_ops,
                 "result_status": result_status,

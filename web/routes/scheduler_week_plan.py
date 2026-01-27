@@ -32,7 +32,12 @@ def week_plan_page():
     end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
     version_raw = (request.args.get("version") or "").strip()
-    version: Optional[int] = int(version_raw) if version_raw else None
+    version: Optional[int] = None
+    if version_raw:
+        try:
+            version = int(version_raw)
+        except Exception:
+            raise ValidationError("version 不合法（期望整数）", field="version")
 
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
@@ -70,10 +75,16 @@ def week_plan_export():
     end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
     version_raw = (request.args.get("version") or "").strip()
-    version: Optional[int] = int(version_raw) if version_raw else None
 
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     try:
+        version: Optional[int] = None
+        if version_raw:
+            try:
+                version = int(version_raw)
+            except Exception:
+                raise ValidationError("version 不合法（期望整数）", field="version")
+
         data = svc.get_week_plan_rows(
             week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date, version=version
         )

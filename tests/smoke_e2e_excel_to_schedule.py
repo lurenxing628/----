@@ -507,6 +507,26 @@ def main():
         lines.append("")
         lines.append("## 9. 甘特图与周计划（/scheduler/gantt/data + /scheduler/week-plan/export）")
         week_start = schedule_week_start
+        # 防御：非法 version 参数不应导致 500
+        resp = client.get(f"/scheduler/gantt?view=machine&week_start={week_start}&version=abc")
+        _assert_status(lines, "GET /scheduler/gantt?version=abc", resp, 400)
+        resp = client.get(f"/scheduler/gantt/data?view=machine&week_start={week_start}&version=abc")
+        _assert_status(lines, "GET /scheduler/gantt/data?version=abc", resp, 400)
+        payload_bad = json.loads(resp.data.decode("utf-8", errors="ignore") or "{}")
+        if payload_bad.get("success") is not False:
+            raise RuntimeError(f"甘特图数据接口（非法 version）期望 success=false：{payload_bad}")
+        err_bad = payload_bad.get("error") or {}
+        if str(err_bad.get("code") or "") != "1001":
+            raise RuntimeError(f"甘特图数据接口（非法 version）期望 error.code=1001：{payload_bad}")
+        resp = client.get(f"/scheduler/week-plan?week_start={week_start}&version=abc")
+        _assert_status(lines, "GET /scheduler/week-plan?version=abc", resp, 400)
+        resp = client.get(f"/scheduler/week-plan/export?week_start={week_start}&version=abc")
+        _assert_status(lines, "GET /scheduler/week-plan/export?version=abc", resp, 302)
+        loc = resp.headers.get("Location", "") or ""
+        lines.append(f"- week-plan/export invalid version redirect：{loc}")
+        if "/scheduler/week-plan" not in loc:
+            raise RuntimeError(f"周计划导出（非法 version）重定向异常：Location={loc!r}")
+
         resp = client.get(f"/scheduler/gantt?view=machine&week_start={week_start}&version={version}")
         _assert_status(lines, "GET /scheduler/gantt", resp, 200)
         resp = client.get(f"/scheduler/gantt/data?view=machine&week_start={week_start}&version={version}")

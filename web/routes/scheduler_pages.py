@@ -509,6 +509,9 @@ def update_config():
     strategy = request.form.get("sort_strategy")
     cfg_svc.set_strategy(strategy)
     cfg_svc.set_prefer_primary_skill(request.form.get("prefer_primary_skill"))
+    cfg_svc.set_dispatch(request.form.get("dispatch_mode"), request.form.get("dispatch_rule"))
+    cfg_svc.set_auto_assign_enabled(request.form.get("auto_assign_enabled"))
+    cfg_svc.set_ortools(request.form.get("ortools_enabled"), request.form.get("ortools_time_limit_seconds"))
 
     # 算法增强（默认关闭 improve）
     algo_mode = request.form.get("algo_mode")
@@ -616,8 +619,12 @@ def analysis_page():
     trend_charts = {
         "overdue": _build_svg_polyline([(r["version"], _mval(r, "overdue_count")) for r in trend_rows]),
         "tardiness": _build_svg_polyline([(r["version"], _mval(r, "total_tardiness_hours")) for r in trend_rows]),
+        "weighted_tardiness": _build_svg_polyline([(r["version"], _mval(r, "weighted_tardiness_hours")) for r in trend_rows]),
         "makespan": _build_svg_polyline([(r["version"], _mval(r, "makespan_hours")) for r in trend_rows]),
+        "makespan_internal": _build_svg_polyline([(r["version"], _mval(r, "makespan_internal_hours")) for r in trend_rows]),
         "changeover": _build_svg_polyline([(r["version"], _mval(r, "changeover_count")) for r in trend_rows]),
+        "machine_util": _build_svg_polyline([(r["version"], _mval(r, "machine_util_avg")) for r in trend_rows]),
+        "operator_util": _build_svg_polyline([(r["version"], _mval(r, "operator_util_avg")) for r in trend_rows]),
     }
 
     selected = None

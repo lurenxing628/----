@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 
 
 class Config:
@@ -8,7 +9,13 @@ class Config:
     # 运行根目录：
     # - 开发/源码运行：仓库根目录（config.py 所在目录）
     # - PyInstaller onedir 打包后：exe 所在目录（确保 db/logs/backups/templates/static 等均落在交付目录中）
-    BASE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(__file__)
+    try:
+        BASE_DIR = str(Path(sys.executable).resolve().parent) if getattr(sys, "frozen", False) else str(Path(__file__).resolve().parent)
+    except Exception:
+        # 兜底：保证为绝对路径且不为空
+        BASE_DIR = os.path.abspath(
+            (os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(__file__ or "")) or "."
+        )
 
     # 基础配置
     SECRET_KEY = os.environ.get("SECRET_KEY") or "aps-dev-key"

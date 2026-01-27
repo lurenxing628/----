@@ -12,9 +12,15 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     """
     获取 SQLite 连接（每请求一个连接，避免跨线程问题）。
     """
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    # 防御：db_path 可能仅是文件名（dirname 为空串时 makedirs 会报错）
+    db_dir = os.path.dirname(db_path)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+    # 恢复 sqlite3 的类型探测：保持 DATE/TIMESTAMP 等隐式转换行为一致。
+    # 例如：声明为 DATE 的列在查询时会自动转换为 datetime.date（而不是 str）。
     conn = sqlite3.connect(
         db_path,
+        detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
         check_same_thread=False,
     )
     conn.row_factory = sqlite3.Row
@@ -56,6 +62,8 @@ def ensure_schema(db_path: str, logger=None, schema_path: Optional[str] = None, 
         raise FileNotFoundError(f"找不到数据库结构文件：{schema_path}")
 
     conn = get_connection(db_path)
+    # 防御：确保即使未来 try 内出现局部异常吞掉，也不会在迁移判断处引用未定义变量
+    current_version: int = 0
     try:
         with open(schema_path, "r", encoding="utf-8") as f:
             sql = f.read()
@@ -121,6 +129,8 @@ def _detect_schema_is_current(conn: sqlite3.Connection) -> bool:
         ("MachineDowntimes", "scope_value"),
         ("WorkCalendar", "shift_start"),
         ("WorkCalendar", "shift_end"),
+        ("OperatorMachine", "skill_level"),
+        ("OperatorMachine", "is_primary"),
     ]
     for table, col in needed:
         if not _column_exists(conn, table, col):
@@ -151,55 +161,98 @@ def _set_schema_version(conn: sqlite3.Connection, version: int) -> None:
 
 
 def _migrate_with_backup(db_path: str, from_version: int, to_version: int, backup_dir: Optional[str] = None, logger=None) -> None:
-    backup_path = None
+    """
+    迁移入口（带强制备份）。
+
+    安全约束：只要进入迁移流程，就必须在迁移前获得一个可用备份；否则直接阻断迁移。
+    原因：SQLite 的 DDL/DML 在异常时可能导致“半迁移”，没有备份将无法回滚到一致状态。
+    """
+
+    # 1) 计算有效备份目录：未提供则回退到 db 同目录下的 backups/
+    effective_backup_dir = ""
     if backup_dir:
         try:
-            os.makedirs(backup_dir, exist_ok=True)
+            effective_backup_dir = str(os.fspath(backup_dir)).strip()  # type: ignore[arg-type]
         except Exception:
-            backup_dir = None
+            effective_backup_dir = str(backup_dir).strip()
 
-    # 迁移前备份（若可写）
-    if backup_dir:
-        try:
-            from core.infrastructure.backup import BackupManager
+    if not effective_backup_dir:
+        effective_backup_dir = os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups")
+        if logger:
+            try:
+                logger.warning(f"未提供 backup_dir，迁移将使用默认备份目录：{effective_backup_dir}")
+            except Exception:
+                pass
 
-            bm = BackupManager(db_path=db_path, backup_dir=backup_dir, keep_days=365, logger=logger)
-            backup_path = bm.backup(suffix=f"before_migrate_v{from_version}_to_v{to_version}")
-        except Exception as e:
-            # 迁移前无法备份：直接阻断（避免带风险升级）
-            if logger:
-                logger.error(f"数据库迁移前备份失败，已阻断迁移：{e}")
-            raise
+    # 2) 确保备份目录可用（不可创建则阻断迁移）
+    try:
+        os.makedirs(effective_backup_dir, exist_ok=True)
+    except Exception as e:
+        if logger:
+            try:
+                logger.error(f"数据库迁移前无法创建备份目录，已阻断迁移：{e}（dir={effective_backup_dir}）")
+            except Exception:
+                pass
+        raise
 
+    # 3) 迁移前强制备份（失败则阻断迁移）
+    backup_path = None
+    try:
+        from core.infrastructure.backup import BackupManager
+
+        bm = BackupManager(db_path=db_path, backup_dir=effective_backup_dir, keep_days=365, logger=logger)
+        backup_path = bm.backup(suffix=f"before_migrate_v{from_version}_to_v{to_version}")
+    except Exception as e:
+        if logger:
+            try:
+                logger.error(f"数据库迁移前备份失败，已阻断迁移：{e}（dir={effective_backup_dir}）")
+            except Exception:
+                pass
+        raise
+
+    # 4) 执行迁移：使用事务包裹，失败后再用备份做文件级回滚兜底
     try:
         conn = get_connection(db_path)
         try:
-            # 再次确认 version（避免并发/重复调用导致读到旧值）
-            _ensure_schema_version(conn, logger=logger)
-            current = _get_schema_version(conn)
-            if current >= to_version:
-                conn.commit()
-                return
+            # sqlite3.Connection 的上下文管理器：异常自动 rollback，正常自动 commit
+            # 统一事务边界：版本确认 / 迁移 / SchemaVersion 更新都在同一事务中完成
+            with conn:
+                # 再次确认 version（避免并发/重复调用导致读到旧值）
+                _ensure_schema_version(conn, logger=logger)
+                current = _get_schema_version(conn)
+                if current >= to_version:
+                    return
 
-            for v in range(current + 1, to_version + 1):
-                _run_migration(conn, target_version=v, logger=logger)
-                _set_schema_version(conn, v)
+                for v in range(current + 1, to_version + 1):
+                    _run_migration(conn, target_version=v, logger=logger)
+                    _set_schema_version(conn, v)
 
-            conn.commit()
             if logger:
-                logger.info(f"数据库迁移完成：SchemaVersion {current} -> {to_version}")
+                try:
+                    logger.info(f"数据库迁移完成：SchemaVersion {current} -> {to_version}")
+                except Exception:
+                    pass
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
     except Exception:
         # 回滚：用备份文件恢复 db_path
         if backup_path and os.path.exists(backup_path):
             try:
                 shutil.copy2(backup_path, db_path)
                 if logger:
-                    logger.error(f"数据库迁移失败，已从备份回滚：{backup_path}")
+                    try:
+                        logger.error(f"数据库迁移失败，已从备份回滚：{backup_path}")
+                    except Exception:
+                        pass
             except Exception as e:
                 if logger:
-                    logger.error(f"数据库迁移失败且回滚失败：{e}（backup={backup_path}）")
+                    try:
+                        logger.error(f"数据库迁移失败且回滚失败：{e}（backup={backup_path}）")
+                    except Exception:
+                        pass
         raise
 
 
@@ -251,6 +304,28 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
     if not _column_exists(conn, "WorkCalendar", "shift_end"):
         conn.execute("ALTER TABLE WorkCalendar ADD COLUMN shift_end TEXT")
 
+    # OperatorMachine.skill_level/is_primary（人机关联：技能等级/主操设备）
+    if not _column_exists(conn, "OperatorMachine", "skill_level"):
+        conn.execute("ALTER TABLE OperatorMachine ADD COLUMN skill_level TEXT DEFAULT 'normal'")
+    if not _column_exists(conn, "OperatorMachine", "is_primary"):
+        conn.execute("ALTER TABLE OperatorMachine ADD COLUMN is_primary TEXT DEFAULT 'no'")
+
+    # 旧数据回填：将 NULL/空串统一为默认值（避免导出/排序出现空值）
+    try:
+        conn.execute(
+            "UPDATE OperatorMachine SET skill_level = 'normal' "
+            "WHERE skill_level IS NULL OR TRIM(CAST(skill_level AS TEXT)) = ''"
+        )
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            "UPDATE OperatorMachine SET is_primary = 'no' "
+            "WHERE is_primary IS NULL OR TRIM(CAST(is_primary AS TEXT)) = ''"
+        )
+    except Exception:
+        pass
+
 
 def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
     """
@@ -278,7 +353,7 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
     if not rows:
         return
 
-    from datetime import datetime
+    from datetime import date, datetime
     import re
 
     def norm(value) -> Optional[str]:
@@ -293,11 +368,15 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
             s = s.split("T", 1)[0]
         if " " in s:
             s = s.split(" ", 1)[0]
-        # 仅接受 YYYY-M-D / YYYY-MM-DD
-        if not re.match(r"^\d{4}-\d{1,2}-\d{1,2}$", s):
+        # 仅接受 YYYY-M-D / YYYY-MM-DD（显式组装，避免依赖 strptime 的宽松/严格差异）
+        m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", s)
+        if not m:
             return None
         try:
-            return datetime.strptime(s, "%Y-%m-%d").date().isoformat()
+            y = int(m.group(1))
+            mo = int(m.group(2))
+            d = int(m.group(3))
+            return date(y, mo, d).isoformat()
         except Exception:
             return None
 

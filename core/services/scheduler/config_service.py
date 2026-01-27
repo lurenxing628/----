@@ -15,6 +15,11 @@ class ScheduleConfigSnapshot:
     due_weight: float
     ready_weight: float
     prefer_primary_skill: str  # yes/no：工序补充页优先推荐主操/高技能人员
+    dispatch_mode: str  # batch_order/sgs：派工方式（sgs=就绪集合动态派工）
+    dispatch_rule: str  # slack/cr/atc：仅 dispatch_mode=sgs 生效
+    auto_assign_enabled: str  # yes/no：内部工序缺省资源时，算法自动选人/选机
+    ortools_enabled: str  # yes/no：可选 OR-Tools 高质量模式（若环境已安装）
+    ortools_time_limit_seconds: int  # OR-Tools 单次求解时间上限（秒）
     algo_mode: str  # greedy/improve
     time_budget_seconds: int  # 用户可自由设置（建议 <=180）
     objective: str  # min_overdue/min_tardiness/min_changeover
@@ -28,6 +33,11 @@ class ScheduleConfigSnapshot:
             "due_weight": self.due_weight,
             "ready_weight": self.ready_weight,
             "prefer_primary_skill": self.prefer_primary_skill,
+            "dispatch_mode": self.dispatch_mode,
+            "dispatch_rule": self.dispatch_rule,
+            "auto_assign_enabled": self.auto_assign_enabled,
+            "ortools_enabled": self.ortools_enabled,
+            "ortools_time_limit_seconds": int(self.ortools_time_limit_seconds),
             "algo_mode": self.algo_mode,
             "time_budget_seconds": int(self.time_budget_seconds),
             "objective": self.objective,
@@ -45,6 +55,13 @@ class ConfigService:
     DEFAULT_DUE_WEIGHT = 0.5
     DEFAULT_READY_WEIGHT = 0.1
 
+    # 派工方式（V1.2）：默认保持 V1 行为（batch_order）
+    DEFAULT_DISPATCH_MODE = "batch_order"  # batch_order/sgs
+    DEFAULT_DISPATCH_RULE = "slack"  # slack/cr/atc（仅 sgs 生效）
+    DEFAULT_AUTO_ASSIGN_ENABLED = "no"  # yes/no
+    DEFAULT_ORTOOLS_ENABLED = "no"  # yes/no
+    DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS = 5  # seconds
+
     # 算法增强（V1.1：默认关闭“改进模式”）
     DEFAULT_ALGO_MODE = "greedy"  # greedy/improve
     DEFAULT_TIME_BUDGET_SECONDS = 20  # 用户可自由设置（建议 <=180）
@@ -55,6 +72,8 @@ class ConfigService:
     VALID_STRATEGIES = ("priority_first", "due_date_first", "weighted", "fifo")
     VALID_ALGO_MODES = ("greedy", "improve")
     VALID_OBJECTIVES = ("min_overdue", "min_tardiness", "min_changeover")
+    VALID_DISPATCH_MODES = ("batch_order", "sgs")
+    VALID_DISPATCH_RULES = ("slack", "cr", "atc")
 
     STRATEGY_NAME_ZH = {
         "priority_first": "优先级优先",
@@ -121,6 +140,16 @@ class ConfigService:
             to_set.append(("ready_weight", str(self.DEFAULT_READY_WEIGHT), "权重模式-齐套权重"))
         if "prefer_primary_skill" not in existing:
             to_set.append(("prefer_primary_skill", "no", "工序补充页：优先推荐主操/高技能人员（yes/no）"))
+        if "dispatch_mode" not in existing:
+            to_set.append(("dispatch_mode", self.DEFAULT_DISPATCH_MODE, "派工方式：batch_order/sgs（sgs=就绪集合动态派工）"))
+        if "dispatch_rule" not in existing:
+            to_set.append(("dispatch_rule", self.DEFAULT_DISPATCH_RULE, "SGS 派工规则：slack/cr/atc（仅 dispatch_mode=sgs 生效）"))
+        if "auto_assign_enabled" not in existing:
+            to_set.append(("auto_assign_enabled", self.DEFAULT_AUTO_ASSIGN_ENABLED, "算法自动分配缺省资源（内部工序 machine/operator 未填时）"))
+        if "ortools_enabled" not in existing:
+            to_set.append(("ortools_enabled", self.DEFAULT_ORTOOLS_ENABLED, "可选 OR-Tools 高质量模式（若环境已安装）"))
+        if "ortools_time_limit_seconds" not in existing:
+            to_set.append(("ortools_time_limit_seconds", str(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS), "OR-Tools 单次求解时间上限（秒；仅 ortools_enabled=yes 生效）"))
         if "algo_mode" not in existing:
             to_set.append(("algo_mode", self.DEFAULT_ALGO_MODE, "算法模式：greedy/improve（improve=多起点+目标函数+时间预算）"))
         if "time_budget_seconds" not in existing:
@@ -176,13 +205,18 @@ class ConfigService:
         raw_pref = self.repo.get_value("prefer_primary_skill", default="no")
         pref = "yes" if str(raw_pref or "").strip().lower() in ("yes", "y", "true", "1", "on") else "no"
 
-        algo_mode = (self.repo.get_value("algo_mode", default=self.DEFAULT_ALGO_MODE) or self.DEFAULT_ALGO_MODE).strip()
-        if algo_mode not in self.VALID_ALGO_MODES:
-            algo_mode = self.DEFAULT_ALGO_MODE
+        dm = (self.repo.get_value("dispatch_mode", default=self.DEFAULT_DISPATCH_MODE) or self.DEFAULT_DISPATCH_MODE).strip()
+        if dm not in self.VALID_DISPATCH_MODES:
+            dm = self.DEFAULT_DISPATCH_MODE
+        dr = (self.repo.get_value("dispatch_rule", default=self.DEFAULT_DISPATCH_RULE) or self.DEFAULT_DISPATCH_RULE).strip()
+        if dr not in self.VALID_DISPATCH_RULES:
+            dr = self.DEFAULT_DISPATCH_RULE
 
-        obj = (self.repo.get_value("objective", default=self.DEFAULT_OBJECTIVE) or self.DEFAULT_OBJECTIVE).strip()
-        if obj not in self.VALID_OBJECTIVES:
-            obj = self.DEFAULT_OBJECTIVE
+        aa_raw = self.repo.get_value("auto_assign_enabled", default=self.DEFAULT_AUTO_ASSIGN_ENABLED)
+        aa = "yes" if str(aa_raw or "").strip().lower() in ("yes", "y", "true", "1", "on") else "no"
+
+        ort_raw = self.repo.get_value("ortools_enabled", default=self.DEFAULT_ORTOOLS_ENABLED)
+        ort = "yes" if str(ort_raw or "").strip().lower() in ("yes", "y", "true", "1", "on") else "no"
 
         def _get_int(key: str, default: int) -> int:
             raw = self.repo.get_value(key, default=str(default))
@@ -190,6 +224,17 @@ class ConfigService:
                 return int(float(raw)) if raw is not None else int(default)
             except Exception:
                 return int(default)
+
+        ort_limit = _get_int("ortools_time_limit_seconds", int(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS))
+        ort_limit = max(1, int(ort_limit))
+
+        algo_mode = (self.repo.get_value("algo_mode", default=self.DEFAULT_ALGO_MODE) or self.DEFAULT_ALGO_MODE).strip()
+        if algo_mode not in self.VALID_ALGO_MODES:
+            algo_mode = self.DEFAULT_ALGO_MODE
+
+        obj = (self.repo.get_value("objective", default=self.DEFAULT_OBJECTIVE) or self.DEFAULT_OBJECTIVE).strip()
+        if obj not in self.VALID_OBJECTIVES:
+            obj = self.DEFAULT_OBJECTIVE
 
         time_budget = _get_int("time_budget_seconds", int(self.DEFAULT_TIME_BUDGET_SECONDS))
         time_budget = max(1, int(time_budget))
@@ -205,6 +250,11 @@ class ConfigService:
             due_weight=dw,
             ready_weight=rw,
             prefer_primary_skill=pref,
+            dispatch_mode=dm,
+            dispatch_rule=dr,
+            auto_assign_enabled=aa,
+            ortools_enabled=ort,
+            ortools_time_limit_seconds=int(ort_limit),
             algo_mode=algo_mode,
             time_budget_seconds=int(time_budget),
             objective=obj,
@@ -245,11 +295,54 @@ class ConfigService:
             self.repo.set("due_weight", str(self.DEFAULT_DUE_WEIGHT), description="权重模式-交期权重")
             self.repo.set("ready_weight", str(self.DEFAULT_READY_WEIGHT), description="权重模式-齐套权重")
             self.repo.set("prefer_primary_skill", "no", description="工序补充页：优先推荐主操/高技能人员（yes/no）")
+            self.repo.set("dispatch_mode", self.DEFAULT_DISPATCH_MODE, description="派工方式：batch_order/sgs（sgs=就绪集合动态派工）")
+            self.repo.set("dispatch_rule", self.DEFAULT_DISPATCH_RULE, description="SGS 派工规则：slack/cr/atc（仅 dispatch_mode=sgs 生效）")
+            self.repo.set("auto_assign_enabled", self.DEFAULT_AUTO_ASSIGN_ENABLED, description="算法自动分配缺省资源（内部工序 machine/operator 未填时）")
+            self.repo.set("ortools_enabled", self.DEFAULT_ORTOOLS_ENABLED, description="可选 OR-Tools 高质量模式（若环境已安装）")
+            self.repo.set("ortools_time_limit_seconds", str(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS), description="OR-Tools 单次求解时间上限（秒；仅 ortools_enabled=yes 生效）")
             self.repo.set("algo_mode", self.DEFAULT_ALGO_MODE, description="算法模式：greedy/improve（improve=多起点+目标函数+时间预算）")
             self.repo.set("time_budget_seconds", str(self.DEFAULT_TIME_BUDGET_SECONDS), description="算法时间预算（秒；仅 improve 模式生效；建议<=180）")
             self.repo.set("objective", self.DEFAULT_OBJECTIVE, description="目标函数：min_overdue/min_tardiness/min_changeover")
             self.repo.set("freeze_window_enabled", self.DEFAULT_FREEZE_WINDOW_ENABLED, description="冻结窗口开关（yes/no）：复用上一版本窗口内排程")
             self.repo.set("freeze_window_days", str(self.DEFAULT_FREEZE_WINDOW_DAYS), description="冻结窗口天数（>=0；仅 freeze_window_enabled=yes 生效）")
+
+    def set_dispatch(self, dispatch_mode: Any, dispatch_rule: Any) -> None:
+        dm = str(dispatch_mode or "").strip().lower()
+        if not dm:
+            dm = self.DEFAULT_DISPATCH_MODE
+        if dm not in self.VALID_DISPATCH_MODES:
+            raise ValidationError("派工方式不合法（允许：batch_order / sgs）", field="dispatch_mode")
+
+        dr = str(dispatch_rule or "").strip().lower()
+        if not dr:
+            dr = self.DEFAULT_DISPATCH_RULE
+        if dr not in self.VALID_DISPATCH_RULES:
+            raise ValidationError("SGS 派工规则不合法（允许：slack / cr / atc）", field="dispatch_rule")
+
+        with self.tx_manager.transaction():
+            self.repo.set("dispatch_mode", dm, description="派工方式：batch_order/sgs（sgs=就绪集合动态派工）")
+            self.repo.set("dispatch_rule", dr, description="SGS 派工规则：slack/cr/atc（仅 dispatch_mode=sgs 生效）")
+
+    def set_auto_assign_enabled(self, value: Any) -> None:
+        v = str(value or "").strip().lower()
+        yes_no = "yes" if v in ("yes", "y", "true", "1", "on") else "no"
+        with self.tx_manager.transaction():
+            self.repo.set("auto_assign_enabled", yes_no, description="算法自动分配缺省资源（内部工序 machine/operator 未填时）")
+
+    def set_ortools(self, enabled: Any, time_limit_seconds: Any) -> None:
+        en = str(enabled or "").strip().lower()
+        en_yesno = "yes" if en in ("yes", "y", "true", "1", "on") else "no"
+        if time_limit_seconds is None or str(time_limit_seconds).strip() == "":
+            tl = int(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS)
+        else:
+            try:
+                tl = int(float(time_limit_seconds))
+            except Exception:
+                raise ValidationError("OR-Tools 时间上限必须是整数（秒）", field="ortools_time_limit_seconds")
+        tl = max(1, int(tl))
+        with self.tx_manager.transaction():
+            self.repo.set("ortools_enabled", en_yesno, description="可选 OR-Tools 高质量模式（若环境已安装）")
+            self.repo.set("ortools_time_limit_seconds", str(tl), description="OR-Tools 单次求解时间上限（秒；仅 ortools_enabled=yes 生效）")
 
     def set_prefer_primary_skill(self, value: Any) -> None:
         """

@@ -103,10 +103,26 @@
             {% endif %}
           </div>
           <div class="kpi-box">
+            <div class="kpi-title">优先级加权拖期（小时）（weighted_tardiness_hours）</div>
+            <div class="kpi-value">{{ m.get('weighted_tardiness_hours', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('weighted_tardiness_hours', 0) - prev_metrics.get('weighted_tardiness_hours', 0)) %}
+              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+            {% endif %}
+          </div>
+          <div class="kpi-box">
             <div class="kpi-title">makespan（小时）（makespan_hours）</div>
             <div class="kpi-value">{{ m.get('makespan_hours', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('makespan_hours', 0) - prev_metrics.get('makespan_hours', 0)) %}
+              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+            {% endif %}
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">内部窗口 makespan（小时）（makespan_internal_hours）</div>
+            <div class="kpi-value">{{ m.get('makespan_internal_hours', 0) }}</div>
+            {% if prev_metrics %}
+              {% set d = (m.get('makespan_internal_hours', 0) - prev_metrics.get('makespan_internal_hours', 0)) %}
               <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
             {% endif %}
           </div>
@@ -117,6 +133,16 @@
               {% set d = (m.get('changeover_count', 0) - prev_metrics.get('changeover_count', 0)) %}
               <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d }}</div>
             {% endif %}
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">机器平均利用率（machine_util_avg）</div>
+            <div class="kpi-value">{{ (m.get('machine_util_avg', 0) * 100)|round(2) }}%</div>
+            <div class="kpi-delta">machines_used={{ m.get('machine_used_count', 0) }}｜load_cv={{ m.get('machine_load_cv', 0) }}</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">人员平均利用率（operator_util_avg）</div>
+            <div class="kpi-value">{{ (m.get('operator_util_avg', 0) * 100)|round(2) }}%</div>
+            <div class="kpi-delta">operators_used={{ m.get('operator_used_count', 0) }}｜load_cv={{ m.get('operator_load_cv', 0) }}</div>
           </div>
         </div>
         <div class="muted" style="margin-top:8px;">
@@ -210,6 +236,17 @@
           <div class="muted">min={{ trend_charts.tardiness.y_min|round(4) }} max={{ trend_charts.tardiness.y_max|round(4) }}</div>
         {% endif %}
 
+        {% if trend_charts.weighted_tardiness %}
+          <div class="svg-title">优先级加权拖期（小时）（weighted_tardiness_hours）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.weighted_tardiness.width }} {{ trend_charts.weighted_tardiness.height }}" width="100%" height="{{ trend_charts.weighted_tardiness.height }}">
+              <polyline points="{{ trend_charts.weighted_tardiness.points }}" fill="none" stroke="#5d4037" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.weighted_tardiness.last_x }}" cy="{{ trend_charts.weighted_tardiness.last_y }}" r="3" fill="#5d4037"></circle>
+            </svg>
+          </div>
+          <div class="muted">min={{ trend_charts.weighted_tardiness.y_min|round(4) }} max={{ trend_charts.weighted_tardiness.y_max|round(4) }}</div>
+        {% endif %}
+
         {% if trend_charts.makespan %}
           <div class="svg-title">makespan（小时）（makespan_hours）</div>
           <div class="svg-wrap">
@@ -221,6 +258,17 @@
           <div class="muted">min={{ trend_charts.makespan.y_min|round(4) }} max={{ trend_charts.makespan.y_max|round(4) }}</div>
         {% endif %}
 
+        {% if trend_charts.makespan_internal %}
+          <div class="svg-title">内部窗口 makespan（小时）（makespan_internal_hours）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.makespan_internal.width }} {{ trend_charts.makespan_internal.height }}" width="100%" height="{{ trend_charts.makespan_internal.height }}">
+              <polyline points="{{ trend_charts.makespan_internal.points }}" fill="none" stroke="#00838f" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.makespan_internal.last_x }}" cy="{{ trend_charts.makespan_internal.last_y }}" r="3" fill="#00838f"></circle>
+            </svg>
+          </div>
+          <div class="muted">min={{ trend_charts.makespan_internal.y_min|round(4) }} max={{ trend_charts.makespan_internal.y_max|round(4) }}</div>
+        {% endif %}
+
         {% if trend_charts.changeover %}
           <div class="svg-title">换型次数（changeover_count）</div>
           <div class="svg-wrap">
@@ -230,6 +278,28 @@
             </svg>
           </div>
           <div class="muted">min={{ trend_charts.changeover.y_min|round(4) }} max={{ trend_charts.changeover.y_max|round(4) }}</div>
+        {% endif %}
+
+        {% if trend_charts.machine_util %}
+          <div class="svg-title">机器平均利用率（machine_util_avg，0~1）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.machine_util.width }} {{ trend_charts.machine_util.height }}" width="100%" height="{{ trend_charts.machine_util.height }}">
+              <polyline points="{{ trend_charts.machine_util.points }}" fill="none" stroke="#3949ab" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.machine_util.last_x }}" cy="{{ trend_charts.machine_util.last_y }}" r="3" fill="#3949ab"></circle>
+            </svg>
+          </div>
+          <div class="muted">min={{ trend_charts.machine_util.y_min|round(6) }} max={{ trend_charts.machine_util.y_max|round(6) }}</div>
+        {% endif %}
+
+        {% if trend_charts.operator_util %}
+          <div class="svg-title">人员平均利用率（operator_util_avg，0~1）</div>
+          <div class="svg-wrap">
+            <svg viewBox="0 0 {{ trend_charts.operator_util.width }} {{ trend_charts.operator_util.height }}" width="100%" height="{{ trend_charts.operator_util.height }}">
+              <polyline points="{{ trend_charts.operator_util.points }}" fill="none" stroke="#6d4c41" stroke-width="2"></polyline>
+              <circle cx="{{ trend_charts.operator_util.last_x }}" cy="{{ trend_charts.operator_util.last_y }}" r="3" fill="#6d4c41"></circle>
+            </svg>
+          </div>
+          <div class="muted">min={{ trend_charts.operator_util.y_min|round(6) }} max={{ trend_charts.operator_util.y_max|round(6) }}</div>
         {% endif %}
       {% else %}
         <div class="muted">暂无可用趋势数据（需要至少 2 个包含 <code>algo.metrics</code> 的版本）。</div>

@@ -2,6 +2,7 @@ import atexit
 import json
 import os
 import sys
+from pathlib import Path
 from flask import Flask, g, request
 from markupsafe import Markup
 
@@ -11,7 +12,7 @@ from core.infrastructure.errors import register_error_handlers
 from core.infrastructure.database import get_connection, ensure_schema
 from core.infrastructure.backup import BackupManager
 from core.services.common.excel_templates import ensure_excel_templates
-from core.plugins import PluginManager
+from core.plugins import PluginManager, get_plugin_status
 
 from web.routes.dashboard import bp as dashboard_bp
 from web.routes.excel_demo import bp as excel_demo_bp
@@ -30,7 +31,15 @@ def _runtime_base_dir() -> str:
     - 源码运行：仓库根目录（app.py 所在目录）
     - PyInstaller onedir：exe 所在目录
     """
-    return os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(__file__)
+    try:
+        if getattr(sys, "frozen", False):
+            return str(Path(sys.executable).resolve().parent)
+        return str(Path(__file__).resolve().parent)
+    except Exception:
+        # 兜底：即使 __file__ 为相对路径/空串，也保证返回绝对路径且不为空
+        if getattr(sys, "frozen", False):
+            return os.path.abspath(os.path.dirname(sys.executable) or ".")
+        return os.path.abspath(os.path.dirname(__file__ or "") or ".")
 
 
 def create_app() -> Flask:
@@ -78,7 +87,7 @@ def create_app() -> Flask:
     app.logger.setLevel(app_logger.logger.level)
 
     # DB schema（打包后 schema.sql 与 exe 同目录；若缺失则回退到默认路径）
-    schema_path = os.path.join(base_dir, "schema.sql")
+    schema_path = os.path.abspath(os.path.join(base_dir, "schema.sql"))
     ensure_schema(
         app.config["DATABASE_PATH"],
         app.logger,
@@ -88,27 +97,47 @@ def create_app() -> Flask:
 
     # 可选插件/可选依赖：vendor/ 注入 + plugins/ 动态加载（失败可回退，状态可观测）
     plugin_status = None
+    conn0 = None
     try:
         conn0 = get_connection(app.config["DATABASE_PATH"])
+    except Exception as e:
+        conn0 = None
         try:
-            plugin_status = PluginManager.load_from_base_dir(base_dir, conn=conn0, logger=app.logger)
-            try:
-                OperationLogger(conn0, logger=app.logger).info(
-                    "plugins",
-                    "load",
-                    target_type="runtime",
-                    target_id="plugins",
-                    detail=plugin_status,
-                )
-            except Exception:
-                pass
+            app.logger.warning(f"打开数据库连接失败，插件加载将跳过配置落库：{e}")
+        except Exception:
+            pass
+
+    # 只调用一次 load：避免异常路径重复加载导致状态不一致/重复副作用
+    try:
+        plugin_status = PluginManager.load_from_base_dir(base_dir, conn=conn0, logger=app.logger)
+    except Exception as e:
+        # 插件加载失败不阻断启动：保持可观测（系统页展示），并记录错误日志
+        try:
+            app.logger.error(f"插件加载失败（已忽略，启动继续）：{e}")
+        except Exception:
+            pass
+        try:
+            plugin_status = get_plugin_status()
+        except Exception:
+            plugin_status = None
+
+    # 插件加载留痕：失败不影响启动，也不会触发重复加载
+    if conn0 is not None:
+        try:
+            OperationLogger(conn0, logger=app.logger).info(
+                "plugins",
+                "load",
+                target_type="runtime",
+                target_id="plugins",
+                detail=plugin_status,
+            )
+        except Exception:
+            pass
         finally:
             try:
                 conn0.close()
             except Exception:
                 pass
-    except Exception:
-        plugin_status = PluginManager.load_from_base_dir(base_dir, conn=None, logger=app.logger)
     app.config["PLUGIN_STATUS"] = plugin_status
 
     # 每请求 DB 连接（避免跨线程）

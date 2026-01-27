@@ -32,7 +32,12 @@ def gantt_page():
     end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
     version_raw = (request.args.get("version") or "").strip()
-    version: Optional[int] = int(version_raw) if version_raw else None
+    version: Optional[int] = None
+    if version_raw:
+        try:
+            version = int(version_raw)
+        except Exception:
+            raise ValidationError("version 不合法（期望整数）", field="version")
 
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
@@ -64,18 +69,23 @@ def gantt_data():
     week_start = (request.args.get("week_start") or "").strip() or None
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
-    offset = _get_int_arg("offset", 0)
-    version_raw = (request.args.get("version") or "").strip()
-    version: Optional[int] = int(version_raw) if version_raw else None
-
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     try:
+        offset = _get_int_arg("offset", 0)
+        version_raw = (request.args.get("version") or "").strip()
+        version: Optional[int] = None
+        if version_raw:
+            try:
+                version = int(version_raw)
+            except Exception:
+                raise ValidationError("version 不合法（期望整数）", field="version")
+
         data: Dict[str, Any] = svc.get_gantt_tasks(
             view=view, week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date, version=version
         )
         return jsonify({"success": True, "data": data})
     except AppError as e:
-        return jsonify({"success": False, "error": {"code": e.code, "message": e.message}}), 400
+        return jsonify({"success": False, "error": {"code": e.code.value, "message": e.message}}), 400
     except Exception as e:
         return jsonify({"success": False, "error": {"code": "UNKNOWN", "message": f"甘特图数据生成失败：{e}"}}), 500
 
