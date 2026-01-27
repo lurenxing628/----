@@ -1,14 +1,14 @@
 @echo off
-REM Win7 打包脚本（onedir）
-REM 说明：
-REM - 必须在 Win7 环境使用 Python 3.8.x + PyInstaller 4.10 执行
-REM - 目标机（交付机）无需安装 Python
-REM - 本脚本不会联网；请提前准备好离线依赖（pip wheelhouse 或已安装环境）
+REM Win7 build script (onedir)
+REM Notes:
+REM - Run on Win7 with Python 3.8.x + PyInstaller 4.10
+REM - Target machine does not require Python
+REM - No network access; prepare offline dependencies in advance
 
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d %~dp0
 
-REM 统一编码，避免中文在 cmd 下乱码
+REM Switch console to UTF-8 (optional)
 chcp 65001 >nul 2>&1
 
 echo [build] 项目目录：%cd%
@@ -26,7 +26,7 @@ if exist dist rmdir /s /q dist >nul 2>&1
 
 REM 3) 开始打包
 echo [build] 开始执行 PyInstaller（onedir）...
-pyinstaller --noconfirm --clean --onedir --windowed ^
+python -m PyInstaller --noconfirm --clean --onedir --windowed ^
   --add-data "templates;templates" ^
   --add-data "static;static" ^
   --add-data "templates_excel;templates_excel" ^

@@ -32,3 +32,8 @@ dist/
 vendor/**
 !vendor/.gitkeep
 
+# Local tools / installer outputs (large binaries)
+tools/Chrome.109.0.5414.120.x64/
+tools/Chrome.109.0.5414.120.x64_Portable.7z
+installer/output/
+
