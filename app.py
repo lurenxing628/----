@@ -8,7 +8,8 @@ from markupsafe import Markup
 
 from config import config as config_map
 from core.infrastructure.logging import AppLogger, OperationLogger
-from core.infrastructure.errors import register_error_handlers
+from web.error_handlers import register_error_handlers
+from web.ui_mode import init_ui_mode
 from core.infrastructure.database import get_connection, ensure_schema
 from core.infrastructure.backup import BackupManager
 from core.services.common.excel_templates import ensure_excel_templates
@@ -59,6 +60,9 @@ def create_app() -> Flask:
         return Markup(json.dumps(value, ensure_ascii=False, indent=indent))
 
     app.jinja_env.filters["tojson_zh"] = tojson_zh
+
+    # UI 模式（V1/V2）：额外注册 V2 静态资源与模板 overlay（Win7 兼容：不引入新依赖）
+    init_ui_mode(app, base_dir)
 
     # 运行目录确保存在（打包后也依赖这些目录）
     os.makedirs(os.path.dirname(app.config["DATABASE_PATH"]), exist_ok=True)

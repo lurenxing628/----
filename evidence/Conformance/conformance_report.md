@@ -1,13 +1,13 @@
 # 实现一致性对标报告（实现 vs 开发文档规划）
 
-- 生成时间：2026-01-24 00:56:36
+- 生成时间：2026-01-28 01:31:48
 - 仓库根目录：`D:\Github\APS Test`
 
 ## 总结
 - 检查项总数：9
 - BLOCKER：0
-- MAJOR：0
-- 结论：通过
+- MAJOR：1
+- 结论：不通过（存在差异项）
 
 ## 逐项对标结果
 ### 依赖约束（openpyxl-only；不引入 pandas/numpy/schedule）
@@ -87,13 +87,13 @@
   -     DEFAULT_DUE_WEIGHT = 0.5
   -     DEFAULT_READY_WEIGHT = 0.1
   - 
-  -     VALID_STRATEGIES = ("priority_first", "due_date_first", "weighted", "fifo")
+  -     # 派工方式（V1.2）：默认保持 V1 行为（batch_order）
+  -     DEFAULT_DISPATCH_MODE = "batch_order"  # batch_order/sgs
+  -     DEFAULT_DISPATCH_RULE = "slack"  # slack/cr/atc（仅 sgs 生效）
+  -     DEFAULT_AUTO_ASSIGN_ENABLED = "no"  # yes/no
+  -     DEFAULT_ORTOOLS_ENABLED = "no"  # yes/no
+  -     DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS = 5  # seconds
   - 
-  -     STRATEGY_NAME_ZH = {
-  -         "priority_first": "优先级优先",
-  -         "due_date_first": "交期优先",
-  -         "weighted": "权重混合",
-  -         "fifo": "先进先出",
 ```
 
 ### Excel 导入留痕 detail 键名（英文固定键）对齐开发文档
@@ -104,44 +104,20 @@
   - 期望键：['filename', 'mode', 'time_cost_ms', 'total_rows', 'new_count', 'update_count', 'skip_count', 'error_count', 'errors_sample']
 
 ### 排产落库+留痕（Schedule + ScheduleHistory + OperationLogs[action=schedule/simulate]）
-- **结果**：通过
-- **严重性**：INFO
+- **结果**：不通过
+- **严重性**：MAJOR
+- **说明**：排产留痕/事务原子性实现与开发文档要求不一致。
 - **证据**：
   - `core/services/scheduler/schedule_service.py` 排产留痕片段：
-```
-  -                 "batch_ids": list(normalized),
-  -                 "batch_count": len(batches),
-  -                 "op_count": len(algo_ops),
-  -                 "scheduled_ops": summary.scheduled_ops,
-  -                 "failed_ops": summary.failed_ops,
-  -                 "result_status": result_status,
-  -                 "overdue_count": len(overdue_items),
-  -                 "overdue_batches_sample": overdue_items[:10],
-  -                 "time_cost_ms": time_cost_ms,
-  -             }
-  -             self.op_logger.info(
-  -                 module="scheduler",
-  -                 action="simulate" if simulate else "schedule",
-  -                 target_type="schedule",
-  -                 target_id=str(version),
-  -                 detail=detail,
-  -             )
-  - 
-  -         return {
-  -             "is_simulation": bool(simulate),
-  -             "version": int(version),
-  -             "strategy": used_strategy.value,
-  -             "strategy_params": used_params or {},
-  -             "result_status": result_status,
-```
+  - 未找到 action=schedule/simulate 留痕写入逻辑
 
 ### 关键路由存在性（对齐系统速查表核心链路）
 - **结果**：通过
 - **严重性**：INFO
 - **证据**：
-  - url_map 路由总数：123
+  - url_map 路由总数：149
   - 关键路由缺失：无
 
 ## 差异项清单（便于验收沟通/修复排期）
-- 无
+- **[MAJOR] 排产落库+留痕（Schedule + ScheduleHistory + OperationLogs[action=schedule/simulate]）**：排产留痕/事务原子性实现与开发文档要求不一致。
 

@@ -1,15 +1,15 @@
 # Full E2E（从 Excel 导入开始→排产→甘特/周计划→系统管理）验收报告
 
-- 测试时间：2026-01-26 01:13:19
+- 测试时间：2026-01-28 01:19:43
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境（隔离目录）
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_shhyux4c`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_shhyux4c\aps_full_e2e.db`
-- logs：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_shhyux4c\logs`
-- backups：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_shhyux4c\backups`
-- templates_excel：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_shhyux4c\templates_excel`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_4sb_myqv`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_4sb_myqv\aps_full_e2e.db`
+- logs：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_4sb_myqv\logs`
+- backups：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_4sb_myqv\backups`
+- templates_excel：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_4sb_myqv\templates_excel`
 
 ## 1. 基础页面可访问性（用于确认路由装配）
 - GET /：200
@@ -67,11 +67,16 @@
 - POST /scheduler/run (follow redirects)：200
 - ScheduleHistory：version=1 strategy=priority_first result_status=success
 - Schedule 行数：2（version=1，期望 >=1）
-- 甘特周起点（按排程起始时间）：2026-01-27
+- 甘特周起点（按排程起始时间）：2026-01-29
 - Batches.status：scheduled（期望 scheduled）
 - OperationLogs（schedule）：log_id=32 keys_ok
 
 ## 9. 甘特图与周计划（/scheduler/gantt/data + /scheduler/week-plan/export）
+- GET /scheduler/gantt?version=abc：400
+- GET /scheduler/gantt/data?version=abc：400
+- GET /scheduler/week-plan?version=abc：400
+- GET /scheduler/week-plan/export?version=abc：302
+- week-plan/export invalid version redirect：/scheduler/week-plan
 - GET /scheduler/gantt：200
 - GET /scheduler/gantt/data：200
 - 甘特图 tasks：2 条（字段齐全）
@@ -95,11 +100,11 @@
 - POST /material/batches/<bid>/requirements/add (follow redirects)：200
 - 加入物料需求后批次齐套：no ready_date=None
 - POST /material/requirements/<id>/update (follow redirects)：200
-- 齐套后批次齐套：yes ready_date=2026-01-26
+- 齐套后批次齐套：yes ready_date=2026-01-28
 
 ## 11. 留痕抽检（OperationLogs.detail 键名对齐开发文档）
 - OperationLogs 抽检：通过（import/export/schedule 关键键名齐全）
 
 ## 结论
 - 通过：Full E2E（从 Excel 导入开始→排产→甘特/周计划→系统管理）链路跑通。
-- 总耗时：3820 ms
+- 总耗时：3821 ms

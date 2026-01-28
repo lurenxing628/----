@@ -8,7 +8,9 @@ import time
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
-from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
+from flask import current_app, flash, g, redirect, request, send_file, url_for
+
+from web.ui_mode import render_ui_template as render_template
 
 from core.infrastructure.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager

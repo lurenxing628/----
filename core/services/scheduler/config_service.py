@@ -124,6 +124,15 @@ class ConfigService:
             raise ValidationError(f"“{field}”范围不合理（期望 0~1 或 0~100%）", field=field)
         return float(v)
 
+    @staticmethod
+    def normalize_weight(value: Any, field: str) -> float:
+        """
+        公共方法：权重归一化为 0~1 的小数（兼容 0~100% 输入）。
+
+        说明：路由层/视图层不应调用私有方法 `_normalize_weight`。
+        """
+        return ConfigService._normalize_weight(value, field=field)
+
     def ensure_defaults(self) -> None:
         """
         确保默认配置已落库（缺失则写入，不覆盖用户已有配置）。

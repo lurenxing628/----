@@ -68,7 +68,12 @@ def main():
         row = conn.execute("SELECT due_date FROM Batches WHERE batch_id = ?", ("B001",)).fetchone()
         assert row, "未找到测试批次 B001"
         due = row["due_date"] if isinstance(row, sqlite3.Row) else row[0]
-        assert due == "2026-01-01", f"预期 due_date='2026-01-01'，实际 {due!r}"
+        # 说明：项目已开启 sqlite3 类型探测（PARSE_DECLTYPES），因此 DATE 可能自动转换为 datetime.date
+        if hasattr(due, "isoformat"):
+            due_text = due.isoformat()
+        else:
+            due_text = str(due)
+        assert due_text == "2026-01-01", f"预期 due_date='2026-01-01'，实际 {due!r}"
 
         # 附加断言：SchemaVersion 已提升到 1（确保走过迁移路径）
         rowv = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()

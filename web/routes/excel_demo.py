@@ -4,7 +4,9 @@ import os
 import time
 from typing import Dict, Any, List
 
-from flask import Blueprint, current_app, render_template, request, flash, redirect, url_for, send_file, g
+from flask import Blueprint, current_app, request, flash, redirect, url_for, send_file, g
+
+from web.ui_mode import render_ui_template as render_template
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager

@@ -5,7 +5,9 @@ import time
 from datetime import date
 from typing import Optional
 
-from flask import flash, g, redirect, render_template, request, send_file, url_for
+from flask import flash, g, redirect, request, send_file, url_for
+
+from web.ui_mode import render_ui_template as render_template
 
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.common.excel_audit import log_excel_export

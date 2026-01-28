@@ -1,4 +1,6 @@
-from flask import Blueprint, render_template
+from flask import Blueprint
+
+from web.ui_mode import render_ui_template as render_template
 
 
 bp = Blueprint("dashboard", __name__)

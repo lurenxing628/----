@@ -1,24 +1,26 @@
 @echo off
-REM Phase5（工艺管理模块）冒烟测试一键执行脚本
-REM 作用：运行 tests\smoke_phase5.py，并自动生成 evidence\Phase5\smoke_phase5_report.md
+rem Phase5 smoke test runner (Process module)
+rem Runs: tests\smoke_phase5.py
+rem Report: evidence\Phase5\smoke_phase5_report.md
 
-setlocal
-cd /d %~dp0
+setlocal EnableExtensions
+pushd "%~dp0" >nul 2>&1
 
-echo [Phase5] 开始运行冒烟测试...
-echo - 项目目录：%cd%
+echo [Phase5] Start...
+echo [Phase5] repo: %CD%
 echo.
 
 python tests\smoke_phase5.py
+set "RC=%ERRORLEVEL%"
 
 echo.
-if %errorlevel%==0 (
-  echo [Phase5] 冒烟测试完成：通过
-  echo - 报告：evidence\Phase5\smoke_phase5_report.md
+if %RC%==0 (
+  echo [Phase5] PASS
+  echo [Phase5] report: evidence\Phase5\smoke_phase5_report.md
 ) else (
-  echo [Phase5] 冒烟测试完成：失败（错误码=%errorlevel%）
-  echo - 请打开报告查看详情：evidence\Phase5\smoke_phase5_report.md
+  echo [Phase5] FAIL (exit=%RC%)
+  echo [Phase5] report: evidence\Phase5\smoke_phase5_report.md
 )
 
-endlocal
-
+popd >nul 2>&1
+endlocal & exit /b %RC%

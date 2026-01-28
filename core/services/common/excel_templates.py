@@ -68,8 +68,9 @@ def get_default_templates() -> List[Dict[str, Any]]:
         # 排产（后续阶段会接入接口/页面；模板先交付）
         {
             "filename": "批次信息.xlsx",
-            "headers": ["批次号", "图号", "数量", "交期", "优先级", "齐套", "备注"],
-            "sample_rows": [["B001", "A1234", 50, "2026-01-25", "urgent", "yes", "示例"]],
+            # 对齐路由 `web/routes/scheduler_excel_batches.py` 的兜底模板与导入字段（含齐套日期）
+            "headers": ["批次号", "图号", "数量", "交期", "优先级", "齐套", "齐套日期", "备注"],
+            "sample_rows": [["B001", "A1234", 50, "2026-01-25", "urgent", "yes", "2026-01-24", "示例"]],
         },
         {
             "filename": "工作日历.xlsx",

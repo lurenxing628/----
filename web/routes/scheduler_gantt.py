@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from flask import g, jsonify, render_template, request, url_for
+from flask import g, jsonify, request, url_for
+
+from web.ui_mode import render_ui_template as render_template
 
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.scheduler import GanttService

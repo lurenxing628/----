@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from flask import Blueprint, flash, g, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, flash, g, redirect, request, send_file, url_for
+
+from web.ui_mode import render_ui_template as render_template
 
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.report import ReportEngine

@@ -300,6 +300,14 @@ class CalendarService:
             shift_start=ss_t,
         )
 
+    def policy_for_datetime(self, dt: datetime) -> DayPolicy:
+        """
+        公共接口：获取某时刻所在日期的排产策略（DayPolicy）。
+
+        说明：核心/报表等模块不应依赖私有方法 `_policy_for_datetime`。
+        """
+        return self._policy_for_datetime(dt)
+
     def get_efficiency(self, dt: datetime, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> float:
         return float(self._policy_for_datetime(dt).efficiency or 1.0)
 

@@ -34,6 +34,42 @@ class ScheduleRepository(BaseRepository):
         rows = self.fetchall(sql, tuple(params))
         return [Schedule.from_row(r) for r in rows]
 
+    def list_version_rows_by_op_ids_start_range(
+        self,
+        *,
+        version: int,
+        op_ids: Sequence[int],
+        start_time: str,
+        end_time: str,
+        chunk_size: int = 900,
+    ) -> List[Dict[str, Any]]:
+        """
+        查询指定版本在 [start_time, end_time) 范围内的排程记录（按 start_time 过滤），并限定 op_id 集合。
+
+        主要用于“冻结窗口”：
+        - sqlite 默认变量上限 999，因此这里默认分块查询
+        - 返回 dict 行（不转模型），便于上层做 seed 构建
+        """
+        ids = [int(x) for x in (op_ids or []) if int(x) > 0]
+        if not ids:
+            return []
+
+        out: List[Dict[str, Any]] = []
+        for i in range(0, len(ids), int(chunk_size)):
+            chunk = ids[i : i + int(chunk_size)]
+            placeholders = ",".join(["?"] * len(chunk))
+            sql = f"""
+            SELECT op_id, machine_id, operator_id, start_time, end_time
+            FROM Schedule
+            WHERE version = ?
+              AND op_id IN ({placeholders})
+              AND start_time >= ?
+              AND start_time < ?
+            """
+            params: List[Any] = [int(version)] + [int(x) for x in chunk] + [start_time, end_time]
+            out.extend(self.fetchall(sql, tuple(params)))
+        return out
+
     def list_overlapping_with_details(self, start_time: str, end_time: str, version: int) -> List[Dict[str, Any]]:
         """
         查询与给定时间区间“有重叠”的排程记录，并补齐甘特图/周计划所需的关联信息。

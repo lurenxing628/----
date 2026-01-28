@@ -1,24 +1,26 @@
 @echo off
-REM Full E2E（从 Excel→排产→甘特/周计划→系统管理）冒烟测试一键执行脚本
-REM 作用：运行 tests\smoke_e2e_excel_to_schedule.py，并生成 evidence\FullE2E\excel_to_schedule_report.md
+rem Full E2E smoke test runner (Excel -> schedule -> gantt/week-plan -> system)
+rem Runs: tests\smoke_e2e_excel_to_schedule.py
+rem Report: evidence\FullE2E\excel_to_schedule_report.md
 
-setlocal
-cd /d %~dp0
+setlocal EnableExtensions
+pushd "%~dp0" >nul 2>&1
 
-echo [FullE2E] 开始运行端到端冒烟测试...
-echo - 项目目录：%cd%
+echo [FullE2E] Start...
+echo [FullE2E] repo: %CD%
 echo.
 
 python tests\smoke_e2e_excel_to_schedule.py
+set "RC=%ERRORLEVEL%"
 
 echo.
-if %errorlevel%==0 (
-  echo [FullE2E] 冒烟测试完成：通过
-  echo - 报告：evidence\FullE2E\excel_to_schedule_report.md
+if %RC%==0 (
+  echo [FullE2E] PASS
+  echo [FullE2E] report: evidence\FullE2E\excel_to_schedule_report.md
 ) else (
-  echo [FullE2E] 冒烟测试完成：失败（错误码=%errorlevel%）
-  echo - 请打开报告查看详情：evidence\FullE2E\excel_to_schedule_report.md
+  echo [FullE2E] FAIL (exit=%RC%)
+  echo [FullE2E] report: evidence\FullE2E\excel_to_schedule_report.md
 )
 
-endlocal
-
+popd >nul 2>&1
+endlocal & exit /b %RC%

@@ -6,8 +6,11 @@ import sqlite3
 from datetime import datetime
 import re
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
-from flask import Blueprint, current_app, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, g, redirect, request, url_for
+
+from web.ui_mode import UI_MODE_COOKIE_KEY, UI_MODE_CONFIG_KEY, normalize_ui_mode, render_ui_template as render_template
 
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import ensure_schema
@@ -19,6 +22,27 @@ from data.repositories import OperationLogRepository, ScheduleHistoryRepository,
 
 
 bp = Blueprint("system", __name__)
+
+def _safe_next_url(raw: Optional[str]) -> str:
+    """
+    安全重定向：
+    - 仅允许站内相对路径（禁止 http(s):// 或 //host 形式）
+    - 兼容 request.full_path 末尾的 '?'（无查询时）
+    """
+    s = (raw or "").strip()
+    if not s:
+        return url_for("dashboard.index")
+    if s.endswith("?"):
+        s = s[:-1]
+    try:
+        p = urlparse(s)
+        if p.scheme or p.netloc:
+            return url_for("dashboard.index")
+    except Exception:
+        return url_for("dashboard.index")
+    if not s.startswith("/"):
+        s = "/" + s
+    return s
 
 
 def _parse_dt(value: str, field: str) -> Tuple[datetime, bool]:
@@ -155,6 +179,46 @@ def _validate_backup_filename(filename: str) -> str:
 @bp.get("/")
 def index():
     return redirect(url_for("system.backup_page"))
+
+@bp.post("/ui-mode")
+def ui_mode_set():
+    """
+    UI 模式切换：
+    - 写 Cookie（浏览器级）
+    - 写 SystemConfig.ui_mode（全局默认；换浏览器也生效）
+    """
+    mode = normalize_ui_mode(request.form.get("mode"))
+    next_url = _safe_next_url(request.form.get("next") or request.referrer)
+    if not mode:
+        flash("UI 模式不合法（仅允许 v1/v2）。", "error")
+        return redirect(next_url)
+
+    # 1) DB 持久化（失败不阻断，仍可通过 cookie 生效）
+    try:
+        repo = SystemConfigRepository(g.db, logger=current_app.logger)
+        with TransactionManager(g.db).transaction():
+            repo.set(UI_MODE_CONFIG_KEY, mode, description="UI 模式：v1/v2（v2=新UI）")
+    except Exception as e:
+        try:
+            current_app.logger.warning(f"写入 UI 模式到 SystemConfig 失败（将仅使用 Cookie）：{e}")
+        except Exception:
+            pass
+
+    # 2) Cookie
+    resp = redirect(next_url)
+    try:
+        resp.set_cookie(
+            UI_MODE_COOKIE_KEY,
+            mode,
+            max_age=365 * 24 * 3600,
+            path="/",
+            samesite="Lax",
+        )
+    except Exception:
+        pass
+
+    flash(f"已切换界面模式：{mode.upper()}。", "success")
+    return resp
 
 
 @bp.get("/backup")

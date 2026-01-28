@@ -5,7 +5,7 @@ from datetime import date, datetime
 import statistics
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms.greedy import ScheduleResult
+from core.algorithms.types import ScheduleResult
 
 
 def _parse_due_date(value: Any) -> Optional[date]:

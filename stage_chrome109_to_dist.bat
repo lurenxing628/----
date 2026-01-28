@@ -1,56 +1,75 @@
 @echo off
-REM Stage offline Chrome109 into dist\排产系统\tools\chrome109
-REM Requires: robocopy (built-in on Win7)
+rem Stage offline Chrome109 into dist\...\tools\chrome109
+rem Requires: robocopy (built-in on Win7)
 
-setlocal EnableExtensions EnableDelayedExpansion
-cd /d "%~dp0"
+setlocal EnableExtensions
+set "EXIT_CODE=0"
 
-REM Switch console to UTF-8 (optional)
-chcp 65001 >nul 2>&1
+pushd "%~dp0" >nul 2>&1
+if not %errorlevel%==0 (
+  echo [stage] pushd failed.
+  set "EXIT_CODE=1"
+  goto :cleanup
+)
 
 set "SRC=%CD%\tools\Chrome.109.0.5414.120.x64"
-set "DIST_ROOT=%CD%\dist\排产系统"
+
+rem Resolve dist app folder dynamically (avoid hardcoding non-ASCII names)
+set "DIST_ROOT="
+for /d %%D in ("%CD%\dist\*") do (
+  if not defined DIST_ROOT (
+    for %%E in ("%%~fD\*.exe") do (
+      if exist "%%~fE" set "DIST_ROOT=%%~fD"
+    )
+  )
+)
+
+if not defined DIST_ROOT (
+  echo [stage] dist output not found. Please run build_win7_onedir.bat first.
+  set "EXIT_CODE=2"
+  goto :cleanup
+)
+
 set "DST=%DIST_ROOT%\tools\chrome109"
 
 echo [stage] repo: %CD%
 echo [stage] src : %SRC%
 echo [stage] dst : %DST%
 
-if not exist "%DIST_ROOT%\排产系统.exe" (
-  echo [stage] 未找到 dist 产物：%DIST_ROOT%\排产系统.exe
-  echo [stage] 请先运行：build_win7_onedir.bat
-  exit /b 2
-)
-
 if not exist "%SRC%\chrome.exe" (
-  echo [stage] 未找到 Chrome 启动器：%SRC%\chrome.exe
-  echo [stage] 请确认你已准备 Chrome 到 tools\Chrome.109.0.5414.120.x64\
-  exit /b 3
+  echo [stage] chrome.exe not found: %SRC%\chrome.exe
+  set "EXIT_CODE=3"
+  goto :cleanup
 )
 
 if not exist "%DIST_ROOT%\tools" mkdir "%DIST_ROOT%\tools" >nul 2>&1
 
-REM 覆盖式更新：先删旧目录，避免残留文件
+rem Overwrite: delete old folder to avoid leftovers
 if exist "%DST%" (
-  echo [stage] 清理旧目录...
+  echo [stage] cleanup old dst...
   rmdir /s /q "%DST%" >nul 2>&1
 )
 
-echo [stage] 复制中（可能需要一点时间）...
+echo [stage] copying...
 robocopy "%SRC%" "%DST%" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /NFL /NDL /NJH /NJS /NP
-set "RC=%ERRORLEVEL%"
+set "ROBO_RC=%ERRORLEVEL%"
 
-REM robocopy: 0-7 视为成功；>=8 视为失败
-if %RC% GEQ 8 (
-  echo [stage] 复制失败（robocopy exit=%RC%）
-  exit /b %RC%
+rem robocopy: 0-7 = success; >=8 = failure
+if %ROBO_RC% GEQ 8 (
+  echo [stage] robocopy failed exit=%ROBO_RC%
+  set "EXIT_CODE=%ROBO_RC%"
+  goto :cleanup
 )
 
 if not exist "%DST%\chrome.exe" (
-  echo [stage] 复制后仍未找到：%DST%\chrome.exe
-  exit /b 4
+  echo [stage] chrome.exe missing after copy: %DST%\chrome.exe
+  set "EXIT_CODE=4"
+  goto :cleanup
 )
 
-echo [stage] 完成：%DST%
-exit /b 0
+echo [stage] done.
+set "EXIT_CODE=0"
 
+:cleanup
+popd >nul 2>&1
+endlocal & exit /b %EXIT_CODE%

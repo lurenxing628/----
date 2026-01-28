@@ -113,6 +113,7 @@
             <th style="width:140px;">交期</th>
             <th style="width:120px;">优先级</th>
             <th style="width:140px;">齐套</th>
+            <th style="width:140px;">齐套日期</th>
             <th>备注</th>
           </tr>
         </thead>
@@ -125,6 +126,7 @@
               <td>{% if r["交期"] %}{{ r["交期"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
               <td>{{ r["优先级"] }}</td>
               <td>{{ r["齐套"] }}</td>
+              <td>{% if r["齐套日期"] %}{{ r["齐套日期"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
               <td>{% if r["备注"] %}{{ r["备注"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
             </tr>
           {% endfor %}

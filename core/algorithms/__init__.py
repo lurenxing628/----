@@ -11,7 +11,8 @@ Phase 7（目标：M3）范围：
 """
 
 from .sort_strategies import SortStrategy, StrategyFactory, BatchForSort
-from .greedy import GreedyScheduler, ScheduleResult, ScheduleSummary
+from .types import ScheduleResult, ScheduleSummary
+from .greedy import GreedyScheduler
 
 __all__ = [
     "SortStrategy",

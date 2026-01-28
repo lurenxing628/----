@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from core.models import OperatorMachine
 
@@ -38,6 +38,30 @@ class OperatorMachineRepository(BaseRepository):
             (machine_id,),
         )
         return [OperatorMachine.from_row(r) for r in rows]
+
+    def list_simple_rows(self) -> List[Dict[str, Any]]:
+        """
+        轻量查询：仅返回 algorithm/页面联动所需字段。
+        """
+        return self.fetchall("SELECT operator_id, machine_id, skill_level, is_primary FROM OperatorMachine", None)
+
+    def list_simple_rows_for_machine_operator_sets(self, machine_ids: Sequence[str], operator_ids: Sequence[str]) -> List[Dict[str, Any]]:
+        """
+        给“批次详情页的人机联动”使用：限定 machine_id/operator_id 集合，返回 skill_level/is_primary 元信息。
+        """
+        m_list = [str(x).strip() for x in (machine_ids or []) if str(x).strip()]
+        o_list = [str(x).strip() for x in (operator_ids or []) if str(x).strip()]
+        if not m_list or not o_list:
+            return []
+        m_placeholders = ",".join(["?"] * len(m_list))
+        o_placeholders = ",".join(["?"] * len(o_list))
+        sql = f"""
+        SELECT machine_id, operator_id, skill_level, is_primary
+        FROM OperatorMachine
+        WHERE machine_id IN ({m_placeholders}) AND operator_id IN ({o_placeholders})
+        ORDER BY machine_id, operator_id
+        """
+        return self.fetchall(sql, tuple(m_list + o_list))
 
     def add(
         self,
