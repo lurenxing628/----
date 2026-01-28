@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block title %}排产调度{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h2 style="font-size: 1.5rem; font-weight: bold;">排产调度 (Phase 6)</h2>
+    <div class="flex gap-2">
+        <a href="{{ url_for('scheduler.gantt_page', view='machine') }}" class="btn btn-secondary">甘特图-设备</a>
+        <a href="{{ url_for('scheduler.gantt_page', view='operator') }}" class="btn btn-secondary">甘特图-人员</a>
+        <a href="{{ url_for('scheduler.analysis_page') }}" class="btn btn-secondary">排产优化分析</a>
+        <a href="{{ url_for('scheduler.week_plan_page') }}" class="btn btn-secondary">周计划</a>
+        <a href="{{ url_for('scheduler.calendar_page') }}" class="btn btn-secondary">工作日历配置</a>
+        <a href="{{ url_for('scheduler.excel_batches_page') }}" class="btn btn-secondary">批次导入/导出</a>
+    </div>
+</div>
+
+<!-- Snapshot / History Info -->
+<div class="card">
+    <div class="card-header">
+        <span>最近一次排产（留痕快照）</span>
+    </div>
+    <div class="card-body">
+        {% if latest_history %}
+            <div class="flex gap-4 text-muted">
+                <div><strong>版本：</strong>{{ latest_history.version }}</div>
+                <div><strong>排产时间：</strong>{{ latest_history.schedule_time }}</div>
+                <div><strong>策略：</strong>{{ latest_history.strategy }}</div>
+                <div>
+                    <strong>结果：</strong>
+                    {% if latest_summary %}
+                        成功 {{ latest_summary.get('counts', {}).get('scheduled_ops', 0) }}/{{ latest_summary.get('counts', {}).get('op_count', 0) }}，
+                        失败 {{ latest_summary.get('counts', {}).get('failed_ops', 0) }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </div>
+            </div>
+        {% else %}
+            <p class="text-muted">暂无排产历史（Phase 7 执行排产后会在此展示）。</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Configuration & New Batch -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4" style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+    <!-- Config Form -->
+    <div class="card">
+        <div class="card-header">
+            <span>排产策略配置</span>
+            <form action="{{ url_for('scheduler.restore_config_default') }}" method="POST" style="display:inline;" data-confirm="确定恢复默认配置吗？">
+                <button type="submit" class="btn btn-sm btn-secondary">恢复默认</button>
+            </form>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('scheduler.update_config') }}" method="POST">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label">排产策略</label>
+                        <select name="sort_strategy" class="form-control">
+                            {% for s in strategies %}
+                                <option value="{{ s.key }}" {% if cfg.sort_strategy == s.key %}selected{% endif %}>{{ s.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">算法模式</label>
+                        <select name="algo_mode" class="form-control">
+                            <option value="greedy" {% if cfg.algo_mode == 'greedy' %}selected{% endif %}>贪心 (Greedy)</option>
+                            <option value="improve" {% if cfg.algo_mode == 'improve' %}selected{% endif %}>改进 (Improve)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">派工方式</label>
+                        <select name="dispatch_mode" class="form-control">
+                            <option value="batch_order" {% if cfg.dispatch_mode == 'batch_order' %}selected{% endif %}>按批次顺序 (Batch Order)</option>
+                            <option value="sgs" {% if cfg.dispatch_mode == 'sgs' %}selected{% endif %}>SGS (串行生成)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SGS 规则</label>
+                        <select name="dispatch_rule" class="form-control">
+                            <option value="slack" {% if cfg.dispatch_rule == 'slack' %}selected{% endif %}>最小松弛 (Slack)</option>
+                            <option value="cr" {% if cfg.dispatch_rule == 'cr' %}selected{% endif %}>关键比 (CR)</option>
+                            <option value="atc" {% if cfg.dispatch_rule == 'atc' %}selected{% endif %}>ATC (显着性)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">目标函数</label>
+                        <select name="objective" class="form-control">
+                            <option value="min_overdue" {% if cfg.objective == 'min_overdue' %}selected{% endif %}>最少超期数</option>
+                            <option value="min_tardiness" {% if cfg.objective == 'min_tardiness' %}selected{% endif %}>最小总拖期</option>
+                            <option value="min_changeover" {% if cfg.objective == 'min_changeover' %}selected{% endif %}>最少换型次数</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">时间预算 (秒)</label>
+                        <input type="number" name="time_budget_seconds" class="form-control" value="{{ cfg.time_budget_seconds or 20 }}" min="1" max="600">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">优先级权重 (0-1)</label>
+                        <input type="number" step="0.1" name="priority_weight" class="form-control" value="{{ cfg.priority_weight }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">交期权重 (0-1)</label>
+                        <input type="number" step="0.1" name="due_weight" class="form-control" value="{{ cfg.due_weight }}">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" name="freeze_window_enabled" value="yes" {% if cfg.freeze_window_enabled == 'yes' %}checked{% endif %}>
+                        启用冻结窗口
+                    </label>
+                    <div class="flex items-center gap-2 mt-2">
+                         <input type="number" name="freeze_window_days" class="form-control" style="width: 80px;" value="{{ cfg.freeze_window_days or 0 }}">
+                         <span class="text-muted">天（复用上一版本窗口内排程）</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" name="prefer_primary_skill" value="yes" {% if cfg.prefer_primary_skill == 'yes' %}checked{% endif %}>
+                        工序补充页：优先推荐主操/高技能人员
+                    </label>
+                </div>
+                 <div class="form-group">
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" name="auto_assign_enabled" value="yes" {% if cfg.auto_assign_enabled == 'yes' %}checked{% endif %}>
+                        排产：内部工序缺省资源自动分配（machine/operator 未填时）
+                    </label>
+                </div>
+                 <div class="form-group">
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" name="ortools_enabled" value="yes" {% if cfg.ortools_enabled == 'yes' %}checked{% endif %}>
+                        improve：启用 OR-Tools 高质量起点
+                    </label>
+                    <div class="flex items-center gap-2 mt-2">
+                         <input type="number" name="ortools_time_limit_seconds" class="form-control" style="width: 80px;" value="{{ cfg.ortools_time_limit_seconds or 3 }}">
+                         <span class="text-muted">秒（建议 3~15；过大可能变慢）</span>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">保存配置</button>
+                    <span class="text-muted" style="margin-left: 1rem; font-size: 0.8em;">默认：派工=batch_order；algo=greedy；objective=min_overdue；预算=20s</span>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Create Batch -->
+    <div class="card">
+        <div class="card-header">新增批次</div>
+        <div class="card-body">
+            <form action="{{ url_for('scheduler.create_batch') }}" method="POST">
+                <div class="form-group">
+                    <label class="form-label">批次号 *</label>
+                    <input type="text" name="batch_id" class="form-control" placeholder="如：B001" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">图号 *</label>
+                    <select name="part_no" class="form-control" required>
+                        {% for p_no, p_name in part_options %}
+                            <option value="{{ p_no }}">{{ p_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">数量 *</label>
+                    <input type="number" name="quantity" class="form-control" placeholder="如：50" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">交期</label>
+                    <input type="date" name="due_date" class="form-control" placeholder="YYYY-MM-DD">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">优先级</label>
+                    <select name="priority" class="form-control">
+                        <option value="normal">普通</option>
+                        <option value="urgent">急件</option>
+                        <option value="critical">特急</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">齐套状态</label>
+                    <select name="ready_status" class="form-control">
+                        <option value="yes">齐套</option>
+                        <option value="partial">部分齐套</option>
+                        <option value="no">未齐套</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">齐套日期</label>
+                    <input type="date" name="ready_date" class="form-control">
+                </div>
+                 <div class="form-group">
+                    <label class="form-label">备注</label>
+                    <input type="text" name="remark" class="form-control" placeholder="可选">
+                </div>
+                <button type="submit" class="btn btn-primary w-full" style="width: 100%;">创建批次</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Batches List -->
+<div class="card">
+    <div class="card-header flex justify-between">
+        <span>待排批次列表</span>
+        <div class="flex gap-2">
+            <!-- Filters -->
+            <form method="GET" class="flex gap-2 items-center">
+                <select name="status" class="form-control" style="width: auto;" onchange="this.form.submit()">
+                    <option value="pending" {% if status == 'pending' %}selected{% endif %}>待排产 (Pending)</option>
+                    <option value="scheduled" {% if status == 'scheduled' %}selected{% endif %}>已排产 (Scheduled)</option>
+                    <option value="processing" {% if status == 'processing' %}selected{% endif %}>生产中 (Processing)</option>
+                    <option value="completed" {% if status == 'completed' %}selected{% endif %}>已完工 (Completed)</option>
+                    <option value="cancelled" {% if status == 'cancelled' %}selected{% endif %}>已取消 (Cancelled)</option>
+                    <option value="" {% if not status %}selected{% endif %}>全部状态</option>
+                </select>
+                <select name="only_ready" class="form-control" style="width: auto;" onchange="this.form.submit()">
+                    <option value="" {% if not only_ready %}selected{% endif %}>全部齐套状态</option>
+                    <option value="yes" {% if only_ready == 'yes' %}selected{% endif %}>仅齐套</option>
+                    <option value="partial" {% if only_ready == 'partial' %}selected{% endif %}>部分齐套</option>
+                    <option value="no" {% if only_ready == 'no' %}selected{% endif %}>未齐套</option>
+                </select>
+            </form>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if batches %}
+            <form id="batchActionForm" method="POST">
+                <div class="mb-4 flex gap-2 flex-wrap bg-slate-50 p-2 rounded border border-slate-200">
+                    <!-- Bulk Actions -->
+                    {% if status == 'pending' %}
+                        <div class="flex items-center gap-2 mr-4">
+                            <label class="form-label mb-0" style="margin-bottom:0;">执行排产:</label>
+                            <input type="text" name="start_dt" class="form-control" style="width: 160px;" placeholder="YYYY-MM-DD HH:MM" value="{{ default_start_dt }}">
+                            <input type="date" name="end_date" class="form-control" style="width: 140px;" placeholder="截止日期">
+                            <button type="submit" formaction="{{ url_for('scheduler.run_schedule') }}" class="btn btn-primary">执行排产</button>
+                            <button type="submit" formaction="{{ url_for('scheduler.simulate_schedule') }}" class="btn btn-success" data-confirm="将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？">模拟排产</button>
+                        </div>
+                    {% endif %}
+                    
+                    <div class="flex items-center gap-2">
+                         <button type="submit" formaction="{{ url_for('scheduler.bulk_copy_batches') }}" class="btn btn-secondary" data-confirm="将把所选批次逐个复制一份。确定继续？">复制</button>
+                         <button type="submit" formaction="{{ url_for('scheduler.bulk_delete_batches') }}" class="btn btn-danger" data-confirm="确定删除所选批次吗？">删除</button>
+                    </div>
+
+                    <!-- Bulk Update -->
+                    <div class="flex items-center gap-2 ml-auto border-l pl-4">
+                        <span class="text-muted text-sm">批量修改:</span>
+                        <select name="bulk_priority" class="form-control" style="width: 80px;">
+                            <option value="">(不改)</option>
+                            <option value="normal">普通</option>
+                            <option value="urgent">急件</option>
+                            <option value="critical">特急</option>
+                        </select>
+                        <input type="date" name="bulk_due_date" class="form-control" style="width: 130px;">
+                        <input type="text" name="bulk_remark" class="form-control" placeholder="备注(留空不改)" style="width: 120px;">
+                        <button type="submit" formaction="{{ url_for('scheduler.bulk_update_batches') }}" class="btn btn-secondary" data-confirm="确定批量修改所选批次吗？">修改</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox" onclick="toggleAll(this)"></th>
+                                <th>批次号</th>
+                                <th>图号</th>
+                                <th>数量</th>
+                                <th>优先级</th>
+                                <th>齐套</th>
+                                <th>齐套日期</th>
+                                <th>交期</th>
+                                <th>状态</th>
+                                <th>备注</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for b in batches %}
+                            <tr>
+                                <td><input type="checkbox" name="batch_ids" value="{{ b.batch_id }}"></td>
+                                <td>
+                                    <a href="{{ url_for('scheduler.batch_detail', batch_id=b.batch_id) }}" style="font-weight: bold; color: var(--primary-color);">{{ b.batch_id }}</a>
+                                </td>
+                                <td>{{ b.part_no }}</td>
+                                <td>{{ b.quantity }}</td>
+                                <td>
+                                    {% if b.priority == 'critical' %}
+                                        <span class="badge badge-danger">特急</span>
+                                    {% elif b.priority == 'urgent' %}
+                                        <span class="badge badge-warning">急件</span>
+                                    {% else %}
+                                        <span class="badge badge-secondary">普通</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if b.ready_status == 'yes' %}
+                                        <span class="badge badge-success">齐套</span>
+                                    {% elif b.ready_status == 'partial' %}
+                                        <span class="badge badge-warning">部分</span>
+                                    {% else %}
+                                        <span class="badge badge-secondary">未齐套</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ b.ready_date or '-' }}</td>
+                                <td>{{ b.due_date or '-' }}</td>
+                                <td>{{ b.status_zh }}</td>
+                                <td class="text-muted" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ b.remark or '' }}">{{ b.remark or '-' }}</td>
+                                <td>
+                                    <a href="{{ url_for('scheduler.batch_detail', batch_id=b.batch_id) }}" class="btn btn-sm btn-secondary">详情</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </form>
+        {% else %}
+            <div class="text-center py-8 text-muted">
+                暂无数据（可先新增批次或通过 Excel 导入）。
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function toggleAll(source) {
+        checkboxes = document.getElementsByName('batch_ids');
+        for(var i=0, n=checkboxes.length;i<n;i++) {
+            checkboxes[i].checked = source.checked;
+        }
+    }
+</script>
+{% endblock %}
