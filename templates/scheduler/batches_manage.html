@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>批次管理</h2>
+    <p class="muted">
+      说明：本页用于新增批次、批量复制/删除/修改与进入批次详情编辑。
+      <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a> 请在主页面进行。
+    </p>
+    <div style="margin-top:8px;">
+      <strong>入口：</strong>
+      <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('scheduler.config_page') }}">高级设置/模板</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
+      <span class="muted">｜</span>
+      <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>新增批次</h3>
+    <form method="post" action="{{ url_for('scheduler.create_batch') }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>批次号</label><br/>
+          <input name="batch_id" required placeholder="如：B001">
+        </div>
+        <div style="min-width:260px;">
+          <label>图号</label><br/>
+          <select name="part_no" required>
+            <option value="">（请选择）</option>
+            {% for v, label in part_options %}
+              <option value="{{ v }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>数量</label><br/>
+          <input name="quantity" required placeholder="如：50" style="width:120px;">
+        </div>
+        <div>
+          <label>交期（可选）</label><br/>
+          <input name="due_date" placeholder="YYYY-MM-DD" style="width:160px;">
+        </div>
+        <div>
+          <label>优先级</label><br/>
+          <select name="priority">
+            <option value="normal">普通</option>
+            <option value="urgent">急件</option>
+            <option value="critical">特急</option>
+          </select>
+        </div>
+        <div>
+          <label>齐套</label><br/>
+          <select name="ready_status">
+            <option value="yes" selected>齐套（默认）</option>
+            <option value="partial">部分齐套</option>
+            <option value="no">未齐套</option>
+          </select>
+        </div>
+        <div>
+          <label>齐套日期（可选）</label><br/>
+          <input name="ready_date" placeholder="YYYY-MM-DD" style="width:160px;">
+        </div>
+        <div style="flex:1; min-width:220px;">
+          <label>备注</label><br/>
+          <input name="remark" placeholder="可选">
+        </div>
+        <div>
+          <button type="submit">创建批次</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>批次列表</h3>
+    <form method="get" action="{{ url_for('scheduler.batches_manage_page') }}" style="margin-bottom:8px;">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>状态</label><br/>
+          <select name="status">
+            <option value="pending" {% if status=='pending' %}selected{% endif %}>待排</option>
+            <option value="scheduled" {% if status=='scheduled' %}selected{% endif %}>已排</option>
+            <option value="processing" {% if status=='processing' %}selected{% endif %}>加工中</option>
+            <option value="completed" {% if status=='completed' %}selected{% endif %}>已完成</option>
+            <option value="cancelled" {% if status=='cancelled' %}selected{% endif %}>已取消</option>
+            <option value="" {% if not status %}selected{% endif %}>（全部）</option>
+          </select>
+        </div>
+        <div>
+          <label>筛选：齐套</label><br/>
+          <select name="only_ready">
+            <option value="" {% if not only_ready %}selected{% endif %}>（全部）</option>
+            <option value="yes" {% if only_ready=='yes' %}selected{% endif %}>齐套</option>
+            <option value="partial" {% if only_ready=='partial' %}selected{% endif %}>部分齐套</option>
+            <option value="no" {% if only_ready=='no' %}selected{% endif %}>未齐套</option>
+          </select>
+        </div>
+        <div>
+          <button type="submit">查询</button>
+        </div>
+      </div>
+    </form>
+
+    {% if batches and batches|length > 0 %}
+      <form method="post" action="{{ url_for('scheduler.bulk_update_batches') }}">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:60px;">选</th>
+              <th style="width:140px;">批次号</th>
+              <th style="width:180px;">图号</th>
+              <th style="width:100px;">数量</th>
+              <th style="width:140px;">交期</th>
+              <th style="width:120px;">优先级</th>
+              <th style="width:140px;">齐套</th>
+              <th style="width:120px;">状态</th>
+              <th style="width:120px;">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in batches %}
+              <tr>
+                <td>
+                  <input type="checkbox" name="batch_ids" value="{{ r.batch_id }}" class="js-batch-check">
+                </td>
+                <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}">{{ r.batch_id }}</a></td>
+                <td>{{ r.part_no }}</td>
+                <td>{{ r.quantity }}</td>
+                <td>{% if r.due_date %}{{ r.due_date }}{% else %}<span class="muted">-</span>{% endif %}</td>
+                <td>{{ r.priority_zh }}</td>
+                <td>{{ r.ready_status_zh }}</td>
+                <td>{{ r.status_zh }}</td>
+                <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}">查看/编辑</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <button type="submit" formaction="{{ url_for('scheduler.bulk_copy_batches') }}"
+                  onclick="return confirm('将把所选批次逐个复制一份（批次号末尾数字自动 +1，其它尽量保持一致）。确定继续？');">
+            复制所选批次
+          </button>
+          <button type="submit" formaction="{{ url_for('scheduler.bulk_delete_batches') }}"
+                  onclick="return confirm('确定删除所选批次吗？将级联删除批次工序与排程记录（若存在）。');">
+            删除所选批次
+          </button>
+          <button type="submit"
+                  onclick="return confirm('确定批量修改所选批次吗？仅会修改你填写的字段。');">
+            批量修改
+          </button>
+          <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
+        </div>
+
+        <div style="margin-top:10px; display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+          <div>
+            <label class="muted">批量优先级（可选）</label><br/>
+            <select name="bulk_priority">
+              <option value="">（不修改）</option>
+              <option value="normal">普通</option>
+              <option value="urgent">急件</option>
+              <option value="critical">特急</option>
+            </select>
+          </div>
+          <div>
+            <label class="muted">批量交期（可选）</label><br/>
+            <input name="bulk_due_date" placeholder="YYYY-MM-DD" style="width:160px;">
+          </div>
+          <div style="flex:1; min-width:220px;">
+            <label class="muted">批量备注（可选）</label><br/>
+            <input name="bulk_remark" placeholder="填写则覆盖备注（留空则不修改）">
+          </div>
+        </div>
+      </form>
+
+      <script>
+        (function () {
+          function updateCount() {
+            const checks = Array.from(document.querySelectorAll(".js-batch-check"));
+            const cnt = checks.filter(x => x && x.checked).length;
+            const el = document.getElementById("jsSelectedCount");
+            if (el) el.textContent = String(cnt);
+          }
+          const checks = Array.from(document.querySelectorAll(".js-batch-check"));
+          for (const c of checks) c.addEventListener("change", updateCount);
+          updateCount();
+        })();
+      </script>
+    {% else %}
+      <div class="muted">暂无数据（可先新增批次或通过 Excel 导入）。</div>
+    {% endif %}
+  </div>
+{% endblock %}
+

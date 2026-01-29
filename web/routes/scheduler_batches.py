@@ -42,11 +42,10 @@ def batches_page():
             }
         )
 
-    parts = PartRepository(g.db).list()
-    part_options = [(p.part_no, f"{p.part_no} {p.part_name}") for p in parts]
-
     cfg = cfg_svc.get_snapshot()
     strategies = cfg_svc.get_available_strategies()
+    presets = cfg_svc.list_presets()
+    active_preset = cfg_svc.get_active_preset()
 
     # 最近一次排产（用于用户确认“留痕已写入”）
     latest_history = None
@@ -66,12 +65,57 @@ def batches_page():
         batches=view_rows,
         status=status,
         only_ready=only_ready,
-        part_options=part_options,
         cfg=cfg,
         strategies=strategies,
+        presets=presets,
+        active_preset=active_preset,
         latest_history=latest_history,
         latest_summary=latest_summary,
         default_start_dt=(datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d 08:00"),
+    )
+
+
+@bp.get("/batches")
+def batches_manage_page():
+    """
+    批次管理（二级页）：
+    - 新增批次
+    - 批量复制/删除/修改
+    - 查看/编辑批次详情入口
+    """
+    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+
+    # 兼容：允许 ?status= 表示“全部状态”；未提供 status 参数时默认 pending
+    if "status" in request.args:
+        status = (request.args.get("status") or "").strip()
+    else:
+        status = "pending"
+    only_ready = (request.args.get("only_ready") or "").strip()  # yes/no/partial or empty
+
+    batches = batch_svc.list(status=status if status else None)
+    view_rows: List[Dict[str, Any]] = []
+    for b in batches:
+        if only_ready and (b.ready_status or "") != only_ready:
+            continue
+        view_rows.append(
+            {
+                **b.to_dict(),
+                "priority_zh": _priority_zh(b.priority),
+                "ready_status_zh": _ready_zh(b.ready_status),
+                "status_zh": _batch_status_zh(b.status),
+            }
+        )
+
+    parts = PartRepository(g.db).list()
+    part_options = [(p.part_no, f"{p.part_no} {p.part_name}") for p in parts]
+
+    return render_template(
+        "scheduler/batches_manage.html",
+        title="批次管理",
+        batches=view_rows,
+        status=status,
+        only_ready=only_ready,
+        part_options=part_options,
     )
 
 
@@ -104,7 +148,7 @@ def create_batch():
         return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))
     except AppError as e:
         flash(e.message, "error")
-        return redirect(url_for("scheduler.batches_page"))
+        return redirect(url_for("scheduler.batches_manage_page"))
 
 
 @bp.post("/batches/<batch_id>/delete")
@@ -113,7 +157,7 @@ def delete_batch(batch_id: str):
     try:
         batch_svc.delete(batch_id)
         flash(f"已删除批次：{batch_id}", "success")
-        return redirect(url_for("scheduler.batches_page"))
+        return redirect(url_for("scheduler.batches_manage_page"))
     except AppError as e:
         flash(e.message, "error")
         return redirect(url_for("scheduler.batch_detail", batch_id=batch_id))
@@ -124,7 +168,7 @@ def bulk_delete_batches():
     batch_ids = request.form.getlist("batch_ids")
     if not batch_ids:
         flash("请至少选择 1 个批次。", "error")
-        return redirect(url_for("scheduler.batches_page"))
+        return redirect(url_for("scheduler.batches_manage_page"))
 
     batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     ok = 0
@@ -141,7 +185,7 @@ def bulk_delete_batches():
     if failed:
         sample = "，".join(failed[:10])
         flash(f"删除失败（最多展示 10 个）：{sample}", "warning")
-    return redirect(url_for("scheduler.batches_page"))
+    return redirect(url_for("scheduler.batches_manage_page"))
 
 
 def _next_batch_id_like(src: str, exists_fn) -> str:
@@ -172,7 +216,7 @@ def bulk_copy_batches():
     batch_ids = request.form.getlist("batch_ids")
     if not batch_ids:
         flash("请至少选择 1 个批次。", "error")
-        return redirect(url_for("scheduler.batches_page"))
+        return redirect(url_for("scheduler.batches_manage_page"))
 
     batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     ok = 0
@@ -193,7 +237,7 @@ def bulk_copy_batches():
         flash("复制结果（最多 10 条）：" + "，".join(mappings[:10]), "success")
     if failed:
         flash("失败原因（最多 5 条）：" + "；".join(failed[:5]), "warning")
-    return redirect(url_for("scheduler.batches_page"))
+    return redirect(url_for("scheduler.batches_manage_page"))
 
 
 @bp.post("/batches/bulk/update")
@@ -201,7 +245,7 @@ def bulk_update_batches():
     batch_ids = request.form.getlist("batch_ids")
     if not batch_ids:
         flash("请至少选择 1 个批次。", "error")
-        return redirect(url_for("scheduler.batches_page"))
+        return redirect(url_for("scheduler.batches_manage_page"))
 
     priority = (request.form.get("bulk_priority") or "").strip() or None
     due_date = (request.form.get("bulk_due_date") or "").strip() or None
@@ -210,7 +254,7 @@ def bulk_update_batches():
 
     if priority is None and due_date is None and remark is None:
         flash("未填写任何要批量修改的字段（优先级/交期/备注）。", "error")
-        return redirect(url_for("scheduler.batches_page"))
+        return redirect(url_for("scheduler.batches_manage_page"))
 
     batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     ok = 0
@@ -231,7 +275,7 @@ def bulk_update_batches():
     flash(f"批量修改完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:
         flash("失败原因（最多 5 条）：" + "；".join(failed[:5]), "warning")
-    return redirect(url_for("scheduler.batches_page"))
+    return redirect(url_for("scheduler.batches_manage_page"))
 
 
 @bp.post("/batches/<batch_id>/generate-ops")

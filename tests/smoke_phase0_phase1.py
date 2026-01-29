@@ -83,7 +83,7 @@ def main():
     lines.append(f"- 测试备份目录：`{test_backups}`")
 
     # 1) Schema 初始化与“无资源锁”证明
-    from core.infrastructure.database import ensure_schema, get_connection
+    from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 
     ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
     conn = get_connection(test_db)
@@ -102,8 +102,8 @@ def main():
         row = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
         v = int(row[0]) if row else 0
         lines.append(f"- SchemaVersion.version：{v}")
-        if v < 1:
-            raise RuntimeError(f"SchemaVersion.version 异常：{v}（期望 >= 1）")
+        if v < CURRENT_SCHEMA_VERSION:
+            raise RuntimeError(f"SchemaVersion.version 异常：{v}（期望 >= {CURRENT_SCHEMA_VERSION}）")
     finally:
         conn.close()
 
@@ -151,10 +151,11 @@ def main():
     # 对旧库执行 ensure_schema（应触发：SchemaVersion=0 -> 迁移到当前版本，并生成 before_migrate 备份）
     ensure_schema(old_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=migrate_backups)
 
-    backup_files = [f for f in os.listdir(migrate_backups) if "before_migrate_v0_to_v1" in f and f.endswith(".db")]
-    lines.append(f"- 迁移前备份文件数（before_migrate_v0_to_v1）：{len(backup_files)}")
+    expected_suffix = f"before_migrate_v0_to_v{CURRENT_SCHEMA_VERSION}"
+    backup_files = [f for f in os.listdir(migrate_backups) if expected_suffix in f and f.endswith(".db")]
+    lines.append(f"- 迁移前备份文件数（{expected_suffix}）：{len(backup_files)}")
     if not backup_files:
-        raise RuntimeError("未生成迁移前备份（before_migrate_v0_to_v1）")
+        raise RuntimeError(f"未生成迁移前备份（{expected_suffix}）")
 
     conn1 = get_connection(old_db)
     try:
@@ -167,8 +168,8 @@ def main():
         row = conn1.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
         v = int(row[0]) if row else 0
         lines.append(f"- 旧库迁移后 SchemaVersion.version：{v}")
-        if v < 1:
-            raise RuntimeError(f"旧库迁移后 SchemaVersion.version 异常：{v}（期望 >= 1）")
+        if v < CURRENT_SCHEMA_VERSION:
+            raise RuntimeError(f"旧库迁移后 SchemaVersion.version 异常：{v}（期望 >= {CURRENT_SCHEMA_VERSION}）")
     finally:
         conn1.close()
 

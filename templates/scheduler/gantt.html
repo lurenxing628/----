@@ -2,16 +2,7 @@
 
 {% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/frappe-gantt.css') }}">
-  <style>
-    /* 颜色：按优先级区分（Frappe Gantt 通过 custom_class 挂到 .bar-wrapper 上） */
-    .bar-wrapper.priority-normal .bar { fill: #90a4ae; }
-    .bar-wrapper.priority-urgent .bar { fill: #ff9800; }
-    .bar-wrapper.priority-critical .bar { fill: #d32f2f; }
-    .bar-wrapper.overdue .bar { stroke: #b00020; stroke-width: 1.2; }
-
-    /* 标签略小一些，避免太拥挤 */
-    .gantt .bar-label { font-size: 12px; }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/aps_gantt.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -61,7 +52,7 @@
             <input type="date" name="end_date" value="{{ end_date }}" style="width:160px;">
           </div>
           <div>
-            <label>指定周（任意日期，系统会自动归到周一）</label><br/>
+            <label title="任意日期，系统会自动归到周一">指定周</label><br/>
             <input name="week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD" style="width:160px;">
           </div>
           <div>
@@ -76,41 +67,92 @@
               </select>
             {% else %}
               <input name="version" value="{{ version }}" style="width:160px;">
-              <div class="muted" style="margin-top:4px;">暂无排产历史（可先去“待排批次”执行一次排产/模拟）。</div>
             {% endif %}
           </div>
           <div>
             <button type="submit">加载</button>
           </div>
         </form>
+        {% if not versions or versions|length == 0 %}
+          <div class="muted" style="margin-top:8px;">暂无排产历史（可先去“待排批次”执行一次排产/模拟）。</div>
+        {% endif %}
       </div>
     </div>
     <p class="muted" style="margin-top:10px;">
-      提示：颜色表示优先级（普通/急件/特急），红色边框表示该批次在该版本中被判定为“超期”。
+      提示：默认按“批次”配色，可在下方切换为按优先级/来源/状态；红色边框表示该批次在该版本中被判定为“超期”。
       若看不到条形，请先在【排产调度】执行排产生成 Schedule 数据。
     </p>
+
+    <div style="margin-top:12px; border-top:1px dashed #e5e5e5; padding-top:12px;">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label>配色</label><br/>
+          <select id="ganttColorMode" style="width:180px;">
+            <option value="batch" selected>按批次</option>
+            <option value="priority">按优先级</option>
+            <option value="source">按来源（内制/外协）</option>
+            <option value="status">按工序状态</option>
+          </select>
+        </div>
+        <div>
+          <label>批次筛选</label><br/>
+          <input id="ganttFilterBatch" placeholder="如 B001" style="width:180px;">
+        </div>
+        <div>
+          <label>{{ '设备筛选' if view=='machine' else '人员筛选' }}</label><br/>
+          <input id="ganttFilterResource" placeholder="{{ '如 MC001' if view=='machine' else '如 OP001' }}" style="width:180px;">
+        </div>
+        <div>
+          <label class="muted"><input type="checkbox" id="ganttOnlyOverdue"> 仅超期</label><br/>
+          <label class="muted"><input type="checkbox" id="ganttOnlyExternal"> 仅外协</label>
+        </div>
+        <div>
+          <label class="muted"><input type="checkbox" id="ganttShowProcessDeps"> 显示工艺依赖箭头</label><br/>
+          <label class="muted"><input type="checkbox" id="ganttHighlightCC" checked> 高亮关键链</label><br/>
+          <label class="muted"><input type="checkbox" id="ganttOnlyCCDeps" checked> 仅显示关键链箭头</label>
+        </div>
+        <div>
+          <button type="button" id="ganttResetView">重置</button>
+        </div>
+      </div>
+      <div id="ganttLegend" class="aps-gantt-legend" style="margin-top:10px;"></div>
+      <details id="ganttHelp" class="aps-gantt-help" style="margin-top:10px;" open>
+        <summary>说明（怎么看 / 交互）</summary>
+        <div class="muted" style="margin-top:6px; line-height:1.7;">
+          <ul style="margin:6px 0 0 18px;">
+            <li><strong>颜色</strong>：默认“按批次”，同批次同色；可切换按优先级/来源/状态（未开始/进行中/已完成）。</li>
+            <li><strong>假期/停工</strong>：背景淡红色竖条标注（口径：全局工作日历；未配置则周末默认假期；周末可配置为 workday 作为补班）。</li>
+            <li><strong>红边</strong>：该批次在该版本中被判定为<strong>超期</strong>。</li>
+            <li><strong>关键链</strong>：任务条会出现<strong>外框高亮</strong>（影响全局完工时间）。</li>
+            <li><strong>虚线边框</strong>：外协任务。</li>
+            <li><strong>箭头</strong>：默认仅显示关键链箭头（更清爽）；需要看完整工艺链可勾选“显示工艺依赖箭头”。</li>
+            <li><strong>聚焦</strong>：点击任意任务条，可聚焦该批次（其它任务自动弱化）；再次点击取消。</li>
+            <li><strong>筛选</strong>：支持批次/设备/人员模糊过滤；可配合“仅超期/仅外协”快速定位问题。</li>
+            <li><strong>关键链口径</strong>：综合工艺前驱与资源前驱（设备/人员）选取“控制前驱”回溯得到。</li>
+          </ul>
+        </div>
+      </details>
+    </div>
   </div>
 
   <div class="card">
     <div id="ganttEmpty" class="muted" style="display:none;">暂无排程数据（该周/该版本）。</div>
     <div id="ganttError" class="error" style="display:none;"></div>
-    <div id="gantt"></div>
+    <div
+      id="gantt"
+      data-data-url="{{ data_url }}"
+      data-view="{{ view }}"
+      data-week-start="{{ week_start }}"
+      data-start-date="{{ start_date }}"
+      data-end-date="{{ end_date }}"
+      data-offset="{{ offset }}"
+      data-version="{{ version }}"
+    ></div>
   </div>
 {% endblock %}
 
 {% block extra_scripts %}
   <script src="{{ url_for('static', filename='js/frappe-gantt.min.js') }}"></script>
-  <script>
-    window.__APS_GANTT__ = {
-      dataUrl: {{ data_url|tojson }},
-      view: {{ view|tojson }},
-      weekStart: {{ week_start|tojson }},
-      startDate: {{ start_date|tojson }},
-      endDate: {{ end_date|tojson }},
-      offset: {{ offset|tojson }},
-      version: {{ version|tojson }}
-    };
-  </script>
   <script src="{{ url_for('static', filename='js/gantt.js') }}"></script>
 {% endblock %}
 

@@ -12,7 +12,15 @@ def find_repo_root():
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
-def _write_html(repo_root: str, rel_path: str, title: str, meta: dict, tasks: list):
+def _write_html(
+    repo_root: str,
+    rel_path: str,
+    title: str,
+    meta: dict,
+    tasks: list,
+    calendar_days: list = None,
+    critical_chain: dict = None,
+):
     out_path = os.path.join(repo_root, rel_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
@@ -20,6 +28,8 @@ def _write_html(repo_root: str, rel_path: str, title: str, meta: dict, tasks: li
     # 相对路径：evidence/FullE2E/ -> ../../static/...
     meta_json = json.dumps(meta, ensure_ascii=False, indent=2, default=str)
     tasks_json = json.dumps(tasks, ensure_ascii=False, default=str)
+    cal_json = json.dumps(calendar_days or [], ensure_ascii=False, default=str)
+    cc_json = json.dumps(critical_chain or {}, ensure_ascii=False, default=str)
 
     html = f"""<!doctype html>
 <html lang="zh-CN">
@@ -28,6 +38,7 @@ def _write_html(repo_root: str, rel_path: str, title: str, meta: dict, tasks: li
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>{title}</title>
   <link rel="stylesheet" href="../../static/css/frappe-gantt.css"/>
+  <link rel="stylesheet" href="../../static/css/aps_gantt.css"/>
   <style>
     body {{ font-family: -apple-system, Segoe UI, Arial, "Microsoft YaHei", sans-serif; margin: 16px; }}
     .meta {{ color: #666; margin: 8px 0 16px; white-space: pre-wrap; }}
@@ -40,18 +51,312 @@ def _write_html(repo_root: str, rel_path: str, title: str, meta: dict, tasks: li
   <h2>{title}</h2>
   <div class="meta"><b>meta</b>\n{meta_json}</div>
   <div class="wrap">
-    <div id="gantt"></div>
+    <div id="legend" class="aps-gantt-legend"></div>
+    <details class="aps-gantt-help" style="margin-top:10px;" open>
+      <summary>说明（怎么看）</summary>
+      <div class="meta" style="color:#64748b; margin:6px 0 0; line-height:1.7;">
+        - 颜色：默认按批次（同批次同色）\n
+        - 红边：该批次在该版本中被判定为“超期”\n
+        - 关键链：任务条外框高亮（影响全局完工时间）\n
+        - 虚线边框：外协任务\n
+        - 淡红背景：假期/停工（来自工作日历；未配置则周末默认假期；周末可配置为 workday 作为补班）\n
+        - 箭头：工艺依赖（后一工序依赖前一工序）\n
+      </div>
+    </details>
+    <div id="gantt" style="margin-top:10px;"></div>
   </div>
   <div class="hint">提示：这是“复杂案例”生成的 tasks，样式来自仓库内置 Frappe Gantt 0.6.1 资源。</div>
 
   <script src="../../static/js/frappe-gantt.min.js"></script>
   <script>
     const tasks = {tasks_json};
+    const calendarDays = {cal_json};
+    const criticalChain = {cc_json};
     const gantt = new Gantt("#gantt", tasks, {{
       view_mode: "Day",
       language: "zh",
       popup_trigger: "click"
     }});
+
+    function norm(v) {{
+      return (v === null || typeof v === "undefined") ? "" : String(v).trim();
+    }}
+
+    // 按批次稳定配色（同批次同色）
+    function hashToHue(s) {{
+      const x = norm(s);
+      let h = 0;
+      for (let i = 0; i < x.length; i++) {{
+        h = ((h * 31) + x.charCodeAt(i)) >>> 0;
+      }}
+      return h % 360;
+    }}
+    function colorForBatch(batchId) {{
+      const b = norm(batchId);
+      if (!b) return "#94a3b8";
+      const hue = hashToHue(b);
+      return `hsl(${{hue}}, 70%, 52%)`;
+    }}
+
+    function renderHolidayColumns(gantt, calendarDays) {{
+      try {{
+        if (!gantt || !gantt.gantt_start || !gantt.options) return;
+        const svg = document.querySelector("#gantt svg.gantt");
+        if (!svg) return;
+
+        // remove existing
+        const old = svg.querySelector("g.aps-holiday-layer");
+        if (old && old.parentNode) old.parentNode.removeChild(old);
+
+        const NS = "http://www.w3.org/2000/svg";
+        const layer = document.createElementNS(NS, "g");
+        layer.setAttribute("class", "aps-holiday-layer");
+
+        // prefer mount inside grid layer
+        let mounted = false;
+        const gridRow = svg.querySelector(".grid-row");
+        if (gridRow) {{
+          let gridTop = gridRow;
+          while (gridTop && gridTop.parentNode && gridTop.parentNode.tagName) {{
+            const tag = String(gridTop.parentNode.tagName || "").toLowerCase();
+            if (tag === "svg") break;
+            gridTop = gridTop.parentNode;
+          }}
+          if (gridTop && gridTop !== svg && gridTop.parentNode === svg) {{
+            gridTop.appendChild(layer);
+            mounted = true;
+          }}
+        }}
+        if (!mounted) svg.appendChild(layer);
+
+        // height in SVG units
+        let height = 0;
+        try {{
+          const bb = svg.getBBox();
+          height = bb && bb.height ? bb.height : 0;
+        }} catch (_) {{}}
+        if (!height) {{
+          const hAttr = Number(svg.getAttribute("height") || 0);
+          if (hAttr) height = hAttr;
+        }}
+        if (!height) {{
+          const r = svg.getBoundingClientRect();
+          if (r && r.height) height = r.height;
+        }}
+
+        const step = Number(gantt.options.step) || 24;
+        const col = Number(gantt.options.column_width) || 38;
+        const start = gantt.gantt_start;
+
+        (Array.isArray(calendarDays) ? calendarDays : []).forEach((d) => {{
+          const dateStr = String((d && d.date) || "").trim();
+          if (!dateStr) return;
+          const isHoliday = d && (d.is_holiday === true || (String(d.day_type || "").trim() && String(d.day_type || "").trim() !== "workday"));
+          const isNonworking = d && (d.is_nonworking === true || Number(d.shift_hours || 0) <= 0);
+          if (!isHoliday && !isNonworking) return;
+
+          const dt = new Date(dateStr + " 00:00:00");
+          if (isNaN(dt.getTime())) return;
+          const diffHours = (dt.getTime() - start.getTime()) / 3600000.0;
+          const x = (diffHours / step) * col;
+
+          const rect = document.createElementNS(NS, "rect");
+          rect.setAttribute("x", String(Math.floor(x)));
+          rect.setAttribute("y", "0");
+          rect.setAttribute("width", String(col));
+          rect.setAttribute("height", String(height || 0));
+          rect.setAttribute("class", isNonworking ? "aps-holiday-rect aps-nonworking" : "aps-holiday-rect");
+          rect.setAttribute("data-date", dateStr);
+          layer.appendChild(rect);
+        }});
+      }} catch (e) {{
+        // ignore
+      }}
+    }}
+
+    function applyDecorations(tasks, criticalChain) {{
+      const byId = new Map();
+      (Array.isArray(tasks) ? tasks : []).forEach((t) => {{
+        const id = norm(t && t.id);
+        if (id) byId.set(id, t);
+      }});
+      const ccSet = new Set(((criticalChain && criticalChain.ids) || []).map((x) => norm(x)).filter((x) => !!x));
+
+      function upsertCriticalOutlines(wrapper, enabled) {{
+        if (!wrapper) return;
+        try {{
+          wrapper.querySelectorAll(".aps-cc-outline-outer, .aps-cc-outline-inner").forEach((n) => {{
+            try {{ n.remove(); }} catch (_) {{}}
+          }});
+        }} catch (_) {{}}
+        if (!enabled) return;
+        const bar = wrapper.querySelector(".bar");
+        if (!bar) return;
+        const x = Number(bar.getAttribute("x") || 0);
+        const y = Number(bar.getAttribute("y") || 0);
+        const w = Number(bar.getAttribute("width") || 0);
+        const h = Number(bar.getAttribute("height") || 0);
+        if (!(w > 0 && h > 0)) return;
+
+        let rx0 = Number(bar.getAttribute("rx") || 4);
+        let ry0 = Number(bar.getAttribute("ry") || rx0);
+        if (!(rx0 >= 0)) rx0 = 4;
+        if (!(ry0 >= 0)) ry0 = rx0;
+        try {{ bar.setAttribute("rx", String(rx0)); bar.setAttribute("ry", String(ry0)); }} catch (_) {{}}
+
+        const outerPad = 2;
+        const innerPad = 1;
+        const NS = "http://www.w3.org/2000/svg";
+
+        const outer = document.createElementNS(NS, "rect");
+        outer.setAttribute("class", "aps-cc-outline-outer");
+        outer.setAttribute("x", String(x - outerPad));
+        outer.setAttribute("y", String(y - outerPad));
+        outer.setAttribute("width", String(w + outerPad * 2));
+        outer.setAttribute("height", String(h + outerPad * 2));
+        outer.setAttribute("rx", String(rx0 + outerPad));
+        outer.setAttribute("ry", String(ry0 + outerPad));
+        outer.setAttribute("vector-effect", "non-scaling-stroke");
+        outer.setAttribute("pointer-events", "none");
+
+        const inner = document.createElementNS(NS, "rect");
+        inner.setAttribute("class", "aps-cc-outline-inner");
+        inner.setAttribute("x", String(x - innerPad));
+        inner.setAttribute("y", String(y - innerPad));
+        inner.setAttribute("width", String(w + innerPad * 2));
+        inner.setAttribute("height", String(h + innerPad * 2));
+        inner.setAttribute("rx", String(rx0 + innerPad));
+        inner.setAttribute("ry", String(ry0 + innerPad));
+        inner.setAttribute("vector-effect", "non-scaling-stroke");
+        inner.setAttribute("pointer-events", "none");
+
+        try {{
+          // 注意：Frappe Gantt 里 bar 往往不在 wrapper 的直接子级（可能在内部 g 分组里）。
+          // 因此必须对 bar 的真实父节点执行 insertBefore，否则会触发 NotFoundError。
+          const parent = (bar && bar.parentNode) ? bar.parentNode : wrapper;
+          parent.insertBefore(outer, bar);
+          parent.insertBefore(inner, bar);
+        }} catch (_) {{
+          // 兜底：尽量插入（即使顺序不完美也要可见）
+          try {{
+            const parent = (bar && bar.parentNode) ? bar.parentNode : wrapper;
+            parent.appendChild(outer);
+            parent.appendChild(inner);
+          }} catch (_) {{}}
+        }}
+      }}
+
+      function upsertCriticalBadge(wrapper, enabled) {{
+        if (!wrapper) return;
+        try {{
+          wrapper.querySelectorAll(".aps-cc-badge").forEach((n) => {{
+            try {{ n.remove(); }} catch (_) {{}}
+          }});
+        }} catch (_) {{}}
+        // CC 徽标已弃用：不再插入，仅做清理防止旧 DOM 残留
+        return;
+      }}
+
+      document.querySelectorAll("#gantt .bar-wrapper").forEach((w) => {{
+        const tid = norm(w.getAttribute("data-id"));
+        const t = byId.get(tid);
+        if (!t) return;
+        const meta = (t && t.meta) ? t.meta : {{}};
+        const bid = norm(meta.batch_id);
+        w.style.setProperty("--aps-bar-color", colorForBatch(bid));
+        if (norm(meta.source) === "external") w.classList.add("aps-external");
+        if (ccSet.has(tid)) w.classList.add("aps-critical");
+        upsertCriticalOutlines(w, ccSet.has(tid));
+        // CC 徽标已弃用：这里仅做清理
+        upsertCriticalBadge(w, false);
+      }});
+
+      // 圆角（SVG rect）
+      document.querySelectorAll("#gantt .bar").forEach((rect) => {{
+        try {{
+          rect.setAttribute("rx", "4");
+          rect.setAttribute("ry", "4");
+        }} catch (_) {{}}
+      }});
+    }}
+
+    function renderLegend(tasks, calendarDays, criticalChain) {{
+      const el = document.getElementById("legend");
+      if (!el) return;
+      while (el.firstChild) el.removeChild(el.firstChild);
+
+      function row() {{
+        const d = document.createElement("div");
+        d.className = "aps-legend-row";
+        return d;
+      }}
+      function title(text) {{
+        const s = document.createElement("span");
+        s.className = "aps-legend-title";
+        s.textContent = text;
+        return s;
+      }}
+      function item(label, chip) {{
+        const it = document.createElement("span");
+        it.className = "aps-legend-item";
+        const c = document.createElement("span");
+        c.className = "aps-legend-chip";
+        if (chip) {{
+          if (chip.background) c.style.background = String(chip.background);
+          if (chip.borderColor) c.style.borderColor = String(chip.borderColor);
+          if (chip.borderWidth) c.style.borderWidth = String(chip.borderWidth) + "px";
+          if (chip.borderStyle) c.style.borderStyle = String(chip.borderStyle);
+          if (chip.opacity) c.style.opacity = String(chip.opacity);
+        }}
+        const tx = document.createElement("span");
+        tx.textContent = label;
+        it.appendChild(c);
+        it.appendChild(tx);
+        return it;
+      }}
+
+      const ccCount = ((criticalChain && criticalChain.ids) || []).length;
+      const makespanEnd = norm(criticalChain && criticalChain.makespan_end) || "-";
+      const holidayCount = (Array.isArray(calendarDays) ? calendarDays : []).filter((d) => d && (d.is_holiday || d.is_nonworking)).length;
+
+      const r1 = row();
+      const summary = document.createElement("span");
+      summary.textContent = `颜色：按批次｜任务：${{(tasks||[]).length}}｜关键链：${{ccCount}}｜完工：${{makespanEnd}}｜假期/停工：${{holidayCount}} 天`;
+      r1.appendChild(summary);
+      el.appendChild(r1);
+
+      const r2 = row();
+      r2.appendChild(title("配色（示例）"));
+      const seen = new Set();
+      const samples = [];
+      (Array.isArray(tasks) ? tasks : []).forEach((t) => {{
+        const meta = (t && t.meta) ? t.meta : {{}};
+        const bid = norm(meta.batch_id);
+        if (!bid || seen.has(bid)) return;
+        seen.add(bid);
+        samples.push(bid);
+      }});
+      samples.slice(0, 6).forEach((bid) => {{
+        r2.appendChild(item(bid, {{ background: colorForBatch(bid) }}));
+      }});
+      if (samples.length > 6) {{
+        r2.appendChild(item(`…共${{samples.length}}个批次`, {{ background: "#94a3b8" }}));
+      }}
+      el.appendChild(r2);
+
+      const r3 = row();
+      r3.appendChild(title("标记"));
+      r3.appendChild(item("假期/停工(背景)", {{ background: "#fee2e2" }}));
+      r3.appendChild(item("超期(红边)", {{ background: "#ffffff", borderColor: "#ef4444", borderWidth: 2.5 }}));
+      r3.appendChild(item("关键链(外框)", {{ background: "#ffffff", borderColor: "#38bdf8", borderWidth: 2.5 }}));
+      r3.appendChild(item("外协(虚线)", {{ background: "#ffffff", borderColor: "#334155", borderWidth: 1.5, borderStyle: "dashed" }}));
+      r3.appendChild(item("箭头=工艺依赖", {{ background: "#94a3b8" }}));
+      el.appendChild(r3);
+    }}
+
+    renderHolidayColumns(gantt, calendarDays);
+    applyDecorations(tasks, criticalChain);
+    renderLegend(tasks, calendarDays, criticalChain);
   </script>
 </body>
 </html>
@@ -330,8 +635,24 @@ def main():
         "note": "包含资源冲突、人机约束、外协 merged 周期、日历短班/停工、不同优先级/交期（含超期标记）",
     }
 
-    html_machine = _write_html(repo_root, "evidence/FullE2E/gantt_preview_complex_machine.html", "甘特图预览（复杂案例 / 设备视图）", meta, tasks_machine)
-    html_operator = _write_html(repo_root, "evidence/FullE2E/gantt_preview_complex_operator.html", "甘特图预览（复杂案例 / 人员视图）", meta, tasks_operator)
+    html_machine = _write_html(
+        repo_root,
+        "evidence/FullE2E/gantt_preview_complex_machine.html",
+        "甘特图预览（复杂案例 / 设备视图）",
+        meta,
+        tasks_machine,
+        calendar_days=(data_machine.get("calendar_days") or []),
+        critical_chain=(data_machine.get("critical_chain") or {}),
+    )
+    html_operator = _write_html(
+        repo_root,
+        "evidence/FullE2E/gantt_preview_complex_operator.html",
+        "甘特图预览（复杂案例 / 人员视图）",
+        meta,
+        tasks_operator,
+        calendar_days=(data_operator.get("calendar_days") or []),
+        critical_chain=(data_operator.get("critical_chain") or {}),
+    )
 
     print("OK")
     print(f"machine_html={html_machine}")

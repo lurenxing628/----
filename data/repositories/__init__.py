@@ -20,6 +20,7 @@ from .batch_repo import BatchRepository
 from .batch_operation_repo import BatchOperationRepository
 from .schedule_repo import ScheduleRepository
 from .calendar_repo import CalendarRepository
+from .operator_calendar_repo import OperatorCalendarRepository
 from .config_repo import ConfigRepository
 from .system_config_repo import SystemConfigRepository
 from .operation_log_repo import OperationLogRepository
@@ -43,6 +44,7 @@ __all__ = [
     "BatchOperationRepository",
     "ScheduleRepository",
     "CalendarRepository",
+    "OperatorCalendarRepository",
     "ConfigRepository",
     "SystemConfigRepository",
     "OperationLogRepository",

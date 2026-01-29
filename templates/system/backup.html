@@ -2,29 +2,62 @@
 {% block content %}
   <div class="card">
     <h2>系统管理 - 备份/恢复</h2>
-    <p class="muted">提示：恢复会替换当前数据库文件；恢复前系统会自动生成一份 <code>before_restore</code> 备份。</p>
+    <details class="muted">
+      <summary>恢复说明</summary>
+      <ul style="margin: 6px 0 0 18px;">
+        <li>恢复会覆盖当前数据库文件。</li>
+        <li>恢复前系统会自动生成一份 <code>before_restore</code> 备份，便于回退。</li>
+      </ul>
+    </details>
 
-    <div style="margin-bottom: 12px;">
+    <div style="margin-bottom: 6px;">
       <a href="{{ url_for('system.backup_page') }}">备份/恢复</a>
       &nbsp;|&nbsp;
       <a href="{{ url_for('system.logs_page') }}">操作日志</a>
       &nbsp;|&nbsp;
       <a href="{{ url_for('system.history_page') }}">排产历史</a>
     </div>
+  </div>
 
-    <h3 style="margin-top:10px;">自动任务设置（按请求触发）</h3>
-    <p class="muted">说明：为避免后台线程占用资源，自动备份/自动清理在“有请求访问系统时”才会触发；内部有节流（不会每次请求都执行）。</p>
-    {% if maintenance_limits %}
-      <p class="muted">限额：单次自动清理最多删除 {{ maintenance_limits.max_backup_delete_per_run }} 个备份文件（避免一次请求删太多）。</p>
-    {% endif %}
+  <div class="card">
+    <h3>常用操作</h3>
+    <div class="muted">提示：批量删除需要先在“备份列表”中勾选文件。</div>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+      <form method="post" action="{{ url_for('system.backup_create') }}" style="display:inline-block;">
+        <button type="submit">手动备份</button>
+      </form>
+
+      <form method="post" action="{{ url_for('system.backup_cleanup') }}" style="display:inline-block;">
+        <button type="submit">清理过期备份（保留 {{ keep_days }} 天）</button>
+      </form>
+
+      <form id="backupBatchDeleteForm" method="post" action="{{ url_for('system.backup_delete_batch') }}" style="display:inline-block;"
+            onsubmit="return confirm('确认批量删除选中的备份文件？删除后不可恢复。');">
+        <button type="submit">批量删除选中</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>自动任务设置（按请求触发）</h3>
+    <details class="muted">
+      <summary>运行机制说明</summary>
+      <ul style="margin: 6px 0 0 18px;">
+        <li>为避免后台线程占用资源，自动备份/自动清理在“有请求访问系统时”才会触发。</li>
+        <li>内部有节流（不会每次请求都执行）。</li>
+        {% if maintenance_limits %}
+          <li>单次自动清理最多删除 {{ maintenance_limits.max_backup_delete_per_run }} 个备份文件（避免一次请求删太多）。</li>
+        {% endif %}
+      </ul>
+    </details>
 
     {% set st_ab = job_state.auto_backup if job_state else None %}
     {% set st_bc = job_state.auto_backup_cleanup if job_state else None %}
 
-    <form method="post" action="{{ url_for('system.backup_settings') }}" style="margin-bottom:12px;">
+    <form method="post" action="{{ url_for('system.backup_settings') }}">
       <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
-        <div style="min-width:360px;">
-          <div><b>自动备份</b></div>
+        <div style="min-width:320px; flex:1;">
+          <div style="font-weight:600;">自动备份</div>
           <label>
             <input type="checkbox" name="auto_backup_enabled" {{ 'checked' if settings and settings.auto_backup_enabled=='yes' else '' }}>
             启用
@@ -35,15 +68,15 @@
             <span style="margin-left:8px;">上次执行：{{ st_ab.last_run_time if st_ab and st_ab.last_run_time else '-' }}</span>
           </div>
           {% if st_ab and st_ab.last_run_detail_obj %}
-            <div class="muted" style="margin-top:6px;">
-              上次结果：
+            <details class="muted" style="margin-top:6px;">
+              <summary>上次结果</summary>
               <pre style="margin:6px 0 0 0;max-height:120px;overflow:auto;">{{ st_ab.last_run_detail_obj | tojson_zh(2) }}</pre>
-            </div>
+            </details>
           {% endif %}
         </div>
 
-        <div style="min-width:420px;">
-          <div><b>自动清理备份（保留策略）</b></div>
+        <div style="min-width:360px; flex:1;">
+          <div style="font-weight:600;">自动清理备份（保留策略）</div>
           <label>
             <input type="checkbox" name="auto_backup_cleanup_enabled" {{ 'checked' if settings and settings.auto_backup_cleanup_enabled=='yes' else '' }}>
             启用
@@ -56,30 +89,17 @@
             <span style="margin-left:8px;">上次执行：{{ st_bc.last_run_time if st_bc and st_bc.last_run_time else '-' }}</span>
           </div>
           {% if st_bc and st_bc.last_run_detail_obj %}
-            <div class="muted" style="margin-top:6px;">
-              上次结果：
+            <details class="muted" style="margin-top:6px;">
+              <summary>上次结果</summary>
               <pre style="margin:6px 0 0 0;max-height:120px;overflow:auto;">{{ st_bc.last_run_detail_obj | tojson_zh(2) }}</pre>
-            </div>
+            </details>
           {% endif %}
         </div>
 
-        <div>
+        <div style="margin-left:auto;">
           <button type="submit">保存设置</button>
         </div>
       </div>
-    </form>
-
-    <form method="post" action="{{ url_for('system.backup_create') }}" style="display:inline-block;margin-right:12px;">
-      <button type="submit">手动备份</button>
-    </form>
-
-    <form method="post" action="{{ url_for('system.backup_cleanup') }}" style="display:inline-block;">
-      <button type="submit">清理过期备份（保留 {{ keep_days }} 天）</button>
-    </form>
-
-    <form id="backupBatchDeleteForm" method="post" action="{{ url_for('system.backup_delete_batch') }}" style="display:inline-block;margin-left:12px;"
-          onsubmit="return confirm('确认批量删除选中的备份文件？删除后不可恢复。');">
-      <button type="submit">批量删除选中</button>
     </form>
   </div>
 
@@ -133,10 +153,14 @@
 
   <div class="card">
     <h3>可选插件/可选依赖状态</h3>
-    <p class="muted">
-      说明：插件来自交付目录下的 <code>plugins/</code>；可选依赖可投放到 <code>vendor/</code> 并在启动时注入 <code>sys.path</code>。
-      修改插件开关后需重启应用才能生效。
-    </p>
+    <details class="muted">
+      <summary>说明（高级）</summary>
+      <ul style="margin: 6px 0 0 18px;">
+        <li>插件来自交付目录下的 <code>plugins/</code>。</li>
+        <li>可选依赖可投放到 <code>vendor/</code> 并在启动时注入 <code>sys.path</code>。</li>
+        <li>修改插件开关后需重启应用才能生效。</li>
+      </ul>
+    </details>
     {% if plugin_status %}
       <div class="muted" style="margin-top:6px;">
         loaded_at：{{ plugin_status.loaded_at or '-' }}<br/>

@@ -21,13 +21,13 @@ class _StubCalendarService:
     本回归用例只关注 seed_results 与 operations 重叠时是否会重复排产同一 op_id。
     """
 
-    def adjust_to_working_time(self, dt: datetime, priority=None) -> datetime:  # noqa: D401
+    def adjust_to_working_time(self, dt: datetime, priority=None, operator_id: str = None) -> datetime:  # noqa: D401
         return dt
 
-    def add_working_hours(self, dt: datetime, hours: float, priority=None) -> datetime:
+    def add_working_hours(self, dt: datetime, hours: float, priority=None, operator_id: str = None) -> datetime:
         return dt + timedelta(hours=float(hours or 0.0))
 
-    def get_efficiency(self, dt: datetime) -> float:
+    def get_efficiency(self, dt: datetime, operator_id: str = None) -> float:
         return 1.0
 
     def add_calendar_days(self, dt: datetime, days: float) -> datetime:

@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block extra_head %}
+  <style>
+    /* OperatorCalendar: date picker (reuse WorkCalendar styles) */
+    .wc-date-wrap { position: relative; }
+    /* 兼容 V2 样式：.card 默认 overflow:hidden，会裁剪弹层 */
+    .wc-card-allow-overflow { overflow: visible !important; }
+    .wc-cal-panel {
+      position: absolute;
+      top: 64px;
+      left: 0;
+      z-index: 1000;
+      width: 296px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 10px;
+      box-shadow: 0 10px 18px rgba(0,0,0,0.08);
+    }
+    .wc-cal-header { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+    .wc-cal-title { font-weight: 600; }
+    .wc-cal-nav { width:32px; height:28px; border-radius:8px; }
+    .wc-cal-week { display:grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 6px; }
+    .wc-cal-weekday { text-align:center; font-size: 12px; color:#666; padding: 2px 0; }
+    .wc-cal-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .wc-cal-day {
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid #e5e5e5;
+      background: #fff;
+      cursor: pointer;
+    }
+    .wc-cal-day:hover { border-color:#94a3b8; background:#f8fafc; }
+    .wc-cal-day--muted { opacity: 0.45; }
+    .wc-cal-day--weekend { background: #fff7ed; border-color:#fed7aa; }
+    .wc-cal-day--configured { border-color:#60a5fa; box-shadow: 0 0 0 1px rgba(96,165,250,0.25) inset; }
+    .wc-cal-day--selected { background: #dbeafe; border-color:#2563eb; }
+    .wc-cal-foot { margin-top: 8px; font-size: 12px; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2>个人工作日历</h2>
+        <p class="muted">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
+        <p class="muted">
+          说明：此处配置会<strong>覆盖</strong>全局工作日历（用于请假/加班/轮班等）。
+          未配置日期会回退到全局日历；全局也未配置则按默认规则兜底（工作日 8 小时，周末/假期默认不排产）。
+        </p>
+      </div>
+      <div>
+        <a href="{{ url_for('scheduler.calendar_page') }}">全局工作日历</a>
+        <span class="muted">｜</span>
+        <a href="{{ url_for('personnel.detail_page', operator_id=operator.operator_id) }}">← 返回人员详情</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card wc-card-allow-overflow">
+    <h3>新增 / 更新某一天</h3>
+    <form method="post" action="{{ url_for('personnel.operator_calendar_upsert', operator_id=operator.operator_id) }}">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="wc-date-wrap">
+          <label>日期</label><br/>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="wcDateInput" name="date" required placeholder="YYYY-MM-DD" style="width:160px;">
+            <button type="button" id="wcDatePickBtn">选择</button>
+          </div>
+          <div id="wcDateHint" class="muted" style="margin-top:6px;"></div>
+          <div id="wcCalendarPanel" class="wc-cal-panel" style="display:none;">
+            <div class="wc-cal-header">
+              <button type="button" class="wc-cal-nav" data-action="prev">‹</button>
+              <div class="wc-cal-title"></div>
+              <button type="button" class="wc-cal-nav" data-action="next">›</button>
+            </div>
+            <div class="wc-cal-week"></div>
+            <div class="wc-cal-grid"></div>
+            <div class="wc-cal-foot muted">已配置日期会高亮；周末会单独标识。</div>
+          </div>
+        </div>
+        <div>
+          <label>类型</label><br/>
+          <select name="day_type">
+            <option value="workday">工作日</option>
+            <option value="holiday">假期</option>
+          </select>
+        </div>
+        <div>
+          <label>班次开始</label><br/>
+          <input type="time" name="shift_start" value="08:00" style="width:140px;">
+        </div>
+        <div>
+          <label>班次结束（可选）</label><br/>
+          <input type="time" name="shift_end" style="width:140px;">
+        </div>
+        <div>
+          <label>可用工时（小时）</label><br/>
+          <input name="shift_hours" placeholder="如：8" style="width:140px;">
+        </div>
+        <div>
+          <label>效率（>0）</label><br/>
+          <input name="efficiency" placeholder="如：1.0" style="width:140px;">
+        </div>
+        <div>
+          <label>允许普通件</label><br/>
+          <select name="allow_normal">
+            <option value="yes">是</option>
+            <option value="no">否</option>
+          </select>
+        </div>
+        <div>
+          <label>允许急件/特急</label><br/>
+          <select name="allow_urgent">
+            <option value="yes">是</option>
+            <option value="no">否</option>
+          </select>
+        </div>
+        <div style="flex:1; min-width:220px;">
+          <label>说明</label><br/>
+          <input name="remark" placeholder="可选">
+        </div>
+        <div>
+          <button type="submit">保存</button>
+        </div>
+      </div>
+      <div class="muted" style="margin-top:8px;">
+        提示：假期默认不排产（可用工时=0）。若假期需要上班，请把可用工时设置为 &gt;0；效率留空时会按“假期默认效率”兜底（当前：{{ holiday_default_efficiency }}）。
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>已配置个人日历（OperatorCalendar）</h3>
+    {% if rows and rows|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:140px;">日期</th>
+            <th style="width:120px;">类型</th>
+            <th style="width:120px;">班次开始</th>
+            <th style="width:120px;">班次结束</th>
+            <th style="width:120px;">可用工时</th>
+            <th style="width:120px;">效率</th>
+            <th style="width:140px;">允许普通件</th>
+            <th style="width:140px;">允许急件</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>{{ r.date }}</td>
+              <td>{{ r.day_type_zh }}</td>
+              <td>{{ r.shift_start or '08:00' }}</td>
+              <td>{% if r.shift_end %}{{ r.shift_end }}{% else %}<span class="muted">-</span>{% endif %}</td>
+              <td>{{ r.shift_hours }}</td>
+              <td>{{ r.efficiency }}</td>
+              <td>{{ '是' if r.allow_normal == 'yes' else '否' }}</td>
+              <td>{{ '是' if r.allow_urgent == 'yes' else '否' }}</td>
+              <td>{% if r.remark %}{{ r.remark }}{% else %}<span class="muted">-</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无显式配置（将回退到全局工作日历）。</div>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    window.__APS_WORKCALENDAR__ = {
+      rows: {{ rows|tojson }},
+      holidayDefaultEfficiency: {{ (holiday_default_efficiency if holiday_default_efficiency is defined else 0.8)|tojson }}
+    };
+  </script>
+  <script src="{{ url_for('static', filename='js/calendar_picker.js') }}"></script>
+{% endblock %}
+

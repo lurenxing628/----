@@ -15,10 +15,12 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..dispatch_rules import DispatchInputs, DispatchRule, build_dispatch_key, parse_dispatch_rule
+from ..dispatch_rules import DispatchRule, parse_dispatch_rule
 from ..sort_strategies import BatchForSort, SortStrategy, StrategyFactory, parse_strategy
 from ..types import ScheduleResult, ScheduleSummary
 from .auto_assign import auto_assign_internal_resources
+from .dispatch import dispatch_batch_order, dispatch_sgs
+from .downtime import find_overlap_shift_end, occupy_resource
 from .external_groups import schedule_external
 from .seed import normalize_seed_results
 
@@ -329,14 +331,14 @@ class GreedyScheduler:
 
                     # 资源占用：按可用字段分别占用（避免因缺一项而完全不占用导致重叠）
                     if mid:
-                        self._occupy_resource(machine_timeline, mid, sr.start_time, sr.end_time)
+                        occupy_resource(machine_timeline, mid, sr.start_time, sr.end_time)
                     else:
                         missing_seed_machine += 1
                         if len(missing_seed_machine_samples) < 5:
                             missing_seed_machine_samples.append(str(getattr(sr, "op_id", "") or "").strip() or "?")
 
                     if oid:
-                        self._occupy_resource(operator_timeline, oid, sr.start_time, sr.end_time)
+                        occupy_resource(operator_timeline, oid, sr.start_time, sr.end_time)
                     else:
                         missing_seed_operator += 1
                         if len(missing_seed_operator_samples) < 5:
@@ -374,338 +376,55 @@ class GreedyScheduler:
                 )
 
         if dispatch_mode_key == "sgs":
-            # 就绪集合动态派工（Serial SGS）：每个批次只暴露“下一道”可排工序
-            ops_by_batch: Dict[str, List[Any]] = {}
-            # 注意：total_ops 基于 sorted_ops 统计；此处若静默过滤无效 batch_id，会导致 scheduled+failed != total
-            # 因此对无效 batch_id 的工序计为失败，并写入 errors（与 batch_order 口径一致）。
-            for op in sorted_ops:
-                bid = str(getattr(op, "batch_id", "") or "")
-                if bid not in batches:
-                    failed_count += 1
-                    errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'}：找不到所属批次 {bid}")
-                    continue
-                ops_by_batch.setdefault(bid, []).append(op)
-            for bid, lst in ops_by_batch.items():
-                lst.sort(key=lambda x: (int(getattr(x, "seq", 0) or 0), int(getattr(x, "id", 0) or 0)))
-
-            # 确保遍历顺序稳定（按 batch_order，再按 batch_id）
-            batch_ids_in_order = sorted(list(ops_by_batch.keys()), key=lambda x: (batch_order.get(x, 999999), x))
-            next_idx: Dict[str, int] = {bid: 0 for bid in batch_ids_in_order}
-
-            # last_op_type_by_machine / last_end_by_machine 已在 seed_results 阶段预热，用于换型 tie-break
-
-            # ATC 需要一个平均处理时间尺度（简化：对内部工序 total_hours 做均值）
-            proc_samples: List[float] = []
-            for bid, lst in ops_by_batch.items():
-                b = batches.get(bid)
-                if not b:
-                    continue
-                qty = getattr(b, "quantity", 0) or 0
-                for op in lst:
-                    if (getattr(op, "source", "internal") or "internal").strip() != "internal":
-                        continue
-                    setup_hours = getattr(op, "setup_hours", 0) or 0
-                    unit_hours = getattr(op, "unit_hours", 0) or 0
-                    try:
-                        h = float(setup_hours) + float(unit_hours) * float(qty)
-                    except Exception:
-                        h = 0.0
-                    if h and h > 0:
-                        proc_samples.append(float(h))
-            avg_proc_hours = (sum(proc_samples) / float(len(proc_samples))) if proc_samples else 1.0
-
-            while True:
-                candidates: List[Tuple[str, Any]] = []
-                for bid in batch_ids_in_order:
-                    if bid in blocked_batches:
-                        continue
-                    idx = int(next_idx.get(bid, 0) or 0)
-                    lst = ops_by_batch.get(bid) or []
-                    if idx >= len(lst):
-                        continue
-                    candidates.append((bid, lst[idx]))
-                if not candidates:
-                    break
-
-                best_pair: Optional[Tuple[str, Any]] = None
-                best_key: Optional[Tuple[float, ...]] = None
-                for bid, op in candidates:
-                    try:
-                        batch = batches[bid]
-                        priority = getattr(batch, "priority", None)
-                        due_d = _parse_date(getattr(batch, "due_date", None))
-                        seq = int(getattr(op, "seq", 0) or 0)
-                        oid = int(getattr(op, "id", 0) or 0)
-                        score_penalty = 0.0  # 0=正常可估算；1=不可估算（应劣于所有正常候选）
-
-                        # 估算（用于打分，不占资源）
-                        if (getattr(op, "source", "internal") or "internal").strip() == "external":
-                            prev_end = batch_progress.get(bid, base_time)
-                            merge_mode = (getattr(op, "ext_merge_mode", None) or "").strip()
-                            ext_group_id = (getattr(op, "ext_group_id", None) or "").strip()
-                            if merge_mode == "merged" and ext_group_id:
-                                cached = external_group_cache.get((bid, ext_group_id))
-                                if cached:
-                                    est_start, est_end = cached
-                                else:
-                                    total_days = getattr(op, "ext_group_total_days", None)
-                                    try:
-                                        total_days_f = (
-                                            float(total_days)
-                                            if total_days is not None and str(total_days).strip() != ""
-                                            else None
-                                        )
-                                    except Exception:
-                                        total_days_f = None
-                                    if not total_days_f or total_days_f <= 0:
-                                        # 不可估算：打分阶段给一个“惩罚 key”，避免 best_pair 为空后无条件选 candidates[0]
-                                        score_penalty = 1.0
-                                        est_start = prev_end
-                                        est_end = prev_end
-                                    else:
-                                        est_start = prev_end
-                                        est_end = self.calendar.add_calendar_days(est_start, total_days_f)
-                            else:
-                                ext_days = getattr(op, "ext_days", None)
-                                try:
-                                    ext_days_f = (
-                                        float(ext_days)
-                                        if ext_days is not None and str(ext_days).strip() != ""
-                                        else None
-                                    )
-                                except Exception:
-                                    ext_days_f = None
-                                if ext_days_f is None:
-                                    ext_days_f = 1.0
-                                if ext_days_f <= 0:
-                                    # 不可估算：打分阶段给惩罚 key（真实排产阶段仍会报错并阻断批次）
-                                    score_penalty = 1.0
-                                    est_start = prev_end
-                                    est_end = prev_end
-                                else:
-                                    est_start = prev_end
-                                    est_end = self.calendar.add_calendar_days(est_start, ext_days_f)
-                            proc_h = max((est_end - est_start).total_seconds() / 3600.0, 0.0)
-                            change_pen = 0
-                            if score_penalty and score_penalty > 0:
-                                # 仅用于打分：避免 proc_hours=0 导致 CR/ATC 极端值；并使其在 tie-break 中更差
-                                try:
-                                    proc_h = max(float(avg_proc_hours), 1e-6)
-                                except Exception:
-                                    proc_h = 1.0
-                                change_pen = 1
-                        else:
-                            machine_id = (getattr(op, "machine_id", None) or "").strip()
-                            operator_id = (getattr(op, "operator_id", None) or "").strip()
-                            if not machine_id or not operator_id:
-                                # 留给实际排产时报错；这里给一个兜底 key（避免 best_pair 为空）
-                                est_start = batch_progress.get(bid, base_time)
-                                est_end = est_start
-                                proc_h = 0.0
-                                change_pen = 1
-                            else:
-                                prev_end = batch_progress.get(bid, base_time)
-                                est_start = max(prev_end, base_time)
-                                # 粗略考虑“资源最新占用结束”（不扫描间隙；用于评分足够）
-                                est_start = max(est_start, self._get_resource_available(machine_timeline, machine_id, base_time))
-                                est_start = max(est_start, self._get_resource_available(operator_timeline, operator_id, base_time))
-                                est_start = self.calendar.adjust_to_working_time(est_start, priority=priority)
-
-                                setup_hours = getattr(op, "setup_hours", 0) or 0
-                                unit_hours = getattr(op, "unit_hours", 0) or 0
-                                qty = getattr(batch, "quantity", 0) or 0
-                                try:
-                                    total_hours = float(setup_hours) + float(unit_hours) * float(qty)
-                                except Exception:
-                                    total_hours = 0.0
-                                eff = 1.0
-                                try:
-                                    eff = float(self.calendar.get_efficiency(est_start) or 1.0)
-                                except Exception:
-                                    eff = 1.0
-                                if eff and 0 < eff < 1.0:
-                                    total_hours = total_hours / eff
-                                proc_h = max(float(total_hours), 0.0)
-                                est_end = self.calendar.add_working_hours(est_start, proc_h, priority=priority)
-
-                                last_type = (last_op_type_by_machine.get(machine_id) or "").strip()
-                                cur_type = (str(getattr(op, "op_type_name", None) or "") or "").strip()
-                                if last_type and cur_type and last_type != cur_type:
-                                    change_pen = 1
-                                else:
-                                    change_pen = 0
-
-                        k = build_dispatch_key(
-                            DispatchInputs(
-                                rule=dispatch_rule_enum,
-                                priority=str(priority or "normal"),
-                                due_date=due_d,
-                                est_start=est_start,
-                                est_end=est_end,
-                                proc_hours=float(proc_h),
-                                avg_proc_hours=float(avg_proc_hours),
-                                changeover_penalty=int(change_pen),
-                                batch_order=int(batch_order.get(bid, 999999)),
-                                batch_id=bid,
-                                seq=int(seq),
-                                op_id=int(oid),
-                            )
-                        )
-                        # 评分 key：先按可估算性排序（正常优于不可估算），再按 dispatch rule/tie-break 排序
-                        k = (float(score_penalty),) + tuple(k)
-
-                        if best_key is None or k < best_key:
-                            best_key = k
-                            best_pair = (bid, op)
-                    except Exception:
-                        continue
-
-                if best_pair is None:
-                    best_pair = candidates[0]
-
-                bid, op = best_pair
-                try:
-                    batch = batches[bid]
-                    if (getattr(op, "source", "internal") or "internal").strip() == "external":
-                        result, blocked = self._schedule_external(
-                            op, batch, batch_progress, external_group_cache, base_time, errors, end_dt_exclusive
-                        )
-                    else:
-                        result, blocked = self._schedule_internal(
-                            op,
-                            batch,
-                            batch_progress,
-                            machine_timeline,
-                            operator_timeline,
-                            base_time,
-                            errors,
-                            end_dt_exclusive,
-                            machine_downtimes,
-                            auto_assign_enabled=auto_assign_enabled,
-                            resource_pool=resource_pool,
-                            last_op_type_by_machine=last_op_type_by_machine,
-                            machine_busy_hours=machine_busy_hours,
-                            operator_busy_hours=operator_busy_hours,
-                        )
-
-                    if result and result.start_time and result.end_time:
-                        results.append(result)
-                        batch_progress[bid] = result.end_time
-                        scheduled_count += 1
-                        next_idx[bid] = int(next_idx.get(bid, 0) or 0) + 1
-                        if (result.source or "").strip() == "internal" and result.machine_id:
-                            try:
-                                mid0 = str(result.machine_id or "").strip()
-                                oid0 = str(result.operator_id or "").strip()
-                                h = (result.end_time - result.start_time).total_seconds() / 3600.0
-                                if mid0:
-                                    machine_busy_hours[mid0] = machine_busy_hours.get(mid0, 0.0) + float(h)
-                                    prev_end = last_end_by_machine.get(mid0)
-                                    if prev_end is None or result.end_time > prev_end:
-                                        last_end_by_machine[mid0] = result.end_time
-                                if oid0:
-                                    operator_busy_hours[oid0] = operator_busy_hours.get(oid0, 0.0) + float(h)
-                            except Exception:
-                                pass
-                            ot = (result.op_type_name or "").strip()
-                            if ot:
-                                last_op_type_by_machine[str(result.machine_id).strip()] = ot
-                    else:
-                        failed_count += 1
-                        # SGS 下无法“跳过”前序工序：任何失败都应阻断该批次，避免死循环/前后约束被破坏
-                        blocked_batches.add(bid)
-                        # 阻断后，该批次剩余工序不会再被尝试；为保持 summary 口径一致（scheduled_ops+failed_ops==total_ops）
-                        # 将“当前工序之后的剩余工序”计入失败数（类似 batch_order 模式对 blocked 批次逐条计失败）。
-                        try:
-                            idx0 = int(next_idx.get(bid, 0) or 0)
-                            lst0 = ops_by_batch.get(bid) or []
-                            rest = max(int(len(lst0)) - (idx0 + 1), 0)
-                            failed_count += int(rest)
-                        except Exception:
-                            pass
-                except Exception as e:
-                    failed_count += 1
-                    op_code = getattr(op, "op_code", "-") or "-"
-                    errors.append(f"工序 {op_code} 排产异常：{str(e)}")
-                    self.logger.exception(f"工序 {op_code} 排产异常")
-                    blocked_batches.add(bid)
-                    try:
-                        idx0 = int(next_idx.get(bid, 0) or 0)
-                        lst0 = ops_by_batch.get(bid) or []
-                        rest = max(int(len(lst0)) - (idx0 + 1), 0)
-                        failed_count += int(rest)
-                    except Exception:
-                        pass
+            scheduled_count, failed_count = dispatch_sgs(
+                self,
+                sorted_ops=sorted_ops,
+                batches=batches,
+                batch_order=batch_order,
+                dispatch_rule=dispatch_rule_enum,
+                base_time=base_time,
+                end_dt_exclusive=end_dt_exclusive,
+                machine_downtimes=machine_downtimes,
+                batch_progress=batch_progress,
+                external_group_cache=external_group_cache,
+                machine_timeline=machine_timeline,
+                operator_timeline=operator_timeline,
+                machine_busy_hours=machine_busy_hours,
+                operator_busy_hours=operator_busy_hours,
+                last_op_type_by_machine=last_op_type_by_machine,
+                last_end_by_machine=last_end_by_machine,
+                auto_assign_enabled=auto_assign_enabled,
+                resource_pool=resource_pool,
+                results=results,
+                errors=errors,
+                blocked_batches=blocked_batches,
+                scheduled_count=scheduled_count,
+                failed_count=failed_count,
+            )
         else:
-            # V1 默认：按 batch_order 全局排序后逐条排入
-            for op in sorted_ops:
-                bid = ""
-                try:
-                    bid = str(getattr(op, "batch_id", "") or "")
-                    if bid not in batches:
-                        failed_count += 1
-                        errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'}：找不到所属批次 {bid}")
-                        continue
-                    if bid in blocked_batches:
-                        failed_count += 1
-                        continue
-
-                    batch = batches[bid]
-
-                    if (getattr(op, "source", "internal") or "internal").strip() == "external":
-                        result, blocked = self._schedule_external(
-                            op, batch, batch_progress, external_group_cache, base_time, errors, end_dt_exclusive
-                        )
-                    else:
-                        result, blocked = self._schedule_internal(
-                            op,
-                            batch,
-                            batch_progress,
-                            machine_timeline,
-                            operator_timeline,
-                            base_time,
-                            errors,
-                            end_dt_exclusive,
-                            machine_downtimes,
-                            auto_assign_enabled=auto_assign_enabled,
-                            resource_pool=resource_pool,
-                            last_op_type_by_machine=last_op_type_by_machine,
-                            machine_busy_hours=machine_busy_hours,
-                            operator_busy_hours=operator_busy_hours,
-                        )
-
-                    if result and result.start_time and result.end_time:
-                        results.append(result)
-                        batch_progress[bid] = result.end_time
-                        scheduled_count += 1
-                        if (result.source or "").strip() == "internal" and result.machine_id:
-                            try:
-                                mid0 = str(result.machine_id or "").strip()
-                                oid0 = str(result.operator_id or "").strip()
-                                h = (result.end_time - result.start_time).total_seconds() / 3600.0
-                                if mid0:
-                                    machine_busy_hours[mid0] = machine_busy_hours.get(mid0, 0.0) + float(h)
-                                    prev_end = last_end_by_machine.get(mid0)
-                                    if prev_end is None or result.end_time > prev_end:
-                                        last_end_by_machine[mid0] = result.end_time
-                                if oid0:
-                                    operator_busy_hours[oid0] = operator_busy_hours.get(oid0, 0.0) + float(h)
-                            except Exception:
-                                pass
-                            ot = (result.op_type_name or "").strip()
-                            if ot:
-                                last_op_type_by_machine[str(result.machine_id).strip()] = ot
-                    else:
-                        failed_count += 1
-                        # batch_order 模式也保持“批次串行”约束：任一工序失败则阻断该批次后续工序
-                        blocked_batches.add(bid)
-                except Exception as e:
-                    failed_count += 1
-                    op_code = getattr(op, "op_code", "-") or "-"
-                    errors.append(f"工序 {op_code} 排产异常：{str(e)}")
-                    self.logger.exception(f"工序 {op_code} 排产异常")
-                    if bid:
-                        blocked_batches.add(bid)
+            scheduled_count, failed_count = dispatch_batch_order(
+                self,
+                sorted_ops=sorted_ops,
+                batches=batches,
+                base_time=base_time,
+                end_dt_exclusive=end_dt_exclusive,
+                machine_downtimes=machine_downtimes,
+                batch_progress=batch_progress,
+                external_group_cache=external_group_cache,
+                machine_timeline=machine_timeline,
+                operator_timeline=operator_timeline,
+                machine_busy_hours=machine_busy_hours,
+                operator_busy_hours=operator_busy_hours,
+                last_op_type_by_machine=last_op_type_by_machine,
+                last_end_by_machine=last_end_by_machine,
+                auto_assign_enabled=auto_assign_enabled,
+                resource_pool=resource_pool,
+                results=results,
+                errors=errors,
+                blocked_batches=blocked_batches,
+                scheduled_count=scheduled_count,
+                failed_count=failed_count,
+            )
 
         duration = (datetime.now() - t0).total_seconds()
         total_ops = int(len(sorted_ops) + seed_count)
@@ -799,7 +518,7 @@ class GreedyScheduler:
         # 先从“批次前序完工/起算时间”出发，再做资源避让（支持已有区间占用/冻结窗口）
         earliest = max(prev_end, base_time)
         priority = getattr(batch, "priority", None)
-        earliest = self.calendar.adjust_to_working_time(earliest, priority=priority)
+        earliest = self.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=operator_id)
 
         setup_hours = getattr(op, "setup_hours", 0) or 0
         unit_hours = getattr(op, "unit_hours", 0) or 0
@@ -817,7 +536,7 @@ class GreedyScheduler:
 
         efficiency = 1.0
         try:
-            efficiency = float(self.calendar.get_efficiency(earliest) or 1.0)
+            efficiency = float(self.calendar.get_efficiency(earliest, operator_id=operator_id) or 1.0)
         except Exception:
             efficiency = 1.0
         if efficiency and efficiency > 0 and efficiency < 1.0:
@@ -829,14 +548,14 @@ class GreedyScheduler:
             dt_list = machine_downtimes.get(machine_id) or []
 
         guard = 0
-        end = self.calendar.add_working_hours(earliest, total_hours, priority=priority)
+        end = self.calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=operator_id)
         while guard < 200:
             guard += 1
 
             shift_to: Optional[datetime] = None
-            m_shift = self._find_overlap_shift_end(machine_timeline.get(machine_id) or [], earliest, end)
-            o_shift = self._find_overlap_shift_end(operator_timeline.get(operator_id) or [], earliest, end)
-            d_shift = self._find_overlap_shift_end(dt_list, earliest, end)
+            m_shift = find_overlap_shift_end(machine_timeline.get(machine_id) or [], earliest, end)
+            o_shift = find_overlap_shift_end(operator_timeline.get(operator_id) or [], earliest, end)
+            d_shift = find_overlap_shift_end(dt_list, earliest, end)
             for x in (m_shift, o_shift, d_shift):
                 if x is None:
                     continue
@@ -847,8 +566,8 @@ class GreedyScheduler:
                 break
 
             earliest = max(earliest, shift_to)
-            earliest = self.calendar.adjust_to_working_time(earliest, priority=priority)
-            end = self.calendar.add_working_hours(earliest, total_hours, priority=priority)
+            earliest = self.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=operator_id)
+            end = self.calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=operator_id)
 
         if guard >= 200:
             errors.append(f"资源/停机避让迭代过多：工序 {getattr(op, 'op_code', '-') or '-'}（批次 {bid}）")
@@ -861,8 +580,8 @@ class GreedyScheduler:
             )
             return None, True
 
-        self._occupy_resource(machine_timeline, machine_id, earliest, end)
-        self._occupy_resource(operator_timeline, operator_id, earliest, end)
+        occupy_resource(machine_timeline, machine_id, earliest, end)
+        occupy_resource(operator_timeline, operator_id, earliest, end)
 
         return (
             ScheduleResult(
@@ -912,44 +631,4 @@ class GreedyScheduler:
             operator_busy_hours=operator_busy_hours,
         )
 
-    @staticmethod
-    def _get_resource_available(
-        timeline: Dict[str, List[Tuple[datetime, datetime]]],
-        resource_id: str,
-        base_time: datetime,
-    ) -> datetime:
-        if not resource_id:
-            return base_time
-        segments = timeline.get(resource_id) or []
-        if not segments:
-            return base_time
-        return max(end for _, end in segments)
-
-    @staticmethod
-    def _occupy_resource(
-        timeline: Dict[str, List[Tuple[datetime, datetime]]],
-        resource_id: str,
-        start: datetime,
-        end: datetime,
-    ) -> None:
-        if not resource_id:
-            return
-        timeline.setdefault(resource_id, []).append((start, end))
-
-    @staticmethod
-    def _find_overlap_shift_end(
-        segments: List[Tuple[datetime, datetime]],
-        start: datetime,
-        end: datetime,
-    ) -> Optional[datetime]:
-        """
-        若 [start, end) 与 segments 中任意区间重叠，返回“需要推迟到的最晚结束时刻”（max end）。
-        """
-        shift: Optional[datetime] = None
-        for s, e in segments or []:
-            if end <= s or start >= e:
-                continue
-            if shift is None or e > shift:
-                shift = e
-        return shift
-
+    # timeline 工具已统一到 greedy/downtime.py

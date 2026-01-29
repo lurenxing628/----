@@ -4,7 +4,7 @@ from flask import flash, g, redirect, request, url_for
 
 from web.ui_mode import render_ui_template as render_template
 
-from core.services.scheduler import CalendarService
+from core.services.scheduler import CalendarService, ConfigService
 
 from .scheduler_bp import bp, _day_type_zh
 
@@ -12,10 +12,20 @@ from .scheduler_bp import bp, _day_type_zh
 @bp.get("/calendar")
 def calendar_page():
     cal_svc = CalendarService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    # 工作日历：假期默认效率（用于页面默认填充）
+    hde = 0.8
+    try:
+        raw = cfg_svc.get("holiday_default_efficiency", default=0.8)
+        hde = float(raw) if raw is not None else 0.8
+        if hde <= 0:
+            hde = 0.8
+    except Exception:
+        hde = 0.8
     rows = [c.to_dict() for c in cal_svc.list_all()]
     for r in rows:
         r["day_type_zh"] = _day_type_zh(r.get("day_type") or "")
-    return render_template("scheduler/calendar.html", title="工作日历配置", rows=rows)
+    return render_template("scheduler/calendar.html", title="工作日历配置", rows=rows, holiday_default_efficiency=hde)
 
 
 @bp.post("/calendar/upsert")

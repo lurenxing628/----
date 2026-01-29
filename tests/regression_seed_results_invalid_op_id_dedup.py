@@ -22,16 +22,29 @@ class _StubCalendarService:
     算法应能通过 op_code 或 (batch_id, seq) 回填真实 op_id，避免重复排产与错误统计。
     """
 
-    def adjust_to_working_time(self, dt: datetime, priority=None) -> datetime:  # noqa: D401
+    def adjust_to_working_time(
+        self,
+        dt: datetime,
+        priority=None,
+        machine_id: str = None,
+        operator_id: str = None,
+    ) -> datetime:  # noqa: D401
         return dt
 
-    def add_working_hours(self, dt: datetime, hours: float, priority=None) -> datetime:
+    def add_working_hours(
+        self,
+        dt: datetime,
+        hours: float,
+        priority=None,
+        machine_id: str = None,
+        operator_id: str = None,
+    ) -> datetime:
         return dt + timedelta(hours=float(hours or 0.0))
 
-    def get_efficiency(self, dt: datetime) -> float:
+    def get_efficiency(self, dt: datetime, machine_id: str = None, operator_id: str = None) -> float:
         return 1.0
 
-    def add_calendar_days(self, dt: datetime, days: float) -> datetime:
+    def add_calendar_days(self, dt: datetime, days: float, machine_id: str = None, operator_id: str = None) -> datetime:
         return dt + timedelta(days=float(days or 0.0))
 
 

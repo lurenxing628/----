@@ -1,0 +1,268 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta
+from typing import Any, Optional, Tuple
+
+from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.models import WorkCalendar
+from core.models.enums import BatchPriority, CalendarDayType, YesNo
+from data.repositories import CalendarRepository, OperatorCalendarRepository
+
+
+@dataclass
+class DayPolicy:
+    """
+    某天的排产策略（从 WorkCalendar/OperatorCalendar 推导）。
+
+    说明：
+    - shift_start 可配置（默认 08:00）
+    - shift_hours=0 视为不可排产日
+    - allow_normal/allow_urgent 控制普通/急件是否允许排在该日
+      - critical 视作 urgent（更严格时可单独扩展字段）
+    """
+
+    date_str: str  # YYYY-MM-DD
+    day_type: str
+    shift_hours: float
+    efficiency: float
+    allow_normal: str
+    allow_urgent: str
+    shift_start: time = time(8, 0, 0)
+
+    def is_priority_allowed(self, priority: Optional[str]) -> bool:
+        p = (priority or BatchPriority.NORMAL.value).strip()
+        if p == BatchPriority.NORMAL.value:
+            return self.allow_normal == YesNo.YES.value
+        # urgent / critical 归并到 allow_urgent
+        return self.allow_urgent == YesNo.YES.value
+
+    def work_window(self) -> Tuple[datetime, datetime]:
+        d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
+        start = datetime.combine(d, self.shift_start)
+        end = start + timedelta(hours=float(self.shift_hours or 0.0))
+        return start, end
+
+
+class CalendarEngine:
+    """
+    工作日历“引擎侧”能力（给排产算法使用）。
+
+    说明：
+    - 负责 DayPolicy 推导与时间推进（adjust/add/efficiency）
+    - 读取日历数据（WorkCalendar/OperatorCalendar）但不负责 CRUD/导入
+    """
+
+    def __init__(self, conn, logger=None, op_logger=None):
+        self.conn = conn
+        self.logger = logger
+        self.op_logger = op_logger
+        self.repo = CalendarRepository(conn, logger=logger)
+        self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
+
+    @staticmethod
+    def _normalize_text(value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            v = value.strip()
+            return v if v != "" else None
+        v = str(value).strip()
+        return v if v != "" else None
+
+    def _default_for_date(self, date_str: str) -> WorkCalendar:
+        d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        # 周末默认不排产（shift_hours=0），工作日默认 8h
+        if d.weekday() >= 5:
+            return WorkCalendar(
+                date=date_str,
+                day_type=CalendarDayType.WEEKEND.value,
+                shift_hours=0.0,
+                efficiency=1.0,
+                allow_normal=YesNo.NO.value,
+                allow_urgent=YesNo.NO.value,
+                remark="默认周末（未配置）",
+            )
+        return WorkCalendar(
+            date=date_str,
+            day_type=CalendarDayType.WORKDAY.value,
+            shift_hours=8.0,
+            efficiency=1.0,
+            allow_normal=YesNo.YES.value,
+            allow_urgent=YesNo.YES.value,
+            remark="默认工作日（未配置）",
+        )
+
+    def _policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
+        date_str = dt.date().isoformat()
+        cal: Any = None
+        op_id = self._normalize_text(operator_id) if operator_id is not None else None
+        if op_id:
+            try:
+                row_op = self.operator_calendar_repo.get(op_id, date_str)
+                if row_op:
+                    cal = row_op
+            except Exception:
+                cal = None
+        if cal is None:
+            row = self.repo.get(date_str)
+            cal = row if row else self._default_for_date(date_str)
+
+        # 防御：异常值兜底
+        shift_hours = float(cal.shift_hours or 0.0)
+        efficiency = float(cal.efficiency or 1.0)
+        if efficiency <= 0:
+            efficiency = 1.0
+
+        # shift_start/shift_end：默认 08:00；若提供 shift_end 则优先用其推导 shift_hours
+        ss = (cal.shift_start or "").strip() if getattr(cal, "shift_start", None) else ""
+        if not ss:
+            ss = "08:00"
+        ss = ss.replace("：", ":")
+        try:
+            ss_t = datetime.strptime(ss, "%H:%M").time()
+        except Exception:
+            ss_t = time(8, 0, 0)
+
+        se = (cal.shift_end or "").strip() if getattr(cal, "shift_end", None) else ""
+        if se:
+            se = se.replace("：", ":")
+            try:
+                se_t = datetime.strptime(se, "%H:%M").time()
+                st_dt = datetime.combine(date.fromisoformat(cal.date), ss_t)
+                et_dt = datetime.combine(date.fromisoformat(cal.date), se_t)
+                if et_dt > st_dt:
+                    shift_hours = (et_dt - st_dt).total_seconds() / 3600.0
+            except Exception:
+                pass
+
+        return DayPolicy(
+            date_str=cal.date,
+            day_type=cal.day_type,
+            shift_hours=shift_hours,
+            efficiency=efficiency,
+            allow_normal=cal.allow_normal,
+            allow_urgent=cal.allow_urgent,
+            shift_start=ss_t,
+        )
+
+    def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
+        """
+        公共接口：获取某时刻所在日期的排产策略（DayPolicy）。
+        """
+        return self._policy_for_datetime(dt, operator_id=operator_id)
+
+    def get_efficiency(self, dt: datetime, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> float:
+        return float(self._policy_for_datetime(dt, operator_id=operator_id).efficiency or 1.0)
+
+    def adjust_to_working_time(
+        self,
+        dt: datetime,
+        priority: Optional[str] = None,
+        machine_id: Optional[str] = None,
+        operator_id: Optional[str] = None,
+    ) -> datetime:
+        """
+        把任意时间调整到“允许排产的工作时间窗口内”的最早时刻。
+        """
+        cur = dt
+        guard = 0
+        while True:
+            guard += 1
+            if guard > 3660:  # 防御：避免死循环
+                raise BusinessError(ErrorCode.CALENDAR_ERROR, "工作日历计算异常：循环次数过多，请检查日历配置。")
+
+            p = self._policy_for_datetime(cur, operator_id=operator_id)
+            if not p.is_priority_allowed(priority) or p.shift_hours <= 0:
+                # 跳到下一天班次开始
+                next_day = cur.date() + timedelta(days=1)
+                cur = datetime.combine(next_day, p.shift_start)
+                continue
+
+            start, end = p.work_window()
+            if cur < start:
+                return start
+            if cur >= end:
+                next_day = cur.date() + timedelta(days=1)
+                cur = datetime.combine(next_day, p.shift_start)
+                continue
+            return cur
+
+    def add_working_hours(
+        self,
+        start: datetime,
+        hours: float,
+        priority: Optional[str] = None,
+        machine_id: Optional[str] = None,
+        operator_id: Optional[str] = None,
+    ) -> datetime:
+        """
+        从 start 开始，按“工作时间窗口”累加指定工时，返回结束时间。
+        - 会自动跳过非工作日/非工作时段
+        - hours 支持小数
+        """
+        if hours is None:
+            raise ValidationError("缺少工时参数", field="hours")
+        try:
+            total = float(hours)
+        except Exception:
+            raise ValidationError("工时必须是数字", field="hours")
+        if total < 0:
+            raise ValidationError("工时不能为负数", field="hours")
+        if total == 0:
+            return self.adjust_to_working_time(start, priority=priority, operator_id=operator_id)
+
+        cur = self.adjust_to_working_time(start, priority=priority, operator_id=operator_id)
+        remaining = total
+        guard = 0
+
+        while remaining > 0:
+            guard += 1
+            if guard > 36600:
+                raise BusinessError(ErrorCode.CALENDAR_ERROR, "工作日历计算异常：循环次数过多，请检查日历配置。")
+
+            p = self._policy_for_datetime(cur, operator_id=operator_id)
+            if not p.is_priority_allowed(priority) or p.shift_hours <= 0:
+                cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
+                continue
+
+            start_w, end_w = p.work_window()
+            if cur < start_w:
+                cur = start_w
+            if cur >= end_w:
+                # 下一天
+                cur = datetime.combine(cur.date() + timedelta(days=1), p.shift_start)
+                cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
+                continue
+
+            available = (end_w - cur).total_seconds() / 3600.0
+            if available <= 0:
+                cur = datetime.combine(cur.date() + timedelta(days=1), p.shift_start)
+                cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
+                continue
+
+            if remaining <= available + 1e-9:
+                return cur + timedelta(hours=remaining)
+
+            # 用完当日剩余工时，进入下一天
+            remaining -= available
+            cur = datetime.combine(cur.date() + timedelta(days=1), p.shift_start)
+            cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
+
+        return cur
+
+    def add_calendar_days(self, start: datetime, days: float, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
+        """
+        自然日累加（外协周期使用）：不受工作日历影响。
+        - days 支持小数
+        """
+        if days is None:
+            raise ValidationError("缺少周期参数", field="days")
+        try:
+            d = float(days)
+        except Exception:
+            raise ValidationError("周期必须是数字", field="days")
+        if d < 0:
+            raise ValidationError("周期不能为负数", field="days")
+        return start + timedelta(days=d)
+

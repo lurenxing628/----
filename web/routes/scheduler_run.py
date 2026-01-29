@@ -16,9 +16,16 @@ def run_schedule():
     batch_ids = request.form.getlist("batch_ids")
     start_dt = request.form.get("start_dt") or None
     end_date = request.form.get("end_date") or None
+    enforce_ready = str(request.form.get("enforce_ready") or "").strip().lower() in ("yes", "y", "true", "1", "on")
     sch_svc = ScheduleService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     try:
-        result = sch_svc.run_schedule(batch_ids=batch_ids, start_dt=start_dt, end_date=end_date, created_by="web")
+        result = sch_svc.run_schedule(
+            batch_ids=batch_ids,
+            start_dt=start_dt,
+            end_date=end_date,
+            created_by="web",
+            enforce_ready=enforce_ready,
+        )
         ver = result.get("version")
         summary = result.get("summary") or {}
         overdue = result.get("overdue_batches") or []

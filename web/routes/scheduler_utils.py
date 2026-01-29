@@ -1,61 +1,22 @@
 from __future__ import annotations
 
-import os
-import tempfile
 from typing import Any, Dict, List, Optional
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.services.common.excel_service import ImportMode
-from core.services.common.excel_backend_factory import get_excel_backend
+
+from .excel_utils import ensure_unique_ids, parse_import_mode, read_uploaded_xlsx
 
 
 def _parse_mode(value: str) -> ImportMode:
-    try:
-        return ImportMode(value)
-    except Exception:
-        raise ValidationError("导入模式不合法", field="mode")
+    return parse_import_mode(value)
 
 
 def _ensure_unique_ids(rows: List[Dict[str, Any]], id_column: str) -> None:
-    seen = set()
-    dup = set()
-    for r in rows:
-        v = r.get(id_column)
-        if v is None:
-            continue
-        key = str(v).strip()
-        if not key:
-            continue
-        if key in seen:
-            dup.add(key)
-        seen.add(key)
-    if dup:
-        sample = ", ".join(list(sorted(dup))[:10])
-        raise ValidationError(f"Excel 中存在重复的“{id_column}”：{sample}。请去重后再导入。", field=id_column)
+    ensure_unique_ids(rows, id_column=id_column)
 
 
 def _read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
-    """
-    把上传的 Excel（.xlsx）解析为 List[Dict]（key 为表头字符串）。
-    - 跳过空行
-    - 单元格字符串自动 strip；空串视为 None
-    """
-    data = file_storage.read()
-    if not data:
-        raise AppError(ErrorCode.EXCEL_FORMAT_ERROR, "上传文件为空，请重新选择。")
-
-    # 统一走 backend.read(file_path)，以支持可选 pandas 后端
-    fd, tmp_path = tempfile.mkstemp(prefix="aps_upload_", suffix=".xlsx")
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(data)
-        backend = get_excel_backend()
-        return backend.read(tmp_path)
-    finally:
-        try:
-            os.remove(tmp_path)
-        except Exception:
-            pass
+    return read_uploaded_xlsx(file_storage)
 
 
 # -------------------------
@@ -108,8 +69,9 @@ def _normalize_day_type(value: Any) -> str:
     v = "" if value is None else str(value).strip()
     if v in ("工作日", "workday"):
         return "workday"
+    # 统一：周末本质属于“假期”
     if v in ("周末", "weekend"):
-        return "weekend"
+        return "holiday"
     if v in ("节假日", "假期", "holiday"):
         return "holiday"
     return v or "workday"

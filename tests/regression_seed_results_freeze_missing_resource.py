@@ -22,16 +22,29 @@ class _StubCalendarService:
     仍应“按可用字段”冻结对应资源，避免后续工序重叠排产。
     """
 
-    def adjust_to_working_time(self, dt: datetime, priority=None) -> datetime:  # noqa: D401
+    def adjust_to_working_time(
+        self,
+        dt: datetime,
+        priority=None,
+        machine_id: str = None,
+        operator_id: str = None,
+    ) -> datetime:  # noqa: D401
         return dt
 
-    def add_working_hours(self, dt: datetime, hours: float, priority=None) -> datetime:
+    def add_working_hours(
+        self,
+        dt: datetime,
+        hours: float,
+        priority=None,
+        machine_id: str = None,
+        operator_id: str = None,
+    ) -> datetime:
         return dt + timedelta(hours=float(hours or 0.0))
 
-    def get_efficiency(self, dt: datetime) -> float:
+    def get_efficiency(self, dt: datetime, machine_id: str = None, operator_id: str = None) -> float:
         return 1.0
 
-    def add_calendar_days(self, dt: datetime, days: float) -> datetime:
+    def add_calendar_days(self, dt: datetime, days: float, machine_id: str = None, operator_id: str = None) -> datetime:
         return dt + timedelta(days=float(days or 0.0))
 
 

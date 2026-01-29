@@ -8,6 +8,17 @@
       <a href="{{ url_for('personnel.excel_operator_page') }}">人员基本信息（导入/导出）</a>
       <span class="muted">｜</span>
       <a href="{{ url_for('personnel.excel_link_page') }}">人员设备关联（导入/导出）</a>
+      {% set excel_op_cal_url = safe_url_for('personnel.excel_operator_calendar_page') %}
+      {% if excel_op_cal_url %}
+        <span class="muted">｜</span>
+        <a href="{{ excel_op_cal_url }}">人员专属工作日历（导入/导出）</a>
+      {% else %}
+        <span class="muted">｜</span>
+        <span class="muted"
+              title="原因：后端接口未注册（endpoint：personnel.excel_operator_calendar_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
+          人员专属工作日历（不可用：后端接口缺失，可能旧版本/未重启/未重新打包）
+        </span>
+      {% endif %}
     </div>
   </div>
 

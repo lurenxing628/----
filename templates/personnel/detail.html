@@ -3,6 +3,33 @@
   <div class="card">
     <h2>人员详情</h2>
     <p class="muted">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
+    {% set op_cal_url = safe_url_for('personnel.operator_calendar_page', operator_id=operator.operator_id) %}
+    {% set global_cal_url = safe_url_for('scheduler.calendar_page') %}
+    <div style="margin-top:8px;">
+      {% if op_cal_url %}
+        <a href="{{ op_cal_url }}">个人工作日历</a>
+      {% else %}
+        <span class="muted"
+              title="原因：后端接口未注册（endpoint：personnel.operator_calendar_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
+          个人工作日历（不可用：后端接口缺失，可能旧版本/未重启/未重新打包）
+        </span>
+      {% endif %}
+      <span class="muted">｜</span>
+      {% if global_cal_url %}
+        <a href="{{ global_cal_url }}">全局工作日历</a>
+      {% else %}
+        <span class="muted"
+              title="原因：后端接口未注册（endpoint：scheduler.calendar_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
+          全局工作日历（不可用：后端接口缺失，可能旧版本/未重启/未重新打包）
+        </span>
+      {% endif %}
+    </div>
+    <div class="muted" style="margin-top:6px;">
+      说明：个人工作日历会覆盖全局日历，可用于请假/加班/轮班等差异。
+      {% if not op_cal_url %}
+        <span class="muted">（当前运行版本缺少该入口：可能旧版本/未重启/未重新打包）</span>
+      {% endif %}
+    </div>
   </div>
 
   <div class="card">

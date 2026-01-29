@@ -40,9 +40,8 @@ def _batch_status_zh(v: str) -> str:
 def _day_type_zh(v: str) -> str:
     if v == "workday":
         return "工作日"
-    if v == "weekend":
-        return "周末"
-    if v == "holiday":
-        return "节假日"
+    # 统一：周末/节假日均视为“假期”
+    if v in ("weekend", "holiday"):
+        return "假期"
     return v or "-"
 

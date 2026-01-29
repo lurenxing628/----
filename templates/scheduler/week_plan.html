@@ -27,7 +27,7 @@
         <input type="date" name="end_date" value="{{ end_date }}" style="width:160px;">
       </div>
       <div>
-        <label>指定周（任意日期，系统会自动归到周一）</label><br/>
+        <label title="任意日期，系统会自动归到周一">指定周</label><br/>
         <input name="week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD" style="width:160px;">
       </div>
       <div>
@@ -42,7 +42,6 @@
           </select>
         {% else %}
           <input name="version" value="{{ version }}" style="width:160px;">
-          <div class="muted" style="margin-top:4px;">暂无排产历史（请先执行排产生成版本）。</div>
         {% endif %}
       </div>
       <div>
@@ -53,6 +52,9 @@
         <a href="{{ export_url }}">导出周计划表.xlsx</a>
       </div>
     </form>
+    {% if not versions or versions|length == 0 %}
+      <div class="muted" style="margin-top:8px;">暂无排产历史（请先执行排产生成版本）。</div>
+    {% endif %}
     <p class="muted" style="margin-top:10px;">
       导出字段：日期 / 批次号 / 图号 / 工序 / 设备 / 人员 / 时段。跨天工序会按天拆分为多行。
       导出动作会写入系统留痕（OperationLogs action=export）。

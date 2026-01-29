@@ -100,12 +100,12 @@ def auto_assign_internal_resources(
         # 逐 (machine, operator) 评估可行最早区间
         for oid in op_candidates:
             earliest = max(prev_end, base_time)
-            earliest = scheduler.calendar.adjust_to_working_time(earliest, priority=priority)
+            earliest = scheduler.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=oid)
 
             # 简化：效率取开工时刻对应日的效率
             total_hours = float(total_hours_base)
             try:
-                eff = float(scheduler.calendar.get_efficiency(earliest) or 1.0)
+                eff = float(scheduler.calendar.get_efficiency(earliest, operator_id=oid) or 1.0)
             except Exception:
                 eff = 1.0
             if eff and 0 < eff < 1.0:
@@ -116,7 +116,7 @@ def auto_assign_internal_resources(
                 dt_list = machine_downtimes.get(mid) or []
 
             guard = 0
-            end = scheduler.calendar.add_working_hours(earliest, total_hours, priority=priority)
+            end = scheduler.calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=oid)
             while guard < 200:
                 guard += 1
                 shift_to: Optional[datetime] = None
@@ -131,8 +131,8 @@ def auto_assign_internal_resources(
                 if shift_to is None:
                     break
                 earliest = max(earliest, shift_to)
-                earliest = scheduler.calendar.adjust_to_working_time(earliest, priority=priority)
-                end = scheduler.calendar.add_working_hours(earliest, total_hours, priority=priority)
+                earliest = scheduler.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=oid)
+                end = scheduler.calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=oid)
 
             if guard >= 200:
                 continue

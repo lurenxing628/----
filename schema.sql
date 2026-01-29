@@ -246,6 +246,29 @@ CREATE TABLE IF NOT EXISTS WorkCalendar (
     remark          TEXT
 );
 
+-- 人员专属工作日历（可覆盖全局 WorkCalendar）
+-- 说明：
+-- - 主键：(operator_id, date)
+-- - 口径与 WorkCalendar 对齐（day_type/shift*/efficiency/allow*）
+-- - 覆盖语义由服务层实现（算法排产时按 operator_id 查询）
+CREATE TABLE IF NOT EXISTS OperatorCalendar (
+    operator_id     TEXT NOT NULL,
+    date            DATE NOT NULL,
+    day_type        TEXT DEFAULT 'workday',
+    shift_start     TEXT,                       -- 班次开始（HH:MM，可选；默认 08:00）
+    shift_end       TEXT,                       -- 班次结束（HH:MM，可选；用于推导 shift_hours）
+    shift_hours     REAL DEFAULT 8,
+    efficiency      REAL DEFAULT 1.0,
+    allow_normal    TEXT DEFAULT 'yes',
+    allow_urgent    TEXT DEFAULT 'yes',
+    remark          TEXT,
+    PRIMARY KEY (operator_id, date),
+    FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_operator_calendar_operator_date ON OperatorCalendar(operator_id, date);
+CREATE INDEX IF NOT EXISTS idx_operator_calendar_date ON OperatorCalendar(date);
+
 CREATE TABLE IF NOT EXISTS ScheduleConfig (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     config_key      TEXT NOT NULL UNIQUE,

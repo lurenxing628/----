@@ -89,9 +89,11 @@ class ScheduleRepository(BaseRepository):
 
             bo.op_code AS op_code,
             bo.batch_id AS batch_id,
+            bo.piece_id AS piece_id,
             bo.seq AS seq,
             bo.op_type_name AS op_type_name,
             bo.source AS source,
+            bo.status AS op_status,
             s.machine_id AS machine_id,
             s.operator_id AS operator_id,
             bo.supplier_id AS supplier_id,
@@ -116,6 +118,51 @@ class ScheduleRepository(BaseRepository):
         ORDER BY s.start_time, s.id
         """
         return self.fetchall(sql, (int(version), end_time, start_time))
+
+    def list_by_version_with_details(self, version: int) -> List[Dict[str, Any]]:
+        """
+        查询指定版本的全部排程记录，并补齐甘特图/关键链识别所需的关联信息。
+
+        说明：
+        - 返回 dict 行（带 join 字段），供服务层直接拼装输出。
+        """
+        sql = """
+        SELECT
+            s.id AS schedule_id,
+            s.op_id AS op_id,
+            s.start_time AS start_time,
+            s.end_time AS end_time,
+            s.version AS version,
+
+            bo.op_code AS op_code,
+            bo.batch_id AS batch_id,
+            bo.piece_id AS piece_id,
+            bo.seq AS seq,
+            bo.op_type_name AS op_type_name,
+            bo.source AS source,
+            bo.status AS op_status,
+            s.machine_id AS machine_id,
+            s.operator_id AS operator_id,
+            bo.supplier_id AS supplier_id,
+
+            b.part_no AS part_no,
+            b.part_name AS part_name,
+            b.due_date AS due_date,
+            b.priority AS priority,
+
+            m.name AS machine_name,
+            o.name AS operator_name,
+            sup.name AS supplier_name
+        FROM Schedule s
+        LEFT JOIN BatchOperations bo ON bo.id = s.op_id
+        LEFT JOIN Batches b ON b.batch_id = bo.batch_id
+        LEFT JOIN Machines m ON m.machine_id = s.machine_id
+        LEFT JOIN Operators o ON o.operator_id = s.operator_id
+        LEFT JOIN Suppliers sup ON sup.supplier_id = bo.supplier_id
+        WHERE s.version = ?
+        ORDER BY s.start_time, s.id
+        """
+        return self.fetchall(sql, (int(version),))
 
     def list_by_machine(self, machine_id: str, version: Optional[int] = None) -> List[Schedule]:
         if version is None:

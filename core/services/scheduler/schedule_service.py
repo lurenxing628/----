@@ -194,6 +194,7 @@ class ScheduleService:
         end_date: Any = None,
         created_by: Optional[str] = None,
         simulate: bool = False,
+        enforce_ready: bool = True,
     ) -> Dict[str, Any]:
         """
         执行排产并落库（Schedule）+ 留痕（ScheduleHistory + OperationLogs）。
@@ -205,6 +206,7 @@ class ScheduleService:
         - simulate=True 时：用于“插单模拟/模拟排产”
           - 仍会落库到新版本（Schedule + ScheduleHistory），确保可追溯
           - 但不会更新 Batches/BatchOperations 的状态（避免污染正式状态）
+        - enforce_ready=True 时：启用“齐套约束”，若存在 ready_status!=yes 的批次则拒绝排产
         """
         if not batch_ids:
             raise ValidationError("请至少选择 1 个批次执行排产。", field="batch_ids")
@@ -265,11 +267,14 @@ class ScheduleService:
             and (((op.machine_id or "").strip() == "") or ((op.operator_id or "").strip() == ""))
         }
 
-        # 仅允许排产“齐套=yes”的批次（其余直接提示，不参与排产）
-        not_ready = [bid for bid, b in batches.items() if (self._normalize_text(getattr(b, "ready_status", None)) or "") != "yes"]
-        if not_ready:
-            sample = "，".join(not_ready[:20])
-            raise ValidationError(f"以下批次未齐套（ready_status!=yes），禁止排产：{sample}", field="齐套")
+        # 齐套约束（可选）：仅允许排产“齐套=yes”的批次
+        if enforce_ready:
+            not_ready = [
+                bid for bid, b in batches.items() if (self._normalize_text(getattr(b, "ready_status", None)) or "") != "yes"
+            ]
+            if not_ready:
+                sample = "，".join(not_ready[:20])
+                raise ValidationError(f"以下批次未齐套（ready_status!=yes），禁止排产：{sample}", field="齐套")
 
         # 算法输入（补充 merged 外部组信息）
         algo_ops = build_algo_operations(self, operations)

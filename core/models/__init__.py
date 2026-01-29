@@ -29,7 +29,7 @@ from .external_group import ExternalGroup
 from .batch import Batch
 from .batch_operation import BatchOperation
 from .schedule import Schedule
-from .calendar import WorkCalendar
+from .calendar import OperatorCalendar, WorkCalendar
 from .config import ScheduleConfig
 from .system_config import SystemConfig
 from .operation_log import OperationLog
@@ -63,6 +63,7 @@ __all__ = [
     "BatchOperation",
     "Schedule",
     "WorkCalendar",
+    "OperatorCalendar",
     "ScheduleConfig",
     "SystemConfig",
     "OperationLog",

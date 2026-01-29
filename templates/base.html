@@ -41,13 +41,13 @@
         <a href="{{ url_for('excel_demo.index') }}">Excel 导入演示</a>
       </nav>
       <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-        <div class="muted">Win7 单机版（V1）：离线运行</div>
+        <div class="muted">Win7 单机版：离线运行</div>
         <form action="{{ url_for('system.ui_mode_set') }}" method="POST" style="display:flex; align-items:center; gap:6px;">
           <input type="hidden" name="next" value="{{ request.full_path }}">
           <span class="muted">界面：</span>
           <select name="mode" onchange="this.form.submit()">
-            <option value="v1" {% if ui_mode == 'v1' %}selected{% endif %}>V1</option>
-            <option value="v2" {% if ui_mode == 'v2' %}selected{% endif %}>V2 新UI</option>
+            <option value="v1" {% if ui_mode == 'v1' %}selected{% endif %}>经典</option>
+            <option value="v2" {% if ui_mode == 'v2' %}selected{% endif %}>现代</option>
           </select>
         </form>
       </div>

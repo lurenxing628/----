@@ -15,7 +15,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
-from core.services.scheduler import CalendarService
+from core.services.scheduler import CalendarService, ConfigService
 
 from .scheduler_bp import bp
 from .scheduler_utils import (
@@ -41,7 +41,7 @@ def excel_calendar_page():
         existing_list.append(
             {
                 "日期": c.date,
-                "类型": c.day_type,
+                "类型": _normalize_day_type(c.day_type),
                 "可用工时": c.shift_hours,
                 "效率": c.efficiency,
                 "允许普通件": c.allow_normal,
@@ -72,6 +72,14 @@ def excel_calendar_preview():
     if not file or not file.filename:
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
 
+    cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
+    try:
+        hde = float(cfg_svc.get("holiday_default_efficiency", default=0.8) or 0.8)
+        if hde <= 0:
+            hde = 0.8
+    except Exception:
+        hde = 0.8
+
     rows = _read_uploaded_xlsx(file)
     _ensure_unique_ids(rows, id_column="日期")
 
@@ -91,7 +99,7 @@ def excel_calendar_preview():
     for c in cal_svc.list_all():
         d = {
             "日期": c.date,
-            "类型": c.day_type,
+            "类型": _normalize_day_type(c.day_type),
             "可用工时": c.shift_hours,
             "效率": c.efficiency,
             "允许普通件": c.allow_normal,
@@ -111,8 +119,8 @@ def excel_calendar_preview():
             return e.message
 
         row["类型"] = _normalize_day_type(row.get("类型"))
-        if row["类型"] not in ("workday", "weekend", "holiday"):
-            return "“类型”不合法（允许：workday/weekend/holiday；或中文：工作日/周末/节假日）"
+        if row["类型"] not in ("workday", "holiday"):
+            return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
 
         sh = row.get("可用工时")
         if sh is None or str(sh).strip() == "":
@@ -129,7 +137,7 @@ def excel_calendar_preview():
 
         eff = row.get("效率")
         if eff is None or str(eff).strip() == "":
-            row["效率"] = 1.0
+            row["效率"] = 1.0 if row["类型"] == "workday" else float(hde)
         else:
             try:
                 v = float(eff)
@@ -192,6 +200,14 @@ def excel_calendar_confirm():
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
 
+    cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
+    try:
+        hde = float(cfg_svc.get("holiday_default_efficiency", default=0.8) or 0.8)
+        if hde <= 0:
+            hde = 0.8
+    except Exception:
+        hde = 0.8
+
     try:
         rows = json.loads(raw_rows_json)
         if not isinstance(rows, list):
@@ -206,7 +222,7 @@ def excel_calendar_confirm():
     for c in cal_svc.list_all():
         existing[c.date] = {
             "日期": c.date,
-            "类型": c.day_type,
+            "类型": _normalize_day_type(c.day_type),
             "可用工时": c.shift_hours,
             "效率": c.efficiency,
             "允许普通件": c.allow_normal,
@@ -222,8 +238,8 @@ def excel_calendar_confirm():
         except ValidationError as e:
             return e.message
         row["类型"] = _normalize_day_type(row.get("类型"))
-        if row["类型"] not in ("workday", "weekend", "holiday"):
-            return "“类型”不合法（允许：workday/weekend/holiday；或中文：工作日/周末/节假日）"
+        if row["类型"] not in ("workday", "holiday"):
+            return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
 
         # 可用工时/效率/允许*
         sh = row.get("可用工时")
@@ -240,7 +256,7 @@ def excel_calendar_confirm():
 
         eff = row.get("效率")
         if eff is None or str(eff).strip() == "":
-            row["效率"] = 1.0
+            row["效率"] = 1.0 if row["类型"] == "workday" else float(hde)
         else:
             try:
                 v = float(eff)
@@ -416,7 +432,7 @@ def excel_calendar_export():
     ws.title = "Sheet1"
     ws.append(["日期", "类型", "可用工时", "效率", "允许普通件", "允许急件", "说明"])
     for c in rows:
-        ws.append([c.date, c.day_type, c.shift_hours, c.efficiency, c.allow_normal, c.allow_urgent, c.remark])
+        ws.append([c.date, _normalize_day_type(c.day_type), c.shift_hours, c.efficiency, c.allow_normal, c.allow_urgent, c.remark])
 
     output = io.BytesIO()
     wb.save(output)

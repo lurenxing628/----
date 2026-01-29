@@ -21,14 +21,14 @@ def main():
     复现设计：
     - 构造一个旧库：OperatorMachine 缺少 skill_level/is_primary
     - 调用 ensure_schema(test_db, backup_dir=None) 触发迁移
-    - 断言：<db_dir>/backups 下出现 before_migrate_v0_to_v1 的备份文件
+    - 断言：<db_dir>/backups 下出现 before_migrate_v0_to_v{CURRENT_SCHEMA_VERSION} 的备份文件
     """
 
     repo_root = find_repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from core.infrastructure.database import ensure_schema, get_connection
+    from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 
     tmpdir = tempfile.mkdtemp(prefix="aps_regression_migrate_backup_none_")
     test_db = os.path.join(tmpdir, "aps_migrate_backup_none.db")
@@ -58,23 +58,25 @@ def main():
     # 2) 执行 ensure_schema：显式传入 backup_dir=None（应回退到 <db_dir>/backups 并强制创建迁移前备份）
     ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=None)
 
-    # 3) 断言：默认备份目录存在且包含 before_migrate_v0_to_v1 备份文件
+    expected_suffix = f"before_migrate_v0_to_v{CURRENT_SCHEMA_VERSION}"
+
+    # 3) 断言：默认备份目录存在且包含迁移前备份文件
     fallback_backups = os.path.join(os.path.dirname(os.path.abspath(test_db)), "backups")
     assert os.path.isdir(fallback_backups), f"预期默认备份目录存在：{fallback_backups}"
 
     backup_files = [
         f
         for f in os.listdir(fallback_backups)
-        if f.startswith("aps_backup_") and "before_migrate_v0_to_v1" in f and f.endswith(".db")
+        if f.startswith("aps_backup_") and expected_suffix in f and f.endswith(".db")
     ]
     assert backup_files, f"未找到迁移前备份文件（dir={fallback_backups}）"
 
-    # 4) 附加校验：SchemaVersion 应提升到 1（确保确实完成迁移路径）
+    # 4) 附加校验：SchemaVersion 应提升到当前版本（确保确实完成迁移路径）
     conn = get_connection(test_db)
     try:
         row = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
         v = int(row["version"] if isinstance(row, sqlite3.Row) else row[0])
-        assert v >= 1, f"预期 SchemaVersion>=1，实际 {v}"
+        assert v >= CURRENT_SCHEMA_VERSION, f"预期 SchemaVersion>={CURRENT_SCHEMA_VERSION}，实际 {v}"
     finally:
         try:
             conn.close()

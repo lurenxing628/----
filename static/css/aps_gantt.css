@@ -1,0 +1,221 @@
+/* APS Gantt modern overrides (Frappe Gantt 0.6.1) */
+
+/* ---- default semantic colors (fallback when JS doesn't set --aps-bar-color) ---- */
+.bar-wrapper.priority-normal { --aps-bar-color: #94a3b8; }
+.bar-wrapper.priority-urgent { --aps-bar-color: #f59e0b; }
+.bar-wrapper.priority-critical { --aps-bar-color: #ef4444; }
+
+/* ---- container ---- */
+#gantt .gantt-container {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+/* ---- grid / timeline (subtle) ---- */
+.gantt .grid-header {
+  stroke: #e2e8f0;
+}
+.gantt .grid-row:nth-child(even) {
+  fill: #f8fafc;
+}
+.gantt .row-line {
+  stroke: #eef2f7;
+}
+.gantt .tick {
+  stroke: #e2e8f0;
+  stroke-width: 0.25;
+}
+.gantt .today-highlight {
+  fill: #e0f2fe;
+  opacity: 0.65;
+}
+
+/* ---- arrows ---- */
+.gantt .arrow {
+  stroke: #94a3b8;
+  stroke-width: 1.1;
+}
+
+/* ---- holiday / nonworking background ---- */
+.aps-holiday-layer {
+  pointer-events: none;
+}
+.aps-holiday-rect {
+  fill: #fee2e2;          /* holiday */
+  fill-opacity: 0.24;
+}
+.aps-holiday-rect.aps-nonworking {
+  fill: #fecaca;          /* nonworking / shutdown */
+  fill-opacity: 0.28;
+}
+
+/* ---- bars ---- */
+.gantt .bar-wrapper .bar {
+  fill: var(--aps-bar-color, #b8c2cc);
+  stroke: rgba(15, 23, 42, 0.16);
+  stroke-width: 1;
+  user-select: none;
+  transition: opacity 0.16s ease, filter 0.16s ease, stroke 0.16s ease, stroke-width 0.16s ease;
+  filter: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.10));
+}
+.gantt .bar-wrapper:hover .bar,
+.gantt .bar-wrapper.active .bar {
+  filter: drop-shadow(0 6px 14px rgba(15, 23, 42, 0.18));
+}
+
+/* label inside bar */
+.gantt .bar-label {
+  font-size: 12px;
+  font-weight: 500;
+  fill: rgba(255, 255, 255, 0.96);
+  pointer-events: none;
+}
+
+/* overdue */
+.bar-wrapper.overdue .bar {
+  stroke: #ef4444;
+  stroke-width: 2.5;
+}
+
+/* external (dashed border) */
+.bar-wrapper.aps-external .bar {
+  stroke-dasharray: 5 3;
+}
+
+/* critical chain highlight */
+.bar-wrapper.aps-critical .bar {
+  /* 不直接改 bar 的 stroke（避免覆盖超期红边），关键链“金边”由额外 outline 绘制 */
+  /* 避免“阴影看不清”的观感：关键链改为“外扩描边 + CC 徽标”，这里不再额外加发光 */
+  filter: none;
+}
+
+/* Critical chain outlines: subtle double-stroke (neutral outer + soft accent inner) */
+.aps-cc-outline-outer {
+  fill: none;
+  stroke: #334155;
+  stroke-width: 6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.9;
+  pointer-events: none;
+}
+.aps-cc-outline-inner {
+  fill: none;
+  stroke: #38bdf8;
+  stroke-width: 3.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+/* Critical chain badge (deprecated): hide it */
+.aps-cc-badge {
+  display: none;
+}
+
+/* (kept for compatibility; should not be visible) */
+.aps-cc-badge-bg {
+  fill: #0f172a;
+  stroke: #fde047;
+  stroke-width: 2;
+}
+.aps-cc-badge-text {
+  fill: #fde047;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+/* dim non-focused tasks */
+.bar-wrapper.aps-dim .bar {
+  opacity: 0.18;
+  filter: none;
+}
+.bar-wrapper.aps-dim .bar-label {
+  opacity: 0.12;
+}
+
+/* popup a bit cleaner */
+.gantt-container .popup-wrapper {
+  border-radius: 8px;
+}
+.gantt-container .popup-wrapper .title {
+  border-bottom: 3px solid #38bdf8;
+}
+
+/* ---- toolbar controls (page-level) ---- */
+#ganttColorMode,
+#ganttFilterBatch,
+#ganttFilterResource {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  outline: none;
+}
+#ganttColorMode:focus,
+#ganttFilterBatch:focus,
+#ganttFilterResource:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.22);
+}
+#ganttResetView {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  cursor: pointer;
+}
+#ganttResetView:hover {
+  background: #f1f5f9;
+}
+
+/* ---- legend / help ---- */
+.aps-gantt-legend {
+  color: #64748b;
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.aps-gantt-legend .aps-legend-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 6px;
+}
+.aps-gantt-legend .aps-legend-title {
+  font-weight: 700;
+  color: #334155;
+}
+.aps-gantt-legend .aps-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #ffffff;
+}
+.aps-gantt-legend .aps-legend-chip {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: #94a3b8;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  box-sizing: border-box;
+}
+.aps-gantt-help summary {
+  cursor: pointer;
+  color: #334155;
+}
+.aps-gantt-help {
+  padding: 6px 10px;
+  border: 1px dashed #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+}
+

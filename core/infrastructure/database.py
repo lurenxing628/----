@@ -5,7 +5,7 @@ import sys
 from typing import Optional
 
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 3
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:
@@ -129,11 +129,15 @@ def _detect_schema_is_current(conn: sqlite3.Connection) -> bool:
         ("MachineDowntimes", "scope_value"),
         ("WorkCalendar", "shift_start"),
         ("WorkCalendar", "shift_end"),
+        ("OperatorCalendar", "operator_id"),
         ("OperatorMachine", "skill_level"),
         ("OperatorMachine", "is_primary"),
     ]
+    # 复用 migrations 的通用工具（避免 database.py 继续膨胀）
+    from .migrations.common import column_exists
+
     for table, col in needed:
-        if not _column_exists(conn, table, col):
+        if not column_exists(conn, table, col):
             return False
     # 系统管理表
     try:
@@ -257,158 +261,7 @@ def _migrate_with_backup(db_path: str, from_version: int, to_version: int, backu
 
 
 def _run_migration(conn: sqlite3.Connection, target_version: int, logger=None) -> None:
-    if target_version == 1:
-        # v1：补齐 V1.1 关键字段 + 一次性日期清洗
-        _ensure_columns(conn)
-        _sanitize_batch_dates(conn, logger=logger)
-        return
-    raise RuntimeError(f"未知的迁移版本：{target_version}")
+    # 迁移实现按版本拆到 core/infrastructure/migrations/*
+    from .migrations import run_migration
 
-
-def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    try:
-        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-        for r in rows:
-            if (r["name"] if isinstance(r, sqlite3.Row) else r[1]) == column:
-                return True
-        return False
-    except Exception:
-        return False
-
-
-def _ensure_columns(conn: sqlite3.Connection) -> None:
-    """
-    轻量迁移（幂等）：为存量表补齐新增字段。
-
-    说明：
-    - SQLite 的 CREATE TABLE IF NOT EXISTS 不会修改既有表结构
-    - 这里用 PRAGMA table_info + ALTER TABLE ADD COLUMN 做“缺列补齐”
-    """
-    # Batches.ready_date（齐套日期）
-    if not _column_exists(conn, "Batches", "ready_date"):
-        conn.execute("ALTER TABLE Batches ADD COLUMN ready_date DATE")
-
-    # Machines.category（设备类别）
-    if not _column_exists(conn, "Machines", "category"):
-        conn.execute("ALTER TABLE Machines ADD COLUMN category TEXT")
-
-    # MachineDowntimes.scope_type/scope_value（停机范围预留字段）
-    if not _column_exists(conn, "MachineDowntimes", "scope_type"):
-        conn.execute("ALTER TABLE MachineDowntimes ADD COLUMN scope_type TEXT DEFAULT 'machine'")
-    if not _column_exists(conn, "MachineDowntimes", "scope_value"):
-        conn.execute("ALTER TABLE MachineDowntimes ADD COLUMN scope_value TEXT")
-
-    # WorkCalendar.shift_start/shift_end（班次起止时间）
-    if not _column_exists(conn, "WorkCalendar", "shift_start"):
-        conn.execute("ALTER TABLE WorkCalendar ADD COLUMN shift_start TEXT")
-    if not _column_exists(conn, "WorkCalendar", "shift_end"):
-        conn.execute("ALTER TABLE WorkCalendar ADD COLUMN shift_end TEXT")
-
-    # OperatorMachine.skill_level/is_primary（人机关联：技能等级/主操设备）
-    if not _column_exists(conn, "OperatorMachine", "skill_level"):
-        conn.execute("ALTER TABLE OperatorMachine ADD COLUMN skill_level TEXT DEFAULT 'normal'")
-    if not _column_exists(conn, "OperatorMachine", "is_primary"):
-        conn.execute("ALTER TABLE OperatorMachine ADD COLUMN is_primary TEXT DEFAULT 'no'")
-
-    # 旧数据回填：将 NULL/空串统一为默认值（避免导出/排序出现空值）
-    try:
-        conn.execute(
-            "UPDATE OperatorMachine SET skill_level = 'normal' "
-            "WHERE skill_level IS NULL OR TRIM(CAST(skill_level AS TEXT)) = ''"
-        )
-    except Exception:
-        pass
-    try:
-        conn.execute(
-            "UPDATE OperatorMachine SET is_primary = 'no' "
-            "WHERE is_primary IS NULL OR TRIM(CAST(is_primary AS TEXT)) = ''"
-        )
-    except Exception:
-        pass
-
-
-def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
-    """
-    清洗 Batches 的 DATE 字段（due_date / ready_date）。
-
-    背景：
-    - V1 业务约定 DATE 字段使用 `YYYY-MM-DD`（开发文档与 schema.sql）
-    - 存量 DB 可能因为 Excel 导入/手工写入导致不合法值（如 `2026`）
-    - 不合法值会导致页面/算法无法正确处理；这里做一次性“最佳努力”规范化：
-      - 支持：YYYY-MM-DD / YYYY/M/D / YYYY/MM/DD / 带时间的 YYYY-MM-DD HH:MM(:SS) / YYYY-MM-DDTHH:MM(:SS)
-      - 无法解析：置为 NULL（避免误判）
-    """
-    try:
-        rows = conn.execute(
-            """
-            SELECT batch_id, due_date, ready_date
-            FROM Batches
-            WHERE (due_date IS NOT NULL AND TRIM(CAST(due_date AS TEXT)) <> '')
-               OR (ready_date IS NOT NULL AND TRIM(CAST(ready_date AS TEXT)) <> '')
-            """
-        ).fetchall()
-    except Exception:
-        return
-
-    if not rows:
-        return
-
-    from datetime import date, datetime
-    import re
-
-    def norm(value) -> Optional[str]:
-        if value is None:
-            return None
-        s = str(value).strip()
-        if not s:
-            return None
-        s = s.replace("：", ":").replace("/", "-")
-        # 若误写入了时间：只取日期部分（DATE 字段不存时分秒）
-        if "T" in s:
-            s = s.split("T", 1)[0]
-        if " " in s:
-            s = s.split(" ", 1)[0]
-        # 仅接受 YYYY-M-D / YYYY-MM-DD（显式组装，避免依赖 strptime 的宽松/严格差异）
-        m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", s)
-        if not m:
-            return None
-        try:
-            y = int(m.group(1))
-            mo = int(m.group(2))
-            d = int(m.group(3))
-            return date(y, mo, d).isoformat()
-        except Exception:
-            return None
-
-    changed = 0
-    changed_samples = []
-    for r in rows:
-        bid = r["batch_id"]
-        old_due = r["due_date"]
-        old_ready = r["ready_date"]
-        new_due = norm(old_due)
-        new_ready = norm(old_ready)
-
-        # 只在发生变化时写入（避免无谓更新 updated_at）
-        if (str(old_due).strip() if old_due is not None else None) == new_due and (str(old_ready).strip() if old_ready is not None else None) == new_ready:
-            continue
-
-        try:
-            conn.execute(
-                "UPDATE Batches SET due_date = ?, ready_date = ? WHERE batch_id = ?",
-                (new_due, new_ready, bid),
-            )
-            changed += 1
-            if len(changed_samples) < 10:
-                changed_samples.append(str(bid))
-        except Exception:
-            continue
-
-    if changed and logger:
-        try:
-            sample_text = "，".join(changed_samples)
-            logger.warning(
-                f"已清洗 Batches 的日期字段（due_date/ready_date）：受影响批次数={changed}，样例批次号（最多10个）={sample_text}。"
-            )
-        except Exception:
-            pass
+    run_migration(conn, target_version=int(target_version), logger=logger)

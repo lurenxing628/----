@@ -3,8 +3,9 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Optional
 
-from flask import Blueprint, current_app, g, has_request_context, request
+from flask import Blueprint, current_app, g, has_request_context, request, url_for
 from jinja2 import ChoiceLoader, FileSystemLoader
+from werkzeug.routing.exceptions import BuildError
 
 from data.repositories import SystemConfigRepository
 
@@ -119,6 +120,45 @@ def _get_v2_env(app) -> Any:
     return env
 
 
+def safe_url_for(endpoint: str, **values: Any) -> Optional[str]:
+    """
+    url_for 的安全封装：
+    - endpoint 不存在（BuildError）时返回 None（而不是抛异常导致整页 500）
+    - 其他异常同样吞掉并返回 None（保持页面可用，便于排障/渐进发布）
+    """
+    if not has_request_context():
+        return None
+    try:
+        return url_for(endpoint, **values)
+    except BuildError:
+        # 可观测性：记录 warning，但不要让整页 500
+        try:
+            # 每请求每 endpoint 仅记录一次，避免日志刷屏
+            logged = getattr(g, "_safe_url_for_missing_eps", None)
+            if logged is None:
+                logged = set()
+                setattr(g, "_safe_url_for_missing_eps", logged)
+            if endpoint not in logged:
+                logged.add(endpoint)
+                try:
+                    path = getattr(request, "path", "") or ""
+                except Exception:
+                    path = ""
+                try:
+                    # values 里可能包含 id 等，便于定位；但避免超长
+                    current_app.logger.warning(
+                        f"模板链接不可用：endpoint 未注册（{endpoint}），path={path}。"
+                        "可能原因：运行旧版本/未重启/未重新打包。"
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return None
+    except Exception:
+        return None
+
+
 def render_ui_template(template_name_or_list, **context: Any) -> str:
     """
     render_template 的兼容封装：
@@ -138,10 +178,19 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
     # 复用 Flask 的上下文处理器（request/g/session/url_for 等）
     app.update_template_context(context)
 
+    # 注入：模板可用的安全 url_for（可用于可选功能链接/灰度发布）
+    context.setdefault("safe_url_for", safe_url_for)
+
     if mode == "v2":
         env = _get_v2_env(app) or app.jinja_env
     else:
         env = app.jinja_env
+
+    # 同时写入 env.globals：避免某些模板渲染路径不走 context 注入
+    try:
+        env.globals.setdefault("safe_url_for", safe_url_for)
+    except Exception:
+        pass
 
     template = env.get_or_select_template(template_name_or_list)
     return template.render(context)

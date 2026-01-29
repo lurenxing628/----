@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}批次管理{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h2 style="font-size: 1.5rem; font-weight: bold;">批次管理</h2>
+    <div class="flex gap-2 flex-wrap">
+        <a href="{{ url_for('scheduler.batches_page') }}" class="btn btn-primary">执行排产</a>
+        <a href="{{ url_for('scheduler.config_page') }}" class="btn btn-secondary">高级设置/模板</a>
+        <a href="{{ url_for('scheduler.gantt_page', view='machine') }}" class="btn btn-secondary">甘特图-设备</a>
+        <a href="{{ url_for('scheduler.gantt_page', view='operator') }}" class="btn btn-secondary">甘特图-人员</a>
+        <a href="{{ url_for('scheduler.week_plan_page') }}" class="btn btn-secondary">周计划</a>
+        <a href="{{ url_for('scheduler.calendar_page') }}" class="btn btn-secondary">工作日历配置</a>
+        <a href="{{ url_for('scheduler.excel_batches_page') }}" class="btn btn-secondary">批次导入/导出</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">新增批次</div>
+    <div class="card-body">
+        <form action="{{ url_for('scheduler.create_batch') }}" method="POST">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label class="form-label">批次号 *</label>
+                    <input type="text" name="batch_id" class="form-control" placeholder="如：B001" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">图号 *</label>
+                    <select name="part_no" class="form-control" required>
+                        <option value="">（请选择）</option>
+                        {% for p_no, p_name in part_options %}
+                            <option value="{{ p_no }}">{{ p_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">数量 *</label>
+                    <input type="number" name="quantity" class="form-control" placeholder="如：50" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">交期</label>
+                    <input type="date" name="due_date" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">优先级</label>
+                    <select name="priority" class="form-control">
+                        <option value="normal">普通</option>
+                        <option value="urgent">急件</option>
+                        <option value="critical">特急</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">齐套状态</label>
+                    <select name="ready_status" class="form-control">
+                        <option value="yes">齐套</option>
+                        <option value="partial">部分齐套</option>
+                        <option value="no">未齐套</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">齐套日期</label>
+                    <input type="date" name="ready_date" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">备注</label>
+                    <input type="text" name="remark" class="form-control" placeholder="可选">
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary">创建批次</button>
+                <span class="text-muted" style="margin-left: 0.75rem;">创建后会自动生成工序（来自零件工序模板）。</span>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header flex justify-between items-center">
+        <span>批次列表</span>
+        <form method="GET" class="flex gap-2 items-center">
+            <select name="status" class="form-control" style="width: auto;" onchange="this.form.submit()">
+                <option value="pending" {% if status == 'pending' %}selected{% endif %}>待排</option>
+                <option value="scheduled" {% if status == 'scheduled' %}selected{% endif %}>已排</option>
+                <option value="processing" {% if status == 'processing' %}selected{% endif %}>加工中</option>
+                <option value="completed" {% if status == 'completed' %}selected{% endif %}>已完成</option>
+                <option value="cancelled" {% if status == 'cancelled' %}selected{% endif %}>已取消</option>
+                <option value="" {% if not status %}selected{% endif %}>全部</option>
+            </select>
+            <select name="only_ready" class="form-control" style="width: auto;" onchange="this.form.submit()">
+                <option value="" {% if not only_ready %}selected{% endif %}>全部齐套</option>
+                <option value="yes" {% if only_ready == 'yes' %}selected{% endif %}>齐套</option>
+                <option value="partial" {% if only_ready == 'partial' %}selected{% endif %}>部分齐套</option>
+                <option value="no" {% if only_ready == 'no' %}selected{% endif %}>未齐套</option>
+            </select>
+        </form>
+    </div>
+    <div class="card-body">
+        {% if batches %}
+            <form id="batchManageForm" method="POST" action="{{ url_for('scheduler.bulk_update_batches') }}">
+                <div class="mb-4 flex gap-2 flex-wrap bg-slate-50 p-2 rounded border border-slate-200">
+                    <div class="flex items-center gap-2">
+                        <button type="submit" formaction="{{ url_for('scheduler.bulk_copy_batches') }}" class="btn btn-secondary"
+                                onclick="return confirm('将把所选批次逐个复制一份（批次号末尾数字自动 +1）。确定继续？');">
+                            复制
+                        </button>
+                        <button type="submit" formaction="{{ url_for('scheduler.bulk_delete_batches') }}" class="btn btn-danger"
+                                onclick="return confirm('确定删除所选批次吗？将级联删除批次工序与排程记录（若存在）。');">
+                            删除
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-2 ml-auto border-l pl-4 flex-wrap">
+                        <span class="text-muted text-sm">批量修改:</span>
+                        <select name="bulk_priority" class="form-control" style="width: 90px;">
+                            <option value="">(不改)</option>
+                            <option value="normal">普通</option>
+                            <option value="urgent">急件</option>
+                            <option value="critical">特急</option>
+                        </select>
+                        <input type="date" name="bulk_due_date" class="form-control" style="width: 140px;">
+                        <input type="text" name="bulk_remark" class="form-control" placeholder="备注(留空不改)" style="width: 160px;">
+                        <button type="submit" class="btn btn-secondary"
+                                onclick="return confirm('确定批量修改所选批次吗？仅会修改你填写的字段。');">
+                            修改
+                        </button>
+                        <span class="text-muted text-sm">已选 <strong id="jsSelectedCount">0</strong></span>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox" onclick="toggleAll(this)"></th>
+                                <th>批次号</th>
+                                <th>图号</th>
+                                <th>数量</th>
+                                <th>优先级</th>
+                                <th>齐套</th>
+                                <th>齐套日期</th>
+                                <th>交期</th>
+                                <th>状态</th>
+                                <th>备注</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for b in batches %}
+                            <tr>
+                                <td><input type="checkbox" name="batch_ids" value="{{ b.batch_id }}" class="js-batch-check"></td>
+                                <td>
+                                    <a href="{{ url_for('scheduler.batch_detail', batch_id=b.batch_id) }}" style="font-weight: bold; color: var(--primary-color);">{{ b.batch_id }}</a>
+                                </td>
+                                <td>{{ b.part_no }}</td>
+                                <td>{{ b.quantity }}</td>
+                                <td>{{ b.priority_zh }}</td>
+                                <td>{{ b.ready_status_zh }}</td>
+                                <td>{{ b.ready_date or '-' }}</td>
+                                <td>{{ b.due_date or '-' }}</td>
+                                <td>{{ b.status_zh }}</td>
+                                <td class="text-muted" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ b.remark or '' }}">{{ b.remark or '-' }}</td>
+                                <td>
+                                    <a href="{{ url_for('scheduler.batch_detail', batch_id=b.batch_id) }}" class="btn btn-sm btn-secondary">详情</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </form>
+        {% else %}
+            <div class="text-center py-8 text-muted">
+                暂无数据（可先新增批次或通过 Excel 导入）。
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function toggleAll(source) {
+        const checkboxes = document.getElementsByName('batch_ids');
+        for (let i = 0, n = checkboxes.length; i < n; i++) {
+            checkboxes[i].checked = source.checked;
+        }
+        updateSelectedCount();
+    }
+    function updateSelectedCount() {
+        const checks = Array.from(document.querySelectorAll(".js-batch-check"));
+        const cnt = checks.filter(x => x && x.checked).length;
+        const el = document.getElementById("jsSelectedCount");
+        if (el) el.textContent = String(cnt);
+    }
+    (function () {
+        const checks = Array.from(document.querySelectorAll(".js-batch-check"));
+        for (const c of checks) c.addEventListener("change", updateSelectedCount);
+        updateSelectedCount();
+    })();
+</script>
+{% endblock %}
+

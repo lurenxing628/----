@@ -1,15 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="card">
-    <h2>回转壳体单元智能排产系统（V1）</h2>
-    <p class="muted">当前为开发骨架阶段：先完成基础设施（M0），再完善各业务模块。</p>
+    <h2>智能排产系统</h2>
     <ul>
-      <li><a href="{{ url_for('personnel.list_page') }}">人员管理（Phase 3）</a></li>
-      <li><a href="{{ url_for('equipment.list_page') }}">设备管理（Phase 4）</a></li>
-      <li><a href="{{ url_for('process.list_parts') }}">工艺管理（Phase 5）</a></li>
-      <li><a href="{{ url_for('scheduler.batches_page') }}">排产调度（Phase 6）</a></li>
-      <li><a href="{{ url_for('system.backup_page') }}">系统管理（Phase 9：备份/日志/历史）</a></li>
-      <li><a href="{{ url_for('excel_demo.index') }}">通用 Excel 导入能力演示（Phase 1 验收页）</a></li>
+      <li><a href="{{ url_for('personnel.list_page') }}">人员管理</a></li>
+      <li><a href="{{ url_for('equipment.list_page') }}">设备管理</a></li>
+      <li><a href="{{ url_for('process.list_parts') }}">工艺管理</a></li>
+      <li><a href="{{ url_for('scheduler.batches_page') }}">排产调度</a></li>
+      <li><a href="{{ url_for('system.backup_page') }}">系统管理（备份/日志/历史）</a></li>
+      <li><a href="{{ url_for('excel_demo.index') }}">Excel 导入演示</a></li>
     </ul>
   </div>
 {% endblock %}

@@ -1,6 +1,6 @@
 # 实现一致性对标报告（实现 vs 开发文档规划）
 
-- 生成时间：2026-01-28 01:31:48
+- 生成时间：2026-01-30 00:31:42
 - 仓库根目录：`D:\Github\APS Test`
 
 ## 总结
@@ -86,14 +86,14 @@
   -     DEFAULT_PRIORITY_WEIGHT = 0.4
   -     DEFAULT_DUE_WEIGHT = 0.5
   -     DEFAULT_READY_WEIGHT = 0.1
+  -     DEFAULT_ENFORCE_READY_DEFAULT = "no"  # yes/no：执行排产时默认是否启用“齐套约束”
+  -     # 工作日历：假期默认效率（假期安排工作且效率未填时使用）
+  -     DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY = 0.8
   - 
   -     # 派工方式（V1.2）：默认保持 V1 行为（batch_order）
   -     DEFAULT_DISPATCH_MODE = "batch_order"  # batch_order/sgs
   -     DEFAULT_DISPATCH_RULE = "slack"  # slack/cr/atc（仅 sgs 生效）
   -     DEFAULT_AUTO_ASSIGN_ENABLED = "no"  # yes/no
-  -     DEFAULT_ORTOOLS_ENABLED = "no"  # yes/no
-  -     DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS = 5  # seconds
-  - 
 ```
 
 ### Excel 导入留痕 detail 键名（英文固定键）对齐开发文档
@@ -115,7 +115,7 @@
 - **结果**：通过
 - **严重性**：INFO
 - **证据**：
-  - url_map 路由总数：149
+  - url_map 路由总数：162
   - 关键路由缺失：无
 
 ## 差异项清单（便于验收沟通/修复排期）

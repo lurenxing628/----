@@ -14,6 +14,7 @@ from core.services.common.openpyxl_backend import OpenpyxlBackend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.common.excel_audit import log_excel_import, log_excel_export
 
+from .excel_utils import parse_import_mode
 
 bp = Blueprint("excel_demo", __name__)
 
@@ -34,10 +35,7 @@ def _fetch_existing_operators(conn) -> Dict[str, Dict[str, Any]]:
 
 
 def _parse_mode(value: str) -> ImportMode:
-    try:
-        return ImportMode(value)
-    except Exception:
-        raise ValidationError("导入模式不合法", field="mode")
+    return parse_import_mode(value)
 
 
 def _validate_operator_row(row: Dict[str, Any]) -> str:
