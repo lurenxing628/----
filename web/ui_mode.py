@@ -14,7 +14,8 @@ from data.repositories import SystemConfigRepository
 
 UI_MODE_COOKIE_KEY = "aps_ui_mode"
 UI_MODE_CONFIG_KEY = "ui_mode"  # stored in SystemConfig
-DEFAULT_UI_MODE = "v1"
+# 默认 UI：优先启用 V2（新 UI）
+DEFAULT_UI_MODE = "v2"
 VALID_UI_MODES = ("v1", "v2")
 
 _EXT_KEY_V2_ENV = "ui_mode.v2_env"
