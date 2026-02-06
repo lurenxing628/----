@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 from typing import List, Optional, Tuple
 
@@ -37,15 +38,26 @@ def _sanitize_field(
     sample: List[str] = []
     changed = 0
 
+    # 防御：table/field 会被拼接进 SQL（SQLite 标识符无法参数化），仅允许安全标识符
+    t = str(table or "").strip()
+    f = str(field or "").strip()
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", t or "") or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", f or ""):
+        if logger:
+            try:
+                logger.error(f"数据库迁移 v4：非法标识符，已跳过清洗（table={table!r} field={field!r}）")
+            except Exception:
+                pass
+        return 0, []
+
     # 1) 样例：找出需要被 lower/trim 的行（最多 10 条）
     try:
         rows = conn.execute(
             f"""
             SELECT {pk_expr}
-            FROM {table}
-            WHERE {field} IS NOT NULL
-              AND TRIM(CAST({field} AS TEXT)) <> ''
-              AND LOWER(TRIM(CAST({field} AS TEXT))) <> TRIM(CAST({field} AS TEXT))
+            FROM {t}
+            WHERE {f} IS NOT NULL
+              AND TRIM(CAST({f} AS TEXT)) <> ''
+              AND LOWER(TRIM(CAST({f} AS TEXT))) <> TRIM(CAST({f} AS TEXT))
             LIMIT 10
             """
         ).fetchall()
@@ -57,11 +69,11 @@ def _sanitize_field(
     try:
         cur = conn.execute(
             f"""
-            UPDATE {table}
-            SET {field} = LOWER(TRIM(CAST({field} AS TEXT)))
-            WHERE {field} IS NOT NULL
-              AND TRIM(CAST({field} AS TEXT)) <> ''
-              AND LOWER(TRIM(CAST({field} AS TEXT))) <> TRIM(CAST({field} AS TEXT))
+            UPDATE {t}
+            SET {f} = LOWER(TRIM(CAST({f} AS TEXT)))
+            WHERE {f} IS NOT NULL
+              AND TRIM(CAST({f} AS TEXT)) <> ''
+              AND LOWER(TRIM(CAST({f} AS TEXT))) <> TRIM(CAST({f} AS TEXT))
             """
         )
         changed += int(getattr(cur, "rowcount", 0) or 0)
@@ -73,10 +85,10 @@ def _sanitize_field(
         try:
             cur2 = conn.execute(
                 f"""
-                UPDATE {table}
-                SET {field} = ?
-                WHERE {field} IS NULL
-                   OR TRIM(CAST({field} AS TEXT)) = ''
+                UPDATE {t}
+                SET {f} = ?
+                WHERE {f} IS NULL
+                   OR TRIM(CAST({f} AS TEXT)) = ''
                 """,
                 (str(default),),
             )
@@ -117,9 +129,13 @@ def run(conn: sqlite3.Connection, logger=None) -> None:
         ("Schedule", "lock_status", "CAST(id AS TEXT)", "unlocked"),
         ("BatchMaterials", "ready_status", "CAST(id AS TEXT)", "no"),
         # Process
+        ("Parts", "route_parsed", "CAST(part_no AS TEXT)", "no"),
+        ("OpTypes", "category", "CAST(op_type_id AS TEXT)", "internal"),
         ("PartOperations", "source", "CAST(id AS TEXT)", "internal"),
         ("PartOperations", "status", "CAST(id AS TEXT)", "active"),
         ("ExternalGroups", "merge_mode", "CAST(group_id AS TEXT)", "separate"),
+        ("OperatorMachine", "skill_level", "CAST(id AS TEXT)", "normal"),
+        ("OperatorMachine", "is_primary", "CAST(id AS TEXT)", "no"),
         # Calendar
         ("WorkCalendar", "day_type", "CAST(date AS TEXT)", "workday"),
         ("WorkCalendar", "allow_normal", "CAST(date AS TEXT)", "yes"),

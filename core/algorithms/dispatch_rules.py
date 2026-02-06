@@ -7,6 +7,8 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, Optional, Tuple
 
+from .priority_constants import PRIORITY_RANK, PRIORITY_WEIGHT, normalize_priority
+
 
 class DispatchRule(Enum):
     """
@@ -20,10 +22,6 @@ class DispatchRule(Enum):
     ATC = "atc"  # apparent tardiness cost（越大越紧急；这里用 -ATC 变成越小越好）
 
 
-PRIORITY_RANK = {"critical": 0, "urgent": 1, "normal": 2}
-PRIORITY_WEIGHT = {"critical": 3.0, "urgent": 2.0, "normal": 1.0}
-
-
 def _due_end(d: Optional[date]) -> datetime:
     if not d:
         return datetime.max
@@ -34,7 +32,8 @@ def parse_dispatch_rule(value: Any, default: DispatchRule = DispatchRule.SLACK) 
     if isinstance(value, DispatchRule):
         return value
     try:
-        return DispatchRule(str(value))
+        # 容错：大小写/空白（例如 "CR" / " atc "）
+        return DispatchRule(str(value).strip().lower())
     except Exception:
         return default
 
@@ -64,7 +63,7 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
     - primary：由 rule 决定
     - tie-break：优先避免换型 -> 更高优先级 -> 更早交期 -> 更早开始 -> 更稳定批次顺序
     """
-    pr = (inp.priority or "normal").strip().lower() or "normal"
+    pr = normalize_priority(inp.priority, default="normal")
     pr_rank = float(PRIORITY_RANK.get(pr, 99))
     w = float(PRIORITY_WEIGHT.get(pr, 1.0))
 
@@ -72,8 +71,27 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
     slack_h = (due_end - inp.est_end).total_seconds() / 3600.0
     time_left_h = (due_end - inp.est_start).total_seconds() / 3600.0
 
-    p = float(inp.proc_hours) if inp.proc_hours and inp.proc_hours > 0 else 1e-6
-    avg_p = float(inp.avg_proc_hours) if inp.avg_proc_hours and inp.avg_proc_hours > 0 else p
+    # proc_hours <=0（或无法解析）时不能使用极小值兜底，否则 ATC 会出现极端值（错误地把不可估算候选排到最前）。
+    p: float
+    try:
+        ph = float(inp.proc_hours)
+        p = ph if ph > 0 else 0.0
+    except Exception:
+        p = 0.0
+    if not p or p <= 0:
+        # 回退到平均处理时间尺度（若也不可用，再回退到 1h）
+        try:
+            aph = float(inp.avg_proc_hours)
+            p = aph if aph > 0 else 1.0
+        except Exception:
+            p = 1.0
+
+    avg_p: float
+    try:
+        aph2 = float(inp.avg_proc_hours)
+        avg_p = aph2 if aph2 > 0 else p
+    except Exception:
+        avg_p = p
 
     if inp.rule == DispatchRule.CR:
         cr = time_left_h / p

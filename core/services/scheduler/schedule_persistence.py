@@ -71,8 +71,14 @@ def persist_schedule(
                         assign = assigned_by_op_id.get(int(op.id)) or {}
                         mc = (assign.get("machine_id") or "").strip()
                         oid = (assign.get("operator_id") or "").strip()
-                        if mc and oid:
-                            svc.op_repo.update(int(op.id), {"machine_id": mc, "operator_id": oid})
+                        updates: Dict[str, Any] = {}
+                        # 允许“部分补全”：算法可能只补齐其中一个资源；且避免覆盖人工已选
+                        if mc and not (str(getattr(op, "machine_id", "") or "").strip()):
+                            updates["machine_id"] = mc
+                        if oid and not (str(getattr(op, "operator_id", "") or "").strip()):
+                            updates["operator_id"] = oid
+                        if updates:
+                            svc.op_repo.update(int(op.id), updates)
 
             # 批次：若本批次所有工序都排到 -> scheduled，否则保持 pending
             by_batch_total: Dict[str, int] = {}

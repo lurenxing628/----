@@ -12,6 +12,8 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from .priority_constants import PRIORITY_ORDER, PRIORITY_SCORE, normalize_priority
+
 
 class SortStrategy(Enum):
     PRIORITY_FIRST = "priority_first"
@@ -47,12 +49,10 @@ class BaseSortStrategy(ABC):
 class PriorityFirstStrategy(BaseSortStrategy):
     """优先级优先：critical > urgent > normal，同优先级按交期升序，同交期按批次号。"""
 
-    PRIORITY_ORDER = {"critical": 0, "urgent": 1, "normal": 2}
-
     def sort(self, batches: List[BatchForSort]) -> List[BatchForSort]:
         def sort_key(batch: BatchForSort):
-            pr = (batch.priority or "normal").strip().lower() or "normal"
-            priority_rank = self.PRIORITY_ORDER.get(pr, 99)
+            pr = normalize_priority(batch.priority, default="normal")
+            priority_rank = PRIORITY_ORDER.get(pr, 99)
             due_rank = batch.due_date if batch.due_date else date.max
             return (priority_rank, due_rank, batch.batch_id)
 
@@ -65,14 +65,12 @@ class PriorityFirstStrategy(BaseSortStrategy):
 class DueDateFirstStrategy(BaseSortStrategy):
     """交期优先：交期早的优先，无交期的排最后；同交期按优先级，同优先级按批次号。"""
 
-    PRIORITY_ORDER = {"critical": 0, "urgent": 1, "normal": 2}
-
     def sort(self, batches: List[BatchForSort]) -> List[BatchForSort]:
         def sort_key(batch: BatchForSort):
             has_due = 0 if batch.due_date else 1  # 无交期的排最后
             due_rank = batch.due_date if batch.due_date else date.max
-            pr = (batch.priority or "normal").strip().lower() or "normal"
-            priority_rank = self.PRIORITY_ORDER.get(pr, 99)
+            pr = normalize_priority(batch.priority, default="normal")
+            priority_rank = PRIORITY_ORDER.get(pr, 99)
             return (has_due, due_rank, priority_rank, batch.batch_id)
 
         return sorted(batches, key=sort_key)
@@ -90,8 +88,6 @@ score = priority_weight×priority_score + due_weight×due_score
 - V1.1 起，“齐套权重”作为预留字段，不参与当前排序（排产本身只排齐套批次）
 """
 
-    PRIORITY_SCORE = {"critical": 100, "urgent": 60, "normal": 20}
-
     def __init__(self, priority_weight: float = 0.4, due_weight: float = 0.5):
         self.priority_weight = float(priority_weight)
         self.due_weight = float(due_weight)
@@ -100,8 +96,8 @@ score = priority_weight×priority_score + due_weight×due_score
         today = date.today()
 
         def calc_score(batch: BatchForSort) -> float:
-            pr = (batch.priority or "normal").strip().lower() or "normal"
-            priority_score = self.PRIORITY_SCORE.get(pr, 0)
+            pr = normalize_priority(batch.priority, default="normal")
+            priority_score = PRIORITY_SCORE.get(pr, 0)
 
             if batch.due_date:
                 days_left = (batch.due_date - today).days
@@ -168,7 +164,10 @@ def parse_strategy(value: Any, default: SortStrategy = SortStrategy.PRIORITY_FIR
     if isinstance(value, SortStrategy):
         return value
     try:
-        return SortStrategy(str(value))
+        s = str(value or "").strip().lower()
+        if not s:
+            return default
+        return SortStrategy(s)
     except Exception:
         return default
 

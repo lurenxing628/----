@@ -22,8 +22,8 @@ class OperatorMachine:
             id=int(raw_id) if raw_id is not None and raw_id != "" else None,
             operator_id=str(get(row, "operator_id") or ""),
             machine_id=str(get(row, "machine_id") or ""),
-            skill_level=str(get(row, "skill_level") or "normal"),
-            is_primary=str(get(row, "is_primary") or "no"),
+            skill_level=(str(get(row, "skill_level") or "normal").strip().lower() or "normal"),
+            is_primary=(str(get(row, "is_primary") or "no").strip().lower() or "no"),
             created_at=get(row, "created_at"),
         )
 

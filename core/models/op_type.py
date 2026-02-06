@@ -21,7 +21,7 @@ class OpType:
         return cls(
             op_type_id=str(get(row, "op_type_id") or ""),
             name=str(get(row, "name") or ""),
-            category=str(get(row, "category") or "internal"),
+            category=(str(get(row, "category") or "internal").strip().lower() or "internal"),
             default_hours=float(val) if val is not None and val != "" else None,
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),

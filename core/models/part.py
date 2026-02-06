@@ -22,7 +22,7 @@ class Part:
             part_no=str(get(row, "part_no") or ""),
             part_name=str(get(row, "part_name") or ""),
             route_raw=get(row, "route_raw"),
-            route_parsed=str(get(row, "route_parsed") or "no"),
+            route_parsed=(str(get(row, "route_parsed") or "no").strip().lower() or "no"),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),

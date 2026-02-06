@@ -177,10 +177,15 @@ def dispatch_sgs(
                     machine_id = (getattr(op, "machine_id", None) or "").strip()
                     operator_id = (getattr(op, "operator_id", None) or "").strip()
                     if not machine_id or not operator_id:
-                        # 留给实际排产时报错；这里给一个兜底 key（避免 best_pair 为空）
+                        # 缺资源：实际排产一定会失败；打分阶段必须惩罚，避免在 ATC/CR 下被优先选择。
+                        score_penalty = 1.0
                         est_start = batch_progress.get(bid, base_time)
                         est_end = est_start
-                        proc_h = 0.0
+                        # 仅用于打分：给一个稳定的处理时间尺度，避免 proc_hours=0 触发极端派工 key
+                        try:
+                            proc_h = max(float(avg_proc_hours), 1e-6)
+                        except Exception:
+                            proc_h = 1.0
                         change_pen = 1
                     else:
                         prev_end = batch_progress.get(bid, base_time)
@@ -197,22 +202,34 @@ def dispatch_sgs(
                             total_hours = float(setup_hours) + float(unit_hours) * float(qty)
                         except Exception:
                             total_hours = 0.0
+                            score_penalty = 1.0
                         eff = 1.0
                         try:
                             eff = float(scheduler.calendar.get_efficiency(est_start, operator_id=operator_id) or 1.0)
                         except Exception:
                             eff = 1.0
-                        if eff and eff > 0 and eff != 1.0:
-                            total_hours = total_hours / eff
-                        proc_h = max(float(total_hours), 0.0)
-                        est_end = scheduler.calendar.add_working_hours(est_start, proc_h, priority=priority, operator_id=operator_id)
-
-                        last_type = (last_op_type_by_machine.get(machine_id) or "").strip()
-                        cur_type = (str(getattr(op, "op_type_name", None) or "") or "").strip()
-                        if last_type and cur_type and last_type != cur_type:
+                        if score_penalty and score_penalty > 0:
+                            # 工时不可解析：打分阶段按“不可估算”处理，避免成为最优候选
+                            try:
+                                proc_h = max(float(avg_proc_hours), 1e-6)
+                            except Exception:
+                                proc_h = 1.0
+                            est_end = est_start
                             change_pen = 1
                         else:
-                            change_pen = 0
+                            if eff and eff > 0 and eff != 1.0:
+                                total_hours = total_hours / eff
+                            proc_h = max(float(total_hours), 0.0)
+                            est_end = scheduler.calendar.add_working_hours(
+                                est_start, proc_h, priority=priority, operator_id=operator_id
+                            )
+
+                            last_type = (last_op_type_by_machine.get(machine_id) or "").strip()
+                            cur_type = (str(getattr(op, "op_type_name", None) or "") or "").strip()
+                            if last_type and cur_type and last_type != cur_type:
+                                change_pen = 1
+                            else:
+                                change_pen = 0
 
                 k = build_dispatch_key(
                     DispatchInputs(

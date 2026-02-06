@@ -169,7 +169,8 @@ class RouteParser:
 
             op_type = op_types.get(op_type_name)
             if op_type:
-                is_internal = (op_type.category or "internal") == "internal"
+                cat = str(getattr(op_type, "category", None) or "internal").strip().lower() or "internal"
+                is_internal = cat == "internal"
                 is_recognized = True
             else:
                 # 未识别的工种，默认为外部

@@ -37,7 +37,26 @@ def main():
         conn0.execute("UPDATE SchemaVersion SET version=3 WHERE id=1")
 
         # Parts（外键前置）
-        conn0.execute("INSERT INTO Parts (part_no, part_name, route_raw, route_parsed) VALUES (?,?,?,?)", ("P001", "零件", "", "yes"))
+        conn0.execute(
+            "INSERT INTO Parts (part_no, part_name, route_raw, route_parsed) VALUES (?,?,?,?)",
+            ("P001", "零件", "", " YES "),
+        )
+
+        # OpTypes：category（internal/external）
+        conn0.execute(
+            "INSERT INTO OpTypes (op_type_id, name, category) VALUES (?,?,?)",
+            ("OT001", "数铣", " EXTERNAL "),
+        )
+
+        # Operator/Machine（为 OperatorMachine 外键前置）
+        conn0.execute("INSERT INTO Operators (operator_id, name, status) VALUES (?,?,?)", ("O1", "测试人员", "active"))
+        conn0.execute("INSERT INTO Machines (machine_id, name, status) VALUES (?,?,?)", ("M1", "测试设备", "active"))
+
+        # OperatorMachine：skill_level/is_primary
+        conn0.execute(
+            "INSERT INTO OperatorMachine (operator_id, machine_id, skill_level, is_primary) VALUES (?,?,?,?)",
+            ("O1", "M1", " ExPeRt ", " YES "),
+        )
 
         # Batches：priority/ready_status/status
         conn0.execute(
@@ -88,6 +107,18 @@ def main():
     # 3) 断言：字段已被清洗；SchemaVersion >= CURRENT_SCHEMA_VERSION
     conn = get_connection(test_db)
     try:
+        rowp = conn.execute("SELECT route_parsed FROM Parts WHERE part_no='P001'").fetchone()
+        assert rowp["route_parsed"] == "yes", f"Parts.route_parsed 清洗失败：{rowp['route_parsed']!r}"
+
+        rowot = conn.execute("SELECT category FROM OpTypes WHERE op_type_id='OT001'").fetchone()
+        assert rowot["category"] == "external", f"OpTypes.category 清洗失败：{rowot['category']!r}"
+
+        rowom = conn.execute(
+            "SELECT skill_level, is_primary FROM OperatorMachine WHERE operator_id='O1' AND machine_id='M1'"
+        ).fetchone()
+        assert rowom["skill_level"] == "expert", f"OperatorMachine.skill_level 清洗失败：{rowom['skill_level']!r}"
+        assert rowom["is_primary"] == "yes", f"OperatorMachine.is_primary 清洗失败：{rowom['is_primary']!r}"
+
         rowb = conn.execute("SELECT priority, ready_status, status FROM Batches WHERE batch_id='B001'").fetchone()
         assert rowb["priority"] == "urgent", f"Batches.priority 清洗失败：{rowb['priority']!r}"
         assert rowb["ready_status"] == "yes", f"Batches.ready_status 清洗失败：{rowb['ready_status']!r}"

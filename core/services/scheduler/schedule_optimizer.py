@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import random
 import time
+import traceback
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms import BatchForSort, GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
+from core.algorithms.sort_strategies import parse_strategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 
 
@@ -50,14 +52,10 @@ def optimize_schedule(
     cfg_snapshot = cfg.to_dict() if hasattr(cfg, "to_dict") else (cfg if isinstance(cfg, dict) else None)
     scheduler = GreedyScheduler(calendar_service=calendar_service, config_service=cfg_snapshot, logger=logger)
 
-    strategy_enum: Optional[SortStrategy] = None
-    try:
-        strategy_enum = SortStrategy(cfg.sort_strategy)
-    except Exception:
-        strategy_enum = None
+    strategy_enum: SortStrategy = parse_strategy(getattr(cfg, "sort_strategy", None), default=SortStrategy.PRIORITY_FIRST)
 
     strategy_params: Optional[Dict[str, Any]] = None
-    if (cfg.sort_strategy or "").strip() == SortStrategy.WEIGHTED.value:
+    if strategy_enum == SortStrategy.WEIGHTED:
         strategy_params = {
             "priority_weight": float(cfg.priority_weight),
             "due_weight": float(cfg.due_weight),
@@ -118,10 +116,11 @@ def optimize_schedule(
         return [x.batch_id for x in sorter0.sort(batch_for_sort)]
 
     # multi-start：策略集（先用当前策略，再补全其它策略）
+    current_key = str(strategy_enum.value)
     if algo_mode == "improve":
-        keys = [cfg.sort_strategy] + [k for k in cfg_svc.VALID_STRATEGIES if k != cfg.sort_strategy]  # type: ignore[attr-defined]
+        keys = [current_key] + [k for k in cfg_svc.VALID_STRATEGIES if k != current_key]  # type: ignore[attr-defined]
     else:
-        keys = [cfg.sort_strategy]
+        keys = [current_key]
 
     best = None
     attempts: List[Dict[str, Any]] = []
@@ -182,10 +181,7 @@ def optimize_schedule(
                 )
             if ort_order and time.time() <= deadline:
                 # 用当前策略（仅用于“补齐 order 未覆盖的批次”）
-                try:
-                    ort_strat = SortStrategy(cfg.sort_strategy)
-                except Exception:
-                    ort_strat = SortStrategy.PRIORITY_FIRST
+                ort_strat = strategy_enum
                 ort_params: Dict[str, Any] = {}
                 if ort_strat == SortStrategy.WEIGHTED:
                     ort_params = {
@@ -248,7 +244,12 @@ def optimize_schedule(
             # 可选项失败不阻断主流程
             if logger:
                 try:
-                    logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{e}")
+                    # 尽量带堆栈（便于定位依赖缺失/配置错误等）；若 logger 不支持 exc_info 参数则回退为拼接文本。
+                    try:
+                        logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{e}", exc_info=True)
+                    except TypeError:
+                        tb = traceback.format_exc(limit=10)
+                        logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{e}\n{tb}")
                 except Exception:
                     pass
 
@@ -256,10 +257,7 @@ def optimize_schedule(
     for k in keys:
         if time.time() > deadline:
             break
-        try:
-            strat = SortStrategy(k)
-        except Exception:
-            continue
+        strat = parse_strategy(k, default=SortStrategy.PRIORITY_FIRST)
         params0: Dict[str, Any] = {}
         if strat == SortStrategy.WEIGHTED:
             params0 = {

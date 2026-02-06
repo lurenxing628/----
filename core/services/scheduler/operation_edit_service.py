@@ -141,7 +141,7 @@ def update_external_operation(
 
     # 合并周期（merged）时：周期不在 BatchOperations.ext_days 上维护
     tmpl, grp = svc._get_template_and_group_for_op(op)
-    if grp and grp.merge_mode == MergeMode.MERGED.value:
+    if grp and (str(getattr(grp, "merge_mode", None) or "").strip().lower() == MergeMode.MERGED.value):
         if ext_days is not None and svc._normalize_text(ext_days) is not None:
             td = grp.total_days
             td_text = f"{td} 天" if td is not None else "（未设置）"

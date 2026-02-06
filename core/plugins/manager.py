@@ -181,7 +181,10 @@ class PluginManager:
                         err = f"{e}\n{tb}"
                         if logger:
                             try:
-                                logger.error(f"插件注册失败：{plugin_id} err={e}")
+                                try:
+                                    logger.error(f"插件注册失败：{plugin_id} err={e}", exc_info=True)
+                                except TypeError:
+                                    logger.error(f"插件注册失败：{plugin_id} err={e}\n{tb}")
                             except Exception:
                                 pass
 
@@ -217,7 +220,10 @@ class PluginManager:
                 )
                 if logger:
                     try:
-                        logger.error(f"插件加载失败：{fn} err={e}")
+                        try:
+                            logger.error(f"插件加载失败：{fn} err={e}", exc_info=True)
+                        except TypeError:
+                            logger.error(f"插件加载失败：{fn} err={e}\n{tb}")
                     except Exception:
                         pass
 

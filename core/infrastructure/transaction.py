@@ -54,18 +54,65 @@ class TransactionManager:
 
     @contextmanager
     def transaction(self):
-        """事务上下文管理器：成功提交、异常回滚。"""
-        _inc_depth(self.conn)
+        """
+        事务上下文管理器：成功提交、异常回滚，并支持“嵌套事务”。
+
+        说明：
+        - SQLite 本身不支持真正的嵌套事务，这里使用 SAVEPOINT 来模拟。
+        - 内层失败：仅回滚到内层 SAVEPOINT，不影响外层继续执行。
+        - 外层失败：整体回滚。
+        - 若进入本上下文前连接已处于事务中（conn.in_transaction=True），则不在外层自动 commit/rollback，
+          仅负责本层 SAVEPOINT 的 release/rollback（由外层事务边界负责提交/回滚）。
+        """
+        conn = self.conn
+        _inc_depth(conn)
+        owns_tx = False
+        sp_name = None
         try:
-            yield self.conn
-            self.conn.commit()
-            logger.debug("事务提交成功")
-        except Exception as e:
-            self.conn.rollback()
-            logger.error(f"事务已回滚：{e}")
-            raise
+            depth = int(_depth_map().get(id(conn), 0) or 0)
+            sp_name = f"aps_tx_{id(conn)}_{depth}"
+
+            # 仅最外层需要判断“是否由本 TransactionManager 启动事务”
+            if depth == 1:
+                try:
+                    owns_tx = not bool(getattr(conn, "in_transaction", False))
+                except Exception:
+                    # 防御：极少数连接实现可能没有该属性；此时按“自己负责提交”处理
+                    owns_tx = True
+
+            # SAVEPOINT 会在必要时隐式开启事务
+            conn.execute(f"SAVEPOINT {sp_name}")
+
+            try:
+                yield conn
+            except Exception as e:
+                # 回滚到本层 savepoint（不影响外层）
+                try:
+                    conn.execute(f"ROLLBACK TO SAVEPOINT {sp_name}")
+                except Exception as e2:
+                    logger.error(f"SAVEPOINT 回滚失败：{e2}")
+                try:
+                    conn.execute(f"RELEASE SAVEPOINT {sp_name}")
+                except Exception as e2:
+                    logger.error(f"SAVEPOINT 释放失败（回滚路径）：{e2}")
+
+                # 最外层且由我们启动的事务：结束事务（避免悬挂在半事务状态）
+                if depth == 1 and owns_tx:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+
+                logger.error(f"事务已回滚：{e}")
+                raise
+            else:
+                # 正常路径：释放本层 savepoint
+                conn.execute(f"RELEASE SAVEPOINT {sp_name}")
+                if depth == 1 and owns_tx:
+                    conn.commit()
+                logger.debug("事务提交成功")
         finally:
-            _dec_depth(self.conn)
+            _dec_depth(conn)
 
 
 def transactional(func):

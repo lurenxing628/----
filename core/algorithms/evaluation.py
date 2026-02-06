@@ -6,6 +6,7 @@ import statistics
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.types import ScheduleResult
+from core.algorithms.priority_constants import PRIORITY_WEIGHT, normalize_priority
 
 
 def _parse_due_date(value: Any) -> Optional[date]:
@@ -42,6 +43,9 @@ class ScheduleMetrics:
     operator_util_avg: float = 0.0
     machine_load_cv: float = 0.0
     operator_load_cv: float = 0.0
+    # P2：指标边界语义（向后兼容新增字段）
+    internal_horizon_hours: float = 0.0  # internal 利用率的时间窗（=makespan_internal_hours）
+    util_defined: bool = False  # horizon>0 才为 True；否则 util_avg 仅为 0.0 占位
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -59,6 +63,8 @@ class ScheduleMetrics:
             "operator_util_avg": float(round(self.operator_util_avg, 6)),
             "machine_load_cv": float(round(self.machine_load_cv, 6)),
             "operator_load_cv": float(round(self.operator_load_cv, 6)),
+            "internal_horizon_hours": float(round(self.internal_horizon_hours, 4)),
+            "util_defined": bool(self.util_defined),
         }
 
 
@@ -82,7 +88,6 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
     overdue_count = 0
     tardiness_hours = 0.0
     weighted_tardiness_hours = 0.0
-    priority_weight = {"normal": 1.0, "urgent": 2.0, "critical": 3.0}
     for bid, b in batches.items():
         due_d = _parse_due_date(getattr(b, "due_date", None))
         if not due_d:
@@ -95,8 +100,8 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
             overdue_count += 1
             delta_h = (fin - due_end).total_seconds() / 3600.0
             tardiness_hours += delta_h
-            pr = str(getattr(b, "priority", "") or "normal").strip().lower() or "normal"
-            w = float(priority_weight.get(pr, 1.0))
+            pr = normalize_priority(getattr(b, "priority", None), default="normal")
+            w = float(PRIORITY_WEIGHT.get(pr, 1.0))
             weighted_tardiness_hours += (delta_h * w)
 
     makespan_hours = 0.0
@@ -172,6 +177,7 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
     horizon = makespan_internal_hours
     machine_util_avg = float(statistics.fmean([h / horizon for h in machine_hours])) if horizon > 0 and machine_hours else 0.0
     operator_util_avg = float(statistics.fmean([h / horizon for h in operator_hours])) if horizon > 0 and operator_hours else 0.0
+    util_defined = bool(horizon > 0)
 
     return ScheduleMetrics(
         overdue_count=int(overdue_count),
@@ -188,6 +194,8 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
         operator_util_avg=float(operator_util_avg),
         machine_load_cv=float(_cv(machine_hours)),
         operator_load_cv=float(_cv(operator_hours)),
+        internal_horizon_hours=float(horizon),
+        util_defined=bool(util_defined),
     )
 
 
