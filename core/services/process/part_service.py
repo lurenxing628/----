@@ -237,7 +237,7 @@ class PartService:
         """
         # operations
         for op in parse_result.operations:
-            if op.source == "internal":
+            if (op.source or "").strip().lower() == "internal":
                 self.op_repo.create(
                     {
                         "part_no": part_no,
@@ -326,9 +326,9 @@ class PartService:
             raise ValidationError("工时不能为负数", field="工时")
 
         op = self.op_repo.get(pn, s)
-        if not op or op.status != "active":
+        if not op or (op.status or "").strip().lower() != "active":
             raise BusinessError(ErrorCode.NOT_FOUND, f"工序 {s} 不存在或已删除")
-        if op.source != "internal":
+        if (op.source or "").strip().lower() != "internal":
             raise ValidationError("只能编辑内部工序工时", field="工序")
 
         with self.tx_manager.transaction():
@@ -348,7 +348,13 @@ class PartService:
             raise BusinessError(ErrorCode.EXTERNAL_GROUP_ERROR, "外部工序组不存在或不属于该零件")
 
         ops = self.op_repo.list_by_part(pn, include_deleted=False)
-        to_delete = [int(op.seq) for op in ops if op.ext_group_id == gid and op.source == "external" and op.status == "active"]
+        to_delete = [
+            int(op.seq)
+            for op in ops
+            if op.ext_group_id == gid
+            and (op.source or "").strip().lower() == "external"
+            and (op.status or "").strip().lower() == "active"
+        ]
 
         # 严格按文档规则：仅允许删除“首部连续外部组”或“尾部连续外部组”
         # 注意：文档的 DeletionValidator 里提供了 get_deletion_groups()（首/尾组），这里必须用它做最终判定。
@@ -395,7 +401,13 @@ class PartService:
         group_ids: List[str] = []
         for group in self.group_repo.list_by_part(pn):
             # 若该组的全部工序 seq 都在 deletable_seqs 中，则认为组可删
-            seqs = [int(op.seq) for op in ops if op.ext_group_id == group.group_id and op.source == "external" and op.status == "active"]
+            seqs = [
+                int(op.seq)
+                for op in ops
+                if op.ext_group_id == group.group_id
+                and (op.source or "").strip().lower() == "external"
+                and (op.status or "").strip().lower() == "active"
+            ]
             if seqs and all(s in deletable_seqs for s in seqs):
                 group_ids.append(group.group_id)
         return group_ids

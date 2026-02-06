@@ -45,14 +45,14 @@ class BatchOperation:
             seq=int(seq) if seq is not None and seq != "" else 0,
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             op_type_name=str(get(row, "op_type_name") or ""),
-            source=str(get(row, "source") or "internal"),
+            source=(str(get(row, "source") or "internal").strip().lower() or "internal"),
             machine_id=str(machine_id) if machine_id is not None and machine_id != "" else None,
             operator_id=str(operator_id) if operator_id is not None and operator_id != "" else None,
             supplier_id=str(supplier_id) if supplier_id is not None and supplier_id != "" else None,
             setup_hours=float(setup_hours) if setup_hours is not None and setup_hours != "" else 0.0,
             unit_hours=float(unit_hours) if unit_hours is not None and unit_hours != "" else 0.0,
             ext_days=float(ext_days) if ext_days is not None and ext_days != "" else None,
-            status=str(get(row, "status") or "pending"),
+            status=(str(get(row, "status") or "pending").strip().lower() or "pending"),
             created_at=get(row, "created_at"),
         )
 

@@ -20,7 +20,7 @@ class Operator:
         return cls(
             operator_id=str(get(row, "operator_id") or ""),
             name=str(get(row, "name") or ""),
-            status=str(get(row, "status") or "active"),
+            status=(str(get(row, "status") or "active").strip().lower() or "active"),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),

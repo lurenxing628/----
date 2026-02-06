@@ -4,6 +4,8 @@ import logging.handlers
 import os
 from typing import Optional, Dict, Any
 
+from core.infrastructure.transaction import in_transaction_context
+
 
 class AppLogger:
     """应用日志管理器（滚动文件 + 错误文件）。"""
@@ -102,6 +104,9 @@ class OperationLogger:
         error_message: str = None,
     ):
         try:
+            # 注意：不要在外层事务（TransactionManager）中隐式 commit()，否则会破坏原子性。
+            # 这里通过 transaction 上下文标记来判断是否应自动提交。
+            auto_commit = not in_transaction_context(self.conn)
             self.conn.execute(
                 """
                 INSERT INTO OperationLogs
@@ -121,7 +126,8 @@ class OperationLogger:
                     error_message,
                 ),
             )
-            self.conn.commit()
+            if auto_commit:
+                self.conn.commit()
         except Exception as e:
             # 记录失败时写文件日志，避免影响主流程
             self.logger.error(f"写入操作日志失败：{e}")

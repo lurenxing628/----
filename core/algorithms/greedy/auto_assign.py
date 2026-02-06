@@ -108,7 +108,7 @@ def auto_assign_internal_resources(
                 eff = float(scheduler.calendar.get_efficiency(earliest, operator_id=oid) or 1.0)
             except Exception:
                 eff = 1.0
-            if eff and 0 < eff < 1.0:
+            if eff and eff > 0 and eff != 1.0:
                 total_hours = total_hours / eff
 
             dt_list: List[Tuple[datetime, datetime]] = []

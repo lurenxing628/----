@@ -1,0 +1,672 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+  /* 整体布局 */
+  .manual-wrapper {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+  }
+
+  /* 目录侧栏 */
+  .manual-toc {
+    width: 260px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    background: #fafafa;
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid #e0e0e0;
+  }
+  .manual-toc h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #666;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 8px;
+  }
+  .manual-toc ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .manual-toc li {
+    margin: 0;
+  }
+  .manual-toc a {
+    display: block;
+    padding: 8px 12px;
+    color: #333;
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1.4;
+    transition: background 0.15s;
+  }
+  .manual-toc a:hover {
+    background: #e3f2fd;
+  }
+  .manual-toc a.active {
+    background: #1976d2;
+    color: white;
+    font-weight: 500;
+  }
+  .manual-toc .toc-h3 {
+    padding-left: 24px;
+    font-size: 13px;
+    color: #666;
+  }
+  .manual-toc .toc-h3:hover {
+    color: #333;
+  }
+
+  /* 目录折叠按钮 */
+  .toc-toggle {
+    display: none;
+    background: #1976d2;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 12px;
+    font-size: 14px;
+  }
+
+  /* 正文区域 */
+  .manual-content {
+    flex: 1;
+    min-width: 0;
+    background: white;
+    border-radius: 8px;
+    padding: 24px;
+    border: 1px solid #e0e0e0;
+  }
+
+  /* Markdown 渲染样式 */
+  .manual-content h1 {
+    font-size: 28px;
+    margin: 0 0 16px 0;
+    color: #1565c0;
+    border-bottom: 2px solid #1976d2;
+    padding-bottom: 12px;
+  }
+  .manual-content h2 {
+    font-size: 22px;
+    margin: 32px 0 16px 0;
+    color: #1976d2;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 8px;
+    scroll-margin-top: 20px;
+  }
+  .manual-content h3 {
+    font-size: 18px;
+    margin: 24px 0 12px 0;
+    color: #333;
+    scroll-margin-top: 20px;
+  }
+  .manual-content p {
+    margin: 12px 0;
+    line-height: 1.8;
+    color: #333;
+  }
+  .manual-content ul, .manual-content ol {
+    margin: 12px 0;
+    padding-left: 24px;
+    line-height: 1.8;
+  }
+  .manual-content li {
+    margin: 6px 0;
+  }
+  .manual-content blockquote {
+    margin: 16px 0;
+    padding: 12px 16px;
+    background: #e8f5e9;
+    border-left: 4px solid #4caf50;
+    border-radius: 0 6px 6px 0;
+    color: #2e7d32;
+  }
+  .manual-content blockquote p {
+    margin: 0;
+    color: inherit;
+  }
+  .manual-content code {
+    background: #f5f5f5;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 14px;
+    color: #c62828;
+  }
+  .manual-content pre {
+    background: #263238;
+    color: #aed581;
+    padding: 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 16px 0;
+  }
+  .manual-content pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+  }
+  .manual-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+  }
+  .manual-content th, .manual-content td {
+    border: 1px solid #e0e0e0;
+    padding: 10px 12px;
+    text-align: left;
+  }
+  .manual-content th {
+    background: #f5f5f5;
+    font-weight: 600;
+  }
+  .manual-content tr:hover {
+    background: #fafafa;
+  }
+  .manual-content hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 24px 0;
+  }
+  .manual-content a {
+    color: #1976d2;
+    text-decoration: none;
+  }
+  .manual-content a:hover {
+    text-decoration: underline;
+  }
+  .manual-content strong {
+    color: #1565c0;
+  }
+
+  /* 响应式设计 */
+  @media (max-width: 900px) {
+    .manual-wrapper {
+      flex-direction: column;
+    }
+    .manual-toc {
+      position: relative;
+      top: 0;
+      width: 100%;
+      max-height: none;
+      display: none;
+    }
+    .manual-toc.show {
+      display: block;
+    }
+    .toc-toggle {
+      display: block;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2>排产调度使用指南</h2>
+        <div class="muted" style="margin-top:6px; line-height:1.7;">
+          这份指南帮助你快速掌握排产系统的使用方法。选择左侧目录可快速跳转到对应章节。
+        </div>
+      </div>
+      <div>
+        <a href="{{ url_for('scheduler.config_page') }}">返回排产高级设置</a>
+        <span class="muted">|</span>
+        <a href="{{ url_for('scheduler.batches_page') }}">返回排产调度</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:8px 16px;">
+    <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
+      {% if download_url %}
+        <a href="{{ download_url }}">下载 Markdown 原文</a>
+      {% else %}
+        <span class="muted">下载：不可用（说明书文件缺失）</span>
+      {% endif %}
+
+      {% if manual_mtime %}
+        <span class="muted">更新时间：{{ manual_mtime }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <button class="toc-toggle" onclick="toggleToc()">展开/收起目录</button>
+
+  <div class="manual-wrapper">
+    <!-- 左侧目录 -->
+    <nav class="manual-toc" id="toc">
+      <h3>目录导航</h3>
+      <ul id="toc-list">
+        <!-- 由 JavaScript 自动生成 -->
+      </ul>
+    </nav>
+
+    <!-- 右侧正文 -->
+    <div class="manual-content" id="content">
+      <noscript>
+        <pre style="white-space:pre-wrap; line-height:1.7; margin:0;">{{ manual_text }}</pre>
+        <div class="muted" style="margin-top:8px;">提示：启用 JavaScript 可获得目录导航与更好的阅读体验。</div>
+      </noscript>
+    </div>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // 原始 Markdown 内容
+  const rawMarkdown = {{ manual_text | tojson }};
+
+  function normalizeNewlines(s) {
+    return (s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  }
+
+  function escapeHtml(text) {
+    const s = ("" + (text == null ? "" : text));
+    return s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  // 生成与 Markdown 目录链接兼容的锚点 id：
+  // - "1. 标题" -> "1-标题"
+  // - 去掉空格/标点（保留字母数字/中文/下划线/连字符）
+  function slugifyHeading(text) {
+    let t = (text || "").trim();
+    // 去掉可能出现在标题里的行内标记（以免影响 id）
+    t = t.replace(/`([^`]+)`/g, "$1");
+    t = t.replace(/\*\*([^*]+)\*\*/g, "$1");
+    t = t.replace(/\*([^*]+)\*/g, "$1");
+    // 处理常见的序号前缀：1. / 1． / 1。
+    t = t.replace(/^(\d+)\s*[\.．。]\s*/g, "$1-");
+    t = t.toLowerCase();
+    // 仅保留：字母数字下划线、中文、连字符
+    t = t.replace(/[^\w\u4e00-\u9fa5-]+/g, "");
+    // 连字符收敛 + 去首尾
+    t = t.replace(/-+/g, "-").replace(/^-+/, "").replace(/-+$/, "");
+    return t || "section";
+  }
+
+  function renderInline(text) {
+    let s = escapeHtml(text);
+
+    // 行内代码
+    s = s.replace(/`([^`]+)`/g, function(_m, code) {
+      return "<code>" + code + "</code>";
+    });
+
+    // 加粗
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    // 斜体（尽量保守，避免吞掉加粗等结构）
+    s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+
+    // 链接（内部/外部）
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(_m, label, url) {
+      const href = (url || "").trim();
+      const text = label || "";
+      if (href.startsWith("#")) {
+        return '<a href="' + href + '">' + text + "</a>";
+      }
+      return '<a href="' + href + '" target="_blank" rel="noopener noreferrer">' + text + "</a>";
+    });
+
+    return s;
+  }
+
+  function isHrLine(line) {
+    return (line || "").trim() === "---";
+  }
+
+  function isFenceStart(line) {
+    return (line || "").trim().startsWith("```");
+  }
+
+  function isHeadingLine(line) {
+    return /^(#{1,3})\s+/.test(line || "");
+  }
+
+  function parseHeadingLine(line) {
+    const m = (line || "").match(/^(#{1,3})\s+(.+)$/);
+    if (!m) return null;
+    return { level: m[1].length, text: (m[2] || "").trim() };
+  }
+
+  function isBlockquoteLine(line) {
+    return /^\s*>\s?/.test(line || "");
+  }
+
+  function stripBlockquotePrefix(line) {
+    return (line || "").replace(/^\s*>\s?/, "");
+  }
+
+  function isTableRowLine(line) {
+    const t = (line || "").trim();
+    return t.startsWith("|") && t.endsWith("|") && t.includes("|");
+  }
+
+  function isTableSeparatorLine(line) {
+    // 形如：|---|---| 或 |:---|---:|
+    return /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(line || "");
+  }
+
+  function splitTableRow(line) {
+    const t = (line || "").trim().replace(/^\|/, "").replace(/\|$/, "");
+    return t.split("|").map(c => (c || "").trim());
+  }
+
+  function parseListItem(line) {
+    const mOl = (line || "").match(/^(\s*)(\d+)\.\s+(.+)$/);
+    if (mOl) {
+      const indent = (mOl[1] || "").length;
+      return { type: "ol", indentLevel: Math.floor(indent / 2), text: (mOl[3] || "").trim() };
+    }
+    const mUl = (line || "").match(/^(\s*)[-+*]\s+(.+)$/);
+    if (mUl) {
+      const indent = (mUl[1] || "").length;
+      return { type: "ul", indentLevel: Math.floor(indent / 2), text: (mUl[2] || "").trim() };
+    }
+    return null;
+  }
+
+  function closeAllLists(state) {
+    while (state.listStack.length > 0) {
+      const cur = state.listStack[state.listStack.length - 1];
+      if (cur.liOpen) {
+        state.out.push("</li>");
+        cur.liOpen = false;
+      }
+      state.out.push("</" + cur.type + ">");
+      state.listStack.pop();
+    }
+  }
+
+  function ensureList(state, level, type) {
+    // 收缩到目标层级
+    while (state.listStack.length > level + 1) {
+      const cur = state.listStack[state.listStack.length - 1];
+      if (cur.liOpen) {
+        state.out.push("</li>");
+        cur.liOpen = false;
+      }
+      state.out.push("</" + cur.type + ">");
+      state.listStack.pop();
+    }
+
+    // 同层类型不一致：关闭并重开
+    if (state.listStack.length === level + 1) {
+      const cur = state.listStack[level];
+      if (cur.type !== type) {
+        if (cur.liOpen) {
+          state.out.push("</li>");
+          cur.liOpen = false;
+        }
+        state.out.push("</" + cur.type + ">");
+        state.listStack.pop();
+      }
+    }
+
+    // 扩展到目标层级
+    while (state.listStack.length < level + 1) {
+      // 嵌套 list 必须放在父级 li 内
+      if (state.listStack.length > 0) {
+        const parent = state.listStack[state.listStack.length - 1];
+        if (!parent.liOpen) {
+          state.out.push("<li>");
+          parent.liOpen = true;
+        }
+      }
+      state.out.push("<" + type + ">");
+      state.listStack.push({ type: type, liOpen: false });
+    }
+
+    // 开始新 item 前，关闭同层上一条 li
+    const cur = state.listStack[level];
+    if (cur.liOpen) {
+      state.out.push("</li>");
+      cur.liOpen = false;
+    }
+  }
+
+  function renderMarkdown(md) {
+    const text = normalizeNewlines(md);
+    const lines = text.split("\n");
+    const state = { out: [], listStack: [] };
+    let paragraph = [];
+    let i = 0;
+
+    function flushParagraph() {
+      if (paragraph.length > 0) {
+        const joined = paragraph.join(" ").trim();
+        if (joined) state.out.push("<p>" + renderInline(joined) + "</p>");
+        paragraph = [];
+      }
+    }
+
+    while (i < lines.length) {
+      const line = lines[i] == null ? "" : lines[i];
+
+      // fenced code block
+      if (isFenceStart(line)) {
+        flushParagraph();
+        closeAllLists(state);
+        const fence = (line || "").trim();
+        // language is optional: ```js
+        const lang = fence.replace(/^```/, "").trim();
+        const codeLines = [];
+        i += 1;
+        while (i < lines.length && !isFenceStart(lines[i])) {
+          codeLines.push(lines[i] || "");
+          i += 1;
+        }
+        // consume ending fence if present
+        if (i < lines.length && isFenceStart(lines[i])) i += 1;
+        const code = escapeHtml(codeLines.join("\n"));
+        state.out.push('<pre><code class="' + escapeHtml(lang) + '">' + code + "</code></pre>");
+        continue;
+      }
+
+      // blank line
+      if ((line || "").trim() === "") {
+        flushParagraph();
+        closeAllLists(state);
+        i += 1;
+        continue;
+      }
+
+      // horizontal rule
+      if (isHrLine(line)) {
+        flushParagraph();
+        closeAllLists(state);
+        state.out.push("<hr>");
+        i += 1;
+        continue;
+      }
+
+      // heading
+      if (isHeadingLine(line)) {
+        const h = parseHeadingLine(line);
+        if (h) {
+          flushParagraph();
+          closeAllLists(state);
+          const id = slugifyHeading(h.text);
+          state.out.push("<h" + h.level + ' id="' + id + '">' + renderInline(h.text) + "</h" + h.level + ">");
+          i += 1;
+          continue;
+        }
+      }
+
+      // table
+      if (isTableRowLine(line) && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1])) {
+        flushParagraph();
+        closeAllLists(state);
+        const headerCells = splitTableRow(line);
+        i += 2; // skip header + separator
+        const bodyRows = [];
+        while (i < lines.length && isTableRowLine(lines[i])) {
+          bodyRows.push(splitTableRow(lines[i]));
+          i += 1;
+        }
+        let tableHtml = "<table><thead><tr>";
+        headerCells.forEach(c => {
+          tableHtml += "<th>" + renderInline(c) + "</th>";
+        });
+        tableHtml += "</tr></thead>";
+        if (bodyRows.length > 0) {
+          tableHtml += "<tbody>";
+          bodyRows.forEach(r => {
+            tableHtml += "<tr>";
+            r.forEach(c => {
+              tableHtml += "<td>" + renderInline(c) + "</td>";
+            });
+            tableHtml += "</tr>";
+          });
+          tableHtml += "</tbody>";
+        }
+        tableHtml += "</table>";
+        state.out.push(tableHtml);
+        continue;
+      }
+
+      // blockquote (group consecutive lines)
+      if (isBlockquoteLine(line)) {
+        flushParagraph();
+        closeAllLists(state);
+        const quoteLines = [];
+        while (i < lines.length && isBlockquoteLine(lines[i])) {
+          quoteLines.push(stripBlockquotePrefix(lines[i]));
+          i += 1;
+        }
+        const inner = quoteLines
+          .map(x => (x || "").trim())
+          .filter(x => x !== "")
+          .map(x => "<p>" + renderInline(x) + "</p>")
+          .join("");
+        state.out.push("<blockquote>" + inner + "</blockquote>");
+        continue;
+      }
+
+      // list item
+      const li = parseListItem(line);
+      if (li) {
+        flushParagraph();
+        ensureList(state, li.indentLevel, li.type);
+        const cur = state.listStack[li.indentLevel];
+        state.out.push("<li>" + renderInline(li.text));
+        cur.liOpen = true;
+        i += 1;
+        continue;
+      }
+
+      // normal text line -> paragraph
+      closeAllLists(state);
+      paragraph.push((line || "").trim());
+      i += 1;
+    }
+
+    flushParagraph();
+    closeAllLists(state);
+    return state.out.join("\n");
+  }
+
+  // 渲染目录
+  function renderToc(headings) {
+    const tocList = document.getElementById('toc-list');
+    tocList.innerHTML = '';
+
+    headings.forEach(h => {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = '#' + h.id;
+      a.textContent = h.title; // 使用纯文本
+      a.className = h.level === 3 ? 'toc-h3' : '';
+      a.onclick = function(e) {
+        e.preventDefault();
+        const target = document.getElementById(h.id);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // 更新 URL hash
+          history.pushState(null, null, '#' + h.id);
+          // 更新激活状态
+          updateActiveLink(h.id);
+        }
+      };
+      li.appendChild(a);
+      tocList.appendChild(li);
+    });
+  }
+
+  // 更新激活状态
+  function updateActiveLink(activeId) {
+    document.querySelectorAll('.manual-toc a').forEach(a => {
+      a.classList.remove('active');
+      if (a.getAttribute('href') === '#' + activeId) {
+        a.classList.add('active');
+      }
+    });
+  }
+
+  // 滚动监听
+  function setupScrollSpy(headings) {
+    if (!('IntersectionObserver' in window)) return;
+    const observer = new IntersectionObserver(
+      entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) updateActiveLink(entry.target.id);
+        });
+      },
+      { rootMargin: '-20% 0px -70% 0px' }
+    );
+    headings.forEach(h => {
+      const el = document.getElementById(h.id);
+      if (el) observer.observe(el);
+    });
+  }
+
+  // 目录折叠
+  function toggleToc() {
+    const toc = document.getElementById('toc');
+    toc.classList.toggle('show');
+  }
+
+  // 初始化
+  document.addEventListener('DOMContentLoaded', function() {
+    const contentEl = document.getElementById('content');
+    const html = renderMarkdown(rawMarkdown);
+    contentEl.innerHTML = html;
+
+    // 基于 DOM 生成目录（更稳健）
+    const nodes = contentEl.querySelectorAll('h2, h3');
+    const headings = Array.prototype.slice.call(nodes).map(n => ({
+      id: n.id,
+      title: (n.textContent || '').trim(),
+      level: n.tagName === 'H2' ? 2 : 3
+    }));
+    renderToc(headings);
+    setupScrollSpy(headings);
+
+    // 如果 URL 有 hash，跳转到对应位置
+    if (window.location.hash) {
+      const hash = decodeURIComponent(window.location.hash);
+      const target = document.querySelector(hash);
+      if (target) {
+        setTimeout(() => {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          updateActiveLink(hash.slice(1));
+        }, 100);
+      }
+    }
+  });
+</script>
+{% endblock %}

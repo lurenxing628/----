@@ -26,13 +26,13 @@ class WorkCalendar:
         shift_end = get(row, "shift_end")
         return cls(
             date=str(get(row, "date") or ""),
-            day_type=str(get(row, "day_type") or "workday"),
+            day_type=(str(get(row, "day_type") or "workday").strip().lower() or "workday"),
             shift_start=str(shift_start) if shift_start is not None and shift_start != "" else None,
             shift_end=str(shift_end) if shift_end is not None and shift_end != "" else None,
             shift_hours=float(shift_hours) if shift_hours is not None and shift_hours != "" else 8.0,
             efficiency=float(efficiency) if efficiency is not None and efficiency != "" else 1.0,
-            allow_normal=str(get(row, "allow_normal") or "yes"),
-            allow_urgent=str(get(row, "allow_urgent") or "yes"),
+            allow_normal=(str(get(row, "allow_normal") or "yes").strip().lower() or "yes"),
+            allow_urgent=(str(get(row, "allow_urgent") or "yes").strip().lower() or "yes"),
             remark=get(row, "remark"),
         )
 
@@ -82,13 +82,13 @@ class OperatorCalendar:
         return cls(
             operator_id=str(get(row, "operator_id") or ""),
             date=str(get(row, "date") or ""),
-            day_type=str(get(row, "day_type") or "workday"),
+            day_type=(str(get(row, "day_type") or "workday").strip().lower() or "workday"),
             shift_start=str(shift_start) if shift_start is not None and shift_start != "" else None,
             shift_end=str(shift_end) if shift_end is not None and shift_end != "" else None,
             shift_hours=float(shift_hours) if shift_hours is not None and shift_hours != "" else 8.0,
             efficiency=float(efficiency) if efficiency is not None and efficiency != "" else 1.0,
-            allow_normal=str(get(row, "allow_normal") or "yes"),
-            allow_urgent=str(get(row, "allow_urgent") or "yes"),
+            allow_normal=(str(get(row, "allow_normal") or "yes").strip().lower() or "yes"),
+            allow_urgent=(str(get(row, "allow_urgent") or "yes").strip().lower() or "yes"),
             remark=get(row, "remark"),
         )
 

@@ -31,7 +31,10 @@ class DayPolicy:
     shift_start: time = time(8, 0, 0)
 
     def is_priority_allowed(self, priority: Optional[str]) -> bool:
-        p = (priority or BatchPriority.NORMAL.value).strip()
+        # 防御：priority 可能大小写不一致/非字符串/空值
+        p = str(priority or BatchPriority.NORMAL.value).strip().lower()
+        if p not in (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value):
+            p = BatchPriority.NORMAL.value
         if p == BatchPriority.NORMAL.value:
             return self.allow_normal == YesNo.YES.value
         # urgent / critical 归并到 allow_urgent
@@ -174,9 +177,9 @@ class CalendarEngine:
 
             p = self._policy_for_datetime(cur, operator_id=operator_id)
             if not p.is_priority_allowed(priority) or p.shift_hours <= 0:
-                # 跳到下一天班次开始
+                # 跳到下一天：使用 00:00 触发“下一天 policy”，避免沿用当天 shift_start
                 next_day = cur.date() + timedelta(days=1)
-                cur = datetime.combine(next_day, p.shift_start)
+                cur = datetime.combine(next_day, time(0, 0, 0))
                 continue
 
             start, end = p.work_window()
@@ -184,7 +187,7 @@ class CalendarEngine:
                 return start
             if cur >= end:
                 next_day = cur.date() + timedelta(days=1)
-                cur = datetime.combine(next_day, p.shift_start)
+                cur = datetime.combine(next_day, time(0, 0, 0))
                 continue
             return cur
 
@@ -231,13 +234,13 @@ class CalendarEngine:
                 cur = start_w
             if cur >= end_w:
                 # 下一天
-                cur = datetime.combine(cur.date() + timedelta(days=1), p.shift_start)
+                cur = datetime.combine(cur.date() + timedelta(days=1), time(0, 0, 0))
                 cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
                 continue
 
             available = (end_w - cur).total_seconds() / 3600.0
             if available <= 0:
-                cur = datetime.combine(cur.date() + timedelta(days=1), p.shift_start)
+                cur = datetime.combine(cur.date() + timedelta(days=1), time(0, 0, 0))
                 cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
                 continue
 
@@ -246,7 +249,7 @@ class CalendarEngine:
 
             # 用完当日剩余工时，进入下一天
             remaining -= available
-            cur = datetime.combine(cur.date() + timedelta(days=1), p.shift_start)
+            cur = datetime.combine(cur.date() + timedelta(days=1), time(0, 0, 0))
             cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
 
         return cur

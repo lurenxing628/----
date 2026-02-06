@@ -32,7 +32,7 @@ class Schedule:
             operator_id=str(operator_id) if operator_id is not None and operator_id != "" else None,
             start_time=str(get(row, "start_time") or ""),
             end_time=str(get(row, "end_time") or ""),
-            lock_status=str(get(row, "lock_status") or "unlocked"),
+            lock_status=(str(get(row, "lock_status") or "unlocked").strip().lower() or "unlocked"),
             version=int(version) if version is not None and version != "" else 1,
             created_at=get(row, "created_at"),
         )

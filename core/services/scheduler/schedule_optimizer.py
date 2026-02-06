@@ -166,15 +166,20 @@ def optimize_schedule(
             from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
 
             remaining = float(deadline - time.time())
-            tl_cfg = int(getattr(cfg, "ortools_time_limit_seconds", 5) or 5)
-            tl = max(1, min(int(tl_cfg), int(remaining)))
-            ort_order = try_solve_bottleneck_batch_order(
-                operations=algo_ops_to_schedule,
-                batches=batches,
-                start_dt=start_dt,
-                time_limit_seconds=tl,
-                logger=logger,
-            )
+            # 时间预算不足时跳过 OR-Tools warm-start：
+            # - remaining<=0：避免已经超时仍强行跑 1s
+            # - remaining<1：避免 int(remaining)=0 被 tl=max(1,...) 拉回 1s 导致超时
+            ort_order = None
+            if remaining >= 1.0:
+                tl_cfg = int(getattr(cfg, "ortools_time_limit_seconds", 5) or 5)
+                tl = max(1, min(int(tl_cfg), int(remaining)))
+                ort_order = try_solve_bottleneck_batch_order(
+                    operations=algo_ops_to_schedule,
+                    batches=batches,
+                    start_dt=start_dt,
+                    time_limit_seconds=tl,
+                    logger=logger,
+                )
             if ort_order and time.time() <= deadline:
                 # 用当前策略（仅用于“补齐 order 未覆盖的批次”）
                 try:

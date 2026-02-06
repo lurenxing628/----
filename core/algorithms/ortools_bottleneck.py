@@ -68,7 +68,7 @@ def try_solve_bottleneck_batch_order(
     per_batch_type_load: Dict[Tuple[str, str], float] = {}
 
     for op in operations:
-        if (getattr(op, "source", "internal") or "internal").strip() != "internal":
+        if (getattr(op, "source", "internal") or "internal").strip().lower() != "internal":
             continue
         bid = str(getattr(op, "batch_id", "") or "").strip()
         if not bid or bid not in batches:

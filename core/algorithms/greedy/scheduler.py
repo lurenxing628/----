@@ -325,7 +325,7 @@ class GreedyScheduler:
                 bid = str(sr.batch_id or "")
                 if bid:
                     batch_progress[bid] = max(batch_progress.get(bid, base_time), sr.end_time)
-                if (sr.source or "").strip() == "internal":
+                if (sr.source or "").strip().lower() == "internal":
                     mid = str(sr.machine_id or "").strip()
                     oid = str(sr.operator_id or "").strip()
 
@@ -539,7 +539,7 @@ class GreedyScheduler:
             efficiency = float(self.calendar.get_efficiency(earliest, operator_id=operator_id) or 1.0)
         except Exception:
             efficiency = 1.0
-        if efficiency and efficiency > 0 and efficiency < 1.0:
+        if efficiency and efficiency > 0 and efficiency != 1.0:
             total_hours = total_hours / efficiency
 
         # 资源/停机避让：若区间与“设备/人员/停机”任一已占用区间重叠，则把开始时间推到重叠区间结束后再重算

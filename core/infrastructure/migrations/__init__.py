@@ -6,12 +6,14 @@ from typing import Callable, Dict
 from .v1 import run as run_v1
 from .v2 import run as run_v2
 from .v3 import run as run_v3
+from .v4 import run as run_v4
 
 # 版本迁移注册表：target_version -> run(conn, logger=None)
 MIGRATIONS: Dict[int, Callable[..., None]] = {
     1: run_v1,
     2: run_v2,
     3: run_v3,
+    4: run_v4,
 }
 
 

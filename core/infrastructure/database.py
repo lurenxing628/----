@@ -5,7 +5,7 @@ import sys
 from typing import Optional
 
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:

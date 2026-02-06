@@ -29,7 +29,7 @@ class ExternalGroup:
             part_no=str(get(row, "part_no") or ""),
             start_seq=int(start_seq) if start_seq is not None and start_seq != "" else 0,
             end_seq=int(end_seq) if end_seq is not None and end_seq != "" else 0,
-            merge_mode=str(get(row, "merge_mode") or "separate"),
+            merge_mode=(str(get(row, "merge_mode") or "separate").strip().lower() or "separate"),
             total_days=float(total_days) if total_days is not None and total_days != "" else None,
             supplier_id=str(supplier_id) if supplier_id is not None and supplier_id != "" else None,
             remark=get(row, "remark"),

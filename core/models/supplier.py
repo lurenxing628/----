@@ -25,7 +25,7 @@ class Supplier:
             name=str(get(row, "name") or ""),
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             default_days=float(default_days) if default_days is not None and default_days != "" else 1.0,
-            status=str(get(row, "status") or "active"),
+            status=(str(get(row, "status") or "active").strip().lower() or "active"),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),
         )

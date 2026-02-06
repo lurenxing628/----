@@ -108,7 +108,7 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
     for r in results:
         if not r.start_time or not r.end_time:
             continue
-        if (r.source or "").strip() != "internal":
+        if (r.source or "").strip().lower() != "internal":
             continue
         mid = (r.machine_id or "").strip()
         if not mid:
@@ -136,7 +136,7 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
     for r in results:
         if not r.start_time or not r.end_time:
             continue
-        if (r.source or "").strip() != "internal":
+        if (r.source or "").strip().lower() != "internal":
             continue
         st = r.start_time
         et = r.end_time

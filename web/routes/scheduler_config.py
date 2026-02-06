@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from flask import flash, g, redirect, request, url_for
+import os
+from datetime import datetime
+from typing import List, Optional, Tuple
+
+from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.scheduler import ConfigService
@@ -8,6 +12,120 @@ from core.services.scheduler import ConfigService
 from web.ui_mode import render_ui_template as render_template
 
 from .scheduler_bp import bp
+
+
+def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
+    """
+    解析“排产调度说明书”的 md 文件路径。
+
+    说明：
+    - app.py / app_new_ui.py 的 static_folder 不同，因此这里同时尝试多个候选路径
+    - 返回：(命中的路径 or None, 所有候选路径)
+    """
+    candidates: List[str] = []
+    try:
+        if getattr(current_app, "static_folder", None):
+            candidates.append(os.path.join(str(current_app.static_folder), "docs", "scheduler_manual.md"))
+    except Exception:
+        pass
+
+    base_dir = None
+    try:
+        base_dir = current_app.config.get("BASE_DIR")
+    except Exception:
+        base_dir = None
+
+    if base_dir:
+        candidates.append(os.path.join(str(base_dir), "static", "docs", "scheduler_manual.md"))
+        candidates.append(os.path.join(str(base_dir), "web_new_test", "static", "docs", "scheduler_manual.md"))
+
+    # 去重 + 绝对化
+    normalized: List[str] = []
+    seen = set()
+    for p in candidates:
+        if not p:
+            continue
+        try:
+            ap = os.path.abspath(p)
+        except Exception:
+            ap = p
+        if ap in seen:
+            continue
+        seen.add(ap)
+        normalized.append(ap)
+
+    for p in normalized:
+        try:
+            if os.path.isfile(p):
+                return p, normalized
+        except Exception:
+            continue
+
+    return None, normalized
+
+
+@bp.get("/config/manual")
+def config_manual_page():
+    """
+    排产调度说明书（面向计划/工艺新手）。
+    - 原样展示 Markdown（不做渲染，避免新增依赖）
+    - 提供下载原始 md
+    """
+    manual_path, candidates = _resolve_scheduler_manual_md_path()
+    manual_text = ""
+    manual_mtime = None
+    if manual_path:
+        try:
+            with open(manual_path, "r", encoding="utf-8") as f:
+                manual_text = f.read()
+            try:
+                manual_mtime = datetime.fromtimestamp(os.path.getmtime(manual_path)).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                manual_mtime = None
+        except Exception as e:
+            manual_text = (
+                "说明书文件读取失败。\n\n"
+                f"- path: {manual_path}\n"
+                f"- error: {e}\n"
+            )
+    else:
+        manual_text = (
+            "说明书文件不存在（可能是打包未包含 / 文件被误删）。\n\n"
+            "已尝试的候选路径：\n"
+            + "\n".join([f"- {x}" for x in (candidates or [])])
+            + "\n"
+        )
+
+    download_url = url_for("scheduler.config_manual_download") if manual_path else None
+    return render_template(
+        "scheduler/config_manual.html",
+        title="排产调度说明书",
+        manual_text=manual_text,
+        manual_path=manual_path,
+        manual_mtime=manual_mtime,
+        download_url=download_url,
+    )
+
+
+@bp.get("/config/manual/download")
+def config_manual_download():
+    """
+    下载原始说明书 Markdown。
+    """
+    manual_path, _candidates = _resolve_scheduler_manual_md_path()
+    if not manual_path:
+        flash("说明书文件不存在，无法下载。", "error")
+        return redirect(url_for("scheduler.config_manual_page"))
+    try:
+        return send_file(
+            manual_path,
+            as_attachment=True,
+            download_name="排产调度说明书.md",
+            mimetype="text/markdown; charset=utf-8",
+        )
+    except Exception as e:
+        flash(f"下载说明书失败：{e}", "error")
+        return redirect(url_for("scheduler.config_manual_page"))
 
 
 @bp.get("/config")

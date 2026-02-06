@@ -32,13 +32,18 @@ for /f "tokens=1,2,3,4,5" %%A in ('netstat -ano ^| findstr /I "LISTENING"') do (
     )
 )
 
-REM 若尝试关闭后仍被占用，则提示并退出（避免启动失败/反复重启）
+REM 若尝试关闭后仍被占用：仅提示并继续（应用侧会自动选择可用端口启动，实际端口以 logs\aps_port.txt 为准）
+set STILL_IN_USE=
+set PID_STILL=
 for /f "tokens=1,2,3,4,5" %%A in ('netstat -ano ^| findstr /I "LISTENING"') do (
     echo %%B | findstr /R /C:":%PORT%$" >nul
     if not errorlevel 1 (
-        echo [start] 端口 %PORT% 仍被占用（PID=%%E）。请先关闭占用进程后再启动。
-        exit /b 1
+        set STILL_IN_USE=1
+        set PID_STILL=%%E
     )
+)
+if defined STILL_IN_USE (
+    echo [start] 端口 %PORT% 仍被占用（PID=!PID_STILL!）。将自动选择可用端口启动（以 logs\aps_port.txt 为准）。
 )
 
 set APS_ENV=development

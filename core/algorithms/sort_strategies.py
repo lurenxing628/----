@@ -51,7 +51,8 @@ class PriorityFirstStrategy(BaseSortStrategy):
 
     def sort(self, batches: List[BatchForSort]) -> List[BatchForSort]:
         def sort_key(batch: BatchForSort):
-            priority_rank = self.PRIORITY_ORDER.get((batch.priority or "").strip(), 99)
+            pr = (batch.priority or "normal").strip().lower() or "normal"
+            priority_rank = self.PRIORITY_ORDER.get(pr, 99)
             due_rank = batch.due_date if batch.due_date else date.max
             return (priority_rank, due_rank, batch.batch_id)
 
@@ -70,7 +71,8 @@ class DueDateFirstStrategy(BaseSortStrategy):
         def sort_key(batch: BatchForSort):
             has_due = 0 if batch.due_date else 1  # 无交期的排最后
             due_rank = batch.due_date if batch.due_date else date.max
-            priority_rank = self.PRIORITY_ORDER.get((batch.priority or "").strip(), 99)
+            pr = (batch.priority or "normal").strip().lower() or "normal"
+            priority_rank = self.PRIORITY_ORDER.get(pr, 99)
             return (has_due, due_rank, priority_rank, batch.batch_id)
 
         return sorted(batches, key=sort_key)
@@ -98,7 +100,7 @@ score = priority_weight×priority_score + due_weight×due_score
         today = date.today()
 
         def calc_score(batch: BatchForSort) -> float:
-            pr = (batch.priority or "").strip()
+            pr = (batch.priority or "normal").strip().lower() or "normal"
             priority_score = self.PRIORITY_SCORE.get(pr, 0)
 
             if batch.due_date:

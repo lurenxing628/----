@@ -31,7 +31,7 @@ class Material:
             spec=get(row, "spec"),
             unit=get(row, "unit"),
             stock_qty=_f(get(row, "stock_qty"), 0.0),
-            status=str(get(row, "status") or "active"),
+            status=(str(get(row, "status") or "active").strip().lower() or "active"),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),
         )

@@ -65,14 +65,18 @@ class ExternalGroupService:
         if not gid:
             raise ValidationError("缺少外部工序组ID", field="group_id")
 
-        mode = self._normalize_text(merge_mode) or MergeMode.SEPARATE.value
+        mode = (self._normalize_text(merge_mode) or MergeMode.SEPARATE.value).strip().lower()
         if mode not in (MergeMode.SEPARATE.value, MergeMode.MERGED.value):
             raise ValidationError("周期模式不合法（允许：separate / merged）", field="merge_mode")
 
         g = self._get_group_or_raise(gid)
 
         # 取该组内外部工序
-        ops = [op for op in self.op_repo.list_by_part(g.part_no, include_deleted=False) if op.ext_group_id == gid and op.source == "external"]
+        ops = [
+            op
+            for op in self.op_repo.list_by_part(g.part_no, include_deleted=False)
+            if op.ext_group_id == gid and (op.source or "").strip().lower() == "external"
+        ]
         seqs = [int(op.seq) for op in ops]
 
         sup_id = self._normalize_text(supplier_id)

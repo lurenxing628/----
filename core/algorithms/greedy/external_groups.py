@@ -22,7 +22,7 @@ def schedule_external(
     prev_end = batch_progress.get(bid, base_time)
 
     # merged 外部组：整组作为一个时间块（组内工序同起止）
-    merge_mode = (getattr(op, "ext_merge_mode", None) or "").strip()
+    merge_mode = (getattr(op, "ext_merge_mode", None) or "").strip().lower()
     ext_group_id = (getattr(op, "ext_group_id", None) or "").strip()
     if merge_mode == "merged" and ext_group_id:
         cache_key = (bid, ext_group_id)

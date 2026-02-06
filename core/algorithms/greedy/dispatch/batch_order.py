@@ -52,7 +52,7 @@ def dispatch_batch_order(
 
             batch = batches[bid]
 
-            if (getattr(op, "source", "internal") or "internal").strip() == "external":
+            if (getattr(op, "source", "internal") or "internal").strip().lower() == "external":
                 result, _blocked = scheduler._schedule_external(  # type: ignore[attr-defined]
                     op, batch, batch_progress, external_group_cache, base_time, errors, end_dt_exclusive
                 )
@@ -78,7 +78,7 @@ def dispatch_batch_order(
                 results.append(result)
                 batch_progress[bid] = result.end_time
                 scheduled_count += 1
-                if (result.source or "").strip() == "internal" and result.machine_id:
+                if (result.source or "").strip().lower() == "internal" and result.machine_id:
                     try:
                         mid0 = str(result.machine_id or "").strip()
                         oid0 = str(result.operator_id or "").strip()

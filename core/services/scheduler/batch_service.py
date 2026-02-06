@@ -541,7 +541,7 @@ class BatchService:
             seq = int(tmpl.seq)
             op_code = f"{bid}_{seq:02d}"
 
-            source = (tmpl.source or SourceType.INTERNAL.value).strip()
+            source = (tmpl.source or SourceType.INTERNAL.value).strip().lower()
             if source not in (SourceType.INTERNAL.value, SourceType.EXTERNAL.value):
                 source = SourceType.INTERNAL.value
 

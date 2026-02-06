@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import flash, g, redirect, request, url_for
 
+from core.models.enums import SourceType
 from core.services.scheduler import ScheduleService
 
 from .scheduler_bp import bp
@@ -12,7 +13,8 @@ def update_op(op_id: int):
     sch_svc = ScheduleService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     op = sch_svc.get_operation(op_id)
 
-    if op.source == "internal":
+    src = (getattr(op, "source", "") or "").strip().lower()
+    if src == SourceType.INTERNAL.value:
         machine_id = request.form.get("machine_id") or None
         operator_id = request.form.get("operator_id") or None
         setup_hours = request.form.get("setup_hours")

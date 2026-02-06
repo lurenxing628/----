@@ -1,10 +1,12 @@
 import atexit
+import ipaddress
 import json
 import os
+import socket
 import sys
 from pathlib import Path
+from typing import Tuple
 from flask import Flask, g, request
-from markupsafe import Markup
 
 from config import config as config_map
 from core.infrastructure.logging import AppLogger, OperationLogger
@@ -26,6 +28,11 @@ from web.routes.material import bp as material_bp
 from web.routes.reports import bp as reports_bp
 
 
+# atexit 退出备份去重：避免 create_app() 在测试/脚本中被多次调用导致重复注册
+_EXIT_BACKUP_MANAGER = None
+_EXIT_BACKUP_REGISTERED = False
+
+
 def _runtime_base_dir() -> str:
     """
     获取运行根目录：
@@ -44,7 +51,12 @@ def _runtime_base_dir() -> str:
 
 
 def create_app() -> Flask:
-    env = os.environ.get("APS_ENV") or "default"
+    # 默认环境：
+    # - 源码运行：development（便于调试）
+    # - PyInstaller 打包后：production（避免 reloader/调试模式带来的多进程与副作用）
+    env = (os.environ.get("APS_ENV") or "").strip().lower()
+    if not env:
+        env = "production" if getattr(sys, "frozen", False) else "default"
     cfg_class = config_map.get(env) or config_map["default"]
 
     base_dir = _runtime_base_dir()
@@ -58,15 +70,31 @@ def create_app() -> Flask:
 
     # Jinja 过滤器：JSON 输出（确保中文可读）
     def tojson_zh(value, indent: int = 2):
-        return Markup(json.dumps(value, ensure_ascii=False, indent=indent))
+        # 返回普通字符串，让 Jinja autoescape 生效，避免 detail 中含 HTML 时被当作 Markup 直出（潜在 XSS）
+        return json.dumps(value, ensure_ascii=False, indent=indent)
 
     app.jinja_env.filters["tojson_zh"] = tojson_zh
+
+    # 文件日志（用户可用于排障：中文信息）
+    # 注意：尽量提前接管 app.logger（覆盖 init_ui_mode / ensure_schema / 插件加载等早期日志）
+    app_logger = AppLogger(
+        app_name=app.config.get("APP_NAME", "APS"),
+        log_dir=app.config["LOG_DIR"],
+        log_level=app.config.get("LOG_LEVEL", "INFO"),
+        max_bytes=app.config.get("LOG_MAX_BYTES", 10 * 1024 * 1024),
+        backup_count=app.config.get("LOG_BACKUP_COUNT", 5),
+    )
+    app.logger.handlers = app_logger.logger.handlers
+    app.logger.setLevel(app_logger.logger.level)
 
     # UI 模式（V1/V2）：注册 /static-v2 与模板 overlay（便于复用同一套 V2 模板）
     init_ui_mode(app, base_dir)
 
     # 运行目录确保存在（打包后也依赖这些目录）
-    os.makedirs(os.path.dirname(app.config["DATABASE_PATH"]), exist_ok=True)
+    # 防御：DATABASE_PATH 可能是纯文件名（dirname 为空串时 makedirs 会报错）
+    db_dir = os.path.dirname(app.config["DATABASE_PATH"])
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     os.makedirs(app.config["LOG_DIR"], exist_ok=True)
     os.makedirs(app.config["BACKUP_DIR"], exist_ok=True)
     os.makedirs(app.config["EXCEL_TEMPLATE_DIR"], exist_ok=True)
@@ -79,17 +107,6 @@ def create_app() -> Flask:
     except Exception as e:
         # 不阻断启动：模板下载接口仍可动态生成兜底
         app.logger.warning(f"生成 Excel 模板失败（将使用动态模板兜底）：{e}")
-
-    # 文件日志（用户可用于排障：中文信息）
-    app_logger = AppLogger(
-        app_name=app.config.get("APP_NAME", "APS"),
-        log_dir=app.config["LOG_DIR"],
-        log_level=app.config.get("LOG_LEVEL", "INFO"),
-        max_bytes=app.config.get("LOG_MAX_BYTES", 10 * 1024 * 1024),
-        backup_count=app.config.get("LOG_BACKUP_COUNT", 5),
-    )
-    app.logger.handlers = app_logger.logger.handlers
-    app.logger.setLevel(app_logger.logger.level)
 
     # DB schema（打包后 schema.sql 与 exe 同目录；若缺失则回退到默认路径）
     schema_path = os.path.abspath(os.path.join(base_dir, "schema.sql"))
@@ -204,14 +221,26 @@ def create_app() -> Flask:
         logger=app.logger,
     )
 
-    def _backup_on_exit():
-        try:
-            backup_manager.backup(suffix="auto")
-        except Exception as e:
-            # 退出阶段尽量不抛错，记录到错误日志即可
-            app.logger.error(f"退出自动备份失败：{e}")
+    # 更新“退出备份”引用（以最新 create_app() 为准）
+    global _EXIT_BACKUP_MANAGER, _EXIT_BACKUP_REGISTERED
+    _EXIT_BACKUP_MANAGER = backup_manager
 
-    atexit.register(_backup_on_exit)
+    if not _EXIT_BACKUP_REGISTERED:
+        def _backup_on_exit():
+            bm = _EXIT_BACKUP_MANAGER
+            if bm is None:
+                return
+            try:
+                bm.backup(suffix="auto")
+            except Exception as e:
+                # 退出阶段尽量不抛错，记录到错误日志即可
+                try:
+                    bm.logger.error(f"退出自动备份失败：{e}")
+                except Exception:
+                    pass
+
+        atexit.register(_backup_on_exit)
+        _EXIT_BACKUP_REGISTERED = True
 
     app.logger.info("应用启动完成 (UI Test Mode)。")
     return app
@@ -222,4 +251,151 @@ app = create_app()
 
 if __name__ == "__main__":
     # Win7 本地运行（开发/调试）；打包后用 exe 启动
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    # 端口策略（避免“端口被占用/受限就无法启动”）：
+    # - 优先使用 APS_PORT（若提供）
+    # - 否则优先 5000
+    # - 若绑定失败（WinError 10013/10048 等），自动选择可用端口，并写入 logs/aps_port.txt
+    # 仅支持 IPv4（当前端口探测用 AF_INET）；若 APS_HOST 非法/IPv6/hostname，则回退到 127.0.0.1
+    raw_host = os.environ.get("APS_HOST")
+    host = (raw_host or "").strip() or "127.0.0.1"
+    try:
+        ip = ipaddress.ip_address(host)
+        if getattr(ip, "version", None) != 4:
+            raise ValueError("not ipv4")
+    except Exception:
+        try:
+            app.logger.warning(f"APS_HOST 非法或非 IPv4：{host}，已回退到 127.0.0.1")
+        except Exception:
+            pass
+        host = "127.0.0.1"
+
+    raw_port = os.environ.get("APS_PORT")
+    preferred_port = 5000
+    if raw_port is not None and str(raw_port).strip() != "":
+        try:
+            preferred_port = int(str(raw_port).strip())
+        except Exception:
+            preferred_port = 5000
+
+    def _can_bind(host0: str, port0: int) -> bool:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            try:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            except Exception:
+                pass
+            s.bind((host0, int(port0)))
+            return True
+        except Exception:
+            return False
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+
+    def _pick_port(host0: str, preferred: int) -> Tuple[str, int]:
+        candidates = []
+        for p in [preferred, 5000, 5705, 5706, 5707, 5710, 5711, 5712, 5713, 5714, 5715]:
+            try:
+                p0 = int(p)
+            except Exception:
+                continue
+            if p0 <= 0:
+                continue
+            if p0 not in candidates:
+                candidates.append(p0)
+        fallback_host = "127.0.0.1"
+        for p in candidates:
+            if _can_bind(host0, p):
+                return (host0, int(p))
+
+        # host0 不可绑定（例如未分配到本机的 IPv4）：在 fallback_host 上再试一次，尽量保持端口稳定
+        if host0 != fallback_host:
+            for p in candidates:
+                if _can_bind(fallback_host, p):
+                    return (fallback_host, int(p))
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            try:
+                s.bind((host0, 0))
+                _h, p = s.getsockname()
+                return (host0, int(p))
+            except Exception:
+                # 防御：host0 不可绑定时回退到 127.0.0.1
+                s.close()
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.bind((fallback_host, 0))
+                _h, p = s.getsockname()
+                return (fallback_host, int(p))
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+
+    requested_host = host
+    host, port = _pick_port(host, preferred_port)
+    if host != requested_host:
+        try:
+            app.logger.warning(f"APS_HOST={requested_host} 不可绑定，已回退到 {host}（port={port}）")
+        except Exception:
+            pass
+
+    try:
+        os.environ["APS_HOST"] = str(host)
+        os.environ["APS_PORT"] = str(int(port))
+    except Exception:
+        pass
+
+    # 写入启动信息文件：
+    # - logs/aps_port.txt：仅端口数字 + 换行（契约：便于 bat/运维读取）
+    # - logs/aps_host.txt：实际可访问 host + 换行（用于 APS_HOST 不可绑定时的回退场景）
+    try:
+        # 契约：优先固定写入“运行目录/logs/aps_port.txt”（与交付启动器一致）
+        runtime_log_dir = os.path.join(_runtime_base_dir(), "logs")
+        os.makedirs(runtime_log_dir, exist_ok=True)
+        port_file = os.path.join(runtime_log_dir, "aps_port.txt")
+        host_file = os.path.join(runtime_log_dir, "aps_host.txt")
+        with open(port_file, "w", encoding="utf-8") as f:
+            f.write(str(int(port)) + "\n")
+        # 注意：app.run(host="0.0.0.0") 时，客户端不能用 0.0.0.0 访问；对本机启动器而言应使用 127.0.0.1
+        host_for_client = (str(host or "").strip() or "127.0.0.1")
+        if host_for_client == "0.0.0.0":
+            host_for_client = "127.0.0.1"
+        with open(host_file, "w", encoding="utf-8") as f:
+            f.write(str(host_for_client) + "\n")
+
+        # 可选镜像：若用户将 LOG_DIR 指到其它位置，也写一份，便于排障
+        cfg_log_dir = app.config.get("LOG_DIR")
+        try:
+            cfg_log_dir = str(cfg_log_dir).strip() if cfg_log_dir is not None else ""
+        except Exception:
+            cfg_log_dir = ""
+        if cfg_log_dir:
+            try:
+                if os.path.abspath(cfg_log_dir) != os.path.abspath(runtime_log_dir):
+                    os.makedirs(cfg_log_dir, exist_ok=True)
+                    mirror_port_file = os.path.join(cfg_log_dir, "aps_port.txt")
+                    with open(mirror_port_file, "w", encoding="utf-8") as f2:
+                        f2.write(str(int(port)) + "\n")
+                    mirror_host_file = os.path.join(cfg_log_dir, "aps_host.txt")
+                    with open(mirror_host_file, "w", encoding="utf-8") as f3:
+                        f3.write(str(host_for_client) + "\n")
+            except Exception:
+                pass
+        try:
+            app.logger.info(f"端口已写入：{port_file} -> {int(port)}")
+            app.logger.info(f"Host 已写入：{host_file} -> {host_for_client}")
+        except Exception:
+            pass
+    except Exception as e:
+        try:
+            app.logger.warning(f"写入启动信息文件失败（已忽略）：{e}")
+        except Exception:
+            pass
+
+    debug = bool(app.config.get("DEBUG", False))
+    use_reloader = debug and not getattr(sys, "frozen", False)
+    app.run(host=host, port=port, debug=debug, use_reloader=use_reloader)

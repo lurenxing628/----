@@ -64,7 +64,7 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
     - primary：由 rule 决定
     - tie-break：优先避免换型 -> 更高优先级 -> 更早交期 -> 更早开始 -> 更稳定批次顺序
     """
-    pr = (inp.priority or "normal").strip() or "normal"
+    pr = (inp.priority or "normal").strip().lower() or "normal"
     pr_rank = float(PRIORITY_RANK.get(pr, 99))
     w = float(PRIORITY_WEIGHT.get(pr, 1.0))
 

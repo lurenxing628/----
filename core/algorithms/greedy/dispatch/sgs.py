@@ -89,7 +89,7 @@ def dispatch_sgs(
             continue
         qty = getattr(b, "quantity", 0) or 0
         for op in lst:
-            if (getattr(op, "source", "internal") or "internal").strip() != "internal":
+            if (getattr(op, "source", "internal") or "internal").strip().lower() != "internal":
                 continue
             setup_hours = getattr(op, "setup_hours", 0) or 0
             unit_hours = getattr(op, "unit_hours", 0) or 0
@@ -126,9 +126,9 @@ def dispatch_sgs(
                 score_penalty = 0.0  # 0=正常可估算；1=不可估算（应劣于所有正常候选）
 
                 # 估算（用于打分，不占资源）
-                if (getattr(op, "source", "internal") or "internal").strip() == "external":
+                if (getattr(op, "source", "internal") or "internal").strip().lower() == "external":
                     prev_end = batch_progress.get(bid, base_time)
-                    merge_mode = (getattr(op, "ext_merge_mode", None) or "").strip()
+                    merge_mode = (getattr(op, "ext_merge_mode", None) or "").strip().lower()
                     ext_group_id = (getattr(op, "ext_group_id", None) or "").strip()
                     if merge_mode == "merged" and ext_group_id:
                         cached = external_group_cache.get((bid, ext_group_id))
@@ -202,7 +202,7 @@ def dispatch_sgs(
                             eff = float(scheduler.calendar.get_efficiency(est_start, operator_id=operator_id) or 1.0)
                         except Exception:
                             eff = 1.0
-                        if eff and 0 < eff < 1.0:
+                        if eff and eff > 0 and eff != 1.0:
                             total_hours = total_hours / eff
                         proc_h = max(float(total_hours), 0.0)
                         est_end = scheduler.calendar.add_working_hours(est_start, proc_h, priority=priority, operator_id=operator_id)
@@ -245,7 +245,7 @@ def dispatch_sgs(
         bid, op = best_pair
         try:
             batch = batches[bid]
-            if (getattr(op, "source", "internal") or "internal").strip() == "external":
+            if (getattr(op, "source", "internal") or "internal").strip().lower() == "external":
                 result, _blocked = scheduler._schedule_external(  # type: ignore[attr-defined]
                     op, batch, batch_progress, external_group_cache, base_time, errors, end_dt_exclusive
                 )
@@ -272,7 +272,7 @@ def dispatch_sgs(
                 batch_progress[bid] = result.end_time
                 scheduled_count += 1
                 next_idx[bid] = int(next_idx.get(bid, 0) or 0) + 1
-                if (result.source or "").strip() == "internal" and result.machine_id:
+                if (result.source or "").strip().lower() == "internal" and result.machine_id:
                     try:
                         mid0 = str(result.machine_id or "").strip()
                         oid0 = str(result.operator_id or "").strip()

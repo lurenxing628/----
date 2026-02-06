@@ -18,6 +18,16 @@
       <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
       <span class="muted">｜</span>
       <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
+      <span class="muted">｜</span>
+      {% set manual_url = safe_url_for('scheduler.config_manual_page') %}
+      {% if manual_url %}
+        <a href="{{ manual_url }}">排产调度说明书</a>
+      {% else %}
+        <span class="muted"
+              title="原因：后端接口未注册（endpoint：scheduler.config_manual_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
+          排产调度说明书（不可用：后端接口缺失 scheduler.config_manual_page，可能旧版本/未重启/未重新打包）
+        </span>
+      {% endif %}
     </div>
   </div>
 

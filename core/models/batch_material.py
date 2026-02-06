@@ -30,7 +30,7 @@ class BatchMaterial:
             material_id=str(get(row, "material_id") or ""),
             required_qty=_f(get(row, "required_qty"), 0.0),
             available_qty=_f(get(row, "available_qty"), 0.0),
-            ready_status=str(get(row, "ready_status") or "no"),
+            ready_status=(str(get(row, "ready_status") or "no").strip().lower() or "no"),
         )
 
     def to_dict(self) -> Dict[str, Any]:

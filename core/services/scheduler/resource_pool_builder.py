@@ -24,7 +24,7 @@ def load_machine_downtimes(
             {
                 (op.machine_id or "").strip()
                 for op in algo_ops
-                if (op.source or "").strip() == SourceType.INTERNAL.value and (op.machine_id or "").strip()
+                if (op.source or "").strip().lower() == SourceType.INTERNAL.value and (op.machine_id or "").strip()
             }
         )
         for mid in machine_ids:
@@ -71,7 +71,8 @@ def build_resource_pool(
         op_type_ids = {
             str(getattr(o, "op_type_id", "") or "").strip()
             for o in algo_ops
-            if (getattr(o, "source", "") or "").strip() == SourceType.INTERNAL.value and str(getattr(o, "op_type_id", "") or "").strip()
+            if (getattr(o, "source", "") or "").strip().lower() == SourceType.INTERNAL.value
+            and str(getattr(o, "op_type_id", "") or "").strip()
         }
         machines_by_op_type: Dict[str, List[str]] = {}
         for m in machines:

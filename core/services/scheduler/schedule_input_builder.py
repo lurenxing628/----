@@ -29,6 +29,28 @@ class OpForScheduleAlgo:
     ext_group_total_days: Optional[float]
 
 
+def _safe_float(value: Any, *, default: Optional[float]) -> Optional[float]:
+    """
+    安全浮点解析：
+    - None / "" / "   " -> default
+    - 非数字 -> default（避免 build_algo_operations 因 ValueError 崩溃整次排产）
+    """
+    if value is None:
+        return default
+    if isinstance(value, str):
+        s = value.strip()
+        if s == "":
+            return default
+        try:
+            return float(s)
+        except Exception:
+            return default
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
 def build_algo_operations(svc, operations: List[Any]) -> List[OpForScheduleAlgo]:
     """
     把批次工序（BatchOperation）转换为算法输入（补充 merged 外部组信息）。
@@ -38,7 +60,7 @@ def build_algo_operations(svc, operations: List[Any]) -> List[OpForScheduleAlgo]
         ext_group_id = None
         merge_mode = None
         total_days = None
-        if (op.source or "").strip() == SourceType.EXTERNAL.value:
+        if (op.source or "").strip().lower() == SourceType.EXTERNAL.value:
             tmpl, grp = svc._get_template_and_group_for_op(op)
             ext_group_id = (tmpl.ext_group_id if tmpl else None) if tmpl else None
             merge_mode = grp.merge_mode if grp else None
@@ -56,12 +78,12 @@ def build_algo_operations(svc, operations: List[Any]) -> List[OpForScheduleAlgo]
                 machine_id=op.machine_id,
                 operator_id=op.operator_id,
                 supplier_id=op.supplier_id,
-                setup_hours=float(op.setup_hours or 0.0),
-                unit_hours=float(op.unit_hours or 0.0),
-                ext_days=float(op.ext_days) if op.ext_days is not None and op.ext_days != "" else None,
+                setup_hours=float(_safe_float(getattr(op, "setup_hours", None), default=0.0) or 0.0),
+                unit_hours=float(_safe_float(getattr(op, "unit_hours", None), default=0.0) or 0.0),
+                ext_days=_safe_float(getattr(op, "ext_days", None), default=None),
                 ext_group_id=ext_group_id,
                 ext_merge_mode=merge_mode,
-                ext_group_total_days=float(total_days) if total_days is not None and total_days != "" else None,
+                ext_group_total_days=_safe_float(total_days, default=None),
             )
         )
     return algo_ops

@@ -263,7 +263,7 @@ class ScheduleService:
             for op in operations
             if op
             and op.id
-            and (op.source or "").strip() == SourceType.INTERNAL.value
+            and (op.source or "").strip().lower() == SourceType.INTERNAL.value
             and (((op.machine_id or "").strip() == "") or ((op.operator_id or "").strip() == ""))
         }
 

@@ -57,7 +57,9 @@ def persist_schedule(
             assigned_by_op_id: Dict[int, Dict[str, Any]] = {
                 int(r.op_id): {"machine_id": r.machine_id, "operator_id": r.operator_id}
                 for r in results
-                if r and int(getattr(r, "op_id", 0) or 0) > 0 and (r.source or "").strip() == SourceType.INTERNAL.value
+                if r
+                and int(getattr(r, "op_id", 0) or 0) > 0
+                and (r.source or "").strip().lower() == SourceType.INTERNAL.value
             }
             for op in operations:
                 if not op.id:

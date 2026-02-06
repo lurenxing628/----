@@ -53,8 +53,11 @@ def main() -> int:
         print(f"[validate] exe 不存在：{exe_path}")
         return 2
 
-    host = "127.0.0.1"
-    port = 5000
+    host = os.environ.get("APS_HOST") or "127.0.0.1"
+    try:
+        port = int(os.environ.get("APS_PORT") or "5000")
+    except Exception:
+        port = 5000
 
     if _is_port_open(host, port):
         print(f"[validate] 端口 {port} 已被占用，请先关闭占用进程后重试。")

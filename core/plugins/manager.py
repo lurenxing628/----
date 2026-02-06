@@ -93,6 +93,7 @@ class PluginManager:
         vendor_paths = bootstrap_vendor_paths(base)
 
         plugins_dir = os.path.join(base, "plugins")
+        plugins_dir_real = os.path.normcase(os.path.realpath(plugins_dir))
         statuses: List[PluginStatus] = []
         registry = PluginRegistry()
 
@@ -116,7 +117,22 @@ class PluginManager:
                 continue
             if fn.startswith("_"):
                 continue
-            path = os.path.join(plugins_dir, fn)
+            path0 = os.path.join(plugins_dir, fn)
+            # 防御：避免 symlink/路径逃逸导致加载到 plugins_dir 之外的代码
+            try:
+                real = os.path.normcase(os.path.realpath(path0))
+                if not real.startswith(plugins_dir_real + os.sep):
+                    if logger:
+                        try:
+                            logger.error(f"插件路径非法（已跳过）：{path0}")
+                        except Exception:
+                            pass
+                    continue
+                if not os.path.isfile(real):
+                    continue
+                path = real
+            except Exception:
+                continue
             module_name = f"aps_plugins.{os.path.splitext(fn)[0]}"
 
             guessed_id = os.path.splitext(fn)[0]

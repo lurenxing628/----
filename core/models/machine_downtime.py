@@ -38,13 +38,13 @@ class MachineDowntime:
         return cls(
             id=_id,
             machine_id=str(get(row, "machine_id") or ""),
-            scope_type=str(get(row, "scope_type") or "machine"),
+            scope_type=(str(get(row, "scope_type") or "machine").strip().lower() or "machine"),
             scope_value=get(row, "scope_value"),
             start_time=str(get(row, "start_time") or ""),
             end_time=str(get(row, "end_time") or ""),
             reason_code=get(row, "reason_code"),
             reason_detail=get(row, "reason_detail"),
-            status=str(get(row, "status") or "active"),
+            status=(str(get(row, "status") or "active").strip().lower() or "active"),
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),
         )

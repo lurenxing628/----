@@ -133,6 +133,22 @@
     },
   };
 
+  // ---- render/decorate cache (Win7 友好：减少不必要的全量重渲染) ----
+  let _renderToken = 0; // 每次全量 render() + new Gantt() 递增
+  const _decorCache = {
+    renderToken: -1,
+    colorMode: null,
+    focusBatch: null,
+    highlightCC: null,
+  };
+
+  function _resetDecorCache() {
+    _decorCache.renderToken = -1;
+    _decorCache.colorMode = null;
+    _decorCache.focusBatch = null;
+    _decorCache.highlightCC = null;
+  }
+
   function readUi() {
     state.ui.colorMode = norm($("ganttColorMode") && $("ganttColorMode").value) || "batch";
     state.ui.filterBatch = norm($("ganttFilterBatch") && $("ganttFilterBatch").value);
@@ -598,16 +614,17 @@
     }
   }
 
-  function decorate() {
+  function _buildTaskMapById() {
     const byId = new Map();
-    for (let i = 0; i < state.currentTasks.length; i++) {
-      const t = state.currentTasks[i] || {};
+    const list = Array.isArray(state.currentTasks) ? state.currentTasks : [];
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i] || {};
       byId.set(norm(t.id), t);
     }
+    return byId;
+  }
 
-    // 假期/停工标注（按全局工作日历）
-    renderHolidayColumns();
-
+  function _applyGroupSeparators() {
     // 分组分隔（按 group_key）：给每个“新组”的首行加轻微底色，降低“混在一起”的心智负担
     const groupStartIdx = new Set();
     let prevGroup = null;
@@ -633,44 +650,169 @@
     } catch (_) {
       // ignore
     }
+  }
 
+  function _roundBarsOnce() {
+    // 圆角（SVG rect）
+    try {
+      document.querySelectorAll("#gantt .bar").forEach((rect) => {
+        try {
+          rect.setAttribute("rx", "4");
+          rect.setAttribute("ry", "4");
+        } catch (_) {
+          // ignore
+        }
+      });
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  function _clearAllCriticalOutlines() {
+    try {
+      document.querySelectorAll("#gantt .aps-cc-outline-outer, #gantt .aps-cc-outline-inner").forEach((n) => {
+        try {
+          n.remove();
+        } catch (_) {
+          // ignore
+        }
+      });
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  function decorateStaticAfterRender(byId) {
+    // 说明：仅在 new Gantt() 后执行一次（避免纯视觉交互反复 getBBox()/重排）
+
+    // 假期/停工标注（按全局工作日历）
+    renderHolidayColumns();
+
+    // 资源分组底色（grid-row fill）
+    _applyGroupSeparators();
+
+    // 外协虚线标识 + 清理旧 CC 徽标残留（已弃用）
+    try {
+      const wrappers = document.querySelectorAll("#gantt .bar-wrapper");
+      wrappers.forEach((w) => {
+        const tid = norm(w.getAttribute("data-id"));
+        const t = byId.get(tid);
+        if (!t) return;
+        const meta = t.meta || {};
+        const isExternal = norm(meta.source) === "external";
+        w.classList.toggle("aps-external", isExternal);
+      });
+      // 旧版本残留：全局清理（避免逐 wrapper 扫描）
+      document.querySelectorAll("#gantt .aps-cc-badge").forEach((n) => {
+        try {
+          n.remove();
+        } catch (_) {
+          // ignore
+        }
+      });
+    } catch (_) {
+      // ignore
+    }
+
+    _roundBarsOnce();
+  }
+
+  function decorateDynamic(opts) {
+    const o = opts || {};
+    const updateLegendFlag = o.updateLegend !== false;
+    if (!state.gantt || !Array.isArray(state.currentTasks) || state.currentTasks.length === 0) {
+      if (updateLegendFlag) updateLegend();
+      return;
+    }
+
+    const ui = state.ui || {};
+    const byId = o.byId || _buildTaskMapById();
     const wrappers = document.querySelectorAll("#gantt .bar-wrapper");
+    if (!wrappers || wrappers.length === 0) {
+      if (updateLegendFlag) updateLegend();
+      return;
+    }
+
+    // 若 DOM 与数据不一致（例如渲染中途被打断），交给上层做降级
+    const curCount = state.currentTasks.length || 0;
+    if (curCount > 0 && wrappers.length > 0 && wrappers.length !== curCount) {
+      throw new Error(`Gantt DOM mismatch: wrappers=${wrappers.length}, tasks=${curCount}`);
+    }
+
+    const forceAll = o.forceAll === true;
+    const tokenChanged = _decorCache.renderToken !== _renderToken;
+    const needColor = forceAll || tokenChanged || _decorCache.colorMode !== ui.colorMode;
+    const needFocus = forceAll || tokenChanged || _decorCache.focusBatch !== state.focusBatch;
+    const needCC = forceAll || tokenChanged || _decorCache.highlightCC !== ui.highlightCC;
+
+    let ccWrappers = null;
+    if (needCC) {
+      _clearAllCriticalOutlines();
+      ccWrappers = [];
+    }
+
     wrappers.forEach((w) => {
       const tid = norm(w.getAttribute("data-id"));
       const t = byId.get(tid);
       if (!t) return;
       const meta = t.meta || {};
 
-      const bid = norm(meta.batch_id);
-      const dim = !!(state.focusBatch && bid && state.focusBatch !== bid);
-      w.classList.toggle("aps-dim", dim);
+      if (needFocus) {
+        const bid = norm(meta.batch_id);
+        const dim = !!(state.focusBatch && bid && state.focusBatch !== bid);
+        w.classList.toggle("aps-dim", dim);
+      }
 
-      const isCC = !!(state.ui.highlightCC && state.ccIdSet && state.ccIdSet.has(tid));
-      w.classList.toggle("aps-critical", isCC);
-      upsertCriticalOutlines(w, isCC);
-      // CC 徽标已弃用：这里仅做清理（防止旧 DOM 残留）
-      upsertCriticalBadge(w, false);
+      if (needColor) {
+        const color = getColor(t, ui.colorMode);
+        if (color) w.style.setProperty("--aps-bar-color", color);
+      }
 
-      const isExternal = norm(meta.source) === "external";
-      w.classList.toggle("aps-external", isExternal);
-
-      const color = getColor(t, state.ui.colorMode);
-      if (color) {
-        w.style.setProperty("--aps-bar-color", color);
+      if (needCC) {
+        const isCC = !!(ui.highlightCC && state.ccIdSet && state.ccIdSet.has(tid));
+        w.classList.toggle("aps-critical", isCC);
+        if (ui.highlightCC && isCC && ccWrappers) ccWrappers.push(w);
       }
     });
 
-    // 圆角（SVG rect）
-    document.querySelectorAll("#gantt .bar").forEach((rect) => {
+    if (needCC && ui.highlightCC && Array.isArray(ccWrappers) && ccWrappers.length > 0) {
+      for (let i = 0; i < ccWrappers.length; i++) {
+        const w = ccWrappers[i];
+        // 关键链外框：仅对 CC wrapper 插入（避免对所有 wrapper 反复 querySelectorAll）
+        upsertCriticalOutlines(w, true);
+        // CC 徽标已弃用：这里仅做清理（防止旧 DOM 残留）
+        upsertCriticalBadge(w, false);
+      }
+    }
+    if (needCC && !ui.highlightCC) {
+      // 高亮关闭时：确保 class 也被移除（上面 toggle 已处理大部分；此处做一次兜底）
       try {
-        rect.setAttribute("rx", "4");
-        rect.setAttribute("ry", "4");
+        wrappers.forEach((w) => w.classList.remove("aps-critical"));
       } catch (_) {
         // ignore
       }
-    });
+    }
 
-    updateLegend();
+    // 更新 cache（只要本次完成了增量装饰，就认为 DOM 与 ui 同步）
+    _decorCache.renderToken = _renderToken;
+    _decorCache.colorMode = ui.colorMode;
+    _decorCache.focusBatch = state.focusBatch;
+    _decorCache.highlightCC = ui.highlightCC;
+
+    if (updateLegendFlag) updateLegend();
+  }
+
+  function safeDecorateDynamic(opts) {
+    try {
+      decorateDynamic(opts);
+    } catch (_) {
+      // 自动降级：确保正确性优先
+      try {
+        render();
+      } catch (_2) {
+        // ignore
+      }
+    }
   }
 
   function render() {
@@ -683,6 +825,9 @@
       show(emptyEl, true);
       const host = $("gantt");
       if (host) host.innerHTML = "";
+      state.gantt = null;
+      state.currentTasks = [];
+      _resetDecorCache();
       updateLegend();
       return;
     }
@@ -704,7 +849,8 @@
         const bid = norm(meta.batch_id);
         if (!bid) return;
         state.focusBatch = state.focusBatch === bid ? "" : bid;
-        decorate();
+        // 纯视觉交互：只做增量装饰（Win7 避免全量重建）
+        safeDecorateDynamic({ updateLegend: false });
       },
       custom_popup_html: function (task) {
         const meta = task && task.meta ? task.meta : {};
@@ -730,10 +876,19 @@
 
     state.gantt = gantt;
     scrollToAnchor(gantt);
-    decorate();
+    // new Gantt()：全量渲染 + 静态装饰 + 动态装饰（一次）
+    _renderToken += 1;
+    _resetDecorCache();
+    const byId = _buildTaskMapById();
+    decorateStaticAfterRender(byId);
+    safeDecorateDynamic({ forceAll: true, byId: byId, updateLegend: true });
   }
 
   function bindUi() {
+    // 防御：避免重复绑定事件
+    if (bindUi._bound === true) return;
+    bindUi._bound = true;
+
     const resetBtn = $("ganttResetView");
     if (resetBtn) {
       on(resetBtn, "click", function () {
@@ -762,24 +917,39 @@
       });
     }
 
-    let timer = 0;
-    function scheduleRender() {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(function () {
+    let timerFull = 0;
+    let timerDecor = 0;
+
+    function scheduleFullRender() {
+      if (timerFull) clearTimeout(timerFull);
+      timerFull = setTimeout(function () {
         readUi();
         render();
-      }, 120);
+      }, 240);
     }
 
-    ["ganttColorMode", "ganttOnlyOverdue", "ganttOnlyExternal", "ganttShowProcessDeps", "ganttHighlightCC", "ganttOnlyCCDeps"].forEach(
-      (id) => {
-        const el = $(id);
-        if (el) on(el, "change", scheduleRender);
-      }
-    );
+    function scheduleDecorate() {
+      if (timerDecor) clearTimeout(timerDecor);
+      timerDecor = setTimeout(function () {
+        readUi();
+        safeDecorateDynamic({ updateLegend: true });
+      }, 60);
+    }
+
+    // 纯视觉类：不重建 Gantt
+    ["ganttColorMode", "ganttHighlightCC"].forEach((id) => {
+      const el = $(id);
+      if (el) on(el, "change", scheduleDecorate);
+    });
+
+    // 数据集合/依赖类：必须全量 render
+    ["ganttOnlyOverdue", "ganttOnlyExternal", "ganttShowProcessDeps", "ganttOnlyCCDeps"].forEach((id) => {
+      const el = $(id);
+      if (el) on(el, "change", scheduleFullRender);
+    });
     ["ganttFilterBatch", "ganttFilterResource"].forEach((id) => {
       const el = $(id);
-      if (el) on(el, "input", scheduleRender);
+      if (el) on(el, "input", scheduleFullRender);
     });
   }
 

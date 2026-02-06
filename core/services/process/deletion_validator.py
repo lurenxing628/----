@@ -38,11 +38,31 @@ class DeletionValidator:
     - 中间外部工序（含中间连续外部组）：不可删
     """
 
+    @staticmethod
+    def _norm_source(value: str) -> str:
+        """
+        将 source 规范化为 internal/external。
+        - 大小写/空格容错
+        - 未知值按 internal 处理（更保守，避免误删）
+        """
+        v = str(value or "").strip().lower()
+        return v if v in ("internal", "external") else "internal"
+
+    @staticmethod
+    def _norm_status(value: str) -> str:
+        """
+        将 status 规范化为 active/deleted。
+        - 大小写/空格容错
+        - 未知值按 active 处理（更保守，避免误删）
+        """
+        v = str(value or "").strip().lower()
+        return "deleted" if v == "deleted" else "active"
+
     def can_delete(self, operations: List[Operation], to_delete: List[int]) -> DeletionCheckResult:
         to_delete_set = set([int(x) for x in (to_delete or [])])
 
         # 过滤掉已删除的工序
-        active_ops = [op for op in (operations or []) if op.status == "active"]
+        active_ops = [op for op in (operations or []) if self._norm_status(op.status) == "active"]
 
         # 检查：要删除的必须都是外部工序
         for seq in to_delete_set:
@@ -53,7 +73,7 @@ class DeletionValidator:
                     can_delete=False,
                     message=f"工序 {seq} 不存在或已删除",
                 )
-            if op.source == "internal":
+            if self._norm_source(op.source) == "internal":
                 return DeletionCheckResult(
                     result=ValidationResult.DENIED,
                     can_delete=False,
@@ -72,7 +92,7 @@ class DeletionValidator:
             )
 
         # 如果没有剩余内部工序，允许删除（但给出提醒）
-        internal_ops = [op for op in remaining if op.source == "internal"]
+        internal_ops = [op for op in remaining if self._norm_source(op.source) == "internal"]
         if len(internal_ops) == 0:
             return DeletionCheckResult(
                 result=ValidationResult.WARNING,
@@ -95,7 +115,9 @@ class DeletionValidator:
             next_op = internal_ops[i + 1]
 
             between_ops = [
-                op for op in remaining if current.seq < op.seq < next_op.seq and op.source == "external"
+                op
+                for op in remaining
+                if current.seq < op.seq < next_op.seq and self._norm_source(op.source) == "external"
             ]
             if between_ops:
                 between_seqs = [op.seq for op in between_ops]
@@ -119,8 +141,8 @@ class DeletionValidator:
 
     def get_deletable_external_ops(self, operations: List[Operation]) -> List[int]:
         """获取所有可删除的外部工序（逐个尝试判定）。"""
-        active_ops = [op for op in (operations or []) if op.status == "active"]
-        external_ops = [op for op in active_ops if op.source == "external"]
+        active_ops = [op for op in (operations or []) if self._norm_status(op.status) == "active"]
+        external_ops = [op for op in active_ops if self._norm_source(op.source) == "external"]
         deletable: List[int] = []
         for op in external_ops:
             result = self.can_delete(operations, [op.seq])
@@ -132,7 +154,10 @@ class DeletionValidator:
         """
         获取可删除的外部工序组（首部连续外部组、尾部连续外部组）。
         """
-        active_ops = sorted([op for op in (operations or []) if op.status == "active"], key=lambda x: x.seq)
+        active_ops = sorted(
+            [op for op in (operations or []) if self._norm_status(op.status) == "active"],
+            key=lambda x: x.seq,
+        )
         if not active_ops:
             return []
 
@@ -141,7 +166,7 @@ class DeletionValidator:
         # 首部连续外部组
         head_group: List[int] = []
         for op in active_ops:
-            if op.source == "external":
+            if self._norm_source(op.source) == "external":
                 head_group.append(op.seq)
             else:
                 break
@@ -151,7 +176,7 @@ class DeletionValidator:
         # 尾部连续外部组
         tail_group: List[int] = []
         for op in reversed(active_ops):
-            if op.source == "external":
+            if self._norm_source(op.source) == "external":
                 tail_group.insert(0, op.seq)
             else:
                 break

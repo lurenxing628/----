@@ -12,6 +12,15 @@
         <a href="{{ url_for('scheduler.gantt_page', view='operator') }}" class="btn btn-secondary">甘特图-人员</a>
         <a href="{{ url_for('scheduler.week_plan_page') }}" class="btn btn-secondary">周计划</a>
         <a href="{{ url_for('scheduler.calendar_page') }}" class="btn btn-secondary">工作日历配置</a>
+        {% set manual_url = safe_url_for('scheduler.config_manual_page') %}
+        {% if manual_url %}
+            <a href="{{ manual_url }}" class="btn btn-secondary">排产说明书</a>
+        {% else %}
+            <span class="text-muted text-sm"
+                  title="原因：后端接口未注册（endpoint：scheduler.config_manual_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
+                排产说明书（不可用：后端接口缺失 scheduler.config_manual_page）
+            </span>
+        {% endif %}
     </div>
 </div>
 

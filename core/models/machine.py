@@ -26,7 +26,7 @@ class Machine:
             name=str(get(row, "name") or ""),
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             category=str(category) if category is not None and category != "" else None,
-            status=str(get(row, "status") or "active"),
+            status=(str(get(row, "status") or "active").strip().lower() or "active"),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),
