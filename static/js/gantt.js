@@ -17,6 +17,19 @@
     return v === null || typeof v === "undefined" ? "" : String(v);
   }
 
+  function escapeHtml(v) {
+    const s = str(v);
+    if (!s) return "";
+    // Fast path: nothing to escape
+    if (!/[&<>"']/.test(s)) return s;
+    return s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function norm(v) {
     return str(v).trim();
   }
@@ -197,7 +210,18 @@
     for (let i = 0; i < state.filteredTasks.length; i++) {
       const t0 = state.filteredTasks[i] || {};
       const t = Object.assign({}, t0);
-      t.meta = t0.meta || {};
+      const meta0 = t0.meta || {};
+      // XSS 防御：避免后续对 meta 做标记时污染原始数据对象
+      t.meta = Object.assign({}, meta0);
+
+      // XSS 防御：第三方 Gantt 组件内部可能用 innerHTML 渲染 task.name
+      try {
+        const rawName = str(t0.name || "");
+        t.meta._raw_name = rawName;
+        t.name = escapeHtml(rawName);
+      } catch (_) {
+        // ignore
+      }
 
       let deps = "";
       if (state.ui.onlyCCDeps) {
@@ -856,18 +880,36 @@
         const meta = task && task.meta ? task.meta : {};
         const isCC = !!(state.ccIdSet && state.ccIdSet.has(norm(task && task.id)));
         const sk = statusKeyForTask(task);
-        const skZh = sk === "done" ? "已完成" : sk === "in_progress" ? "进行中" : sk === "blocked" ? "阻塞" : "未开始";
+        const skZh =
+          sk === "done" ? "已完成" : sk === "in_progress" ? "进行中" : sk === "blocked" ? "阻塞" : "未开始";
+
+        // XSS 防御：所有动态字段必须 HTML 转义后再拼接
+        const titleText = escapeHtml(str(meta._raw_name || (task && task.name ? task.name : "")));
+        const startText = escapeHtml(str(task && task.start ? task.start : ""));
+        const endText = escapeHtml(str(task && task.end ? task.end : ""));
+        const batchText = escapeHtml(str(meta.batch_id || "-"));
+        const pieceText = escapeHtml(str(meta.piece_id || "-"));
+        const partText = escapeHtml(str(meta.part_no || "-"));
+        const seqText = escapeHtml(str(meta.seq || "-"));
+        const opTypeText = escapeHtml(str(meta.op_type_name || "-"));
+        const machineText = escapeHtml(str(meta.machine || "-"));
+        const operatorText = escapeHtml(str(meta.operator || "-"));
+        const sourceText = escapeHtml(str(meta.source || "-"));
+        const statusText = escapeHtml(str(skZh));
+        const priorityText = escapeHtml(str(meta.priority || "-"));
+        const dueText = escapeHtml(str(meta.due_date || "-"));
+
         const lines = [
-          `<div class="title">${str(task && task.name ? task.name : "")}</div>`,
-          `<div class="subtitle">时间：${str(task && task.start ? task.start : "")} ～ ${str(task && task.end ? task.end : "")}</div>`,
-          `<div class="subtitle">批次：${str(meta.batch_id || "-")}</div>`,
-          `<div class="subtitle">件：${str(meta.piece_id || "-")}</div>`,
-          `<div class="subtitle">图号：${str(meta.part_no || "-")}</div>`,
-          `<div class="subtitle">工序：${str(meta.seq || "-")}（${str(meta.op_type_name || "-")}）</div>`,
-          `<div class="subtitle">设备：${str(meta.machine || "-")}</div>`,
-          `<div class="subtitle">人员：${str(meta.operator || "-")}</div>`,
-          `<div class="subtitle">来源：${str(meta.source || "-")}｜状态：${skZh}</div>`,
-          `<div class="subtitle">优先级：${str(meta.priority || "-")}｜交期：${str(meta.due_date || "-")}</div>`,
+          `<div class="title">${titleText}</div>`,
+          `<div class="subtitle">时间：${startText} ～ ${endText}</div>`,
+          `<div class="subtitle">批次：${batchText}</div>`,
+          `<div class="subtitle">件：${pieceText}</div>`,
+          `<div class="subtitle">图号：${partText}</div>`,
+          `<div class="subtitle">工序：${seqText}（${opTypeText}）</div>`,
+          `<div class="subtitle">设备：${machineText}</div>`,
+          `<div class="subtitle">人员：${operatorText}</div>`,
+          `<div class="subtitle">来源：${sourceText}｜状态：${statusText}</div>`,
+          `<div class="subtitle">优先级：${priorityText}｜交期：${dueText}</div>`,
           `<div class="subtitle">关键链：${isCC ? "是" : "否"}｜超期：${meta.is_overdue ? "是" : "否"}</div>`,
         ];
         return lines.join("") + `<div class="pointer"></div>`;

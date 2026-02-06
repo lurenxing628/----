@@ -243,12 +243,12 @@ def optimize_schedule(
         except Exception as e:
             # 可选项失败不阻断主流程
             if logger:
+                tb = traceback.format_exc(limit=10)
                 try:
                     # 尽量带堆栈（便于定位依赖缺失/配置错误等）；若 logger 不支持 exc_info 参数则回退为拼接文本。
                     try:
                         logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{e}", exc_info=True)
                     except TypeError:
-                        tb = traceback.format_exc(limit=10)
                         logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{e}\n{tb}")
                 except Exception:
                     pass

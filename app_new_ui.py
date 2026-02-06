@@ -60,9 +60,9 @@ def create_app() -> Flask:
     cfg_class = config_map.get(env) or config_map["default"]
 
     base_dir = _runtime_base_dir()
-    # MODIFIED: Use the new test UI folders
-    static_dir = os.path.join(base_dir, "web_new_test", "static")
-    templates_dir = os.path.join(base_dir, "web_new_test", "templates")
+    # 注意：static/templates 仍使用原目录；V2 新 UI 通过 init_ui_mode 的 overlay + /static-v2 注入
+    static_dir = os.path.join(base_dir, "static")
+    templates_dir = os.path.join(base_dir, "templates")
 
     # 注意：打包后 templates/static 与 exe 同目录，因此这里用绝对路径，避免 Flask 以模块 root_path 为基准导致找不到资源
     app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)

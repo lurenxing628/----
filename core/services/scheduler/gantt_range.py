@@ -60,6 +60,11 @@ def resolve_week_range(
     - offset_weeks：周偏移（-1 上周，+1 下周）
     - start_date/end_date：可选，期望为 YYYY-MM-DD；若提供则优先使用
     """
+    try:
+        offset_weeks_int = int(offset_weeks)
+    except Exception:
+        raise ValidationError("offset_weeks 不合法（期望整数）", field="offset_weeks")
+
     sd = _parse_date(start_date) if start_date else None
     ed = _parse_date(end_date) if end_date else None
     if sd or ed:
@@ -70,6 +75,11 @@ def resolve_week_range(
             ed = sd + timedelta(days=6)
         if ed < sd:
             raise ValidationError("end_date 不能早于 start_date", field="end_date")
+
+        # 区间模式下同样支持按周偏移（用于“上周/下周”切换）
+        if offset_weeks_int:
+            sd = sd + timedelta(days=7 * offset_weeks_int)
+            ed = ed + timedelta(days=7 * offset_weeks_int)
 
         start_dt = datetime(sd.year, sd.month, sd.day, 0, 0, 0)
         end_dt_exclusive = datetime(ed.year, ed.month, ed.day, 0, 0, 0) + timedelta(days=1)
@@ -84,11 +94,6 @@ def resolve_week_range(
     else:
         # 默认：明天所在周（便于用户“从明天开始看排程”）
         monday = _monday_of(date.today() + timedelta(days=1))
-
-    try:
-        offset_weeks_int = int(offset_weeks)
-    except Exception:
-        raise ValidationError("offset_weeks 不合法（期望整数）", field="offset_weeks")
 
     monday = monday + timedelta(days=7 * offset_weeks_int)
     sunday = monday + timedelta(days=6)

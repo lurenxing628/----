@@ -6,6 +6,11 @@
 {% endblock %}
 
 {% block content %}
+  {# 导航基准：必须使用“原始请求参数”，否则 week_start/offset 会被重复叠加导致跳周 #}
+  {% set base_week_start = ((request.args.get('week_start') or '') | trim) or None %}
+  {% set base_start_date = ((request.args.get('start_date') or '') | trim) or None %}
+  {% set base_end_date = ((request.args.get('end_date') or '') | trim) or None %}
+
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
       <div>
@@ -26,18 +31,18 @@
     <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
       <div>
         <label>视图</label><br/>
-        <a href="{{ url_for('scheduler.gantt_page', view='machine', week_start=week_start, offset=0, version=version, start_date=start_date, end_date=end_date) }}">设备视图</a>
+        <a href="{{ url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date) }}">设备视图</a>
         <span class="muted">｜</span>
-        <a href="{{ url_for('scheduler.gantt_page', view='operator', week_start=week_start, offset=0, version=version, start_date=start_date, end_date=end_date) }}">人员视图</a>
+        <a href="{{ url_for('scheduler.gantt_page', view='operator', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date) }}">人员视图</a>
       </div>
 
       <div>
         <label>周切换</label><br/>
-        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=week_start, offset=offset-1, version=version) }}">← 上周</a>
+        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset-1, version=version, start_date=base_start_date, end_date=base_end_date) }}">← 上周</a>
         <span class="muted">｜</span>
-        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=week_start, offset=0, version=version) }}">回到本周</a>
+        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=0, version=version, start_date=base_start_date, end_date=base_end_date) }}">回到本周</a>
         <span class="muted">｜</span>
-        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=week_start, offset=offset+1, version=version) }}">下周 →</a>
+        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset+1, version=version, start_date=base_start_date, end_date=base_end_date) }}">下周 →</a>
       </div>
 
       <div>
