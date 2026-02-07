@@ -29,6 +29,7 @@ def build_result_summary(
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
     frozen_op_ids: Set[int],
+    downtime_meta: Optional[Dict[str, Any]] = None,
     simulate: bool,
     t0: float,
 ) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], str, int]:
@@ -111,6 +112,54 @@ def build_result_summary(
         }
     )
 
+    # 冻结窗口降级识别：目前以 warnings 前缀为准（freeze_window.py 会统一加前缀）
+    all_warnings = getattr(summary, "warnings", None) or []
+    freeze_warnings: List[str] = []
+    try:
+        for w in list(all_warnings or []):
+            ws = str(w)
+            if ws.startswith("【冻结窗口】"):
+                freeze_warnings.append(ws)
+    except Exception:
+        freeze_warnings = []
+
+    # 停机约束状态：避免“停机加载失败但摘要仍宣称硬约束已启用”
+    auto_assign_enabled = getattr(cfg, "auto_assign_enabled", "no") == "yes"
+    downtime_load_ok = True
+    downtime_load_error = None
+    downtime_extend_attempted = False
+    downtime_extend_ok = True
+    downtime_extend_error = None
+    try:
+        if isinstance(downtime_meta, dict):
+            if "downtime_load_ok" in downtime_meta:
+                downtime_load_ok = bool(downtime_meta.get("downtime_load_ok"))
+            downtime_load_error = downtime_meta.get("downtime_load_error")
+            downtime_extend_attempted = bool(downtime_meta.get("downtime_extend_attempted") or False)
+            if "downtime_extend_ok" in downtime_meta and downtime_meta.get("downtime_extend_ok") is not None:
+                downtime_extend_ok = bool(downtime_meta.get("downtime_extend_ok"))
+            downtime_extend_error = downtime_meta.get("downtime_extend_error")
+    except Exception:
+        pass
+
+    downtime_degraded = (not downtime_load_ok) or (auto_assign_enabled and downtime_extend_attempted and (not downtime_extend_ok))
+    downtime_degradation_reason = None
+    if downtime_degraded:
+        if not downtime_load_ok:
+            downtime_degradation_reason = str(downtime_load_error or "停机区间加载失败")
+        elif auto_assign_enabled and downtime_extend_attempted and (not downtime_extend_ok):
+            downtime_degradation_reason = str(downtime_extend_error or "停机区间扩展加载失败")
+
+    hard_constraints: List[str] = [
+        "precedence",
+        "calendar",
+        "resource_machine_operator",
+    ]
+    if not downtime_degraded:
+        hard_constraints.append("downtime_avoid")
+    if getattr(cfg, "freeze_window_enabled", "no") == "yes":
+        hard_constraints.append("freeze_window")
+
     result_summary_obj: Dict[str, Any] = {
         "is_simulation": bool(simulate),
         "version": int(version),
@@ -120,25 +169,27 @@ def build_result_summary(
             "mode": algo_mode,
             "objective": objective_name,
             "time_budget_seconds": int(time_budget_seconds),
-            "hard_constraints": [
-                "precedence",
-                "calendar",
-                "resource_machine_operator",
-                "downtime_avoid",
-            ]
-            + (["freeze_window"] if getattr(cfg, "freeze_window_enabled", "no") == "yes" else []),
+            "hard_constraints": hard_constraints,
             "soft_objectives": [objective_name],
             "best_score": list(best_score) if best_score is not None else None,
             "metrics": best_metrics.to_dict() if best_metrics is not None else None,
             "best_batch_order": list(best_order or []),
             "attempts": (attempts or [])[:12],
             "improvement_trace": (improvement_trace or [])[:200],
+            "downtime_avoid": {
+                "loaded_ok": bool(downtime_load_ok),
+                "degraded": bool(downtime_degraded),
+                "degradation_reason": downtime_degradation_reason,
+                "extend_attempted": bool(downtime_extend_attempted) if auto_assign_enabled else False,
+            },
             "freeze_window": {
                 "enabled": getattr(cfg, "freeze_window_enabled", "no"),
                 "days": int(getattr(cfg, "freeze_window_days", 0) or 0),
                 "frozen_op_count": int(len(frozen_op_ids)),
                 "frozen_batch_count": int(len(frozen_batch_ids)),
                 "frozen_batch_ids_sample": frozen_batch_ids[:20],
+                "degraded": bool(freeze_warnings),
+                "degradation_reason": (freeze_warnings[0] if freeze_warnings else None),
             },
         },
         "selected_batch_ids": list(normalized_batch_ids),
@@ -153,7 +204,7 @@ def build_result_summary(
         },
         "overdue_batches": {"count": len(overdue_items), "items": overdue_items},
         "errors_sample": (getattr(summary, "errors", None) or [])[:10],
-        "warnings": getattr(summary, "warnings", None) or [],
+        "warnings": list(all_warnings or []),
         "time_cost_ms": int(time_cost_ms),
     }
 

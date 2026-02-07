@@ -287,18 +287,33 @@ class ScheduleService:
         # 算法输入（补充 merged 外部组信息）
         algo_ops = build_algo_operations(self, operations)
 
-        # 生成版本号（递增）
+        # 上一版本号（供冻结窗口复用使用）
         latest = self.history_repo.get_latest_version()
         prev_version = int(latest or 0)
-        version = prev_version + 1
+
+        # 分配新版本号（数据库原子分配；避免并发下 MAX(version)+1 复用）
+        # 注意：只占用极短写事务，避免长时间锁库影响算法执行。
+        with self.tx_manager.transaction():
+            version = int(self.history_repo.allocate_next_version())
 
         # 冻结窗口（可选）
         frozen_op_ids, seed_results, algo_warnings = build_freeze_window_seed(
             self, cfg=cfg, prev_version=prev_version, start_dt=start_dt_norm, operations=operations
         )
 
+        # 防御：warnings 预期为 list，但外部 stub/历史调用可能返回 None
+        if algo_warnings is None:
+            algo_warnings = []
+
         # 停机区间（用于算法避让）
-        downtime_map = load_machine_downtimes(self, algo_ops=algo_ops, start_dt=start_dt_norm)
+        downtime_meta: Dict[str, Any] = {}
+        downtime_map = load_machine_downtimes(
+            self,
+            algo_ops=algo_ops,
+            start_dt=start_dt_norm,
+            warnings=algo_warnings,
+            meta=downtime_meta,
+        )
 
         # 自动分配资源池（可选）
         resource_pool, pool_warnings = build_resource_pool(self, cfg=cfg, algo_ops=algo_ops)
@@ -315,7 +330,13 @@ class ScheduleService:
 
         # auto-assign 启用时：停机区间覆盖候选设备
         downtime_map = extend_downtime_map_for_resource_pool(
-            self, cfg=cfg, resource_pool=resource_pool, downtime_map=downtime_map, start_dt=start_dt_norm
+            self,
+            cfg=cfg,
+            resource_pool=resource_pool,
+            downtime_map=downtime_map,
+            start_dt=start_dt_norm,
+            warnings=algo_warnings,
+            meta=downtime_meta,
         )
 
         # 过滤掉冻结工序（由 seed_results 复用）
@@ -390,6 +411,7 @@ class ScheduleService:
             attempts=attempts,
             improvement_trace=improvement_trace,
             frozen_op_ids=set(frozen_op_ids),
+            downtime_meta=downtime_meta,
             simulate=simulate,
             t0=t0,
         )

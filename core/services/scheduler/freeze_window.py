@@ -58,7 +58,7 @@ def build_freeze_window_seed(
                 continue
     except Exception as e:
         schedule_map = {}
-        warnings.append(f"冻结窗口启用但读取上一版本排程失败：{e}")
+        warnings.append(f"【冻结窗口】启用但读取上一版本排程失败，已降级为不冻结：{e}")
 
     # 冻结到窗口内出现的最大 seq（按批次前缀冻结）
     if schedule_map:
@@ -81,7 +81,7 @@ def build_freeze_window_seed(
             missing = [oid for oid in prefix if oid not in schedule_map]
             if missing:
                 sample = ", ".join([str(x) for x in missing[:5]])
-                warnings.append(f"冻结窗口跳过批次 {bid}：上一版本缺少前缀工序排程（示例 op_id={sample}）")
+                warnings.append(f"【冻结窗口】跳过批次 {bid}：上一版本缺少前缀工序排程（示例 op_id={sample}）")
                 continue
             # 校验时间有效（否则不冻结该批次，避免“冻结但无有效区间”导致工序丢失）
             invalid_oid = None
@@ -94,7 +94,7 @@ def build_freeze_window_seed(
                     break
                 seed_tmp[int(oid)] = {"row": row, "start_time": st, "end_time": et}
             if invalid_oid is not None:
-                warnings.append(f"冻结窗口跳过批次 {bid}：上一版本工序时间无效（op_id={invalid_oid}）")
+                warnings.append(f"【冻结窗口】跳过批次 {bid}：上一版本工序时间无效（op_id={invalid_oid}）")
                 # 清理该批次临时缓存
                 for oid in prefix:
                     seed_tmp.pop(int(oid), None)

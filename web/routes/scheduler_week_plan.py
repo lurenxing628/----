@@ -166,6 +166,19 @@ def simulate_schedule():
         ver = int(result.get("version") or 1)
         flash(f"模拟排产完成：生成版本 {ver}（不影响批次状态）。", "success")
 
+        # 重要 warnings：冻结窗口/停机降级等（最多展示 8 条）
+        summary = result.get("summary") or {}
+        warns = summary.get("warnings") or []
+        if warns:
+            shown = 0
+            for w in warns:
+                ws = str(w)
+                if ws.startswith("【冻结窗口】") or ws.startswith("【停机】"):
+                    flash(ws, "warning")
+                    shown += 1
+                    if shown >= 8:
+                        break
+
         # 默认跳到“本周”甘特图（设备视图）
         today = date.today().isoformat()
         return redirect(url_for("scheduler.gantt_page", view="machine", week_start=today, offset=0, version=ver))

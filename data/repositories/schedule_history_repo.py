@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import sqlite3
 from typing import Any, Dict, List, Optional
 
+from core.infrastructure.errors import AppError, ErrorCode
 from core.models import ScheduleHistory
 
 from .base_repo import BaseRepository
@@ -37,6 +39,58 @@ class ScheduleHistoryRepository(BaseRepository):
             return int(val)
         except Exception:
             return 0
+
+    def allocate_next_version(self) -> int:
+        """
+        原子分配排产版本号（避免并发下 MAX(version)+1 复用）。
+
+        实现策略：
+        - 使用 `ScheduleVersionSeq` 自增表分配唯一递增版本号（version=PRIMARY KEY AUTOINCREMENT）
+        - 对齐：确保序列表不会落后于 `ScheduleHistory.max(version)`（兼容老库/从旧版本升级）
+        - 允许版本号出现“跳号”（例如落库失败/回滚）；但保证不会复用
+        """
+        conn = self.conn
+        try:
+            # 兜底：即使 schema.sql 未执行到，也能按需创建（幂等）
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ScheduleVersionSeq (
+                    version INTEGER PRIMARY KEY AUTOINCREMENT
+                )
+                """
+            )
+
+            # 计算对齐基线：取历史最大版本号 与 序列表最大值 的较大者
+            row_h = conn.execute("SELECT COALESCE(MAX(version), 0) FROM ScheduleHistory").fetchone()
+            max_history = int((row_h[0] if row_h else 0) or 0)
+            row_s = conn.execute("SELECT COALESCE(MAX(version), 0) FROM ScheduleVersionSeq").fetchone()
+            max_seq = int((row_s[0] if row_s else 0) or 0)
+
+            baseline = int(max(max_history, max_seq))
+            if baseline > 0 and baseline > max_seq:
+                # 插入 baseline 作为“对齐锚点”，让下一次 DEFAULT VALUES 返回 baseline+1
+                conn.execute(
+                    "INSERT OR IGNORE INTO ScheduleVersionSeq(version) VALUES (?)",
+                    (int(baseline),),
+                )
+
+            cur = conn.execute("INSERT INTO ScheduleVersionSeq DEFAULT VALUES")
+            v = int(cur.lastrowid) if getattr(cur, "lastrowid", None) is not None else 0
+            if v <= 0:
+                # 兜底：极端情况下 lastrowid 不可用时再查一次
+                row = conn.execute("SELECT COALESCE(MAX(version), 0) FROM ScheduleVersionSeq").fetchone()
+                v = int((row[0] if row else 0) or 0)
+
+            if int(v) <= 0:
+                raise RuntimeError(f"allocate_next_version 返回非法版本号：{v!r}")
+            return int(v)
+        except Exception as e:
+            if self.logger:
+                try:
+                    self.logger.error(f"分配排产版本号失败：{e}", exc_info=True)
+                except Exception:
+                    pass
+            raise AppError(ErrorCode.DB_QUERY_ERROR, "分配排产版本号失败，请查看日志。", cause=e) from e
 
     def list_versions(self, limit: int = 30) -> List[Dict[str, Any]]:
         """

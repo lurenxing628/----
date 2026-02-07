@@ -234,6 +234,14 @@ CREATE TABLE IF NOT EXISTS Schedule (
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id)
 );
 
+-- 排产版本号序列表（用于原子分配 version；避免并发下 MAX(version)+1 复用）
+-- 说明：
+-- - 仅用于分配版本号，不承载业务含义
+-- - 版本号对齐策略由代码实现（与 ScheduleHistory.max(version) 对齐）
+CREATE TABLE IF NOT EXISTS ScheduleVersionSeq (
+    version         INTEGER PRIMARY KEY AUTOINCREMENT
+);
+
 CREATE TABLE IF NOT EXISTS WorkCalendar (
     date            DATE PRIMARY KEY,
     day_type        TEXT DEFAULT 'workday',

@@ -12,11 +12,17 @@ def load_machine_downtimes(
     *,
     algo_ops: List[Any],
     start_dt: datetime,
+    warnings: Optional[List[str]] = None,
+    meta: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, List[Tuple[datetime, datetime]]]:
     """
     预加载停机区间（按设备维度展开后的记录），用于算法避让。
     """
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]] = {}
+    if meta is not None:
+        # 约定：即使 downtime_map 为空，只要加载流程未抛异常，也认为“加载成功但无停机”
+        meta["downtime_load_ok"] = False
+        meta["downtime_load_error"] = None
     try:
         dt_repo = MachineDowntimeRepository(svc.conn, logger=svc.logger)
         start_str = svc._format_dt(start_dt)
@@ -38,8 +44,27 @@ def load_machine_downtimes(
             if intervals:
                 intervals.sort(key=lambda x: x[0])
                 downtime_map[mid] = intervals
-    except Exception:
+        if meta is not None:
+            meta["downtime_load_ok"] = True
+            meta["downtime_load_error"] = None
+    except Exception as e:
         downtime_map = {}
+        if meta is not None:
+            meta["downtime_load_ok"] = False
+            meta["downtime_load_error"] = str(e)
+        if warnings is not None:
+            try:
+                warnings.append(f"【停机】停机区间加载失败，已降级为忽略停机约束：{e}")
+            except Exception:
+                pass
+        if getattr(svc, "logger", None):
+            try:
+                try:
+                    svc.logger.warning(f"停机区间加载失败，已降级为忽略停机约束：{e}", exc_info=True)
+                except TypeError:
+                    svc.logger.warning(f"停机区间加载失败，已降级为忽略停机约束：{e}")
+            except Exception:
+                pass
     return downtime_map
 
 
@@ -167,6 +192,8 @@ def extend_downtime_map_for_resource_pool(
     resource_pool: Optional[Dict[str, Any]],
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     start_dt: datetime,
+    warnings: Optional[List[str]] = None,
+    meta: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, List[Tuple[datetime, datetime]]]:
     """
     auto-assign 启用时：停机区间需要覆盖“候选设备”，否则算法可能误排到停机段内。
@@ -174,6 +201,11 @@ def extend_downtime_map_for_resource_pool(
     auto_assign_enabled = getattr(cfg, "auto_assign_enabled", "no") == "yes"
     if not auto_assign_enabled or not resource_pool or not isinstance(resource_pool.get("operators_by_machine"), dict):
         return downtime_map
+
+    if meta is not None:
+        meta["downtime_extend_attempted"] = True
+        meta["downtime_extend_ok"] = True
+        meta["downtime_extend_error"] = None
 
     try:
         dt_repo = MachineDowntimeRepository(svc.conn, logger=svc.logger)
@@ -196,8 +228,23 @@ def extend_downtime_map_for_resource_pool(
             if intervals:
                 intervals.sort(key=lambda x: x[0])
                 downtime_map[mid] = intervals
-    except Exception:
-        pass
+    except Exception as e:
+        if meta is not None:
+            meta["downtime_extend_ok"] = False
+            meta["downtime_extend_error"] = str(e)
+        if warnings is not None:
+            try:
+                warnings.append(f"【停机】停机区间扩展加载失败，候选设备可能未覆盖停机约束：{e}")
+            except Exception:
+                pass
+        if getattr(svc, "logger", None):
+            try:
+                try:
+                    svc.logger.warning(f"停机区间扩展加载失败，候选设备可能未覆盖停机约束：{e}", exc_info=True)
+                except TypeError:
+                    svc.logger.warning(f"停机区间扩展加载失败，候选设备可能未覆盖停机约束：{e}")
+            except Exception:
+                pass
 
     return downtime_map
 

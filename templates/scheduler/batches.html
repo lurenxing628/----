@@ -123,7 +123,7 @@
     </form>
 
     {% if batches and batches|length > 0 %}
-      <form method="post" action="{{ url_for('scheduler.run_schedule') }}">
+      <form id="jsRunScheduleForm" method="post" action="{{ url_for('scheduler.run_schedule') }}">
         <table>
         <thead>
           <tr>
@@ -205,6 +205,24 @@
             const checks = Array.from(document.querySelectorAll(".js-batch-check"));
             for (const c of checks) c.addEventListener("change", updateCount);
             updateCount();
+
+            // 防双击：提交后禁用按钮（仅 UI 互斥，不是资源锁）
+            const form = document.getElementById("jsRunScheduleForm");
+            if (form) {
+              form.addEventListener("submit", function (e) {
+                try {
+                  if (form.dataset && form.dataset.submitted === "1") {
+                    e.preventDefault();
+                    return false;
+                  }
+                  if (form.dataset) form.dataset.submitted = "1";
+                  const btns = Array.from(form.querySelectorAll("button[type='submit'], input[type='submit']"));
+                  for (const b of btns) {
+                    try { b.disabled = true; } catch (e2) {}
+                  }
+                } catch (e1) {}
+              });
+            }
           })();
         </script>
       {% endif %}
