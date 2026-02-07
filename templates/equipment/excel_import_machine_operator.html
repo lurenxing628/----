@@ -7,6 +7,8 @@
       导入前会校验设备/人员是否存在，并给出中文提示。
     </p>
     <div style="margin-top:8px;">
+      <a href="{{ url_for('equipment.list_page') }}">← 返回设备管理</a>
+      <span class="muted">｜</span>
       <a href="{{ export_url }}">导出当前数据（设备人员关联.xlsx）</a>
       <span class="muted">（导出会写入操作留痕）</span>
     </div>

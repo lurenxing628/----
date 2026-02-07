@@ -31,7 +31,9 @@
       <div class="muted">暂无数据（可先下载模板并导入）。</div>
     {% endif %}
   </div>
+{% endblock %}
 
+{% block extra_scripts %}
   <script src="{{ url_for('static', filename='js/excel_handler.js') }}"></script>
 {% endblock %}
 

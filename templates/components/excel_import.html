@@ -49,11 +49,17 @@
           <tr>
             <td>{{ r.row_num }}</td>
             <td>
-              {% if r.status.value == 'new' %}<span class="badge badge-new">NEW</span>{% endif %}
-              {% if r.status.value == 'update' %}<span class="badge badge-update">UPDATE</span>{% endif %}
-              {% if r.status.value == 'unchanged' %}<span class="badge badge-unchanged">UNCHANGED</span>{% endif %}
-              {% if r.status.value == 'skip' %}<span class="badge badge-skip">SKIP</span>{% endif %}
-              {% if r.status.value == 'error' %}<span class="badge badge-error">ERROR</span>{% endif %}
+              {% if r.status.value == 'new' %}
+                <span class="badge badge-new">NEW</span>
+              {% elif r.status.value == 'update' %}
+                <span class="badge badge-update">UPDATE</span>
+              {% elif r.status.value == 'unchanged' %}
+                <span class="badge badge-unchanged">UNCHANGED</span>
+              {% elif r.status.value == 'skip' %}
+                <span class="badge badge-skip">SKIP</span>
+              {% elif r.status.value == 'error' %}
+                <span class="badge badge-error">ERROR</span>
+              {% endif %}
             </td>
             <td class="{{ 'error' if r.status.value == 'error' else '' }}">{{ r.message }}</td>
             <td><pre>{{ r.data | tojson_zh(2) }}</pre></td>

@@ -103,7 +103,7 @@
                 <a href="{{ url_for('equipment.detail_page', machine_id=r.machine_id) }}">查看/编辑</a>
                 <span class="muted">｜</span>
                 <form method="post" action="{{ url_for('equipment.delete_machine', machine_id=r.machine_id) }}" style="display:inline;"
-                      onsubmit="return confirm('确定删除设备 {{ r.machine_id }} 吗？若已被排产数据引用将删除失败，建议改为停用/维修。');">
+                      data-confirm="确定删除设备 {{ r.machine_id }} 吗？若已被排产数据引用将删除失败，建议改为停用/维修。">
                   <button type="submit">删除</button>
                 </form>
               </td>

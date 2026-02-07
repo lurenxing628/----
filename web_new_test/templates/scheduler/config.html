@@ -167,6 +167,7 @@
                     <input type="checkbox" name="freeze_window_enabled" value="yes" {% if cfg.freeze_window_enabled == 'yes' %}checked{% endif %}>
                     启用冻结窗口
                 </label>
+                <input type="hidden" name="freeze_window_enabled" value="no">
                 <div class="flex items-center gap-2 mt-2">
                     <input type="number" name="freeze_window_days" class="form-control" style="width: 90px;" value="{{ cfg.freeze_window_days or 0 }}">
                     <span class="text-muted">天（复用上一版本窗口内排程）</span>
@@ -178,6 +179,7 @@
                     <input type="checkbox" name="prefer_primary_skill" value="yes" {% if cfg.prefer_primary_skill == 'yes' %}checked{% endif %}>
                     工序补充页：优先推荐主操/高技能人员
                 </label>
+                <input type="hidden" name="prefer_primary_skill" value="no">
             </div>
 
             <div class="form-group">
@@ -185,6 +187,7 @@
                     <input type="checkbox" name="enforce_ready_default" value="yes" {% if cfg.enforce_ready_default == 'yes' %}checked{% endif %}>
                     执行排产：默认启用齐套约束（未齐套禁止排产）
                 </label>
+                <input type="hidden" name="enforce_ready_default" value="no">
             </div>
 
             <div class="form-group">
@@ -192,6 +195,7 @@
                     <input type="checkbox" name="auto_assign_enabled" value="yes" {% if cfg.auto_assign_enabled == 'yes' %}checked{% endif %}>
                     排产：内部工序缺省资源自动分配（machine/operator 未填时）
                 </label>
+                <input type="hidden" name="auto_assign_enabled" value="no">
             </div>
 
             <div class="form-group">
@@ -199,6 +203,7 @@
                     <input type="checkbox" name="ortools_enabled" value="yes" {% if cfg.ortools_enabled == 'yes' %}checked{% endif %}>
                     improve：启用 OR-Tools 高质量起点（若环境已安装）
                 </label>
+                <input type="hidden" name="ortools_enabled" value="no">
                 <div class="flex items-center gap-2 mt-2">
                     <input type="number" name="ortools_time_limit_seconds" class="form-control" style="width: 90px;" value="{{ cfg.ortools_time_limit_seconds or 3 }}">
                     <span class="text-muted">秒（建议 3~15）</span>

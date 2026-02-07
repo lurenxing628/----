@@ -89,7 +89,8 @@
               <td>
                 <a href="{{ url_for('process.supplier_detail', supplier_id=r.supplier_id) }}">查看/编辑</a>
                 <span class="muted">｜</span>
-                <form method="post" action="{{ url_for('process.delete_supplier', supplier_id=r.supplier_id) }}" style="display:inline;">
+                <form method="post" action="{{ url_for('process.delete_supplier', supplier_id=r.supplier_id) }}" style="display:inline;"
+                      data-confirm="确认删除供应商 {{ r.supplier_id }} 吗？">
                   <button type="submit">删除</button>
                 </form>
               </td>

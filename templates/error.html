@@ -7,7 +7,11 @@
 
     {% if details %}
       <h3>详细信息</h3>
-      <pre>{{ details | tojson_zh(2) }}</pre>
+      {% if details is string %}
+        <pre>{{ details }}</pre>
+      {% else %}
+        <pre>{{ details | tojson_zh(2) }}</pre>
+      {% endif %}
     {% endif %}
 
     <p class="muted">如果需要排查：请查看 <code>logs/aps.log</code> 与 <code>logs/aps_error.log</code>。</p>

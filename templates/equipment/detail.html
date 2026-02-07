@@ -58,6 +58,9 @@
     </p>
 
     {% if linked_operators and linked_operators|length > 0 %}
+      {% for op in linked_operators %}
+        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('equipment.update_link', machine_id=machine.machine_id) }}" style="display:none;"></form>
+      {% endfor %}
       <table>
         <thead>
           <tr>
@@ -71,7 +74,6 @@
         </thead>
         <tbody>
           {% for op in linked_operators %}
-            <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('equipment.update_link', machine_id=machine.machine_id) }}"></form>
             <tr>
               <td>{{ op.operator_id }}</td>
               <td>{{ op.operator_name or '-' }}</td>
@@ -95,7 +97,7 @@
               <td>
                 <button type="submit" form="linkform_{{ loop.index0 }}">保存</button>
                 <form method="post" action="{{ url_for('equipment.remove_link', machine_id=machine.machine_id) }}" style="display:inline-block;margin-left:6px;"
-                      onsubmit="return confirm('确认解除该关联？');">
+                      data-confirm="确认解除该关联？">
                   <input type="hidden" name="operator_id" value="{{ op.operator_id }}">
                   <button type="submit">解除关联</button>
                 </form>

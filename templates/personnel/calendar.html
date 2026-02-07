@@ -15,7 +15,15 @@
         </p>
       </div>
       <div>
-        <a href="{{ url_for('scheduler.calendar_page') }}">全局工作日历</a>
+        {% set global_cal_url = safe_url_for('scheduler.calendar_page') %}
+        {% if global_cal_url %}
+          <a href="{{ global_cal_url }}">全局工作日历</a>
+        {% else %}
+          <span class="muted"
+                title="原因：后端接口未注册（endpoint：scheduler.calendar_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
+            全局工作日历（不可用：后端接口缺失，可能旧版本/未重启/未重新打包）
+          </span>
+        {% endif %}
         <span class="muted">｜</span>
         <a href="{{ url_for('personnel.detail_page', operator_id=operator.operator_id) }}">← 返回人员详情</a>
       </div>
@@ -61,11 +69,11 @@
         </div>
         <div>
           <label>可用工时（小时）</label><br/>
-          <input name="shift_hours" placeholder="如：8" style="width:140px;">
+          <input name="shift_hours" type="number" min="0" step="0.25" placeholder="如：8" style="width:140px;">
         </div>
         <div>
           <label>效率（>0）</label><br/>
-          <input name="efficiency" placeholder="如：1.0" style="width:140px;">
+          <input name="efficiency" type="number" min="0.01" step="0.01" placeholder="如：1.0" style="width:140px;">
         </div>
         <div>
           <label>允许普通件</label><br/>
@@ -90,7 +98,7 @@
         </div>
       </div>
       <div class="muted" style="margin-top:8px;">
-        提示：假期默认不排产（可用工时=0）。若假期需要上班，请把可用工时设置为 &gt;0；效率留空时会按“假期默认效率”兜底（当前：{{ holiday_default_efficiency }}）。
+        提示：假期默认不排产（可用工时=0）。若假期需要上班，请把可用工时设置为 &gt;0；效率留空时会按“假期默认效率”兜底（当前：{{ holiday_default_efficiency if holiday_default_efficiency is defined else 0.8 }}）。
       </div>
     </form>
   </div>

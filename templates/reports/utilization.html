@@ -35,7 +35,11 @@
         </div>
         <div>
           <button type="submit">查询</button>
-          <a style="margin-left:10px;" href="{{ url_for('reports.utilization_export', version=version, start_date=start_date, end_date=end_date) }}">导出 Excel</a>
+          {% if machine_rows or operator_rows %}
+            <a style="margin-left:10px;" href="{{ url_for('reports.utilization_export', version=version, start_date=start_date, end_date=end_date) }}">导出 Excel</a>
+          {% else %}
+            <span class="muted" style="margin-left:10px;" title="暂无数据，无法导出">导出 Excel</span>
+          {% endif %}
         </div>
       </div>
     </form>

@@ -30,11 +30,11 @@
         </div>
         <div class="muted">
           保留天数：
-          <input name="auto_log_cleanup_keep_days" value="{{ settings.auto_log_cleanup_keep_days if settings else '30' }}" style="width:90px;">
+          <input type="number" min="1" max="365" step="1" name="auto_log_cleanup_keep_days" value="{{ settings.auto_log_cleanup_keep_days if settings else '30' }}" style="width:90px;">
         </div>
         <div class="muted">
           间隔（分钟）：
-          <input name="auto_log_cleanup_interval_minutes" value="{{ settings.auto_log_cleanup_interval_minutes if settings else '60' }}" style="width:90px;">
+          <input type="number" min="1" max="1440" step="1" name="auto_log_cleanup_interval_minutes" value="{{ settings.auto_log_cleanup_interval_minutes if settings else '60' }}" style="width:90px;">
         </div>
         <div class="muted">
           上次执行：{{ st_lc.last_run_time if st_lc and st_lc.last_run_time else '-' }}
@@ -81,7 +81,7 @@
         </div>
         <div>
           <div class="muted">条数(limit)</div>
-          <input name="limit" value="{{ filters.limit }}" style="width:80px;">
+          <input type="number" min="1" max="500" step="1" name="limit" value="{{ filters.limit }}" style="width:80px;">
         </div>
         <div>
           <button type="submit">查询</button>

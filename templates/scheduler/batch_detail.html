@@ -26,7 +26,7 @@
         <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
         <span class="muted">｜</span>
         <form method="post" action="{{ url_for('scheduler.delete_batch', batch_id=batch.batch_id) }}" style="display:inline;"
-              onsubmit="return confirm('确定删除批次 {{ batch.batch_id }} 吗？将级联删除批次工序与排程记录（若存在）。');">
+              data-confirm="确定删除批次 {{ batch.batch_id }} 吗？将级联删除批次工序与排程记录（若存在）。">
           <button type="submit">删除批次</button>
         </form>
       </div>
@@ -42,13 +42,19 @@
     </p>
     <div style="margin-top:8px;">
       <form method="post" action="{{ url_for('scheduler.generate_ops', batch_id=batch.batch_id) }}"
-            onsubmit="return confirm('将根据当前零件工序模板重建该批次工序（会清空已填写的设备/人员/工时/周期等补充信息）。确定继续？');">
+            data-confirm="将根据当前零件工序模板重建该批次工序（会清空已填写的设备/人员/工时/周期等补充信息）。确定继续？">
         <button type="submit">从零件模板重建工序（会覆盖补充信息）</button>
         <span class="muted">用于模板变更后同步（会清空已填写的设备/人员/工时/周期等补充信息）</span>
       </form>
     </div>
 
     {% if operations and operations|length > 0 %}
+      {# 表格内 input/select 使用 form="opform_..."；为保证 HTML 合法，把空 form 节点移到 <tbody> 之外 #}
+      {% for op in operations %}
+        <form id="opform_{{ op.id }}" method="post" action="{{ url_for('scheduler.update_op', op_id=op.id) }}" style="display:none;"></form>
+      {% endfor %}
+
+      <div style="overflow-x:auto;">
       <table style="margin-top:12px;">
         <thead>
           <tr>
@@ -68,7 +74,6 @@
         <tbody>
           {% for op in operations %}
             {% set src = (op.source|default('')|lower) %}
-            <form id="opform_{{ op.id }}" method="post" action="{{ url_for('scheduler.update_op', op_id=op.id) }}"></form>
             <tr {% if src == 'internal' %}data-linkage-row="1" data-op-id="{{ op.id }}" data-op-code="{{ op.op_code }}"{% endif %}>
               <td>{{ op.op_code }}</td>
               <td>{{ op.seq }}</td>
@@ -203,6 +208,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
 
       {% if lazy_select_enabled %}
         <!-- 仅在懒加载模式下渲染：避免每行重复输出大量 <option>（Win7 切页更流畅） -->

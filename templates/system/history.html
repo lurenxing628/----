@@ -20,7 +20,7 @@
             <option value="">（不选择）</option>
             {% for v in versions %}
               {% set vv = v.version %}
-              <option value="{{ vv }}" {{ 'selected' if filters.version and (filters.version|int)==vv else '' }}>
+              <option value="{{ vv }}" {{ 'selected' if filters.version and (filters.version ~ '') == (vv ~ '') else '' }}>
                 v{{ vv }}（{{ v.schedule_time }} / {{ v.strategy }} / {{ v.result_status }}）
               </option>
             {% endfor %}
@@ -90,7 +90,21 @@
               <td>
                 {% if r.result_summary_obj %}
                   {% set txt = (r.result_summary_obj | tojson_zh(0)) %}
-                  <pre>{{ txt[:260] }}{% if txt|length > 260 %}...{% endif %}</pre>
+                  {% set short = txt[:260] %}
+                  {# 尽量避免截断在转义序列中间（例如结尾出现 "\\u4e2" 或单个反斜杠） #}
+                  {% if short.endswith('\\') %}
+                    {% set short = short[:-1] %}
+                  {% endif %}
+                  {% set bs = short.rfind('\\') %}
+                  {% if bs != -1 %}
+                    {% set tail = short[bs:] %}
+                    {% if tail.startswith('\\u') and (tail|length < 6) %}
+                      {% set short = short[:bs] %}
+                    {% elif tail.startswith('\\x') and (tail|length < 4) %}
+                      {% set short = short[:bs] %}
+                    {% endif %}
+                  {% endif %}
+                  <pre>{{ short }}{% if txt|length > 260 %}...{% endif %}</pre>
                 {% elif r.result_summary %}
                   <pre>{{ r.result_summary[:260] }}{% if r.result_summary|length > 260 %}...{% endif %}</pre>
                 {% else %}

@@ -65,7 +65,8 @@
               <td>
                 <a href="{{ url_for('process.op_type_detail', op_type_id=r.op_type_id) }}">查看/编辑</a>
                 <span class="muted">｜</span>
-                <form method="post" action="{{ url_for('process.delete_op_type', op_type_id=r.op_type_id) }}" style="display:inline;">
+                <form method="post" action="{{ url_for('process.delete_op_type', op_type_id=r.op_type_id) }}" style="display:inline;"
+                      data-confirm="确认删除工种 {{ r.op_type_id }} 吗？">
                   <button type="submit">删除</button>
                 </form>
               </td>

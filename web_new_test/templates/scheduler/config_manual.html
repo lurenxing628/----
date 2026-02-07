@@ -299,6 +299,21 @@
     return t || "section";
   }
 
+  // 链接协议白名单：只把安全 href 渲染成 <a>（防止 javascript: 等注入）
+  function isSafeHref(href) {
+    const h = (href || "").trim();
+    if (!h) return false;
+    const lower = h.toLowerCase();
+    if (lower.startsWith("#")) return true;
+    if (lower.startsWith("http://") || lower.startsWith("https://")) return true;
+    // 避免协议相对 URL：//example.com
+    if (lower.startsWith("//")) return false;
+    if (lower.startsWith("/")) return true;
+    if (lower.startsWith("./") || lower.startsWith("../")) return true;
+    if (lower.startsWith("mailto:")) return true;
+    return false;
+  }
+
   function renderInline(text) {
     let s = escapeHtml(text);
 
@@ -316,6 +331,9 @@
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(_m, label, url) {
       const href = (url || "").trim();
       const text = label || "";
+      if (!isSafeHref(href)) {
+        return text;
+      }
       if (href.startsWith("#")) {
         return '<a href="' + href + '">' + text + "</a>";
       }
@@ -595,7 +613,11 @@
         e.preventDefault();
         const target = document.getElementById(h.id);
         if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          try {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          } catch (e2) {
+            try { target.scrollIntoView(); } catch (e3) {}
+          }
           // 更新 URL hash
           history.pushState(null, null, '#' + h.id);
           // 更新激活状态
@@ -662,7 +684,11 @@
       const target = document.querySelector(hash);
       if (target) {
         setTimeout(() => {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          try {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          } catch (e2) {
+            try { target.scrollIntoView(); } catch (e3) {}
+          }
           updateActiveLink(hash.slice(1));
         }, 100);
       }

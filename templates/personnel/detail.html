@@ -72,6 +72,9 @@
     </p>
 
     {% if linked_machines and linked_machines|length > 0 %}
+      {% for m in linked_machines %}
+        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_link', operator_id=operator.operator_id) }}" style="display:none;"></form>
+      {% endfor %}
       <table>
         <thead>
           <tr>
@@ -85,7 +88,6 @@
         </thead>
         <tbody>
           {% for m in linked_machines %}
-            <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_link', operator_id=operator.operator_id) }}"></form>
             <tr>
               <td>{{ m.machine_id }}</td>
               <td>{{ m.machine_name or '-' }}</td>
@@ -109,7 +111,7 @@
               <td>
                 <button type="submit" form="linkform_{{ loop.index0 }}">保存</button>
                 <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}" style="display:inline-block;margin-left:6px;"
-                      onsubmit="return confirm('确认解除该关联？');">
+                      data-confirm="确认解除该关联？">
                   <input type="hidden" name="machine_id" value="{{ m.machine_id }}">
                   <button type="submit">解除关联</button>
                 </form>

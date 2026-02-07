@@ -86,7 +86,7 @@
                 <a href="{{ url_for('process.part_detail', part_no=r.part_no) }}">查看/编辑</a>
                 <span class="muted">｜</span>
                 <form method="post" action="{{ url_for('process.delete_part', part_no=r.part_no) }}" style="display:inline;"
-                      onsubmit="return confirm('确定删除零件 {{ r.part_no }} 吗？若已被批次引用将删除失败。');">
+                      data-confirm="确定删除零件 {{ r.part_no }} 吗？若已被批次引用将删除失败。">
                   <button type="submit">删除</button>
                 </form>
               </td>

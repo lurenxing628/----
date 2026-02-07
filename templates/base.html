@@ -13,6 +13,7 @@
     .muted { color: #666; }
     .error { color: #b00020; }
     .success { color: #1b5e20; }
+    .warning { color: #e65100; }
     table { border-collapse: collapse; width: 100%; }
     th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
     th { background: #f6f6f6; text-align: left; }
@@ -57,7 +58,7 @@
       {% if messages %}
         <div class="card">
           {% for category, message in messages %}
-            <div class="{{ 'error' if category=='error' else 'success' }}">{{ message }}</div>
+            <div class="{{ 'error' if category=='error' else 'warning' if category=='warning' else 'success' }}">{{ message }}</div>
           {% endfor %}
         </div>
       {% endif %}
@@ -65,6 +66,19 @@
 
     {% block content %}{% endblock %}
   </div>
+  <script>
+    // Simple confirmation script for forms
+    document.addEventListener('DOMContentLoaded', function() {
+      const forms = document.querySelectorAll('form[data-confirm]');
+      forms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+          if (!confirm(this.dataset.confirm)) {
+            e.preventDefault();
+          }
+        });
+      });
+    });
+  </script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

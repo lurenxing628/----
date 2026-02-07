@@ -91,7 +91,7 @@
                 <a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}">查看/编辑</a>
                 <span class="muted">｜</span>
                 <form method="post" action="{{ url_for('personnel.delete_operator', operator_id=r.operator_id) }}" style="display:inline;"
-                      onsubmit="return confirm('确定删除人员 {{ r.operator_id }} 吗？若已被排产数据引用将删除失败，建议改为停用。');">
+                      data-confirm="确定删除人员 {{ r.operator_id }} 吗？若已被排产数据引用将删除失败，建议改为停用。">
                   <button type="submit">删除</button>
                 </form>
               </td>

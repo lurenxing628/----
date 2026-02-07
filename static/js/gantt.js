@@ -1026,9 +1026,10 @@
       const host = document.getElementById("gantt");
       const ds = host && host.dataset ? host.dataset : {};
       return {
-        // 兼容多种 data-* 命名：data-data-url -> dataset.dataUrl；data-url -> dataset.url；
-        // 历史/误写兼容：data-data-data-url -> dataset.dataDataUrl
-        dataUrl: ds.dataUrl || ds.dataDataUrl || ds.url || "",
+        // 主用：data-url -> dataset.url（新模板）
+        // 兼容：data-data-url -> dataset.dataUrl（旧模板）
+        // 兼容：data-data-data-url -> dataset.dataDataUrl（历史误写，尽量不断）
+        dataUrl: ds.url || ds.dataUrl || ds.dataDataUrl || "",
         view: ds.view || "",
         weekStart: ds.weekStart || "",
         startDate: ds.startDate || "",
@@ -1047,7 +1048,7 @@
     const dataUrl = norm(cfg && cfg.dataUrl ? cfg.dataUrl : "");
     if (!dataUrl) {
       if (errEl) {
-        errEl.textContent = "甘特图配置缺失：未找到数据接口 URL（data-data-url / data-url）。";
+        errEl.textContent = "甘特图配置缺失：未找到数据接口 URL（data-url；兼容 data-data-url）。";
       }
       show(errEl, true);
       return;
@@ -1080,7 +1081,15 @@
         throw new Error(msg);
       }
     } catch (e) {
-      errEl.textContent = str(e && e.message ? e.message : e);
+      const msg = str(e && e.message ? e.message : e);
+      if (errEl) errEl.textContent = msg;
+      else {
+        try {
+          console.error("Gantt load failed:", e);
+        } catch (_) {
+          // ignore
+        }
+      }
       show(errEl, true);
       return;
     }

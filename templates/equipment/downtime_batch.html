@@ -25,7 +25,7 @@
         </div>
         <div id="scopeMachine" style="min-width:320px;">
           <label>选择设备</label><br/>
-          <select name="scope_value">
+          <select name="scope_value" id="scopeValueMachine">
             {% for mid, label in machine_options %}
               <option value="{{ mid }}">{{ label }}</option>
             {% endfor %}
@@ -33,7 +33,7 @@
         </div>
         <div id="scopeCategory" style="display:none; min-width:220px;">
           <label>选择类别</label><br/>
-          <select name="scope_value">
+          <select name="scope_value" id="scopeValueCategory">
             {% if categories and categories|length > 0 %}
               {% for c in categories %}
                 <option value="{{ c }}">{{ c }}</option>
@@ -78,6 +78,12 @@
       const c = document.getElementById("scopeCategory");
       if (m) m.style.display = (v === "machine") ? "block" : "none";
       if (c) c.style.display = (v === "category") ? "block" : "none";
+
+      // 注意：隐藏的控件仍会随表单提交；这里只提交当前范围对应的 scope_value
+      const mSel = document.getElementById("scopeValueMachine");
+      const cSel = document.getElementById("scopeValueCategory");
+      if (mSel) mSel.disabled = (v !== "machine");
+      if (cSel) cSel.disabled = (v !== "category");
     };
     window.__apsToggleScope();
   </script>

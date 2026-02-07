@@ -4,6 +4,8 @@
     <h2>设备信息（Excel）</h2>
     <p class="muted">支持：下载模板 → 上传预览 → 确认导入 → 导出。提示信息尽量中文，便于排查。</p>
     <div style="margin-top:8px;">
+      <a href="{{ url_for('equipment.list_page') }}">← 返回设备管理</a>
+      <span class="muted">｜</span>
       <a href="{{ export_url }}">导出当前数据（设备信息.xlsx）</a>
       <span class="muted">（导出会写入操作留痕）</span>
     </div>

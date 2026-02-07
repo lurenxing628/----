@@ -123,11 +123,8 @@
     </form>
 
     {% if batches and batches|length > 0 %}
-      {% if status == 'pending' %}
-        <form method="post" action="{{ url_for('scheduler.run_schedule') }}">
-      {% endif %}
-
-      <table>
+      <form method="post" action="{{ url_for('scheduler.run_schedule') }}">
+        <table>
         <thead>
           <tr>
             <th style="width:60px;">选</th>
@@ -164,37 +161,39 @@
         </tbody>
       </table>
 
-      {% if status == 'pending' %}
-        <div style="margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-          <div>
-            <label class="muted">排产开始时间（默认明天 08:00）</label><br/>
-            <input name="start_dt" value="{{ default_start_dt }}" placeholder="YYYY-MM-DD HH:MM" style="width:200px;">
+        {% if status == 'pending' %}
+          <div style="margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+            <div>
+              <label class="muted">排产开始时间（默认明天 08:00）</label><br/>
+              <input name="start_dt" value="{{ default_start_dt }}" placeholder="YYYY-MM-DD HH:MM" style="width:200px;">
+            </div>
+            <div>
+              <label class="muted">排产截止日期（可选）</label><br/>
+              <input name="end_date" placeholder="YYYY-MM-DD" style="width:160px;">
+            </div>
+            <div>
+              <label class="muted">
+                <input type="checkbox" name="enforce_ready" {{ 'checked' if cfg.enforce_ready_default=='yes' else '' }}>
+                启用齐套约束（未齐套禁止排产）
+              </label>
+            </div>
+            <div class="muted" style="flex:1; min-width:240px;">
+              说明：若设置截止日期，排产结果一旦超过该日期将判为失败并提示原因。
+            </div>
           </div>
-          <div>
-            <label class="muted">排产截止日期（可选）</label><br/>
-            <input name="end_date" placeholder="YYYY-MM-DD" style="width:160px;">
+          <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+            <button type="submit">执行排产</button>
+            <button type="submit" formaction="{{ url_for('scheduler.simulate_schedule') }}"
+                    onclick="return confirm('将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？');">
+              模拟排产（插单模拟）
+            </button>
+            <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
+            <span class="muted">提示：若内部工序未补全设备/人员/工时，将被判定为排产失败并提示原因。</span>
           </div>
-          <div>
-            <label class="muted">
-              <input type="checkbox" name="enforce_ready" {{ 'checked' if cfg.enforce_ready_default=='yes' else '' }}>
-              启用齐套约束（未齐套禁止排产）
-            </label>
-          </div>
-          <div class="muted" style="flex:1; min-width:240px;">
-            说明：若设置截止日期，排产结果一旦超过该日期将判为失败并提示原因。
-          </div>
-        </div>
-        <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-          <button type="submit">执行排产</button>
-          <button type="submit" formaction="{{ url_for('scheduler.simulate_schedule') }}"
-                  onclick="return confirm('将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？');">
-            模拟排产（插单模拟）
-          </button>
-          <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
-          <span class="muted">提示：若内部工序未补全设备/人员/工时，将被判定为排产失败并提示原因。</span>
-        </div>
-        </form>
+        {% endif %}
+      </form>
 
+      {% if status == 'pending' %}
         <script>
           (function () {
             function updateCount() {

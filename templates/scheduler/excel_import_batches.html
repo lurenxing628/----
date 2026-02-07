@@ -17,6 +17,7 @@
     <p class="muted">
       “自动生成/重建工序”会根据零件工序模板生成批次工序（会覆盖已补充的设备/人员/工时/外协周期等信息）。
     </p>
+    {% set can_confirm = raw_rows_json and (raw_rows_json | trim) %}
     <form action="{{ confirm_url }}" method="post" style="margin-top:8px;">
       <input type="hidden" name="mode" value="{{ mode }}">
       <input type="hidden" name="filename" value="{{ filename }}">
@@ -26,7 +27,7 @@
         导入后自动从模板生成/重建批次工序（推荐）
       </label>
       <div style="margin-top:8px;">
-        <button type="submit">确认导入（写入数据库）</button>
+        <button type="submit" {% if not can_confirm %}disabled title="请先上传并预览，生成预览数据后再确认导入。"{% endif %}>确认导入（写入数据库）</button>
         <span class="muted">（请先“上传并预览”，再确认导入）</span>
       </div>
     </form>

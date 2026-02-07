@@ -64,7 +64,7 @@
           </label>
           <div class="muted" style="margin-top:6px;">
             间隔（分钟）：
-            <input name="auto_backup_interval_minutes" value="{{ settings.auto_backup_interval_minutes if settings else '60' }}" style="width:90px;">
+            <input type="number" min="1" max="1440" step="1" name="auto_backup_interval_minutes" value="{{ settings.auto_backup_interval_minutes if settings else '60' }}" style="width:90px;">
             <span style="margin-left:8px;">上次执行：{{ st_ab.last_run_time if st_ab and st_ab.last_run_time else '-' }}</span>
           </div>
           {% if st_ab and st_ab.last_run_detail_obj %}
@@ -83,9 +83,9 @@
           </label>
           <div class="muted" style="margin-top:6px;">
             保留天数：
-            <input name="auto_backup_keep_days" value="{{ settings.auto_backup_keep_days if settings else keep_days }}" style="width:90px;">
+            <input type="number" min="1" max="365" step="1" name="auto_backup_keep_days" value="{{ settings.auto_backup_keep_days if settings else keep_days }}" style="width:90px;">
             <span style="margin-left:12px;">间隔（分钟）：</span>
-            <input name="auto_backup_cleanup_interval_minutes" value="{{ settings.auto_backup_cleanup_interval_minutes if settings else '1440' }}" style="width:90px;">
+            <input type="number" min="1" max="1440" step="1" name="auto_backup_cleanup_interval_minutes" value="{{ settings.auto_backup_cleanup_interval_minutes if settings else '1440' }}" style="width:90px;">
             <span style="margin-left:8px;">上次执行：{{ st_bc.last_run_time if st_bc and st_bc.last_run_time else '-' }}</span>
           </div>
           {% if st_bc and st_bc.last_run_detail_obj %}
