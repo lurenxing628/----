@@ -1,15 +1,15 @@
 # Full E2E（从 Excel 导入开始→排产→甘特/周计划→系统管理）验收报告
 
-- 测试时间：2026-02-01 18:05:56
+- 测试时间：2026-02-07 22:00:59
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境（隔离目录）
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_mcm96r8i`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_mcm96r8i\aps_full_e2e.db`
-- logs：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_mcm96r8i\logs`
-- backups：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_mcm96r8i\backups`
-- templates_excel：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_mcm96r8i\templates_excel`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_r0d2v24z`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_r0d2v24z\aps_full_e2e.db`
+- logs：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_r0d2v24z\logs`
+- backups：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_r0d2v24z\backups`
+- templates_excel：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_r0d2v24z\templates_excel`
 
 ## 1. 基础页面可访问性（用于确认路由装配）
 - GET /：200
@@ -67,7 +67,7 @@
 - POST /scheduler/run (follow redirects)：200
 - ScheduleHistory：version=1 strategy=priority_first result_status=success
 - Schedule 行数：2（version=1，期望 >=1）
-- 甘特周起点（按排程起始时间）：2026-02-02
+- 甘特周起点（按排程起始时间）：2026-02-09
 - Batches.status：scheduled（期望 scheduled）
 - OperationLogs（schedule）：log_id=32 keys_ok
 
@@ -100,11 +100,11 @@
 - POST /material/batches/<bid>/requirements/add (follow redirects)：200
 - 加入物料需求后批次齐套：no ready_date=None
 - POST /material/requirements/<id>/update (follow redirects)：200
-- 齐套后批次齐套：yes ready_date=2026-02-01
+- 齐套后批次齐套：yes ready_date=2026-02-07
 
 ## 11. 留痕抽检（OperationLogs.detail 键名对齐开发文档）
 - OperationLogs 抽检：通过（import/export/schedule 关键键名齐全）
 
 ## 结论
 - 通过：Full E2E（从 Excel 导入开始→排产→甘特/周计划→系统管理）链路跑通。
-- 总耗时：3290 ms
+- 总耗时：3594 ms
