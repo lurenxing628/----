@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from flask import g, jsonify, request, url_for
+from flask import current_app, g, jsonify, request, url_for
 
 from web.ui_mode import render_ui_template as render_template
 
@@ -88,6 +88,9 @@ def gantt_data():
         return jsonify({"success": True, "data": data})
     except AppError as e:
         return jsonify({"success": False, "error": {"code": e.code.value, "message": e.message}}), 400
-    except Exception as e:
-        return jsonify({"success": False, "error": {"code": "UNKNOWN", "message": f"甘特图数据生成失败：{e}"}}), 500
+    except Exception:
+        current_app.logger.exception("甘特图数据生成失败")
+        return jsonify(
+            {"success": False, "error": {"code": "UNKNOWN", "message": "甘特图数据生成失败，请稍后重试。"}}
+        ), 500
 

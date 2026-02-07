@@ -110,8 +110,9 @@ def backup_delete():
                 detail={"filename": filename, "mode": "manual"},
             )
         flash(f"已删除备份：{filename}", "success")
-    except Exception as e:
-        flash(f"删除失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("删除备份失败（filename=%s）", filename)
+        flash("删除备份失败，请稍后重试。", "error")
     return redirect(url_for("system.backup_page"))
 
 
@@ -224,10 +225,11 @@ def backup_restore():
             current_app.logger,
             backup_dir=current_app.config.get("BACKUP_DIR"),
         )
-    except Exception as e:
-        current_app.logger.warning(f"恢复后 ensure_schema 失败（不阻断）：{e}")
+    except Exception:
+        current_app.logger.exception("恢复后 ensure_schema 失败（不阻断）")
 
     # 写入操作日志（独立连接）
+    conn = None
     try:
         conn = sqlite3.connect(current_app.config["DATABASE_PATH"])
         op_logger = OperationLogger(conn, logger=current_app.logger)
@@ -238,16 +240,17 @@ def backup_restore():
             target_id=filename,
             detail={
                 "filename": filename,
-                "backup_dir": backup_dir,
                 "note": "已恢复数据库；恢复前自动备份 before_restore 已执行。",
             },
         )
-        try:
-            conn.close()
-        except Exception:
-            pass
-    except Exception as e:
-        current_app.logger.error(f"恢复后写入操作日志失败：{e}")
+    except Exception:
+        current_app.logger.exception("恢复后写入操作日志失败（不阻断）")
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     flash(f"已从备份恢复：{filename}。建议刷新页面/重新打开浏览器以加载最新数据。", "success")
     return redirect(url_for("system.backup_page"))

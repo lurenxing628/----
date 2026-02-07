@@ -123,15 +123,18 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
     changeovers = 0
     for mid, lst in by_machine.items():
         lst.sort(key=lambda x: (x.start_time or datetime.min, x.end_time or datetime.min, x.op_id))
-        prev = None
+        prev_type: Optional[str] = None
         for r in lst:
-            cur = (r.op_type_name or "").strip()
-            if prev is None:
-                prev = cur
+            cur_type = (r.op_type_name or "").strip()
+            if not cur_type:
+                # op_type_name 缺失：不应制造“假换型”，也不应打断上一道有效类型
                 continue
-            if cur != prev:
+            if prev_type is None:
+                prev_type = cur_type
+                continue
+            if cur_type != prev_type:
                 changeovers += 1
-            prev = cur
+            prev_type = cur_type
 
     # utilization & load balance（internal only）
     min_int: Optional[datetime] = None

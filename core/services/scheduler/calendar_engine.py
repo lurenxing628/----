@@ -96,8 +96,8 @@ class CalendarEngine:
             remark="默认工作日（未配置）",
         )
 
-    def _policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
-        date_str = dt.date().isoformat()
+    def _policy_for_date(self, date_str: str, operator_id: Optional[str] = None) -> DayPolicy:
+        """获取某个“日期键”的 DayPolicy（不做跨午夜归属判断）。"""
         cal: Any = None
         op_id = self._normalize_text(operator_id) if operator_id is not None else None
         if op_id:
@@ -112,8 +112,8 @@ class CalendarEngine:
             cal = row if row else self._default_for_date(date_str)
 
         # 防御：异常值兜底
-        shift_hours = float(cal.shift_hours or 0.0)
-        efficiency = float(cal.efficiency or 1.0)
+        shift_hours = float(getattr(cal, "shift_hours", 0.0) or 0.0)
+        efficiency = float(getattr(cal, "efficiency", 1.0) or 1.0)
         if efficiency <= 0:
             efficiency = 1.0
 
@@ -132,15 +132,18 @@ class CalendarEngine:
             se = se.replace("：", ":")
             try:
                 se_t = datetime.strptime(se, "%H:%M").time()
-                st_dt = datetime.combine(date.fromisoformat(cal.date), ss_t)
-                et_dt = datetime.combine(date.fromisoformat(cal.date), se_t)
-                if et_dt > st_dt:
-                    shift_hours = (et_dt - st_dt).total_seconds() / 3600.0
+                base_d = date.fromisoformat(getattr(cal, "date", None) or date_str)
+                st_dt = datetime.combine(base_d, ss_t)
+                et_dt = datetime.combine(base_d, se_t)
+                # 跨午夜：shift_end <= shift_start 表示次日结束（含相等：24h）
+                if et_dt <= st_dt:
+                    et_dt = et_dt + timedelta(days=1)
+                shift_hours = (et_dt - st_dt).total_seconds() / 3600.0
             except Exception:
                 pass
 
         return DayPolicy(
-            date_str=cal.date,
+            date_str=getattr(cal, "date", None) or date_str,
             day_type=cal.day_type,
             shift_hours=shift_hours,
             efficiency=efficiency,
@@ -148,6 +151,31 @@ class CalendarEngine:
             allow_urgent=cal.allow_urgent,
             shift_start=ss_t,
         )
+
+    def _policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
+        """
+        获取某时刻所属的 DayPolicy（支持跨午夜班次）。
+
+        关键约定：
+        - WorkCalendar/OperatorCalendar 以“shift_start 所在日期”为键；
+        - 当某日班次跨到次日（shift_end <= shift_start / shift_hours 跨日）时，
+          次日凌晨的时间点应归属到“前一天”的工作窗内。
+        """
+        today_str = dt.date().isoformat()
+        p_today = self._policy_for_date(today_str, operator_id=operator_id)
+        start_today, end_today = p_today.work_window()
+        if start_today <= dt < end_today:
+            return p_today
+
+        # 跨午夜：凌晨可能仍属于前一天的工作窗
+        if dt < start_today:
+            prev_str = (dt.date() + timedelta(days=-1)).isoformat()
+            p_prev = self._policy_for_date(prev_str, operator_id=operator_id)
+            start_prev, end_prev = p_prev.work_window()
+            if start_prev <= dt < end_prev:
+                return p_prev
+
+        return p_today
 
     def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
         """
@@ -240,16 +268,17 @@ class CalendarEngine:
 
             available = (end_w - cur).total_seconds() / 3600.0
             if available <= 0:
-                cur = datetime.combine(cur.date() + timedelta(days=1), time(0, 0, 0))
+                # 防御：避免跨午夜班次下回退到 00:00 造成重复计时
+                cur = end_w
                 cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
                 continue
 
             if remaining <= available + 1e-9:
                 return cur + timedelta(hours=remaining)
 
-            # 用完当日剩余工时，进入下一天
+            # 用完当前工作窗剩余工时：推进到该窗结束，再跳到下一可排产时刻
             remaining -= available
-            cur = datetime.combine(cur.date() + timedelta(days=1), time(0, 0, 0))
+            cur = end_w
             cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
 
         return cur

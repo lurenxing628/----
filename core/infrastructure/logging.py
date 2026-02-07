@@ -103,10 +103,17 @@ class OperationLogger:
         error_code: str = None,
         error_message: str = None,
     ):
+        auto_commit = False
         try:
             # 注意：不要在外层事务（TransactionManager）中隐式 commit()，否则会破坏原子性。
             # 这里通过 transaction 上下文标记来判断是否应自动提交。
-            auto_commit = not in_transaction_context(self.conn)
+            # 另外：若调用方已处于 sqlite 事务中（conn.in_transaction=True），也不能“顺手 commit”，避免误提交调用方未提交写入。
+            pre_in_tx = False
+            try:
+                pre_in_tx = bool(getattr(self.conn, "in_transaction", False))
+            except Exception:
+                pre_in_tx = False
+            auto_commit = (not pre_in_tx) and (not in_transaction_context(self.conn))
             self.conn.execute(
                 """
                 INSERT INTO OperationLogs
@@ -127,8 +134,20 @@ class OperationLogger:
                 ),
             )
             if auto_commit:
-                self.conn.commit()
+                post_in_tx = True
+                try:
+                    post_in_tx = bool(getattr(self.conn, "in_transaction", False))
+                except Exception:
+                    post_in_tx = True
+                if post_in_tx:
+                    self.conn.commit()
         except Exception as e:
+            # 若我们决定自动提交，则异常路径也要尽量结束事务，避免悬挂
+            if auto_commit:
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
             # 记录失败时写文件日志，避免影响主流程
             self.logger.error(f"写入操作日志失败：{e}")
 

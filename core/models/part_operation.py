@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_float, parse_int
 
 
 @dataclass
@@ -33,17 +33,17 @@ class PartOperation:
         supplier_id = get(row, "supplier_id")
         ext_group_id = get(row, "ext_group_id")
         return cls(
-            id=int(raw_id) if raw_id is not None and raw_id != "" else None,
+            id=parse_int(raw_id, default=None),
             part_no=str(get(row, "part_no") or ""),
-            seq=int(raw_seq) if raw_seq is not None and raw_seq != "" else 0,
+            seq=parse_int(raw_seq, default=0) or 0,
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             op_type_name=str(get(row, "op_type_name") or ""),
             source=(str(get(row, "source") or "internal").strip().lower() or "internal"),
             supplier_id=str(supplier_id) if supplier_id is not None and supplier_id != "" else None,
-            ext_days=float(ext_days) if ext_days is not None and ext_days != "" else None,
+            ext_days=parse_float(ext_days, default=None),
             ext_group_id=str(ext_group_id) if ext_group_id is not None and ext_group_id != "" else None,
-            setup_hours=float(setup_hours) if setup_hours is not None and setup_hours != "" else 0.0,
-            unit_hours=float(unit_hours) if unit_hours is not None and unit_hours != "" else 0.0,
+            setup_hours=parse_float(setup_hours, default=0.0) or 0.0,
+            unit_hours=parse_float(unit_hours, default=0.0) or 0.0,
             status=(str(get(row, "status") or "active").strip().lower() or "active"),
             created_at=get(row, "created_at"),
         )

@@ -116,13 +116,53 @@ class BaseRepository:
     def _log_db_error(self, sql: str, params: Optional[Params], e: Exception) -> None:
         if not self.logger:
             return
+        def _truncate(s: str, max_len: int = 200) -> str:
+            s = "" if s is None else str(s)
+            s = s.replace("\r", "\\r").replace("\n", "\\n")
+            return s if len(s) <= max_len else (s[: max_len - 3] + "...")
+
+        def _is_sensitive_key(k: str) -> bool:
+            kk = (k or "").lower()
+            return any(x in kk for x in ("password", "passwd", "token", "secret", "apikey", "api_key", "cookie", "session"))
+
+        def _safe_value(v: Any) -> Any:
+            if v is None:
+                return None
+            if isinstance(v, (bytes, bytearray, memoryview)):
+                try:
+                    return f"<{type(v).__name__} len={len(v)}>"
+                except Exception:
+                    return f"<{type(v).__name__}>"
+            try:
+                return _truncate(repr(v), max_len=200)
+            except Exception:
+                return f"<unreprable {type(v).__name__}>"
+
+        def _safe_params(p: Optional[Params]) -> Any:
+            if p is None:
+                return None
+            try:
+                if isinstance(p, dict):
+                    out: Dict[str, Any] = {}
+                    items = list(p.items())
+                    for k, v in items[:30]:
+                        ks = _truncate(str(k), max_len=80)
+                        out[ks] = "<redacted>" if _is_sensitive_key(ks) else _safe_value(v)
+                    if len(items) > 30:
+                        out["..."] = f"+{len(items) - 30} more"
+                    return out
+                if isinstance(p, (list, tuple)):
+                    seq = list(p)
+                    out2 = [_safe_value(v) for v in seq[:30]]
+                    if len(seq) > 30:
+                        out2.append(f"...+{len(seq) - 30} more")
+                    return out2
+                return _safe_value(p)
+            except Exception:
+                return "<unloggable params>"
+
         try:
-            self.logger.error(
-                "数据库错误：%s；SQL=%s；params=%s",
-                e,
-                sql,
-                params,
-            )
+            self.logger.error("数据库错误：%s；SQL=%s；params=%s", e, sql, _safe_params(params))
         except Exception:
             # 记录日志失败不应影响主流程
             pass

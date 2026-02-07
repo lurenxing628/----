@@ -127,7 +127,7 @@ def optimize_schedule(
     improvement_trace: List[Dict[str, Any]] = []
 
     t_begin = time.time()
-    deadline = t_begin + (time_budget_seconds if algo_mode == "improve" else 10_000_000)
+    deadline = (t_begin + float(time_budget_seconds)) if algo_mode == "improve" else float("inf")
 
     # GreedyScheduler 需要 seed_results 为 ScheduleResult：这里转换一次
     seed_sr_list: List[ScheduleResult] = []

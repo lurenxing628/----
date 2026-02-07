@@ -66,6 +66,14 @@ class SupplierRepository(BaseRepository):
         if not set_parts:
             return
 
+        # 兼容：部分库/旧 schema 可能没有 updated_at；存在则更新（最佳努力）
+        try:
+            cols = self.fetchall("PRAGMA table_info(Suppliers)")
+            if any(str(r.get("name")) == "updated_at" for r in (cols or [])):
+                set_parts.append("updated_at = CURRENT_TIMESTAMP")
+        except Exception:
+            pass
+
         params.append(supplier_id)
         sql = f"UPDATE Suppliers SET {', '.join(set_parts)} WHERE supplier_id = ?"
         self.execute(sql, tuple(params))

@@ -176,8 +176,33 @@ def dispatch_sgs(
                 else:
                     machine_id = (getattr(op, "machine_id", None) or "").strip()
                     operator_id = (getattr(op, "operator_id", None) or "").strip()
+                    if (not machine_id or not operator_id) and auto_assign_enabled and resource_pool is not None:
+                        # 评分阶段：若开启自动分配且 resource_pool 可用，则尝试补全资源后再估算。
+                        try:
+                            chooser = getattr(scheduler, "_auto_assign_internal_resources", None)
+                            chosen = None
+                            if callable(chooser):
+                                chosen = chooser(
+                                    op=op,
+                                    batch=batch,
+                                    batch_progress=batch_progress,
+                                    machine_timeline=machine_timeline,
+                                    operator_timeline=operator_timeline,
+                                    base_time=base_time,
+                                    end_dt_exclusive=end_dt_exclusive,
+                                    machine_downtimes=machine_downtimes,
+                                    resource_pool=(resource_pool if isinstance(resource_pool, dict) else {}),
+                                    last_op_type_by_machine=last_op_type_by_machine,
+                                    machine_busy_hours=machine_busy_hours,
+                                    operator_busy_hours=operator_busy_hours,
+                                )
+                            if chosen:
+                                machine_id, operator_id = chosen
+                        except Exception:
+                            pass
+
                     if not machine_id or not operator_id:
-                        # 缺资源：实际排产一定会失败；打分阶段必须惩罚，避免在 ATC/CR 下被优先选择。
+                        # 缺资源且无法自动分配：打分阶段按“不可估算”惩罚，避免被优先选择。
                         score_penalty = 1.0
                         est_start = batch_progress.get(bid, base_time)
                         est_end = est_start
@@ -286,7 +311,7 @@ def dispatch_sgs(
 
             if result and result.start_time and result.end_time:
                 results.append(result)
-                batch_progress[bid] = result.end_time
+                batch_progress[bid] = max(batch_progress.get(bid, base_time), result.end_time)
                 scheduled_count += 1
                 next_idx[bid] = int(next_idx.get(bid, 0) or 0) + 1
                 if (result.source or "").strip().lower() == "internal" and result.machine_id:

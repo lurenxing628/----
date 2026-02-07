@@ -18,7 +18,9 @@ class Config:
         )
 
     # 基础配置
-    SECRET_KEY = os.environ.get("SECRET_KEY") or "aps-dev-key"
+    # 注意：不提供弱默认值（如 "aps-dev-key"）。
+    # SECRET_KEY 将由环境变量 SECRET_KEY 或 app.create_app() 内的运行时逻辑确保。
+    SECRET_KEY = os.environ.get("SECRET_KEY")
 
     # 应用名（用于日志等）
     APP_NAME = "APS"

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_int
 
 
 @dataclass
@@ -28,7 +28,7 @@ class Batch:
             batch_id=str(get(row, "batch_id") or ""),
             part_no=str(get(row, "part_no") or ""),
             part_name=get(row, "part_name"),
-            quantity=int(qty) if qty is not None and qty != "" else 0,
+            quantity=parse_int(qty, default=0) or 0,
             due_date=get(row, "due_date"),
             priority=(str(get(row, "priority") or "normal").strip().lower() or "normal"),
             ready_status=(str(get(row, "ready_status") or "yes").strip().lower() or "yes"),

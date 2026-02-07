@@ -81,7 +81,7 @@ class MachineDowntimeRepository(BaseRepository):
 
     def create(self, payload: Dict[str, Any]) -> MachineDowntime:
         d = payload if isinstance(payload, MachineDowntime) else MachineDowntime.from_row(payload)
-        self.execute(
+        cur = self.execute(
             """
             INSERT INTO MachineDowntimes
             (machine_id, scope_type, scope_value, start_time, end_time, reason_code, reason_detail, status)
@@ -98,12 +98,7 @@ class MachineDowntimeRepository(BaseRepository):
                 d.status or "active",
             ),
         )
-        # 返回时把 id 补上（sqlite lastrowid）
-        try:
-            new_id = int(self.conn.execute("SELECT last_insert_rowid()").fetchone()[0])
-        except Exception:
-            new_id = None
-        d.id = new_id
+        d.id = int(cur.lastrowid) if getattr(cur, "lastrowid", None) is not None else None
         return d
 
     def update(self, downtime_id: int, updates: Dict[str, Any]) -> None:

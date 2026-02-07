@@ -46,6 +46,17 @@ class BatchService:
             raise ValidationError(f"“{field}”必须是整数", field=field)
 
     @staticmethod
+    def _safe_float(value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        try:
+            return float(value)
+        except Exception:
+            return None
+
+    @staticmethod
     def _normalize_date(value: Any) -> Optional[str]:
         """
         交期（due_date）存储为 SQLite DATE，V1 以字符串 `YYYY-MM-DD` 为主。
@@ -366,7 +377,7 @@ class BatchService:
                         "supplier_id": op.supplier_id,
                         "setup_hours": float(op.setup_hours or 0.0),
                         "unit_hours": float(op.unit_hours or 0.0),
-                        "ext_days": float(op.ext_days) if op.ext_days is not None and op.ext_days != "" else None,
+                        "ext_days": self._safe_float(op.ext_days),
                         "status": "pending",
                     }
                 )
@@ -558,7 +569,7 @@ class BatchService:
                 "supplier_id": tmpl.supplier_id if source == SourceType.EXTERNAL.value else None,
                 "setup_hours": float(tmpl.setup_hours or 0.0),
                 "unit_hours": float(tmpl.unit_hours or 0.0),
-                "ext_days": float(tmpl.ext_days) if tmpl.ext_days is not None and tmpl.ext_days != "" else None,
+                "ext_days": self._safe_float(tmpl.ext_days),
                 "status": "pending",
             }
             self.batch_op_repo.create(payload)

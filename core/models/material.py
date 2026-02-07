@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_float
 
 
 @dataclass
@@ -19,18 +19,12 @@ class Material:
 
     @classmethod
     def from_row(cls, row: RowLike) -> "Material":
-        def _f(x, default: float = 0.0) -> float:
-            try:
-                return float(x)
-            except Exception:
-                return float(default)
-
         return cls(
             material_id=str(get(row, "material_id") or ""),
             name=str(get(row, "name") or ""),
             spec=get(row, "spec"),
             unit=get(row, "unit"),
-            stock_qty=_f(get(row, "stock_qty"), 0.0),
+            stock_qty=parse_float(get(row, "stock_qty"), default=0.0) or 0.0,
             status=(str(get(row, "status") or "active").strip().lower() or "active"),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),

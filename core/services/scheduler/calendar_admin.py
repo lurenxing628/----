@@ -172,19 +172,20 @@ class CalendarAdmin:
 
         ss = self._normalize_hhmm(shift_start, field="班次开始", allow_none=True) or "08:00"
         se = self._normalize_hhmm(shift_end, field="班次结束", allow_none=True)
-        # 若给了起止时间，则用其推导可用工时
+        # 若给了起止时间，则用其推导可用工时（允许跨午夜：shift_end <= shift_start 表示次日结束）
         if se:
             st_t = datetime.strptime(ss, "%H:%M")
             et_t = datetime.strptime(se, "%H:%M")
             if et_t <= st_t:
-                raise ValidationError("“班次结束”必须晚于“班次开始”", field="班次结束")
+                et_t = et_t + timedelta(days=1)
             sh = (et_t - st_t).total_seconds() / 3600.0
         else:
-            # 没填结束时间：根据 shift_hours 推导一个用于展示的 shift_end（不跨天）
+            # 没填结束时间：根据 shift_hours 推导一个用于展示的 shift_end（支持跨午夜；仅对 0~24h 推导）
             try:
-                st_t = datetime.strptime(ss, "%H:%M")
-                et_t = st_t + timedelta(hours=float(sh or 0.0))
-                if et_t.date() == st_t.date():
+                sh0 = float(sh or 0.0)
+                if sh0 > 0 and sh0 <= 24:
+                    st_t = datetime.strptime(ss, "%H:%M")
+                    et_t = st_t + timedelta(hours=sh0)
                     se = et_t.time().strftime("%H:%M")
             except Exception:
                 se = None
@@ -279,13 +280,14 @@ class CalendarAdmin:
             st_t = datetime.strptime(ss, "%H:%M")
             et_t = datetime.strptime(se, "%H:%M")
             if et_t <= st_t:
-                raise ValidationError("“班次结束”必须晚于“班次开始”", field="班次结束")
+                et_t = et_t + timedelta(days=1)
             sh = (et_t - st_t).total_seconds() / 3600.0
         else:
             try:
-                st_t = datetime.strptime(ss, "%H:%M")
-                et_t = st_t + timedelta(hours=float(sh or 0.0))
-                if et_t.date() == st_t.date():
+                sh0 = float(sh or 0.0)
+                if sh0 > 0 and sh0 <= 24:
+                    st_t = datetime.strptime(ss, "%H:%M")
+                    et_t = st_t + timedelta(hours=sh0)
                     se = et_t.time().strftime("%H:%M")
             except Exception:
                 se = None

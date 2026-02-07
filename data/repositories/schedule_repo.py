@@ -50,7 +50,14 @@ class ScheduleRepository(BaseRepository):
         - sqlite 默认变量上限 999，因此这里默认分块查询
         - 返回 dict 行（不转模型），便于上层做 seed 构建
         """
-        ids = [int(x) for x in (op_ids or []) if int(x) > 0]
+        ids: List[int] = []
+        for x in (op_ids or []):
+            try:
+                v = int(x)
+            except (TypeError, ValueError):
+                continue
+            if v > 0:
+                ids.append(v)
         if not ids:
             return []
 
@@ -66,7 +73,7 @@ class ScheduleRepository(BaseRepository):
               AND start_time >= ?
               AND start_time < ?
             """
-            params: List[Any] = [int(version)] + [int(x) for x in chunk] + [start_time, end_time]
+            params: List[Any] = [int(version)] + list(chunk) + [start_time, end_time]
             out.extend(self.fetchall(sql, tuple(params)))
         return out
 

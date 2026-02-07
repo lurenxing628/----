@@ -11,6 +11,7 @@ class OpenpyxlBackend(TabularBackend):
     """V1 Excel 后端：只依赖 openpyxl；对外仅收发 List[Dict]。"""
 
     def read(self, file_path: str, sheet: Optional[str] = None) -> List[Dict[str, Any]]:
+        wb = None
         try:
             wb = openpyxl.load_workbook(file_path, data_only=True)
             ws = wb[sheet] if sheet else wb.active
@@ -49,8 +50,15 @@ class OpenpyxlBackend(TabularBackend):
                 details={"file_path": file_path, "sheet": sheet},
                 cause=e,
             )
+        finally:
+            try:
+                if wb is not None:
+                    wb.close()
+            except Exception:
+                pass
 
     def write(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1"):
+        wb = None
         try:
             os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
 
@@ -77,4 +85,10 @@ class OpenpyxlBackend(TabularBackend):
                 details={"file_path": file_path, "sheet": sheet},
                 cause=e,
             )
+        finally:
+            try:
+                if wb is not None:
+                    wb.close()
+            except Exception:
+                pass
 

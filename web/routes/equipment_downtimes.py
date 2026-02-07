@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, request, url_for
 
 from web.ui_mode import render_ui_template as render_template
 
@@ -62,8 +62,9 @@ def downtime_batch_create():
             flash(f"以下设备因时间段重叠已跳过（最多 10 台）：{sample}", "warning")
     except AppError as e:
         flash(e.message, "error")
-    except Exception as e:
-        flash(f"批量停机创建失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("批量停机创建失败")
+        flash("批量停机创建失败，请稍后重试。", "error")
     return redirect(url_for("equipment.downtime_batch_page"))
 
 

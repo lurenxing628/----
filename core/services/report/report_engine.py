@@ -52,8 +52,20 @@ class ReportEngine:
     def overdue_batches(self, version: int) -> Dict[str, Any]:
         v = int(version or 0)
         rows = queries.fetch_overdue_base_rows(self.conn, v)
-        items = calculations.compute_overdue_items(rows)
-        return {"version": v, "count": len(items), "items": items}
+        scheduled, unscheduled, as_of = calculations.compute_overdue_buckets(rows)
+        items = list(scheduled) + list(unscheduled)
+        return {
+            "version": v,
+            "count": len(items),
+            "scheduled_count": len(scheduled),
+            "unscheduled_count": len(unscheduled),
+            "as_of_time": as_of,
+            # 兼容旧页面：items 仍保留（已排程在前、未排程在后）
+            "items": items,
+            # 新增分桶输出
+            "scheduled_items": list(scheduled),
+            "unscheduled_items": list(unscheduled),
+        }
 
     def export_overdue_xlsx(self, version: int) -> ReportExport:
         rep = self.overdue_batches(version)

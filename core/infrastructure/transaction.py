@@ -107,9 +107,36 @@ class TransactionManager:
                 raise
             else:
                 # 正常路径：释放本层 savepoint
-                conn.execute(f"RELEASE SAVEPOINT {sp_name}")
+                try:
+                    conn.execute(f"RELEASE SAVEPOINT {sp_name}")
+                except Exception as e:
+                    # RELEASE 失败时事务状态可能不确定：尽最大努力回滚本层并结束事务（若由我们启动）
+                    try:
+                        conn.execute(f"ROLLBACK TO SAVEPOINT {sp_name}")
+                    except Exception as e2:
+                        logger.error(f"SAVEPOINT 回滚失败（提交路径）：{e2}")
+                    try:
+                        conn.execute(f"RELEASE SAVEPOINT {sp_name}")
+                    except Exception as e2:
+                        logger.error(f"SAVEPOINT 释放失败（提交路径-回滚后）：{e2}")
+                    if depth == 1 and owns_tx:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                    logger.error(f"SAVEPOINT 释放失败（提交路径）：{e}")
+                    raise
+
                 if depth == 1 and owns_tx:
-                    conn.commit()
+                    try:
+                        conn.commit()
+                    except Exception as e:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        logger.error(f"事务提交失败：{e}")
+                        raise
                 logger.debug("事务提交成功")
         finally:
             _dec_depth(conn)

@@ -1,11 +1,89 @@
+import gc
 import os
 import shutil
 import sqlite3
 import sys
+import time
 from typing import Optional
 
 
 CURRENT_SCHEMA_VERSION = 4
+
+
+def _is_windows_lock_error(e: Exception) -> bool:
+    try:
+        if isinstance(e, PermissionError):
+            return True
+        winerr = getattr(e, "winerror", None)
+        if winerr in (32, 33, 5):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _cleanup_sqlite_sidecars(db_path: str, logger=None) -> None:
+    # WAL/SHM/JOURNAL 残留可能导致“恢复后仍读到旧数据”或打开失败；最佳努力清理
+    for suf in ("-wal", "-shm", "-journal"):
+        p = f"{db_path}{suf}"
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except Exception as e:
+            if logger:
+                try:
+                    logger.warning(f"清理 SQLite sidecar 失败：{e}（path={p}）")
+                except Exception:
+                    pass
+
+
+def _restore_db_file_from_backup(
+    backup_path: str,
+    db_path: str,
+    logger=None,
+    retries: int = 6,
+    base_delay_s: float = 0.2,
+) -> None:
+    bp = os.path.abspath(backup_path)
+    dp = os.path.abspath(db_path)
+    tmp_path = f"{dp}.rollback_tmp"
+    last = None
+    r = int(retries) if retries is not None else 1
+    if r < 1:
+        r = 1
+    for i in range(r):
+        try:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+            shutil.copy2(bp, tmp_path)
+            os.replace(tmp_path, dp)
+            _cleanup_sqlite_sidecars(dp, logger=logger)
+            return
+        except Exception as e:
+            last = e
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+            try:
+                gc.collect()
+            except Exception:
+                pass
+            if _is_windows_lock_error(e) and i < r - 1:
+                if logger and i == 0:
+                    try:
+                        logger.warning(f"数据库文件回滚遇到文件锁，准备重试：{e}（db={dp}）")
+                    except Exception:
+                        pass
+                time.sleep(base_delay_s * (i + 1))
+                continue
+            raise
+    if last:
+        raise last
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:
@@ -65,17 +143,42 @@ def ensure_schema(db_path: str, logger=None, schema_path: Optional[str] = None, 
     # 防御：确保即使未来 try 内出现局部异常吞掉，也不会在迁移判断处引用未定义变量
     current_version: int = 0
     try:
-        with open(schema_path, "r", encoding="utf-8") as f:
-            sql = f.read()
-        conn.executescript(sql)
-        # SchemaVersion（用于后续迁移判断；若是新库且结构已满足当前版本，会自动提升版本号）
-        _ensure_schema_version(conn, logger=logger)
-        current_version = _get_schema_version(conn)
-        conn.commit()
-        if logger:
-            logger.info("数据库结构检查完成（已确保所有表存在）。")
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                sql = f.read()
+            # sqlite3.executescript 默认不保证原子性：中途失败会留下“半初始化表结构”。
+            # 这里用显式 BEGIN/COMMIT 包裹，让失败时可通过 rollback 回滚。
+            script = sql
+            try:
+                import re
+
+                if not re.search(r"(?im)^\s*BEGIN\b", str(sql or "")):
+                    script = "BEGIN;\n" + str(sql or "") + "\nCOMMIT;\n"
+            except Exception:
+                script = "BEGIN;\n" + str(sql or "") + "\nCOMMIT;\n"
+            conn.executescript(script)
+            # SchemaVersion（用于后续迁移判断；若是新库且结构已满足当前版本，会自动提升版本号）
+            _ensure_schema_version(conn, logger=logger)
+            current_version = _get_schema_version(conn)
+            conn.commit()
+            if logger:
+                logger.info("数据库结构检查完成（已确保所有表存在）。")
+        except Exception:
+            # 失败尽最大努力回滚，避免半初始化状态
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except Exception as e:
+            if logger:
+                try:
+                    logger.warning(f"数据库连接关闭失败：{e}")
+                except Exception:
+                    pass
 
     # 需要迁移（ALTER TABLE / 数据清洗等）：迁移前先备份，失败可回滚
     if current_version < CURRENT_SCHEMA_VERSION:
@@ -156,8 +259,12 @@ def _get_schema_version(conn: sqlite3.Connection) -> int:
         if not row:
             return 0
         return int(row["version"] if isinstance(row, sqlite3.Row) else row[0])
-    except Exception:
-        return 0
+    except sqlite3.OperationalError as e:
+        msg = str(e).lower()
+        # 仅在“表/列不存在”等可预期场景回落 0；其它错误必须可观测（向上抛出）
+        if "no such table" in msg or "no such column" in msg:
+            return 0
+        raise
 
 
 def _set_schema_version(conn: sqlite3.Connection, version: int) -> None:
@@ -239,13 +346,27 @@ def _migrate_with_backup(db_path: str, from_version: int, to_version: int, backu
         finally:
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                if logger:
+                    try:
+                        logger.warning(f"数据库连接关闭失败（可能导致文件锁未释放）：{e}")
+                    except Exception:
+                        pass
+            finally:
+                # 最佳努力释放 Windows 文件句柄
+                try:
+                    del conn
+                except Exception:
+                    pass
+                try:
+                    gc.collect()
+                except Exception:
+                    pass
     except Exception:
         # 回滚：用备份文件恢复 db_path
         if backup_path and os.path.exists(backup_path):
             try:
-                shutil.copy2(backup_path, db_path)
+                _restore_db_file_from_backup(backup_path, db_path, logger=logger)
                 if logger:
                     try:
                         logger.error(f"数据库迁移失败，已从备份回滚：{backup_path}")

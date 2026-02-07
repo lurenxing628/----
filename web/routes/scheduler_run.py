@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
 from core.services.scheduler import ScheduleService
@@ -49,8 +49,9 @@ def run_schedule():
                 flash(str(e), "warning")
     except AppError as e:
         flash(e.message, "error")
-    except Exception as e:
-        flash(f"排产失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("排产执行失败")
+        flash("排产失败，请稍后重试或联系管理员。", "error")
 
     return redirect(url_for("scheduler.batches_page"))
 

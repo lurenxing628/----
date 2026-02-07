@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_int
 
 
 @dataclass
@@ -18,7 +18,7 @@ class SystemConfig:
     def from_row(cls, row: RowLike) -> "SystemConfig":
         raw_id = get(row, "id")
         return cls(
-            id=int(raw_id) if raw_id is not None and raw_id != "" else None,
+            id=parse_int(raw_id, default=None),
             config_key=str(get(row, "config_key") or ""),
             config_value=str(get(row, "config_value") or ""),
             description=get(row, "description"),

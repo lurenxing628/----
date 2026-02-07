@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_int
 
 
 @dataclass
@@ -18,7 +18,7 @@ class SystemJobState:
     def from_row(cls, row: RowLike) -> "SystemJobState":
         raw_id = get(row, "id")
         return cls(
-            id=int(raw_id) if raw_id is not None and raw_id != "" else None,
+            id=parse_int(raw_id, default=None),
             job_key=str(get(row, "job_key") or ""),
             last_run_time=get(row, "last_run_time"),
             last_run_detail=get(row, "last_run_detail"),

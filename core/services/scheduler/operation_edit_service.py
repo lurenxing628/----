@@ -63,7 +63,7 @@ def update_internal_operation(
         raise ValidationError("只能编辑内部工序的设备/人员/工时信息", field="source")
 
     mc_id = svc._normalize_text(machine_id)
-    op_id_text = svc._normalize_text(operator_id)
+    operator_id_text = svc._normalize_text(operator_id)
 
     # 设备存在性 + 可用性（维护/停用时禁止分配）
     if mc_id:
@@ -74,19 +74,19 @@ def update_internal_operation(
             raise BusinessError(ErrorCode.MACHINE_NOT_AVAILABLE, f"设备“{mc_id}”当前状态为“{m.status}”，不可用于排产。")
 
     # 人员存在性 + 在岗性
-    if op_id_text:
-        person = svc.operator_repo.get(op_id_text)
+    if operator_id_text:
+        person = svc.operator_repo.get(operator_id_text)
         if not person:
-            raise BusinessError(ErrorCode.OPERATOR_NOT_FOUND, f"人员“{op_id_text}”不存在")
+            raise BusinessError(ErrorCode.OPERATOR_NOT_FOUND, f"人员“{operator_id_text}”不存在")
         if (person.status or "").strip() != OperatorStatus.ACTIVE.value:
-            raise BusinessError(ErrorCode.RESOURCE_NOT_AVAILABLE, f"人员“{op_id_text}”当前状态为“{person.status}”，不可用于排产。")
+            raise BusinessError(ErrorCode.RESOURCE_NOT_AVAILABLE, f"人员“{operator_id_text}”当前状态为“{person.status}”，不可用于排产。")
 
     # 人员-设备匹配性（双向约束）：两者都选择时必须已维护可操作关联
-    if mc_id and op_id_text:
-        if not svc.operator_machine_repo.exists(op_id_text, mc_id):
+    if mc_id and operator_id_text:
+        if not svc.operator_machine_repo.exists(operator_id_text, mc_id):
             op_code = op.op_code or "-"
             raise ValidationError(
-                f"人员“{op_id_text}”未被配置为可操作设备“{mc_id}”（工序 {op_code} / ID={op.id}）。"
+                f"人员“{operator_id_text}”未被配置为可操作设备“{mc_id}”（工序 {op_code} / ID={op.id}）。"
                 f"请先在【人员管理】或【设备管理】中维护人机关联（OperatorMachine）后再排产。",
                 field="设备/人员",
             )
@@ -100,7 +100,7 @@ def update_internal_operation(
 
     updates: Dict[str, Any] = {
         "machine_id": mc_id,
-        "operator_id": op_id_text,
+        "operator_id": operator_id_text,
         "setup_hours": float(sh),
         "unit_hours": float(uh),
     }

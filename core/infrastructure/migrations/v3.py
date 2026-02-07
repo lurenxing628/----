@@ -18,7 +18,15 @@ def run(conn: sqlite3.Connection, logger=None) -> None:
                 logger.warning(f"数据库迁移 v3：已将 OperatorCalendar.day_type 的 weekend 统一为 holiday（影响行数={changed}）。")
             except Exception:
                 pass
-    except Exception:
-        # 不阻断：OperatorCalendar 由 schema.sql 创建；若不存在则跳过
-        return
+    except sqlite3.OperationalError as e:
+        msg = str(e).lower()
+        # 仅在“表/列不存在”等可预期场景跳过；其它错误必须向上抛出（触发事务回滚与备份恢复）
+        if "no such table" in msg or "no such column" in msg:
+            if logger:
+                try:
+                    logger.warning(f"数据库迁移 v3：OperatorCalendar 不存在，已跳过（{e}）。")
+                except Exception:
+                    pass
+            return
+        raise
 

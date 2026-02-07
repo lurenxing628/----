@@ -49,39 +49,37 @@ class MaterialRepository(BaseRepository):
         return m
 
     def update(self, material_id: str, updates: Dict[str, Any]) -> None:
-        # stock_qty 允许传空/None 表示不改
-        stock_qty = updates.get("stock_qty")
-        if stock_qty is not None and str(stock_qty).strip() != "":
-            try:
-                stock_qty = float(stock_qty)
-            except Exception:
-                # 留给服务层校验；这里保持原值
-                stock_qty = updates.get("stock_qty")
-        else:
-            stock_qty = None
+        if not updates:
+            return
 
-        self.execute(
-            """
-            UPDATE Materials
-            SET
-              name = COALESCE(?, name),
-              spec = COALESCE(?, spec),
-              unit = COALESCE(?, unit),
-              stock_qty = COALESCE(?, stock_qty),
-              status = COALESCE(?, status),
-              remark = COALESCE(?, remark)
-            WHERE material_id = ?
-            """,
-            (
-                updates.get("name"),
-                updates.get("spec"),
-                updates.get("unit"),
-                stock_qty,
-                updates.get("status"),
-                updates.get("remark"),
-                str(material_id),
-            ),
-        )
+        allowed = {"name", "spec", "unit", "stock_qty", "status", "remark"}
+        set_parts: List[str] = []
+        params: List[Any] = []
+
+        for key in ("name", "spec", "unit", "stock_qty", "status", "remark"):
+            if key not in allowed or key not in updates:
+                continue
+
+            val = updates.get(key)
+            if key == "stock_qty":
+                # stock_qty 允许传空/None 表示“不改”
+                if val is None or (isinstance(val, str) and val.strip() == ""):
+                    continue
+                try:
+                    val = float(val)
+                except Exception:
+                    # 留给服务层校验；这里保持原值
+                    val = updates.get("stock_qty")
+
+            set_parts.append(f"{key} = ?")
+            params.append(val)
+
+        if not set_parts:
+            return
+
+        params.append(str(material_id))
+        sql = f"UPDATE Materials SET {', '.join(set_parts)} WHERE material_id = ?"
+        self.execute(sql, tuple(params))
 
     def delete(self, material_id: str) -> None:
         self.execute("DELETE FROM Materials WHERE material_id = ?", (str(material_id),))

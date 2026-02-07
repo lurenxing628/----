@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
-from flask import flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, request, url_for
 
 from web.ui_mode import render_ui_template as render_template
 
@@ -228,8 +228,12 @@ def bulk_copy_batches():
             b2 = batch_svc.copy_batch(bid, new_id)
             ok += 1
             mappings.append(f"{bid}→{b2.batch_id}")
-        except Exception as e:
-            failed.append(f"{bid}（{e}）")
+        except AppError as e:
+            failed.append(f"{bid}（{e.message}）")
+            continue
+        except Exception:
+            current_app.logger.exception("批量复制批次失败（batch_id=%s）", bid)
+            failed.append(f"{bid}（系统错误）")
             continue
 
     flash(f"批量复制完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
@@ -268,8 +272,12 @@ def bulk_update_batches():
                 remark=remark if remark is not None else None,
             )
             ok += 1
-        except Exception as e:
-            failed.append(f"{bid}（{e}）")
+        except AppError as e:
+            failed.append(f"{bid}（{e.message}）")
+            continue
+        except Exception:
+            current_app.logger.exception("批量修改批次失败（batch_id=%s）", bid)
+            failed.append(f"{bid}（系统错误）")
             continue
 
     flash(f"批量修改完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")

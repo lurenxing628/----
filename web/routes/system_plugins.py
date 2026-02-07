@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.transaction import TransactionManager
@@ -18,6 +20,10 @@ def plugin_toggle():
     plugin_id = (request.form.get("plugin_id") or "").strip()
     if not plugin_id:
         flash("缺少 plugin_id。", "error")
+        return redirect(url_for("system.backup_page"))
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", plugin_id):
+        flash("plugin_id 不合法（仅允许字母数字、_、-）。", "error")
         return redirect(url_for("system.backup_page"))
 
     enabled = "yes" if (request.form.get("enabled") or "").strip().lower() in ("on", "yes", "true", "1") else "no"

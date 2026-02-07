@@ -22,6 +22,7 @@ aps_test.db*
 *.sqlite-wal
 *.sqlite-shm
 *.sqlite-journal
+*.maintenance.lock
 
 logs/*.log
 logs/*.log.*
@@ -65,6 +66,7 @@ evidence/ComplexExcelCases_Extreme*/
 # Runtime scratch
 logs/aps_port.txt
 logs/aps_host.txt
+logs/aps_secret_key.txt
 
 # Full self-test runner logs (keep report file)
 evidence/FullSelfTest/logs/

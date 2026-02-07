@@ -41,16 +41,26 @@ class PartRepository(BaseRepository):
         return p
 
     def update(self, part_no: str, updates: Dict[str, Any]) -> None:
-        self.execute(
-            "UPDATE Parts SET part_name = COALESCE(?, part_name), route_raw = COALESCE(?, route_raw), route_parsed = COALESCE(?, route_parsed), remark = COALESCE(?, remark), updated_at = CURRENT_TIMESTAMP WHERE part_no = ?",
-            (
-                updates.get("part_name"),
-                updates.get("route_raw"),
-                updates.get("route_parsed"),
-                updates.get("remark"),
-                part_no,
-            ),
-        )
+        if not updates:
+            return
+
+        allowed = {"part_name", "route_raw", "route_parsed", "remark"}
+        set_parts: List[str] = []
+        params: List[Any] = []
+
+        for key in ("part_name", "route_raw", "route_parsed", "remark"):
+            if key in allowed and key in updates:
+                set_parts.append(f"{key} = ?")
+                params.append(updates.get(key))
+
+        if not set_parts:
+            return
+
+        set_parts.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(part_no)
+
+        sql = f"UPDATE Parts SET {', '.join(set_parts)} WHERE part_no = ?"
+        self.execute(sql, tuple(params))
 
     def delete(self, part_no: str) -> None:
         self.execute("DELETE FROM Parts WHERE part_no = ?", (part_no,))

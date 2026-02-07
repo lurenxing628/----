@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_int
 
 
 @dataclass
@@ -24,13 +24,14 @@ class ScheduleHistory:
         version = get(row, "version")
         batch_count = get(row, "batch_count")
         op_count = get(row, "op_count")
+        ver = parse_int(version, default=1)
         return cls(
-            id=int(raw_id) if raw_id is not None and raw_id != "" else None,
+            id=parse_int(raw_id, default=None),
             schedule_time=get(row, "schedule_time"),
-            version=int(version) if version is not None and version != "" else 1,
+            version=ver if ver is not None else 1,
             strategy=str(get(row, "strategy") or ""),
-            batch_count=int(batch_count) if batch_count is not None and batch_count != "" else None,
-            op_count=int(op_count) if op_count is not None and op_count != "" else None,
+            batch_count=parse_int(batch_count, default=None),
+            op_count=parse_int(op_count, default=None),
             result_status=get(row, "result_status"),
             result_summary=get(row, "result_summary"),
             created_by=get(row, "created_by"),

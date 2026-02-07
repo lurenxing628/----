@@ -64,6 +64,23 @@ class AppError(Exception):
     details: Optional[Dict[str, Any]] = None
     cause: Optional[Exception] = None
 
+    def __post_init__(self):
+        # dataclass 不会自动调用 Exception.__init__，导致 args 为空（序列化/日志会丢信息）
+        try:
+            Exception.__init__(self, self.message)
+        except Exception:
+            # 兜底：至少保证 args 非空
+            try:
+                Exception.__init__(self, str(self))
+            except Exception:
+                pass
+        if self.cause is not None:
+            # 让异常链可观测（traceback/日志更友好）
+            try:
+                self.__cause__ = self.cause
+            except Exception:
+                pass
+
     def __str__(self):
         return f"[{self.code.value}] {self.message}"
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_float, parse_int
 
 
 @dataclass
@@ -17,19 +17,13 @@ class BatchMaterial:
 
     @classmethod
     def from_row(cls, row: RowLike) -> "BatchMaterial":
-        def _f(x, default: float = 0.0) -> float:
-            try:
-                return float(x)
-            except Exception:
-                return float(default)
-
         raw_id = get(row, "id")
         return cls(
-            id=int(raw_id) if raw_id is not None and raw_id != "" else None,
+            id=parse_int(raw_id, default=None),
             batch_id=str(get(row, "batch_id") or ""),
             material_id=str(get(row, "material_id") or ""),
-            required_qty=_f(get(row, "required_qty"), 0.0),
-            available_qty=_f(get(row, "available_qty"), 0.0),
+            required_qty=parse_float(get(row, "required_qty"), default=0.0) or 0.0,
+            available_qty=parse_float(get(row, "available_qty"), default=0.0) or 0.0,
             ready_status=(str(get(row, "ready_status") or "no").strip().lower() or "no"),
         )
 

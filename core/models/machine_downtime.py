@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_int
 
 
 @dataclass
@@ -31,10 +31,7 @@ class MachineDowntime:
     @classmethod
     def from_row(cls, row: RowLike) -> "MachineDowntime":
         raw_id = get(row, "id")
-        try:
-            _id = int(raw_id) if raw_id is not None and str(raw_id).strip() != "" else None
-        except Exception:
-            _id = None
+        _id = parse_int(raw_id, default=None)
         return cls(
             id=_id,
             machine_id=str(get(row, "machine_id") or ""),

@@ -524,23 +524,27 @@ class GreedyScheduler:
         unit_hours = getattr(op, "unit_hours", 0) or 0
         qty = getattr(batch, "quantity", 0) or 0
         try:
-            total_hours = float(setup_hours) + float(unit_hours) * float(qty)
+            total_hours_base = float(setup_hours) + float(unit_hours) * float(qty)
         except Exception:
             errors.append(
                 f"工时不合法：工序 {getattr(op, 'op_code', '-') or '-'} setup={setup_hours!r} unit={unit_hours!r} qty={qty!r}"
             )
             return None, False
-        if total_hours < 0:
-            errors.append(f"工时不能为负：工序 {getattr(op, 'op_code', '-') or '-'} total_hours={total_hours}")
+        if total_hours_base < 0:
+            errors.append(f"工时不能为负：工序 {getattr(op, 'op_code', '-') or '-'} total_hours={total_hours_base}")
             return None, False
 
-        efficiency = 1.0
-        try:
-            efficiency = float(self.calendar.get_efficiency(earliest, operator_id=operator_id) or 1.0)
-        except Exception:
-            efficiency = 1.0
-        if efficiency and efficiency > 0 and efficiency != 1.0:
-            total_hours = total_hours / efficiency
+        # 简化：效率取“开工时刻”的效率；若 earliest 因避让跨日/跨班次，则需重算
+        def _scaled_hours(start: datetime) -> float:
+            eff = 1.0
+            try:
+                eff = float(self.calendar.get_efficiency(start, operator_id=operator_id) or 1.0)
+            except Exception:
+                eff = 1.0
+            h = float(total_hours_base)
+            if eff and eff > 0 and eff != 1.0:
+                return h / eff
+            return h
 
         # 资源/停机避让：若区间与“设备/人员/停机”任一已占用区间重叠，则把开始时间推到重叠区间结束后再重算
         dt_list: List[Tuple[datetime, datetime]] = []
@@ -548,6 +552,7 @@ class GreedyScheduler:
             dt_list = machine_downtimes.get(machine_id) or []
 
         guard = 0
+        total_hours = _scaled_hours(earliest)
         end = self.calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=operator_id)
         while guard < 200:
             guard += 1
@@ -567,6 +572,7 @@ class GreedyScheduler:
 
             earliest = max(earliest, shift_to)
             earliest = self.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=operator_id)
+            total_hours = _scaled_hours(earliest)
             end = self.calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=operator_id)
 
         if guard >= 200:

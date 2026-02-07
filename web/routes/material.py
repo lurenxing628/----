@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from flask import Blueprint, flash, g, redirect, request, url_for
+from flask import Blueprint, current_app, flash, g, redirect, request, url_for
 
 from web.ui_mode import render_ui_template as render_template
 
@@ -47,8 +47,9 @@ def materials_create():
         flash(f"已创建物料：{m.material_id} {m.name}", "success")
     except AppError as e:
         flash(e.message, "error")
-    except Exception as e:
-        flash(f"创建失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("创建物料失败")
+        flash("创建物料失败，请稍后重试。", "error")
     return redirect(url_for("material.materials_page"))
 
 
@@ -68,8 +69,9 @@ def materials_update(material_id: str):
         flash("物料已更新。", "success")
     except AppError as e:
         flash(e.message, "error")
-    except Exception as e:
-        flash(f"更新失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("更新物料失败（material_id=%s）", material_id)
+        flash("更新物料失败，请稍后重试。", "error")
     return redirect(url_for("material.materials_page"))
 
 
@@ -81,8 +83,9 @@ def materials_delete(material_id: str):
         flash("物料已删除。", "success")
     except AppError as e:
         flash(e.message, "error")
-    except Exception as e:
-        flash(f"删除失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("删除物料失败（material_id=%s）", material_id)
+        flash("删除物料失败，请稍后重试。", "error")
     return redirect(url_for("material.materials_page"))
 
 
@@ -131,8 +134,9 @@ def batch_material_add(batch_id: str):
         flash("已新增批次物料需求，并已同步齐套状态。", "success")
     except AppError as e:
         flash(e.message, "error")
-    except Exception as e:
-        flash(f"新增失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("新增批次物料需求失败（batch_id=%s）", batch_id)
+        flash("新增失败，请稍后重试。", "error")
     return redirect(url_for("material.batch_materials_page", batch_id=batch_id))
 
 
@@ -151,8 +155,9 @@ def batch_material_update(bm_id: int):
         flash("已更新批次物料，并已同步齐套状态。", "success")
     except AppError as e:
         flash(e.message, "error")
-    except Exception as e:
-        flash(f"更新失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("更新批次物料需求失败（bm_id=%s, batch_id=%s）", bm_id, batch_id)
+        flash("更新失败，请稍后重试。", "error")
     return redirect(url_for("material.batch_materials_page", batch_id=batch_id))
 
 
@@ -167,7 +172,8 @@ def batch_material_delete(bm_id: int):
         flash("已删除批次物料需求，并已同步齐套状态。", "success")
     except AppError as e:
         flash(e.message, "error")
-    except Exception as e:
-        flash(f"删除失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("删除批次物料需求失败（bm_id=%s, batch_id=%s）", bm_id, batch_id)
+        flash("删除失败，请稍后重试。", "error")
     return redirect(url_for("material.batch_materials_page", batch_id=batch_id))
 

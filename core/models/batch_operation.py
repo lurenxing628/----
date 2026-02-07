@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_float, parse_int
 
 
 @dataclass
@@ -38,20 +38,20 @@ class BatchOperation:
         supplier_id = get(row, "supplier_id")
         piece_id = get(row, "piece_id")
         return cls(
-            id=int(raw_id) if raw_id is not None and raw_id != "" else None,
+            id=parse_int(raw_id, default=None),
             op_code=str(get(row, "op_code") or ""),
             batch_id=str(get(row, "batch_id") or ""),
             piece_id=str(piece_id) if piece_id is not None and piece_id != "" else None,
-            seq=int(seq) if seq is not None and seq != "" else 0,
+            seq=parse_int(seq, default=0) or 0,
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             op_type_name=str(get(row, "op_type_name") or ""),
             source=(str(get(row, "source") or "internal").strip().lower() or "internal"),
             machine_id=str(machine_id) if machine_id is not None and machine_id != "" else None,
             operator_id=str(operator_id) if operator_id is not None and operator_id != "" else None,
             supplier_id=str(supplier_id) if supplier_id is not None and supplier_id != "" else None,
-            setup_hours=float(setup_hours) if setup_hours is not None and setup_hours != "" else 0.0,
-            unit_hours=float(unit_hours) if unit_hours is not None and unit_hours != "" else 0.0,
-            ext_days=float(ext_days) if ext_days is not None and ext_days != "" else None,
+            setup_hours=parse_float(setup_hours, default=0.0) or 0.0,
+            unit_hours=parse_float(unit_hours, default=0.0) or 0.0,
+            ext_days=parse_float(ext_days, default=None),
             status=(str(get(row, "status") or "pending").strip().lower() or "pending"),
             created_at=get(row, "created_at"),
         )

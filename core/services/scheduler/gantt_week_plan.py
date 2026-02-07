@@ -36,9 +36,11 @@ def _split_by_day(start_dt: datetime, end_dt: datetime) -> List[Tuple[date, date
     out: List[Tuple[date, datetime, datetime]] = []
     while cur.date() < end_dt.date():
         day_end = datetime(cur.year, cur.month, cur.day) + timedelta(days=1)
-        out.append((cur.date(), cur, day_end))
+        if cur < day_end:
+            out.append((cur.date(), cur, day_end))
         cur = day_end
-    out.append((cur.date(), cur, end_dt))
+    if cur < end_dt:
+        out.append((cur.date(), cur, end_dt))
     return out
 
 

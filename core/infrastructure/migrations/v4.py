@@ -5,6 +5,13 @@ import sqlite3
 from typing import List, Optional, Tuple
 
 
+_PK_IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
+_PK_CAST = rf"CAST\({_PK_IDENT} AS TEXT\)"
+_PK_LIT = r"'[^']*'"
+_PK_TERM = rf"(?:{_PK_CAST}|{_PK_LIT})"
+_SAFE_PK_EXPR_RE = re.compile(rf"^{_PK_CAST}(?:\s*\|\|\s*{_PK_TERM})*$")
+
+
 def _rows_to_list(rows) -> List[str]:
     out: List[str] = []
     for r in rows or []:
@@ -16,6 +23,13 @@ def _rows_to_list(rows) -> List[str]:
         except Exception:
             continue
     return out
+
+
+def _is_expected_missing_schema_error(e: Exception) -> bool:
+    if not isinstance(e, sqlite3.OperationalError):
+        return False
+    msg = str(e).lower()
+    return "no such table" in msg or "no such column" in msg
 
 
 def _sanitize_field(
@@ -49,11 +63,29 @@ def _sanitize_field(
                 pass
         return 0, []
 
+    # 防御：pk_expr 也会被拼接进 SQL（无法参数化），禁止可疑字符，避免语法注入
+    pk = str(pk_expr or "").strip()
+    if (
+        not pk
+        or len(pk) > 200
+        or ";" in pk
+        or "--" in pk
+        or "/*" in pk
+        or "*/" in pk
+        or not _SAFE_PK_EXPR_RE.fullmatch(pk)
+    ):
+        if logger:
+            try:
+                logger.error(f"数据库迁移 v4：非法 pk_expr，已跳过清洗（table={table!r} field={field!r} pk_expr={pk_expr!r}）")
+            except Exception:
+                pass
+        return 0, []
+
     # 1) 样例：找出需要被 lower/trim 的行（最多 10 条）
     try:
         rows = conn.execute(
             f"""
-            SELECT {pk_expr}
+            SELECT {pk}
             FROM {t}
             WHERE {f} IS NOT NULL
               AND TRIM(CAST({f} AS TEXT)) <> ''
@@ -62,7 +94,14 @@ def _sanitize_field(
             """
         ).fetchall()
         sample = _rows_to_list(rows)
-    except Exception:
+    except Exception as e:
+        if _is_expected_missing_schema_error(e):
+            if logger:
+                try:
+                    logger.warning(f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
+                except Exception:
+                    pass
+            return 0, []
         sample = []
 
     # 2) lower+trim（仅更新需要变更的行）
@@ -77,8 +116,15 @@ def _sanitize_field(
             """
         )
         changed += int(getattr(cur, "rowcount", 0) or 0)
-    except Exception:
-        pass
+    except Exception as e:
+        if _is_expected_missing_schema_error(e):
+            if logger:
+                try:
+                    logger.warning(f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
+                except Exception:
+                    pass
+            return 0, []
+        raise
 
     # 3) 空值兜底（可选）
     if default is not None:
@@ -93,8 +139,15 @@ def _sanitize_field(
                 (str(default),),
             )
             changed += int(getattr(cur2, "rowcount", 0) or 0)
-        except Exception:
-            pass
+        except Exception as e:
+            if _is_expected_missing_schema_error(e):
+                if logger:
+                    try:
+                        logger.warning(f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
+                    except Exception:
+                        pass
+                return 0, []
+            raise
 
     if changed and logger:
         try:

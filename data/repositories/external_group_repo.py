@@ -70,6 +70,14 @@ class ExternalGroupRepository(BaseRepository):
         if not set_parts:
             return
 
+        # 兼容：部分库/旧 schema 可能没有 updated_at；存在则更新（最佳努力）
+        try:
+            cols = self.fetchall("PRAGMA table_info(ExternalGroups)")
+            if any(str(r.get("name")) == "updated_at" for r in (cols or [])):
+                set_parts.append("updated_at = CURRENT_TIMESTAMP")
+        except Exception:
+            pass
+
         params.append(group_id)
         sql = f"UPDATE ExternalGroups SET {', '.join(set_parts)} WHERE group_id = ?"
         self.execute(sql, tuple(params))

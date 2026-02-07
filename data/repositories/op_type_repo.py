@@ -45,16 +45,24 @@ class OpTypeRepository(BaseRepository):
         return ot
 
     def update(self, op_type_id: str, updates: Dict[str, Any]) -> None:
-        self.execute(
-            "UPDATE OpTypes SET name = COALESCE(?, name), category = COALESCE(?, category), default_hours = COALESCE(?, default_hours), remark = COALESCE(?, remark) WHERE op_type_id = ?",
-            (
-                updates.get("name"),
-                updates.get("category"),
-                updates.get("default_hours"),
-                updates.get("remark"),
-                op_type_id,
-            ),
-        )
+        if not updates:
+            return
+
+        allowed = {"name", "category", "default_hours", "remark"}
+        set_parts: List[str] = []
+        params: List[Any] = []
+
+        for key in ("name", "category", "default_hours", "remark"):
+            if key in allowed and key in updates:
+                set_parts.append(f"{key} = ?")
+                params.append(updates.get(key))
+
+        if not set_parts:
+            return
+
+        params.append(op_type_id)
+        sql = f"UPDATE OpTypes SET {', '.join(set_parts)} WHERE op_type_id = ?"
+        self.execute(sql, tuple(params))
 
     def delete(self, op_type_id: str) -> None:
         self.execute("DELETE FROM OpTypes WHERE op_type_id = ?", (op_type_id,))

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_int
 
 
 @dataclass
@@ -19,7 +19,7 @@ class OperatorMachine:
     def from_row(cls, row: RowLike) -> "OperatorMachine":
         raw_id = get(row, "id")
         return cls(
-            id=int(raw_id) if raw_id is not None and raw_id != "" else None,
+            id=parse_int(raw_id, default=None),
             operator_id=str(get(row, "operator_id") or ""),
             machine_id=str(get(row, "machine_id") or ""),
             skill_level=(str(get(row, "skill_level") or "normal").strip().lower() or "normal"),

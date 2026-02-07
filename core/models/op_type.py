@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_float
 
 
 @dataclass
@@ -22,7 +22,7 @@ class OpType:
             op_type_id=str(get(row, "op_type_id") or ""),
             name=str(get(row, "name") or ""),
             category=(str(get(row, "category") or "internal").strip().lower() or "internal"),
-            default_hours=float(val) if val is not None and val != "" else None,
+            default_hours=parse_float(val, default=None),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),
         )

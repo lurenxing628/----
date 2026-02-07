@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_int
 
 
 @dataclass
@@ -24,7 +24,7 @@ class OperationLog:
     def from_row(cls, row: RowLike) -> "OperationLog":
         raw_id = get(row, "id")
         return cls(
-            id=int(raw_id) if raw_id is not None and raw_id != "" else None,
+            id=parse_int(raw_id, default=None),
             log_time=get(row, "log_time"),
             log_level=str(get(row, "log_level") or "INFO"),
             module=str(get(row, "module") or ""),

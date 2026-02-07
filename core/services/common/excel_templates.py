@@ -9,12 +9,18 @@ import openpyxl
 def _write_xlsx(path: str, headers: Sequence[str], sample_rows: Sequence[Sequence[Any]] = ()) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(list(headers))
-    for r in sample_rows:
-        ws.append(list(r))
-    wb.save(path)
+    try:
+        ws = wb.active
+        ws.title = "Sheet1"
+        ws.append(list(headers))
+        for r in sample_rows:
+            ws.append(list(r))
+        wb.save(path)
+    finally:
+        try:
+            wb.close()
+        except Exception:
+            pass
 
 
 def get_default_templates() -> List[Dict[str, Any]]:

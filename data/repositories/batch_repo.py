@@ -68,35 +68,54 @@ class BatchRepository(BaseRepository):
         return b
 
     def update(self, batch_id: str, updates: Dict[str, Any]) -> None:
-        self.execute(
-            """
-            UPDATE Batches
-            SET
-              part_no = COALESCE(?, part_no),
-              part_name = COALESCE(?, part_name),
-              quantity = COALESCE(?, quantity),
-              due_date = COALESCE(?, due_date),
-              priority = COALESCE(?, priority),
-              ready_status = COALESCE(?, ready_status),
-              ready_date = COALESCE(?, ready_date),
-              status = COALESCE(?, status),
-              remark = COALESCE(?, remark),
-              updated_at = CURRENT_TIMESTAMP
-            WHERE batch_id = ?
-            """,
-            (
-                updates.get("part_no"),
-                updates.get("part_name"),
-                updates.get("quantity"),
-                updates.get("due_date"),
-                updates.get("priority"),
-                updates.get("ready_status"),
-                updates.get("ready_date"),
-                updates.get("status"),
-                updates.get("remark"),
-                batch_id,
-            ),
-        )
+        """
+        动态更新：只更新 updates 中出现的字段；
+        - 允许显式传入 None 将可空列置 NULL
+        - 避免 COALESCE 造成“无法置空”
+        """
+        if not updates:
+            return
+
+        allowed = {
+            "part_no",
+            "part_name",
+            "quantity",
+            "due_date",
+            "priority",
+            "ready_status",
+            "ready_date",
+            "status",
+            "remark",
+        }
+        set_parts: List[str] = []
+        params: List[Any] = []
+
+        for key in (
+            "part_no",
+            "part_name",
+            "quantity",
+            "due_date",
+            "priority",
+            "ready_status",
+            "ready_date",
+            "status",
+            "remark",
+        ):
+            if key not in allowed or key not in updates:
+                continue
+            val = updates.get(key)
+            if key == "quantity" and val is not None:
+                val = int(val)
+            set_parts.append(f"{key} = ?")
+            params.append(val)
+
+        if not set_parts:
+            return
+
+        set_parts.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(batch_id)
+        sql = f"UPDATE Batches SET {', '.join(set_parts)} WHERE batch_id = ?"
+        self.execute(sql, tuple(params))
 
     def delete(self, batch_id: str) -> None:
         self.execute("DELETE FROM Batches WHERE batch_id = ?", (batch_id,))

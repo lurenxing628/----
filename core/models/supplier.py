@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_float
 
 
 @dataclass
@@ -19,12 +19,12 @@ class Supplier:
     @classmethod
     def from_row(cls, row: RowLike) -> "Supplier":
         op_type_id = get(row, "op_type_id")
-        default_days = get(row, "default_days")
+        default_days = parse_float(get(row, "default_days"), default=1.0)
         return cls(
             supplier_id=str(get(row, "supplier_id") or ""),
             name=str(get(row, "name") or ""),
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
-            default_days=float(default_days) if default_days is not None and default_days != "" else 1.0,
+            default_days=default_days if default_days is not None else 1.0,
             status=(str(get(row, "status") or "active").strip().lower() or "active"),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),

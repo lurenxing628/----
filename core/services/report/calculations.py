@@ -55,33 +55,87 @@ def capacity_hours(calendar: Any, start_d: date, end_d: date) -> float:
 
 
 def compute_overdue_items(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    items: List[Dict[str, Any]] = []
+    scheduled, unscheduled, _as_of = compute_overdue_buckets(rows)
+    # 保持旧接口：items 依然返回列表（已排程在前，未排程在后）
+    return list(scheduled) + list(unscheduled)
+
+
+def compute_overdue_buckets(
+    rows: List[Dict[str, Any]],
+    *,
+    now_dt: Optional[datetime] = None,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], str]:
+    """
+    计算“已排程逾期 / 未排程逾期”两类清单。
+
+    返回：(scheduled_items, unscheduled_items, as_of_time_str)
+    - scheduled：有 finish_time 且 finish_time > due_end
+    - unscheduled：无 finish_time 且 now > due_end（以 now 作为截至时间）
+    """
+    now0 = now_dt or datetime.now()
+    as_of = now0.strftime("%Y-%m-%d %H:%M:%S")
+
+    scheduled: List[Dict[str, Any]] = []
+    unscheduled: List[Dict[str, Any]] = []
+
     for r in rows:
         due_s = r.get("due_date")
         finish_s = r.get("finish_time")
         due_d = parse_dt(due_s)
-        finish_dt = parse_dt(finish_s)
-        if not due_d or not finish_dt:
+        if not due_d:
             continue
         due_end = datetime(due_d.year, due_d.month, due_d.day, 23, 59, 59)
-        if finish_dt <= due_end:
+
+        finish_dt = parse_dt(finish_s)
+        if finish_dt is not None:
+            # 已排程：按实际完工时间判断
+            if finish_dt <= due_end:
+                continue
+            delay_sec = (finish_dt - due_end).total_seconds()
+            delay_hours = round(delay_sec / 3600.0, 2)
+            delay_days = round(delay_sec / 86400.0, 2)
+            scheduled.append(
+                {
+                    "bucket": "scheduled_overdue",
+                    "bucket_label": "已排程逾期",
+                    "is_scheduled": True,
+                    "as_of_time": finish_s,
+                    "batch_id": r.get("batch_id"),
+                    "part_no": r.get("part_no"),
+                    "part_name": r.get("part_name"),
+                    "quantity": r.get("quantity"),
+                    "due_date": due_s,
+                    "finish_time": finish_s,
+                    "delay_hours": delay_hours,
+                    "delay_days": delay_days,
+                }
+            )
             continue
-        delay_sec = (finish_dt - due_end).total_seconds()
+
+        # 未排程：以 now 作为截至时间判断是否逾期
+        if now0 <= due_end:
+            continue
+        delay_sec = (now0 - due_end).total_seconds()
         delay_hours = round(delay_sec / 3600.0, 2)
         delay_days = round(delay_sec / 86400.0, 2)
-        items.append(
+        unscheduled.append(
             {
+                "bucket": "unscheduled_overdue",
+                "bucket_label": "未排程逾期",
+                "is_scheduled": False,
+                "as_of_time": as_of,
                 "batch_id": r.get("batch_id"),
                 "part_no": r.get("part_no"),
                 "part_name": r.get("part_name"),
                 "quantity": r.get("quantity"),
                 "due_date": due_s,
-                "finish_time": finish_s,
+                "finish_time": None,
                 "delay_hours": delay_hours,
                 "delay_days": delay_days,
             }
         )
-    return items
+
+    return scheduled, unscheduled, as_of
 
 
 def compute_utilization(

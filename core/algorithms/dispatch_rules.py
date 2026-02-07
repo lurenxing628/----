@@ -117,7 +117,23 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
 
 
 def mean_positive(values: Dict[str, float]) -> float:
-    vals = [float(v) for v in values.values() if v is not None]
+    """
+    仅对严格为正（>0）的值取均值。
+
+    说明：
+    - 名称语义：positive => >0
+    - 空/无正值返回 0.0
+    """
+    vals = []
+    for v in values.values():
+        if v is None:
+            continue
+        try:
+            fv = float(v)
+        except Exception:
+            continue
+        if fv > 0:
+            vals.append(fv)
     if not vals:
         return 0.0
     return float(statistics.fmean(vals))

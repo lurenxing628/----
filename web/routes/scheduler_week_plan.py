@@ -5,7 +5,7 @@ import time
 from datetime import date
 from typing import Optional
 
-from flask import flash, g, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from web.ui_mode import render_ui_template as render_template
 
@@ -132,8 +132,9 @@ def week_plan_export():
     except AppError as e:
         flash(e.message, "error")
         return redirect(url_for("scheduler.week_plan_page"))
-    except Exception as e:
-        flash(f"导出周计划失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("导出周计划失败")
+        flash("导出周计划失败，请稍后重试。", "error")
         return redirect(url_for("scheduler.week_plan_page"))
 
 
@@ -171,7 +172,8 @@ def simulate_schedule():
     except AppError as e:
         flash(e.message, "error")
         return redirect(url_for("scheduler.batches_page"))
-    except Exception as e:
-        flash(f"模拟排产失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("模拟排产失败")
+        flash("模拟排产失败，请稍后重试。", "error")
         return redirect(url_for("scheduler.batches_page"))
 

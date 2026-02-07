@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, datetime
+from decimal import Decimal
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Dict, Tuple, Any, Callable, Optional
@@ -157,14 +159,66 @@ class ExcelService:
 
         return preview
 
+    @staticmethod
+    def _normalize_for_compare(value: Any) -> Any:
+        """
+        用于 _calc_changes 的弱类型标准化，避免类型差异导致幻影 UPDATE。
+
+        目标：让 ('1', 1, 1.0) 等价；空白字符串视为 None；日期按 ISO；其它保持原样。
+        """
+        if value is None:
+            return None
+        if isinstance(value, str):
+            s = value.strip()
+            if s == "":
+                return None
+            # 数字字符串："1" / "1.0" / "1e3" 等视作数值（用于等价比较）
+            try:
+                return ("__num__", Decimal(s))
+            except Exception:
+                return s
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(value, date):
+            return value.isoformat()
+        if isinstance(value, bool):
+            return ("__num__", Decimal(1 if value else 0))
+        if isinstance(value, (int, float, Decimal)):
+            try:
+                return ("__num__", Decimal(str(value)))
+            except Exception:
+                return float(value) if isinstance(value, float) else value
+        return value
+
     def _calc_changes(self, existing: Any, new_data: Dict[str, Any]) -> Dict[str, Tuple[Any, Any]]:
         changes: Dict[str, Tuple[Any, Any]] = {}
-        existing_dict = existing if isinstance(existing, dict) else vars(existing)
+        existing_dict: Dict[str, Any] = {}
+        if existing is None:
+            existing_dict = {}
+        elif isinstance(existing, dict):
+            existing_dict = existing
+        else:
+            # 兼容 sqlite3.Row / Mapping-like：支持 keys() + 下标访问
+            try:
+                keys = getattr(existing, "keys", None)
+                if callable(keys):
+                    ks = list(keys())
+                    existing_dict = {k: existing[k] for k in ks}
+                else:
+                    existing_dict = {}
+            except Exception:
+                existing_dict = {}
+            # 兜底：普通对象（含 dataclass / model）通过 __dict__ 取值
+            if not existing_dict:
+                try:
+                    existing_dict = vars(existing)  # type: ignore[arg-type]
+                except Exception:
+                    existing_dict = {}
 
         for key, new_val in new_data.items():
             if key in existing_dict:
                 old_val = existing_dict[key]
-                if old_val != new_val:
+                if self._normalize_for_compare(old_val) != self._normalize_for_compare(new_val):
                     changes[key] = (old_val, new_val)
         return changes
 

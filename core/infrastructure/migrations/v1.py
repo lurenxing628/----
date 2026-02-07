@@ -12,11 +12,11 @@ def run(conn: sqlite3.Connection, logger=None) -> None:
     - 补齐 V1.1 关键字段（缺列补齐）
     - 一次性清洗 Batches 的日期字段（due_date / ready_date）
     """
-    _ensure_columns(conn)
+    _ensure_columns(conn, logger=logger)
     _sanitize_batch_dates(conn, logger=logger)
 
 
-def _ensure_columns(conn: sqlite3.Connection) -> None:
+def _ensure_columns(conn: sqlite3.Connection, logger=None) -> None:
     """
     轻量迁移（幂等）：为存量表补齐新增字段。
 
@@ -56,15 +56,31 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
             "UPDATE OperatorMachine SET skill_level = 'normal' "
             "WHERE skill_level IS NULL OR TRIM(CAST(skill_level AS TEXT)) = ''"
         )
-    except Exception:
-        pass
+    except sqlite3.OperationalError as e:
+        msg = str(e).lower()
+        if "no such table" in msg or "no such column" in msg:
+            if logger:
+                try:
+                    logger.warning(f"数据库迁移 v1：OperatorMachine.skill_level 默认值回填已跳过（{e}）。")
+                except Exception:
+                    pass
+        else:
+            raise
     try:
         conn.execute(
             "UPDATE OperatorMachine SET is_primary = 'no' "
             "WHERE is_primary IS NULL OR TRIM(CAST(is_primary AS TEXT)) = ''"
         )
-    except Exception:
-        pass
+    except sqlite3.OperationalError as e:
+        msg = str(e).lower()
+        if "no such table" in msg or "no such column" in msg:
+            if logger:
+                try:
+                    logger.warning(f"数据库迁移 v1：OperatorMachine.is_primary 默认值回填已跳过（{e}）。")
+                except Exception:
+                    pass
+        else:
+            raise
 
 
 def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
@@ -87,8 +103,16 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
                OR (ready_date IS NOT NULL AND TRIM(CAST(ready_date AS TEXT)) <> '')
             """
         ).fetchall()
-    except Exception:
-        return
+    except sqlite3.OperationalError as e:
+        msg = str(e).lower()
+        if "no such table" in msg or "no such column" in msg:
+            if logger:
+                try:
+                    logger.warning(f"数据库迁移 v1：Batches 表/列不存在，已跳过日期清洗（{e}）。")
+                except Exception:
+                    pass
+            return
+        raise
 
     if not rows:
         return
@@ -122,6 +146,8 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
 
     changed = 0
     changed_samples = []
+    failed = 0
+    failed_samples = []
     for r in rows:
         bid = r["batch_id"]
         old_due = r["due_date"]
@@ -143,7 +169,13 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
             changed += 1
             if len(changed_samples) < 10:
                 changed_samples.append(str(bid))
-        except Exception:
+        except sqlite3.OperationalError:
+            # 迁移中不应吞掉数据库级错误；抛出以触发事务回滚与备份恢复
+            raise
+        except sqlite3.Error:
+            failed += 1
+            if len(failed_samples) < 10:
+                failed_samples.append(str(bid))
             continue
 
     if changed and logger:
@@ -155,3 +187,11 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
         except Exception:
             pass
 
+    if failed and logger:
+        try:
+            sample_text = "，".join(failed_samples)
+            logger.warning(
+                f"Batches 日期字段清洗更新失败：失败批次数={failed}，样例批次号（最多10个）={sample_text}。"
+            )
+        except Exception:
+            pass

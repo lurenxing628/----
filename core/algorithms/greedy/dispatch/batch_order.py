@@ -76,7 +76,7 @@ def dispatch_batch_order(
 
             if result and result.start_time and result.end_time:
                 results.append(result)
-                batch_progress[bid] = result.end_time
+                batch_progress[bid] = max(batch_progress.get(bid, base_time), result.end_time)
                 scheduled_count += 1
                 if (result.source or "").strip().lower() == "internal" and result.machine_id:
                     try:

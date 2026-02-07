@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_float
 
 
 @dataclass
@@ -20,8 +20,15 @@ class WorkCalendar:
 
     @classmethod
     def from_row(cls, row: RowLike) -> "WorkCalendar":
-        shift_hours = get(row, "shift_hours")
-        efficiency = get(row, "efficiency")
+        raw_shift_hours = get(row, "shift_hours")
+        raw_efficiency = get(row, "efficiency")
+        shift_hours = parse_float(raw_shift_hours, default=8.0)
+        efficiency = parse_float(raw_efficiency, default=1.0)
+        # 防御：<=0 视为非法，回落默认值
+        if shift_hours is None or shift_hours <= 0:
+            shift_hours = 8.0
+        if efficiency is None or efficiency <= 0:
+            efficiency = 1.0
         shift_start = get(row, "shift_start")
         shift_end = get(row, "shift_end")
         return cls(
@@ -29,8 +36,8 @@ class WorkCalendar:
             day_type=(str(get(row, "day_type") or "workday").strip().lower() or "workday"),
             shift_start=str(shift_start) if shift_start is not None and shift_start != "" else None,
             shift_end=str(shift_end) if shift_end is not None and shift_end != "" else None,
-            shift_hours=float(shift_hours) if shift_hours is not None and shift_hours != "" else 8.0,
-            efficiency=float(efficiency) if efficiency is not None and efficiency != "" else 1.0,
+            shift_hours=shift_hours,
+            efficiency=efficiency,
             allow_normal=(str(get(row, "allow_normal") or "yes").strip().lower() or "yes"),
             allow_urgent=(str(get(row, "allow_urgent") or "yes").strip().lower() or "yes"),
             remark=get(row, "remark"),
@@ -75,8 +82,15 @@ class OperatorCalendar:
 
     @classmethod
     def from_row(cls, row: RowLike) -> "OperatorCalendar":
-        shift_hours = get(row, "shift_hours")
-        efficiency = get(row, "efficiency")
+        raw_shift_hours = get(row, "shift_hours")
+        raw_efficiency = get(row, "efficiency")
+        shift_hours = parse_float(raw_shift_hours, default=8.0)
+        efficiency = parse_float(raw_efficiency, default=1.0)
+        # 防御：<=0 视为非法，回落默认值
+        if shift_hours is None or shift_hours <= 0:
+            shift_hours = 8.0
+        if efficiency is None or efficiency <= 0:
+            efficiency = 1.0
         shift_start = get(row, "shift_start")
         shift_end = get(row, "shift_end")
         return cls(
@@ -85,8 +99,8 @@ class OperatorCalendar:
             day_type=(str(get(row, "day_type") or "workday").strip().lower() or "workday"),
             shift_start=str(shift_start) if shift_start is not None and shift_start != "" else None,
             shift_end=str(shift_end) if shift_end is not None and shift_end != "" else None,
-            shift_hours=float(shift_hours) if shift_hours is not None and shift_hours != "" else 8.0,
-            efficiency=float(efficiency) if efficiency is not None and efficiency != "" else 1.0,
+            shift_hours=shift_hours,
+            efficiency=efficiency,
             allow_normal=(str(get(row, "allow_normal") or "yes").strip().lower() or "yes"),
             allow_urgent=(str(get(row, "allow_urgent") or "yes").strip().lower() or "yes"),
             remark=get(row, "remark"),

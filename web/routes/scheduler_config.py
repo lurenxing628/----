@@ -12,6 +12,7 @@ from core.services.scheduler import ConfigService
 from web.ui_mode import render_ui_template as render_template
 
 from .scheduler_bp import bp
+from .system_utils import _safe_next_url
 
 
 def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
@@ -82,26 +83,23 @@ def config_manual_page():
                 manual_mtime = datetime.fromtimestamp(os.path.getmtime(manual_path)).strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
                 manual_mtime = None
-        except Exception as e:
-            manual_text = (
-                "说明书文件读取失败。\n\n"
-                f"- path: {manual_path}\n"
-                f"- error: {e}\n"
-            )
+        except Exception:
+            current_app.logger.exception("读取排产调度说明书失败")
+            manual_text = "说明书加载失败，请稍后重试或联系管理员。"
+            manual_mtime = None
     else:
-        manual_text = (
-            "说明书文件不存在（可能是打包未包含 / 文件被误删）。\n\n"
-            "已尝试的候选路径：\n"
-            + "\n".join([f"- {x}" for x in (candidates or [])])
-            + "\n"
-        )
+        # 候选路径仅写日志，避免渲染给用户（信息泄露）
+        try:
+            current_app.logger.warning("排产调度说明书文件不存在（candidates=%s）", candidates)
+        except Exception:
+            pass
+        manual_text = "说明书文件缺失（可能是安装包未包含或文件被误删）。请联系管理员。"
 
     download_url = url_for("scheduler.config_manual_download") if manual_path else None
     return render_template(
         "scheduler/config_manual.html",
         title="排产调度说明书",
         manual_text=manual_text,
-        manual_path=manual_path,
         manual_mtime=manual_mtime,
         download_url=download_url,
     )
@@ -123,8 +121,9 @@ def config_manual_download():
             download_name="排产调度说明书.md",
             mimetype="text/markdown; charset=utf-8",
         )
-    except Exception as e:
-        flash(f"下载说明书失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("下载排产调度说明书失败")
+        flash("下载说明书失败，请稍后重试。", "error")
         return redirect(url_for("scheduler.config_manual_page"))
 
 
@@ -168,7 +167,7 @@ def preset_apply():
     """
     cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     name = request.form.get("preset_name") or request.form.get("name")
-    next_url = request.form.get("next") or url_for("scheduler.config_page")
+    next_url = _safe_next_url(request.form.get("next") or url_for("scheduler.config_page"))
     try:
         # 允许显式切回“自定义”（不改变任何参数，仅更新 active_preset）
         name_text = ("" if name is None else str(name)).strip()
@@ -180,8 +179,9 @@ def preset_apply():
         flash(f"已应用排产模板：{applied}", "success")
     except AppError as e:
         flash(e.message, "error")
-    except Exception as e:
-        flash(f"应用模板失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("应用排产模板失败")
+        flash("应用模板失败，请稍后重试。", "error")
     return redirect(next_url)
 
 
@@ -197,8 +197,9 @@ def preset_save():
         flash(f"已保存为模板：{saved}", "success")
     except AppError as e:
         flash(e.message, "error")
-    except Exception as e:
-        flash(f"保存模板失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("保存排产模板失败")
+        flash("保存模板失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
 
 
@@ -211,8 +212,9 @@ def preset_delete():
         flash(f"已删除模板：{name}", "success")
     except AppError as e:
         flash(e.message, "error")
-    except Exception as e:
-        flash(f"删除模板失败：{e}", "error")
+    except Exception:
+        current_app.logger.exception("删除排产模板失败")
+        flash("删除模板失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
 
 

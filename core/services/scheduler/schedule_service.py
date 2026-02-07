@@ -296,9 +296,14 @@ class ScheduleService:
         resource_pool, pool_warnings = build_resource_pool(self, cfg=cfg, algo_ops=algo_ops)
         if pool_warnings:
             try:
-                algo_warnings.extend(pool_warnings)
+                if algo_warnings is None:
+                    algo_warnings = []
+                algo_warnings.extend(list(pool_warnings))
             except Exception:
-                pass
+                try:
+                    algo_warnings = list(algo_warnings or []) + list(pool_warnings or [])
+                except Exception:
+                    algo_warnings = list(pool_warnings or [])
 
         # auto-assign 启用时：停机区间覆盖候选设备
         downtime_map = extend_downtime_map_for_resource_pool(
@@ -339,9 +344,21 @@ class ScheduleService:
         # 把“冻结窗口/资源池”等 warning 合并到算法 warning 中
         if algo_warnings:
             try:
-                summary.warnings.extend(algo_warnings)  # type: ignore[attr-defined]
+                summary.warnings.extend(list(algo_warnings))  # type: ignore[attr-defined]
             except Exception:
-                pass
+                try:
+                    existing = getattr(summary, "warnings", None)
+                    if isinstance(existing, list):
+                        merged = list(existing) + list(algo_warnings)
+                    elif isinstance(existing, tuple):
+                        merged = list(existing) + list(algo_warnings)
+                    elif existing is None:
+                        merged = list(algo_warnings)
+                    else:
+                        merged = list(algo_warnings)
+                    setattr(summary, "warnings", merged)
+                except Exception:
+                    pass
 
         overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms = build_result_summary(
             self,

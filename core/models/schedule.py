@@ -3,13 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, as_dict, get, parse_int
 
 
 @dataclass
 class Schedule:
     id: Optional[int]
-    op_id: int
+    op_id: Optional[int] = None
     machine_id: Optional[str] = None
     operator_id: Optional[str] = None
     start_time: str = ""
@@ -26,14 +26,14 @@ class Schedule:
         machine_id = get(row, "machine_id")
         operator_id = get(row, "operator_id")
         return cls(
-            id=int(raw_id) if raw_id is not None and raw_id != "" else None,
-            op_id=int(op_id) if op_id is not None and op_id != "" else 0,
+            id=parse_int(raw_id, default=None),
+            op_id=parse_int(op_id, default=None),
             machine_id=str(machine_id) if machine_id is not None and machine_id != "" else None,
             operator_id=str(operator_id) if operator_id is not None and operator_id != "" else None,
             start_time=str(get(row, "start_time") or ""),
             end_time=str(get(row, "end_time") or ""),
             lock_status=(str(get(row, "lock_status") or "unlocked").strip().lower() or "unlocked"),
-            version=int(version) if version is not None and version != "" else 1,
+            version=parse_int(version, default=1),
             created_at=get(row, "created_at"),
         )
 

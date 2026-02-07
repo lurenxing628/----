@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from core.models import BatchMaterial
 
 from .base_repo import BaseRepository
+
+
+class _UnsetType:
+    pass
+
+
+_UNSET = _UnsetType()
 
 
 class BatchMaterialRepository(BaseRepository):
@@ -49,20 +56,37 @@ class BatchMaterialRepository(BaseRepository):
             ready_status=str(ready_status),
         )
 
-    def update_qty(self, bm_id: int, *, required_qty: Optional[float] = None, available_qty: Optional[float] = None, ready_status: Optional[str] = None) -> int:
-        updates: Dict[str, Any] = {"required_qty": required_qty, "available_qty": available_qty, "ready_status": ready_status}
-        self.execute(
-            """
-            UPDATE BatchMaterials
-            SET
-              required_qty = COALESCE(?, required_qty),
-              available_qty = COALESCE(?, available_qty),
-              ready_status = COALESCE(?, ready_status)
-            WHERE id = ?
-            """,
-            (updates.get("required_qty"), updates.get("available_qty"), updates.get("ready_status"), int(bm_id)),
-        )
-        return 1
+    def update_qty(
+        self,
+        bm_id: int,
+        *,
+        required_qty: Union[Optional[float], _UnsetType] = _UNSET,
+        available_qty: Union[Optional[float], _UnsetType] = _UNSET,
+        ready_status: Union[Optional[str], _UnsetType] = _UNSET,
+    ) -> int:
+        # 仅更新“调用方显式传入”的字段；显式 None 允许置空（对可空列）
+        updates: Dict[str, Any] = {}
+        if required_qty is not _UNSET:
+            updates["required_qty"] = required_qty
+        if available_qty is not _UNSET:
+            updates["available_qty"] = available_qty
+        if ready_status is not _UNSET:
+            updates["ready_status"] = ready_status
+
+        if not updates:
+            return 0
+
+        set_parts: List[str] = []
+        params: List[Any] = []
+        for key in ("required_qty", "available_qty", "ready_status"):
+            if key in updates:
+                set_parts.append(f"{key} = ?")
+                params.append(updates.get(key))
+
+        params.append(int(bm_id))
+        sql = f"UPDATE BatchMaterials SET {', '.join(set_parts)} WHERE id = ?"
+        cur = self.execute(sql, tuple(params))
+        return int(getattr(cur, "rowcount", 0) or 0)
 
     def delete(self, bm_id: int) -> None:
         self.execute("DELETE FROM BatchMaterials WHERE id = ?", (int(bm_id),))

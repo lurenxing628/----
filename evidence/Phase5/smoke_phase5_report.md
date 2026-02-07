@@ -1,12 +1,12 @@
 # Phase5（工艺管理模块）冒烟测试报告
 
-- 测试时间：2026-02-01 18:05:13
+- 测试时间：2026-02-07 01:58:07
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_1naxzdvn`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_1naxzdvn\aps_phase5_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_u6a1pbxs`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_u6a1pbxs\aps_phase5_test.db`
 
 ## 1. Schema 检查（Phase5 相关表）
 - 是否存在 OpTypes：True
@@ -24,7 +24,7 @@
 
 ## 2.1 工艺路线解析器：边界用例（validate_format/重复工序号/未识别工种）
 - validate_format(空)：ok=False msg='工艺路线不能为空'
-- validate_format(无工序号)：ok=False msg='格式无效，请使用“工序号+工种名”格式'
+- validate_format(无工序号)：ok=False msg='格式无效：必须以工序号开头'
 - validate_format(正常)：ok=True msg='格式有效，识别到 1 道工序'
 - 重复工序号解析状态：partial
 - 重复工序号 warnings：['工序号 5 重复出现，将保留第一个']
@@ -61,4 +61,4 @@
 
 ## 结论
 - 通过：Phase5（工艺管理模块）冒烟测试通过（解析器/边界用例/模板保存/合并周期/删除规则）。
-- 总耗时：803 ms
+- 总耗时：547 ms

@@ -44,12 +44,27 @@ def auto_assign_internal_resources(
     machines_by_operator = resource_pool.get("machines_by_operator") if isinstance(resource_pool, dict) else {}
     pair_rank = resource_pool.get("pair_rank") if isinstance(resource_pool, dict) else {}
 
+    # 防御：resource_pool.get(...) 可能返回 None（或非 dict），避免后续直接 .get 崩溃
+    if not isinstance(machines_by_operator, dict):
+        machines_by_operator = {}
+
     # 构造候选设备集合
     machine_candidates: List[str] = []
     if fixed_machine:
         machine_candidates = [fixed_machine]
     elif fixed_operator:
         machine_candidates = [str(x) for x in (machines_by_operator.get(fixed_operator) or []) if str(x).strip()]
+        if not machine_candidates and isinstance(operators_by_machine, dict):
+            # fallback：若未提供 machines_by_operator，则从 operators_by_machine 反推
+            for mid0, oids0 in operators_by_machine.items():
+                m = str(mid0).strip()
+                if not m:
+                    continue
+                try:
+                    if any(str(x).strip() == fixed_operator for x in (oids0 or [])):
+                        machine_candidates.append(m)
+                except Exception:
+                    continue
     else:
         if op_type_id and isinstance(machines_by_op_type, dict) and op_type_id in machines_by_op_type:
             machine_candidates = [str(x) for x in (machines_by_op_type.get(op_type_id) or []) if str(x).strip()]
@@ -102,14 +117,19 @@ def auto_assign_internal_resources(
             earliest = max(prev_end, base_time)
             earliest = scheduler.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=oid)
 
-            # 简化：效率取开工时刻对应日的效率
-            total_hours = float(total_hours_base)
-            try:
-                eff = float(scheduler.calendar.get_efficiency(earliest, operator_id=oid) or 1.0)
-            except Exception:
+            # 简化：效率取“开工时刻”的效率；若 earliest 因避让跨日/跨班次，则需重算
+            def _scaled_hours(start: datetime) -> float:
                 eff = 1.0
-            if eff and eff > 0 and eff != 1.0:
-                total_hours = total_hours / eff
+                try:
+                    eff = float(scheduler.calendar.get_efficiency(start, operator_id=oid) or 1.0)
+                except Exception:
+                    eff = 1.0
+                h = float(total_hours_base)
+                if eff and eff > 0 and eff != 1.0:
+                    return h / eff
+                return h
+
+            total_hours = _scaled_hours(earliest)
 
             dt_list: List[Tuple[datetime, datetime]] = []
             if machine_downtimes and mid:
@@ -132,6 +152,7 @@ def auto_assign_internal_resources(
                     break
                 earliest = max(earliest, shift_to)
                 earliest = scheduler.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=oid)
+                total_hours = _scaled_hours(earliest)
                 end = scheduler.calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=oid)
 
             if guard >= 200:

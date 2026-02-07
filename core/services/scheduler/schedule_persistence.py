@@ -59,7 +59,7 @@ def persist_schedule(
                 for r in results
                 if r
                 and int(getattr(r, "op_id", 0) or 0) > 0
-                and (r.source or "").strip().lower() == SourceType.INTERNAL.value
+                and (str(getattr(r, "source", "") or "").strip().lower() == SourceType.INTERNAL.value)
             }
             for op in operations:
                 if not op.id:

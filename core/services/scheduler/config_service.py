@@ -149,6 +149,62 @@ class ConfigService:
         """
         return ConfigService._normalize_weight(value, field=field)
 
+    @staticmethod
+    def _normalize_weights_triplet(
+        priority_weight: Any,
+        due_weight: Any,
+        ready_weight: Any,
+        *,
+        require_sum_1: bool = True,
+    ) -> Tuple[float, float, float]:
+        """
+        统一归一化三项权重，避免“单项>1当百分比”导致的混用歧义。
+
+        规则：
+        - 若任一原始输入 >1，则视为百分比模式（0~100），三项都按 /100 处理（因此 1 表示 1%）。
+        - 否则视为小数模式（0~1），三项直接使用（1 表示 100%）。
+        - 百分比模式下禁止出现 (0,1) 的非整数小数（如 0.5/50），避免歧义混用。
+        """
+
+        def _to_float(val: Any, field: str) -> float:
+            if val is None or (isinstance(val, str) and val.strip() == ""):
+                raise ValidationError(f"“{field}”不能为空", field=field)
+            try:
+                return float(val)
+            except Exception:
+                raise ValidationError(f"“{field}”必须是数字", field=field)
+
+        raw_pw = _to_float(priority_weight, "优先级权重")
+        raw_dw = _to_float(due_weight, "交期权重")
+        raw_rw = _to_float(ready_weight, "齐套权重")
+
+        for raw, field in ((raw_pw, "优先级权重"), (raw_dw, "交期权重"), (raw_rw, "齐套权重")):
+            if raw < 0:
+                raise ValidationError(f"“{field}”不能为负数", field=field)
+
+        percent_mode = (raw_pw > 1.0) or (raw_dw > 1.0) or (raw_rw > 1.0)
+        if percent_mode:
+            for raw, field in ((raw_pw, "优先级权重"), (raw_dw, "交期权重"), (raw_rw, "齐套权重")):
+                if 0 < raw < 1:
+                    raise ValidationError("权重输入疑似混用小数与百分比，请统一使用 0~1 或 0~100（%）。", field="权重")
+                if raw > 100:
+                    raise ValidationError(f"“{field}”范围不合理（期望 0~100%）", field=field)
+            pw = raw_pw / 100.0
+            dw = raw_dw / 100.0
+            rw = raw_rw / 100.0
+        else:
+            pw, dw, rw = raw_pw, raw_dw, raw_rw
+
+        for v, field in ((pw, "优先级权重"), (dw, "交期权重"), (rw, "齐套权重")):
+            if v > 1.0:
+                raise ValidationError(f"“{field}”范围不合理（期望 0~1 或 0~100%）", field=field)
+
+        total = float(pw + dw + rw)
+        if require_sum_1 and abs(total - 1.0) > 1e-6:
+            raise ValidationError("权重总和应为 1（或 100%）", field="权重")
+
+        return float(pw), float(dw), float(rw)
+
     def ensure_defaults(self) -> None:
         """
         确保默认配置已落库（缺失则写入，不覆盖用户已有配置）。
@@ -522,9 +578,15 @@ class ConfigService:
         dw = _get_float(data.get("due_weight"), float(base.due_weight))
         if pw < 0 or dw < 0:
             raise ValidationError("权重不能为负数", field="权重")
-        if pw > 1.0:
+        percent_mode = (pw > 1.0) or (dw > 1.0)
+        if percent_mode:
+            if (0 < pw < 1) or (0 < dw < 1):
+                raise ValidationError("权重输入疑似混用小数与百分比，请统一使用 0~1 或 0~100（%）。", field="权重")
+            # 防御：避免 1000% 这种输入
+            if pw > 100.0 or dw > 100.0:
+                raise ValidationError("权重范围不合理（期望 0~1 或 0~100%）", field="权重")
+            # 百分比模式：两项都按百分比处理（因此 1 表示 1%）
             pw = pw / 100.0
-        if dw > 1.0:
             dw = dw / 100.0
         if pw > 1.0 or dw > 1.0:
             raise ValidationError("权重范围不合理（期望 0~1 或 0~100%）", field="权重")
@@ -674,13 +736,12 @@ class ConfigService:
             self.repo.set("sort_strategy", v, description="当前排序策略")
 
     def set_weights(self, priority_weight: Any, due_weight: Any, ready_weight: Any, require_sum_1: bool = True) -> None:
-        pw = self._normalize_weight(priority_weight, field="优先级权重")
-        dw = self._normalize_weight(due_weight, field="交期权重")
-        rw = self._normalize_weight(ready_weight, field="齐套权重")
-
-        total = pw + dw + rw
-        if require_sum_1 and abs(total - 1.0) > 1e-6:
-            raise ValidationError("权重总和应为 1（或 100%）", field="权重")
+        pw, dw, rw = self._normalize_weights_triplet(
+            priority_weight,
+            due_weight,
+            ready_weight,
+            require_sum_1=require_sum_1,
+        )
 
         with self.tx_manager.transaction():
             self.repo.set("priority_weight", str(pw), description="权重模式-优先级权重")

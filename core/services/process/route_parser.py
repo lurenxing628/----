@@ -122,6 +122,13 @@ class RouteParser:
                 normalized_input="",
             )
 
+        # 防御：必须以工序号开头；尾部不能是纯数字（否则会被正则静默丢弃）
+        if re.match(r"^\d", normalized) is None:
+            errors.append("工艺路线格式无效：必须以工序号开头")
+        tail_m = re.search(r"(\d+)$", normalized)
+        if tail_m:
+            errors.append(f"工艺路线尾部工序号 {tail_m.group(1)} 缺少工种名")
+
         # 加载配置
         op_types = {ot.name: ot for ot in (self.op_types_repo.list() or [])}
         suppliers = self._build_supplier_map()
@@ -131,12 +138,16 @@ class RouteParser:
         matches = re.findall(pattern, normalized)
 
         if not matches:
+            generic = "无法识别工艺路线格式，请使用'工序号+工种名'格式，如'5数铣10钳20数车'"
+            final_errors = list(errors or [])
+            if generic not in final_errors:
+                final_errors.append(generic)
             return ParseResult(
                 status=ParseStatus.FAILED,
                 operations=[],
                 external_groups=[],
                 warnings=[],
-                errors=["无法识别工艺路线格式，请使用'工序号+工种名'格式，如'5数铣10钳20数车'"],
+                errors=final_errors,
                 stats={"total": 0, "internal": 0, "external": 0, "unknown": 0},
                 original_input=original_input,
                 normalized_input=normalized,
@@ -322,14 +333,20 @@ class RouteParser:
             return False, "工艺路线不能为空"
 
         normalized = self._preprocess(route_string)
+        if not normalized:
+            return False, "工艺路线不能为空"
+
+        if re.match(r"^\d", normalized) is None:
+            return False, "格式无效：必须以工序号开头"
+        tail_m = re.search(r"(\d+)$", normalized)
+        if tail_m:
+            return False, f"格式无效：尾部工序号 {tail_m.group(1)} 缺少工种名"
+
         pattern = r"(\d+)([^\d]+)"
         matches = re.findall(pattern, normalized)
 
         if not matches:
             return False, "格式无效，请使用“工序号+工种名”格式"
-
-        if len(matches) < 1:
-            return False, "至少需要一道工序"
 
         return True, f"格式有效，识别到 {len(matches)} 道工序"
 

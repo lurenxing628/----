@@ -42,12 +42,19 @@ class ScheduleHistoryRepository(BaseRepository):
         """
         返回最近版本列表（去重），用于页面下拉选择。
         """
+        # 注意：strategy/result_status 不能用 MAX(text)（会变成字典序），需要取“最新一条记录”的值。
         rows = self.fetchall(
             """
-            SELECT version, MAX(schedule_time) AS schedule_time, MAX(strategy) AS strategy, MAX(result_status) AS result_status
-            FROM ScheduleHistory
-            GROUP BY version
-            ORDER BY version DESC
+            SELECT h.version, h.schedule_time, h.strategy, h.result_status
+            FROM ScheduleHistory h
+            WHERE h.id = (
+                SELECT h2.id
+                FROM ScheduleHistory h2
+                WHERE h2.version = h.version
+                ORDER BY h2.schedule_time DESC, h2.id DESC
+                LIMIT 1
+            )
+            ORDER BY h.version DESC
             LIMIT ?
             """,
             (int(limit),),
