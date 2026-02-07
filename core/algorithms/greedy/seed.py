@@ -61,10 +61,20 @@ def normalize_seed_results(
     normalized: List[ScheduleResult] = []
     backfilled = 0
     dropped_invalid = 0
+    dropped_bad_time = 0
+    dropped_dup = 0
+    dup_samples: List[str] = []
 
     for sr in seed_results:
         try:
             if not sr or not getattr(sr, "start_time", None) or not getattr(sr, "end_time", None):
+                continue
+            try:
+                if getattr(sr, "end_time", None) <= getattr(sr, "start_time", None):
+                    dropped_bad_time += 1
+                    continue
+            except Exception:
+                dropped_bad_time += 1
                 continue
 
             oid0 = int(getattr(sr, "op_id", 0) or 0)
@@ -115,6 +125,12 @@ def normalize_seed_results(
                     continue
 
             if oid0 > 0:
+                # 去重：同一 op_id 的 seed 重复记录会导致重复占用资源/重复计数
+                if int(oid0) in seed_op_ids:
+                    dropped_dup += 1
+                    if len(dup_samples) < 5:
+                        dup_samples.append(str(int(oid0)))
+                    continue
                 seed_op_ids.add(int(oid0))
                 normalized.append(sr)
         except Exception:
@@ -124,6 +140,14 @@ def normalize_seed_results(
         warnings.append(f"seed_results 存在 {backfilled} 条 op_id<=0 的记录，已按 op_code/batch_id+seq 回填 op_id 以避免重复排产。")
     if dropped_invalid:
         warnings.append(f"seed_results 存在 {dropped_invalid} 条 op_id<=0 且无法匹配的记录，已忽略（避免重复统计/排产）。")
+    if dropped_bad_time:
+        warnings.append(f"seed_results 存在 {dropped_bad_time} 条 start_time>=end_time 的记录，已忽略（避免冻结窗口/资源占用异常）。")
+    if dropped_dup:
+        sample = ", ".join([x for x in dup_samples if x][:5])
+        warnings.append(
+            f"seed_results 存在 {dropped_dup} 条重复 op_id 的记录，已按 op_id 去重（保留首条）"
+            f"{('（示例 op_id=' + sample + '）') if sample else ''}。"
+        )
 
     return normalized, seed_op_ids, warnings
 

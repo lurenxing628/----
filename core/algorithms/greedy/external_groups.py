@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -33,6 +34,8 @@ def schedule_external(
             total_days = getattr(op, "ext_group_total_days", None)
             try:
                 total_days_f = float(total_days) if total_days is not None and str(total_days).strip() != "" else None
+                if total_days_f is not None and not math.isfinite(float(total_days_f)):
+                    total_days_f = None
             except Exception:
                 total_days_f = None
             if not total_days_f or total_days_f <= 0:
@@ -67,6 +70,8 @@ def schedule_external(
     ext_days = getattr(op, "ext_days", None)
     try:
         ext_days_f = float(ext_days) if ext_days is not None and str(ext_days).strip() != "" else None
+        if ext_days_f is not None and not math.isfinite(float(ext_days_f)):
+            ext_days_f = None
     except Exception:
         ext_days_f = None
     if ext_days_f is None:

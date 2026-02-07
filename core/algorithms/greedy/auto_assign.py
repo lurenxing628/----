@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -35,9 +36,14 @@ def auto_assign_internal_resources(
     prev_end = batch_progress.get(bid, base_time)
     priority = getattr(batch, "priority", None)
 
-    fixed_machine = (getattr(op, "machine_id", None) or "").strip()
-    fixed_operator = (getattr(op, "operator_id", None) or "").strip()
-    op_type_id = (getattr(op, "op_type_id", None) or "").strip()
+    fixed_machine = str(getattr(op, "machine_id", None) or "").strip()
+    fixed_operator = str(getattr(op, "operator_id", None) or "").strip()
+    # 防御：字段可能不是 str（例如 int），避免直接 .strip() 崩溃
+    op_type_id = str(getattr(op, "op_type_id", None) or "").strip()
+
+    # 若未固定 machine 且缺少 op_type_id，则无法保证自动选机的工种匹配
+    if not fixed_machine and not op_type_id:
+        return None
 
     machines_by_op_type = resource_pool.get("machines_by_op_type") if isinstance(resource_pool, dict) else {}
     operators_by_machine = resource_pool.get("operators_by_machine") if isinstance(resource_pool, dict) else {}
@@ -69,9 +75,15 @@ def auto_assign_internal_resources(
         if op_type_id and isinstance(machines_by_op_type, dict) and op_type_id in machines_by_op_type:
             machine_candidates = [str(x) for x in (machines_by_op_type.get(op_type_id) or []) if str(x).strip()]
         else:
-            # 无 op_type_id 或映射缺失：退化为“所有可用设备”
-            if isinstance(operators_by_machine, dict):
-                machine_candidates = [str(x) for x in operators_by_machine.keys() if str(x).strip()]
+            # 无 op_type_id 或映射缺失：无法保证工种匹配；宁可失败也不要“全设备兜底”排错机
+            return None
+
+    # 若已知 op_type_id：强制候选设备与工种映射一致（尤其是 fixed_operator 场景）
+    if op_type_id and isinstance(machines_by_op_type, dict) and op_type_id in machines_by_op_type:
+        allowed = {str(x).strip() for x in (machines_by_op_type.get(op_type_id) or []) if str(x).strip()}
+        if not allowed:
+            return None
+        machine_candidates = [m for m in machine_candidates if m in allowed]
 
     # 去重 + 稳定
     machine_candidates = sorted(list({m for m in machine_candidates if m}), key=lambda x: x)
@@ -86,7 +98,7 @@ def auto_assign_internal_resources(
         total_hours_base = float(setup_hours) + float(unit_hours) * float(qty)
     except Exception:
         return None
-    if total_hours_base < 0:
+    if not math.isfinite(float(total_hours_base)) or total_hours_base < 0:
         return None
 
     cur_type = (str(getattr(op, "op_type_name", None) or "") or "").strip()
@@ -121,8 +133,11 @@ def auto_assign_internal_resources(
             def _scaled_hours(start: datetime) -> float:
                 eff = 1.0
                 try:
-                    eff = float(scheduler.calendar.get_efficiency(start, operator_id=oid) or 1.0)
+                    raw_eff = scheduler.calendar.get_efficiency(start, operator_id=oid)
+                    eff = float(raw_eff) if raw_eff is not None else 1.0
                 except Exception:
+                    eff = 1.0
+                if (not math.isfinite(float(eff))) or float(eff) <= 0:
                     eff = 1.0
                 h = float(total_hours_base)
                 if eff and eff > 0 and eff != 1.0:

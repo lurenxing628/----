@@ -12,6 +12,7 @@ from __future__ import annotations
 """
 
 import logging
+import math
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -126,7 +127,21 @@ class GreedyScheduler:
         errors: List[str] = []
 
         base_time = start_dt or datetime.now()
+        # start_dt 允许由上层传入 datetime；防御：若误传字符串/日期等，尝试解析，避免后续类型错误
+        if base_time is not None and not isinstance(base_time, datetime):
+            parsed = _parse_datetime(base_time)
+            if parsed is not None:
+                base_time = parsed
+                warnings.append(f"start_dt 非 datetime，已解析为 {base_time.strftime('%Y-%m-%d %H:%M:%S')}。")
+            else:
+                warnings.append(f"start_dt 无法解析，已忽略并使用当前时间：{start_dt!r}")
+                base_time = datetime.now()
+
         end_d = _parse_date(end_date)
+        if end_date is not None and end_d is None:
+            s0 = str(end_date).strip()
+            if s0:
+                warnings.append(f"end_date 无法解析，已忽略（不启用排产截止窗口）：{end_date!r}")
         end_dt_exclusive: Optional[datetime] = None
         if end_d:
             end_dt_exclusive = datetime(end_d.year, end_d.month, end_d.day, 0, 0, 0) + timedelta(days=1)
@@ -138,20 +153,40 @@ class GreedyScheduler:
             except Exception:
                 strategy_key = "priority_first"
             strategy = parse_strategy(strategy_key, default=SortStrategy.PRIORITY_FIRST)
+            # 仅在“确实传入了非法值”时告警；空值/缺省不告警
+            try:
+                if isinstance(strategy_key, SortStrategy):
+                    raw_s = strategy_key.value
+                else:
+                    raw_s = str(strategy_key or "").strip().lower()
+                if raw_s and raw_s not in {s.value for s in SortStrategy}:
+                    warnings.append(f"sort_strategy 非法，已回退为 {strategy.value}：{strategy_key!r}")
+            except Exception:
+                pass
 
         # 权重策略参数：优先用调用方传入，否则从配置读取
         used_params: Dict[str, Any] = {}
         if strategy == SortStrategy.WEIGHTED:
             if strategy_params is not None:
+
+                def _safe_float(v: Any, default: float) -> float:
+                    try:
+                        f = float(v)
+                        return f if math.isfinite(f) else float(default)
+                    except Exception:
+                        return float(default)
+
+                sp = strategy_params if isinstance(strategy_params, dict) else {}
                 used_params = {
-                    "priority_weight": float(strategy_params.get("priority_weight", 0.4)),
-                    "due_weight": float(strategy_params.get("due_weight", 0.5)),
+                    "priority_weight": _safe_float(sp.get("priority_weight", 0.4), 0.4),
+                    "due_weight": _safe_float(sp.get("due_weight", 0.5), 0.5),
                 }
             elif self.config is not None:
 
                 def _cfg_float(key: str, default: float) -> float:
                     try:
-                        return float(self._cfg_get(key, default))
+                        f = float(self._cfg_get(key, default))
+                        return f if math.isfinite(f) else float(default)
                     except Exception:
                         return float(default)
 
@@ -174,6 +209,8 @@ class GreedyScheduler:
                 dispatch_mode = "batch_order"
         dispatch_mode_key = str(dispatch_mode or "batch_order").strip().lower() or "batch_order"
         if dispatch_mode_key not in ("batch_order", "sgs"):
+            if dispatch_mode is not None and str(dispatch_mode).strip():
+                warnings.append(f"dispatch_mode 非法，已回退为 batch_order：{dispatch_mode!r}")
             dispatch_mode_key = "batch_order"
 
         if dispatch_rule is None and self.config is not None:
@@ -181,16 +218,33 @@ class GreedyScheduler:
                 dispatch_rule = str(self._cfg_get("dispatch_rule", "slack"))
             except Exception:
                 dispatch_rule = "slack"
+        # 非法值回退提示（不影响旧逻辑）
+        try:
+            if isinstance(dispatch_rule, DispatchRule):
+                raw_rule_key = dispatch_rule.value
+            else:
+                raw_rule_key = str(dispatch_rule or "").strip().lower()
+        except Exception:
+            raw_rule_key = ""
         dispatch_rule_enum = parse_dispatch_rule(dispatch_rule, default=DispatchRule.SLACK)
+        if raw_rule_key and raw_rule_key not in {r.value for r in DispatchRule}:
+            warnings.append(f"dispatch_rule 非法，已回退为 {dispatch_rule_enum.value}：{dispatch_rule!r}")
 
         # 自动选人/选机（仅在内部工序缺省资源时触发；默认关闭，保持 V1 行为）
         auto_assign_enabled = False
         if self.config is not None:
             try:
-                v = str(self._cfg_get("auto_assign_enabled", "no") or "").strip().lower()
-                auto_assign_enabled = v in ("yes", "y", "true", "1", "on")
+                raw = self._cfg_get("auto_assign_enabled", "no")
+                v = str(raw or "").strip().lower()
+                true_vals = ("yes", "y", "true", "1", "on")
+                false_vals = ("no", "n", "false", "0", "off", "")
+                auto_assign_enabled = v in true_vals
+                if v not in true_vals and v not in false_vals:
+                    warnings.append(f"auto_assign_enabled 非法，已按 no 处理：{raw!r}")
             except Exception:
                 auto_assign_enabled = False
+        if auto_assign_enabled and resource_pool is None:
+            warnings.append("auto_assign_enabled=yes 但未提供 resource_pool：内部工序缺省资源将无法自动分配。")
 
         # 把派工参数写入 used_params（用于留痕；不影响旧逻辑）
         try:
@@ -231,10 +285,19 @@ class GreedyScheduler:
             batch_order = {b.batch_id: i for i, b in enumerate(sorted_batches)}
 
         # 按批次优先级和工序顺序排序工序（稳定）
+        def _safe_int(v: Any) -> int:
+            try:
+                return int(v or 0)
+            except Exception:
+                try:
+                    return int(float(v))
+                except Exception:
+                    return 0
+
         def _op_key(op: Any):
             bid = str(getattr(op, "batch_id", "") or "")
-            seq = int(getattr(op, "seq", 0) or 0)
-            oid = int(getattr(op, "id", 0) or 0)
+            seq = _safe_int(getattr(op, "seq", 0))
+            oid = _safe_int(getattr(op, "id", 0))
             return (batch_order.get(bid, 999999), bid, seq, oid)
 
         # seed_results：规范化 + 去重防御
@@ -483,8 +546,9 @@ class GreedyScheduler:
         """排产内部工序：设备+人员双重资源约束 + 工作日历。"""
         bid = str(getattr(op, "batch_id", "") or "")
 
-        machine_id = (getattr(op, "machine_id", None) or "").strip()
-        operator_id = (getattr(op, "operator_id", None) or "").strip()
+        # 防御：字段可能不是 str（例如 int），避免直接 .strip() 崩溃
+        machine_id = str(getattr(op, "machine_id", None) or "").strip()
+        operator_id = str(getattr(op, "operator_id", None) or "").strip()
         if not machine_id or not operator_id:
             # resource_pool 可能是空 dict（调用方显式提供但无候选）；用 is not None 区分“未提供”(None)
             if auto_assign_enabled and resource_pool is not None:
@@ -530,7 +594,7 @@ class GreedyScheduler:
                 f"工时不合法：工序 {getattr(op, 'op_code', '-') or '-'} setup={setup_hours!r} unit={unit_hours!r} qty={qty!r}"
             )
             return None, False
-        if total_hours_base < 0:
+        if (not math.isfinite(float(total_hours_base))) or total_hours_base < 0:
             errors.append(f"工时不能为负：工序 {getattr(op, 'op_code', '-') or '-'} total_hours={total_hours_base}")
             return None, False
 
