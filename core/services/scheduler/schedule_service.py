@@ -226,8 +226,16 @@ class ScheduleService:
             raise ValidationError("请至少选择 1 个批次执行排产。", field="batch_ids")
 
         t0 = time.time()
-        start_dt_norm = self._normalize_datetime(start_dt)
-        if start_dt_norm is None:
+        start_dt_norm: Optional[datetime] = None
+        start_dt_provided = start_dt is not None and str(start_dt).strip() != ""
+        if start_dt_provided:
+            start_dt_norm = self._normalize_datetime(start_dt)
+            if start_dt_norm is None:
+                raise ValidationError(
+                    "start_dt 格式不合法（允许：YYYY-MM-DD / YYYY-MM-DD HH:MM(:SS)）",
+                    field="start_dt",
+                )
+        else:
             tomorrow = (datetime.now() + timedelta(days=1)).date()
             start_dt_norm = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 8, 0, 0)
         created_by_text = self._normalize_text(created_by) or "system"

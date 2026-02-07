@@ -65,9 +65,22 @@ def resolve_week_range(
     except Exception:
         raise ValidationError("offset_weeks 不合法（期望整数）", field="offset_weeks")
 
-    sd = _parse_date(start_date) if start_date else None
-    ed = _parse_date(end_date) if end_date else None
-    if sd or ed:
+    start_date_provided = start_date is not None and str(start_date).strip() != ""
+    end_date_provided = end_date is not None and str(end_date).strip() != ""
+
+    sd: Optional[date] = None
+    if start_date_provided:
+        sd = _parse_date(start_date)
+        if not sd:
+            raise ValidationError("start_date 格式不合法（期望：YYYY-MM-DD）", field="start_date")
+
+    ed: Optional[date] = None
+    if end_date_provided:
+        ed = _parse_date(end_date)
+        if not ed:
+            raise ValidationError("end_date 格式不合法（期望：YYYY-MM-DD）", field="end_date")
+
+    if start_date_provided or end_date_provided:
         # 区间模式：默认 start_date=明天；end_date 未填则默认 7 天窗口
         if not sd:
             sd = date.today() + timedelta(days=1)
