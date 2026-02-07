@@ -81,8 +81,9 @@ def build_week_plan_rows(*, rows: Sequence[Dict[str, Any]], wr: WeekRange) -> Li
 
         machine_disp = _display_machine(r.get("machine_id"), r.get("machine_name"), r.get("supplier_name"))
         operator_disp = _display_operator(r.get("operator_id"), r.get("operator_name"))
-        machine_cell = machine_disp if (r.get("machine_id") or "").strip() else "-"
-        operator_cell = operator_disp if (r.get("operator_id") or "").strip() else "-"
+        # 周计划口径：与甘特图一致。外协/未分配时不硬置为 "-"，而是显示外协提示/供应商。
+        machine_cell = machine_disp
+        operator_cell = operator_disp
 
         parts = _split_by_day(st2, et2)
         for d0, a0, b0 in parts:

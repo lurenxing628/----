@@ -311,13 +311,24 @@
 
     clear(el);
 
-    const ccCount = state.ccIdSet ? state.ccIdSet.size : 0;
+    // 关键链：后端为“全版本口径”；当前页面仅展示本窗口 tasks 的子集
+    const ccTotal = state.ccIdSet ? state.ccIdSet.size : 0;
+    let ccVisible = 0;
+    try {
+      const all = Array.isArray(state.allTasks) ? state.allTasks : [];
+      for (let i = 0; i < all.length; i++) {
+        const tid = norm(all[i] && all[i].id);
+        if (tid && state.ccIdSet && state.ccIdSet.has(tid)) ccVisible += 1;
+      }
+    } catch (_) {
+      ccVisible = 0;
+    }
     const makespanEnd = norm(state.critical && state.critical.makespan_end) || "-";
 
     // Row 1: summary
     const r1 = row();
     const summary = document.createElement("span");
-    summary.textContent = `显示 ${state.filteredTasks.length}/${state.allTasks.length}｜配色 ${modeText()}｜箭头 ${arrowText()}｜关键链 ${ccCount}｜完工 ${makespanEnd}`;
+    summary.textContent = `显示 ${state.filteredTasks.length}/${state.allTasks.length}｜配色 ${modeText()}｜箭头 ${arrowText()}｜关键链（全版本/本窗口可见）${ccTotal}/${ccVisible}｜完工 ${makespanEnd}`;
     r1.appendChild(summary);
     el.appendChild(r1);
 
