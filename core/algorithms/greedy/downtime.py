@@ -38,6 +38,9 @@ def find_overlap_shift_end(
     """
     shift: Optional[datetime] = None
     for s, e in segments or []:
+        # 防御：非法区间（空/逆序）应被忽略，避免误判重叠导致不必要的后移
+        if e <= s:
+            continue
         if end <= s or start >= e:
             continue
         if shift is None or e > shift:

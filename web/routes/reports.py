@@ -32,6 +32,28 @@ def _validate_ymd_date(raw: str, field: str) -> str:
     return s
 
 
+def _export_version_or_latest(engine: ReportEngine) -> int:
+    """
+    导出接口的 version 解析规则：
+    - version 缺失/空字符串/无法转 int/<=0：回落到最新版本（与页面默认口径一致）
+    - 若无排产历史，latest_version() 可能为 0（保持现状）
+    """
+    latest = int(engine.latest_version() or 0)
+    raw = request.args.get("version")
+    if raw is None:
+        return latest
+    s = str(raw).strip()
+    if s == "":
+        return latest
+    try:
+        v = int(s)
+    except Exception:
+        return latest
+    if v <= 0:
+        return latest
+    return v
+
+
 @bp.get("/")
 def index():
     return render_template("reports/index.html", title="报表中心")
@@ -63,12 +85,8 @@ def overdue_page():
 
 @bp.get("/overdue/export")
 def overdue_export():
-    v = request.args.get("version")
-    try:
-        version = int(v) if v is not None and str(v).strip() != "" else 0
-    except Exception:
-        version = 0
     engine = ReportEngine(g.db)
+    version = _export_version_or_latest(engine)
     x = engine.export_overdue_xlsx(version)
     return send_file(x.data, as_attachment=True, download_name=x.filename, mimetype=x.content_type)
 
@@ -106,14 +124,10 @@ def utilization_page():
 
 @bp.get("/utilization/export")
 def utilization_export():
-    v = request.args.get("version")
     start_date = _validate_ymd_date(request.args.get("start_date"), field="start_date")
     end_date = _validate_ymd_date(request.args.get("end_date"), field="end_date")
-    try:
-        version = int(v) if v is not None and str(v).strip() != "" else 0
-    except Exception:
-        version = 0
     engine = ReportEngine(g.db)
+    version = _export_version_or_latest(engine)
     x = engine.export_utilization_xlsx(version, start_date, end_date)
     return send_file(x.data, as_attachment=True, download_name=x.filename, mimetype=x.content_type)
 
@@ -149,14 +163,10 @@ def downtime_page():
 
 @bp.get("/downtime/export")
 def downtime_export():
-    v = request.args.get("version")
     start_date = _validate_ymd_date(request.args.get("start_date"), field="start_date")
     end_date = _validate_ymd_date(request.args.get("end_date"), field="end_date")
-    try:
-        version = int(v) if v is not None and str(v).strip() != "" else 0
-    except Exception:
-        version = 0
     engine = ReportEngine(g.db)
+    version = _export_version_or_latest(engine)
     x = engine.export_downtime_impact_xlsx(version, start_date, end_date)
     return send_file(x.data, as_attachment=True, download_name=x.filename, mimetype=x.content_type)
 

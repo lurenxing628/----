@@ -87,21 +87,38 @@ def logs_settings():
 
 @bp.post("/logs/delete")
 def logs_delete():
-    log_id = _safe_int(request.form.get("log_id"), field="log_id", default=0, min_v=1, max_v=10**12)
+    raw = (request.form.get("log_id") or "").strip()
+    if not raw:
+        flash("缺少 log_id。", "error")
+        return redirect(url_for("system.logs_page"))
+    try:
+        log_id = int(raw)
+    except Exception:
+        flash("log_id 不合法（期望正整数）。", "error")
+        return redirect(url_for("system.logs_page"))
+    if log_id <= 0 or log_id > 10**12:
+        flash("log_id 不合法（期望正整数）。", "error")
+        return redirect(url_for("system.logs_page"))
+
     repo = OperationLogRepository(g.db)
-    deleted = repo.delete_by_id(int(log_id))
+    from core.infrastructure.transaction import TransactionManager
+
+    tx = TransactionManager(g.db)
+    with tx.transaction():
+        deleted = repo.delete_by_id(int(log_id))
+        if deleted > 0 and getattr(g, "op_logger", None) is not None:
+            g.op_logger.info(
+                module="system",
+                action="logs_delete",
+                target_type="operation_log",
+                target_id=str(log_id),
+                detail={"mode": "manual", "deleted_ids": [int(log_id)], "deleted_count": 1},
+            )
+
     if deleted <= 0:
         flash(f"未找到日志：ID={log_id}", "warning")
         return redirect(url_for("system.logs_page"))
 
-    if getattr(g, "op_logger", None) is not None:
-        g.op_logger.info(
-            module="system",
-            action="logs_delete",
-            target_type="operation_log",
-            target_id=str(log_id),
-            detail={"mode": "manual", "deleted_ids": [int(log_id)], "deleted_count": 1},
-        )
     flash(f"已删除日志：ID={log_id}", "success")
     return redirect(url_for("system.logs_page"))
 
@@ -125,15 +142,19 @@ def logs_delete_batch():
         return redirect(url_for("system.logs_page"))
 
     repo = OperationLogRepository(g.db)
-    deleted = repo.delete_by_ids(ids)
-    if getattr(g, "op_logger", None) is not None:
-        g.op_logger.info(
-            module="system",
-            action="logs_delete",
-            target_type="operation_log",
-            target_id=None,
-            detail={"mode": "batch", "deleted_count": int(deleted), "deleted_ids_sample": ids[:30]},
-        )
+    from core.infrastructure.transaction import TransactionManager
+
+    tx = TransactionManager(g.db)
+    with tx.transaction():
+        deleted = repo.delete_by_ids(ids)
+        if getattr(g, "op_logger", None) is not None:
+            g.op_logger.info(
+                module="system",
+                action="logs_delete",
+                target_type="operation_log",
+                target_id=None,
+                detail={"mode": "batch", "deleted_count": int(deleted), "deleted_ids_sample": ids[:30]},
+            )
 
     flash(f"批量删除完成：成功 {deleted}。", "success" if deleted else "warning")
     return redirect(url_for("system.logs_page"))

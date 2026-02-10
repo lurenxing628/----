@@ -41,7 +41,7 @@ def dispatch_batch_order(
     for op in sorted_ops:
         bid = ""
         try:
-            bid = str(getattr(op, "batch_id", "") or "")
+            bid = str(getattr(op, "batch_id", "") or "").strip()
             if bid not in batches:
                 failed_count += 1
                 errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'}：找不到所属批次 {bid}")

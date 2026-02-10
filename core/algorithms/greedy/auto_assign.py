@@ -32,7 +32,7 @@ def auto_assign_internal_resources(
     3) 负荷均衡（优先选择当前更空闲的人/机）
     4) 若存在主操/高技能标记（pair_rank 更小），作为微弱 tie-break
     """
-    bid = str(getattr(op, "batch_id", "") or "")
+    bid = str(getattr(op, "batch_id", "") or "").strip()
     prev_end = batch_progress.get(bid, base_time)
     priority = getattr(batch, "priority", None)
 
