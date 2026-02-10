@@ -72,26 +72,22 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
     time_left_h = (due_end - inp.est_start).total_seconds() / 3600.0
 
     # proc_hours <=0（或无法解析）时不能使用极小值兜底，否则 ATC 会出现极端值（错误地把不可估算候选排到最前）。
-    p: float
-    try:
-        ph = float(inp.proc_hours)
-        p = ph if ph > 0 else 0.0
-    except Exception:
-        p = 0.0
+    # 同时过滤非有限值（NaN/Inf），避免出现 -0.0 / inf 传播导致的错误优先级。
+    def _safe_positive(v: Any) -> float:
+        try:
+            fv = float(v)
+        except Exception:
+            return 0.0
+        if (not math.isfinite(fv)) or fv <= 0:
+            return 0.0
+        return fv
+
+    p = _safe_positive(inp.proc_hours)
     if not p or p <= 0:
         # 回退到平均处理时间尺度（若也不可用，再回退到 1h）
-        try:
-            aph = float(inp.avg_proc_hours)
-            p = aph if aph > 0 else 1.0
-        except Exception:
-            p = 1.0
+        p = _safe_positive(inp.avg_proc_hours) or 1.0
 
-    avg_p: float
-    try:
-        aph2 = float(inp.avg_proc_hours)
-        avg_p = aph2 if aph2 > 0 else p
-    except Exception:
-        avg_p = p
+    avg_p = _safe_positive(inp.avg_proc_hours) or p
 
     if inp.rule == DispatchRule.CR:
         cr = time_left_h / p
@@ -132,7 +128,7 @@ def mean_positive(values: Dict[str, float]) -> float:
             fv = float(v)
         except Exception:
             continue
-        if fv > 0:
+        if math.isfinite(fv) and fv > 0:
             vals.append(fv)
     if not vals:
         return 0.0

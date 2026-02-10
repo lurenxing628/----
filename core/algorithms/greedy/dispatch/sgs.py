@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -66,7 +67,7 @@ def dispatch_sgs(
     # 注意：total_ops 基于 sorted_ops 统计；此处若静默过滤无效 batch_id，会导致 scheduled+failed != total
     # 因此对无效 batch_id 的工序计为失败，并写入 errors（与 batch_order 口径一致）。
     for op in sorted_ops:
-        bid = str(getattr(op, "batch_id", "") or "")
+        bid = str(getattr(op, "batch_id", "") or "").strip()
         if bid not in batches:
             failed_count += 1
             errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'}：找不到所属批次 {bid}")
@@ -97,7 +98,7 @@ def dispatch_sgs(
                 h = float(setup_hours) + float(unit_hours) * float(qty)
             except Exception:
                 h = 0.0
-            if h and h > 0:
+            if h and h > 0 and math.isfinite(float(h)):
                 proc_samples.append(float(h))
     avg_proc_hours = (sum(proc_samples) / float(len(proc_samples))) if proc_samples else 1.0
 
@@ -117,19 +118,26 @@ def dispatch_sgs(
         best_pair: Optional[Tuple[str, Any]] = None
         best_key: Optional[Tuple[float, ...]] = None
         for bid, op in candidates:
+            # 评分阶段要尽量“失败即降级”，避免异常导致候选被静默跳过 -> best_pair=None -> 退化为 candidates[0]
             try:
                 batch = batches[bid]
                 priority = getattr(batch, "priority", None)
                 due_d = _parse_date(getattr(batch, "due_date", None))
-                seq = int(getattr(op, "seq", 0) or 0)
-                oid = int(getattr(op, "id", 0) or 0)
+                try:
+                    seq = int(getattr(op, "seq", 0) or 0)
+                except Exception:
+                    seq = 0
+                try:
+                    oid = int(getattr(op, "id", 0) or 0)
+                except Exception:
+                    oid = 0
                 score_penalty = 0.0  # 0=正常可估算；1=不可估算（应劣于所有正常候选）
 
                 # 估算（用于打分，不占资源）
                 if (getattr(op, "source", "internal") or "internal").strip().lower() == "external":
                     prev_end = batch_progress.get(bid, base_time)
-                    merge_mode = (getattr(op, "ext_merge_mode", None) or "").strip().lower()
-                    ext_group_id = (getattr(op, "ext_group_id", None) or "").strip()
+                    merge_mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()
+                    ext_group_id = str(getattr(op, "ext_group_id", None) or "").strip()
                     if merge_mode == "merged" and ext_group_id:
                         cached = external_group_cache.get((bid, ext_group_id))
                         if cached:
@@ -174,8 +182,8 @@ def dispatch_sgs(
                             proc_h = 1.0
                         change_pen = 1
                 else:
-                    machine_id = (getattr(op, "machine_id", None) or "").strip()
-                    operator_id = (getattr(op, "operator_id", None) or "").strip()
+                    machine_id = str(getattr(op, "machine_id", None) or "").strip()
+                    operator_id = str(getattr(op, "operator_id", None) or "").strip()
                     if (not machine_id or not operator_id) and auto_assign_enabled and resource_pool is not None:
                         # 评分阶段：若开启自动分配且 resource_pool 可用，则尝试补全资源后再估算。
                         try:
@@ -197,7 +205,12 @@ def dispatch_sgs(
                                     operator_busy_hours=operator_busy_hours,
                                 )
                             if chosen:
-                                machine_id, operator_id = chosen
+                                try:
+                                    m0, o0 = chosen
+                                    machine_id = str(m0 or "").strip()
+                                    operator_id = str(o0 or "").strip()
+                                except Exception:
+                                    pass
                         except Exception:
                             pass
 
@@ -228,10 +241,14 @@ def dispatch_sgs(
                         except Exception:
                             total_hours = 0.0
                             score_penalty = 1.0
+                        if (not score_penalty) and ((not math.isfinite(float(total_hours))) or float(total_hours) < 0):
+                            score_penalty = 1.0
                         eff = 1.0
                         try:
                             eff = float(scheduler.calendar.get_efficiency(est_start, operator_id=operator_id) or 1.0)
                         except Exception:
+                            eff = 1.0
+                        if (not math.isfinite(float(eff))) or float(eff) <= 0:
                             eff = 1.0
                         if score_penalty and score_penalty > 0:
                             # 工时不可解析：打分阶段按“不可估算”处理，避免成为最优候选
@@ -249,14 +266,14 @@ def dispatch_sgs(
                                 est_start, proc_h, priority=priority, operator_id=operator_id
                             )
 
-                            last_type = (last_op_type_by_machine.get(machine_id) or "").strip()
+                            last_type = str(last_op_type_by_machine.get(machine_id) or "").strip()
                             cur_type = (str(getattr(op, "op_type_name", None) or "") or "").strip()
                             if last_type and cur_type and last_type != cur_type:
                                 change_pen = 1
                             else:
                                 change_pen = 0
 
-                k = build_dispatch_key(
+                k0 = build_dispatch_key(
                     DispatchInputs(
                         rule=dispatch_rule,
                         priority=str(priority or "normal"),
@@ -273,13 +290,66 @@ def dispatch_sgs(
                     )
                 )
                 # 评分 key：先按可估算性排序（正常优于不可估算），再按 dispatch rule/tie-break 排序
-                k = (float(score_penalty),) + tuple(k)
-
-                if best_key is None or k < best_key:
-                    best_key = k
-                    best_pair = (bid, op)
+                k = (float(score_penalty),) + tuple(k0)
             except Exception:
-                continue
+                # 评分异常：生成一个“最差但可比较”的 key，避免静默跳过导致 candidates[0] 退化
+                score_penalty = 1.0
+                try:
+                    batch = batches.get(bid)
+                    priority = getattr(batch, "priority", None) if batch else None
+                    due_d = _parse_date(getattr(batch, "due_date", None)) if batch else None
+                except Exception:
+                    priority = None
+                    due_d = None
+                try:
+                    seq = int(getattr(op, "seq", 0) or 0)
+                except Exception:
+                    seq = 0
+                try:
+                    oid = int(getattr(op, "id", 0) or 0)
+                except Exception:
+                    oid = 0
+                est_start = batch_progress.get(bid, base_time)
+                est_end = est_start
+                try:
+                    proc_h = max(float(avg_proc_hours), 1e-6)
+                except Exception:
+                    proc_h = 1.0
+                change_pen = 1
+                try:
+                    k0 = build_dispatch_key(
+                        DispatchInputs(
+                            rule=dispatch_rule,
+                            priority=str(priority or "normal"),
+                            due_date=due_d,
+                            est_start=est_start,
+                            est_end=est_end,
+                            proc_hours=float(proc_h),
+                            avg_proc_hours=float(avg_proc_hours),
+                            changeover_penalty=int(change_pen),
+                            batch_order=int(batch_order.get(bid, 999999)),
+                            batch_id=bid,
+                            seq=int(seq),
+                            op_id=int(oid),
+                        )
+                    )
+                    k = (float(score_penalty),) + tuple(k0)
+                except Exception:
+                    # 最终兜底：仅保证可比较与稳定
+                    k = (
+                        float(score_penalty),
+                        float("inf"),
+                        1.0,  # changeover_penalty
+                        99.0,  # priority_rank（最差）
+                        float("inf"),  # time_left_h（最不紧急）
+                        float(batch_order.get(bid, 999999)),
+                        float(seq),
+                        float(oid),
+                    )
+
+            if best_key is None or k < best_key:
+                best_key = k
+                best_pair = (bid, op)
 
         if best_pair is None:
             best_pair = candidates[0]

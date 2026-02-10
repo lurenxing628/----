@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+import math
 import statistics
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -48,22 +49,31 @@ class ScheduleMetrics:
     util_defined: bool = False  # horizon>0 才为 True；否则 util_avg 仅为 0.0 占位
 
     def to_dict(self) -> Dict[str, Any]:
+        def _round_finite(v: Any, ndigits: int) -> float:
+            try:
+                fv = float(v)
+            except Exception:
+                return 0.0
+            if not math.isfinite(fv):
+                return 0.0
+            return float(round(fv, ndigits))
+
         return {
             "overdue_count": int(self.overdue_count),
-            "total_tardiness_hours": float(round(self.total_tardiness_hours, 4)),
-            "makespan_hours": float(round(self.makespan_hours, 4)),
+            "total_tardiness_hours": _round_finite(self.total_tardiness_hours, 4),
+            "makespan_hours": _round_finite(self.makespan_hours, 4),
             "changeover_count": int(self.changeover_count),
-            "weighted_tardiness_hours": float(round(self.weighted_tardiness_hours, 4)),
-            "makespan_internal_hours": float(round(self.makespan_internal_hours, 4)),
+            "weighted_tardiness_hours": _round_finite(self.weighted_tardiness_hours, 4),
+            "makespan_internal_hours": _round_finite(self.makespan_internal_hours, 4),
             "machine_used_count": int(self.machine_used_count),
             "operator_used_count": int(self.operator_used_count),
-            "machine_busy_hours_total": float(round(self.machine_busy_hours_total, 4)),
-            "operator_busy_hours_total": float(round(self.operator_busy_hours_total, 4)),
-            "machine_util_avg": float(round(self.machine_util_avg, 6)),
-            "operator_util_avg": float(round(self.operator_util_avg, 6)),
-            "machine_load_cv": float(round(self.machine_load_cv, 6)),
-            "operator_load_cv": float(round(self.operator_load_cv, 6)),
-            "internal_horizon_hours": float(round(self.internal_horizon_hours, 4)),
+            "machine_busy_hours_total": _round_finite(self.machine_busy_hours_total, 4),
+            "operator_busy_hours_total": _round_finite(self.operator_busy_hours_total, 4),
+            "machine_util_avg": _round_finite(self.machine_util_avg, 6),
+            "operator_util_avg": _round_finite(self.operator_util_avg, 6),
+            "machine_load_cv": _round_finite(self.machine_load_cv, 6),
+            "operator_load_cv": _round_finite(self.operator_load_cv, 6),
+            "internal_horizon_hours": _round_finite(self.internal_horizon_hours, 4),
             "util_defined": bool(self.util_defined),
         }
 
@@ -77,18 +87,24 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
     for r in results:
         if not r.start_time or not r.end_time:
             continue
+        bid = str(getattr(r, "batch_id", "") or "").strip()
+        if not bid:
+            continue
         if min_start is None or r.start_time < min_start:
             min_start = r.start_time
         if max_end is None or r.end_time > max_end:
             max_end = r.end_time
-        cur = finish_by_batch.get(r.batch_id)
+        cur = finish_by_batch.get(bid)
         if cur is None or r.end_time > cur:
-            finish_by_batch[r.batch_id] = r.end_time
+            finish_by_batch[bid] = r.end_time
 
     overdue_count = 0
     tardiness_hours = 0.0
     weighted_tardiness_hours = 0.0
-    for bid, b in batches.items():
+    for bid0, b in batches.items():
+        bid = str(bid0 or "").strip()
+        if not bid:
+            continue
         due_d = _parse_due_date(getattr(b, "due_date", None))
         if not due_d:
             continue
@@ -115,7 +131,7 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
             continue
         if (r.source or "").strip().lower() != "internal":
             continue
-        mid = (r.machine_id or "").strip()
+        mid = str(getattr(r, "machine_id", None) or "").strip()
         if not mid:
             continue
         by_machine.setdefault(mid, []).append(r)
@@ -154,10 +170,10 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
             min_int = st
         if max_int is None or et > max_int:
             max_int = et
-        mid = (r.machine_id or "").strip()
+        mid = str(getattr(r, "machine_id", None) or "").strip()
         if mid:
             machine_busy[mid] = machine_busy.get(mid, 0.0) + (et - st).total_seconds() / 3600.0
-        oid = (r.operator_id or "").strip()
+        oid = str(getattr(r, "operator_id", None) or "").strip()
         if oid:
             operator_busy[oid] = operator_busy.get(oid, 0.0) + (et - st).total_seconds() / 3600.0
 
@@ -166,17 +182,38 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
         makespan_internal_hours = (max_int - min_int).total_seconds() / 3600.0
 
     def _cv(vals: List[float]) -> float:
-        if not vals:
+        clean: List[float] = []
+        for v in vals:
+            try:
+                fv = float(v)
+            except Exception:
+                continue
+            if (not math.isfinite(fv)) or fv < 0:
+                continue
+            clean.append(fv)
+        if not clean:
             return 0.0
-        m = statistics.fmean(vals)
+        m = statistics.fmean(clean)
         if m <= 0:
             return 0.0
-        if len(vals) < 2:
+        if len(clean) < 2:
             return 0.0
-        return float(statistics.pstdev(vals) / m)
+        return float(statistics.pstdev(clean) / m)
 
-    machine_hours = list(machine_busy.values())
-    operator_hours = list(operator_busy.values())
+    def _finite_non_negative(values: List[float]) -> List[float]:
+        out: List[float] = []
+        for v in values:
+            try:
+                fv = float(v)
+            except Exception:
+                continue
+            if (not math.isfinite(fv)) or fv < 0:
+                continue
+            out.append(fv)
+        return out
+
+    machine_hours = _finite_non_negative(list(machine_busy.values()))
+    operator_hours = _finite_non_negative(list(operator_busy.values()))
     horizon = makespan_internal_hours
     machine_util_avg = float(statistics.fmean([h / horizon for h in machine_hours])) if horizon > 0 and machine_hours else 0.0
     operator_util_avg = float(statistics.fmean([h / horizon for h in operator_hours])) if horizon > 0 and operator_hours else 0.0

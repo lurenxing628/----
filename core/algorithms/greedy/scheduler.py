@@ -254,13 +254,41 @@ class GreedyScheduler:
         except Exception:
             pass
 
+        # -------------------------
+        # 关键 ID 规范化（算法层统一 str(...).strip()）
+        # -------------------------
+        # 说明：可选 warm-start 已做 strip；此处把 greedy/dispatch 侧也统一，避免脏输入导致分叉。
+        def _norm_id(v: Any) -> str:
+            try:
+                return str(v or "").strip()
+            except Exception:
+                try:
+                    return str(v).strip()
+                except Exception:
+                    return ""
+
+        batches_norm: Dict[str, Any] = {}
+        for k, b in (batches or {}).items():
+            nk = _norm_id(k)
+            if not nk:
+                nk = _norm_id(getattr(b, "batch_id", None))
+            if not nk:
+                # 极端兜底：保留原 key（可能为空），避免直接丢批次
+                nk = str(k or "")
+                warnings.append(f"检测到空 batch_id（key/字段均为空）：{k!r}")
+            if nk in batches_norm and batches_norm.get(nk) is not b:
+                warnings.append(f"批次ID规范化冲突：{k!r} -> {nk!r} 已存在；已保留首次出现。")
+                continue
+            batches_norm[nk] = b
+        batches = batches_norm
+
         # 排序批次（允许外部覆盖 batch order，用于 multi-start / 局部扰动）
         sorter = StrategyFactory.create(strategy, **used_params)
         batch_list: List[BatchForSort] = []
-        for b in batches.values():
+        for bid0, b in batches.items():
             batch_list.append(
                 BatchForSort(
-                    batch_id=str(getattr(b, "batch_id", "") or ""),
+                    batch_id=str(bid0 or "").strip(),
                     priority=str(getattr(b, "priority", "") or "normal"),
                     due_date=_parse_date(getattr(b, "due_date", None)),
                     ready_status=str(getattr(b, "ready_status", "") or "yes"),
@@ -295,7 +323,7 @@ class GreedyScheduler:
                     return 0
 
         def _op_key(op: Any):
-            bid = str(getattr(op, "batch_id", "") or "")
+            bid = str(getattr(op, "batch_id", "") or "").strip()
             seq = _safe_int(getattr(op, "seq", 0))
             oid = _safe_int(getattr(op, "id", 0))
             return (batch_order.get(bid, 999999), bid, seq, oid)
@@ -344,8 +372,8 @@ class GreedyScheduler:
 
         # 批次“齐套日期（ready_date）”：作为批次最早可开工时间下限
         # 约定：ready_date 为空 -> 视为已齐套；不为空 -> 最早从该日班次开始排产
-        for b in batches.values():
-            bid = str(getattr(b, "batch_id", "") or "")
+        for bid0, b in batches.items():
+            bid = str(bid0 or "").strip()
             rd = getattr(b, "ready_date", None)
             rd_d = _parse_date(rd)
             if bid and rd_d:
@@ -385,7 +413,7 @@ class GreedyScheduler:
                 results.append(sr)
                 scheduled_count += 1
                 seed_count += 1
-                bid = str(sr.batch_id or "")
+                bid = str(sr.batch_id or "").strip()
                 if bid:
                     batch_progress[bid] = max(batch_progress.get(bid, base_time), sr.end_time)
                 if (sr.source or "").strip().lower() == "internal":
@@ -544,7 +572,7 @@ class GreedyScheduler:
         operator_busy_hours: Optional[Dict[str, float]] = None,
     ) -> Tuple[Optional[ScheduleResult], bool]:
         """排产内部工序：设备+人员双重资源约束 + 工作日历。"""
-        bid = str(getattr(op, "batch_id", "") or "")
+        bid = str(getattr(op, "batch_id", "") or "").strip()
 
         # 防御：字段可能不是 str（例如 int），避免直接 .strip() 崩溃
         machine_id = str(getattr(op, "machine_id", None) or "").strip()
@@ -604,6 +632,8 @@ class GreedyScheduler:
             try:
                 eff = float(self.calendar.get_efficiency(start, operator_id=operator_id) or 1.0)
             except Exception:
+                eff = 1.0
+            if (not math.isfinite(float(eff))) or float(eff) <= 0:
                 eff = 1.0
             h = float(total_hours_base)
             if eff and eff > 0 and eff != 1.0:
