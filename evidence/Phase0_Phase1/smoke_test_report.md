@@ -1,27 +1,27 @@
 # Phase0+Phase1 冒烟测试报告
 
-- 测试时间：2026-02-01 18:05:04
+- 测试时间：2026-02-13 02:30:09
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 - Flask：2.3.3
 - openpyxl：3.0.10
 
 ## 0. 测试环境与目录
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_sv1y2wee`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_sv1y2wee\aps_test.db`
-- 测试日志目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_sv1y2wee\logs`
-- 测试备份目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_sv1y2wee\backups`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_egoox2d9`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_egoox2d9\aps_test.db`
+- 测试日志目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_egoox2d9\logs`
+- 测试备份目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_egoox2d9\backups`
 
 ## 1. Schema 检查
-- 表数量：24
+- 表数量：25
 - 是否存在 SchemaVersion：True
 - 是否存在 OperationLogs：True
 - 是否存在 ResourceLocks：False
-- SchemaVersion.version：3
+- SchemaVersion.version：4
 
 ## 1.1 Schema 迁移机制（缺列补齐 + 迁移前备份）
-- 迁移前备份文件数（before_migrate_v0_to_v3）：1
-- 旧库迁移后 SchemaVersion.version：3
+- 迁移前备份文件数（before_migrate_v0_to_v4）：1
+- 旧库迁移后 SchemaVersion.version：4
 
 ## 2. Excel 读写与预览
 - 写入并读取行数：2（期望 2）
@@ -48,26 +48,28 @@
 - OperationLogs 写入校验：excel_demo import 记录数=2（期望 >= 1）
 
 ## 5. 备份检查
-- 手动触发备份：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_sv1y2wee\backups\aps_backup_20260201_180509_auto_test.db`
+- 手动触发备份：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_egoox2d9\backups\aps_backup_20260213_023011_auto_test.db`
 - backups 文件数：1
 
 ## 6. 文件日志检查（用户排障）
-- aps.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_sv1y2wee\logs\aps.log`）
-- aps_error.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_sv1y2wee\logs\aps_error.log`）
+- aps.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_egoox2d9\logs\aps.log`）
+- aps_error.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_egoox2d9\logs\aps_error.log`）
 
 ### aps.log 摘录（最后 20 行）
 ```
-2026-02-01 18:05:08 [INFO] app [database.py:76]: 数据库结构检查完成（已确保所有表存在）。
-2026-02-01 18:05:08 [INFO] app [logging.py:132]: [plugins] 操作：load（runtime plugins）
-2026-02-01 18:05:09 [INFO] app [app.py:215]: 应用启动完成。
-2026-02-01 18:05:09 [INFO] app [database.py:76]: 数据库结构检查完成（已确保所有表存在）。
-2026-02-01 18:05:09 [INFO] app [logging.py:132]: [plugins] 操作：load（runtime plugins）
-2026-02-01 18:05:09 [INFO] app [app.py:215]: 应用启动完成。
-2026-02-01 18:05:09 [INFO] app [logging.py:132]: [excel_demo] 操作：export（operator ）
-2026-02-01 18:05:09 [INFO] app [logging.py:132]: [excel_demo] 操作：import（operator ）
-2026-02-01 18:05:09 [INFO] app [logging.py:132]: [excel_demo] 操作：import（operator ）
+2026-02-13 02:30:11 [INFO] app [app.py:102]: 已生成 SECRET_KEY 并写入：C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_egoox2d9\logs\aps_secret_key.txt
+2026-02-13 02:30:11 [INFO] app [app.py:169]: 已生成 Excel 模板：10 个
+2026-02-13 02:30:11 [INFO] app [database.py:165]: 数据库结构检查完成（已确保所有表存在）。
+2026-02-13 02:30:11 [INFO] app [logging.py:157]: [plugins] 操作：load（runtime plugins）
+2026-02-13 02:30:11 [INFO] app [app.py:317]: 应用启动完成。
+2026-02-13 02:30:11 [INFO] app [database.py:165]: 数据库结构检查完成（已确保所有表存在）。
+2026-02-13 02:30:11 [INFO] app [logging.py:157]: [plugins] 操作：load（runtime plugins）
+2026-02-13 02:30:11 [INFO] app [app.py:317]: 应用启动完成。
+2026-02-13 02:30:11 [INFO] app [logging.py:157]: [excel_demo] 操作：export（operator ）
+2026-02-13 02:30:11 [INFO] app [logging.py:157]: [excel_demo] 操作：import（operator ）
+2026-02-13 02:30:11 [INFO] app [logging.py:157]: [excel_demo] 操作：import（operator ）
 ```
 
 ## 结论
 - 通过：Phase0+Phase1 核心链路冒烟测试通过（Schema/Excel/留痕/Web/备份）。
-- 总耗时：5175 ms
+- 总耗时：2331 ms

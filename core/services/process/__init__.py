@@ -12,6 +12,7 @@ from .part_service import PartService
 from .external_group_service import ExternalGroupService
 from .route_parser import RouteParser, ParseResult, ParseStatus
 from .deletion_validator import DeletionValidator, DeletionCheckResult, ValidationResult
+from .unit_excel_converter import UnitExcelConverter, ConvertedTemplates
 
 __all__ = [
     "OpTypeService",
@@ -24,5 +25,7 @@ __all__ = [
     "DeletionValidator",
     "DeletionCheckResult",
     "ValidationResult",
+    "UnitExcelConverter",
+    "ConvertedTemplates",
 ]
 

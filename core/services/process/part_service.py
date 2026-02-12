@@ -63,6 +63,23 @@ class PartService:
             raise BusinessError(ErrorCode.PART_NOT_FOUND, f"零件“{part_no}”不存在")
         return p
 
+    def _build_internal_hours_snapshot(self, part_no: str) -> Dict[int, Tuple[float, float]]:
+        """
+        构建 internal 工序工时快照（按 seq 维度）。
+        用于 reparse/路线覆盖时保留同 part_no+seq 的历史工时。
+        """
+        snapshot: Dict[int, Tuple[float, float]] = {}
+        ops = self.op_repo.list_by_part(part_no, include_deleted=False)
+        for op in ops:
+            if (op.source or "").strip().lower() != "internal":
+                continue
+            try:
+                seq = int(op.seq)
+            except Exception:
+                continue
+            snapshot[seq] = (float(op.setup_hours or 0.0), float(op.unit_hours or 0.0))
+        return snapshot
+
     # -------------------------
     # Parts CRUD
     # -------------------------
@@ -184,12 +201,19 @@ class PartService:
             # 更新零件字段
             self.part_repo.update(pn, {"route_raw": rr, "route_parsed": "yes"})
 
+            # 清理前快照 internal 工时（用于同 seq 保留）
+            old_internal_hours = self._build_internal_hours_snapshot(pn)
+
             # 清理旧模板
             self.op_repo.delete_by_part(pn)
             self.group_repo.delete_by_part(pn)
 
             # 保存新模板（默认 separate）
-            self._save_template_no_tx(part_no=pn, parse_result=result)
+            self._save_template_no_tx(
+                part_no=pn,
+                parse_result=result,
+                preserved_internal_hours=old_internal_hours,
+            )
 
         return result
 
@@ -225,31 +249,49 @@ class PartService:
         else:
             self.part_repo.create({"part_no": pn, "part_name": name, "route_raw": rr, "route_parsed": "yes"})
 
+        old_internal_hours = self._build_internal_hours_snapshot(pn)
+
         # 覆盖模板
         self.op_repo.delete_by_part(pn)
         self.group_repo.delete_by_part(pn)
-        self._save_template_no_tx(part_no=pn, parse_result=result)
+        self._save_template_no_tx(
+            part_no=pn,
+            parse_result=result,
+            preserved_internal_hours=old_internal_hours,
+        )
         return result
 
-    def _save_template_no_tx(self, part_no: str, parse_result: ParseResult) -> None:
+    def _save_template_no_tx(
+        self,
+        part_no: str,
+        parse_result: ParseResult,
+        preserved_internal_hours: Optional[Dict[int, Tuple[float, float]]] = None,
+    ) -> None:
         """
         保存模板（不包含事务控制）。调用方必须保证已在事务中，或可接受多语句写入。
         """
         # operations
         for op in parse_result.operations:
             if (op.source or "").strip().lower() == "internal":
+                seq = int(op.seq)
+                setup_hours = 0.0
+                unit_hours = 0.0
+                if preserved_internal_hours and seq in preserved_internal_hours:
+                    old_setup, old_unit = preserved_internal_hours.get(seq, (0.0, 0.0))
+                    setup_hours = float(old_setup or 0.0)
+                    unit_hours = float(old_unit or 0.0)
                 self.op_repo.create(
                     {
                         "part_no": part_no,
-                        "seq": int(op.seq),
+                        "seq": seq,
                         "op_type_id": op.op_type_id,
                         "op_type_name": op.op_type_name,
                         "source": "internal",
                         "supplier_id": None,
                         "ext_days": None,
                         "ext_group_id": None,
-                        "setup_hours": 0.0,
-                        "unit_hours": 0.0,
+                        "setup_hours": setup_hours,
+                        "unit_hours": unit_hours,
                         "status": "active",
                     }
                 )

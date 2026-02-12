@@ -10,6 +10,7 @@
 - `process_excel_suppliers.py`：供应商配置 Excel
 - `process_excel_routes.py`：零件工艺路线 Excel
 - `process_excel_part_operations.py`：零件工序模板导出
+- `process_excel_part_operation_hours.py`：零件工序工时 Excel 导入/导出
 """
 
 from .process_bp import bp
@@ -22,6 +23,7 @@ from . import process_excel_op_types as _excel_op_types  # noqa: F401
 from . import process_excel_suppliers as _excel_suppliers  # noqa: F401
 from . import process_excel_routes as _excel_routes  # noqa: F401
 from . import process_excel_part_operations as _excel_part_ops  # noqa: F401
+from . import process_excel_part_operation_hours as _excel_part_op_hours  # noqa: F401
 
 __all__ = ["bp"]
 
