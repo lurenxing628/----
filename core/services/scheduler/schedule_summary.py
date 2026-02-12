@@ -6,6 +6,22 @@ import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 
+def _serialize_end_date(end_date: Optional[Any]) -> Optional[str]:
+    if end_date is None:
+        return None
+    if isinstance(end_date, str):
+        s = end_date.strip()
+        return s if s else None
+    try:
+        iso_fn = getattr(end_date, "isoformat", None)
+        if callable(iso_fn):
+            return str(iso_fn())
+    except Exception:
+        pass
+    s = str(end_date).strip()
+    return s if s else None
+
+
 def build_result_summary(
     svc,
     *,
@@ -194,7 +210,7 @@ def build_result_summary(
         },
         "selected_batch_ids": list(normalized_batch_ids),
         "start_time": svc._format_dt(start_dt),
-        "end_date": end_date.isoformat() if end_date else None,
+        "end_date": _serialize_end_date(end_date),
         "counts": {
             "batch_count": len(batches),
             # 与调度器 summary 同口径（包含 seed_results；并考虑 seed 与 operations 去重过滤）

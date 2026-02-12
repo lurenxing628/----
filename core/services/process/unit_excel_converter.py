@@ -108,12 +108,22 @@ class UnitExcelConverter:
                     part_name = self._to_text(self._pick_cell(row_values, 1))
                     route_raw = self._to_text(self._pick_cell(row_values, 4))
                     route_map = self._parse_route_map(route_raw)
-                    parts[part_no] = PartContext(
-                        part_no=part_no,
-                        part_name=part_name or part_no,
-                        route_raw=route_raw,
-                        route_map=route_map,
-                    )
+                    existing_ctx = parts.get(part_no)
+                    if existing_ctx is None:
+                        parts[part_no] = PartContext(
+                            part_no=part_no,
+                            part_name=part_name or part_no,
+                            route_raw=route_raw,
+                            route_map=route_map,
+                        )
+                    else:
+                        # 同图号再次作为起始行出现时，合并上下文，避免覆盖已累计工步。
+                        if part_name:
+                            existing_ctx.part_name = part_name
+                        if route_raw:
+                            existing_ctx.route_raw = route_raw
+                        if route_map:
+                            existing_ctx.route_map = route_map
 
                 if not current_part_no or current_part_no not in parts:
                     continue

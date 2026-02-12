@@ -13,10 +13,18 @@
   <form action="{{ preview_url }}" method="post" enctype="multipart/form-data">
     <div style="margin-bottom:12px;">
       <label>导入模式：</label>
+      {% set default_mode_options = [
+        {'value': 'overwrite', 'label': '覆盖（相同ID更新）'},
+        {'value': 'append', 'label': '追加（已存在则跳过）'},
+        {'value': 'replace', 'label': '替换（清空后导入）'}
+      ] %}
+      {% set selected_mode_options = mode_options if mode_options else default_mode_options %}
       <select name="mode">
-        <option value="overwrite" {% if mode=='overwrite' %}selected{% endif %}>覆盖（相同ID更新）</option>
-        <option value="append" {% if mode=='append' %}selected{% endif %}>追加（已存在则跳过）</option>
-        <option value="replace" {% if mode=='replace' %}selected{% endif %}>替换（清空后导入）</option>
+        {% for opt in selected_mode_options %}
+          {% set opt_value = opt.value if opt is mapping else opt[0] %}
+          {% set opt_label = opt.label if opt is mapping else opt[1] %}
+          <option value="{{ opt_value }}" {% if mode==opt_value %}selected{% endif %}>{{ opt_label }}</option>
+        {% endfor %}
       </select>
     </div>
     <div style="margin-bottom:12px;">

@@ -5,6 +5,7 @@
     <p class="muted">
       说明：本页面用于批量更新工艺模板中的内部工序工时（PartOperations.setup_hours / unit_hours）。
       导入后，创建批次时会自动复制这些工时，排产将按「换型 + 单件 × 数量」计算时长。
+      其中“追加”仅用于补齐空工时（setup/unit 均为 0 的工序），已维护工时会跳过。
     </p>
     <div style="margin-top:8px;">
       <a href="{{ export_url }}">导出当前数据（零件工序工时.xlsx）</a>

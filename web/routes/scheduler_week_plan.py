@@ -27,6 +27,19 @@ def _get_int_arg(name: str, default: int = 0) -> int:
         raise ValidationError(f"{name} 不合法（期望整数）", field=name)
 
 
+def _parse_optional_checkbox_flag(name: str):
+    """
+    解析 checkbox 三态：
+    - key 不存在：None（由服务层回退默认配置）
+    - key 存在且为真值：True
+    - key 存在但非真值：False
+    """
+    if name not in request.form:
+        return None
+    raw = request.form.get(name)
+    return str(raw or "").strip().lower() in ("yes", "y", "true", "1", "on")
+
+
 @bp.get("/week-plan")
 def week_plan_page():
     week_start = (request.args.get("week_start") or "").strip() or None
@@ -148,7 +161,7 @@ def simulate_schedule():
     batch_ids = request.form.getlist("batch_ids")
     start_dt = request.form.get("start_dt") or None
     end_date = request.form.get("end_date") or None
-    enforce_ready = str(request.form.get("enforce_ready") or "").strip().lower() in ("yes", "y", "true", "1", "on")
+    enforce_ready = _parse_optional_checkbox_flag("enforce_ready")
     if not batch_ids:
         flash("请至少选择 1 个批次进行模拟排产。", "error")
         return redirect(url_for("scheduler.batches_page"))

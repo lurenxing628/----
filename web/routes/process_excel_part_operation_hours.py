@@ -27,6 +27,16 @@ from .process_bp import bp, _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx
 # ============================================================
 
 
+_PART_OP_HOURS_MODE_OPTIONS: List[Dict[str, str]] = [
+    {"value": ImportMode.OVERWRITE.value, "label": "覆盖（相同ID更新）"},
+    {"value": ImportMode.APPEND.value, "label": "追加（仅补齐空工时）"},
+]
+
+
+def _part_op_hours_mode_options() -> List[Dict[str, str]]:
+    return [dict(x) for x in _PART_OP_HOURS_MODE_OPTIONS]
+
+
 def _parse_seq(value: Any) -> Optional[int]:
     if value is None:
         return None
@@ -143,6 +153,34 @@ def _build_validator(meta_all: Dict[str, Dict[str, Any]]):
     return _validate_row
 
 
+def _build_existing_for_append(existing_internal: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """
+    append 仅用于“补齐空工时”：
+    - 已维护（任一工时非 0）=> 视为 existing（preview 会 SKIP）
+    - 空工时（setup=0 且 unit=0）=> 允许更新
+    """
+    filtered: Dict[str, Dict[str, Any]] = {}
+    for rid, row in (existing_internal or {}).items():
+        sh = float(row.get("换型时间(h)") or 0.0)
+        uh = float(row.get("单件工时(h)") or 0.0)
+        if abs(sh) > 1e-12 or abs(uh) > 1e-12:
+            filtered[rid] = row
+    return filtered
+
+
+def _rewrite_append_preview_rows(preview_rows: List[Any], mode: ImportMode) -> None:
+    """
+    append 下可补录空工时的行在通用 preview 中会标为 NEW，
+    这里改成 UPDATE，避免误导为“新增工序”。
+    """
+    if mode != ImportMode.APPEND:
+        return
+    for pr in preview_rows:
+        if pr.status == RowStatus.NEW:
+            pr.status = RowStatus.UPDATE
+            pr.message = "工时为空，按“追加”模式将补齐"
+
+
 @bp.get("/excel/part-operation-hours")
 def excel_part_op_hours_page():
     _existing_internal, _meta_all, existing_list = _build_existing_internal()
@@ -158,6 +196,7 @@ def excel_part_op_hours_page():
         confirm_url=url_for("process.excel_part_op_hours_confirm"),
         template_download_url=url_for("process.excel_part_op_hours_template"),
         export_url=url_for("process.excel_part_op_hours_export"),
+        mode_options=_part_op_hours_mode_options(),
     )
 
 
@@ -180,13 +219,15 @@ def excel_part_op_hours_preview():
     validator = _build_validator(meta_all=meta_all)
 
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    existing_for_preview = existing_internal if mode != ImportMode.APPEND else _build_existing_for_append(existing_internal)
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="__row_id__",
-        existing_data=existing_internal,
+        existing_data=existing_for_preview,
         validators=[validator],
         mode=mode,
     )
+    _rewrite_append_preview_rows(preview_rows, mode)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -211,6 +252,7 @@ def excel_part_op_hours_preview():
         confirm_url=url_for("process.excel_part_op_hours_confirm"),
         template_download_url=url_for("process.excel_part_op_hours_template"),
         export_url=url_for("process.excel_part_op_hours_export"),
+        mode_options=_part_op_hours_mode_options(),
     )
 
 
@@ -238,13 +280,15 @@ def excel_part_op_hours_confirm():
     existing_internal, meta_all, existing_list = _build_existing_internal()
     validator = _build_validator(meta_all=meta_all)
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    existing_for_preview = existing_internal if mode != ImportMode.APPEND else _build_existing_for_append(existing_internal)
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="__row_id__",
-        existing_data=existing_internal,
+        existing_data=existing_for_preview,
         validators=[validator],
         mode=mode,
     )
+    _rewrite_append_preview_rows(preview_rows, mode)
 
     error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
     if error_rows:
@@ -265,6 +309,7 @@ def excel_part_op_hours_confirm():
             confirm_url=url_for("process.excel_part_op_hours_confirm"),
             template_download_url=url_for("process.excel_part_op_hours_template"),
             export_url=url_for("process.excel_part_op_hours_export"),
+            mode_options=_part_op_hours_mode_options(),
         )
 
     tx = TransactionManager(g.db)

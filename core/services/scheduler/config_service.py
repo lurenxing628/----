@@ -564,17 +564,15 @@ class ConfigService:
             st = base.sort_strategy
 
         # --- weights ---
-        def _get_float(val: Any, default: float) -> float:
-            try:
-                v = float(val)
-                if not math.isfinite(v):
-                    return float(default)
-                return float(v)
-            except Exception:
+        def _get_float(key: str, default: float, field: str) -> float:
+            raw = data.get(key)
+            if raw is None or (isinstance(raw, str) and raw.strip() == ""):
                 return float(default)
+            v = parse_finite_float(raw, field=field, allow_none=False)
+            return float(v if v is not None else default)
 
-        pw = _get_float(data.get("priority_weight"), float(base.priority_weight))
-        dw = _get_float(data.get("due_weight"), float(base.due_weight))
+        pw = _get_float("priority_weight", float(base.priority_weight), field="优先级权重")
+        dw = _get_float("due_weight", float(base.due_weight), field="交期权重")
         if pw < 0 or dw < 0:
             raise ValidationError("权重不能为负数", field="权重")
         percent_mode = (pw > 1.0) or (dw > 1.0)
@@ -595,7 +593,7 @@ class ConfigService:
         rw = max(0.0, float(rw))
 
         # --- holiday default efficiency ---
-        hde = _get_float(data.get("holiday_default_efficiency"), float(base.holiday_default_efficiency))
+        hde = _get_float("holiday_default_efficiency", float(base.holiday_default_efficiency), field="holiday_default_efficiency")
         if hde <= 0:
             hde = float(base.holiday_default_efficiency)
 
@@ -626,16 +624,23 @@ class ConfigService:
             objective = base.objective
 
         # --- ints ---
-        def _get_int(val: Any, default: int, min_v: int) -> int:
-            try:
-                v = int(float(val))
-            except Exception:
+        def _get_int(key: str, default: int, min_v: int, field: str) -> int:
+            raw = data.get(key)
+            if raw is None or (isinstance(raw, str) and raw.strip() == ""):
                 v = int(default)
+            else:
+                parsed = parse_finite_int(raw, field=field, allow_none=False)
+                v = int(parsed if parsed is not None else default)
             return max(int(min_v), int(v))
 
-        ort_limit = _get_int(data.get("ortools_time_limit_seconds"), int(base.ortools_time_limit_seconds), 1)
-        time_budget = _get_int(data.get("time_budget_seconds"), int(base.time_budget_seconds), 1)
-        fw_days = _get_int(data.get("freeze_window_days"), int(base.freeze_window_days), 0)
+        ort_limit = _get_int(
+            "ortools_time_limit_seconds",
+            int(base.ortools_time_limit_seconds),
+            1,
+            field="ortools_time_limit_seconds",
+        )
+        time_budget = _get_int("time_budget_seconds", int(base.time_budget_seconds), 1, field="time_budget_seconds")
+        fw_days = _get_int("freeze_window_days", int(base.freeze_window_days), 0, field="freeze_window_days")
 
         return ScheduleConfigSnapshot(
             sort_strategy=st,
