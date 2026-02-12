@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import BatchOperation
-from core.models.enums import MergeMode, OperatorStatus, SourceType
+from core.models.enums import BatchOperationStatus, MergeMode, OperatorStatus, SourceType
 
 
 def list_batch_operations(svc, batch_id: Any) -> List[BatchOperation]:
@@ -40,6 +40,24 @@ def get_external_merge_hint(svc, op_id: Any) -> Dict[str, Any]:
         "merge_mode": grp.merge_mode,
         "group_total_days": grp.total_days,
     }
+
+
+def _normalize_batch_op_status(svc, value: Any) -> Optional[str]:
+    st = svc._normalize_text(value)
+    if st is None:
+        return None
+    st = str(st).strip().lower()
+    allowed = (
+        BatchOperationStatus.PENDING.value,
+        BatchOperationStatus.SCHEDULED.value,
+        BatchOperationStatus.PROCESSING.value,
+        BatchOperationStatus.COMPLETED.value,
+        BatchOperationStatus.SKIPPED.value,
+    )
+    if st not in allowed:
+        allow_text = " / ".join(allowed)
+        raise ValidationError(f"“状态”不合法（允许：{allow_text}）", field="状态")
+    return st
 
 
 def update_internal_operation(
@@ -105,7 +123,9 @@ def update_internal_operation(
         "unit_hours": float(uh),
     }
     if status is not None:
-        updates["status"] = svc._normalize_text(status)
+        st = _normalize_batch_op_status(svc, status)
+        if st is not None:
+            updates["status"] = st
 
     with svc.tx_manager.transaction():
         svc.op_repo.update(int(op.id), updates)
@@ -162,7 +182,9 @@ def update_external_operation(
 
     updates: Dict[str, Any] = {"supplier_id": sup_id, "ext_days": ext_days_value}
     if status is not None:
-        updates["status"] = svc._normalize_text(status)
+        st = _normalize_batch_op_status(svc, status)
+        if st is not None:
+            updates["status"] = st
 
     with svc.tx_manager.transaction():
         svc.op_repo.update(int(op.id), updates)

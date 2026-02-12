@@ -10,6 +10,8 @@ from core.models.enums import CalendarDayType, YesNo
 from core.services.scheduler.config_service import ConfigService
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
+from .number_utils import parse_finite_float
+
 
 class CalendarAdmin:
     """
@@ -37,7 +39,8 @@ class CalendarAdmin:
         try:
             cfg_svc = ConfigService(self.conn, logger=self.logger, op_logger=self.op_logger)
             raw = cfg_svc.get("holiday_default_efficiency", default=ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
-            v = float(raw) if raw is not None else float(ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
+            v = parse_finite_float(raw, field="holiday_default_efficiency", allow_none=False)
+            v = float(v or 0.0)
             if v <= 0:
                 return float(ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
             return float(v)
@@ -59,12 +62,7 @@ class CalendarAdmin:
 
     @staticmethod
     def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
-        if value is None or (isinstance(value, str) and value.strip() == ""):
-            return None if allow_none else 0.0
-        try:
-            return float(value)
-        except Exception:
-            raise ValidationError(f"“{field}”必须是数字", field=field)
+        return parse_finite_float(value, field=field, allow_none=allow_none)
 
     @staticmethod
     def _normalize_hhmm(value: Any, field: str, allow_none: bool = True) -> Optional[str]:

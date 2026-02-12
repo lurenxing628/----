@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from data.repositories import ConfigRepository
+from .number_utils import parse_finite_float, parse_finite_int, to_yes_no
 
 
 @dataclass
@@ -127,10 +129,7 @@ class ConfigService:
         """
         if value is None or (isinstance(value, str) and value.strip() == ""):
             raise ValidationError(f"“{field}”不能为空", field=field)
-        try:
-            v = float(value)
-        except Exception:
-            raise ValidationError(f"“{field}”必须是数字", field=field)
+        v = float(parse_finite_float(value, field=field, allow_none=False) or 0.0)
         if v < 0:
             raise ValidationError(f"“{field}”不能为负数", field=field)
         if v > 1.0:
@@ -169,10 +168,7 @@ class ConfigService:
         def _to_float(val: Any, field: str) -> float:
             if val is None or (isinstance(val, str) and val.strip() == ""):
                 raise ValidationError(f"“{field}”不能为空", field=field)
-            try:
-                return float(val)
-            except Exception:
-                raise ValidationError(f"“{field}”必须是数字", field=field)
+            return float(parse_finite_float(val, field=field, allow_none=False) or 0.0)
 
         raw_pw = _to_float(priority_weight, "优先级权重")
         raw_dw = _to_float(due_weight, "交期权重")
@@ -417,7 +413,12 @@ class ConfigService:
         def _get_float(key: str, default: float) -> float:
             raw = self.repo.get_value(key, default=str(default))
             try:
-                return float(raw) if raw is not None else float(default)
+                if raw is None:
+                    return float(default)
+                f = float(raw)
+                if not math.isfinite(f):
+                    return float(default)
+                return float(f)
             except Exception:
                 return float(default)
 
@@ -429,14 +430,10 @@ class ConfigService:
             hde = float(self.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
 
         raw_enforce_ready_default = self.repo.get_value("enforce_ready_default", default=str(self.DEFAULT_ENFORCE_READY_DEFAULT))
-        enforce_ready_default = (
-            "yes"
-            if str(raw_enforce_ready_default or "").strip().lower() in ("yes", "y", "true", "1", "on")
-            else "no"
-        )
+        enforce_ready_default = to_yes_no(raw_enforce_ready_default, default=str(self.DEFAULT_ENFORCE_READY_DEFAULT))
 
         raw_pref = self.repo.get_value("prefer_primary_skill", default="no")
-        pref = "yes" if str(raw_pref or "").strip().lower() in ("yes", "y", "true", "1", "on") else "no"
+        pref = to_yes_no(raw_pref, default="no")
 
         dm = (self.repo.get_value("dispatch_mode", default=self.DEFAULT_DISPATCH_MODE) or self.DEFAULT_DISPATCH_MODE).strip()
         if dm not in self.VALID_DISPATCH_MODES:
@@ -446,10 +443,10 @@ class ConfigService:
             dr = self.DEFAULT_DISPATCH_RULE
 
         aa_raw = self.repo.get_value("auto_assign_enabled", default=self.DEFAULT_AUTO_ASSIGN_ENABLED)
-        aa = "yes" if str(aa_raw or "").strip().lower() in ("yes", "y", "true", "1", "on") else "no"
+        aa = to_yes_no(aa_raw, default=self.DEFAULT_AUTO_ASSIGN_ENABLED)
 
         ort_raw = self.repo.get_value("ortools_enabled", default=self.DEFAULT_ORTOOLS_ENABLED)
-        ort = "yes" if str(ort_raw or "").strip().lower() in ("yes", "y", "true", "1", "on") else "no"
+        ort = to_yes_no(ort_raw, default=self.DEFAULT_ORTOOLS_ENABLED)
 
         def _get_int(key: str, default: int) -> int:
             raw = self.repo.get_value(key, default=str(default))
@@ -473,7 +470,7 @@ class ConfigService:
         time_budget = max(1, int(time_budget))
 
         fw_enabled_raw = self.repo.get_value("freeze_window_enabled", default=self.DEFAULT_FREEZE_WINDOW_ENABLED)
-        fw_enabled = "yes" if str(fw_enabled_raw or "").strip().lower() in ("yes", "y", "true", "1", "on") else "no"
+        fw_enabled = to_yes_no(fw_enabled_raw, default=self.DEFAULT_FREEZE_WINDOW_ENABLED)
         fw_days = _get_int("freeze_window_days", int(self.DEFAULT_FREEZE_WINDOW_DAYS))
         fw_days = max(0, int(fw_days))
 
@@ -570,6 +567,8 @@ class ConfigService:
         def _get_float(val: Any, default: float) -> float:
             try:
                 v = float(val)
+                if not math.isfinite(v):
+                    return float(default)
                 return float(v)
             except Exception:
                 return float(default)
@@ -602,8 +601,7 @@ class ConfigService:
 
         # --- yes/no flags ---
         def _yesno(v: Any, default: str = "no") -> str:
-            raw = str(v if v is not None else default).strip().lower()
-            return "yes" if raw in ("yes", "y", "true", "1", "on") else "no"
+            return to_yes_no(v, default=default)
 
         enforce_ready_default = _yesno(data.get("enforce_ready_default"), default=str(base.enforce_ready_default))
         prefer_primary_skill = _yesno(data.get("prefer_primary_skill"), default=str(base.prefer_primary_skill))
@@ -807,10 +805,7 @@ class ConfigService:
         if time_limit_seconds is None or str(time_limit_seconds).strip() == "":
             tl = int(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS)
         else:
-            try:
-                tl = int(float(time_limit_seconds))
-            except Exception:
-                raise ValidationError("OR-Tools 时间上限必须是整数（秒）", field="ortools_time_limit_seconds")
+            tl = int(parse_finite_int(time_limit_seconds, field="ortools_time_limit_seconds", allow_none=False) or 0)
         tl = max(1, int(tl))
         with self.tx_manager.transaction():
             self.repo.set("ortools_enabled", en_yesno, description="可选 OR-Tools 高质量模式（若环境已安装）")
@@ -847,10 +842,7 @@ class ConfigService:
         if value is None or str(value).strip() == "":
             v = float(self.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
         else:
-            try:
-                v = float(value)
-            except Exception:
-                raise ValidationError("假期默认效率必须是数字", field="holiday_default_efficiency")
+            v = float(parse_finite_float(value, field="holiday_default_efficiency", allow_none=False) or 0.0)
         if v <= 0:
             raise ValidationError("假期默认效率必须大于 0", field="holiday_default_efficiency")
         with self.tx_manager.transaction():
@@ -870,10 +862,7 @@ class ConfigService:
     def set_time_budget_seconds(self, value: Any) -> None:
         if value is None or str(value).strip() == "":
             raise ValidationError("时间预算不能为空", field="time_budget_seconds")
-        try:
-            v = int(float(value))
-        except Exception:
-            raise ValidationError("时间预算必须是整数（秒）", field="time_budget_seconds")
+        v = int(parse_finite_int(value, field="time_budget_seconds", allow_none=False) or 0)
         v = max(1, int(v))
         with self.tx_manager.transaction():
             self.repo.set("time_budget_seconds", str(v), description="算法时间预算（秒；仅 improve 模式生效；建议<=180）")
@@ -891,10 +880,7 @@ class ConfigService:
         if days is None or str(days).strip() == "":
             d = 0
         else:
-            try:
-                d = int(float(days))
-            except Exception:
-                raise ValidationError("冻结窗口天数必须是整数", field="freeze_window_days")
+            d = int(parse_finite_int(days, field="freeze_window_days", allow_none=False) or 0)
         d = max(0, int(d))
         with self.tx_manager.transaction():
             self.repo.set("freeze_window_enabled", en_yesno, description="冻结窗口开关（yes/no）：复用上一版本窗口内排程")

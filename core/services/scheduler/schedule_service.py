@@ -23,6 +23,7 @@ from data.repositories import (
 
 from . import operation_edit_service as op_edit
 from .freeze_window import build_freeze_window_seed
+from .number_utils import parse_finite_float, to_yes_no
 from .resource_pool_builder import build_resource_pool, extend_downtime_map_for_resource_pool, load_machine_downtimes
 from .schedule_input_builder import build_algo_operations
 from .schedule_optimizer import optimize_schedule
@@ -74,12 +75,7 @@ class ScheduleService:
 
     @staticmethod
     def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
-        if value is None or (isinstance(value, str) and value.strip() == ""):
-            return None if allow_none else 0.0
-        try:
-            return float(value)
-        except Exception:
-            raise ValidationError(f"“{field}”必须是数字", field=field)
+        return parse_finite_float(value, field=field, allow_none=allow_none)
 
     def _get_batch_or_raise(self, batch_id: str) -> Batch:
         b = self.batch_repo.get(batch_id)
@@ -194,7 +190,7 @@ class ScheduleService:
         end_date: Any = None,
         created_by: Optional[str] = None,
         simulate: bool = False,
-        enforce_ready: bool = True,
+        enforce_ready: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         执行排产并落库（Schedule）+ 留痕（ScheduleHistory + OperationLogs）。
@@ -206,7 +202,9 @@ class ScheduleService:
         - simulate=True 时：用于“插单模拟/模拟排产”
           - 仍会落库到新版本（Schedule + ScheduleHistory），确保可追溯
           - 但不会更新 Batches/BatchOperations 的状态（避免污染正式状态）
-        - enforce_ready=True 时：启用“齐套约束”，若存在 ready_status!=yes 的批次则拒绝排产
+        - enforce_ready 取值规则：
+          - 显式传入 True/False：按传入值执行
+          - 传入 None：回退读取配置 `enforce_ready_default`
         """
         if not batch_ids:
             raise ValidationError("请至少选择 1 个批次执行排产。", field="batch_ids")
@@ -256,6 +254,12 @@ class ScheduleService:
         cal_svc = CalendarService(self.conn, logger=self.logger, op_logger=self.op_logger)
         cfg_svc = ConfigService(self.conn, logger=self.logger, op_logger=self.op_logger)
         cfg = cfg_svc.get_snapshot()
+        if enforce_ready is None:
+            enforce_ready_effective = to_yes_no(getattr(cfg, "enforce_ready_default", "no"), default="no") == "yes"
+        elif isinstance(enforce_ready, str):
+            enforce_ready_effective = to_yes_no(enforce_ready, default="no") == "yes"
+        else:
+            enforce_ready_effective = bool(enforce_ready)
 
         # 读取批次与工序
         batches: Dict[str, Batch] = {}
@@ -276,7 +280,7 @@ class ScheduleService:
         }
 
         # 齐套约束（可选）：仅允许排产“齐套=yes”的批次
-        if enforce_ready:
+        if enforce_ready_effective:
             not_ready = [
                 bid for bid, b in batches.items() if (self._normalize_text(getattr(b, "ready_status", None)) or "") != "yes"
             ]

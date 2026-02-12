@@ -32,6 +32,14 @@ class BatchStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class BatchOperationStatus(str, Enum):
+    PENDING = "pending"
+    SCHEDULED = "scheduled"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+
+
 class BatchPriority(str, Enum):
     NORMAL = "normal"
     URGENT = "urgent"
