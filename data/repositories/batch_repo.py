@@ -120,3 +120,6 @@ class BatchRepository(BaseRepository):
     def delete(self, batch_id: str) -> None:
         self.execute("DELETE FROM Batches WHERE batch_id = ?", (batch_id,))
 
+    def delete_all(self) -> None:
+        self.execute("DELETE FROM Batches")
+

@@ -3,9 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
-import re
 import time
-from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
@@ -17,6 +15,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_validators import get_batch_row_validate_and_normalize
 from core.services.scheduler import BatchService
 from data.repositories import PartRepository
 
@@ -34,47 +33,6 @@ from .scheduler_utils import (
 # ============================================================
 # Excel：批次信息（Batches）
 # ============================================================
-
-
-def _normalize_batch_date_cell(value: Any, field_label: str) -> Dict[str, Any]:
-    """
-    批次 Excel 的日期字段校验/标准化（交期/齐套日期）。
-
-    规则：
-    - 允许：Excel 日期单元格（date/datetime）或字符串 `YYYY-MM-DD` / `YYYY/MM/DD`
-    - 自动规范化为：`YYYY-MM-DD`
-    - 禁止：在日期字段里夹带时间（如 `2026-01-25 08:00`、`2026-01-25T08:00`）
-    """
-    if value is None:
-        return {"value": None, "error": None}
-
-    if isinstance(value, datetime):
-        return {"value": value.date().isoformat(), "error": None}
-    if isinstance(value, date):
-        return {"value": value.isoformat(), "error": None}
-
-    s = str(value).strip()
-    if not s:
-        return {"value": None, "error": None}
-
-    # 禁止把时间填进“日期”字段
-    if "T" in s or " " in s:
-        return {
-            "value": None,
-            "error": f"“{field_label}”不合法：日期字段不允许包含时间（当前值：{s}）。请仅填写日期：YYYY-MM-DD 或 YYYY/MM/DD（例：2026-01-25）。",
-        }
-
-    m = re.match(r"^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$", s)
-    if not m:
-        return {"value": None, "error": f"“{field_label}”不合法：期望格式 YYYY-MM-DD 或 YYYY/MM/DD（当前值：{s}）。"}
-
-    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    try:
-        v = datetime(y, mo, d).date().isoformat()
-    except Exception:
-        return {"value": None, "error": f"“{field_label}”不合法：日期值不存在（当前值：{s}）。期望：YYYY-MM-DD 或 YYYY/MM/DD。"}
-
-    return {"value": v, "error": None}
 
 
 @bp.get("/excel/batches")
@@ -151,45 +109,7 @@ def excel_batches_preview():
     part_repo = PartRepository(g.db)
     parts = {p.part_no: p for p in part_repo.list()}
 
-    def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if not row.get("批次号") or str(row.get("批次号")).strip() == "":
-            return "“批次号”不能为空"
-        if not row.get("图号") or str(row.get("图号")).strip() == "":
-            return "“图号”不能为空"
-        pn = str(row.get("图号")).strip()
-        if pn not in parts:
-            return f"图号“{pn}”不存在，请先在工艺管理中维护零件。"
-
-        qty = row.get("数量")
-        if qty is None or str(qty).strip() == "":
-            return "“数量”不能为空"
-        try:
-            q = int(qty)
-            if q <= 0:
-                return "“数量”必须大于 0"
-            row["数量"] = q
-        except Exception:
-            return "“数量”必须是整数"
-
-        row["优先级"] = _normalize_batch_priority(row.get("优先级"))
-        if row["优先级"] not in ("normal", "urgent", "critical"):
-            return "“优先级”不合法（允许：normal/urgent/critical；或中文：普通/急件/特急）"
-
-        row["齐套"] = _normalize_ready_status(row.get("齐套"))
-        if row["齐套"] not in ("yes", "no", "partial"):
-            return "“齐套”不合法（允许：yes/no/partial；或中文：齐套/未齐套/部分齐套）"
-
-        # 日期字段：严格校验并标准化（允许 YYYY/MM/DD；禁止夹带时间）
-        ready_res = _normalize_batch_date_cell(row.get("齐套日期"), field_label="齐套日期")
-        if ready_res.get("error"):
-            return str(ready_res.get("error"))
-        row["齐套日期"] = ready_res.get("value")
-
-        due_res = _normalize_batch_date_cell(row.get("交期"), field_label="交期")
-        if due_res.get("error"):
-            return str(due_res.get("error"))
-        row["交期"] = due_res.get("value")
-        return None
+    validate_row = get_batch_row_validate_and_normalize(g.db, parts_cache=parts, inplace=True)
 
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
@@ -249,42 +169,7 @@ def excel_batches_confirm():
     existing = {b.batch_id: b for b in svc.list()}
     parts = {p.part_no: p for p in PartRepository(g.db).list()}
 
-    def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        # 与 preview 保持一致（防止被篡改）
-        if not row.get("批次号") or str(row.get("批次号")).strip() == "":
-            return "“批次号”不能为空"
-        if not row.get("图号") or str(row.get("图号")).strip() == "":
-            return "“图号”不能为空"
-        pn = str(row.get("图号")).strip()
-        if pn not in parts:
-            return f"图号“{pn}”不存在，请先在工艺管理中维护零件。"
-        qty = row.get("数量")
-        if qty is None or str(qty).strip() == "":
-            return "“数量”不能为空"
-        try:
-            q = int(qty)
-            if q <= 0:
-                return "“数量”必须大于 0"
-            row["数量"] = q
-        except Exception:
-            return "“数量”必须是整数"
-        row["优先级"] = _normalize_batch_priority(row.get("优先级"))
-        if row["优先级"] not in ("normal", "urgent", "critical"):
-            return "“优先级”不合法（允许：normal/urgent/critical；或中文：普通/急件/特急）"
-        row["齐套"] = _normalize_ready_status(row.get("齐套"))
-        if row["齐套"] not in ("yes", "no", "partial"):
-            return "“齐套”不合法（允许：yes/no/partial；或中文：齐套/未齐套/部分齐套）"
-
-        ready_res = _normalize_batch_date_cell(row.get("齐套日期"), field_label="齐套日期")
-        if ready_res.get("error"):
-            return str(ready_res.get("error"))
-        row["齐套日期"] = ready_res.get("value")
-
-        due_res = _normalize_batch_date_cell(row.get("交期"), field_label="交期")
-        if due_res.get("error"):
-            return str(due_res.get("error"))
-        row["交期"] = due_res.get("value")
-        return None
+    validate_row = get_batch_row_validate_and_normalize(g.db, parts_cache=parts, inplace=True)
 
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
@@ -350,7 +235,7 @@ def excel_batches_confirm():
     with tx.transaction():
         if mode == ImportMode.REPLACE:
             # 直接清空批次（级联会清空批次工序/排程等）
-            g.db.execute("DELETE FROM Batches")
+            svc.delete_all_no_tx()
             existing = {}  # 重要：REPLACE 后按“全新导入”处理，避免走 update 分支
 
         for pr in preview_rows:

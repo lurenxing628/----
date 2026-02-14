@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Iterable, List, Optional, Tuple
 
 from core.models import ScheduleConfig
 
@@ -42,6 +42,22 @@ class ConfigRepository(BaseRepository):
               updated_at = CURRENT_TIMESTAMP
             """,
             (config_key, str(config_value), description),
+        )
+
+    def set_batch(self, items: Iterable[Tuple[str, str, Optional[str]]]) -> None:
+        rows = [(k, str(v), d) for k, v, d in items]
+        if not rows:
+            return
+        self.executemany(
+            """
+            INSERT INTO ScheduleConfig (config_key, config_value, description, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(config_key) DO UPDATE SET
+              config_value = excluded.config_value,
+              description = COALESCE(excluded.description, ScheduleConfig.description),
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            rows,
         )
 
     def delete(self, config_key: str) -> None:

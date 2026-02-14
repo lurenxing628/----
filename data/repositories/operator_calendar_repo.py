@@ -77,3 +77,6 @@ class OperatorCalendarRepository(BaseRepository):
     def delete(self, operator_id: str, date: str) -> None:
         self.execute("DELETE FROM OperatorCalendar WHERE operator_id = ? AND date = ?", (operator_id, date))
 
+    def delete_all(self) -> None:
+        self.execute("DELETE FROM OperatorCalendar")
+

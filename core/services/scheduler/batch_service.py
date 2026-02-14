@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -12,7 +12,13 @@ from data.repositories import BatchOperationRepository, BatchRepository, PartOpe
 class BatchService:
     """批次服务（Batches + BatchOperations）。"""
 
-    def __init__(self, conn, logger=None, op_logger=None):
+    def __init__(
+        self,
+        conn,
+        logger=None,
+        op_logger=None,
+        template_resolver: Optional[Callable[[str, str, str, bool], None]] = None,
+    ):
         self.conn = conn
         self.logger = logger
         self.op_logger = op_logger
@@ -22,6 +28,7 @@ class BatchService:
         self.batch_op_repo = BatchOperationRepository(conn, logger=logger)
         self.part_repo = PartRepository(conn, logger=logger)
         self.part_op_repo = PartOperationRepository(conn, logger=logger)
+        self._template_resolver = template_resolver or self._default_template_resolver
 
     # -------------------------
     # 工具方法 / 校验
@@ -101,6 +108,40 @@ class BatchService:
         if not b:
             raise BusinessError(ErrorCode.BATCH_NOT_FOUND, f"批次“{batch_id}”不存在")
         return b
+
+    def _default_template_resolver(self, part_no: str, part_name: str, route_raw: str, no_tx: bool) -> None:
+        # 懒加载跨域依赖：默认行为与历史实现等价
+        from core.services.process.part_service import PartService
+
+        svc = PartService(self.conn, logger=self.logger, op_logger=self.op_logger)
+        if no_tx:
+            svc.upsert_and_parse_no_tx(part_no=part_no, part_name=part_name, route_raw=route_raw)
+        else:
+            svc.reparse_and_save(part_no=part_no, route_raw=route_raw)
+
+    def _load_template_ops_with_fallback(self, part_no: str, part, *, no_tx: bool):
+        template_ops = self.part_op_repo.list_by_part(part_no, include_deleted=False)
+        if template_ops:
+            return template_ops
+
+        rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
+        if rr:
+            try:
+                self._template_resolver(part_no, part.part_name or part_no, rr, no_tx)
+            except Exception as e:
+                raise BusinessError(
+                    ErrorCode.ROUTE_PARSE_ERROR,
+                    "该零件尚未生成工序模板，且自动解析失败。请到【工艺管理-工序模板】中检查工艺路线并重新解析。",
+                    cause=e,
+                )
+            template_ops = self.part_op_repo.list_by_part(part_no, include_deleted=False)
+
+        if not template_ops:
+            raise BusinessError(
+                ErrorCode.ROUTE_PARSE_ERROR,
+                "该零件尚未生成工序模板，无法创建批次工序。请先在【工艺管理-工序模板】中解析工艺路线并保存模板。",
+            )
+        return template_ops
 
     # -------------------------
     # Batches CRUD
@@ -315,6 +356,16 @@ class BatchService:
         with self.tx_manager.transaction():
             self.batch_repo.delete(bid)
 
+    def delete_all_no_tx(self) -> None:
+        """
+        清空全部批次（不控制事务）。
+
+        说明：
+        - 供 Excel 批量导入在“外部已开启事务”时使用，避免嵌套 commit 导致无法整体回滚。
+        - 按 schema 约束会级联删除相关批次工序与排程记录。
+        """
+        self.batch_repo.delete_all()
+
     def copy_batch(self, source_batch_id: Any, new_batch_id: Any) -> Batch:
         """
         复制批次（含批次工序），用于批量复制/快速建相似批次。
@@ -427,28 +478,7 @@ class BatchService:
         if not part:
             raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{pn}”不存在，请先在工艺管理中维护零件。")
 
-        template_ops = self.part_op_repo.list_by_part(pn, include_deleted=False)
-        if not template_ops:
-            # 若模板缺失：尝试从 Parts.route_raw 自动解析并保存模板（减少“创建批次报错”）
-            rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
-            if rr:
-                try:
-                    from core.services.process.part_service import PartService
-
-                    PartService(self.conn, logger=self.logger, op_logger=self.op_logger).reparse_and_save(part_no=pn, route_raw=rr)
-                except Exception as e:
-                    raise BusinessError(
-                        ErrorCode.ROUTE_PARSE_ERROR,
-                        "该零件尚未生成工序模板，且自动解析失败。请到【工艺管理-工序模板】中检查工艺路线并重新解析。",
-                        cause=e,
-                    )
-                template_ops = self.part_op_repo.list_by_part(pn, include_deleted=False)
-
-            if not template_ops:
-                raise BusinessError(
-                    ErrorCode.ROUTE_PARSE_ERROR,
-                    "该零件尚未生成工序模板，无法创建批次工序。请先在【工艺管理-工序模板】中解析工艺路线并保存模板。",
-                )
+        template_ops = self._load_template_ops_with_fallback(pn, part, no_tx=False)
 
         with self.tx_manager.transaction():
             self.create_batch_from_template_no_tx(
@@ -501,30 +531,7 @@ class BatchService:
         if not part:
             raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{pn}”不存在，请先在工艺管理中维护零件。")
 
-        template_ops = self.part_op_repo.list_by_part(pn, include_deleted=False)
-        if not template_ops:
-            rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
-            if rr:
-                try:
-                    from core.services.process.part_service import PartService
-
-                    # no_tx：在外部事务中覆盖保存模板（避免嵌套事务）
-                    PartService(self.conn, logger=self.logger, op_logger=self.op_logger).upsert_and_parse_no_tx(
-                        part_no=pn, part_name=part.part_name or pn, route_raw=rr
-                    )
-                except Exception as e:
-                    raise BusinessError(
-                        ErrorCode.ROUTE_PARSE_ERROR,
-                        "该零件尚未生成工序模板，且自动解析失败。请到【工艺管理-工序模板】中检查工艺路线并重新解析。",
-                        cause=e,
-                    )
-                template_ops = self.part_op_repo.list_by_part(pn, include_deleted=False)
-
-            if not template_ops:
-                raise BusinessError(
-                    ErrorCode.ROUTE_PARSE_ERROR,
-                    "该零件尚未生成工序模板，无法创建批次工序。请先在【工艺管理-工序模板】中解析工艺路线并保存模板。",
-                )
+        template_ops = self._load_template_ops_with_fallback(pn, part, no_tx=True)
 
         # 允许 rebuild：先删后建（但只影响同一个 batch_id）
         if self.batch_repo.get(bid):

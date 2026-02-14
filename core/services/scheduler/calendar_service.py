@@ -38,6 +38,13 @@ class CalendarService:
         """
         return CalendarAdmin._normalize_date(value)
 
+    @staticmethod
+    def _normalize_hhmm(value: Any, field: str, allow_none: bool = True) -> Optional[str]:
+        """
+        兼容历史调用：路由层曾直接调用 CalendarService._normalize_hhmm(...)。
+        """
+        return CalendarAdmin._normalize_hhmm(value, field=field, allow_none=allow_none)
+
     # -------------------------
     # CRUD（给页面/Excel用）
     # -------------------------
@@ -82,6 +89,9 @@ class CalendarService:
     def delete(self, date_value: Any) -> None:
         self._admin.delete(date_value)
 
+    def delete_all_no_tx(self) -> None:
+        self._admin.delete_all_no_tx()
+
     # -------------------------
     # CRUD：人员专属日历（OperatorCalendar）
     # -------------------------
@@ -125,6 +135,9 @@ class CalendarService:
 
     def delete_operator_calendar(self, operator_id: Any, date_value: Any) -> None:
         self._admin.delete_operator_calendar(operator_id, date_value)
+
+    def delete_operator_calendar_all_no_tx(self) -> None:
+        self._admin.delete_operator_calendar_all_no_tx()
 
     def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
         return self._engine.policy_for_datetime(dt, operator_id=operator_id)

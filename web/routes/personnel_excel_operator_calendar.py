@@ -16,6 +16,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_validators import get_operator_calendar_row_validate_and_normalize
 from core.services.scheduler import CalendarService, ConfigService
 from data.repositories import OperatorRepository
 
@@ -95,7 +96,7 @@ def excel_operator_calendar_preview():
         item["工号"] = op_id
         # 日期尽量标准化（失败留原值，让 validator 报错）
         try:
-            item["日期"] = CalendarService._normalize_date(item.get("日期"))  # type: ignore[attr-defined]
+            item["日期"] = CalendarService._normalize_date(item.get("日期"))
         except Exception:
             item["日期"] = ("" if item.get("日期") is None else str(item.get("日期")).strip().replace("/", "-"))
         item["类型"] = _normalize_operator_calendar_day_type(item.get("类型"))
@@ -129,90 +130,12 @@ def excel_operator_calendar_preview():
 
     op_repo = OperatorRepository(g.db)
 
-    def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        op_id = str(row.get("工号") or "").strip()
-        if not op_id:
-            return "“工号”不能为空"
-        if not op_repo.exists(op_id):
-            return f"人员“{op_id}”不存在，请先在人员管理中新增该人员。"
-
-        if not row.get("日期") or str(row.get("日期")).strip() == "":
-            return "“日期”不能为空"
-        try:
-            row["日期"] = CalendarService._normalize_date(row.get("日期"))  # type: ignore[attr-defined]
-        except ValidationError as e:
-            return e.message
-        except Exception:
-            return "“日期”格式不合法（期望：YYYY-MM-DD）"
-
-        row["类型"] = _normalize_operator_calendar_day_type(row.get("类型"))
-        if row["类型"] not in ("workday", "holiday"):
-            return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
-
-        # 班次开始/结束（可选）
-        try:
-            ss = CalendarService._normalize_hhmm(row.get("班次开始"), field="班次开始", allow_none=True)  # type: ignore[attr-defined]
-        except ValidationError as e:
-            return e.message
-        except Exception:
-            return "“班次开始”格式不合法（期望：HH:MM）"
-        ss = ss or "08:00"
-        row["班次开始"] = ss
-
-        try:
-            se = CalendarService._normalize_hhmm(row.get("班次结束"), field="班次结束", allow_none=True)  # type: ignore[attr-defined]
-        except ValidationError as e:
-            return e.message
-        except Exception:
-            return "“班次结束”格式不合法（期望：HH:MM）"
-        row["班次结束"] = se or ""
-
-        # 可用工时：允许空（按类型默认）；若给了班次结束，则优先用其推导
-        sh = row.get("可用工时")
-        if sh is None or str(sh).strip() == "":
-            row["可用工时"] = 8 if row["类型"] == "workday" else 0
-        else:
-            try:
-                v = float(sh)
-                if v < 0:
-                    return "“可用工时”不能为负数"
-                row["可用工时"] = v
-            except Exception:
-                return "“可用工时”必须是数字"
-
-        if row.get("班次结束"):
-            try:
-                st_t = datetime.strptime(str(row["班次开始"]), "%H:%M")
-                et_t = datetime.strptime(str(row["班次结束"]), "%H:%M")
-                if et_t <= st_t:
-                    return "“班次结束”必须晚于“班次开始”"
-                row["可用工时"] = (et_t - st_t).total_seconds() / 3600.0
-            except Exception:
-                return "“班次开始/结束”格式不合法（期望：HH:MM）"
-
-        # 效率：允许空（按类型默认）
-        eff = row.get("效率")
-        if eff is None or str(eff).strip() == "":
-            row["效率"] = 1.0 if row["类型"] == "workday" else float(hde)
-        else:
-            try:
-                v = float(eff)
-                if v <= 0:
-                    return "“效率”必须大于 0"
-                row["效率"] = v
-            except Exception:
-                return "“效率”必须是数字"
-
-        row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
-        if row["允许普通件"] not in ("yes", "no"):
-            return "“允许普通件”不合法（允许：yes/no；或中文：是/否）"
-        row["允许急件"] = _normalize_yesno(row.get("允许急件"))
-        if row["允许急件"] not in ("yes", "no"):
-            return "“允许急件”不合法（允许：yes/no；或中文：是/否）"
-
-        # 复合键：工号|日期（用于 ExcelService diff）
-        row["__id"] = f"{op_id}|{row.get('日期')}"
-        return None
+    validate_row = get_operator_calendar_row_validate_and_normalize(
+        g.db,
+        holiday_default_efficiency=hde,
+        op_repo=op_repo,
+        inplace=True,
+    )
 
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
@@ -294,86 +217,12 @@ def excel_operator_calendar_confirm():
             "__id": f"{c.operator_id}|{c.date}",
         }
 
-    def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        op_id = str(row.get("工号") or "").strip()
-        if not op_id:
-            return "“工号”不能为空"
-        if not op_repo.exists(op_id):
-            return f"人员“{op_id}”不存在，请先在人员管理中新增该人员。"
-
-        if not row.get("日期") or str(row.get("日期")).strip() == "":
-            return "“日期”不能为空"
-        try:
-            row["日期"] = CalendarService._normalize_date(row.get("日期"))  # type: ignore[attr-defined]
-        except ValidationError as e:
-            return e.message
-        except Exception:
-            return "“日期”格式不合法（期望：YYYY-MM-DD）"
-
-        row["类型"] = _normalize_operator_calendar_day_type(row.get("类型"))
-        if row["类型"] not in ("workday", "holiday"):
-            return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
-
-        try:
-            ss = CalendarService._normalize_hhmm(row.get("班次开始"), field="班次开始", allow_none=True)  # type: ignore[attr-defined]
-        except ValidationError as e:
-            return e.message
-        except Exception:
-            return "“班次开始”格式不合法（期望：HH:MM）"
-        ss = ss or "08:00"
-        row["班次开始"] = ss
-
-        try:
-            se = CalendarService._normalize_hhmm(row.get("班次结束"), field="班次结束", allow_none=True)  # type: ignore[attr-defined]
-        except ValidationError as e:
-            return e.message
-        except Exception:
-            return "“班次结束”格式不合法（期望：HH:MM）"
-        row["班次结束"] = se or ""
-
-        sh = row.get("可用工时")
-        if sh is None or str(sh).strip() == "":
-            row["可用工时"] = 8 if row["类型"] == "workday" else 0
-        else:
-            try:
-                v = float(sh)
-                if v < 0:
-                    return "“可用工时”不能为负数"
-                row["可用工时"] = v
-            except Exception:
-                return "“可用工时”必须是数字"
-
-        if row.get("班次结束"):
-            try:
-                st_t = datetime.strptime(str(row["班次开始"]), "%H:%M")
-                et_t = datetime.strptime(str(row["班次结束"]), "%H:%M")
-                if et_t <= st_t:
-                    return "“班次结束”必须晚于“班次开始”"
-                row["可用工时"] = (et_t - st_t).total_seconds() / 3600.0
-            except Exception:
-                return "“班次开始/结束”格式不合法（期望：HH:MM）"
-
-        eff = row.get("效率")
-        if eff is None or str(eff).strip() == "":
-            row["效率"] = 1.0 if row["类型"] == "workday" else float(hde)
-        else:
-            try:
-                v = float(eff)
-                if v <= 0:
-                    return "“效率”必须大于 0"
-                row["效率"] = v
-            except Exception:
-                return "“效率”必须是数字"
-
-        row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
-        if row["允许普通件"] not in ("yes", "no"):
-            return "“允许普通件”不合法（允许：yes/no；或中文：是/否）"
-        row["允许急件"] = _normalize_yesno(row.get("允许急件"))
-        if row["允许急件"] not in ("yes", "no"):
-            return "“允许急件”不合法（允许：yes/no；或中文：是/否）"
-
-        row["__id"] = f"{op_id}|{row.get('日期')}"
-        return None
+    validate_row = get_operator_calendar_row_validate_and_normalize(
+        g.db,
+        holiday_default_efficiency=hde,
+        op_repo=op_repo,
+        inplace=True,
+    )
 
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
@@ -411,7 +260,7 @@ def excel_operator_calendar_confirm():
 
     with tx.transaction():
         if mode == ImportMode.REPLACE:
-            g.db.execute("DELETE FROM OperatorCalendar")
+            cal_svc.delete_operator_calendar_all_no_tx()
             existing = {}
 
         for pr in preview_rows:

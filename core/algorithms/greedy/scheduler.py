@@ -13,56 +13,20 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..dispatch_rules import DispatchRule, parse_dispatch_rule
-from ..sort_strategies import BatchForSort, SortStrategy, StrategyFactory, parse_strategy
+from ..sort_strategies import BatchForSort, SortStrategy, StrategyFactory
 from ..types import ScheduleResult, ScheduleSummary
 from .auto_assign import auto_assign_internal_resources
+from .config_adapter import cfg_get
 from .dispatch import dispatch_batch_order, dispatch_sgs
 from .downtime import find_overlap_shift_end, occupy_resource
 from .external_groups import schedule_external
+from .schedule_params import parse_date as _parse_date
+from .schedule_params import parse_datetime as _parse_datetime
+from .schedule_params import resolve_schedule_params
 from .seed import normalize_seed_results
-
-
-def _parse_date(value: Any) -> Optional[date]:
-    if value is None:
-        return None
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value
-    if isinstance(value, datetime):
-        return value.date()
-    s = str(value).strip()
-    if not s:
-        return None
-    # 兼容 YYYY/MM/DD
-    s = s.replace("/", "-")
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        return None
-
-
-def _parse_datetime(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    s = str(value).strip()
-    if not s:
-        return None
-    s = s.replace("/", "-").replace("T", " ").replace("：", ":")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            return datetime.strptime(s, fmt)
-        except Exception:
-            continue
-    # 仅日期：当作当天 00:00
-    try:
-        return datetime.strptime(s, "%Y-%m-%d")
-    except Exception:
-        return None
 
 
 class GreedyScheduler:
@@ -82,24 +46,7 @@ class GreedyScheduler:
         - dataclass/namespace：通过属性访问（如 cfg.sort_strategy）
         - 旧形态：带 `.get(key, default)` 的对象（兼容历史调用方）
         """
-        cfg = self.config
-        if cfg is None:
-            return default
-        if isinstance(cfg, dict):
-            return cfg.get(key, default)
-        try:
-            if hasattr(cfg, key):
-                v = getattr(cfg, key)
-                return default if v is None else v
-        except Exception:
-            pass
-        try:
-            getter = getattr(cfg, "get", None)
-            if callable(getter):
-                return getter(key, default)
-        except Exception:
-            pass
-        return default
+        return cfg_get(self.config, key, default)
 
     def schedule(
         self,
@@ -126,133 +73,24 @@ class GreedyScheduler:
         warnings: List[str] = []
         errors: List[str] = []
 
-        base_time = start_dt or datetime.now()
-        # start_dt 允许由上层传入 datetime；防御：若误传字符串/日期等，尝试解析，避免后续类型错误
-        if base_time is not None and not isinstance(base_time, datetime):
-            parsed = _parse_datetime(base_time)
-            if parsed is not None:
-                base_time = parsed
-                warnings.append(f"start_dt 非 datetime，已解析为 {base_time.strftime('%Y-%m-%d %H:%M:%S')}。")
-            else:
-                warnings.append(f"start_dt 无法解析，已忽略并使用当前时间：{start_dt!r}")
-                base_time = datetime.now()
-
-        end_d = _parse_date(end_date)
-        if end_date is not None and end_d is None:
-            s0 = str(end_date).strip()
-            if s0:
-                warnings.append(f"end_date 无法解析，已忽略（不启用排产截止窗口）：{end_date!r}")
-        end_dt_exclusive: Optional[datetime] = None
-        if end_d:
-            end_dt_exclusive = datetime(end_d.year, end_d.month, end_d.day, 0, 0, 0) + timedelta(days=1)
-
-        # 获取排序策略：优先使用调用方传入，其次从配置读取
-        if strategy is None:
-            try:
-                strategy_key = self._cfg_get("sort_strategy", "priority_first")
-            except Exception:
-                strategy_key = "priority_first"
-            strategy = parse_strategy(strategy_key, default=SortStrategy.PRIORITY_FIRST)
-            # 仅在“确实传入了非法值”时告警；空值/缺省不告警
-            try:
-                if isinstance(strategy_key, SortStrategy):
-                    raw_s = strategy_key.value
-                else:
-                    raw_s = str(strategy_key or "").strip().lower()
-                if raw_s and raw_s not in {s.value for s in SortStrategy}:
-                    warnings.append(f"sort_strategy 非法，已回退为 {strategy.value}：{strategy_key!r}")
-            except Exception:
-                pass
-
-        # 权重策略参数：优先用调用方传入，否则从配置读取
-        used_params: Dict[str, Any] = {}
-        if strategy == SortStrategy.WEIGHTED:
-            if strategy_params is not None:
-
-                def _safe_float(v: Any, default: float) -> float:
-                    try:
-                        f = float(v)
-                        return f if math.isfinite(f) else float(default)
-                    except Exception:
-                        return float(default)
-
-                sp = strategy_params if isinstance(strategy_params, dict) else {}
-                used_params = {
-                    "priority_weight": _safe_float(sp.get("priority_weight", 0.4), 0.4),
-                    "due_weight": _safe_float(sp.get("due_weight", 0.5), 0.5),
-                }
-            elif self.config is not None:
-
-                def _cfg_float(key: str, default: float) -> float:
-                    try:
-                        f = float(self._cfg_get(key, default))
-                        return f if math.isfinite(f) else float(default)
-                    except Exception:
-                        return float(default)
-
-                used_params = {
-                    "priority_weight": _cfg_float("priority_weight", 0.4),
-                    "due_weight": _cfg_float("due_weight", 0.5),
-                }
-            else:
-                used_params = {"priority_weight": 0.4, "due_weight": 0.5}
-        else:
-            used_params = dict(strategy_params or {})
-
-        # 派工模式（V1.2）：
-        # - batch_order：保持 V1 行为（按批次顺序全局排序工序）
-        # - sgs：就绪集合（eligible set）动态派工（Serial SGS），提升利用率/降低拖期的空间更大
-        if dispatch_mode is None and self.config is not None:
-            try:
-                dispatch_mode = str(self._cfg_get("dispatch_mode", "batch_order"))
-            except Exception:
-                dispatch_mode = "batch_order"
-        dispatch_mode_key = str(dispatch_mode or "batch_order").strip().lower() or "batch_order"
-        if dispatch_mode_key not in ("batch_order", "sgs"):
-            if dispatch_mode is not None and str(dispatch_mode).strip():
-                warnings.append(f"dispatch_mode 非法，已回退为 batch_order：{dispatch_mode!r}")
-            dispatch_mode_key = "batch_order"
-
-        if dispatch_rule is None and self.config is not None:
-            try:
-                dispatch_rule = str(self._cfg_get("dispatch_rule", "slack"))
-            except Exception:
-                dispatch_rule = "slack"
-        # 非法值回退提示（不影响旧逻辑）
-        try:
-            if isinstance(dispatch_rule, DispatchRule):
-                raw_rule_key = dispatch_rule.value
-            else:
-                raw_rule_key = str(dispatch_rule or "").strip().lower()
-        except Exception:
-            raw_rule_key = ""
-        dispatch_rule_enum = parse_dispatch_rule(dispatch_rule, default=DispatchRule.SLACK)
-        if raw_rule_key and raw_rule_key not in {r.value for r in DispatchRule}:
-            warnings.append(f"dispatch_rule 非法，已回退为 {dispatch_rule_enum.value}：{dispatch_rule!r}")
-
-        # 自动选人/选机（仅在内部工序缺省资源时触发；默认关闭，保持 V1 行为）
-        auto_assign_enabled = False
-        if self.config is not None:
-            try:
-                raw = self._cfg_get("auto_assign_enabled", "no")
-                v = str(raw or "").strip().lower()
-                true_vals = ("yes", "y", "true", "1", "on")
-                false_vals = ("no", "n", "false", "0", "off", "")
-                auto_assign_enabled = v in true_vals
-                if v not in true_vals and v not in false_vals:
-                    warnings.append(f"auto_assign_enabled 非法，已按 no 处理：{raw!r}")
-            except Exception:
-                auto_assign_enabled = False
-        if auto_assign_enabled and resource_pool is None:
-            warnings.append("auto_assign_enabled=yes 但未提供 resource_pool：内部工序缺省资源将无法自动分配。")
-
-        # 把派工参数写入 used_params（用于留痕；不影响旧逻辑）
-        try:
-            used_params["dispatch_mode"] = dispatch_mode_key
-            used_params["dispatch_rule"] = dispatch_rule_enum.value
-            used_params["auto_assign_enabled"] = "yes" if auto_assign_enabled else "no"
-        except Exception:
-            pass
+        params = resolve_schedule_params(
+            config=self.config,
+            strategy=strategy,
+            strategy_params=strategy_params,
+            start_dt=start_dt,
+            end_date=end_date,
+            dispatch_mode=dispatch_mode,
+            dispatch_rule=dispatch_rule,
+            resource_pool=resource_pool,
+        )
+        warnings.extend(params.warnings)
+        base_time = params.base_time
+        end_dt_exclusive = params.end_dt_exclusive
+        strategy = params.strategy
+        used_params = params.used_params
+        dispatch_mode_key = params.dispatch_mode_key
+        dispatch_rule_enum = params.dispatch_rule_enum
+        auto_assign_enabled = params.auto_assign_enabled
 
         # -------------------------
         # 关键 ID 规范化（算法层统一 str(...).strip()）

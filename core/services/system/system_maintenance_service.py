@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import json
-import os
-import threading
-import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
-from core.infrastructure.backup import BackupManager
-from core.infrastructure.transaction import TransactionManager
 from data.repositories import SystemJobStateRepository
 
+from .maintenance import (
+    MaintenanceThrottle,
+    maybe_run_auto_backup,
+    maybe_run_auto_backup_cleanup,
+    maybe_run_auto_log_cleanup,
+)
 from .system_config_service import SystemConfigService
 
 
@@ -56,8 +56,6 @@ class SystemMaintenanceService:
 
     # 进程内节流：避免静态资源/频繁刷新导致重复检查
     CHECK_THROTTLE_SECONDS = 10
-    _last_check_ts: float = 0.0
-    _check_lock = threading.Lock()
 
     # 清理限额（避免一次请求删太多）
     MAX_BACKUP_DELETE_PER_RUN = 200
@@ -79,11 +77,8 @@ class SystemMaintenanceService:
         logger=None,
         op_logger=None,
     ) -> MaintenanceResult:
-        now_ts = time.time()
-        with cls._check_lock:
-            if (now_ts - cls._last_check_ts) < cls.CHECK_THROTTLE_SECONDS:
-                return MaintenanceResult(ran_any=False, details={"throttled": True})
-            cls._last_check_ts = now_ts
+        if not MaintenanceThrottle.allow_run(cls.CHECK_THROTTLE_SECONDS):
+            return MaintenanceResult(ran_any=False, details={"throttled": True})
 
         cfg_svc = SystemConfigService(conn, logger=logger)
         cfg = cfg_svc.get_snapshot(backup_keep_days_default=int(backup_keep_days_default))
@@ -97,7 +92,7 @@ class SystemMaintenanceService:
         # 1) 自动备份
         # -------------------------
         if cfg.auto_backup_enabled == "yes":
-            ran, d = cls._maybe_run_auto_backup(
+            ran, d = maybe_run_auto_backup(
                 conn,
                 job_repo=job_repo,
                 now=now,
@@ -105,8 +100,11 @@ class SystemMaintenanceService:
                 db_path=db_path,
                 backup_dir=backup_dir,
                 keep_days=int(cfg.auto_backup_keep_days),
+                job_key=cls.JOB_AUTO_BACKUP,
                 logger=logger,
                 op_logger=op_logger,
+                is_due_fn=cls._is_due,
+                fmt_db_dt_fn=_fmt_db_dt,
             )
             details["auto_backup"] = d
             ran_any = ran_any or ran
@@ -115,15 +113,19 @@ class SystemMaintenanceService:
         # 2) 自动清理备份（保留策略）
         # -------------------------
         if cfg.auto_backup_cleanup_enabled == "yes":
-            ran, d = cls._maybe_run_auto_backup_cleanup(
+            ran, d = maybe_run_auto_backup_cleanup(
                 conn,
                 job_repo=job_repo,
                 now=now,
                 interval_minutes=int(cfg.auto_backup_cleanup_interval_minutes),
                 backup_dir=backup_dir,
                 keep_days=int(cfg.auto_backup_keep_days),
+                max_backup_delete_per_run=int(cls.MAX_BACKUP_DELETE_PER_RUN),
+                job_key=cls.JOB_AUTO_BACKUP_CLEANUP,
                 logger=logger,
                 op_logger=op_logger,
+                is_due_fn=cls._is_due,
+                fmt_db_dt_fn=_fmt_db_dt,
             )
             details["auto_backup_cleanup"] = d
             ran_any = ran_any or ran
@@ -132,14 +134,19 @@ class SystemMaintenanceService:
         # 3) 自动清理操作日志（保留策略）
         # -------------------------
         if cfg.auto_log_cleanup_enabled == "yes":
-            ran, d = cls._maybe_run_auto_log_cleanup(
+            ran, d = maybe_run_auto_log_cleanup(
                 conn,
                 job_repo=job_repo,
                 now=now,
                 interval_minutes=int(cfg.auto_log_cleanup_interval_minutes),
                 keep_days=int(cfg.auto_log_cleanup_keep_days),
+                min_keep_logs=int(cls.MIN_KEEP_LOGS),
+                max_log_delete_per_run=int(cls.MAX_LOG_DELETE_PER_RUN),
+                job_key=cls.JOB_AUTO_LOG_CLEANUP,
                 logger=logger,
                 op_logger=op_logger,
+                is_due_fn=cls._is_due,
+                fmt_db_dt_fn=_fmt_db_dt,
             )
             details["auto_log_cleanup"] = d
             ran_any = ran_any or ran
@@ -159,312 +166,6 @@ class SystemMaintenanceService:
         return delta >= timedelta(minutes=int(interval_minutes)), _fmt_db_dt(last)
 
     @classmethod
-    def _maybe_run_auto_backup(
-        cls,
-        conn,
-        *,
-        job_repo: SystemJobStateRepository,
-        now: datetime,
-        interval_minutes: int,
-        db_path: str,
-        backup_dir: str,
-        keep_days: int,
-        logger=None,
-        op_logger=None,
-    ) -> Tuple[bool, Dict[str, Any]]:
-        due, last_run = cls._is_due(job_repo, cls.JOB_AUTO_BACKUP, now, interval_minutes)
-        if not due:
-            return False, {"due": False, "last_run_time": last_run}
-
-        mgr = BackupManager(db_path=db_path, backup_dir=backup_dir, keep_days=int(keep_days), logger=logger)
-        t0 = time.time()
-        try:
-            path = mgr.backup(suffix="auto")
-            filename = os.path.basename(path)
-            time_cost_ms = int((time.time() - t0) * 1000)
-            size_mb = None
-            try:
-                size_mb = round(os.stat(path).st_size / 1024 / 1024, 2)
-            except Exception:
-                size_mb = None
-
-            # 落库动作必须在事务中提交：避免请求结束关闭连接时被回滚
-            # 说明：OperationLogger 会在事务上下文中禁用隐式 commit，由 TransactionManager 统一提交
-            with TransactionManager(conn).transaction():
-                if op_logger is not None:
-                    op_logger.info(
-                        module="system",
-                        action="backup",
-                        target_type="backup",
-                        target_id=filename,
-                        detail={
-                            "filename": filename,
-                            "suffix": "auto",
-                            "size_mb": size_mb,
-                            "mode": "auto",
-                            "time_cost_ms": time_cost_ms,
-                        },
-                    )
-
-                job_repo.set_last_run(
-                    cls.JOB_AUTO_BACKUP,
-                    last_run_time=_fmt_db_dt(now),
-                    last_run_detail=json.dumps(
-                        {"filename": filename, "size_mb": size_mb, "time_cost_ms": time_cost_ms},
-                        ensure_ascii=False,
-                    ),
-                )
-            return True, {"due": True, "created": filename}
-        except Exception as e:
-            if logger:
-                logger.error(f"自动备份失败：{e}")
-            time_cost_ms = int((time.time() - t0) * 1000)
-            try:
-                with TransactionManager(conn).transaction():
-                    if op_logger is not None:
-                        op_logger.error(
-                            module="system",
-                            action="backup",
-                            target_type="backup",
-                            target_id=None,
-                            detail={"mode": "auto", "time_cost_ms": time_cost_ms},
-                            error_code="auto_backup_failed",
-                            error_message=str(e),
-                        )
-                    # 记录失败原因（避免用户只看到“没执行过/不知道为什么”）
-                    job_repo.set_last_run(
-                        cls.JOB_AUTO_BACKUP,
-                        last_run_time=_fmt_db_dt(now),
-                        last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
-                    )
-            except Exception:
-                # 写入失败不应掩盖原始异常：继续返回错误信息，由上层记录日志
-                pass
-            return False, {"due": True, "error": str(e)}
-
-    @classmethod
-    def _cleanup_backups_with_limit(cls, backup_dir: str, keep_days: int, max_delete: int) -> Tuple[int, Dict[str, Any]]:
-        cutoff = datetime.now() - timedelta(days=int(keep_days))
-        if not os.path.exists(backup_dir):
-            return 0, {"cutoff": _fmt_db_dt(cutoff), "reason": "backup_dir_not_exists"}
-
-        candidates = []
-        for fn in os.listdir(backup_dir):
-            if not fn.startswith("aps_backup_") or not fn.endswith(".db"):
-                continue
-            fp = os.path.join(backup_dir, fn)
-            try:
-                mtime = datetime.fromtimestamp(os.path.getmtime(fp))
-            except Exception:
-                continue
-            if mtime < cutoff:
-                candidates.append((mtime, fn, fp))
-
-        candidates.sort(key=lambda x: x[0])  # 先删最旧的
-        removed = 0
-        removed_sample = []
-        for _, fn, fp in candidates[: int(max_delete)]:
-            try:
-                os.remove(fp)
-                removed += 1
-                if len(removed_sample) < 10:
-                    removed_sample.append(fn)
-            except Exception:
-                continue
-
-        return removed, {"cutoff": _fmt_db_dt(cutoff), "candidates": len(candidates), "removed_sample": removed_sample}
-
-    @classmethod
-    def _maybe_run_auto_backup_cleanup(
-        cls,
-        conn,
-        *,
-        job_repo: SystemJobStateRepository,
-        now: datetime,
-        interval_minutes: int,
-        backup_dir: str,
-        keep_days: int,
-        logger=None,
-        op_logger=None,
-    ) -> Tuple[bool, Dict[str, Any]]:
-        due, last_run = cls._is_due(job_repo, cls.JOB_AUTO_BACKUP_CLEANUP, now, interval_minutes)
-        if not due:
-            return False, {"due": False, "last_run_time": last_run}
-
-        t0 = time.time()
-        try:
-            removed, meta = cls._cleanup_backups_with_limit(
-                backup_dir=str(backup_dir),
-                keep_days=int(keep_days),
-                max_delete=int(cls.MAX_BACKUP_DELETE_PER_RUN),
-            )
-            time_cost_ms = int((time.time() - t0) * 1000)
-            with TransactionManager(conn).transaction():
-                if op_logger is not None:
-                    op_logger.info(
-                        module="system",
-                        action="cleanup",
-                        target_type="backup",
-                        target_id=None,
-                        detail={
-                            "mode": "auto",
-                            "keep_days": int(keep_days),
-                            "removed_count": int(removed),
-                            "max_delete_per_run": int(cls.MAX_BACKUP_DELETE_PER_RUN),
-                            "time_cost_ms": time_cost_ms,
-                            **meta,
-                        },
-                    )
-                job_repo.set_last_run(
-                    cls.JOB_AUTO_BACKUP_CLEANUP,
-                    last_run_time=_fmt_db_dt(now),
-                    last_run_detail=json.dumps(
-                        {"removed_count": removed, "time_cost_ms": time_cost_ms, **meta},
-                        ensure_ascii=False,
-                    ),
-                )
-            return True, {"due": True, "removed_count": int(removed), **meta}
-        except Exception as e:
-            if logger:
-                logger.error(f"自动清理备份失败：{e}")
-            time_cost_ms = int((time.time() - t0) * 1000)
-            try:
-                with TransactionManager(conn).transaction():
-                    if op_logger is not None:
-                        op_logger.error(
-                            module="system",
-                            action="cleanup",
-                            target_type="backup",
-                            target_id=None,
-                            detail={"mode": "auto", "time_cost_ms": time_cost_ms},
-                            error_code="auto_backup_cleanup_failed",
-                            error_message=str(e),
-                        )
-                    job_repo.set_last_run(
-                        cls.JOB_AUTO_BACKUP_CLEANUP,
-                        last_run_time=_fmt_db_dt(now),
-                        last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
-                    )
-            except Exception:
-                pass
-            return False, {"due": True, "error": str(e)}
-
-    @classmethod
-    def _cleanup_operation_logs_with_limit(
-        cls,
-        conn,
-        *,
-        keep_days: int,
-        min_keep_logs: int,
-        max_delete: int,
-    ) -> Tuple[int, Dict[str, Any]]:
-        total = conn.execute("SELECT COUNT(1) FROM OperationLogs").fetchone()[0]
-        if int(total) <= int(min_keep_logs):
-            return 0, {"total": int(total), "skipped": True, "reason": "total_le_min_keep"}
-
-        cutoff_dt = datetime.now() - timedelta(days=int(keep_days))
-        cutoff = _fmt_db_dt(cutoff_dt)
-
-        cand = conn.execute("SELECT COUNT(1) FROM OperationLogs WHERE log_time < ?", (cutoff,)).fetchone()[0]
-        cand = int(cand)
-        if cand <= 0:
-            return 0, {"total": int(total), "cutoff": cutoff, "candidates": 0, "skipped": True, "reason": "no_candidates"}
-
-        allow = min(int(max_delete), int(total) - int(min_keep_logs))
-        to_delete = min(cand, allow)
-        if to_delete <= 0:
-            return 0, {"total": int(total), "cutoff": cutoff, "candidates": cand, "skipped": True, "reason": "allow_le_0"}
-
-        conn.execute(
-            """
-            DELETE FROM OperationLogs
-            WHERE id IN (
-                SELECT id FROM OperationLogs
-                WHERE log_time < ?
-                ORDER BY log_time ASC, id ASC
-                LIMIT ?
-            )
-            """,
-            (cutoff, int(to_delete)),
-        )
-        return int(to_delete), {"total": int(total), "cutoff": cutoff, "candidates": cand, "allow": int(allow)}
-
-    @classmethod
-    def _maybe_run_auto_log_cleanup(
-        cls,
-        conn,
-        *,
-        job_repo: SystemJobStateRepository,
-        now: datetime,
-        interval_minutes: int,
-        keep_days: int,
-        logger=None,
-        op_logger=None,
-    ) -> Tuple[bool, Dict[str, Any]]:
-        due, last_run = cls._is_due(job_repo, cls.JOB_AUTO_LOG_CLEANUP, now, interval_minutes)
-        if not due:
-            return False, {"due": False, "last_run_time": last_run}
-
-        t0 = time.time()
-        try:
-            deleted = 0
-            meta: Dict[str, Any] = {}
-            time_cost_ms = 0
-            with TransactionManager(conn).transaction():
-                deleted, meta = cls._cleanup_operation_logs_with_limit(
-                    conn,
-                    keep_days=int(keep_days),
-                    min_keep_logs=int(cls.MIN_KEEP_LOGS),
-                    max_delete=int(cls.MAX_LOG_DELETE_PER_RUN),
-                )
-                time_cost_ms = int((time.time() - t0) * 1000)
-                if op_logger is not None:
-                    op_logger.info(
-                        module="system",
-                        action="logs_cleanup",
-                        target_type="operation_log",
-                        target_id=None,
-                        detail={
-                            "mode": "auto",
-                            "keep_days": int(keep_days),
-                            "deleted_count": int(deleted),
-                            "min_keep_logs": int(cls.MIN_KEEP_LOGS),
-                            "max_delete_per_run": int(cls.MAX_LOG_DELETE_PER_RUN),
-                            "time_cost_ms": time_cost_ms,
-                            **meta,
-                        },
-                    )
-                job_repo.set_last_run(
-                    cls.JOB_AUTO_LOG_CLEANUP,
-                    last_run_time=_fmt_db_dt(now),
-                    last_run_detail=json.dumps(
-                        {"deleted_count": deleted, "time_cost_ms": time_cost_ms, **meta},
-                        ensure_ascii=False,
-                    ),
-                )
-            return True, {"due": True, "deleted_count": int(deleted), **meta}
-        except Exception as e:
-            if logger:
-                logger.error(f"自动清理操作日志失败：{e}")
-            time_cost_ms = int((time.time() - t0) * 1000)
-            try:
-                with TransactionManager(conn).transaction():
-                    if op_logger is not None:
-                        op_logger.error(
-                            module="system",
-                            action="logs_cleanup",
-                            target_type="operation_log",
-                            target_id=None,
-                            detail={"mode": "auto", "time_cost_ms": time_cost_ms},
-                            error_code="auto_log_cleanup_failed",
-                            error_message=str(e),
-                        )
-                    job_repo.set_last_run(
-                        cls.JOB_AUTO_LOG_CLEANUP,
-                        last_run_time=_fmt_db_dt(now),
-                        last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
-                    )
-            except Exception:
-                pass
-            return False, {"due": True, "error": str(e)}
+    def reset_throttle_for_tests(cls) -> None:
+        MaintenanceThrottle.reset()
 

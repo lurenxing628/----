@@ -1,56 +1,14 @@
 from __future__ import annotations
 
 import json
-import math
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from data.repositories import ConfigRepository
-from .number_utils import parse_finite_float, parse_finite_int, to_yes_no
-
-
-@dataclass
-class ScheduleConfigSnapshot:
-    sort_strategy: str
-    priority_weight: float
-    due_weight: float
-    ready_weight: float
-    holiday_default_efficiency: float  # 工作日历：假期默认效率（>0；假期安排工作且效率未填时使用）
-    enforce_ready_default: str  # yes/no：执行排产时是否默认启用“齐套约束”
-    prefer_primary_skill: str  # yes/no：工序补充页优先推荐主操/高技能人员
-    dispatch_mode: str  # batch_order/sgs：派工方式（sgs=就绪集合动态派工）
-    dispatch_rule: str  # slack/cr/atc：仅 dispatch_mode=sgs 生效
-    auto_assign_enabled: str  # yes/no：内部工序缺省资源时，算法自动选人/选机
-    ortools_enabled: str  # yes/no：可选 OR-Tools 高质量模式（若环境已安装）
-    ortools_time_limit_seconds: int  # OR-Tools 单次求解时间上限（秒）
-    algo_mode: str  # greedy/improve
-    time_budget_seconds: int  # 用户可自由设置（建议 <=180）
-    objective: str  # min_overdue/min_tardiness/min_changeover
-    freeze_window_enabled: str  # yes/no
-    freeze_window_days: int  # >=0
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "sort_strategy": self.sort_strategy,
-            "priority_weight": self.priority_weight,
-            "due_weight": self.due_weight,
-            "ready_weight": self.ready_weight,
-            "holiday_default_efficiency": float(self.holiday_default_efficiency),
-            "enforce_ready_default": self.enforce_ready_default,
-            "prefer_primary_skill": self.prefer_primary_skill,
-            "dispatch_mode": self.dispatch_mode,
-            "dispatch_rule": self.dispatch_rule,
-            "auto_assign_enabled": self.auto_assign_enabled,
-            "ortools_enabled": self.ortools_enabled,
-            "ortools_time_limit_seconds": int(self.ortools_time_limit_seconds),
-            "algo_mode": self.algo_mode,
-            "time_budget_seconds": int(self.time_budget_seconds),
-            "objective": self.objective,
-            "freeze_window_enabled": self.freeze_window_enabled,
-            "freeze_window_days": int(self.freeze_window_days),
-        }
+from .config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
+from .config_validator import normalize_preset_snapshot
+from .number_utils import parse_finite_float, parse_finite_int
 
 
 class ConfigService:
@@ -406,92 +364,32 @@ class ConfigService:
         - 缺键时使用默认值
         - 适用于 ensure_defaults 内部调用
         """
-        strategy = self.repo.get_value("sort_strategy", default=self.DEFAULT_SORT_STRATEGY) or self.DEFAULT_SORT_STRATEGY
-        if strategy not in self.VALID_STRATEGIES:
-            strategy = self.DEFAULT_SORT_STRATEGY
-
-        def _get_float(key: str, default: float) -> float:
-            raw = self.repo.get_value(key, default=str(default))
-            try:
-                if raw is None:
-                    return float(default)
-                f = float(raw)
-                if not math.isfinite(f):
-                    return float(default)
-                return float(f)
-            except Exception:
-                return float(default)
-
-        pw = _get_float("priority_weight", self.DEFAULT_PRIORITY_WEIGHT)
-        dw = _get_float("due_weight", self.DEFAULT_DUE_WEIGHT)
-        rw = _get_float("ready_weight", self.DEFAULT_READY_WEIGHT)
-        hde = _get_float("holiday_default_efficiency", float(self.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY))
-        if hde <= 0:
-            hde = float(self.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
-
-        raw_enforce_ready_default = self.repo.get_value("enforce_ready_default", default=str(self.DEFAULT_ENFORCE_READY_DEFAULT))
-        enforce_ready_default = to_yes_no(raw_enforce_ready_default, default=str(self.DEFAULT_ENFORCE_READY_DEFAULT))
-
-        raw_pref = self.repo.get_value("prefer_primary_skill", default="no")
-        pref = to_yes_no(raw_pref, default="no")
-
-        dm = (self.repo.get_value("dispatch_mode", default=self.DEFAULT_DISPATCH_MODE) or self.DEFAULT_DISPATCH_MODE).strip()
-        if dm not in self.VALID_DISPATCH_MODES:
-            dm = self.DEFAULT_DISPATCH_MODE
-        dr = (self.repo.get_value("dispatch_rule", default=self.DEFAULT_DISPATCH_RULE) or self.DEFAULT_DISPATCH_RULE).strip()
-        if dr not in self.VALID_DISPATCH_RULES:
-            dr = self.DEFAULT_DISPATCH_RULE
-
-        aa_raw = self.repo.get_value("auto_assign_enabled", default=self.DEFAULT_AUTO_ASSIGN_ENABLED)
-        aa = to_yes_no(aa_raw, default=self.DEFAULT_AUTO_ASSIGN_ENABLED)
-
-        ort_raw = self.repo.get_value("ortools_enabled", default=self.DEFAULT_ORTOOLS_ENABLED)
-        ort = to_yes_no(ort_raw, default=self.DEFAULT_ORTOOLS_ENABLED)
-
-        def _get_int(key: str, default: int) -> int:
-            raw = self.repo.get_value(key, default=str(default))
-            try:
-                return int(float(raw)) if raw is not None else int(default)
-            except Exception:
-                return int(default)
-
-        ort_limit = _get_int("ortools_time_limit_seconds", int(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS))
-        ort_limit = max(1, int(ort_limit))
-
-        algo_mode = (self.repo.get_value("algo_mode", default=self.DEFAULT_ALGO_MODE) or self.DEFAULT_ALGO_MODE).strip()
-        if algo_mode not in self.VALID_ALGO_MODES:
-            algo_mode = self.DEFAULT_ALGO_MODE
-
-        obj = (self.repo.get_value("objective", default=self.DEFAULT_OBJECTIVE) or self.DEFAULT_OBJECTIVE).strip()
-        if obj not in self.VALID_OBJECTIVES:
-            obj = self.DEFAULT_OBJECTIVE
-
-        time_budget = _get_int("time_budget_seconds", int(self.DEFAULT_TIME_BUDGET_SECONDS))
-        time_budget = max(1, int(time_budget))
-
-        fw_enabled_raw = self.repo.get_value("freeze_window_enabled", default=self.DEFAULT_FREEZE_WINDOW_ENABLED)
-        fw_enabled = to_yes_no(fw_enabled_raw, default=self.DEFAULT_FREEZE_WINDOW_ENABLED)
-        fw_days = _get_int("freeze_window_days", int(self.DEFAULT_FREEZE_WINDOW_DAYS))
-        fw_days = max(0, int(fw_days))
-
-        return ScheduleConfigSnapshot(
-            sort_strategy=strategy,
-            priority_weight=pw,
-            due_weight=dw,
-            ready_weight=rw,
-            holiday_default_efficiency=float(hde),
-            enforce_ready_default=enforce_ready_default,
-            prefer_primary_skill=pref,
-            dispatch_mode=dm,
-            dispatch_rule=dr,
-            auto_assign_enabled=aa,
-            ortools_enabled=ort,
-            ortools_time_limit_seconds=int(ort_limit),
-            algo_mode=algo_mode,
-            time_budget_seconds=int(time_budget),
-            objective=obj,
-            freeze_window_enabled=fw_enabled,
-            freeze_window_days=int(fw_days),
+        defaults = {
+            "sort_strategy": self.DEFAULT_SORT_STRATEGY,
+            "priority_weight": float(self.DEFAULT_PRIORITY_WEIGHT),
+            "due_weight": float(self.DEFAULT_DUE_WEIGHT),
+            "ready_weight": float(self.DEFAULT_READY_WEIGHT),
+            "holiday_default_efficiency": float(self.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY),
+            "enforce_ready_default": str(self.DEFAULT_ENFORCE_READY_DEFAULT),
+            "dispatch_mode": self.DEFAULT_DISPATCH_MODE,
+            "dispatch_rule": self.DEFAULT_DISPATCH_RULE,
+            "auto_assign_enabled": self.DEFAULT_AUTO_ASSIGN_ENABLED,
+            "ortools_enabled": self.DEFAULT_ORTOOLS_ENABLED,
+            "ortools_time_limit_seconds": int(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS),
+            "algo_mode": self.DEFAULT_ALGO_MODE,
+            "time_budget_seconds": int(self.DEFAULT_TIME_BUDGET_SECONDS),
+            "objective": self.DEFAULT_OBJECTIVE,
+            "freeze_window_enabled": self.DEFAULT_FREEZE_WINDOW_ENABLED,
+            "freeze_window_days": int(self.DEFAULT_FREEZE_WINDOW_DAYS),
+        }
+        return build_schedule_config_snapshot(
+            self.repo,
+            defaults=defaults,
+            valid_strategies=self.VALID_STRATEGIES,
+            valid_dispatch_modes=self.VALID_DISPATCH_MODES,
+            valid_dispatch_rules=self.VALID_DISPATCH_RULES,
+            valid_algo_modes=self.VALID_ALGO_MODES,
+            valid_objectives=self.VALID_OBJECTIVES,
         )
 
     def get_active_preset(self) -> Optional[str]:
@@ -557,109 +455,14 @@ class ConfigService:
         说明：这里做“容错+兜底”，避免模板数据坏了导致整个系统不可用。
         """
         base = self._default_snapshot()
-
-        # --- strategy ---
-        st = str(data.get("sort_strategy") or base.sort_strategy).strip()
-        if st not in self.VALID_STRATEGIES:
-            st = base.sort_strategy
-
-        # --- weights ---
-        def _get_float(key: str, default: float, field: str) -> float:
-            raw = data.get(key)
-            if raw is None or (isinstance(raw, str) and raw.strip() == ""):
-                return float(default)
-            v = parse_finite_float(raw, field=field, allow_none=False)
-            return float(v if v is not None else default)
-
-        pw = _get_float("priority_weight", float(base.priority_weight), field="优先级权重")
-        dw = _get_float("due_weight", float(base.due_weight), field="交期权重")
-        if pw < 0 or dw < 0:
-            raise ValidationError("权重不能为负数", field="权重")
-        percent_mode = (pw > 1.0) or (dw > 1.0)
-        if percent_mode:
-            if (0 < pw < 1) or (0 < dw < 1):
-                raise ValidationError("权重输入疑似混用小数与百分比，请统一使用 0~1 或 0~100（%）。", field="权重")
-            # 防御：避免 1000% 这种输入
-            if pw > 100.0 or dw > 100.0:
-                raise ValidationError("权重范围不合理（期望 0~1 或 0~100%）", field="权重")
-            # 百分比模式：两项都按百分比处理（因此 1 表示 1%）
-            pw = pw / 100.0
-            dw = dw / 100.0
-        if pw > 1.0 or dw > 1.0:
-            raise ValidationError("权重范围不合理（期望 0~1 或 0~100%）", field="权重")
-        rw = 1.0 - float(pw) - float(dw)
-        if rw < -1e-9:
-            raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
-        rw = max(0.0, float(rw))
-
-        # --- holiday default efficiency ---
-        hde = _get_float("holiday_default_efficiency", float(base.holiday_default_efficiency), field="holiday_default_efficiency")
-        if hde <= 0:
-            hde = float(base.holiday_default_efficiency)
-
-        # --- yes/no flags ---
-        def _yesno(v: Any, default: str = "no") -> str:
-            return to_yes_no(v, default=default)
-
-        enforce_ready_default = _yesno(data.get("enforce_ready_default"), default=str(base.enforce_ready_default))
-        prefer_primary_skill = _yesno(data.get("prefer_primary_skill"), default=str(base.prefer_primary_skill))
-        auto_assign_enabled = _yesno(data.get("auto_assign_enabled"), default=str(base.auto_assign_enabled))
-        ortools_enabled = _yesno(data.get("ortools_enabled"), default=str(base.ortools_enabled))
-        freeze_window_enabled = _yesno(data.get("freeze_window_enabled"), default=str(base.freeze_window_enabled))
-
-        # --- dispatch ---
-        dm = str(data.get("dispatch_mode") or base.dispatch_mode).strip().lower()
-        if dm not in self.VALID_DISPATCH_MODES:
-            dm = base.dispatch_mode
-        dr = str(data.get("dispatch_rule") or base.dispatch_rule).strip().lower()
-        if dr not in self.VALID_DISPATCH_RULES:
-            dr = base.dispatch_rule
-
-        # --- algo mode / objective ---
-        algo_mode = str(data.get("algo_mode") or base.algo_mode).strip().lower()
-        if algo_mode not in self.VALID_ALGO_MODES:
-            algo_mode = base.algo_mode
-        objective = str(data.get("objective") or base.objective).strip()
-        if objective not in self.VALID_OBJECTIVES:
-            objective = base.objective
-
-        # --- ints ---
-        def _get_int(key: str, default: int, min_v: int, field: str) -> int:
-            raw = data.get(key)
-            if raw is None or (isinstance(raw, str) and raw.strip() == ""):
-                v = int(default)
-            else:
-                parsed = parse_finite_int(raw, field=field, allow_none=False)
-                v = int(parsed if parsed is not None else default)
-            return max(int(min_v), int(v))
-
-        ort_limit = _get_int(
-            "ortools_time_limit_seconds",
-            int(base.ortools_time_limit_seconds),
-            1,
-            field="ortools_time_limit_seconds",
-        )
-        time_budget = _get_int("time_budget_seconds", int(base.time_budget_seconds), 1, field="time_budget_seconds")
-        fw_days = _get_int("freeze_window_days", int(base.freeze_window_days), 0, field="freeze_window_days")
-
-        return ScheduleConfigSnapshot(
-            sort_strategy=st,
-            priority_weight=float(pw),
-            due_weight=float(dw),
-            ready_weight=float(rw),
-            holiday_default_efficiency=float(hde),
-            enforce_ready_default=enforce_ready_default,
-            prefer_primary_skill=prefer_primary_skill,
-            dispatch_mode=dm,
-            dispatch_rule=dr,
-            auto_assign_enabled=auto_assign_enabled,
-            ortools_enabled=ortools_enabled,
-            ortools_time_limit_seconds=int(ort_limit),
-            algo_mode=algo_mode,
-            time_budget_seconds=int(time_budget),
-            objective=objective,
-            freeze_window_enabled=freeze_window_enabled,
-            freeze_window_days=int(fw_days),
+        return normalize_preset_snapshot(
+            data,
+            base=base,
+            valid_strategies=self.VALID_STRATEGIES,
+            valid_dispatch_modes=self.VALID_DISPATCH_MODES,
+            valid_dispatch_rules=self.VALID_DISPATCH_RULES,
+            valid_algo_modes=self.VALID_ALGO_MODES,
+            valid_objectives=self.VALID_OBJECTIVES,
         )
 
     def apply_preset(self, name: Any) -> str:
@@ -682,25 +485,28 @@ class ConfigService:
         snap = self._normalize_preset_snapshot(data)
 
         # 原子写入：一次性更新所有配置键 + active_preset
+        updates = [
+            ("sort_strategy", snap.sort_strategy, None),
+            ("priority_weight", str(float(snap.priority_weight)), None),
+            ("due_weight", str(float(snap.due_weight)), None),
+            ("ready_weight", str(float(snap.ready_weight)), None),
+            ("holiday_default_efficiency", str(float(snap.holiday_default_efficiency)), None),
+            ("enforce_ready_default", str(snap.enforce_ready_default), None),
+            ("prefer_primary_skill", str(snap.prefer_primary_skill), None),
+            ("dispatch_mode", str(snap.dispatch_mode), None),
+            ("dispatch_rule", str(snap.dispatch_rule), None),
+            ("auto_assign_enabled", str(snap.auto_assign_enabled), None),
+            ("ortools_enabled", str(snap.ortools_enabled), None),
+            ("ortools_time_limit_seconds", str(int(snap.ortools_time_limit_seconds)), None),
+            ("algo_mode", str(snap.algo_mode), None),
+            ("time_budget_seconds", str(int(snap.time_budget_seconds)), None),
+            ("objective", str(snap.objective), None),
+            ("freeze_window_enabled", str(snap.freeze_window_enabled), None),
+            ("freeze_window_days", str(int(snap.freeze_window_days)), None),
+            (self.ACTIVE_PRESET_KEY, n, "当前启用排产配置模板"),
+        ]
         with self.tx_manager.transaction():
-            self.repo.set("sort_strategy", snap.sort_strategy, description=None)
-            self.repo.set("priority_weight", str(float(snap.priority_weight)), description=None)
-            self.repo.set("due_weight", str(float(snap.due_weight)), description=None)
-            self.repo.set("ready_weight", str(float(snap.ready_weight)), description=None)
-            self.repo.set("holiday_default_efficiency", str(float(snap.holiday_default_efficiency)), description=None)
-            self.repo.set("enforce_ready_default", str(snap.enforce_ready_default), description=None)
-            self.repo.set("prefer_primary_skill", str(snap.prefer_primary_skill), description=None)
-            self.repo.set("dispatch_mode", str(snap.dispatch_mode), description=None)
-            self.repo.set("dispatch_rule", str(snap.dispatch_rule), description=None)
-            self.repo.set("auto_assign_enabled", str(snap.auto_assign_enabled), description=None)
-            self.repo.set("ortools_enabled", str(snap.ortools_enabled), description=None)
-            self.repo.set("ortools_time_limit_seconds", str(int(snap.ortools_time_limit_seconds)), description=None)
-            self.repo.set("algo_mode", str(snap.algo_mode), description=None)
-            self.repo.set("time_budget_seconds", str(int(snap.time_budget_seconds)), description=None)
-            self.repo.set("objective", str(snap.objective), description=None)
-            self.repo.set("freeze_window_enabled", str(snap.freeze_window_enabled), description=None)
-            self.repo.set("freeze_window_days", str(int(snap.freeze_window_days)), description=None)
-            self.repo.set(self.ACTIVE_PRESET_KEY, n, description="当前启用排产配置模板")
+            self.repo.set_batch(updates)
 
         return n
 
@@ -752,34 +558,36 @@ class ConfigService:
             self.repo.set("ready_weight", str(rw), description="权重模式-齐套权重")
 
     def restore_default(self) -> None:
-        with self.tx_manager.transaction():
-            self.repo.set("sort_strategy", self.DEFAULT_SORT_STRATEGY, description="当前排序策略")
-            self.repo.set("priority_weight", str(self.DEFAULT_PRIORITY_WEIGHT), description="权重模式-优先级权重")
-            self.repo.set("due_weight", str(self.DEFAULT_DUE_WEIGHT), description="权重模式-交期权重")
-            self.repo.set("ready_weight", str(self.DEFAULT_READY_WEIGHT), description="权重模式-齐套权重")
-            self.repo.set(
+        updates = [
+            ("sort_strategy", self.DEFAULT_SORT_STRATEGY, "当前排序策略"),
+            ("priority_weight", str(self.DEFAULT_PRIORITY_WEIGHT), "权重模式-优先级权重"),
+            ("due_weight", str(self.DEFAULT_DUE_WEIGHT), "权重模式-交期权重"),
+            ("ready_weight", str(self.DEFAULT_READY_WEIGHT), "权重模式-齐套权重"),
+            (
                 "holiday_default_efficiency",
                 str(self.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY),
-                description="工作日历：假期默认效率（>0；假期安排工作且效率未填时使用）",
-            )
-            self.repo.set(
+                "工作日历：假期默认效率（>0；假期安排工作且效率未填时使用）",
+            ),
+            (
                 "enforce_ready_default",
                 str(self.DEFAULT_ENFORCE_READY_DEFAULT),
-                description="执行排产：默认启用齐套约束（yes/no）",
-            )
-            self.repo.set("prefer_primary_skill", "no", description="工序补充页：优先推荐主操/高技能人员（yes/no）")
-            self.repo.set("dispatch_mode", self.DEFAULT_DISPATCH_MODE, description="派工方式：batch_order/sgs（sgs=就绪集合动态派工）")
-            self.repo.set("dispatch_rule", self.DEFAULT_DISPATCH_RULE, description="SGS 派工规则：slack/cr/atc（仅 dispatch_mode=sgs 生效）")
-            self.repo.set("auto_assign_enabled", self.DEFAULT_AUTO_ASSIGN_ENABLED, description="算法自动分配缺省资源（内部工序 machine/operator 未填时）")
-            self.repo.set("ortools_enabled", self.DEFAULT_ORTOOLS_ENABLED, description="可选 OR-Tools 高质量模式（若环境已安装）")
-            self.repo.set("ortools_time_limit_seconds", str(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS), description="OR-Tools 单次求解时间上限（秒；仅 ortools_enabled=yes 生效）")
-            self.repo.set("algo_mode", self.DEFAULT_ALGO_MODE, description="算法模式：greedy/improve（improve=多起点+目标函数+时间预算）")
-            self.repo.set("time_budget_seconds", str(self.DEFAULT_TIME_BUDGET_SECONDS), description="算法时间预算（秒；仅 improve 模式生效；建议<=180）")
-            self.repo.set("objective", self.DEFAULT_OBJECTIVE, description="目标函数：min_overdue/min_tardiness/min_changeover")
-            self.repo.set("freeze_window_enabled", self.DEFAULT_FREEZE_WINDOW_ENABLED, description="冻结窗口开关（yes/no）：复用上一版本窗口内排程")
-            self.repo.set("freeze_window_days", str(self.DEFAULT_FREEZE_WINDOW_DAYS), description="冻结窗口天数（>=0；仅 freeze_window_enabled=yes 生效）")
-            # 恢复默认时：认为回到“默认-稳定”
-            self.repo.set(self.ACTIVE_PRESET_KEY, self.BUILTIN_PRESET_DEFAULT, description="当前启用排产配置模板")
+                "执行排产：默认启用齐套约束（yes/no）",
+            ),
+            ("prefer_primary_skill", "no", "工序补充页：优先推荐主操/高技能人员（yes/no）"),
+            ("dispatch_mode", self.DEFAULT_DISPATCH_MODE, "派工方式：batch_order/sgs（sgs=就绪集合动态派工）"),
+            ("dispatch_rule", self.DEFAULT_DISPATCH_RULE, "SGS 派工规则：slack/cr/atc（仅 dispatch_mode=sgs 生效）"),
+            ("auto_assign_enabled", self.DEFAULT_AUTO_ASSIGN_ENABLED, "算法自动分配缺省资源（内部工序 machine/operator 未填时）"),
+            ("ortools_enabled", self.DEFAULT_ORTOOLS_ENABLED, "可选 OR-Tools 高质量模式（若环境已安装）"),
+            ("ortools_time_limit_seconds", str(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS), "OR-Tools 单次求解时间上限（秒；仅 ortools_enabled=yes 生效）"),
+            ("algo_mode", self.DEFAULT_ALGO_MODE, "算法模式：greedy/improve（improve=多起点+目标函数+时间预算）"),
+            ("time_budget_seconds", str(self.DEFAULT_TIME_BUDGET_SECONDS), "算法时间预算（秒；仅 improve 模式生效；建议<=180）"),
+            ("objective", self.DEFAULT_OBJECTIVE, "目标函数：min_overdue/min_tardiness/min_changeover"),
+            ("freeze_window_enabled", self.DEFAULT_FREEZE_WINDOW_ENABLED, "冻结窗口开关（yes/no）：复用上一版本窗口内排程"),
+            ("freeze_window_days", str(self.DEFAULT_FREEZE_WINDOW_DAYS), "冻结窗口天数（>=0；仅 freeze_window_enabled=yes 生效）"),
+            (self.ACTIVE_PRESET_KEY, self.BUILTIN_PRESET_DEFAULT, "当前启用排产配置模板"),
+        ]
+        with self.tx_manager.transaction():
+            self.repo.set_batch(updates)
 
     def set_dispatch(self, dispatch_mode: Any, dispatch_rule: Any) -> None:
         dm = str(dispatch_mode or "").strip().lower()

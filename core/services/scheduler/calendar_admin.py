@@ -219,6 +219,9 @@ class CalendarAdmin:
         with self.tx_manager.transaction():
             self.repo.delete(d)
 
+    def delete_all_no_tx(self) -> None:
+        self.repo.delete_all()
+
     # -------------------------
     # OperatorCalendar：CRUD（人员专属日历）
     # -------------------------
@@ -322,4 +325,7 @@ class CalendarAdmin:
         d = self._normalize_date(date_value)
         with self.tx_manager.transaction():
             self.operator_calendar_repo.delete(op_id, d)
+
+    def delete_operator_calendar_all_no_tx(self) -> None:
+        self.operator_calendar_repo.delete_all()
 

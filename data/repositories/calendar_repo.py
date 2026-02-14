@@ -63,3 +63,6 @@ class CalendarRepository(BaseRepository):
     def delete(self, date: str) -> None:
         self.execute("DELETE FROM WorkCalendar WHERE date = ?", (date,))
 
+    def delete_all(self) -> None:
+        self.execute("DELETE FROM WorkCalendar")
+

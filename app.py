@@ -1,12 +1,8 @@
 import atexit
-import ipaddress
 import json
 import os
 import secrets
-import socket
 import sys
-from pathlib import Path
-from typing import Tuple
 from flask import Flask, g, request
 
 from config import config as config_map
@@ -27,6 +23,9 @@ from web.routes.scheduler import bp as scheduler_bp
 from web.routes.system import bp as system_bp
 from web.routes.material import bp as material_bp
 from web.routes.reports import bp as reports_bp
+from web.bootstrap.factory import create_app_core
+from web.bootstrap.launcher import pick_bind_host, pick_port, write_runtime_host_port_files
+from web.bootstrap.paths import runtime_base_dir
 
 
 # atexit 退出备份去重：避免 create_app() 在测试/脚本中被多次调用导致重复注册
@@ -35,20 +34,7 @@ _EXIT_BACKUP_REGISTERED = False
 
 
 def _runtime_base_dir() -> str:
-    """
-    获取运行根目录：
-    - 源码运行：仓库根目录（app.py 所在目录）
-    - PyInstaller onedir：exe 所在目录
-    """
-    try:
-        if getattr(sys, "frozen", False):
-            return str(Path(sys.executable).resolve().parent)
-        return str(Path(__file__).resolve().parent)
-    except Exception:
-        # 兜底：即使 __file__ 为相对路径/空串，也保证返回绝对路径且不为空
-        if getattr(sys, "frozen", False):
-            return os.path.abspath(os.path.dirname(sys.executable) or ".")
-        return os.path.abspath(os.path.dirname(__file__ or "") or ".")
+    return runtime_base_dir(anchor_file=__file__)
 
 
 def _ensure_secret_key(app: Flask) -> None:
@@ -109,7 +95,7 @@ def _ensure_secret_key(app: Flask) -> None:
             pass
 
 
-def create_app() -> Flask:
+def _create_app_legacy() -> Flask:
     # 默认环境：
     # - 源码运行：development（便于调试）
     # - PyInstaller 打包后：production（避免 reloader/调试模式带来的多进程与副作用）
@@ -318,6 +304,15 @@ def create_app() -> Flask:
     return app
 
 
+def create_app() -> Flask:
+    return create_app_core(
+        ui_mode="default",
+        enable_secret_key=True,
+        enable_security_headers=True,
+        enable_session_cookie_hardening=True,
+    )
+
+
 app = create_app()
 
 
@@ -329,19 +324,9 @@ if __name__ == "__main__":
     # - 若绑定失败（WinError 10013/10048 等），自动选择可用端口，并写入 logs/aps_port.txt
     #
     # 说明：这能让启动器（bat）与运维排障更稳定：只要读取端口文件即可知道实际端口。
-    # 仅支持 IPv4（当前端口探测用 AF_INET）；若 APS_HOST 非法/IPv6/hostname，则回退到 127.0.0.1
+    # 仅支持 IPv4；若 APS_HOST 非法/IPv6/hostname，则回退到 127.0.0.1
     raw_host = os.environ.get("APS_HOST")
-    host = (raw_host or "").strip() or "127.0.0.1"
-    try:
-        ip = ipaddress.ip_address(host)
-        if getattr(ip, "version", None) != 4:
-            raise ValueError("not ipv4")
-    except Exception:
-        try:
-            app.logger.warning(f"APS_HOST 非法或非 IPv4：{host}，已回退到 127.0.0.1")
-        except Exception:
-            pass
-        host = "127.0.0.1"
+    host = pick_bind_host(raw_host, logger=app.logger)
 
     # 解析“首选端口”
     raw_port = os.environ.get("APS_PORT")
@@ -352,75 +337,8 @@ if __name__ == "__main__":
         except Exception:
             preferred_port = 5000
 
-    def _can_bind(host0: str, port0: int) -> bool:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            # 防御：某些环境下不允许设置该选项，忽略即可
-            try:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            except Exception:
-                pass
-            s.bind((host0, int(port0)))
-            return True
-        except Exception:
-            return False
-        finally:
-            try:
-                s.close()
-            except Exception:
-                pass
-
-    def _pick_port(host0: str, preferred: int) -> Tuple[str, int]:
-        """
-        选择可用端口，并返回“实际可监听的 host+port”。
-        - 优先在 host0 上尝试
-        - host0 不可绑定时回退到 127.0.0.1（避免继续用不可绑定 host 导致 app.run 失败）
-        """
-        # 1) 先尝试 preferred，再尝试 5000（若不同），再尝试常用候选
-        candidates = []
-        for p in [preferred, 5000, 5705, 5706, 5707, 5710, 5711, 5712, 5713, 5714, 5715]:
-            try:
-                p0 = int(p)
-            except Exception:
-                continue
-            if p0 <= 0:
-                continue
-            if p0 not in candidates:
-                candidates.append(p0)
-        fallback_host = "127.0.0.1"
-
-        for p in candidates:
-            if _can_bind(host0, p):
-                return (host0, int(p))
-
-        # host0 不可绑定（例如未分配到本机的 IPv4）：在 fallback_host 上再试一次，尽量保持端口稳定
-        if host0 != fallback_host:
-            for p in candidates:
-                if _can_bind(fallback_host, p):
-                    return (fallback_host, int(p))
-
-        # 2) 全部失败：让 OS 挑一个临时可用端口（bind 0）
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            try:
-                s.bind((host0, 0))
-                _h, p = s.getsockname()
-                return (host0, int(p))
-            except Exception:
-                # 防御：host0 不可绑定时回退到 127.0.0.1
-                s.close()
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.bind((fallback_host, 0))
-                _h, p = s.getsockname()
-                return (fallback_host, int(p))
-        finally:
-            try:
-                s.close()
-            except Exception:
-                pass
-
     requested_host = host
-    host, port = _pick_port(host, preferred_port)
+    host, port = pick_port(host, preferred_port, logger=app.logger)
     if host != requested_host:
         try:
             app.logger.warning(f"APS_HOST={requested_host} 不可绑定，已回退到 {host}（port={port}）")
@@ -434,47 +352,17 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    # 写入启动信息文件：
-    # - logs/aps_port.txt：仅端口数字 + 换行（契约：便于 bat/运维读取）
-    # - logs/aps_host.txt：实际可访问 host + 换行（用于 APS_HOST 不可绑定时的回退场景）
+    # 写入启动信息文件契约：
+    # - logs/aps_port.txt：仅端口数字 + 换行
+    # - logs/aps_host.txt：实际可访问 host + 换行
     try:
-        # 契约：优先固定写入“运行目录/logs/aps_port.txt”（与交付启动器一致）
-        runtime_log_dir = os.path.join(_runtime_base_dir(), "logs")
-        os.makedirs(runtime_log_dir, exist_ok=True)
-        port_file = os.path.join(runtime_log_dir, "aps_port.txt")
-        host_file = os.path.join(runtime_log_dir, "aps_host.txt")
-        with open(port_file, "w", encoding="utf-8") as f:
-            f.write(str(int(port)) + "\n")
-        # 注意：app.run(host="0.0.0.0") 时，客户端不能用 0.0.0.0 访问；对本机启动器而言应使用 127.0.0.1
-        host_for_client = (str(host or "").strip() or "127.0.0.1")
-        if host_for_client == "0.0.0.0":
-            host_for_client = "127.0.0.1"
-        with open(host_file, "w", encoding="utf-8") as f:
-            f.write(str(host_for_client) + "\n")
-
-        # 可选镜像：若用户将 LOG_DIR 指到其它位置，也写一份，便于排障
-        cfg_log_dir = app.config.get("LOG_DIR")
-        try:
-            cfg_log_dir = str(cfg_log_dir).strip() if cfg_log_dir is not None else ""
-        except Exception:
-            cfg_log_dir = ""
-        if cfg_log_dir:
-            try:
-                if os.path.abspath(cfg_log_dir) != os.path.abspath(runtime_log_dir):
-                    os.makedirs(cfg_log_dir, exist_ok=True)
-                    mirror_port_file = os.path.join(cfg_log_dir, "aps_port.txt")
-                    with open(mirror_port_file, "w", encoding="utf-8") as f2:
-                        f2.write(str(int(port)) + "\n")
-                    mirror_host_file = os.path.join(cfg_log_dir, "aps_host.txt")
-                    with open(mirror_host_file, "w", encoding="utf-8") as f3:
-                        f3.write(str(host_for_client) + "\n")
-            except Exception:
-                pass
-        try:
-            app.logger.info(f"端口已写入：{port_file} -> {int(port)}")
-            app.logger.info(f"Host 已写入：{host_file} -> {host_for_client}")
-        except Exception:
-            pass
+        write_runtime_host_port_files(
+            runtime_dir=_runtime_base_dir(),
+            cfg_log_dir=app.config.get("LOG_DIR"),
+            host=host,
+            port=port,
+            logger=app.logger,
+        )
     except Exception as e:
         try:
             app.logger.warning(f"写入启动信息文件失败（已忽略）：{e}")
