@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from core.services.common.excel_import_executor import execute_preview_rows_transactional
+from core.services.common.excel_service import ImportMode
 from core.models import OperatorCalendar, WorkCalendar
 
 from .calendar_admin import CalendarAdmin
@@ -138,6 +140,54 @@ class CalendarService:
 
     def delete_operator_calendar_all_no_tx(self) -> None:
         self._admin.delete_operator_calendar_all_no_tx()
+
+    def import_operator_calendar_from_preview_rows(self, *, preview_rows: List[Any], mode: ImportMode) -> Dict[str, Any]:
+        """
+        人员专属日历 Excel 导入编排入口（事务由本方法统一控制）。
+        """
+        rows = list(preview_rows or [])
+        existing_ids = {f"{c.operator_id}|{c.date}" for c in self.list_operator_calendar_all()}
+
+        def _replace_existing_no_tx() -> None:
+            self.delete_operator_calendar_all_no_tx()
+
+        def _row_id_getter(pr: Any) -> str:
+            rid = str(pr.data.get("__id") or "").strip()
+            if rid:
+                return rid
+            op_id = str(pr.data.get("工号") or "").strip()
+            date_str = str(pr.data.get("日期") or "").strip()
+            return f"{op_id}|{date_str}"
+
+        def _apply_row_no_tx(pr: Any, _existed: bool) -> None:
+            self.upsert_operator_calendar_no_tx(
+                {
+                    "operator_id": str(pr.data.get("工号") or "").strip(),
+                    "date": str(pr.data.get("日期") or "").strip(),
+                    "day_type": pr.data.get("类型"),
+                    "shift_start": pr.data.get("班次开始"),
+                    "shift_end": pr.data.get("班次结束") or None,
+                    "shift_hours": pr.data.get("可用工时"),
+                    "efficiency": pr.data.get("效率"),
+                    "allow_normal": pr.data.get("允许普通件"),
+                    "allow_urgent": pr.data.get("允许急件"),
+                    "remark": pr.data.get("说明"),
+                }
+            )
+
+        stats = execute_preview_rows_transactional(
+            self.conn,
+            mode=mode,
+            preview_rows=rows,
+            existing_row_ids=existing_ids,
+            replace_existing_no_tx=_replace_existing_no_tx,
+            row_id_getter=_row_id_getter,
+            apply_row_no_tx=_apply_row_no_tx,
+            max_error_sample=10,
+        )
+        result = stats.to_dict()
+        result["total_rows"] = len(rows)
+        return result
 
     def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
         return self._engine.policy_for_datetime(dt, operator_id=operator_id)

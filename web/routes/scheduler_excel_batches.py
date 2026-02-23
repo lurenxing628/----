@@ -11,7 +11,6 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 from web.ui_mode import render_ui_template as render_template
 
 from core.infrastructure.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
@@ -228,85 +227,16 @@ def excel_batches_confirm():
             export_url=url_for("scheduler.excel_batches_export"),
         )
 
-    tx = TransactionManager(g.db)
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample: List[Dict[str, Any]] = []
-
-    with tx.transaction():
-        if mode == ImportMode.REPLACE:
-            # 直接清空批次（级联会清空批次工序/排程等）
-            svc.delete_all_no_tx()
-            existing = {}  # 重要：REPLACE 后按“全新导入”处理，避免走 update 分支
-
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": pr.message})
-                continue
-
-            bid = str(pr.data.get("批次号")).strip()
-            pn = str(pr.data.get("图号")).strip()
-            qty = int(pr.data.get("数量"))
-            dd = pr.data.get("交期")
-            prio = str(pr.data.get("优先级") or "normal").strip()
-            # 齐套可缺省：默认视为 yes
-            ready = str(pr.data.get("齐套") or "yes").strip()
-            ready_date = pr.data.get("齐套日期")
-            remark = pr.data.get("备注")
-
-            if mode == ImportMode.APPEND and bid in existing:
-                skip_count += 1
-                continue
-
-            part_name = parts.get(pn).part_name if parts.get(pn) else None
-
-            if bid in existing:
-                # 注意：此处必须使用 no_tx，保证整批导入可整体回滚
-                svc.update_no_tx(
-                    bid,
-                    {
-                        "part_no": pn,
-                        "part_name": part_name,
-                        "quantity": qty,
-                        "due_date": dd,
-                        "priority": prio,
-                        "ready_status": ready,
-                        "ready_date": ready_date,
-                        "remark": remark,
-                    },
-                )
-                update_count += 1
-            else:
-                svc.create_no_tx(
-                    {
-                        "batch_id": bid,
-                        "part_no": pn,
-                        "part_name": part_name,
-                        "quantity": qty,
-                        "due_date": dd,
-                        "priority": prio,
-                        "ready_status": ready,
-                        "ready_date": ready_date,
-                        "status": "pending",
-                        "remark": remark,
-                    }
-                )
-                new_count += 1
-
-            if auto_generate_ops:
-                # 统一按“重建工序”执行（会覆盖已补充信息）
-                svc.create_batch_from_template_no_tx(
-                    batch_id=bid,
-                    part_no=pn,
-                    quantity=qty,
-                    due_date=_normalize_due_date(dd),
-                    priority=prio,
-                    ready_status=ready,
-                    ready_date=_normalize_due_date(ready_date),
-                    remark=(str(remark).strip() if remark is not None and str(remark).strip() else None),
-                    rebuild_ops=True,
-                )
+    import_stats = svc.import_from_preview_rows(
+        preview_rows=preview_rows,
+        mode=mode,
+        parts_cache=parts,
+        auto_generate_ops=auto_generate_ops,
+    )
+    new_count = int(import_stats.get("new_count", 0))
+    update_count = int(import_stats.get("update_count", 0))
+    skip_count = int(import_stats.get("skip_count", 0))
+    error_count = int(import_stats.get("error_count", 0))
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -315,15 +245,7 @@ def excel_batches_confirm():
         target_type="batch",
         filename=filename,
         mode=mode,
-        preview_or_result={
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-            "auto_generate_ops": bool(auto_generate_ops),
-        },
+        preview_or_result=import_stats,
         time_cost_ms=time_cost_ms,
     )
 

@@ -12,7 +12,6 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 from web.ui_mode import render_ui_template as render_template
 
 from core.infrastructure.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
@@ -254,50 +253,14 @@ def excel_operator_calendar_confirm():
             export_url=url_for("personnel.excel_operator_calendar_export"),
         )
 
-    tx = TransactionManager(g.db)
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample: List[Dict[str, Any]] = []
-
-    with tx.transaction():
-        if mode == ImportMode.REPLACE:
-            cal_svc.delete_operator_calendar_all_no_tx()
-            existing = {}
-
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": pr.message})
-                continue
-
-            row_id = str(pr.data.get("__id") or "").strip()
-            if mode == ImportMode.APPEND and row_id in existing:
-                skip_count += 1
-                continue
-
-            op_id = str(pr.data.get("工号") or "").strip()
-            date_str = str(pr.data.get("日期") or "").strip()
-            existed = row_id in existing
-
-            # 注意：此处必须使用 no_tx，保证整批导入可整体回滚
-            cal_svc.upsert_operator_calendar_no_tx(
-                {
-                    "operator_id": op_id,
-                    "date": date_str,
-                    "day_type": pr.data.get("类型"),
-                    "shift_start": pr.data.get("班次开始"),
-                    "shift_end": pr.data.get("班次结束") or None,
-                    "shift_hours": pr.data.get("可用工时"),
-                    "efficiency": pr.data.get("效率"),
-                    "allow_normal": pr.data.get("允许普通件"),
-                    "allow_urgent": pr.data.get("允许急件"),
-                    "remark": pr.data.get("说明"),
-                }
-            )
-            if existed:
-                update_count += 1
-            else:
-                new_count += 1
+    import_stats = cal_svc.import_operator_calendar_from_preview_rows(
+        preview_rows=preview_rows,
+        mode=mode,
+    )
+    new_count = int(import_stats.get("new_count", 0))
+    update_count = int(import_stats.get("update_count", 0))
+    skip_count = int(import_stats.get("skip_count", 0))
+    error_count = int(import_stats.get("error_count", 0))
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -306,14 +269,7 @@ def excel_operator_calendar_confirm():
         target_type="operator_calendar",
         filename=filename,
         mode=mode,
-        preview_or_result={
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-        },
+        preview_or_result=import_stats,
         time_cost_ms=time_cost_ms,
     )
 

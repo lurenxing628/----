@@ -233,12 +233,12 @@ def _create_app_legacy() -> Flask:
 
 
 def create_app() -> Flask:
-    # new_ui 入口先统一最小安全基线（SECRET_KEY），其余安全策略差异后续再显式收敛。
+    # A06：new_ui 入口安全策略显式收敛到与主入口一致。
     return create_app_core(
         ui_mode="new_ui",
         enable_secret_key=True,
-        enable_security_headers=False,
-        enable_session_cookie_hardening=False,
+        enable_security_headers=True,
+        enable_session_cookie_hardening=True,
     )
 
 
