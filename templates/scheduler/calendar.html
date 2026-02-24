@@ -8,8 +8,9 @@
       <div>
         <h2>工作日历配置</h2>
         <p class="muted">
-          说明：用于后续排产算法的“工作时间/效率/允许排产的优先级”约束。
-          未配置日期会按默认规则兜底（工作日 8 小时；周末/假期默认不排产）。可在此显式配置调休/加班（把某天设为“假期”或“工作日”）。
+          设置排产时使用的工作时间、效率和可排产优先级。
+          未配置日期会按默认规则处理（工作日 8 小时；周末/假期默认不排产）。
+          也可以在这里配置调休或加班。
         </p>
       </div>
       <div>
@@ -23,7 +24,7 @@
   <div class="card wc-card-allow-overflow">
     <h3>新增 / 更新某一天</h3>
     <form method="post" action="{{ url_for('scheduler.calendar_upsert') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="form-row">
         <div class="wc-date-wrap">
           <label>日期</label><br/>
           <div style="display:flex; gap:8px; align-items:center;">
@@ -136,5 +137,5 @@
       holidayDefaultEfficiency: {{ (holiday_default_efficiency if holiday_default_efficiency is defined else 0.8)|tojson }}
     };
   </script>
-  <script src="{{ url_for('static', filename='js/calendar_picker.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/calendar_picker.js') }}" defer></script>
 {% endblock %}

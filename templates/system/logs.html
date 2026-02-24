@@ -2,7 +2,7 @@
 {% block content %}
   <div class="card">
     <h2>系统管理 - 操作日志（OperationLogs）</h2>
-    <p class="muted">说明：可按时间/模块/动作筛选。detail 为 JSON 时会展开显示（中文可读）。</p>
+    <p class="muted">可按时间、模块、动作筛选日志。详情是 JSON 时会自动展开。</p>
 
     <div style="margin-bottom: 12px;">
       <a href="{{ url_for('system.backup_page') }}">备份/恢复</a>
@@ -12,8 +12,8 @@
       <a href="{{ url_for('system.history_page') }}">排产历史</a>
     </div>
 
-    <h3 style="margin-top:10px;">日志自动清理（保留策略，按请求触发）</h3>
-    <p class="muted">说明：自动清理只会在“有请求访问系统时”按分钟间隔触发；内部有保底保留与限额，避免过度清理与占用性能。</p>
+    <h3 style="margin-top:10px;">日志自动清理（按请求触发）</h3>
+    <p class="muted">自动清理会在系统被访问时按间隔执行，内部有保底保留和限额，避免过度清理。</p>
     {% if maintenance_limits %}
       <p class="muted">保底/限额：至少保留最近 {{ maintenance_limits.min_keep_logs }} 条日志；单次自动清理最多删除 {{ maintenance_limits.max_log_delete_per_run }} 条。</p>
     {% endif %}
@@ -62,11 +62,11 @@
           <input name="end_time" value="{{ filters.end_time }}" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS" style="width:260px;">
         </div>
         <div>
-          <div class="muted">模块(module)</div>
+          <div class="muted">模块</div>
           <input name="module" value="{{ filters.module }}" placeholder="例如：system/scheduler/process" style="width:180px;">
         </div>
         <div>
-          <div class="muted">动作(action)</div>
+          <div class="muted">动作</div>
           <input name="action" value="{{ filters.action }}" placeholder="例如：import/export/schedule" style="width:180px;">
         </div>
         <div>
@@ -80,7 +80,7 @@
           </select>
         </div>
         <div>
-          <div class="muted">条数(limit)</div>
+          <div class="muted">条数</div>
           <input type="number" min="1" max="500" step="1" name="limit" value="{{ filters.limit }}" style="width:80px;">
         </div>
         <div>
@@ -91,7 +91,7 @@
     </form>
 
     <form id="logsBatchDeleteForm" method="post" action="{{ url_for('system.logs_delete_batch') }}" style="margin-top:10px;"
-          onsubmit="return confirm('确认批量删除选中的操作日志？删除后不可恢复。');">
+          data-confirm="确认批量删除选中的操作日志？删除后不可恢复。">
       <button type="submit">批量删除选中</button>
     </form>
   </div>
@@ -106,7 +106,7 @@
           <tr>
             <th style="width:60px;">
               <label class="muted">
-                <input type="checkbox" onclick="toggleAllLogs(this)">
+                <input type="checkbox" class="js-log-select-all">
                 全选
               </label>
             </th>
@@ -157,7 +157,7 @@
                 {% endif %}
               </td>
               <td>
-                <form method="post" action="{{ url_for('system.logs_delete') }}" onsubmit="return confirm('确认删除该日志？删除后不可恢复。');">
+                <form method="post" action="{{ url_for('system.logs_delete') }}" data-confirm="确认删除该日志？删除后不可恢复。">
                   <input type="hidden" name="log_id" value="{{ r.id }}">
                   <button type="submit">删除</button>
                 </form>
@@ -169,13 +169,17 @@
     {% endif %}
   </div>
 
-  <script>
-    function toggleAllLogs(source) {
-      const items = document.querySelectorAll('input[name="log_ids"][form="logsBatchDeleteForm"]');
-      for (const it of items) {
-        it.checked = source.checked;
-      }
-    }
+  <script defer>
+    (function () {
+      var allCb = document.querySelector(".js-log-select-all");
+      if (!allCb) return;
+      allCb.addEventListener("change", function () {
+        var items = document.querySelectorAll('input[name="log_ids"][form="logsBatchDeleteForm"]');
+        for (var i = 0; i < items.length; i++) {
+          items[i].checked = allCb.checked;
+        }
+      });
+    })();
   </script>
 {% endblock %}
 

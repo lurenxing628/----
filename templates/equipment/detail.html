@@ -8,7 +8,7 @@
   <div class="card">
     <h3>基本信息</h3>
     <form method="post" action="{{ url_for('equipment.update_machine', machine_id=machine.machine_id) }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="form-row">
         <div>
           <label>设备编号</label><br/>
           <input value="{{ machine.machine_id }}" disabled>
@@ -53,9 +53,10 @@
   <div class="card">
     <h3>可操作人员</h3>
     <p class="muted">
-      说明：这里维护设备-人员关联（底层写入 OperatorMachine 表）。
+      设置哪些人员可以操作此设备。
       可选字段：技能等级（beginner/normal/expert）与主操设备（同一人员仅允许 1 台主操设备）。
     </p>
+    <!-- OperatorMachine -->
 
     {% if linked_operators and linked_operators|length > 0 %}
       {% for op in linked_operators %}
@@ -114,7 +115,7 @@
     <h4>添加人员关联</h4>
     {% if available_operators and available_operators|length > 0 %}
       <form method="post" action="{{ url_for('equipment.add_link', machine_id=machine.machine_id) }}">
-        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="form-row">
           <div>
             <label>选择人员</label><br/>
             <select name="operator_id" required>
@@ -129,13 +130,13 @@
         </div>
       </form>
     {% else %}
-      <div class="muted">暂无可选人员（可能尚未维护人员信息，或已全部关联）。</div>
+      <div class="muted">没有更多人员可选了。</div>
     {% endif %}
   </div>
 
   <div class="card">
     <h3>停机计划</h3>
-    <p class="muted">说明：停机计划表示设备在某时间段不可用（预留停机原因）。此功能与“设备状态（可用/维修/停用）”并存。</p>
+    <p class="muted">设备的计划停机时间。</p>
     <div style="margin-top:6px;">
       <a href="{{ url_for('equipment.downtime_batch_page') }}">批量停机计划（按设备/类别/全部）</a>
     </div>
@@ -176,7 +177,7 @@
     <hr/>
     <h4>新增停机</h4>
     <form method="post" action="{{ url_for('equipment.create_downtime', machine_id=machine.machine_id) }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="form-row">
         <div>
           <label>开始时间</label><br/>
           <input name="start_time" required placeholder="如：2026-01-22 08:00" style="min-width:220px;">

@@ -1,17 +1,35 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="card">
-    <h2>报表中心</h2>
-    <p class="muted">说明：基于当前数据库数据生成统计报表（支持导出 Excel）。</p>
+    <h2><svg class="icon"><use href="#icon-chart"/></svg> 报表中心</h2>
+    <p class="muted">基于当前数据库数据生成统计报表，支持导出 Excel。</p>
   </div>
 
-  <div class="card">
-    <h3>可用报表</h3>
-    <ul>
-      <li><a href="{{ url_for('reports.overdue_page') }}">超期清单</a></li>
-      <li><a href="{{ url_for('reports.utilization_page') }}">资源负荷与利用率（设备/人员）</a></li>
-      <li><a href="{{ url_for('reports.downtime_page') }}">停机影响统计</a></li>
-    </ul>
+  <div class="nav-grid">
+    <div class="card" style="flex:1 1 300px; margin-bottom:0;">
+      <h3><svg class="icon"><use href="#icon-warn"/></svg> 超期清单</h3>
+      <p class="muted" style="margin:8px 0;">已排产批次中交期已过但未完成的清单。</p>
+      <div class="action-bar" style="margin-top:12px;">
+        <a href="{{ url_for('reports.overdue_page') }}"><button type="button">查看详情</button></a>
+        <a href="{{ url_for('reports.overdue_export') }}"><button type="button"><svg class="icon-sm"><use href="#icon-download"/></svg> 导出</button></a>
+      </div>
+    </div>
+    <div class="card" style="flex:1 1 300px; margin-bottom:0;">
+      <h3><svg class="icon"><use href="#icon-chart"/></svg> 资源负荷与利用率</h3>
+      <p class="muted" style="margin:8px 0;">设备和人员的排产负荷与利用率统计。</p>
+      <div class="action-bar" style="margin-top:12px;">
+        <a href="{{ url_for('reports.utilization_page') }}"><button type="button">查看详情</button></a>
+        <a href="{{ url_for('reports.utilization_export') }}"><button type="button"><svg class="icon-sm"><use href="#icon-download"/></svg> 导出</button></a>
+      </div>
+    </div>
+    <div class="card" style="flex:1 1 300px; margin-bottom:0;">
+      <h3><svg class="icon"><use href="#icon-device"/></svg> 停机影响统计</h3>
+      <p class="muted" style="margin:8px 0;">停机计划对排产结果的影响分析。</p>
+      <div class="action-bar" style="margin-top:12px;">
+        <a href="{{ url_for('reports.downtime_page') }}"><button type="button">查看详情</button></a>
+        <a href="{{ url_for('reports.downtime_export') }}"><button type="button"><svg class="icon-sm"><use href="#icon-download"/></svg> 导出</button></a>
+      </div>
+    </div>
   </div>
 {% endblock %}
 

@@ -1,17 +1,67 @@
 {% extends "base.html" %}
 {% block content %}
+  <div class="stat-grid">
+    <div class="stat-card type-primary">
+      <div class="stat-card-label">待排批次</div>
+      <div class="stat-card-value primary">{{ pending_count }}</div>
+    </div>
+    <div class="stat-card type-success">
+      <div class="stat-card-label">已排批次</div>
+      <div class="stat-card-value success">{{ scheduled_count }}</div>
+    </div>
+    <div class="stat-card type-danger">
+      <div class="stat-card-label">超期批次</div>
+      <div class="stat-card-value danger">{{ overdue_count }}</div>
+    </div>
+    <div class="stat-card type-info">
+      <div class="stat-card-label">最近排产版本</div>
+      <div class="stat-card-value">{% if latest_history %}v{{ latest_history.version }}{% else %}--{% endif %}</div>
+    </div>
+  </div>
+
   <div class="card">
-    <h2>智能排产系统</h2>
-    <ul>
-      <li><a href="{{ url_for('personnel.list_page') }}">人员管理</a></li>
-      <li><a href="{{ url_for('equipment.list_page') }}">设备管理</a></li>
-      <li><a href="{{ url_for('process.list_parts') }}">工艺管理</a></li>
-      <li><a href="{{ url_for('scheduler.batches_page') }}">排产调度</a></li>
-      <li><a href="{{ url_for('material.materials_page') }}">物料管理</a></li>
-      <li><a href="{{ url_for('reports.index') }}">报表</a></li>
-      <li><a href="{{ url_for('system.backup_page') }}">系统管理（备份/日志/历史）</a></li>
-      <li><a href="{{ url_for('excel_demo.index') }}">Excel 导入演示</a></li>
-    </ul>
+    <h3>最近排产</h3>
+    {% if latest_history %}
+      {% set strategy_zh = {'improve': '优化排产', 'greedy': '快速排产', 'manual': '手动排产'} %}
+      {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
+      <div class="info-line">
+        <span>时间：<strong>{{ latest_history.schedule_time }}</strong></span>
+        <span class="info-sep">|</span>
+        <span>方式：<strong>{{ strategy_zh.get(latest_history.strategy, latest_history.strategy or '-') }}</strong></span>
+        <span class="info-sep">|</span>
+        <span>结果：<strong>{{ status_zh.get(latest_history.result_status, latest_history.result_status or '-') }}</strong></span>
+      </div>
+      {% if latest_summary and latest_summary.algo and latest_summary.algo.metrics %}
+        {% set m = latest_summary.algo.metrics %}
+        <div class="info-line muted" style="margin-top:6px;">
+          <span>拖期 {{ m.total_tardiness_hours or 0 }} 小时</span>
+          <span class="info-sep">|</span>
+          <span>总工期 {{ m.makespan_hours or 0 }} 小时</span>
+          <span class="info-sep">|</span>
+          <span>设备利用率 {{ ((m.machine_util_avg or 0) * 100)|round(1) }}%</span>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="muted">还没有排产记录，排产后这里会显示结果。</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>快捷操作</h3>
+    <div class="action-bar">
+      <a href="{{ url_for('scheduler.batches_page') }}" style="text-decoration:none;">
+        <button type="button"><svg class="icon"><use href="#icon-schedule"/></svg> 去排产</button>
+      </a>
+      <a href="{{ url_for('scheduler.excel_batches_page') }}" style="text-decoration:none;">
+        <button type="button"><svg class="icon"><use href="#icon-excel"/></svg> 导入批次</button>
+      </a>
+      {% set gantt_url = safe_url_for('scheduler.gantt_page', view='machine') %}
+      {% if gantt_url %}
+        <a href="{{ gantt_url }}" style="text-decoration:none;">
+          <button type="button"><svg class="icon"><use href="#icon-chart"/></svg> 甘特图</button>
+        </a>
+      {% endif %}
+    </div>
   </div>
 {% endblock %}
 

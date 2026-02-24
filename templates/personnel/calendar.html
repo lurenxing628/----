@@ -10,8 +10,8 @@
         <h2>个人工作日历</h2>
         <p class="muted">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
         <p class="muted">
-          说明：此处配置会<strong>覆盖</strong>全局工作日历（用于请假/加班/轮班等）。
-          未配置日期会回退到全局日历；全局也未配置则按默认规则兜底（工作日 8 小时，周末/假期默认不排产）。
+          这里用于设置个人的特殊工作日（如请假、加班、轮班），会覆盖全局日历。
+          未配置日期会自动回退到全局日历；全局也没配时，按默认规则处理（工作日 8 小时，周末/假期不排产）。
         </p>
       </div>
       <div>
@@ -19,10 +19,14 @@
         {% if global_cal_url %}
           <a href="{{ global_cal_url }}">全局工作日历</a>
         {% else %}
-          <span class="muted"
-                title="原因：后端接口未注册（endpoint：scheduler.calendar_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-            全局工作日历（不可用：后端接口缺失，可能旧版本/未重启/未重新打包）
-          </span>
+          <span class="muted">全局工作日历暂不可用，请重启系统后重试。</span>
+          <details class="debug-details muted">
+            <summary>排查信息</summary>
+            后端接口未注册（endpoint：scheduler.calendar_page）。<br/>
+            常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+            处理：重启服务或重新打包升级。<br/>
+            日志：logs/aps.log、logs/aps_error.log。
+          </details>
         {% endif %}
         <span class="muted">｜</span>
         <a href="{{ url_for('personnel.detail_page', operator_id=operator.operator_id) }}">← 返回人员详情</a>
@@ -33,7 +37,7 @@
   <div class="card wc-card-allow-overflow">
     <h3>新增 / 更新某一天</h3>
     <form method="post" action="{{ url_for('personnel.operator_calendar_upsert', operator_id=operator.operator_id) }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="form-row">
         <div class="wc-date-wrap">
           <label>日期</label><br/>
           <div style="display:flex; gap:8px; align-items:center;">
@@ -149,6 +153,6 @@
       holidayDefaultEfficiency: {{ (holiday_default_efficiency if holiday_default_efficiency is defined else 0.8)|tojson }}
     };
   </script>
-  <script src="{{ url_for('static', filename='js/calendar_picker.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/calendar_picker.js') }}" defer></script>
 {% endblock %}
 

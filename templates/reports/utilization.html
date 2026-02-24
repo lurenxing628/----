@@ -2,10 +2,7 @@
 {% block content %}
   <div class="card">
     <h2>报表 - 资源负荷与利用率</h2>
-    <p class="muted">
-      说明：按版本与日期范围统计设备/人员的排程负荷（小时）与利用率。
-      可用工时来自工作日历（shift_hours * efficiency）的累加（简化：不区分设备/人员差异）。
-    </p>
+    <p class="muted">查看设备和人员的工作负荷与利用率。</p>
     <div style="margin-top:8px;">
       <a href="{{ url_for('reports.index') }}">← 返回报表中心</a>
     </div>
@@ -14,7 +11,7 @@
   <div class="card">
     <h3>筛选</h3>
     <form method="get" action="{{ url_for('reports.utilization_page') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="form-row">
         <div>
           <label>排产版本</label><br/>
           <select name="version" style="min-width:220px;">
@@ -27,11 +24,11 @@
         </div>
         <div>
           <label>开始日期</label><br/>
-          <input name="start_date" value="{{ start_date }}" placeholder="YYYY-MM-DD" style="width:140px;">
+          <input type="date" name="start_date" value="{{ start_date }}" style="width:140px;">
         </div>
         <div>
           <label>结束日期</label><br/>
-          <input name="end_date" value="{{ end_date }}" placeholder="YYYY-MM-DD" style="width:140px;">
+          <input type="date" name="end_date" value="{{ end_date }}" style="width:140px;">
         </div>
         <div>
           <button type="submit">查询</button>
@@ -58,10 +55,10 @@
           <tr>
             <th style="width:140px;">设备编号</th>
             <th>设备名称</th>
-            <th style="width:140px;">负荷(小时)</th>
-            <th style="width:120px;">任务数</th>
-            <th style="width:140px;">可用工时</th>
-            <th style="width:120px;">利用率</th>
+            <th style="width:140px;" class="text-right">负荷(小时)</th>
+            <th style="width:120px;" class="text-right">任务数</th>
+            <th style="width:140px;" class="text-right">可用工时</th>
+            <th style="width:120px;" class="text-right">利用率</th>
           </tr>
         </thead>
         <tbody>
@@ -69,10 +66,10 @@
             <tr>
               <td>{{ r.machine_id }}</td>
               <td>{{ r.machine_name or '-' }}</td>
-              <td>{{ r.hours }}</td>
-              <td>{{ r.task_count }}</td>
-              <td>{{ r.capacity_hours }}</td>
-              <td>{{ r.utilization if r.utilization is not none else '-' }}</td>
+              <td class="text-right">{{ r.hours }}</td>
+              <td class="text-right">{{ r.task_count }}</td>
+              <td class="text-right">{{ r.capacity_hours }}</td>
+              <td class="text-right">{{ r.utilization if r.utilization is not none else '-' }}</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -90,10 +87,10 @@
           <tr>
             <th style="width:140px;">工号</th>
             <th>姓名</th>
-            <th style="width:140px;">负荷(小时)</th>
-            <th style="width:120px;">任务数</th>
-            <th style="width:140px;">可用工时</th>
-            <th style="width:120px;">利用率</th>
+            <th style="width:140px;" class="text-right">负荷(小时)</th>
+            <th style="width:120px;" class="text-right">任务数</th>
+            <th style="width:140px;" class="text-right">可用工时</th>
+            <th style="width:120px;" class="text-right">利用率</th>
           </tr>
         </thead>
         <tbody>
@@ -101,10 +98,10 @@
             <tr>
               <td>{{ r.operator_id }}</td>
               <td>{{ r.operator_name or '-' }}</td>
-              <td>{{ r.hours }}</td>
-              <td>{{ r.task_count }}</td>
-              <td>{{ r.capacity_hours }}</td>
-              <td>{{ r.utilization if r.utilization is not none else '-' }}</td>
+              <td class="text-right">{{ r.hours }}</td>
+              <td class="text-right">{{ r.task_count }}</td>
+              <td class="text-right">{{ r.capacity_hours }}</td>
+              <td class="text-right">{{ r.utilization if r.utilization is not none else '-' }}</td>
             </tr>
           {% endfor %}
         </tbody>

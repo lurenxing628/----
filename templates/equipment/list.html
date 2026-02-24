@@ -2,13 +2,13 @@
 {% block content %}
   <div class="card">
     <h2>设备管理</h2>
-    <p class="muted">说明：这里维护设备基本信息，以及设备可操作人员的关联（人员-设备关联表）。</p>
-    <div style="margin-top:8px;">
+    <p class="muted">管理设备信息和可操作人员。</p>
+    <div class="info-line" style="margin-top:8px;">
       <strong>Excel：</strong>
       <a href="{{ url_for('equipment.excel_machine_page') }}">设备信息（导入/导出）</a>
-      <span class="muted">｜</span>
+      <span class="info-sep">|</span>
       <a href="{{ url_for('equipment.excel_link_page') }}">设备人员关联（导入/导出）</a>
-      <span class="muted">｜</span>
+      <span class="info-sep">|</span>
       <a href="{{ url_for('equipment.downtime_batch_page') }}">批量停机计划</a>
     </div>
   </div>
@@ -16,39 +16,39 @@
   <div class="card">
     <h3>新增设备</h3>
     <form method="post" action="{{ url_for('equipment.create_machine') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>设备编号</label><br/>
-          <input name="machine_id" required placeholder="如：CNC-01">
+      <div class="form-row">
+        <div class="form-field">
+          <label for="machineIdInput">设备编号</label><br/>
+          <input id="machineIdInput" name="machine_id" required placeholder="如：CNC-01">
         </div>
-        <div>
-          <label>设备名称</label><br/>
-          <input name="name" required placeholder="如：数控车床1">
+        <div class="form-field">
+          <label for="machineNameInput">设备名称</label><br/>
+          <input id="machineNameInput" name="name" required placeholder="如：数控车床1">
         </div>
-        <div>
-          <label>工种</label><br/>
-          <select name="op_type_id">
+        <div class="form-field">
+          <label for="machineOpTypeInput">工种</label><br/>
+          <select id="machineOpTypeInput" name="op_type_id">
             <option value="">（未设置）</option>
             {% for v, label in op_type_options %}
               <option value="{{ v }}">{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div>
-          <label>类别（可选）</label><br/>
-          <input name="category" placeholder="如：CNC / 铣床 / 装配" style="width:180px;">
+        <div class="form-field">
+          <label for="machineCategoryInput">类别（可选）</label><br/>
+          <input id="machineCategoryInput" name="category" placeholder="如：CNC / 铣床 / 装配" style="width:180px;">
         </div>
-        <div>
-          <label>状态</label><br/>
-          <select name="status">
+        <div class="form-field">
+          <label for="machineStatusInput">状态</label><br/>
+          <select id="machineStatusInput" name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}">{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
-          <label>备注</label><br/>
-          <input name="remark" placeholder="可选">
+        <div class="form-field" style="flex:1; min-width:240px;">
+          <label for="machineRemarkInput">备注</label><br/>
+          <input id="machineRemarkInput" name="remark" placeholder="可选">
         </div>
         <div>
           <button type="submit">添加设备</button>
@@ -62,12 +62,18 @@
     <div class="muted" style="margin-bottom:8px;">
       批量操作：可批量切换状态/删除。若设备已被批次工序或排程引用，将禁止删除（请改为停用或维修）。
     </div>
+    <div class="form-row" style="margin-bottom:8px;">
+      <div class="form-field">
+        <label for="equipmentSearchInput"><svg class="icon-sm"><use href="#icon-search"/></svg> 搜索</label>
+        <input id="equipmentSearchInput" data-table-search="equipmentTable" placeholder="输入设备编号、名称..." aria-label="搜索设备，输入设备编号或名称关键词" style="width:260px;">
+      </div>
+    </div>
     <form id="bulkForm" method="post" action="{{ url_for('equipment.bulk_set_status') }}"></form>
     {% if machines and machines|length > 0 %}
-      <table>
+      <table id="equipmentTable">
         <thead>
           <tr>
-            <th style="width:60px;">选</th>
+            <th style="width:60px;"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选设备"></th>
             <th style="width:140px;">设备编号</th>
             <th style="width:220px;">设备名称</th>
             <th style="width:160px;">工种</th>
@@ -80,7 +86,7 @@
           {% for r in machines %}
             <tr>
               <td>
-                <input type="checkbox" name="machine_ids" value="{{ r.machine_id }}" class="js-bulk-check" form="bulkForm">
+                <input type="checkbox" name="machine_ids" value="{{ r.machine_id }}" class="js-bulk-check" form="bulkForm" aria-label="选择设备 {{ r.machine_id }}">
               </td>
               <td><a href="{{ url_for('equipment.detail_page', machine_id=r.machine_id) }}">{{ r.machine_id }}</a></td>
               <td>{{ r.name }}</td>
@@ -103,7 +109,7 @@
                 <a href="{{ url_for('equipment.detail_page', machine_id=r.machine_id) }}">查看/编辑</a>
                 <span class="muted">｜</span>
                 <form method="post" action="{{ url_for('equipment.delete_machine', machine_id=r.machine_id) }}" style="display:inline;"
-                      data-confirm="确定删除设备 {{ r.machine_id }} 吗？若已被排产数据引用将删除失败，建议改为停用/维修。">
+                      data-confirm="确定删除 {{ r.machine_id }} 吗？如果已参与排产则无法删除，建议改为「停用」或「维修」。">
                   <button type="submit">删除</button>
                 </form>
               </td>
@@ -112,37 +118,24 @@
         </tbody>
       </table>
 
-      <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+      <div class="action-bar" style="margin-top:10px;">
         <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 台设备</span>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <select name="status" form="bulkForm">
+        <div class="form-row">
+          <select name="status" form="bulkForm" aria-label="批量设置设备状态">
             <option value="active">批量设为：可用</option>
             <option value="maintain">批量设为：维修</option>
             <option value="inactive">批量设为：停用</option>
           </select>
-          <button type="submit" form="bulkForm" formaction="{{ url_for('equipment.bulk_set_status') }}">批量更新状态</button>
+          <button type="submit" form="bulkForm" formaction="{{ url_for('equipment.bulk_set_status') }}" aria-label="批量更新设备状态">批量更新状态</button>
           <button type="submit" form="bulkForm" formaction="{{ url_for('equipment.bulk_delete') }}"
-                  onclick="return confirm('确定批量删除所选设备吗？若存在引用将删除失败；一般建议先批量停用/维修。');">
+                  aria-label="批量删除所选设备"
+                  data-confirm="确定批量删除所选设备吗？若存在引用将删除失败；一般建议先批量停用/维修。">
             批量删除
           </button>
         </div>
       </div>
-
-      <script>
-        (function () {
-          function updateCount() {
-            const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
-            const cnt = checks.filter(x => x && x.checked).length;
-            const el = document.getElementById("jsSelectedCount");
-            if (el) el.textContent = String(cnt);
-          }
-          const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
-          for (const c of checks) c.addEventListener("change", updateCount);
-          updateCount();
-        })();
-      </script>
     {% else %}
-      <div class="muted">暂无设备数据（可先新增或通过 Excel 导入）。</div>
+      <div class="muted">还没有设备信息，可以手动添加或用 Excel 导入。</div>
     {% endif %}
   </div>
 

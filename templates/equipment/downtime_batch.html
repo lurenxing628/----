@@ -3,7 +3,7 @@
   <div class="card">
     <h2>批量停机计划</h2>
     <p class="muted">
-      说明：支持按【单台设备 / 设备类别 / 全部设备】创建停机区间。
+      为设备安排停机时间。可以按单台、按类别或全部设备设置。
       为兼容现有数据结构，系统会把范围展开为“按设备逐条写入 MachineDowntimes”。
     </p>
     <div style="margin-top:8px;">
@@ -14,10 +14,10 @@
   <div class="card">
     <h3>创建停机区间</h3>
     <form method="post" action="{{ url_for('equipment.downtime_batch_create') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="form-row">
         <div style="min-width:260px;">
           <label>范围</label><br/>
-          <select name="scope_type" id="scopeType" onchange="window.__apsToggleScope && window.__apsToggleScope();">
+          <select name="scope_type" id="scopeType">
             <option value="machine">单台设备</option>
             <option value="category">设备类别</option>
             <option value="all">全部设备</option>
@@ -39,7 +39,7 @@
                 <option value="{{ c }}">{{ c }}</option>
               {% endfor %}
             {% else %}
-              <option value="">（暂无类别，请先在设备详情里维护“类别”）</option>
+              <option value="">（没有设备类别，需要先在设备详情中填写）</option>
             {% endif %}
           </select>
         </div>
@@ -70,22 +70,6 @@
     </form>
   </div>
 
-  <script>
-    window.__apsToggleScope = function () {
-      const t = document.getElementById("scopeType");
-      const v = t ? t.value : "machine";
-      const m = document.getElementById("scopeMachine");
-      const c = document.getElementById("scopeCategory");
-      if (m) m.style.display = (v === "machine") ? "block" : "none";
-      if (c) c.style.display = (v === "category") ? "block" : "none";
-
-      // 注意：隐藏的控件仍会随表单提交；这里只提交当前范围对应的 scope_value
-      const mSel = document.getElementById("scopeValueMachine");
-      const cSel = document.getElementById("scopeValueCategory");
-      if (mSel) mSel.disabled = (v !== "machine");
-      if (cSel) cSel.disabled = (v !== "category");
-    };
-    window.__apsToggleScope();
-  </script>
+  <script src="{{ url_for('static', filename='js/downtime_batch.js') }}" defer></script>
 {% endblock %}
 

@@ -2,22 +2,27 @@
 {% block content %}
   <div class="card">
     <h2>人员管理</h2>
-    <p class="muted">说明：这里维护人员基本信息，以及人员可操作的设备关联（人员-设备关联表）。</p>
-    <div style="margin-top:8px;">
+    <p class="muted">管理操作员及其可操作的设备。</p>
+    <!-- OperatorMachine -->
+    <div class="info-line" style="margin-top:8px;">
       <strong>Excel：</strong>
       <a href="{{ url_for('personnel.excel_operator_page') }}">人员基本信息（导入/导出）</a>
-      <span class="muted">｜</span>
+      <span class="info-sep">|</span>
       <a href="{{ url_for('personnel.excel_link_page') }}">人员设备关联（导入/导出）</a>
       {% set excel_op_cal_url = safe_url_for('personnel.excel_operator_calendar_page') %}
       {% if excel_op_cal_url %}
-        <span class="muted">｜</span>
+        <span class="info-sep">|</span>
         <a href="{{ excel_op_cal_url }}">人员专属工作日历（导入/导出）</a>
       {% else %}
-        <span class="muted">｜</span>
-        <span class="muted"
-              title="原因：后端接口未注册（endpoint：personnel.excel_operator_calendar_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-          人员专属工作日历（不可用：后端接口缺失，可能旧版本/未重启/未重新打包）
-        </span>
+        <span class="info-sep">|</span>
+        <span class="muted">人员专属工作日历暂不可用，请重启系统后重试。</span>
+        <details class="debug-details muted">
+          <summary>排查信息</summary>
+          后端接口未注册（endpoint：personnel.excel_operator_calendar_page）。<br/>
+          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+          处理：重启服务或重新打包升级。<br/>
+          日志：logs/aps.log、logs/aps_error.log。
+        </details>
       {% endif %}
     </div>
   </div>
@@ -25,26 +30,26 @@
   <div class="card">
     <h3>新增人员</h3>
     <form method="post" action="{{ url_for('personnel.create_operator') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>工号</label><br/>
-          <input name="operator_id" required placeholder="如：OP001">
+      <div class="form-row">
+        <div class="form-field">
+          <label for="operatorIdInput">工号</label><br/>
+          <input id="operatorIdInput" name="operator_id" required placeholder="如：OP001">
         </div>
-        <div>
-          <label>姓名</label><br/>
-          <input name="name" required placeholder="如：张三">
+        <div class="form-field">
+          <label for="operatorNameInput">姓名</label><br/>
+          <input id="operatorNameInput" name="name" required placeholder="如：张三">
         </div>
-        <div>
-          <label>状态</label><br/>
-          <select name="status">
+        <div class="form-field">
+          <label for="operatorStatusInput">状态</label><br/>
+          <select id="operatorStatusInput" name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}">{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
-          <label>备注</label><br/>
-          <input name="remark" placeholder="可选">
+        <div class="form-field" style="flex:1; min-width:240px;">
+          <label for="operatorRemarkInput">备注</label><br/>
+          <input id="operatorRemarkInput" name="remark" placeholder="可选">
         </div>
         <div>
           <button type="submit">添加人员</button>
@@ -58,12 +63,18 @@
     <div class="muted" style="margin-bottom:8px;">
       批量操作：可批量停用/启用/删除。若人员已被批次工序或排程引用，将禁止删除（请改为停用）。
     </div>
+    <div class="form-row" style="margin-bottom:8px;">
+      <div class="form-field">
+        <label for="personnelSearchInput"><svg class="icon-sm"><use href="#icon-search"/></svg> 搜索</label>
+        <input id="personnelSearchInput" data-table-search="personnelTable" placeholder="输入工号、姓名..." aria-label="搜索人员，输入工号或姓名关键词" style="width:260px;">
+      </div>
+    </div>
     <form id="bulkForm" method="post" action="{{ url_for('personnel.bulk_set_status') }}"></form>
     {% if operators and operators|length > 0 %}
-      <table>
+      <table id="personnelTable">
         <thead>
           <tr>
-            <th style="width:60px;">选</th>
+            <th style="width:60px;"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选人员"></th>
             <th style="width:120px;">工号</th>
             <th style="width:160px;">姓名</th>
             <th style="width:120px;">状态</th>
@@ -75,7 +86,7 @@
           {% for r in operators %}
             <tr>
               <td>
-                <input type="checkbox" name="operator_ids" value="{{ r.operator_id }}" class="js-bulk-check" form="bulkForm">
+                <input type="checkbox" name="operator_ids" value="{{ r.operator_id }}" class="js-bulk-check" form="bulkForm" aria-label="选择人员 {{ r.operator_id }}">
               </td>
               <td><a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}">{{ r.operator_id }}</a></td>
               <td>{{ r.name }}</td>
@@ -91,7 +102,7 @@
                 <a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}">查看/编辑</a>
                 <span class="muted">｜</span>
                 <form method="post" action="{{ url_for('personnel.delete_operator', operator_id=r.operator_id) }}" style="display:inline;"
-                      data-confirm="确定删除人员 {{ r.operator_id }} 吗？若已被排产数据引用将删除失败，建议改为停用。">
+                      data-confirm="确定删除 {{ r.operator_id }} 吗？如果已参与排产则无法删除，建议改为「停用」。">
                   <button type="submit">删除</button>
                 </form>
               </td>
@@ -100,36 +111,23 @@
         </tbody>
       </table>
 
-      <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+      <div class="action-bar" style="margin-top:10px;">
         <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 人</span>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <select name="status" form="bulkForm">
+        <div class="form-row">
+          <select name="status" form="bulkForm" aria-label="批量设置人员状态">
             <option value="active">批量设为：在岗</option>
             <option value="inactive">批量设为：停用/休假</option>
           </select>
-          <button type="submit" form="bulkForm" formaction="{{ url_for('personnel.bulk_set_status') }}">批量更新状态</button>
+          <button type="submit" form="bulkForm" formaction="{{ url_for('personnel.bulk_set_status') }}" aria-label="批量更新人员状态">批量更新状态</button>
           <button type="submit" form="bulkForm" formaction="{{ url_for('personnel.bulk_delete') }}"
-                  onclick="return confirm('确定批量删除所选人员吗？若存在引用将删除失败；一般建议先批量停用。');">
+                  aria-label="批量删除所选人员"
+                  data-confirm="确定批量删除所选人员吗？若存在引用将删除失败；一般建议先批量停用。">
             批量删除
           </button>
         </div>
       </div>
-
-      <script>
-        (function () {
-          function updateCount() {
-            const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
-            const cnt = checks.filter(x => x && x.checked).length;
-            const el = document.getElementById("jsSelectedCount");
-            if (el) el.textContent = String(cnt);
-          }
-          const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
-          for (const c of checks) c.addEventListener("change", updateCount);
-          updateCount();
-        })();
-      </script>
     {% else %}
-      <div class="muted">暂无人员数据（可先新增或通过 Excel 导入）。</div>
+      <div class="muted">还没有人员信息，可以手动添加或用 Excel 导入。</div>
     {% endif %}
   </div>
 

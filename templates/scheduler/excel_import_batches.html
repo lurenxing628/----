@@ -21,6 +21,7 @@
     <form action="{{ confirm_url }}" method="post" style="margin-top:8px;">
       <input type="hidden" name="mode" value="{{ mode }}">
       <input type="hidden" name="filename" value="{{ filename }}">
+      <input type="hidden" name="preview_baseline" value="{{ preview_baseline or '' }}">
       <textarea name="raw_rows_json" style="display:none;">{{ raw_rows_json }}</textarea>
       <label>
         <input type="checkbox" name="auto_generate_ops" value="1" checked>
@@ -138,6 +139,6 @@
     {% endif %}
   </div>
 
-  <script src="{{ url_for('static', filename='js/excel_handler.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/excel_handler.js') }}" defer></script>
 {% endblock %}
 

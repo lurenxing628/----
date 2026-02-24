@@ -3,7 +3,7 @@
 <div class="card">
   <h2>{{ title or "Excel 导入" }}</h2>
   <p class="muted">
-    说明：本组件用于复用“上传→预览→确认导入”交互。预览阶段会标注 NEW/UPDATE/ERROR 等状态，便于排查数据问题。
+    上传 Excel 后先预览检查，确认无误再导入。
   </p>
 
   <div style="margin-bottom:12px;">
@@ -12,14 +12,14 @@
 
   <form action="{{ preview_url }}" method="post" enctype="multipart/form-data">
     <div style="margin-bottom:12px;">
-      <label>导入模式：</label>
+      <label for="excelImportMode">导入模式：</label>
       {% set default_mode_options = [
         {'value': 'overwrite', 'label': '覆盖（相同ID更新）'},
         {'value': 'append', 'label': '追加（已存在则跳过）'},
         {'value': 'replace', 'label': '替换（清空后导入）'}
       ] %}
       {% set selected_mode_options = mode_options if mode_options else default_mode_options %}
-      <select name="mode">
+      <select id="excelImportMode" name="mode">
         {% for opt in selected_mode_options %}
           {% set opt_value = opt.value if opt is mapping else opt[0] %}
           {% set opt_label = opt.label if opt is mapping else opt[1] %}
@@ -28,11 +28,12 @@
       </select>
     </div>
     <div style="margin-bottom:12px;">
-      <input type="file" name="file" accept=".xlsx" required>
+      <label for="excelImportFile" class="muted">选择文件：</label>
+      <input id="excelImportFile" type="file" name="file" accept=".xlsx" required>
       <button type="submit">上传并预览</button>
     </div>
     <div class="muted">
-      常见问题：如果提示“读取失败/被占用”，请先关闭 Excel 后重试。
+      上传不了？请先关闭 Excel 文件再试。
     </div>
   </form>
 </div>
@@ -40,7 +41,7 @@
 {% if preview_rows %}
   <div class="card">
     <h3>导入预览</h3>
-    <p class="muted">提示：row_num 是 Excel 的真实行号（标题行+1）。</p>
+    <p class="muted">行号对应 Excel 中的实际行数。</p>
 
     <table>
       <thead>
@@ -86,6 +87,7 @@
     <form action="{{ confirm_url }}" method="post" style="margin-top:12px;">
       <input type="hidden" name="mode" value="{{ mode }}">
       <input type="hidden" name="filename" value="{{ filename }}">
+      <input type="hidden" name="preview_baseline" value="{{ preview_baseline or '' }}">
       <textarea name="raw_rows_json" style="display:none;">{{ raw_rows_json }}</textarea>
       <button type="submit">确认导入（写入数据库）</button>
     </form>

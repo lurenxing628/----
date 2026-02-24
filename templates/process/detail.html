@@ -22,7 +22,7 @@
   <div class="card">
     <h3>零件信息</h3>
     <form method="post" action="{{ url_for('process.update_part', part_no=part.part_no) }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="form-row">
         <div>
           <label>图号</label><br/>
           <input value="{{ part.part_no }}" disabled>
@@ -47,11 +47,11 @@
     </form>
 
     <form method="post" action="{{ url_for('process.reparse_part', part_no=part.part_no) }}" style="margin-top:10px;">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="form-row">
         <div style="flex:1; min-width:360px;">
           <label>用于解析的工艺路线字符串</label><br/>
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
-          <div class="hint">说明：解析会覆盖现有工序模板（事务保护）。</div>
+          <div class="hint">重新解析会覆盖现有工序模板（事务保护）。</div>
         </div>
         <div>
           <button type="submit">重新解析（覆盖工序模板）</button>
@@ -92,7 +92,7 @@
               <td>
                 {% if op.source == 'internal' %}
                   <form method="post" action="{{ url_for('process.update_internal_hours', part_no=part.part_no, seq=op.seq) }}">
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+                    <div class="form-row" style="gap:8px;">
                       <div>
                         <label class="hint">换型(h)</label><br/>
                         <input name="setup_hours" style="width:90px;" value="{{ op.setup_hours or 0 }}">
@@ -129,7 +129,7 @@
         </tbody>
       </table>
       <div class="hint" style="margin-top:8px;">
-        颜色说明：蓝色=内部工序，橙色=外部工序（外协）。
+        颜色标记：蓝色=内部工序，橙色=外部工序（外协）。
       </div>
     {% else %}
       <div class="muted">暂无工序模板。</div>
@@ -214,7 +214,7 @@
         </div>
       {% endfor %}
     {% else %}
-      <div class="muted">暂无外部工序组（说明：当前模板中没有连续外部工序）。</div>
+      <div class="muted">暂无外部工序组（当前模板中没有连续外部工序）。</div>
     {% endif %}
   </div>
 {% endblock %}

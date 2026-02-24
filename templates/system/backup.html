@@ -32,7 +32,7 @@
       </form>
 
       <form id="backupBatchDeleteForm" method="post" action="{{ url_for('system.backup_delete_batch') }}" style="display:inline-block;"
-            onsubmit="return confirm('确认批量删除选中的备份文件？删除后不可恢复。');">
+            data-confirm="确认批量删除选中的备份文件？删除后不可恢复。">
         <button type="submit">批量删除选中</button>
       </form>
     </div>
@@ -113,7 +113,7 @@
           <tr>
             <th style="width:60px;">
               <label class="muted">
-                <input type="checkbox" onclick="toggleAllBackups(this)">
+                <input type="checkbox" class="js-backup-select-all">
                 全选
               </label>
             </th>
@@ -134,12 +134,12 @@
               <td>{{ b.size_mb }}</td>
               <td>
                 <form method="post" action="{{ url_for('system.backup_restore') }}" style="display:inline-block;"
-                      onsubmit="return confirm('确认从该备份恢复数据库？恢复会覆盖当前数据。');">
+                      data-confirm="确认从该备份恢复数据库？恢复会覆盖当前数据。">
                   <input type="hidden" name="filename" value="{{ b.filename }}">
                   <button type="submit">恢复</button>
                 </form>
                 <form method="post" action="{{ url_for('system.backup_delete') }}" style="display:inline-block;margin-left:6px;"
-                      onsubmit="return confirm('确认删除该备份文件？删除后不可恢复。');">
+                      data-confirm="确认删除该备份文件？删除后不可恢复。">
                   <input type="hidden" name="filename" value="{{ b.filename }}">
                   <button type="submit">删除</button>
                 </form>
@@ -230,13 +230,17 @@
     {% endif %}
   </div>
 
-  <script>
-    function toggleAllBackups(source) {
-      const items = document.querySelectorAll('input[name="filenames"][form="backupBatchDeleteForm"]');
-      for (const it of items) {
-        it.checked = source.checked;
-      }
-    }
+  <script defer>
+    (function () {
+      var allCb = document.querySelector(".js-backup-select-all");
+      if (!allCb) return;
+      allCb.addEventListener("change", function () {
+        var items = document.querySelectorAll('input[name="filenames"][form="backupBatchDeleteForm"]');
+        for (var i = 0; i < items.length; i++) {
+          items[i].checked = allCb.checked;
+        }
+      });
+    })();
   </script>
 {% endblock %}
 

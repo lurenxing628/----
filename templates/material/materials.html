@@ -2,7 +2,7 @@
 {% block content %}
   <div class="card">
     <h2>物料管理 - 物料主数据</h2>
-    <p class="muted">说明：维护物料主数据（Materials）。批次物料需求与齐套判定请到“批次物料需求”页。</p>
+    <p class="muted">维护物料主数据。批次齐套管理请到「批次物料需求」页面。</p>
     <div style="margin-top:8px;">
       <a href="{{ url_for('material.batch_materials_page') }}">→ 批次物料需求（齐套判定）</a>
     </div>
@@ -11,7 +11,7 @@
   <div class="card">
     <h3>新增物料</h3>
     <form method="post" action="{{ url_for('material.materials_create') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="form-row">
         <div>
           <label>物料ID</label><br/>
           <input name="material_id" required placeholder="如：MAT001" style="width:160px;">

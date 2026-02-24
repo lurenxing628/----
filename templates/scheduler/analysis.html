@@ -16,13 +16,24 @@
 {% endblock %}
 
 {% block content %}
+  {% set strategy_zh = {'improve': '优化排产', 'greedy': '快速排产', 'manual': '手动排产'} %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
+  {% set mode_zh = {'improve': '优化模式', 'greedy': '快速模式', 'single': '单次排产'} %}
+  {% set objective_zh = {
+      'weighted_tardiness': '加权拖期最小',
+      'tardiness': '拖期最小',
+      'makespan': '总工期最短',
+      'changeover': '换型最少',
+      'min_overdue': '最少超期',
+      'min_tardiness': '最少拖期小时',
+      'min_changeover': '最少换型次数'
+    } %}
+
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
       <div>
         <h2>排产优化分析（离线）</h2>
-        <div class="muted">
-          说明：本页从 <code>ScheduleHistory.result_summary</code> 中读取 <code>algo</code> 留痕，并用纯 HTML/SVG 展示排产效果与优化过程（Win7 无网可用）。
-        </div>
+        <div class="muted">查看各版本排产效果和优化过程（Win7 无网可用）。</div>
       </div>
       <div>
         <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
@@ -38,7 +49,7 @@
           <select name="version" style="min-width:260px;">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if selected and (selected.version|int)==(v.version|int) %}selected{% endif %}>
-                v{{ v.version }}（{{ v.schedule_time }} / {{ v.strategy }} / {{ v.result_status or '-' }}）
+                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ status_zh.get(v.result_status, v.result_status or '-') }}）
               </option>
             {% endfor %}
           </select>
@@ -65,98 +76,98 @@
       <div class="muted">
         时间：<strong>{{ selected.schedule_time }}</strong>
         <span class="muted">｜</span>
-        策略：<code>{{ selected.strategy }}</code>
+        方式：<strong>{{ strategy_zh.get(selected.strategy, selected.strategy or '-') }}</strong>
         <span class="muted">｜</span>
-        状态：<code>{{ selected.result_status }}</code>
+        状态：<strong>{{ status_zh.get(selected.result_status, selected.result_status or '-') }}</strong>
         <span class="muted">｜</span>
         创建人：{{ selected.created_by or '-' }}
       </div>
 
       {% set algo = (selected_summary.algo if selected_summary and selected_summary.algo else {}) %}
       <div class="muted" style="margin-top:6px;">
-        模式：<code>{{ algo.mode or '-' }}</code>
+        模式：<strong>{{ mode_zh.get(algo.mode, algo.mode or '-') }}</strong>
         <span class="muted">｜</span>
-        目标函数：<code>{{ algo.objective or '-' }}</code>
+        优化目标：<strong>{{ objective_zh.get(algo.objective, algo.objective or '-') }}</strong>
         <span class="muted">｜</span>
-        时间预算：<code>{{ algo.time_budget_seconds or '-' }}</code> 秒（建议 ≤180；越大越慢）
+        计算时间上限：<strong>{{ algo.time_budget_seconds or '-' }}</strong> 秒
         <span class="muted">｜</span>
-        实际耗时：<code>{{ selected_summary.time_cost_ms if selected_summary else '-' }}</code> ms
+        实际用时：<strong>{{ selected_summary.time_cost_ms if selected_summary else '-' }}</strong> 毫秒
       </div>
 
       {% if selected_metrics %}
         {% set m = selected_metrics %}
         <div class="kpi-grid">
           <div class="kpi-box">
-            <div class="kpi-title">超期批次数（overdue_count）</div>
+            <div class="kpi-title">超期批次数</div>
             <div class="kpi-value">{{ m.get('overdue_count', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('overdue_count', 0) - prev_metrics.get('overdue_count', 0)) %}
-              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d }}</div>
+              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d }}</div>
             {% endif %}
           </div>
           <div class="kpi-box">
-            <div class="kpi-title">总拖期（小时）（total_tardiness_hours）</div>
+            <div class="kpi-title">总拖期（小时）</div>
             <div class="kpi-value">{{ m.get('total_tardiness_hours', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('total_tardiness_hours', 0) - prev_metrics.get('total_tardiness_hours', 0)) %}
-              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
             {% endif %}
           </div>
           <div class="kpi-box">
-            <div class="kpi-title">优先级加权拖期（小时）（weighted_tardiness_hours）</div>
+            <div class="kpi-title">加权拖期（小时）</div>
             <div class="kpi-value">{{ m.get('weighted_tardiness_hours', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('weighted_tardiness_hours', 0) - prev_metrics.get('weighted_tardiness_hours', 0)) %}
-              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
             {% endif %}
           </div>
           <div class="kpi-box">
-            <div class="kpi-title">makespan（小时）（makespan_hours）</div>
+            <div class="kpi-title">总工期（小时）</div>
             <div class="kpi-value">{{ m.get('makespan_hours', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('makespan_hours', 0) - prev_metrics.get('makespan_hours', 0)) %}
-              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
             {% endif %}
           </div>
           <div class="kpi-box">
-            <div class="kpi-title">内部窗口 makespan（小时）（makespan_internal_hours）</div>
+            <div class="kpi-title">内制工期（小时）</div>
             <div class="kpi-value">{{ m.get('makespan_internal_hours', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('makespan_internal_hours', 0) - prev_metrics.get('makespan_internal_hours', 0)) %}
-              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
             {% endif %}
           </div>
           <div class="kpi-box">
-            <div class="kpi-title">换型次数（changeover_count）</div>
+            <div class="kpi-title">换型次数</div>
             <div class="kpi-value">{{ m.get('changeover_count', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('changeover_count', 0) - prev_metrics.get('changeover_count', 0)) %}
-              <div class="kpi-delta">vs 上一版本：{{ '+' if d>0 else '' }}{{ d }}</div>
+              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d }}</div>
             {% endif %}
           </div>
           <div class="kpi-box">
-            <div class="kpi-title">机器平均利用率（machine_util_avg）</div>
+            <div class="kpi-title">设备平均利用率</div>
             <div class="kpi-value">{{ (m.get('machine_util_avg', 0) * 100)|round(2) }}%</div>
-            <div class="kpi-delta">machines_used={{ m.get('machine_used_count', 0) }}｜load_cv={{ m.get('machine_load_cv', 0) }}</div>
+            <div class="kpi-delta">已用 {{ m.get('machine_used_count', 0) }} 台｜负载均衡 {{ m.get('machine_load_cv', 0) }}</div>
           </div>
           <div class="kpi-box">
-            <div class="kpi-title">人员平均利用率（operator_util_avg）</div>
+            <div class="kpi-title">人员平均利用率</div>
             <div class="kpi-value">{{ (m.get('operator_util_avg', 0) * 100)|round(2) }}%</div>
-            <div class="kpi-delta">operators_used={{ m.get('operator_used_count', 0) }}｜load_cv={{ m.get('operator_load_cv', 0) }}</div>
+            <div class="kpi-delta">已用 {{ m.get('operator_used_count', 0) }} 人｜负载均衡 {{ m.get('operator_load_cv', 0) }}</div>
           </div>
         </div>
         <div class="muted" style="margin-top:8px;">
-          注：attempts 条形图当前按 <code>{{ objective_key }}</code> 展示（条越长表示该指标越大；目标函数是“越小越好”）。
+          下方按「{{ objective_zh.get(objective_key, objective_key) }}」展示各方案对比（越小越好）。
         </div>
       {% else %}
-        <div class="muted" style="margin-top:8px;">该版本未发现 <code>algo.metrics</code>（可能是较旧版本产生的历史记录）。</div>
+        <div class="muted" style="margin-top:8px;">该版本未记录排产指标（可能是旧版本）。</div>
       {% endif %}
     </div>
 
     <div class="card">
-      <h3>优化过程（attempts 采样）</h3>
+      <h3>优化过程</h3>
       {% if trace_chart %}
-        <div class="svg-title">改进曲线（best improvement trace，x=elapsed_ms，y={{ objective_key }}）</div>
+        <div class="svg-title">优化曲线（横轴=用时，纵轴=目标值）</div>
         <div class="svg-wrap">
           <svg viewBox="0 0 {{ trace_chart.width }} {{ trace_chart.height }}" width="100%" height="{{ trace_chart.height }}">
             <polyline points="{{ trace_chart.points }}" fill="none" stroke="#1565c0" stroke-width="2"></polyline>
@@ -170,12 +181,12 @@
           <thead>
             <tr>
               <th>排序</th>
-              <th>tag</th>
-              <th>strategy</th>
-              <th>failed_ops</th>
-              <th>{{ objective_key }}</th>
+              <th>方案编号</th>
+              <th>排产方式</th>
+              <th>失败工序数</th>
+              <th>{{ objective_zh.get(objective_key, objective_key) }}</th>
               <th>条形</th>
-              <th>score（字典序）</th>
+              <th>综合评分</th>
             </tr>
           </thead>
           <tbody>
@@ -184,7 +195,7 @@
               <tr>
                 <td>{{ loop.index }}</td>
                 <td class="tag">{{ r.tag }}</td>
-                <td><code>{{ r.strategy }}</code></td>
+                <td>{{ strategy_zh.get(r.strategy, r.strategy or '-') }}</td>
                 <td>{{ r.failed_ops }}</td>
                 <td>
                   {% if objective_key in mm %}
@@ -196,16 +207,16 @@
                 <td>
                   <div class="bar"><div style="width: {{ r.bar_pct }}%;"></div></div>
                 </td>
-                <td><code>{{ r.score }}</code></td>
+                <td>{{ r.score }}</td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
         <div class="muted" style="margin-top:8px;">
-          提示：attempts 为采样留痕（数量受限，避免 result_summary 过大）；最终最优以 <code>algo.metrics / algo.best_score</code> 为准。
+          注：这里展示的是采样过程，最终结果以当前版本汇总为准。
         </div>
       {% else %}
-        <div class="muted">该版本未记录 attempts（可能是非 improve 模式，或旧版本历史）。</div>
+        <div class="muted">该版本未记录优化过程（可能是快速模式或旧版本）。</div>
       {% endif %}
     </div>
 
@@ -215,7 +226,7 @@
         <div class="muted">范围：v{{ trend_rows[0].version }} ～ v{{ trend_rows[-1].version }}</div>
 
         {% if trend_charts.overdue %}
-          <div class="svg-title">超期批次数（overdue_count）</div>
+          <div class="svg-title">超期批次数</div>
           <div class="svg-wrap">
             <svg viewBox="0 0 {{ trend_charts.overdue.width }} {{ trend_charts.overdue.height }}" width="100%" height="{{ trend_charts.overdue.height }}">
               <polyline points="{{ trend_charts.overdue.points }}" fill="none" stroke="#1976d2" stroke-width="2"></polyline>
@@ -226,7 +237,7 @@
         {% endif %}
 
         {% if trend_charts.tardiness %}
-          <div class="svg-title">总拖期（小时）（total_tardiness_hours）</div>
+          <div class="svg-title">总拖期（小时）</div>
           <div class="svg-wrap">
             <svg viewBox="0 0 {{ trend_charts.tardiness.width }} {{ trend_charts.tardiness.height }}" width="100%" height="{{ trend_charts.tardiness.height }}">
               <polyline points="{{ trend_charts.tardiness.points }}" fill="none" stroke="#7b1fa2" stroke-width="2"></polyline>
@@ -237,7 +248,7 @@
         {% endif %}
 
         {% if trend_charts.weighted_tardiness %}
-          <div class="svg-title">优先级加权拖期（小时）（weighted_tardiness_hours）</div>
+          <div class="svg-title">加权拖期（小时）</div>
           <div class="svg-wrap">
             <svg viewBox="0 0 {{ trend_charts.weighted_tardiness.width }} {{ trend_charts.weighted_tardiness.height }}" width="100%" height="{{ trend_charts.weighted_tardiness.height }}">
               <polyline points="{{ trend_charts.weighted_tardiness.points }}" fill="none" stroke="#5d4037" stroke-width="2"></polyline>
@@ -248,7 +259,7 @@
         {% endif %}
 
         {% if trend_charts.makespan %}
-          <div class="svg-title">makespan（小时）（makespan_hours）</div>
+          <div class="svg-title">总工期（小时）</div>
           <div class="svg-wrap">
             <svg viewBox="0 0 {{ trend_charts.makespan.width }} {{ trend_charts.makespan.height }}" width="100%" height="{{ trend_charts.makespan.height }}">
               <polyline points="{{ trend_charts.makespan.points }}" fill="none" stroke="#ef6c00" stroke-width="2"></polyline>
@@ -259,7 +270,7 @@
         {% endif %}
 
         {% if trend_charts.makespan_internal %}
-          <div class="svg-title">内部窗口 makespan（小时）（makespan_internal_hours）</div>
+          <div class="svg-title">内制工期（小时）</div>
           <div class="svg-wrap">
             <svg viewBox="0 0 {{ trend_charts.makespan_internal.width }} {{ trend_charts.makespan_internal.height }}" width="100%" height="{{ trend_charts.makespan_internal.height }}">
               <polyline points="{{ trend_charts.makespan_internal.points }}" fill="none" stroke="#00838f" stroke-width="2"></polyline>
@@ -270,7 +281,7 @@
         {% endif %}
 
         {% if trend_charts.changeover %}
-          <div class="svg-title">换型次数（changeover_count）</div>
+          <div class="svg-title">换型次数</div>
           <div class="svg-wrap">
             <svg viewBox="0 0 {{ trend_charts.changeover.width }} {{ trend_charts.changeover.height }}" width="100%" height="{{ trend_charts.changeover.height }}">
               <polyline points="{{ trend_charts.changeover.points }}" fill="none" stroke="#2e7d32" stroke-width="2"></polyline>
@@ -281,7 +292,7 @@
         {% endif %}
 
         {% if trend_charts.machine_util %}
-          <div class="svg-title">机器平均利用率（machine_util_avg，0~1）</div>
+          <div class="svg-title">设备平均利用率（0~1）</div>
           <div class="svg-wrap">
             <svg viewBox="0 0 {{ trend_charts.machine_util.width }} {{ trend_charts.machine_util.height }}" width="100%" height="{{ trend_charts.machine_util.height }}">
               <polyline points="{{ trend_charts.machine_util.points }}" fill="none" stroke="#3949ab" stroke-width="2"></polyline>
@@ -292,7 +303,7 @@
         {% endif %}
 
         {% if trend_charts.operator_util %}
-          <div class="svg-title">人员平均利用率（operator_util_avg，0~1）</div>
+          <div class="svg-title">人员平均利用率（0~1）</div>
           <div class="svg-wrap">
             <svg viewBox="0 0 {{ trend_charts.operator_util.width }} {{ trend_charts.operator_util.height }}" width="100%" height="{{ trend_charts.operator_util.height }}">
               <polyline points="{{ trend_charts.operator_util.points }}" fill="none" stroke="#6d4c41" stroke-width="2"></polyline>
@@ -302,7 +313,7 @@
           <div class="muted">min={{ trend_charts.operator_util.y_min|round(6) }} max={{ trend_charts.operator_util.y_max|round(6) }}</div>
         {% endif %}
       {% else %}
-        <div class="muted">暂无可用趋势数据（需要至少 2 个包含 <code>algo.metrics</code> 的版本）。</div>
+        <div class="muted">暂无趋势数据（需要至少 2 个包含排产指标的版本）。</div>
       {% endif %}
     </div>
   {% endif %}

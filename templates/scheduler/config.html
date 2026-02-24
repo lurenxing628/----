@@ -2,9 +2,7 @@
 {% block content %}
   <div class="card">
     <h2>排产高级设置</h2>
-    <p class="muted">
-      说明：本页用于调整排产算法相关参数（低频）。普通计调员建议只使用默认方案或在“模板/方案”里一键切换。
-    </p>
+    <p class="muted">这里用于调整排产参数。日常建议优先使用模板方案。</p>
     <div style="margin-top:8px;">
       <strong>入口：</strong>
       <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
@@ -23,10 +21,14 @@
       {% if manual_url %}
         <a href="{{ manual_url }}">排产调度说明书</a>
       {% else %}
-        <span class="muted"
-              title="原因：后端接口未注册（endpoint：scheduler.config_manual_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-          排产调度说明书（不可用：后端接口缺失 scheduler.config_manual_page，可能旧版本/未重启/未重新打包）
-        </span>
+        <span class="muted">排产调度说明书暂不可用，请重启系统后重试。</span>
+        <details class="debug-details muted">
+          <summary>排查信息</summary>
+          后端接口未注册（endpoint：scheduler.config_manual_page）。<br/>
+          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+          处理：重启服务或重新打包升级。<br/>
+          日志：logs/aps.log、logs/aps_error.log。
+        </details>
       {% endif %}
     </div>
   </div>
@@ -49,7 +51,7 @@
         <form method="post" action="{{ preset_apply_url }}" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
           <input type="hidden" name="next" value="{{ request.full_path }}">
           <label class="muted">切换方案</label>
-          <select name="preset_name" onchange="this.form.submit()">
+          <select name="preset_name" data-auto-submit="1">
             <option value="custom" {% if not active_preset or active_preset == 'custom' %}selected{% endif %}>自定义（以当前高级设置为准）</option>
             {% for p in presets or [] %}
               <option value="{{ p.name }}" {% if active_preset == p.name %}selected{% endif %}>{{ p.name }}</option>
@@ -57,10 +59,14 @@
           </select>
         </form>
       {% else %}
-        <div class="muted"
-             title="原因：后端接口未注册（endpoint：scheduler.preset_apply）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-          切换方案（不可用：后端接口缺失 scheduler.preset_apply，可能旧版本/未重启/未重新打包）
-        </div>
+        <div class="muted">切换方案暂不可用，请重启系统后重试。</div>
+        <details class="debug-details muted">
+          <summary>排查信息</summary>
+          后端接口未注册（endpoint：scheduler.preset_apply）。<br/>
+          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+          处理：重启服务或重新打包升级。<br/>
+          日志：logs/aps.log、logs/aps_error.log。
+        </details>
       {% endif %}
 
       {% set preset_save_url = safe_url_for('scheduler.preset_save') %}
@@ -72,10 +78,14 @@
           <button type="submit">保存为模板</button>
         </form>
       {% else %}
-        <div class="muted"
-             title="原因：后端接口未注册（endpoint：scheduler.preset_save）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-          保存为模板（不可用：后端接口缺失 scheduler.preset_save，可能旧版本/未重启/未重新打包）
-        </div>
+        <div class="muted">保存模板暂不可用，请重启系统后重试。</div>
+        <details class="debug-details muted">
+          <summary>排查信息</summary>
+          后端接口未注册（endpoint：scheduler.preset_save）。<br/>
+          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+          处理：重启服务或重新打包升级。<br/>
+          日志：logs/aps.log、logs/aps_error.log。
+        </details>
       {% endif %}
 
       {% set preset_delete_url = safe_url_for('scheduler.preset_delete') %}
@@ -95,10 +105,14 @@
           <span class="muted">内置模板不可删除/覆盖</span>
         </form>
       {% else %}
-        <div class="muted"
-             title="原因：后端接口未注册（endpoint：scheduler.preset_delete）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-          删除模板（不可用：后端接口缺失 scheduler.preset_delete，可能旧版本/未重启/未重新打包）
-        </div>
+        <div class="muted">删除模板暂不可用，请重启系统后重试。</div>
+        <details class="debug-details muted">
+          <summary>排查信息</summary>
+          后端接口未注册（endpoint：scheduler.preset_delete）。<br/>
+          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+          处理：重启服务或重新打包升级。<br/>
+          日志：logs/aps.log、logs/aps_error.log。
+        </details>
       {% endif %}
     </div>
 

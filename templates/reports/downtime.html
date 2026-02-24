@@ -2,9 +2,7 @@
 {% block content %}
   <div class="card">
     <h2>报表 - 停机影响统计</h2>
-    <p class="muted">
-      说明：统计指定日期范围内各设备的停机时长/次数，并检查是否存在“停机区间与排程任务重叠”的风险（通常应为 0）。
-    </p>
+    <p class="muted">查看各设备的停机时长、停机次数，以及是否和排产任务冲突。</p>
     <div style="margin-top:8px;">
       <a href="{{ url_for('reports.index') }}">← 返回报表中心</a>
     </div>
@@ -13,7 +11,7 @@
   <div class="card">
     <h3>筛选</h3>
     <form method="get" action="{{ url_for('reports.downtime_page') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="form-row">
         <div>
           <label>排产版本</label><br/>
           <select name="version" style="min-width:220px;">
@@ -26,11 +24,11 @@
         </div>
         <div>
           <label>开始日期</label><br/>
-          <input name="start_date" value="{{ start_date }}" placeholder="YYYY-MM-DD" style="width:140px;">
+          <input type="date" name="start_date" value="{{ start_date }}" style="width:140px;">
         </div>
         <div>
           <label>结束日期</label><br/>
-          <input name="end_date" value="{{ end_date }}" placeholder="YYYY-MM-DD" style="width:140px;">
+          <input type="date" name="end_date" value="{{ end_date }}" style="width:140px;">
         </div>
         <div>
           <button type="submit">查询</button>
@@ -47,17 +45,17 @@
   <div class="card">
     <h3>结果</h3>
     {% if not rows %}
-      <div class="muted">该范围内暂无停机计划。</div>
+      <div class="muted">这段时间没有停机安排。</div>
     {% else %}
       <table>
         <thead>
           <tr>
             <th style="width:140px;">设备编号</th>
             <th>设备名称</th>
-            <th style="width:140px;">停机(小时)</th>
-            <th style="width:120px;">停机次数</th>
-            <th style="width:160px;">与排程重叠(小时)</th>
-            <th style="width:120px;">重叠次数</th>
+            <th style="width:140px;" class="text-right">停机(小时)</th>
+            <th style="width:120px;" class="text-right">停机次数</th>
+            <th style="width:160px;" class="text-right">与排程重叠(小时)</th>
+            <th style="width:120px;" class="text-right">重叠次数</th>
           </tr>
         </thead>
         <tbody>
@@ -65,10 +63,10 @@
             <tr>
               <td>{{ r.machine_id }}</td>
               <td>{{ r.machine_name or '-' }}</td>
-              <td>{{ r.downtime_hours }}</td>
-              <td>{{ r.downtime_count }}</td>
-              <td>{{ r.schedule_overlap_hours }}</td>
-              <td>{{ r.schedule_overlap_count }}</td>
+              <td class="text-right">{{ r.downtime_hours }}</td>
+              <td class="text-right">{{ r.downtime_count }}</td>
+              <td class="text-right">{{ r.schedule_overlap_hours }}</td>
+              <td class="text-right">{{ r.schedule_overlap_count }}</td>
             </tr>
           {% endfor %}
         </tbody>
