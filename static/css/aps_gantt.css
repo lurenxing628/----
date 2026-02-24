@@ -146,6 +146,41 @@
 }
 
 /* ---- toolbar controls (page-level) ---- */
+.aps-gantt-filter-grid {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.aps-gantt-filter-item > label {
+  display: inline-block;
+  margin-bottom: 4px;
+}
+.aps-gantt-filter-checks {
+  min-width: 320px;
+}
+.aps-gantt-check-group {
+  min-height: 34px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.aps-gantt-check-group label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+}
+.aps-gantt-check-group input[type="checkbox"] {
+  margin: 0;
+}
+.aps-gantt-filter-action {
+  padding-bottom: 1px;
+}
+
 #ganttViewMode,
 #ganttColorMode,
 #ganttDepsMode,

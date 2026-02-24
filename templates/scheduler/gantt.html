@@ -92,8 +92,8 @@
 
     <details style="margin-top:12px; border-top:1px dashed #e5e5e5; padding-top:12px;">
       <summary style="cursor:pointer; font-weight:600; font-size:14px;">筛选与配色</summary>
-      <div style="margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
+      <div class="aps-gantt-filter-grid" style="margin-top:10px;">
+        <div class="aps-gantt-filter-item">
           <label for="ganttViewMode">时间粒度</label><br/>
           <select id="ganttViewMode" style="width:180px;">
             <option value="Day" selected>日视图</option>
@@ -101,7 +101,7 @@
             <option value="Month">月视图</option>
           </select>
         </div>
-        <div>
+        <div class="aps-gantt-filter-item">
           <label for="ganttColorMode">配色</label><br/>
           <select id="ganttColorMode" style="width:180px;">
             <option value="batch" selected>按批次</option>
@@ -110,28 +110,35 @@
             <option value="status">按工序状态</option>
           </select>
         </div>
-        <div>
+        <div class="aps-gantt-filter-item">
           <label for="ganttFilterBatch">批次筛选</label><br/>
-          <input id="ganttFilterBatch" placeholder="如 B001" aria-label="批次筛选，输入批次号关键词" style="width:180px;">
+          <select id="ganttFilterBatch" aria-label="批次筛选，选择批次号" style="width:180px;">
+            <option value="">全部批次</option>
+          </select>
         </div>
-        <div>
+        <div class="aps-gantt-filter-item">
           <label for="ganttFilterResource">{{ '设备筛选' if view=='machine' else '人员筛选' }}</label><br/>
-          <input id="ganttFilterResource" placeholder="{{ '如 MC001' if view=='machine' else '如 OP001' }}" aria-label="{{ '设备筛选，输入设备编号或名称关键词' if view=='machine' else '人员筛选，输入工号或姓名关键词' }}" style="width:180px;">
+          <select id="ganttFilterResource" aria-label="{{ '设备筛选，选择设备编号或名称' if view=='machine' else '人员筛选，选择工号或姓名' }}" style="width:220px;">
+            <option value="">{{ '全部设备' if view=='machine' else '全部人员' }}</option>
+          </select>
         </div>
-        <div>
-          <label class="muted" for="ganttOnlyOverdue"><input type="checkbox" id="ganttOnlyOverdue" aria-label="仅显示超期任务"> 仅超期</label><br/>
-          <label class="muted" for="ganttOnlyExternal"><input type="checkbox" id="ganttOnlyExternal" aria-label="仅显示外协任务"> 仅外协</label>
+        <div class="aps-gantt-filter-item aps-gantt-filter-checks">
+          <label>勾选项</label><br/>
+          <div class="aps-gantt-check-group" role="group" aria-label="筛选勾选项">
+            <label for="ganttOnlyOverdue"><input type="checkbox" id="ganttOnlyOverdue" aria-label="仅显示超期任务"> 仅超期</label>
+            <label for="ganttOnlyExternal"><input type="checkbox" id="ganttOnlyExternal" aria-label="仅显示外协任务"> 仅外协</label>
+            <label for="ganttHighlightCC"><input type="checkbox" id="ganttHighlightCC" checked aria-label="高亮关键链任务"> 高亮关键链</label>
+          </div>
         </div>
-        <div>
+        <div class="aps-gantt-filter-item">
           <label for="ganttDepsMode">依赖箭头</label><br/>
           <select id="ganttDepsMode" style="width:180px;">
             <option value="critical" selected>仅关键链箭头</option>
             <option value="process">完整工艺依赖箭头</option>
             <option value="none">不显示箭头</option>
-          </select><br/>
-          <label class="muted" for="ganttHighlightCC"><input type="checkbox" id="ganttHighlightCC" checked aria-label="高亮关键链任务"> 高亮关键链</label><br/>
+          </select>
         </div>
-        <div>
+        <div class="aps-gantt-filter-item aps-gantt-filter-action">
           <button type="button" id="ganttResetView">重置</button>
         </div>
       </div>
@@ -147,7 +154,7 @@
             <li><strong>虚线边框</strong>：外协任务。</li>
             <li><strong>箭头</strong>：可切换“仅关键链 / 完整工艺依赖 / 不显示”。</li>
             <li><strong>聚焦</strong>：点击任意任务条，可聚焦该批次（其它任务自动弱化）；再次点击取消。</li>
-            <li><strong>筛选</strong>：支持批次/设备/人员模糊过滤；可配合“仅超期/仅外协”快速定位问题。</li>
+            <li><strong>筛选</strong>：支持批次/设备/人员下拉筛选；可配合“仅超期/仅外协”快速定位问题。</li>
             <li><strong>关键链口径</strong>：关键链按<strong>全版本排程</strong>计算（不随周窗口截断）；图上高亮仅为<strong>当前显示范围内</strong>可见的关键链任务。综合工艺前驱与资源前驱（设备/人员）选取“控制前驱”回溯得到。</li>
           </ul>
         </div>
@@ -156,24 +163,33 @@
   </div>
 
   <div class="card">
-    <div id="ganttEmpty" class="muted" style="display:none;">暂无排程数据（该周/该版本）。</div>
-    <div id="ganttError" class="error" role="alert" aria-live="assertive" style="display:none;"></div>
-    <div
-      id="gantt"
-      data-url="{{ data_url }}"
-      data-view="{{ view }}"
-      data-week-start="{{ week_start }}"
-      data-start-date="{{ start_date }}"
-      data-end-date="{{ end_date }}"
-      data-offset="{{ offset }}"
-      data-version="{{ version }}"
-      data-fetch-timeout-ms="12000"
-    ></div>
+    {% if not has_history %}
+      <div class="error" role="alert" aria-live="assertive">
+        当前数据库暂无排产版本。请先在【排产调度】执行一次排产，然后再查看甘特图。
+      </div>
+    {% else %}
+      <div id="ganttEmpty" class="muted" style="display:none;">暂无排程数据（该周/该版本）。</div>
+      <div id="ganttError" class="error" role="alert" aria-live="assertive" style="display:none;"></div>
+      <div
+        id="gantt"
+        data-url="{{ data_url }}"
+        data-view="{{ view }}"
+        data-week-start="{{ week_start }}"
+        data-start-date="{{ start_date }}"
+        data-end-date="{{ end_date }}"
+        data-offset="{{ offset }}"
+        data-version="{{ version }}"
+        data-has-history="{{ '1' if has_history else '0' }}"
+        data-fetch-timeout-ms="12000"
+      ></div>
+    {% endif %}
   </div>
 {% endblock %}
 
 {% block extra_scripts %}
-  <script src="{{ url_for('static', filename='js/frappe-gantt.min.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/gantt.js') }}" defer></script>
+  {% if has_history %}
+    <script src="{{ url_for('static', filename='js/frappe-gantt.min.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt.js') }}" defer></script>
+  {% endif %}
 {% endblock %}
 

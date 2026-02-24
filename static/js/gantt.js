@@ -42,21 +42,142 @@
     return n;
   }
 
-  // #region agent log
-  function _agentDebugLog(runId, hypothesisId, location, message, data) {
-    try {
-      fetch('http://127.0.0.1:7722/ingest/388749a8-4c9a-402f-90a7-8830b3bc41b5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'407f1e'},body:JSON.stringify({sessionId:'407f1e',runId:runId || 'unknown',hypothesisId:hypothesisId || 'H0',location:location || 'static/js/gantt.js',message:message || '',data:data || {},timestamp:Date.now()})}).catch(()=>{});
-    } catch (_) {
-      // ignore debug log failure
-    }
-  }
-  // #endregion
-
   function includesI(hay, needle) {
     const h = norm(hay).toLowerCase();
     const n = norm(needle).toLowerCase();
     if (!n) return true;
     return h.indexOf(n) >= 0;
+  }
+
+  function hasSelectOption(el, value) {
+    if (!el || !el.options) return false;
+    const target = norm(value);
+    for (let i = 0; i < el.options.length; i++) {
+      if (norm(el.options[i].value) === target) return true;
+    }
+    return false;
+  }
+
+  function appendSelectOption(el, value, label) {
+    if (!el) return;
+    const opt = document.createElement("option");
+    opt.value = norm(value);
+    opt.textContent = norm(label) || norm(value);
+    el.appendChild(opt);
+  }
+
+  function setSelectValueWithFallback(el, value, fallbackPrefix) {
+    if (!el) return;
+    const v = norm(value);
+    if (!v) {
+      el.value = "";
+      return;
+    }
+    if (!hasSelectOption(el, v)) {
+      const prefix = norm(fallbackPrefix) || "按值筛选";
+      appendSelectOption(el, v, `${prefix}：${v}`);
+    }
+    el.value = v;
+  }
+
+  function replaceSelectOptions(el, options, defaultLabel) {
+    if (!el) return;
+    if (!el.options || el.options.length <= 0) {
+      appendSelectOption(el, "", defaultLabel || "全部");
+    } else {
+      el.options[0].value = "";
+      el.options[0].textContent = defaultLabel || "全部";
+    }
+    while (el.options.length > 1) {
+      el.remove(1);
+    }
+    const list = Array.isArray(options) ? options : [];
+    for (let i = 0; i < list.length; i++) {
+      const item = list[i] || {};
+      const value = norm(item.value);
+      if (!value) continue;
+      const label = norm(item.label) || value;
+      appendSelectOption(el, value, label);
+    }
+  }
+
+  function sortOptionItems(items) {
+    const list = Array.isArray(items) ? items.slice() : [];
+    list.sort((a, b) => {
+      const la = norm(a && a.label).toLowerCase();
+      const lb = norm(b && b.label).toLowerCase();
+      if (la === lb) {
+        return norm(a && a.value).toLowerCase().localeCompare(norm(b && b.value).toLowerCase());
+      }
+      return la.localeCompare(lb);
+    });
+    return list;
+  }
+
+  function addFilterOption(m, value, label) {
+    if (!m) return;
+    const v = norm(value);
+    if (!v) return;
+    if (!m.has(v)) {
+      m.set(v, { value: v, label: norm(label) || v });
+    }
+  }
+
+  function collectFilterOptions(tasks, view) {
+    const batchMap = new Map();
+    const resourceMap = new Map();
+    const list = Array.isArray(tasks) ? tasks : [];
+    const useView = norm(view) || "machine";
+
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i] || {};
+      const meta = t.meta || {};
+      const batchId = norm(meta.batch_id);
+      addFilterOption(batchMap, batchId, batchId);
+
+      if (useView === "machine") {
+        const machineId = norm(meta.machine_id);
+        const machineName = norm(meta.machine);
+        const value = machineId || machineName;
+        const label = machineId && machineName && machineName !== machineId
+          ? `${machineId} ${machineName}`
+          : (machineName || machineId);
+        addFilterOption(resourceMap, value, label);
+      } else {
+        const operatorId = norm(meta.operator_id);
+        const operatorName = norm(meta.operator);
+        const value = operatorId || operatorName;
+        const label = operatorId && operatorName && operatorName !== operatorId
+          ? `${operatorId} ${operatorName}`
+          : (operatorName || operatorId);
+        addFilterOption(resourceMap, value, label);
+      }
+    }
+
+    return {
+      batchOptions: sortOptionItems(Array.from(batchMap.values())),
+      resourceOptions: sortOptionItems(Array.from(resourceMap.values())),
+    };
+  }
+
+  function refreshFilterSelectOptions() {
+    const cfg = state.cfg || {};
+    const view = norm(cfg.view) || "machine";
+    const batchEl = $("ganttFilterBatch");
+    const resourceEl = $("ganttFilterResource");
+    const selectedBatch = norm(batchEl && batchEl.value);
+    const selectedResource = norm(resourceEl && resourceEl.value);
+
+    const opts = collectFilterOptions(state.allTasks, view);
+    replaceSelectOptions(batchEl, opts.batchOptions, "全部批次");
+    replaceSelectOptions(resourceEl, opts.resourceOptions, view === "machine" ? "全部设备" : "全部人员");
+
+    if (selectedBatch) {
+      setSelectValueWithFallback(batchEl, selectedBatch, "批次");
+    }
+    if (selectedResource) {
+      setSelectValueWithFallback(resourceEl, selectedResource, view === "machine" ? "设备" : "人员");
+    }
   }
 
   function hashToHue(s) {
@@ -247,12 +368,12 @@
     const fb = params.get("gantt_batch");
     if (fb !== null) {
       const el = $("ganttFilterBatch");
-      if (el) el.value = fb;
+      if (el) setSelectValueWithFallback(el, fb, "批次");
     }
     const fr = params.get("gantt_resource");
     if (fr !== null) {
       const el = $("ganttFilterResource");
-      if (el) el.value = fr;
+      if (el) setSelectValueWithFallback(el, fr, "资源");
     }
     const oo = params.get("gantt_overdue");
     if (oo !== null) {
@@ -1270,7 +1391,10 @@
     });
     ["ganttFilterBatch", "ganttFilterResource"].forEach((id) => {
       const el = $(id);
-      if (el) on(el, "input", scheduleFullRender);
+      if (!el) return;
+      on(el, "change", scheduleFullRender);
+      // 兼容历史 input 控件（降级场景）
+      on(el, "input", scheduleFullRender);
     });
   }
 
@@ -1354,31 +1478,26 @@
         endDate: ds.endDate || "",
         offset: ds.offset || 0,
         version: ds.version || "",
+        hasHistory: ds.hasHistory || "",
         fetchTimeoutMs: ds.fetchTimeoutMs || ds.fetchTimeout || "",
       };
     })();
     state.cfg = cfg;
-    // #region agent log
-    _agentDebugLog(
-      "run1",
-      "H1",
-      "static/js/gantt.js:1361",
-      "loadAndRender cfg snapshot",
-      {
-        view: cfg && cfg.view ? cfg.view : "",
-        weekStart: cfg && cfg.weekStart ? cfg.weekStart : "",
-        startDate: cfg && cfg.startDate ? cfg.startDate : "",
-        endDate: cfg && cfg.endDate ? cfg.endDate : "",
-        offset: cfg && typeof cfg.offset !== "undefined" ? String(cfg.offset) : "",
-        version: cfg && cfg.version ? String(cfg.version) : "",
-      }
-    );
-    // #endregion
-
     const emptyEl = $("ganttEmpty");
     const errEl = $("ganttError");
     show(emptyEl, false);
     show(errEl, false);
+    const hasHistory = String(cfg && cfg.hasHistory ? cfg.hasHistory : "") === "1";
+
+    if (!hasHistory) {
+      if (emptyEl) {
+        emptyEl.textContent = "当前数据库暂无排程版本，请先在【排产调度】执行一次排产。";
+      }
+      show(emptyEl, true);
+      const host = $("gantt");
+      if (host) host.innerHTML = "";
+      return;
+    }
 
     const dataUrl = norm(cfg && cfg.dataUrl ? cfg.dataUrl : "");
     if (!dataUrl) {
@@ -1412,19 +1531,6 @@
     const reqId = (_perfState.activeRequestId || 0) + 1;
     _perfState.activeRequestId = reqId;
     const reqUrl = url.toString();
-    // #region agent log
-    _agentDebugLog(
-      "run1",
-      "H2",
-      "static/js/gantt.js:1416",
-      "request url built",
-      {
-        hasEffectiveRange: hasEffectiveRange,
-        reqUrl: reqUrl,
-      }
-    );
-    // #endregion
-
     let payload;
     try {
       const resp = await _withFetchTimeout(reqUrl, fetchTimeoutMs);
@@ -1465,24 +1571,10 @@
 
     const data = payload.data || {};
     const tasks = Array.isArray(data.tasks) ? data.tasks : [];
-    // #region agent log
-    _agentDebugLog(
-      "run1",
-      "H4",
-      "static/js/gantt.js:1466",
-      "payload summary",
-      {
-        success: payload && payload.success === true,
-        week_start: data && data.week_start ? data.week_start : "",
-        week_end: data && data.week_end ? data.week_end : "",
-        task_count: data && typeof data.task_count !== "undefined" ? Number(data.task_count) : tasks.length,
-        tasks_len: tasks.length,
-      }
-    );
-    // #endregion
     state.allTasks = tasks;
     initCriticalChain(data.critical_chain || null);
     initCalendarDays(data.calendar_days || null);
+    refreshFilterSelectOptions();
 
     applyUiFromUrl();
     bindUi();
