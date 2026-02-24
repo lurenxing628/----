@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import os
 import tempfile
 from typing import Any, Dict, List
@@ -18,6 +21,46 @@ def parse_import_mode(value: str) -> ImportMode:
         return ImportMode(value)
     except Exception:
         raise ValidationError("导入模式不合法", field="mode")
+
+
+def build_preview_baseline_token(
+    *,
+    existing_data: Dict[str, Dict[str, Any]],
+    mode: ImportMode,
+    id_column: str,
+) -> str:
+    """
+    生成预览基线签名：
+    - 绑定导入模式 + 主键列 + 当前 existing 快照
+    - confirm 阶段若签名不一致，说明 preview 基线已变化，必须重新预览
+    """
+    payload = {
+        "mode": str(getattr(mode, "value", mode) or "").strip(),
+        "id_column": str(id_column or "").strip(),
+        "existing_data": existing_data or {},
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def preview_baseline_matches(
+    token: str,
+    *,
+    existing_data: Dict[str, Dict[str, Any]],
+    mode: ImportMode,
+    id_column: str,
+) -> bool:
+    """
+    校验客户端回传的预览基线签名是否与当前数据库快照一致。
+    """
+    provided = (token or "").strip()
+    if not provided:
+        return False
+    expected = build_preview_baseline_token(existing_data=existing_data, mode=mode, id_column=id_column)
+    try:
+        return hmac.compare_digest(provided, expected)
+    except Exception:
+        return provided == expected
 
 
 def ensure_unique_ids(rows: List[Dict[str, Any]], id_column: str) -> None:

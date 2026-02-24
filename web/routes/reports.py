@@ -124,8 +124,13 @@ def utilization_page():
 
 @bp.get("/utilization/export")
 def utilization_export():
-    start_date = _validate_ymd_date(request.args.get("start_date"), field="start_date")
-    end_date = _validate_ymd_date(request.args.get("end_date"), field="end_date")
+    start_raw = (request.args.get("start_date") or "").strip()
+    end_raw = (request.args.get("end_date") or "").strip()
+    if not start_raw or not end_raw:
+        start_date, end_date = _default_date_range(days=7)
+    else:
+        start_date = _validate_ymd_date(start_raw, field="start_date")
+        end_date = _validate_ymd_date(end_raw, field="end_date")
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     x = engine.export_utilization_xlsx(version, start_date, end_date)
@@ -163,8 +168,13 @@ def downtime_page():
 
 @bp.get("/downtime/export")
 def downtime_export():
-    start_date = _validate_ymd_date(request.args.get("start_date"), field="start_date")
-    end_date = _validate_ymd_date(request.args.get("end_date"), field="end_date")
+    start_raw = (request.args.get("start_date") or "").strip()
+    end_raw = (request.args.get("end_date") or "").strip()
+    if not start_raw or not end_raw:
+        start_date, end_date = _default_date_range(days=7)
+    else:
+        start_date = _validate_ymd_date(start_raw, field="start_date")
+        end_date = _validate_ymd_date(end_raw, field="end_date")
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     x = engine.export_downtime_impact_xlsx(version, start_date, end_date)

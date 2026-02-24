@@ -19,6 +19,7 @@ from core.services.scheduler import BatchService
 from data.repositories import PartRepository
 
 from .scheduler_bp import bp
+from .excel_utils import build_preview_baseline_token, preview_baseline_matches
 from .scheduler_utils import (
     _ensure_unique_ids,
     _normalize_batch_priority,
@@ -56,6 +57,7 @@ def excel_batches_page():
         existing_list=list(existing.values()),
         preview_rows=None,
         raw_rows_json=None,
+        preview_baseline=None,
         mode=ImportMode.OVERWRITE.value,
         filename=None,
         preview_url=url_for("scheduler.excel_batches_preview"),
@@ -118,6 +120,7 @@ def excel_batches_preview():
         validators=[validate_row],
         mode=mode,
     )
+    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column="批次号")
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -136,6 +139,7 @@ def excel_batches_preview():
         existing_list=list(existing.values()),
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(normalized_rows, ensure_ascii=False),
+        preview_baseline=preview_baseline,
         mode=mode.value,
         filename=file.filename,
         preview_url=url_for("scheduler.excel_batches_preview"),
@@ -151,9 +155,12 @@ def excel_batches_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     raw_rows_json = request.form.get("raw_rows_json")
+    preview_baseline = (request.form.get("preview_baseline") or "").strip()
     auto_generate_ops = (request.form.get("auto_generate_ops") or "").strip().lower() in ("1", "true", "on", "yes")
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
+    if not preview_baseline:
+        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
 
     try:
         rows = json.loads(raw_rows_json)
@@ -166,6 +173,42 @@ def excel_batches_confirm():
 
     svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = {b.batch_id: b for b in svc.list()}
+    existing_preview_data = {
+        k: {
+            "批次号": v.batch_id,
+            "图号": v.part_no,
+            "数量": v.quantity,
+            "交期": v.due_date,
+            "优先级": v.priority,
+            "齐套": v.ready_status,
+            "齐套日期": getattr(v, "ready_date", None),
+            "备注": v.remark,
+        }
+        for k, v in existing.items()
+    }
+    if not preview_baseline_matches(
+        preview_baseline,
+        existing_data=existing_preview_data,
+        mode=mode,
+        id_column="批次号",
+    ):
+        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        existing_list = list(existing_preview_data.values())
+        existing_list.sort(key=lambda x: str(x.get("批次号") or ""))
+        return render_template(
+            "scheduler/excel_import_batches.html",
+            title="批次信息 - Excel 导入/导出",
+            existing_list=existing_list,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode=mode.value,
+            filename=filename,
+            preview_url=url_for("scheduler.excel_batches_preview"),
+            confirm_url=url_for("scheduler.excel_batches_confirm"),
+            template_download_url=url_for("scheduler.excel_batches_template"),
+            export_url=url_for("scheduler.excel_batches_export"),
+        )
     parts = {p.part_no: p for p in PartRepository(g.db).list()}
 
     validate_row = get_batch_row_validate_and_normalize(g.db, parts_cache=parts, inplace=True)
@@ -174,19 +217,7 @@ def excel_batches_confirm():
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="批次号",
-        existing_data={
-            k: {
-                "批次号": v.batch_id,
-                "图号": v.part_no,
-                "数量": v.quantity,
-                "交期": v.due_date,
-                "优先级": v.priority,
-                "齐套": v.ready_status,
-                "齐套日期": getattr(v, "ready_date", None),
-                "备注": v.remark,
-            }
-            for k, v in existing.items()
-        },
+        existing_data=existing_preview_data,
         validators=[validate_row],
         mode=mode,
     )
@@ -219,6 +250,7 @@ def excel_batches_confirm():
             existing_list=existing_list,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
+            preview_baseline=preview_baseline,
             mode=mode.value,
             filename=filename,
             preview_url=url_for("scheduler.excel_batches_preview"),
@@ -232,6 +264,7 @@ def excel_batches_confirm():
         mode=mode,
         parts_cache=parts,
         auto_generate_ops=auto_generate_ops,
+        existing_ids=set(existing.keys()),
     )
     new_count = int(import_stats.get("new_count", 0))
     update_count = int(import_stats.get("update_count", 0))

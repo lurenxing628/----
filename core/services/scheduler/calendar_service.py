@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
@@ -141,12 +141,20 @@ class CalendarService:
     def delete_operator_calendar_all_no_tx(self) -> None:
         self._admin.delete_operator_calendar_all_no_tx()
 
-    def import_operator_calendar_from_preview_rows(self, *, preview_rows: List[Any], mode: ImportMode) -> Dict[str, Any]:
+    def import_operator_calendar_from_preview_rows(
+        self,
+        *,
+        preview_rows: List[Any],
+        mode: ImportMode,
+        existing_ids: Optional[Set[str]] = None,
+    ) -> Dict[str, Any]:
         """
         人员专属日历 Excel 导入编排入口（事务由本方法统一控制）。
         """
         rows = list(preview_rows or [])
-        existing_ids = {f"{c.operator_id}|{c.date}" for c in self.list_operator_calendar_all()}
+        existing_row_ids = (
+            set(existing_ids or set()) if existing_ids is not None else {f"{c.operator_id}|{c.date}" for c in self.list_operator_calendar_all()}
+        )
 
         def _replace_existing_no_tx() -> None:
             self.delete_operator_calendar_all_no_tx()
@@ -179,7 +187,7 @@ class CalendarService:
             self.conn,
             mode=mode,
             preview_rows=rows,
-            existing_row_ids=existing_ids,
+            existing_row_ids=existing_row_ids,
             replace_existing_no_tx=_replace_existing_no_tx,
             row_id_getter=_row_id_getter,
             apply_row_no_tx=_apply_row_no_tx,

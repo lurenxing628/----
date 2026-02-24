@@ -92,6 +92,7 @@ class ScheduleRepository(BaseRepository):
             s.op_id AS op_id,
             s.start_time AS start_time,
             s.end_time AS end_time,
+            s.lock_status AS lock_status,
             s.version AS version,
 
             bo.op_code AS op_code,
@@ -139,6 +140,7 @@ class ScheduleRepository(BaseRepository):
             s.op_id AS op_id,
             s.start_time AS start_time,
             s.end_time AS end_time,
+            s.lock_status AS lock_status,
             s.version AS version,
 
             bo.op_code AS op_code,

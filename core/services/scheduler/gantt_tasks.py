@@ -1,11 +1,34 @@
 from __future__ import annotations
 
+import json
+import time
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from core.services.scheduler.calendar_service import CalendarService
 
 from .gantt_range import WeekRange
+
+
+# #region agent log
+def _agent_debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: Dict[str, Any]) -> None:
+    try:
+        payload = {
+            "sessionId": "407f1e",
+            "runId": str(run_id or "unknown"),
+            "hypothesisId": str(hypothesis_id or "H0"),
+            "location": str(location or "core/services/scheduler/gantt_tasks.py"),
+            "message": str(message or ""),
+            "data": data if isinstance(data, dict) else {},
+            "timestamp": int(time.time() * 1000),
+        }
+        with open("debug-407f1e.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+# #endregion
 
 
 def _parse_dt(value: Any) -> Optional[datetime]:
@@ -27,6 +50,13 @@ def _parse_dt(value: Any) -> Optional[datetime]:
 
 def _fmt_dt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _duration_minutes(st: datetime, et: datetime) -> int:
+    delta = (et - st).total_seconds()
+    if delta <= 0:
+        return 0
+    return int(delta // 60)
 
 
 def _priority_class(priority: Optional[str]) -> str:
@@ -108,16 +138,20 @@ def build_tasks(
     构建甘特 tasks（供 Frappe Gantt 渲染）。
     """
     tasks: List[Dict[str, Any]] = []
+    dropped_invalid = 0
+    dropped_outside = 0
     for r in rows:
         st = _parse_dt(r.get("start_time"))
         et = _parse_dt(r.get("end_time"))
         if not st or not et or not (st < et):
+            dropped_invalid += 1
             continue
 
         # clamp 到本周范围（避免跨周任务把时间轴拉很长）
         st2 = max(st, wr.start_dt)
         et2 = min(et, wr.end_dt_exclusive)
         if not (st2 < et2):
+            dropped_outside += 1
             continue
 
         op_code = (r.get("op_code") or "").strip()
@@ -142,14 +176,19 @@ def build_tasks(
         tasks.append(
             {
                 "id": task_id,
+                "schedule_id": r.get("schedule_id"),
                 "name": name,
                 "start": _fmt_dt(st2),
                 "end": _fmt_dt(et2),
+                "duration_minutes": _duration_minutes(st2, et2),
                 "progress": 0,
+                "lock_status": r.get("lock_status"),
                 "dependencies": "",
+                "edge_type": "",
                 "custom_class": " ".join(css),
                 # 附加信息（前端可用于 tooltip / 调试，不影响 Frappe Gantt）
                 "meta": {
+                    "schedule_id": r.get("schedule_id"),
                     "op_id": r.get("op_id"),
                     "batch_id": batch_id,
                     "piece_id": r.get("piece_id"),
@@ -164,6 +203,8 @@ def build_tasks(
                     "operator": operator_disp,
                     "group_key": group_key,
                     "priority": r.get("priority"),
+                    "lock_status": r.get("lock_status"),
+                    "duration_minutes": _duration_minutes(st2, et2),
                     "due_date": r.get("due_date"),
                     "is_overdue": is_overdue,
                 },
@@ -193,6 +234,14 @@ def build_tasks(
             if prev_id and tid:
                 # Frappe Gantt：dependencies 为逗号分隔的 task.id 字符串
                 t["dependencies"] = prev_id
+                t["edge_type"] = "process"
+                try:
+                    t_meta = t.setdefault("meta", {})
+                    if isinstance(t_meta, dict):
+                        t_meta["edge_type"] = "process"
+                        t_meta["dependency_from"] = prev_id
+                except Exception:
+                    pass
             if tid:
                 prev_id = tid
 
@@ -202,5 +251,22 @@ def build_tasks(
         return (str(meta.get("group_key") or ""), str(t.get("start") or ""), str(t.get("id") or ""))
 
     tasks.sort(key=_sort_key)
+    # #region agent log
+    _agent_debug_log(
+        "run1",
+        "H5",
+        "core/services/scheduler/gantt_tasks.py:build_tasks",
+        "task build counters",
+        {
+            "view": view,
+            "rows_count": len(rows or []),
+            "tasks_count": len(tasks or []),
+            "dropped_invalid": int(dropped_invalid),
+            "dropped_outside": int(dropped_outside),
+            "wr_start": wr.week_start_date.isoformat(),
+            "wr_end": wr.week_end_date.isoformat(),
+        },
+    )
+    # #endregion
     return tasks
 

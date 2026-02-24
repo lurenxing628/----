@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -375,6 +375,7 @@ class BatchService:
         mode: ImportMode,
         parts_cache: Dict[str, Any],
         auto_generate_ops: bool = False,
+        existing_ids: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
         """
         批次 Excel 导入编排入口（事务由本方法统一控制）。
@@ -384,7 +385,7 @@ class BatchService:
         - 计数与错误样本通过通用执行器统一生成，降低多路由漂移风险。
         """
         rows = list(preview_rows or [])
-        existing_ids = {b.batch_id for b in self.list()}
+        existing_row_ids = set(existing_ids or set()) if existing_ids is not None else {b.batch_id for b in self.list()}
 
         def _replace_existing_no_tx() -> None:
             self.delete_all_no_tx()
@@ -450,7 +451,7 @@ class BatchService:
             self.conn,
             mode=mode,
             preview_rows=rows,
-            existing_row_ids=existing_ids,
+            existing_row_ids=existing_row_ids,
             replace_existing_no_tx=_replace_existing_no_tx,
             row_id_getter=_row_id_getter,
             apply_row_no_tx=_apply_row_no_tx,

@@ -27,6 +27,7 @@ from .personnel_bp import (
     _parse_mode,
     _read_uploaded_xlsx,
 )
+from .excel_utils import build_preview_baseline_token, preview_baseline_matches
 
 
 # ============================================================
@@ -59,6 +60,7 @@ def excel_operator_calendar_page():
         existing_list=existing_list,
         preview_rows=None,
         raw_rows_json=None,
+        preview_baseline=None,
         mode=ImportMode.OVERWRITE.value,
         filename=None,
         preview_url=url_for("personnel.excel_operator_calendar_preview"),
@@ -144,6 +146,7 @@ def excel_operator_calendar_preview():
         validators=[validate_row],
         mode=mode,
     )
+    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column="__id")
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -162,6 +165,7 @@ def excel_operator_calendar_preview():
         existing_list=existing_list,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(normalized_rows, ensure_ascii=False),
+        preview_baseline=preview_baseline,
         mode=mode.value,
         filename=file.filename,
         preview_url=url_for("personnel.excel_operator_calendar_preview"),
@@ -177,8 +181,11 @@ def excel_operator_calendar_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     raw_rows_json = request.form.get("raw_rows_json")
+    preview_baseline = (request.form.get("preview_baseline") or "").strip()
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
+    if not preview_baseline:
+        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
 
     # 读取假期默认效率（用于效率空值兜底）
     cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -215,6 +222,27 @@ def excel_operator_calendar_confirm():
             "说明": c.remark,
             "__id": f"{c.operator_id}|{c.date}",
         }
+    if not preview_baseline_matches(
+        preview_baseline,
+        existing_data=existing,
+        mode=mode,
+        id_column="__id",
+    ):
+        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        return render_template(
+            "personnel/excel_import_operator_calendar.html",
+            title="人员专属工作日历 - Excel 导入/导出",
+            existing_list=list(existing.values()),
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode=mode.value,
+            filename=filename,
+            preview_url=url_for("personnel.excel_operator_calendar_preview"),
+            confirm_url=url_for("personnel.excel_operator_calendar_confirm"),
+            template_download_url=url_for("personnel.excel_operator_calendar_template"),
+            export_url=url_for("personnel.excel_operator_calendar_export"),
+        )
 
     validate_row = get_operator_calendar_row_validate_and_normalize(
         g.db,
@@ -245,6 +273,7 @@ def excel_operator_calendar_confirm():
             existing_list=list(existing.values()),
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
+            preview_baseline=preview_baseline,
             mode=mode.value,
             filename=filename,
             preview_url=url_for("personnel.excel_operator_calendar_preview"),
@@ -256,6 +285,7 @@ def excel_operator_calendar_confirm():
     import_stats = cal_svc.import_operator_calendar_from_preview_rows(
         preview_rows=preview_rows,
         mode=mode,
+        existing_ids=set(existing.keys()),
     )
     new_count = int(import_stats.get("new_count", 0))
     update_count = int(import_stats.get("update_count", 0))
