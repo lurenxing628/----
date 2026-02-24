@@ -1,21 +1,23 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>批量停机计划</h2>
-    <p class="muted">
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">批量停机计划</h2></div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
+    <p class="page-subtitle text-meta">
       为设备安排停机时间。可以按单台、按类别或全部设备设置。
       为兼容现有数据结构，系统会把范围展开为“按设备逐条写入 MachineDowntimes”。
     </p>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('equipment.list_page') }}">← 返回设备列表</a>
-    </div>
+    {{ ui.equipment_nav('downtime_batch') }}
   </div>
 
   <div class="card">
     <h3>创建停机区间</h3>
     <form method="post" action="{{ url_for('equipment.downtime_batch_create') }}">
       <div class="form-row">
-        <div style="min-width:260px;">
+        <div class="min-w-260">
           <label>范围</label><br/>
           <select name="scope_type" id="scopeType">
             <option value="machine">单台设备</option>
@@ -23,7 +25,7 @@
             <option value="all">全部设备</option>
           </select>
         </div>
-        <div id="scopeMachine" style="min-width:320px;">
+        <div id="scopeMachine" class="min-w-320">
           <label>选择设备</label><br/>
           <select name="scope_value" id="scopeValueMachine">
             {% for mid, label in machine_options %}
@@ -31,7 +33,7 @@
             {% endfor %}
           </select>
         </div>
-        <div id="scopeCategory" style="display:none; min-width:220px;">
+        <div id="scopeCategory" class="d-none min-w-220">
           <label>选择类别</label><br/>
           <select name="scope_value" id="scopeValueCategory">
             {% if categories and categories|length > 0 %}
@@ -45,11 +47,11 @@
         </div>
         <div>
           <label>开始时间</label><br/>
-          <input name="start_time" required placeholder="如：2026-01-22 08:00" style="min-width:220px;">
+          <input name="start_time" required placeholder="如：2026-01-22 08:00" class="min-w-220">
         </div>
         <div>
           <label>结束时间</label><br/>
-          <input name="end_time" required placeholder="如：2026-01-22 12:00" style="min-width:220px;">
+          <input name="end_time" required placeholder="如：2026-01-22 12:00" class="min-w-220">
         </div>
         <div>
           <label>停机原因</label><br/>
@@ -59,13 +61,11 @@
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
+        <div class="flex-1 min-w-240">
           <label>原因备注（可选）</label><br/>
           <input name="reason_detail" placeholder="可选：更具体的停机原因说明">
         </div>
-        <div>
-          <button type="submit">创建</button>
-        </div>
+        <div>{{ ui.button('创建', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>

@@ -1,16 +1,5 @@
 {% extends "base.html" %}
-{% block extra_head %}
-  <style>
-    .stat-grid { margin-top: 10px; }
-    .stat-card { min-width: 220px; }
-    .bar { height:10px; background:#eee; border-radius:999px; overflow:hidden; width:220px; }
-    .bar > div { height:10px; background: var(--aps-primary, var(--primary-color, #1976d2)); }
-    .tag { font-family: monospace; }
-    .svg-wrap { max-width: 760px; }
-    .svg-title { margin-top:10px; margin-bottom:4px; }
-  </style>
-{% endblock %}
-
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   {% set strategy_zh = {'improve': '优化排产', 'greedy': '快速排产', 'manual': '手动排产'} %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
@@ -26,43 +15,22 @@
     } %}
 
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h2>排产优化分析（离线）</h2>
-        <div class="muted">查看各版本排产效果和优化过程（Win7 无网可用）。</div>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">排产优化分析</h2>
       </div>
-      <div>
-        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
-      </div>
+      <div class="page-actions page-actions-context"></div>
     </div>
-    <div class="info-line" style="margin-top:8px;">
-      <strong>入口：</strong>
-      <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.batches_manage_page') }}">批次管理</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.config_page') }}">高级设置/模板</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
-      <span class="info-sep">|</span>
-      <strong>排产优化分析</strong>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
-    </div>
+    <p class="page-subtitle text-meta">查看各版本排产效果和优化过程（Win7 无网可用）。</p>
+    {{ ui.scheduler_nav('analysis') }}
   </div>
 
   <div class="card">
-    <form method="get" action="{{ url_for('scheduler.analysis_page') }}" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+    <form method="get" action="{{ url_for('scheduler.analysis_page') }}" class="form-row toolbar-actions-inline toolbar-actions-nowrap">
       <div>
         <label>选择版本</label><br/>
         {% if versions and versions|length > 0 %}
-          <select name="version" style="min-width:260px;">
+          <select name="version" class="min-w-260">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if selected and (selected.version|int)==(v.version|int) %}selected{% endif %}>
                 v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ status_zh.get(v.result_status, v.result_status or '-') }}）
@@ -74,13 +42,12 @@
         {% endif %}
       </div>
       <div>
-        <button type="submit">加载</button>
+        {{ ui.button('加载', 'primary', 'md', type_attr='submit') }}
       </div>
       {% if selected %}
-        <div class="muted" style="margin-left:8px;">
-          <a href="{{ url_for('scheduler.gantt_page', view='machine', version=selected.version) }}">查看甘特图-设备</a>
-          <span class="muted">｜</span>
-          <a href="{{ url_for('scheduler.gantt_page', view='operator', version=selected.version) }}">甘特图-人员</a>
+        <div class="toolbar-group">
+          {{ ui.link_button('查看甘特图-设备', url_for('scheduler.gantt_page', view='machine', version=selected.version), 'secondary', 'md') }}
+          {{ ui.link_button('查看甘特图-人员', url_for('scheduler.gantt_page', view='operator', version=selected.version), 'secondary', 'md') }}
         </div>
       {% endif %}
     </form>
@@ -88,25 +55,25 @@
 
   {% if selected %}
     <div class="card">
-      <h3>版本概览：v{{ selected.version }}</h3>
-      <div class="muted">
+      <h3 class="section-title">版本概览：v{{ selected.version }}</h3>
+      <div class="meta-inline text-meta">
         时间：<strong>{{ selected.schedule_time }}</strong>
-        <span class="muted">｜</span>
+        <span class="meta-sep">｜</span>
         方式：<strong>{{ strategy_zh.get(selected.strategy, selected.strategy or '-') }}</strong>
-        <span class="muted">｜</span>
+        <span class="meta-sep">｜</span>
         状态：<strong>{{ status_zh.get(selected.result_status, selected.result_status or '-') }}</strong>
-        <span class="muted">｜</span>
+        <span class="meta-sep">｜</span>
         创建人：{{ selected.created_by or '-' }}
       </div>
 
       {% set algo = (selected_summary.algo if selected_summary and selected_summary.algo else {}) %}
-      <div class="muted" style="margin-top:6px;">
+      <div class="meta-inline text-meta mt-2">
         模式：<strong>{{ mode_zh.get(algo.mode, algo.mode or '-') }}</strong>
-        <span class="muted">｜</span>
+        <span class="meta-sep">｜</span>
         优化目标：<strong>{{ objective_zh.get(algo.objective, algo.objective or '-') }}</strong>
-        <span class="muted">｜</span>
+        <span class="meta-sep">｜</span>
         计算时间上限：<strong>{{ algo.time_budget_seconds or '-' }}</strong> 秒
-        <span class="muted">｜</span>
+        <span class="meta-sep">｜</span>
         实际用时：<strong>{{ selected_summary.time_cost_ms if selected_summary else '-' }}</strong> 毫秒
       </div>
 
@@ -172,16 +139,16 @@
             <div class="stat-card-delta">已用 {{ m.get('operator_used_count', 0) }} 人｜负载均衡 {{ m.get('operator_load_cv', 0) }}</div>
           </div>
         </div>
-        <div class="muted" style="margin-top:8px;">
+        <div class="muted mt-2">
           下方按「{{ objective_zh.get(objective_key, objective_key) }}」展示各方案对比（越小越好）。
         </div>
       {% else %}
-        <div class="muted" style="margin-top:8px;">该版本未记录排产指标（可能是旧版本）。</div>
+        <div class="muted mt-2">该版本未记录排产指标（可能是旧版本）。</div>
       {% endif %}
     </div>
 
     <div class="card">
-      <h3>优化过程</h3>
+      <h3 class="section-title">优化过程</h3>
       {% if trace_chart %}
         <div class="svg-title">优化曲线（横轴=用时，纵轴=目标值）</div>
         <div class="svg-wrap">
@@ -210,7 +177,7 @@
               {% set mm = r.metrics if r.metrics else {} %}
               <tr>
                 <td>{{ loop.index }}</td>
-                <td class="tag">{{ r.tag }}</td>
+                <td class="mono-tag">{{ r.tag }}</td>
                 <td>{{ strategy_zh.get(r.strategy, r.strategy or '-') }}</td>
                 <td>{{ r.failed_ops }}</td>
                 <td>
@@ -221,14 +188,14 @@
                   {% endif %}
                 </td>
                 <td>
-                  <div class="bar"><div style="width: {{ r.bar_pct }}%;"></div></div>
+                  <div class="analysis-bar-track"><div style="width: {{ r.bar_pct }}%;"></div></div>
                 </td>
                 <td>{{ r.score }}</td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
-        <div class="muted" style="margin-top:8px;">
+        <div class="muted mt-2">
           注：这里展示的是采样过程，最终结果以当前版本汇总为准。
         </div>
       {% else %}
@@ -237,7 +204,7 @@
     </div>
 
     <div class="card">
-      <h3>版本趋势（最近 {{ trend_rows|length }} 个有指标的版本）</h3>
+      <h3 class="section-title">版本趋势（最近 {{ trend_rows|length }} 个有指标的版本）</h3>
       {% if trend_rows and trend_rows|length > 1 %}
         <div class="muted">范围：v{{ trend_rows[0].version }} ～ v{{ trend_rows[-1].version }}</div>
 

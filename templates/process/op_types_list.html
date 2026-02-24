@@ -1,15 +1,13 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>工种配置</h2>
-    <p class="muted">用于识别工序归属（内部/外部）。未识别工种默认按外部工序处理。</p>
-    <div class="info-line" style="margin-top:8px;">
-      <a href="{{ url_for('process.list_parts') }}">返回工艺管理</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('process.suppliers_page') }}">供应商配置</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('process.excel_op_type_page') }}">Excel 导入/导出</a>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">工种配置</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">用于识别工序归属（内部/外部）。未识别工种默认按外部工序处理。</p>
+    {{ ui.process_nav('op_types') }}
   </div>
 
   <div class="card">
@@ -31,13 +29,11 @@
             <option value="external">外部</option>
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
+        <div class="flex-1 min-w-240">
           <label>备注</label><br/>
           <input name="remark" placeholder="可选">
         </div>
-        <div>
-          <button type="submit">添加工种</button>
-        </div>
+        <div>{{ ui.button('添加工种', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
@@ -48,11 +44,11 @@
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">工种ID</th>
-            <th style="width:220px;">工种名称</th>
-            <th style="width:120px;">归属</th>
+            <th class="w-140">工种ID</th>
+            <th class="w-220">工种名称</th>
+            <th class="w-120">归属</th>
             <th>备注</th>
-            <th style="width:160px;">操作</th>
+            <th class="w-160">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -63,11 +59,11 @@
               <td>{{ '内部' if r.category=='internal' else '外部' }}</td>
               <td>{{ r.remark or '-' }}</td>
               <td>
-                <a href="{{ url_for('process.op_type_detail', op_type_id=r.op_type_id) }}">查看/编辑</a>
+                <a href="{{ url_for('process.op_type_detail', op_type_id=r.op_type_id) }}" class="table-action-link">查看/编辑</a>
                 <span class="muted">｜</span>
-                <form method="post" action="{{ url_for('process.delete_op_type', op_type_id=r.op_type_id) }}" style="display:inline;"
+                <form method="post" action="{{ url_for('process.delete_op_type', op_type_id=r.op_type_id) }}" class="d-inline"
                       data-confirm="确认删除工种 {{ r.op_type_id }} 吗？">
-                  <button type="submit">删除</button>
+                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
                 </form>
               </td>
             </tr>

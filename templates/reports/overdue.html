@@ -1,23 +1,20 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
   <div class="card">
-    <h2>报表 - 超期清单</h2>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">报表 - 超期清单</h2>
+      </div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
     <p class="muted">
       查看哪些批次超过了交货日期：
       - 已排程逾期：完工时间晚于交期
       - 未排程逾期：截至当前时间仍未完工且已超过交期
     </p>
-    <div class="info-line" style="margin-top:8px;">
-      <strong>入口：</strong>
-      <strong>超期清单</strong>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('reports.utilization_page') }}">资源负荷与利用率</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('reports.downtime_page') }}">停机影响统计</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('reports.index') }}">← 返回报表中心</a>
-    </div>
+    {{ ui.reports_nav('overdue') }}
   </div>
 
   <div class="card">

@@ -1,25 +1,27 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>物料管理 - 批次物料需求（齐套判定）</h2>
-    <p class="muted">
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">物料管理 - 批次物料需求（齐套判定）</h2>
+      </div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
+    <p class="page-subtitle text-meta">
       设置批次所需物料及到货情况，系统会自动更新齐套状态。
       若某批次没有任何物料需求行，系统不会接管齐套状态（保留人工/Excel 值）。
     </p>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('material.materials_page') }}">← 物料主数据</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.batches_page') }}">排产调度</a>
-    </div>
+    {{ ui.material_nav('batch_materials') }}
   </div>
 
   <div class="card">
-    <h3>选择批次</h3>
+    <h3 class="section-title">选择批次</h3>
     <form method="get" action="{{ url_for('material.batch_materials_page') }}">
       <div class="form-row">
-        <div style="min-width:360px;">
-          <label>批次</label><br/>
-          <select name="batch_id" style="min-width:360px;">
+        <div class="form-field min-w-320">
+          <label for="batchMaterialBatchSelect">批次</label><br/>
+          <select id="batchMaterialBatchSelect" name="batch_id" class="w-280">
             <option value="">（请选择批次）</option>
             {% for v, label in batch_options %}
               <option value="{{ v }}" {% if batch_id == v %}selected{% endif %}>{{ label }}</option>
@@ -27,7 +29,7 @@
           </select>
         </div>
         <div>
-          <button type="submit">查看</button>
+          {{ ui.button('查看', 'primary', 'md', type_attr='submit') }}
         </div>
       </div>
     </form>
@@ -35,7 +37,7 @@
 
   {% if not batch %}
     <div class="card">
-      <h3>齐套概览</h3>
+      <h3 class="section-title">齐套概览</h3>
       <div class="stat-grid">
         <div class="stat-card type-success">
           <div class="stat-card-label">齐套</div>
@@ -50,7 +52,7 @@
           <div class="stat-card-value danger">{{ ready_summary.no }}</div>
         </div>
       </div>
-      <div class="muted" style="margin-top:8px;">
+      <div class="muted mt-2">
         请在上方选择一个批次，查看并管理其物料需求。当某批次存在物料需求记录时，系统会自动根据到料情况更新齐套状态。
       </div>
     </div>
@@ -58,7 +60,7 @@
 
   {% if batch %}
     <div class="card">
-      <h3>批次信息</h3>
+      <h3 class="section-title">批次信息</h3>
       <div class="muted">
         批次：<strong>{{ batch.batch_id }}</strong>
         <span class="info-sep">|</span>
@@ -76,31 +78,31 @@
     </div>
 
     <div class="card">
-      <h3>新增物料需求</h3>
+      <h3 class="section-title">新增物料需求</h3>
       {% if not material_options %}
         <div class="muted">还没有物料，先去「物料管理」添加。</div>
       {% else %}
         <form method="post" action="{{ url_for('material.batch_material_add', batch_id=batch.batch_id) }}">
           <div class="form-row">
-            <div style="min-width:320px;">
-              <label>物料</label><br/>
-              <select name="material_id" required style="min-width:320px;">
+            <div class="form-field min-w-320">
+              <label for="batchMaterialMaterialSelect">物料</label><br/>
+              <select id="batchMaterialMaterialSelect" name="material_id" required class="w-280">
                 <option value="">（请选择）</option>
                 {% for v, label in material_options %}
                   <option value="{{ v }}">{{ label }}</option>
                 {% endfor %}
               </select>
             </div>
-            <div>
-              <label>需求数量</label><br/>
-              <input name="required_qty" required type="number" min="0" step="0.01" placeholder="如：10" style="width:120px;">
+            <div class="form-field">
+              <label for="batchMaterialRequiredQtyInput">需求数量</label><br/>
+              <input id="batchMaterialRequiredQtyInput" name="required_qty" required type="number" min="0" step="0.01" placeholder="如：10" class="w-120">
+            </div>
+            <div class="form-field">
+              <label for="batchMaterialAvailableQtyInput">到料数量</label><br/>
+              <input id="batchMaterialAvailableQtyInput" name="available_qty" value="0" type="number" min="0" step="0.01" class="w-120">
             </div>
             <div>
-              <label>到料数量</label><br/>
-              <input name="available_qty" value="0" type="number" min="0" step="0.01" style="width:120px;">
-            </div>
-            <div>
-              <button type="submit">新增</button>
+              {{ ui.button('新增', 'primary', 'md', type_attr='submit') }}
             </div>
           </div>
         </form>
@@ -108,25 +110,25 @@
     </div>
 
     <div class="card">
-      <h3>物料需求列表</h3>
+      <h3 class="section-title">物料需求列表</h3>
       {% if not requirements %}
         <div class="muted">该批次还没有物料需求。新增后系统会自动更新齐套状态。</div>
       {% else %}
         {% for r in requirements %}
-          <form id="bmform_{{ loop.index0 }}" method="post" action="{{ url_for('material.batch_material_update', bm_id=r.id) }}" style="display:none;"></form>
+          <form id="bmform_{{ loop.index0 }}" method="post" action="{{ url_for('material.batch_material_update', bm_id=r.id) }}" class="d-none"></form>
         {% endfor %}
         <table>
           <thead>
             <tr>
-              <th style="width:80px;">ID</th>
-              <th style="width:140px;">物料ID</th>
-              <th style="width:200px;">名称</th>
-              <th style="width:160px;">规格</th>
-              <th style="width:120px;">单位</th>
-              <th style="width:140px;">需求数量</th>
-              <th style="width:140px;">到料数量</th>
-              <th style="width:120px;">齐套</th>
-              <th style="width:220px;">操作</th>
+              <th class="w-80">ID</th>
+              <th class="w-140">物料ID</th>
+              <th class="w-200">名称</th>
+              <th class="w-160">规格</th>
+              <th class="w-120">单位</th>
+              <th class="w-140">需求数量</th>
+              <th class="w-140">到料数量</th>
+              <th class="w-120">齐套</th>
+              <th class="w-220">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -139,18 +141,18 @@
                 <td>{{ r.unit or '-' }}</td>
                 <td>
                   <input name="batch_id" value="{{ batch.batch_id }}" form="bmform_{{ loop.index0 }}" type="hidden">
-                  <input name="required_qty" value="{{ r.required_qty }}" form="bmform_{{ loop.index0 }}" type="number" min="0" step="0.01" style="width:110px;">
+                  <input name="required_qty" value="{{ r.required_qty }}" form="bmform_{{ loop.index0 }}" type="number" min="0" step="0.01" class="w-110">
                 </td>
                 <td>
-                  <input name="available_qty" value="{{ r.available_qty }}" form="bmform_{{ loop.index0 }}" type="number" min="0" step="0.01" style="width:110px;">
+                  <input name="available_qty" value="{{ r.available_qty }}" form="bmform_{{ loop.index0 }}" type="number" min="0" step="0.01" class="w-110">
                 </td>
                 <td>{{ r.ready_status or '-' }}</td>
                 <td>
-                  <button type="submit" form="bmform_{{ loop.index0 }}">保存</button>
-                  <form method="post" action="{{ url_for('material.batch_material_delete', bm_id=r.id) }}" style="display:inline-block;margin-left:6px;"
+                  <button type="submit" form="bmform_{{ loop.index0 }}" class="btn btn-primary btn-sm">保存</button>
+                  <form method="post" action="{{ url_for('material.batch_material_delete', bm_id=r.id) }}" class="d-inline ml-2"
                         data-confirm="确认删除该物料需求？">
                     <input type="hidden" name="batch_id" value="{{ batch.batch_id }}">
-                    <button type="submit">删除</button>
+                    <button type="submit" class="btn btn-danger btn-sm">删除</button>
                   </form>
                 </td>
               </tr>

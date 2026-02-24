@@ -1,27 +1,24 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2><svg class="icon"><use href="#icon-chart"/></svg> 报表中心</h2>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title"><svg class="icon"><use href="#icon-chart"/></svg> 报表中心</h2>
+      </div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
     <p class="muted">基于当前数据库数据生成统计报表，支持导出 Excel。</p>
+    {{ ui.reports_nav('index') }}
     {% if has_history %}
-      <div class="muted" style="margin-top:6px;">
+      <div class="muted mt-2">
         当前最新排产版本：<strong>v{{ latest_version.version }}</strong>
         <span class="info-sep">|</span>
         超期批次：<strong>{{ overdue_count }}</strong> 个
       </div>
     {% else %}
-      <div class="muted" style="margin-top:6px;">暂无排产历史，请先执行排产后再查看报表。</div>
+      <div class="muted mt-2">暂无排产历史，请先执行排产后再查看报表。</div>
     {% endif %}
-    <div class="info-line" style="margin-top:8px;">
-      <strong>入口：</strong>
-      <strong>报表中心</strong>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('reports.overdue_page') }}">超期清单</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('reports.utilization_page') }}">资源负荷与利用率</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('reports.downtime_page') }}">停机影响统计</a>
-    </div>
   </div>
 
   {% if has_history %}
@@ -39,7 +36,7 @@
 
   <div class="card">
     <h3>报表总览</h3>
-    <div class="muted" style="margin-bottom:12px;">选择报表类型查看详细数据，支持导出 Excel。</div>
+    <div class="muted mb-2">选择报表类型查看详细数据，支持导出 Excel。</div>
     <div class="nav-grid">
       <a href="{{ url_for('reports.overdue_page') }}" class="nav-card">
         <div class="nav-card-title"><svg class="icon"><use href="#icon-warn"/></svg> 超期清单</div>

@@ -1,236 +1,26 @@
 {% extends "base.html" %}
-{% block extra_head %}
-<style>
-  /* 整体布局 */
-  .manual-wrapper {
-    display: flex;
-    gap: 24px;
-    align-items: flex-start;
-  }
-
-  /* 目录侧栏 */
-  .manual-toc {
-    width: 260px;
-    flex-shrink: 0;
-    position: sticky;
-    top: 20px;
-    max-height: calc(100vh - 40px);
-    overflow-y: auto;
-    background: #f8fafc;
-    border-radius: 8px;
-    padding: 16px;
-    border: 1px solid var(--aps-border);
-  }
-  .manual-toc h3 {
-    margin: 0 0 12px 0;
-    font-size: 14px;
-    color: var(--aps-text-muted);
-    border-bottom: 1px solid var(--aps-border);
-    padding-bottom: 8px;
-  }
-  .manual-toc ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-  }
-  .manual-toc li {
-    margin: 0;
-  }
-  .manual-toc a {
-    display: block;
-    padding: 8px 12px;
-    color: var(--aps-text);
-    text-decoration: none;
-    border-radius: 4px;
-    font-size: 14px;
-    line-height: 1.4;
-    transition: background 0.15s;
-  }
-  .manual-toc a:hover {
-    background: #e3f2fd;
-  }
-  .manual-toc a.active {
-    background: var(--aps-primary);
-    color: white;
-    font-weight: 500;
-  }
-  .manual-toc .toc-h3 {
-    padding-left: 24px;
-    font-size: 13px;
-    color: var(--aps-text-muted);
-  }
-  .manual-toc .toc-h3:hover {
-    color: var(--aps-text);
-  }
-
-  /* 目录折叠按钮 */
-  .toc-toggle {
-    display: none;
-    background: var(--aps-primary);
-    color: white;
-    border: none;
-    padding: 10px 16px;
-    border-radius: 6px;
-    cursor: pointer;
-    margin-bottom: 12px;
-    font-size: 14px;
-  }
-
-  /* 正文区域 */
-  .manual-content {
-    flex: 1;
-    min-width: 0;
-    background: white;
-    border-radius: 8px;
-    padding: 24px;
-    border: 1px solid var(--aps-border);
-  }
-
-  /* Markdown 渲染样式 */
-  .manual-content h1 {
-    font-size: 28px;
-    margin: 0 0 16px 0;
-    color: var(--aps-primary-hover);
-    border-bottom: 2px solid var(--aps-primary);
-    padding-bottom: 12px;
-  }
-  .manual-content h2 {
-    font-size: 22px;
-    margin: 32px 0 16px 0;
-    color: var(--aps-primary);
-    border-bottom: 1px solid var(--aps-border);
-    padding-bottom: 8px;
-    scroll-margin-top: 20px;
-  }
-  .manual-content h3 {
-    font-size: 18px;
-    margin: 24px 0 12px 0;
-    color: var(--aps-text);
-    scroll-margin-top: 20px;
-  }
-  .manual-content p {
-    margin: 12px 0;
-    line-height: 1.8;
-    color: var(--aps-text);
-  }
-  .manual-content ul, .manual-content ol {
-    margin: 12px 0;
-    padding-left: 24px;
-    line-height: 1.8;
-  }
-  .manual-content li {
-    margin: 6px 0;
-  }
-  .manual-content blockquote {
-    margin: 16px 0;
-    padding: 12px 16px;
-    background: #e8f5e9;
-    border-left: 4px solid #4caf50;
-    border-radius: 0 6px 6px 0;
-    color: #2e7d32;
-  }
-  .manual-content blockquote p {
-    margin: 0;
-    color: inherit;
-  }
-  .manual-content code {
-    background: #f8fafc;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: Consolas, Monaco, monospace;
-    font-size: 14px;
-    color: #c62828;
-  }
-  .manual-content pre {
-    background: #263238;
-    color: #aed581;
-    padding: 16px;
-    border-radius: 6px;
-    overflow-x: auto;
-    margin: 16px 0;
-  }
-  .manual-content pre code {
-    background: none;
-    color: inherit;
-    padding: 0;
-  }
-  .manual-content table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 16px 0;
-  }
-  .manual-content th, .manual-content td {
-    border: 1px solid var(--aps-border);
-    padding: 10px 12px;
-    text-align: left;
-  }
-  .manual-content th {
-    background: #f8fafc;
-    font-weight: 600;
-  }
-  .manual-content tr:hover {
-    background: #f8fafc;
-  }
-  .manual-content hr {
-    border: none;
-    border-top: 1px solid var(--aps-border);
-    margin: 24px 0;
-  }
-  .manual-content a {
-    color: var(--aps-primary);
-    text-decoration: none;
-  }
-  .manual-content a:hover {
-    text-decoration: underline;
-  }
-  .manual-content strong {
-    color: var(--aps-primary-hover);
-  }
-
-  /* 响应式设计 */
-  @media (max-width: 900px) {
-    .manual-wrapper {
-      flex-direction: column;
-    }
-    .manual-toc {
-      position: relative;
-      top: 0;
-      width: 100%;
-      max-height: none;
-      display: none;
-    }
-    .manual-toc.show {
-      display: block;
-    }
-    .toc-toggle {
-      display: block;
-    }
-  }
-</style>
-{% endblock %}
-
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h2>排产调度使用指南</h2>
-        <div class="muted" style="margin-top:6px; line-height:1.7;">
-          这份指南帮助你快速掌握排产系统的使用方法。选择左侧目录可快速跳转到对应章节。
-        </div>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">排产调度使用指南</h2>
       </div>
-      <div>
-        <a href="{{ url_for('scheduler.config_page') }}">返回排产高级设置</a>
-        <span class="muted">|</span>
-        <a href="{{ url_for('scheduler.batches_page') }}">返回排产调度</a>
+      <div class="page-actions page-actions-context">
+        {% if download_url %}
+          {{ ui.link_button('下载指南原文', download_url, 'secondary', 'md') }}
+        {% endif %}
       </div>
     </div>
+    <p class="page-subtitle text-meta">
+      这份指南帮助你快速掌握排产系统的使用方法。选择左侧目录可快速跳转到对应章节。
+    </p>
+    {{ ui.scheduler_nav('config') }}
   </div>
 
-  <div class="card" style="padding:8px 16px;">
-    <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
-      {% if download_url %}
-        <a href="{{ download_url }}">下载 Markdown 原文</a>
-      {% else %}
+  <div class="card p-card-tight">
+    <div class="inline-flex-wrap items-center">
+      {% if not download_url %}
         <span class="muted">下载：不可用（说明书文件缺失）</span>
       {% endif %}
 
@@ -243,19 +33,17 @@
   <button class="toc-toggle" id="tocToggleBtn" type="button">展开/收起目录</button>
 
   <div class="manual-wrapper">
-    <!-- 左侧目录 -->
     <nav class="manual-toc" id="toc">
-      <h3>目录导航</h3>
+      <h3 class="section-title">目录导航</h3>
       <ul id="toc-list">
         <!-- 由 JavaScript 自动生成 -->
       </ul>
     </nav>
 
-    <!-- 右侧正文 -->
     <div class="manual-content" id="content">
       <noscript>
-        <pre style="white-space:pre-wrap; line-height:1.7; margin:0;">{{ manual_text }}</pre>
-        <div class="muted" style="margin-top:8px;">提示：启用 JavaScript 可获得目录导航与更好的阅读体验。</div>
+        <pre class="manual-inline-pre">{{ manual_text }}</pre>
+        <div class="muted mt-2">提示：启用 JavaScript 可获得目录导航与更好的阅读体验。</div>
       </noscript>
     </div>
   </div>

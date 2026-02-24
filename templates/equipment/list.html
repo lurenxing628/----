@@ -1,16 +1,13 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>设备管理</h2>
-    <p class="muted">管理设备信息和可操作人员。</p>
-    <div class="info-line" style="margin-top:8px;">
-      <strong>Excel：</strong>
-      <a href="{{ url_for('equipment.excel_machine_page') }}">设备信息（导入/导出）</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('equipment.excel_link_page') }}">设备人员关联（导入/导出）</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('equipment.downtime_batch_page') }}">批量停机计划</a>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">设备管理</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">管理设备信息和可操作人员。</p>
+    {{ ui.equipment_nav('list') }}
   </div>
 
   <div class="card">
@@ -36,7 +33,7 @@
         </div>
         <div class="form-field">
           <label for="machineCategoryInput">类别（可选）</label><br/>
-          <input id="machineCategoryInput" name="category" placeholder="如：CNC / 铣床 / 装配" style="width:180px;">
+          <input id="machineCategoryInput" name="category" placeholder="如：CNC / 铣床 / 装配" class="w-180">
         </div>
         <div class="form-field">
           <label for="machineStatusInput">状态</label><br/>
@@ -46,26 +43,24 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field" style="flex:1; min-width:240px;">
+        <div class="form-field flex-1 min-w-240">
           <label for="machineRemarkInput">备注</label><br/>
           <input id="machineRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div>
-          <button type="submit">添加设备</button>
-        </div>
+        <div>{{ ui.button('添加设备', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
 
   <div class="card">
     <h3>设备列表</h3>
-    <div class="muted" style="margin-bottom:8px;">
+    <div class="muted mb-2">
       批量操作：可批量切换状态/删除。若设备已被批次工序或排程引用，将禁止删除（请改为停用或维修）。
     </div>
-    <div class="form-row" style="margin-bottom:8px;">
+    <div class="form-row mb-2">
       <div class="form-field">
         <label for="equipmentSearchInput"><svg class="icon-sm"><use href="#icon-search"/></svg> 搜索</label>
-        <input id="equipmentSearchInput" data-table-search="equipmentTable" placeholder="输入设备编号、名称..." aria-label="搜索设备，输入设备编号或名称关键词" style="width:260px;">
+        <input id="equipmentSearchInput" data-table-search="equipmentTable" placeholder="输入设备编号、名称..." aria-label="搜索设备，输入设备编号或名称关键词" class="w-260">
       </div>
     </div>
     <form id="bulkForm" method="post" action="{{ url_for('equipment.bulk_set_status') }}"></form>
@@ -73,13 +68,13 @@
       <table id="equipmentTable">
         <thead>
           <tr>
-            <th style="width:60px;"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选设备"></th>
-            <th style="width:140px;">设备编号</th>
-            <th style="width:220px;">设备名称</th>
-            <th style="width:160px;">工种</th>
-            <th style="width:120px;">状态</th>
+            <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选设备"></th>
+            <th class="w-140">设备编号</th>
+            <th class="w-220">设备名称</th>
+            <th class="w-160">工种</th>
+            <th class="w-120">状态</th>
             <th>可操作人员</th>
-            <th style="width:120px;">操作</th>
+            <th class="w-120">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -106,11 +101,11 @@
                 {% endif %}
               </td>
               <td>
-                <a href="{{ url_for('equipment.detail_page', machine_id=r.machine_id) }}">查看/编辑</a>
+                <a href="{{ url_for('equipment.detail_page', machine_id=r.machine_id) }}" class="table-action-link">查看/编辑</a>
                 <span class="muted">｜</span>
-                <form method="post" action="{{ url_for('equipment.delete_machine', machine_id=r.machine_id) }}" style="display:inline;"
+                <form method="post" action="{{ url_for('equipment.delete_machine', machine_id=r.machine_id) }}" class="d-inline"
                       data-confirm="确定删除 {{ r.machine_id }} 吗？如果已参与排产则无法删除，建议改为「停用」或「维修」。">
-                  <button type="submit">删除</button>
+                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
                 </form>
               </td>
             </tr>
@@ -118,7 +113,7 @@
         </tbody>
       </table>
 
-      <div class="action-bar" style="margin-top:10px;">
+      <div class="action-bar mt-3">
         <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 台设备</span>
         <div class="form-row">
           <select name="status" form="bulkForm" aria-label="批量设置设备状态">
@@ -126,12 +121,8 @@
             <option value="maintain">批量设为：维修</option>
             <option value="inactive">批量设为：停用</option>
           </select>
-          <button type="submit" form="bulkForm" formaction="{{ url_for('equipment.bulk_set_status') }}" aria-label="批量更新设备状态">批量更新状态</button>
-          <button type="submit" form="bulkForm" formaction="{{ url_for('equipment.bulk_delete') }}"
-                  aria-label="批量删除所选设备"
-                  data-confirm="确定批量删除所选设备吗？若存在引用将删除失败；一般建议先批量停用/维修。">
-            批量删除
-          </button>
+          {{ ui.button('批量更新状态', 'primary', 'md', type_attr='submit', form='bulkForm', formaction=url_for('equipment.bulk_set_status')) }}
+          {{ ui.button('批量删除', 'danger', 'md', type_attr='submit', form='bulkForm', formaction=url_for('equipment.bulk_delete'), confirm='确定批量删除所选设备吗？若存在引用将删除失败；一般建议先批量停用/维修。') }}
         </div>
       </div>
     {% else %}

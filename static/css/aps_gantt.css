@@ -200,14 +200,7 @@
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.22);
 }
 #ganttResetView {
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
   cursor: pointer;
-}
-#ganttResetView:hover {
-  background: #f1f5f9;
 }
 
 /* ---- legend / help ---- */

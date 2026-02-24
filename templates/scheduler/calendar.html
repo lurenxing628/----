@@ -1,62 +1,42 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/calendar_picker.css') }}">
 {% endblock %}
 {% block content %}
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h2>工作日历配置</h2>
-        <p class="muted">
-          设置排产时使用的工作时间、效率和可排产优先级。
-          未配置日期会按默认规则处理（工作日 8 小时；周末/假期默认不排产）。
-          也可以在这里配置调休或加班。
-        </p>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">工作日历配置</h2>
       </div>
-      <div>
-        <a href="{{ url_for('scheduler.excel_calendar_page') }}">工作日历（Excel 导入/导出）</a>
-        <span class="muted">｜</span>
-        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
+      <div class="page-actions page-actions-context">
+        {{ ui.link_button('导入/导出工作日历', url_for('scheduler.excel_calendar_page'), 'secondary', 'md') }}
       </div>
     </div>
-    <div class="info-line" style="margin-top:8px;">
-      <strong>入口：</strong>
-      <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.batches_manage_page') }}">批次管理</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.config_page') }}">高级设置/模板</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.analysis_page') }}">排产优化分析</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
-      <span class="info-sep">|</span>
-      <strong>工作日历配置</strong>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
-    </div>
+    <p class="page-subtitle text-meta">
+      设置排产时使用的工作时间、效率和可排产优先级。
+      未配置日期会按默认规则处理（工作日 8 小时；周末/假期默认不排产）。
+      也可以在这里配置调休或加班。
+    </p>
+    {{ ui.scheduler_nav('calendar') }}
   </div>
 
   <div class="card wc-card-allow-overflow">
-    <h3>新增 / 更新某一天</h3>
+    <h3 class="section-title">新增 / 更新某一天</h3>
     <form method="post" action="{{ url_for('scheduler.calendar_upsert') }}">
-      <div class="form-row">
+      <div class="calendar-upsert-row">
         <div class="wc-date-wrap">
           <label>日期</label><br/>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="wcDateInput" name="date" required placeholder="YYYY-MM-DD" style="width:160px;">
-            <button type="button" id="wcDatePickBtn">选择</button>
+          <div class="inline-flex-wrap">
+            <input id="wcDateInput" name="date" required placeholder="YYYY-MM-DD" class="w-140">
+            {{ ui.button('选择', 'secondary', 'sm', type_attr='button', element_id='wcDatePickBtn') }}
           </div>
-          <div id="wcDateHint" class="muted" style="margin-top:6px;"></div>
-          <div id="wcCalendarPanel" class="wc-cal-panel" style="display:none;">
+          <div id="wcDateHint" class="muted mt-2"></div>
+          <div id="wcCalendarPanel" class="wc-cal-panel is-hidden">
             <div class="wc-cal-header">
-              <button type="button" class="wc-cal-nav" data-action="prev">‹</button>
+              <button type="button" class="wc-cal-nav" data-action="prev" aria-label="上个月">‹</button>
               <div class="wc-cal-title"></div>
-              <button type="button" class="wc-cal-nav" data-action="next">›</button>
+              <button type="button" class="wc-cal-nav" data-action="next" aria-label="下个月">›</button>
             </div>
             <div class="wc-cal-week"></div>
             <div class="wc-cal-grid"></div>
@@ -65,66 +45,66 @@
         </div>
         <div>
           <label>类型</label><br/>
-          <select name="day_type">
+          <select name="day_type" class="w-100">
             <option value="workday">工作日</option>
             <option value="holiday">假期</option>
           </select>
         </div>
         <div>
           <label>班次开始</label><br/>
-          <input type="time" name="shift_start" value="08:00" style="width:140px;">
+          <input type="time" name="shift_start" value="08:00" class="w-120">
         </div>
         <div>
           <label>班次结束（可选）</label><br/>
-          <input type="time" name="shift_end" style="width:140px;">
+          <input type="time" name="shift_end" class="w-120">
         </div>
         <div>
           <label>可用工时（小时）</label><br/>
-          <input name="shift_hours" placeholder="如：8" style="width:140px;">
+          <input name="shift_hours" placeholder="如：8" class="w-100">
         </div>
         <div>
           <label>效率（>0）</label><br/>
-          <input name="efficiency" placeholder="如：1.0" style="width:140px;">
+          <input name="efficiency" placeholder="如：1.0" class="w-100">
         </div>
         <div>
           <label>允许普通件</label><br/>
-          <select name="allow_normal">
+          <select name="allow_normal" class="w-100">
             <option value="yes">是</option>
             <option value="no">否</option>
           </select>
         </div>
         <div>
           <label>允许急件/特急</label><br/>
-          <select name="allow_urgent">
+          <select name="allow_urgent" class="w-100">
             <option value="yes">是</option>
             <option value="no">否</option>
           </select>
         </div>
-        <div style="flex:1; min-width:220px;">
+        <div class="calendar-upsert-remark">
           <label>说明</label><br/>
           <input name="remark" placeholder="可选">
         </div>
-        <div>
-          <button type="submit">保存</button>
+        <div class="calendar-upsert-submit">
+          {{ ui.button('保存', 'primary', 'sm', type_attr='submit') }}
         </div>
       </div>
     </form>
   </div>
 
   <div class="card">
-    <h3>已配置日历</h3>
+    <h3 class="section-title">已配置日历</h3>
     {% if rows and rows|length > 0 %}
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">日期</th>
-            <th style="width:120px;">类型</th>
-            <th style="width:120px;">班次开始</th>
-            <th style="width:120px;">班次结束</th>
-            <th style="width:120px;">可用工时</th>
-            <th style="width:120px;">效率</th>
-            <th style="width:140px;">允许普通件</th>
-            <th style="width:140px;">允许急件</th>
+            <th class="w-140">日期</th>
+            <th class="w-120">类型</th>
+            <th class="w-120">班次开始</th>
+            <th class="w-120">班次结束</th>
+            <th class="w-120">可用工时</th>
+            <th class="w-120">效率</th>
+            <th class="w-140">允许普通件</th>
+            <th class="w-140">允许急件</th>
             <th>说明</th>
           </tr>
         </thead>

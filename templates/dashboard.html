@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="stat-grid">
     <div class="stat-card type-primary">
@@ -49,27 +50,15 @@
   <div class="card">
     <h3>快捷操作</h3>
     <div class="action-bar-flat">
-      <a href="{{ url_for('scheduler.batches_page') }}" style="text-decoration:none;">
-        <button type="button"><svg class="icon"><use href="#icon-schedule"/></svg> 去排产</button>
-      </a>
-      <a href="{{ url_for('scheduler.batches_manage_page') }}" style="text-decoration:none;">
-        <button type="button"><svg class="icon"><use href="#icon-schedule"/></svg> 批次管理</button>
-      </a>
-      <a href="{{ url_for('scheduler.excel_batches_page') }}" style="text-decoration:none;">
-        <button type="button"><svg class="icon"><use href="#icon-excel"/></svg> 导入批次</button>
-      </a>
+      {{ ui.link_button('去排产', url_for('scheduler.batches_page'), 'primary', 'md', 'schedule') }}
+      {{ ui.link_button('批次管理', url_for('scheduler.batches_manage_page'), 'secondary', 'md', 'schedule') }}
+      {{ ui.link_button('导入批次', url_for('scheduler.excel_batches_page'), 'secondary', 'md', 'excel') }}
       {% set gantt_url = safe_url_for('scheduler.gantt_page', view='machine') %}
       {% if gantt_url %}
-        <a href="{{ gantt_url }}" style="text-decoration:none;">
-          <button type="button"><svg class="icon"><use href="#icon-chart"/></svg> 甘特图</button>
-        </a>
+        {{ ui.link_button('甘特图', gantt_url, 'secondary', 'md', 'chart') }}
       {% endif %}
-      <a href="{{ url_for('scheduler.week_plan_page') }}" style="text-decoration:none;">
-        <button type="button"><svg class="icon"><use href="#icon-download"/></svg> 周计划</button>
-      </a>
-      <a href="{{ url_for('reports.index') }}" style="text-decoration:none;">
-        <button type="button"><svg class="icon"><use href="#icon-chart"/></svg> 报表</button>
-      </a>
+      {{ ui.link_button('周计划', url_for('scheduler.week_plan_page'), 'secondary', 'md', 'download') }}
+      {{ ui.link_button('报表', url_for('reports.index'), 'secondary', 'md', 'chart') }}
     </div>
   </div>
 {% endblock %}

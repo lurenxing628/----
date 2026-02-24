@@ -1,25 +1,22 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   {% set strategy_zh = {'improve': '优化排产', 'greedy': '快速排产', 'manual': '手动排产'} %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
 
   <div class="card">
-    <h2>系统管理 - 排产历史</h2>
-    <p class="muted">查看历史版本和排产结果摘要。</p>
-
-    <div class="info-line" style="margin-bottom: 12px;">
-      <a href="{{ url_for('system.backup_page') }}">备份/恢复</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('system.logs_page') }}">操作日志</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('system.history_page') }}">排产历史</a>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">系统管理 - 排产历史</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">查看历史版本和排产结果摘要。</p>
+    {{ ui.system_nav('history') }}
 
     <form method="get" action="{{ url_for('system.history_page') }}">
-      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+      <div class="inline-flex-wrap items-end gap-10">
         <div>
           <div class="muted">选择版本</div>
-          <select name="version" style="min-width:160px;">
+          <select name="version" class="w-160">
             <option value="">（不选择）</option>
             {% for v in versions %}
               {% set vv = v.version %}
@@ -31,11 +28,11 @@
         </div>
         <div>
           <div class="muted">最近记录条数</div>
-          <input name="limit" value="{{ filters.limit }}" style="width:80px;">
+          <input name="limit" value="{{ filters.limit }}" class="w-80">
         </div>
-        <div>
-          <button type="submit">查询</button>
-          <a href="{{ url_for('system.history_page') }}" class="muted" style="margin-left:8px;">重置</a>
+        <div class="inline-flex-wrap">
+          {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
+          {{ ui.link_button('重置', url_for('system.history_page'), 'secondary', 'sm') }}
         </div>
       </div>
     </form>

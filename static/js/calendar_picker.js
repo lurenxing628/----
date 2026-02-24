@@ -166,15 +166,17 @@
   }
 
   function showPanel() {
+    panel.classList.remove("is-hidden");
     panel.style.display = "block";
   }
 
   function hidePanel() {
+    panel.classList.add("is-hidden");
     panel.style.display = "none";
   }
 
   function isPanelVisible() {
-    return panel.style.display !== "none";
+    return !panel.classList.contains("is-hidden") && panel.style.display !== "none";
   }
 
   // 以“当前输入日期”作为默认月视图

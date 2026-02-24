@@ -263,6 +263,14 @@
     }
   }
 
+  function setHintVisible(hintEl, visible) {
+    if (!hintEl) return;
+    if (hintEl.classList) {
+      hintEl.classList.toggle("is-hidden", !visible);
+    }
+    hintEl.style.display = visible ? "block" : "none";
+  }
+
   function applyLinkageForRow(rowEl) {
     const mSel = rowEl.querySelector(".js-machine-select");
     const oSel = rowEl.querySelector(".js-operator-select");
@@ -314,10 +322,10 @@
 
     if (msg) {
       hint.textContent = msg;
-      hint.style.display = "block";
+      setHintVisible(hint, true);
     } else {
       hint.textContent = "";
-      hint.style.display = "none";
+      setHintVisible(hint, false);
     }
   }
 

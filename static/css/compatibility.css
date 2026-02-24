@@ -1,0 +1,50 @@
+/*
+  compatibility.css
+  V1/Win7 兼容性重置与体验优化
+*/
+
+/* 全局 Box Model 重置，防止 V1 布局错乱 */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* 字体继承，防止 input/button 使用默认丑陋字体 */
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* Chrome 109 / Win 7 滚动条美化 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* slate-300 */
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8; /* slate-400 */
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* focus 视觉统一 */
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* 文本渲染优化 */
+body {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 禁止图片拖拽，提升应用感 */
+img {
+  -webkit-user-drag: none;
+}

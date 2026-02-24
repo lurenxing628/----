@@ -1,15 +1,13 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>供应商配置</h2>
-    <p class="muted">外协工种的默认供应商和交期设置。</p>
-    <div class="info-line" style="margin-top:8px;">
-      <a href="{{ url_for('process.list_parts') }}">返回工艺管理</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('process.op_types_page') }}">工种配置</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('process.excel_supplier_page') }}">Excel 导入/导出</a>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">供应商配置</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">外协工种的默认供应商和交期设置。</p>
+    {{ ui.process_nav('suppliers') }}
   </div>
 
   <div class="card">
@@ -35,7 +33,7 @@
         </div>
         <div>
           <label>默认周期（天）</label><br/>
-          <input name="default_days" value="1" style="width:120px;">
+          <input name="default_days" value="1" class="w-120">
         </div>
         <div>
           <label>状态</label><br/>
@@ -45,13 +43,11 @@
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
+        <div class="flex-1 min-w-240">
           <label>备注</label><br/>
           <input name="remark" placeholder="可选">
         </div>
-        <div>
-          <button type="submit">添加供应商</button>
-        </div>
+        <div>{{ ui.button('添加供应商', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
@@ -62,13 +58,13 @@
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">供应商ID</th>
-            <th style="width:240px;">名称</th>
-            <th style="width:160px;">对应工种</th>
-            <th style="width:120px;">默认周期（天）</th>
-            <th style="width:120px;">状态</th>
+            <th class="w-140">供应商ID</th>
+            <th class="w-240">名称</th>
+            <th class="w-160">对应工种</th>
+            <th class="w-120">默认周期（天）</th>
+            <th class="w-120">状态</th>
             <th>备注</th>
-            <th style="width:160px;">操作</th>
+            <th class="w-160">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -87,11 +83,11 @@
               <td>{{ r.status_zh }}</td>
               <td>{{ r.remark or '-' }}</td>
               <td>
-                <a href="{{ url_for('process.supplier_detail', supplier_id=r.supplier_id) }}">查看/编辑</a>
+                <a href="{{ url_for('process.supplier_detail', supplier_id=r.supplier_id) }}" class="table-action-link">查看/编辑</a>
                 <span class="muted">｜</span>
-                <form method="post" action="{{ url_for('process.delete_supplier', supplier_id=r.supplier_id) }}" style="display:inline;"
+                <form method="post" action="{{ url_for('process.delete_supplier', supplier_id=r.supplier_id) }}" class="d-inline"
                       data-confirm="确认删除供应商 {{ r.supplier_id }} 吗？">
-                  <button type="submit">删除</button>
+                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
                 </form>
               </td>
             </tr>

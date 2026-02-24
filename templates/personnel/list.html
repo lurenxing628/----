@@ -1,30 +1,24 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>人员管理</h2>
-    <p class="muted">管理操作员及其可操作的设备。</p>
-    <!-- OperatorMachine -->
-    <div class="info-line" style="margin-top:8px;">
-      <strong>Excel：</strong>
-      <a href="{{ url_for('personnel.excel_operator_page') }}">人员基本信息（导入/导出）</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('personnel.excel_link_page') }}">人员设备关联（导入/导出）</a>
-      {% set excel_op_cal_url = safe_url_for('personnel.excel_operator_calendar_page') %}
-      {% if excel_op_cal_url %}
-        <span class="info-sep">|</span>
-        <a href="{{ excel_op_cal_url }}">人员专属工作日历（导入/导出）</a>
-      {% else %}
-        <span class="info-sep">|</span>
-        <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
-        <details class="debug-details muted">
-          <summary>排查信息</summary>
-          后端接口未注册（endpoint：personnel.excel_operator_calendar_page）。<br/>
-          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
-          处理：重启服务或重新打包升级。<br/>
-          日志：logs/aps.log、logs/aps_error.log。
-        </details>
-      {% endif %}
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">人员管理</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">管理操作员及其可操作的设备。</p>
+    {{ ui.personnel_nav('list') }}
+    {% set excel_op_cal_url = safe_url_for('personnel.excel_operator_calendar_page') %}
+    {% if not excel_op_cal_url %}
+      <div class="muted mt-2">人员专属工作日历功能需要更新版本后使用，请重启系统。</div>
+      <details class="debug-details muted">
+        <summary>排查信息</summary>
+        后端接口未注册（endpoint：personnel.excel_operator_calendar_page）。<br/>
+        常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+        处理：重启服务或重新打包升级。<br/>
+        日志：logs/aps.log、logs/aps_error.log。
+      </details>
+    {% endif %}
   </div>
 
   <div class="card">
@@ -47,26 +41,24 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field" style="flex:1; min-width:240px;">
+        <div class="form-field flex-1 min-w-240">
           <label for="operatorRemarkInput">备注</label><br/>
           <input id="operatorRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div>
-          <button type="submit">添加人员</button>
-        </div>
+        <div>{{ ui.button('添加人员', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
 
   <div class="card">
     <h3>人员列表</h3>
-    <div class="muted" style="margin-bottom:8px;">
+    <div class="muted mb-2">
       批量操作：可批量停用/启用/删除。若人员已被批次工序或排程引用，将禁止删除（请改为停用）。
     </div>
-    <div class="form-row" style="margin-bottom:8px;">
+    <div class="form-row mb-2">
       <div class="form-field">
         <label for="personnelSearchInput"><svg class="icon-sm"><use href="#icon-search"/></svg> 搜索</label>
-        <input id="personnelSearchInput" data-table-search="personnelTable" placeholder="输入工号、姓名..." aria-label="搜索人员，输入工号或姓名关键词" style="width:260px;">
+        <input id="personnelSearchInput" data-table-search="personnelTable" placeholder="输入工号、姓名..." aria-label="搜索人员，输入工号或姓名关键词" class="w-260">
       </div>
     </div>
     <form id="bulkForm" method="post" action="{{ url_for('personnel.bulk_set_status') }}"></form>
@@ -74,12 +66,12 @@
       <table id="personnelTable">
         <thead>
           <tr>
-            <th style="width:60px;"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选人员"></th>
-            <th style="width:120px;">工号</th>
-            <th style="width:160px;">姓名</th>
-            <th style="width:120px;">状态</th>
+            <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选人员"></th>
+            <th class="w-120">工号</th>
+            <th class="w-160">姓名</th>
+            <th class="w-120">状态</th>
             <th>可操作设备</th>
-            <th style="width:120px;">操作</th>
+            <th class="w-120">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -99,11 +91,11 @@
                 {% endif %}
               </td>
               <td>
-                <a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}">查看/编辑</a>
+                <a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}" class="table-action-link">查看/编辑</a>
                 <span class="muted">｜</span>
-                <form method="post" action="{{ url_for('personnel.delete_operator', operator_id=r.operator_id) }}" style="display:inline;"
+                <form method="post" action="{{ url_for('personnel.delete_operator', operator_id=r.operator_id) }}" class="d-inline"
                       data-confirm="确定删除 {{ r.operator_id }} 吗？如果已参与排产则无法删除，建议改为「停用」。">
-                  <button type="submit">删除</button>
+                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
                 </form>
               </td>
             </tr>
@@ -111,19 +103,15 @@
         </tbody>
       </table>
 
-      <div class="action-bar" style="margin-top:10px;">
+      <div class="action-bar mt-3">
         <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 人</span>
         <div class="form-row">
           <select name="status" form="bulkForm" aria-label="批量设置人员状态">
             <option value="active">批量设为：在岗</option>
             <option value="inactive">批量设为：停用/休假</option>
           </select>
-          <button type="submit" form="bulkForm" formaction="{{ url_for('personnel.bulk_set_status') }}" aria-label="批量更新人员状态">批量更新状态</button>
-          <button type="submit" form="bulkForm" formaction="{{ url_for('personnel.bulk_delete') }}"
-                  aria-label="批量删除所选人员"
-                  data-confirm="确定批量删除所选人员吗？若存在引用将删除失败；一般建议先批量停用。">
-            批量删除
-          </button>
+          {{ ui.button('批量更新状态', 'primary', 'md', type_attr='submit', form='bulkForm', formaction=url_for('personnel.bulk_set_status')) }}
+          {{ ui.button('批量删除', 'danger', 'md', type_attr='submit', form='bulkForm', formaction=url_for('personnel.bulk_delete'), confirm='确定批量删除所选人员吗？若存在引用将删除失败；一般建议先批量停用。') }}
         </div>
       </div>
     {% else %}

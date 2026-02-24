@@ -1,19 +1,19 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>工种详情</h2>
-    <p class="muted">工种ID：<strong>{{ op_type.op_type_id }}</strong>　工种名称：<strong>{{ op_type.name }}</strong></p>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('process.op_types_page') }}">返回工种列表</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('process.list_parts') }}">返回工艺管理</a>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">工种详情</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">工种ID：<strong>{{ op_type.op_type_id }}</strong>　工种名称：<strong>{{ op_type.name }}</strong></p>
+    {{ ui.process_nav('op_types') }}
   </div>
 
   <div class="card">
     <h3>基本信息</h3>
     <form method="post" action="{{ url_for('process.update_op_type', op_type_id=op_type.op_type_id) }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="form-row">
         <div>
           <label>工种ID</label><br/>
           <input value="{{ op_type.op_type_id }}" disabled>
@@ -29,13 +29,11 @@
             <option value="external" {% if op_type.category=='external' %}selected{% endif %}>外部</option>
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
+        <div class="flex-1 min-w-240">
           <label>备注</label><br/>
           <input name="remark" value="{{ op_type.remark or '' }}">
         </div>
-        <div>
-          <button type="submit">保存</button>
-        </div>
+        <div>{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>

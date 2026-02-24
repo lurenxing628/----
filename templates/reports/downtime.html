@@ -1,19 +1,16 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
   <div class="card">
-    <h2>报表 - 停机影响统计</h2>
-    <p class="muted">查看各设备的停机时长、停机次数，以及是否和排产任务冲突。</p>
-    <div class="info-line" style="margin-top:8px;">
-      <strong>入口：</strong>
-      <a href="{{ url_for('reports.overdue_page') }}">超期清单</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('reports.utilization_page') }}">资源负荷与利用率</a>
-      <span class="info-sep">|</span>
-      <strong>停机影响统计</strong>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('reports.index') }}">← 返回报表中心</a>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">报表 - 停机影响统计</h2>
+      </div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="muted">查看各设备的停机时长、停机次数，以及是否和排产任务冲突。</p>
+    {{ ui.reports_nav('downtime') }}
   </div>
 
   <div class="card">

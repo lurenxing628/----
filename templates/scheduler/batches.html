@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   {% set strategy_zh = {'improve': '优化排产', 'greedy': '快速排产', 'manual': '手动排产'} %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
@@ -14,33 +15,19 @@
     } %}
 
   <div class="card">
-    <h2>排产调度</h2>
-    <p class="muted">选择批次后执行排产。新增和编辑批次请到「批次管理」。</p>
-    <div class="info-line" style="margin-top:8px;">
-      <strong>入口：</strong>
-      <strong>执行排产</strong>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.batches_manage_page') }}">批次管理</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.config_page') }}">高级设置/模板</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.analysis_page') }}">排产优化分析</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">排产调度</h2>
+      </div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">选择批次后执行排产。新增和编辑批次请到「批次管理」。</p>
+    {{ ui.scheduler_nav('batches') }}
   </div>
 
   <div class="card">
-    <h3>常用方案（模板）</h3>
-    <div class="muted" style="margin-bottom:8px;">切换后排产参数会立刻变化。</div>
+    <h3 class="section-title">常用方案（模板）</h3>
+    <div class="muted mb-2">切换后排产参数会立刻变化。</div>
     {% set preset_apply_url = safe_url_for('scheduler.preset_apply') %}
     {% if preset_apply_url %}
       <form method="post" action="{{ preset_apply_url }}" class="form-row">
@@ -54,7 +41,7 @@
         </select>
         {% set config_url = safe_url_for('scheduler.config_page') %}
         {% if config_url %}
-          <a href="{{ config_url }}">管理模板/高级设置</a>
+          {{ ui.link_button('管理模板/高级设置', config_url, 'secondary', 'sm') }}
         {% else %}
           <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
           <details class="debug-details muted">
@@ -79,7 +66,7 @@
   </div>
 
   <div class="card">
-    <h3>最近一次排产</h3>
+    <h3 class="section-title">最近一次排产</h3>
     {% if latest_history %}
       <div class="info-line">
         <span>时间：<strong>{{ latest_history.schedule_time }}</strong></span>
@@ -91,14 +78,14 @@
         <span>结果：<strong>{{ status_zh.get(latest_history.result_status, latest_history.result_status or '-') }}</strong></span>
       </div>
       {% if latest_summary and latest_summary.overdue_batches %}
-        <div class="muted" style="margin-top:6px;">
+        <div class="muted mt-2">
           超期：{{ latest_summary.overdue_batches.count or 0 }} 个
         </div>
       {% endif %}
       {% if latest_summary and latest_summary.algo and latest_summary.algo.metrics %}
         {% set algo = latest_summary.algo %}
         {% set m = algo.metrics %}
-        <div class="muted" style="margin-top:6px;">
+        <div class="muted mt-2">
           指标：拖期 {{ m.total_tardiness_hours or 0 }} 小时，
           加权拖期 {{ m.weighted_tardiness_hours or 0 }} 小时，
           总工期 {{ m.makespan_hours or 0 }} 小时，
@@ -115,8 +102,8 @@
   </div>
 
   <div class="card">
-    <h3>选择批次并执行排产</h3>
-    <form method="get" action="{{ url_for('scheduler.batches_page') }}" style="margin-bottom:8px;">
+    <h3 class="section-title">选择批次并执行排产</h3>
+    <form method="get" action="{{ url_for('scheduler.batches_page') }}" class="mb-2">
       <div class="form-row">
         <div>
           <label for="schedulerBatchesStatusFilter">状态</label><br/>
@@ -138,31 +125,31 @@
           </select>
         </div>
         <div>
-          <button type="submit">查询</button>
+          {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
         </div>
       </div>
     </form>
 
     {% if batches and batches|length > 0 %}
-      <div class="form-row" style="margin-bottom:8px;">
+      <div class="form-row mb-2">
         <div class="form-field">
           <label for="schedulerBatchesSearchInput"><svg class="icon-sm"><use href="#icon-search"/></svg> 搜索批次</label>
-          <input id="schedulerBatchesSearchInput" data-table-search="batchesTable" placeholder="输入批次号、图号..." style="width:260px;">
+          <input id="schedulerBatchesSearchInput" data-table-search="batchesTable" placeholder="输入批次号、图号..." class="w-260">
         </div>
       </div>
       <form id="jsRunScheduleForm" method="post" action="{{ url_for('scheduler.run_schedule') }}">
         <table id="batchesTable">
         <thead>
           <tr>
-            <th style="width:60px;"><input type="checkbox" class="js-select-all" title="全选"></th>
-            <th style="width:140px;">批次号</th>
-            <th style="width:180px;">图号</th>
-            <th style="width:100px;" class="text-right">数量</th>
-            <th style="width:140px;">交期</th>
-            <th style="width:120px;">优先级</th>
-            <th style="width:140px;">齐套</th>
-            <th style="width:120px;">状态</th>
-            <th style="width:120px;">操作</th>
+            <th class="w-60"><input type="checkbox" class="js-select-all" title="全选"></th>
+            <th class="w-140">批次号</th>
+            <th class="w-180">图号</th>
+            <th class="w-100 text-right">数量</th>
+            <th class="w-140">交期</th>
+            <th class="w-120">优先级</th>
+            <th class="w-140">齐套</th>
+            <th class="w-120">状态</th>
+            <th class="w-120">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -182,21 +169,21 @@
               <td>{{ r.priority_zh }}</td>
               <td>{{ r.ready_status_zh }}</td>
               <td>{{ r.status_zh }}</td>
-              <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}">查看/编辑</a></td>
+              <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}" class="table-action-link">查看/编辑</a></td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
 
         {% if status == 'pending' %}
-          <div class="form-row" style="margin-top:10px;">
+          <div class="form-row mt-3">
             <div>
               <label class="muted" for="schedulerStartDtInput">排产开始时间（默认明天 08:00）</label><br/>
-              <input id="schedulerStartDtInput" type="datetime-local" name="start_dt" value="{{ (default_start_dt or '')|replace(' ', 'T') }}" style="width:220px;">
+              <input id="schedulerStartDtInput" type="datetime-local" name="start_dt" value="{{ (default_start_dt or '')|replace(' ', 'T') }}" class="w-220">
             </div>
             <div>
               <label class="muted" for="schedulerEndDateInput">排产截止日期（可选）</label><br/>
-              <input id="schedulerEndDateInput" type="date" name="end_date" style="width:180px;">
+              <input id="schedulerEndDateInput" type="date" name="end_date" class="w-180">
             </div>
             <div>
               <label class="muted">
@@ -204,16 +191,13 @@
                 启用齐套约束（未齐套禁止排产）
               </label>
             </div>
-            <div class="muted" style="flex:1; min-width:240px;">
+            <div class="muted flex-1 min-w-240">
               设了截止日期的话，排不完会提示失败。
             </div>
           </div>
-          <div class="action-bar" style="margin-top:10px;">
-            <button type="submit">执行排产</button>
-            <button type="submit" formaction="{{ url_for('scheduler.simulate_schedule') }}"
-                    data-confirm="将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？">
-              模拟排产（插单模拟）
-            </button>
+          <div class="action-bar mt-3">
+            {{ ui.button('执行排产', 'primary', 'md', type_attr='submit') }}
+            {{ ui.button('模拟排产（插单模拟）', 'success', 'md', type_attr='submit', formaction=url_for('scheduler.simulate_schedule'), confirm='将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？') }}
             <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
             <span class="muted">工序的设备、人员、工时必须填写完整，否则排产会失败。</span>
           </div>

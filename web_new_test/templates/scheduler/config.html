@@ -1,221 +1,243 @@
 {% extends "base.html" %}
-
-{% block title %}排产高级设置{% endblock %}
-
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
-<div class="flex justify-between items-center mb-4">
-    <h2 style="font-size: 1.5rem; font-weight: bold;">排产高级设置</h2>
-    <div class="flex gap-2 flex-wrap">
-        <a href="{{ url_for('scheduler.batches_page') }}" class="btn btn-primary">执行排产</a>
-        <a href="{{ url_for('scheduler.batches_manage_page') }}" class="btn btn-secondary">批次管理</a>
-        <a href="{{ url_for('scheduler.gantt_page', view='machine') }}" class="btn btn-secondary">甘特图-设备</a>
-        <a href="{{ url_for('scheduler.gantt_page', view='operator') }}" class="btn btn-secondary">甘特图-人员</a>
-        <a href="{{ url_for('scheduler.week_plan_page') }}" class="btn btn-secondary">周计划</a>
-        <a href="{{ url_for('scheduler.calendar_page') }}" class="btn btn-secondary">工作日历配置</a>
-        {% set manual_url = safe_url_for('scheduler.config_manual_page') %}
+  {% set manual_url = safe_url_for('scheduler.config_manual_page') %}
+  <div class="card">
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">排产高级设置</h2></div>
+      <div class="page-actions page-actions-context">
         {% if manual_url %}
-            <a href="{{ manual_url }}" class="btn btn-secondary">排产说明书</a>
-        {% else %}
-            <span class="text-muted text-sm"
-                  title="原因：后端接口未注册（endpoint：scheduler.config_manual_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-                排产说明书（不可用：后端接口缺失 scheduler.config_manual_page）
-            </span>
+          {{ ui.link_button('查看使用指南', manual_url, 'secondary', 'md') }}
         {% endif %}
+      </div>
     </div>
-</div>
+    <p class="page-subtitle text-meta">这里用于调整排产参数。日常建议优先使用模板方案。</p>
+    {{ ui.scheduler_nav('config') }}
+    {% if not manual_url %}
+      <div class="muted mt-2">该功能需要更新版本后使用，请重启系统。</div>
+      <details class="debug-details muted">
+        <summary>排查信息</summary>
+        后端接口未注册（endpoint：scheduler.config_manual_page）。<br/>
+        常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+        处理：重启服务或重新打包升级。<br/>
+        日志：logs/aps.log、logs/aps_error.log。
+      </details>
+    {% endif %}
+  </div>
 
-<div class="card">
-    <div class="card-header">模板/方案</div>
-    <div class="card-body">
-        <div class="text-muted">
-            当前方案：
-            <strong>
-                {% if not active_preset or active_preset == 'custom' %}
-                    自定义
-                {% else %}
-                    {{ active_preset }}
-                {% endif %}
-            </strong>
-        </div>
-        <div class="flex gap-2 flex-wrap items-center mt-2">
-            {% set preset_apply_url = safe_url_for('scheduler.preset_apply') %}
-            {% if preset_apply_url %}
-                <form action="{{ preset_apply_url }}" method="POST" class="flex gap-2 items-center flex-wrap">
-                    <input type="hidden" name="next" value="{{ request.full_path }}">
-                    <span class="text-muted text-sm">切换方案</span>
-                    <select name="preset_name" class="form-control" style="width:auto;" onchange="this.form.submit()">
-                        <option value="custom" {% if not active_preset or active_preset == 'custom' %}selected{% endif %}>自定义（以当前高级设置为准）</option>
-                        {% for p in presets or [] %}
-                            <option value="{{ p.name }}" {% if active_preset == p.name %}selected{% endif %}>{{ p.name }}</option>
-                        {% endfor %}
-                    </select>
-                </form>
-            {% else %}
-                <div class="text-muted text-sm"
-                     title="原因：后端接口未注册（endpoint：scheduler.preset_apply）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-                    切换方案（不可用：后端接口缺失 scheduler.preset_apply，可能旧版本/未重启/未重新打包）
-                </div>
-            {% endif %}
-
-            {% set preset_save_url = safe_url_for('scheduler.preset_save') %}
-            {% if preset_save_url %}
-                <form action="{{ preset_save_url }}" method="POST" class="flex gap-2 items-center flex-wrap" data-confirm="将把当前高级设置保存为新模板，确定？">
-                    <span class="text-muted text-sm">另存为</span>
-                    <input name="preset_name" class="form-control" placeholder="模板名称（如：周末加班）" style="width: 220px;">
-                    <button type="submit" class="btn btn-secondary">保存模板</button>
-                </form>
-            {% else %}
-                <div class="text-muted text-sm"
-                     title="原因：后端接口未注册（endpoint：scheduler.preset_save）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-                    保存模板（不可用：后端接口缺失 scheduler.preset_save，可能旧版本/未重启/未重新打包）
-                </div>
-            {% endif %}
-
-            {% set preset_delete_url = safe_url_for('scheduler.preset_delete') %}
-            {% if preset_delete_url %}
-                <form action="{{ preset_delete_url }}" method="POST" class="flex gap-2 items-center flex-wrap" data-confirm="确定删除该模板吗？">
-                    <span class="text-muted text-sm">删除</span>
-                    <select name="preset_name" class="form-control" style="width:auto;">
-                        <option value="">（请选择）</option>
-                        {% for p in presets or [] %}
-                            {% if p.name not in (builtin_presets or []) %}
-                                <option value="{{ p.name }}">{{ p.name }}</option>
-                            {% endif %}
-                        {% endfor %}
-                    </select>
-                    <button type="submit" class="btn btn-danger">删除模板</button>
-                    <span class="text-muted text-sm">内置模板不可删除/覆盖</span>
-                </form>
-            {% else %}
-                <div class="text-muted text-sm"
-                     title="原因：后端接口未注册（endpoint：scheduler.preset_delete）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-                    删除模板（不可用：后端接口缺失 scheduler.preset_delete，可能旧版本/未重启/未重新打包）
-                </div>
-            {% endif %}
-        </div>
+  <div class="card">
+    <h3 class="section-title">模板/方案</h3>
+    <div class="muted">
+      当前方案：
+      <strong>
+        {% if not active_preset or active_preset == 'custom' %}
+          自定义
+        {% else %}
+          {{ active_preset }}
+        {% endif %}
+      </strong>
     </div>
-</div>
-
-<div class="card">
-    <div class="card-header flex justify-between items-center">
-        <span>排产策略配置</span>
-        <form action="{{ url_for('scheduler.restore_config_default') }}" method="POST" style="display:inline;" data-confirm="确定恢复默认配置吗？">
-            <button type="submit" class="btn btn-sm btn-secondary">恢复默认</button>
+    <div class="inline-flex-wrap items-end mt-3">
+      {% set preset_apply_url = safe_url_for('scheduler.preset_apply') %}
+      {% if preset_apply_url %}
+        <form method="post" action="{{ preset_apply_url }}" class="inline-flex-wrap">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <label class="muted">切换方案</label>
+          <select name="preset_name" data-auto-submit="1">
+            <option value="custom" {% if not active_preset or active_preset == 'custom' %}selected{% endif %}>自定义（以当前高级设置为准）</option>
+            {% for p in presets or [] %}
+              <option value="{{ p.name }}" {% if active_preset == p.name %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
         </form>
-    </div>
-    <div class="card-body">
-        <form action="{{ url_for('scheduler.update_config') }}" method="POST">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="form-group">
-                    <label class="form-label">排产策略</label>
-                    <select name="sort_strategy" class="form-control">
-                        {% for s in strategies %}
-                            <option value="{{ s.key }}" {% if cfg.sort_strategy == s.key %}selected{% endif %}>{{ s.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">算法模式</label>
-                    <select name="algo_mode" class="form-control">
-                        <option value="greedy" {% if cfg.algo_mode == 'greedy' %}selected{% endif %}>贪心 (Greedy)</option>
-                        <option value="improve" {% if cfg.algo_mode == 'improve' %}selected{% endif %}>改进 (Improve)</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">派工方式</label>
-                    <select name="dispatch_mode" class="form-control">
-                        <option value="batch_order" {% if cfg.dispatch_mode == 'batch_order' %}selected{% endif %}>按批次顺序 (Batch Order)</option>
-                        <option value="sgs" {% if cfg.dispatch_mode == 'sgs' %}selected{% endif %}>SGS (串行生成)</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">SGS 规则</label>
-                    <select name="dispatch_rule" class="form-control">
-                        <option value="slack" {% if cfg.dispatch_rule == 'slack' %}selected{% endif %}>Slack</option>
-                        <option value="cr" {% if cfg.dispatch_rule == 'cr' %}selected{% endif %}>CR</option>
-                        <option value="atc" {% if cfg.dispatch_rule == 'atc' %}selected{% endif %}>ATC</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">目标函数</label>
-                    <select name="objective" class="form-control">
-                        <option value="min_overdue" {% if cfg.objective == 'min_overdue' %}selected{% endif %}>最少超期</option>
-                        <option value="min_tardiness" {% if cfg.objective == 'min_tardiness' %}selected{% endif %}>最少拖期小时</option>
-                        <option value="min_changeover" {% if cfg.objective == 'min_changeover' %}selected{% endif %}>最少换型次数</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" title="improve 模式下用于搜索更优解；越大越慢">时间预算 (秒)</label>
-                    <input type="number" name="time_budget_seconds" class="form-control" value="{{ cfg.time_budget_seconds or 20 }}" min="1" max="600">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">优先级权重 (0-1)</label>
-                    <input type="number" step="0.1" name="priority_weight" class="form-control" value="{{ cfg.priority_weight }}">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">交期权重 (0-1)</label>
-                    <input type="number" step="0.1" name="due_weight" class="form-control" value="{{ cfg.due_weight }}">
-                </div>
-                <div class="form-group">
-                    <label class="form-label" title="工作日历：假期若安排工作且效率未填时使用">假期默认效率 (&gt;0)</label>
-                    <input type="number" step="0.01" name="holiday_default_efficiency" class="form-control" value="{{ cfg.holiday_default_efficiency or 0.8 }}" min="0.01">
-                </div>
-            </div>
+      {% else %}
+        <div class="muted">该功能需要更新版本后使用，请重启系统。</div>
+        <details class="debug-details muted">
+          <summary>排查信息</summary>
+          后端接口未注册（endpoint：scheduler.preset_apply）。<br/>
+          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+          处理：重启服务或重新打包升级。<br/>
+          日志：logs/aps.log、logs/aps_error.log。
+        </details>
+      {% endif %}
 
-            <div class="form-group" style="margin-top: 0.75rem;">
-                <label class="flex items-center gap-2">
-                    <input type="checkbox" name="freeze_window_enabled" value="yes" {% if cfg.freeze_window_enabled == 'yes' %}checked{% endif %}>
-                    启用冻结窗口
-                </label>
-                <input type="hidden" name="freeze_window_enabled" value="no">
-                <div class="flex items-center gap-2 mt-2">
-                    <input type="number" name="freeze_window_days" class="form-control" style="width: 90px;" value="{{ cfg.freeze_window_days or 0 }}">
-                    <span class="text-muted">天（复用上一版本窗口内排程）</span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="flex items-center gap-2">
-                    <input type="checkbox" name="prefer_primary_skill" value="yes" {% if cfg.prefer_primary_skill == 'yes' %}checked{% endif %}>
-                    工序补充页：优先推荐主操/高技能人员
-                </label>
-                <input type="hidden" name="prefer_primary_skill" value="no">
-            </div>
-
-            <div class="form-group">
-                <label class="flex items-center gap-2">
-                    <input type="checkbox" name="enforce_ready_default" value="yes" {% if cfg.enforce_ready_default == 'yes' %}checked{% endif %}>
-                    执行排产：默认启用齐套约束（未齐套禁止排产）
-                </label>
-                <input type="hidden" name="enforce_ready_default" value="no">
-            </div>
-
-            <div class="form-group">
-                <label class="flex items-center gap-2">
-                    <input type="checkbox" name="auto_assign_enabled" value="yes" {% if cfg.auto_assign_enabled == 'yes' %}checked{% endif %}>
-                    排产：内部工序缺省资源自动分配（machine/operator 未填时）
-                </label>
-                <input type="hidden" name="auto_assign_enabled" value="no">
-            </div>
-
-            <div class="form-group">
-                <label class="flex items-center gap-2">
-                    <input type="checkbox" name="ortools_enabled" value="yes" {% if cfg.ortools_enabled == 'yes' %}checked{% endif %}>
-                    improve：启用 OR-Tools 高质量起点（若环境已安装）
-                </label>
-                <input type="hidden" name="ortools_enabled" value="no">
-                <div class="flex items-center gap-2 mt-2">
-                    <input type="number" name="ortools_time_limit_seconds" class="form-control" style="width: 90px;" value="{{ cfg.ortools_time_limit_seconds or 3 }}">
-                    <span class="text-muted">秒（建议 3~15）</span>
-                </div>
-            </div>
-
-            <div class="mt-4">
-                <button type="submit" class="btn btn-primary">保存配置</button>
-                <span class="text-muted" style="margin-left: 0.75rem;">建议：非必要不改；需要多个方案请使用“模板/方案”。</span>
-            </div>
+      {% set preset_save_url = safe_url_for('scheduler.preset_save') %}
+      {% if preset_save_url %}
+        <form method="post" action="{{ preset_save_url }}" class="inline-flex-wrap items-center"
+              data-confirm="将把当前高级设置保存为新模板，确定？">
+          <label class="muted">另存为</label>
+          <input name="preset_name" placeholder="输入模板名称（如：周末加班）" class="w-220">
+          {{ ui.button('保存为模板', 'secondary', 'md', type_attr='submit') }}
         </form>
+      {% else %}
+        <div class="muted">该功能需要更新版本后使用，请重启系统。</div>
+        <details class="debug-details muted">
+          <summary>排查信息</summary>
+          后端接口未注册（endpoint：scheduler.preset_save）。<br/>
+          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+          处理：重启服务或重新打包升级。<br/>
+          日志：logs/aps.log、logs/aps_error.log。
+        </details>
+      {% endif %}
+
+      {% set preset_delete_url = safe_url_for('scheduler.preset_delete') %}
+      {% if preset_delete_url %}
+        <form method="post" action="{{ preset_delete_url }}" class="inline-flex-wrap items-center"
+              data-confirm="确定删除该模板吗？">
+          <label class="muted">删除模板</label>
+          <select name="preset_name">
+            <option value="">（请选择）</option>
+            {% for p in presets or [] %}
+              {% if p.name not in (builtin_presets or []) %}
+                <option value="{{ p.name }}">{{ p.name }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+          {{ ui.button('删除', 'danger', 'md', type_attr='submit') }}
+          <span class="muted">内置模板不可删除/覆盖</span>
+        </form>
+      {% else %}
+        <div class="muted">该功能需要更新版本后使用，请重启系统。</div>
+        <details class="debug-details muted">
+          <summary>排查信息</summary>
+          后端接口未注册（endpoint：scheduler.preset_delete）。<br/>
+          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+          处理：重启服务或重新打包升级。<br/>
+          日志：logs/aps.log、logs/aps_error.log。
+        </details>
+      {% endif %}
     </div>
-</div>
+
+    {% if presets and presets|length > 0 %}
+      <div class="muted mt-3">
+        已有模板：{{ presets|length }} 个（建议把低频复杂参数封装成模板，让主页面更轻量）。 
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3 class="section-title">排产策略配置</h3>
+    <form method="post" action="{{ url_for('scheduler.update_config') }}">
+      <div class="param-group">
+        <div class="param-group-title">策略与算法</div>
+        <div class="inline-flex-wrap items-end gap-12">
+          <div>
+            <label>排产策略</label><br/>
+            <select name="sort_strategy">
+              {% for s in strategies %}
+                <option value="{{ s.key }}" {% if cfg.sort_strategy == s.key %}selected{% endif %}>{{ s.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>算法模式</label><br/>
+            <select name="algo_mode">
+              <option value="greedy" {% if cfg.algo_mode == 'greedy' %}selected{% endif %}>贪心（快速）</option>
+              <option value="improve" {% if cfg.algo_mode == 'improve' %}selected{% endif %}>改进（多起点+目标函数）</option>
+            </select>
+          </div>
+          <div>
+            <label>派工方式</label><br/>
+            <select name="dispatch_mode">
+              <option value="batch_order" {% if cfg.dispatch_mode == 'batch_order' %}selected{% endif %}>批次顺序（兼容旧版）</option>
+              <option value="sgs" {% if cfg.dispatch_mode == 'sgs' %}selected{% endif %}>SGS（就绪集合动态派工）</option>
+            </select>
+          </div>
+          <div>
+            <label>SGS 派工规则（仅 SGS 生效）</label><br/>
+            <select name="dispatch_rule">
+              <option value="slack" {% if cfg.dispatch_rule == 'slack' %}selected{% endif %}>Slack（余量）</option>
+              <option value="cr" {% if cfg.dispatch_rule == 'cr' %}selected{% endif %}>CR（关键比率）</option>
+              <option value="atc" {% if cfg.dispatch_rule == 'atc' %}selected{% endif %}>ATC（紧急度）</option>
+            </select>
+          </div>
+          <div>
+            <label>目标函数</label><br/>
+            <select name="objective">
+              <option value="min_overdue" {% if cfg.objective == 'min_overdue' %}selected{% endif %}>最少超期</option>
+              <option value="min_tardiness" {% if cfg.objective == 'min_tardiness' %}selected{% endif %}>最少拖期小时</option>
+              <option value="min_changeover" {% if cfg.objective == 'min_changeover' %}selected{% endif %}>最少换型次数</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="param-group">
+        <div class="param-group-title">权重与时间</div>
+        <div class="inline-flex-wrap items-end gap-12">
+          <div>
+            <label title="improve 模式下用于搜索更优解；越大越慢">时间预算（秒，建议≤180）</label><br/>
+            <input name="time_budget_seconds" value="{{ cfg.time_budget_seconds }}" class="w-140">
+          </div>
+          <div>
+            <label>优先级权重（0~1 或 0~100%）</label><br/>
+            <input name="priority_weight" value="{{ cfg.priority_weight }}" class="w-180">
+          </div>
+          <div>
+            <label>交期权重（0~1 或 0~100%）</label><br/>
+            <input name="due_weight" value="{{ cfg.due_weight }}" class="w-180">
+          </div>
+          <div>
+            <label title="工作日历：假期若安排工作且效率未填时使用">假期默认效率（>0）</label><br/>
+            <input name="holiday_default_efficiency" value="{{ cfg.holiday_default_efficiency }}" class="w-140">
+          </div>
+        </div>
+      </div>
+
+      <div class="param-group">
+        <div class="param-group-title">功能开关</div>
+        <div class="inline-flex-wrap items-end gap-12">
+          <div>
+            <label class="muted">
+              <input type="checkbox" name="freeze_window_enabled" value="yes" {{ 'checked' if cfg.freeze_window_enabled=='yes' else '' }}>
+              冻结窗口
+            </label><br/>
+            <input type="hidden" name="freeze_window_enabled" value="no">
+            <input name="freeze_window_days" value="{{ cfg.freeze_window_days }}" class="w-120">
+            <span class="muted">天（复用上一版本窗口内排程）</span>
+          </div>
+          <div>
+            <label class="muted">
+              <input type="checkbox" name="prefer_primary_skill" value="yes" {{ 'checked' if cfg.prefer_primary_skill=='yes' else '' }}>
+              工序补充页：优先推荐主操/高技能人员
+            </label>
+            <input type="hidden" name="prefer_primary_skill" value="no">
+          </div>
+          <div>
+            <label class="muted">
+              <input type="checkbox" name="enforce_ready_default" value="yes" {{ 'checked' if cfg.enforce_ready_default=='yes' else '' }}>
+              执行排产：默认启用齐套约束（未齐套禁止排产）
+            </label>
+            <input type="hidden" name="enforce_ready_default" value="no">
+          </div>
+          <div>
+            <label class="muted">
+              <input type="checkbox" name="auto_assign_enabled" value="yes" {{ 'checked' if cfg.auto_assign_enabled=='yes' else '' }}>
+              排产：内部工序缺省资源自动分配（设备/人员 未填时）
+            </label>
+            <input type="hidden" name="auto_assign_enabled" value="no">
+          </div>
+          <div>
+            <label class="muted">
+              <input type="checkbox" name="ortools_enabled" value="yes" {{ 'checked' if cfg.ortools_enabled=='yes' else '' }}>
+              优化模式：启用 OR-Tools 高质量起点（若环境已安装）
+            </label><br/>
+            <input type="hidden" name="ortools_enabled" value="no">
+            <input name="ortools_time_limit_seconds" value="{{ cfg.ortools_time_limit_seconds }}" class="w-120">
+            <span class="muted">秒（建议 3~15；过大可能变慢）</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        {{ ui.button('保存配置', 'primary', 'md', type_attr='submit') }}
+      </div>
+    </form>
+    <form method="post" action="{{ url_for('scheduler.restore_config_default') }}" class="mt-2"
+          data-confirm="确定恢复默认配置吗？">
+      {{ ui.button('恢复默认', 'secondary', 'md', type_attr='submit') }}
+      <span class="muted">默认：派工=批次顺序；算法=贪心（快速）；目标=最少超期；预算=20 秒；冻结窗口关闭；优先级权重=0.4，交期权重=0.5（齐套权重为预留字段）。</span>
+    </form>
+  </div>
 {% endblock %}
 
