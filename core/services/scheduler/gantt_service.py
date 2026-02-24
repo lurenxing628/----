@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from typing import Any, Dict, Optional, Sequence
 
 from core.infrastructure.errors import ValidationError
 from data.repositories import ScheduleHistoryRepository, ScheduleRepository
 
+from .gantt_contract import build_gantt_contract
 from .gantt_critical_chain import compute_critical_chain
 from .gantt_range import WeekRange, resolve_week_range
 from .gantt_tasks import build_calendar_days, build_tasks
@@ -21,6 +23,9 @@ class GanttService:
     - 生成周计划表导出行（按天切分时段）
     - 复用 ScheduleHistory.result_summary 的超期信息做标记
     """
+    CONTRACT_VERSION = 2
+    _CRITICAL_CHAIN_CACHE_MAX = 64
+    _CRITICAL_CHAIN_CACHE: "OrderedDict[tuple, Dict[str, Any]]" = OrderedDict()
 
     def __init__(self, conn, logger=None, op_logger=None):
         self.conn = conn
@@ -61,6 +66,56 @@ class GanttService:
                 return [str(x.get("batch_id")) for x in items if isinstance(x, dict) and x.get("batch_id")]
         return []
 
+    def _critical_chain_cache_key(self, version: int) -> tuple:
+        scope = str(id(self.conn))
+        try:
+            rows = self.conn.execute("PRAGMA database_list").fetchall()
+            for r in rows or []:
+                try:
+                    name = r["name"] if isinstance(r, dict) or hasattr(r, "keys") else r[1]
+                    if str(name) != "main":
+                        continue
+                    file_path = r["file"] if isinstance(r, dict) or hasattr(r, "keys") else r[2]
+                    if file_path:
+                        scope = str(file_path)
+                    break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return (scope, int(version))
+
+    def _get_critical_chain(self, version: int) -> Dict[str, Any]:
+        key = self._critical_chain_cache_key(version)
+        cached = self._CRITICAL_CHAIN_CACHE.get(key)
+        if cached is not None:
+            try:
+                self._CRITICAL_CHAIN_CACHE.move_to_end(key)
+            except Exception:
+                pass
+            out = dict(cached)
+            out["cache_hit"] = True
+            return out
+
+        computed = compute_critical_chain(self.schedule_repo, int(version))
+        if not isinstance(computed, dict):
+            computed = {
+                "ids": [],
+                "edges": [],
+                "makespan_end": None,
+                "edge_type_stats": {"process": 0, "machine": 0, "operator": 0, "unknown": 0},
+                "edge_count": 0,
+            }
+        computed["cache_hit"] = False
+
+        self._CRITICAL_CHAIN_CACHE[key] = computed
+        while len(self._CRITICAL_CHAIN_CACHE) > int(self._CRITICAL_CHAIN_CACHE_MAX):
+            try:
+                self._CRITICAL_CHAIN_CACHE.popitem(last=False)
+            except Exception:
+                break
+        return dict(computed)
+
     def get_gantt_tasks(
         self,
         *,
@@ -70,6 +125,7 @@ class GanttService:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         version: Optional[int] = None,
+        include_history: bool = False,
     ) -> Dict[str, Any]:
         """
         返回甘特图数据（tasks + 元信息）。
@@ -88,21 +144,25 @@ class GanttService:
 
         tasks = build_tasks(view=view, wr=wr, rows=rows, overdue_set=overdue_set)
 
-        hist = self.history_repo.get_by_version(ver)
-        hist_dict = hist.to_dict() if hist else None
+        hist_dict = None
+        if include_history:
+            hist = self.history_repo.get_by_version(ver)
+            hist_dict = hist.to_dict() if hist else None
 
-        critical_chain = compute_critical_chain(self.schedule_repo, ver)
+        critical_chain = self._get_critical_chain(ver)
 
-        return {
-            "view": view,
-            "version": ver,
-            "week_start": wr.week_start_date.isoformat(),
-            "week_end": wr.week_end_date.isoformat(),
-            "tasks": tasks,
-            "calendar_days": calendar_days,
-            "critical_chain": critical_chain,
-            "history": hist_dict,
-        }
+        return build_gantt_contract(
+            contract_version=self.CONTRACT_VERSION,
+            view=view,
+            version=ver,
+            week_start=wr.week_start_date.isoformat(),
+            week_end=wr.week_end_date.isoformat(),
+            tasks=tasks,
+            calendar_days=calendar_days,
+            critical_chain=critical_chain,
+            include_history=include_history,
+            history=hist_dict if include_history else None,
+        )
 
     def get_week_plan_rows(
         self,

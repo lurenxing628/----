@@ -25,6 +25,15 @@ def _fmt_dt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _minutes_between(a: Optional[datetime], b: Optional[datetime]) -> Optional[int]:
+    if not a or not b:
+        return None
+    try:
+        return int((b - a).total_seconds() // 60)
+    except Exception:
+        return None
+
+
 def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
     """
     关键链识别（可解释，近似 CC/CP 语义）：
@@ -66,7 +75,13 @@ def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
         }
 
     if not nodes:
-        return {"ids": [], "edges": [], "makespan_end": None}
+        return {
+            "ids": [],
+            "edges": [],
+            "makespan_end": None,
+            "edge_type_stats": {"process": 0, "machine": 0, "operator": 0, "unknown": 0},
+            "edge_count": 0,
+        }
 
     # 1) 工艺前驱：同 (batch_id, piece_id) 的 seq 链
     proc_prev: Dict[str, str] = {}
@@ -117,10 +132,11 @@ def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
                 op_prev[str(n.get("id") or "")] = str(prev.get("id") or "")
             prev = n
 
-    # 控制前驱：三者取“最晚结束”的那一个
+    # 控制前驱：三者取“最晚结束”的那一个，并记录边类型/原因，便于前端解释
     ctrl_prev: Dict[str, str] = {}
+    ctrl_prev_edge: Dict[str, Dict[str, Any]] = {}
     for tid, n in nodes.items():
-        cands: List[str] = []
+        cands: List[Dict[str, Any]] = []
         # 工艺前驱：允许“merged 外协组”导致的同起止时间（pn.start==n.start 且 pn.end==n.end）
         pid_proc = proc_prev.get(tid)
         if pid_proc:
@@ -130,12 +146,20 @@ def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
                     if (pn.get("end") <= n.get("start")) or (
                         pn.get("start") == n.get("start") and pn.get("end") == n.get("end")
                     ):
-                        cands.append(pid_proc)
+                        cands.append(
+                            {
+                                "from": pid_proc,
+                                "edge_type": "process",
+                                "reason": "工艺前驱",
+                                "from_end": pn.get("end"),
+                                "to_start": n.get("start"),
+                            }
+                        )
                 except Exception:
                     pass
 
         # 资源前驱：必须满足 pn.end <= n.start（不允许重叠）
-        for pid in (mach_prev.get(tid), op_prev.get(tid)):
+        for edge_type, pid in (("machine", mach_prev.get(tid)), ("operator", op_prev.get(tid))):
             if not pid:
                 continue
             pn = nodes.get(pid)
@@ -143,12 +167,30 @@ def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
                 continue
             try:
                 if pn.get("end") <= n.get("start"):
-                    cands.append(pid)
+                    cands.append(
+                        {
+                            "from": pid,
+                            "edge_type": edge_type,
+                            "reason": "资源前驱（设备）" if edge_type == "machine" else "资源前驱（人员）",
+                            "from_end": pn.get("end"),
+                            "to_start": n.get("start"),
+                        }
+                    )
             except Exception:
                 continue
         if cands:
-            cands.sort(key=lambda pid: (nodes[pid].get("end"), str(pid)))
-            ctrl_prev[tid] = cands[-1]
+            cands.sort(key=lambda x: (x.get("from_end"), str(x.get("from") or "")))
+            chosen = cands[-1]
+            from_id = str(chosen.get("from") or "")
+            if from_id:
+                ctrl_prev[tid] = from_id
+                ctrl_prev_edge[tid] = {
+                    "from": from_id,
+                    "to": tid,
+                    "edge_type": str(chosen.get("edge_type") or "unknown"),
+                    "reason": str(chosen.get("reason") or "控制前驱"),
+                    "gap_minutes": _minutes_between(chosen.get("from_end"), chosen.get("to_start")),
+                }
 
     # makespan 链尾：全局最大完工时间
     sink = max(nodes.values(), key=lambda x: (x.get("end"), str(x.get("id") or "")))
@@ -156,7 +198,7 @@ def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
 
     # 回溯
     chain_rev: List[str] = []
-    edges_rev: List[Dict[str, str]] = []
+    edges_rev: List[Dict[str, Any]] = []
     cur = sink_id
     seen: set = set()
     guard = 0
@@ -166,11 +208,32 @@ def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
         chain_rev.append(cur)
         pred = ctrl_prev.get(cur)
         if pred:
-            edges_rev.append({"from": pred, "to": cur})
+            edge_meta = ctrl_prev_edge.get(cur) or {}
+            edges_rev.append(
+                {
+                    "from": pred,
+                    "to": cur,
+                    "edge_type": str(edge_meta.get("edge_type") or "unknown"),
+                    "reason": str(edge_meta.get("reason") or "控制前驱"),
+                    "gap_minutes": edge_meta.get("gap_minutes"),
+                }
+            )
         cur = pred or ""
 
     chain = list(reversed(chain_rev))
     edges = list(reversed(edges_rev))
     makespan_end = _fmt_dt(nodes[sink_id].get("end")) if sink_id in nodes and nodes[sink_id].get("end") else None
-    return {"ids": chain, "edges": edges, "makespan_end": makespan_end}
+    edge_type_stats: Dict[str, int] = {"process": 0, "machine": 0, "operator": 0, "unknown": 0}
+    for e in edges:
+        k = str(e.get("edge_type") or "unknown")
+        if k not in edge_type_stats:
+            k = "unknown"
+        edge_type_stats[k] = int(edge_type_stats.get(k, 0)) + 1
+    return {
+        "ids": chain,
+        "edges": edges,
+        "makespan_end": makespan_end,
+        "edge_type_stats": edge_type_stats,
+        "edge_count": len(edges),
+    }
 
