@@ -1,14 +1,10 @@
 {% extends "base.html" %}
 {% block extra_head %}
   <style>
-    .kpi-grid { display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; }
-    .kpi-box { border:1px solid #eee; padding:10px; border-radius:8px; min-width:220px; }
-    .kpi-title { color:#666; font-size:12px; }
-    .kpi-value { font-size:22px; font-weight:700; margin-top:4px; }
-    .kpi-delta { color:#666; font-size:12px; margin-top:2px; }
-
+    .stat-grid { margin-top: 10px; }
+    .stat-card { min-width: 220px; }
     .bar { height:10px; background:#eee; border-radius:999px; overflow:hidden; width:220px; }
-    .bar > div { height:10px; background:#1976d2; }
+    .bar > div { height:10px; background: var(--aps-primary, var(--primary-color, #1976d2)); }
     .tag { font-family: monospace; }
     .svg-wrap { max-width: 760px; }
     .svg-title { margin-top:10px; margin-bottom:4px; }
@@ -38,6 +34,26 @@
       <div>
         <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
       </div>
+    </div>
+    <div class="info-line" style="margin-top:8px;">
+      <strong>入口：</strong>
+      <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.batches_manage_page') }}">批次管理</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.config_page') }}">高级设置/模板</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
+      <span class="info-sep">|</span>
+      <strong>排产优化分析</strong>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
     </div>
   </div>
 
@@ -96,64 +112,64 @@
 
       {% if selected_metrics %}
         {% set m = selected_metrics %}
-        <div class="kpi-grid">
-          <div class="kpi-box">
-            <div class="kpi-title">超期批次数</div>
-            <div class="kpi-value">{{ m.get('overdue_count', 0) }}</div>
+        <div class="stat-grid">
+          <div class="stat-card type-danger">
+            <div class="stat-card-label">超期批次数</div>
+            <div class="stat-card-value danger">{{ m.get('overdue_count', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('overdue_count', 0) - prev_metrics.get('overdue_count', 0)) %}
-              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d }}</div>
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d }}</div>
             {% endif %}
           </div>
-          <div class="kpi-box">
-            <div class="kpi-title">总拖期（小时）</div>
-            <div class="kpi-value">{{ m.get('total_tardiness_hours', 0) }}</div>
+          <div class="stat-card">
+            <div class="stat-card-label">总拖期（小时）</div>
+            <div class="stat-card-value">{{ m.get('total_tardiness_hours', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('total_tardiness_hours', 0) - prev_metrics.get('total_tardiness_hours', 0)) %}
-              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
             {% endif %}
           </div>
-          <div class="kpi-box">
-            <div class="kpi-title">加权拖期（小时）</div>
-            <div class="kpi-value">{{ m.get('weighted_tardiness_hours', 0) }}</div>
+          <div class="stat-card">
+            <div class="stat-card-label">加权拖期（小时）</div>
+            <div class="stat-card-value">{{ m.get('weighted_tardiness_hours', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('weighted_tardiness_hours', 0) - prev_metrics.get('weighted_tardiness_hours', 0)) %}
-              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
             {% endif %}
           </div>
-          <div class="kpi-box">
-            <div class="kpi-title">总工期（小时）</div>
-            <div class="kpi-value">{{ m.get('makespan_hours', 0) }}</div>
+          <div class="stat-card">
+            <div class="stat-card-label">总工期（小时）</div>
+            <div class="stat-card-value">{{ m.get('makespan_hours', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('makespan_hours', 0) - prev_metrics.get('makespan_hours', 0)) %}
-              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
             {% endif %}
           </div>
-          <div class="kpi-box">
-            <div class="kpi-title">内制工期（小时）</div>
-            <div class="kpi-value">{{ m.get('makespan_internal_hours', 0) }}</div>
+          <div class="stat-card">
+            <div class="stat-card-label">内制工期（小时）</div>
+            <div class="stat-card-value">{{ m.get('makespan_internal_hours', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('makespan_internal_hours', 0) - prev_metrics.get('makespan_internal_hours', 0)) %}
-              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d|round(4) }}</div>
             {% endif %}
           </div>
-          <div class="kpi-box">
-            <div class="kpi-title">换型次数</div>
-            <div class="kpi-value">{{ m.get('changeover_count', 0) }}</div>
+          <div class="stat-card">
+            <div class="stat-card-label">换型次数</div>
+            <div class="stat-card-value">{{ m.get('changeover_count', 0) }}</div>
             {% if prev_metrics %}
               {% set d = (m.get('changeover_count', 0) - prev_metrics.get('changeover_count', 0)) %}
-              <div class="kpi-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d }}</div>
+              <div class="stat-card-delta">对比上一版：{{ '+' if d>0 else '' }}{{ d }}</div>
             {% endif %}
           </div>
-          <div class="kpi-box">
-            <div class="kpi-title">设备平均利用率</div>
-            <div class="kpi-value">{{ (m.get('machine_util_avg', 0) * 100)|round(2) }}%</div>
-            <div class="kpi-delta">已用 {{ m.get('machine_used_count', 0) }} 台｜负载均衡 {{ m.get('machine_load_cv', 0) }}</div>
+          <div class="stat-card type-primary">
+            <div class="stat-card-label">设备平均利用率</div>
+            <div class="stat-card-value primary">{{ (m.get('machine_util_avg', 0) * 100)|round(2) }}%</div>
+            <div class="stat-card-delta">已用 {{ m.get('machine_used_count', 0) }} 台｜负载均衡 {{ m.get('machine_load_cv', 0) }}</div>
           </div>
-          <div class="kpi-box">
-            <div class="kpi-title">人员平均利用率</div>
-            <div class="kpi-value">{{ (m.get('operator_util_avg', 0) * 100)|round(2) }}%</div>
-            <div class="kpi-delta">已用 {{ m.get('operator_used_count', 0) }} 人｜负载均衡 {{ m.get('operator_load_cv', 0) }}</div>
+          <div class="stat-card type-success">
+            <div class="stat-card-label">人员平均利用率</div>
+            <div class="stat-card-value success">{{ (m.get('operator_util_avg', 0) * 100)|round(2) }}%</div>
+            <div class="stat-card-delta">已用 {{ m.get('operator_used_count', 0) }} 人｜负载均衡 {{ m.get('operator_load_cv', 0) }}</div>
           </div>
         </div>
         <div class="muted" style="margin-top:8px;">

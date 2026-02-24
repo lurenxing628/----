@@ -480,6 +480,12 @@ tbody tr:hover {
   color: var(--aps-text);
 }
 
+.stat-card-delta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--aps-text-muted);
+}
+
 .stat-card-value.danger {
   color: var(--aps-danger);
 }
@@ -494,7 +500,7 @@ tbody tr:hover {
 
 .nav-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
 
@@ -502,11 +508,12 @@ tbody tr:hover {
   display: block;
   background: var(--aps-card-bg);
   border: 1px solid var(--aps-border);
+  border-left: 4px solid var(--aps-primary);
   border-radius: var(--aps-radius);
   padding: 16px 20px;
   text-decoration: none;
   color: var(--aps-text);
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
   transition: border-color 0.15s, background-color 0.15s;
 }
 
@@ -527,6 +534,10 @@ tbody tr:hover {
 }
 
 .nav-card:hover .nav-card-title {
+  color: var(--aps-primary);
+}
+
+.nav-card-title .icon {
   color: var(--aps-primary);
 }
 
@@ -698,4 +709,20 @@ pre {
   margin-top: 0;
   padding-top: 0;
   border-top: none;
+}
+
+/* Process detail legacy styles migrated from inline block */
+.row-internal {
+  background: #f7fbff;
+}
+
+.row-external {
+  background: #fff7f0;
+}
+
+.group-box {
+  border: 1px dashed var(--aps-border);
+  padding: 12px;
+  border-radius: 8px;
+  margin: 10px 0;
 }

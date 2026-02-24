@@ -16,16 +16,16 @@
     top: 20px;
     max-height: calc(100vh - 40px);
     overflow-y: auto;
-    background: #fafafa;
+    background: #f8fafc;
     border-radius: 8px;
     padding: 16px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--aps-border);
   }
   .manual-toc h3 {
     margin: 0 0 12px 0;
     font-size: 14px;
-    color: #666;
-    border-bottom: 1px solid #e0e0e0;
+    color: var(--aps-text-muted);
+    border-bottom: 1px solid var(--aps-border);
     padding-bottom: 8px;
   }
   .manual-toc ul {
@@ -39,7 +39,7 @@
   .manual-toc a {
     display: block;
     padding: 8px 12px;
-    color: #333;
+    color: var(--aps-text);
     text-decoration: none;
     border-radius: 4px;
     font-size: 14px;
@@ -50,23 +50,23 @@
     background: #e3f2fd;
   }
   .manual-toc a.active {
-    background: #1976d2;
+    background: var(--aps-primary);
     color: white;
     font-weight: 500;
   }
   .manual-toc .toc-h3 {
     padding-left: 24px;
     font-size: 13px;
-    color: #666;
+    color: var(--aps-text-muted);
   }
   .manual-toc .toc-h3:hover {
-    color: #333;
+    color: var(--aps-text);
   }
 
   /* 目录折叠按钮 */
   .toc-toggle {
     display: none;
-    background: #1976d2;
+    background: var(--aps-primary);
     color: white;
     border: none;
     padding: 10px 16px;
@@ -83,35 +83,35 @@
     background: white;
     border-radius: 8px;
     padding: 24px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--aps-border);
   }
 
   /* Markdown 渲染样式 */
   .manual-content h1 {
     font-size: 28px;
     margin: 0 0 16px 0;
-    color: #1565c0;
-    border-bottom: 2px solid #1976d2;
+    color: var(--aps-primary-hover);
+    border-bottom: 2px solid var(--aps-primary);
     padding-bottom: 12px;
   }
   .manual-content h2 {
     font-size: 22px;
     margin: 32px 0 16px 0;
-    color: #1976d2;
-    border-bottom: 1px solid #e0e0e0;
+    color: var(--aps-primary);
+    border-bottom: 1px solid var(--aps-border);
     padding-bottom: 8px;
     scroll-margin-top: 20px;
   }
   .manual-content h3 {
     font-size: 18px;
     margin: 24px 0 12px 0;
-    color: #333;
+    color: var(--aps-text);
     scroll-margin-top: 20px;
   }
   .manual-content p {
     margin: 12px 0;
     line-height: 1.8;
-    color: #333;
+    color: var(--aps-text);
   }
   .manual-content ul, .manual-content ol {
     margin: 12px 0;
@@ -134,7 +134,7 @@
     color: inherit;
   }
   .manual-content code {
-    background: #f5f5f5;
+    background: #f8fafc;
     padding: 2px 6px;
     border-radius: 4px;
     font-family: Consolas, Monaco, monospace;
@@ -160,31 +160,31 @@
     margin: 16px 0;
   }
   .manual-content th, .manual-content td {
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--aps-border);
     padding: 10px 12px;
     text-align: left;
   }
   .manual-content th {
-    background: #f5f5f5;
+    background: #f8fafc;
     font-weight: 600;
   }
   .manual-content tr:hover {
-    background: #fafafa;
+    background: #f8fafc;
   }
   .manual-content hr {
     border: none;
-    border-top: 1px solid #e0e0e0;
+    border-top: 1px solid var(--aps-border);
     margin: 24px 0;
   }
   .manual-content a {
-    color: #1976d2;
+    color: var(--aps-primary);
     text-decoration: none;
   }
   .manual-content a:hover {
     text-decoration: underline;
   }
   .manual-content strong {
-    color: #1565c0;
+    color: var(--aps-primary-hover);
   }
 
   /* 响应式设计 */

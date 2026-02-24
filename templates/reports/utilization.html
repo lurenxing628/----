@@ -1,9 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
   <div class="card">
     <h2>报表 - 资源负荷与利用率</h2>
     <p class="muted">查看设备和人员的工作负荷与利用率。</p>
-    <div style="margin-top:8px;">
+    <div class="info-line" style="margin-top:8px;">
+      <strong>入口：</strong>
+      <a href="{{ url_for('reports.overdue_page') }}">超期清单</a>
+      <span class="info-sep">|</span>
+      <strong>资源负荷与利用率</strong>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('reports.downtime_page') }}">停机影响统计</a>
+      <span class="info-sep">|</span>
       <a href="{{ url_for('reports.index') }}">← 返回报表中心</a>
     </div>
   </div>
@@ -17,7 +25,7 @@
           <select name="version" style="min-width:220px;">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
-                v{{ it.version }}（{{ it.schedule_time }} / {{ it.result_status or '-' }}）
+                v{{ it.version }}（{{ it.schedule_time }} / {{ status_zh.get(it.result_status, it.result_status or '-') }}）
               </option>
             {% endfor %}
           </select>

@@ -3,21 +3,29 @@
   <div class="card">
     <h2>排产高级设置</h2>
     <p class="muted">这里用于调整排产参数。日常建议优先使用模板方案。</p>
-    <div style="margin-top:8px;">
+    <div class="info-line" style="margin-top:8px;">
       <strong>入口：</strong>
       <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
-      <span class="muted">｜</span>
+      <span class="info-sep">|</span>
       <a href="{{ url_for('scheduler.batches_manage_page') }}">批次管理</a>
-      <span class="muted">｜</span>
+      <span class="info-sep">|</span>
+      <strong>高级设置/模板</strong>
+      <span class="info-sep">|</span>
       <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
-      <span class="muted">｜</span>
+      <span class="info-sep">|</span>
       <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
-      <span class="muted">｜</span>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.analysis_page') }}">排产优化分析</a>
+      <span class="info-sep">|</span>
       <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
-      <span class="muted">｜</span>
+      <span class="info-sep">|</span>
       <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
-      <span class="muted">｜</span>
-      {% set manual_url = safe_url_for('scheduler.config_manual_page') %}
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
+    </div>
+    {% set manual_url = safe_url_for('scheduler.config_manual_page') %}
+    <div class="info-line" style="margin-top:6px;">
+      <strong>说明：</strong>
       {% if manual_url %}
         <a href="{{ manual_url }}">排产调度说明书</a>
       {% else %}
@@ -221,14 +229,14 @@
           <div>
             <label class="muted">
               <input type="checkbox" name="auto_assign_enabled" value="yes" {{ 'checked' if cfg.auto_assign_enabled=='yes' else '' }}>
-              排产：内部工序缺省资源自动分配（machine/operator 未填时）
+              排产：内部工序缺省资源自动分配（设备/人员 未填时）
             </label>
             <input type="hidden" name="auto_assign_enabled" value="no">
           </div>
           <div>
             <label class="muted">
               <input type="checkbox" name="ortools_enabled" value="yes" {{ 'checked' if cfg.ortools_enabled=='yes' else '' }}>
-              improve：启用 OR-Tools 高质量起点（若环境已安装）
+              优化模式：启用 OR-Tools 高质量起点（若环境已安装）
             </label><br/>
             <input type="hidden" name="ortools_enabled" value="no">
             <input name="ortools_time_limit_seconds" value="{{ cfg.ortools_time_limit_seconds }}" style="width:90px;">
@@ -244,7 +252,7 @@
     <form method="post" action="{{ url_for('scheduler.restore_config_default') }}" style="margin-top:8px;"
           data-confirm="确定恢复默认配置吗？">
       <button type="submit">恢复默认</button>
-      <span class="muted">默认：派工=batch_order；algo=greedy；objective=min_overdue；预算=20s；冻结窗口关闭；priority=0.4，due=0.5（齐套权重为预留字段）。</span>
+      <span class="muted">默认：派工=批次顺序；算法=贪心（快速）；目标=最少超期；预算=20 秒；冻结窗口关闭；优先级权重=0.4，交期权重=0.5（齐套权重为预留字段）。</span>
     </form>
   </div>
 {% endblock %}

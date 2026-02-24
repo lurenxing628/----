@@ -10,11 +10,15 @@
       <strong>入口：</strong>
       <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
       <span class="info-sep">|</span>
+      <strong>批次管理</strong>
+      <span class="info-sep">|</span>
       <a href="{{ url_for('scheduler.config_page') }}">高级设置/模板</a>
       <span class="info-sep">|</span>
       <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
       <span class="info-sep">|</span>
       <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.analysis_page') }}">排产优化分析</a>
       <span class="info-sep">|</span>
       <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
       <span class="info-sep">|</span>

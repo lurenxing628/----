@@ -1,12 +1,5 @@
 {% extends "base.html" %}
 {% block content %}
-  <style>
-    .row-internal { background: #f7fbff; }
-    .row-external { background: #fff7f0; }
-    .group-box { border: 1px dashed #ddd; padding: 12px; border-radius: 8px; margin: 10px 0; }
-    .hint { color:#666; font-size: 12px; }
-  </style>
-
   <div class="card">
     <h2>工序模板</h2>
     <p class="muted">图号：<strong>{{ part.part_no }}</strong>　名称：<strong>{{ part.part_name }}</strong></p>
@@ -34,7 +27,7 @@
         <div style="flex:1; min-width:360px;">
           <label>原始工艺路线字符串</label><br/>
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
-          <div class="hint">提示：可包含空格/逗号/顿号/破折号等分隔符；解析时会统一处理。</div>
+          <div class="muted" style="font-size:12px;">提示：可包含空格/逗号/顿号/破折号等分隔符；解析时会统一处理。</div>
         </div>
         <div style="flex:1; min-width:220px;">
           <label>备注</label><br/>
@@ -51,7 +44,7 @@
         <div style="flex:1; min-width:360px;">
           <label>用于解析的工艺路线字符串</label><br/>
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
-          <div class="hint">重新解析会覆盖现有工序模板（事务保护）。</div>
+          <div class="muted" style="font-size:12px;">重新解析会覆盖现有工序模板（事务保护）。</div>
         </div>
         <div>
           <button type="submit">重新解析（覆盖工序模板）</button>
@@ -65,7 +58,7 @@
     <div class="muted">
       共 {{ total_count }} 道工序（内部 {{ internal_count }}，外部 {{ external_count }}）。
       {% if total_count == 0 %}
-        <div class="hint">提示：如果还未解析，请在上方填写工艺路线并点击“重新解析”。</div>
+        <div class="muted" style="font-size:12px;">提示：如果还未解析，请在上方填写工艺路线并点击“重新解析”。</div>
       {% endif %}
     </div>
   </div>
@@ -94,11 +87,11 @@
                   <form method="post" action="{{ url_for('process.update_internal_hours', part_no=part.part_no, seq=op.seq) }}">
                     <div class="form-row" style="gap:8px;">
                       <div>
-                        <label class="hint">换型(h)</label><br/>
+                        <label class="muted" style="font-size:12px;">换型(h)</label><br/>
                         <input name="setup_hours" style="width:90px;" value="{{ op.setup_hours or 0 }}">
                       </div>
                       <div>
-                        <label class="hint">单件(h)</label><br/>
+                        <label class="muted" style="font-size:12px;">单件(h)</label><br/>
                         <input name="unit_hours" style="width:90px;" value="{{ op.unit_hours or 0 }}">
                       </div>
                       <div>
@@ -113,11 +106,11 @@
               <td>
                 {% if op.source == 'external' %}
                   {% set s = suppliers_map.get(op.supplier_id) %}
-                  <div class="hint">
+                  <div class="muted" style="font-size:12px;">
                     供应商：{{ (s.name if s else '-') }}
                     {% if op.ext_group_id %}｜组：{{ op.ext_group_id }}{% endif %}
                   </div>
-                  <div class="hint">
+                  <div class="muted" style="font-size:12px;">
                     周期：{% if op.ext_days is not none %}{{ op.ext_days }} 天{% else %}-{% endif %}
                   </div>
                 {% else %}
@@ -128,7 +121,7 @@
           {% endfor %}
         </tbody>
       </table>
-      <div class="hint" style="margin-top:8px;">
+      <div class="muted" style="font-size:12px; margin-top:8px;">
         颜色标记：蓝色=内部工序，橙色=外部工序（外协）。
       </div>
     {% else %}
@@ -171,7 +164,7 @@
               <div style="flex:1;">
                 <label>合计周期（天，仅合并设置使用）</label><br/>
                 <input name="total_days" value="{{ g.total_days if g.total_days is not none else '' }}" placeholder="如：3">
-                <div class="hint">提示：合并设置时，组内工序不单独计时，整组按合计周期计算；分别设置时该字段会被忽略。</div>
+                <div class="muted" style="font-size:12px;">提示：合并设置时，组内工序不单独计时，整组按合计周期计算；分别设置时该字段会被忽略。</div>
               </div>
               <div>
                 <button type="submit">保存外部组设置</button>
@@ -196,7 +189,7 @@
                       <td>
                         <input name="ext_days_{{ op.seq }}" style="width:140px;" value="{{ op.ext_days if op.ext_days is not none else '' }}" placeholder="如：1">
                       </td>
-                      <td class="hint">
+                      <td class="muted" style="font-size:12px;">
                         {% if g.merge_mode == 'merged' %}
                           当前为合并设置：该字段会被忽略（组内不单独计时）。
                         {% else %}

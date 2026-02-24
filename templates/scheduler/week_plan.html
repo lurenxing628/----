@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
+  {% set strategy_zh = {'improve': '优化排产', 'greedy': '快速排产', 'manual': '手动排产'} %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
       <div>
@@ -13,6 +15,26 @@
       <div>
         <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
       </div>
+    </div>
+    <div class="info-line" style="margin-top:8px;">
+      <strong>入口：</strong>
+      <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.batches_manage_page') }}">批次管理</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.config_page') }}">高级设置/模板</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.analysis_page') }}">排产优化分析</a>
+      <span class="info-sep">|</span>
+      <strong>周计划</strong>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
+      <span class="info-sep">|</span>
+      <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
     </div>
   </div>
 
@@ -36,7 +58,7 @@
           <select name="version" style="width:260px;">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
-                v{{ v.version }}（{{ v.schedule_time }} / {{ v.strategy }} / {{ v.result_status or '-' }}）
+                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ status_zh.get(v.result_status, v.result_status or '-') }}）
               </option>
             {% endfor %}
           </select>
