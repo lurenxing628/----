@@ -34,6 +34,14 @@
     return str(v).trim();
   }
 
+  function parsePositiveInt(v, fallback) {
+    var n = Number(v);
+    if (!isFinite(n)) return fallback;
+    n = Math.floor(n);
+    if (n <= 0) return fallback;
+    return n;
+  }
+
   function includesI(hay, needle) {
     const h = norm(hay).toLowerCase();
     const n = norm(needle).toLowerCase();
@@ -88,19 +96,22 @@
   function statusKeyForTask(task) {
     const t = task || {};
     const meta = t.meta || {};
+    const raw = norm(meta.status).toLowerCase();
+    // 优先后端状态：历史版本/模拟场景更符合业务语义
+    if (raw) {
+      if (raw === "done" || raw === "finished" || raw === "complete" || raw === "completed" || raw === "closed") return "done";
+      if (raw === "in_progress" || raw === "running" || raw === "processing" || raw === "started") return "in_progress";
+      if (raw === "blocked" || raw === "failed" || raw === "cancelled" || raw === "skipped") return "blocked";
+      if (raw === "pending" || raw === "scheduled" || raw === "queued" || raw === "waiting" || raw === "planned") return "pending";
+    }
+    // 兜底：仅当后端无明确状态时再按时间推断
     const st = parseLocalDateTime(t.start);
     const et = parseLocalDateTime(t.end);
     const now = Date.now();
     if (st && et) {
       if (et.getTime() <= now) return "done";
       if (st.getTime() <= now && now < et.getTime()) return "in_progress";
-      return "pending";
     }
-    // fallback：用后端状态（若存在）
-    const raw = norm(meta.status);
-    if (raw === "done" || raw === "finished" || raw === "complete" || raw === "completed") return "done";
-    if (raw === "in_progress" || raw === "running") return "in_progress";
-    if (raw === "blocked") return "blocked";
     return "pending";
   }
 
@@ -132,18 +143,32 @@
     critical: { ids: [], edges: [], makespan_end: null },
     ccIdSet: new Set(),
     ccPrevByTo: new Map(),
+    ccEdgeMetaByTo: new Map(),
     calendarDays: [],
     // 默认：按批次配色；高亮关键链；仅显示关键链箭头（避免全图箭头过密）
     ui: {
+      viewMode: "Day",
       colorMode: "batch",
       filterBatch: "",
       filterResource: "",
       onlyOverdue: false,
       onlyExternal: false,
-      showProcessDeps: false,
+      depsMode: "critical", // critical / process / none
       highlightCC: true,
-      onlyCCDeps: true,
     },
+  };
+
+  const _perfState = {
+    holidayDigest: "",
+    holidayLayerMounted: false,
+    lastHolidayHeight: 0,
+    wrappersById: new Map(),
+    decorateRenderedIds: [],
+    legendDigest: "",
+    ccVisibleCount: 0,
+    activeRequestId: 0,
+    inFlightController: null,
+    inFlightUrl: "",
   };
 
   // ---- render/decorate cache (Win7 友好：减少不必要的全量重渲染) ----
@@ -160,17 +185,112 @@
     _decorCache.colorMode = null;
     _decorCache.focusBatch = null;
     _decorCache.highlightCC = null;
+    _perfState.wrappersById = new Map();
+    _perfState.decorateRenderedIds = [];
+    _perfState.holidayDigest = "";
+    _perfState.holidayLayerMounted = false;
+    _perfState.lastHolidayHeight = 0;
+    _perfState.legendDigest = "";
+    _perfState.ccVisibleCount = 0;
   }
 
   function readUi() {
+    const viewModeRaw = norm($("ganttViewMode") && $("ganttViewMode").value) || "Day";
+    state.ui.viewMode = (viewModeRaw === "Week" || viewModeRaw === "Month") ? viewModeRaw : "Day";
     state.ui.colorMode = norm($("ganttColorMode") && $("ganttColorMode").value) || "batch";
     state.ui.filterBatch = norm($("ganttFilterBatch") && $("ganttFilterBatch").value);
     state.ui.filterResource = norm($("ganttFilterResource") && $("ganttFilterResource").value);
     state.ui.onlyOverdue = !!($("ganttOnlyOverdue") && $("ganttOnlyOverdue").checked);
     state.ui.onlyExternal = !!($("ganttOnlyExternal") && $("ganttOnlyExternal").checked);
-    state.ui.showProcessDeps = !!($("ganttShowProcessDeps") && $("ganttShowProcessDeps").checked);
+    const depsModeRaw = norm($("ganttDepsMode") && $("ganttDepsMode").value) || "critical";
+    state.ui.depsMode = (depsModeRaw === "none" || depsModeRaw === "process" || depsModeRaw === "critical")
+      ? depsModeRaw
+      : "critical";
     state.ui.highlightCC = !!($("ganttHighlightCC") && $("ganttHighlightCC").checked);
-    state.ui.onlyCCDeps = !!($("ganttOnlyCCDeps") && $("ganttOnlyCCDeps").checked);
+  }
+
+  function parseBoolQuery(raw, fallback) {
+    if (typeof raw !== "string") return !!fallback;
+    const v = raw.trim().toLowerCase();
+    if (v === "1" || v === "true" || v === "yes" || v === "on") return true;
+    if (v === "0" || v === "false" || v === "no" || v === "off") return false;
+    return !!fallback;
+  }
+
+  function applyUiFromUrl() {
+    let params;
+    try {
+      params = new URL(window.location.href).searchParams;
+    } catch (_) {
+      return;
+    }
+    const vm = params.get("gantt_vm") || params.get("view_mode");
+    if (vm) {
+      const el = $("ganttViewMode");
+      if (el && (vm === "Day" || vm === "Week" || vm === "Month")) el.value = vm;
+    }
+    const cm = params.get("gantt_color");
+    if (cm) {
+      const el = $("ganttColorMode");
+      if (el) el.value = cm;
+    }
+    const fb = params.get("gantt_batch");
+    if (fb !== null) {
+      const el = $("ganttFilterBatch");
+      if (el) el.value = fb;
+    }
+    const fr = params.get("gantt_resource");
+    if (fr !== null) {
+      const el = $("ganttFilterResource");
+      if (el) el.value = fr;
+    }
+    const oo = params.get("gantt_overdue");
+    if (oo !== null) {
+      const el = $("ganttOnlyOverdue");
+      if (el) el.checked = parseBoolQuery(oo, false);
+    }
+    const oe = params.get("gantt_external");
+    if (oe !== null) {
+      const el = $("ganttOnlyExternal");
+      if (el) el.checked = parseBoolQuery(oe, false);
+    }
+    const deps = params.get("gantt_deps");
+    if (deps) {
+      const el = $("ganttDepsMode");
+      if (el && (deps === "none" || deps === "process" || deps === "critical")) el.value = deps;
+    }
+    const hc = params.get("gantt_hcc");
+    if (hc !== null) {
+      const el = $("ganttHighlightCC");
+      if (el) el.checked = parseBoolQuery(hc, true);
+    }
+  }
+
+  function persistUiToUrl() {
+    let url;
+    try {
+      url = new URL(window.location.href);
+    } catch (_) {
+      return;
+    }
+    const ui = state.ui || {};
+    const setOrDelete = function (key, val, isDefault) {
+      if (isDefault) url.searchParams.delete(key);
+      else url.searchParams.set(key, String(val));
+    };
+    setOrDelete("gantt_vm", ui.viewMode || "Day", !ui.viewMode || ui.viewMode === "Day");
+    setOrDelete("gantt_color", ui.colorMode || "batch", !ui.colorMode || ui.colorMode === "batch");
+    setOrDelete("gantt_batch", ui.filterBatch || "", !ui.filterBatch);
+    setOrDelete("gantt_resource", ui.filterResource || "", !ui.filterResource);
+    setOrDelete("gantt_overdue", ui.onlyOverdue ? "1" : "0", !ui.onlyOverdue);
+    setOrDelete("gantt_external", ui.onlyExternal ? "1" : "0", !ui.onlyExternal);
+    setOrDelete("gantt_deps", ui.depsMode || "critical", !ui.depsMode || ui.depsMode === "critical");
+    setOrDelete("gantt_hcc", ui.highlightCC ? "1" : "0", !!ui.highlightCC);
+    try {
+      window.history.replaceState(null, "", url.toString());
+    } catch (_) {
+      // ignore
+    }
   }
 
   function applyFilters(all) {
@@ -224,10 +344,10 @@
       }
 
       let deps = "";
-      if (state.ui.onlyCCDeps) {
+      if (state.ui.depsMode === "critical") {
         const pred = state.ccPrevByTo.get(norm(t.id));
         deps = pred && visibleIds.has(pred) ? pred : "";
-      } else if (state.ui.showProcessDeps) {
+      } else if (state.ui.depsMode === "process") {
         deps = norm(t.dependencies);
         if (deps) {
           deps = deps
@@ -289,8 +409,8 @@
       return "按状态";
     }
     function arrowText() {
-      if (state.ui.onlyCCDeps) return "关键链箭头";
-      if (state.ui.showProcessDeps) return "工艺依赖箭头";
+      if (state.ui.depsMode === "critical") return "关键链箭头";
+      if (state.ui.depsMode === "process") return "工艺依赖箭头";
       return "无";
     }
     function sampleBatchIds(limit) {
@@ -309,26 +429,35 @@
       return out;
     }
 
-    clear(el);
-
     // 关键链：后端为“全版本口径”；当前页面仅展示本窗口 tasks 的子集
     const ccTotal = state.ccIdSet ? state.ccIdSet.size : 0;
-    let ccVisible = 0;
-    try {
-      const all = Array.isArray(state.allTasks) ? state.allTasks : [];
-      for (let i = 0; i < all.length; i++) {
-        const tid = norm(all[i] && all[i].id);
-        if (tid && state.ccIdSet && state.ccIdSet.has(tid)) ccVisible += 1;
-      }
-    } catch (_) {
-      ccVisible = 0;
-    }
+    const ccVisible = Number(_perfState.ccVisibleCount || 0);
     const makespanEnd = norm(state.critical && state.critical.makespan_end) || "-";
+    const ccCacheText = (state.critical && state.critical.cache_hit === true) ? "命中" : "未命中";
+    const batchSamples = state.ui.colorMode === "batch" ? sampleBatchIds(3) : [];
+
+    // 图例在纯视觉交互时会高频触发；digest 未变化则跳过 DOM 重建
+    const digest = [
+      state.filteredTasks.length,
+      state.allTasks.length,
+      state.ui.viewMode || "Day",
+      state.ui.colorMode || "batch",
+      state.ui.depsMode || "critical",
+      ccTotal,
+      ccVisible,
+      makespanEnd,
+      ccCacheText,
+      batchSamples.join("|"),
+    ].join("||");
+    if (digest === _perfState.legendDigest) return;
+    _perfState.legendDigest = digest;
+
+    clear(el);
 
     // Row 1: summary
     const r1 = row();
     const summary = document.createElement("span");
-    summary.textContent = `显示 ${state.filteredTasks.length}/${state.allTasks.length}｜配色 ${modeText()}｜箭头 ${arrowText()}｜关键链（全版本/本窗口可见）${ccTotal}/${ccVisible}｜完工 ${makespanEnd}`;
+    summary.textContent = `显示 ${state.filteredTasks.length}/${state.allTasks.length}｜视图 ${state.ui.viewMode || "Day"}｜配色 ${modeText()}｜箭头 ${arrowText()}｜关键链（全版本/本窗口可见）${ccTotal}/${ccVisible}｜完工 ${makespanEnd}｜关键链缓存 ${ccCacheText}`;
     r1.appendChild(summary);
     el.appendChild(r1);
 
@@ -337,9 +466,8 @@
     r2.appendChild(title("配色"));
     if (state.ui.colorMode === "batch") {
       r2.appendChild(item("同批次同色", { background: "#94a3b8" }));
-      const samples = sampleBatchIds(3);
-      for (let i = 0; i < samples.length; i++) {
-        const bid = samples[i];
+      for (let i = 0; i < batchSamples.length; i++) {
+        const bid = batchSamples[i];
         r2.appendChild(item(bid, { background: colorForBatch(bid) }));
       }
     } else if (state.ui.colorMode === "priority") {
@@ -515,24 +643,31 @@
     return out;
   }
 
-  function renderHolidayColumns() {
-    const gantt = state.gantt;
-    if (!gantt || !gantt.gantt_start || !gantt.options) return;
+  function _buildHolidayDigest(days) {
+    const list = Array.isArray(days) ? days : [];
+    const buf = [];
+    for (let i = 0; i < list.length; i++) {
+      const d = list[i] || {};
+      const dateStr = norm(d.date);
+      if (!dateStr) continue;
+      const isHoliday = d.is_holiday === true || (norm(d.day_type) && norm(d.day_type) !== "workday");
+      const isNonworking = d.is_nonworking === true || Number(d.shift_hours || 0) <= 0;
+      if (!isHoliday && !isNonworking) continue;
+      buf.push(`${dateStr}|${isNonworking ? "1" : "0"}`);
+    }
+    return buf.join(",");
+  }
 
-    const svg = document.querySelector("#gantt svg.gantt");
-    if (!svg) return;
-
-    // 清理旧层
+  function _ensureHolidayLayer(svg) {
     try {
-      const old = svg.querySelector("g.aps-holiday-layer");
-      if (old && old.parentNode) old.parentNode.removeChild(old);
+      const existing = svg.querySelector("g.aps-holiday-layer");
+      if (existing) {
+        _perfState.holidayLayerMounted = true;
+        return existing;
+      }
     } catch (_) {
       // ignore
     }
-
-    const days = (Array.isArray(state.calendarDays) && state.calendarDays.length) ? state.calendarDays : _buildFallbackCalendarDays();
-    if (!days.length) return;
-
     const NS = "http://www.w3.org/2000/svg";
     const layer = document.createElementNS(NS, "g");
     layer.setAttribute("class", "aps-holiday-layer");
@@ -578,8 +713,11 @@
       if (insertBefore) svg.insertBefore(layer, insertBefore);
       else svg.appendChild(layer);
     }
+    _perfState.holidayLayerMounted = true;
+    return layer;
+  }
 
-    // 计算高度（SVG user units）
+  function _computeHolidayHeight(svg) {
     let height = 0;
     try {
       const bb = svg.getBBox();
@@ -603,10 +741,41 @@
       const r = svg.getBoundingClientRect();
       if (r && r.height) height = r.height;
     }
+    return height || 0;
+  }
+
+  function renderHolidayColumns() {
+    const gantt = state.gantt;
+    if (!gantt || !gantt.gantt_start || !gantt.options) return;
+
+    const svg = document.querySelector("#gantt svg.gantt");
+    if (!svg) return;
+
+    const days = (Array.isArray(state.calendarDays) && state.calendarDays.length) ? state.calendarDays : _buildFallbackCalendarDays();
+    const digest = _buildHolidayDigest(days);
+    const height = _computeHolidayHeight(svg);
+    const sameDigest = digest === _perfState.holidayDigest;
+    const sameHeight = Math.abs((_perfState.lastHolidayHeight || 0) - height) < 0.5;
+
+    let layer = _ensureHolidayLayer(svg);
+    if (!layer) return;
+    if (!days.length) {
+      try {
+        layer.textContent = "";
+      } catch (_) {
+        // ignore
+      }
+      _perfState.holidayDigest = "";
+      _perfState.lastHolidayHeight = height;
+      return;
+    }
+    if (sameDigest && sameHeight) return;
 
     const step = Number(gantt.options.step) || 24;
     const col = Number(gantt.options.column_width) || 38;
     const start = gantt.gantt_start;
+    const NS = "http://www.w3.org/2000/svg";
+    const frag = document.createDocumentFragment();
 
     for (let i = 0; i < days.length; i++) {
       const d = days[i] || {};
@@ -629,8 +798,17 @@
       rect.setAttribute("height", String(height || 0));
       rect.setAttribute("class", isNonworking ? "aps-holiday-rect aps-nonworking" : "aps-holiday-rect");
       rect.setAttribute("data-date", dateStr);
-      layer.appendChild(rect);
+      frag.appendChild(rect);
     }
+
+    try {
+      layer.textContent = "";
+      layer.appendChild(frag);
+    } catch (_) {
+      // ignore
+    }
+    _perfState.holidayDigest = digest;
+    _perfState.lastHolidayHeight = height;
   }
 
   function scrollToAnchor(gantt) {
@@ -704,6 +882,26 @@
   }
 
   function _clearAllCriticalOutlines() {
+    const ids = Array.isArray(_perfState.decorateRenderedIds) ? _perfState.decorateRenderedIds : [];
+    if (ids.length > 0 && _perfState.wrappersById && _perfState.wrappersById.size > 0) {
+      for (let i = 0; i < ids.length; i++) {
+        const w = _perfState.wrappersById.get(ids[i]);
+        if (!w || !w.querySelectorAll) continue;
+        try {
+          w.querySelectorAll(".aps-cc-outline-outer, .aps-cc-outline-inner").forEach((n) => {
+            try {
+              n.remove();
+            } catch (_) {
+              // ignore
+            }
+          });
+        } catch (_) {
+          // ignore
+        }
+      }
+      return;
+    }
+
     try {
       document.querySelectorAll("#gantt .aps-cc-outline-outer, #gantt .aps-cc-outline-inner").forEach((n) => {
         try {
@@ -762,20 +960,54 @@
 
     const ui = state.ui || {};
     const byId = o.byId || _buildTaskMapById();
-    const wrappers = document.querySelectorAll("#gantt .bar-wrapper");
-    if (!wrappers || wrappers.length === 0) {
-      if (updateLegendFlag) updateLegend();
-      return;
+    const forceAll = o.forceAll === true;
+    const tokenChanged = _decorCache.renderToken !== _renderToken;
+    let wrappersById = _perfState.wrappersById;
+    let wrapperList = [];
+    let needRebuildWrappers =
+      forceAll ||
+      tokenChanged ||
+      !wrappersById ||
+      wrappersById.size <= 0 ||
+      wrappersById.size !== (state.currentTasks.length || 0);
+
+    if (!needRebuildWrappers) {
+      wrappersById.forEach((el, id) => {
+        if (!el || !el.isConnected) {
+          needRebuildWrappers = true;
+          return;
+        }
+        wrapperList.push({ id: id, el: el });
+      });
+      if (wrapperList.length !== wrappersById.size) {
+        needRebuildWrappers = true;
+      }
+    }
+
+    if (needRebuildWrappers) {
+      const wrappers = document.querySelectorAll("#gantt .bar-wrapper");
+      if (!wrappers || wrappers.length === 0) {
+        _perfState.wrappersById = new Map();
+        if (updateLegendFlag) updateLegend();
+        return;
+      }
+      wrappersById = new Map();
+      wrapperList = [];
+      wrappers.forEach((w) => {
+        const tid = norm(w.getAttribute("data-id"));
+        if (!tid) return;
+        wrappersById.set(tid, w);
+        wrapperList.push({ id: tid, el: w });
+      });
+      _perfState.wrappersById = wrappersById;
     }
 
     // 若 DOM 与数据不一致（例如渲染中途被打断），交给上层做降级
     const curCount = state.currentTasks.length || 0;
-    if (curCount > 0 && wrappers.length > 0 && wrappers.length !== curCount) {
-      throw new Error(`Gantt DOM mismatch: wrappers=${wrappers.length}, tasks=${curCount}`);
+    const renderedCount = wrapperList.length || 0;
+    if (curCount > 0 && renderedCount > 0 && renderedCount !== curCount) {
+      throw new Error(`Gantt DOM mismatch: wrappers=${renderedCount}, tasks=${curCount}`);
     }
-
-    const forceAll = o.forceAll === true;
-    const tokenChanged = _decorCache.renderToken !== _renderToken;
     const needColor = forceAll || tokenChanged || _decorCache.colorMode !== ui.colorMode;
     const needFocus = forceAll || tokenChanged || _decorCache.focusBatch !== state.focusBatch;
     const needCC = forceAll || tokenChanged || _decorCache.highlightCC !== ui.highlightCC;
@@ -786,10 +1018,12 @@
       ccWrappers = [];
     }
 
-    wrappers.forEach((w) => {
-      const tid = norm(w.getAttribute("data-id"));
+    for (let i = 0; i < wrapperList.length; i++) {
+      const item = wrapperList[i];
+      const tid = item.id;
+      const w = item.el;
       const t = byId.get(tid);
-      if (!t) return;
+      if (!t) continue;
       const meta = t.meta || {};
 
       if (needFocus) {
@@ -808,21 +1042,29 @@
         w.classList.toggle("aps-critical", isCC);
         if (ui.highlightCC && isCC && ccWrappers) ccWrappers.push(w);
       }
-    });
+    }
 
     if (needCC && ui.highlightCC && Array.isArray(ccWrappers) && ccWrappers.length > 0) {
+      const renderedIds = [];
       for (let i = 0; i < ccWrappers.length; i++) {
         const w = ccWrappers[i];
+        const tid = norm(w.getAttribute("data-id"));
         // 关键链外框：仅对 CC wrapper 插入（避免对所有 wrapper 反复 querySelectorAll）
         upsertCriticalOutlines(w, true);
         // CC 徽标已弃用：这里仅做清理（防止旧 DOM 残留）
         upsertCriticalBadge(w, false);
+        if (tid) renderedIds.push(tid);
       }
+      _perfState.decorateRenderedIds = renderedIds;
+    } else if (needCC) {
+      _perfState.decorateRenderedIds = [];
     }
     if (needCC && !ui.highlightCC) {
       // 高亮关闭时：确保 class 也被移除（上面 toggle 已处理大部分；此处做一次兜底）
       try {
-        wrappers.forEach((w) => w.classList.remove("aps-critical"));
+        for (let i = 0; i < wrapperList.length; i++) {
+          wrapperList[i].el.classList.remove("aps-critical");
+        }
       } catch (_) {
         // ignore
       }
@@ -876,7 +1118,7 @@
     state.currentTasks = tasks;
 
     const gantt = new Gantt("#gantt", tasks, {
-      view_mode: "Day",
+      view_mode: (state.ui && state.ui.viewMode) ? state.ui.viewMode : "Day",
       language: "zh",
       popup_trigger: "click",
       on_click: function (task) {
@@ -889,7 +1131,9 @@
       },
       custom_popup_html: function (task) {
         const meta = task && task.meta ? task.meta : {};
-        const isCC = !!(state.ccIdSet && state.ccIdSet.has(norm(task && task.id)));
+        const taskId = norm(task && task.id);
+        const isCC = !!(state.ccIdSet && state.ccIdSet.has(taskId));
+        const ccMeta = (state.ccEdgeMetaByTo && taskId) ? state.ccEdgeMetaByTo.get(taskId) : null;
         const sk = statusKeyForTask(task);
         const skZh =
           sk === "done" ? "已完成" : sk === "in_progress" ? "进行中" : sk === "blocked" ? "阻塞" : "未开始";
@@ -909,6 +1153,15 @@
         const statusText = escapeHtml(str(skZh));
         const priorityText = escapeHtml(str(meta.priority || "-"));
         const dueText = escapeHtml(str(meta.due_date || "-"));
+        const ccFromText = escapeHtml(str((ccMeta && ccMeta.from) || "-"));
+        const ccTypeRaw = norm(ccMeta && ccMeta.edge_type);
+        const ccTypeText = escapeHtml(
+          ccTypeRaw === "process"
+            ? "工艺前驱"
+            : (ccTypeRaw === "machine" ? "设备前驱" : (ccTypeRaw === "operator" ? "人员前驱" : "未知"))
+        );
+        const ccReasonText = escapeHtml(str((ccMeta && ccMeta.reason) || "-"));
+        const ccGapText = escapeHtml(str((ccMeta && typeof ccMeta.gap_minutes !== "undefined" && ccMeta.gap_minutes !== null) ? ccMeta.gap_minutes : "-"));
 
         const lines = [
           `<div class="title">${titleText}</div>`,
@@ -922,6 +1175,8 @@
           `<div class="subtitle">来源：${sourceText}｜状态：${statusText}</div>`,
           `<div class="subtitle">优先级：${priorityText}｜交期：${dueText}</div>`,
           `<div class="subtitle">关键链：${isCC ? "是" : "否"}｜超期：${meta.is_overdue ? "是" : "否"}</div>`,
+          `<div class="subtitle">关键链前驱：${isCC ? ccFromText : "-"}｜类型：${isCC ? ccTypeText : "-"}｜间隔(分)：${isCC ? ccGapText : "-"}</div>`,
+          `<div class="subtitle">关键链依据：${isCC ? ccReasonText : "-"}</div>`,
         ];
         return lines.join("") + `<div class="pointer"></div>`;
       },
@@ -947,6 +1202,8 @@
       on(resetBtn, "click", function () {
         state.focusBatch = "";
 
+        const vm = $("ganttViewMode");
+        if (vm) vm.value = "Day";
         const cm = $("ganttColorMode");
         if (cm) cm.value = "batch";
         const fb = $("ganttFilterBatch");
@@ -958,14 +1215,13 @@
         if (oo) oo.checked = false;
         const oe = $("ganttOnlyExternal");
         if (oe) oe.checked = false;
-        const sp = $("ganttShowProcessDeps");
-        if (sp) sp.checked = false;
+        const dm = $("ganttDepsMode");
+        if (dm) dm.value = "critical";
         const hc = $("ganttHighlightCC");
         if (hc) hc.checked = true;
-        const oc = $("ganttOnlyCCDeps");
-        if (oc) oc.checked = true;
 
         readUi();
+        persistUiToUrl();
         render();
       });
     }
@@ -977,6 +1233,7 @@
       if (timerFull) clearTimeout(timerFull);
       timerFull = setTimeout(function () {
         readUi();
+        persistUiToUrl();
         render();
       }, 240);
     }
@@ -985,6 +1242,7 @@
       if (timerDecor) clearTimeout(timerDecor);
       timerDecor = setTimeout(function () {
         readUi();
+        persistUiToUrl();
         safeDecorateDynamic({ updateLegend: true });
       }, 60);
     }
@@ -996,7 +1254,7 @@
     });
 
     // 数据集合/依赖类：必须全量 render
-    ["ganttOnlyOverdue", "ganttOnlyExternal", "ganttShowProcessDeps", "ganttOnlyCCDeps"].forEach((id) => {
+    ["ganttViewMode", "ganttOnlyOverdue", "ganttOnlyExternal", "ganttDepsMode"].forEach((id) => {
       const el = $(id);
       if (el) on(el, "change", scheduleFullRender);
     });
@@ -1014,14 +1272,53 @@
     state.ccIdSet = new Set(ids.map((x) => norm(x)).filter((x) => !!x));
 
     const m = new Map();
+    const metaMap = new Map();
     const edges = Array.isArray(cc.edges) ? cc.edges : [];
     for (let i = 0; i < edges.length; i++) {
       const e = edges[i] || {};
       const from = norm(e.from);
       const to = norm(e.to);
-      if (from && to) m.set(to, from);
+      if (from && to) {
+        m.set(to, from);
+        metaMap.set(to, {
+          from: from,
+          edge_type: norm(e.edge_type) || "unknown",
+          reason: norm(e.reason) || "控制前驱",
+          gap_minutes: e.gap_minutes,
+        });
+      }
     }
     state.ccPrevByTo = m;
+    state.ccEdgeMetaByTo = metaMap;
+    _perfState.ccVisibleCount = 0;
+    const all = Array.isArray(state.allTasks) ? state.allTasks : [];
+    for (let j = 0; j < all.length; j++) {
+      const tid = norm(all[j] && all[j].id);
+      if (tid && state.ccIdSet && state.ccIdSet.has(tid)) {
+        _perfState.ccVisibleCount += 1;
+      }
+    }
+  }
+
+  function _withFetchTimeout(url, timeoutMs) {
+    const timeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 12000;
+    if (typeof AbortController === "undefined") {
+      return fetch(url, { headers: { Accept: "application/json" } });
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      try {
+        controller.abort();
+      } catch (_) {
+        // ignore
+      }
+    }, timeout);
+    return fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    }).finally(() => {
+      clearTimeout(timer);
+    });
   }
 
   async function loadAndRender() {
@@ -1047,6 +1344,7 @@
         endDate: ds.endDate || "",
         offset: ds.offset || 0,
         version: ds.version || "",
+        fetchTimeoutMs: ds.fetchTimeoutMs || ds.fetchTimeout || "",
       };
     })();
     state.cfg = cfg;
@@ -1075,24 +1373,46 @@
       show(errEl, true);
       return;
     }
+    const hasEffectiveRange = !!(cfg.startDate || cfg.endDate);
     if (cfg.view) url.searchParams.set("view", cfg.view);
     if (cfg.weekStart) url.searchParams.set("week_start", cfg.weekStart);
     if (cfg.startDate) url.searchParams.set("start_date", cfg.startDate);
     if (cfg.endDate) url.searchParams.set("end_date", cfg.endDate);
-    if (typeof cfg.offset !== "undefined") url.searchParams.set("offset", String(cfg.offset));
+    // start/end 已是页面层计算后的有效区间；再叠加 offset 会导致区间二次偏移
+    if (!hasEffectiveRange && typeof cfg.offset !== "undefined") url.searchParams.set("offset", String(cfg.offset));
     if (cfg.version) url.searchParams.set("version", String(cfg.version));
+    const fetchTimeoutMs = parsePositiveInt(cfg.fetchTimeoutMs, 12000);
+
+    const reqId = (_perfState.activeRequestId || 0) + 1;
+    _perfState.activeRequestId = reqId;
+    const reqUrl = url.toString();
 
     let payload;
     try {
-      const resp = await fetch(url.toString(), { headers: { Accept: "application/json" } });
+      const resp = await _withFetchTimeout(reqUrl, fetchTimeoutMs);
+      if (!resp || !resp.ok) {
+        throw new Error(`甘特图数据请求失败（HTTP ${resp ? resp.status : "0"}）`);
+      }
       payload = await resp.json();
+      if (reqId !== _perfState.activeRequestId) {
+        return;
+      }
       if (!payload || payload.success !== true) {
         const msg =
           payload && payload.error && payload.error.message ? payload.error.message : "甘特图数据获取失败。";
         throw new Error(msg);
       }
     } catch (e) {
-      const msg = str(e && e.message ? e.message : e);
+      if (reqId !== _perfState.activeRequestId) {
+        return;
+      }
+      const rawMsg = str(e && e.message ? e.message : e);
+      const isAbortLike =
+        !!(e && e.name === "AbortError") ||
+        rawMsg.toLowerCase().indexOf("abort") >= 0;
+      const msg = isAbortLike
+        ? `甘特图数据请求超时（>${fetchTimeoutMs}ms），请稍后重试。`
+        : rawMsg;
       if (errEl) errEl.textContent = msg;
       else {
         try {
@@ -1111,8 +1431,10 @@
     initCriticalChain(data.critical_chain || null);
     initCalendarDays(data.calendar_days || null);
 
+    applyUiFromUrl();
     bindUi();
     readUi();
+    persistUiToUrl();
     render();
   }
 
