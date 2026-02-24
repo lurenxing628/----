@@ -57,6 +57,11 @@ def execute_preview_rows_transactional(
                 if pr.message and len(stats.errors_sample) < int(max_error_sample):
                     stats.errors_sample.append({"row": pr.row_num, "message": pr.message})
                 continue
+            if pr.status == RowStatus.SKIP:
+                stats.skip_count += 1
+                continue
+            if pr.status == RowStatus.UNCHANGED:
+                continue
 
             row_id = str(row_id_getter(pr) or "").strip()
             if mode == ImportMode.APPEND and row_id in existing_row_ids:
