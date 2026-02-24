@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
   <div class="card">
-    <h2>系统管理 - 操作日志（OperationLogs）</h2>
+    <h2>系统管理 - 操作日志</h2>
     <p class="muted">可按时间、模块、动作筛选日志。详情是 JSON 时会自动展开。</p>
 
-    <div style="margin-bottom: 12px;">
+    <div class="info-line" style="margin-bottom: 12px;">
       <a href="{{ url_for('system.backup_page') }}">备份/恢复</a>
-      &nbsp;|&nbsp;
+      <span class="info-sep">|</span>
       <a href="{{ url_for('system.logs_page') }}">操作日志</a>
-      &nbsp;|&nbsp;
+      <span class="info-sep">|</span>
       <a href="{{ url_for('system.history_page') }}">排产历史</a>
     </div>
 
@@ -70,7 +70,7 @@
           <input name="action" value="{{ filters.action }}" placeholder="例如：import/export/schedule" style="width:180px;">
         </div>
         <div>
-          <div class="muted">级别(level)</div>
+          <div class="muted">日志级别</div>
           <select name="log_level">
             {% set lv = filters.log_level %}
             <option value="" {{ 'selected' if not lv else '' }}>全部</option>
@@ -105,10 +105,7 @@
         <thead>
           <tr>
             <th style="width:60px;">
-              <label class="muted">
-                <input type="checkbox" class="js-log-select-all">
-                全选
-              </label>
+              <input type="checkbox" class="js-log-select-all" title="全选" aria-label="全选日志">
             </th>
             <th>ID</th>
             <th>时间</th>
@@ -117,7 +114,7 @@
             <th>动作</th>
             <th>目标</th>
             <th>错误</th>
-            <th>详情(detail)</th>
+            <th>详情</th>
             <th>操作</th>
           </tr>
         </thead>

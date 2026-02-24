@@ -9,7 +9,7 @@
       {% if op_cal_url %}
         <a href="{{ op_cal_url }}">个人工作日历</a>
       {% else %}
-        <span class="muted">个人工作日历暂不可用，请重启系统后重试。</span>
+        <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
         <details class="debug-details muted">
           <summary>排查信息</summary>
           后端接口未注册（endpoint：personnel.operator_calendar_page）。<br/>
@@ -22,7 +22,7 @@
       {% if global_cal_url %}
         <a href="{{ global_cal_url }}">全局工作日历</a>
       {% else %}
-        <span class="muted">全局工作日历暂不可用，请重启系统后重试。</span>
+        <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
         <details class="debug-details muted">
           <summary>排查信息</summary>
           后端接口未注册（endpoint：scheduler.calendar_page）。<br/>

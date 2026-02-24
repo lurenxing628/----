@@ -54,7 +54,7 @@
   <div class="card">
     <h3>物料列表</h3>
     {% if not materials %}
-      <div class="muted">暂无物料。请先新增。</div>
+      <div class="muted">暂无物料数据，可以在上方手动新增。</div>
     {% else %}
       {% for m in materials %}
         <form id="mform_{{ loop.index0 }}" method="post" action="{{ url_for('material.materials_update', material_id=m.material_id) }}" style="display:none;"></form>

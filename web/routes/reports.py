@@ -84,7 +84,22 @@ def _page_date_range_or_version_span(engine: ReportEngine, version: int, start_r
 
 @bp.get("/")
 def index():
-    return render_template("reports/index.html", title="报表中心")
+    engine = ReportEngine(g.db)
+    versions = engine.list_versions(limit=1)
+    has_history = bool(versions)
+    latest_version = versions[0] if has_history else None
+    overdue_count = 0
+    if has_history:
+        latest_ver = int((latest_version or {}).get("version") or 0)
+        rep = engine.overdue_batches(latest_ver)
+        overdue_count = int(rep.get("count") or 0)
+    return render_template(
+        "reports/index.html",
+        title="报表中心",
+        has_history=has_history,
+        latest_version=latest_version,
+        overdue_count=overdue_count,
+    )
 
 
 @bp.get("/overdue")

@@ -33,6 +33,29 @@
     </form>
   </div>
 
+  {% if not batch %}
+    <div class="card">
+      <h3>齐套概览</h3>
+      <div class="stat-grid">
+        <div class="stat-card type-success">
+          <div class="stat-card-label">齐套</div>
+          <div class="stat-card-value success">{{ ready_summary.yes }}</div>
+        </div>
+        <div class="stat-card type-info">
+          <div class="stat-card-label">部分齐套</div>
+          <div class="stat-card-value">{{ ready_summary.partial }}</div>
+        </div>
+        <div class="stat-card type-danger">
+          <div class="stat-card-label">未齐套</div>
+          <div class="stat-card-value danger">{{ ready_summary.no }}</div>
+        </div>
+      </div>
+      <div class="muted" style="margin-top:8px;">
+        请在上方选择一个批次，查看并管理其物料需求。当某批次存在物料需求记录时，系统会自动根据到料情况更新齐套状态。
+      </div>
+    </div>
+  {% endif %}
+
   {% if batch %}
     <div class="card">
       <h3>批次信息</h3>

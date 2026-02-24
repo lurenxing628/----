@@ -100,6 +100,13 @@ def batch_materials_page():
 
     batches = BatchRepository(g.db).list()
     batch_options = [(b.batch_id, f"{b.batch_id}（{b.part_no} x {b.quantity}）") for b in batches]
+    ready_summary = {"yes": 0, "partial": 0, "no": 0, "unknown": 0}
+    for b in batches:
+        rs = (getattr(b, "ready_status", "") or "").strip().lower()
+        if rs in ready_summary:
+            ready_summary[rs] += 1
+        else:
+            ready_summary["unknown"] += 1
 
     selected_batch = BatchRepository(g.db).get(batch_id) if batch_id else None
 
@@ -118,6 +125,7 @@ def batch_materials_page():
         batch=(selected_batch.to_dict() if selected_batch else None),
         requirements=req_rows,
         material_options=mat_options,
+        ready_summary=ready_summary,
     )
 
 

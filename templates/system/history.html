@@ -7,11 +7,11 @@
     <h2>系统管理 - 排产历史</h2>
     <p class="muted">查看历史版本和排产结果摘要。</p>
 
-    <div style="margin-bottom: 12px;">
+    <div class="info-line" style="margin-bottom: 12px;">
       <a href="{{ url_for('system.backup_page') }}">备份/恢复</a>
-      &nbsp;|&nbsp;
+      <span class="info-sep">|</span>
       <a href="{{ url_for('system.logs_page') }}">操作日志</a>
-      &nbsp;|&nbsp;
+      <span class="info-sep">|</span>
       <a href="{{ url_for('system.history_page') }}">排产历史</a>
     </div>
 
@@ -67,7 +67,7 @@
   <div class="card">
     <h3>最近排产记录</h3>
     {% if not items %}
-      <p class="muted">暂无排产历史记录。</p>
+      <p class="muted">暂无排产历史记录，请先到排产调度页面执行一次排产。</p>
     {% else %}
       <table>
         <thead>

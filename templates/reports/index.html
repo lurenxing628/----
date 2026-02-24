@@ -3,33 +3,30 @@
   <div class="card">
     <h2><svg class="icon"><use href="#icon-chart"/></svg> 报表中心</h2>
     <p class="muted">基于当前数据库数据生成统计报表，支持导出 Excel。</p>
+    {% if has_history %}
+      <div class="muted" style="margin-top:6px;">
+        当前最新排产版本：<strong>v{{ latest_version.version }}</strong>
+        <span class="info-sep">|</span>
+        超期批次：<strong>{{ overdue_count }}</strong> 个
+      </div>
+    {% else %}
+      <div class="muted" style="margin-top:6px;">暂无排产历史，请先执行排产后再查看报表。</div>
+    {% endif %}
   </div>
 
   <div class="nav-grid">
-    <div class="card" style="flex:1 1 300px; margin-bottom:0;">
-      <h3><svg class="icon"><use href="#icon-warn"/></svg> 超期清单</h3>
-      <p class="muted" style="margin:8px 0;">已排产批次中交期已过但未完成的清单。</p>
-      <div class="action-bar" style="margin-top:12px;">
-        <a href="{{ url_for('reports.overdue_page') }}"><button type="button">查看详情</button></a>
-        <a href="{{ url_for('reports.overdue_export') }}"><button type="button"><svg class="icon-sm"><use href="#icon-download"/></svg> 导出</button></a>
-      </div>
-    </div>
-    <div class="card" style="flex:1 1 300px; margin-bottom:0;">
-      <h3><svg class="icon"><use href="#icon-chart"/></svg> 资源负荷与利用率</h3>
-      <p class="muted" style="margin:8px 0;">设备和人员的排产负荷与利用率统计。</p>
-      <div class="action-bar" style="margin-top:12px;">
-        <a href="{{ url_for('reports.utilization_page') }}"><button type="button">查看详情</button></a>
-        <a href="{{ url_for('reports.utilization_export') }}"><button type="button"><svg class="icon-sm"><use href="#icon-download"/></svg> 导出</button></a>
-      </div>
-    </div>
-    <div class="card" style="flex:1 1 300px; margin-bottom:0;">
-      <h3><svg class="icon"><use href="#icon-device"/></svg> 停机影响统计</h3>
-      <p class="muted" style="margin:8px 0;">停机计划对排产结果的影响分析。</p>
-      <div class="action-bar" style="margin-top:12px;">
-        <a href="{{ url_for('reports.downtime_page') }}"><button type="button">查看详情</button></a>
-        <a href="{{ url_for('reports.downtime_export') }}"><button type="button"><svg class="icon-sm"><use href="#icon-download"/></svg> 导出</button></a>
-      </div>
-    </div>
+    <a href="{{ url_for('reports.overdue_page') }}" class="nav-card">
+      <div class="nav-card-title"><svg class="icon"><use href="#icon-warn"/></svg> 超期清单</div>
+      <div class="nav-card-desc">已排产批次中交期已过但未完成的清单。{% if has_history %}当前 {{ overdue_count }} 个超期。{% endif %}</div>
+    </a>
+    <a href="{{ url_for('reports.utilization_page') }}" class="nav-card">
+      <div class="nav-card-title"><svg class="icon"><use href="#icon-chart"/></svg> 资源负荷与利用率</div>
+      <div class="nav-card-desc">设备和人员的排产负荷与利用率统计。</div>
+    </a>
+    <a href="{{ url_for('reports.downtime_page') }}" class="nav-card">
+      <div class="nav-card-title"><svg class="icon"><use href="#icon-device"/></svg> 停机影响统计</div>
+      <div class="nav-card-desc">停机计划对排产结果的影响分析。</div>
+    </a>
   </div>
 {% endblock %}
 

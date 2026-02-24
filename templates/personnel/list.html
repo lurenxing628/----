@@ -15,7 +15,7 @@
         <a href="{{ excel_op_cal_url }}">人员专属工作日历（导入/导出）</a>
       {% else %}
         <span class="info-sep">|</span>
-        <span class="muted">人员专属工作日历暂不可用，请重启系统后重试。</span>
+        <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
         <details class="debug-details muted">
           <summary>排查信息</summary>
           后端接口未注册（endpoint：personnel.excel_operator_calendar_page）。<br/>
@@ -127,7 +127,7 @@
         </div>
       </div>
     {% else %}
-      <div class="muted">还没有人员信息，可以手动添加或用 Excel 导入。</div>
+      <div class="muted">暂无人员信息，可以手动新增或通过 Excel 导入。</div>
     {% endif %}
   </div>
 

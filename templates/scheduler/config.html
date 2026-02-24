@@ -21,7 +21,7 @@
       {% if manual_url %}
         <a href="{{ manual_url }}">排产调度说明书</a>
       {% else %}
-        <span class="muted">排产调度说明书暂不可用，请重启系统后重试。</span>
+        <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
         <details class="debug-details muted">
           <summary>排查信息</summary>
           后端接口未注册（endpoint：scheduler.config_manual_page）。<br/>
@@ -59,7 +59,7 @@
           </select>
         </form>
       {% else %}
-        <div class="muted">切换方案暂不可用，请重启系统后重试。</div>
+        <div class="muted">该功能需要更新版本后使用，请重启系统。</div>
         <details class="debug-details muted">
           <summary>排查信息</summary>
           后端接口未注册（endpoint：scheduler.preset_apply）。<br/>
@@ -78,7 +78,7 @@
           <button type="submit">保存为模板</button>
         </form>
       {% else %}
-        <div class="muted">保存模板暂不可用，请重启系统后重试。</div>
+        <div class="muted">该功能需要更新版本后使用，请重启系统。</div>
         <details class="debug-details muted">
           <summary>排查信息</summary>
           后端接口未注册（endpoint：scheduler.preset_save）。<br/>
@@ -105,7 +105,7 @@
           <span class="muted">内置模板不可删除/覆盖</span>
         </form>
       {% else %}
-        <div class="muted">删除模板暂不可用，请重启系统后重试。</div>
+        <div class="muted">该功能需要更新版本后使用，请重启系统。</div>
         <details class="debug-details muted">
           <summary>排查信息</summary>
           后端接口未注册（endpoint：scheduler.preset_delete）。<br/>
@@ -126,103 +126,119 @@
   <div class="card">
     <h3>排产策略配置</h3>
     <form method="post" action="{{ url_for('scheduler.update_config') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>排产策略</label><br/>
-          <select name="sort_strategy">
-            {% for s in strategies %}
-              <option value="{{ s.key }}" {% if cfg.sort_strategy == s.key %}selected{% endif %}>{{ s.name }}</option>
-            {% endfor %}
-          </select>
+      <div class="param-group">
+        <div class="param-group-title">策略与算法</div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+          <div>
+            <label>排产策略</label><br/>
+            <select name="sort_strategy">
+              {% for s in strategies %}
+                <option value="{{ s.key }}" {% if cfg.sort_strategy == s.key %}selected{% endif %}>{{ s.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>算法模式</label><br/>
+            <select name="algo_mode">
+              <option value="greedy" {% if cfg.algo_mode == 'greedy' %}selected{% endif %}>贪心（快速）</option>
+              <option value="improve" {% if cfg.algo_mode == 'improve' %}selected{% endif %}>改进（多起点+目标函数）</option>
+            </select>
+          </div>
+          <div>
+            <label>派工方式</label><br/>
+            <select name="dispatch_mode">
+              <option value="batch_order" {% if cfg.dispatch_mode == 'batch_order' %}selected{% endif %}>批次顺序（兼容旧版）</option>
+              <option value="sgs" {% if cfg.dispatch_mode == 'sgs' %}selected{% endif %}>SGS（就绪集合动态派工）</option>
+            </select>
+          </div>
+          <div>
+            <label>SGS 派工规则（仅 SGS 生效）</label><br/>
+            <select name="dispatch_rule">
+              <option value="slack" {% if cfg.dispatch_rule == 'slack' %}selected{% endif %}>Slack（余量）</option>
+              <option value="cr" {% if cfg.dispatch_rule == 'cr' %}selected{% endif %}>CR（关键比率）</option>
+              <option value="atc" {% if cfg.dispatch_rule == 'atc' %}selected{% endif %}>ATC（紧急度）</option>
+            </select>
+          </div>
+          <div>
+            <label>目标函数</label><br/>
+            <select name="objective">
+              <option value="min_overdue" {% if cfg.objective == 'min_overdue' %}selected{% endif %}>最少超期</option>
+              <option value="min_tardiness" {% if cfg.objective == 'min_tardiness' %}selected{% endif %}>最少拖期小时</option>
+              <option value="min_changeover" {% if cfg.objective == 'min_changeover' %}selected{% endif %}>最少换型次数</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <label>算法模式</label><br/>
-          <select name="algo_mode">
-            <option value="greedy" {% if cfg.algo_mode == 'greedy' %}selected{% endif %}>贪心（快速）</option>
-            <option value="improve" {% if cfg.algo_mode == 'improve' %}selected{% endif %}>改进（多起点+目标函数）</option>
-          </select>
+      </div>
+
+      <div class="param-group">
+        <div class="param-group-title">权重与时间</div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+          <div>
+            <label title="improve 模式下用于搜索更优解；越大越慢">时间预算（秒，建议≤180）</label><br/>
+            <input name="time_budget_seconds" value="{{ cfg.time_budget_seconds }}" style="width:140px;">
+          </div>
+          <div>
+            <label>优先级权重（0~1 或 0~100%）</label><br/>
+            <input name="priority_weight" value="{{ cfg.priority_weight }}" style="width:180px;">
+          </div>
+          <div>
+            <label>交期权重（0~1 或 0~100%）</label><br/>
+            <input name="due_weight" value="{{ cfg.due_weight }}" style="width:180px;">
+          </div>
+          <div>
+            <label title="工作日历：假期若安排工作且效率未填时使用">假期默认效率（>0）</label><br/>
+            <input name="holiday_default_efficiency" value="{{ cfg.holiday_default_efficiency }}" style="width:140px;">
+          </div>
         </div>
-        <div>
-          <label>派工方式</label><br/>
-          <select name="dispatch_mode">
-            <option value="batch_order" {% if cfg.dispatch_mode == 'batch_order' %}selected{% endif %}>批次顺序（兼容旧版）</option>
-            <option value="sgs" {% if cfg.dispatch_mode == 'sgs' %}selected{% endif %}>SGS（就绪集合动态派工）</option>
-          </select>
+      </div>
+
+      <div class="param-group">
+        <div class="param-group-title">功能开关</div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+          <div>
+            <label class="muted">
+              <input type="checkbox" name="freeze_window_enabled" value="yes" {{ 'checked' if cfg.freeze_window_enabled=='yes' else '' }}>
+              冻结窗口
+            </label><br/>
+            <input type="hidden" name="freeze_window_enabled" value="no">
+            <input name="freeze_window_days" value="{{ cfg.freeze_window_days }}" style="width:90px;">
+            <span class="muted">天（复用上一版本窗口内排程）</span>
+          </div>
+          <div>
+            <label class="muted">
+              <input type="checkbox" name="prefer_primary_skill" value="yes" {{ 'checked' if cfg.prefer_primary_skill=='yes' else '' }}>
+              工序补充页：优先推荐主操/高技能人员
+            </label>
+            <input type="hidden" name="prefer_primary_skill" value="no">
+          </div>
+          <div>
+            <label class="muted">
+              <input type="checkbox" name="enforce_ready_default" value="yes" {{ 'checked' if cfg.enforce_ready_default=='yes' else '' }}>
+              执行排产：默认启用齐套约束（未齐套禁止排产）
+            </label>
+            <input type="hidden" name="enforce_ready_default" value="no">
+          </div>
+          <div>
+            <label class="muted">
+              <input type="checkbox" name="auto_assign_enabled" value="yes" {{ 'checked' if cfg.auto_assign_enabled=='yes' else '' }}>
+              排产：内部工序缺省资源自动分配（machine/operator 未填时）
+            </label>
+            <input type="hidden" name="auto_assign_enabled" value="no">
+          </div>
+          <div>
+            <label class="muted">
+              <input type="checkbox" name="ortools_enabled" value="yes" {{ 'checked' if cfg.ortools_enabled=='yes' else '' }}>
+              improve：启用 OR-Tools 高质量起点（若环境已安装）
+            </label><br/>
+            <input type="hidden" name="ortools_enabled" value="no">
+            <input name="ortools_time_limit_seconds" value="{{ cfg.ortools_time_limit_seconds }}" style="width:90px;">
+            <span class="muted">秒（建议 3~15；过大可能变慢）</span>
+          </div>
         </div>
-        <div>
-          <label>SGS 派工规则（仅 SGS 生效）</label><br/>
-          <select name="dispatch_rule">
-            <option value="slack" {% if cfg.dispatch_rule == 'slack' %}selected{% endif %}>Slack（余量）</option>
-            <option value="cr" {% if cfg.dispatch_rule == 'cr' %}selected{% endif %}>CR（关键比率）</option>
-            <option value="atc" {% if cfg.dispatch_rule == 'atc' %}selected{% endif %}>ATC（紧急度）</option>
-          </select>
-        </div>
-        <div>
-          <label>目标函数</label><br/>
-          <select name="objective">
-            <option value="min_overdue" {% if cfg.objective == 'min_overdue' %}selected{% endif %}>最少超期</option>
-            <option value="min_tardiness" {% if cfg.objective == 'min_tardiness' %}selected{% endif %}>最少拖期小时</option>
-            <option value="min_changeover" {% if cfg.objective == 'min_changeover' %}selected{% endif %}>最少换型次数</option>
-          </select>
-        </div>
-        <div>
-          <label title="improve 模式下用于搜索更优解；越大越慢">时间预算（秒，建议≤180）</label><br/>
-          <input name="time_budget_seconds" value="{{ cfg.time_budget_seconds }}" style="width:140px;">
-        </div>
-        <div>
-          <label>优先级权重（0~1 或 0~100%）</label><br/>
-          <input name="priority_weight" value="{{ cfg.priority_weight }}" style="width:180px;">
-        </div>
-        <div>
-          <label>交期权重（0~1 或 0~100%）</label><br/>
-          <input name="due_weight" value="{{ cfg.due_weight }}" style="width:180px;">
-        </div>
-        <div>
-          <label title="工作日历：假期若安排工作且效率未填时使用">假期默认效率（>0）</label><br/>
-          <input name="holiday_default_efficiency" value="{{ cfg.holiday_default_efficiency }}" style="width:140px;">
-        </div>
-        <div>
-          <label class="muted">
-            <input type="checkbox" name="freeze_window_enabled" value="yes" {{ 'checked' if cfg.freeze_window_enabled=='yes' else '' }}>
-            冻结窗口
-          </label><br/>
-          <input type="hidden" name="freeze_window_enabled" value="no">
-          <input name="freeze_window_days" value="{{ cfg.freeze_window_days }}" style="width:90px;">
-          <span class="muted">天（复用上一版本窗口内排程）</span>
-        </div>
-        <div>
-          <label class="muted">
-            <input type="checkbox" name="prefer_primary_skill" value="yes" {{ 'checked' if cfg.prefer_primary_skill=='yes' else '' }}>
-            工序补充页：优先推荐主操/高技能人员
-          </label>
-          <input type="hidden" name="prefer_primary_skill" value="no">
-        </div>
-        <div>
-          <label class="muted">
-            <input type="checkbox" name="enforce_ready_default" value="yes" {{ 'checked' if cfg.enforce_ready_default=='yes' else '' }}>
-            执行排产：默认启用齐套约束（未齐套禁止排产）
-          </label>
-          <input type="hidden" name="enforce_ready_default" value="no">
-        </div>
-        <div>
-          <label class="muted">
-            <input type="checkbox" name="auto_assign_enabled" value="yes" {{ 'checked' if cfg.auto_assign_enabled=='yes' else '' }}>
-            排产：内部工序缺省资源自动分配（machine/operator 未填时）
-          </label>
-          <input type="hidden" name="auto_assign_enabled" value="no">
-        </div>
-        <div>
-          <label class="muted">
-            <input type="checkbox" name="ortools_enabled" value="yes" {{ 'checked' if cfg.ortools_enabled=='yes' else '' }}>
-            improve：启用 OR-Tools 高质量起点（若环境已安装）
-          </label><br/>
-          <input type="hidden" name="ortools_enabled" value="no">
-          <input name="ortools_time_limit_seconds" value="{{ cfg.ortools_time_limit_seconds }}" style="width:90px;">
-          <span class="muted">秒（建议 3~15；过大可能变慢）</span>
-        </div>
-        <div>
-          <button type="submit">保存配置</button>
-        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <button type="submit">保存配置</button>
       </div>
     </form>
     <form method="post" action="{{ url_for('scheduler.restore_config_default') }}" style="margin-top:8px;"

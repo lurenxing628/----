@@ -654,3 +654,48 @@ pre {
   overflow-x: auto;
   border-radius: var(--aps-radius);
 }
+
+/* ---- UI 改进补丁 ---- */
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.action-bar .muted {
+  white-space: nowrap;
+}
+
+.nav-grid {
+  margin-bottom: 20px;
+}
+
+/* 参数分组（排产高级设置用） */
+.param-group {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--aps-border);
+}
+
+.param-group:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.param-group-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--aps-text-muted);
+  margin-bottom: 10px;
+}
+
+/* Dashboard 快捷操作区无上方内容时去掉虚线 */
+.action-bar-flat {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}

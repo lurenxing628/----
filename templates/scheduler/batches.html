@@ -56,7 +56,7 @@
         {% if config_url %}
           <a href="{{ config_url }}">管理模板/高级设置</a>
         {% else %}
-          <span class="muted">管理模板暂不可用，请重启系统后重试。</span>
+          <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
           <details class="debug-details muted">
             <summary>排查信息</summary>
             后端接口未注册（endpoint：scheduler.config_page）。<br/>
@@ -67,7 +67,7 @@
         {% endif %}
       </form>
     {% else %}
-      <div class="muted">常用方案暂不可用，请重启系统后重试。</div>
+      <div class="muted">该功能需要更新版本后使用，请重启系统。</div>
       <details class="debug-details muted">
         <summary>排查信息</summary>
         后端接口未注册（endpoint：scheduler.preset_apply）。<br/>
@@ -220,7 +220,7 @@
         {% endif %}
       </form>
     {% else %}
-      <div class="muted">还没有批次，可以手动新增或用 Excel 导入。</div>
+      <div class="muted">暂无批次数据，可以到批次管理手动新增或通过 Excel 导入。</div>
     {% endif %}
   </div>
 {% endblock %}
