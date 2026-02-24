@@ -213,22 +213,85 @@ def main():
         week_start = "2026-01-21"  # 任意日期（服务端会归到周一）
 
         _assert_status(lines, "GET /scheduler/gantt", client.get(f"/scheduler/gantt?view=machine&week_start={week_start}&version={v1}"), 200)
+        gantt_t0 = time.perf_counter()
         resp = client.get(f"/scheduler/gantt/data?view=machine&week_start={week_start}&version={v1}")
+        gantt_ms = int((time.perf_counter() - gantt_t0) * 1000)
         _assert_status(lines, "GET /scheduler/gantt/data", resp, 200)
         payload = json.loads(resp.data.decode("utf-8", errors="ignore") or "{}")
         if not payload.get("success"):
             raise RuntimeError(f"甘特图数据接口返回失败：{payload}")
         data = payload.get("data") or {}
+        top_required = [
+            "contract_version",
+            "view",
+            "version",
+            "week_start",
+            "week_end",
+            "task_count",
+            "tasks",
+            "calendar_days",
+            "critical_chain",
+        ]
+        for f in top_required:
+            if f not in data:
+                raise RuntimeError(f"甘特图返回缺少字段：{f}")
+        if int(data.get("contract_version") or 0) < 2:
+            raise RuntimeError(f"甘特图 contract_version 异常：{data.get('contract_version')}")
+
         tasks = data.get("tasks") or []
         if not isinstance(tasks, list) or not tasks:
             raise RuntimeError("甘特图 tasks 为空（期望至少 1 条）")
-        req_fields = ["id", "name", "start", "end", "progress", "dependencies", "custom_class"]
+        req_fields = [
+            "id",
+            "name",
+            "start",
+            "end",
+            "progress",
+            "dependencies",
+            "custom_class",
+            "schedule_id",
+            "lock_status",
+            "duration_minutes",
+            "edge_type",
+        ]
         for f in req_fields:
             if f not in tasks[0]:
                 raise RuntimeError(f"甘特图任务缺少字段：{f} task0={tasks[0]}")
+        meta = tasks[0].get("meta") or {}
+        for f in ("schedule_id", "lock_status", "duration_minutes"):
+            if f not in meta:
+                raise RuntimeError(f"甘特图任务 meta 缺少字段：{f} meta={meta}")
+
+        cc = data.get("critical_chain") or {}
+        for f in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "cache_hit"):
+            if f not in cc:
+                raise RuntimeError(f"critical_chain 缺少字段：{f}")
+        edges = cc.get("edges") or []
+        if edges:
+            for f in ("from", "to", "edge_type", "reason", "gap_minutes"):
+                if f not in edges[0]:
+                    raise RuntimeError(f"critical_chain edge 缺少字段：{f}")
+
+        # 二次请求应命中关键链缓存（同 version）
+        gantt_t1 = time.perf_counter()
+        resp2 = client.get(f"/scheduler/gantt/data?view=machine&week_start={week_start}&version={v1}")
+        gantt_ms_2 = int((time.perf_counter() - gantt_t1) * 1000)
+        _assert_status(lines, "GET /scheduler/gantt/data (2nd)", resp2, 200)
+        payload2 = json.loads(resp2.data.decode("utf-8", errors="ignore") or "{}")
+        if not payload2.get("success"):
+            raise RuntimeError(f"甘特图二次请求失败：{payload2}")
+        cc2 = ((payload2.get("data") or {}).get("critical_chain") or {})
+        if cc2.get("cache_hit") is not True:
+            raise RuntimeError(f"关键链缓存未命中：critical_chain={cc2}")
+
         if not any(("overdue" in (t.get("custom_class") or "")) for t in tasks):
             raise RuntimeError("甘特图任务未标记 overdue（期望至少 1 条含 overdue class）")
-        lines.append(f"- 甘特图 tasks 校验：{len(tasks)} 条（字段齐全，含 overdue 标记）")
+        lines.append(
+            f"- 甘特图 tasks 校验：{len(tasks)} 条（契约字段齐全，含 overdue 标记，关键链缓存命中）"
+        )
+        lines.append(f"- 甘特图数据耗时：首次 {gantt_ms} ms，二次 {gantt_ms_2} ms")
+        if gantt_ms > 8000:
+            raise RuntimeError(f"甘特图接口耗时超门禁：{gantt_ms} ms（阈值 8000 ms）")
 
         _assert_status(lines, "GET /scheduler/week-plan", client.get(f"/scheduler/week-plan?week_start={week_start}&version={v1}"), 200)
         exp = client.get(f"/scheduler/week-plan/export?week_start={week_start}&version={v1}")

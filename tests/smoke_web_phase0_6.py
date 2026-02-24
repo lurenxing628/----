@@ -1,4 +1,5 @@
 import io
+import html as html_lib
 import json
 import os
 import re
@@ -60,6 +61,17 @@ def _extract_raw_rows_json(html: str) -> str:
     raw = m.group(1)
     raw = raw.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&")
     return raw.strip()
+
+
+def _extract_preview_baseline(html: str) -> str:
+    tag_match = re.search(r'<input[^>]*name=["\']preview_baseline["\'][^>]*>', html, re.I)
+    if not tag_match:
+        raise RuntimeError("未能从预览页面提取 preview_baseline（确认导入需要该字段）")
+    tag = tag_match.group(0)
+    value_match = re.search(r'value=["\']([^"\']*)["\']', tag, re.I)
+    if not value_match:
+        raise RuntimeError("预览页面存在 preview_baseline 字段但未包含 value")
+    return html_lib.unescape(value_match.group(1)).strip()
 
 
 def _assert_status(lines, name: str, resp, expect_code: int = 200):
@@ -245,10 +257,17 @@ def main():
     if "导入预览" not in html and "预览" not in html:
         raise RuntimeError("批次 Excel 预览页面未包含预览内容")
     raw_rows_json = _extract_raw_rows_json(html)
+    preview_baseline = _extract_preview_baseline(html)
 
     resp2 = client.post(
         "/scheduler/excel/batches/confirm",
-        data={"mode": "overwrite", "filename": "batches.xlsx", "raw_rows_json": raw_rows_json, "auto_generate_ops": "1"},
+        data={
+            "mode": "overwrite",
+            "filename": "batches.xlsx",
+            "raw_rows_json": raw_rows_json,
+            "preview_baseline": preview_baseline,
+            "auto_generate_ops": "1",
+        },
         follow_redirects=True,
     )
     _assert_status(lines, "POST /scheduler/excel/batches/confirm", resp2, 200)
@@ -281,10 +300,17 @@ def main():
     _assert_status(lines, "POST /scheduler/excel/batches/preview（valid）", resp_ok, 200)
     html_ok = resp_ok.data.decode("utf-8", errors="ignore")
     raw_rows_json_ok = _extract_raw_rows_json(html_ok)
+    preview_baseline_ok = _extract_preview_baseline(html_ok)
 
     resp_ok2 = client.post(
         "/scheduler/excel/batches/confirm",
-        data={"mode": "overwrite", "filename": "batches_ok.xlsx", "raw_rows_json": raw_rows_json_ok, "auto_generate_ops": "1"},
+        data={
+            "mode": "overwrite",
+            "filename": "batches_ok.xlsx",
+            "raw_rows_json": raw_rows_json_ok,
+            "preview_baseline": preview_baseline_ok,
+            "auto_generate_ops": "1",
+        },
         follow_redirects=True,
     )
     _assert_status(lines, "POST /scheduler/excel/batches/confirm（valid）", resp_ok2, 200)
