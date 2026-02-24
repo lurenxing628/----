@@ -24,6 +24,31 @@ class ScheduleRepository(BaseRepository):
         )
         return [Schedule.from_row(r) for r in rows]
 
+    def get_version_time_span(self, version: int) -> Optional[Dict[str, Any]]:
+        """
+        查询指定版本的排程时间范围（最早开始 / 最晚结束）。
+        返回 None 表示该版本暂无有效排程记录。
+        """
+        row = self.fetchone(
+            """
+            SELECT
+                MIN(start_time) AS min_start_time,
+                MAX(end_time) AS max_end_time
+            FROM Schedule
+            WHERE version = ?
+              AND TRIM(CAST(start_time AS TEXT)) <> ''
+              AND TRIM(CAST(end_time AS TEXT)) <> ''
+            """,
+            (int(version),),
+        )
+        if not row:
+            return None
+        start_time = row.get("min_start_time")
+        end_time = row.get("max_end_time")
+        if not start_time or not end_time:
+            return None
+        return {"version": int(version), "start_time": str(start_time), "end_time": str(end_time)}
+
     def list_between(self, start_time: str, end_time: str, version: Optional[int] = None) -> List[Schedule]:
         sql = "SELECT id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version, created_at FROM Schedule WHERE start_time >= ? AND end_time <= ?"
         params: List[Any] = [start_time, end_time]

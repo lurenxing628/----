@@ -21,6 +21,9 @@
               </option>
             {% endfor %}
           </select>
+          {% if not has_history %}
+            <div class="muted" style="margin-top:6px;">暂无排产历史，请先执行排产后再查看报表。</div>
+          {% endif %}
         </div>
         <div>
           <label>开始日期</label><br/>
@@ -40,12 +43,31 @@
         </div>
       </div>
     </form>
+    <div class="muted" style="margin-top:6px;">
+      {% if date_source == "version_span" %}
+        已按所选版本的排程范围自动带入日期。
+      {% elif date_source == "default_7d" %}
+        未识别到该版本的排程区间，已回退到最近 7 天。
+      {% elif date_source == "query" %}
+        已按你填写的日期范围查询。
+      {% endif %}
+    </div>
   </div>
 
   <div class="card">
     <h3>结果</h3>
     {% if not rows %}
-      <div class="muted">这段时间没有停机安排。</div>
+      {% if empty_reason == "no_history" %}
+        <div class="muted">暂无排产历史，当前无法统计停机影响。</div>
+      {% elif empty_reason == "no_data_in_query_range" %}
+        <div class="muted">当前筛选日期范围内没有停机或排程重叠数据，请调整日期或版本。</div>
+      {% elif empty_reason == "no_data_in_version_span" %}
+        <div class="muted">所选版本的排程范围内没有停机或排程重叠数据，请切换版本或调整日期。</div>
+      {% elif empty_reason == "no_data_default_7d" %}
+        <div class="muted">最近 7 天内没有停机或排程重叠数据，请调整日期范围。</div>
+      {% else %}
+        <div class="muted">当前范围内没有停机或排程重叠数据。</div>
+      {% endif %}
     {% else %}
       <table>
         <thead>

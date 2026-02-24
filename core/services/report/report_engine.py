@@ -46,6 +46,40 @@ class ReportEngine:
     def latest_version(self) -> int:
         return int(self.history_repo.get_latest_version() or 0)
 
+    def version_date_range(self, version: int) -> Dict[str, Any]:
+        """
+        返回指定版本的排程日期范围（用于报表默认筛选）。
+        """
+        v = int(version or 0)
+        out: Dict[str, Any] = {
+            "version": v,
+            "start_time": None,
+            "end_time": None,
+            "start_date": None,
+            "end_date": None,
+            "has_data": False,
+        }
+        if v <= 0:
+            return out
+
+        span = self.schedule_repo.get_version_time_span(v)
+        if not span:
+            return out
+
+        start_time = span.get("start_time")
+        end_time = span.get("end_time")
+        start_dt = calculations.parse_dt(start_time)
+        end_dt = calculations.parse_dt(end_time)
+        if not start_dt or not end_dt:
+            return out
+
+        out["start_time"] = str(start_time)
+        out["end_time"] = str(end_time)
+        out["start_date"] = start_dt.date().isoformat()
+        out["end_date"] = end_dt.date().isoformat()
+        out["has_data"] = True
+        return out
+
     # -------------------------
     # 1) 超期清单
     # -------------------------

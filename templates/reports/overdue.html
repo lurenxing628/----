@@ -25,6 +25,9 @@
               </option>
             {% endfor %}
           </select>
+          {% if not has_history %}
+            <div class="muted" style="margin-top:6px;">暂无排产历史，请先执行排产后再查看报表。</div>
+          {% endif %}
         </div>
         <div>
           <button type="submit">查询</button>
@@ -44,7 +47,13 @@
       {% if as_of_time %}；截至 {{ as_of_time }}{% endif %}）
     </h3>
     {% if not rows %}
-      <div class="muted">没有超期的批次。</div>
+      {% if empty_reason == "no_history" %}
+        <div class="muted">暂无排产历史，当前无法生成超期清单。</div>
+      {% elif empty_reason == "no_overdue" %}
+        <div class="muted">当前无超期批次。</div>
+      {% else %}
+        <div class="muted">当前无超期批次。</div>
+      {% endif %}
     {% else %}
       <table>
         <thead>

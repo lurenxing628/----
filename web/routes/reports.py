@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from flask import Blueprint, flash, g, redirect, request, send_file, url_for
+from flask import Blueprint, g, request, send_file
 
 from web.ui_mode import render_ui_template as render_template
 
-from core.infrastructure.errors import AppError, ValidationError
+from core.infrastructure.errors import ValidationError
 from core.services.report import ReportEngine
 
 
@@ -54,6 +54,34 @@ def _export_version_or_latest(engine: ReportEngine) -> int:
     return v
 
 
+def _page_version_or_latest(engine: ReportEngine) -> int:
+    latest = int(engine.latest_version() or 0)
+    raw = request.args.get("version")
+    if raw is None:
+        return latest
+    s = str(raw).strip()
+    if s == "":
+        return latest
+    try:
+        return int(s)
+    except Exception:
+        return latest
+
+
+def _page_date_range_or_version_span(engine: ReportEngine, version: int, start_raw: str, end_raw: str):
+    s = (start_raw or "").strip()
+    e = (end_raw or "").strip()
+    if s and e:
+        return s, e, "query", {"has_data": False}
+
+    span = engine.version_date_range(int(version or 0))
+    if span.get("has_data") and span.get("start_date") and span.get("end_date"):
+        return str(span["start_date"]), str(span["end_date"]), "version_span", span
+
+    s7, e7 = _default_date_range(days=7)
+    return s7, e7, "default_7d", span
+
+
 @bp.get("/")
 def index():
     return render_template("reports/index.html", title="报表中心")
@@ -63,13 +91,12 @@ def index():
 def overdue_page():
     engine = ReportEngine(g.db)
     versions = engine.list_versions(limit=30)
-    latest = engine.latest_version()
-    v = request.args.get("version")
-    try:
-        version = int(v) if v is not None and str(v).strip() != "" else int(latest)
-    except Exception:
-        version = int(latest)
+    version = _page_version_or_latest(engine)
     rep = engine.overdue_batches(version)
+    has_history = bool(versions)
+    empty_reason = None
+    if int(rep.get("count") or 0) <= 0:
+        empty_reason = "no_history" if not has_history else "no_overdue"
     return render_template(
         "reports/overdue.html",
         title="报表 - 超期清单",
@@ -80,6 +107,8 @@ def overdue_page():
         scheduled_count=int(rep.get("scheduled_count") or 0),
         unscheduled_count=int(rep.get("unscheduled_count") or 0),
         as_of_time=rep.get("as_of_time"),
+        has_history=has_history,
+        empty_reason=empty_reason,
     )
 
 
@@ -95,20 +124,26 @@ def overdue_export():
 def utilization_page():
     engine = ReportEngine(g.db)
     versions = engine.list_versions(limit=30)
-    latest = engine.latest_version()
-
-    v = request.args.get("version")
-    try:
-        version = int(v) if v is not None and str(v).strip() != "" else int(latest)
-    except Exception:
-        version = int(latest)
-
-    start_date = (request.args.get("start_date") or "").strip() or None
-    end_date = (request.args.get("end_date") or "").strip() or None
-    if not start_date or not end_date:
-        start_date, end_date = _default_date_range(days=7)
+    version = _page_version_or_latest(engine)
+    start_date, end_date, date_source, _span = _page_date_range_or_version_span(
+        engine,
+        version,
+        request.args.get("start_date") or "",
+        request.args.get("end_date") or "",
+    )
 
     rep = engine.utilization(version, start_date, end_date)
+    has_history = bool(versions)
+    empty_reason = None
+    if not rep.get("machines") and not rep.get("operators"):
+        if not has_history:
+            empty_reason = "no_history"
+        elif date_source == "default_7d":
+            empty_reason = "no_data_default_7d"
+        elif date_source == "version_span":
+            empty_reason = "no_data_in_version_span"
+        else:
+            empty_reason = "no_data_in_query_range"
     return render_template(
         "reports/utilization.html",
         title="报表 - 资源负荷与利用率",
@@ -119,6 +154,9 @@ def utilization_page():
         capacity_hours=rep["capacity_hours_per_resource"],
         machine_rows=rep["machines"],
         operator_rows=rep["operators"],
+        date_source=date_source,
+        has_history=has_history,
+        empty_reason=empty_reason,
     )
 
 
@@ -141,20 +179,26 @@ def utilization_export():
 def downtime_page():
     engine = ReportEngine(g.db)
     versions = engine.list_versions(limit=30)
-    latest = engine.latest_version()
-
-    v = request.args.get("version")
-    try:
-        version = int(v) if v is not None and str(v).strip() != "" else int(latest)
-    except Exception:
-        version = int(latest)
-
-    start_date = (request.args.get("start_date") or "").strip() or None
-    end_date = (request.args.get("end_date") or "").strip() or None
-    if not start_date or not end_date:
-        start_date, end_date = _default_date_range(days=7)
+    version = _page_version_or_latest(engine)
+    start_date, end_date, date_source, _span = _page_date_range_or_version_span(
+        engine,
+        version,
+        request.args.get("start_date") or "",
+        request.args.get("end_date") or "",
+    )
 
     rep = engine.downtime_impact(version, start_date, end_date)
+    has_history = bool(versions)
+    empty_reason = None
+    if not rep.get("machines"):
+        if not has_history:
+            empty_reason = "no_history"
+        elif date_source == "default_7d":
+            empty_reason = "no_data_default_7d"
+        elif date_source == "version_span":
+            empty_reason = "no_data_in_version_span"
+        else:
+            empty_reason = "no_data_in_query_range"
     return render_template(
         "reports/downtime.html",
         title="报表 - 停机影响统计",
@@ -163,6 +207,9 @@ def downtime_page():
         start_date=rep["start_date"],
         end_date=rep["end_date"],
         rows=rep["machines"],
+        date_source=date_source,
+        has_history=has_history,
+        empty_reason=empty_reason,
     )
 
 
