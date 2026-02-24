@@ -65,7 +65,7 @@
     </div>
     <form id="bulkForm" method="post" action="{{ url_for('equipment.bulk_set_status') }}"></form>
     {% if machines and machines|length > 0 %}
-      <table id="equipmentTable">
+      <table id="equipmentTable" class="table-sticky table-layout-fixed">
         <thead>
           <tr>
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选设备"></th>

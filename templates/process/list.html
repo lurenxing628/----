@@ -48,7 +48,7 @@
     </div>
     <form id="bulkForm" method="post" action="{{ url_for('process.bulk_delete_parts') }}"></form>
     {% if parts and parts|length > 0 %}
-      <table id="partsTable">
+      <table id="partsTable" class="table-sticky table-layout-fixed">
         <thead>
           <tr>
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选零件"></th>

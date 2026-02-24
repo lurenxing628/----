@@ -63,7 +63,7 @@
     </div>
     <form id="bulkForm" method="post" action="{{ url_for('personnel.bulk_set_status') }}"></form>
     {% if operators and operators|length > 0 %}
-      <table id="personnelTable">
+      <table id="personnelTable" class="table-sticky table-layout-fixed">
         <thead>
           <tr>
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选人员"></th>

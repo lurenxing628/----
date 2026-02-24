@@ -56,8 +56,8 @@
   stroke: rgba(15, 23, 42, 0.16);
   stroke-width: 1;
   user-select: none;
-  transition: opacity 0.16s ease, filter 0.16s ease, stroke 0.16s ease, stroke-width 0.16s ease;
-  filter: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.10));
+  transition: none;
+  filter: none;
 }
 .gantt .bar-wrapper:hover .bar,
 .gantt .bar-wrapper.active .bar {
@@ -135,6 +135,19 @@
 }
 .bar-wrapper.aps-dim .bar-label {
   opacity: 0.12;
+}
+
+/* 容器级聚焦：避免每次点击都遍历所有 bar-wrapper 切 dim */
+#gantt.aps-has-focus .bar-wrapper .bar {
+  opacity: 0.18;
+  filter: none;
+}
+#gantt.aps-has-focus .bar-wrapper .bar-label {
+  opacity: 0.12;
+}
+#gantt.aps-has-focus .bar-wrapper.aps-focus .bar,
+#gantt.aps-has-focus .bar-wrapper.aps-focus .bar-label {
+  opacity: 1;
 }
 
 /* popup a bit cleaner */

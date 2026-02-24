@@ -160,7 +160,7 @@
         <div class="muted">min={{ trace_chart.y_min|round(4) }} max={{ trace_chart.y_max|round(4) }}</div>
       {% endif %}
       {% if attempts and attempts|length > 0 %}
-        <table>
+        <table class="table-sticky table-layout-fixed">
           <thead>
             <tr>
               <th>排序</th>

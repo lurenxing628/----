@@ -1016,6 +1016,30 @@
     }
   }
 
+  function _updateFocusClasses(wrapperList, byId) {
+    const host = $("gantt");
+    if (!host) return;
+    const hasFocus = !!state.focusBatch;
+    host.classList.toggle("aps-has-focus", hasFocus);
+
+    // 无聚焦时只需清理旧 focus 标记
+    if (!hasFocus) {
+      for (let i = 0; i < wrapperList.length; i++) {
+        wrapperList[i].el.classList.remove("aps-focus");
+      }
+      return;
+    }
+
+    for (let i = 0; i < wrapperList.length; i++) {
+      const item = wrapperList[i];
+      const t = byId.get(item.id);
+      if (!t) continue;
+      const meta = t.meta || {};
+      const bid = norm(meta.batch_id);
+      item.el.classList.toggle("aps-focus", !!(bid && bid === state.focusBatch));
+    }
+  }
+
   function _clearAllCriticalOutlines() {
     const ids = Array.isArray(_perfState.decorateRenderedIds) ? _perfState.decorateRenderedIds : [];
     if (ids.length > 0 && _perfState.wrappersById && _perfState.wrappersById.size > 0) {
@@ -1162,9 +1186,8 @@
       const meta = t.meta || {};
 
       if (needFocus) {
-        const bid = norm(meta.batch_id);
-        const dim = !!(state.focusBatch && bid && state.focusBatch !== bid);
-        w.classList.toggle("aps-dim", dim);
+        // 兼容旧类：统一清理，后续改为容器级 + aps-focus
+        w.classList.remove("aps-dim");
       }
 
       if (needColor) {
@@ -1205,6 +1228,10 @@
       }
     }
 
+    if (needFocus) {
+      _updateFocusClasses(wrapperList, byId);
+    }
+
     // 更新 cache（只要本次完成了增量装饰，就认为 DOM 与 ui 同步）
     _decorCache.renderToken = _renderToken;
     _decorCache.colorMode = ui.colorMode;
@@ -1236,7 +1263,10 @@
     if (!state.filteredTasks.length) {
       show(emptyEl, true);
       const host = $("gantt");
-      if (host) host.innerHTML = "";
+      if (host) {
+        host.innerHTML = "";
+        host.classList.remove("aps-has-focus");
+      }
       state.gantt = null;
       state.currentTasks = [];
       _resetDecorCache();
@@ -1248,6 +1278,7 @@
     const host = $("gantt");
     if (!host) return;
     host.innerHTML = "";
+    host.classList.remove("aps-has-focus");
 
     const tasks = buildRenderTasks();
     state.currentTasks = tasks;

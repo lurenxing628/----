@@ -38,9 +38,8 @@ button:focus:not(:focus-visible) {
   outline: none;
 }
 
-/* 文本渲染优化 */
+/* 文本渲染：避免全站 optimizeLegibility 在 Win7/Chrome109 的高开销 */
 body {
-  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 

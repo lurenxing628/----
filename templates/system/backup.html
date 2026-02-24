@@ -105,7 +105,7 @@
     {% if not backups %}
       <p class="muted">暂无备份文件。你可以先点击“手动备份”。</p>
     {% else %}
-      <table>
+      <table class="table-sticky">
         <thead>
           <tr>
             <th class="w-60">
@@ -176,7 +176,7 @@
       </div>
 
       {% if plugin_status.statuses and (plugin_status.statuses | length) > 0 %}
-        <table class="mt-3">
+        <table class="mt-3 table-sticky">
           <thead>
             <tr>
               <th class="w-200">插件</th>

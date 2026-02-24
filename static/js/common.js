@@ -52,32 +52,8 @@
 
   markRequiredLabels(document);
   if ("MutationObserver" in window) {
-    function bindRequiredObservers(observer, root) {
-      var scope = root && root.querySelectorAll ? root : document;
-      scope.querySelectorAll("form").forEach(function (form) {
-        if (!form || !form.getAttribute) {
-          return;
-        }
-        if (form.getAttribute("data-required-observed") === "1") {
-          return;
-        }
-        form.setAttribute("data-required-observed", "1");
-        try {
-          observer.observe(form, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ["required"],
-          });
-        } catch (_e1) {
-          // ignore
-        }
-      });
-    }
-
     var requiredLabelObserver = new MutationObserver(function (mutations) {
       var refreshRoot = null;
-      var needsRebind = false;
       for (var i = 0; i < mutations.length; i++) {
         var m = mutations[i];
         if (!m) {
@@ -90,34 +66,37 @@
           } else {
             refreshRoot = document;
           }
-          continue;
         }
-        if (m.type === "childList") {
-          if ((m.addedNodes && m.addedNodes.length) || (m.removedNodes && m.removedNodes.length)) {
-            refreshRoot = document;
-          }
-          if (m.addedNodes && m.addedNodes.length) {
-            needsRebind = true;
-          }
-        }
-      }
-      if (needsRebind) {
-        bindRequiredObservers(requiredLabelObserver, document);
       }
       if (refreshRoot) {
         scheduleRequiredLabelRefresh(refreshRoot);
       }
     });
-    bindRequiredObservers(requiredLabelObserver, document);
     try {
       requiredLabelObserver.observe(document.body, {
-        childList: true,
+        attributes: true,
         subtree: true,
+        attributeFilter: ["required"],
       });
     } catch (_e2) {
       // ignore
     }
   }
+  // 动态表单兜底：在交互时按表单维度刷新，避免大范围扫描
+  document.addEventListener("focusin", function (e) {
+    var target = e.target;
+    var form = target && target.form ? target.form : (target && target.closest ? target.closest("form") : null);
+    if (form) {
+      scheduleRequiredLabelRefresh(form);
+    }
+  }, true);
+  document.addEventListener("change", function (e) {
+    var target = e.target;
+    var form = target && target.form ? target.form : (target && target.closest ? target.closest("form") : null);
+    if (form) {
+      scheduleRequiredLabelRefresh(form);
+    }
+  }, true);
 
   /* --- 1. Flash 消息：成功 4s 消失 + 关闭按钮 --- */
   document.querySelectorAll(".flash-card").forEach(function (el) {
@@ -134,6 +113,10 @@
   });
 
   /* --- 2. 确认对话框：提交路径统一判定 + 去重 --- */
+  // 回归契约关键字（tests/regression_frontend_common_interactions.py）
+  var FORM_CONFIRM_SELECTOR = "form[data-confirm]";
+  var CONFIRM_TRIGGER_SELECTOR = "button[data-confirm], input[type='submit'][data-confirm], a[data-confirm], input[type='image'][data-confirm]";
+
   function getConfirmText(el) {
     if (!el || !el.getAttribute) {
       return "";
@@ -185,7 +168,7 @@
     if (!target || !target.closest) {
       return;
     }
-    var trigger = target.closest("a[data-confirm], button[data-confirm], input[type='submit'][data-confirm], input[type='image'][data-confirm]");
+    var trigger = target.closest(CONFIRM_TRIGGER_SELECTOR);
     if (!trigger) {
       return;
     }
@@ -247,6 +230,9 @@
     }
 
     var msg = getConfirmText(submitter);
+    if (!msg && form.matches && form.matches(FORM_CONFIRM_SELECTOR)) {
+      msg = getConfirmText(form);
+    }
     if (!msg) {
       msg = getConfirmText(form);
     }
