@@ -10,6 +10,9 @@
 
   function show(el, visible) {
     if (!el) return;
+    if (el.classList) {
+      el.classList.toggle("is-hidden", !visible);
+    }
     el.style.display = visible ? "block" : "none";
   }
 
@@ -588,7 +591,8 @@
     // Row 1: summary
     const r1 = row();
     const summary = document.createElement("span");
-    summary.textContent = `显示 ${state.filteredTasks.length}/${state.allTasks.length}｜视图 ${state.ui.viewMode || "Day"}｜配色 ${modeText()}｜箭头 ${arrowText()}｜关键链（全版本/本窗口可见）${ccTotal}/${ccVisible}｜完工 ${makespanEnd}｜关键链缓存 ${ccCacheText}`;
+    const vmZh = {"Day": "日", "Week": "周", "Month": "月"}[state.ui.viewMode] || "日";
+    summary.textContent = `显示 ${state.filteredTasks.length}/${state.allTasks.length}｜视图 ${vmZh}｜配色 ${modeText()}｜箭头 ${arrowText()}｜关键链（全版本/本窗口可见）${ccTotal}/${ccVisible}｜完工 ${makespanEnd}｜关键链缓存 ${ccCacheText}`;
     r1.appendChild(summary);
     el.appendChild(r1);
 

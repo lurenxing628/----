@@ -1,55 +1,57 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/calendar_picker.css') }}">
 {% endblock %}
 
 {% block content %}
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h2>个人工作日历</h2>
-        <p class="muted">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
-        <p class="muted">
-          这里用于设置个人的特殊工作日（如请假、加班、轮班），会覆盖全局日历。
-          未配置日期会自动回退到全局日历；全局也没配时，按默认规则处理（工作日 8 小时，周末/假期不排产）。
-        </p>
-      </div>
-      <div>
-        {% set global_cal_url = safe_url_for('scheduler.calendar_page') %}
-        {% if global_cal_url %}
-          <a href="{{ global_cal_url }}">全局工作日历</a>
-        {% else %}
-          <span class="muted">全局工作日历暂不可用，请重启系统后重试。</span>
-          <details class="debug-details muted">
-            <summary>排查信息</summary>
-            后端接口未注册（endpoint：scheduler.calendar_page）。<br/>
-            常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
-            处理：重启服务或重新打包升级。<br/>
-            日志：logs/aps.log、logs/aps_error.log。
-          </details>
-        {% endif %}
-        <span class="muted">｜</span>
-        <a href="{{ url_for('personnel.detail_page', operator_id=operator.operator_id) }}">← 返回人员详情</a>
-      </div>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">个人工作日历</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
+    <p class="text-meta">
+      这里用于设置个人的特殊工作日（如请假、加班、轮班），会覆盖全局日历。
+      未配置日期会自动回退到全局日历；全局也没配时，按默认规则处理（工作日 8 小时，周末/假期不排产）。
+    </p>
+    {{ ui.personnel_nav('list') }}
+    <div class="inline-flex-wrap mt-2">
+      {% set global_cal_url = safe_url_for('scheduler.calendar_page') %}
+      {% if global_cal_url %}
+        {{ ui.link_button('全局工作日历', global_cal_url, 'secondary', 'sm') }}
+      {% else %}
+        <span class="muted">全局工作日历暂不可用，请重启系统后重试。</span>
+      {% endif %}
+      {{ ui.link_button('返回人员详情', url_for('personnel.detail_page', operator_id=operator.operator_id), 'secondary', 'sm') }}
+    </div>
+    {% if not global_cal_url %}
+      <details class="debug-details muted mt-2">
+        <summary>排查信息</summary>
+        后端接口未注册（endpoint：scheduler.calendar_page）。<br/>
+        常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+        处理：重启服务或重新打包升级。<br/>
+        日志：logs/aps.log、logs/aps_error.log。
+      </details>
+    {% endif %}
   </div>
 
   <div class="card wc-card-allow-overflow">
     <h3>新增 / 更新某一天</h3>
     <form method="post" action="{{ url_for('personnel.operator_calendar_upsert', operator_id=operator.operator_id) }}">
-      <div class="form-row">
+      <div class="form-row calendar-upsert-row">
         <div class="wc-date-wrap">
           <label>日期</label><br/>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="wcDateInput" name="date" required placeholder="YYYY-MM-DD" style="width:160px;">
-            <button type="button" id="wcDatePickBtn">选择</button>
+          <div class="inline-flex-wrap">
+            <input id="wcDateInput" name="date" required placeholder="YYYY-MM-DD" class="w-160">
+            {{ ui.button('选择', 'secondary', 'sm', type_attr='button', element_id='wcDatePickBtn') }}
           </div>
-          <div id="wcDateHint" class="muted" style="margin-top:6px;"></div>
-          <div id="wcCalendarPanel" class="wc-cal-panel" style="display:none;">
+          <div id="wcDateHint" class="muted mt-2"></div>
+          <div id="wcCalendarPanel" class="wc-cal-panel is-hidden">
             <div class="wc-cal-header">
-              <button type="button" class="wc-cal-nav" data-action="prev">‹</button>
+              <button type="button" class="btn btn-secondary btn-sm wc-cal-nav" data-action="prev">‹</button>
               <div class="wc-cal-title"></div>
-              <button type="button" class="wc-cal-nav" data-action="next">›</button>
+              <button type="button" class="btn btn-secondary btn-sm wc-cal-nav" data-action="next">›</button>
             </div>
             <div class="wc-cal-week"></div>
             <div class="wc-cal-grid"></div>
@@ -65,19 +67,19 @@
         </div>
         <div>
           <label>班次开始</label><br/>
-          <input type="time" name="shift_start" value="08:00" style="width:140px;">
+          <input type="time" name="shift_start" value="08:00" class="w-140">
         </div>
         <div>
           <label>班次结束（可选）</label><br/>
-          <input type="time" name="shift_end" style="width:140px;">
+          <input type="time" name="shift_end" class="w-140">
         </div>
         <div>
           <label>可用工时（小时）</label><br/>
-          <input name="shift_hours" type="number" min="0" step="0.25" placeholder="如：8" style="width:140px;">
+          <input name="shift_hours" type="number" min="0" step="0.25" placeholder="如：8" class="w-140">
         </div>
         <div>
           <label>效率（>0）</label><br/>
-          <input name="efficiency" type="number" min="0.01" step="0.01" placeholder="如：1.0" style="width:140px;">
+          <input name="efficiency" type="number" min="0.01" step="0.01" placeholder="如：1.0" class="w-140">
         </div>
         <div>
           <label>允许普通件</label><br/>
@@ -93,34 +95,32 @@
             <option value="no">否</option>
           </select>
         </div>
-        <div style="flex:1; min-width:220px;">
+        <div class="calendar-upsert-remark">
           <label>说明</label><br/>
           <input name="remark" placeholder="可选">
         </div>
-        <div>
-          <button type="submit">保存</button>
-        </div>
+        <div class="calendar-upsert-submit">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
       </div>
-      <div class="muted" style="margin-top:8px;">
+      <div class="muted mt-2">
         提示：假期默认不排产（可用工时=0）。若假期需要上班，请把可用工时设置为 &gt;0；效率留空时会按“假期默认效率”兜底（当前：{{ holiday_default_efficiency if holiday_default_efficiency is defined else 0.8 }}）。
       </div>
     </form>
   </div>
 
   <div class="card">
-    <h3>已配置个人日历（OperatorCalendar）</h3>
+    <h3>已配置个人日历</h3>
     {% if rows and rows|length > 0 %}
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">日期</th>
-            <th style="width:120px;">类型</th>
-            <th style="width:120px;">班次开始</th>
-            <th style="width:120px;">班次结束</th>
-            <th style="width:120px;">可用工时</th>
-            <th style="width:120px;">效率</th>
-            <th style="width:140px;">允许普通件</th>
-            <th style="width:140px;">允许急件</th>
+            <th class="w-140">日期</th>
+            <th class="w-120">类型</th>
+            <th class="w-120">班次开始</th>
+            <th class="w-120">班次结束</th>
+            <th class="w-120">可用工时</th>
+            <th class="w-120">效率</th>
+            <th class="w-140">允许普通件</th>
+            <th class="w-140">允许急件</th>
             <th>说明</th>
           </tr>
         </thead>

@@ -1,61 +1,44 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   {% set strategy_zh = {'improve': '优化排产', 'greedy': '快速排产', 'manual': '手动排产'} %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
+
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h2>周计划（导出）</h2>
-        <div class="muted">
-          周范围：<strong>{{ week_start }}</strong> ～ <strong>{{ week_end }}</strong>
-          <span class="muted">｜</span>
-          版本：<strong>{{ version }}</strong>
-        </div>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">周计划（导出）</h2>
       </div>
-      <div>
-        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
+      <div class="page-actions page-actions-context">
+        {{ ui.link_button('导出周计划表.xlsx', export_url, 'secondary', 'md') }}
       </div>
     </div>
-    <div class="info-line" style="margin-top:8px;">
-      <strong>入口：</strong>
-      <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.batches_manage_page') }}">批次管理</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.config_page') }}">高级设置/模板</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.analysis_page') }}">排产优化分析</a>
-      <span class="info-sep">|</span>
-      <strong>周计划</strong>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
-    </div>
+    <p class="meta-inline text-meta">
+      周范围：<strong>{{ week_start }}</strong> ～ <strong>{{ week_end }}</strong>
+      <span class="meta-sep">｜</span>
+      版本：<strong>{{ version }}</strong>
+    </p>
+    {{ ui.scheduler_nav('week_plan') }}
   </div>
 
   <div class="card">
-    <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+    <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" class="form-row">
       <div>
         <label>排产区间（起）</label><br/>
-        <input type="date" name="start_date" value="{{ start_date }}" style="width:160px;">
+        <input type="date" name="start_date" value="{{ start_date }}" class="w-160">
       </div>
       <div>
         <label>排产区间（止）</label><br/>
-        <input type="date" name="end_date" value="{{ end_date }}" style="width:160px;">
+        <input type="date" name="end_date" value="{{ end_date }}" class="w-160">
       </div>
       <div>
         <label title="任意日期，系统会自动归到周一">指定周</label><br/>
-        <input name="week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD" style="width:160px;">
+        <input name="week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD" class="w-160">
       </div>
       <div>
         <label>版本</label><br/>
         {% if versions and versions|length > 0 %}
-          <select name="version" style="width:260px;">
+          <select name="version" class="w-260">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
                 v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ status_zh.get(v.result_status, v.result_status or '-') }}）
@@ -63,39 +46,36 @@
             {% endfor %}
           </select>
         {% else %}
-          <input name="version" value="{{ version }}" style="width:160px;">
+          <input name="version" value="{{ version }}" class="w-160">
         {% endif %}
       </div>
       <div>
-        <button type="submit">查询</button>
+        {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
       </div>
-      <div style="flex:1;"></div>
-      <div>
-        <a href="{{ export_url }}">导出周计划表.xlsx</a>
-      </div>
+      <div class="flex-1"></div>
     </form>
     {% if not versions or versions|length == 0 %}
-      <div class="muted" style="margin-top:8px;">暂无排产历史（请先执行排产生成版本）。</div>
+      <div class="muted mt-2">暂无排产历史（请先执行排产生成版本）。</div>
     {% endif %}
-    <p class="muted" style="margin-top:10px;">
+    <p class="text-meta mt-3">
       导出字段：日期 / 批次号 / 图号 / 工序 / 设备 / 人员 / 时段。跨天工序会按天拆分为多行。
-      导出动作会写入系统留痕（OperationLogs action=export）。
+      导出操作会记录到操作日志。
     </p>
   </div>
 
   <div class="card">
-    <h3>预览（前 50 行 / 共 {{ total_rows }} 行）</h3>
+    <h3 class="section-title">预览（前 50 行 / 共 {{ total_rows }} 行）</h3>
     {% if preview_rows and preview_rows|length > 0 %}
       <table>
         <thead>
           <tr>
-            <th style="width:120px;">日期</th>
-            <th style="width:120px;">批次号</th>
-            <th style="width:140px;">图号</th>
-            <th style="width:80px;">工序</th>
+            <th class="w-120">日期</th>
+            <th class="w-120">批次号</th>
+            <th class="w-140">图号</th>
+            <th class="w-80">工序</th>
             <th>设备</th>
             <th>人员</th>
-            <th style="width:140px;">时段</th>
+            <th class="w-140">时段</th>
           </tr>
         </thead>
         <tbody>

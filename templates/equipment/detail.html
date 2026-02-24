@@ -1,8 +1,13 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>设备详情</h2>
-    <p class="muted">设备编号：<strong>{{ machine.machine_id }}</strong>　设备名称：<strong>{{ machine.name }}</strong></p>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">设备详情</h2></div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
+    <p class="page-subtitle text-meta">设备编号：<strong>{{ machine.machine_id }}</strong>　设备名称：<strong>{{ machine.name }}</strong></p>
+    {{ ui.equipment_nav('list') }}
   </div>
 
   <div class="card">
@@ -28,7 +33,7 @@
         </div>
         <div>
           <label>类别（可选）</label><br/>
-          <input name="category" value="{{ machine.category or '' }}" placeholder="如：CNC / 铣床 / 装配" style="width:180px;">
+          <input name="category" value="{{ machine.category or '' }}" placeholder="如：CNC / 铣床 / 装配" class="w-180">
         </div>
         <div>
           <label>状态</label><br/>
@@ -38,13 +43,13 @@
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
+        <div class="flex-1 min-w-240">
           <label>备注</label><br/>
           <input name="remark" value="{{ machine.remark or '' }}">
         </div>
-        <div>
-          <button type="submit">保存</button>
-          <a style="margin-left:10px;" href="{{ url_for('equipment.list_page') }}">返回列表</a>
+        <div class="inline-flex-wrap">
+          {{ ui.button('保存', 'primary', 'md', type_attr='submit') }}
+          {{ ui.link_button('返回列表', url_for('equipment.list_page'), 'secondary', 'sm') }}
         </div>
       </div>
     </form>
@@ -54,23 +59,23 @@
     <h3>可操作人员</h3>
     <p class="muted">
       设置哪些人员可以操作此设备。
-      可选字段：技能等级（beginner/normal/expert）与主操设备（同一人员仅允许 1 台主操设备）。
+      可选字段：技能等级（初级/普通/专家）与主操设备（同一人员仅允许 1 台主操设备）。
     </p>
     <!-- OperatorMachine -->
 
     {% if linked_operators and linked_operators|length > 0 %}
       {% for op in linked_operators %}
-        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('equipment.update_link', machine_id=machine.machine_id) }}" style="display:none;"></form>
+        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('equipment.update_link', machine_id=machine.machine_id) }}" class="d-none"></form>
       {% endfor %}
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">工号</th>
+            <th class="w-140">工号</th>
             <th>姓名</th>
-            <th style="width:120px;">人员状态</th>
-            <th style="width:140px;">技能等级</th>
-            <th style="width:120px;">主操</th>
-            <th style="width:220px;">操作</th>
+            <th class="w-120">人员状态</th>
+            <th class="w-140">技能等级</th>
+            <th class="w-120">主操</th>
+            <th class="w-220">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -96,11 +101,11 @@
                 </label>
               </td>
               <td>
-                <button type="submit" form="linkform_{{ loop.index0 }}">保存</button>
-                <form method="post" action="{{ url_for('equipment.remove_link', machine_id=machine.machine_id) }}" style="display:inline-block;margin-left:6px;"
+                {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='linkform_' ~ loop.index0) }}
+                <form method="post" action="{{ url_for('equipment.remove_link', machine_id=machine.machine_id) }}" class="d-inline ml-2"
                       data-confirm="确认解除该关联？">
                   <input type="hidden" name="operator_id" value="{{ op.operator_id }}">
-                  <button type="submit">解除关联</button>
+                  {{ ui.button('解除关联', 'danger', 'sm', type_attr='submit') }}
                 </form>
               </td>
             </tr>
@@ -124,9 +129,7 @@
               {% endfor %}
             </select>
           </div>
-          <div>
-            <button type="submit">添加关联</button>
-          </div>
+          <div>{{ ui.button('添加关联', 'primary', 'md', type_attr='submit') }}</div>
         </div>
       </form>
     {% else %}
@@ -137,20 +140,20 @@
   <div class="card">
     <h3>停机计划</h3>
     <p class="muted">设备的计划停机时间。</p>
-    <div style="margin-top:6px;">
-      <a href="{{ url_for('equipment.downtime_batch_page') }}">批量停机计划（按设备/类别/全部）</a>
+    <div class="mt-2">
+      {{ ui.link_button('批量停机计划（按设备/类别/全部）', url_for('equipment.downtime_batch_page'), 'secondary', 'sm') }}
     </div>
 
     {% if downtime_rows and downtime_rows|length > 0 %}
       <table>
         <thead>
           <tr>
-            <th style="width:80px;">ID</th>
-            <th style="width:200px;">开始</th>
-            <th style="width:200px;">结束</th>
-            <th style="width:160px;">原因</th>
+            <th class="w-80">ID</th>
+            <th class="w-200">开始</th>
+            <th class="w-200">结束</th>
+            <th class="w-160">原因</th>
             <th>备注</th>
-            <th style="width:120px;">操作</th>
+            <th class="w-120">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -163,7 +166,7 @@
               <td>{{ d.reason_detail or '-' }}</td>
               <td>
                 <form method="post" action="{{ url_for('equipment.cancel_downtime', machine_id=machine.machine_id, downtime_id=d.id) }}">
-                  <button type="submit">取消</button>
+                  {{ ui.button('取消', 'danger', 'sm', type_attr='submit') }}
                 </form>
               </td>
             </tr>
@@ -180,11 +183,11 @@
       <div class="form-row">
         <div>
           <label>开始时间</label><br/>
-          <input name="start_time" required placeholder="如：2026-01-22 08:00" style="min-width:220px;">
+          <input name="start_time" required placeholder="如：2026-01-22 08:00" class="min-w-220">
         </div>
         <div>
           <label>结束时间</label><br/>
-          <input name="end_time" required placeholder="如：2026-01-22 12:00" style="min-width:220px;">
+          <input name="end_time" required placeholder="如：2026-01-22 12:00" class="min-w-220">
         </div>
         <div>
           <label>停机原因</label><br/>
@@ -194,13 +197,11 @@
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
+        <div class="flex-1 min-w-240">
           <label>原因备注（可选）</label><br/>
           <input name="reason_detail" placeholder="可选：更具体的停机原因说明">
         </div>
-        <div>
-          <button type="submit">新增</button>
-        </div>
+        <div>{{ ui.button('新增', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>

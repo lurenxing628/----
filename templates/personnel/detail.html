@@ -1,13 +1,18 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>人员详情</h2>
-    <p class="muted">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">人员详情</h2></div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
+    <p class="page-subtitle text-meta">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
+    {{ ui.personnel_nav('list') }}
     {% set op_cal_url = safe_url_for('personnel.operator_calendar_page', operator_id=operator.operator_id) %}
     {% set global_cal_url = safe_url_for('scheduler.calendar_page') %}
-    <div class="info-line" style="margin-top:8px;">
+    <div class="info-line mt-2">
       {% if op_cal_url %}
-        <a href="{{ op_cal_url }}">个人工作日历</a>
+        {{ ui.link_button('个人工作日历', op_cal_url, 'secondary', 'sm') }}
       {% else %}
         <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
         <details class="debug-details muted">
@@ -20,7 +25,7 @@
       {% endif %}
       <span class="info-sep">|</span>
       {% if global_cal_url %}
-        <a href="{{ global_cal_url }}">全局工作日历</a>
+        {{ ui.link_button('全局工作日历', global_cal_url, 'secondary', 'sm') }}
       {% else %}
         <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
         <details class="debug-details muted">
@@ -32,7 +37,7 @@
         </details>
       {% endif %}
     </div>
-    <div class="muted" style="margin-top:6px;">
+    <div class="muted mt-2">
       为个别人员设置特殊的工作/休息日（如请假、加班）。
       {% if not op_cal_url %}
         <span class="muted">（当前运行版本缺少该入口）</span>
@@ -60,13 +65,13 @@
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
+        <div class="flex-1 min-w-240">
           <label>备注</label><br/>
           <input name="remark" value="{{ operator.remark or '' }}">
         </div>
-        <div>
-          <button type="submit">保存</button>
-          <a style="margin-left:10px;" href="{{ url_for('personnel.list_page') }}">返回列表</a>
+        <div class="inline-flex-wrap">
+          {{ ui.button('保存', 'primary', 'md', type_attr='submit') }}
+          {{ ui.link_button('返回列表', url_for('personnel.list_page'), 'secondary', 'sm') }}
         </div>
       </div>
     </form>
@@ -76,23 +81,23 @@
     <h3>可操作设备</h3>
     <p class="muted">
       设置该人员可以操作哪些设备。
-      可选字段：技能等级（beginner/normal/expert）与主操设备（同一人员仅允许 1 台主操设备）。
+      可选字段：技能等级（初级/普通/专家）与主操设备（同一人员仅允许 1 台主操设备）。
     </p>
     <!-- OperatorMachine -->
 
     {% if linked_machines and linked_machines|length > 0 %}
       {% for m in linked_machines %}
-        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_link', operator_id=operator.operator_id) }}" style="display:none;"></form>
+        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_link', operator_id=operator.operator_id) }}" class="d-none"></form>
       {% endfor %}
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">设备编号</th>
+            <th class="w-140">设备编号</th>
             <th>设备名称</th>
-            <th style="width:120px;">设备状态</th>
-            <th style="width:140px;">技能等级</th>
-            <th style="width:120px;">主操</th>
-            <th style="width:220px;">操作</th>
+            <th class="w-120">设备状态</th>
+            <th class="w-140">技能等级</th>
+            <th class="w-120">主操</th>
+            <th class="w-220">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -118,11 +123,11 @@
                 </label>
               </td>
               <td>
-                <button type="submit" form="linkform_{{ loop.index0 }}">保存</button>
-                <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}" style="display:inline-block;margin-left:6px;"
+                {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='linkform_' ~ loop.index0) }}
+                <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}" class="d-inline ml-2"
                       data-confirm="确认解除该关联？">
                   <input type="hidden" name="machine_id" value="{{ m.machine_id }}">
-                  <button type="submit">解除关联</button>
+                  {{ ui.button('解除关联', 'danger', 'sm', type_attr='submit') }}
                 </form>
               </td>
             </tr>
@@ -146,9 +151,7 @@
               {% endfor %}
             </select>
           </div>
-          <div>
-            <button type="submit">添加关联</button>
-          </div>
+          <div>{{ ui.button('添加关联', 'primary', 'md', type_attr='submit') }}</div>
         </div>
       </form>
     {% else %}

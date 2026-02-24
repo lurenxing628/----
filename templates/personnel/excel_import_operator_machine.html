@@ -1,13 +1,18 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>人员设备关联（Excel）</h2>
-    <p class="muted">
-      导入/导出字段：工号、设备编号；可选字段：技能等级（beginner/normal/expert）、主操设备（yes/no）。
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">人员设备关联（Excel）</h2></div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
+    <p class="page-subtitle text-meta">
+      导入/导出字段：工号、设备编号；可选字段：技能等级（初级/普通/专家）、主操设备（是/否）。
       导入前会校验人员/设备是否存在，并给出中文提示。
     </p>
-    <div style="margin-top:8px;">
-      <a href="{{ export_url }}">导出当前数据（人员设备关联.xlsx）</a>
+    {{ ui.personnel_nav('excel_link') }}
+    <div class="mt-2">
+      {{ ui.link_button('导出当前数据（人员设备关联.xlsx）', export_url, 'secondary', 'md') }}
       <span class="muted">（导出会写入操作留痕）</span>
     </div>
   </div>
@@ -15,7 +20,7 @@
   {% include "components/excel_import.html" with context %}
 
   <div class="card">
-    <h3>当前关联数据（OperatorMachine）</h3>
+    <h3>当前关联数据</h3>
     {% if existing_list and existing_list|length > 0 %}
       <table>
         <thead>

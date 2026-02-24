@@ -1,69 +1,50 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h2>批次详情：{{ batch.batch_id }}</h2>
-        <div class="muted">
-          图号：<strong>{{ batch.part_no }}</strong>
-          {% if batch.part_name %}<span class="muted">（{{ batch.part_name }}）</span>{% endif %}
-          <span class="muted">｜</span>
-          数量：<strong>{{ batch.quantity }}</strong>
-          <span class="muted">｜</span>
-          交期：{% if batch.due_date %}<strong>{{ batch.due_date }}</strong>{% else %}<span class="muted">-</span>{% endif %}
-          <span class="muted">｜</span>
-          优先级：<strong>{{ priority_zh }}</strong>
-          <span class="muted">｜</span>
-          齐套：<strong>{{ ready_status_zh }}</strong>
-          {% if batch.ready_date %}
-            <span class="muted">（齐套日期：<strong>{{ batch.ready_date }}</strong>）</span>
-          {% endif %}
-          <span class="muted">｜</span>
-          状态：<strong>{{ batch_status_zh }}</strong>
-        </div>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">批次详情：{{ batch.batch_id }}</h2>
       </div>
-      <div>
-        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
-        <span class="muted">｜</span>
-        <form method="post" action="{{ url_for('scheduler.delete_batch', batch_id=batch.batch_id) }}" style="display:inline;"
+      <div class="page-actions page-actions-context">
+        {{ ui.link_button('返回批次管理', url_for('scheduler.batches_manage_page'), 'secondary', 'md') }}
+        <form method="post" action="{{ url_for('scheduler.delete_batch', batch_id=batch.batch_id) }}" class="d-inline"
               data-confirm="确定删除批次 {{ batch.batch_id }} 吗？将级联删除批次工序与排程记录（若存在）。">
-          <button type="submit">删除批次</button>
+          {{ ui.button('删除批次', 'danger', 'md', type_attr='submit') }}
         </form>
       </div>
     </div>
-    <div class="info-line" style="margin-top:8px;">
-      <strong>入口：</strong>
-      <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.batches_manage_page') }}">批次管理</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.config_page') }}">高级设置/模板</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.analysis_page') }}">排产优化分析</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
-    </div>
+    <p class="meta-inline text-meta">
+      图号：<strong>{{ batch.part_no }}</strong>
+      {% if batch.part_name %}<span>（{{ batch.part_name }}）</span>{% endif %}
+      <span class="meta-sep">｜</span>
+      数量：<strong>{{ batch.quantity }}</strong>
+      <span class="meta-sep">｜</span>
+      交期：{% if batch.due_date %}<strong>{{ batch.due_date }}</strong>{% else %}<span>-</span>{% endif %}
+      <span class="meta-sep">｜</span>
+      优先级：<strong>{{ priority_zh }}</strong>
+      <span class="meta-sep">｜</span>
+      齐套：<strong>{{ ready_status_zh }}</strong>
+      {% if batch.ready_date %}
+        <span>（齐套日期：<strong>{{ batch.ready_date }}</strong>）</span>
+      {% endif %}
+      <span class="meta-sep">｜</span>
+      状态：<strong>{{ batch_status_zh }}</strong>
+    </p>
+    {{ ui.scheduler_nav('batches_manage') }}
   </div>
 
   <div class="card">
-    <h3>批次工序（可编辑补充）</h3>
-    <p class="muted">
+    <h3 class="section-title">批次工序（可编辑补充）</h3>
+    <p class="text-meta">
       提示：内部工序需补充“设备/人员/工时”；外部工序需补充“供应商/周期”。若外部工序属于“合并周期”外部组，将禁止逐道设置周期，并提示到工艺管理中配置。
       <br/>
-      约束：内部工序的“设备/人员”选择受【人员-设备关联（OperatorMachine）】限制（双向联动）。若下拉无可选项，请先到【人员管理】或【设备管理】维护“可操作关系”。
+      约束：内部工序的“设备/人员”选择受【人员-设备关联】限制（双向联动）。若下拉无可选项，请先到【人员管理】或【设备管理】维护“可操作关系”。
     </p>
-    <div style="margin-top:8px;">
+    <div class="mt-2">
       <form method="post" action="{{ url_for('scheduler.generate_ops', batch_id=batch.batch_id) }}"
             data-confirm="将根据当前零件工序模板重建该批次工序（会清空已填写的设备/人员/工时/周期等补充信息）。确定继续？">
-        <button type="submit">从零件模板重建工序（会覆盖补充信息）</button>
+        {{ ui.button('从零件模板重建工序（会覆盖补充信息）', 'secondary', 'md', type_attr='submit') }}
         <span class="muted">用于模板变更后同步（会清空已填写的设备/人员/工时/周期等补充信息）</span>
       </form>
     </div>
@@ -71,24 +52,24 @@
     {% if operations and operations|length > 0 %}
       {# 表格内 input/select 使用 form="opform_..."；为保证 HTML 合法，把空 form 节点移到 <tbody> 之外 #}
       {% for op in operations %}
-        <form id="opform_{{ op.id }}" method="post" action="{{ url_for('scheduler.update_op', op_id=op.id) }}" style="display:none;"></form>
+        <form id="opform_{{ op.id }}" method="post" action="{{ url_for('scheduler.update_op', op_id=op.id) }}" class="d-none"></form>
       {% endfor %}
 
-      <div style="overflow-x:auto;">
-      <table style="margin-top:12px;">
+      <div class="overflow-x-auto">
+      <table class="mt-3">
         <thead>
           <tr>
-            <th style="width:140px;">工序编码</th>
-            <th style="width:80px;">工序</th>
-            <th style="width:160px;">工种</th>
-            <th style="width:100px;">归属</th>
-            <th style="width:200px;">设备</th>
-            <th style="width:200px;">人员</th>
-            <th style="width:120px;">换型(h)</th>
-            <th style="width:120px;">单件(h)</th>
-            <th style="width:220px;">供应商</th>
-            <th style="width:140px;">外协周期(天)</th>
-            <th style="width:120px;">操作</th>
+            <th class="w-140">工序编码</th>
+            <th class="w-80">工序</th>
+            <th class="w-160">工种</th>
+            <th class="w-100">归属</th>
+            <th class="w-200">设备</th>
+            <th class="w-200">人员</th>
+            <th class="w-120">换型(h)</th>
+            <th class="w-120">单件(h)</th>
+            <th class="w-220">供应商</th>
+            <th class="w-140">外协周期(天)</th>
+            <th class="w-120">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -169,21 +150,21 @@
                       {% endfor %}
                     </select>
                   {% endif %}
-                  <div class="muted js-linkage-hint" style="margin-top:4px; display:none;"></div>
+                  <div class="muted js-linkage-hint mt-2 is-hidden"></div>
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
               </td>
               <td>
                 {% if src == 'internal' %}
-                  <input name="setup_hours" form="opform_{{ op.id }}" value="{{ op.setup_hours }}" style="width:90px;">
+                  <input name="setup_hours" form="opform_{{ op.id }}" value="{{ op.setup_hours }}" class="w-90">
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
               </td>
               <td>
                 {% if src == 'internal' %}
-                  <input name="unit_hours" form="opform_{{ op.id }}" value="{{ op.unit_hours }}" style="width:90px;">
+                  <input name="unit_hours" form="opform_{{ op.id }}" value="{{ op.unit_hours }}" class="w-90">
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
@@ -201,7 +182,7 @@
                     {% endfor %}
                   </select>
                   {% if op.merge_hint and op.merge_hint.merge_mode == 'merged' %}
-                    <div class="muted" style="margin-top:4px;">
+                    <div class="muted mt-2">
                       合并周期组：{{ op.merge_hint.template_ext_group_id }}（组周期：{{ op.merge_hint.group_total_days or '未设置' }} 天）
                     </div>
                   {% endif %}
@@ -212,17 +193,17 @@
               <td>
                 {% if src == 'external' %}
                   {% if op.merge_hint and op.merge_hint.merge_mode == 'merged' %}
-                    <input name="ext_days" form="opform_{{ op.id }}" value="" style="width:110px;" disabled>
-                    <div class="muted" style="margin-top:4px;">该工序周期由“外部组合并周期”控制</div>
+                    <input name="ext_days" form="opform_{{ op.id }}" value="" class="w-110" disabled>
+                    <div class="muted mt-2">该工序周期由“外部组合并周期”控制</div>
                   {% else %}
-                    <input name="ext_days" form="opform_{{ op.id }}" value="{{ op.ext_days }}" style="width:110px;">
+                    <input name="ext_days" form="opform_{{ op.id }}" value="{{ op.ext_days }}" class="w-110">
                   {% endif %}
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
               </td>
               <td>
-                <button type="submit" form="opform_{{ op.id }}">保存</button>
+                {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='opform_' ~ op.id) }}
               </td>
             </tr>
           {% endfor %}

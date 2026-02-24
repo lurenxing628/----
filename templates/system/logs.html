@@ -1,18 +1,15 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>系统管理 - 操作日志</h2>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">系统管理 - 操作日志</h2></div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
+    {{ ui.system_nav('logs') }}
     <p class="muted">可按时间、模块、动作筛选日志。详情是 JSON 时会自动展开。</p>
 
-    <div class="info-line" style="margin-bottom: 12px;">
-      <a href="{{ url_for('system.backup_page') }}">备份/恢复</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('system.logs_page') }}">操作日志</a>
-      <span class="info-sep">|</span>
-      <a href="{{ url_for('system.history_page') }}">排产历史</a>
-    </div>
-
-    <h3 style="margin-top:10px;">日志自动清理（按请求触发）</h3>
+    <h3 class="mt-3">日志自动清理（按请求触发）</h3>
     <p class="muted">自动清理会在系统被访问时按间隔执行，内部有保底保留和限额，避免过度清理。</p>
     {% if maintenance_limits %}
       <p class="muted">保底/限额：至少保留最近 {{ maintenance_limits.min_keep_logs }} 条日志；单次自动清理最多删除 {{ maintenance_limits.max_log_delete_per_run }} 条。</p>
@@ -20,8 +17,8 @@
 
     {% set st_lc = job_state.auto_log_cleanup if job_state else None %}
 
-    <form method="post" action="{{ url_for('system.logs_settings') }}" style="margin-bottom:12px;">
-      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+    <form method="post" action="{{ url_for('system.logs_settings') }}" class="mb-2">
+      <div class="inline-flex-wrap items-end gap-12">
         <div>
           <label>
             <input type="checkbox" name="auto_log_cleanup_enabled" {{ 'checked' if settings and settings.auto_log_cleanup_enabled=='yes' else '' }}>
@@ -30,69 +27,69 @@
         </div>
         <div class="muted">
           保留天数：
-          <input type="number" min="1" max="365" step="1" name="auto_log_cleanup_keep_days" value="{{ settings.auto_log_cleanup_keep_days if settings else '30' }}" style="width:90px;">
+          <input type="number" min="1" max="365" step="1" name="auto_log_cleanup_keep_days" value="{{ settings.auto_log_cleanup_keep_days if settings else '30' }}" class="w-120">
         </div>
         <div class="muted">
           间隔（分钟）：
-          <input type="number" min="1" max="1440" step="1" name="auto_log_cleanup_interval_minutes" value="{{ settings.auto_log_cleanup_interval_minutes if settings else '60' }}" style="width:90px;">
+          <input type="number" min="1" max="1440" step="1" name="auto_log_cleanup_interval_minutes" value="{{ settings.auto_log_cleanup_interval_minutes if settings else '60' }}" class="w-120">
         </div>
         <div class="muted">
           上次执行：{{ st_lc.last_run_time if st_lc and st_lc.last_run_time else '-' }}
         </div>
         {% if st_lc and st_lc.last_run_detail_obj %}
-          <div class="muted" style="min-width:420px;">
+          <div class="muted min-w-420">
             上次结果：
-            <pre style="margin:6px 0 0 0;max-height:120px;overflow:auto;">{{ st_lc.last_run_detail_obj | tojson_zh(2) }}</pre>
+            <pre class="pre-scroll-sm">{{ st_lc.last_run_detail_obj | tojson_zh(2) }}</pre>
           </div>
         {% endif %}
         <div>
-          <button type="submit">保存设置</button>
+          {{ ui.button('保存设置', 'primary', 'md', type_attr='submit') }}
         </div>
       </div>
     </form>
 
     <form method="get" action="{{ url_for('system.logs_page') }}">
-      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+      <div class="inline-flex-wrap items-end gap-10">
         <div>
           <div class="muted">开始时间</div>
-          <input name="start_time" value="{{ filters.start_time }}" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS" style="width:260px;">
+          <input name="start_time" value="{{ filters.start_time }}" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS" class="w-260">
         </div>
         <div>
           <div class="muted">结束时间</div>
-          <input name="end_time" value="{{ filters.end_time }}" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS" style="width:260px;">
+          <input name="end_time" value="{{ filters.end_time }}" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS" class="w-260">
         </div>
         <div>
           <div class="muted">模块</div>
-          <input name="module" value="{{ filters.module }}" placeholder="例如：system/scheduler/process" style="width:180px;">
+          <input name="module" value="{{ filters.module }}" placeholder="例如：system/scheduler/process" class="w-180">
         </div>
         <div>
           <div class="muted">动作</div>
-          <input name="action" value="{{ filters.action }}" placeholder="例如：import/export/schedule" style="width:180px;">
+          <input name="action" value="{{ filters.action }}" placeholder="例如：import/export/schedule" class="w-180">
         </div>
         <div>
           <div class="muted">日志级别</div>
           <select name="log_level">
             {% set lv = filters.log_level %}
             <option value="" {{ 'selected' if not lv else '' }}>全部</option>
-            <option value="INFO" {{ 'selected' if lv=='INFO' else '' }}>INFO</option>
-            <option value="WARN" {{ 'selected' if lv=='WARN' else '' }}>WARN</option>
-            <option value="ERROR" {{ 'selected' if lv=='ERROR' else '' }}>ERROR</option>
+            <option value="INFO" {{ 'selected' if lv=='INFO' else '' }}>信息</option>
+            <option value="WARN" {{ 'selected' if lv=='WARN' else '' }}>警告</option>
+            <option value="ERROR" {{ 'selected' if lv=='ERROR' else '' }}>错误</option>
           </select>
         </div>
         <div>
           <div class="muted">条数</div>
-          <input type="number" min="1" max="500" step="1" name="limit" value="{{ filters.limit }}" style="width:80px;">
+          <input type="number" min="1" max="500" step="1" name="limit" value="{{ filters.limit }}" class="w-120">
         </div>
         <div>
-          <button type="submit">查询</button>
-          <a href="{{ url_for('system.logs_page') }}" class="muted" style="margin-left:8px;">重置</a>
+          {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
+          {{ ui.link_button('重置', url_for('system.logs_page'), 'secondary', 'sm', class='ml-2') }}
         </div>
       </div>
     </form>
 
-    <form id="logsBatchDeleteForm" method="post" action="{{ url_for('system.logs_delete_batch') }}" style="margin-top:10px;"
+    <form id="logsBatchDeleteForm" method="post" action="{{ url_for('system.logs_delete_batch') }}" class="mt-3"
           data-confirm="确认批量删除选中的操作日志？删除后不可恢复。">
-      <button type="submit">批量删除选中</button>
+      {{ ui.button('批量删除选中', 'danger', 'md', type_attr='submit') }}
     </form>
   </div>
 
@@ -104,7 +101,7 @@
       <table>
         <thead>
           <tr>
-            <th style="width:60px;">
+            <th class="w-60">
               <input type="checkbox" class="js-log-select-all" title="全选" aria-label="全选日志">
             </th>
             <th>ID</th>
@@ -156,7 +153,7 @@
               <td>
                 <form method="post" action="{{ url_for('system.logs_delete') }}" data-confirm="确认删除该日志？删除后不可恢复。">
                   <input type="hidden" name="log_id" value="{{ r.id }}">
-                  <button type="submit">删除</button>
+                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
                 </form>
               </td>
             </tr>

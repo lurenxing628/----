@@ -1,23 +1,23 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>工种配置（Excel）</h2>
-    <p class="muted">支持：下载模板 → 上传预览 → 确认导入 → 导出。提示信息尽量中文，便于排查。</p>
-    <div style="margin-top:8px;">
-      <a href="{{ export_url }}">导出当前数据（工种配置.xlsx）</a>
-      <span class="muted">（导入/导出会写入操作留痕）</span>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">工种配置（Excel）</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('process.op_types_page') }}">返回工种配置页面</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('process.list_parts') }}">返回工艺管理</a>
+    <p class="page-subtitle text-meta">支持：下载模板 → 上传预览 → 确认导入 → 导出。提示信息尽量中文，便于排查。</p>
+    {{ ui.process_nav('excel_op_types') }}
+    <div class="mt-2">
+      {{ ui.link_button('导出当前数据（工种配置.xlsx）', export_url, 'secondary', 'md') }}
+      <span class="muted">（导入/导出会写入操作留痕）</span>
     </div>
   </div>
 
   {% include "components/excel_import.html" with context %}
 
   <div class="card">
-    <h3>当前工种数据（OpTypes）</h3>
+    <h3>当前工种数据</h3>
     {% if existing_list and existing_list|length > 0 %}
       <table>
         <thead>
