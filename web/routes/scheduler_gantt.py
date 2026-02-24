@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
-import json
-import time
 
 from flask import current_app, g, jsonify, request, url_for
 
@@ -13,27 +11,6 @@ from core.services.scheduler import GanttService
 from data.repositories import ScheduleHistoryRepository
 
 from .scheduler_bp import bp
-
-
-# #region agent log
-def _agent_debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: Dict[str, Any]) -> None:
-    try:
-        payload = {
-            "sessionId": "407f1e",
-            "runId": str(run_id or "unknown"),
-            "hypothesisId": str(hypothesis_id or "H0"),
-            "location": str(location or "web/routes/scheduler_gantt.py"),
-            "message": str(message or ""),
-            "data": data if isinstance(data, dict) else {},
-            "timestamp": int(time.time() * 1000),
-        }
-        with open("debug-407f1e.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-
-
-# #endregion
 
 
 def _get_int_arg(name: str, default: int = 0) -> int:
@@ -81,7 +58,6 @@ def gantt_page():
     ver = version if version is not None else svc.get_latest_version_or_1()
 
     versions = ScheduleHistoryRepository(g.db).list_versions(limit=30)
-
     return render_template(
         "scheduler/gantt.html",
         title="甘特图（排程可视化）",
@@ -93,6 +69,7 @@ def gantt_page():
         offset=offset,
         version=ver,
         versions=versions,
+        has_history=bool(versions),
         data_url=url_for("scheduler.gantt_data"),
     )
 
@@ -106,22 +83,6 @@ def gantt_data():
     week_start = (request.args.get("week_start") or "").strip() or None
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
-    # #region agent log
-    _agent_debug_log(
-        "run1",
-        "H2",
-        "web/routes/scheduler_gantt.py:gantt_data:entry",
-        "gantt_data request args",
-        {
-            "view": view,
-            "week_start": week_start or "",
-            "start_date": start_date or "",
-            "end_date": end_date or "",
-            "offset_raw": request.args.get("offset"),
-            "version_raw": request.args.get("version"),
-        },
-    )
-    # #endregion
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     try:
         offset = _get_int_arg("offset", 0)
@@ -145,21 +106,6 @@ def gantt_data():
             version=version,
             include_history=include_history,
         )
-        # #region agent log
-        _agent_debug_log(
-            "run1",
-            "H3",
-            "web/routes/scheduler_gantt.py:gantt_data:after_service",
-            "gantt_data service result",
-            {
-                "offset": offset,
-                "effective_offset": effective_offset,
-                "resp_week_start": str(data.get("week_start") or ""),
-                "resp_week_end": str(data.get("week_end") or ""),
-                "task_count": int(data.get("task_count") or 0),
-            },
-        )
-        # #endregion
         return jsonify({"success": True, "data": data})
     except AppError as e:
         return jsonify({"success": False, "error": {"code": e.code.value, "message": e.message}}), 400

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 from collections import OrderedDict
 from typing import Any, Dict, Optional, Sequence
 
@@ -13,27 +12,6 @@ from .gantt_critical_chain import compute_critical_chain
 from .gantt_range import WeekRange, resolve_week_range
 from .gantt_tasks import build_calendar_days, build_tasks
 from .gantt_week_plan import build_week_plan_rows
-
-
-# #region agent log
-def _agent_debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: Dict[str, Any]) -> None:
-    try:
-        payload = {
-            "sessionId": "407f1e",
-            "runId": str(run_id or "unknown"),
-            "hypothesisId": str(hypothesis_id or "H0"),
-            "location": str(location or "core/services/scheduler/gantt_service.py"),
-            "message": str(message or ""),
-            "data": data if isinstance(data, dict) else {},
-            "timestamp": int(time.time() * 1000),
-        }
-        with open("debug-407f1e.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-
-
-# #endregion
 
 
 class GanttService:
@@ -165,23 +143,6 @@ class GanttService:
         overdue_set = set(self._overdue_batch_ids_from_history(ver))
 
         tasks = build_tasks(view=view, wr=wr, rows=rows, overdue_set=overdue_set)
-        # #region agent log
-        _agent_debug_log(
-            "run1",
-            "H4",
-            "core/services/scheduler/gantt_service.py:get_gantt_tasks",
-            "service range and counts",
-            {
-                "view": view,
-                "week_start": wr.week_start_date.isoformat(),
-                "week_end": wr.week_end_date.isoformat(),
-                "offset_weeks": int(offset_weeks),
-                "rows_count": len(rows or []),
-                "tasks_count": len(tasks or []),
-                "version": int(ver),
-            },
-        )
-        # #endregion
 
         hist_dict = None
         if include_history:

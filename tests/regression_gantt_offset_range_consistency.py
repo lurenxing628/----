@@ -76,19 +76,36 @@ def main() -> None:
         "offset": _pick_data_attr(html, "data-offset"),
         "version": _pick_data_attr(html, "data-version"),
     }
-    _assert_true(bool(attrs["start_date"] and attrs["end_date"]), "gantt 页面未输出有效区间 data-start-date/data-end-date")
+    base_query = {
+        "view": attrs["view"] or "machine",
+        "week_start": attrs["week_start"] or "2026-03-03",
+        "offset": attrs["offset"] or "1",
+        "version": attrs["version"] or "1",
+    }
+    base_data = _call_data(client, data_url, base_query)
+
+    expected_start = attrs["start_date"] or str(base_data.get("week_start") or "")
+    expected_end = attrs["end_date"] or str(base_data.get("week_end") or "")
+    _assert_true(bool(expected_start and expected_end), "无法确定有效区间（start/end）")
+
+    # 兼容 has_history=false：页面不输出 data-start/end 时，必须给出明确提示。
+    if not (attrs["start_date"] and attrs["end_date"]):
+        _assert_true("当前数据库暂无排产版本" in html, "无历史版本场景缺少提示文案")
 
     # 兼容旧前端行为：即使把 start/end + offset 一并发送，也不能出现区间二次偏移。
-    old_style_data = _call_data(client, data_url, attrs)
-    _assert_true(old_style_data.get("week_start") == attrs["start_date"], "旧参数风格 week_start 与页面有效 start_date 不一致")
-    _assert_true(old_style_data.get("week_end") == attrs["end_date"], "旧参数风格 week_end 与页面有效 end_date 不一致")
+    old_style_query = dict(base_query)
+    old_style_query["start_date"] = expected_start
+    old_style_query["end_date"] = expected_end
+    old_style_data = _call_data(client, data_url, old_style_query)
+    _assert_true(old_style_data.get("week_start") == expected_start, "旧参数风格 week_start 与有效 start_date 不一致")
+    _assert_true(old_style_data.get("week_end") == expected_end, "旧参数风格 week_end 与有效 end_date 不一致")
 
     # 新前端行为：有 start/end 时不发送 offset，应保持同样区间。
-    new_style_query = dict(attrs)
+    new_style_query = dict(old_style_query)
     new_style_query.pop("offset", None)
     new_style_data = _call_data(client, data_url, new_style_query)
-    _assert_true(new_style_data.get("week_start") == attrs["start_date"], "新参数风格 week_start 与页面有效 start_date 不一致")
-    _assert_true(new_style_data.get("week_end") == attrs["end_date"], "新参数风格 week_end 与页面有效 end_date 不一致")
+    _assert_true(new_style_data.get("week_start") == expected_start, "新参数风格 week_start 与有效 start_date 不一致")
+    _assert_true(new_style_data.get("week_end") == expected_end, "新参数风格 week_end 与有效 end_date 不一致")
 
     gantt_js_path = os.path.join(repo_root, "static", "js", "gantt.js")
     with open(gantt_js_path, "r", encoding="utf-8") as f:

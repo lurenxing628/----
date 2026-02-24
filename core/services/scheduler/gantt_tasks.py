@@ -1,34 +1,11 @@
 from __future__ import annotations
 
-import json
-import time
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from core.services.scheduler.calendar_service import CalendarService
 
 from .gantt_range import WeekRange
-
-
-# #region agent log
-def _agent_debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: Dict[str, Any]) -> None:
-    try:
-        payload = {
-            "sessionId": "407f1e",
-            "runId": str(run_id or "unknown"),
-            "hypothesisId": str(hypothesis_id or "H0"),
-            "location": str(location or "core/services/scheduler/gantt_tasks.py"),
-            "message": str(message or ""),
-            "data": data if isinstance(data, dict) else {},
-            "timestamp": int(time.time() * 1000),
-        }
-        with open("debug-407f1e.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-
-
-# #endregion
 
 
 def _parse_dt(value: Any) -> Optional[datetime]:
@@ -138,20 +115,16 @@ def build_tasks(
     构建甘特 tasks（供 Frappe Gantt 渲染）。
     """
     tasks: List[Dict[str, Any]] = []
-    dropped_invalid = 0
-    dropped_outside = 0
     for r in rows:
         st = _parse_dt(r.get("start_time"))
         et = _parse_dt(r.get("end_time"))
         if not st or not et or not (st < et):
-            dropped_invalid += 1
             continue
 
         # clamp 到本周范围（避免跨周任务把时间轴拉很长）
         st2 = max(st, wr.start_dt)
         et2 = min(et, wr.end_dt_exclusive)
         if not (st2 < et2):
-            dropped_outside += 1
             continue
 
         op_code = (r.get("op_code") or "").strip()
@@ -251,22 +224,5 @@ def build_tasks(
         return (str(meta.get("group_key") or ""), str(t.get("start") or ""), str(t.get("id") or ""))
 
     tasks.sort(key=_sort_key)
-    # #region agent log
-    _agent_debug_log(
-        "run1",
-        "H5",
-        "core/services/scheduler/gantt_tasks.py:build_tasks",
-        "task build counters",
-        {
-            "view": view,
-            "rows_count": len(rows or []),
-            "tasks_count": len(tasks or []),
-            "dropped_invalid": int(dropped_invalid),
-            "dropped_outside": int(dropped_outside),
-            "wr_start": wr.week_start_date.isoformat(),
-            "wr_end": wr.week_end_date.isoformat(),
-        },
-    )
-    # #endregion
     return tasks
 

@@ -39,6 +39,13 @@ def _extract_raw_rows_json(html: str) -> str:
     return raw.strip()
 
 
+def _extract_preview_baseline(html: str) -> str:
+    m = re.search(r'<input[^>]*name=["\']preview_baseline["\'][^>]*value=["\']([^"\']+)["\']', html, re.I)
+    if not m:
+        raise RuntimeError("未能从预览页面提取 preview_baseline（确认导入需要该字段）")
+    return m.group(1).strip()
+
+
 def _assert_status(name: str, resp, expect_code: int = 200):
     if resp.status_code != expect_code:
         body = None
@@ -136,10 +143,18 @@ def main():
     buf = _make_xlsx_bytes(["批次号", "图号", "数量", "交期", "优先级", "齐套", "备注"], batches_rows)
     r = client.post("/scheduler/excel/batches/preview", data={"mode": "overwrite", "file": (buf, "batches.xlsx")}, content_type="multipart/form-data")
     _assert_status("batches preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
+    html_batches_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_batches_preview)
+    preview_baseline = _extract_preview_baseline(html_batches_preview)
     r = client.post(
         "/scheduler/excel/batches/confirm",
-        data={"mode": "overwrite", "filename": "batches.xlsx", "raw_rows_json": raw, "auto_generate_ops": "1"},
+        data={
+            "mode": "overwrite",
+            "filename": "batches.xlsx",
+            "raw_rows_json": raw,
+            "preview_baseline": preview_baseline,
+            "auto_generate_ops": "1",
+        },
         follow_redirects=True,
     )
     _assert_status("batches confirm", r, 200)
@@ -182,7 +197,9 @@ def main():
             raise RuntimeError("未写入 ScheduleHistory")
         version = int(hist["version"])
         min_start = conn.execute("SELECT MIN(start_time) AS st FROM Schedule WHERE version=?", (version,)).fetchone()["st"]
+        max_end = conn.execute("SELECT MAX(end_time) AS et FROM Schedule WHERE version=?", (version,)).fetchone()["et"]
         week_start = str(min_start)[:10] if min_start else date.today().isoformat()
+        week_end = str(max_end)[:10] if max_end else week_start
     finally:
         conn.close()
 
@@ -196,6 +213,35 @@ def main():
     tasks = data.get("tasks") or []
     if not isinstance(tasks, list) or not tasks:
         raise RuntimeError("甘特 tasks 为空")
+
+    # 8) 报表断言（避免只校验页面 200）
+    r = client.get(f"/reports/overdue?version={version}")
+    _assert_status("reports overdue", r, 200)
+    overdue_html = r.data.decode("utf-8", errors="ignore")
+    if "当前无超期批次" not in overdue_html:
+        raise RuntimeError("超期清单文案异常（期望“当前无超期批次”）")
+
+    r = client.get(f"/reports/utilization?version={version}")
+    _assert_status("reports utilization", r, 200)
+    util_html = r.data.decode("utf-8", errors="ignore")
+    if f'name="start_date" value="{week_start}"' not in util_html:
+        raise RuntimeError("utilization 默认开始日期未按版本排程范围带入")
+    if f'name="end_date" value="{week_end}"' not in util_html:
+        raise RuntimeError("utilization 默认结束日期未按版本排程范围带入")
+    if "已按所选版本的排程范围自动带入日期" not in util_html:
+        raise RuntimeError("utilization 缺少“按版本排程范围”提示文案")
+    if "MC001" not in util_html and "OP001" not in util_html:
+        raise RuntimeError("utilization 未展示任何排程资源行（期望至少包含 MC001 或 OP001）")
+
+    r = client.get(f"/reports/downtime?version={version}")
+    _assert_status("reports downtime", r, 200)
+    dt_html = r.data.decode("utf-8", errors="ignore")
+    if f'name="start_date" value="{week_start}"' not in dt_html:
+        raise RuntimeError("downtime 默认开始日期未按版本排程范围带入")
+    if f'name="end_date" value="{week_end}"' not in dt_html:
+        raise RuntimeError("downtime 默认结束日期未按版本排程范围带入")
+    if "已按所选版本的排程范围自动带入日期" not in dt_html:
+        raise RuntimeError("downtime 缺少“按版本排程范围”提示文案")
 
     out_dir = os.path.join(repo_root, "evidence", "FullE2E")
     os.makedirs(out_dir, exist_ok=True)

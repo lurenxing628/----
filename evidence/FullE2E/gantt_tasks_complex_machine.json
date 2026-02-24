@@ -7,13 +7,18 @@
   "tasks": [
     {
       "id": "B001_05",
+      "schedule_id": 1,
       "name": "B001_05 MC001 CNC-01 OP001 张三",
       "start": "2026-01-26 08:00:00",
       "end": "2026-01-26 13:18:00",
+      "duration_minutes": 318,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "",
+      "edge_type": "",
       "custom_class": "priority-critical overdue",
       "meta": {
+        "schedule_id": 1,
         "op_id": 1,
         "batch_id": "B001",
         "piece_id": null,
@@ -28,19 +33,26 @@
         "operator": "OP001 张三",
         "group_key": "MC001",
         "priority": "critical",
+        "lock_status": "unlocked",
+        "duration_minutes": 318,
         "due_date": "2026-01-27",
         "is_overdue": true
       }
     },
     {
       "id": "B002_05",
+      "schedule_id": 8,
       "name": "B002_05 MC001 CNC-01 OP001 张三",
       "start": "2026-01-26 13:18:00",
       "end": "2026-01-26 15:24:00",
+      "duration_minutes": 126,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "",
+      "edge_type": "",
       "custom_class": "priority-urgent overdue",
       "meta": {
+        "schedule_id": 8,
         "op_id": 6,
         "batch_id": "B002",
         "piece_id": null,
@@ -55,19 +67,26 @@
         "operator": "OP001 张三",
         "group_key": "MC001",
         "priority": "urgent",
+        "lock_status": "unlocked",
+        "duration_minutes": 126,
         "due_date": "2026-01-29",
         "is_overdue": true
       }
     },
     {
       "id": "B003_05",
+      "schedule_id": 15,
       "name": "B003_05 MC001 CNC-01 OP001 张三",
       "start": "2026-01-30 15:24:00",
       "end": "2026-02-02 00:00:00",
+      "duration_minutes": 3396,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "",
+      "edge_type": "",
       "custom_class": "priority-normal",
       "meta": {
+        "schedule_id": 15,
         "op_id": 11,
         "batch_id": "B003",
         "piece_id": null,
@@ -82,19 +101,26 @@
         "operator": "OP001 张三",
         "group_key": "MC001",
         "priority": "normal",
+        "lock_status": "unlocked",
+        "duration_minutes": 3396,
         "due_date": "2026-02-05",
         "is_overdue": false
       }
     },
     {
       "id": "B001_20",
+      "schedule_id": 3,
       "name": "B001_20 MC002 CNC-02 OP001 张三",
       "start": "2026-01-26 15:24:00",
       "end": "2026-01-29 10:42:00",
+      "duration_minutes": 4038,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "B001_10",
+      "edge_type": "process",
       "custom_class": "priority-critical overdue",
       "meta": {
+        "schedule_id": 3,
         "op_id": 3,
         "batch_id": "B001",
         "piece_id": null,
@@ -109,19 +135,28 @@
         "operator": "OP001 张三",
         "group_key": "MC002",
         "priority": "critical",
+        "lock_status": "unlocked",
+        "duration_minutes": 4038,
         "due_date": "2026-01-27",
-        "is_overdue": true
+        "is_overdue": true,
+        "edge_type": "process",
+        "dependency_from": "B001_10"
       }
     },
     {
       "id": "B101_10",
+      "schedule_id": 7,
       "name": "B101_10 MC002 CNC-02 OP001 张三",
       "start": "2026-01-29 10:42:00",
       "end": "2026-01-30 10:24:00",
+      "duration_minutes": 1422,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "B101_05",
+      "edge_type": "process",
       "custom_class": "priority-urgent overdue",
       "meta": {
+        "schedule_id": 7,
         "op_id": 17,
         "batch_id": "B101",
         "piece_id": null,
@@ -136,19 +171,28 @@
         "operator": "OP001 张三",
         "group_key": "MC002",
         "priority": "urgent",
+        "lock_status": "unlocked",
+        "duration_minutes": 1422,
         "due_date": "2026-01-27",
-        "is_overdue": true
+        "is_overdue": true,
+        "edge_type": "process",
+        "dependency_from": "B101_05"
       }
     },
     {
       "id": "B002_20",
+      "schedule_id": 10,
       "name": "B002_20 MC002 CNC-02 OP001 张三",
       "start": "2026-01-30 10:24:00",
       "end": "2026-01-30 12:30:00",
+      "duration_minutes": 126,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "B002_10",
+      "edge_type": "process",
       "custom_class": "priority-urgent overdue",
       "meta": {
+        "schedule_id": 10,
         "op_id": 8,
         "batch_id": "B002",
         "piece_id": null,
@@ -163,19 +207,28 @@
         "operator": "OP001 张三",
         "group_key": "MC002",
         "priority": "urgent",
+        "lock_status": "unlocked",
+        "duration_minutes": 126,
         "due_date": "2026-01-29",
-        "is_overdue": true
+        "is_overdue": true,
+        "edge_type": "process",
+        "dependency_from": "B002_10"
       }
     },
     {
       "id": "B102_10",
+      "schedule_id": 14,
       "name": "B102_10 MC002 CNC-02 OP001 张三",
       "start": "2026-01-30 12:30:00",
       "end": "2026-01-30 15:24:00",
+      "duration_minutes": 174,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "B102_05",
+      "edge_type": "process",
       "custom_class": "priority-normal",
       "meta": {
+        "schedule_id": 14,
         "op_id": 19,
         "batch_id": "B102",
         "piece_id": null,
@@ -190,19 +243,28 @@
         "operator": "OP001 张三",
         "group_key": "MC002",
         "priority": "normal",
+        "lock_status": "unlocked",
+        "duration_minutes": 174,
         "due_date": "2026-01-30",
-        "is_overdue": false
+        "is_overdue": false,
+        "edge_type": "process",
+        "dependency_from": "B102_05"
       }
     },
     {
       "id": "B101_05",
+      "schedule_id": 6,
       "name": "B101_05 MC003 钳工台 OP002 李四",
       "start": "2026-01-26 08:00:00",
       "end": "2026-01-26 12:06:00",
+      "duration_minutes": 246,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "",
+      "edge_type": "",
       "custom_class": "priority-urgent overdue",
       "meta": {
+        "schedule_id": 6,
         "op_id": 16,
         "batch_id": "B101",
         "piece_id": null,
@@ -217,19 +279,26 @@
         "operator": "OP002 李四",
         "group_key": "MC003",
         "priority": "urgent",
+        "lock_status": "unlocked",
+        "duration_minutes": 246,
         "due_date": "2026-01-27",
         "is_overdue": true
       }
     },
     {
       "id": "B001_10",
+      "schedule_id": 2,
       "name": "B001_10 MC003 钳工台 OP003 王五",
       "start": "2026-01-26 13:18:00",
       "end": "2026-01-26 15:24:00",
+      "duration_minutes": 126,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "B001_05",
+      "edge_type": "process",
       "custom_class": "priority-critical overdue",
       "meta": {
+        "schedule_id": 2,
         "op_id": 2,
         "batch_id": "B001",
         "piece_id": null,
@@ -244,19 +313,28 @@
         "operator": "OP003 王五",
         "group_key": "MC003",
         "priority": "critical",
+        "lock_status": "unlocked",
+        "duration_minutes": 126,
         "due_date": "2026-01-27",
-        "is_overdue": true
+        "is_overdue": true,
+        "edge_type": "process",
+        "dependency_from": "B001_05"
       }
     },
     {
       "id": "B002_10",
+      "schedule_id": 9,
       "name": "B002_10 MC003 钳工台 OP003 王五",
       "start": "2026-01-26 15:24:00",
       "end": "2026-01-27 08:42:00",
+      "duration_minutes": 1038,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "B002_05",
+      "edge_type": "process",
       "custom_class": "priority-urgent overdue",
       "meta": {
+        "schedule_id": 9,
         "op_id": 7,
         "batch_id": "B002",
         "piece_id": null,
@@ -271,19 +349,28 @@
         "operator": "OP003 王五",
         "group_key": "MC003",
         "priority": "urgent",
+        "lock_status": "unlocked",
+        "duration_minutes": 1038,
         "due_date": "2026-01-29",
-        "is_overdue": true
+        "is_overdue": true,
+        "edge_type": "process",
+        "dependency_from": "B002_05"
       }
     },
     {
       "id": "B102_05",
+      "schedule_id": 13,
       "name": "B102_05 MC003 钳工台 OP002 李四",
       "start": "2026-01-27 08:42:00",
       "end": "2026-01-29 09:00:00",
+      "duration_minutes": 2898,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "",
+      "edge_type": "",
       "custom_class": "priority-normal",
       "meta": {
+        "schedule_id": 13,
         "op_id": 18,
         "batch_id": "B102",
         "piece_id": null,
@@ -298,19 +385,26 @@
         "operator": "OP002 李四",
         "group_key": "MC003",
         "priority": "normal",
+        "lock_status": "unlocked",
+        "duration_minutes": 2898,
         "due_date": "2026-01-30",
         "is_overdue": false
       }
     },
     {
       "id": "B001_35",
+      "schedule_id": 4,
       "name": "B001_35 外协 外协-标印厂 外协/未分配",
       "start": "2026-01-29 10:42:00",
       "end": "2026-02-01 10:42:00",
+      "duration_minutes": 4320,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "B001_20",
+      "edge_type": "process",
       "custom_class": "priority-critical overdue",
       "meta": {
+        "schedule_id": 4,
         "op_id": 4,
         "batch_id": "B001",
         "piece_id": null,
@@ -325,19 +419,28 @@
         "operator": "外协/未分配",
         "group_key": "外协/未分配",
         "priority": "critical",
+        "lock_status": "unlocked",
+        "duration_minutes": 4320,
         "due_date": "2026-01-27",
-        "is_overdue": true
+        "is_overdue": true,
+        "edge_type": "process",
+        "dependency_from": "B001_20"
       }
     },
     {
       "id": "B001_40",
+      "schedule_id": 5,
       "name": "B001_40 外协 外协-总检厂 外协/未分配",
       "start": "2026-01-29 10:42:00",
       "end": "2026-02-01 10:42:00",
+      "duration_minutes": 4320,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "B001_35",
+      "edge_type": "process",
       "custom_class": "priority-critical overdue",
       "meta": {
+        "schedule_id": 5,
         "op_id": 5,
         "batch_id": "B001",
         "piece_id": null,
@@ -352,19 +455,28 @@
         "operator": "外协/未分配",
         "group_key": "外协/未分配",
         "priority": "critical",
+        "lock_status": "unlocked",
+        "duration_minutes": 4320,
         "due_date": "2026-01-27",
-        "is_overdue": true
+        "is_overdue": true,
+        "edge_type": "process",
+        "dependency_from": "B001_35"
       }
     },
     {
       "id": "B002_35",
+      "schedule_id": 11,
       "name": "B002_35 外协 外协-标印厂 外协/未分配",
       "start": "2026-01-30 12:30:00",
       "end": "2026-02-02 00:00:00",
+      "duration_minutes": 3570,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "B002_20",
+      "edge_type": "process",
       "custom_class": "priority-urgent overdue",
       "meta": {
+        "schedule_id": 11,
         "op_id": 9,
         "batch_id": "B002",
         "piece_id": null,
@@ -379,19 +491,28 @@
         "operator": "外协/未分配",
         "group_key": "外协/未分配",
         "priority": "urgent",
+        "lock_status": "unlocked",
+        "duration_minutes": 3570,
         "due_date": "2026-01-29",
-        "is_overdue": true
+        "is_overdue": true,
+        "edge_type": "process",
+        "dependency_from": "B002_20"
       }
     },
     {
       "id": "B002_40",
+      "schedule_id": 12,
       "name": "B002_40 外协 外协-总检厂 外协/未分配",
       "start": "2026-01-30 12:30:00",
       "end": "2026-02-02 00:00:00",
+      "duration_minutes": 3570,
       "progress": 0,
+      "lock_status": "unlocked",
       "dependencies": "B002_35",
+      "edge_type": "process",
       "custom_class": "priority-urgent overdue",
       "meta": {
+        "schedule_id": 12,
         "op_id": 10,
         "batch_id": "B002",
         "piece_id": null,
@@ -406,8 +527,12 @@
         "operator": "外协/未分配",
         "group_key": "外协/未分配",
         "priority": "urgent",
+        "lock_status": "unlocked",
+        "duration_minutes": 3570,
         "due_date": "2026-01-29",
-        "is_overdue": true
+        "is_overdue": true,
+        "edge_type": "process",
+        "dependency_from": "B002_35"
       }
     }
   ]
