@@ -78,6 +78,31 @@ def main() -> None:
         if append_calls:
             raise RuntimeError(f"APPEND 兜底不应写库，实际调用：{append_calls!r}")
 
+        # REPLACE 语义：即使预览行为 UNCHANGED，清空后也必须重建该行，避免静默丢数。
+        replace_calls = []
+        replace_state = {"replace_called": 0}
+
+        def _replace_existing_no_tx() -> None:
+            replace_state["replace_called"] += 1
+
+        replace_stats = execute_preview_rows_transactional(
+            conn,
+            mode=ImportMode.REPLACE,
+            preview_rows=[ImportPreviewRow(row_num=8, status=RowStatus.UNCHANGED, data={"id": "R1"}, message="unchanged in replace")],
+            existing_row_ids={"R1"},
+            replace_existing_no_tx=_replace_existing_no_tx,
+            row_id_getter=_row_id_getter,
+            apply_row_no_tx=lambda pr, existed: replace_calls.append((_row_id_getter(pr), existed)),
+            max_error_sample=10,
+        )
+        assert replace_state["replace_called"] == 1, replace_state
+        assert replace_stats.error_count == 0, replace_stats
+        assert replace_stats.skip_count == 0, replace_stats
+        assert replace_stats.update_count == 0, replace_stats
+        assert replace_stats.new_count == 1, replace_stats
+        if replace_calls != [("R1", False)]:
+            raise RuntimeError(f"REPLACE 下 UNCHANGED 行应重建写库，实际调用：{replace_calls!r}")
+
         print("OK")
     finally:
         try:

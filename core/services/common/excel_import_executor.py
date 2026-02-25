@@ -60,7 +60,8 @@ def execute_preview_rows_transactional(
             if pr.status == RowStatus.SKIP:
                 stats.skip_count += 1
                 continue
-            if pr.status == RowStatus.UNCHANGED:
+            # REPLACE 已清空历史数据，UNCHANGED 行也必须重写回库，不能直接跳过。
+            if pr.status == RowStatus.UNCHANGED and mode != ImportMode.REPLACE:
                 continue
 
             row_id = str(row_id_getter(pr) or "").strip()
