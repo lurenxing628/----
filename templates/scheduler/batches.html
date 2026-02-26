@@ -148,19 +148,21 @@
           <label for="schedulerBatchesSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索批次</label>
           <input id="schedulerBatchesSearchInput" data-table-search="batchesTable" placeholder="输入批次号、图号..." class="w-260">
         </div>
+        <span class="muted text-xs">仅当前页排序</span>
       </div>
       <form id="jsRunScheduleForm" method="post" action="{{ url_for('scheduler.run_schedule') }}">
-        <table id="batchesTable" class="table-sticky table-layout-fixed">
+        <div class="overflow-x-auto">
+        <table id="batchesTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1">
         <thead>
           <tr>
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选"></th>
-            <th class="w-140">批次号</th>
-            <th class="w-180">图号</th>
-            <th class="w-100 text-right">数量</th>
-            <th class="w-140">交期</th>
-            <th class="w-120">优先级</th>
-            <th class="w-140">齐套</th>
-            <th class="w-120">状态</th>
+            <th class="w-140" data-sort="text">批次号</th>
+            <th class="w-180" data-sort="text">图号</th>
+            <th class="w-100 text-right" data-sort="number">数量</th>
+            <th class="w-140" data-sort="date">交期</th>
+            <th class="w-120" data-sort="text">优先级</th>
+            <th class="w-140" data-sort="text">齐套</th>
+            <th class="w-120" data-sort="text">状态</th>
             <th class="w-120">操作</th>
           </tr>
         </thead>
@@ -186,6 +188,7 @@
           {% endfor %}
         </tbody>
       </table>
+        </div>
 
         {% if status == 'pending' %}
           <div class="form-row mt-3">

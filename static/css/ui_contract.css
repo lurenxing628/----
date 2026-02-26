@@ -952,3 +952,322 @@ table:not(.table) tr:hover td {
     display: block;
   }
 }
+
+/* ============================================================
+   Win7 单机 UI 改进补丁（暗色/表格/Toast/打印）
+   ============================================================ */
+
+html[data-theme="dark"] {
+  /* ---- V2 design tokens ---- */
+  --primary-color: #3b82f6;
+  --primary-hover: #60a5fa;
+  --bg-color: #0f172a;
+  --card-bg: #1e293b;
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --border-color: #334155;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+
+  /* ---- Shared contract tokens ---- */
+  --ui-bg: #0f172a;
+  --ui-card-bg: #1e293b;
+  --ui-text: #f1f5f9;
+  --ui-muted: #94a3b8;
+  --ui-border: #334155;
+  --ui-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --ui-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --ui-primary: #3b82f6;
+  --ui-primary-hover: #60a5fa;
+}
+
+html[data-theme="dark"] table:not(.table) th {
+  background: #1e293b;
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] table:not(.table) tr:hover td {
+  background: #1e293b;
+}
+
+html[data-theme="dark"] .table th {
+  background-color: #1e293b;
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .table tr:hover td {
+  background-color: #334155;
+}
+
+html[data-theme="dark"] input[type="file"]::file-selector-button,
+html[data-theme="dark"] input[type="file"]::-webkit-file-upload-button {
+  background: #334155;
+  color: #f1f5f9;
+  border-right-color: #475569;
+}
+
+html[data-theme="dark"] .card-header {
+  background: #162032;
+  border-bottom-color: #334155;
+}
+
+html[data-theme="dark"] .btn-secondary {
+  background: #1e293b;
+  border-color: #475569;
+  color: #f1f5f9;
+}
+
+html[data-theme="dark"] .btn-secondary:hover {
+  background: #334155;
+}
+
+html[data-theme="dark"] .btn-primary {
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .btn-primary:hover {
+  background: var(--ui-primary-hover);
+  border-color: var(--ui-primary-hover);
+}
+
+html[data-theme="dark"] .btn-success {
+  background: var(--ui-success);
+  border-color: var(--ui-success);
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .btn-success:hover {
+  filter: brightness(1.08);
+}
+
+html[data-theme="dark"] .btn-danger {
+  background: var(--ui-danger);
+  border-color: var(--ui-danger);
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .btn-danger:hover {
+  filter: brightness(1.08);
+}
+
+html[data-theme="dark"] .btn-ghost:hover {
+  background: #1e293b;
+  border-color: #475569;
+}
+
+html[data-theme="dark"] .manual-content {
+  background: #1e293b;
+}
+
+html[data-theme="dark"] .manual-toc {
+  background: #162032;
+}
+
+html[data-theme="dark"] .alert {
+  border-color: #334155;
+}
+
+html[data-theme="dark"] .alert-success {
+  background-color: #064e3b;
+  color: #a7f3d0;
+}
+
+html[data-theme="dark"] .alert-error {
+  background-color: #450a0a;
+  color: #fecaca;
+}
+
+html[data-theme="dark"] .alert-warning {
+  background-color: #451a03;
+  color: #fde68a;
+}
+
+html[data-theme="dark"] pre {
+  background: #0b1220;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] code {
+  background: #0b1220;
+  border-color: #334155;
+  color: #fca5a5;
+}
+
+html[data-theme="dark"] pre code {
+  background: transparent;
+  border: 0;
+  color: inherit;
+}
+
+html[data-theme="dark"] .info-line {
+  color: var(--ui-muted);
+}
+
+html[data-theme="dark"] .nav-card:hover {
+  background: #334155;
+}
+
+html[data-theme="dark"] .nav-card-title {
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .nav-card-desc {
+  color: var(--ui-muted);
+}
+
+html[data-theme="dark"] .bg-slate-50 {
+  background-color: #162032;
+}
+
+.sidebar-footnote {
+  padding: 1rem;
+  font-size: 0.75rem;
+  color: var(--ui-muted);
+  border-top: 1px solid var(--ui-border);
+}
+
+/* table header sticky (v1/v2) */
+.table-sticky th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+
+html[data-theme="dark"] .table-sticky th {
+  background: #1e293b;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.text-right {
+  text-align: right;
+}
+
+/* 首列冻结（需外层 overflow-x: auto） */
+.table-sticky-col td:first-child,
+.table-sticky-col th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #ffffff;
+}
+
+.table-sticky-col tbody tr:nth-child(even) td:first-child {
+  background: #fcfcfc;
+}
+
+.table-sticky-col tbody tr:hover td:first-child {
+  background: #f1f5f9;
+}
+
+html[data-theme="dark"] .table-sticky-col td:first-child,
+html[data-theme="dark"] .table-sticky-col th:first-child {
+  background: #1e293b;
+}
+
+html[data-theme="dark"] .table-sticky-col tbody tr:nth-child(even) td:first-child {
+  background: #162032;
+}
+
+html[data-theme="dark"] .table-sticky-col tbody tr:hover td:first-child {
+  background: #334155;
+}
+
+/* 表头交叉点（左上角）需更高层级 */
+.table-sticky-col th:first-child {
+  z-index: 3;
+}
+
+/* sticky + border 在老环境下易错位，用阴影做分割 */
+.table-sticky-col td:first-child::after,
+.table-sticky-col th:first-child::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -4px;
+  width: 4px;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.06), transparent);
+  pointer-events: none;
+}
+
+th[data-sort] {
+  user-select: none;
+}
+
+th[data-sort]::after {
+  content: " \2195";
+  opacity: 0.3;
+  font-size: 11px;
+}
+
+th[data-sort-dir="asc"]::after {
+  content: " \2191";
+  opacity: 0.8;
+}
+
+th[data-sort-dir="desc"]::after {
+  content: " \2193";
+  opacity: 0.8;
+}
+
+#aps-toast-container {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.aps-toast {
+  pointer-events: auto;
+  min-width: 220px;
+  max-width: 380px;
+  background: var(--ui-card-bg);
+  border: 1px solid var(--ui-border);
+  border-left: 4px solid var(--ui-primary);
+  box-shadow: var(--ui-shadow-md);
+  padding: 12px 16px;
+  border-radius: var(--ui-radius);
+  font-size: 13px;
+  color: var(--ui-text);
+  opacity: 0;
+  transform: translateX(40px);
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.aps-toast.show {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.aps-toast.toast-success {
+  border-left-color: var(--ui-success);
+}
+
+.aps-toast.toast-error {
+  border-left-color: var(--ui-danger);
+}
+
+.aps-toast.toast-warning {
+  border-left-color: var(--ui-warning);
+}
+
+@media print {
+  #aps-toast-container {
+    display: none !important;
+  }
+
+  .flash-card,
+  .flash-messages,
+  .alert {
+    display: none !important;
+  }
+}

@@ -51,6 +51,20 @@
     background: transparent !important;
   }
 
+  .table-sticky th,
+  .table-sticky-col th:first-child,
+  .table-sticky-col td:first-child {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    box-shadow: none !important;
+  }
+
+  .table-sticky-col td:first-child::after,
+  .table-sticky-col th:first-child::after {
+    display: none !important;
+  }
+
   a {
     color: #000000 !important;
     text-decoration: none !important;

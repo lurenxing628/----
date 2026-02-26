@@ -4,6 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title or "排产系统" }}</title>
+  <script>
+    (function () {
+      var theme = "light";
+      try {
+        theme = localStorage.getItem("aps_theme") || "";
+      } catch (_e0) {}
+      if (!theme) {
+        try {
+          var m = document.cookie.match(/(?:^|; )aps_theme=([^;]+)/);
+          if (m && m[1]) {
+            theme = decodeURIComponent(m[1]);
+          }
+        } catch (_e1) {}
+      }
+      if (theme !== "dark" && theme !== "light") {
+        theme = "light";
+      }
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/compatibility.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/ui_contract.css') }}">
@@ -37,6 +57,9 @@
             <button type="submit" class="btn btn-secondary btn-sm">切换</button>
           </noscript>
         </form>
+        <button type="button" id="apsThemeToggle" class="btn btn-ghost btn-sm">
+          <span id="apsThemeLabel">护眼</span>
+        </button>
       </div>
     </header>
 
@@ -53,6 +76,7 @@
 
     {% block content %}{% endblock %}
   </div>
+  <div id="aps-toast-container" aria-live="polite"></div>
   <script src="{{ url_for('static', filename='js/common.js') }}" defer></script>
   {% block extra_scripts %}{% endblock %}
 </body>

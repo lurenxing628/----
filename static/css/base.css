@@ -729,3 +729,89 @@ pre {
   border-radius: 8px;
   margin: 10px 0;
 }
+
+/* ============ Dark Theme (v1 patch) ============ */
+html[data-theme="dark"] body {
+  background: #0f172a;
+  color: #f1f5f9;
+}
+
+html[data-theme="dark"] .card {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+html[data-theme="dark"] nav {
+  background: #0f172a;
+}
+
+html[data-theme="dark"] nav a:hover {
+  background: #1e293b;
+}
+
+html[data-theme="dark"] th {
+  background: #1e293b;
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] tbody tr:nth-child(even) {
+  background: #162032;
+}
+
+html[data-theme="dark"] tbody tr:hover {
+  background: #1e293b;
+}
+
+html[data-theme="dark"] input:not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]),
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+html[data-theme="dark"] .flash-card.flash-success {
+  background: #064e3b;
+  border-color: #065f46;
+  color: #a7f3d0;
+}
+
+html[data-theme="dark"] .flash-card.flash-error {
+  background: #450a0a;
+  border-color: #7f1d1d;
+  color: #fecaca;
+}
+
+html[data-theme="dark"] .flash-card.flash-warning {
+  background: #451a03;
+  border-color: #78350f;
+  color: #fde68a;
+}
+
+html[data-theme="dark"] .stat-card {
+  background: #1e293b;
+  border-color: #334155;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+}
+
+html[data-theme="dark"] pre {
+  background: #1e293b;
+}
+
+html[data-theme="dark"] .empty-state-icon {
+  background: #334155;
+}
+
+html[data-theme="dark"] .row-internal {
+  background: #162032;
+}
+
+html[data-theme="dark"] .row-external {
+  background: #1c1410;
+}
+
+html[data-theme="dark"] :where(button[type="submit"]:not(.btn), input[type="submit"]:not(.btn)) {
+  background: var(--aps-primary);
+  border-color: var(--aps-primary);
+  color: #fff;
+}

@@ -117,7 +117,10 @@
 
   <div class="card">
     <h3 class="section-title">排产策略配置</h3>
-    <form method="post" action="{{ url_for('scheduler.update_config') }}">
+    <form method="post" action="{{ url_for('scheduler.update_config') }}"
+          data-autosave="true"
+          data-autosave-key="scheduler-config-main"
+          data-autosave-clear-on-success="1">
       <div class="param-group">
         <div class="param-group-title">策略与算法</div>
         <div class="inline-flex-wrap items-end gap-12">

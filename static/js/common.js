@@ -106,6 +106,159 @@
     };
   }
 
+  function cssEscapeCompat(s) {
+    try {
+      if (window.CSS && typeof window.CSS.escape === "function") {
+        return window.CSS.escape(String(s));
+      }
+    } catch (_e0) {}
+    return String(s).replace(/[^a-zA-Z0-9_\\-]/g, "\\$&");
+  }
+
+  function serializeForm(form) {
+    var data = {};
+    if (!form) {
+      return data;
+    }
+    var inputs = form.querySelectorAll("input, select, textarea");
+    for (var i = 0; i < inputs.length; i++) {
+      var el = inputs[i];
+      if (!el || el.disabled) {
+        continue;
+      }
+      var name = el.name;
+      var type = String(el.type || "").toLowerCase();
+      if (!name || type === "hidden" || type === "submit" || type === "button") {
+        continue;
+      }
+      if (type === "checkbox") {
+        data["__cb__" + name] = el.checked ? "1" : "0";
+      } else if (type === "radio") {
+        if (el.checked) {
+          data[name] = el.value;
+        }
+      } else {
+        data[name] = el.value;
+      }
+    }
+    return data;
+  }
+
+  function restoreForm(form, saved) {
+    if (!form || !saved) {
+      return;
+    }
+
+    Object.keys(saved).forEach(function (k) {
+      if (k.indexOf("__cb__") !== 0) {
+        return;
+      }
+      var name = k.slice(6);
+      var checked = String(saved[k]) === "1";
+      var cbs = form.querySelectorAll('input[type="checkbox"][name="' + cssEscapeCompat(name) + '"]');
+      cbs.forEach(function (cb) {
+        cb.checked = checked;
+        try {
+          cb.dispatchEvent(new Event("change", { bubbles: true }));
+        } catch (_e1) {}
+      });
+    });
+
+    Object.keys(saved).forEach(function (name) {
+      if (name.indexOf("__cb__") === 0) {
+        return;
+      }
+      var val = saved[name];
+      var els = form.querySelectorAll('[name="' + cssEscapeCompat(name) + '"]');
+      els.forEach(function (el) {
+        if (!el || el.disabled) {
+          return;
+        }
+        var tag = String(el.tagName || "").toUpperCase();
+        var type = String(el.type || "").toLowerCase();
+        if (type === "radio") {
+          el.checked = String(el.value) === String(val);
+          try {
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+          } catch (_e2) {}
+          return;
+        }
+        if (tag === "SELECT") {
+          el.value = String(val);
+          try {
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+          } catch (_e3) {}
+          return;
+        }
+        if (tag === "TEXTAREA" || tag === "INPUT") {
+          el.value = String(val);
+          try {
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+          } catch (_e4) {}
+          try {
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+          } catch (_e5) {}
+        }
+      });
+    });
+  }
+
+  function normalizeColSpan(v) {
+    var n = parseInt(v, 10);
+    if (!isFinite(n) || n < 1) {
+      return 1;
+    }
+    return n;
+  }
+
+  function getLogicalCellIndex(cell) {
+    if (!cell || !cell.parentNode || !cell.parentNode.children) {
+      return 0;
+    }
+    var siblings = cell.parentNode.children;
+    var logical = 0;
+    for (var i = 0; i < siblings.length; i++) {
+      var c = siblings[i];
+      if (c === cell) {
+        return logical;
+      }
+      logical += normalizeColSpan(c.getAttribute ? c.getAttribute("colspan") : 1);
+    }
+    return logical;
+  }
+
+  function getCellByLogicalIndex(row, logicalIdx) {
+    if (!row || !row.children || logicalIdx < 0) {
+      return null;
+    }
+    var acc = 0;
+    for (var i = 0; i < row.children.length; i++) {
+      var c = row.children[i];
+      var span = normalizeColSpan(c.getAttribute ? c.getAttribute("colspan") : 1);
+      if (logicalIdx >= acc && logicalIdx < acc + span) {
+        return c;
+      }
+      acc += span;
+    }
+    return null;
+  }
+
+  function getOrCreateTabToken() {
+    var key = "aps_tab_token:v1";
+    var token = "";
+    try {
+      token = String(sessionStorage.getItem(key) || "").trim();
+    } catch (_e0) {}
+    if (token) {
+      return token;
+    }
+    token = String(Date.now()) + "-" + String(Math.random()).slice(2, 10);
+    try {
+      sessionStorage.setItem(key, token);
+    } catch (_e1) {}
+    return token;
+  }
+
   function removeNodeWithFade(el, delayMs) {
     setTimeout(function () {
       el.style.opacity = "0";
@@ -203,6 +356,25 @@
       });
     }
   });
+
+  /* --- 1.5 主题切换（初始化已在 base head 内联脚本完成） --- */
+  var themeToggleBtn = document.getElementById("apsThemeToggle");
+  var themeLabel = document.getElementById("apsThemeLabel");
+  if (themeToggleBtn && themeLabel) {
+    var currentTheme = document.documentElement.getAttribute("data-theme") || "light";
+    themeLabel.textContent = currentTheme === "dark" ? "日间" : "护眼";
+    themeToggleBtn.addEventListener("click", function () {
+      var nextTheme = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", nextTheme);
+      try {
+        localStorage.setItem("aps_theme", nextTheme);
+      } catch (_e3) {}
+      try {
+        document.cookie = "aps_theme=" + encodeURIComponent(nextTheme) + "; path=/; max-age=31536000; samesite=lax";
+      } catch (_e4) {}
+      themeLabel.textContent = nextTheme === "dark" ? "日间" : "护眼";
+    });
+  }
 
   /* --- 2. 确认对话框：提交路径统一判定 + 去重 --- */
   // 回归契约关键字（tests/regression_frontend_common_interactions.py）
@@ -565,6 +737,249 @@
     }
   });
 
+  /* --- 6.5 表单草稿自动保存（仅 data-autosave=true） --- */
+  document.querySelectorAll('form[data-autosave="true"]').forEach(function (form) {
+    var autosaveKey = String(form.getAttribute("data-autosave-key") || "").trim();
+    if (!autosaveKey) {
+      return;
+    }
+    var key = "aps_draft:v1:" + autosaveKey;
+    var submitMarkKey = "aps_draft_submit:v1:" + autosaveKey;
+    var tabToken = getOrCreateTabToken();
+    var clearOnSuccess = String(form.getAttribute("data-autosave-clear-on-success") || "1").trim() !== "0";
+    function snapshotsEqual(a, b) {
+      try {
+        return JSON.stringify(a || {}) === JSON.stringify(b || {});
+      } catch (_e5) {
+        return false;
+      }
+    }
+
+    function hasSuccessFlash() {
+      return !!document.querySelector(".flash-card.flash-success, .alert.alert-success");
+    }
+
+    function hasErrorFlash() {
+      return !!document.querySelector(".flash-card.flash-error, .alert.alert-error");
+    }
+
+    function hasWarningFlash() {
+      return !!document.querySelector(".flash-card.flash-warning, .alert.alert-warning");
+    }
+
+    var submitMarkTs = 0;
+    var submitMarkToken = "";
+    try {
+      var rawSubmitMark = String(sessionStorage.getItem(submitMarkKey) || "").trim();
+      if (rawSubmitMark.indexOf("|") > 0) {
+        var parts = rawSubmitMark.split("|");
+        submitMarkTs = Number(parts[0] || 0);
+        submitMarkToken = String(parts[1] || "");
+      } else {
+        submitMarkTs = Number(rawSubmitMark || 0);
+        submitMarkToken = "";
+      }
+    } catch (_e6) {}
+
+    var submitOwnedByCurrentTab = !submitMarkToken || submitMarkToken === tabToken;
+    if (submitMarkTs > 0 && submitOwnedByCurrentTab) {
+      var elapsed = Date.now() - submitMarkTs;
+      var hasSuccess = hasSuccessFlash();
+      var hasError = hasErrorFlash();
+      var hasWarning = hasWarningFlash();
+      var currentSnapshot = serializeForm(form);
+      var draftSnapshot = null;
+      try {
+        draftSnapshot = JSON.parse(localStorage.getItem(key) || "null");
+      } catch (_e7) {
+        draftSnapshot = null;
+      }
+      var canClearDraft = clearOnSuccess
+        && hasSuccess
+        && !hasError
+        && snapshotsEqual(draftSnapshot, currentSnapshot);
+      if (canClearDraft) {
+        try {
+          localStorage.removeItem(key);
+        } catch (_e8) {}
+      }
+      if (hasSuccess || hasError || hasWarning || elapsed > 10 * 60 * 1000) {
+        try {
+          sessionStorage.removeItem(submitMarkKey);
+        } catch (_e9) {}
+      }
+    }
+
+    var saveDraft = debounce(function () {
+      try {
+        localStorage.setItem(key, JSON.stringify(serializeForm(form)));
+      } catch (_e10) {}
+    }, 1000);
+
+    form.addEventListener("input", saveDraft, true);
+    form.addEventListener("change", saveDraft, true);
+    form.addEventListener("submit", function () {
+      try {
+        localStorage.setItem(key, JSON.stringify(serializeForm(form)));
+      } catch (_e11) {}
+      try {
+        sessionStorage.setItem(submitMarkKey, String(Date.now()) + "|" + tabToken);
+      } catch (_e12) {}
+    });
+
+    var saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(key) || "null");
+    } catch (_e13) {
+      saved = null;
+    }
+    if (saved && Object.keys(saved).length > 0) {
+      var notice = document.createElement("div");
+      notice.className = "flash-card flash-warning alert alert-warning";
+      notice.innerHTML = '检测到未保存的草稿。'
+        + ' <button type="button" class="btn btn-sm btn-secondary" data-draft-action="restore">恢复草稿</button>'
+        + ' <button type="button" class="btn btn-sm btn-ghost" data-draft-action="clear">清除</button>';
+      if (form.parentNode) {
+        form.parentNode.insertBefore(notice, form);
+      }
+      var restoreBtn = notice.querySelector('[data-draft-action="restore"]');
+      var clearBtn = notice.querySelector('[data-draft-action="clear"]');
+      if (restoreBtn) {
+        restoreBtn.addEventListener("click", function () {
+          restoreForm(form, saved);
+          try {
+            localStorage.removeItem(key);
+          } catch (_e14) {}
+          try {
+            sessionStorage.removeItem(submitMarkKey);
+          } catch (_e15) {}
+          if (notice.parentNode) {
+            notice.parentNode.removeChild(notice);
+          }
+        });
+      }
+      if (clearBtn) {
+        clearBtn.addEventListener("click", function () {
+          try {
+            localStorage.removeItem(key);
+          } catch (_e16) {}
+          try {
+            sessionStorage.removeItem(submitMarkKey);
+          } catch (_e17) {}
+          if (notice.parentNode) {
+            notice.parentNode.removeChild(notice);
+          }
+        });
+      }
+    }
+  });
+
+  /* --- 6.6 表头点击排序（严格 opt-in） --- */
+  document.querySelectorAll('table[data-sort-enabled="1"] th[data-sort]').forEach(function (th) {
+    th.style.cursor = "pointer";
+    th.title = "点击排序";
+    th.addEventListener("click", function () {
+      var table = th.closest("table");
+      if (!table || table.getAttribute("data-sort-enabled") !== "1") {
+        return;
+      }
+      if (table.querySelector('select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])')) {
+        return;
+      }
+      var tbody = table.querySelector("tbody");
+      if (!tbody) {
+        return;
+      }
+      if (tbody.rows.length > 300) {
+        if (window.APS_Toast) {
+          window.APS_Toast("当前页数据较多，请使用筛选或分页", "warning", 2500);
+        }
+        return;
+      }
+      var logicalColIdx = getLogicalCellIndex(th);
+      var asc = th.getAttribute("data-sort-dir") !== "asc";
+      th.parentNode.querySelectorAll("th[data-sort]").forEach(function (x) {
+        x.removeAttribute("data-sort-dir");
+      });
+      th.setAttribute("data-sort-dir", asc ? "asc" : "desc");
+      var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+      var type = th.getAttribute("data-sort");
+      var decorated = rows.map(function (row) {
+        var cell = getCellByLogicalIndex(row, logicalColIdx);
+        var raw = String((cell && cell.textContent) || "").trim();
+        var key = raw;
+        var invalid = false;
+        if (type === "number") {
+          var num = parseFloat(raw);
+          if (isFinite(num)) {
+            key = num;
+          } else {
+            key = 0;
+            invalid = true;
+          }
+        } else if (type === "date") {
+          var ts = Date.parse(raw);
+          if (isFinite(ts)) {
+            key = ts;
+          } else {
+            key = 0;
+            invalid = true;
+          }
+        }
+        return { row: row, key: key, raw: raw, invalid: invalid };
+      });
+      decorated.sort(function (a, b) {
+        // 空值/非法值统一置底，避免在升序下跑到最前（如空交期=1970 问题）。
+        if (type !== "text" && a.invalid !== b.invalid) {
+          return a.invalid ? 1 : -1;
+        }
+        if (type === "text") {
+          return asc
+            ? String(a.raw).localeCompare(String(b.raw), "zh")
+            : String(b.raw).localeCompare(String(a.raw), "zh");
+        }
+        return asc ? (a.key - b.key) : (b.key - a.key);
+      });
+      var frag = document.createDocumentFragment();
+      decorated.forEach(function (it) {
+        frag.appendChild(it.row);
+      });
+      tbody.appendChild(frag);
+    });
+  });
+
+  /* --- 6.7 Toast API（纯前端提示） --- */
+  window.APS_Toast = function (msg, type, duration) {
+    type = type || "info";
+    duration = duration || 3000;
+    var container = document.getElementById("aps-toast-container");
+    if (!container) {
+      return;
+    }
+    var el = document.createElement("div");
+    el.className = "aps-toast" + (type !== "info" ? " toast-" + type : "");
+    el.textContent = msg;
+    container.appendChild(el);
+    while (container.children.length > 4) {
+      container.removeChild(container.firstElementChild);
+    }
+    void el.offsetWidth;
+    el.classList.add("show");
+    setTimeout(function () {
+      el.classList.remove("show");
+      el.addEventListener("transitionend", function () {
+        if (el.parentNode) {
+          el.parentNode.removeChild(el);
+        }
+      }, { once: true });
+      setTimeout(function () {
+        if (el.parentNode) {
+          el.parentNode.removeChild(el);
+        }
+      }, 500);
+    }, duration);
+  };
+
   /* --- 7. 原生页面预取（白名单 GET） --- */
   if (NATIVE_PREFETCH_ENABLED && document.head) {
     var prefetched = {};
@@ -580,7 +995,7 @@
           link.href = pathname;
           link.as = "document";
           document.head.appendChild(link);
-        } catch (_e3) {
+        } catch (_e13) {
           // ignore prefetch failures
         }
       }, 1200);
@@ -604,12 +1019,12 @@
             }
             try {
               navObserver.unobserve(a);
-            } catch (_e4) {
+            } catch (_e14) {
               // ignore
             }
           });
         }, { root: null, rootMargin: "120px 0px", threshold: 0.01 });
-      } catch (_e5) {
+      } catch (_e15) {
         navObserver = null;
       }
     }
@@ -631,7 +1046,7 @@
       if (navObserver) {
         try {
           navObserver.observe(a);
-        } catch (_e6) {
+        } catch (_e16) {
           // ignore
         }
       } else {

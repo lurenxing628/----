@@ -112,19 +112,21 @@
           <label for="batchesManageSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索批次</label>
           <input id="batchesManageSearchInput" data-table-search="batchesManageTable" placeholder="输入批次号、图号..." class="w-260">
         </div>
+        <span class="muted text-xs">仅当前页排序</span>
       </div>
       <form method="post" action="{{ url_for('scheduler.bulk_update_batches') }}">
-        <table id="batchesManageTable" class="table-sticky table-layout-fixed">
+        <div class="overflow-x-auto">
+        <table id="batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1">
           <thead>
             <tr>
               <th class="w-60"><input type="checkbox" class="js-select-all" title="全选"></th>
-              <th class="w-140">批次号</th>
-              <th class="w-180">图号</th>
-              <th class="w-100 text-right">数量</th>
-              <th class="w-140">交期</th>
-              <th class="w-120">优先级</th>
-              <th class="w-140">齐套</th>
-              <th class="w-120">状态</th>
+              <th class="w-140" data-sort="text">批次号</th>
+              <th class="w-180" data-sort="text">图号</th>
+              <th class="w-100 text-right" data-sort="number">数量</th>
+              <th class="w-140" data-sort="date">交期</th>
+              <th class="w-120" data-sort="text">优先级</th>
+              <th class="w-140" data-sort="text">齐套</th>
+              <th class="w-120" data-sort="text">状态</th>
               <th class="w-120">操作</th>
             </tr>
           </thead>
@@ -146,6 +148,7 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
 
         <div class="action-bar mt-3">
           {{ ui.button('复制所选批次', 'secondary', 'md', type_attr='submit', formaction=url_for('scheduler.bulk_copy_batches'), confirm='将把所选批次逐个复制一份（批次号末尾数字自动 +1，其它尽量保持一致）。确定继续？') }}

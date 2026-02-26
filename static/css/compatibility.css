@@ -33,6 +33,14 @@ button, input, select, textarea {
   background: transparent;
 }
 
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
 /* focus 视觉统一 */
 button:focus:not(:focus-visible) {
   outline: none;
