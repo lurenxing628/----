@@ -123,12 +123,14 @@
                 </label>
               </td>
               <td>
-                {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='linkform_' ~ loop.index0) }}
-                <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}" class="d-inline ml-2"
-                      data-confirm="确认解除该关联？">
-                  <input type="hidden" name="machine_id" value="{{ m.machine_id }}">
-                  {{ ui.button('解除关联', 'danger', 'sm', type_attr='submit') }}
-                </form>
+                <div class="table-actions">
+                  {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='linkform_' ~ loop.index0) }}
+                  <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}"
+                        data-confirm="确认解除该关联？">
+                    <input type="hidden" name="machine_id" value="{{ m.machine_id }}">
+                    {{ ui.button('解除关联', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}

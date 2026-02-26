@@ -148,12 +148,14 @@
                 </td>
                 <td>{{ r.ready_status or '-' }}</td>
                 <td>
-                  <button type="submit" form="bmform_{{ loop.index0 }}" class="btn btn-primary btn-sm">保存</button>
-                  <form method="post" action="{{ url_for('material.batch_material_delete', bm_id=r.id) }}" class="d-inline ml-2"
-                        data-confirm="确认删除该物料需求？">
-                    <input type="hidden" name="batch_id" value="{{ batch.batch_id }}">
-                    <button type="submit" class="btn btn-danger btn-sm">删除</button>
-                  </form>
+                  <div class="table-actions">
+                    <button type="submit" form="bmform_{{ loop.index0 }}" class="btn btn-primary btn-sm">保存</button>
+                    <form method="post" action="{{ url_for('material.batch_material_delete', bm_id=r.id) }}"
+                          data-confirm="确认删除该物料需求？">
+                      <input type="hidden" name="batch_id" value="{{ batch.batch_id }}">
+                      <button type="submit" class="btn btn-danger btn-sm">删除</button>
+                    </form>
+                  </div>
                 </td>
               </tr>
             {% endfor %}

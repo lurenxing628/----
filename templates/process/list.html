@@ -67,7 +67,7 @@
             <th class="w-220">名称</th>
             <th>工艺路线</th>
             <th class="w-120">解析状态</th>
-            <th class="w-120">操作</th>
+            <th class="w-160">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -87,12 +87,13 @@
               </td>
               <td>{{ r.route_parsed_zh }}</td>
               <td>
-                <a href="{{ url_for('process.part_detail', part_no=r.part_no) }}" class="table-action-link">查看/编辑</a>
-                <span class="muted">｜</span>
-                <form method="post" action="{{ url_for('process.delete_part', part_no=r.part_no) }}" class="d-inline"
-                      data-confirm="确定删除 {{ r.part_no }} 吗？如果已被批次引用会删除失败。">
-                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
-                </form>
+                <div class="table-actions">
+                  <a href="{{ url_for('process.part_detail', part_no=r.part_no) }}" class="table-action-link">查看/编辑</a>
+                  <form method="post" action="{{ url_for('process.delete_part', part_no=r.part_no) }}"
+                        data-confirm="确定删除 {{ r.part_no }} 吗？如果已被批次引用会删除失败。">
+                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}

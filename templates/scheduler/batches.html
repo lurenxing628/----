@@ -143,6 +143,12 @@
     {% endif %}
 
     {% if batches and batches|length > 0 %}
+      {% for r in batches %}
+        <form id="batchDeleteForm_{{ loop.index0 }}" method="post" action="{{ url_for('scheduler.delete_batch', batch_id=r.batch_id) }}" class="d-none"
+              data-confirm="确定删除批次 {{ r.batch_id }} 吗？将级联删除批次工序与排程记录（若存在）。">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+        </form>
+      {% endfor %}
       <div class="form-row mb-2">
         <div class="form-field">
           <label for="schedulerBatchesSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索批次</label>
@@ -157,13 +163,13 @@
           <tr>
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选"></th>
             <th class="w-140" data-sort="text">批次号</th>
-            <th class="w-180" data-sort="text">图号</th>
+            <th class="w-150" data-sort="text">图号</th>
             <th class="w-100 text-right" data-sort="number">数量</th>
             <th class="w-140" data-sort="date">交期</th>
             <th class="w-120" data-sort="text">优先级</th>
-            <th class="w-140" data-sort="text">齐套</th>
+            <th class="w-120" data-sort="text">齐套</th>
             <th class="w-120" data-sort="text">状态</th>
-            <th class="w-120">操作</th>
+            <th class="w-160">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -183,7 +189,12 @@
               <td>{{ r.priority_zh }}</td>
               <td>{{ r.ready_status_zh }}</td>
               <td>{{ r.status_zh }}</td>
-              <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}" class="table-action-link">查看/编辑</a></td>
+              <td>
+                <div class="table-actions">
+                  <a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}" class="table-action-link">查看/编辑</a>
+                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit', form='batchDeleteForm_' ~ loop.index0) }}
+                </div>
+              </td>
             </tr>
           {% endfor %}
         </tbody>

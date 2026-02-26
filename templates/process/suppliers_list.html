@@ -75,7 +75,7 @@
             <th class="w-120">默认周期（天）</th>
             <th class="w-120">状态</th>
             <th>备注</th>
-            <th class="w-160">操作</th>
+            <th class="w-220">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -94,12 +94,13 @@
               <td>{{ r.status_zh }}</td>
               <td>{{ r.remark or '-' }}</td>
               <td>
-                <a href="{{ url_for('process.supplier_detail', supplier_id=r.supplier_id) }}" class="table-action-link">查看/编辑</a>
-                <span class="muted">｜</span>
-                <form method="post" action="{{ url_for('process.delete_supplier', supplier_id=r.supplier_id) }}" class="d-inline"
-                      data-confirm="确认删除供应商 {{ r.supplier_id }} 吗？">
-                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
-                </form>
+                <div class="table-actions">
+                  <a href="{{ url_for('process.supplier_detail', supplier_id=r.supplier_id) }}" class="table-action-link">查看/编辑</a>
+                  <form method="post" action="{{ url_for('process.delete_supplier', supplier_id=r.supplier_id) }}"
+                        data-confirm="确认删除供应商 {{ r.supplier_id }} 吗？">
+                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}

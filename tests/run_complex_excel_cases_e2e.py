@@ -197,7 +197,6 @@ def create_test_app(*, repo_root: str, db_path: str, log_dir: str, backup_dir: s
     - 保留：错误处理、UI overlay、蓝图路由、每请求 DB 连接、OperationLogs
     """
     from flask import Flask, g, request
-    from markupsafe import Markup
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.logging import OperationLogger
@@ -231,7 +230,8 @@ def create_test_app(*, repo_root: str, db_path: str, log_dir: str, backup_dir: s
 
     # 与正式 app.create_app() 对齐：JSON 输出过滤器（确保中文可读）
     def tojson_zh(value, indent: int = 2):
-        return Markup(json.dumps(value, ensure_ascii=False, indent=indent, default=str))
+        # 返回普通字符串，让 Jinja autoescape 生效（避免 XSS 反模式：Markup(json.dumps(...))）
+        return json.dumps(value, ensure_ascii=False, indent=indent, default=str)
 
     app.jinja_env.filters["tojson_zh"] = tojson_zh
 

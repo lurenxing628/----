@@ -163,10 +163,12 @@
                 {% endif %}
               </td>
               <td>
-                <form method="post" action="{{ url_for('system.logs_delete') }}" data-confirm="确认删除该日志？删除后不可恢复。">
-                  <input type="hidden" name="log_id" value="{{ r.id }}">
-                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
-                </form>
+                <div class="table-actions">
+                  <form method="post" action="{{ url_for('system.logs_delete') }}" data-confirm="确认删除该日志？删除后不可恢复。">
+                    <input type="hidden" name="log_id" value="{{ r.id }}">
+                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}

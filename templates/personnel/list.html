@@ -82,7 +82,7 @@
             <th class="w-160">姓名</th>
             <th class="w-120">状态</th>
             <th>可操作设备</th>
-            <th class="w-120">操作</th>
+            <th class="w-160">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -102,12 +102,13 @@
                 {% endif %}
               </td>
               <td>
-                <a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}" class="table-action-link">查看/编辑</a>
-                <span class="muted">｜</span>
-                <form method="post" action="{{ url_for('personnel.delete_operator', operator_id=r.operator_id) }}" class="d-inline"
-                      data-confirm="确定删除 {{ r.operator_id }} 吗？如果已参与排产则无法删除，建议改为「停用」。">
-                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
-                </form>
+                <div class="table-actions">
+                  <a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}" class="table-action-link">查看/编辑</a>
+                  <form method="post" action="{{ url_for('personnel.delete_operator', operator_id=r.operator_id) }}"
+                        data-confirm="确定删除 {{ r.operator_id }} 吗？如果已参与排产则无法删除，建议改为「停用」。">
+                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}

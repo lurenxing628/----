@@ -48,9 +48,14 @@ def iter_template_files(repo_root: str) -> List[str]:
 
 
 def scan_inline_event_jinja(repo_root: str) -> List[Tuple[str, int, str]]:
-    # 仅匹配 HTML attribute 形态：空白 + onXxx= + 引号 + ...{{...}}
-    pat_dq = re.compile(r'\son[a-zA-Z]+\s*=\s*"[^"]*\{\{')
-    pat_sq = re.compile(r"\son[a-zA-Z]+\s*=\s*'[^']*\{\{")
+    # 仅匹配 HTML attribute 形态：onXxx= + 引号 + ...{{...}}
+    #
+    # 注意：不能强依赖“前导空白”，因为模板里常见形态包括：
+    # - {% if cond %}onclick="{{ ... }}"{% endif %}  （前导是 %}）
+    # - <button onclick="{{ ... }}">             （前导是 < 或行首）
+    # 这里用“非标识符边界”兜底：前一字符不是 [\\w-]。
+    pat_dq = re.compile(r'(?<![\w-])on[a-zA-Z]+\s*=\s*"[^"]*\{\{')
+    pat_sq = re.compile(r"(?<![\w-])on[a-zA-Z]+\s*=\s*'[^']*\{\{")
 
     hits: List[Tuple[str, int, str]] = []
     for fpath in iter_template_files(repo_root):

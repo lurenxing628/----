@@ -45,20 +45,40 @@
         <a href="{{ url_for('reports.index') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-chart"/></svg> 报表</a>
         <a href="{{ url_for('system.backup_page') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-settings"/></svg> 系统</a>
       </nav>
-      <div class="header-info">
-        <form action="{{ url_for('system.ui_mode_set') }}" method="POST" class="inline-flex-wrap items-center">
+      <div class="header-info aps-header-controls">
+        <form action="{{ url_for('system.ui_mode_set') }}" method="POST" class="inline-flex-wrap items-center aps-mode-picker">
           <input type="hidden" name="next" value="{{ request.full_path }}">
-          <label for="baseUiModeSelect" class="muted">界面</label>
-          <select id="baseUiModeSelect" name="mode" class="w-120" data-auto-submit="1">
-            <option value="v1" {% if ui_mode == 'v1' %}selected{% endif %}>经典</option>
-            <option value="v2" {% if ui_mode == 'v2' %}selected{% endif %}>现代</option>
-          </select>
-          <noscript>
-            <button type="submit" class="btn btn-secondary btn-sm">切换</button>
-          </noscript>
+          <span class="muted aps-mode-label">界面</span>
+          <div class="aps-mode-seg" role="group" aria-label="界面模式">
+            <button
+              type="submit"
+              name="mode"
+              value="v1"
+              class="aps-mode-seg-btn {% if ui_mode == 'v1' %}is-active{% endif %}"
+              aria-pressed="{% if ui_mode == 'v1' %}true{% else %}false{% endif %}"
+            >经典</button>
+            <button
+              type="submit"
+              name="mode"
+              value="v2"
+              class="aps-mode-seg-btn {% if ui_mode == 'v2' %}is-active{% endif %}"
+              aria-pressed="{% if ui_mode == 'v2' %}true{% else %}false{% endif %}"
+            >现代</button>
+          </div>
         </form>
-        <button type="button" id="apsThemeToggle" class="btn btn-ghost btn-sm">
-          <span id="apsThemeLabel">护眼</span>
+        <button
+          type="button"
+          id="apsThemeToggle"
+          class="aps-theme-switch btn-sm"
+          role="switch"
+          aria-pressed="false"
+          aria-checked="false"
+          aria-label="切换护眼模式"
+        >
+          <span class="aps-theme-switch-track" aria-hidden="true">
+            <span class="aps-theme-switch-thumb"></span>
+          </span>
+          <span id="apsThemeLabel" class="aps-theme-switch-text">护眼关</span>
         </button>
       </div>
     </header>

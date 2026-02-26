@@ -8,16 +8,14 @@
   type: primary (default) | secondary | danger | success | ghost
   size: sm | md (default) | lg
   icon: 图标 ID（不需要加 #）
-  onclick: JS 事件
   class: 额外类名
   type_attr: submit | button (default)
   disabled: bool
 #}
-{% macro button(text, type='primary', size='md', icon=None, onclick=None, class='', type_attr='button', disabled=False, form=None, formaction=None, confirm=None, element_id=None) %}
+{% macro button(text, type='primary', size='md', icon=None, class='', type_attr='button', disabled=False, form=None, formaction=None, confirm=None, element_id=None) %}
 <button type="{{ type_attr }}"
         class="btn btn-{{ type }} btn-{{ size }} {{ class }} {% if icon %}has-icon{% endif %}"
         {% if element_id %}id="{{ element_id }}"{% endif %}
-        {% if onclick %}onclick="{{ onclick }}"{% endif %}
         {% if disabled %}disabled{% endif %}
         {% if form %}form="{{ form }}"{% endif %}
         {% if formaction %}formaction="{{ formaction }}"{% endif %}

@@ -100,11 +100,13 @@
               </td>
               <td><input name="remark" value="{{ m.remark or '' }}" form="mform_{{ loop.index0 }}" class="w-220"></td>
               <td>
-                <button type="submit" class="btn btn-primary btn-sm" form="mform_{{ loop.index0 }}">保存</button>
-                <form method="post" action="{{ url_for('material.materials_delete', material_id=m.material_id) }}" class="d-inline"
-                      data-confirm="确认删除物料 {{ m.material_id }}？若被批次物料需求引用将删除失败/或级联删除。">
-                  <button type="submit" class="btn btn-danger btn-sm ml-2">删除</button>
-                </form>
+                <div class="table-actions">
+                  <button type="submit" class="btn btn-primary btn-sm" form="mform_{{ loop.index0 }}">保存</button>
+                  <form method="post" action="{{ url_for('material.materials_delete', material_id=m.material_id) }}"
+                        data-confirm="确认删除物料 {{ m.material_id }}？若被批次物料需求引用将删除失败/或级联删除。">
+                    <button type="submit" class="btn btn-danger btn-sm">删除</button>
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}

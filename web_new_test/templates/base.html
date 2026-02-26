@@ -82,19 +82,41 @@
         <div class="main-content">
             <header class="top-header">
                 <h2 style="font-size: 1.125rem; font-weight: 600;">{% block page_title %}{{ title or 'APS 系统' }}{% endblock %}</h2>
-                <div class="user-info text-muted" style="display:flex; align-items:center; gap:12px;">
-                    <form action="{{ url_for('system.ui_mode_set') }}" method="POST" style="display:flex; align-items:center; gap:6px;">
+                <div class="user-info text-muted aps-header-controls">
+                    <form action="{{ url_for('system.ui_mode_set') }}" method="POST" class="aps-mode-picker">
                         <input type="hidden" name="next" value="{{ request.full_path }}">
-                        <span class="text-muted">界面</span>
-                        <select name="mode" class="form-control" style="width:auto; padding:0.25rem 0.5rem;" onchange="this.form.submit()">
-                            <option value="v1" {% if ui_mode == 'v1' %}selected{% endif %}>经典</option>
-                            <option value="v2" {% if ui_mode == 'v2' %}selected{% endif %}>现代</option>
-                        </select>
+                        <span class="text-muted aps-mode-label">界面</span>
+                        <div class="aps-mode-seg" role="group" aria-label="界面模式">
+                            <button
+                                type="submit"
+                                name="mode"
+                                value="v1"
+                                class="aps-mode-seg-btn {% if ui_mode == 'v1' %}is-active{% endif %}"
+                                aria-pressed="{% if ui_mode == 'v1' %}true{% else %}false{% endif %}"
+                            >经典</button>
+                            <button
+                                type="submit"
+                                name="mode"
+                                value="v2"
+                                class="aps-mode-seg-btn {% if ui_mode == 'v2' %}is-active{% endif %}"
+                                aria-pressed="{% if ui_mode == 'v2' %}true{% else %}false{% endif %}"
+                            >现代</button>
+                        </div>
                     </form>
-                    <button type="button" id="apsThemeToggle" class="btn btn-ghost btn-sm">
-                        <span id="apsThemeLabel">护眼</span>
+                    <button
+                        type="button"
+                        id="apsThemeToggle"
+                        class="aps-theme-switch btn-sm"
+                        role="switch"
+                        aria-pressed="false"
+                        aria-checked="false"
+                        aria-label="切换护眼模式"
+                    >
+                        <span class="aps-theme-switch-track" aria-hidden="true">
+                            <span class="aps-theme-switch-thumb"></span>
+                        </span>
+                        <span id="apsThemeLabel" class="aps-theme-switch-text">护眼关</span>
                     </button>
-                    <span>管理员</span>
                 </div>
             </header>
 

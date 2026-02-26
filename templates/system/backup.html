@@ -127,16 +127,18 @@
               <td>{{ b.created_at }}</td>
               <td>{{ b.size_mb }}</td>
               <td>
-                <form method="post" action="{{ url_for('system.backup_restore') }}" class="d-inline-block"
-                      data-confirm="确认从该备份恢复数据库？恢复会覆盖当前数据。">
-                  <input type="hidden" name="filename" value="{{ b.filename }}">
-                  {{ ui.button('恢复', 'secondary', 'sm', type_attr='submit') }}
-                </form>
-                <form method="post" action="{{ url_for('system.backup_delete') }}" class="d-inline-block"
-                      data-confirm="确认删除该备份文件？删除后不可恢复。">
-                  <input type="hidden" name="filename" value="{{ b.filename }}">
-                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit', class='ml-2') }}
-                </form>
+                <div class="table-actions">
+                  <form method="post" action="{{ url_for('system.backup_restore') }}"
+                        data-confirm="确认从该备份恢复数据库？恢复会覆盖当前数据。">
+                    <input type="hidden" name="filename" value="{{ b.filename }}">
+                    {{ ui.button('恢复', 'secondary', 'sm', type_attr='submit') }}
+                  </form>
+                  <form method="post" action="{{ url_for('system.backup_delete') }}"
+                        data-confirm="确认删除该备份文件？删除后不可恢复。">
+                    <input type="hidden" name="filename" value="{{ b.filename }}">
+                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}

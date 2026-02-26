@@ -18,6 +18,18 @@
       .replace(/'/g, "&#39;");
   }
 
+  // HTML 属性值转义（避免 href 等属性拼接注入）
+  // - 保留既有实体（&amp; / &#39; / &#x22; ...），避免二次转义导致 URL 变化
+  function escapeHtmlAttr(text) {
+    const s = ("" + (text == null ? "" : text));
+    return s
+      .replace(/&(?![a-zA-Z]+;|#\d+;|#x[0-9a-fA-F]+;)/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   // 生成与 Markdown 目录链接兼容的锚点 id：
   // - "1. 标题" -> "1-标题"
   // - 去掉空格/标点（保留字母数字/中文/下划线/连字符）
@@ -67,12 +79,13 @@
 
     // 链接（内部/外部）
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_m, label, url) {
-      const href = (url || "").trim();
+      const hrefRaw = (url || "").trim();
       const text = label || "";
-      if (!isSafeHref(href)) {
+      if (!isSafeHref(hrefRaw)) {
         return text;
       }
-      if (href.startsWith("#")) {
+      const href = escapeHtmlAttr(hrefRaw);
+      if (hrefRaw.startsWith("#")) {
         return '<a href="' + href + '">' + text + "</a>";
       }
       return '<a href="' + href + '" target="_blank" rel="noopener noreferrer">' + text + "</a>";

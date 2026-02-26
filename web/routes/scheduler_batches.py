@@ -15,6 +15,7 @@ from data.repositories import PartRepository, ScheduleHistoryRepository
 
 from .scheduler_bp import bp, _batch_status_zh, _priority_zh, _ready_zh
 from .pagination import paginate_rows, parse_page_args
+from .system_utils import _safe_next_url
 
 
 @bp.get("/")
@@ -161,12 +162,18 @@ def create_batch():
 @bp.post("/batches/<batch_id>/delete")
 def delete_batch(batch_id: str):
     batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    next_raw = (request.form.get("next") or "").strip()
+    next_url = _safe_next_url(next_raw) if next_raw else None
     try:
         batch_svc.delete(batch_id)
         flash(f"已删除批次：{batch_id}", "success")
+        if next_url:
+            return redirect(next_url)
         return redirect(url_for("scheduler.batches_manage_page"))
     except AppError as e:
         flash(e.message, "error")
+        if next_url:
+            return redirect(next_url)
         return redirect(url_for("scheduler.batch_detail", batch_id=batch_id))
 
 
