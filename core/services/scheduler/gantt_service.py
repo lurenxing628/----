@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from collections import OrderedDict
 from typing import Any, Dict, Optional, Sequence
 
@@ -26,6 +27,7 @@ class GanttService:
     CONTRACT_VERSION = 2
     _CRITICAL_CHAIN_CACHE_MAX = 64
     _CRITICAL_CHAIN_CACHE: "OrderedDict[tuple, Dict[str, Any]]" = OrderedDict()
+    _CRITICAL_CHAIN_CACHE_LOCK = threading.Lock()
 
     def __init__(self, conn, logger=None, op_logger=None):
         self.conn = conn
@@ -87,15 +89,16 @@ class GanttService:
 
     def _get_critical_chain(self, version: int) -> Dict[str, Any]:
         key = self._critical_chain_cache_key(version)
-        cached = self._CRITICAL_CHAIN_CACHE.get(key)
-        if cached is not None:
-            try:
-                self._CRITICAL_CHAIN_CACHE.move_to_end(key)
-            except Exception:
-                pass
-            out = dict(cached)
-            out["cache_hit"] = True
-            return out
+        with self._CRITICAL_CHAIN_CACHE_LOCK:
+            cached = self._CRITICAL_CHAIN_CACHE.get(key)
+            if cached is not None:
+                try:
+                    self._CRITICAL_CHAIN_CACHE.move_to_end(key)
+                except Exception:
+                    pass
+                out = dict(cached)
+                out["cache_hit"] = True
+                return out
 
         computed = compute_critical_chain(self.schedule_repo, int(version))
         if not isinstance(computed, dict):
@@ -108,13 +111,24 @@ class GanttService:
             }
         computed["cache_hit"] = False
 
-        self._CRITICAL_CHAIN_CACHE[key] = computed
-        while len(self._CRITICAL_CHAIN_CACHE) > int(self._CRITICAL_CHAIN_CACHE_MAX):
-            try:
-                self._CRITICAL_CHAIN_CACHE.popitem(last=False)
-            except Exception:
-                break
-        return dict(computed)
+        with self._CRITICAL_CHAIN_CACHE_LOCK:
+            cached = self._CRITICAL_CHAIN_CACHE.get(key)
+            if cached is not None:
+                try:
+                    self._CRITICAL_CHAIN_CACHE.move_to_end(key)
+                except Exception:
+                    pass
+                out = dict(cached)
+                out["cache_hit"] = True
+                return out
+
+            self._CRITICAL_CHAIN_CACHE[key] = computed
+            while len(self._CRITICAL_CHAIN_CACHE) > int(self._CRITICAL_CHAIN_CACHE_MAX):
+                try:
+                    self._CRITICAL_CHAIN_CACHE.popitem(last=False)
+                except Exception:
+                    break
+            return dict(computed)
 
     def get_gantt_tasks(
         self,
