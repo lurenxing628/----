@@ -151,7 +151,7 @@
                 <td>{{ r.status_zh }}</td>
                 <td>
                   <div class="table-actions">
-                    <a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}" class="table-action-link">查看/编辑</a>
+                    {{ ui.link_button('查看/编辑', url_for('scheduler.batch_detail', batch_id=r.batch_id), 'secondary', 'sm') }}
                     {{ ui.button('删除', 'danger', 'sm', type_attr='submit', form='batchManageDeleteForm_' ~ loop.index0) }}
                   </div>
                 </td>

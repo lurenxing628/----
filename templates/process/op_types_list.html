@@ -71,7 +71,7 @@
               <td>{{ r.remark or '-' }}</td>
               <td>
                 <div class="table-actions">
-                  <a href="{{ url_for('process.op_type_detail', op_type_id=r.op_type_id) }}" class="table-action-link">查看/编辑</a>
+                  {{ ui.link_button('查看/编辑', url_for('process.op_type_detail', op_type_id=r.op_type_id), 'secondary', 'sm') }}
                   <form method="post" action="{{ url_for('process.delete_op_type', op_type_id=r.op_type_id) }}"
                         data-confirm="确认删除工种 {{ r.op_type_id }} 吗？">
                     {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}

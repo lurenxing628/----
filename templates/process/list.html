@@ -88,7 +88,7 @@
               <td>{{ r.route_parsed_zh }}</td>
               <td>
                 <div class="table-actions">
-                  <a href="{{ url_for('process.part_detail', part_no=r.part_no) }}" class="table-action-link">查看/编辑</a>
+                  {{ ui.link_button('查看/编辑', url_for('process.part_detail', part_no=r.part_no), 'secondary', 'sm') }}
                   <form method="post" action="{{ url_for('process.delete_part', part_no=r.part_no) }}"
                         data-confirm="确定删除 {{ r.part_no }} 吗？如果已被批次引用会删除失败。">
                     {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}

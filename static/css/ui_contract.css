@@ -236,12 +236,13 @@ body {
   flex: 0 0 auto;
 }
 
-button.aps-mode-seg-btn {
+.aps-mode-seg button.aps-mode-seg-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 52px;
   height: 26px;
+  min-height: 26px; /* override base.css button min-height (v1) and v2 legacy submit styling */
   padding: 0 0.75rem;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -256,20 +257,20 @@ button.aps-mode-seg-btn {
   transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.12s;
 }
 
-button.aps-mode-seg-btn:hover {
+.aps-mode-seg button.aps-mode-seg-btn:hover {
   background: #e2e8f0;
 }
 
-button.aps-mode-seg-btn:active {
+.aps-mode-seg button.aps-mode-seg-btn:active {
   transform: translateY(1px);
 }
 
-button.aps-mode-seg-btn:focus-visible {
+.aps-mode-seg button.aps-mode-seg-btn:focus-visible {
   outline: 2px solid rgba(37, 99, 235, 0.3);
   outline-offset: 2px;
 }
 
-button.aps-mode-seg-btn.is-active {
+.aps-mode-seg button.aps-mode-seg-btn.is-active {
   background: var(--ui-primary);
   border-color: var(--ui-primary);
   color: #ffffff;
@@ -1405,15 +1406,15 @@ html[data-theme="dark"] .aps-mode-seg {
   background: #0f172a;
 }
 
-html[data-theme="dark"] button.aps-mode-seg-btn {
+html[data-theme="dark"] .aps-mode-seg button.aps-mode-seg-btn {
   color: #e2e8f0;
 }
 
-html[data-theme="dark"] button.aps-mode-seg-btn:hover {
+html[data-theme="dark"] .aps-mode-seg button.aps-mode-seg-btn:hover {
   background: #1e293b;
 }
 
-html[data-theme="dark"] button.aps-mode-seg-btn.is-active {
+html[data-theme="dark"] .aps-mode-seg button.aps-mode-seg-btn.is-active {
   background: var(--ui-primary);
   border-color: var(--ui-primary);
   color: #ffffff;
