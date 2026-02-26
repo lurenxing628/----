@@ -94,10 +94,22 @@
       </div>
     </form>
 
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('scheduler.batches_manage_page', status=status, only_ready=only_ready, page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('scheduler.batches_manage_page', status=status, only_ready=only_ready, page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
+
     {% if batches and batches|length > 0 %}
       <div class="form-row mb-2">
         <div class="form-field">
-          <label for="batchesManageSearchInput"><svg class="icon-sm"><use href="#icon-search"/></svg> 搜索批次</label>
+          <label for="batchesManageSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索批次</label>
           <input id="batchesManageSearchInput" data-table-search="batchesManageTable" placeholder="输入批次号、图号..." class="w-260">
         </div>
       </div>

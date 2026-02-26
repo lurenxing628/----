@@ -3,6 +3,7 @@ import json
 import os
 import secrets
 import sys
+import time
 from flask import Flask, g, request
 
 from config import config as config_map
@@ -26,6 +27,7 @@ from web.routes.reports import bp as reports_bp
 from web.bootstrap.factory import create_app_core
 from web.bootstrap.launcher import pick_bind_host, pick_port, write_runtime_host_port_files
 from web.bootstrap.paths import runtime_base_dir
+from web.bootstrap.static_versioning import install_versioned_url_for
 
 
 # atexit 退出备份去重：避免 create_app() 在测试/脚本中被多次调用导致重复注册
@@ -111,6 +113,8 @@ def _create_app_legacy() -> Flask:
     # 注意：打包后 templates/static 与 exe 同目录，因此这里用绝对路径，避免 Flask 以模块 root_path 为基准导致找不到资源
     app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)
     app.config.from_object(cfg_class)
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = int(app.config.get("SEND_FILE_MAX_AGE_DEFAULT") or 43200)
+    install_versioned_url_for(app, static_dir)
 
     # Jinja 过滤器：JSON 输出（确保中文可读）
     def tojson_zh(value, indent: int = 2):
@@ -214,6 +218,10 @@ def _create_app_legacy() -> Flask:
     # 每请求 DB 连接（避免跨线程）
     @app.before_request
     def _open_db():
+        try:
+            g._aps_req_started = time.perf_counter()
+        except Exception:
+            g._aps_req_started = None
         # 静态资源不需要 DB（减少不必要开销，也避免触发自动维护）
         try:
             if request.path and str(request.path).startswith("/static"):
@@ -255,6 +263,29 @@ def _create_app_legacy() -> Flask:
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        def _is_prefetch_req() -> bool:
+            try:
+                purpose = (request.headers.get("Purpose") or "").strip().lower()
+                sec_purpose = (request.headers.get("Sec-Purpose") or "").strip().lower()
+                x_moz = (request.headers.get("X-Moz") or "").strip().lower()
+                return (
+                    "prefetch" in purpose
+                    or "prefetch" in sec_purpose
+                    or x_moz == "prefetch"
+                )
+            except Exception:
+                return False
+
+        try:
+            started = getattr(g, "_aps_req_started", None)
+            if started is not None:
+                total_ms = int((time.perf_counter() - float(started)) * 1000)
+                resp.headers.setdefault("Server-Timing", f"app;dur={total_ms}")
+                req_path = str(getattr(request, "path", "") or "")
+                if total_ms >= 300 and not req_path.startswith("/static") and not _is_prefetch_req():
+                    app.logger.warning(f"慢请求: {request.method} {request.path} {total_ms}ms")
+        except Exception:
+            pass
         return resp
 
     # 错误处理（接口返回结构统一；提示信息中文）

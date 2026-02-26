@@ -42,11 +42,22 @@
     </div>
     <div class="form-row mb-2">
       <div class="form-field">
-        <label for="partsSearchInput"><svg class="icon-sm"><use href="#icon-search"/></svg> 搜索</label>
+        <label for="partsSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索</label>
         <input id="partsSearchInput" data-table-search="partsTable" placeholder="输入图号、名称..." aria-label="搜索零件，输入图号或名称关键词" class="w-260">
       </div>
     </div>
     <form id="bulkForm" method="post" action="{{ url_for('process.bulk_delete_parts') }}"></form>
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('process.list_parts', page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('process.list_parts', page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if parts and parts|length > 0 %}
       <table id="partsTable" class="table-sticky table-layout-fixed">
         <thead>

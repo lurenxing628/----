@@ -23,7 +23,7 @@
         {% if formaction %}formaction="{{ formaction }}"{% endif %}
         {% if confirm %}data-confirm="{{ confirm }}"{% endif %}>
   {% if icon %}
-    <svg class="icon icon-{{ size }}"><use href="#icon-{{ icon }}"/></svg>
+    <svg class="icon icon-{{ size }}"><use href="{{ url_for('static', filename='icons.svg') }}#icon-{{ icon }}"/></svg>
   {% endif %}
   <span>{{ text }}</span>
 </button>
@@ -37,7 +37,7 @@
    class="btn btn-{{ type }} btn-{{ size }} {{ class }} {% if icon %}has-icon{% endif %}"
    {% if target %}target="{{ target }}"{% endif %}>
   {% if icon %}
-    <svg class="icon icon-{{ size }}"><use href="#icon-{{ icon }}"/></svg>
+    <svg class="icon icon-{{ size }}"><use href="{{ url_for('static', filename='icons.svg') }}#icon-{{ icon }}"/></svg>
   {% endif %}
   <span>{{ text }}</span>
 </a>
@@ -163,7 +163,7 @@
   <div class="page-title-group">
     {% if back_url %}
       <a href="{{ back_url }}" class="btn btn-ghost btn-sm" title="返回">
-        <svg class="icon"><use href="#icon-arrow-left"/></svg>
+        <svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-arrow-left"/></svg>
       </a>
     {% endif %}
     <h2 class="page-title">{{ title }}</h2>

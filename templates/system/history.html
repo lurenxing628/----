@@ -63,6 +63,18 @@
 
   <div class="card">
     <h3>最近排产记录</h3>
+    <p class="muted">当前分页仅在“最近 {{ filters.limit }} 条”查询结果内生效。</p>
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('system.history_page', version=filters.version, limit=filters.limit, page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('system.history_page', version=filters.version, limit=filters.limit, page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if not items %}
       <p class="muted">暂无排产历史记录，请先到排产调度页面执行一次排产。</p>
     {% else %}

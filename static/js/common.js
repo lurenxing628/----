@@ -2,6 +2,96 @@
 (function () {
   "use strict";
 
+  var NATIVE_PREFETCH_ENABLED = true;
+  // 允许通过 window.__APS_PREFETCH_ENABLED__ 动态覆盖：便于现场快速关停预取
+  if (window && Object.prototype.hasOwnProperty.call(window, "__APS_PREFETCH_ENABLED__")) {
+    var v = window.__APS_PREFETCH_ENABLED__;
+    if (v === true || v === false) {
+      NATIVE_PREFETCH_ENABLED = v === true;
+    } else {
+      var sv = String(v || "").trim().toLowerCase();
+      if (sv === "1" || sv === "true" || sv === "yes" || sv === "on") {
+        NATIVE_PREFETCH_ENABLED = true;
+      } else if (sv === "0" || sv === "false" || sv === "no" || sv === "off") {
+        NATIVE_PREFETCH_ENABLED = false;
+      }
+    }
+  }
+  var PREFETCH_IDLE_FALLBACK_MS = 900;
+  var PREFETCH_WHITELIST_PATHS = {
+    "/": 1,
+    "/scheduler/": 1,
+    "/scheduler/batches": 1,
+    "/scheduler/config": 1,
+    "/scheduler/gantt": 1,
+    "/scheduler/analysis": 1,
+    "/scheduler/week-plan": 1,
+    "/scheduler/calendar": 1,
+    "/equipment/": 1,
+    "/personnel/": 1,
+    "/process/": 1,
+    "/material/materials": 1,
+    "/reports/": 1,
+    "/system/backup": 1,
+    "/system/logs": 1,
+    "/system/history": 1,
+  };
+
+  function requestIdle(cb, timeout) {
+    if (typeof window.requestIdleCallback === "function") {
+      return window.requestIdleCallback(cb, { timeout: timeout || 1200 });
+    }
+    return setTimeout(function () {
+      cb({ didTimeout: true, timeRemaining: function () { return 0; } });
+    }, typeof timeout === "number" ? timeout : PREFETCH_IDLE_FALLBACK_MS);
+  }
+
+  function isSameOriginHttpUrl(url) {
+    if (!url || typeof url !== "string") {
+      return false;
+    }
+    try {
+      var u = new URL(url, window.location.href);
+      if (u.origin !== window.location.origin) {
+        return false;
+      }
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        return false;
+      }
+      return true;
+    } catch (_e0) {
+      return false;
+    }
+  }
+
+  function isWhitelistedPrefetchPath(pathname) {
+    if (!pathname) {
+      return false;
+    }
+    return !!PREFETCH_WHITELIST_PATHS[pathname];
+  }
+
+  function normalizePrefetchUrl(rawHref) {
+    if (!isSameOriginHttpUrl(rawHref)) {
+      return "";
+    }
+    try {
+      var u = new URL(rawHref, window.location.href);
+      if (!isWhitelistedPrefetchPath(u.pathname)) {
+        return "";
+      }
+      if (u.search) {
+        return "";
+      }
+      if (u.hash) {
+        u.hash = "";
+      }
+      return u.pathname;
+    } catch (_e1) {
+      return "";
+    }
+  }
+
   function debounce(fn, waitMs) {
     var timer = 0;
     return function () {
@@ -50,7 +140,9 @@
     }, 80);
   }
 
-  markRequiredLabels(document);
+  requestIdle(function () {
+    markRequiredLabels(document);
+  }, 1000);
   if ("MutationObserver" in window) {
     var requiredLabelObserver = new MutationObserver(function (mutations) {
       var refreshRoot = null;
@@ -310,55 +402,65 @@
   });
 
   /* --- 3. 防双击 + Loading --- */
-  document.querySelectorAll("form").forEach(function (form) {
+  document.addEventListener("submit", function (e) {
+    if (e.defaultPrevented) {
+      return;
+    }
+    var form = e.target;
+    if (!form || !form.tagName || String(form.tagName).toUpperCase() !== "FORM") {
+      return;
+    }
     var method = (form.method || "").toLowerCase();
     if (method !== "post") {
       return;
     }
-    form.addEventListener("submit", function (e) {
-      if (e.defaultPrevented) {
-        return;
+    if (form.dataset && form.dataset.submitted === "1") {
+      e.preventDefault();
+      return;
+    }
+    if (form.dataset) {
+      form.dataset.submitted = "1";
+    }
+    var btns = form.querySelectorAll("button[type='submit'], input[type='submit']");
+    btns.forEach(function (b) {
+      b.disabled = true;
+      if (b.tagName === "BUTTON") {
+        b.dataset.originalText = b.textContent;
+        b.classList.add("btn-loading");
+        b.textContent = "处理中...";
+      } else if (b.tagName === "INPUT") {
+        b.dataset.originalValue = b.value;
+        b.value = "处理中...";
       }
-      if (form.dataset && form.dataset.submitted === "1") {
-        e.preventDefault();
-        return;
-      }
-      if (form.dataset) {
-        form.dataset.submitted = "1";
-      }
-      var btns = form.querySelectorAll("button[type='submit'], input[type='submit']");
-      btns.forEach(function (b) {
-        b.disabled = true;
-        if (b.tagName === "BUTTON") {
-          b.dataset.originalText = b.textContent;
-          b.classList.add("btn-loading");
-          b.textContent = "处理中...";
-        } else if (b.tagName === "INPUT") {
-          b.dataset.originalValue = b.value;
-          b.value = "处理中...";
-        }
-      });
     });
   });
 
   /* --- 4. 批量选择计数 --- */
-  var updateBulkCount = function () {};
-  var bulkChecks = document.querySelectorAll(".js-bulk-check, .js-batch-check");
-  var countEl = document.getElementById("jsSelectedCount");
-  if (bulkChecks.length > 0 && countEl) {
-    updateBulkCount = function () {
-      var cnt = 0;
-      bulkChecks.forEach(function (c) {
-        if (c.checked) {
-          cnt += 1;
-        }
-      });
-      countEl.textContent = String(cnt);
-    };
-    bulkChecks.forEach(function (c) {
-      c.addEventListener("change", updateBulkCount);
+  var updateBulkCount = function (fromTarget) {
+    var countEl = document.getElementById("jsSelectedCount");
+    if (!countEl) {
+      return;
+    }
+    var scope = document;
+    if (fromTarget && fromTarget.closest) {
+      scope = fromTarget.closest("table, form, .card") || document;
+    }
+    var checks = scope.querySelectorAll(".js-bulk-check, .js-batch-check");
+    if (!checks || checks.length <= 0) {
+      checks = document.querySelectorAll(".js-bulk-check, .js-batch-check");
+    }
+    var cnt = 0;
+    checks.forEach(function (c) {
+      if (c.checked) {
+        cnt += 1;
+      }
     });
-    updateBulkCount();
+    countEl.textContent = String(cnt);
+  };
+  if (document.querySelectorAll(".js-bulk-check, .js-batch-check").length > 0 && document.getElementById("jsSelectedCount")) {
+    requestIdle(function () {
+      updateBulkCount(null);
+    }, 800);
   }
 
   /* --- 5. 表格前端搜索 --- */
@@ -374,7 +476,10 @@
     }
 
     var rowCache = [];
+    var rowCacheBuilt = false;
+    var rowCacheBuilding = false;
     function rebuildRowCache() {
+      rowCacheBuilding = true;
       rowCache = [];
       tbody.querySelectorAll("tr").forEach(function (row) {
         rowCache.push({
@@ -382,11 +487,22 @@
           text: (row.textContent || "").toLowerCase(),
         });
       });
+      rowCacheBuilt = true;
+      rowCacheBuilding = false;
     }
-    rebuildRowCache();
+    function ensureRowCacheBuilt() {
+      if (rowCacheBuilt || rowCacheBuilding) {
+        return;
+      }
+      rebuildRowCache();
+    }
+    requestIdle(function () {
+      ensureRowCacheBuilt();
+    }, 1200);
 
     var searchToken = 0;
     function applySearch() {
+      ensureRowCacheBuilt();
       if ((tbody.rows && tbody.rows.length) !== rowCache.length) {
         rebuildRowCache();
       }
@@ -422,21 +538,111 @@
     input.addEventListener("input", onInput);
     input.addEventListener("search", applySearch);
     input.addEventListener("focus", function () {
+      ensureRowCacheBuilt();
       if ((tbody.rows && tbody.rows.length) !== rowCache.length) {
         rebuildRowCache();
       }
     });
   });
 
-  /* --- 6. 全选 / 取消全选 --- */
-  document.querySelectorAll(".js-select-all").forEach(function (allCb) {
-    var scope = allCb.closest("table") || allCb.closest("form") || document;
-    allCb.addEventListener("change", function () {
+  /* --- 6. 全选 / 取消全选 + 计数（统一委托） --- */
+  document.addEventListener("change", function (e) {
+    var target = e.target;
+    if (!target || !target.matches) {
+      return;
+    }
+    if (target.matches(".js-select-all")) {
+      var scope = target.closest("table") || target.closest("form") || document;
       var targets = scope.querySelectorAll(".js-bulk-check, .js-batch-check");
       targets.forEach(function (cb) {
-        cb.checked = allCb.checked;
+        cb.checked = target.checked;
       });
-      updateBulkCount();
+      updateBulkCount(target);
+      return;
+    }
+    if (target.matches(".js-bulk-check, .js-batch-check")) {
+      updateBulkCount(target);
+    }
+  });
+
+  /* --- 7. 原生页面预取（白名单 GET） --- */
+  if (NATIVE_PREFETCH_ENABLED && document.head) {
+    var prefetched = {};
+    function prefetchPath(pathname) {
+      if (!pathname || prefetched[pathname]) {
+        return;
+      }
+      prefetched[pathname] = true;
+      requestIdle(function () {
+        try {
+          var link = document.createElement("link");
+          link.rel = "prefetch";
+          link.href = pathname;
+          link.as = "document";
+          document.head.appendChild(link);
+        } catch (_e3) {
+          // ignore prefetch failures
+        }
+      }, 1200);
+    }
+
+    var navObserver = null;
+    if ("IntersectionObserver" in window) {
+      try {
+        navObserver = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (!entry || !entry.isIntersecting) {
+              return;
+            }
+            var a = entry.target;
+            if (!a || !a.getAttribute) {
+              return;
+            }
+            var p = normalizePrefetchUrl(a.getAttribute("href") || "");
+            if (p) {
+              prefetchPath(p);
+            }
+            try {
+              navObserver.unobserve(a);
+            } catch (_e4) {
+              // ignore
+            }
+          });
+        }, { root: null, rootMargin: "120px 0px", threshold: 0.01 });
+      } catch (_e5) {
+        navObserver = null;
+      }
+    }
+
+    var prefetchLinks = document.querySelectorAll("header nav a[href], .sidebar .nav-item[href], .scheduler-subnav a[href]");
+    var observed = 0;
+    prefetchLinks.forEach(function (a) {
+      if (observed >= 24) {
+        return;
+      }
+      var p = normalizePrefetchUrl(a.getAttribute("href") || "");
+      if (!p) {
+        return;
+      }
+      if (p === window.location.pathname) {
+        return;
+      }
+      observed += 1;
+      if (navObserver) {
+        try {
+          navObserver.observe(a);
+        } catch (_e6) {
+          // ignore
+        }
+      } else {
+        prefetchPath(p);
+      }
     });
+  }
+
+  // 延迟执行的非关键初始化任务（缩短首帧阻塞）
+  requestIdle(function () {
+    scheduleRequiredLabelRefresh(document);
+    updateBulkCount(null);
   });
 })();

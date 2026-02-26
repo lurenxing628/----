@@ -11,11 +11,13 @@ from core.infrastructure.errors import AppError
 from core.services.process import ExternalGroupService, PartService, SupplierService
 
 from .process_bp import bp, _merge_mode_zh, _source_zh
+from .pagination import paginate_rows, parse_page_args
 
 
 @bp.get("/")
 def list_parts():
     svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
+    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
     parts = svc.list()
 
     view_rows: List[Dict[str, Any]] = []
@@ -34,7 +36,8 @@ def list_parts():
             }
         )
 
-    return render_template("process/list.html", title="工艺管理", parts=view_rows)
+    view_rows, pager = paginate_rows(view_rows, page, per_page)
+    return render_template("process/list.html", title="工艺管理", parts=view_rows, pager=pager)
 
 
 @bp.post("/parts/create")

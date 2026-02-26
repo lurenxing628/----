@@ -146,6 +146,7 @@ def batch_detail(batch_id: str):
     machine_operators: Dict[str, List[str]] = {}
     operator_machines: Dict[str, List[str]] = {}
     machine_operator_meta: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    prefer_primary_skill = ConfigService(g.db).get_snapshot().prefer_primary_skill
     if machine_ids_needed and operator_ids_needed:
         m_list = sorted(machine_ids_needed)
         o_list = sorted(operator_ids_needed)
@@ -157,10 +158,12 @@ def batch_detail(batch_id: str):
                 continue
             machine_operators.setdefault(mc_id, []).append(op_id)
             operator_machines.setdefault(op_id, []).append(mc_id)
-            machine_operator_meta.setdefault(mc_id, {})[op_id] = {
-                "skill_level": r.get("skill_level"),
-                "is_primary": r.get("is_primary"),
-            }
+            # 仅在“主操优先”启用时注入 meta，减少页面内联 JSON 体积
+            if prefer_primary_skill == "yes":
+                machine_operator_meta.setdefault(mc_id, {})[op_id] = {
+                    "skill_level": r.get("skill_level"),
+                    "is_primary": r.get("is_primary"),
+                }
 
     view_ops: List[Dict[str, Any]] = []
     for op in ops:
@@ -183,9 +186,10 @@ def batch_detail(batch_id: str):
         operator_options=operator_options,
         supplier_options=supplier_options,
         machine_operators=machine_operators,
-        operator_machines=operator_machines,
+        # operatorMachines 可在前端由 machineOperators 反推，避免双份映射带来的 HTML 膨胀
+        operator_machines=None,
         machine_operator_meta=machine_operator_meta,
-        prefer_primary_skill=ConfigService(g.db).get_snapshot().prefer_primary_skill,
+        prefer_primary_skill=prefer_primary_skill,
         lazy_select_enabled=lazy_select_enabled,
     )
 

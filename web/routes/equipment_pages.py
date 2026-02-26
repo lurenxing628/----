@@ -13,12 +13,14 @@ from core.services.personnel import OperatorMachineService
 from data.repositories import OpTypeRepository, OperatorRepository
 
 from .equipment_bp import bp, _machine_status_zh, _operator_status_zh
+from .pagination import paginate_rows, parse_page_args
 
 
 @bp.get("/")
 def list_page():
     svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
     op_type_repo = OpTypeRepository(g.db)
+    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
 
     machines = svc.list()
     op_types = {ot.op_type_id: ot for ot in op_type_repo.list()}
@@ -83,6 +85,8 @@ def list_page():
             }
         )
 
+    view_rows, pager = paginate_rows(view_rows, page, per_page)
+
     # 工种下拉：按 name 排序
     op_type_options = [(ot.op_type_id, ot.name) for ot in sorted(op_types.values(), key=lambda x: x.name)]
 
@@ -92,6 +96,7 @@ def list_page():
         machines=view_rows,
         op_type_options=op_type_options,
         status_options=[("active", "可用"), ("maintain", "维修"), ("inactive", "停用")],
+        pager=pager,
     )
 
 

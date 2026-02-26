@@ -40,6 +40,17 @@
 
   <div class="card">
     <h3>工种列表</h3>
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('process.op_types_page', page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('process.op_types_page', page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if op_types and op_types|length > 0 %}
       <table>
         <thead>

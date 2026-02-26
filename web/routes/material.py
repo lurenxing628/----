@@ -9,6 +9,7 @@ from web.ui_mode import render_ui_template as render_template
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.material import BatchMaterialService, MaterialService
 from data.repositories import BatchRepository, MaterialRepository
+from .pagination import paginate_rows, parse_page_args
 
 
 bp = Blueprint("material", __name__)
@@ -21,13 +22,16 @@ def index():
 
 @bp.get("/materials")
 def materials_page():
+    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
     svc = MaterialService(g.db, op_logger=getattr(g, "op_logger", None))
     items = [m.to_dict() for m in svc.list()]
+    items, pager = paginate_rows(items, page, per_page)
     return render_template(
         "material/materials.html",
         title="物料管理 - 物料主数据",
         materials=items,
         status_options=[("active", "可用"), ("inactive", "停用")],
+        pager=pager,
     )
 
 

@@ -59,11 +59,22 @@
     </div>
     <div class="form-row mb-2">
       <div class="form-field">
-        <label for="equipmentSearchInput"><svg class="icon-sm"><use href="#icon-search"/></svg> 搜索</label>
+        <label for="equipmentSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索</label>
         <input id="equipmentSearchInput" data-table-search="equipmentTable" placeholder="输入设备编号、名称..." aria-label="搜索设备，输入设备编号或名称关键词" class="w-260">
       </div>
     </div>
     <form id="bulkForm" method="post" action="{{ url_for('equipment.bulk_set_status') }}"></form>
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('equipment.list_page', page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('equipment.list_page', page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if machines and machines|length > 0 %}
       <table id="equipmentTable" class="table-sticky table-layout-fixed">
         <thead>

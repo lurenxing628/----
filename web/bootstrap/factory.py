@@ -4,6 +4,7 @@ import atexit
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from flask import Flask, g, request
@@ -28,6 +29,7 @@ from web.ui_mode import init_ui_mode
 from .paths import runtime_base_dir
 from .plugins import bootstrap_plugins
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
+from .static_versioning import install_versioned_url_for
 
 # atexit 退出备份去重：避免 create_app_core() 在测试/脚本中被多次调用导致重复注册
 _EXIT_BACKUP_MANAGER = None
@@ -61,6 +63,9 @@ def create_app_core(
     app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)
     app.config.from_object(cfg_class)
     app.config["APP_UI_MODE"] = ui_mode
+    # 静态资源长缓存（配合 url_for('static', ...) 版本参数）
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = int(app.config.get("SEND_FILE_MAX_AGE_DEFAULT") or 43200)
+    install_versioned_url_for(app, static_dir)
 
     def tojson_zh(value, indent: int = 2):
         return json.dumps(value, ensure_ascii=False, indent=indent)
@@ -116,6 +121,10 @@ def create_app_core(
     @app.before_request
     def _open_db():
         try:
+            g._aps_req_started = time.perf_counter()
+        except Exception:
+            g._aps_req_started = None
+        try:
             if request.path and str(request.path).startswith("/static"):
                 return
         except Exception:
@@ -148,6 +157,34 @@ def create_app_core(
 
     if enable_security_headers:
         register_security_headers(app)
+
+    @app.after_request
+    def _perf_headers(resp):
+        # 慢请求可观测：帮助区分“前端卡”与“后端慢”
+        def _is_prefetch_req() -> bool:
+            try:
+                purpose = (request.headers.get("Purpose") or "").strip().lower()
+                sec_purpose = (request.headers.get("Sec-Purpose") or "").strip().lower()
+                x_moz = (request.headers.get("X-Moz") or "").strip().lower()
+                return (
+                    "prefetch" in purpose
+                    or "prefetch" in sec_purpose
+                    or x_moz == "prefetch"
+                )
+            except Exception:
+                return False
+
+        try:
+            started = getattr(g, "_aps_req_started", None)
+            if started is not None:
+                total_ms = int((time.perf_counter() - float(started)) * 1000)
+                resp.headers.setdefault("Server-Timing", f"app;dur={total_ms}")
+                req_path = str(getattr(request, "path", "") or "")
+                if total_ms >= 300 and not req_path.startswith("/static") and not _is_prefetch_req():
+                    app.logger.warning(f"慢请求: {request.method} {request.path} {total_ms}ms")
+        except Exception:
+            pass
+        return resp
 
     register_error_handlers(app)
 

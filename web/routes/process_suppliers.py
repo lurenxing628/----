@@ -7,6 +7,7 @@ from web.ui_mode import render_ui_template as render_template
 from core.services.process import OpTypeService, SupplierService
 
 from .process_bp import bp
+from .pagination import paginate_rows, parse_page_args
 
 
 # ============================================================
@@ -22,6 +23,7 @@ def _supplier_status_zh(status: str) -> str:
 
 @bp.get("/suppliers")
 def suppliers_page():
+    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
     svc = SupplierService(g.db, op_logger=getattr(g, "op_logger", None))
     rows = [x.to_dict() for x in svc.list()]
 
@@ -37,6 +39,7 @@ def suppliers_page():
             }
         )
 
+    view_rows, pager = paginate_rows(view_rows, page, per_page)
     op_type_options = [(ot.op_type_id, ot.name) for ot in sorted(op_types.values(), key=lambda x: x.name)]
     return render_template(
         "process/suppliers_list.html",
@@ -44,6 +47,7 @@ def suppliers_page():
         suppliers=view_rows,
         op_type_options=op_type_options,
         status_options=[("active", "启用"), ("inactive", "停用")],
+        pager=pager,
     )
 
 

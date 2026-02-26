@@ -11,6 +11,7 @@ from core.services.system import SystemConfigService
 from data.repositories import OperationLogRepository
 
 from .system_bp import bp
+from .pagination import paginate_rows, parse_page_args
 from .system_utils import _get_job_state_map, _get_system_cfg_snapshot, _normalize_time_range, _safe_int
 
 
@@ -21,7 +22,8 @@ def logs_page():
     module = (request.args.get("module") or "").strip() or None
     action = (request.args.get("action") or "").strip() or None
     log_level = (request.args.get("log_level") or "").strip() or None
-    limit = _safe_int(request.args.get("limit"), field="limit", default=50, min_v=1, max_v=500)
+    page, per_page = parse_page_args(request, default_per_page=50, max_per_page=500)
+    limit = _safe_int(request.args.get("limit"), field="limit", default=per_page, min_v=1, max_v=500)
 
     start_norm, end_norm = _normalize_time_range(start_time, end_time)
 
@@ -50,6 +52,11 @@ def logs_page():
         d["detail_obj"] = detail_obj
         view_rows.append(d)
 
+    # 语义约定：
+    # - limit：总查询上限（仅在最近 N 条记录内分页）
+    # - per_page：每页展示条数
+    view_rows, pager = paginate_rows(view_rows, page, per_page)
+
     from core.services.system import SystemMaintenanceService
 
     return render_template(
@@ -70,6 +77,7 @@ def logs_page():
             "log_level": log_level or "",
             "limit": str(limit),
         },
+        pager=pager,
     )
 
 

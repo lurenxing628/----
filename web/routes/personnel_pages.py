@@ -11,12 +11,14 @@ from core.services.personnel import OperatorMachineService, OperatorService
 from data.repositories import MachineRepository
 
 from .personnel_bp import bp, _machine_status_zh, _operator_status_zh
+from .pagination import paginate_rows, parse_page_args
 
 
 @bp.get("/")
 def list_page():
     op_svc = OperatorService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     m_repo = MachineRepository(g.db)
+    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
 
     operators = op_svc.list()
     # 预加载所有设备（用于展示名称）
@@ -57,11 +59,14 @@ def list_page():
             }
         )
 
+    view_rows, pager = paginate_rows(view_rows, page, per_page)
+
     return render_template(
         "personnel/list.html",
         title="人员管理",
         operators=view_rows,
         status_options=[("active", "在岗"), ("inactive", "停用/休假")],
+        pager=pager,
     )
 
 

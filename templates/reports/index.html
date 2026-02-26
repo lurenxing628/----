@@ -4,7 +4,7 @@
   <div class="card">
     <div class="page-header">
       <div class="page-title-group">
-        <h2 class="page-title"><svg class="icon"><use href="#icon-chart"/></svg> 报表中心</h2>
+        <h2 class="page-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-chart"/></svg> 报表中心</h2>
       </div>
       <div class="page-actions page-actions-context"></div>
     </div>
@@ -39,15 +39,15 @@
     <div class="muted mb-2">选择报表类型查看详细数据，支持导出 Excel。</div>
     <div class="nav-grid">
       <a href="{{ url_for('reports.overdue_page') }}" class="nav-card">
-        <div class="nav-card-title"><svg class="icon"><use href="#icon-warn"/></svg> 超期清单</div>
+        <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-warn"/></svg> 超期清单</div>
         <div class="nav-card-desc">已排产批次中交期已过但未完成的清单。{% if has_history %}当前 {{ overdue_count }} 个超期。{% endif %}</div>
       </a>
       <a href="{{ url_for('reports.utilization_page') }}" class="nav-card">
-        <div class="nav-card-title"><svg class="icon"><use href="#icon-chart"/></svg> 资源负荷与利用率</div>
+        <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-chart"/></svg> 资源负荷与利用率</div>
         <div class="nav-card-desc">设备和人员的排产负荷与利用率统计。</div>
       </a>
       <a href="{{ url_for('reports.downtime_page') }}" class="nav-card">
-        <div class="nav-card-title"><svg class="icon"><use href="#icon-device"/></svg> 停机影响统计</div>
+        <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-device"/></svg> 停机影响统计</div>
         <div class="nav-card-desc">停机计划对排产结果的影响分析。</div>
       </a>
     </div>

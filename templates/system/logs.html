@@ -95,6 +95,18 @@
 
   <div class="card">
     <h3>查询结果</h3>
+    <p class="muted">当前分页仅在“最近 {{ filters.limit }} 条”查询结果内生效。</p>
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('system.logs_page', start_time=filters.start_time, end_time=filters.end_time, module=filters.module, action=filters.action, log_level=filters.log_level, limit=filters.limit, page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('system.logs_page', start_time=filters.start_time, end_time=filters.end_time, module=filters.module, action=filters.action, log_level=filters.log_level, limit=filters.limit, page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if not rows %}
       <p class="muted">暂无记录。</p>
     {% else %}

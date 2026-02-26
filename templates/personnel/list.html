@@ -57,11 +57,22 @@
     </div>
     <div class="form-row mb-2">
       <div class="form-field">
-        <label for="personnelSearchInput"><svg class="icon-sm"><use href="#icon-search"/></svg> 搜索</label>
+        <label for="personnelSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索</label>
         <input id="personnelSearchInput" data-table-search="personnelTable" placeholder="输入工号、姓名..." aria-label="搜索人员，输入工号或姓名关键词" class="w-260">
       </div>
     </div>
     <form id="bulkForm" method="post" action="{{ url_for('personnel.bulk_set_status') }}"></form>
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('personnel.list_page', page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('personnel.list_page', page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if operators and operators|length > 0 %}
       <table id="personnelTable" class="table-sticky table-layout-fixed">
         <thead>

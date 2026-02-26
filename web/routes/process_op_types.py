@@ -7,6 +7,7 @@ from web.ui_mode import render_ui_template as render_template
 from core.services.process import OpTypeService
 
 from .process_bp import bp
+from .pagination import paginate_rows, parse_page_args
 
 
 # ============================================================
@@ -16,9 +17,11 @@ from .process_bp import bp
 
 @bp.get("/op-types")
 def op_types_page():
+    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
     svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     rows = [x.to_dict() for x in svc.list()]
-    return render_template("process/op_types_list.html", title="工种配置", op_types=rows)
+    rows, pager = paginate_rows(rows, page, per_page)
+    return render_template("process/op_types_list.html", title="工种配置", op_types=rows, pager=pager)
 
 
 @bp.post("/op-types/create")

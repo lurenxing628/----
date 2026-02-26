@@ -8,6 +8,7 @@ from jinja2 import ChoiceLoader, FileSystemLoader
 from werkzeug.routing.exceptions import BuildError
 
 from data.repositories import SystemConfigRepository
+from web.bootstrap.static_versioning import EXT_KEY_TEMPLATE_URL_FOR
 
 # -------------------------
 # Constants
@@ -159,6 +160,17 @@ def safe_url_for(endpoint: str, **values: Any) -> Optional[str]:
         return None
 
 
+def _resolve_template_url_for():
+    try:
+        app = current_app._get_current_object()
+        custom = app.extensions.get(EXT_KEY_TEMPLATE_URL_FOR)
+        if callable(custom):
+            return custom
+    except Exception:
+        pass
+    return url_for
+
+
 def render_ui_template(template_name_or_list, **context: Any) -> str:
     """
     render_template 的兼容封装：
@@ -177,6 +189,8 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
 
     # 复用 Flask 的上下文处理器（request/g/session/url_for 等）
     app.update_template_context(context)
+    template_url_for = _resolve_template_url_for()
+    context["url_for"] = template_url_for
 
     # 注入：模板可用的安全 url_for（可用于可选功能链接/灰度发布）
     context.setdefault("safe_url_for", safe_url_for)
@@ -189,6 +203,7 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
     # 同时写入 env.globals：避免某些模板渲染路径不走 context 注入
     try:
         env.globals.setdefault("safe_url_for", safe_url_for)
+        env.globals["url_for"] = template_url_for
     except Exception:
         pass
 

@@ -3,7 +3,23 @@
 
   const cfg = window.__APS_BATCH_DETAIL_LINKAGE__ || {};
   const machineOperators = cfg.machineOperators || {};
-  const operatorMachines = cfg.operatorMachines || {};
+  function buildOperatorMachinesFromMachineOperators(src) {
+    const reverse = {};
+    try {
+      Object.keys(src || {}).forEach((mcId) => {
+        const ops = Array.isArray(src[mcId]) ? src[mcId] : [];
+        for (const opId of ops) {
+          if (!opId) continue;
+          if (!reverse[opId]) reverse[opId] = [];
+          reverse[opId].push(mcId);
+        }
+      });
+    } catch (_e) {
+      return {};
+    }
+    return reverse;
+  }
+  const operatorMachines = cfg.operatorMachines || buildOperatorMachinesFromMachineOperators(machineOperators);
   const machineOperatorMeta = cfg.machineOperatorMeta || {};
   const preferPrimarySkill = cfg.preferPrimarySkill === true;
   const lazySelectEnabled = cfg.lazySelectEnabled === true;
@@ -329,61 +345,70 @@
     }
   }
 
+  function isLinkageTarget(el) {
+    return !!(el && el.matches && el.matches(".js-machine-select, .js-operator-select"));
+  }
+
+  function getLinkageRowFromTarget(target) {
+    if (!target || !target.closest) return null;
+    return target.closest('tr[data-linkage-row="1"]');
+  }
+
+  function isRowWarmed(rowEl) {
+    if (!rowEl || !rowEl.dataset) return false;
+    return rowEl.dataset.linkageWarmed === "1";
+  }
+
+  function markRowWarmed(rowEl) {
+    if (!rowEl || !rowEl.dataset) return;
+    rowEl.dataset.linkageWarmed = "1";
+  }
+
+  function warmRowOnce(rowEl) {
+    if (!rowEl || isRowWarmed(rowEl)) {
+      return;
+    }
+    applyLinkageForRow(rowEl);
+    markRowWarmed(rowEl);
+  }
+
   function initLinkage() {
     const rows = document.querySelectorAll('tr[data-linkage-row="1"]');
-    for (const row of rows) {
-      const mSel = row.querySelector(".js-machine-select");
-      const oSel = row.querySelector(".js-operator-select");
-      if (!mSel || !oSel) continue;
+    if (!rows || rows.length <= 0) {
+      return;
+    }
+    const table = rows[0].closest("table") || document;
 
-      const apply = () => applyLinkageForRow(row);
-      mSel.addEventListener("change", apply);
-      oSel.addEventListener("change", apply);
-
+    // 统一用 table 级委托替代逐行绑定：减少 N 行级监听器开销
+    table.addEventListener("change", (e) => {
+      const target = e.target;
+      if (!isLinkageTarget(target)) return;
+      const row = getLinkageRowFromTarget(target);
+      if (!row) return;
+      applyLinkageForRow(row);
       if (lazySelectEnabled) {
-        // 首次交互再执行（避免加载时对每行都填充大量 options）
-        const warmOnce = function () {
-          try {
-            mSel.removeEventListener("mousedown", warmOnce, true);
-          } catch (_e1) {
-            // ignore
-          }
-          try {
-            oSel.removeEventListener("mousedown", warmOnce, true);
-          } catch (_e2) {
-            // ignore
-          }
-          try {
-            mSel.removeEventListener("focus", warmOnce);
-          } catch (_e3) {
-            // ignore
-          }
-          try {
-            oSel.removeEventListener("focus", warmOnce);
-          } catch (_e4) {
-            // ignore
-          }
-          try {
-            mSel.removeEventListener("keydown", warmOnce);
-          } catch (_e5) {
-            // ignore
-          }
-          try {
-            oSel.removeEventListener("keydown", warmOnce);
-          } catch (_e6) {
-            // ignore
-          }
-          apply();
-        };
-        // mousedown capture：尽量在下拉弹出前完成 options 填充与禁用过滤
-        mSel.addEventListener("mousedown", warmOnce, true);
-        oSel.addEventListener("mousedown", warmOnce, true);
-        mSel.addEventListener("focus", warmOnce);
-        oSel.addEventListener("focus", warmOnce);
-        mSel.addEventListener("keydown", warmOnce);
-        oSel.addEventListener("keydown", warmOnce);
-      } else {
-        apply();
+        markRowWarmed(row);
+      }
+    });
+
+    if (lazySelectEnabled) {
+      // 首次交互再执行（避免加载时对每行都填充大量 options）
+      const warmByEvent = (e) => {
+        const target = e.target;
+        if (!target || !target.closest) return;
+        const hit = target.closest(".js-machine-select, .js-operator-select");
+        if (!isLinkageTarget(hit)) return;
+        const row = getLinkageRowFromTarget(hit);
+        if (!row) return;
+        warmRowOnce(row);
+      };
+      // mousedown capture：尽量在下拉弹出前完成 options 填充与禁用过滤
+      table.addEventListener("mousedown", warmByEvent, true);
+      table.addEventListener("focusin", warmByEvent, true);
+      table.addEventListener("keydown", warmByEvent, true);
+    } else {
+      for (const row of rows) {
+        applyLinkageForRow(row);
       }
     }
   }

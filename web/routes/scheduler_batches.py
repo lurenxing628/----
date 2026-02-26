@@ -14,6 +14,7 @@ from core.services.scheduler import BatchService, ConfigService
 from data.repositories import PartRepository, ScheduleHistoryRepository
 
 from .scheduler_bp import bp, _batch_status_zh, _priority_zh, _ready_zh
+from .pagination import paginate_rows, parse_page_args
 
 
 @bp.get("/")
@@ -28,6 +29,7 @@ def batches_page():
         status = "pending"
     only_ready = (request.args.get("only_ready") or "").strip()  # yes/no/partial or empty
 
+    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
     batches = batch_svc.list(status=status if status else None)
     view_rows: List[Dict[str, Any]] = []
     for b in batches:
@@ -42,6 +44,7 @@ def batches_page():
             }
         )
 
+    view_rows, pager = paginate_rows(view_rows, page, per_page)
     cfg = cfg_svc.get_snapshot()
     strategies = cfg_svc.get_available_strategies()
     presets = cfg_svc.list_presets()
@@ -72,6 +75,7 @@ def batches_page():
         latest_history=latest_history,
         latest_summary=latest_summary,
         default_start_dt=(datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d 08:00"),
+        pager=pager,
     )
 
 
@@ -92,6 +96,7 @@ def batches_manage_page():
         status = "pending"
     only_ready = (request.args.get("only_ready") or "").strip()  # yes/no/partial or empty
 
+    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
     batches = batch_svc.list(status=status if status else None)
     view_rows: List[Dict[str, Any]] = []
     for b in batches:
@@ -106,6 +111,7 @@ def batches_manage_page():
             }
         )
 
+    view_rows, pager = paginate_rows(view_rows, page, per_page)
     parts = PartRepository(g.db).list()
     part_options = [(p.part_no, f"{p.part_no} {p.part_name}") for p in parts]
 
@@ -116,6 +122,7 @@ def batches_manage_page():
         status=status,
         only_ready=only_ready,
         part_options=part_options,
+        pager=pager,
     )
 
 
