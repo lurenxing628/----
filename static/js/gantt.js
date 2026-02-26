@@ -992,8 +992,10 @@
     try {
       const gridRows = document.querySelectorAll("#gantt .gantt .grid-row");
       gridRows.forEach((row, idx) => {
-        if (groupStartIdx.has(idx)) row.setAttribute("fill", "#eef2ff");
-        else row.removeAttribute("fill");
+        const isGroupStart = groupStartIdx.has(idx);
+        row.classList.toggle("aps-group-start", isGroupStart);
+        // 统一移除历史内联 fill，避免主题切换时残留亮色注入
+        row.removeAttribute("fill");
       });
     } catch (_) {
       // ignore
