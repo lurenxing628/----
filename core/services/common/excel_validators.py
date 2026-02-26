@@ -44,9 +44,10 @@ def _normalize_operator_calendar_day_type(value: Any) -> str:
 
 def _normalize_yesno(value: Any) -> str:
     v = "" if value is None else str(value).strip()
-    if v in ("是", "y", "Y", "yes", "YES"):
+    v_lower = v.lower()
+    if v == "是" or v_lower in ("y", "yes"):
         return "yes"
-    if v in ("否", "n", "N", "no", "NO"):
+    if v == "否" or v_lower in ("n", "no"):
         return "no"
     return v or "yes"
 
