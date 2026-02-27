@@ -758,10 +758,99 @@ table td {
   white-space: nowrap;
 }
 
+/* batch detail: hints should wrap even in fixed-layout tables */
+#batchOpsTable .js-linkage-hint,
+#batchOpsTable .muted.mt-2 {
+  white-space: normal;
+  word-break: break-all;
+}
+
 /* sticky-col shadow uses ::after outside cell; keep it visible */
 .table-layout-fixed.table-sticky-col td:first-child,
 .table-layout-fixed.table-sticky-col th:first-child {
   overflow: visible;
+}
+
+/* ---------- table density (row height) ---------- */
+html[data-table-density="compact"] table th,
+html[data-table-density="compact"] table td {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+html[data-table-density="loose"] table th,
+html[data-table-density="loose"] table td {
+  padding: 14px 16px;
+  font-size: 14px;
+}
+
+/* ---------- table column resize (opt-in) ---------- */
+table[data-col-resize="1"] th.aps-col-resize-cell {
+  padding-right: 18px;
+}
+
+table[data-col-resize="1"] .aps-col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: col-resize;
+  z-index: 4;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+table[data-col-resize="1"] .aps-col-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 20%;
+  bottom: 20%;
+  left: 4px;
+  width: 1px;
+  background: var(--ui-border);
+  opacity: 0;
+}
+
+table[data-col-resize="1"] th:hover .aps-col-resize-handle::after {
+  opacity: 0.45;
+}
+
+body.aps-col-resize-active table[data-col-resize="1"] .aps-col-resize-handle::after {
+  opacity: 0.75;
+  background: var(--ui-primary);
+}
+
+body.aps-col-resize-active,
+body.aps-col-resize-active * {
+  cursor: col-resize !important;
+}
+
+body.aps-col-resize-active {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.aps-table-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 8px 0 6px;
+}
+
+.aps-table-tools-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.aps-table-tools-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .analysis-bar-track {
@@ -1740,4 +1829,17 @@ html.aps-theme-switching *,
 html.aps-theme-switching *::before,
 html.aps-theme-switching *::after {
   transition: none !important;
+}
+
+/* ---------- form-field label contract (v1/v2 shared) ---------- */
+.form-field > label:first-child {
+  display: block;
+  font-size: 13px;
+  color: var(--ui-muted);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.form-field > label:first-child + br {
+  display: none;
 }

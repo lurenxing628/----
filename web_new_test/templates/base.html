@@ -24,6 +24,20 @@
             document.documentElement.setAttribute("data-theme", theme);
         })();
     </script>
+    <script>
+        (function () {
+            var d = "";
+            try {
+                d = localStorage.getItem("aps_table_density:v1") || "";
+            } catch (_e0) {}
+            if (d !== "compact" && d !== "loose" && d !== "normal") {
+                d = "";
+            }
+            if (d && d !== "normal") {
+                document.documentElement.setAttribute("data-table-density", d);
+            }
+        })();
+    </script>
     <link rel="stylesheet" href="{{ url_for('ui_v2_static.static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/compatibility.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/ui_contract.css') }}">
@@ -105,6 +119,12 @@
                     </form>
                     <button
                         type="button"
+                        id="apsTableDensityToggle"
+                        class="btn btn-secondary btn-sm"
+                        aria-label="切换表格密度"
+                    >密度：标准</button>
+                    <button
+                        type="button"
                         id="apsThemeToggle"
                         class="aps-theme-switch btn-sm"
                         role="switch"
@@ -141,6 +161,7 @@
 
     <div id="aps-toast-container" aria-live="polite"></div>
     <script src="{{ url_for('static', filename='js/common.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/table_resize.js') }}" defer></script>
     {% block scripts %}{% endblock %}
     {% block extra_scripts %}{% endblock %}
 </body>

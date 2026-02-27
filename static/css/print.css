@@ -12,6 +12,19 @@
     display: none !important;
   }
 
+  /* table resize UI should never appear in print */
+  table[data-col-resize="1"] .aps-col-resize-handle,
+  .aps-table-tools {
+    display: none !important;
+  }
+
+  /* force print density to standard */
+  html[data-table-density] table th,
+  html[data-table-density] table td {
+    padding: 10px 12px !important;
+    font-size: 9pt !important;
+  }
+
   body {
     background: #ffffff !important;
     color: #000000 !important;
