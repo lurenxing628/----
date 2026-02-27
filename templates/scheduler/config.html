@@ -124,38 +124,38 @@
       <div class="param-group">
         <div class="param-group-title">策略与算法</div>
         <div class="inline-flex-wrap items-end gap-12">
-          <div>
-            <label>排产策略</label><br/>
+          <div class="form-field">
+            <label>排产策略</label>
             <select name="sort_strategy">
               {% for s in strategies %}
                 <option value="{{ s.key }}" {% if cfg.sort_strategy == s.key %}selected{% endif %}>{{ s.name }}</option>
               {% endfor %}
             </select>
           </div>
-          <div>
-            <label>算法模式</label><br/>
+          <div class="form-field">
+            <label>算法模式</label>
             <select name="algo_mode">
               <option value="greedy" {% if cfg.algo_mode == 'greedy' %}selected{% endif %}>贪心（快速）</option>
               <option value="improve" {% if cfg.algo_mode == 'improve' %}selected{% endif %}>改进（多起点+目标函数）</option>
             </select>
           </div>
-          <div>
-            <label>派工方式</label><br/>
+          <div class="form-field">
+            <label>派工方式</label>
             <select name="dispatch_mode">
               <option value="batch_order" {% if cfg.dispatch_mode == 'batch_order' %}selected{% endif %}>批次顺序（兼容旧版）</option>
               <option value="sgs" {% if cfg.dispatch_mode == 'sgs' %}selected{% endif %}>动态派工（就绪集合优先）</option>
             </select>
           </div>
-          <div>
-            <label>动态派工规则（仅动态派工模式生效）</label><br/>
+          <div class="form-field">
+            <label>动态派工规则（仅动态派工模式生效）</label>
             <select name="dispatch_rule">
               <option value="slack" {% if cfg.dispatch_rule == 'slack' %}selected{% endif %}>余量优先</option>
               <option value="cr" {% if cfg.dispatch_rule == 'cr' %}selected{% endif %}>关键比率优先</option>
               <option value="atc" {% if cfg.dispatch_rule == 'atc' %}selected{% endif %}>紧急度优先</option>
             </select>
           </div>
-          <div>
-            <label>目标函数</label><br/>
+          <div class="form-field">
+            <label>目标函数</label>
             <select name="objective">
               <option value="min_overdue" {% if cfg.objective == 'min_overdue' %}selected{% endif %}>最少超期</option>
               <option value="min_tardiness" {% if cfg.objective == 'min_tardiness' %}selected{% endif %}>最少拖期小时</option>
@@ -168,20 +168,20 @@
       <div class="param-group">
         <div class="param-group-title">权重与时间</div>
         <div class="inline-flex-wrap items-end gap-12">
-          <div>
-            <label title="improve 模式下用于搜索更优解；越大越慢">时间预算（秒，建议≤180）</label><br/>
+          <div class="form-field">
+            <label title="improve 模式下用于搜索更优解；越大越慢">时间预算（秒，建议≤180）</label>
             <input name="time_budget_seconds" value="{{ cfg.time_budget_seconds }}" class="w-140">
           </div>
-          <div>
-            <label>优先级权重（0~1 或 0~100%）</label><br/>
+          <div class="form-field">
+            <label>优先级权重（0~1 或 0~100%）</label>
             <input name="priority_weight" value="{{ cfg.priority_weight }}" class="w-180">
           </div>
-          <div>
-            <label>交期权重（0~1 或 0~100%）</label><br/>
+          <div class="form-field">
+            <label>交期权重（0~1 或 0~100%）</label>
             <input name="due_weight" value="{{ cfg.due_weight }}" class="w-180">
           </div>
-          <div>
-            <label title="工作日历：假期若安排工作且效率未填时使用">假期默认效率（>0）</label><br/>
+          <div class="form-field">
+            <label title="工作日历：假期若安排工作且效率未填时使用">假期默认效率（>0）</label>
             <input name="holiday_default_efficiency" value="{{ cfg.holiday_default_efficiency }}" class="w-140">
           </div>
         </div>
@@ -239,7 +239,7 @@
     <form method="post" action="{{ url_for('scheduler.restore_config_default') }}" class="mt-2"
           data-confirm="确定恢复默认配置吗？">
       {{ ui.button('恢复默认', 'secondary', 'md', type_attr='submit') }}
-      <span class="muted">默认：派工=批次顺序；算法=贪心（快速）；目标=最少超期；预算=20 秒；冻结窗口关闭；优先级权重=0.4，交期权重=0.5（齐套权重为预留字段）。</span>
+      <span class="muted">默认：派工=批次顺序；算法=贪心（快速）；目标=最少超期；预算=20 秒；冻结窗口关闭；优先级权重=0.4，交期权重=0.5（齐套权重为预留字段，当前暂不生效）。</span>
     </form>
   </div>
 {% endblock %}

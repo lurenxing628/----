@@ -14,36 +14,36 @@
     <h3>新增物料</h3>
     <form method="post" action="{{ url_for('material.materials_create') }}">
       <div class="form-row">
-        <div>
-          <label>物料ID</label><br/>
+        <div class="form-field">
+          <label>物料ID</label>
           <input name="material_id" required placeholder="如：MAT001" class="w-160">
         </div>
-        <div>
-          <label>名称</label><br/>
+        <div class="form-field">
+          <label>名称</label>
           <input name="name" required placeholder="如：圆钢" class="w-220">
         </div>
-        <div>
-          <label>规格（可选）</label><br/>
+        <div class="form-field">
+          <label>规格（可选）</label>
           <input name="spec" placeholder="如：Φ30" class="w-160">
         </div>
-        <div>
-          <label>单位（可选）</label><br/>
+        <div class="form-field">
+          <label>单位（可选）</label>
           <input name="unit" placeholder="如：kg/件" class="w-120">
         </div>
-        <div>
-          <label>库存数量</label><br/>
+        <div class="form-field">
+          <label>库存数量</label>
           <input name="stock_qty" value="0" type="number" min="0" step="0.01" class="w-120">
         </div>
-        <div>
-          <label>状态</label><br/>
+        <div class="form-field">
+          <label>状态</label>
           <select name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}" {% if v=='active' %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="flex-1 min-w-220">
-          <label>备注（可选）</label><br/>
+        <div class="form-field flex-1 min-w-220">
+          <label>备注（可选）</label>
           <input name="remark" placeholder="可选备注">
         </div>
         <div>{{ ui.button('创建', 'primary', 'md', type_attr='submit') }}</div>

@@ -26,15 +26,15 @@
     <form method="post" action="{{ url_for('personnel.create_operator') }}">
       <div class="form-row">
         <div class="form-field">
-          <label for="operatorIdInput">工号</label><br/>
+          <label for="operatorIdInput">工号</label>
           <input id="operatorIdInput" name="operator_id" required placeholder="如：OP001">
         </div>
         <div class="form-field">
-          <label for="operatorNameInput">姓名</label><br/>
+          <label for="operatorNameInput">姓名</label>
           <input id="operatorNameInput" name="name" required placeholder="如：张三">
         </div>
         <div class="form-field">
-          <label for="operatorStatusInput">状态</label><br/>
+          <label for="operatorStatusInput">状态</label>
           <select id="operatorStatusInput" name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}">{{ label }}</option>
@@ -42,7 +42,7 @@
           </select>
         </div>
         <div class="form-field flex-1 min-w-240">
-          <label for="operatorRemarkInput">备注</label><br/>
+          <label for="operatorRemarkInput">备注</label>
           <input id="operatorRemarkInput" name="remark" placeholder="可选">
         </div>
         <div>{{ ui.button('添加人员', 'primary', 'md', type_attr='submit') }}</div>
@@ -74,7 +74,8 @@
       </div>
     {% endif %}
     {% if operators and operators|length > 0 %}
-      <table id="personnelTable" class="table-sticky table-layout-fixed">
+      <div class="overflow-x-auto">
+      <table id="personnelTable" class="table-sticky table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选人员"></th>
@@ -114,6 +115,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
 
       <div class="action-bar mt-3">
         <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 人</span>

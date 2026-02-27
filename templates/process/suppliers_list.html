@@ -14,16 +14,16 @@
     <h3>新增供应商</h3>
     <form method="post" action="{{ url_for('process.create_supplier') }}">
       <div class="form-row">
-        <div>
-          <label>供应商ID</label><br/>
+        <div class="form-field">
+          <label>供应商ID</label>
           <input name="supplier_id" required placeholder="如：S001">
         </div>
-        <div>
-          <label>名称</label><br/>
+        <div class="form-field">
+          <label>名称</label>
           <input name="name" required placeholder="如：外协-表处理厂">
         </div>
-        <div>
-          <label>对应工种（可选）</label><br/>
+        <div class="form-field">
+          <label>对应工种（可选）</label>
           <select name="op_type_id">
             <option value="">（不绑定）</option>
             {% for v, label in op_type_options %}
@@ -31,20 +31,20 @@
             {% endfor %}
           </select>
         </div>
-        <div>
-          <label>默认周期（天）</label><br/>
+        <div class="form-field">
+          <label>默认周期（天）</label>
           <input name="default_days" value="1" class="w-120">
         </div>
-        <div>
-          <label>状态</label><br/>
+        <div class="form-field">
+          <label>状态</label>
           <select name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}">{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="flex-1 min-w-240">
-          <label>备注</label><br/>
+        <div class="form-field flex-1 min-w-240">
+          <label>备注</label>
           <input name="remark" placeholder="可选">
         </div>
         <div>{{ ui.button('添加供应商', 'primary', 'md', type_attr='submit') }}</div>

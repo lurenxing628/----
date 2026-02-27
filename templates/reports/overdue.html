@@ -21,8 +21,8 @@
     <h3>筛选</h3>
     <form method="get" action="{{ url_for('reports.overdue_page') }}">
       <div class="form-row">
-        <div>
-          <label>排产版本</label><br/>
+        <div class="form-field">
+          <label>排产版本</label>
           <select name="version" style="min-width:220px;">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
@@ -60,7 +60,8 @@
         <div class="muted">当前无超期批次。</div>
       {% endif %}
     {% else %}
-      <table class="table-sticky table-layout-fixed">
+      <div class="overflow-x-auto">
+      <table id="overdueTable" class="table-sticky table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>
             <th style="width:120px;">类别</th>
@@ -90,6 +91,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% endif %}
   </div>
 {% endblock %}

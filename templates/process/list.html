@@ -15,19 +15,19 @@
     <form method="post" action="{{ url_for('process.create_part') }}">
       <div class="form-row">
         <div class="form-field">
-          <label for="partNoInput">图号</label><br/>
+          <label for="partNoInput">图号</label>
           <input id="partNoInput" name="part_no" required placeholder="如：A1234">
         </div>
         <div class="form-field">
-          <label for="partNameInput">名称</label><br/>
+          <label for="partNameInput">名称</label>
           <input id="partNameInput" name="part_name" required placeholder="如：壳体-大">
         </div>
         <div class="form-field flex-1 min-w-320">
-          <label for="routeRawInput">工艺路线字符串（可选，填写后会尝试自动解析）</label><br/>
+          <label for="routeRawInput">工艺路线字符串（可选，填写后会尝试自动解析）</label>
           <input id="routeRawInput" name="route_raw" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
         </div>
         <div class="form-field flex-1 min-w-200">
-          <label for="partRemarkInput">备注</label><br/>
+          <label for="partRemarkInput">备注</label>
           <input id="partRemarkInput" name="remark" placeholder="可选">
         </div>
         <div>{{ ui.button('添加零件', 'primary', 'md', type_attr='submit') }}</div>
@@ -59,7 +59,8 @@
       </div>
     {% endif %}
     {% if parts and parts|length > 0 %}
-      <table id="partsTable" class="table-sticky table-layout-fixed">
+      <div class="overflow-x-auto">
+      <table id="partsTable" class="table-sticky table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选零件"></th>
@@ -99,6 +100,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
 
       <div class="action-bar mt-3">
         <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个零件</span>

@@ -40,8 +40,8 @@
     <h3>新增 / 更新某一天</h3>
     <form method="post" action="{{ url_for('personnel.operator_calendar_upsert', operator_id=operator.operator_id) }}">
       <div class="form-row calendar-upsert-row">
-        <div class="wc-date-wrap">
-          <label>日期</label><br/>
+        <div class="form-field wc-date-wrap">
+          <label>日期</label>
           <div class="inline-flex-wrap">
             <input id="wcDateInput" name="date" required placeholder="YYYY-MM-DD" class="w-160">
             {{ ui.button('选择', 'secondary', 'sm', type_attr='button', element_id='wcDatePickBtn') }}
@@ -58,45 +58,45 @@
             <div class="wc-cal-foot muted">已配置日期会高亮；周末会单独标识。</div>
           </div>
         </div>
-        <div>
-          <label>类型</label><br/>
+        <div class="form-field">
+          <label>类型</label>
           <select name="day_type">
             <option value="workday">工作日</option>
             <option value="holiday">假期</option>
           </select>
         </div>
-        <div>
-          <label>班次开始</label><br/>
+        <div class="form-field">
+          <label>班次开始</label>
           <input type="time" name="shift_start" value="08:00" class="w-140">
         </div>
-        <div>
-          <label>班次结束（可选）</label><br/>
+        <div class="form-field">
+          <label>班次结束（可选）</label>
           <input type="time" name="shift_end" class="w-140">
         </div>
-        <div>
-          <label>可用工时（小时）</label><br/>
+        <div class="form-field">
+          <label>可用工时（小时）</label>
           <input name="shift_hours" type="number" min="0" step="0.25" placeholder="如：8" class="w-140">
         </div>
-        <div>
-          <label>效率（>0）</label><br/>
+        <div class="form-field">
+          <label>效率（>0）</label>
           <input name="efficiency" type="number" min="0.01" step="0.01" placeholder="如：1.0" class="w-140">
         </div>
-        <div>
-          <label>允许普通件</label><br/>
+        <div class="form-field">
+          <label>允许普通件</label>
           <select name="allow_normal">
             <option value="yes">是</option>
             <option value="no">否</option>
           </select>
         </div>
-        <div>
-          <label>允许急件/特急</label><br/>
+        <div class="form-field">
+          <label>允许急件/特急</label>
           <select name="allow_urgent">
             <option value="yes">是</option>
             <option value="no">否</option>
           </select>
         </div>
-        <div class="calendar-upsert-remark">
-          <label>说明</label><br/>
+        <div class="form-field calendar-upsert-remark">
+          <label>说明</label>
           <input name="remark" placeholder="可选">
         </div>
         <div class="calendar-upsert-submit">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>

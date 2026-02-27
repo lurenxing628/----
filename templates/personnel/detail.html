@@ -49,24 +49,24 @@
     <h3>基本信息</h3>
     <form method="post" action="{{ url_for('personnel.update_operator', operator_id=operator.operator_id) }}">
       <div class="form-row">
-        <div>
-          <label>工号</label><br/>
+        <div class="form-field">
+          <label>工号</label>
           <input value="{{ operator.operator_id }}" disabled>
         </div>
-        <div>
-          <label>姓名</label><br/>
+        <div class="form-field">
+          <label>姓名</label>
           <input name="name" required value="{{ operator.name }}">
         </div>
-        <div>
-          <label>状态</label><br/>
+        <div class="form-field">
+          <label>状态</label>
           <select name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}" {% if operator.status == v %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="flex-1 min-w-240">
-          <label>备注</label><br/>
+        <div class="form-field flex-1 min-w-240">
+          <label>备注</label>
           <input name="remark" value="{{ operator.remark or '' }}">
         </div>
         <div class="inline-flex-wrap">
@@ -145,8 +145,8 @@
     {% if available_machines and available_machines|length > 0 %}
       <form method="post" action="{{ url_for('personnel.add_link', operator_id=operator.operator_id) }}">
         <div class="form-row">
-          <div>
-            <label>选择设备</label><br/>
+          <div class="form-field">
+            <label>选择设备</label>
             <select name="machine_id" required>
               {% for m in available_machines %}
                 <option value="{{ m.machine_id }}">{{ m.machine_id }} - {{ m.machine_name }}（{{ m.status_zh }}）</option>

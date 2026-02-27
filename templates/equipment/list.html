@@ -15,15 +15,15 @@
     <form method="post" action="{{ url_for('equipment.create_machine') }}">
       <div class="form-row">
         <div class="form-field">
-          <label for="machineIdInput">设备编号</label><br/>
+          <label for="machineIdInput">设备编号</label>
           <input id="machineIdInput" name="machine_id" required placeholder="如：CNC-01">
         </div>
         <div class="form-field">
-          <label for="machineNameInput">设备名称</label><br/>
+          <label for="machineNameInput">设备名称</label>
           <input id="machineNameInput" name="name" required placeholder="如：数控车床1">
         </div>
         <div class="form-field">
-          <label for="machineOpTypeInput">工种</label><br/>
+          <label for="machineOpTypeInput">工种</label>
           <select id="machineOpTypeInput" name="op_type_id">
             <option value="">（未设置）</option>
             {% for v, label in op_type_options %}
@@ -32,11 +32,11 @@
           </select>
         </div>
         <div class="form-field">
-          <label for="machineCategoryInput">类别（可选）</label><br/>
+          <label for="machineCategoryInput">类别（可选）</label>
           <input id="machineCategoryInput" name="category" placeholder="如：CNC / 铣床 / 装配" class="w-180">
         </div>
         <div class="form-field">
-          <label for="machineStatusInput">状态</label><br/>
+          <label for="machineStatusInput">状态</label>
           <select id="machineStatusInput" name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}">{{ label }}</option>
@@ -44,7 +44,7 @@
           </select>
         </div>
         <div class="form-field flex-1 min-w-240">
-          <label for="machineRemarkInput">备注</label><br/>
+          <label for="machineRemarkInput">备注</label>
           <input id="machineRemarkInput" name="remark" placeholder="可选">
         </div>
         <div>{{ ui.button('添加设备', 'primary', 'md', type_attr='submit') }}</div>
@@ -76,7 +76,8 @@
       </div>
     {% endif %}
     {% if machines and machines|length > 0 %}
-      <table id="equipmentTable" class="table-sticky table-layout-fixed">
+      <div class="overflow-x-auto">
+      <table id="equipmentTable" class="table-sticky table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选设备"></th>
@@ -124,6 +125,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
 
       <div class="action-bar mt-3">
         <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 台设备</span>

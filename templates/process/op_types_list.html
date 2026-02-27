@@ -14,23 +14,23 @@
     <h3>新增工种</h3>
     <form method="post" action="{{ url_for('process.create_op_type') }}">
       <div class="form-row">
-        <div>
-          <label>工种ID</label><br/>
+        <div class="form-field">
+          <label>工种ID</label>
           <input name="op_type_id" required placeholder="如：OT001">
         </div>
-        <div>
-          <label>工种名称</label><br/>
+        <div class="form-field">
+          <label>工种名称</label>
           <input name="name" required placeholder="如：数车/数铣/钳/标印/总检">
         </div>
-        <div>
-          <label>归属</label><br/>
+        <div class="form-field">
+          <label>归属</label>
           <select name="category">
             <option value="internal">内部</option>
             <option value="external">外部</option>
           </select>
         </div>
-        <div class="flex-1 min-w-240">
-          <label>备注</label><br/>
+        <div class="form-field flex-1 min-w-240">
+          <label>备注</label>
           <input name="remark" placeholder="可选">
         </div>
         <div>{{ ui.button('添加工种', 'primary', 'md', type_attr='submit') }}</div>

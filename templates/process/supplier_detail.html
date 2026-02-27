@@ -14,16 +14,16 @@
     <h3>基本信息</h3>
     <form method="post" action="{{ url_for('process.update_supplier', supplier_id=supplier.supplier_id) }}">
       <div class="form-row">
-        <div>
-          <label>供应商ID</label><br/>
+        <div class="form-field">
+          <label>供应商ID</label>
           <input value="{{ supplier.supplier_id }}" disabled>
         </div>
-        <div>
-          <label>名称</label><br/>
+        <div class="form-field">
+          <label>名称</label>
           <input name="name" required value="{{ supplier.name }}">
         </div>
-        <div>
-          <label>对应工种（可选）</label><br/>
+        <div class="form-field">
+          <label>对应工种（可选）</label>
           <select name="op_type_id">
             <option value="" {% if not supplier.op_type_id %}selected{% endif %}>（不绑定）</option>
             {% for v, label in op_type_options %}
@@ -31,20 +31,20 @@
             {% endfor %}
           </select>
         </div>
-        <div>
-          <label>默认周期（天）</label><br/>
+        <div class="form-field">
+          <label>默认周期（天）</label>
           <input name="default_days" class="w-120" value="{{ supplier.default_days }}">
         </div>
-        <div>
-          <label>状态</label><br/>
+        <div class="form-field">
+          <label>状态</label>
           <select name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}" {% if supplier.status == v %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="flex-1 min-w-240">
-          <label>备注</label><br/>
+        <div class="form-field flex-1 min-w-240">
+          <label>备注</label>
           <input name="remark" value="{{ supplier.remark or '' }}">
         </div>
         <div>{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>

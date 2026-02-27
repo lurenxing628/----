@@ -30,8 +30,8 @@
 
   <div class="card">
     <div class="inline-flex-wrap">
-      <div>
-        <label>视图</label><br/>
+      <div class="form-field">
+        <label>视图</label>
         <div class="inline-flex-wrap">
           {% if view == 'machine' %}
             {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
@@ -43,8 +43,8 @@
         </div>
       </div>
 
-      <div>
-        <label>周切换</label><br/>
+      <div class="form-field">
+        <label>周切换</label>
         <div class="inline-flex-wrap">
           {{ ui.link_button('上周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset-1, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
           {{ ui.link_button('回到本周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=0, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
@@ -55,20 +55,20 @@
       <div>
         <form method="get" action="{{ url_for('scheduler.gantt_page') }}" class="inline-flex-wrap items-end">
           <input type="hidden" name="view" value="{{ view }}">
-          <div>
-            <label>排产区间（起）</label><br/>
+          <div class="form-field">
+            <label>排产区间（起）</label>
             <input type="date" name="start_date" value="{{ start_date }}" class="w-160">
           </div>
-          <div>
-            <label>排产区间（止）</label><br/>
+          <div class="form-field">
+            <label>排产区间（止）</label>
             <input type="date" name="end_date" value="{{ end_date }}" class="w-160">
           </div>
-          <div>
-            <label title="任意日期，系统会自动归到周一">指定周</label><br/>
+          <div class="form-field">
+            <label title="任意日期，系统会自动归到周一">指定周</label>
             <input name="week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD" class="w-160">
           </div>
-          <div>
-            <label>版本</label><br/>
+          <div class="form-field">
+            <label>版本</label>
             {% if versions and versions|length > 0 %}
               <select name="version" class="w-280">
                 {% for v in versions %}

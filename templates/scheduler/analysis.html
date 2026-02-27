@@ -27,8 +27,8 @@
 
   <div class="card">
     <form method="get" action="{{ url_for('scheduler.analysis_page') }}" class="form-row toolbar-actions-inline toolbar-actions-nowrap">
-      <div>
-        <label>选择版本</label><br/>
+      <div class="form-field">
+        <label>选择版本</label>
         {% if versions and versions|length > 0 %}
           <select name="version" class="min-w-260">
             {% for v in versions %}
@@ -160,14 +160,15 @@
         <div class="muted">min={{ trace_chart.y_min|round(4) }} max={{ trace_chart.y_max|round(4) }}</div>
       {% endif %}
       {% if attempts and attempts|length > 0 %}
-        <table class="table-sticky table-layout-fixed">
+        <div class="overflow-x-auto">
+        <table id="analysisAttemptsTable" class="table-sticky table-layout-fixed" data-col-resize="1">
           <thead>
             <tr>
               <th>排序</th>
               <th>方案编号</th>
               <th>排产方式</th>
               <th>失败工序数</th>
-              <th>{{ objective_zh.get(objective_key, objective_key) }}</th>
+              <th data-col-key="objective">{{ objective_zh.get(objective_key, objective_key) }}</th>
               <th>条形</th>
               <th>综合评分</th>
             </tr>
@@ -195,6 +196,7 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
         <div class="muted mt-2">
           注：这里展示的是采样过程，最终结果以当前版本汇总为准。
         </div>

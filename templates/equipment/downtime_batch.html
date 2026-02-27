@@ -17,24 +17,24 @@
     <h3>创建停机区间</h3>
     <form method="post" action="{{ url_for('equipment.downtime_batch_create') }}">
       <div class="form-row">
-        <div class="min-w-260">
-          <label>范围</label><br/>
+        <div class="form-field min-w-260">
+          <label>范围</label>
           <select name="scope_type" id="scopeType">
             <option value="machine">单台设备</option>
             <option value="category">设备类别</option>
             <option value="all">全部设备</option>
           </select>
         </div>
-        <div id="scopeMachine" class="min-w-320">
-          <label>选择设备</label><br/>
+        <div id="scopeMachine" class="form-field min-w-320">
+          <label>选择设备</label>
           <select name="scope_value" id="scopeValueMachine">
             {% for mid, label in machine_options %}
               <option value="{{ mid }}">{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div id="scopeCategory" class="d-none min-w-220">
-          <label>选择类别</label><br/>
+        <div id="scopeCategory" class="form-field d-none min-w-220">
+          <label>选择类别</label>
           <select name="scope_value" id="scopeValueCategory">
             {% if categories and categories|length > 0 %}
               {% for c in categories %}
@@ -45,24 +45,24 @@
             {% endif %}
           </select>
         </div>
-        <div>
-          <label>开始时间</label><br/>
+        <div class="form-field">
+          <label>开始时间</label>
           <input name="start_time" required placeholder="如：2026-01-22 08:00" class="min-w-220">
         </div>
-        <div>
-          <label>结束时间</label><br/>
+        <div class="form-field">
+          <label>结束时间</label>
           <input name="end_time" required placeholder="如：2026-01-22 12:00" class="min-w-220">
         </div>
-        <div>
-          <label>停机原因</label><br/>
+        <div class="form-field">
+          <label>停机原因</label>
           <select name="reason_code">
             {% for v, label in reason_options %}
               <option value="{{ v }}">{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="flex-1 min-w-240">
-          <label>原因备注（可选）</label><br/>
+        <div class="form-field flex-1 min-w-240">
+          <label>原因备注（可选）</label>
           <input name="reason_detail" placeholder="可选：更具体的停机原因说明">
         </div>
         <div>{{ ui.button('创建', 'primary', 'md', type_attr='submit') }}</div>

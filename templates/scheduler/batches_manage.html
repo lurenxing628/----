@@ -17,11 +17,11 @@
     <form method="post" action="{{ url_for('scheduler.create_batch') }}">
       <div class="form-row">
         <div class="form-field">
-          <label for="batchManageBatchIdInput">批次号</label><br/>
+          <label for="batchManageBatchIdInput">批次号</label>
           <input id="batchManageBatchIdInput" name="batch_id" required placeholder="如：B001">
         </div>
         <div class="form-field min-w-260">
-          <label for="batchManagePartNoInput">图号</label><br/>
+          <label for="batchManagePartNoInput">图号</label>
           <select id="batchManagePartNoInput" name="part_no" required>
             <option value="">（请选择）</option>
             {% for v, label in part_options %}
@@ -30,15 +30,15 @@
           </select>
         </div>
         <div class="form-field">
-          <label for="batchManageQuantityInput">数量</label><br/>
+          <label for="batchManageQuantityInput">数量</label>
           <input id="batchManageQuantityInput" name="quantity" required placeholder="如：50" class="w-120">
         </div>
         <div class="form-field">
-          <label for="batchManageDueDateInput">交期（可选）</label><br/>
+          <label for="batchManageDueDateInput">交期（可选）</label>
           <input id="batchManageDueDateInput" type="date" name="due_date" class="w-160">
         </div>
         <div class="form-field">
-          <label for="batchManagePriorityInput">优先级</label><br/>
+          <label for="batchManagePriorityInput">优先级</label>
           <select id="batchManagePriorityInput" name="priority">
             <option value="normal">普通</option>
             <option value="urgent">急件</option>
@@ -46,7 +46,7 @@
           </select>
         </div>
         <div class="form-field">
-          <label for="batchManageReadyStatusInput">齐套</label><br/>
+          <label for="batchManageReadyStatusInput">齐套</label>
           <select id="batchManageReadyStatusInput" name="ready_status">
             <option value="yes" selected>齐套（默认）</option>
             <option value="partial">部分齐套</option>
@@ -54,11 +54,11 @@
           </select>
         </div>
         <div class="form-field">
-          <label for="batchManageReadyDateInput">齐套日期（可选）</label><br/>
+          <label for="batchManageReadyDateInput">齐套日期（可选）</label>
           <input id="batchManageReadyDateInput" type="date" name="ready_date" class="w-160">
         </div>
         <div class="form-field flex-1 min-w-220">
-          <label for="batchManageRemarkInput">备注</label><br/>
+          <label for="batchManageRemarkInput">备注</label>
           <input id="batchManageRemarkInput" name="remark" placeholder="可选">
         </div>
         <div>{{ ui.button('创建批次', 'primary', 'md', type_attr='submit') }}</div>
@@ -70,8 +70,8 @@
     <h3 class="section-title">批次列表</h3>
     <form method="get" action="{{ url_for('scheduler.batches_manage_page') }}" class="mb-2">
       <div class="form-row">
-        <div>
-          <label for="batchManageStatusFilter">状态</label><br/>
+        <div class="form-field">
+          <label for="batchManageStatusFilter">状态</label>
           <select id="batchManageStatusFilter" name="status">
             <option value="pending" {% if status=='pending' %}selected{% endif %}>待排</option>
             <option value="scheduled" {% if status=='scheduled' %}selected{% endif %}>已排</option>
@@ -81,8 +81,8 @@
             <option value="" {% if not status %}selected{% endif %}>（全部）</option>
           </select>
         </div>
-        <div>
-          <label for="batchManageReadyFilter">筛选：齐套</label><br/>
+        <div class="form-field">
+          <label for="batchManageReadyFilter">筛选：齐套</label>
           <select id="batchManageReadyFilter" name="only_ready">
             <option value="" {% if not only_ready %}selected{% endif %}>（全部）</option>
             <option value="yes" {% if only_ready=='yes' %}selected{% endif %}>齐套</option>
@@ -122,7 +122,7 @@
       </div>
       <form method="post" action="{{ url_for('scheduler.bulk_update_batches') }}">
         <div class="overflow-x-auto">
-        <table id="batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1">
+        <table id="batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1" data-col-resize="1">
           <thead>
             <tr>
               <th class="w-60"><input type="checkbox" class="js-select-all" title="全选"></th>
@@ -169,8 +169,8 @@
         </div>
 
         <div class="form-row mt-3">
-          <div>
-            <label class="muted" for="batchManageBulkPriorityInput">批量优先级（可选）</label><br/>
+          <div class="form-field">
+            <label class="muted" for="batchManageBulkPriorityInput">批量优先级（可选）</label>
             <select id="batchManageBulkPriorityInput" name="bulk_priority">
               <option value="">（不修改）</option>
               <option value="normal">普通</option>
@@ -178,12 +178,12 @@
               <option value="critical">特急</option>
             </select>
           </div>
-          <div>
-            <label class="muted" for="batchManageBulkDueDateInput">批量交期（可选）</label><br/>
+          <div class="form-field">
+            <label class="muted" for="batchManageBulkDueDateInput">批量交期（可选）</label>
             <input id="batchManageBulkDueDateInput" type="date" name="bulk_due_date" class="w-160">
           </div>
-          <div class="flex-1 min-w-220">
-            <label class="muted" for="batchManageBulkRemarkInput">批量备注（可选）</label><br/>
+          <div class="form-field flex-1 min-w-220">
+            <label class="muted" for="batchManageBulkRemarkInput">批量备注（可选）</label>
             <input id="batchManageBulkRemarkInput" name="bulk_remark" placeholder="填写则覆盖备注（留空则不修改）">
           </div>
         </div>

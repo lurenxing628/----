@@ -105,8 +105,8 @@
     <h3 class="section-title">选择批次并执行排产</h3>
     <form method="get" action="{{ url_for('scheduler.batches_page') }}" class="mb-2">
       <div class="form-row">
-        <div>
-          <label for="schedulerBatchesStatusFilter">状态</label><br/>
+        <div class="form-field">
+          <label for="schedulerBatchesStatusFilter">状态</label>
           <select id="schedulerBatchesStatusFilter" name="status">
             <option value="pending" {% if status=='pending' %}selected{% endif %}>待排</option>
             <option value="scheduled" {% if status=='scheduled' %}selected{% endif %}>已排</option>
@@ -115,8 +115,8 @@
             <option value="cancelled" {% if status=='cancelled' %}selected{% endif %}>已取消</option>
           </select>
         </div>
-        <div>
-          <label for="schedulerBatchesReadyFilter">筛选：齐套</label><br/>
+        <div class="form-field">
+          <label for="schedulerBatchesReadyFilter">筛选：齐套</label>
           <select id="schedulerBatchesReadyFilter" name="only_ready">
             <option value="" {% if not only_ready %}selected{% endif %}>（全部）</option>
             <option value="yes" {% if only_ready=='yes' %}selected{% endif %}>齐套</option>
@@ -158,7 +158,7 @@
       </div>
       <form id="jsRunScheduleForm" method="post" action="{{ url_for('scheduler.run_schedule') }}">
         <div class="overflow-x-auto">
-        <table id="batchesTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1">
+        <table id="batchesTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1" data-col-resize="1">
         <thead>
           <tr>
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选"></th>
@@ -203,12 +203,12 @@
 
         {% if status == 'pending' %}
           <div class="form-row mt-3">
-            <div>
-              <label class="muted" for="schedulerStartDtInput">排产开始时间（默认明天 08:00）</label><br/>
+            <div class="form-field">
+              <label class="muted" for="schedulerStartDtInput">排产开始时间（默认明天 08:00）</label>
               <input id="schedulerStartDtInput" type="datetime-local" name="start_dt" value="{{ (default_start_dt or '')|replace(' ', 'T') }}" class="w-220">
             </div>
-            <div>
-              <label class="muted" for="schedulerEndDateInput">排产截止日期（可选）</label><br/>
+            <div class="form-field">
+              <label class="muted" for="schedulerEndDateInput">排产截止日期（可选）</label>
               <input id="schedulerEndDateInput" type="date" name="end_date" class="w-180">
             </div>
             <div>
