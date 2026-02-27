@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import WorkCalendar
@@ -62,6 +62,8 @@ class CalendarEngine:
         self.op_logger = op_logger
         self.repo = CalendarRepository(conn, logger=logger)
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
+        # 每次排产会对同一日期重复查询多次；按 (operator_id, date_str) 做轻量缓存可显著减少 DB 访问
+        self._policy_cache: Dict[Tuple[str, str], DayPolicy] = {}
 
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
@@ -98,8 +100,16 @@ class CalendarEngine:
 
     def _policy_for_date(self, date_str: str, operator_id: Optional[str] = None) -> DayPolicy:
         """获取某个“日期键”的 DayPolicy（不做跨午夜归属判断）。"""
-        cal: Any = None
         op_id = self._normalize_text(operator_id) if operator_id is not None else None
+        cache_key = ((op_id or ""), date_str)
+        try:
+            cached = self._policy_cache.get(cache_key)
+            if cached is not None:
+                return cached
+        except Exception:
+            pass
+
+        cal: Any = None
         if op_id:
             try:
                 row_op = self.operator_calendar_repo.get(op_id, date_str)
@@ -142,7 +152,7 @@ class CalendarEngine:
             except Exception:
                 pass
 
-        return DayPolicy(
+        p = DayPolicy(
             date_str=getattr(cal, "date", None) or date_str,
             day_type=cal.day_type,
             shift_hours=shift_hours,
@@ -151,6 +161,11 @@ class CalendarEngine:
             allow_urgent=cal.allow_urgent,
             shift_start=ss_t,
         )
+        try:
+            self._policy_cache[cache_key] = p
+        except Exception:
+            pass
+        return p
 
     def _policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
         """
@@ -237,7 +252,7 @@ class CalendarEngine:
         try:
             total = float(hours)
         except Exception:
-            raise ValidationError("工时必须是数字", field="hours")
+            raise ValidationError("工时必须是数字", field="hours") from None
         if total < 0:
             raise ValidationError("工时不能为负数", field="hours")
         if total == 0:
@@ -293,7 +308,7 @@ class CalendarEngine:
         try:
             d = float(days)
         except Exception:
-            raise ValidationError("周期必须是数字", field="days")
+            raise ValidationError("周期必须是数字", field="days") from None
         if d < 0:
             raise ValidationError("周期不能为负数", field="days")
         return start + timedelta(days=d)

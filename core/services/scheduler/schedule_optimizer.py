@@ -8,8 +8,8 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms import BatchForSort, GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
-from core.algorithms.sort_strategies import parse_strategy
 from core.algorithms.evaluation import compute_metrics, objective_score
+from core.algorithms.sort_strategies import parse_strategy
 
 
 @dataclass
@@ -113,7 +113,7 @@ def optimize_schedule(
 
     def _build_order(strategy0: SortStrategy, params: Dict[str, Any]) -> List[str]:
         sorter0 = StrategyFactory.create(strategy0, **(params or {}))
-        return [x.batch_id for x in sorter0.sort(batch_for_sort)]
+        return [x.batch_id for x in sorter0.sort(batch_for_sort, base_date=start_dt.date())]
 
     # multi-start：策略集（先用当前策略，再补全其它策略）
     current_key = str(strategy_enum.value)

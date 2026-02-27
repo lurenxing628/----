@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -29,6 +30,8 @@ from .schedule_input_builder import build_algo_operations
 from .schedule_optimizer import optimize_schedule
 from .schedule_persistence import persist_schedule
 from .schedule_summary import build_result_summary
+
+_RUN_SCHEDULE_LOCK = threading.Lock()
 
 
 class ScheduleService:
@@ -95,13 +98,49 @@ class ScheduleService:
 
         说明：BatchOperations 表不存 ext_group_id，因此这里以模板为事实来源。
         """
-        batch = self._get_batch_or_raise(op.batch_id)
-        tmpl = self.part_op_repo.get(batch.part_no, int(op.seq))
+        cache = getattr(self, "_aps_schedule_input_cache", None)
+        batch_cache = None
+        tmpl_cache = None
+        grp_cache = None
+        if isinstance(cache, dict):
+            batch_cache = cache.get("batch")
+            tmpl_cache = cache.get("tmpl")
+            grp_cache = cache.get("grp")
+            if not isinstance(batch_cache, dict):
+                batch_cache = {}
+                cache["batch"] = batch_cache
+            if not isinstance(tmpl_cache, dict):
+                tmpl_cache = {}
+                cache["tmpl"] = tmpl_cache
+            if not isinstance(grp_cache, dict):
+                grp_cache = {}
+                cache["grp"] = grp_cache
+
+        bid = (str(getattr(op, "batch_id", "") or "")).strip()
+        batch = batch_cache.get(bid) if (batch_cache is not None and bid) else None
+        if batch is None:
+            batch = self._get_batch_or_raise(op.batch_id)
+            if batch_cache is not None and bid:
+                batch_cache[bid] = batch
+
+        part_no = str(getattr(batch, "part_no", "") or "")
+        seq = int(op.seq)
+        tmpl_key = (part_no, int(seq))
+        tmpl = tmpl_cache.get(tmpl_key) if (tmpl_cache is not None) else None
+        if tmpl is None and (tmpl_cache is None or tmpl_key not in tmpl_cache):
+            tmpl = self.part_op_repo.get(batch.part_no, seq)
+            if tmpl_cache is not None:
+                tmpl_cache[tmpl_key] = tmpl
         if not tmpl:
             return None, None
         if not tmpl.ext_group_id:
             return tmpl, None
-        grp = self.group_repo.get(tmpl.ext_group_id)
+        gid = str(tmpl.ext_group_id or "").strip()
+        grp = grp_cache.get(gid) if (grp_cache is not None and gid) else None
+        if grp is None and (grp_cache is None or gid not in grp_cache):
+            grp = self.group_repo.get(tmpl.ext_group_id)
+            if grp_cache is not None and gid:
+                grp_cache[gid] = grp
         return tmpl, grp
 
     @staticmethod
@@ -184,6 +223,37 @@ class ScheduleService:
     # Phase 7：执行排产（算法 + 落库 + 留痕）
     # -------------------------
     def run_schedule(
+        self,
+        batch_ids: List[str],
+        start_dt: Any = None,
+        end_date: Any = None,
+        created_by: Optional[str] = None,
+        simulate: bool = False,
+        enforce_ready: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        if not _RUN_SCHEDULE_LOCK.acquire(blocking=False):
+            raise ValidationError("系统正在执行排产，请稍后重试。", field="排产")
+        try:
+            self._aps_schedule_input_cache = {"batch": {}, "tmpl": {}, "grp": {}}
+            return self._run_schedule_impl(
+                batch_ids=batch_ids,
+                start_dt=start_dt,
+                end_date=end_date,
+                created_by=created_by,
+                simulate=simulate,
+                enforce_ready=enforce_ready,
+            )
+        finally:
+            try:
+                self._aps_schedule_input_cache = None
+            except Exception:
+                pass
+            try:
+                _RUN_SCHEDULE_LOCK.release()
+            except Exception:
+                pass
+
+    def _run_schedule_impl(
         self,
         batch_ids: List[str],
         start_dt: Any = None,
@@ -389,7 +459,7 @@ class ScheduleService:
                         merged = list(algo_warnings)
                     else:
                         merged = list(algo_warnings)
-                    setattr(summary, "warnings", merged)
+                    summary.warnings = merged
                 except Exception:
                     pass
 
@@ -422,6 +492,7 @@ class ScheduleService:
 
         persist_schedule(
             self,
+            cfg=cfg,
             version=version,
             results=results,
             summary=summary,

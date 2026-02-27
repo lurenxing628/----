@@ -69,7 +69,7 @@ class ScheduleRepository(BaseRepository):
         chunk_size: int = 900,
     ) -> List[Dict[str, Any]]:
         """
-        查询指定版本在 [start_time, end_time) 范围内的排程记录（按 start_time 过滤），并限定 op_id 集合。
+        查询指定版本与 [start_time, end_time) 范围“有重叠”的排程记录，并限定 op_id 集合。
 
         主要用于“冻结窗口”：
         - sqlite 默认变量上限 999，因此这里默认分块查询
@@ -95,10 +95,10 @@ class ScheduleRepository(BaseRepository):
             FROM Schedule
             WHERE version = ?
               AND op_id IN ({placeholders})
-              AND start_time >= ?
               AND start_time < ?
+              AND end_time > ?
             """
-            params: List[Any] = [int(version)] + list(chunk) + [start_time, end_time]
+            params: List[Any] = [int(version)] + list(chunk) + [end_time, start_time]
             out.extend(self.fetchall(sql, tuple(params)))
         return out
 

@@ -8,6 +8,7 @@ from core.models.enums import BatchStatus, SourceType
 def persist_schedule(
     svc,
     *,
+    cfg: Any,
     version: int,
     results: List[Any],
     summary: Any,
@@ -52,6 +53,7 @@ def persist_schedule(
             svc.schedule_repo.bulk_create(schedule_rows)
 
         if not simulate:
+            auto_assign_persist = str(getattr(cfg, "auto_assign_persist", "yes") or "").strip().lower() == "yes"
             # 批次工序：成功排到的置 scheduled；失败的保持原状态（便于继续补全）
             scheduled_op_ids = {int(r.op_id) for r in results if r and getattr(r, "op_id", None)}
             assigned_by_op_id: Dict[int, Dict[str, Any]] = {
@@ -67,7 +69,7 @@ def persist_schedule(
                 if int(op.id) in scheduled_op_ids:
                     svc.op_repo.update(int(op.id), {"status": "scheduled"})
                     # 自动分配补全：仅在原本缺省资源时回写 machine/operator（避免覆盖人工已选）
-                    if int(op.id) in missing_internal_resource_op_ids:
+                    if auto_assign_persist and int(op.id) in missing_internal_resource_op_ids:
                         assign = assigned_by_op_id.get(int(op.id)) or {}
                         mc = (assign.get("machine_id") or "").strip()
                         oid = (assign.get("operator_id") or "").strip()

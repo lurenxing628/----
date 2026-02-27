@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 import time
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 
@@ -177,6 +177,7 @@ def build_result_summary(
         hard_constraints.append("freeze_window")
 
     result_summary_obj: Dict[str, Any] = {
+        "summary_schema_version": "1.0",
         "is_simulation": bool(simulate),
         "version": int(version),
         "strategy": used_strategy.value,
