@@ -1,0 +1,46 @@
+[project]
+name = "aps-test"
+requires-python = ">=3.8"
+
+[tool.ruff]
+target-version = "py38"
+line-length = 120
+exclude = [
+    ".git",
+    "__pycache__",
+    "dist",
+    "build",
+    "*.egg-info",
+    "static/js/frappe-gantt*",
+    "backups",
+    "evidence",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade (仅报告，不强制升级语法)
+    "B",   # flake8-bugbear (常见 bug 模式)
+]
+ignore = [
+    "E501",   # 行长度由 line-length 控制，允许适度超长
+    "E402",   # 模块级导入不在文件顶部（Flask 路由注册模式需要）
+    "F401",   # 已有 noqa 标记的 side-effect 导入
+    "UP006",  # Python 3.8 不支持 list[X] 替代 List[X]
+    "UP007",  # Python 3.8 不支持 X | Y 类型语法
+    "UP045",  # Python 3.8 不支持 X | None 替代 Optional[X]
+]
+
+[tool.ruff.lint.per-file-ignores]
+"web/routes/scheduler.py" = ["F401"]  # side-effect 导入注册路由
+"web/routes/equipment.py" = ["F401"]
+"web/routes/personnel.py" = ["F401"]
+"web/routes/process.py" = ["F401"]
+"web/routes/material.py" = ["F401"]
+"tests/*" = ["E", "W", "B", "UP015"]  # 测试文件宽松
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "data", "web"]

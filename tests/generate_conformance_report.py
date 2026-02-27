@@ -60,7 +60,7 @@ class CheckResult:
 def _check_requirements(repo_root: str) -> CheckResult:
     path = os.path.join(repo_root, "requirements.txt")
     txt = _read_text(path)
-    evidence = [f"`requirements.txt` 存在：是", "内容摘要：", "```", *(txt.strip().splitlines()[:30]), "```"]
+    evidence = ["`requirements.txt` 存在：是", "内容摘要：", "```", *(txt.strip().splitlines()[:30]), "```"]
 
     banned = ["pandas", "numpy", "schedule"]
     banned_hit = []
@@ -247,6 +247,161 @@ def _check_scheduler_schedule_logging(repo_root: str) -> CheckResult:
     )
 
 
+def _check_architecture_layers(repo_root: str) -> CheckResult:
+    """检查分层架构是否被违反：route 不能直接操作 DB，service 不能导入 Flask request。"""
+    violations = []
+
+    route_dir = os.path.join(repo_root, "web", "routes")
+    if os.path.isdir(route_dir):
+        for fname in os.listdir(route_dir):
+            if not fname.endswith(".py") or fname.startswith("__"):
+                continue
+            fpath = os.path.join(route_dir, fname)
+            try:
+                txt = _read_text(fpath)
+            except Exception:
+                continue
+            for i, line in enumerate(txt.splitlines(), 1):
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    continue
+                if re.search(r"\bcursor\.execute\b", stripped):
+                    violations.append(f"web/routes/{fname}:{i} - route 层直接执行 cursor.execute")
+                if re.search(r"\bfetchone\b", stripped) and "BaseRepository" not in txt:
+                    violations.append(f"web/routes/{fname}:{i} - route 层直接调用 fetchone")
+                if re.search(r"\bconn\.execute\b", stripped):
+                    violations.append(f"web/routes/{fname}:{i} - route 层直接执行 conn.execute")
+
+    svc_base = os.path.join(repo_root, "core", "services")
+    if os.path.isdir(svc_base):
+        for dirpath, _, filenames in os.walk(svc_base):
+            for fname in filenames:
+                if not fname.endswith(".py") or fname.startswith("__"):
+                    continue
+                fpath = os.path.join(dirpath, fname)
+                try:
+                    txt = _read_text(fpath)
+                except Exception:
+                    continue
+                rel = os.path.relpath(fpath, repo_root).replace("\\", "/")
+                for i, line in enumerate(txt.splitlines(), 1):
+                    stripped = line.strip()
+                    if stripped.startswith("#"):
+                        continue
+                    if re.search(r"from\s+flask\s+import\s+.*\brequest\b", stripped):
+                        violations.append(f"{rel}:{i} - service 层导入了 flask.request")
+
+    ok = len(violations) == 0
+    evidence = [f"违反项数：{len(violations)}"]
+    if violations:
+        evidence.extend(violations[:20])
+        if len(violations) > 20:
+            evidence.append(f"...（共 {len(violations)} 项，仅展示前 20）")
+    return CheckResult(
+        name="分层架构合规（route 不直接操作 DB，service 不导入 Flask request）",
+        ok=ok,
+        severity="MAJOR" if not ok else "INFO",
+        evidence=evidence,
+        details=None if ok else "发现分层架构违反，请按 architecture-invariants 规则修正。",
+    )
+
+
+def _check_schema_tables_documented(repo_root: str) -> CheckResult:
+    """检查 schema.sql 中的所有表是否在开发文档中有记录。"""
+    schema_path = os.path.join(repo_root, "schema.sql")
+    schema_txt = _read_text(schema_path)
+    tables = re.findall(r"(?im)^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)", schema_txt)
+    tables = [t for t in tables if t != "SchemaVersion"]
+
+    doc_path = os.path.join(repo_root, "开发文档", "开发文档.md")
+    doc_txt = ""
+    if os.path.exists(doc_path):
+        doc_txt = _read_text(doc_path)
+
+    quickref_path = os.path.join(repo_root, "开发文档", "系统速查表.md")
+    quickref_txt = ""
+    if os.path.exists(quickref_path):
+        quickref_txt = _read_text(quickref_path)
+
+    combined = doc_txt + "\n" + quickref_txt
+    undocumented = [t for t in tables if t not in combined]
+
+    ok = len(undocumented) == 0
+    evidence = [
+        f"schema.sql 表数量：{len(tables)}",
+        f"未在文档中出现的表：{undocumented if undocumented else '无'}",
+    ]
+    return CheckResult(
+        name="Schema 表文档化（schema.sql 所有表在开发文档/速查表中有记录）",
+        ok=ok,
+        severity="MAJOR" if not ok else "INFO",
+        evidence=evidence,
+        details=None if ok else f"以下表未在开发文档中记录：{undocumented}。请同步更新文档。",
+    )
+
+
+def _check_file_sizes(repo_root: str) -> CheckResult:
+    """检查 Python 文件是否超过 500 行限制。"""
+    oversized = []
+    for check_dir in ["web/routes", "core/services", "data/repositories", "core/infrastructure", "core/models"]:
+        base = os.path.join(repo_root, check_dir)
+        if not os.path.isdir(base):
+            continue
+        for dirpath, _, filenames in os.walk(base):
+            for fname in filenames:
+                if not fname.endswith(".py") or fname.startswith("__"):
+                    continue
+                fpath = os.path.join(dirpath, fname)
+                try:
+                    line_count = len(_read_text(fpath).splitlines())
+                except Exception:
+                    continue
+                if line_count > 500:
+                    rel = os.path.relpath(fpath, repo_root).replace("\\", "/")
+                    oversized.append(f"{rel}（{line_count} 行）")
+
+    ok = len(oversized) == 0
+    evidence = [f"超过 500 行的文件数：{len(oversized)}"]
+    if oversized:
+        evidence.extend(oversized[:15])
+    return CheckResult(
+        name="文件行数约束（核心目录 Python 文件不超过 500 行）",
+        ok=ok,
+        severity="MINOR" if not ok else "INFO",
+        evidence=evidence,
+        details=None if ok else "建议按职责拆分超大文件（参考 scheduler.py 拆分先例）。",
+    )
+
+
+def _check_template_files_exist(repo_root: str) -> CheckResult:
+    """检查 templates/ 目录结构是否与主要模块对齐。"""
+    expected_dirs = ["scheduler", "equipment", "personnel", "process", "material", "reports"]
+    tmpl_root = os.path.join(repo_root, "templates")
+    missing_dirs = []
+    if os.path.isdir(tmpl_root):
+        for d in expected_dirs:
+            if not os.path.isdir(os.path.join(tmpl_root, d)):
+                missing_dirs.append(d)
+    else:
+        missing_dirs = expected_dirs
+
+    expected_files = ["templates/base.html", "templates/scheduler/gantt.html", "templates/scheduler/batches.html"]
+    missing_files = [f for f in expected_files if not _exists(repo_root, f)]
+
+    ok = len(missing_dirs) == 0 and len(missing_files) == 0
+    evidence = [
+        f"模板子目录缺失：{missing_dirs if missing_dirs else '无'}",
+        f"关键模板文件缺失：{missing_files if missing_files else '无'}",
+    ]
+    return CheckResult(
+        name="模板目录完整性（templates/ 子目录与模块对齐）",
+        ok=ok,
+        severity="MAJOR" if not ok else "INFO",
+        evidence=evidence,
+        details=None if ok else "模板目录/文件缺失可能导致页面 404。",
+    )
+
+
 def _check_routes_presence(repo_root: str) -> CheckResult:
     """
     用 create_app() 的 url_map 做存在性验证（只验证关键路由，不追求全文档逐条比对）。
@@ -319,13 +474,17 @@ def generate_report(repo_root: str) -> Tuple[str, List[CheckResult]]:
     checks.append(_check_scheduler_config_defaults(repo_root))
     checks.append(_check_operation_logs_keys(repo_root))
     checks.append(_check_scheduler_schedule_logging(repo_root))
+    checks.append(_check_architecture_layers(repo_root))
+    checks.append(_check_schema_tables_documented(repo_root))
+    checks.append(_check_file_sizes(repo_root))
+    checks.append(_check_template_files_exist(repo_root))
     checks.append(_check_routes_presence(repo_root))
 
     blockers = [c for c in checks if (not c.ok) and c.severity == "BLOCKER"]
     majors = [c for c in checks if (not c.ok) and c.severity == "MAJOR"]
 
     lines: List[str] = []
-    lines.append("# 实现一致性对标报告（实现 vs 开发文档规划）")
+    lines.append("# 实现一致性对标报告（实现 vs 开发文档规划 + 架构合规）")
     lines.append("")
     lines.append(f"- 生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append(f"- 仓库根目录：`{repo_root}`")
