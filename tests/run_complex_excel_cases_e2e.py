@@ -24,9 +24,9 @@ import tempfile
 import time
 import traceback
 from dataclasses import dataclass
-from datetime import date, datetime, time as dt_time, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as dt_time
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
-
 
 # 确保仓库根目录在 sys.path（允许直接 python tests/xxx.py 运行）
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -124,6 +124,15 @@ def _extract_raw_rows_json(html: str) -> str:
     return raw.strip()
 
 
+def _extract_preview_baseline(html: str) -> str:
+    m = re.search(r'<input[^>]+name="preview_baseline"[^>]+value="([^"]*)"', html, re.S)
+    if not m:
+        return ""
+    v = m.group(1)
+    v = v.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&")
+    return v.strip()
+
+
 def _post_excel_import(
     *,
     client,
@@ -172,6 +181,9 @@ def _post_excel_import(
         raise RuntimeError(f"preview 存在 ERROR 行，导入会被拒绝：{preview_url}{('；示例：' + sample_text) if sample_text else ''}")
     raw_rows_json = _extract_raw_rows_json(html)
     data = {"mode": mode, "filename": filename, "raw_rows_json": raw_rows_json}
+    preview_baseline = _extract_preview_baseline(html)
+    if preview_baseline:
+        data["preview_baseline"] = preview_baseline
     if confirm_extra:
         data.update(confirm_extra)
     resp2 = client.post(confirm_url, data=data, follow_redirects=True)
@@ -202,17 +214,16 @@ def create_test_app(*, repo_root: str, db_path: str, log_dir: str, backup_dir: s
     from core.infrastructure.logging import OperationLogger
     from core.services.common.excel_templates import ensure_excel_templates
     from web.error_handlers import register_error_handlers
-    from web.ui_mode import init_ui_mode
-
     from web.routes.dashboard import bp as dashboard_bp
-    from web.routes.excel_demo import bp as excel_demo_bp
-    from web.routes.personnel import bp as personnel_bp
     from web.routes.equipment import bp as equipment_bp
+    from web.routes.excel_demo import bp as excel_demo_bp
+    from web.routes.material import bp as material_bp
+    from web.routes.personnel import bp as personnel_bp
     from web.routes.process import bp as process_bp
+    from web.routes.reports import bp as reports_bp
     from web.routes.scheduler import bp as scheduler_bp
     from web.routes.system import bp as system_bp
-    from web.routes.material import bp as material_bp
-    from web.routes.reports import bp as reports_bp
+    from web.ui_mode import init_ui_mode
 
     static_dir = os.path.join(repo_root, "static")
     templates_dir = os.path.join(repo_root, "templates")
@@ -909,10 +920,9 @@ def _sanity_check(
     issues: List[str] = []
 
     # 1) 行数：应覆盖全部工序
-    total_ops = conn.execute(
-        "SELECT COUNT(1) AS c FROM BatchOperations WHERE batch_id IN (%s)" % ",".join(["?"] * len(selected_batch_ids)),
-        tuple(selected_batch_ids),
-    ).fetchone()["c"]
+    placeholders = ",".join(["?"] * len(selected_batch_ids))
+    sql = f"SELECT COUNT(1) AS c FROM BatchOperations WHERE batch_id IN ({placeholders})"
+    total_ops = conn.execute(sql, tuple(selected_batch_ids)).fetchone()["c"]
     sch_cnt = conn.execute("SELECT COUNT(1) AS c FROM Schedule WHERE version=?", (int(version),)).fetchone()["c"]
     if int(sch_cnt) != int(total_ops):
         issues.append(f"Schedule 行数不匹配：scheduled={sch_cnt} expected_ops={total_ops}")
@@ -1575,8 +1585,8 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
             issues_all.extend([f"[v2] {x}" for x in issues_v2])
 
             # 冻结一致性：窗口内被冻结 op 的时间应与 v1 一致
-            from core.services.scheduler.freeze_window import build_freeze_window_seed
             from core.services.scheduler.config_service import ConfigService
+            from core.services.scheduler.freeze_window import build_freeze_window_seed
             from core.services.scheduler.schedule_service import ScheduleService
 
             cfg = ConfigService(conn).get_snapshot()
@@ -1826,7 +1836,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     if len(issues) > 40:
                         report_lines.append(f"  - ...（剩余 {len(issues)-40} 条见 `result.json`）")
                 else:
-                    report_lines.append(f"- **sanity：通过**")
+                    report_lines.append("- **sanity：通过**")
                 report_lines.append("")
             except Exception as e:
                 failed = True
