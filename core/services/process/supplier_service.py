@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Supplier
+from core.services.common.normalize import normalize_text
 from data.repositories import OpTypeRepository, SupplierRepository
 
 
@@ -21,13 +22,7 @@ class SupplierService:
 
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     @staticmethod
     def _normalize_float(value: Any, default: float = 0.0) -> float:
@@ -105,6 +100,15 @@ class SupplierService:
             raise ValidationError("“供应商ID”不能为空", field="供应商ID")
         return self._get_or_raise(sid)
 
+    def get_optional(self, supplier_id: Any) -> Optional[Supplier]:
+        """
+        宽松查询：找不到返回 None（用于页面回显“已删除/已停用”资源）。
+        """
+        sid, _, _, _ = self._validate_fields(supplier_id, None, None, None, allow_partial=True)
+        if not sid:
+            return None
+        return self.repo.get(sid)
+
     def create(
         self,
         supplier_id: Any,
@@ -174,17 +178,12 @@ class SupplierService:
         self._get_or_raise(sid)
 
         # 若被引用，则禁止删除（模板/批次工序）
-        for table, col, zh in [
-            ("PartOperations", "supplier_id", "零件工序模板"),
-            ("BatchOperations", "supplier_id", "批次工序"),
-            ("ExternalGroups", "supplier_id", "外部工序组"),
-        ]:
-            row = self.conn.execute(
-                f"SELECT 1 FROM {table} WHERE {col} IS NOT NULL AND TRIM({col}) <> '' AND {col} = ? LIMIT 1",
-                (sid,),
-            ).fetchone()
-            if row is not None:
-                raise BusinessError(ErrorCode.PERMISSION_DENIED, f"该供应商已被{zh}引用，不能删除。建议改为“停用”。")
+        if self.repo.has_part_operation_reference(sid):
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被零件工序模板引用，不能删除。建议改为“停用”。")
+        if self.repo.has_batch_operation_reference(sid):
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被批次工序引用，不能删除。建议改为“停用”。")
+        if self.repo.has_external_group_reference(sid):
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被外部工序组引用，不能删除。建议改为“停用”。")
 
         with self.tx_manager.transaction():
             self.repo.delete(sid)
@@ -207,19 +206,24 @@ class SupplierService:
             }
         return existing
 
+    def list_for_export_rows(self) -> List[Dict[str, Any]]:
+        """
+        供 Excel 导出使用的扁平行（含 op_type_name）。
+
+        返回字段由 SupplierRepository.list_for_export() 定义：
+        - supplier_id, name, default_days, status, remark, op_type_name
+        """
+        return self.repo.list_for_export()
+
     def ensure_replace_allowed(self) -> None:
         """
         REPLACE（清空后导入）保护：
         若已被零件模板/批次工序/外部组引用，则禁止清空。
         """
-        for table, col, msg in [
-            ("PartOperations", "supplier_id", "已有零件工序模板引用了供应商，不能执行“替换（清空后导入）”。"),
-            ("BatchOperations", "supplier_id", "已有批次工序引用了供应商，不能执行“替换（清空后导入）”。"),
-            ("ExternalGroups", "supplier_id", "已有外部工序组绑定了供应商，不能执行“替换（清空后导入）”。"),
-        ]:
-            row = self.conn.execute(
-                f"SELECT 1 FROM {table} WHERE {col} IS NOT NULL AND TRIM({col}) <> '' LIMIT 1"
-            ).fetchone()
-            if row is not None:
-                raise BusinessError(ErrorCode.PERMISSION_DENIED, f"{msg}请先解除引用或改用“覆盖/追加”。")
+        if self.repo.has_any_part_operation_reference():
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有零件工序模板引用了供应商，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
+        if self.repo.has_any_batch_operation_reference():
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有批次工序引用了供应商，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
+        if self.repo.has_any_external_group_reference():
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有外部工序组绑定了供应商，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
 

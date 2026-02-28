@@ -30,6 +30,49 @@ class PartOperationRepository(BaseRepository):
             )
         return [PartOperation.from_row(r) for r in rows]
 
+    def list_all_active_with_details(self) -> List[Dict[str, Any]]:
+        return self.fetchall(
+            """
+            SELECT
+              p.part_no,
+              po.seq,
+              po.op_type_name,
+              po.source,
+              po.supplier_id,
+              s.name AS supplier_name,
+              po.ext_days,
+              po.ext_group_id,
+              eg.merge_mode,
+              eg.total_days
+            FROM PartOperations po
+            JOIN Parts p ON p.part_no = po.part_no
+            LEFT JOIN Suppliers s ON s.supplier_id = po.supplier_id
+            LEFT JOIN ExternalGroups eg ON eg.group_id = po.ext_group_id
+            WHERE po.status = 'active'
+            ORDER BY p.part_no, po.seq
+            """
+        )
+
+    def list_active_hours(self) -> List[Dict[str, Any]]:
+        return self.fetchall(
+            """
+            SELECT part_no, seq, op_type_name, source, setup_hours, unit_hours
+            FROM PartOperations
+            WHERE status='active'
+            ORDER BY part_no, seq
+            """
+        )
+
+    def list_internal_active_hours(self) -> List[Dict[str, Any]]:
+        return self.fetchall(
+            """
+            SELECT part_no, seq, setup_hours, unit_hours
+            FROM PartOperations
+            WHERE status='active' AND source='internal'
+            ORDER BY part_no, seq
+            """
+        )
+
     def create(self, op: Union[PartOperation, Dict[str, Any]]) -> PartOperation:
         po = op if isinstance(op, PartOperation) else PartOperation.from_row(op)
         cur = self.execute(

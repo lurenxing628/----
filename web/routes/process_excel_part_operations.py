@@ -5,12 +5,11 @@ import time
 
 from flask import g, send_file, url_for
 
+from core.services.common.excel_audit import log_excel_export
+from core.services.process.part_operation_query_service import PartOperationQueryService
 from web.ui_mode import render_ui_template as render_template
 
-from core.services.common.excel_audit import log_excel_export
-
 from .process_bp import bp
-
 
 # ============================================================
 # Excel：零件工序模板导出（PartOperations）
@@ -29,27 +28,8 @@ def excel_part_ops_page():
 @bp.get("/excel/part-operations/export")
 def excel_part_ops_export():
     start = time.time()
-    rows = g.db.execute(
-        """
-        SELECT
-          p.part_no,
-          po.seq,
-          po.op_type_name,
-          po.source,
-          po.supplier_id,
-          s.name AS supplier_name,
-          po.ext_days,
-          po.ext_group_id,
-          eg.merge_mode,
-          eg.total_days
-        FROM PartOperations po
-        JOIN Parts p ON p.part_no = po.part_no
-        LEFT JOIN Suppliers s ON s.supplier_id = po.supplier_id
-        LEFT JOIN ExternalGroups eg ON eg.group_id = po.ext_group_id
-        WHERE po.status = 'active'
-        ORDER BY p.part_no, po.seq
-        """
-    ).fetchall()
+    q = PartOperationQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+    rows = q.list_all_active_with_details()
 
     import openpyxl
 

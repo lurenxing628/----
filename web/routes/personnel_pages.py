@@ -4,30 +4,29 @@ from typing import Any, Dict, List
 
 from flask import flash, g, redirect, request, url_for
 
+from core.infrastructure.errors import AppError, ValidationError
+from core.services.equipment import MachineService
+from core.services.personnel import OperatorMachineService, OperatorService
+from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 from web.ui_mode import render_ui_template as render_template
 
-from core.infrastructure.errors import AppError, ValidationError
-from core.services.personnel import OperatorMachineService, OperatorService
-from data.repositories import MachineRepository
-
-from .personnel_bp import bp, _machine_status_zh, _operator_status_zh
 from .pagination import paginate_rows, parse_page_args
+from .personnel_bp import _machine_status_zh, _operator_status_zh, bp
 
 
 @bp.get("/")
 def list_page():
     op_svc = OperatorService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    m_repo = MachineRepository(g.db)
+    mc_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
     page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
 
     operators = op_svc.list()
     # 预加载所有设备（用于展示名称）
-    machines = {m.machine_id: m for m in m_repo.list()}
+    machines = {m.machine_id: m for m in mc_svc.list()}
 
     # 预加载关联并聚合到人员
-    link_rows = g.db.execute(
-        "SELECT operator_id, machine_id FROM OperatorMachine ORDER BY operator_id, machine_id"
-    ).fetchall()
+    link_rows = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None)).list_simple_rows()
+    link_rows.sort(key=lambda r: (str(r.get("operator_id") or ""), str(r.get("machine_id") or "")))
     links_by_operator: Dict[str, List[Dict[str, Any]]] = {}
     for r in link_rows:
         op_id = r["operator_id"]
@@ -87,25 +86,25 @@ def create_operator():
 def detail_page(operator_id: str):
     op_svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     link_svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
-    m_repo = MachineRepository(g.db)
+    mc_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
 
     op = op_svc.get(operator_id)
     links = link_svc.list_by_operator(operator_id)
 
-    machines = {m.machine_id: m for m in m_repo.list()}
-    linked_machine_ids = {l.machine_id for l in links}
+    machines = {m.machine_id: m for m in mc_svc.list()}
+    linked_machine_ids = {link.machine_id for link in links}
 
     linked_machines: List[Dict[str, Any]] = []
-    for l in links:
-        m = machines.get(l.machine_id)
+    for link in links:
+        m = machines.get(link.machine_id)
         linked_machines.append(
             {
-                "machine_id": l.machine_id,
+                "machine_id": link.machine_id,
                 "machine_name": (m.name if m else None),
                 "status": (m.status if m else None),
                 "status_zh": _machine_status_zh(m.status) if m else "-",
-                "skill_level": getattr(l, "skill_level", None),
-                "is_primary": getattr(l, "is_primary", None),
+                "skill_level": getattr(link, "skill_level", None),
+                "is_primary": getattr(link, "is_primary", None),
             }
         )
 

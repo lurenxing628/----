@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.enums import MergeMode
+from core.services.common.normalize import normalize_text
 from data.repositories import ExternalGroupRepository, PartOperationRepository
 
 
@@ -21,13 +22,7 @@ class ExternalGroupService:
 
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     @staticmethod
     def _normalize_float(value: Any) -> Optional[float]:

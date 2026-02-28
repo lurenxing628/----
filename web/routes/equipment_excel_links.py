@@ -8,15 +8,14 @@ from typing import Any, Dict, List
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import ValidationError
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ImportMode, RowStatus
 from core.services.personnel import OperatorMachineService
+from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
+from web.ui_mode import render_ui_template as render_template
 
-from .equipment_bp import bp, _parse_mode, _read_uploaded_xlsx
-
+from .equipment_bp import _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
 # Excel：设备人员关联（OperatorMachine）
@@ -25,16 +24,8 @@ from .equipment_bp import bp, _parse_mode, _read_uploaded_xlsx
 
 @bp.get("/excel/links")
 def excel_link_page():
-    rows = g.db.execute(
-        """
-        SELECT om.machine_id, m.name AS machine_name, om.operator_id, o.name AS operator_name,
-               om.skill_level, om.is_primary
-        FROM OperatorMachine om
-        LEFT JOIN Machines m ON m.machine_id = om.machine_id
-        LEFT JOIN Operators o ON o.operator_id = om.operator_id
-        ORDER BY om.machine_id, om.operator_id
-        """
-    ).fetchall()
+    q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+    rows = q.list_with_names_by_machine()
     existing_list = [
         {
             "设备编号": r["machine_id"],
@@ -101,16 +92,8 @@ def excel_link_preview():
     )
 
     # 刷新 existing list
-    existing_rows = g.db.execute(
-        """
-        SELECT om.machine_id, m.name AS machine_name, om.operator_id, o.name AS operator_name,
-               om.skill_level, om.is_primary
-        FROM OperatorMachine om
-        LEFT JOIN Machines m ON m.machine_id = om.machine_id
-        LEFT JOIN Operators o ON o.operator_id = om.operator_id
-        ORDER BY om.machine_id, om.operator_id
-        """
-    ).fetchall()
+    q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+    existing_rows = q.list_with_names_by_machine()
     existing_list = [
         {
             "设备编号": r["machine_id"],
@@ -151,8 +134,8 @@ def excel_link_confirm():
         rows = json.loads(raw_rows_json)
         if not isinstance(rows, list):
             raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
     link_svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
     preview_rows = link_svc.preview_import_links(rows=rows, mode=mode)
@@ -167,16 +150,8 @@ def excel_link_confirm():
         )
 
         # 刷新 existing list（与 preview 保持一致）
-        existing_rows = g.db.execute(
-            """
-            SELECT om.machine_id, m.name AS machine_name, om.operator_id, o.name AS operator_name,
-                   om.skill_level, om.is_primary
-            FROM OperatorMachine om
-            LEFT JOIN Machines m ON m.machine_id = om.machine_id
-            LEFT JOIN Operators o ON o.operator_id = om.operator_id
-            ORDER BY om.machine_id, om.operator_id
-            """
-        ).fetchall()
+        q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+        existing_rows = q.list_with_names_by_machine()
         existing_list = [
             {
                 "设备编号": r["machine_id"],
@@ -281,9 +256,9 @@ def excel_link_template():
 @bp.get("/excel/links/export")
 def excel_link_export():
     start = time.time()
-    rows = g.db.execute(
-        "SELECT machine_id, operator_id, skill_level, is_primary FROM OperatorMachine ORDER BY machine_id, operator_id"
-    ).fetchall()
+    q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+    rows = q.list_simple_rows()
+    rows.sort(key=lambda r: (str(r.get("machine_id") or ""), str(r.get("operator_id") or "")))
 
     import openpyxl
 

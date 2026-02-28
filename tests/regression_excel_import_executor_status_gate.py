@@ -103,6 +103,69 @@ def main() -> None:
         if replace_calls != [("R1", False)]:
             raise RuntimeError(f"REPLACE 下 UNCHANGED 行应重建写库，实际调用：{replace_calls!r}")
 
+        # row_id_getter 异常兜底：即使 preview 行非 ERROR，row_id 为空也必须计入 error 并跳过写库。
+        empty_calls = []
+        empty_stats = execute_preview_rows_transactional(
+            conn,
+            mode=ImportMode.OVERWRITE,
+            preview_rows=[ImportPreviewRow(row_num=9, status=RowStatus.NEW, data={"id": ""}, message="empty id")],
+            existing_row_ids=set(),
+            replace_existing_no_tx=None,
+            row_id_getter=_row_id_getter,
+            apply_row_no_tx=lambda pr, existed: empty_calls.append((_row_id_getter(pr), existed)),
+            max_error_sample=10,
+        )
+        assert empty_stats.error_count == 1, empty_stats
+        assert empty_stats.new_count == 0 and empty_stats.update_count == 0 and empty_stats.skip_count == 0, empty_stats
+        assert empty_calls == [], empty_calls
+        assert empty_stats.errors_sample and empty_stats.errors_sample[0].get("row") == 9, empty_stats.errors_sample
+
+        # continue_on_app_error 语义：为 True 时按行降级计错继续；为 False 时遇到 AppError 直接中断
+        from core.infrastructure.errors import ValidationError
+
+        app_err_calls = []
+
+        def _apply_row_maybe_error(pr, existed: bool) -> None:
+            rid = _row_id_getter(pr)
+            if rid == "E_APP":
+                raise ValidationError("模拟导入错误", field="id")
+            app_err_calls.append((rid, bool(existed)))
+
+        cont_stats = execute_preview_rows_transactional(
+            conn,
+            mode=ImportMode.OVERWRITE,
+            preview_rows=[
+                ImportPreviewRow(row_num=10, status=RowStatus.NEW, data={"id": "E_APP"}, message="app error"),
+                ImportPreviewRow(row_num=11, status=RowStatus.NEW, data={"id": "OK1"}, message="ok row"),
+            ],
+            existing_row_ids=set(),
+            replace_existing_no_tx=None,
+            row_id_getter=_row_id_getter,
+            apply_row_no_tx=_apply_row_maybe_error,
+            max_error_sample=10,
+            continue_on_app_error=True,
+        )
+        assert cont_stats.error_count == 1 and cont_stats.new_count == 1, cont_stats
+        assert app_err_calls == [("OK1", False)], app_err_calls
+        assert cont_stats.errors_sample and cont_stats.errors_sample[0].get("row") == 10, cont_stats.errors_sample
+
+        aborted = False
+        try:
+            execute_preview_rows_transactional(
+                conn,
+                mode=ImportMode.OVERWRITE,
+                preview_rows=[ImportPreviewRow(row_num=12, status=RowStatus.NEW, data={"id": "E_APP"}, message="app error")],
+                existing_row_ids=set(),
+                replace_existing_no_tx=None,
+                row_id_getter=_row_id_getter,
+                apply_row_no_tx=_apply_row_maybe_error,
+                max_error_sample=10,
+                continue_on_app_error=False,
+            )
+        except ValidationError:
+            aborted = True
+        assert aborted is True, "continue_on_app_error=False 时应直接抛出 AppError"
+
         print("OK")
     finally:
         try:

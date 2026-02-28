@@ -4,8 +4,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
 from core.models import OperatorMachine
+from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
+from core.services.common.normalize import normalize_text
 from data.repositories import MachineRepository, OperatorMachineRepository, OperatorRepository
 
 
@@ -30,13 +31,7 @@ class OperatorMachineService:
     # -------------------------
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     @classmethod
     def _normalize_skill_level_optional(cls, value: Any) -> Optional[str]:

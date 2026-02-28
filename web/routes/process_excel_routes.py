@@ -8,17 +8,16 @@ from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import AppError, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.process import PartService
+from core.services.scheduler.batch_query_service import BatchQueryService
+from web.ui_mode import render_ui_template as render_template
 
-from .process_bp import bp, _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx
-
+from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
 # Excel：零件工艺路线（Parts.route_raw + 解析生成模板）
@@ -119,8 +118,8 @@ def excel_routes_confirm():
         rows = json.loads(raw_rows_json)
         if not isinstance(rows, list):
             raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
     _ensure_unique_ids(rows, id_column="图号")
 
@@ -178,10 +177,10 @@ def excel_routes_confirm():
     with tx.transaction():
         if mode == ImportMode.REPLACE:
             # 若存在批次引用，删除 Parts 会触发外键错误，因此这里做保护
-            row = g.db.execute("SELECT 1 FROM Batches LIMIT 1").fetchone()
-            if row is not None:
+            batch_q = BatchQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+            if batch_q.has_any():
                 raise ValidationError("已存在批次数据，不能执行“替换（清空后导入）”。请改用“覆盖/追加”。")
-            g.db.execute("DELETE FROM Parts")
+            part_svc.delete_all_no_tx()
 
         for pr in preview_rows:
             if pr.status == RowStatus.ERROR:
@@ -291,7 +290,9 @@ def excel_routes_template():
 @bp.get("/excel/routes/export")
 def excel_routes_export():
     start = time.time()
-    rows = g.db.execute("SELECT part_no, part_name, route_raw FROM Parts ORDER BY part_no").fetchall()
+    svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
+    parts = svc.list()
+    rows = [{"part_no": p.part_no, "part_name": p.part_name, "route_raw": p.route_raw} for p in parts]
 
     import openpyxl
 

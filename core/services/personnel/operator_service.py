@@ -6,6 +6,7 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Operator
 from core.models.enums import OperatorStatus
+from core.services.common.normalize import normalize_text
 from data.repositories import OperatorRepository
 
 
@@ -24,13 +25,7 @@ class OperatorService:
     # -------------------------
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     def _validate_operator_fields(
         self,
@@ -76,6 +71,15 @@ class OperatorService:
         if not op_id:
             raise ValidationError("“工号”不能为空", field="工号")
         return self._get_or_raise(op_id)
+
+    def get_optional(self, operator_id: Any) -> Optional[Operator]:
+        """
+        宽松查询：找不到返回 None（用于页面回显“已删除/已停用”资源）。
+        """
+        op_id, _, _ = self._validate_operator_fields(operator_id=operator_id, name=None, status=None, allow_partial=True)
+        if not op_id:
+            return None
+        return self.repo.get(op_id)
 
     def create(self, operator_id: Any, name: Any, status: Any = "active", remark: Any = None) -> Operator:
         op_id, op_name, op_status = self._validate_operator_fields(operator_id=operator_id, name=name, status=status)
@@ -138,22 +142,14 @@ class OperatorService:
         self._get_or_raise(op_id)
 
         # 若被批次工序引用，则禁止删除
-        row = self.conn.execute(
-            "SELECT 1 FROM BatchOperations WHERE operator_id = ? LIMIT 1",
-            (op_id,),
-        ).fetchone()
-        if row is not None:
+        if self.repo.is_referenced_by_batch_operations(op_id):
             raise BusinessError(
                 ErrorCode.OPERATOR_IN_USE,
                 "该人员已被批次工序引用，不能删除。请先解除引用或改为“停用”。",
             )
 
         # 若被排程引用，则禁止删除（否则会触发 Schedule.operator_id 外键错误）
-        row2 = self.conn.execute(
-            "SELECT 1 FROM Schedule WHERE operator_id = ? LIMIT 1",
-            (op_id,),
-        ).fetchone()
-        if row2 is not None:
+        if self.repo.is_referenced_by_schedule(op_id):
             raise BusinessError(
                 ErrorCode.OPERATOR_IN_USE,
                 "该人员已被排程结果引用，不能删除。请改为“停用”。",
@@ -186,10 +182,7 @@ class OperatorService:
         REPLACE（清空后导入）保护：
         如果人员已被批次工序引用（BatchOperations.operator_id），则禁止清空。
         """
-        row = self.conn.execute(
-            "SELECT 1 FROM BatchOperations WHERE operator_id IS NOT NULL AND TRIM(operator_id) <> '' LIMIT 1"
-        ).fetchone()
-        if row is not None:
+        if self.repo.has_any_batch_operations_operator_reference():
             raise BusinessError(
                 ErrorCode.OPERATOR_IN_USE,
                 "已有批次工序引用了人员，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。",

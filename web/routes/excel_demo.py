@@ -2,17 +2,17 @@ import io
 import json
 import os
 import time
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
-from flask import Blueprint, current_app, request, flash, redirect, url_for, send_file, g
-
-from web.ui_mode import render_ui_template as render_template
+from flask import Blueprint, current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
-from core.infrastructure.transaction import TransactionManager
-from core.services.common.openpyxl_backend import OpenpyxlBackend
+from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
-from core.services.common.excel_audit import log_excel_import, log_excel_export
+from core.services.common.openpyxl_backend import OpenpyxlBackend
+from core.services.personnel import OperatorService
+from core.services.personnel.operator_excel_import_service import OperatorExcelImportService
+from web.ui_mode import render_ui_template as render_template
 
 from .excel_utils import parse_import_mode
 
@@ -21,17 +21,7 @@ bp = Blueprint("excel_demo", __name__)
 
 def _fetch_existing_operators(conn) -> Dict[str, Dict[str, Any]]:
     """以 Excel 列名（中文）构建 existing_data，便于 preview_import 做 diff。"""
-    rows = conn.execute("SELECT operator_id, name, status, remark FROM Operators").fetchall()
-    existing: Dict[str, Dict[str, Any]] = {}
-    for r in rows:
-        operator_id = r["operator_id"]
-        existing[operator_id] = {
-            "工号": operator_id,
-            "姓名": r["name"],
-            "状态": r["status"],
-            "备注": r["remark"],
-        }
-    return existing
+    return OperatorService(conn, op_logger=None).build_existing_for_excel()
 
 
 def _parse_mode(value: str) -> ImportMode:
@@ -120,7 +110,7 @@ def preview():
     except AppError:
         raise
     except Exception as e:
-        raise AppError(ErrorCode.EXCEL_READ_ERROR, "读取 Excel 失败，请确认文件未损坏且未被占用。", cause=e)
+        raise AppError(ErrorCode.EXCEL_READ_ERROR, "读取 Excel 失败，请确认文件未损坏且未被占用。", cause=e) from e
 
     existing = _fetch_existing_operators(g.db)
     svc = ExcelService(backend=backend, logger=None, op_logger=g.op_logger)
@@ -171,8 +161,8 @@ def confirm():
         rows = json.loads(raw_rows_json)
         if not isinstance(rows, list):
             raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
     existing = _fetch_existing_operators(g.db)
     backend = OpenpyxlBackend()
@@ -206,47 +196,16 @@ def confirm():
             template_download_url=url_for("excel_demo.download_template"),
         )
 
-    # 过滤掉 ERROR 行，其他按模式落库
-    tx_manager = TransactionManager(g.db)
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample = []
-
-    with tx_manager.transaction():
-        if mode == ImportMode.REPLACE:
-            g.db.execute("DELETE FROM Operators")
-
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": pr.message})
-                continue
-
-            op_id = str(pr.data.get("工号")).strip()
-            name = pr.data.get("姓名")
-            status = str(pr.data.get("状态")).strip()
-            remark = pr.data.get("备注")
-
-            if mode == ImportMode.APPEND and op_id in existing:
-                skip_count += 1
-                continue
-
-            # 是否存在
-            cur = g.db.execute("SELECT 1 FROM Operators WHERE operator_id = ?", (op_id,))
-            exists = cur.fetchone() is not None
-
-            if exists:
-                g.db.execute(
-                    "UPDATE Operators SET name=?, status=?, remark=?, updated_at=CURRENT_TIMESTAMP WHERE operator_id=?",
-                    (name, status, remark, op_id),
-                )
-                update_count += 1
-            else:
-                g.db.execute(
-                    "INSERT INTO Operators (operator_id, name, status, remark) VALUES (?, ?, ?, ?)",
-                    (op_id, name, status, remark),
-                )
-                new_count += 1
+    import_svc = OperatorExcelImportService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    )
+    import_stats = import_svc.apply_preview_rows(preview_rows, mode=mode, existing_ids=set(existing.keys()))
+    new_count = int(import_stats.get("new_count", 0))
+    update_count = int(import_stats.get("update_count", 0))
+    skip_count = int(import_stats.get("skip_count", 0))
+    error_count = int(import_stats.get("error_count", 0))
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -255,14 +214,7 @@ def confirm():
         target_type="operator",
         filename=filename,
         mode=mode,
-        preview_or_result={
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-        },
+        preview_or_result=import_stats,
         time_cost_ms=time_cost_ms,
     )
 

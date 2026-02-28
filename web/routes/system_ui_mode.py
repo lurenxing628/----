@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from flask import current_app, flash, g, redirect, request
 
-from web.ui_mode import UI_MODE_COOKIE_KEY, UI_MODE_CONFIG_KEY, normalize_ui_mode
-
-from core.infrastructure.transaction import TransactionManager
-from data.repositories import SystemConfigRepository
+from core.services.system import SystemConfigService
+from web.ui_mode import UI_MODE_CONFIG_KEY, UI_MODE_COOKIE_KEY, normalize_ui_mode
 
 from .system_bp import bp
 from .system_utils import _safe_next_url
@@ -26,14 +24,16 @@ def ui_mode_set():
 
     # 1) DB 持久化（失败不阻断，仍可通过 cookie 生效）
     try:
-        repo = SystemConfigRepository(g.db, logger=current_app.logger)
-        with TransactionManager(g.db).transaction():
-            repo.set(UI_MODE_CONFIG_KEY, mode, description="UI 模式：v1/v2（v2=新UI）")
+        SystemConfigService(g.db, logger=current_app.logger).set_value(
+            UI_MODE_CONFIG_KEY,
+            mode,
+            description="UI 模式：v1/v2（v2=新UI）",
+        )
     except Exception as e:
         try:
             current_app.logger.warning(f"写入 UI 模式到 SystemConfig 失败（将仅使用 Cookie）：{e}")
         except Exception:
-            pass
+            _ = None
 
     # 2) Cookie
     resp = redirect(next_url)
@@ -46,7 +46,7 @@ def ui_mode_set():
             samesite="Lax",
         )
     except Exception:
-        pass
+        _ = None
 
     mode_zh = "现代" if mode == "v2" else "经典"
     flash(f"已切换界面：{mode_zh}。", "success")

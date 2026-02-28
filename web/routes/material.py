@@ -4,13 +4,12 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, current_app, flash, g, redirect, request, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.material import BatchMaterialService, MaterialService
-from data.repositories import BatchRepository, MaterialRepository
-from .pagination import paginate_rows, parse_page_args
+from core.services.scheduler import BatchService
+from web.ui_mode import render_ui_template as render_template
 
+from .pagination import paginate_rows, parse_page_args
 
 bp = Blueprint("material", __name__)
 
@@ -102,7 +101,8 @@ def materials_delete(material_id: str):
 def batch_materials_page():
     batch_id = (request.args.get("batch_id") or "").strip() or None
 
-    batches = BatchRepository(g.db).list()
+    batch_svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
+    batches = batch_svc.list()
     batch_options = [(b.batch_id, f"{b.batch_id}（{b.part_no} x {b.quantity}）") for b in batches]
     ready_summary = {"yes": 0, "partial": 0, "no": 0, "unknown": 0}
     for b in batches:
@@ -112,13 +112,14 @@ def batch_materials_page():
         else:
             ready_summary["unknown"] += 1
 
-    selected_batch = BatchRepository(g.db).get(batch_id) if batch_id else None
+    batch_map = {str(getattr(b, "batch_id", "") or ""): b for b in batches}
+    selected_batch = batch_map.get(batch_id) if batch_id else None
 
     req_rows: List[Dict[str, Any]] = []
     if batch_id:
         req_rows = BatchMaterialService(g.db, op_logger=getattr(g, "op_logger", None)).list_for_batch(batch_id)
 
-    mats = MaterialRepository(g.db).list(status="active")
+    mats = MaterialService(g.db, op_logger=getattr(g, "op_logger", None)).list(status="active")
     mat_options = [(m.material_id, f"{m.material_id} {m.name}".strip()) for m in mats]
 
     return render_template(

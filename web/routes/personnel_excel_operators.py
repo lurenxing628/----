@@ -8,17 +8,15 @@ from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.personnel import OperatorService
-from data.repositories import OperatorRepository
+from core.services.personnel.operator_excel_import_service import OperatorExcelImportService
+from web.ui_mode import render_ui_template as render_template
 
-from .personnel_bp import bp, _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx
+from .personnel_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 
 def _validate_operator_excel_row(row: Dict[str, Any]) -> Optional[str]:
@@ -125,8 +123,8 @@ def excel_operator_confirm():
         rows = json.loads(raw_rows_json)
         if not isinstance(rows, list):
             raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
     _ensure_unique_ids(rows, id_column="工号")
 
@@ -164,41 +162,16 @@ def excel_operator_confirm():
             export_url=url_for("personnel.excel_operator_export"),
         )
 
-    # 落库：忽略 ERROR 行
-    tx = TransactionManager(g.db)
-    op_repo = OperatorRepository(g.db)
-
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample: List[Dict[str, Any]] = []
-
-    with tx.transaction():
-        if mode == ImportMode.REPLACE:
-            op_svc.ensure_replace_allowed()
-            g.db.execute("DELETE FROM Operators")
-
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": pr.message})
-                continue
-
-            op_id = str(pr.data.get("工号")).strip()
-            name = pr.data.get("姓名")
-            status = str(pr.data.get("状态")).strip()
-            remark = pr.data.get("备注")
-
-            if mode == ImportMode.APPEND and op_id in existing:
-                skip_count += 1
-                continue
-
-            exists = op_repo.exists(op_id)
-            if exists:
-                op_repo.update(op_id, {"name": name, "status": status, "remark": remark})
-                update_count += 1
-            else:
-                op_repo.create({"operator_id": op_id, "name": name, "status": status, "remark": remark})
-                new_count += 1
+    import_svc = OperatorExcelImportService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    )
+    import_stats = import_svc.apply_preview_rows(preview_rows, mode=mode, existing_ids=set(existing.keys()))
+    new_count = int(import_stats.get("new_count", 0))
+    update_count = int(import_stats.get("update_count", 0))
+    skip_count = int(import_stats.get("skip_count", 0))
+    error_count = int(import_stats.get("error_count", 0))
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -207,14 +180,7 @@ def excel_operator_confirm():
         target_type="operator",
         filename=filename,
         mode=mode,
-        preview_or_result={
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-        },
+        preview_or_result=import_stats,
         time_cost_ms=time_cost_ms,
     )
 
@@ -286,8 +252,8 @@ def excel_operator_export():
     start = time.time()
 
     # 导出全部人员
-    rows = g.db.execute("SELECT operator_id, name, status, remark FROM Operators ORDER BY operator_id").fetchall()
-    export_rows = [{"工号": r["operator_id"], "姓名": r["name"], "状态": r["status"], "备注": r["remark"]} for r in rows]
+    existing = OperatorService(g.db, op_logger=getattr(g, "op_logger", None)).build_existing_for_excel()
+    export_rows = list(existing.values())
 
     # 导出到浏览器：这里直接用 openpyxl 写入内存（无需落地文件）
     import openpyxl

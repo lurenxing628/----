@@ -8,18 +8,15 @@ from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
-from core.infrastructure.errors import AppError, ValidationError
-from core.infrastructure.transaction import TransactionManager
+from core.infrastructure.errors import ValidationError
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.process import OpTypeService
-from data.repositories import OpTypeRepository
+from core.services.process.op_type_excel_import_service import OpTypeExcelImportService
+from web.ui_mode import render_ui_template as render_template
 
-from .process_bp import bp, _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx
-
+from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
 # Excel：工种配置（OpTypes）
@@ -129,8 +126,8 @@ def excel_op_type_confirm():
         rows = json.loads(raw_rows_json)
         if not isinstance(rows, list):
             raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
     _ensure_unique_ids(rows, id_column="工种ID")
 
@@ -181,44 +178,16 @@ def excel_op_type_confirm():
             export_url=url_for("process.excel_op_type_export"),
         )
 
-    tx = TransactionManager(g.db)
-    op_repo = OpTypeRepository(g.db)
-
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample: List[Dict[str, Any]] = []
-
-    with tx.transaction():
-        if mode == ImportMode.REPLACE:
-            op_type_svc.ensure_replace_allowed()
-            g.db.execute("DELETE FROM OpTypes")
-
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": pr.message})
-                continue
-
-            ot_id = str(pr.data.get("工种ID")).strip()
-            name = str(pr.data.get("工种名称")).strip()
-            cat = _normalize_op_type_category(pr.data.get("归属") or "internal") or "internal"
-
-            if mode == ImportMode.APPEND and ot_id in existing:
-                skip_count += 1
-                continue
-
-            try:
-                if op_repo.get(ot_id):
-                    op_repo.update(ot_id, {"name": name, "category": cat})
-                    update_count += 1
-                else:
-                    op_repo.create({"op_type_id": ot_id, "name": name, "category": cat})
-                    new_count += 1
-            except AppError as e:
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": e.message})
-                continue
+    import_svc = OpTypeExcelImportService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    )
+    import_stats = import_svc.apply_preview_rows(preview_rows, mode=mode, existing_ids=set(existing.keys()))
+    new_count = int(import_stats.get("new_count", 0))
+    update_count = int(import_stats.get("update_count", 0))
+    skip_count = int(import_stats.get("skip_count", 0))
+    error_count = int(import_stats.get("error_count", 0))
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -227,14 +196,7 @@ def excel_op_type_confirm():
         target_type="op_type",
         filename=filename,
         mode=mode,
-        preview_or_result={
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-        },
+        preview_or_result=import_stats,
         time_cost_ms=time_cost_ms,
     )
 
@@ -301,7 +263,8 @@ def excel_op_type_template():
 @bp.get("/excel/op-types/export")
 def excel_op_type_export():
     start = time.time()
-    rows = g.db.execute("SELECT op_type_id, name, category FROM OpTypes ORDER BY name").fetchall()
+    svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
+    rows = svc.list()
 
     import openpyxl
 
@@ -310,7 +273,7 @@ def excel_op_type_export():
     ws.title = "Sheet1"
     ws.append(["工种ID", "工种名称", "归属"])
     for r in rows:
-        ws.append([r["op_type_id"], r["name"], r["category"]])
+        ws.append([r.op_type_id, r.name, r.category])
 
     output = io.BytesIO()
     wb.save(output)

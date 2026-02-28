@@ -5,53 +5,39 @@ from typing import Any, Dict, List
 
 from flask import flash, g, redirect, request, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.equipment import MachineDowntimeService, MachineService
-from core.services.personnel import OperatorMachineService
-from data.repositories import OpTypeRepository, OperatorRepository
+from core.services.equipment.machine_downtime_query_service import MachineDowntimeQueryService
+from core.services.personnel import OperatorMachineService, OperatorService
+from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
+from core.services.process import OpTypeService
+from web.ui_mode import render_ui_template as render_template
 
-from .equipment_bp import bp, _machine_status_zh, _operator_status_zh
+from .equipment_bp import _machine_status_zh, _operator_status_zh, bp
 from .pagination import paginate_rows, parse_page_args
 
 
 @bp.get("/")
 def list_page():
     svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
-    op_type_repo = OpTypeRepository(g.db)
+    op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
 
     machines = svc.list()
-    op_types = {ot.op_type_id: ot for ot in op_type_repo.list()}
+    op_types = {ot.op_type_id: ot for ot in op_type_svc.list()}
 
     # 自动绑定：若当前时间落在停机计划内，则页面显示“停机（计划）”
     downtime_now_set = set()
     try:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        rows = g.db.execute(
-            """
-            SELECT DISTINCT machine_id
-            FROM MachineDowntimes
-            WHERE status = 'active'
-              AND start_time <= ?
-              AND end_time > ?
-            """,
-            (now_str, now_str),
-        ).fetchall()
-        downtime_now_set = {r["machine_id"] for r in rows if r and r["machine_id"]}
+        dt_q = MachineDowntimeQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+        downtime_now_set = dt_q.list_active_machine_ids_at(now_str)
     except Exception:
         downtime_now_set = set()
 
     # 聚合关联人员
-    link_rows = g.db.execute(
-        """
-        SELECT om.machine_id, om.operator_id, o.name AS operator_name, o.status AS operator_status
-        FROM OperatorMachine om
-        LEFT JOIN Operators o ON o.operator_id = om.operator_id
-        ORDER BY om.machine_id, om.operator_id
-        """
-    ).fetchall()
+    om_q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+    link_rows = om_q.list_links_with_operator_info()
 
     links_by_machine: Dict[str, List[Dict[str, Any]]] = {}
     for r in link_rows:
@@ -121,29 +107,29 @@ def detail_page(machine_id: str):
     link_svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
     dt_svc = MachineDowntimeService(g.db, op_logger=getattr(g, "op_logger", None))
 
-    op_type_repo = OpTypeRepository(g.db)
-    operator_repo = OperatorRepository(g.db)
+    op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
+    operator_svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
 
     m = m_svc.get(machine_id)
     links = link_svc.list_by_machine(machine_id)
     downtimes = dt_svc.list_by_machine(machine_id, include_cancelled=False)
 
-    op_types = {ot.op_type_id: ot for ot in op_type_repo.list()}
-    operators = {o.operator_id: o for o in operator_repo.list()}
+    op_types = {ot.op_type_id: ot for ot in op_type_svc.list()}
+    operators = {o.operator_id: o for o in operator_svc.list()}
 
-    linked_operator_ids = {l.operator_id for l in links}
+    linked_operator_ids = {link.operator_id for link in links}
 
     linked_operators: List[Dict[str, Any]] = []
-    for l in links:
-        op = operators.get(l.operator_id)
+    for link in links:
+        op = operators.get(link.operator_id)
         linked_operators.append(
             {
-                "operator_id": l.operator_id,
+                "operator_id": link.operator_id,
                 "operator_name": (op.name if op else None),
                 "status": (op.status if op else None),
                 "status_zh": _operator_status_zh(op.status) if op else "-",
-                "skill_level": getattr(l, "skill_level", None),
-                "is_primary": getattr(l, "is_primary", None),
+                "skill_level": getattr(link, "skill_level", None),
+                "is_primary": getattr(link, "is_primary", None),
             }
         )
 

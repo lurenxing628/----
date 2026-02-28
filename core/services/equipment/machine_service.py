@@ -6,6 +6,7 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Machine
 from core.models.enums import MachineStatus
+from core.services.common.normalize import normalize_text
 from data.repositories import MachineRepository, OpTypeRepository
 
 
@@ -26,13 +27,7 @@ class MachineService:
     # -------------------------
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     @staticmethod
     def _normalize_status(value: Any) -> Optional[str]:
@@ -117,6 +112,15 @@ class MachineService:
         if not mc_id:
             raise ValidationError("“设备编号”不能为空", field="设备编号")
         return self._get_or_raise(mc_id)
+
+    def get_optional(self, machine_id: Any) -> Optional[Machine]:
+        """
+        宽松查询：找不到返回 None（用于页面回显“已删除/已停用”资源）。
+        """
+        mc_id = self._normalize_text(machine_id)
+        if not mc_id:
+            return None
+        return self.repo.get(mc_id)
 
     def create(
         self,
@@ -228,6 +232,12 @@ class MachineService:
                 "状态": m.status,
             }
         return existing
+
+    def list_for_export(self) -> List[Dict[str, Any]]:
+        """
+        导出用：返回带工种名称的扁平行（字段名与 Excel 导出路由一致）。
+        """
+        return self.repo.list_for_export()
 
     def ensure_replace_allowed(self) -> None:
         """

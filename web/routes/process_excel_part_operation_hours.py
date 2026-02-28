@@ -9,18 +9,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
-from core.infrastructure.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
+from core.infrastructure.errors import AppError, ValidationError
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.process import PartService
+from core.services.process.part_operation_query_service import PartOperationQueryService
 from core.services.scheduler.number_utils import parse_finite_float
-from data.repositories import PartOperationRepository
+from web.ui_mode import render_ui_template as render_template
 
-from .process_bp import bp, _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx
-
+from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
 # Excel：零件工序工时（PartOperations.setup_hours / unit_hours）
@@ -61,14 +59,8 @@ def _parse_seq(value: Any) -> Optional[int]:
 
 
 def _build_existing_internal() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
-    rows = g.db.execute(
-        """
-        SELECT part_no, seq, op_type_name, source, setup_hours, unit_hours
-        FROM PartOperations
-        WHERE status='active'
-        ORDER BY part_no, seq
-        """
-    ).fetchall()
+    q = PartOperationQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+    rows = q.list_active_hours()
 
     existing_internal: Dict[str, Dict[str, Any]] = {}
     meta_all: Dict[str, Dict[str, Any]] = {}
@@ -272,8 +264,8 @@ def excel_part_op_hours_confirm():
         rows = json.loads(raw_rows_json)
         if not isinstance(rows, list):
             raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
     _ensure_unique_ids(rows, id_column="__row_id__")
 
@@ -312,12 +304,14 @@ def excel_part_op_hours_confirm():
             mode_options=_part_op_hours_mode_options(),
         )
 
-    tx = TransactionManager(g.db)
-    op_repo = PartOperationRepository(g.db)
+    part_svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
     new_count = update_count = skip_count = error_count = 0
     errors_sample: List[Dict[str, Any]] = []
 
-    with tx.transaction():
+    # 导入级事务壳：
+    # - 业务错误（AppError）按行统计并继续
+    # - 非预期异常直接抛出，由 TransactionManager 触发整体回滚，避免半提交
+    with part_svc.tx_manager.transaction():
         for pr in preview_rows:
             if pr.status == RowStatus.ERROR:
                 error_count += 1
@@ -349,19 +343,14 @@ def excel_part_op_hours_confirm():
             sh = 0.0 if sh_raw is None else float(sh_raw)
             uh = 0.0 if uh_raw is None else float(uh_raw)
 
-            op = op_repo.get(part_no, int(seq))
-            if not op:
+            try:
+                part_svc.update_internal_hours(part_no=part_no, seq=int(seq), setup_hours=sh, unit_hours=uh)
+            except AppError as e:
                 error_count += 1
                 if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": f"工序不存在：图号={part_no} 工序={seq}"})
-                continue
-            if (op.source or "").strip().lower() != "internal":
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": f"仅内部工序可导入工时：图号={part_no} 工序={seq}"})
+                    errors_sample.append({"row": pr.row_num, "message": e.message})
                 continue
 
-            op_repo.update(part_no, int(seq), {"setup_hours": sh, "unit_hours": uh})
             if pr.status == RowStatus.NEW:
                 new_count += 1
             else:
@@ -448,14 +437,8 @@ def excel_part_op_hours_template():
 @bp.get("/excel/part-operation-hours/export")
 def excel_part_op_hours_export():
     start = time.time()
-    rows = g.db.execute(
-        """
-        SELECT part_no, seq, setup_hours, unit_hours
-        FROM PartOperations
-        WHERE status='active' AND source='internal'
-        ORDER BY part_no, seq
-        """
-    ).fetchall()
+    q = PartOperationQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+    rows = q.list_internal_active_hours()
 
     import openpyxl
 

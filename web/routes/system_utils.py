@@ -12,7 +12,7 @@ from flask import current_app, g, request, url_for
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.errors import ValidationError
 from core.services.system import SystemConfigService
-from data.repositories import SystemJobStateRepository
+from core.services.system.system_job_state_query_service import SystemJobStateQueryService
 
 
 def _safe_next_url(raw: Optional[str]) -> str:
@@ -62,8 +62,8 @@ def _parse_dt(value: str, field: str) -> Tuple[datetime, bool]:
             except Exception:
                 continue
         raise ValueError("no fmt")
-    except Exception:
-        raise ValidationError("时间格式不正确（允许：YYYY-MM-DD / YYYY/MM/DD / YYYY-MM-DD HH:MM(:SS)）", field=field)
+    except Exception as e:
+        raise ValidationError("时间格式不正确（允许：YYYY-MM-DD / YYYY/MM/DD / YYYY-MM-DD HH:MM(:SS)）", field=field) from e
 
 
 def _normalize_time_range(start_raw: Optional[str], end_raw: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -98,7 +98,7 @@ def _normalize_time_range(start_raw: Optional[str], end_raw: Optional[str]) -> T
         except ValidationError:
             raise
         except Exception:
-            pass
+            _ = None
 
     return start_norm, end_norm
 
@@ -109,8 +109,8 @@ def _safe_int(value: Optional[str], field: str, default: int, min_v: int, max_v:
         return int(default)
     try:
         v = int(raw)
-    except Exception:
-        raise ValidationError(f"{field} 不合法（期望整数）", field=field)
+    except Exception as e:
+        raise ValidationError(f"{field} 不合法（期望整数）", field=field) from e
     if v < min_v:
         return int(min_v)
     if v > max_v:
@@ -133,10 +133,10 @@ def _get_system_cfg_snapshot():
 
 
 def _get_job_state_map() -> Dict[str, Any]:
-    repo = SystemJobStateRepository(g.db)
+    q = SystemJobStateQueryService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
 
     def _get(key: str) -> Optional[Dict[str, Any]]:
-        it = repo.get(key)
+        it = q.get(key)
         if not it:
             return None
         d = it.to_dict()

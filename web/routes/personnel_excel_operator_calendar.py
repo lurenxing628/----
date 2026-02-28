@@ -9,26 +9,23 @@ from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import ValidationError
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.common.excel_validators import get_operator_calendar_row_validate_and_normalize
 from core.services.scheduler import CalendarService, ConfigService
-from data.repositories import OperatorRepository
+from web.ui_mode import render_ui_template as render_template
 
+from .excel_utils import build_preview_baseline_token, preview_baseline_matches
 from .personnel_bp import (
-    bp,
     _ensure_unique_ids,
     _normalize_operator_calendar_day_type,
     _normalize_yesno,
     _parse_mode,
     _read_uploaded_xlsx,
+    bp,
 )
-from .excel_utils import build_preview_baseline_token, preview_baseline_matches
-
 
 # ============================================================
 # Excel：人员专属工作日历（OperatorCalendar）
@@ -129,12 +126,9 @@ def excel_operator_calendar_preview():
         existing[d["__id"]] = d
         existing_list.append(d)
 
-    op_repo = OperatorRepository(g.db)
-
     validate_row = get_operator_calendar_row_validate_and_normalize(
         g.db,
         holiday_default_efficiency=hde,
-        op_repo=op_repo,
         inplace=True,
     )
 
@@ -200,12 +194,11 @@ def excel_operator_calendar_confirm():
         rows = json.loads(raw_rows_json)
         if not isinstance(rows, list):
             raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
     _ensure_unique_ids(rows, id_column="__id")
 
-    op_repo = OperatorRepository(g.db)
     cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
     existing: Dict[str, Dict[str, Any]] = {}
     for c in cal_svc.list_operator_calendar_all():
@@ -247,7 +240,6 @@ def excel_operator_calendar_confirm():
     validate_row = get_operator_calendar_row_validate_and_normalize(
         g.db,
         holiday_default_efficiency=hde,
-        op_repo=op_repo,
         inplace=True,
     )
 

@@ -74,3 +74,41 @@ class OperatorRepository(BaseRepository):
     def delete(self, operator_id: str) -> None:
         self.execute("DELETE FROM Operators WHERE operator_id = ?", (operator_id,))
 
+    def delete_all(self) -> None:
+        self.execute("DELETE FROM Operators")
+
+    def list_as_dicts(self) -> List[Dict[str, Any]]:
+        return self.fetchall("SELECT operator_id, name, status, remark FROM Operators ORDER BY operator_id")
+
+    # -------------------------
+    # 引用检查（给 Service 层做删除/清空保护）
+    # -------------------------
+    def is_referenced_by_batch_operations(self, operator_id: str) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM BatchOperations WHERE operator_id = ? LIMIT 1",
+                (operator_id,),
+                default=None,
+            )
+            is not None
+        )
+
+    def is_referenced_by_schedule(self, operator_id: str) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM Schedule WHERE operator_id = ? LIMIT 1",
+                (operator_id,),
+                default=None,
+            )
+            is not None
+        )
+
+    def has_any_batch_operations_operator_reference(self) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM BatchOperations WHERE operator_id IS NOT NULL AND TRIM(operator_id) <> '' LIMIT 1",
+                default=None,
+            )
+            is not None
+        )
+

@@ -8,18 +8,15 @@ from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
-from core.infrastructure.errors import AppError, ValidationError
-from core.infrastructure.transaction import TransactionManager
+from core.infrastructure.errors import ValidationError
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
-from core.services.process import SupplierService
-from data.repositories import OpTypeRepository, SupplierRepository
+from core.services.process import OpTypeService, SupplierService
+from core.services.process.supplier_excel_import_service import SupplierExcelImportService
+from web.ui_mode import render_ui_template as render_template
 
-from .process_bp import bp, _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx
-
+from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
 # Excel：供应商配置（Suppliers）
@@ -35,28 +32,16 @@ def _normalize_supplier_status(value: Any) -> str:
     return v or "active"
 
 
-def _resolve_op_type_name(value: Any, op_type_repo: OpTypeRepository) -> Optional[str]:
+def _resolve_op_type_name(value: Any, op_type_svc: OpTypeService) -> Optional[str]:
     v = None if value is None else str(value).strip()
     if not v:
         return None
-    ot = op_type_repo.get(v)
+    ot = op_type_svc.get_optional(v)
     if not ot:
-        ot = op_type_repo.get_by_name(v)
-    if not ot:
+        ot = op_type_svc.get_by_name_optional(v)
+    if ot is None:
         raise ValidationError(f"工种“{v}”不存在，请先维护工种配置。", field="对应工种")
     return ot.name
-
-
-def _resolve_op_type_id(value: Any, op_type_repo: OpTypeRepository) -> Optional[str]:
-    v = None if value is None else str(value).strip()
-    if not v:
-        return None
-    ot = op_type_repo.get(v)
-    if not ot:
-        ot = op_type_repo.get_by_name(v)
-    if not ot:
-        raise ValidationError(f"工种“{v}”不存在，请先维护工种配置。", field="对应工种")
-    return ot.op_type_id
 
 
 @bp.get("/excel/suppliers")
@@ -91,7 +76,7 @@ def excel_supplier_preview():
 
     svc = SupplierService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = svc.build_existing_for_excel()
-    op_type_repo = OpTypeRepository(g.db)
+    op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
         if not row.get("供应商ID") or str(row.get("供应商ID")).strip() == "":
@@ -120,7 +105,7 @@ def excel_supplier_preview():
 
         # 工种可选（允许 id 或 名称），预览阶段标准化为“名称”
         try:
-            name = _resolve_op_type_name(row.get("对应工种"), op_type_repo=op_type_repo)
+            name = _resolve_op_type_name(row.get("对应工种"), op_type_svc=op_type_svc)
             row["对应工种"] = name
         except ValidationError as e:
             return e.message
@@ -175,14 +160,14 @@ def excel_supplier_confirm():
         rows = json.loads(raw_rows_json)
         if not isinstance(rows, list):
             raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
     _ensure_unique_ids(rows, id_column="供应商ID")
 
     supplier_svc = SupplierService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = supplier_svc.build_existing_for_excel()
-    op_type_repo = OpTypeRepository(g.db)
+    op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
         if not row.get("供应商ID") or str(row.get("供应商ID")).strip() == "":
@@ -202,7 +187,7 @@ def excel_supplier_confirm():
         if row["状态"] not in ("active", "inactive"):
             return "“状态”不合法（允许：active / inactive；或中文：启用/停用）"
         try:
-            name = _resolve_op_type_name(row.get("对应工种"), op_type_repo=op_type_repo)
+            name = _resolve_op_type_name(row.get("对应工种"), op_type_svc=op_type_svc)
             row["对应工种"] = name
         except ValidationError as e:
             return e.message
@@ -239,69 +224,16 @@ def excel_supplier_confirm():
             export_url=url_for("process.excel_supplier_export"),
         )
 
-    tx = TransactionManager(g.db)
-    s_repo = SupplierRepository(g.db)
-
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample: List[Dict[str, Any]] = []
-
-    with tx.transaction():
-        if mode == ImportMode.REPLACE:
-            supplier_svc.ensure_replace_allowed()
-            g.db.execute("DELETE FROM Suppliers")
-
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": pr.message})
-                continue
-
-            sid = str(pr.data.get("供应商ID")).strip()
-            name = str(pr.data.get("名称")).strip()
-            op_type_id = None
-            try:
-                op_type_id = _resolve_op_type_id(pr.data.get("对应工种"), op_type_repo=op_type_repo)
-            except ValidationError:
-                op_type_id = None
-            default_days = float(pr.data.get("默认周期") or 1.0)
-            status = _normalize_supplier_status(pr.data.get("状态"))
-            remark = pr.data.get("备注")
-
-            if mode == ImportMode.APPEND and sid in existing:
-                skip_count += 1
-                continue
-
-            try:
-                if s_repo.get(sid):
-                    s_repo.update(
-                        sid,
-                        {
-                            "name": name,
-                            "op_type_id": op_type_id,
-                            "default_days": default_days,
-                            "status": status,
-                            "remark": remark,
-                        },
-                    )
-                    update_count += 1
-                else:
-                    s_repo.create(
-                        {
-                            "supplier_id": sid,
-                            "name": name,
-                            "op_type_id": op_type_id,
-                            "default_days": default_days,
-                            "status": status,
-                            "remark": remark,
-                        }
-                    )
-                    new_count += 1
-            except AppError as e:
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": e.message})
-                continue
+    import_svc = SupplierExcelImportService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    )
+    import_stats = import_svc.apply_preview_rows(preview_rows, mode=mode, existing_ids=set(existing.keys()))
+    new_count = int(import_stats.get("new_count", 0))
+    update_count = int(import_stats.get("update_count", 0))
+    skip_count = int(import_stats.get("skip_count", 0))
+    error_count = int(import_stats.get("error_count", 0))
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -310,14 +242,7 @@ def excel_supplier_confirm():
         target_type="supplier",
         filename=filename,
         mode=mode,
-        preview_or_result={
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-        },
+        preview_or_result=import_stats,
         time_cost_ms=time_cost_ms,
     )
 
@@ -383,14 +308,7 @@ def excel_supplier_template():
 @bp.get("/excel/suppliers/export")
 def excel_supplier_export():
     start = time.time()
-    rows = g.db.execute(
-        """
-        SELECT s.supplier_id, s.name, s.default_days, s.status, s.remark, ot.name AS op_type_name
-        FROM Suppliers s
-        LEFT JOIN OpTypes ot ON ot.op_type_id = s.op_type_id
-        ORDER BY s.supplier_id
-        """
-    ).fetchall()
+    rows = SupplierService(g.db, op_logger=getattr(g, "op_logger", None)).list_for_export_rows()
 
     import openpyxl
 

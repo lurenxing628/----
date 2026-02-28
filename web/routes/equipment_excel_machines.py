@@ -8,18 +8,16 @@ from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.equipment import MachineService
-from data.repositories import MachineRepository, OpTypeRepository
+from core.services.equipment.machine_excel_import_service import MachineExcelImportService
+from core.services.process import OpTypeService
+from web.ui_mode import render_ui_template as render_template
 
-from .equipment_bp import bp, _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx
-
+from .equipment_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
 # Excel：设备信息（Machines）
@@ -63,7 +61,7 @@ def _normalize_machine_status_for_excel(value: Any) -> str:
     return v
 
 
-def _resolve_op_type(value: Any, op_type_repo: OpTypeRepository) -> Dict[str, Optional[str]]:
+def _resolve_op_type(value: Any, op_type_svc: OpTypeService) -> Dict[str, Optional[str]]:
     """
     解析 Excel 的“工种”字段：
     - 支持填写 op_type_id 或 工种名称
@@ -72,12 +70,54 @@ def _resolve_op_type(value: Any, op_type_repo: OpTypeRepository) -> Dict[str, Op
     v = None if value is None else str(value).strip()
     if not v:
         return {"op_type_id": None, "op_type_name": None}
-    ot = op_type_repo.get(v)
+    ot = op_type_svc.get_optional(v)
     if not ot:
-        ot = op_type_repo.get_by_name(v)
+        ot = op_type_svc.get_by_name_optional(v)
     if not ot:
         raise ValidationError(f"工种“{v}”不存在，请先在工艺管理-工种配置中维护。", field="工种")
     return {"op_type_id": ot.op_type_id, "op_type_name": ot.name}
+
+
+def _parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
+    try:
+        rows = json.loads(raw_rows_json)
+        if not isinstance(rows, list):
+            raise ValueError("rows not list")
+        return rows
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
+
+
+def _extract_error_rows(preview_rows: List[Any]) -> List[Any]:
+    return [pr for pr in (preview_rows or []) if getattr(pr, "status", None) == RowStatus.ERROR]
+
+
+def _format_error_sample(error_rows: List[Any]) -> str:
+    items = [f"第{pr.row_num}行：{pr.message}" for pr in (error_rows or [])[:5] if pr and getattr(pr, "message", None)]
+    return "；".join(items)
+
+
+def _render_excel_machine_page(
+    *,
+    existing: Dict[str, Dict[str, Any]],
+    preview_rows: Any,
+    raw_rows_json: Optional[str],
+    mode_value: str,
+    filename: Optional[str],
+):
+    return render_template(
+        "equipment/excel_import_machine.html",
+        title="设备信息 - Excel 导入/导出",
+        existing_list=list(existing.values()),
+        preview_rows=preview_rows,
+        raw_rows_json=raw_rows_json,
+        mode=mode_value,
+        filename=filename,
+        preview_url=url_for("equipment.excel_machine_preview"),
+        confirm_url=url_for("equipment.excel_machine_confirm"),
+        template_download_url=url_for("equipment.excel_machine_template"),
+        export_url=url_for("equipment.excel_machine_export"),
+    )
 
 
 @bp.get("/excel/machines")
@@ -110,7 +150,7 @@ def excel_machine_preview():
     rows = _read_uploaded_xlsx(file)
     _ensure_unique_ids(rows, id_column="设备编号")
 
-    op_type_repo = OpTypeRepository(g.db)
+    op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
 
     # 预先做字段标准化，便于差异对比与落库
     normalized_rows: List[Dict[str, Any]] = []
@@ -120,7 +160,7 @@ def excel_machine_preview():
             item["状态"] = _normalize_machine_status_for_excel(item.get("状态"))
         # 工种：预览时也尽量标准化为“工种名称”
         try:
-            ot = _resolve_op_type(item.get("工种"), op_type_repo=op_type_repo)
+            ot = _resolve_op_type(item.get("工种"), op_type_svc=op_type_svc)
             if ot.get("op_type_name") is not None:
                 item["工种"] = ot.get("op_type_name")
         except ValidationError:
@@ -146,7 +186,7 @@ def excel_machine_preview():
         if v is None or str(v).strip() == "":
             return None
         try:
-            ot = _resolve_op_type(v, op_type_repo=op_type_repo)
+            ot = _resolve_op_type(v, op_type_svc=op_type_svc)
             row["工种"] = ot.get("op_type_name")
         except ValidationError as e:
             return e.message
@@ -172,18 +212,12 @@ def excel_machine_preview():
         time_cost_ms=time_cost_ms,
     )
 
-    return render_template(
-        "equipment/excel_import_machine.html",
-        title="设备信息 - Excel 导入/导出",
-        existing_list=list(existing.values()),
+    return _render_excel_machine_page(
+        existing=existing,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(normalized_rows, ensure_ascii=False),
-        mode=mode.value,
+        mode_value=mode.value,
         filename=file.filename,
-        preview_url=url_for("equipment.excel_machine_preview"),
-        confirm_url=url_for("equipment.excel_machine_confirm"),
-        template_download_url=url_for("equipment.excel_machine_template"),
-        export_url=url_for("equipment.excel_machine_export"),
     )
 
 
@@ -195,17 +229,11 @@ def excel_machine_confirm():
     raw_rows_json = request.form.get("raw_rows_json")
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
-
-    try:
-        rows = json.loads(raw_rows_json)
-        if not isinstance(rows, list):
-            raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    rows = _parse_preview_rows_json(raw_rows_json)
 
     _ensure_unique_ids(rows, id_column="设备编号")
 
-    op_type_repo = OpTypeRepository(g.db)
+    op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     m_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = m_svc.build_existing_for_excel()
 
@@ -220,7 +248,7 @@ def excel_machine_confirm():
         if v is None or str(v).strip() == "":
             return None
         try:
-            ot = _resolve_op_type(v, op_type_repo=op_type_repo)
+            ot = _resolve_op_type(v, op_type_svc=op_type_svc)
             row["工种"] = ot.get("op_type_name")
         except ValidationError as e:
             return e.message
@@ -236,77 +264,31 @@ def excel_machine_confirm():
     )
 
     # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
-    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    error_rows = _extract_error_rows(preview_rows)
     if error_rows:
-        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        sample = _format_error_sample(error_rows)
         flash(
             f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
             "error",
         )
-        return render_template(
-            "equipment/excel_import_machine.html",
-            title="设备信息 - Excel 导入/导出",
-            existing_list=list(existing.values()),
+        return _render_excel_machine_page(
+            existing=existing,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            mode=mode.value,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("equipment.excel_machine_preview"),
-            confirm_url=url_for("equipment.excel_machine_confirm"),
-            template_download_url=url_for("equipment.excel_machine_template"),
-            export_url=url_for("equipment.excel_machine_export"),
         )
 
-    # 落库：忽略 ERROR 行
-    tx = TransactionManager(g.db)
-    m_repo = MachineRepository(g.db)
-
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample: List[Dict[str, Any]] = []
-
-    with tx.transaction():
-        if mode == ImportMode.REPLACE:
-            m_svc.ensure_replace_allowed()
-            g.db.execute("DELETE FROM Machines")
-
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": pr.message})
-                continue
-
-            machine_id = str(pr.data.get("设备编号")).strip()
-            name = pr.data.get("设备名称")
-            status = _normalize_machine_status_for_excel(pr.data.get("状态"))
-            if status not in ("active", "inactive", "maintain"):
-                # 防御：理论上不会发生
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": "状态不合法，无法写入。"})
-                continue
-
-            # 工种：预览阶段已标准化为名称（或空）；这里统一再解析一次拿到 op_type_id
-            op_type_id = None
-            try:
-                ot = _resolve_op_type(pr.data.get("工种"), op_type_repo=op_type_repo)
-                op_type_id = ot.get("op_type_id")
-            except ValidationError:
-                op_type_id = None
-
-            if mode == ImportMode.APPEND and machine_id in existing:
-                skip_count += 1
-                continue
-
-            if m_repo.exists(machine_id):
-                m_repo.update(
-                    machine_id,
-                    {"name": name, "op_type_id": op_type_id, "status": status},
-                )
-                update_count += 1
-            else:
-                m_repo.create({"machine_id": machine_id, "name": name, "op_type_id": op_type_id, "status": status})
-                new_count += 1
+    import_svc = MachineExcelImportService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    )
+    import_stats = import_svc.apply_preview_rows(preview_rows, mode=mode, existing_ids=set(existing.keys()))
+    new_count = int(import_stats.get("new_count", 0))
+    update_count = int(import_stats.get("update_count", 0))
+    skip_count = int(import_stats.get("skip_count", 0))
+    error_count = int(import_stats.get("error_count", 0))
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -315,14 +297,7 @@ def excel_machine_confirm():
         target_type="machine",
         filename=filename,
         mode=mode,
-        preview_or_result={
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-        },
+        preview_or_result=import_stats,
         time_cost_ms=time_cost_ms,
     )
 
@@ -391,14 +366,8 @@ def excel_machine_template():
 @bp.get("/excel/machines/export")
 def excel_machine_export():
     start = time.time()
-    rows = g.db.execute(
-        """
-        SELECT m.machine_id, m.name, m.status, ot.name AS op_type_name
-        FROM Machines m
-        LEFT JOIN OpTypes ot ON ot.op_type_id = m.op_type_id
-        ORDER BY m.machine_id
-        """
-    ).fetchall()
+    m_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
+    rows = m_svc.list_for_export()
 
     import openpyxl
 

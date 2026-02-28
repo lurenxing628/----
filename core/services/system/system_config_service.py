@@ -31,8 +31,8 @@ def _parse_int(value: Any, field: str, min_v: int, max_v: int) -> int:
         raise ValidationError(f"“{field}”不能为空", field=field)
     try:
         v = int(raw)
-    except Exception:
-        raise ValidationError(f"“{field}”必须是整数", field=field)
+    except Exception as e:
+        raise ValidationError(f"“{field}”必须是整数", field=field) from e
     if v < min_v or v > max_v:
         raise ValidationError(f"“{field}”范围不合法（允许 {min_v}~{max_v}）", field=field)
     return v
@@ -142,6 +142,14 @@ class SystemConfigService:
                 "auto_log_cleanup_interval_minutes", default=60, min_v=self.MIN_INTERVAL_MINUTES, max_v=self.MAX_INTERVAL_MINUTES
             ),
         )
+
+    def set_value(self, config_key: str, value: Any, description: Optional[str] = None) -> None:
+        key = (str(config_key) if config_key is not None else "").strip()
+        if not key:
+            raise ValidationError("config_key 不能为空", field="config_key")
+        val = "" if value is None else str(value)
+        with self.tx.transaction():
+            self.repo.set(key, val, description=description)
 
     def update_backup_settings(
         self,

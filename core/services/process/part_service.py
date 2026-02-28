@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import ExternalGroup, Part, PartOperation
+from core.services.common.normalize import normalize_text
 from data.repositories import (
     ExternalGroupRepository,
     OpTypeRepository,
@@ -13,7 +14,8 @@ from data.repositories import (
     SupplierRepository,
 )
 
-from .deletion_validator import DeletionValidator, Operation as DeleteOp
+from .deletion_validator import DeletionValidator
+from .deletion_validator import Operation as DeleteOp
 from .route_parser import ParseResult, ParseStatus, RouteParser
 
 
@@ -40,13 +42,7 @@ class PartService:
     # -------------------------
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     @staticmethod
     def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
@@ -54,8 +50,8 @@ class PartService:
             return None if allow_none else 0.0
         try:
             return float(value)
-        except Exception:
-            raise ValidationError(f"“{field}”必须是数字", field=field)
+        except Exception as e:
+            raise ValidationError(f"“{field}”必须是数字", field=field) from e
 
     def _get_or_raise(self, part_no: str) -> Part:
         p = self.part_repo.get(part_no)
@@ -163,6 +159,9 @@ class PartService:
 
         with self.tx_manager.transaction():
             self.part_repo.delete(pn)
+
+    def delete_all_no_tx(self) -> None:
+        self.part_repo.delete_all()
 
     # -------------------------
     # 解析与模板保存（关键事务边界）
@@ -355,8 +354,8 @@ class PartService:
 
         try:
             s = int(seq)
-        except Exception:
-            raise ValidationError("工序号不合法", field="工序")
+        except Exception as e:
+            raise ValidationError("工序号不合法", field="工序") from e
 
         sh = self._normalize_float(setup_hours, "换型时间(小时)", allow_none=False)
         uh = self._normalize_float(unit_hours, "单件工时(小时)", allow_none=False)

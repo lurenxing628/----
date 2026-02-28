@@ -1,24 +1,28 @@
 import json
+
 from flask import Blueprint, g
 
-from data.repositories.batch_repo import BatchRepository
-from data.repositories.schedule_history_repo import ScheduleHistoryRepository
+from core.services.scheduler import BatchService
+from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 from web.ui_mode import render_ui_template as render_template
-
 
 bp = Blueprint("dashboard", __name__)
 
 
 @bp.get("/")
 def index():
-    batch_repo = BatchRepository(g.db)
-    history_repo = ScheduleHistoryRepository(g.db)
+    batch_svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
+    history_q = ScheduleHistoryQueryService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    )
 
-    pending_count = len(batch_repo.list(status="pending"))
-    scheduled_count = len(batch_repo.list(status="scheduled"))
+    pending_count = len(batch_svc.list(status="pending"))
+    scheduled_count = len(batch_svc.list(status="scheduled"))
     overdue_count = 0
 
-    recent = history_repo.list_recent(limit=1)
+    recent = history_q.list_recent(limit=1)
     latest = recent[0] if recent else None
     latest_summary = None
     if latest and latest.result_summary:

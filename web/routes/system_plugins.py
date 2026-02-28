@@ -4,8 +4,7 @@ import re
 
 from flask import current_app, flash, g, redirect, request, url_for
 
-from core.infrastructure.transaction import TransactionManager
-from data.repositories import SystemConfigRepository
+from core.services.system import SystemConfigService
 
 from .system_bp import bp
 
@@ -28,9 +27,7 @@ def plugin_toggle():
 
     enabled = "yes" if (request.form.get("enabled") or "").strip().lower() in ("on", "yes", "true", "1") else "no"
     key = f"plugin.{plugin_id}.enabled"
-    repo = SystemConfigRepository(g.db, logger=current_app.logger)
-    with TransactionManager(g.db).transaction():
-        repo.set(key, enabled, description=None)
+    SystemConfigService(g.db, logger=current_app.logger).set_value(key, enabled, description=None)
 
     if getattr(g, "op_logger", None) is not None:
         g.op_logger.info(

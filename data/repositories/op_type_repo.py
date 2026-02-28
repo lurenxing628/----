@@ -67,3 +67,88 @@ class OpTypeRepository(BaseRepository):
     def delete(self, op_type_id: str) -> None:
         self.execute("DELETE FROM OpTypes WHERE op_type_id = ?", (op_type_id,))
 
+    def delete_all(self) -> None:
+        self.execute("DELETE FROM OpTypes")
+
+    def list_as_dicts(self) -> List[Dict[str, Any]]:
+        return self.fetchall("SELECT op_type_id, name, category FROM OpTypes ORDER BY name")
+
+    # -------------------------
+    # 引用检查（给 Service 层做删除/清空保护）
+    # -------------------------
+    def has_machine_reference(self, op_type_id: str) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM Machines WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' AND op_type_id = ? LIMIT 1",
+                (op_type_id,),
+                default=None,
+            )
+            is not None
+        )
+
+    def has_supplier_reference(self, op_type_id: str) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM Suppliers WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' AND op_type_id = ? LIMIT 1",
+                (op_type_id,),
+                default=None,
+            )
+            is not None
+        )
+
+    def has_part_operation_reference(self, op_type_id: str) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM PartOperations WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' AND op_type_id = ? LIMIT 1",
+                (op_type_id,),
+                default=None,
+            )
+            is not None
+        )
+
+    def has_batch_operation_reference(self, op_type_id: str) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM BatchOperations WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' AND op_type_id = ? LIMIT 1",
+                (op_type_id,),
+                default=None,
+            )
+            is not None
+        )
+
+    def has_any_machine_reference(self) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM Machines WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' LIMIT 1",
+                default=None,
+            )
+            is not None
+        )
+
+    def has_any_supplier_reference(self) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM Suppliers WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' LIMIT 1",
+                default=None,
+            )
+            is not None
+        )
+
+    def has_any_part_operation_reference(self) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM PartOperations WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' LIMIT 1",
+                default=None,
+            )
+            is not None
+        )
+
+    def has_any_batch_operation_reference(self) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM BatchOperations WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' LIMIT 1",
+                default=None,
+            )
+            is not None
+        )
+

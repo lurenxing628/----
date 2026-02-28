@@ -1,17 +1,36 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from flask import flash, g, redirect, request, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import AppError
 from core.services.process import ExternalGroupService, PartService, SupplierService
+from web.ui_mode import render_ui_template as render_template
 
-from .process_bp import bp, _merge_mode_zh, _source_zh
 from .pagination import paginate_rows, parse_page_args
+from .process_bp import _merge_mode_zh, _source_zh, bp
+
+
+def _summarize_active_ops(ops: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int, int, int]:
+    active_ops = [o for o in ops if o.get("status") == "active"]
+    internal_count = sum(1 for o in active_ops if o.get("source") == "internal")
+    external_count = sum(1 for o in active_ops if o.get("source") == "external")
+    total_count = len(active_ops)
+    return active_ops, total_count, internal_count, external_count
+
+
+def _build_ops_by_group(active_ops: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    ops_by_group: Dict[str, List[Dict[str, Any]]] = {}
+    for o in active_ops:
+        gid = o.get("ext_group_id")
+        if not gid:
+            continue
+        ops_by_group.setdefault(gid, []).append(o)
+    for gid in ops_by_group:
+        ops_by_group[gid].sort(key=lambda x: int(x.get("seq") or 0))
+    return ops_by_group
 
 
 @bp.get("/")
@@ -56,7 +75,6 @@ def create_part():
 @bp.get("/parts/<part_no>")
 def part_detail(part_no: str):
     p_svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
-    g_svc = ExternalGroupService(g.db, op_logger=getattr(g, "op_logger", None))
 
     detail = p_svc.get_template_detail(part_no)
     part = detail["part"].to_dict()
@@ -64,10 +82,7 @@ def part_detail(part_no: str):
     groups = [gr.to_dict() for gr in detail["groups"]]
 
     # 统计
-    active_ops = [o for o in ops if o.get("status") == "active"]
-    internal_count = sum(1 for o in active_ops if o.get("source") == "internal")
-    external_count = sum(1 for o in active_ops if o.get("source") == "external")
-    total_count = len(active_ops)
+    active_ops, total_count, internal_count, external_count = _summarize_active_ops(ops)
 
     # 供应商名称映射（用于展示）
     suppliers = {s.supplier_id: s for s in SupplierService(g.db).list()}  # type: ignore[arg-type]
@@ -76,14 +91,7 @@ def part_detail(part_no: str):
     deletable_group_ids = set(p_svc.calc_deletable_external_group_ids(part_no))
 
     # 组内工序列表
-    ops_by_group: Dict[str, List[Dict[str, Any]]] = {}
-    for o in active_ops:
-        gid = o.get("ext_group_id")
-        if not gid:
-            continue
-        ops_by_group.setdefault(gid, []).append(o)
-    for gid in ops_by_group:
-        ops_by_group[gid].sort(key=lambda x: int(x.get("seq") or 0))
+    ops_by_group = _build_ops_by_group(active_ops)
 
     # 组对象映射
     group_map = {g["group_id"]: g for g in groups}

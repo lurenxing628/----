@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, Optional
 
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler import CalendarService
+from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
 from data.repositories import OperatorRepository, PartRepository
 
 
@@ -155,7 +155,7 @@ def get_operator_calendar_row_validate_and_normalize(
         if not target.get("日期") or str(target.get("日期")).strip() == "":
             return "“日期”不能为空"
         try:
-            target["日期"] = CalendarService._normalize_date(target.get("日期"))
+            target["日期"] = normalize_date(target.get("日期"))
         except ValidationError as e:
             return e.message
         except Exception:
@@ -166,7 +166,7 @@ def get_operator_calendar_row_validate_and_normalize(
             return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
 
         try:
-            ss = CalendarService._normalize_hhmm(target.get("班次开始"), field="班次开始", allow_none=True)
+            ss = normalize_hhmm(target.get("班次开始"), field="班次开始", allow_none=True)
         except ValidationError as e:
             return e.message
         except Exception:
@@ -174,7 +174,7 @@ def get_operator_calendar_row_validate_and_normalize(
         target["班次开始"] = ss or "08:00"
 
         try:
-            se = CalendarService._normalize_hhmm(target.get("班次结束"), field="班次结束", allow_none=True)
+            se = normalize_hhmm(target.get("班次结束"), field="班次结束", allow_none=True)
         except ValidationError as e:
             return e.message
         except Exception:
@@ -198,7 +198,7 @@ def get_operator_calendar_row_validate_and_normalize(
                 st_t = datetime.strptime(str(target["班次开始"]), "%H:%M")
                 et_t = datetime.strptime(str(target["班次结束"]), "%H:%M")
                 if et_t <= st_t:
-                    return "“班次结束”必须晚于“班次开始”"
+                    et_t = et_t + timedelta(days=1)
                 target["可用工时"] = (et_t - st_t).total_seconds() / 3600.0
             except Exception:
                 return "“班次开始/结束”格式不合法（期望：HH:MM）"

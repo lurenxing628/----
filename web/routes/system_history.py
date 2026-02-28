@@ -5,13 +5,12 @@ from typing import Any, Dict, List, Optional
 
 from flask import g, request
 
+from core.infrastructure.errors import ValidationError
+from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 from web.ui_mode import render_ui_template as render_template
 
-from core.infrastructure.errors import ValidationError
-from data.repositories import ScheduleHistoryRepository
-
-from .system_bp import bp
 from .pagination import paginate_rows, parse_page_args
+from .system_bp import bp
 from .system_utils import _safe_int
 
 
@@ -21,17 +20,17 @@ def history_page():
     page, per_page = parse_page_args(request, default_per_page=20, max_per_page=200)
     limit = _safe_int(request.args.get("limit"), field="limit", default=per_page, min_v=1, max_v=200)
 
-    repo = ScheduleHistoryRepository(g.db)
-    versions = repo.list_versions(limit=30)
+    q = ScheduleHistoryQueryService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    versions = q.list_versions(limit=30)
 
     selected = None
     selected_summary = None
     if version_raw:
         try:
             ver = int(version_raw)
-        except Exception:
-            raise ValidationError("version 不合法（期望整数）", field="version")
-        item = repo.get_by_version(ver)
+        except Exception as e:
+            raise ValidationError("version 不合法（期望整数）", field="version") from e
+        item = q.get_by_version(ver)
         if item:
             selected = item.to_dict()
             if selected.get("result_summary"):
@@ -40,7 +39,7 @@ def history_page():
                 except Exception:
                     selected_summary = None
 
-    items = [x.to_dict() for x in repo.list_recent(limit=limit)]
+    items = [x.to_dict() for x in q.list_recent(limit=limit)]
     for it in items:
         if it.get("result_summary"):
             try:

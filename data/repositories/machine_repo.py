@@ -86,3 +86,16 @@ class MachineRepository(BaseRepository):
     def delete(self, machine_id: str) -> None:
         self.execute("DELETE FROM Machines WHERE machine_id = ?", (machine_id,))
 
+    def delete_all(self) -> None:
+        self.execute("DELETE FROM Machines")
+
+    def list_for_export(self) -> List[Dict[str, Any]]:
+        return self.fetchall(
+            """
+            SELECT m.machine_id, m.name, m.status, ot.name AS op_type_name
+            FROM Machines m
+            LEFT JOIN OpTypes ot ON ot.op_type_id = m.op_type_id
+            ORDER BY m.machine_id
+            """
+        )
+
