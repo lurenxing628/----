@@ -1,12 +1,12 @@
 # Phase7（排产算法 / M3）冒烟测试报告
 
-- 测试时间：2026-02-24 02:39:33
+- 测试时间：2026-02-28 01:02:05
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_vxzfej2s`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_vxzfej2s\aps_phase7_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_eukfy1i9`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase7_eukfy1i9\aps_phase7_test.db`
 
 ## 1. 基础数据准备（工种/供应商/资源）
 
@@ -40,4 +40,4 @@
 
 ## 结论
 - 通过：Phase7（排产算法 / M3）冒烟测试通过（策略切换/双资源冲突/日历/外部合并周期/落库/留痕）。
-- 总耗时：2522 ms
+- 总耗时：830 ms

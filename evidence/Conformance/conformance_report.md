@@ -1,13 +1,13 @@
-# 实现一致性对标报告（实现 vs 开发文档规划）
+# 实现一致性对标报告（实现 vs 开发文档规划 + 架构合规）
 
-- 生成时间：2026-01-30 00:31:42
+- 生成时间：2026-02-28 16:24:13
 - 仓库根目录：`D:\Github\APS Test`
 
 ## 总结
-- 检查项总数：9
+- 检查项总数：13
 - BLOCKER：0
-- MAJOR：1
-- 结论：不通过（存在差异项）
+- MAJOR：0
+- 结论：通过
 
 ## 逐项对标结果
 ### 依赖约束（openpyxl-only；不引入 pandas/numpy/schedule）
@@ -51,7 +51,7 @@
 - **结果**：通过
 - **严重性**：INFO
 - **证据**：
-  - `templates_excel/` 文件数：10
+  - `templates_excel/` 文件数：12
   - 缺失模板：无
 
 ### 退出自动备份（atexit.register + suffix=auto；不启后台定时线程）
@@ -60,20 +60,20 @@
 - **证据**：
   - `app.py` 关键片段（退出自动备份）：
 ```
-  -         try:
-  -             backup_manager.backup(suffix="auto")
-  -         except Exception as e:
-  -             # 退出阶段尽量不抛错，记录到错误日志即可
-  -             app.logger.error(f"退出自动备份失败：{e}")
+  -                 # 退出阶段尽量不抛错，记录到错误日志即可
+  -                 try:
+  -                     bm.logger.error(f"退出自动备份失败：{e}")
+  -                 except Exception:
+  -                     pass
   - 
-  -     atexit.register(_backup_on_exit)
+  -         atexit.register(_backup_on_exit)
+  -         _EXIT_BACKUP_REGISTERED = True
   - 
   -     app.logger.info("应用启动完成。")
   -     return app
   - 
   - 
-  - app = create_app()
-  - 
+  - def create_app() -> Flask:
 ```
 
 ### 排产策略默认值（priority_first；权重 0.4/0.5/0.1）对齐开发文档
@@ -104,20 +104,48 @@
   - 期望键：['filename', 'mode', 'time_cost_ms', 'total_rows', 'new_count', 'update_count', 'skip_count', 'error_count', 'errors_sample']
 
 ### 排产落库+留痕（Schedule + ScheduleHistory + OperationLogs[action=schedule/simulate]）
-- **结果**：不通过
-- **严重性**：MAJOR
-- **说明**：排产留痕/事务原子性实现与开发文档要求不一致。
+- **结果**：通过
+- **严重性**：INFO
 - **证据**：
-  - `core/services/scheduler/schedule_service.py` 排产留痕片段：
-  - 未找到 action=schedule/simulate 留痕写入逻辑
+  - `core/services/scheduler/schedule_persistence.py`（AST）排产留痕检查：
+  - - persist_schedule(): line=10
+  - - with *.transaction(): line=53
+  - - history_repo.create(...): line=104 inside_tx=True
+  - - op_logger.info(...): line=134 action_ifexp_ok=True
+
+### 分层架构合规（route 不直接操作 DB，service 不导入 Flask request）
+- **结果**：通过
+- **严重性**：INFO
+- **证据**：
+  - 违反项数：0
+
+### Schema 表文档化（schema.sql 所有表在开发文档/速查表中有记录）
+- **结果**：通过
+- **严重性**：INFO
+- **证据**：
+  - schema.sql 表数量：23
+  - 未在文档中出现的表：无
+
+### 文件行数约束（核心目录 Python 文件不超过 500 行）
+- **结果**：通过
+- **严重性**：INFO
+- **证据**：
+  - 超过 500 行的文件数：0
+
+### 模板目录完整性（templates/ 子目录与模块对齐）
+- **结果**：通过
+- **严重性**：INFO
+- **证据**：
+  - 模板子目录缺失：无
+  - 关键模板文件缺失：无
 
 ### 关键路由存在性（对齐系统速查表核心链路）
 - **结果**：通过
 - **严重性**：INFO
 - **证据**：
-  - url_map 路由总数：162
+  - url_map 路由总数：169
   - 关键路由缺失：无
 
 ## 差异项清单（便于验收沟通/修复排期）
-- **[MAJOR] 排产落库+留痕（Schedule + ScheduleHistory + OperationLogs[action=schedule/simulate]）**：排产留痕/事务原子性实现与开发文档要求不一致。
+- 无
 
