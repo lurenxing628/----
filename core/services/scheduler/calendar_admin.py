@@ -7,6 +7,8 @@ from core.infrastructure.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorCalendar, WorkCalendar
 from core.models.enums import CalendarDayType, YesNo
+from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
+from core.services.common.normalize import normalize_text
 from core.services.scheduler.config_service import ConfigService
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
@@ -52,13 +54,7 @@ class CalendarAdmin:
     # -------------------------
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     @staticmethod
     def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
@@ -66,41 +62,11 @@ class CalendarAdmin:
 
     @staticmethod
     def _normalize_hhmm(value: Any, field: str, allow_none: bool = True) -> Optional[str]:
-        """
-        时间标准化为 HH:MM（支持 HH:MM / HH:MM:SS）。
-        """
-        if value is None or (isinstance(value, str) and value.strip() == ""):
-            return None if allow_none else "08:00"
-        s = str(value).strip().replace("：", ":")
-        for fmt in ("%H:%M:%S", "%H:%M"):
-            try:
-                t = datetime.strptime(s, fmt).time()
-                return t.strftime("%H:%M")
-            except Exception:
-                continue
-        raise ValidationError(f"“{field}”格式不合法（期望：HH:MM）", field=field)
+        return normalize_hhmm(value, field=field, allow_none=allow_none)
 
     @staticmethod
     def _normalize_date(value: Any) -> str:
-        """
-        日期标准化为 YYYY-MM-DD。
-        - 支持 date/datetime
-        - 支持字符串：YYYY-MM-DD / YYYY/MM/DD
-        """
-        if isinstance(value, datetime):
-            return value.date().isoformat()
-        if isinstance(value, date):
-            return value.isoformat()
-        if value is None:
-            raise ValidationError("“日期”不能为空", field="日期")
-        v = str(value).strip()
-        if not v:
-            raise ValidationError("“日期”不能为空", field="日期")
-        v = v.replace("/", "-")
-        try:
-            return datetime.strptime(v, "%Y-%m-%d").date().isoformat()
-        except Exception:
-            raise ValidationError("“日期”格式不合法（期望：YYYY-MM-DD）", field="日期")
+        return normalize_date(value)
 
     @staticmethod
     def _validate_day_type(value: Any) -> str:

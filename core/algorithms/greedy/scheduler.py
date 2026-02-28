@@ -134,7 +134,7 @@ class GreedyScheduler:
                     created_at=_parse_datetime(getattr(b, "created_at", None)),
                 )
             )
-        sorted_batches = sorter.sort(batch_list)
+        sorted_batches = sorter.sort(batch_list, base_date=base_time.date())
         if batch_order_override:
             order_list = [str(x).strip() for x in batch_order_override if str(x).strip()]
             # 过滤不存在的批次，并把漏掉的批次补到末尾（按 sorter 的默认顺序）

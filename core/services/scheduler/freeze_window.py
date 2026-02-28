@@ -3,6 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Set, Tuple
 
+from core.models.enums import YesNo
+
+from .number_utils import to_yes_no
+
 
 def build_freeze_window_seed(
     svc,
@@ -25,7 +29,7 @@ def build_freeze_window_seed(
     warnings: List[str] = []
 
     if not (
-        getattr(cfg, "freeze_window_enabled", "no") == "yes"
+        to_yes_no(getattr(cfg, "freeze_window_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
         and int(getattr(cfg, "freeze_window_days", 0) or 0) > 0
         and int(prev_version or 0) > 0
     ):

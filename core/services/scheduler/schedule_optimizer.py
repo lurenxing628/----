@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import random
 import time
-import traceback
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms import BatchForSort, GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.sort_strategies import parse_strategy
+
+from .schedule_optimizer_steps import _run_multi_start, _run_ortools_warmstart
 
 
 @dataclass
@@ -28,300 +29,28 @@ class OptimizationOutcome:
     time_budget_seconds: int
 
 
-def optimize_schedule(
+def _run_local_search(
     *,
-    calendar_service: Any,
-    cfg_svc: Any,
-    cfg: Any,
+    algo_mode: str,
+    best: Optional[Dict[str, Any]],
+    version: int,
+    time_budget_seconds: int,
+    deadline: float,
+    scheduler: GreedyScheduler,
     algo_ops_to_schedule: List[Any],
     batches: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_results: List[Dict[str, Any]],
+    seed_sr_list: List[ScheduleResult],
+    dispatch_mode_cfg: str,
+    dispatch_rule_cfg: str,
     resource_pool: Optional[Dict[str, Any]],
-    version: int,
-    logger: Any = None,
-) -> OptimizationOutcome:
-    """
-    执行算法（支持 improve：多起点 + 目标函数 + 时间预算；可选 OR-Tools 起点）。
-
-    说明：为保证兼容，本函数尽量保持与原 `ScheduleService.run_schedule()` 相同的口径与留痕结构。
-    """
-    # 算法层只读取“纯配置快照”，不依赖 ConfigService 形态（仍兼容旧形态）
-    cfg_snapshot = cfg.to_dict() if hasattr(cfg, "to_dict") else (cfg if isinstance(cfg, dict) else None)
-    scheduler = GreedyScheduler(calendar_service=calendar_service, config_service=cfg_snapshot, logger=logger)
-
-    strategy_enum: SortStrategy = parse_strategy(getattr(cfg, "sort_strategy", None), default=SortStrategy.PRIORITY_FIRST)
-
-    strategy_params: Optional[Dict[str, Any]] = None
-    if strategy_enum == SortStrategy.WEIGHTED:
-        strategy_params = {
-            "priority_weight": float(cfg.priority_weight),
-            "due_weight": float(cfg.due_weight),
-        }
-
-    algo_mode = (getattr(cfg, "algo_mode", "greedy") or "greedy").strip()
-    objective_name = (getattr(cfg, "objective", "min_overdue") or "min_overdue").strip()
-    time_budget_seconds = int(getattr(cfg, "time_budget_seconds", 20) or 20)
-    time_budget_seconds = max(1, int(time_budget_seconds))
-
-    def _parse_date(value: Any) -> Optional[Any]:
-        if value is None:
-            return None
-        if hasattr(value, "date"):
-            try:
-                return value.date()
-            except Exception:
-                pass
-        s = str(value).strip().replace("/", "-")
-        if not s:
-            return None
-        try:
-            return datetime.strptime(s, "%Y-%m-%d").date()
-        except Exception:
-            return None
-
-    def _parse_datetime(value: Any) -> Optional[datetime]:
-        if value is None:
-            return None
-        if isinstance(value, datetime):
-            return value
-        s = str(value).strip()
-        if not s:
-            return None
-        s = s.replace("/", "-").replace("T", " ").replace("：", ":")
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-            try:
-                return datetime.strptime(s, fmt)
-            except Exception:
-                continue
-        return None
-
-    batch_for_sort: List[BatchForSort] = []
-    for b in batches.values():
-        batch_for_sort.append(
-            BatchForSort(
-                batch_id=str(getattr(b, "batch_id", "") or ""),
-                priority=str(getattr(b, "priority", "") or "normal"),
-                due_date=_parse_date(getattr(b, "due_date", None)),
-                ready_status=str(getattr(b, "ready_status", "") or "yes"),
-                ready_date=_parse_date(getattr(b, "ready_date", None)),
-                created_at=_parse_datetime(getattr(b, "created_at", None)),
-            )
-        )
-
-    def _build_order(strategy0: SortStrategy, params: Dict[str, Any]) -> List[str]:
-        sorter0 = StrategyFactory.create(strategy0, **(params or {}))
-        return [x.batch_id for x in sorter0.sort(batch_for_sort, base_date=start_dt.date())]
-
-    # multi-start：策略集（先用当前策略，再补全其它策略）
-    current_key = str(strategy_enum.value)
-    if algo_mode == "improve":
-        keys = [current_key] + [k for k in cfg_svc.VALID_STRATEGIES if k != current_key]  # type: ignore[attr-defined]
-    else:
-        keys = [current_key]
-
-    best = None
-    attempts: List[Dict[str, Any]] = []
-    improvement_trace: List[Dict[str, Any]] = []
-
-    t_begin = time.time()
-    deadline = (t_begin + float(time_budget_seconds)) if algo_mode == "improve" else float("inf")
-
-    # GreedyScheduler 需要 seed_results 为 ScheduleResult：这里转换一次
-    seed_sr_list: List[ScheduleResult] = []
-    if seed_results:
-        for x in seed_results:
-            try:
-                seed_sr_list.append(
-                    ScheduleResult(
-                        op_id=int(x.get("op_id") or 0),
-                        op_code=str(x.get("op_code") or ""),
-                        batch_id=str(x.get("batch_id") or ""),
-                        seq=int(x.get("seq") or 0),
-                        machine_id=(str(x.get("machine_id") or "") or None),
-                        operator_id=(str(x.get("operator_id") or "") or None),
-                        start_time=x.get("start_time"),
-                        end_time=x.get("end_time"),
-                        source=str(x.get("source") or "internal"),
-                        op_type_name=(str(x.get("op_type_name") or "") or None),
-                    )
-                )
-            except Exception:
-                continue
-
-    # improve：规则随机化（派工规则）+ 多起点
-    dispatch_mode_cfg = (getattr(cfg, "dispatch_mode", None) or "batch_order").strip() or "batch_order"
-    dispatch_rule_cfg = (getattr(cfg, "dispatch_rule", None) or "slack").strip() or "slack"
-    if algo_mode == "improve" and dispatch_mode_cfg == "sgs":
-        dispatch_rules = [dispatch_rule_cfg] + [x for x in cfg_svc.VALID_DISPATCH_RULES if x != dispatch_rule_cfg]  # type: ignore[attr-defined]
-    else:
-        dispatch_rules = [dispatch_rule_cfg]
-
-    # 可选：OR-Tools 高质量起点（瓶颈子问题）
-    if algo_mode == "improve" and getattr(cfg, "ortools_enabled", "no") == "yes":
-        try:
-            from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
-
-            remaining = float(deadline - time.time())
-            # 时间预算不足时跳过 OR-Tools warm-start：
-            # - remaining<=0：避免已经超时仍强行跑 1s
-            # - remaining<1：避免 int(remaining)=0 被 tl=max(1,...) 拉回 1s 导致超时
-            ort_order = None
-            if remaining >= 1.0:
-                tl_cfg = int(getattr(cfg, "ortools_time_limit_seconds", 5) or 5)
-                tl = max(1, min(int(tl_cfg), int(remaining)))
-                ort_order = try_solve_bottleneck_batch_order(
-                    operations=algo_ops_to_schedule,
-                    batches=batches,
-                    start_dt=start_dt,
-                    time_limit_seconds=tl,
-                    logger=logger,
-                )
-            if ort_order and time.time() <= deadline:
-                # 用当前策略（仅用于“补齐 order 未覆盖的批次”）
-                ort_strat = strategy_enum
-                ort_params: Dict[str, Any] = {}
-                if ort_strat == SortStrategy.WEIGHTED:
-                    ort_params = {
-                        "priority_weight": float(cfg.priority_weight),
-                        "due_weight": float(cfg.due_weight),
-                    }
-                res, summ, used_strat, used_params = scheduler.schedule(
-                    operations=algo_ops_to_schedule,
-                    batches=batches,
-                    strategy=ort_strat,
-                    strategy_params=ort_params,
-                    start_dt=start_dt,
-                    end_date=end_date,
-                    machine_downtimes=downtime_map,
-                    batch_order_override=list(ort_order),
-                    seed_results=seed_sr_list,
-                    dispatch_mode=dispatch_mode_cfg,
-                    dispatch_rule=dispatch_rule_cfg,
-                    resource_pool=resource_pool,
-                )
-                metrics = compute_metrics(res, batches)
-                score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
-                attempts.append(
-                    {
-                        "tag": f"ortools:bottleneck|{dispatch_mode_cfg}:{dispatch_rule_cfg}",
-                        "strategy": used_strat.value,
-                        "dispatch_mode": dispatch_mode_cfg,
-                        "dispatch_rule": dispatch_rule_cfg,
-                        "score": list(score),
-                        "failed_ops": int(summ.failed_ops),
-                        "metrics": metrics.to_dict(),
-                    }
-                )
-                cand = {
-                    "results": res,
-                    "summary": summ,
-                    "strategy": used_strat,
-                    "params": used_params,
-                    "dispatch_mode": dispatch_mode_cfg,
-                    "dispatch_rule": dispatch_rule_cfg,
-                    "order": list(ort_order),
-                    "metrics": metrics,
-                    "score": score,
-                }
-                if best is None or score < best["score"]:
-                    best = cand
-                    if len(improvement_trace) < 200:
-                        improvement_trace.append(
-                            {
-                                "elapsed_ms": int((time.time() - t_begin) * 1000),
-                                "tag": f"ortools:bottleneck|{dispatch_mode_cfg}:{dispatch_rule_cfg}",
-                                "strategy": used_strat.value,
-                                "dispatch_mode": dispatch_mode_cfg,
-                                "dispatch_rule": dispatch_rule_cfg,
-                                "score": list(score),
-                                "metrics": metrics.to_dict(),
-                            }
-                        )
-        except Exception as e:
-            # 可选项失败不阻断主流程
-            if logger:
-                tb = traceback.format_exc(limit=10)
-                try:
-                    # 尽量带堆栈（便于定位依赖缺失/配置错误等）；若 logger 不支持 exc_info 参数则回退为拼接文本。
-                    try:
-                        logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{e}", exc_info=True)
-                    except TypeError:
-                        logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{e}\n{tb}")
-                except Exception:
-                    pass
-
-    # 执行策略轮询（multi-start）
-    for k in keys:
-        if time.time() > deadline:
-            break
-        strat = parse_strategy(k, default=SortStrategy.PRIORITY_FIRST)
-        params0: Dict[str, Any] = {}
-        if strat == SortStrategy.WEIGHTED:
-            params0 = {
-                "priority_weight": float(cfg.priority_weight),
-                "due_weight": float(cfg.due_weight),
-            }
-
-        for dr in dispatch_rules:
-            if time.time() > deadline:
-                break
-            order = _build_order(strat, params0)
-            res, summ, used_strat, used_params = scheduler.schedule(
-                operations=algo_ops_to_schedule,
-                batches=batches,
-                strategy=strat,
-                strategy_params=params0,
-                start_dt=start_dt,
-                end_date=end_date,
-                machine_downtimes=downtime_map,
-                batch_order_override=order,
-                seed_results=seed_sr_list,
-                dispatch_mode=dispatch_mode_cfg,
-                dispatch_rule=dr,
-                resource_pool=resource_pool,
-            )
-            metrics = compute_metrics(res, batches)
-            score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
-            attempts.append(
-                {
-                    "tag": f"start:{k}|{dispatch_mode_cfg}:{dr}",
-                    "strategy": used_strat.value,
-                    "dispatch_mode": dispatch_mode_cfg,
-                    "dispatch_rule": dr,
-                    "score": list(score),
-                    "failed_ops": int(summ.failed_ops),
-                    "metrics": metrics.to_dict(),
-                }
-            )
-            cand = {
-                "results": res,
-                "summary": summ,
-                "strategy": used_strat,
-                "params": used_params,
-                "dispatch_mode": dispatch_mode_cfg,
-                "dispatch_rule": dr,
-                "order": order,
-                "metrics": metrics,
-                "score": score,
-            }
-            if best is None or score < best["score"]:
-                best = cand
-                if len(improvement_trace) < 200:
-                    improvement_trace.append(
-                        {
-                            "elapsed_ms": int((time.time() - t_begin) * 1000),
-                            "tag": f"start:{k}|{dispatch_mode_cfg}:{dr}",
-                            "strategy": used_strat.value,
-                            "dispatch_mode": dispatch_mode_cfg,
-                            "dispatch_rule": dr,
-                            "score": list(score),
-                            "metrics": metrics.to_dict(),
-                        }
-                    )
-
+    objective_name: str,
+    attempts: List[Dict[str, Any]],
+    improvement_trace: List[Dict[str, Any]],
+    t_begin: float,
+) -> Optional[Dict[str, Any]]:
     # 局部搜索（可选）：在 best batch_order 上做随机 swap/insert
     if algo_mode == "improve" and best is not None and len(best.get("order") or []) >= 2:
         rnd = random.Random(int(version))
@@ -451,6 +180,240 @@ def optimize_schedule(
                         j = rnd.randrange(len(cur_order))
                         x = cur_order.pop(i)
                         cur_order.insert(j, x)
+    return best
+
+
+def optimize_schedule(
+    *,
+    calendar_service: Any,
+    cfg_svc: Any,
+    cfg: Any,
+    algo_ops_to_schedule: List[Any],
+    batches: Dict[str, Any],
+    start_dt: datetime,
+    end_date: Optional[date],
+    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
+    seed_results: List[Dict[str, Any]],
+    resource_pool: Optional[Dict[str, Any]],
+    version: int,
+    logger: Any = None,
+) -> OptimizationOutcome:
+    """
+    执行算法（支持 improve：多起点 + 目标函数 + 时间预算；可选 OR-Tools 起点）。
+
+    说明：为保证兼容，本函数尽量保持与原 `ScheduleService.run_schedule()` 相同的口径与留痕结构。
+    """
+    # 算法层只读取“纯配置快照”，不依赖 ConfigService 形态（仍兼容旧形态）
+    cfg_snapshot = cfg.to_dict() if hasattr(cfg, "to_dict") else (cfg if isinstance(cfg, dict) else None)
+    scheduler = GreedyScheduler(calendar_service=calendar_service, config_service=cfg_snapshot, logger=logger)
+
+    strategy_enum: SortStrategy = parse_strategy(getattr(cfg, "sort_strategy", None), default=SortStrategy.PRIORITY_FIRST)
+
+    strategy_params: Optional[Dict[str, Any]] = None
+    if strategy_enum == SortStrategy.WEIGHTED:
+        strategy_params = {
+            "priority_weight": float(cfg.priority_weight),
+            "due_weight": float(cfg.due_weight),
+        }
+
+    algo_mode = (getattr(cfg, "algo_mode", "greedy") or "greedy").strip()
+    objective_name = (getattr(cfg, "objective", "min_overdue") or "min_overdue").strip()
+    time_budget_seconds = int(getattr(cfg, "time_budget_seconds", 20) or 20)
+    time_budget_seconds = max(1, int(time_budget_seconds))
+
+    def _parse_date(value: Any) -> Optional[Any]:
+        if value is None:
+            return None
+        if hasattr(value, "date"):
+            try:
+                return value.date()
+            except Exception:
+                return None
+        s = str(value).strip().replace("/", "-")
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except Exception:
+            return None
+
+    def _parse_datetime(value: Any) -> Optional[datetime]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        s = str(value).strip()
+        if not s:
+            return None
+        s = s.replace("/", "-").replace("T", " ").replace("：", ":")
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(s, fmt)
+            except Exception:
+                continue
+        return None
+
+    batch_for_sort: List[BatchForSort] = []
+    for b in batches.values():
+        batch_for_sort.append(
+            BatchForSort(
+                batch_id=str(getattr(b, "batch_id", "") or ""),
+                priority=str(getattr(b, "priority", "") or "normal"),
+                due_date=_parse_date(getattr(b, "due_date", None)),
+                ready_status=str(getattr(b, "ready_status", "") or "yes"),
+                ready_date=_parse_date(getattr(b, "ready_date", None)),
+                created_at=_parse_datetime(getattr(b, "created_at", None)),
+            )
+        )
+
+    def _build_order(strategy0: SortStrategy, params: Dict[str, Any]) -> List[str]:
+        sorter0 = StrategyFactory.create(strategy0, **(params or {}))
+        return [x.batch_id for x in sorter0.sort(batch_for_sort, base_date=start_dt.date())]
+
+    # multi-start：策略集（先用当前策略，再补全其它策略）
+    current_key = str(strategy_enum.value)
+    if algo_mode == "improve":
+        keys = [current_key] + [k for k in cfg_svc.VALID_STRATEGIES if k != current_key]  # type: ignore[attr-defined]
+    else:
+        keys = [current_key]
+
+    best = None
+    attempts: List[Dict[str, Any]] = []
+    improvement_trace: List[Dict[str, Any]] = []
+
+    t_begin = time.time()
+    deadline = (t_begin + float(time_budget_seconds)) if algo_mode == "improve" else float("inf")
+
+    # GreedyScheduler 需要 seed_results 为 ScheduleResult：这里转换一次
+    seed_sr_list: List[ScheduleResult] = []
+    if seed_results:
+        invalid_seed_count = 0
+        invalid_seed_samples: List[Dict[str, Any]] = []
+        seed_attempted = 0
+        for idx, x in enumerate(seed_results):
+            seed_attempted += 1
+            try:
+                if not isinstance(x, dict):
+                    raise TypeError(f"seed_results[{idx}] 不是 dict（实际={type(x).__name__}）")
+                seed_sr_list.append(
+                    ScheduleResult(
+                        op_id=int(x.get("op_id") or 0),
+                        op_code=str(x.get("op_code") or ""),
+                        batch_id=str(x.get("batch_id") or ""),
+                        seq=int(x.get("seq") or 0),
+                        machine_id=(str(x.get("machine_id") or "") or None),
+                        operator_id=(str(x.get("operator_id") or "") or None),
+                        start_time=x.get("start_time"),
+                        end_time=x.get("end_time"),
+                        source=str(x.get("source") or "internal"),
+                        op_type_name=(str(x.get("op_type_name") or "") or None),
+                    )
+                )
+            except Exception as e:
+                invalid_seed_count += 1
+                if len(invalid_seed_samples) < 5:
+                    try:
+                        sample = (
+                            {
+                                "op_id": x.get("op_id"),
+                                "op_code": x.get("op_code"),
+                                "batch_id": x.get("batch_id"),
+                                "seq": x.get("seq"),
+                                "machine_id": x.get("machine_id"),
+                                "operator_id": x.get("operator_id"),
+                            }
+                            if isinstance(x, dict)
+                            else {"type": type(x).__name__, "repr": repr(x)[:200]}
+                        )
+                    except Exception:
+                        sample = {"type": type(x).__name__}
+                    invalid_seed_samples.append({"index": int(idx), "error": str(e), "sample": sample})
+                continue
+        if invalid_seed_count > 0 and logger is not None:
+            try:
+                logger.warning(
+                    f"seed_results 转换失败已忽略 {invalid_seed_count} 条（尝试 {seed_attempted}，成功 {len(seed_sr_list)}）。样例：{invalid_seed_samples}"
+                )
+            except Exception:
+                _ = None
+
+    # improve：规则随机化（派工规则）+ 多起点
+    dispatch_mode_cfg = (getattr(cfg, "dispatch_mode", None) or "batch_order").strip() or "batch_order"
+    dispatch_rule_cfg = (getattr(cfg, "dispatch_rule", None) or "slack").strip() or "slack"
+    if algo_mode == "improve" and dispatch_mode_cfg == "sgs":
+        dispatch_rules = [dispatch_rule_cfg] + [x for x in cfg_svc.VALID_DISPATCH_RULES if x != dispatch_rule_cfg]  # type: ignore[attr-defined]
+    else:
+        dispatch_rules = [dispatch_rule_cfg]
+
+    # 可选：OR-Tools 高质量起点（瓶颈子问题）
+    best = _run_ortools_warmstart(
+        algo_mode=algo_mode,
+        cfg=cfg,
+        strategy_enum=strategy_enum,
+        objective_name=objective_name,
+        deadline=deadline,
+        scheduler=scheduler,
+        algo_ops_to_schedule=algo_ops_to_schedule,
+        batches=batches,
+        start_dt=start_dt,
+        end_date=end_date,
+        downtime_map=downtime_map,
+        seed_sr_list=seed_sr_list,
+        dispatch_mode_cfg=dispatch_mode_cfg,
+        dispatch_rule_cfg=dispatch_rule_cfg,
+        resource_pool=resource_pool,
+        attempts=attempts,
+        improvement_trace=improvement_trace,
+        best=best,
+        t_begin=t_begin,
+        logger=logger,
+    )
+
+    # 执行策略轮询（multi-start）
+    best = _run_multi_start(
+        keys=keys,
+        dispatch_rules=dispatch_rules,
+        scheduler=scheduler,
+        algo_ops_to_schedule=algo_ops_to_schedule,
+        batches=batches,
+        start_dt=start_dt,
+        end_date=end_date,
+        downtime_map=downtime_map,
+        seed_sr_list=seed_sr_list,
+        dispatch_mode_cfg=dispatch_mode_cfg,
+        cfg=cfg,
+        resource_pool=resource_pool,
+        objective_name=objective_name,
+        deadline=deadline,
+        attempts=attempts,
+        improvement_trace=improvement_trace,
+        best=best,
+        t_begin=t_begin,
+        build_order=_build_order,
+    )
+
+    # 局部搜索（可选）：在 best batch_order 上做随机 swap/insert
+    best = _run_local_search(
+        algo_mode=algo_mode,
+        best=best,
+        version=version,
+        time_budget_seconds=time_budget_seconds,
+        deadline=deadline,
+        scheduler=scheduler,
+        algo_ops_to_schedule=algo_ops_to_schedule,
+        batches=batches,
+        start_dt=start_dt,
+        end_date=end_date,
+        downtime_map=downtime_map,
+        seed_sr_list=seed_sr_list,
+        dispatch_mode_cfg=dispatch_mode_cfg,
+        dispatch_rule_cfg=dispatch_rule_cfg,
+        resource_pool=resource_pool,
+        objective_name=objective_name,
+        attempts=attempts,
+        improvement_trace=improvement_trace,
+        t_begin=t_begin,
+    )
 
     if best is None:
         # 理论上不会发生；兜底为原始单次

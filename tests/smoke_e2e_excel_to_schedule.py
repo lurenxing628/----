@@ -64,6 +64,15 @@ def _extract_raw_rows_json(html: str) -> str:
     return raw.strip()
 
 
+def _extract_preview_baseline(html: str) -> str:
+    m = re.search(r'<input[^>]+name="preview_baseline"[^>]+value="([^"]*)"', html, re.S)
+    if not m:
+        return ""
+    v = m.group(1)
+    v = v.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&")
+    return v.strip()
+
+
 def _assert_status(lines, name: str, resp, expect_code: int = 200):
     lines.append(f"- {name}：{resp.status_code}")
     if resp.status_code != expect_code:
@@ -327,10 +336,18 @@ def main():
             content_type="multipart/form-data",
         )
         _assert_status(lines, "POST /scheduler/excel/batches/preview", resp, 200)
-        raw_rows_json = _extract_raw_rows_json(resp.data.decode("utf-8", errors="ignore"))
+        html = resp.data.decode("utf-8", errors="ignore")
+        raw_rows_json = _extract_raw_rows_json(html)
+        preview_baseline = _extract_preview_baseline(html)
         resp2 = client.post(
             "/scheduler/excel/batches/confirm",
-            data={"mode": "overwrite", "filename": "batches.xlsx", "raw_rows_json": raw_rows_json, "auto_generate_ops": "1"},
+            data={
+                "mode": "overwrite",
+                "filename": "batches.xlsx",
+                "raw_rows_json": raw_rows_json,
+                "preview_baseline": preview_baseline,
+                "auto_generate_ops": "1",
+            },
             follow_redirects=True,
         )
         _assert_status(lines, "POST /scheduler/excel/batches/confirm", resp2, 200)

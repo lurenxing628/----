@@ -8,14 +8,13 @@ from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.scheduler import CalendarService, ConfigService
+from web.ui_mode import render_ui_template as render_template
 
 from .scheduler_bp import bp
 from .scheduler_utils import (
@@ -26,7 +25,6 @@ from .scheduler_utils import (
     _parse_mode,
     _read_uploaded_xlsx,
 )
-
 
 # ============================================================
 # Excel：工作日历（WorkCalendar）
@@ -212,8 +210,8 @@ def excel_calendar_confirm():
         rows = json.loads(raw_rows_json)
         if not isinstance(rows, list):
             raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
     _ensure_unique_ids(rows, id_column="日期")
 
@@ -311,7 +309,7 @@ def excel_calendar_confirm():
 
     with tx.transaction():
         if mode == ImportMode.REPLACE:
-            g.db.execute("DELETE FROM WorkCalendar")
+            cal_svc.delete_all_no_tx()
             existing = {}  # 重要：REPLACE 后按“全新导入”处理，避免 APPEND/统计走错
 
         for pr in preview_rows:

@@ -5,7 +5,6 @@ from typing import Any, Optional
 
 from core.infrastructure.errors import ValidationError
 
-
 TRUE_VALUES = ("yes", "y", "true", "1", "on")
 
 
@@ -19,8 +18,8 @@ def parse_finite_float(value: Any, *, field: str, allow_none: bool = True) -> Op
         return None if allow_none else 0.0
     try:
         v = float(value)
-    except Exception:
-        raise ValidationError(f"“{field}”必须是数字", field=field)
+    except Exception as e:
+        raise ValidationError(f"“{field}”必须是数字", field=field) from e
     if not math.isfinite(v):
         raise ValidationError(f"“{field}”必须是有限数字", field=field)
     return float(v)
@@ -38,8 +37,8 @@ def parse_finite_int(value: Any, *, field: str, allow_none: bool = False) -> Opt
 
     try:
         v = float(value)
-    except Exception:
-        raise ValidationError(f"“{field}”必须是整数", field=field)
+    except Exception as e:
+        raise ValidationError(f"“{field}”必须是整数", field=field) from e
 
     if not math.isfinite(v):
         raise ValidationError(f"“{field}”必须是有限整数", field=field)
@@ -51,5 +50,12 @@ def parse_finite_int(value: Any, *, field: str, allow_none: bool = False) -> Opt
 
 
 def to_yes_no(value: Any, *, default: str = "no") -> str:
+    """
+    归一化 yes/no 开关值，返回严格的 "yes" 或 "no"。
+
+    - 会先对输入做 str().strip().lower()
+    - 视为真值：yes/y/true/1/on（见 TRUE_VALUES）
+    - value 为 None 时使用 default（默认 "no"）
+    """
     raw = str(default if value is None else value).strip().lower()
     return "yes" if raw in TRUE_VALUES else "no"

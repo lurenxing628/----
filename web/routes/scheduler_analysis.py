@@ -5,10 +5,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import g, request
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import ValidationError
-from data.repositories import ScheduleHistoryRepository
+from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
+from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_analysis_vm import (
     build_svg_polyline,
     extract_metrics_from_summary,
@@ -19,6 +18,7 @@ from web.viewmodels.scheduler_analysis_vm import (
 
 from .scheduler_bp import bp
 
+
 @bp.get("/analysis")
 def analysis_page():
     """
@@ -26,16 +26,16 @@ def analysis_page():
     - 展示 result_summary.algo 中的指标、尝试列表（attempts），以及最近版本趋势。
     - 不依赖外网与第三方图表库（Win7 离线可用）。
     """
-    repo = ScheduleHistoryRepository(g.db)
-    versions = repo.list_versions(limit=50)
+    q = ScheduleHistoryQueryService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    versions = q.list_versions(limit=50)
 
     ver_raw = (request.args.get("version") or "").strip()
     selected_ver: Optional[int] = None
     if ver_raw:
         try:
             selected_ver = int(ver_raw)
-        except Exception:
-            raise ValidationError("version 不合法（期望整数）", field="version")
+        except Exception as e:
+            raise ValidationError("version 不合法（期望整数）", field="version") from e
     else:
         if versions:
             try:
@@ -44,7 +44,7 @@ def analysis_page():
                 selected_ver = None
 
     # 趋势：取最近若干条 history（去重 version），抽取 algo.metrics
-    raw_hist = repo.list_recent(limit=400)
+    raw_hist = q.list_recent(limit=400)
     by_ver: Dict[int, Dict[str, Any]] = {}
     for h in raw_hist:
         d = h.to_dict()
@@ -99,7 +99,7 @@ def analysis_page():
     objective_key = "overdue_count"
     trace_chart = None
     if selected_ver is not None:
-        item = repo.get_by_version(int(selected_ver))
+        item = q.get_by_version(int(selected_ver))
         if item:
             selected = item.to_dict()
             rs = selected.get("result_summary") or ""

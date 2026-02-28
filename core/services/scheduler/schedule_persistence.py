@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set
 
-from core.models.enums import BatchStatus, SourceType
+from core.models.enums import BatchOperationStatus, BatchStatus, SourceType, YesNo
+
+from .number_utils import to_yes_no
 
 
 def persist_schedule(
@@ -53,7 +55,9 @@ def persist_schedule(
             svc.schedule_repo.bulk_create(schedule_rows)
 
         if not simulate:
-            auto_assign_persist = str(getattr(cfg, "auto_assign_persist", "yes") or "").strip().lower() == "yes"
+            auto_assign_persist = (
+                to_yes_no(getattr(cfg, "auto_assign_persist", YesNo.YES.value), default=YesNo.YES.value) == YesNo.YES.value
+            )
             # 批次工序：成功排到的置 scheduled；失败的保持原状态（便于继续补全）
             scheduled_op_ids = {int(r.op_id) for r in results if r and getattr(r, "op_id", None)}
             assigned_by_op_id: Dict[int, Dict[str, Any]] = {
@@ -67,7 +71,7 @@ def persist_schedule(
                 if not op.id:
                     continue
                 if int(op.id) in scheduled_op_ids:
-                    svc.op_repo.update(int(op.id), {"status": "scheduled"})
+                    svc.op_repo.update(int(op.id), {"status": BatchOperationStatus.SCHEDULED.value})
                     # 自动分配补全：仅在原本缺省资源时回写 machine/operator（避免覆盖人工已选）
                     if auto_assign_persist and int(op.id) in missing_internal_resource_op_ids:
                         assign = assigned_by_op_id.get(int(op.id)) or {}

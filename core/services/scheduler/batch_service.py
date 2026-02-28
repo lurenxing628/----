@@ -4,11 +4,13 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.services.common.excel_import_executor import execute_preview_rows_transactional
-from core.services.common.excel_service import ImportMode
 from core.models import Batch, BatchOperation
 from core.models.enums import BatchPriority, BatchStatus, ReadyStatus, SourceType
+from core.services.common.excel_service import ImportMode
+from core.services.common.normalize import normalize_text
 from data.repositories import BatchOperationRepository, BatchRepository, PartOperationRepository, PartRepository
+
+from . import batch_copy, batch_excel_import, batch_template_ops
 
 
 class BatchService:
@@ -37,13 +39,7 @@ class BatchService:
     # -------------------------
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     @staticmethod
     def _normalize_int(value: Any, field: str, allow_none: bool = False) -> Optional[int]:
@@ -51,8 +47,8 @@ class BatchService:
             return None if allow_none else 0
         try:
             return int(value)
-        except Exception:
-            raise ValidationError(f"“{field}”必须是整数", field=field)
+        except Exception as e:
+            raise ValidationError(f"“{field}”必须是整数", field=field) from e
 
     @staticmethod
     def _safe_float(value: Any) -> Optional[float]:
@@ -75,7 +71,8 @@ class BatchService:
         """
         if value is None:
             return None
-        from datetime import date as _date, datetime as _dt
+        from datetime import date as _date
+        from datetime import datetime as _dt
 
         if isinstance(value, _dt):
             return value.date().isoformat()
@@ -93,8 +90,8 @@ class BatchService:
             v = v.split(" ", 1)[0]
         try:
             return _dt.strptime(v, "%Y-%m-%d").date().isoformat()
-        except Exception:
-            raise ValidationError("日期格式不合法（期望：YYYY-MM-DD）", field="日期")
+        except Exception as e:
+            raise ValidationError("日期格式不合法（期望：YYYY-MM-DD）", field="日期") from e
 
     @staticmethod
     def _validate_enum(value: Optional[str], allowed: Tuple[str, ...], field: str) -> Optional[str]:
@@ -135,7 +132,7 @@ class BatchService:
                     ErrorCode.ROUTE_PARSE_ERROR,
                     "该零件尚未生成工序模板，且自动解析失败。请到【工艺管理-工序模板】中检查工艺路线并重新解析。",
                     cause=e,
-                )
+                ) from e
             template_ops = self.part_op_repo.list_by_part(part_no, include_deleted=False)
 
         if not template_ops:
@@ -377,159 +374,17 @@ class BatchService:
         auto_generate_ops: bool = False,
         existing_ids: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
-        """
-        批次 Excel 导入编排入口（事务由本方法统一控制）。
-
-        说明：
-        - 路由层不再直接调用 *_no_tx，避免事务策略泄漏到控制层；
-        - 计数与错误样本通过通用执行器统一生成，降低多路由漂移风险。
-        """
-        rows = list(preview_rows or [])
-        existing_row_ids = set(existing_ids or set()) if existing_ids is not None else {b.batch_id for b in self.list()}
-
-        def _replace_existing_no_tx() -> None:
-            self.delete_all_no_tx()
-
-        def _row_id_getter(pr: Any) -> str:
-            return str(pr.data.get("批次号") or "").strip()
-
-        def _apply_row_no_tx(pr: Any, existed: bool) -> None:
-            bid = str(pr.data.get("批次号") or "").strip()
-            pn = str(pr.data.get("图号") or "").strip()
-            qty = int(pr.data.get("数量"))
-            dd = pr.data.get("交期")
-            prio = str(pr.data.get("优先级") or "normal").strip()
-            ready = str(pr.data.get("齐套") or "yes").strip()
-            ready_date = pr.data.get("齐套日期")
-            remark = pr.data.get("备注")
-
-            part_name = parts_cache.get(pn).part_name if parts_cache.get(pn) else None
-            if existed:
-                self.update_no_tx(
-                    bid,
-                    {
-                        "part_no": pn,
-                        "part_name": part_name,
-                        "quantity": qty,
-                        "due_date": dd,
-                        "priority": prio,
-                        "ready_status": ready,
-                        "ready_date": ready_date,
-                        "remark": remark,
-                    },
-                )
-            else:
-                self.create_no_tx(
-                    {
-                        "batch_id": bid,
-                        "part_no": pn,
-                        "part_name": part_name,
-                        "quantity": qty,
-                        "due_date": dd,
-                        "priority": prio,
-                        "ready_status": ready,
-                        "ready_date": ready_date,
-                        "status": "pending",
-                        "remark": remark,
-                    }
-                )
-
-            if auto_generate_ops:
-                self.create_batch_from_template_no_tx(
-                    batch_id=bid,
-                    part_no=pn,
-                    quantity=qty,
-                    due_date=self._normalize_date(dd),
-                    priority=prio,
-                    ready_status=ready,
-                    ready_date=self._normalize_date(ready_date),
-                    remark=(str(remark).strip() if remark is not None and str(remark).strip() else None),
-                    rebuild_ops=True,
-                )
-
-        stats = execute_preview_rows_transactional(
-            self.conn,
+        return batch_excel_import.import_batches_from_preview_rows(
+            self,
+            preview_rows=preview_rows,
             mode=mode,
-            preview_rows=rows,
-            existing_row_ids=existing_row_ids,
-            replace_existing_no_tx=_replace_existing_no_tx,
-            row_id_getter=_row_id_getter,
-            apply_row_no_tx=_apply_row_no_tx,
-            max_error_sample=10,
+            parts_cache=parts_cache,
+            auto_generate_ops=auto_generate_ops,
+            existing_ids=existing_ids,
         )
-        result = stats.to_dict()
-        result["total_rows"] = len(rows)
-        result["auto_generate_ops"] = bool(auto_generate_ops)
-        return result
 
     def copy_batch(self, source_batch_id: Any, new_batch_id: Any) -> Batch:
-        """
-        复制批次（含批次工序），用于批量复制/快速建相似批次。
-
-        规则：
-        - 新批次 status 固定为 pending
-        - 新批次工序 status 固定为 pending（不复制 scheduled 等状态）
-        - 其它字段尽量保持一致（图号/数量/交期/优先级/齐套/备注/工序补充信息等）
-        """
-        src = self._normalize_text(source_batch_id)
-        dst = self._normalize_text(new_batch_id)
-        if not src:
-            raise ValidationError("“源批次号”不能为空", field="源批次号")
-        if not dst:
-            raise ValidationError("“新批次号”不能为空", field="新批次号")
-        if src == dst:
-            raise ValidationError("新批次号不能与源批次号相同", field="新批次号")
-
-        b = self._get_or_raise(src)
-        if self.batch_repo.get(dst):
-            raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS, f"批次号“{dst}”已存在，不能复制。")
-
-        ops = self.batch_op_repo.list_by_batch(src)
-        with self.tx_manager.transaction():
-            # 创建新批次
-            self.batch_repo.create(
-                {
-                    "batch_id": dst,
-                    "part_no": b.part_no,
-                    "part_name": b.part_name,
-                    "quantity": int(b.quantity),
-                    "due_date": b.due_date,
-                    "priority": b.priority,
-                    "ready_status": b.ready_status,
-                    "ready_date": b.ready_date,
-                    "status": BatchStatus.PENDING.value,
-                    "remark": b.remark,
-                }
-            )
-
-            # 复制工序（重新生成 op_code，保持 seq/piece_id，其它字段尽量拷贝）
-            for op in ops:
-                seq = int(op.seq or 0)
-                piece = op.piece_id
-                if piece:
-                    op_code = f"{dst}_{seq:02d}_{piece}"
-                else:
-                    op_code = f"{dst}_{seq:02d}"
-                self.batch_op_repo.create(
-                    {
-                        "op_code": op_code,
-                        "batch_id": dst,
-                        "piece_id": piece,
-                        "seq": seq,
-                        "op_type_id": op.op_type_id,
-                        "op_type_name": op.op_type_name,
-                        "source": op.source,
-                        "machine_id": op.machine_id,
-                        "operator_id": op.operator_id,
-                        "supplier_id": op.supplier_id,
-                        "setup_hours": float(op.setup_hours or 0.0),
-                        "unit_hours": float(op.unit_hours or 0.0),
-                        "ext_days": self._safe_float(op.ext_days),
-                        "status": "pending",
-                    }
-                )
-
-        return self._get_or_raise(dst)
+        return batch_copy.copy_batch(self, source_batch_id, new_batch_id)
 
     # -------------------------
     # 批次工序生成（P6-01：关键事务边界）
@@ -574,7 +429,8 @@ class BatchService:
         if not part:
             raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{pn}”不存在，请先在工艺管理中维护零件。")
 
-        template_ops = self._load_template_ops_with_fallback(pn, part, no_tx=False)
+        # 预检：确保零件模板存在（必要时触发一次自动解析）
+        self._load_template_ops_with_fallback(pn, part, no_tx=False)
 
         with self.tx_manager.transaction():
             self.create_batch_from_template_no_tx(
@@ -603,79 +459,18 @@ class BatchService:
         remark: Optional[str],
         rebuild_ops: bool = False,
     ) -> None:
-        """
-        从零件模板生成/重建批次工序（不控制事务）。
-
-        说明：
-        - 供 Excel 批量导入在“外部已开启事务”时使用，避免嵌套 commit 导致无法整体回滚。
-        """
-        bid = self._normalize_text(batch_id)
-        pn = self._normalize_text(part_no)
-        if not bid:
-            raise ValidationError("“批次号”不能为空", field="批次号")
-        if not pn:
-            raise ValidationError("“图号”不能为空", field="图号")
-        if quantity is None or int(quantity) <= 0:
-            raise ValidationError("“数量”必须大于 0", field="数量")
-
-        pr = self._normalize_text(priority) or BatchPriority.NORMAL.value
-        rs = self._normalize_text(ready_status) or ReadyStatus.YES.value
-        self._validate_enum(pr, (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value), "优先级")
-        self._validate_enum(rs, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
-
-        part = self.part_repo.get(pn)
-        if not part:
-            raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{pn}”不存在，请先在工艺管理中维护零件。")
-
-        template_ops = self._load_template_ops_with_fallback(pn, part, no_tx=True)
-
-        # 允许 rebuild：先删后建（但只影响同一个 batch_id）
-        if self.batch_repo.get(bid):
-            if rebuild_ops:
-                self.batch_op_repo.delete_by_batch(bid)
-            else:
-                raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS, f"批次号“{bid}”已存在，不能重复添加。")
-        else:
-            self.batch_repo.create(
-                {
-                    "batch_id": bid,
-                    "part_no": pn,
-                    "part_name": part.part_name,
-                    "quantity": int(quantity),
-                    "due_date": due_date,
-                    "priority": pr,
-                    "ready_status": rs,
-                    "ready_date": self._normalize_date(ready_date),
-                    "status": BatchStatus.PENDING.value,
-                    "remark": remark,
-                }
-            )
-
-        for tmpl in template_ops:
-            seq = int(tmpl.seq)
-            op_code = f"{bid}_{seq:02d}"
-
-            source = (tmpl.source or SourceType.INTERNAL.value).strip().lower()
-            if source not in (SourceType.INTERNAL.value, SourceType.EXTERNAL.value):
-                source = SourceType.INTERNAL.value
-
-            payload: Dict[str, Any] = {
-                "op_code": op_code,
-                "batch_id": bid,
-                "piece_id": None,
-                "seq": seq,
-                "op_type_id": tmpl.op_type_id,
-                "op_type_name": tmpl.op_type_name,
-                "source": source,
-                "machine_id": None,
-                "operator_id": None,
-                "supplier_id": tmpl.supplier_id if source == SourceType.EXTERNAL.value else None,
-                "setup_hours": float(tmpl.setup_hours or 0.0),
-                "unit_hours": float(tmpl.unit_hours or 0.0),
-                "ext_days": self._safe_float(tmpl.ext_days),
-                "status": "pending",
-            }
-            self.batch_op_repo.create(payload)
+        batch_template_ops.create_batch_from_template_no_tx(
+            self,
+            batch_id=batch_id,
+            part_no=part_no,
+            quantity=quantity,
+            due_date=due_date,
+            priority=priority,
+            ready_status=ready_status,
+            ready_date=ready_date,
+            remark=remark,
+            rebuild_ops=rebuild_ops,
+        )
 
     def list_operations(self, batch_id: Any) -> List[BatchOperation]:
         bid = self._normalize_text(batch_id)

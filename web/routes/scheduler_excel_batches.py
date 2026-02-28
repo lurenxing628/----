@@ -4,22 +4,21 @@ import io
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
-
-from web.ui_mode import render_ui_template as render_template
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.common.excel_validators import get_batch_row_validate_and_normalize
+from core.services.process import PartService
 from core.services.scheduler import BatchService
-from data.repositories import PartRepository
+from web.ui_mode import render_ui_template as render_template
 
-from .scheduler_bp import bp
 from .excel_utils import build_preview_baseline_token, preview_baseline_matches
+from .scheduler_bp import bp
 from .scheduler_utils import (
     _ensure_unique_ids,
     _normalize_batch_priority,
@@ -29,10 +28,82 @@ from .scheduler_utils import (
     _read_uploaded_xlsx,
 )
 
-
 # ============================================================
 # Excel：批次信息（Batches）
 # ============================================================
+
+
+def _parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
+    try:
+        rows = json.loads(raw_rows_json)
+        if not isinstance(rows, list):
+            raise ValueError("rows not list")
+        return rows
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
+
+
+def _sorted_existing_list(existing_preview_data: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    existing_list = list(existing_preview_data.values())
+    existing_list.sort(key=lambda x: str(x.get("批次号") or ""))
+    return existing_list
+
+
+def _build_existing_preview_data(batch_svc: BatchService) -> Tuple[Dict[str, Any], Dict[str, Dict[str, Any]]]:
+    existing = {b.batch_id: b for b in batch_svc.list()}
+    existing_preview_data = {
+        k: {
+            "批次号": v.batch_id,
+            "图号": v.part_no,
+            "数量": v.quantity,
+            "交期": v.due_date,
+            "优先级": v.priority,
+            "齐套": v.ready_status,
+            "齐套日期": getattr(v, "ready_date", None),
+            "备注": v.remark,
+        }
+        for k, v in existing.items()
+    }
+    return existing, existing_preview_data
+
+
+def _build_parts_cache(conn) -> Dict[str, Any]:
+    svc = PartService(conn, op_logger=getattr(g, "op_logger", None))
+    return {p.part_no: p for p in svc.list()}
+
+
+def _render_excel_batches_page(
+    *,
+    existing_list: List[Dict[str, Any]],
+    preview_rows: Any,
+    raw_rows_json: Optional[str],
+    preview_baseline: Optional[str],
+    mode_value: str,
+    filename: str,
+):
+    return render_template(
+        "scheduler/excel_import_batches.html",
+        title="批次信息 - Excel 导入/导出",
+        existing_list=existing_list,
+        preview_rows=preview_rows,
+        raw_rows_json=raw_rows_json,
+        preview_baseline=preview_baseline,
+        mode=mode_value,
+        filename=filename,
+        preview_url=url_for("scheduler.excel_batches_preview"),
+        confirm_url=url_for("scheduler.excel_batches_confirm"),
+        template_download_url=url_for("scheduler.excel_batches_template"),
+        export_url=url_for("scheduler.excel_batches_export"),
+    )
+
+
+def _extract_error_rows(preview_rows: Any) -> List[Any]:
+    return [pr for pr in (preview_rows or []) if getattr(pr, "status", None) == RowStatus.ERROR]
+
+
+def _format_error_sample(error_rows: List[Any]) -> str:
+    items = [f"第{pr.row_num}行：{pr.message}" for pr in (error_rows or [])[:5] if pr and getattr(pr, "message", None)]
+    return "；".join(items)
 
 
 @bp.get("/excel/batches")
@@ -107,8 +178,7 @@ def excel_batches_preview():
         for b in svc.list()
     }
 
-    part_repo = PartRepository(g.db)
-    parts = {p.part_no: p for p in part_repo.list()}
+    parts = _build_parts_cache(g.db)
 
     validate_row = get_batch_row_validate_and_normalize(g.db, parts_cache=parts, inplace=True)
 
@@ -162,30 +232,12 @@ def excel_batches_confirm():
     if not preview_baseline:
         raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
 
-    try:
-        rows = json.loads(raw_rows_json)
-        if not isinstance(rows, list):
-            raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    rows = _parse_preview_rows_json(raw_rows_json)
 
     _ensure_unique_ids(rows, id_column="批次号")
 
     svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
-    existing = {b.batch_id: b for b in svc.list()}
-    existing_preview_data = {
-        k: {
-            "批次号": v.batch_id,
-            "图号": v.part_no,
-            "数量": v.quantity,
-            "交期": v.due_date,
-            "优先级": v.priority,
-            "齐套": v.ready_status,
-            "齐套日期": getattr(v, "ready_date", None),
-            "备注": v.remark,
-        }
-        for k, v in existing.items()
-    }
+    existing, existing_preview_data = _build_existing_preview_data(svc)
     if not preview_baseline_matches(
         preview_baseline,
         existing_data=existing_preview_data,
@@ -193,23 +245,15 @@ def excel_batches_confirm():
         id_column="批次号",
     ):
         flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
-        existing_list = list(existing_preview_data.values())
-        existing_list.sort(key=lambda x: str(x.get("批次号") or ""))
-        return render_template(
-            "scheduler/excel_import_batches.html",
-            title="批次信息 - Excel 导入/导出",
-            existing_list=existing_list,
+        return _render_excel_batches_page(
+            existing_list=_sorted_existing_list(existing_preview_data),
             preview_rows=None,
             raw_rows_json=None,
             preview_baseline=None,
-            mode=mode.value,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("scheduler.excel_batches_preview"),
-            confirm_url=url_for("scheduler.excel_batches_confirm"),
-            template_download_url=url_for("scheduler.excel_batches_template"),
-            export_url=url_for("scheduler.excel_batches_export"),
         )
-    parts = {p.part_no: p for p in PartRepository(g.db).list()}
+    parts = _build_parts_cache(g.db)
 
     validate_row = get_batch_row_validate_and_normalize(g.db, parts_cache=parts, inplace=True)
 
@@ -223,40 +267,17 @@ def excel_batches_confirm():
     )
 
     # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
-    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    error_rows = _extract_error_rows(preview_rows)
     if error_rows:
-        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        sample = _format_error_sample(error_rows)
         flash(f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}", "error")
-
-        # 重新构建 existing_list，回显预览表格（用户可直接定位问题行）
-        existing_list = [
-            {
-                "批次号": v.batch_id,
-                "图号": v.part_no,
-                "数量": v.quantity,
-                "交期": v.due_date,
-                "优先级": v.priority,
-                "齐套": v.ready_status,
-                "齐套日期": getattr(v, "ready_date", None),
-                "备注": v.remark,
-            }
-            for v in existing.values()
-        ]
-        existing_list.sort(key=lambda x: str(x.get("批次号") or ""))
-
-        return render_template(
-            "scheduler/excel_import_batches.html",
-            title="批次信息 - Excel 导入/导出",
-            existing_list=existing_list,
+        return _render_excel_batches_page(
+            existing_list=_sorted_existing_list(existing_preview_data),
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
             preview_baseline=preview_baseline,
-            mode=mode.value,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("scheduler.excel_batches_preview"),
-            confirm_url=url_for("scheduler.excel_batches_confirm"),
-            template_download_url=url_for("scheduler.excel_batches_template"),
-            export_url=url_for("scheduler.excel_batches_export"),
         )
 
     import_stats = svc.import_from_preview_rows(

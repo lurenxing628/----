@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.models.enums import SourceType
+from core.models.enums import SourceType, YesNo
 from data.repositories import MachineDowntimeRepository
+
+from .number_utils import to_yes_no
 
 
 def load_machine_downtimes(
@@ -83,7 +85,7 @@ def build_resource_pool(
     warnings: List[str] = []
     resource_pool: Optional[Dict[str, Any]] = None
 
-    auto_assign_enabled = getattr(cfg, "auto_assign_enabled", "no") == "yes"
+    auto_assign_enabled = to_yes_no(getattr(cfg, "auto_assign_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
     if not auto_assign_enabled:
         return None, warnings
 
@@ -198,7 +200,7 @@ def extend_downtime_map_for_resource_pool(
     """
     auto-assign 启用时：停机区间需要覆盖“候选设备”，否则算法可能误排到停机段内。
     """
-    auto_assign_enabled = getattr(cfg, "auto_assign_enabled", "no") == "yes"
+    auto_assign_enabled = to_yes_no(getattr(cfg, "auto_assign_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
     if not auto_assign_enabled or not resource_pool or not isinstance(resource_pool.get("operators_by_machine"), dict):
         return downtime_map
 

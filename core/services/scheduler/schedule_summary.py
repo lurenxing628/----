@@ -5,6 +5,10 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.models.enums import YesNo
+
+from .number_utils import to_yes_no
+
 
 def _serialize_end_date(end_date: Optional[Any]) -> Optional[str]:
     if end_date is None:
@@ -140,7 +144,7 @@ def build_result_summary(
         freeze_warnings = []
 
     # 停机约束状态：避免“停机加载失败但摘要仍宣称硬约束已启用”
-    auto_assign_enabled = getattr(cfg, "auto_assign_enabled", "no") == "yes"
+    auto_assign_enabled = to_yes_no(getattr(cfg, "auto_assign_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
     downtime_load_ok = True
     downtime_load_error = None
     downtime_extend_attempted = False
@@ -173,7 +177,7 @@ def build_result_summary(
     ]
     if not downtime_degraded:
         hard_constraints.append("downtime_avoid")
-    if getattr(cfg, "freeze_window_enabled", "no") == "yes":
+    if to_yes_no(getattr(cfg, "freeze_window_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value:
         hard_constraints.append("freeze_window")
 
     result_summary_obj: Dict[str, Any] = {

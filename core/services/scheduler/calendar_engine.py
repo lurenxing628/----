@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import WorkCalendar
 from core.models.enums import BatchPriority, CalendarDayType, YesNo
+from core.services.common.normalize import normalize_text
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
 
@@ -65,15 +66,18 @@ class CalendarEngine:
         # 每次排产会对同一日期重复查询多次；按 (operator_id, date_str) 做轻量缓存可显著减少 DB 访问
         self._policy_cache: Dict[Tuple[str, str], DayPolicy] = {}
 
+    def clear_policy_cache(self) -> None:
+        """
+        清空 DayPolicy 缓存。
+
+        说明：缓存用于排产过程加速，但当 WorkCalendar/OperatorCalendar 被修改后，
+        必须清空缓存以保证“立即生效”（回归用例依赖该语义）。
+        """
+        self._policy_cache.clear()
+
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     def _default_for_date(self, date_str: str) -> WorkCalendar:
         d = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -102,21 +106,15 @@ class CalendarEngine:
         """获取某个“日期键”的 DayPolicy（不做跨午夜归属判断）。"""
         op_id = self._normalize_text(operator_id) if operator_id is not None else None
         cache_key = ((op_id or ""), date_str)
-        try:
-            cached = self._policy_cache.get(cache_key)
-            if cached is not None:
-                return cached
-        except Exception:
-            pass
+        cached = self._policy_cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         cal: Any = None
         if op_id:
-            try:
-                row_op = self.operator_calendar_repo.get(op_id, date_str)
-                if row_op:
-                    cal = row_op
-            except Exception:
-                cal = None
+            row_op = self.operator_calendar_repo.get(op_id, date_str)
+            if row_op:
+                cal = row_op
         if cal is None:
             row = self.repo.get(date_str)
             cal = row if row else self._default_for_date(date_str)
@@ -149,7 +147,8 @@ class CalendarEngine:
                 if et_dt <= st_dt:
                     et_dt = et_dt + timedelta(days=1)
                 shift_hours = (et_dt - st_dt).total_seconds() / 3600.0
-            except Exception:
+            except (ValueError, TypeError):
+                # shift_end 非法：回退到 shift_hours（已从 cal.shift_hours 读取）
                 pass
 
         p = DayPolicy(
@@ -161,10 +160,7 @@ class CalendarEngine:
             allow_urgent=cal.allow_urgent,
             shift_start=ss_t,
         )
-        try:
-            self._policy_cache[cache_key] = p
-        except Exception:
-            pass
+        self._policy_cache[cache_key] = p
         return p
 
     def _policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:

@@ -7,12 +7,11 @@ from typing import Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.common.excel_audit import log_excel_export
 from core.services.scheduler import GanttService, ScheduleService
-from data.repositories import ScheduleHistoryRepository
+from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
+from web.ui_mode import render_ui_template as render_template
 
 from .scheduler_bp import bp
 
@@ -23,8 +22,8 @@ def _get_int_arg(name: str, default: int = 0) -> int:
         return int(default)
     try:
         return int(str(raw).strip())
-    except Exception:
-        raise ValidationError(f"{name} 不合法（期望整数）", field=name)
+    except Exception as e:
+        raise ValidationError(f"{name} 不合法（期望整数）", field=name) from e
 
 
 def _parse_optional_checkbox_flag(name: str):
@@ -51,14 +50,18 @@ def week_plan_page():
     if version_raw:
         try:
             version = int(version_raw)
-        except Exception:
-            raise ValidationError("version 不合法（期望整数）", field="version")
+        except Exception as e:
+            raise ValidationError("version 不合法（期望整数）", field="version") from e
 
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
     ver = version if version is not None else svc.get_latest_version_or_1()
 
-    versions = ScheduleHistoryRepository(g.db).list_versions(limit=30)
+    versions = ScheduleHistoryQueryService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    ).list_versions(limit=30)
     data = svc.get_week_plan_rows(start_date=wr.week_start_date.isoformat(), end_date=wr.week_end_date.isoformat(), version=ver)
 
     rows = data.get("rows") or []
@@ -97,8 +100,8 @@ def week_plan_export():
         if version_raw:
             try:
                 version = int(version_raw)
-            except Exception:
-                raise ValidationError("version 不合法（期望整数）", field="version")
+            except Exception as e:
+                raise ValidationError("version 不合法（期望整数）", field="version") from e
 
         data = svc.get_week_plan_rows(
             week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date, version=version

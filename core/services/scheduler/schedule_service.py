@@ -8,7 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Batch, BatchOperation, ExternalGroup, PartOperation
-from core.models.enums import SourceType
+from core.models.enums import ReadyStatus, SourceType, YesNo
+from core.services.common.normalize import normalize_text
 from data.repositories import (
     BatchOperationRepository,
     BatchRepository,
@@ -30,6 +31,7 @@ from .schedule_input_builder import build_algo_operations
 from .schedule_optimizer import optimize_schedule
 from .schedule_persistence import persist_schedule
 from .schedule_summary import build_result_summary
+from .schedule_template_lookup import get_template_and_group_for_op
 
 _RUN_SCHEDULE_LOCK = threading.Lock()
 
@@ -68,13 +70,7 @@ class ScheduleService:
     # -------------------------
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     @staticmethod
     def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
@@ -93,55 +89,7 @@ class ScheduleService:
         return op
 
     def _get_template_and_group_for_op(self, op: BatchOperation) -> Tuple[Optional[PartOperation], Optional[ExternalGroup]]:
-        """
-        通过 Batch.part_no + op.seq 回查“零件模板工序”与“外部组”信息。
-
-        说明：BatchOperations 表不存 ext_group_id，因此这里以模板为事实来源。
-        """
-        cache = getattr(self, "_aps_schedule_input_cache", None)
-        batch_cache = None
-        tmpl_cache = None
-        grp_cache = None
-        if isinstance(cache, dict):
-            batch_cache = cache.get("batch")
-            tmpl_cache = cache.get("tmpl")
-            grp_cache = cache.get("grp")
-            if not isinstance(batch_cache, dict):
-                batch_cache = {}
-                cache["batch"] = batch_cache
-            if not isinstance(tmpl_cache, dict):
-                tmpl_cache = {}
-                cache["tmpl"] = tmpl_cache
-            if not isinstance(grp_cache, dict):
-                grp_cache = {}
-                cache["grp"] = grp_cache
-
-        bid = (str(getattr(op, "batch_id", "") or "")).strip()
-        batch = batch_cache.get(bid) if (batch_cache is not None and bid) else None
-        if batch is None:
-            batch = self._get_batch_or_raise(op.batch_id)
-            if batch_cache is not None and bid:
-                batch_cache[bid] = batch
-
-        part_no = str(getattr(batch, "part_no", "") or "")
-        seq = int(op.seq)
-        tmpl_key = (part_no, int(seq))
-        tmpl = tmpl_cache.get(tmpl_key) if (tmpl_cache is not None) else None
-        if tmpl is None and (tmpl_cache is None or tmpl_key not in tmpl_cache):
-            tmpl = self.part_op_repo.get(batch.part_no, seq)
-            if tmpl_cache is not None:
-                tmpl_cache[tmpl_key] = tmpl
-        if not tmpl:
-            return None, None
-        if not tmpl.ext_group_id:
-            return tmpl, None
-        gid = str(tmpl.ext_group_id or "").strip()
-        grp = grp_cache.get(gid) if (grp_cache is not None and gid) else None
-        if grp is None and (grp_cache is None or gid not in grp_cache):
-            grp = self.group_repo.get(tmpl.ext_group_id)
-            if grp_cache is not None and gid:
-                grp_cache[gid] = grp
-        return tmpl, grp
+        return get_template_and_group_for_op(self, op)
 
     @staticmethod
     def _format_dt(dt: datetime) -> str:
@@ -244,14 +192,8 @@ class ScheduleService:
                 enforce_ready=enforce_ready,
             )
         finally:
-            try:
-                self._aps_schedule_input_cache = None
-            except Exception:
-                pass
-            try:
-                _RUN_SCHEDULE_LOCK.release()
-            except Exception:
-                pass
+            self._aps_schedule_input_cache = None
+            _RUN_SCHEDULE_LOCK.release()
 
     def _run_schedule_impl(
         self,
@@ -325,9 +267,11 @@ class ScheduleService:
         cfg_svc = ConfigService(self.conn, logger=self.logger, op_logger=self.op_logger)
         cfg = cfg_svc.get_snapshot()
         if enforce_ready is None:
-            enforce_ready_effective = to_yes_no(getattr(cfg, "enforce_ready_default", "no"), default="no") == "yes"
+            enforce_ready_effective = (
+                to_yes_no(getattr(cfg, "enforce_ready_default", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
+            )
         elif isinstance(enforce_ready, str):
-            enforce_ready_effective = to_yes_no(enforce_ready, default="no") == "yes"
+            enforce_ready_effective = to_yes_no(enforce_ready, default=YesNo.NO.value) == YesNo.YES.value
         else:
             enforce_ready_effective = bool(enforce_ready)
 
@@ -352,7 +296,9 @@ class ScheduleService:
         # 齐套约束（可选）：仅允许排产“齐套=yes”的批次
         if enforce_ready_effective:
             not_ready = [
-                bid for bid, b in batches.items() if (self._normalize_text(getattr(b, "ready_status", None)) or "") != "yes"
+                bid
+                for bid, b in batches.items()
+                if (self._normalize_text(getattr(b, "ready_status", None)) or "").strip().lower() != ReadyStatus.YES.value
             ]
             if not_ready:
                 sample = "，".join(not_ready[:20])
@@ -461,7 +407,8 @@ class ScheduleService:
                         merged = list(algo_warnings)
                     summary.warnings = merged
                 except Exception:
-                    pass
+                    if getattr(self, "logger", None):
+                        self.logger.warning("合并排产 warnings 失败（已忽略）", exc_info=True)
 
         overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms = build_result_summary(
             self,

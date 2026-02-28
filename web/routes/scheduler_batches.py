@@ -3,18 +3,18 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, url_for
 
+from core.infrastructure.errors import AppError
+from core.services.process import PartService
+from core.services.scheduler import BatchService, ConfigService
+from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 from web.ui_mode import render_ui_template as render_template
 
-from core.infrastructure.errors import AppError
-from core.services.scheduler import BatchService, ConfigService
-from data.repositories import PartRepository, ScheduleHistoryRepository
-
-from .scheduler_bp import bp, _batch_status_zh, _priority_zh, _ready_zh
 from .pagination import paginate_rows, parse_page_args
+from .scheduler_bp import _batch_status_zh, _priority_zh, _ready_zh, bp
 from .system_utils import _safe_next_url
 
 
@@ -55,7 +55,12 @@ def batches_page():
     latest_history = None
     latest_summary = None
     try:
-        items = ScheduleHistoryRepository(g.db).list_recent(limit=1)
+        hist_q = ScheduleHistoryQueryService(
+            g.db,
+            logger=getattr(g, "app_logger", None),
+            op_logger=getattr(g, "op_logger", None),
+        )
+        items = hist_q.list_recent(limit=1)
         latest_history = items[0].to_dict() if items else None
         if latest_history and latest_history.get("result_summary"):
             latest_summary = json.loads(latest_history.get("result_summary") or "{}")
@@ -113,7 +118,8 @@ def batches_manage_page():
         )
 
     view_rows, pager = paginate_rows(view_rows, page, per_page)
-    parts = PartRepository(g.db).list()
+    p_svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
+    parts = p_svc.list()
     part_options = [(p.part_no, f"{p.part_no} {p.part_name}") for p in parts]
 
     return render_template(
@@ -225,6 +231,29 @@ def _next_batch_id_like(src: str, exists_fn) -> str:
             return cand
 
 
+def _bulk_update_one_batch(
+    batch_svc: BatchService,
+    bid: str,
+    *,
+    priority: Optional[str],
+    due_date: Optional[str],
+    remark: Optional[str],
+) -> Optional[str]:
+    try:
+        batch_svc.update(
+            batch_id=bid,
+            due_date=due_date if due_date is not None else None,
+            priority=priority if priority is not None else None,
+            remark=remark if remark is not None else None,
+        )
+        return None
+    except AppError as e:
+        return f"{bid}（{e.message}）"
+    except Exception:
+        current_app.logger.exception("批量修改批次失败（batch_id=%s）", bid)
+        return f"{bid}（系统错误）"
+
+
 @bp.post("/batches/bulk/copy")
 def bulk_copy_batches():
     batch_ids = request.form.getlist("batch_ids")
@@ -278,21 +307,11 @@ def bulk_update_batches():
     ok = 0
     failed: List[str] = []
     for bid in batch_ids:
-        try:
-            batch_svc.update(
-                batch_id=bid,
-                due_date=due_date if due_date is not None else None,
-                priority=priority if priority is not None else None,
-                remark=remark if remark is not None else None,
-            )
+        err = _bulk_update_one_batch(batch_svc, str(bid), priority=priority, due_date=due_date, remark=remark)
+        if err is None:
             ok += 1
-        except AppError as e:
-            failed.append(f"{bid}（{e.message}）")
-            continue
-        except Exception:
-            current_app.logger.exception("批量修改批次失败（batch_id=%s）", bid)
-            failed.append(f"{bid}（系统错误）")
-            continue
+        else:
+            failed.append(err)
 
     flash(f"批量修改完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:

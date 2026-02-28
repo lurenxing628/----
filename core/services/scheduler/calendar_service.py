@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
+from core.models import OperatorCalendar, WorkCalendar
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
-from core.models import OperatorCalendar, WorkCalendar
 
 from .calendar_admin import CalendarAdmin
 from .calendar_engine import CalendarEngine, DayPolicy
@@ -73,7 +73,7 @@ class CalendarService:
         allow_urgent: Any = None,
         remark: Any = None,
     ) -> WorkCalendar:
-        return self._admin.upsert(
+        row = self._admin.upsert(
             date_value=date_value,
             day_type=day_type,
             shift_hours=shift_hours,
@@ -84,15 +84,21 @@ class CalendarService:
             allow_urgent=allow_urgent,
             remark=remark,
         )
+        self._engine.clear_policy_cache()
+        return row
 
     def upsert_no_tx(self, calendar_payload: Dict[str, Any]) -> WorkCalendar:
-        return self._admin.upsert_no_tx(calendar_payload)
+        row = self._admin.upsert_no_tx(calendar_payload)
+        self._engine.clear_policy_cache()
+        return row
 
     def delete(self, date_value: Any) -> None:
         self._admin.delete(date_value)
+        self._engine.clear_policy_cache()
 
     def delete_all_no_tx(self) -> None:
         self._admin.delete_all_no_tx()
+        self._engine.clear_policy_cache()
 
     # -------------------------
     # CRUD：人员专属日历（OperatorCalendar）
@@ -119,7 +125,7 @@ class CalendarService:
         allow_urgent: Any = None,
         remark: Any = None,
     ) -> OperatorCalendar:
-        return self._admin.upsert_operator_calendar(
+        row = self._admin.upsert_operator_calendar(
             operator_id=operator_id,
             date_value=date_value,
             day_type=day_type,
@@ -131,15 +137,21 @@ class CalendarService:
             allow_urgent=allow_urgent,
             remark=remark,
         )
+        self._engine.clear_policy_cache()
+        return row
 
     def upsert_operator_calendar_no_tx(self, calendar_payload: Dict[str, Any]) -> OperatorCalendar:
-        return self._admin.upsert_operator_calendar_no_tx(calendar_payload)
+        row = self._admin.upsert_operator_calendar_no_tx(calendar_payload)
+        self._engine.clear_policy_cache()
+        return row
 
     def delete_operator_calendar(self, operator_id: Any, date_value: Any) -> None:
         self._admin.delete_operator_calendar(operator_id, date_value)
+        self._engine.clear_policy_cache()
 
     def delete_operator_calendar_all_no_tx(self) -> None:
         self._admin.delete_operator_calendar_all_no_tx()
+        self._engine.clear_policy_cache()
 
     def import_operator_calendar_from_preview_rows(
         self,
@@ -195,6 +207,7 @@ class CalendarService:
         )
         result = stats.to_dict()
         result["total_rows"] = len(rows)
+        self._engine.clear_policy_cache()
         return result
 
     def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:

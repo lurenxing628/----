@@ -29,8 +29,9 @@ def main() -> None:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from app import create_app
     from flask import render_template
+
+    from app import create_app
 
     app = create_app()
 
@@ -76,6 +77,9 @@ def main() -> None:
 
     with app.test_request_context("/scheduler/batches/B_TEST?lazy_select=1"):
         html = render_template("scheduler/batch_detail.html", **ctx)
+        ctx_null = dict(ctx)
+        ctx_null["operator_machines"] = None
+        html_null = render_template("scheduler/batch_detail.html", **ctx_null)
 
     # 模板契约：联动行、懒加载模板、回退占位项
     assert 'data-linkage-row="1"' in html, "缺少联动行标记"
@@ -87,6 +91,9 @@ def main() -> None:
     assert "window.__APS_BATCH_DETAIL_LINKAGE__" in html, "缺少 linkage 配置注入"
     assert "machineOperators" in html and "operatorMachines" in html, "缺少 linkage 双向映射注入"
     assert "lazySelectEnabled" in html, "缺少 lazySelectEnabled 注入"
+
+    # 契约：允许 operatorMachines 为 null（由 machineOperators 反推）
+    assert re.search(r"operatorMachines\s*:\s*null\b", html_null), "operatorMachines=None 时应注入为 null"
 
     # JS 契约：核心函数与关键分支存在（仅验证语义钩子）
     js_path = os.path.join(repo_root, "static", "js", "batch_detail_linkage.js")
@@ -102,6 +109,7 @@ def main() -> None:
         'dataset.optionsLoaded = "1"',
         "optionsLoadFailed",
         "data-linkage-row",
+        "cfg.operatorMachines || buildOperatorMachinesFromMachineOperators",
     ):
         assert needle in js, f"缺少关键联动逻辑片段: {needle}"
 
