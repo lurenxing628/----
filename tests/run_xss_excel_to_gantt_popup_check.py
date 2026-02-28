@@ -7,8 +7,7 @@ import tempfile
 from datetime import date
 from html import unescape as html_unescape
 from typing import Any, Dict, Optional
- 
- 
+
 XSS = "<img src=x onerror=alert(1)>"
  
  
@@ -45,6 +44,13 @@ def _extract_raw_rows_json(html: str) -> str:
         raise RuntimeError("raw_rows_json not found in preview html")
     return html_unescape(m.group(1)).strip()
  
+
+def _extract_preview_baseline(html: str) -> str:
+    m = re.search(r'<input[^>]+name="preview_baseline"[^>]+value="([^"]*)"', html, re.S)
+    if not m:
+        return ""
+    return html_unescape(m.group(1)).strip()
+
  
 def _assert_status(name: str, resp, expect_code: int = 200):
     if resp.status_code != expect_code:
@@ -63,8 +69,12 @@ def _excel_preview_confirm(client, *, base: str, filename: str, mode: str, buf, 
         content_type="multipart/form-data",
     )
     _assert_status(f"{base}/preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
+    html = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html)
     data = {"mode": mode, "filename": filename, "raw_rows_json": raw}
+    preview_baseline = _extract_preview_baseline(html)
+    if preview_baseline:
+        data["preview_baseline"] = preview_baseline
     if extra_confirm:
         data.update(extra_confirm)
     r2 = client.post(f"{base}/confirm", data=data, follow_redirects=True)
@@ -72,23 +82,27 @@ def _excel_preview_confirm(client, *, base: str, filename: str, mode: str, buf, 
  
  
 def _run_node_check(*, repo_root: str, hit_task_path: str) -> Dict[str, Any]:
-    gantt_js = os.path.join(repo_root, "static", "js", "gantt.js")
-    if not os.path.exists(gantt_js):
-        raise RuntimeError(f"missing {gantt_js}")
+    gantt_core_js = os.path.join(repo_root, "static", "js", "gantt.js")
+    gantt_render_js = os.path.join(repo_root, "static", "js", "gantt_render.js")
+    if not os.path.exists(gantt_core_js):
+        raise RuntimeError(f"missing {gantt_core_js}")
+    if not os.path.exists(gantt_render_js):
+        raise RuntimeError(f"missing {gantt_render_js}")
  
     node_code = r"""
 const fs = require("fs");
  
-const ganttPath = String(process.env.APS_GANTT_JS || "");
+const corePath = String(process.env.APS_GANTT_JS || "");
+const renderPath = String(process.env.APS_GANTT_RENDER_JS || "");
 const taskPath = String(process.env.APS_HIT_TASK_JSON || "");
 const xss = String(process.env.APS_XSS || "");
  
-if (!ganttPath || !taskPath) {
-  console.error("missing env APS_GANTT_JS/APS_HIT_TASK_JSON");
+if (!corePath || !renderPath || !taskPath) {
+  console.error("missing env APS_GANTT_JS/APS_GANTT_RENDER_JS/APS_HIT_TASK_JSON");
   process.exit(2);
 }
  
-const code = fs.readFileSync(ganttPath, "utf8");
+const code = fs.readFileSync(corePath, "utf8") + "\n" + fs.readFileSync(renderPath, "utf8");
 const task = JSON.parse(fs.readFileSync(taskPath, "utf8"));
  
 function escapeRe(s) {
@@ -168,7 +182,7 @@ function extractCustomPopupFunction() {
   throw new Error("cannot extract custom_popup_html function");
 }
  
-// Extract + eval functions from gantt.js (to ensure we test the real implementation)
+// Extract + eval functions from gantt modules (to ensure we test the real implementation)
 const strSrc = extractNamedFunction("str");
 const escapeSrc = extractNamedFunction("escapeHtml");
 const popupSrc = extractCustomPopupFunction(); // function(task){...}
@@ -206,7 +220,8 @@ process.stdout.write(JSON.stringify(result));
 """
  
     env = dict(os.environ)
-    env["APS_GANTT_JS"] = gantt_js
+    env["APS_GANTT_JS"] = gantt_core_js
+    env["APS_GANTT_RENDER_JS"] = gantt_render_js
     env["APS_HIT_TASK_JSON"] = hit_task_path
     env["APS_XSS"] = XSS
  

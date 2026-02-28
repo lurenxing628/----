@@ -449,6 +449,16 @@ button.aps-theme-switch:focus-visible {
   min-width: 120px;
 }
 
+/* flex-1 字段容器应带动控件拉伸，避免“容器很宽但输入框很窄”的空白与错位 */
+.form-row :where(.form-field.flex-1) > :where(
+  input:not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]),
+  select,
+  textarea
+) {
+  width: 100%;
+  min-width: 0;
+}
+
 /* ---------- scheduler alignment contracts ---------- */
 .toolbar-actions-inline {
   display: flex;

@@ -29,8 +29,9 @@ def main():
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from app import create_app  # noqa: WPS433 (repo-local import)
     from flask import render_template
+
+    from app import create_app  # noqa: WPS433 (repo-local import)
 
     app = create_app()
 
@@ -111,11 +112,17 @@ def main():
     assert missing_op not in m2.group(1), "tplOperatorOptions 不应包含缺失 operator_id（本用例要求）"
 
     # 3) JS 必须包含“回插占位项 + 强制选中”的逻辑（防止首次交互静默丢值）
-    assert "orphanOpt.selected = true" in html, "缺少 orphanOpt.selected 强制选中逻辑"
-    assert 'dataset.orphan = "1"' in html or 'data-orphan"' in html, "缺少 data-orphan 标记逻辑"
-    assert "_isSelectedOrphan" in html, "缺少 _isSelectedOrphan（孤儿/已删除选中项识别）逻辑"
-    assert "optionsLoadFailed" in html or "data-options-load-failed" in html, "缺少 optionsLoadFailed（懒加载失败标记）逻辑"
-    assert "dataset.lazy" in html, "缺少 data-lazy 保护条件逻辑"
+    #    注意：批次详情页使用外部脚本 static/js/batch_detail_linkage.js（非 inline），因此这里检查：
+    #    - HTML 必须加载该脚本
+    #    - JS 文件内容必须包含关键逻辑片段
+    assert "js/batch_detail_linkage.js" in html, "模板未加载 batch_detail_linkage.js"
+    js_path = os.path.join(repo_root, "static", "js", "batch_detail_linkage.js")
+    js = open(js_path, "r", encoding="utf-8", errors="replace").read()
+    assert "orphanOpt.selected = true" in js, "缺少 orphanOpt.selected 强制选中逻辑"
+    assert 'dataset.orphan = "1"' in js or 'data-orphan"' in js, "缺少 data-orphan 标记逻辑"
+    assert "isSelectedOrphan" in js, "缺少 isSelectedOrphan（孤儿/已删除选中项识别）逻辑"
+    assert "optionsLoadFailed" in js or "data-options-load-failed" in js, "缺少 optionsLoadFailed（懒加载失败标记）逻辑"
+    assert "dataset.lazy" in js, "缺少 data-lazy 保护条件逻辑"
 
     # 手工回归建议（更贴近真实浏览器行为）：
     # - 让某条内部工序 machine_id 或 operator_id 指向 DB 中已删除的资源（保留工序记录）。

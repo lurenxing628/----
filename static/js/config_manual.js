@@ -79,16 +79,16 @@
 
     // 链接（内部/外部）
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_m, label, url) {
-      const hrefRaw = (url || "").trim();
+      const href = (url || "").trim();
       const text = label || "";
-      if (!isSafeHref(hrefRaw)) {
+      if (!isSafeHref(href)) {
         return text;
       }
-      const href = escapeHtmlAttr(hrefRaw);
-      if (hrefRaw.startsWith("#")) {
-        return '<a href="' + href + '">' + text + "</a>";
+      const hrefEscaped = escapeHtmlAttr(href);
+      if (href.startsWith("#")) {
+        return '<a href="' + hrefEscaped + '">' + text + "</a>";
       }
-      return '<a href="' + href + '" target="_blank" rel="noopener noreferrer">' + text + "</a>";
+      return '<a href="' + hrefEscaped + '" target="_blank" rel="noopener noreferrer">' + text + "</a>";
     });
 
     return s;

@@ -144,11 +144,14 @@ process.stdout.write(JSON.stringify({ out }));
 
 def main() -> None:
     repo_root = find_repo_root()
-    gantt_js_path = os.path.join(repo_root, "static", "js", "gantt.js")
-    if not os.path.exists(gantt_js_path):
-        raise RuntimeError(f"缺少文件：{gantt_js_path}")
+    core_js_path = os.path.join(repo_root, "static", "js", "gantt.js")
+    color_js_path = os.path.join(repo_root, "static", "js", "gantt_color.js")
+    if not os.path.exists(core_js_path):
+        raise RuntimeError(f"缺少文件：{core_js_path}")
+    if not os.path.exists(color_js_path):
+        raise RuntimeError(f"缺少文件：{color_js_path}")
 
-    with open(gantt_js_path, "r", encoding="utf-8") as f:
+    with open(core_js_path, "r", encoding="utf-8") as f:
         src = f.read()
     # 依赖模式应统一为 depsMode，不再保留旧双复选框语义
     if "depsMode" not in src:
@@ -156,7 +159,7 @@ def main() -> None:
     if "showProcessDeps" in src or "onlyCCDeps" in src:
         raise RuntimeError("gantt.js 仍包含旧依赖开关字段（showProcessDeps/onlyCCDeps）")
 
-    ret = _run_node_status_check(gantt_js_path)
+    ret = _run_node_status_check(color_js_path)
     rows = ret.get("out") or []
     if not rows:
         raise RuntimeError("status 语义检查无输出")

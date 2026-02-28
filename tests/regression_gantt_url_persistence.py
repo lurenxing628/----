@@ -54,8 +54,8 @@ def main() -> None:
     _assert_true('id="ganttColorMode"' in html, "缺少 ganttColorMode 控件")
     _assert_true('id="ganttFilterBatch"' in html, "缺少 ganttFilterBatch 控件")
 
-    gantt_js_path = os.path.join(repo_root, "static", "js", "gantt.js")
-    with open(gantt_js_path, "r", encoding="utf-8") as f:
+    ui_js_path = os.path.join(repo_root, "static", "js", "gantt_ui.js")
+    with open(ui_js_path, "r", encoding="utf-8") as f:
         src = f.read()
 
     for needle in (
@@ -70,7 +70,7 @@ def main() -> None:
         "gantt_deps",
         "gantt_hcc",
     ):
-        _assert_true(needle in src, f"gantt.js 缺少 URL 持久化关键片段: {needle}")
+        _assert_true(needle in src, f"gantt_ui.js 缺少 URL 持久化关键片段: {needle}")
 
     # 轻量级语义检查：确保默认值会被删除，不污染 URL
     # 这里不执行浏览器，仅验证 key 设计与默认值逻辑存在

@@ -107,14 +107,14 @@ def main() -> None:
     _assert_true(new_style_data.get("week_start") == expected_start, "新参数风格 week_start 与有效 start_date 不一致")
     _assert_true(new_style_data.get("week_end") == expected_end, "新参数风格 week_end 与有效 end_date 不一致")
 
-    gantt_js_path = os.path.join(repo_root, "static", "js", "gantt.js")
-    with open(gantt_js_path, "r", encoding="utf-8") as f:
+    boot_js_path = os.path.join(repo_root, "static", "js", "gantt_boot.js")
+    with open(boot_js_path, "r", encoding="utf-8") as f:
         src = f.read()
-    _assert_true("const hasEffectiveRange = !!(cfg.startDate || cfg.endDate);" in src, "gantt.js 缺少有效区间判断")
+    _assert_true("const hasEffectiveRange = !!(cfg.startDate || cfg.endDate);" in src, "gantt_boot.js 缺少有效区间判断")
     _assert_true(
         'if (!hasEffectiveRange && typeof cfg.offset !== "undefined") url.searchParams.set("offset", String(cfg.offset));'
         in src,
-        "gantt.js 缺少 offset 防重复逻辑",
+        "gantt_boot.js 缺少 offset 防重复逻辑",
     )
 
     print("OK")
