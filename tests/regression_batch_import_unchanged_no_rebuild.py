@@ -74,8 +74,15 @@ def main() -> None:
         assert int(result.get("total_rows", 0)) == 1, result
         assert int(result.get("new_count", 0)) == 0, result
         assert int(result.get("update_count", 0)) == 0, result
-        assert int(result.get("skip_count", 0)) == 0, result
+        assert int(result.get("skip_count", 0)) == 1, result
         assert int(result.get("error_count", 0)) == 0, result
+        assert (
+            int(result.get("new_count", 0))
+            + int(result.get("update_count", 0))
+            + int(result.get("skip_count", 0))
+            + int(result.get("error_count", 0))
+            == int(result.get("total_rows", 0))
+        ), result
         assert bool(result.get("auto_generate_ops")) is True, result
 
         if any(v != 0 for v in calls.values()):

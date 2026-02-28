@@ -49,9 +49,12 @@ def main() -> None:
         )
 
         assert stats.error_count == 1, stats
-        assert stats.skip_count == 1, stats
+        assert stats.skip_count == 2, stats
         assert stats.update_count == 1, stats
         assert stats.new_count == 1, stats
+        assert (
+            stats.new_count + stats.update_count + stats.skip_count + stats.error_count == len(preview_rows)
+        ), stats
         assert len(stats.errors_sample) == 1 and stats.errors_sample[0]["row"] == 2, stats.errors_sample
 
         wrote_ids = {rid for rid, _ in apply_calls}

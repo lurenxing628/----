@@ -58,6 +58,7 @@ def _should_skip_before_row_id(
         return True
     # REPLACE 已清空历史数据，UNCHANGED 行也必须重写回库，不能直接跳过。
     if pr.status == RowStatus.UNCHANGED and mode != ImportMode.REPLACE and not process_unchanged:
+        stats.skip_count += 1
         return True
     return False
 

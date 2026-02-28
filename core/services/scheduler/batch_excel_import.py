@@ -96,6 +96,7 @@ def import_batches_from_preview_rows(
         row_id_getter=_row_id_getter,
         apply_row_no_tx=_apply_row_no_tx,
         max_error_sample=10,
+        process_unchanged=False,
     )
     result = stats.to_dict()
     result["total_rows"] = len(rows)

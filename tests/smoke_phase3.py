@@ -89,7 +89,7 @@ def main():
         if op.operator_id != "OP001":
             raise RuntimeError("OperatorService.create 校验失败：未创建 OP001")
 
-        op2 = op_svc.update(operator_id="OP001", remark="")  # 清空备注
+        op_svc.update(operator_id="OP001", remark="")  # 清空备注
         got = op_svc.get("OP001")
         lines.append(f"- 清空备注后 remark={got.remark!r}（期望 None）")
         if got.remark is not None:
@@ -135,6 +135,16 @@ def main():
         lines.append(f"- 导入统计：{stats}")
         if stats.get("new_count") != 1:
             raise RuntimeError("导入新增统计不正确（期望 1）")
+        if stats.get("skip_count") != 1:
+            raise RuntimeError("导入跳过统计不正确（期望 1：包含 UNCHANGED 行）")
+        if (
+            int(stats.get("new_count", 0))
+            + int(stats.get("update_count", 0))
+            + int(stats.get("skip_count", 0))
+            + int(stats.get("error_count", 0))
+            != int(stats.get("total_rows", 0))
+        ):
+            raise RuntimeError(f"导入统计口径不闭合：{stats!r}")
 
         lines.append("")
         lines.append("## 4. 人员 Excel 预览：NEW/UPDATE/ERROR")

@@ -382,6 +382,7 @@ class OperatorMachineService:
                     continue
 
                 if pr.status == RowStatus.UNCHANGED:
+                    skip_count += 1
                     continue
 
                 op_id = str(pr.data.get("工号") or "").strip()
