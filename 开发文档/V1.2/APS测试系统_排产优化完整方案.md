@@ -662,7 +662,7 @@ class DRCJSSPInstance:
 ##### 5.1.1.5 Excel 导入与页面配置的已知限制（风险提示）
 
 - **全局日历 Excel 导入**（`web/routes/scheduler_excel_calendar.py`）当前仅支持 `日期/类型/可用工时/效率/允许*`，**不暴露 `shift_start/shift_end`**。
-- **人员日历 Excel 导入**（`core/services/common/excel_validators.py`）当前要求 `班次结束 > 班次开始`，因此 **不支持跨午夜班次的 Excel 导入**；但管理侧/引擎侧逻辑是支持跨午夜的。
+- **人员日历 Excel 导入**（`core/services/common/excel_validators.py`）已支持跨午夜班次：当 `班次结束 <= 班次开始` 时视为次日结束，并按起止时间推导 `可用工时`（与管理侧/引擎侧一致）。
 
 以上差异不要求新增功能，但必须在方案里写清楚：哪些能力“现已支持”、哪些“仅页面支持/仅导入支持”，以及现场如何规避（例如统一用 `shift_hours` 表达跨日、或改用页面配置）。
 
@@ -1900,7 +1900,7 @@ def test_first_warmup_recoverable():
 - **跨午夜班次**：若允许跨午夜，必须统一采用“日期键=shift_start 所在日期”的归属规则（现有引擎已如此），并补齐覆盖用例（见 TC009）。
 - **优先级门禁一致性**：统一按优先级分集合（`*_unavail_by_priority[0/1]`）执行；当 `allow_normal != allow_urgent` 但双集合缺失时必须阻断并报 `PRIORITY_GATE_UNAVAILABLE`（见 5.1.1.3）。
 - **不可用区间上限**：对 `MachineDowntimes` 等区间做排序/合并/裁剪后，若仍超出 `MAX_UNAVAIL`，应阻断排产并提示合并停机/简化日历，禁止静默截断。
-- **Excel 导入限制提示**：全局日历 Excel 目前不暴露 `shift_start/shift_end`，人员日历 Excel 目前不支持跨午夜（见 5.1.1.5）。
+- **Excel 导入限制提示**：全局日历 Excel 目前不暴露 `shift_start/shift_end`，人员日历 Excel 已支持跨午夜（`shift_end <= shift_start` 视为次日结束；见 5.1.1.5）。
 
 ### 10.3 环境风险
 
