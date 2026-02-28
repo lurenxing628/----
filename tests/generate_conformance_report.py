@@ -1,3 +1,4 @@
+import ast
 import os
 import re
 import sys
@@ -65,7 +66,7 @@ def _check_requirements(repo_root: str) -> CheckResult:
     banned = ["pandas", "numpy", "schedule"]
     banned_hit = []
     for b in banned:
-        if re.search(rf"(?im)^{re.escape(b)}\\b", txt):
+        if re.search(rf"(?im)^{re.escape(b)}\b", txt):
             banned_hit.append(b)
 
     has_openpyxl = bool(re.search(r"(?im)^openpyxl==", txt))
@@ -88,7 +89,12 @@ def _check_no_locking(repo_root: str) -> CheckResult:
     locking_py = os.path.join(repo_root, "core", "infrastructure", "locking.py")
     schema_sql = _read_text(os.path.join(repo_root, "schema.sql"))
     # 仅以“建表语句”为准，避免注释文本误报
-    has_resource_locks = bool(re.search(r"(?im)^\\s*CREATE\\s+TABLE\\s+(IF\\s+NOT\\s+EXISTS\\s+)?ResourceLocks\\b", schema_sql))
+    has_resource_locks = bool(
+        re.search(
+            r"(?im)^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?ResourceLocks\b",
+            schema_sql,
+        )
+    )
     ok = (not os.path.exists(locking_py)) and (not has_resource_locks)
     evidence = [
         f"`core/infrastructure/locking.py` 存在：{'是' if os.path.exists(locking_py) else '否'}",
@@ -223,21 +229,114 @@ def _check_operation_logs_keys(repo_root: str) -> CheckResult:
 
 
 def _check_scheduler_schedule_logging(repo_root: str) -> CheckResult:
-    txt = _read_text(os.path.join(repo_root, "core", "services", "scheduler", "schedule_service.py"))
-    ok = 'action="simulate" if simulate else "schedule"' in txt and "ScheduleHistory" in txt and "with self.tx_manager.transaction()" in txt
-    evidence = ["`core/services/scheduler/schedule_service.py` 排产留痕片段："]
-    lines = txt.splitlines()
-    idx = None
-    for i, line in enumerate(lines):
-        if 'action="simulate" if simulate else "schedule"' in line:
-            idx = i
+    # 排产落库+留痕逻辑在 scheduler 内部已按职责拆分：
+    # - 原子落库（Schedule + 状态更新 + ScheduleHistory）
+    # - 操作日志（OperationLogs[action=schedule/simulate]）
+    path = os.path.join(repo_root, "core", "services", "scheduler", "schedule_persistence.py")
+    txt = _read_text(path)
+    evidence = ["`core/services/scheduler/schedule_persistence.py`（AST）排产留痕检查："]
+
+    try:
+        tree = ast.parse(txt, filename=path)
+    except SyntaxError as e:
+        return CheckResult(
+            name="排产落库+留痕（Schedule + ScheduleHistory + OperationLogs[action=schedule/simulate]）",
+            ok=False,
+            severity="MAJOR",
+            evidence=[*evidence, f"AST 解析失败：{e}"],
+            details="无法解析 schedule_persistence.py，conformance 检查无法进行。",
+        )
+
+    persist = next((n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "persist_schedule"), None)
+    if persist is None:
+        return CheckResult(
+            name="排产落库+留痕（Schedule + ScheduleHistory + OperationLogs[action=schedule/simulate]）",
+            ok=False,
+            severity="MAJOR",
+            evidence=[*evidence, "未找到函数：persist_schedule()"],
+            details="排产留痕实现位置与对标脚本不一致。",
+        )
+
+    def _is_transaction_with_item(expr: ast.AST) -> bool:
+        return (
+            isinstance(expr, ast.Call)
+            and isinstance(expr.func, ast.Attribute)
+            and isinstance(expr.func.attr, str)
+            and expr.func.attr == "transaction"
+        )
+
+    def _is_history_repo_create(call: ast.Call) -> bool:
+        return (
+            isinstance(call.func, ast.Attribute)
+            and call.func.attr == "create"
+            and isinstance(call.func.value, ast.Attribute)
+            and call.func.value.attr == "history_repo"
+        )
+
+    def _is_op_logger_info(call: ast.Call) -> bool:
+        return (
+            isinstance(call.func, ast.Attribute)
+            and call.func.attr == "info"
+            and isinstance(call.func.value, ast.Attribute)
+            and call.func.value.attr == "op_logger"
+        )
+
+    def _kw(call: ast.Call, name: str) -> Optional[ast.AST]:
+        for k in call.keywords or []:
+            if k is not None and k.arg == name:
+                return k.value
+        return None
+
+    def _is_action_ifexp(v: ast.AST) -> bool:
+        if not isinstance(v, ast.IfExp):
+            return False
+        if not (isinstance(v.test, ast.Name) and v.test.id == "simulate"):
+            return False
+        if not (isinstance(v.body, ast.Constant) and v.body.value == "simulate"):
+            return False
+        if not (isinstance(v.orelse, ast.Constant) and v.orelse.value == "schedule"):
+            return False
+        return True
+
+    tx_with_lineno = None
+    history_create_lineno = None
+    history_inside_tx = False
+
+    for node in ast.walk(persist):
+        if not isinstance(node, ast.With):
+            continue
+        items = list(getattr(node, "items", []) or [])
+        if not items:
+            continue
+        if not any(_is_transaction_with_item(getattr(it, "context_expr", None)) for it in items):
+            continue
+        tx_with_lineno = int(getattr(node, "lineno", 0) or 0) or None
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Call) and _is_history_repo_create(sub):
+                history_create_lineno = int(getattr(sub, "lineno", 0) or 0) or None
+                history_inside_tx = True
+                break
+        if history_inside_tx:
             break
-    if idx is not None:
-        start = max(0, idx - 12)
-        end = min(len(lines), idx + 12)
-        evidence.extend(["```", *lines[start:end], "```"])
-    else:
-        evidence.append("未找到 action=schedule/simulate 留痕写入逻辑")
+
+    op_info_lineno = None
+    action_ok = False
+    for sub in ast.walk(persist):
+        if not isinstance(sub, ast.Call):
+            continue
+        if not _is_op_logger_info(sub):
+            continue
+        op_info_lineno = int(getattr(sub, "lineno", 0) or 0) or None
+        action_expr = _kw(sub, "action")
+        action_ok = _is_action_ifexp(action_expr) if action_expr is not None else False
+        if action_ok:
+            break
+
+    ok = bool(history_inside_tx and op_info_lineno and action_ok)
+    evidence.append(f"- persist_schedule(): line={getattr(persist, 'lineno', None)}")
+    evidence.append(f"- with *.transaction(): line={tx_with_lineno}")
+    evidence.append(f"- history_repo.create(...): line={history_create_lineno} inside_tx={history_inside_tx}")
+    evidence.append(f"- op_logger.info(...): line={op_info_lineno} action_ifexp_ok={action_ok}")
     return CheckResult(
         name="排产落库+留痕（Schedule + ScheduleHistory + OperationLogs[action=schedule/simulate]）",
         ok=ok,
@@ -416,22 +515,39 @@ def _check_routes_presence(repo_root: str) -> CheckResult:
     os.makedirs(test_backups, exist_ok=True)
     os.makedirs(test_templates, exist_ok=True)
 
-    os.environ["APS_ENV"] = "development"
-    os.environ["APS_DB_PATH"] = test_db
-    os.environ["APS_LOG_DIR"] = test_logs
-    os.environ["APS_BACKUP_DIR"] = test_backups
-    os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
+    env_keys = ["APS_ENV", "APS_DB_PATH", "APS_LOG_DIR", "APS_BACKUP_DIR", "APS_EXCEL_TEMPLATE_DIR"]
+    old_env = {k: os.environ.get(k) for k in env_keys}
+    inserted_sys_path = False
 
-    import importlib
+    try:
+        os.environ["APS_ENV"] = "development"
+        os.environ["APS_DB_PATH"] = test_db
+        os.environ["APS_LOG_DIR"] = test_logs
+        os.environ["APS_BACKUP_DIR"] = test_backups
+        os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
 
-    # 确保可 import app.py（仓库根目录）
-    if repo_root not in os.sys.path:
-        os.sys.path.insert(0, repo_root)
+        import importlib
 
-    # 这里会触发 ensure_schema 与 ensure_excel_templates（写入临时目录）
-    app_mod = importlib.import_module("app")
-    app = app_mod.create_app()
-    rules = sorted({str(r.rule) for r in app.url_map.iter_rules()})
+        # 确保可 import app.py（仓库根目录）
+        if repo_root not in sys.path:
+            sys.path.insert(0, repo_root)
+            inserted_sys_path = True
+
+        # 这里会触发 ensure_schema 与 ensure_excel_templates（写入临时目录）
+        app_mod = importlib.import_module("app")
+        app = app_mod.create_app()
+        rules = sorted({str(r.rule) for r in app.url_map.iter_rules()})
+    finally:
+        if inserted_sys_path:
+            try:
+                sys.path.remove(repo_root)
+            except ValueError:
+                pass
+        for k, v in old_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
     required_rules = [
         "/personnel/excel/operators/preview",
@@ -526,13 +642,19 @@ def main():
     repo_root = find_repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    content, _ = generate_report(repo_root)
+    content, checks = generate_report(repo_root)
     out_path = os.path.join(repo_root, "evidence", "Conformance", "conformance_report.md")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(content)
-    print("OK")
+
+    blockers = [c for c in checks if (not c.ok) and c.severity == "BLOCKER"]
+    majors = [c for c in checks if (not c.ok) and c.severity == "MAJOR"]
+    ok = (len(blockers) == 0) and (len(majors) == 0)
+
+    print("OK" if ok else "FAILED")
     print(out_path)
+    raise SystemExit(0 if ok else 1)
 
 
 if __name__ == "__main__":
