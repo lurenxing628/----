@@ -33,6 +33,8 @@ class OpTypeService:
         ot_id = self._normalize_text(op_type_id)
         ot_name = self._normalize_text(name)
         ot_category = self._normalize_text(category)
+        if ot_category is not None:
+            ot_category = ot_category.lower()
 
         if not allow_partial:
             if not ot_id:
@@ -54,11 +56,12 @@ class OpTypeService:
         return ot
 
     def list(self, category: Optional[str] = None) -> List[OpType]:
+        filter_cat = None
         if category:
-            _id, _name, cat = self._validate_fields("DUMMY", "DUMMY", category, allow_partial=True)
-            if cat is None:
+            _id, _name, filter_cat = self._validate_fields(None, None, category, allow_partial=True)
+            if filter_cat is None:
                 raise ValidationError("缺少归属参数", field="归属")
-        return self.repo.list(category=category)
+        return self.repo.list(category=filter_cat)
 
     def get(self, op_type_id: str) -> OpType:
         ot_id, _, _ = self._validate_fields(op_type_id, None, None, allow_partial=True)

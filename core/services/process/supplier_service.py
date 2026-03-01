@@ -60,6 +60,8 @@ class SupplierService:
         sid = self._normalize_text(supplier_id)
         sname = self._normalize_text(name)
         sstatus = self._normalize_text(status)
+        if sstatus is not None:
+            sstatus = sstatus.lower()
         sdays = None if default_days is None and allow_partial else self._normalize_float(default_days, default=1.0)
 
         if not allow_partial:
@@ -84,15 +86,16 @@ class SupplierService:
         return s
 
     def list(self, status: Optional[str] = None, op_type_id: Optional[str] = None) -> List[Supplier]:
+        filter_status = None
         if status:
-            _, _, _, st = self._validate_fields("DUMMY", "DUMMY", None, status, allow_partial=True)
-            if st is None:
+            _, _, _, filter_status = self._validate_fields(None, None, None, status, allow_partial=True)
+            if filter_status is None:
                 raise ValidationError("缺少状态参数", field="状态")
         if op_type_id:
             ot = self.op_type_repo.get(op_type_id)
             if not ot:
                 raise BusinessError(ErrorCode.NOT_FOUND, f"工种“{op_type_id}”不存在")
-        return self.repo.list(status=status, op_type_id=op_type_id)
+        return self.repo.list(status=filter_status, op_type_id=op_type_id)
 
     def get(self, supplier_id: str) -> Supplier:
         sid, _, _, _ = self._validate_fields(supplier_id, None, None, None, allow_partial=True)

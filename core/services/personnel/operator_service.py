@@ -37,6 +37,8 @@ class OperatorService:
         op_id = self._normalize_text(operator_id)
         op_name = self._normalize_text(name)
         op_status = self._normalize_text(status)
+        if op_status is not None:
+            op_status = op_status.lower()
 
         if not allow_partial:
             if not op_id:
@@ -62,9 +64,11 @@ class OperatorService:
     # -------------------------
     def list(self, status: Optional[str] = None) -> List[Operator]:
         if status:
-            # 校验一下 status（避免页面/接口传错）
-            self._validate_operator_fields(operator_id="DUMMY", name="DUMMY", status=status, allow_partial=True)
-        return self.repo.list(status=status)
+            _, _, st = self._validate_operator_fields(operator_id=None, name=None, status=status, allow_partial=True)
+            if st is None:
+                raise ValidationError("缺少状态参数", field="状态")
+            return self.repo.list(status=st)
+        return self.repo.list(status=None)
 
     def get(self, operator_id: str) -> Operator:
         op_id, _, _ = self._validate_operator_fields(operator_id=operator_id, name=None, status=None, allow_partial=True)

@@ -50,12 +50,13 @@ class MachineService:
             return MachineStatus.INACTIVE.value
 
         # 英文/枚举
-        if v in (
+        v_lower = v.lower()
+        if v_lower in (
             MachineStatus.ACTIVE.value,
             MachineStatus.INACTIVE.value,
             MachineStatus.MAINTAIN.value,
         ):
-            return v
+            return v_lower
         raise ValidationError("“状态”不合法（允许：active / inactive / maintain）", field="状态")
 
     def _validate_machine_fields(
@@ -97,15 +98,17 @@ class MachineService:
     # CRUD
     # -------------------------
     def list(self, status: Optional[str] = None, op_type_id: Optional[str] = None) -> List[Machine]:
+        filter_status = None
         if status:
-            # 校验一下 status（避免页面/接口传错）
-            self._validate_machine_fields(machine_id="DUMMY", name="DUMMY", status=status, allow_partial=True)
+            filter_status = self._normalize_status(status)
+            if filter_status is None:
+                raise ValidationError("缺少状态参数", field="状态")
         if op_type_id:
             # 校验一下工种存在（避免页面传错）
             ot = self.op_type_repo.get(op_type_id)
             if not ot:
                 raise BusinessError(ErrorCode.NOT_FOUND, f"工种“{op_type_id}”不存在")
-        return self.repo.list(status=status, op_type_id=op_type_id)
+        return self.repo.list(status=filter_status, op_type_id=op_type_id)
 
     def get(self, machine_id: str) -> Machine:
         mc_id = self._normalize_text(machine_id)
