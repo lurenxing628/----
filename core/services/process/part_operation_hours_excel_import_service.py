@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -61,10 +62,11 @@ class PartOperationHoursExcelImportService:
             self._apply_non_write_row(pr, stats)
             return
 
-        parsed = self._parse_write_row(pr)
-        if parsed is None:
-            stats.add_error(pr.row_num, "缺少图号/工序，无法写入。")
+        parsed, err = self._parse_write_row(pr)
+        if err:
+            stats.add_error(pr.row_num, err)
             return
+        assert parsed is not None
         part_no, seq, sh, uh = parsed
 
         try:
@@ -92,15 +94,65 @@ class PartOperationHoursExcelImportService:
         return
 
     @staticmethod
-    def _parse_write_row(pr: ImportPreviewRow) -> Optional[Tuple[str, int, float, float]]:
+    def _coerce_int(value: Any) -> Optional[int]:
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return int(value)
+        if isinstance(value, float):
+            return int(value) if value.is_integer() else None
+        s = str(value).strip()
+        if not s:
+            return None
+        if "e" in s.lower():
+            return None
+        try:
+            f = float(s)
+        except Exception:
+            return None
+        if not math.isfinite(f):
+            return None
+        return int(f) if float(f).is_integer() else None
+
+    @staticmethod
+    def _coerce_finite_float(value: Any) -> Optional[float]:
+        if value is None:
+            return 0.0
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, str):
+            s = value.strip()
+            if s == "":
+                return 0.0
+            try:
+                f = float(s)
+            except Exception:
+                return None
+        else:
+            try:
+                f = float(value)
+            except Exception:
+                return None
+        if not math.isfinite(f):
+            return None
+        return float(f)
+
+    @classmethod
+    def _parse_write_row(cls, pr: ImportPreviewRow) -> Tuple[Optional[Tuple[str, int, float, float]], Optional[str]]:
         data = pr.data or {}
         part_no = str(data.get("图号") or "").strip()
-        seq = data.get("工序")
-        if not part_no or not isinstance(seq, int):
-            return None
+        seq_int = cls._coerce_int(data.get("工序"))
+        if not part_no or seq_int is None:
+            return None, "缺少图号/工序，无法写入。"
 
-        # preview 阶段已完成校验与类型标准化，这里直接使用结果，避免跨包依赖与重复解析。
-        sh = float(data.get("换型时间(h)") or 0.0)
-        uh = float(data.get("单件工时(h)") or 0.0)
-        return part_no, int(seq), sh, uh
+        # 正常链路下 preview 已完成校验与类型标准化；此处仅做“输入漂移防御”，避免整批回滚。
+        sh = cls._coerce_finite_float(data.get("换型时间(h)"))
+        if sh is None:
+            return None, "“换型时间(h)”必须是有限数字"
+        uh = cls._coerce_finite_float(data.get("单件工时(h)"))
+        if uh is None:
+            return None, "“单件工时(h)”必须是有限数字"
+        if float(sh) < 0 or float(uh) < 0:
+            return None, "“换型时间(h)”和“单件工时(h)”不能为负数"
+        return (part_no, int(seq_int), float(sh), float(uh)), None
 

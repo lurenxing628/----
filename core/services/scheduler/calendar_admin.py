@@ -70,7 +70,17 @@ class CalendarAdmin:
 
     @staticmethod
     def _validate_day_type(value: Any) -> str:
-        v = CalendarAdmin._normalize_text(value) or CalendarDayType.WORKDAY.value
+        raw = CalendarAdmin._normalize_text(value) or CalendarDayType.WORKDAY.value
+        # 中文映射：与 _normalize_yesno 的中文友好程度保持一致
+        if raw == "工作日":
+            return CalendarDayType.WORKDAY.value
+        # 兼容：周末本质属于“假期”
+        if raw == "周末":
+            return CalendarDayType.HOLIDAY.value
+        if raw in ("节假日", "假期"):
+            return CalendarDayType.HOLIDAY.value
+
+        v = str(raw).strip().lower()
         # 兼容：weekend 统一视为 holiday（存储只保留 workday/holiday）
         if v == CalendarDayType.WEEKEND.value:
             return CalendarDayType.HOLIDAY.value
@@ -81,13 +91,14 @@ class CalendarAdmin:
     @staticmethod
     def _normalize_yesno(value: Any, field: str) -> str:
         v = CalendarAdmin._normalize_text(value) or YesNo.YES.value
-        if v in ("是", "y", "Y", "yes", "YES"):
+        v_lower = v.lower()
+        if v == "是" or v_lower in ("y", "yes"):
             return YesNo.YES.value
-        if v in ("否", "n", "N", "no", "NO"):
+        if v == "否" or v_lower in ("n", "no"):
             return YesNo.NO.value
-        if v not in (YesNo.YES.value, YesNo.NO.value):
+        if v_lower not in (YesNo.YES.value, YesNo.NO.value):
             raise ValidationError(f"“{field}”不合法（允许：yes / no）", field=field)
-        return v
+        return v_lower
 
     # -------------------------
     # WorkCalendar：CRUD（给页面/Excel用）

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.enum_normalizers import normalize_op_type_category
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
 from core.services.process.op_type_service import OpTypeService
@@ -51,15 +52,7 @@ class OpTypeExcelImportService:
             if not name:
                 raise ValidationError("“工种名称”不能为空", field="工种名称")
 
-            raw_cat = "" if data.get("归属") is None else str(data.get("归属")).strip()
-            if not raw_cat:
-                raw_cat = "internal"
-            if raw_cat in ("内部", "内", "internal"):
-                cat = "internal"
-            elif raw_cat in ("外部", "外", "external"):
-                cat = "external"
-            else:
-                cat = raw_cat
+            cat = normalize_op_type_category(data.get("归属"))
             if cat not in ("internal", "external"):
                 raise ValidationError("“归属”不合法（允许：internal / external；或中文：内部/外部）", field="归属")
             if existed:

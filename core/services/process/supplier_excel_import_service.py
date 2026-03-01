@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.enum_normalizers import normalize_supplier_status
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
 from core.services.process.op_type_service import OpTypeService
@@ -29,12 +30,7 @@ class SupplierExcelImportService:
 
     @staticmethod
     def _normalize_supplier_status_for_excel(value: Any) -> str:
-        v = "" if value is None else str(value).strip()
-        if v in ("启用", "在用", "正常", "active"):
-            return "active"
-        if v in ("停用", "禁用", "inactive"):
-            return "inactive"
-        return v or "active"
+        return normalize_supplier_status(value)
 
     def apply_preview_rows(
         self,

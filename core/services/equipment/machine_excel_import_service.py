@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Set
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.enum_normalizers import normalize_machine_status
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
 from core.services.equipment.machine_service import MachineService
@@ -30,16 +31,7 @@ class MachineExcelImportService:
 
     @staticmethod
     def _normalize_machine_status_for_excel(value: Any) -> str:
-        if value is None:
-            return ""
-        v = str(value).strip()
-        if v in ("可用", "启用", "正常"):
-            return "active"
-        if v in ("维修", "维护", "维护中", "维修中", "保养"):
-            return "maintain"
-        if v in ("停用", "禁用", "不可用"):
-            return "inactive"
-        return v
+        return normalize_machine_status(value)
 
     def apply_preview_rows(
         self,

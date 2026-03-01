@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import BatchOperation
-from core.models.enums import BatchOperationStatus, MergeMode, OperatorStatus, SourceType
+from core.models.enums import BatchOperationStatus, MachineStatus, MergeMode, OperatorStatus, SourceType
+
+_SUPPLIER_ACTIVE_STATUS = "active"
 
 
 def list_batch_operations(svc, batch_id: Any) -> List[BatchOperation]:
@@ -18,8 +20,8 @@ def list_batch_operations(svc, batch_id: Any) -> List[BatchOperation]:
 def get_operation(svc, op_id: Any) -> BatchOperation:
     try:
         oid = int(op_id)
-    except Exception:
-        raise ValidationError("工序ID 不合法", field="op_id")
+    except Exception as e:
+        raise ValidationError("工序ID 不合法", field="op_id") from e
     return svc._get_op_or_raise(oid)
 
 
@@ -60,6 +62,56 @@ def _normalize_batch_op_status(svc, value: Any) -> Optional[str]:
     return st
 
 
+def _ensure_internal_operation_editable(op: BatchOperation, *, op_id: Any) -> None:
+    if op.id is None:
+        raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
+    if (op.source or "").strip().lower() != SourceType.INTERNAL.value:
+        raise ValidationError("只能编辑内部工序的设备/人员/工时信息", field="source")
+
+
+def _validate_machine_available(svc, mc_id: Optional[str]) -> None:
+    if not mc_id:
+        return
+    m = svc.machine_repo.get(mc_id)
+    if not m:
+        raise BusinessError(ErrorCode.MACHINE_NOT_FOUND, f"设备“{mc_id}”不存在")
+    if (m.status or "").strip().lower() != MachineStatus.ACTIVE.value:
+        raise BusinessError(ErrorCode.MACHINE_NOT_AVAILABLE, f"设备“{mc_id}”当前状态为“{m.status}”，不可用于排产。")
+
+
+def _validate_operator_available(svc, operator_id_text: Optional[str]) -> None:
+    if not operator_id_text:
+        return
+    person = svc.operator_repo.get(operator_id_text)
+    if not person:
+        raise BusinessError(ErrorCode.OPERATOR_NOT_FOUND, f"人员“{operator_id_text}”不存在")
+    if (person.status or "").strip().lower() != OperatorStatus.ACTIVE.value:
+        raise BusinessError(ErrorCode.RESOURCE_NOT_AVAILABLE, f"人员“{operator_id_text}”当前状态为“{person.status}”，不可用于排产。")
+
+
+def _validate_operator_machine_match(svc, *, mc_id: Optional[str], operator_id_text: Optional[str], op: BatchOperation) -> None:
+    if not (mc_id and operator_id_text):
+        return
+    if svc.operator_machine_repo.exists(operator_id_text, mc_id):
+        return
+    op_code = op.op_code or "-"
+    raise ValidationError(
+        f"人员“{operator_id_text}”未被配置为可操作设备“{mc_id}”（工序 {op_code} / ID={op.id}）。"
+        f"请先在【人员管理】或【设备管理】中维护人机关联（OperatorMachine）后再排产。",
+        field="设备/人员",
+    )
+
+
+def _normalize_hours(svc, *, setup_hours: Any, unit_hours: Any) -> Tuple[float, float]:
+    sh = svc._normalize_float(setup_hours, field="换型时间(小时)", allow_none=True)
+    uh = svc._normalize_float(unit_hours, field="单件工时(小时)", allow_none=True)
+    sh2 = 0.0 if sh is None else float(sh)
+    uh2 = 0.0 if uh is None else float(uh)
+    if sh2 < 0 or uh2 < 0:
+        raise ValidationError("工时不能为负数", field="工时")
+    return sh2, uh2
+
+
 def update_internal_operation(
     svc,
     op_id: Any,
@@ -75,46 +127,21 @@ def update_internal_operation(
     - setup_hours/unit_hours 非负（允许为空，空视为 0）
     """
     op = get_operation(svc, op_id)
-    if op.id is None:
-        raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
-    if (op.source or "").strip().lower() != SourceType.INTERNAL.value:
-        raise ValidationError("只能编辑内部工序的设备/人员/工时信息", field="source")
+    _ensure_internal_operation_editable(op, op_id=op_id)
 
     mc_id = svc._normalize_text(machine_id)
     operator_id_text = svc._normalize_text(operator_id)
 
     # 设备存在性 + 可用性（维护/停用时禁止分配）
-    if mc_id:
-        m = svc.machine_repo.get(mc_id)
-        if not m:
-            raise BusinessError(ErrorCode.MACHINE_NOT_FOUND, f"设备“{mc_id}”不存在")
-        if (m.status or "").strip() != "active":
-            raise BusinessError(ErrorCode.MACHINE_NOT_AVAILABLE, f"设备“{mc_id}”当前状态为“{m.status}”，不可用于排产。")
+    _validate_machine_available(svc, mc_id)
 
     # 人员存在性 + 在岗性
-    if operator_id_text:
-        person = svc.operator_repo.get(operator_id_text)
-        if not person:
-            raise BusinessError(ErrorCode.OPERATOR_NOT_FOUND, f"人员“{operator_id_text}”不存在")
-        if (person.status or "").strip() != OperatorStatus.ACTIVE.value:
-            raise BusinessError(ErrorCode.RESOURCE_NOT_AVAILABLE, f"人员“{operator_id_text}”当前状态为“{person.status}”，不可用于排产。")
+    _validate_operator_available(svc, operator_id_text)
 
     # 人员-设备匹配性（双向约束）：两者都选择时必须已维护可操作关联
-    if mc_id and operator_id_text:
-        if not svc.operator_machine_repo.exists(operator_id_text, mc_id):
-            op_code = op.op_code or "-"
-            raise ValidationError(
-                f"人员“{operator_id_text}”未被配置为可操作设备“{mc_id}”（工序 {op_code} / ID={op.id}）。"
-                f"请先在【人员管理】或【设备管理】中维护人机关联（OperatorMachine）后再排产。",
-                field="设备/人员",
-            )
+    _validate_operator_machine_match(svc, mc_id=mc_id, operator_id_text=operator_id_text, op=op)
 
-    sh = svc._normalize_float(setup_hours, field="换型时间(小时)", allow_none=True)
-    uh = svc._normalize_float(unit_hours, field="单件工时(小时)", allow_none=True)
-    sh = 0.0 if sh is None else float(sh)
-    uh = 0.0 if uh is None else float(uh)
-    if sh < 0 or uh < 0:
-        raise ValidationError("工时不能为负数", field="工时")
+    sh, uh = _normalize_hours(svc, setup_hours=setup_hours, unit_hours=unit_hours)
 
     updates: Dict[str, Any] = {
         "machine_id": mc_id,
@@ -156,7 +183,7 @@ def update_external_operation(
         s = svc.supplier_repo.get(sup_id)
         if not s:
             raise BusinessError(ErrorCode.NOT_FOUND, f"供应商“{sup_id}”不存在")
-        if (s.status or "").strip() != "active":
+        if (s.status or "").strip().lower() != _SUPPLIER_ACTIVE_STATUS:
             raise BusinessError(ErrorCode.RESOURCE_NOT_AVAILABLE, f"供应商“{sup_id}”已停用，不可用于排产。")
 
     # 合并周期（merged）时：周期不在 BatchOperations.ext_days 上维护
