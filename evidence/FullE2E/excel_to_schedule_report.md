@@ -1,15 +1,15 @@
 # Full E2E（从 Excel 导入开始→排产→甘特/周计划→系统管理）验收报告
 
-- 测试时间：2026-02-28 16:22:30
+- 测试时间：2026-02-28 21:33:58
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境（隔离目录）
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_felfo8ua`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_felfo8ua\aps_full_e2e.db`
-- logs：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_felfo8ua\logs`
-- backups：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_felfo8ua\backups`
-- templates_excel：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_felfo8ua\templates_excel`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_d5p983z8`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_d5p983z8\aps_full_e2e.db`
+- logs：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_d5p983z8\logs`
+- backups：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_d5p983z8\backups`
+- templates_excel：`C:\Users\LURENX~1\AppData\Local\Temp\aps_full_e2e_d5p983z8\templates_excel`
 
 ## 1. 基础页面可访问性（用于确认路由装配）
 - GET /：200
@@ -107,4 +107,4 @@
 
 ## 结论
 - 通过：Full E2E（从 Excel 导入开始→排产→甘特/周计划→系统管理）链路跑通。
-- 总耗时：3613 ms
+- 总耗时：3315 ms

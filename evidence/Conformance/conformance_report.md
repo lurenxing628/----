@@ -1,6 +1,6 @@
 # 实现一致性对标报告（实现 vs 开发文档规划 + 架构合规）
 
-- 生成时间：2026-02-28 16:24:13
+- 生成时间：2026-02-28 21:38:11
 - 仓库根目录：`D:\Github\APS Test`
 
 ## 总结
@@ -108,10 +108,10 @@
 - **严重性**：INFO
 - **证据**：
   - `core/services/scheduler/schedule_persistence.py`（AST）排产留痕检查：
-  - - persist_schedule(): line=10
-  - - with *.transaction(): line=53
-  - - history_repo.create(...): line=104 inside_tx=True
-  - - op_logger.info(...): line=134 action_ifexp_ok=True
+  - - persist_schedule(): line=187
+  - - with *.transaction(): line=215
+  - - history_repo.create(...): line=132 inside_tx=True
+  - - op_logger.info(...): line=178 action_ifexp_ok=True
 
 ### 分层架构合规（route 不直接操作 DB，service 不导入 Flask request）
 - **结果**：通过

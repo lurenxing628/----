@@ -1,16 +1,16 @@
 # Phase0+Phase1 冒烟测试报告
 
-- 测试时间：2026-02-28 01:01:57
+- 测试时间：2026-02-28 21:33:13
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 - Flask：2.3.3
 - openpyxl：3.0.10
 
 ## 0. 测试环境与目录
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_h64hvm6t`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_h64hvm6t\aps_test.db`
-- 测试日志目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_h64hvm6t\logs`
-- 测试备份目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_h64hvm6t\backups`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_xfbjgmlq`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_xfbjgmlq\aps_test.db`
+- 测试日志目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_xfbjgmlq\logs`
+- 测试备份目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_xfbjgmlq\backups`
 
 ## 1. Schema 检查
 - 表数量：25
@@ -48,26 +48,26 @@
 - OperationLogs 写入校验：excel_demo import 记录数=2（期望 >= 1）
 
 ## 5. 备份检查
-- 手动触发备份：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_h64hvm6t\backups\aps_backup_20260228_010159_auto_test.db`
+- 手动触发备份：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_xfbjgmlq\backups\aps_backup_20260228_213315_auto_test.db`
 - backups 文件数：1
 
 ## 6. 文件日志检查（用户排障）
-- aps.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_h64hvm6t\logs\aps.log`）
-- aps_error.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_h64hvm6t\logs\aps_error.log`）
+- aps.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_xfbjgmlq\logs\aps.log`）
+- aps_error.log 是否存在：True（`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_xfbjgmlq\logs\aps_error.log`）
 
 ### aps.log 摘录（最后 20 行）
 ```
-2026-02-28 01:01:59 [INFO] web.bootstrap.factory [security.py:54]: 已生成 SECRET_KEY 并写入：C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_h64hvm6t\logs\aps_secret_key.txt
-2026-02-28 01:01:59 [INFO] web.bootstrap.factory [factory.py:102]: 已生成 Excel 模板：10 个
-2026-02-28 01:01:59 [INFO] web.bootstrap.factory [database.py:165]: 数据库结构检查完成（已确保所有表存在）。
-2026-02-28 01:01:59 [INFO] web.bootstrap.factory [logging.py:157]: [plugins] 操作：load（runtime plugins）
-2026-02-28 01:01:59 [INFO] web.bootstrap.factory [factory.py:231]: 应用启动完成。
-2026-02-28 01:01:59 [INFO] web.bootstrap.factory [database.py:165]: 数据库结构检查完成（已确保所有表存在）。
-2026-02-28 01:01:59 [INFO] web.bootstrap.factory [logging.py:157]: [plugins] 操作：load（runtime plugins）
-2026-02-28 01:01:59 [INFO] web.bootstrap.factory [factory.py:231]: 应用启动完成。
-2026-02-28 01:01:59 [INFO] web.bootstrap.factory [logging.py:157]: [excel_demo] 操作：export（operator ）
-2026-02-28 01:01:59 [INFO] web.bootstrap.factory [logging.py:157]: [excel_demo] 操作：import（operator ）
-2026-02-28 01:01:59 [INFO] web.bootstrap.factory [logging.py:157]: [excel_demo] 操作：import（operator ）
+2026-02-28 21:33:15 [INFO] web.bootstrap.factory [security.py:54]: 已生成 SECRET_KEY 并写入：C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_xfbjgmlq\logs\aps_secret_key.txt
+2026-02-28 21:33:15 [INFO] web.bootstrap.factory [factory.py:102]: 已生成 Excel 模板：10 个
+2026-02-28 21:33:15 [INFO] web.bootstrap.factory [database.py:167]: 数据库结构检查完成（已确保所有表存在）。
+2026-02-28 21:33:15 [INFO] web.bootstrap.factory [logging.py:159]: [plugins] 操作：load（runtime plugins）
+2026-02-28 21:33:15 [INFO] web.bootstrap.factory [factory.py:231]: 应用启动完成。
+2026-02-28 21:33:15 [INFO] web.bootstrap.factory [database.py:167]: 数据库结构检查完成（已确保所有表存在）。
+2026-02-28 21:33:15 [INFO] web.bootstrap.factory [logging.py:159]: [plugins] 操作：load（runtime plugins）
+2026-02-28 21:33:15 [INFO] web.bootstrap.factory [factory.py:231]: 应用启动完成。
+2026-02-28 21:33:15 [INFO] web.bootstrap.factory [logging.py:159]: [excel_demo] 操作：export（operator ）
+2026-02-28 21:33:15 [INFO] web.bootstrap.factory [logging.py:159]: [excel_demo] 操作：import（operator ）
+2026-02-28 21:33:15 [INFO] web.bootstrap.factory [logging.py:159]: [excel_demo] 操作：import（operator ）
 ```
 
 ## 结论
