@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from ._helpers import RowLike, as_dict, get, parse_float, parse_int
+from .enums import BatchOperationStatus, SourceType
 
 
 @dataclass
@@ -15,18 +16,18 @@ class BatchOperation:
     seq: int = 0
     op_type_id: Optional[str] = None
     op_type_name: str = ""
-    source: str = "internal"  # internal/external
+    source: str = SourceType.INTERNAL.value  # internal/external
     machine_id: Optional[str] = None
     operator_id: Optional[str] = None
     supplier_id: Optional[str] = None
     setup_hours: float = 0.0
     unit_hours: float = 0.0
     ext_days: Optional[float] = None
-    status: str = "pending"  # pending/scheduled/processing/completed/skipped
+    status: str = BatchOperationStatus.PENDING.value  # pending/scheduled/processing/completed/skipped
     created_at: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: RowLike) -> "BatchOperation":
+    def from_row(cls, row: RowLike) -> BatchOperation:
         raw_id = get(row, "id")
         seq = get(row, "seq")
         setup_hours = get(row, "setup_hours")
@@ -45,14 +46,19 @@ class BatchOperation:
             seq=parse_int(seq, default=0) or 0,
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             op_type_name=str(get(row, "op_type_name") or ""),
-            source=(str(get(row, "source") or "internal").strip().lower() or "internal"),
+            source=(
+                str(get(row, "source") or SourceType.INTERNAL.value).strip().lower() or SourceType.INTERNAL.value
+            ),
             machine_id=str(machine_id) if machine_id is not None and machine_id != "" else None,
             operator_id=str(operator_id) if operator_id is not None and operator_id != "" else None,
             supplier_id=str(supplier_id) if supplier_id is not None and supplier_id != "" else None,
             setup_hours=parse_float(setup_hours, default=0.0) or 0.0,
             unit_hours=parse_float(unit_hours, default=0.0) or 0.0,
             ext_days=parse_float(ext_days, default=None),
-            status=(str(get(row, "status") or "pending").strip().lower() or "pending"),
+            status=(
+                str(get(row, "status") or BatchOperationStatus.PENDING.value).strip().lower()
+                or BatchOperationStatus.PENDING.value
+            ),
             created_at=get(row, "created_at"),
         )
 

@@ -16,6 +16,8 @@ import math
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.algorithms.value_domains import INTERNAL
+
 
 def _parse_due_date(value: Any) -> Optional[date]:
     if value is None:
@@ -70,7 +72,7 @@ def try_solve_bottleneck_batch_order(
         per_batch_type_load: Dict[Tuple[str, str], float] = {}
 
         for op in operations:
-            if (getattr(op, "source", "internal") or "internal").strip().lower() != "internal":
+            if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() != INTERNAL:
                 continue
             bid = str(getattr(op, "batch_id", "") or "").strip()
             if not bid or bid not in batches:

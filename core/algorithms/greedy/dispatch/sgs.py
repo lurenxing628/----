@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.dispatch_rules import DispatchInputs, DispatchRule, build_dispatch_key
 from core.algorithms.types import ScheduleResult
+from core.algorithms.value_domains import EXTERNAL, INTERNAL, MERGED
 
 from ..downtime import get_resource_available
 
@@ -73,7 +74,7 @@ def dispatch_sgs(
             errors.append(f"工序 {getattr(op, 'op_code', '-') or '-'}：找不到所属批次 {bid}")
             continue
         ops_by_batch.setdefault(bid, []).append(op)
-    for bid, lst in ops_by_batch.items():
+    for _bid, lst in ops_by_batch.items():
         lst.sort(key=lambda x: (int(getattr(x, "seq", 0) or 0), int(getattr(x, "id", 0) or 0)))
 
     # 确保遍历顺序稳定（按 batch_order，再按 batch_id）
@@ -90,7 +91,7 @@ def dispatch_sgs(
             continue
         qty = getattr(b, "quantity", 0) or 0
         for op in lst:
-            if (getattr(op, "source", "internal") or "internal").strip().lower() != "internal":
+            if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() != INTERNAL:
                 continue
             setup_hours = getattr(op, "setup_hours", 0) or 0
             unit_hours = getattr(op, "unit_hours", 0) or 0
@@ -134,11 +135,11 @@ def dispatch_sgs(
                 score_penalty = 0.0  # 0=正常可估算；1=不可估算（应劣于所有正常候选）
 
                 # 估算（用于打分，不占资源）
-                if (getattr(op, "source", "internal") or "internal").strip().lower() == "external":
+                if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
                     prev_end = batch_progress.get(bid, base_time)
                     merge_mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()
                     ext_group_id = str(getattr(op, "ext_group_id", None) or "").strip()
-                    if merge_mode == "merged" and ext_group_id:
+                    if merge_mode == MERGED and ext_group_id:
                         cached = external_group_cache.get((bid, ext_group_id))
                         if cached:
                             est_start, est_end = cached
@@ -357,7 +358,7 @@ def dispatch_sgs(
         bid, op = best_pair
         try:
             batch = batches[bid]
-            if (getattr(op, "source", "internal") or "internal").strip().lower() == "external":
+            if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
                 result, _blocked = scheduler._schedule_external(  # type: ignore[attr-defined]
                     op, batch, batch_progress, external_group_cache, base_time, errors, end_dt_exclusive
                 )
@@ -384,7 +385,7 @@ def dispatch_sgs(
                 batch_progress[bid] = max(batch_progress.get(bid, base_time), result.end_time)
                 scheduled_count += 1
                 next_idx[bid] = int(next_idx.get(bid, 0) or 0) + 1
-                if (result.source or "").strip().lower() == "internal" and result.machine_id:
+                if (result.source or "").strip().lower() == INTERNAL and result.machine_id:
                     try:
                         mid0 = str(result.machine_id or "").strip()
                         oid0 = str(result.operator_id or "").strip()

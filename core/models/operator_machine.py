@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from ._helpers import RowLike, as_dict, get, parse_int
+from .enums import SkillLevel, YesNo
 
 
 @dataclass
@@ -11,19 +12,21 @@ class OperatorMachine:
     id: Optional[int]
     operator_id: str
     machine_id: str
-    skill_level: str = "normal"  # 预留：beginner/normal/skilled/expert
-    is_primary: str = "no"  # yes/no（预留）
+    skill_level: str = SkillLevel.NORMAL.value  # 预留：beginner/normal/skilled/expert
+    is_primary: str = YesNo.NO.value  # yes/no（预留）
     created_at: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: RowLike) -> "OperatorMachine":
+    def from_row(cls, row: RowLike) -> OperatorMachine:
         raw_id = get(row, "id")
         return cls(
             id=parse_int(raw_id, default=None),
             operator_id=str(get(row, "operator_id") or ""),
             machine_id=str(get(row, "machine_id") or ""),
-            skill_level=(str(get(row, "skill_level") or "normal").strip().lower() or "normal"),
-            is_primary=(str(get(row, "is_primary") or "no").strip().lower() or "no"),
+            skill_level=(
+                str(get(row, "skill_level") or SkillLevel.NORMAL.value).strip().lower() or SkillLevel.NORMAL.value
+            ),
+            is_primary=(str(get(row, "is_primary") or YesNo.NO.value).strip().lower() or YesNo.NO.value),
             created_at=get(row, "created_at"),
         )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithms.types import ScheduleResult
+from core.algorithms.value_domains import INTERNAL
 
 
 def normalize_seed_results(
@@ -97,7 +98,7 @@ def normalize_seed_results(
 
                 if new_oid > 0:
                     try:
-                        setattr(sr, "op_id", int(new_oid))
+                        sr.op_id = int(new_oid)
                         oid0 = int(new_oid)
                         backfilled += 1
                     except Exception:
@@ -112,7 +113,7 @@ def normalize_seed_results(
                                 operator_id=(str(getattr(sr, "operator_id", "") or "") or None),
                                 start_time=getattr(sr, "start_time", None),
                                 end_time=getattr(sr, "end_time", None),
-                                source=str(getattr(sr, "source", "internal") or "internal"),
+                                source=str(getattr(sr, "source", INTERNAL) or INTERNAL),
                                 op_type_name=(str(getattr(sr, "op_type_name", "") or "") or None),
                             )
                             oid0 = int(new_oid)

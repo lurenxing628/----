@@ -16,6 +16,8 @@ import math
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.algorithms.value_domains import INTERNAL
+
 from ..sort_strategies import BatchForSort, SortStrategy, StrategyFactory
 from ..types import ScheduleResult, ScheduleSummary
 from .auto_assign import auto_assign_internal_resources
@@ -254,7 +256,7 @@ class GreedyScheduler:
                 bid = str(sr.batch_id or "").strip()
                 if bid:
                     batch_progress[bid] = max(batch_progress.get(bid, base_time), sr.end_time)
-                if (sr.source or "").strip().lower() == "internal":
+                if (sr.source or "").strip().lower() == INTERNAL:
                     mid = str(sr.machine_id or "").strip()
                     oid = str(sr.operator_id or "").strip()
 
@@ -531,7 +533,7 @@ class GreedyScheduler:
                 operator_id=operator_id,
                 start_time=earliest,
                 end_time=end,
-                source="internal",
+                source=INTERNAL,
                 op_type_name=str(getattr(op, "op_type_name", None) or "") or None,
             ),
             False,

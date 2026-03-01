@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from ._helpers import RowLike, as_dict, get, parse_int
-from .enums import MachineDowntimeStatus
+from .enums import DowntimeScopeType, MachineDowntimeStatus
 
 
 @dataclass
@@ -19,7 +19,7 @@ class MachineDowntime:
 
     id: Optional[int] = None
     machine_id: str = ""
-    scope_type: str = "machine"  # machine/category/all（预留）
+    scope_type: str = DowntimeScopeType.MACHINE.value  # machine/category/all（预留）
     scope_value: Optional[str] = None
     start_time: str = ""
     end_time: str = ""
@@ -36,7 +36,10 @@ class MachineDowntime:
         return cls(
             id=_id,
             machine_id=str(get(row, "machine_id") or ""),
-            scope_type=(str(get(row, "scope_type") or "machine").strip().lower() or "machine"),
+            scope_type=(
+                str(get(row, "scope_type") or DowntimeScopeType.MACHINE.value).strip().lower()
+                or DowntimeScopeType.MACHINE.value
+            ),
             scope_value=get(row, "scope_value"),
             start_time=str(get(row, "start_time") or ""),
             end_time=str(get(row, "end_time") or ""),

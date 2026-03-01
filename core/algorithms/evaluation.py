@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date, datetime
 import math
 import statistics
+from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms.types import ScheduleResult
 from core.algorithms.priority_constants import PRIORITY_WEIGHT, normalize_priority
+from core.algorithms.types import ScheduleResult
+from core.algorithms.value_domains import INTERNAL
 
 
 def _parse_due_date(value: Any) -> Optional[date]:
@@ -129,7 +130,7 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
     for r in results:
         if not r.start_time or not r.end_time:
             continue
-        if (r.source or "").strip().lower() != "internal":
+        if (r.source or "").strip().lower() != INTERNAL:
             continue
         mid = str(getattr(r, "machine_id", None) or "").strip()
         if not mid:
@@ -137,7 +138,7 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
         by_machine.setdefault(mid, []).append(r)
 
     changeovers = 0
-    for mid, lst in by_machine.items():
+    for _mid, lst in by_machine.items():
         lst.sort(key=lambda x: (x.start_time or datetime.min, x.end_time or datetime.min, x.op_id))
         prev_type: Optional[str] = None
         for r in lst:
@@ -160,7 +161,7 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
     for r in results:
         if not r.start_time or not r.end_time:
             continue
-        if (r.source or "").strip().lower() != "internal":
+        if (r.source or "").strip().lower() != INTERNAL:
             continue
         st = r.start_time
         et = r.end_time

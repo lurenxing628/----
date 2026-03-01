@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from ._helpers import RowLike, as_dict, get, parse_int
+from .enums import BatchPriority, BatchStatus, ReadyStatus
 
 
 @dataclass
@@ -13,16 +14,16 @@ class Batch:
     part_name: Optional[str] = None
     quantity: int = 0
     due_date: Optional[str] = None  # YYYY-MM-DD（SQLite DATE）
-    priority: str = "normal"  # normal/urgent/critical
-    ready_status: str = "yes"  # yes/no/partial
+    priority: str = BatchPriority.NORMAL.value  # normal/urgent/critical
+    ready_status: str = ReadyStatus.YES.value  # yes/no/partial
     ready_date: Optional[str] = None  # YYYY-MM-DD（SQLite DATE）；可选，表示最早可开工日
-    status: str = "pending"  # pending/scheduled/processing/completed/cancelled
+    status: str = BatchStatus.PENDING.value  # pending/scheduled/processing/completed/cancelled
     remark: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: RowLike) -> "Batch":
+    def from_row(cls, row: RowLike) -> Batch:
         qty = get(row, "quantity")
         return cls(
             batch_id=str(get(row, "batch_id") or ""),
@@ -30,10 +31,14 @@ class Batch:
             part_name=get(row, "part_name"),
             quantity=parse_int(qty, default=0) or 0,
             due_date=get(row, "due_date"),
-            priority=(str(get(row, "priority") or "normal").strip().lower() or "normal"),
-            ready_status=(str(get(row, "ready_status") or "yes").strip().lower() or "yes"),
+            priority=(
+                str(get(row, "priority") or BatchPriority.NORMAL.value).strip().lower() or BatchPriority.NORMAL.value
+            ),
+            ready_status=(
+                str(get(row, "ready_status") or ReadyStatus.YES.value).strip().lower() or ReadyStatus.YES.value
+            ),
             ready_date=get(row, "ready_date"),
-            status=(str(get(row, "status") or "pending").strip().lower() or "pending"),
+            status=(str(get(row, "status") or BatchStatus.PENDING.value).strip().lower() or BatchStatus.PENDING.value),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.types import ScheduleResult
+from core.algorithms.value_domains import EXTERNAL, MERGED
 
 
 def schedule_external(
@@ -25,7 +26,7 @@ def schedule_external(
     # merged 外部组：整组作为一个时间块（组内工序同起止）
     merge_mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()
     ext_group_id = str(getattr(op, "ext_group_id", None) or "").strip()
-    if merge_mode == "merged" and ext_group_id:
+    if merge_mode == MERGED and ext_group_id:
         cache_key = (bid, ext_group_id)
         cached = external_group_cache.get(cache_key)
         if cached:
@@ -60,7 +61,7 @@ def schedule_external(
                 seq=int(getattr(op, "seq", 0) or 0),
                 start_time=start,
                 end_time=end,
-                source="external",
+                source=EXTERNAL,
                 op_type_name=str(getattr(op, "op_type_name", None) or "") or None,
             ),
             False,
@@ -97,7 +98,7 @@ def schedule_external(
             seq=int(getattr(op, "seq", 0) or 0),
             start_time=start,
             end_time=end,
-            source="external",
+            source=EXTERNAL,
             op_type_name=str(getattr(op, "op_type_name", None) or "") or None,
         ),
         False,

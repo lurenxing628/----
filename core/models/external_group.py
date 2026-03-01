@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from ._helpers import RowLike, as_dict, get, parse_float, parse_int
+from .enums import MergeMode
 
 
 @dataclass
@@ -12,14 +13,14 @@ class ExternalGroup:
     part_no: str
     start_seq: int
     end_seq: int
-    merge_mode: str = "separate"  # separate/merged
+    merge_mode: str = MergeMode.SEPARATE.value  # separate/merged
     total_days: Optional[float] = None
     supplier_id: Optional[str] = None
     remark: Optional[str] = None
     created_at: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: RowLike) -> "ExternalGroup":
+    def from_row(cls, row: RowLike) -> ExternalGroup:
         raw_start_seq = get(row, "start_seq")
         raw_end_seq = get(row, "end_seq")
         start_seq = parse_int(raw_start_seq, default=0) or 0
@@ -35,7 +36,9 @@ class ExternalGroup:
             part_no=str(get(row, "part_no") or ""),
             start_seq=start_seq,
             end_seq=end_seq,
-            merge_mode=(str(get(row, "merge_mode") or "separate").strip().lower() or "separate"),
+            merge_mode=(
+                str(get(row, "merge_mode") or MergeMode.SEPARATE.value).strip().lower() or MergeMode.SEPARATE.value
+            ),
             total_days=total_days,
             supplier_id=str(supplier_id) if supplier_id is not None and supplier_id != "" else None,
             remark=get(row, "remark"),
