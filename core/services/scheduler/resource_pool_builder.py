@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, YesNo
+from core.services.common.enum_normalizers import skill_rank as _skill_rank_common
 from data.repositories import MachineDowntimeRepository
 
 from .number_utils import to_yes_no
@@ -18,23 +19,7 @@ def _skill_rank(v: Any) -> int:
     - 旧口径：low/normal/high（历史数据/脚本）
     - 常见中文：初级/普通/熟练（以及 高级/专家/一般/中级/新手）
     """
-    s0 = str(v or "").strip()
-    if s0 == "":
-        return 9
-    low = s0.lower()
-    if low in ("expert", "high", "skilled"):
-        return 0
-    if low in ("normal",):
-        return 1
-    if low in ("beginner", "low"):
-        return 2
-    if s0 in ("熟练", "高级", "专家"):
-        return 0
-    if s0 in ("普通", "一般", "中级"):
-        return 1
-    if s0 in ("初级", "新手"):
-        return 2
-    return 9
+    return int(_skill_rank_common(v))
 
 
 def _active_machine_ids(machines: List[Any]) -> set:
@@ -95,9 +80,9 @@ def _build_operator_machine_maps(
             continue
         if oid not in active_ops:
             continue
-        is_primary = str(r["is_primary"] or "").strip().lower()
-        sr = _skill_rank(r["skill_level"])
-        rank = (0 if is_primary in ("yes", "y", "true", "1", "on") else 1) * 10 + sr
+        is_primary_yes = to_yes_no(r.get("is_primary"), default=YesNo.NO.value) == YesNo.YES.value
+        sr = _skill_rank(r.get("skill_level"))
+        rank = (0 if is_primary_yes else 1) * 10 + sr
         operators_by_machine.setdefault(mid, []).append((int(rank), oid))
         machines_by_operator.setdefault(oid, []).append(mid)
         pair_rank[(oid, mid)] = int(rank)

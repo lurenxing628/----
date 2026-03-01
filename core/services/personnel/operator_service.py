@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Operator
-from core.models.enums import OperatorStatus
+from core.models.enums import OPERATOR_STATUS_VALUES, OperatorStatus
 from core.services.common.normalize import normalize_text
 from data.repositories import OperatorRepository
 
@@ -48,7 +48,7 @@ class OperatorService:
             if not op_status:
                 raise ValidationError("“状态”不能为空（允许：active / inactive）", field="状态")
 
-        if op_status is not None and op_status not in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
+        if op_status is not None and op_status not in OPERATOR_STATUS_VALUES:
             raise ValidationError("“状态”不合法（允许：active / inactive）", field="状态")
 
         return op_id, op_name, op_status
@@ -85,7 +85,7 @@ class OperatorService:
             return None
         return self.repo.get(op_id)
 
-    def create(self, operator_id: Any, name: Any, status: Any = "active", remark: Any = None) -> Operator:
+    def create(self, operator_id: Any, name: Any, status: Any = OperatorStatus.ACTIVE.value, remark: Any = None) -> Operator:
         op_id, op_name, op_status = self._validate_operator_fields(operator_id=operator_id, name=name, status=status)
         op_remark = self._normalize_text(remark)
 

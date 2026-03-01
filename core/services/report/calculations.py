@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
+from core.models.enums import SourceType
 
 
 def parse_date(value: Any, field: str) -> date:
@@ -14,8 +15,8 @@ def parse_date(value: Any, field: str) -> date:
     s = str(value or "").strip().replace("/", "-")
     try:
         return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        raise ValidationError("日期格式不合法（期望：YYYY-MM-DD）", field=field)
+    except Exception as e:
+        raise ValidationError("日期格式不合法（期望：YYYY-MM-DD）", field=field) from e
 
 
 def parse_dt(value: Any) -> Optional[datetime]:
@@ -149,7 +150,7 @@ def compute_utilization(
     by_operator: Dict[str, Dict[str, Any]] = {}
 
     for r in schedule_rows:
-        if (r.get("source") or "").strip() != "internal":
+        if (r.get("source") or "").strip() != SourceType.INTERNAL.value:
             continue
         s_dt = parse_dt(r.get("start_time"))
         e_dt = parse_dt(r.get("end_time"))
@@ -232,7 +233,7 @@ def compute_downtime_impact(
 
     by_machine_sch: Dict[str, List[Tuple[datetime, datetime]]] = {}
     for r in schedule_rows:
-        if (r.get("source") or "").strip() != "internal":
+        if (r.get("source") or "").strip() != SourceType.INTERNAL.value:
             continue
         mc = str(r.get("machine_id") or "").strip()
         if not mc:

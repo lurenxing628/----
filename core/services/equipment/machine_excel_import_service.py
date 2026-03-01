@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Set
 
 from core.infrastructure.errors import ValidationError
+from core.models.enums import MACHINE_STATUS_VALUES
 from core.services.common.enum_normalizers import normalize_machine_status
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
@@ -56,12 +57,18 @@ class MachineExcelImportService:
             if not machine_id:
                 raise ValidationError("“设备编号”不能为空", field="设备编号")
 
+            name = str(data.get("设备名称") or "").strip()
+            if not name:
+                raise ValidationError("“设备名称”不能为空", field="设备名称")
+
             status = self._normalize_machine_status_for_excel(data.get("状态"))
-            if status not in ("active", "inactive", "maintain"):
+            if not status:
+                raise ValidationError("“状态”不能为空（允许：active / inactive / maintain）", field="状态")
+            if status not in MACHINE_STATUS_VALUES:
                 raise ValidationError("“状态”不合法（允许：active / inactive / maintain）", field="状态")
 
             payload = {
-                "name": data.get("设备名称"),
+                "name": name,
                 "op_type_id": self.op_type_svc.resolve_op_type_id_optional(data.get("工种")),
                 "status": status,
             }

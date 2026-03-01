@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set
 
 from core.infrastructure.errors import ValidationError
-from core.models.enums import OperatorStatus
+from core.models.enums import OPERATOR_STATUS_VALUES
 from core.services.common.enum_normalizers import normalize_operator_status
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
+from core.services.common.normalize import normalize_text
 from core.services.personnel.operator_service import OperatorService
 from data.repositories import OperatorRepository
 
@@ -49,15 +50,15 @@ class OperatorExcelImportService:
             op_id = str(data.get("工号") or "").strip()
             if not op_id:
                 raise ValidationError("“工号”不能为空", field="工号")
-            name = data.get("姓名")
-            if name is None or str(name).strip() == "":
+            name = normalize_text(data.get("姓名"))
+            if not name:
                 raise ValidationError("“姓名”不能为空", field="姓名")
             status = normalize_operator_status(data.get("状态"))
             if not status:
                 raise ValidationError("“状态”不能为空（允许：active / inactive）", field="状态")
-            if status not in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
+            if status not in OPERATOR_STATUS_VALUES:
                 raise ValidationError("“状态”不合法（允许：active / inactive）", field="状态")
-            remark = data.get("备注")
+            remark = normalize_text(data.get("备注"))
             if existed:
                 self.repo.update(op_id, {"name": name, "status": status, "remark": remark})
             else:

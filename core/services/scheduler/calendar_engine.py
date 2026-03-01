@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import WorkCalendar
-from core.models.enums import BatchPriority, CalendarDayType, YesNo
+from core.models.enums import BATCH_PRIORITY_VALUES, BatchPriority, CalendarDayType, YesNo
 from core.services.common.normalize import normalize_text
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
@@ -34,7 +34,7 @@ class DayPolicy:
     def is_priority_allowed(self, priority: Optional[str]) -> bool:
         # 防御：priority 可能大小写不一致/非字符串/空值
         p = str(priority or BatchPriority.NORMAL.value).strip().lower()
-        if p not in (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value):
+        if p not in BATCH_PRIORITY_VALUES:
             p = BatchPriority.NORMAL.value
         if p == BatchPriority.NORMAL.value:
             return self.allow_normal == YesNo.YES.value

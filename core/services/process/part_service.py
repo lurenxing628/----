@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import ExternalGroup, Part, PartOperation
-from core.models.enums import MergeMode, PartOperationStatus, SourceType, YesNo
+from core.models.enums import YESNO_VALUES, MergeMode, PartOperationStatus, SourceType, YesNo
 from core.services.common.normalize import normalize_text
 from data.repositories import (
     ExternalGroupRepository,
@@ -81,7 +81,7 @@ class PartService:
     # Parts CRUD
     # -------------------------
     def list(self, route_parsed: Optional[str] = None) -> List[Part]:
-        if route_parsed and route_parsed not in (YesNo.YES.value, YesNo.NO.value):
+        if route_parsed and route_parsed not in YESNO_VALUES:
             raise ValidationError("route_parsed 参数不合法（允许：yes / no）", field="route_parsed")
         return self.part_repo.list(route_parsed=route_parsed)
 

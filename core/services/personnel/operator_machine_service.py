@@ -6,6 +6,7 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorMachine
 from core.models.enums import YesNo
+from core.services.common.enum_normalizers import normalize_skill_level
 from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
 from core.services.common.normalize import normalize_text
 from data.repositories import MachineRepository, OperatorMachineRepository, OperatorRepository
@@ -35,27 +36,10 @@ class OperatorMachineService:
     @classmethod
     def _normalize_skill_level_optional(cls, value: Any) -> Optional[str]:
         """规范化技能等级（可选列；空/缺失返回 None）。"""
-        if value is None:
-            return None
-        s = str(value).strip()
-        if s == "":
-            return None
-        low = s.lower()
-        zh_map = {
-            "初级": "beginner",
-            "新手": "beginner",
-            "普通": "normal",
-            "一般": "normal",
-            "中级": "normal",
-            "熟练": "expert",
-            "高级": "expert",
-            "专家": "expert",
-        }
-        if low in cls.SKILL_LEVELS:
-            return low
-        if s in zh_map:
-            return zh_map[s]
-        raise ValidationError("“技能等级”不合法（允许：beginner/normal/expert 或 中文：初级/普通/熟练）", field="技能等级")
+        try:
+            return normalize_skill_level(value, default="normal", allow_none=True)
+        except Exception as e:
+            raise ValidationError("“技能等级”不合法（允许：beginner/normal/expert 或 中文：初级/普通/熟练）", field="技能等级") from e
 
     @staticmethod
     def _normalize_yes_no_optional(value: Any, field: str) -> Optional[str]:

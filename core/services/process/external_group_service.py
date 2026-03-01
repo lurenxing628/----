@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import ExternalGroup, PartOperation
-from core.models.enums import MergeMode, SourceType
+from core.models.enums import MERGE_MODE_VALUES, MergeMode, SourceType
 from core.services.common.normalize import normalize_text
 from data.repositories import ExternalGroupRepository, PartOperationRepository
 
@@ -150,7 +150,7 @@ class ExternalGroupService:
             raise ValidationError("缺少外部工序组ID", field="group_id")
 
         mode = (self._normalize_text(merge_mode) or MergeMode.SEPARATE.value).strip().lower()
-        if mode not in (MergeMode.SEPARATE.value, MergeMode.MERGED.value):
+        if mode not in MERGE_MODE_VALUES:
             raise ValidationError("周期模式不合法（允许：separate / merged）", field="merge_mode")
 
         g = self._get_group_or_raise(gid)

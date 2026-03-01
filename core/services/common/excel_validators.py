@@ -5,8 +5,18 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, Optional
 
 from core.infrastructure.errors import ValidationError
-from core.models.enums import BatchPriority, CalendarDayType, ReadyStatus, YesNo
+from core.models.enums import (
+    BATCH_PRIORITY_VALUES,
+    CALENDAR_DAY_TYPE_STORED_VALUES,
+    READY_STATUS_VALUES,
+    YESNO_VALUES,
+    BatchPriority,
+    CalendarDayType,
+    ReadyStatus,
+    YesNo,
+)
 from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
+from core.services.common.enum_normalizers import normalize_yesno_narrow
 from data.repositories import OperatorRepository, PartRepository
 
 
@@ -47,13 +57,7 @@ def _normalize_operator_calendar_day_type(value: Any) -> str:
 
 
 def _normalize_yesno(value: Any) -> str:
-    v = "" if value is None else str(value).strip()
-    v_lower = v.lower()
-    if v == "是" or v_lower in ("y", "yes"):
-        return YesNo.YES.value
-    if v == "否" or v_lower in ("n", "no"):
-        return YesNo.NO.value
-    return v or YesNo.YES.value
+    return normalize_yesno_narrow(value, default=YesNo.YES.value, unknown_policy="passthrough")
 
 
 def _normalize_batch_date_cell(value: Any, field_label: str) -> Dict[str, Any]:
@@ -116,11 +120,11 @@ def get_batch_row_validate_and_normalize(
             return "“数量”必须是整数"
 
         target["优先级"] = _normalize_batch_priority(target.get("优先级"))
-        if target["优先级"] not in (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value):
+        if target["优先级"] not in BATCH_PRIORITY_VALUES:
             return "“优先级”不合法（允许：normal/urgent/critical；或中文：普通/急件/特急）"
 
         target["齐套"] = _normalize_ready_status(target.get("齐套"))
-        if target["齐套"] not in (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value):
+        if target["齐套"] not in READY_STATUS_VALUES:
             return "“齐套”不合法（允许：yes/no/partial；或中文：齐套/未齐套/部分齐套）"
 
         ready_res = _normalize_batch_date_cell(target.get("齐套日期"), field_label="齐套日期")
@@ -166,7 +170,7 @@ def get_operator_calendar_row_validate_and_normalize(
             return "“日期”格式不合法（期望：YYYY-MM-DD）"
 
         target["类型"] = _normalize_operator_calendar_day_type(target.get("类型"))
-        if target["类型"] not in (CalendarDayType.WORKDAY.value, CalendarDayType.HOLIDAY.value):
+        if target["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
             return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
 
         try:
@@ -220,10 +224,10 @@ def get_operator_calendar_row_validate_and_normalize(
                 return "“效率”必须是数字"
 
         target["允许普通件"] = _normalize_yesno(target.get("允许普通件"))
-        if target["允许普通件"] not in (YesNo.YES.value, YesNo.NO.value):
+        if target["允许普通件"] not in YESNO_VALUES:
             return "“允许普通件”不合法（允许：yes/no；或中文：是/否）"
         target["允许急件"] = _normalize_yesno(target.get("允许急件"))
-        if target["允许急件"] not in (YesNo.YES.value, YesNo.NO.value):
+        if target["允许急件"] not in YESNO_VALUES:
             return "“允许急件”不合法（允许：yes/no；或中文：是/否）"
 
         target["__id"] = f"{op_id}|{target.get('日期')}"

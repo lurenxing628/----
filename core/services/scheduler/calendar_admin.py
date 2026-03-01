@@ -6,8 +6,9 @@ from typing import Any, Dict, List, Optional
 from core.infrastructure.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorCalendar, WorkCalendar
-from core.models.enums import CalendarDayType, YesNo
+from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, CalendarDayType, YesNo
 from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
+from core.services.common.enum_normalizers import normalize_yesno_narrow
 from core.services.common.normalize import normalize_text
 from core.services.scheduler.config_service import ConfigService
 from data.repositories import CalendarRepository, OperatorCalendarRepository
@@ -84,21 +85,17 @@ class CalendarAdmin:
         # 兼容：weekend 统一视为 holiday（存储只保留 workday/holiday）
         if v == CalendarDayType.WEEKEND.value:
             return CalendarDayType.HOLIDAY.value
-        if v not in (CalendarDayType.WORKDAY.value, CalendarDayType.HOLIDAY.value):
+        if v not in CALENDAR_DAY_TYPE_STORED_VALUES:
             raise ValidationError("“类型”不合法（允许：workday / holiday）", field="类型")
         return v
 
     @staticmethod
     def _normalize_yesno(value: Any, field: str) -> str:
-        v = CalendarAdmin._normalize_text(value) or YesNo.YES.value
-        v_lower = v.lower()
-        if v == "是" or v_lower in ("y", "yes"):
-            return YesNo.YES.value
-        if v == "否" or v_lower in ("n", "no"):
-            return YesNo.NO.value
-        if v_lower not in (YesNo.YES.value, YesNo.NO.value):
-            raise ValidationError(f"“{field}”不合法（允许：yes / no）", field=field)
-        return v_lower
+        v = CalendarAdmin._normalize_text(value)
+        try:
+            return normalize_yesno_narrow(v, default=YesNo.YES.value, unknown_policy="raise")
+        except Exception as e:
+            raise ValidationError(f"“{field}”不合法（允许：yes / no）", field=field) from e
 
     # -------------------------
     # WorkCalendar：CRUD（给页面/Excel用）

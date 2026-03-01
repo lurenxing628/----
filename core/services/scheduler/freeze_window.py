@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Set, Tuple
 
+from core.algorithms.value_domains import INTERNAL
 from core.models.enums import YesNo
 
 from .number_utils import to_yes_no
@@ -122,7 +123,7 @@ def _build_seed_results(
                 "operator_id": row.get("operator_id"),
                 "start_time": st,
                 "end_time": et,
-                "source": (op0.source or "internal").strip(),
+                "source": (op0.source or INTERNAL).strip(),
                 "op_type_name": getattr(op0, "op_type_name", None),
             }
         )

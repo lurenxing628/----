@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.algorithms import BatchForSort, GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.sort_strategies import parse_strategy
+from core.algorithms.value_domains import INTERNAL
 
 from .schedule_optimizer_steps import _run_multi_start, _run_ortools_warmstart
 
@@ -305,7 +306,7 @@ def optimize_schedule(
                         operator_id=(str(x.get("operator_id") or "") or None),
                         start_time=x.get("start_time"),
                         end_time=x.get("end_time"),
-                        source=str(x.get("source") or "internal"),
+                        source=str(x.get("source") or INTERNAL),
                         op_type_name=(str(x.get("op_type_name") or "") or None),
                     )
                 )

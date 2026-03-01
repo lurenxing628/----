@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from core.models.enums import YesNo
+from core.services.common.enum_normalizers import normalize_yes_no_wide
 from data.repositories import SystemConfigRepository
 
 from .registry import PluginRegistry
@@ -15,14 +16,7 @@ from .runtime import bootstrap_vendor_paths
 
 
 def _normalize_yes_no(value: Any, default: str = "no") -> str:
-    if value is None:
-        return default
-    v = str(value).strip().lower()
-    if v in ("yes", "y", "true", "1", "on"):
-        return "yes"
-    if v in ("no", "n", "false", "0", "off", ""):
-        return "no"
-    return default
+    return normalize_yes_no_wide(value, default=default, unknown_policy="default")
 
 
 @dataclass

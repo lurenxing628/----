@@ -4,8 +4,7 @@ import math
 from typing import Any, Optional
 
 from core.infrastructure.errors import ValidationError
-
-TRUE_VALUES = ("yes", "y", "true", "1", "on")
+from core.services.common.enum_normalizers import normalize_yes_no_wide
 
 
 def parse_finite_float(value: Any, *, field: str, allow_none: bool = True) -> Optional[float]:
@@ -54,8 +53,7 @@ def to_yes_no(value: Any, *, default: str = "no") -> str:
     归一化 yes/no 开关值，返回严格的 "yes" 或 "no"。
 
     - 会先对输入做 str().strip().lower()
-    - 视为真值：yes/y/true/1/on（见 TRUE_VALUES）
+    - 视为真值：yes/y/true/1/on
     - value 为 None 时使用 default（默认 "no"）
     """
-    raw = str(default if value is None else value).strip().lower()
-    return "yes" if raw in TRUE_VALUES else "no"
+    return normalize_yes_no_wide(value, default=default, unknown_policy="no")

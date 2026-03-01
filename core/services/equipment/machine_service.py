@@ -131,7 +131,7 @@ class MachineService:
         name: Any,
         op_type_id: Any = None,
         category: Any = None,
-        status: Any = "active",
+        status: Any = MachineStatus.ACTIVE.value,
         remark: Any = None,
     ) -> Machine:
         mc_id, mc_name, mc_status, mc_op_type_id = self._validate_machine_fields(

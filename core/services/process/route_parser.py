@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.models.enums import SourceType
+
 
 class ParseStatus(Enum):
     SUCCESS = "success"
@@ -117,7 +119,7 @@ class RouteParser:
                 external_groups=[],
                 warnings=[],
                 errors=["工艺路线为空或格式无效"],
-                stats={"total": 0, "internal": 0, "external": 0, "unknown": 0},
+                stats={"total": 0, SourceType.INTERNAL.value: 0, SourceType.EXTERNAL.value: 0, "unknown": 0},
                 original_input=original_input,
                 normalized_input="",
             )
@@ -148,14 +150,14 @@ class RouteParser:
                 external_groups=[],
                 warnings=[],
                 errors=final_errors,
-                stats={"total": 0, "internal": 0, "external": 0, "unknown": 0},
+                stats={"total": 0, SourceType.INTERNAL.value: 0, SourceType.EXTERNAL.value: 0, "unknown": 0},
                 original_input=original_input,
                 normalized_input=normalized,
             )
 
         # Step 2: 工种识别
         operations: List[ParsedOperation] = []
-        stats = {"total": 0, "internal": 0, "external": 0, "unknown": 0}
+        stats = {"total": 0, SourceType.INTERNAL.value: 0, SourceType.EXTERNAL.value: 0, "unknown": 0}
         seen_seqs = set()
 
         for seq_str, op_type_name in matches:
@@ -180,8 +182,11 @@ class RouteParser:
 
             op_type = op_types.get(op_type_name)
             if op_type:
-                cat = str(getattr(op_type, "category", None) or "internal").strip().lower() or "internal"
-                is_internal = cat == "internal"
+                cat = (
+                    str(getattr(op_type, "category", None) or SourceType.INTERNAL.value).strip().lower()
+                    or SourceType.INTERNAL.value
+                )
+                is_internal = cat == SourceType.INTERNAL.value
                 is_recognized = True
             else:
                 # 未识别的工种，默认为外部
@@ -190,11 +195,11 @@ class RouteParser:
                 warnings.append(f"工种“{op_type_name}”未在系统中配置，已默认标记为外部工序")
                 stats["unknown"] += 1
 
-            source = "internal" if is_internal else "external"
+            source = SourceType.INTERNAL.value if is_internal else SourceType.EXTERNAL.value
             if is_internal:
-                stats["internal"] += 1
+                stats[SourceType.INTERNAL.value] += 1
             else:
-                stats["external"] += 1
+                stats[SourceType.EXTERNAL.value] += 1
 
             op = ParsedOperation(
                 seq=seq,
@@ -243,7 +248,7 @@ class RouteParser:
         if self.logger:
             try:
                 self.logger.info(
-                    f"工艺路线解析：{part_no} 共{stats['total']}道（内部{stats['internal']} 外部{stats['external']} 未识别{stats['unknown']}）"
+                    f"工艺路线解析：{part_no} 共{stats['total']}道（内部{stats[SourceType.INTERNAL.value]} 外部{stats[SourceType.EXTERNAL.value]} 未识别{stats['unknown']}）"
                 )
             except Exception:
                 pass
@@ -297,7 +302,7 @@ class RouteParser:
         group_counter = 1
 
         for op in operations:
-            if op.source == "external":
+            if op.source == SourceType.EXTERNAL.value:
                 if current_group is None:
                     group_id = f"{part_no}_EXT_{group_counter}"
                     current_group = ExternalGroup(

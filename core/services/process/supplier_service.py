@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Supplier
-from core.models.enums import SupplierStatus
+from core.models.enums import SUPPLIER_STATUS_VALUES, SupplierStatus
 from core.services.common.normalize import normalize_text
 from data.repositories import OpTypeRepository, SupplierRepository
 
@@ -73,7 +73,7 @@ class SupplierService:
             if sstatus is None:
                 sstatus = SupplierStatus.ACTIVE.value
 
-        if sstatus is not None and sstatus not in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
+        if sstatus is not None and sstatus not in SUPPLIER_STATUS_VALUES:
             raise ValidationError("“状态”不合法（允许：active / inactive）", field="状态")
         if sdays is not None and sdays <= 0:
             raise ValidationError("“默认周期”必须大于 0", field="默认周期")

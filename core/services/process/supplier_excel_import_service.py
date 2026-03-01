@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set
 
 from core.infrastructure.errors import ValidationError
-from core.models.enums import SupplierStatus
+from core.models.enums import SUPPLIER_STATUS_VALUES
 from core.services.common.enum_normalizers import normalize_supplier_status
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
+from core.services.common.normalize import normalize_text
 from core.services.process.op_type_service import OpTypeService
 from core.services.process.supplier_service import SupplierService
 from data.repositories import SupplierRepository
@@ -71,9 +72,9 @@ class SupplierExcelImportService:
                     raise ValidationError("“默认周期”必须大于 0", field="默认周期")
 
             status = self._normalize_supplier_status_for_excel(data.get("状态"))
-            if status not in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
+            if status not in SUPPLIER_STATUS_VALUES:
                 raise ValidationError("“状态”不合法（允许：active / inactive；或中文：启用/停用）", field="状态")
-            remark = data.get("备注")
+            remark = normalize_text(data.get("备注"))
 
             payload = {
                 "name": name,

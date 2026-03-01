@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import OpType
+from core.models.enums import SOURCE_TYPE_VALUES, SourceType
 from core.services.common.normalize import normalize_text
 from data.repositories import OpTypeRepository
 
@@ -42,9 +43,9 @@ class OpTypeService:
             if not ot_name:
                 raise ValidationError("“工种名称”不能为空", field="工种名称")
             if not ot_category:
-                ot_category = "internal"
+                ot_category = SourceType.INTERNAL.value
 
-        if ot_category is not None and ot_category not in ("internal", "external"):
+        if ot_category is not None and ot_category not in SOURCE_TYPE_VALUES:
             raise ValidationError("“归属”不合法（允许：internal / external）", field="归属")
 
         return ot_id, ot_name, ot_category
@@ -93,7 +94,7 @@ class OpTypeService:
             ot = self.get_by_name_optional(v)
         return ot.op_type_id if ot else None
 
-    def create(self, op_type_id: Any, name: Any, category: Any = "internal", remark: Any = None) -> OpType:
+    def create(self, op_type_id: Any, name: Any, category: Any = SourceType.INTERNAL.value, remark: Any = None) -> OpType:
         ot_id, ot_name, ot_category = self._validate_fields(op_type_id, name, category)
         ot_remark = self._normalize_text(remark)
 
@@ -103,7 +104,7 @@ class OpTypeService:
             raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"工种名称“{ot_name}”已存在，不能重复添加。")
 
         with self.tx_manager.transaction():
-            self.repo.create({"op_type_id": ot_id, "name": ot_name, "category": ot_category or "internal", "remark": ot_remark})
+            self.repo.create({"op_type_id": ot_id, "name": ot_name, "category": ot_category or SourceType.INTERNAL.value, "remark": ot_remark})
         return self._get_or_raise(ot_id)
 
     def update(self, op_type_id: Any, name: Any = None, category: Any = None, remark: Any = None) -> OpType:

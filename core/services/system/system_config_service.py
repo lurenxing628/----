@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.services.common.enum_normalizers import normalize_yes_no_wide
 from data.repositories import SystemConfigRepository
 
 
@@ -14,15 +15,7 @@ def _normalize_yes_no(value: Any) -> str:
     - HTML checkbox：on/None
     - 常见布尔：true/false/1/0
     """
-    if value is None:
-        return "no"
-    v = str(value).strip().lower()
-    if v in ("yes", "y", "true", "1", "on"):
-        return "yes"
-    if v in ("no", "n", "false", "0", "off", ""):
-        return "no"
-    # 默认保守：未知值视为 no
-    return "no"
+    return normalize_yes_no_wide(value, default="no", unknown_policy="no")
 
 
 def _parse_int(value: Any, field: str, min_v: int, max_v: int) -> int:
