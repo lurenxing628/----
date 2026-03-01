@@ -203,9 +203,9 @@
 
   function skillScore(skillLevel) {
     const v = (skillLevel || "").toString().toLowerCase();
-    if (v === "expert") return 2;
+    if (v === "expert" || v === "high" || v === "skilled") return 2;
     if (v === "normal") return 1;
-    if (v === "beginner") return 0;
+    if (v === "beginner" || v === "low") return 0;
     return 0;
   }
 

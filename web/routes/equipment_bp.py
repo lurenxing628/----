@@ -6,28 +6,18 @@ from flask import Blueprint
 
 from core.services.common.excel_service import ImportMode
 
+from .enum_display import machine_status_zh, operator_status_zh
 from .excel_utils import ensure_unique_ids, parse_import_mode, read_uploaded_xlsx
-
 
 bp = Blueprint("equipment", __name__)
 
 
 def _machine_status_zh(status: str) -> str:
-    if status == "active":
-        return "可用"
-    if status == "maintain":
-        return "维修"
-    if status == "inactive":
-        return "停用"
-    return status or "-"
+    return machine_status_zh(status)
 
 
 def _operator_status_zh(status: str) -> str:
-    if status == "active":
-        return "在岗"
-    if status == "inactive":
-        return "停用/休假"
-    return status or "-"
+    return operator_status_zh(status)
 
 
 def _parse_mode(value: str) -> ImportMode:

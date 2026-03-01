@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Tuple
 from flask import flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
-from core.models.enums import PartOperationStatus, SourceType, YesNo
+from core.models.enums import MergeMode, PartOperationStatus, SourceType, YesNo
 from core.services.process import ExternalGroupService, PartService, SupplierService
 from web.ui_mode import render_ui_template as render_template
 
@@ -174,7 +174,7 @@ def reparse_part(part_no: str):
 
     warn_text = f"，警告 {len(result.warnings)} 条" if result.warnings else ""
     flash(
-        f"工艺路线解析完成：共 {result.stats.get('total', 0)} 道工序（内部 {result.stats.get('internal', 0)}，外部 {result.stats.get('external', 0)}）{warn_text}。耗时 {ms} ms。",
+        f"工艺路线解析完成：共 {result.stats.get('total', 0)} 道工序（内部 {result.stats.get(SourceType.INTERNAL.value, 0)}，外部 {result.stats.get(SourceType.EXTERNAL.value, 0)}）{warn_text}。耗时 {ms} ms。",
         "success",
     )
     return redirect(url_for("process.part_detail", part_no=part_no))
@@ -192,7 +192,7 @@ def update_internal_hours(part_no: str, seq: int):
 
 @bp.post("/parts/<part_no>/groups/<group_id>/mode")
 def set_group_mode(part_no: str, group_id: str):
-    merge_mode = request.form.get("merge_mode") or "separate"
+    merge_mode = request.form.get("merge_mode") or MergeMode.SEPARATE.value
     total_days = request.form.get("total_days")
 
     per_op_days: Dict[int, Any] = {}

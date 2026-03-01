@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
+from core.models.enums import MACHINE_STATUS_VALUES
 from core.services.common.enum_normalizers import normalize_machine_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
@@ -36,7 +37,7 @@ def _validate_machine_excel_row(row: Dict[str, Any]) -> Optional[str]:
     if status is None or str(status).strip() == "":
         return "“状态”不能为空（允许：active / inactive / maintain）"
     st = _normalize_machine_status_for_excel(status)
-    if st not in ("active", "inactive", "maintain"):
+    if st not in MACHINE_STATUS_VALUES:
         return "“状态”不合法（允许：active / inactive / maintain；或中文：可用/停用/维修）"
     row["状态"] = st
 
@@ -169,11 +170,6 @@ def excel_machine_preview():
         if err:
             return err
 
-        # 状态标准化
-        row["状态"] = _normalize_machine_status_for_excel(row.get("状态"))
-        if row["状态"] not in ("active", "inactive", "maintain"):
-            return "“状态”不合法（允许：active / inactive / maintain；或中文：可用/停用/维修）"
-
         # 工种存在性校验 + 标准化（允许为空）
         v = row.get("工种")
         if v is None or str(v).strip() == "":
@@ -234,9 +230,6 @@ def excel_machine_confirm():
         err = _validate_machine_excel_row(row)
         if err:
             return err
-        row["状态"] = _normalize_machine_status_for_excel(row.get("状态"))
-        if row["状态"] not in ("active", "inactive", "maintain"):
-            return "“状态”不合法（允许：active / inactive / maintain；或中文：可用/停用/维修）"
         v = row.get("工种")
         if v is None or str(v).strip() == "":
             return None

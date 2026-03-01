@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
+from core.models.enums import SOURCE_TYPE_VALUES, SourceType
 from core.services.common.enum_normalizers import normalize_op_type_category
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
@@ -66,10 +67,8 @@ def excel_op_type_preview():
             return "“工种ID”不能为空"
         if not row.get("工种名称") or str(row.get("工种名称")).strip() == "":
             return "“工种名称”不能为空"
-        cat = _normalize_op_type_category(row.get("归属") or "internal")
-        if not cat:
-            cat = "internal"
-        if cat not in ("internal", "external"):
+        cat = _normalize_op_type_category(row.get("归属"))
+        if cat not in SOURCE_TYPE_VALUES:
             return "“归属”不合法（允许：internal / external；或中文：内部/外部）"
         row["归属"] = cat
         return None
@@ -135,10 +134,8 @@ def excel_op_type_confirm():
             return "“工种ID”不能为空"
         if not row.get("工种名称") or str(row.get("工种名称")).strip() == "":
             return "“工种名称”不能为空"
-        cat = _normalize_op_type_category(row.get("归属") or "internal")
-        if not cat:
-            cat = "internal"
-        if cat not in ("internal", "external"):
+        cat = _normalize_op_type_category(row.get("归属"))
+        if cat not in SOURCE_TYPE_VALUES:
             return "“归属”不合法（允许：internal / external；或中文：内部/外部）"
         row["归属"] = cat
         return None
@@ -229,8 +226,8 @@ def excel_op_type_template():
     ws = wb.active
     ws.title = "Sheet1"
     ws.append(["工种ID", "工种名称", "归属"])
-    ws.append(["OT001", "数车", "internal"])
-    ws.append(["OT002", "标印", "external"])
+    ws.append(["OT001", "数车", SourceType.INTERNAL.value])
+    ws.append(["OT002", "标印", SourceType.EXTERNAL.value])
 
     output = io.BytesIO()
     wb.save(output)

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from flask import flash, g, redirect, request, url_for
 
+from core.models.enums import SourceType
+from core.services.process import OpTypeService
 from web.ui_mode import render_ui_template as render_template
 
-from core.services.process import OpTypeService
-
-from .process_bp import bp
 from .pagination import paginate_rows, parse_page_args
-
+from .process_bp import bp
 
 # ============================================================
 # 工种配置（页面）
@@ -28,7 +27,7 @@ def op_types_page():
 def create_op_type():
     op_type_id = request.form.get("op_type_id")
     name = request.form.get("name")
-    category = request.form.get("category") or "internal"
+    category = request.form.get("category") or SourceType.INTERNAL.value
     remark = request.form.get("remark")
     svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     ot = svc.create(op_type_id=op_type_id, name=name, category=category, remark=remark)

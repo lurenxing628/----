@@ -5,22 +5,22 @@ from typing import Any, Dict, List, Optional
 from flask import Blueprint
 
 from core.infrastructure.errors import ValidationError
+from core.models.enums import MergeMode, SourceType
 from core.services.common.excel_service import ImportMode
 
 from .excel_utils import ensure_unique_ids, parse_import_mode, read_uploaded_xlsx
-
 
 bp = Blueprint("process", __name__)
 
 
 def _merge_mode_zh(value: str) -> str:
-    if value == "merged":
+    if value == MergeMode.MERGED.value:
         return "合并设置"
     return "分别设置"
 
 
 def _source_zh(value: str) -> str:
-    if value == "external":
+    if value == SourceType.EXTERNAL.value:
         return "外部"
     return "内部"
 
@@ -33,8 +33,8 @@ def _safe_float(value: Any, field: str) -> Optional[float]:
         return None
     try:
         return float(v)
-    except Exception:
-        raise ValidationError(f"“{field}”必须是数字", field=field)
+    except Exception as e:
+        raise ValidationError(f"“{field}”必须是数字", field=field) from e
 
 
 def _parse_mode(value: str) -> ImportMode:

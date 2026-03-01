@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
+from core.models.enums import SourceType
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
@@ -70,7 +71,7 @@ def _build_existing_internal() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dic
         part_no = str(r["part_no"] or "").strip()
         seq = int(r["seq"] or 0)
         row_id = f"{part_no}|{seq}"
-        source = str(r["source"] or "").strip().lower() or "internal"
+        source = str(r["source"] or "").strip().lower() or SourceType.INTERNAL.value
         item = {
             "图号": part_no,
             "工序": seq,
@@ -81,7 +82,7 @@ def _build_existing_internal() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dic
         }
         meta_all[row_id] = item
         existing_list.append(item)
-        if source == "internal":
+        if source == SourceType.INTERNAL.value:
             existing_internal[row_id] = {
                 "__row_id__": row_id,
                 "图号": part_no,
@@ -138,7 +139,7 @@ def _build_validator(meta_all: Dict[str, Dict[str, Any]]):
         meta = meta_all.get(rid)
         if not meta:
             return f"工序不存在：图号={part_no} 工序={seq}"
-        if str(meta.get("归属") or "").strip().lower() != "internal":
+        if str(meta.get("归属") or "").strip().lower() != SourceType.INTERNAL.value:
             return f"仅支持内部工序导入工时：图号={part_no} 工序={seq}"
         return None
 

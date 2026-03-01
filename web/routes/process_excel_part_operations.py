@@ -5,6 +5,7 @@ import time
 
 from flask import g, send_file, url_for
 
+from core.models.enums import MergeMode, SourceType
 from core.services.common.excel_audit import log_excel_export
 from core.services.process.part_operation_query_service import PartOperationQueryService
 from web.ui_mode import render_ui_template as render_template
@@ -40,8 +41,8 @@ def excel_part_ops_export():
     for r in rows:
         supplier = r["supplier_name"] or ""
         days = None
-        if r["source"] == "external":
-            if r["merge_mode"] == "merged" and r["total_days"] is not None:
+        if r["source"] == SourceType.EXTERNAL.value:
+            if r["merge_mode"] == MergeMode.MERGED.value and r["total_days"] is not None:
                 days = r["total_days"]
             else:
                 days = r["ext_days"]

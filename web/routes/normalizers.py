@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.models.enums import BatchPriority, CalendarDayType, ReadyStatus, YesNo
+from core.services.common.enum_normalizers import normalize_yesno_narrow
 
 
 def _normalize_batch_priority(value: Any) -> str:
@@ -71,11 +72,5 @@ def _normalize_yesno(value: Any) -> str:
     - 兼容中文：是/否
     - 缺省：yes
     """
-    v = "" if value is None else str(value).strip()
-    v_lower = v.lower()
-    if v == "是" or v_lower in ("y", YesNo.YES.value):
-        return YesNo.YES.value
-    if v == "否" or v_lower in ("n", YesNo.NO.value):
-        return YesNo.NO.value
-    return v or YesNo.YES.value
+    return normalize_yesno_narrow(value, default=YesNo.YES.value, unknown_policy="passthrough")
 
