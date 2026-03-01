@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.enum_normalizers import normalize_op_type_category
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
@@ -24,12 +25,7 @@ from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 
 def _normalize_op_type_category(value: Any) -> str:
-    v = "" if value is None else str(value).strip()
-    if v in ("内部", "内", "internal"):
-        return "internal"
-    if v in ("外部", "外", "external"):
-        return "external"
-    return v
+    return normalize_op_type_category(value)
 
 
 @bp.get("/excel/op-types")

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.enum_normalizers import normalize_machine_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
@@ -34,9 +35,10 @@ def _validate_machine_excel_row(row: Dict[str, Any]) -> Optional[str]:
     status = row.get("状态")
     if status is None or str(status).strip() == "":
         return "“状态”不能为空（允许：active / inactive / maintain）"
-    status = str(status).strip()
-    if status not in ("active", "inactive", "maintain", "可用", "停用", "维修", "维护", "维护中", "维修中"):
+    st = _normalize_machine_status_for_excel(status)
+    if st not in ("active", "inactive", "maintain"):
         return "“状态”不合法（允许：active / inactive / maintain；或中文：可用/停用/维修）"
+    row["状态"] = st
 
     # 工种可为空；不为空时在 confirm/preview 中做存在性校验并给出中文提示
     return None
@@ -49,16 +51,7 @@ def _normalize_machine_status_for_excel(value: Any) -> str:
     - 中文：可用 / 停用 / 维修/维护
     返回统一的英文枚举值。
     """
-    if value is None:
-        return ""
-    v = str(value).strip()
-    if v in ("可用", "启用", "正常"):
-        return "active"
-    if v in ("维修", "维护", "维护中", "维修中", "保养"):
-        return "maintain"
-    if v in ("停用", "禁用", "不可用"):
-        return "inactive"
-    return v
+    return normalize_machine_status(value)
 
 
 def _resolve_op_type(value: Any, op_type_svc: OpTypeService) -> Dict[str, Optional[str]]:

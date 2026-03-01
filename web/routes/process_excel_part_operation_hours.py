@@ -9,11 +9,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from core.infrastructure.errors import AppError, ValidationError
+from core.infrastructure.errors import ValidationError
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
-from core.services.process import PartService
+from core.services.process.part_operation_hours_excel_import_service import PartOperationHoursExcelImportService
 from core.services.process.part_operation_query_service import PartOperationQueryService
 from core.services.scheduler.number_utils import parse_finite_float
 from web.ui_mode import render_ui_template as render_template
@@ -304,57 +304,16 @@ def excel_part_op_hours_confirm():
             mode_options=_part_op_hours_mode_options(),
         )
 
-    part_svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample: List[Dict[str, Any]] = []
-
-    # 导入级事务壳：
-    # - 业务错误（AppError）按行统计并继续
-    # - 非预期异常直接抛出，由 TransactionManager 触发整体回滚，避免半提交
-    with part_svc.tx_manager.transaction():
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": pr.message})
-                continue
-            if pr.status == RowStatus.SKIP:
-                skip_count += 1
-                continue
-            if pr.status == RowStatus.UNCHANGED:
-                continue
-
-            part_no = str(pr.data.get("图号") or "").strip()
-            seq = _parse_seq(pr.data.get("工序"))
-            if not part_no or seq is None:
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": "缺少图号/工序，无法写入。"})
-                continue
-
-            try:
-                sh_raw = parse_finite_float(pr.data.get("换型时间(h)"), field="换型时间(h)", allow_none=True)
-                uh_raw = parse_finite_float(pr.data.get("单件工时(h)"), field="单件工时(h)", allow_none=True)
-            except ValidationError as e:
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": e.message})
-                continue
-            sh = 0.0 if sh_raw is None else float(sh_raw)
-            uh = 0.0 if uh_raw is None else float(uh_raw)
-
-            try:
-                part_svc.update_internal_hours(part_no=part_no, seq=int(seq), setup_hours=sh, unit_hours=uh)
-            except AppError as e:
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": e.message})
-                continue
-
-            if pr.status == RowStatus.NEW:
-                new_count += 1
-            else:
-                update_count += 1
+    import_svc = PartOperationHoursExcelImportService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    )
+    stats = import_svc.apply_preview_rows(preview_rows)
+    new_count = int(stats.get("new_count", 0))
+    update_count = int(stats.get("update_count", 0))
+    skip_count = int(stats.get("skip_count", 0))
+    error_count = int(stats.get("error_count", 0))
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -363,14 +322,7 @@ def excel_part_op_hours_confirm():
         target_type="part_operation_hours",
         filename=filename,
         mode=mode,
-        preview_or_result={
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-        },
+        preview_or_result=stats,
         time_cost_ms=time_cost_ms,
     )
 

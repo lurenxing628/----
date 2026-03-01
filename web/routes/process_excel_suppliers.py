@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.enum_normalizers import normalize_supplier_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
@@ -24,12 +25,7 @@ from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 
 def _normalize_supplier_status(value: Any) -> str:
-    v = "" if value is None else str(value).strip()
-    if v in ("启用", "在用", "正常", "active"):
-        return "active"
-    if v in ("停用", "禁用", "inactive"):
-        return "inactive"
-    return v or "active"
+    return normalize_supplier_status(value)
 
 
 def _resolve_op_type_name(value: Any, op_type_svc: OpTypeService) -> Optional[str]:
