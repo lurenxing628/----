@@ -161,9 +161,9 @@ def test_operator_machine_query_service_lists_with_names_and_linkage_rows() -> N
 
     simple = sorted(q.list_simple_rows(), key=lambda r: (r.get("machine_id"), r.get("operator_id")))
     assert simple == [
-        {"operator_id": "O1", "machine_id": "M1", "skill_level": "high", "is_primary": "yes"},
+        {"operator_id": "O1", "machine_id": "M1", "skill_level": "expert", "is_primary": "yes"},
         {"operator_id": "O2", "machine_id": "M1", "skill_level": "normal", "is_primary": "no"},
-        {"operator_id": "O1", "machine_id": "M2", "skill_level": "low", "is_primary": "no"},
+        {"operator_id": "O1", "machine_id": "M2", "skill_level": "beginner", "is_primary": "no"},
     ]
 
     by_mc = q.list_with_names_by_machine()

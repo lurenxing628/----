@@ -59,7 +59,9 @@ def validate_machine_row(row: dict, op_type_repo) -> str:
         status = "inactive"
     elif status in ("维修", "维护", "维护中", "维修中", "保养"):
         status = "maintain"
-    if status not in ("active", "inactive", "maintain"):
+    from core.models.enums import MACHINE_STATUS_VALUES
+
+    if status not in MACHINE_STATUS_VALUES:
         return "“状态”不合法（允许：active / inactive / maintain；或中文：可用/停用/维修）"
     row["状态"] = status
 
