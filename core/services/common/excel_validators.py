@@ -5,51 +5,55 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, Optional
 
 from core.infrastructure.errors import ValidationError
+from core.models.enums import BatchPriority, CalendarDayType, ReadyStatus, YesNo
 from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
 from data.repositories import OperatorRepository, PartRepository
 
 
 def _normalize_batch_priority(value: Any) -> str:
     v = "" if value is None else str(value).strip()
-    if v in ("普通", "normal"):
-        return "normal"
-    if v in ("急", "急件", "urgent"):
-        return "urgent"
-    if v in ("特急", "critical"):
-        return "critical"
-    return v or "normal"
+    v_lower = v.lower()
+    if v == "普通" or v_lower == BatchPriority.NORMAL.value:
+        return BatchPriority.NORMAL.value
+    if v in ("急", "急件") or v_lower == BatchPriority.URGENT.value:
+        return BatchPriority.URGENT.value
+    if v == "特急" or v_lower == BatchPriority.CRITICAL.value:
+        return BatchPriority.CRITICAL.value
+    return v or BatchPriority.NORMAL.value
 
 
 def _normalize_ready_status(value: Any) -> str:
     v = "" if value is None else str(value).strip()
-    if v in ("齐套", "是", "yes"):
-        return "yes"
-    if v in ("部分齐套", "partial"):
-        return "partial"
-    if v in ("未齐套", "否", "no"):
-        return "no"
-    return v or "yes"
+    v_lower = v.lower()
+    if v in ("齐套", "是") or v_lower == ReadyStatus.YES.value:
+        return ReadyStatus.YES.value
+    if v == "部分齐套" or v_lower == ReadyStatus.PARTIAL.value:
+        return ReadyStatus.PARTIAL.value
+    if v in ("未齐套", "否") or v_lower == ReadyStatus.NO.value:
+        return ReadyStatus.NO.value
+    return v or ReadyStatus.YES.value
 
 
 def _normalize_operator_calendar_day_type(value: Any) -> str:
     v = "" if value is None else str(value).strip()
-    if v in ("工作日", "workday"):
-        return "workday"
-    if v in ("周末", "weekend"):
-        return "holiday"
-    if v in ("节假日", "假期", "holiday"):
-        return "holiday"
-    return v or "workday"
+    v_lower = v.lower()
+    if v == "工作日" or v_lower == CalendarDayType.WORKDAY.value:
+        return CalendarDayType.WORKDAY.value
+    if v == "周末" or v_lower == CalendarDayType.WEEKEND.value:
+        return CalendarDayType.HOLIDAY.value
+    if v in ("节假日", "假期") or v_lower == CalendarDayType.HOLIDAY.value:
+        return CalendarDayType.HOLIDAY.value
+    return v or CalendarDayType.WORKDAY.value
 
 
 def _normalize_yesno(value: Any) -> str:
     v = "" if value is None else str(value).strip()
     v_lower = v.lower()
     if v == "是" or v_lower in ("y", "yes"):
-        return "yes"
+        return YesNo.YES.value
     if v == "否" or v_lower in ("n", "no"):
-        return "no"
-    return v or "yes"
+        return YesNo.NO.value
+    return v or YesNo.YES.value
 
 
 def _normalize_batch_date_cell(value: Any, field_label: str) -> Dict[str, Any]:
@@ -112,11 +116,11 @@ def get_batch_row_validate_and_normalize(
             return "“数量”必须是整数"
 
         target["优先级"] = _normalize_batch_priority(target.get("优先级"))
-        if target["优先级"] not in ("normal", "urgent", "critical"):
+        if target["优先级"] not in (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value):
             return "“优先级”不合法（允许：normal/urgent/critical；或中文：普通/急件/特急）"
 
         target["齐套"] = _normalize_ready_status(target.get("齐套"))
-        if target["齐套"] not in ("yes", "no", "partial"):
+        if target["齐套"] not in (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value):
             return "“齐套”不合法（允许：yes/no/partial；或中文：齐套/未齐套/部分齐套）"
 
         ready_res = _normalize_batch_date_cell(target.get("齐套日期"), field_label="齐套日期")
@@ -162,7 +166,7 @@ def get_operator_calendar_row_validate_and_normalize(
             return "“日期”格式不合法（期望：YYYY-MM-DD）"
 
         target["类型"] = _normalize_operator_calendar_day_type(target.get("类型"))
-        if target["类型"] not in ("workday", "holiday"):
+        if target["类型"] not in (CalendarDayType.WORKDAY.value, CalendarDayType.HOLIDAY.value):
             return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
 
         try:
@@ -183,7 +187,7 @@ def get_operator_calendar_row_validate_and_normalize(
 
         sh = target.get("可用工时")
         if sh is None or str(sh).strip() == "":
-            target["可用工时"] = 8 if target["类型"] == "workday" else 0
+            target["可用工时"] = 8 if target["类型"] == CalendarDayType.WORKDAY.value else 0
         else:
             try:
                 v = float(sh)
@@ -205,7 +209,7 @@ def get_operator_calendar_row_validate_and_normalize(
 
         eff = target.get("效率")
         if eff is None or str(eff).strip() == "":
-            target["效率"] = 1.0 if target["类型"] == "workday" else hde
+            target["效率"] = 1.0 if target["类型"] == CalendarDayType.WORKDAY.value else hde
         else:
             try:
                 v = float(eff)
@@ -216,10 +220,10 @@ def get_operator_calendar_row_validate_and_normalize(
                 return "“效率”必须是数字"
 
         target["允许普通件"] = _normalize_yesno(target.get("允许普通件"))
-        if target["允许普通件"] not in ("yes", "no"):
+        if target["允许普通件"] not in (YesNo.YES.value, YesNo.NO.value):
             return "“允许普通件”不合法（允许：yes/no；或中文：是/否）"
         target["允许急件"] = _normalize_yesno(target.get("允许急件"))
-        if target["允许急件"] not in ("yes", "no"):
+        if target["允许急件"] not in (YesNo.YES.value, YesNo.NO.value):
             return "“允许急件”不合法（允许：yes/no；或中文：是/否）"
 
         target["__id"] = f"{op_id}|{target.get('日期')}"
