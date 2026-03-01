@@ -3,10 +3,115 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.models.enums import SourceType, YesNo
+from core.models.enums import MachineStatus, OperatorStatus, SourceType, YesNo
 from data.repositories import MachineDowntimeRepository
 
 from .number_utils import to_yes_no
+
+
+def _skill_rank(v: Any) -> int:
+    """
+    技能等级排序（数值越小越优）。
+
+    兼容：
+    - 新口径：beginner/normal/expert（见 OperatorMachineService）
+    - 旧口径：low/normal/high（历史数据/脚本）
+    - 常见中文：初级/普通/熟练（以及 高级/专家/一般/中级/新手）
+    """
+    s0 = str(v or "").strip()
+    if s0 == "":
+        return 9
+    low = s0.lower()
+    if low in ("expert", "high", "skilled"):
+        return 0
+    if low in ("normal",):
+        return 1
+    if low in ("beginner", "low"):
+        return 2
+    if s0 in ("熟练", "高级", "专家"):
+        return 0
+    if s0 in ("普通", "一般", "中级"):
+        return 1
+    if s0 in ("初级", "新手"):
+        return 2
+    return 9
+
+
+def _active_machine_ids(machines: List[Any]) -> set:
+    return {str(m.machine_id or "").strip() for m in machines if m and str(m.machine_id or "").strip()}
+
+
+def _op_type_ids_for_ops(algo_ops: List[Any]) -> set:
+    return {
+        str(getattr(o, "op_type_id", "") or "").strip()
+        for o in algo_ops
+        if (getattr(o, "source", "") or "").strip().lower() == SourceType.INTERNAL.value
+        and str(getattr(o, "op_type_id", "") or "").strip()
+    }
+
+
+def _machines_by_op_type(
+    machines: List[Any],
+    *,
+    active_machines: set,
+    op_type_ids: set,
+) -> Dict[str, List[str]]:
+    machines_by_op_type: Dict[str, List[str]] = {}
+    for m in machines:
+        mid = str(m.machine_id or "").strip()
+        ot = str(m.op_type_id or "").strip()
+        if not mid or mid not in active_machines:
+            continue
+        if op_type_ids and ot and ot not in op_type_ids:
+            continue
+        machines_by_op_type.setdefault(ot, []).append(mid)
+    return machines_by_op_type
+
+
+def _active_operator_ids(svc) -> set:
+    return {
+        str(o.operator_id or "").strip()
+        for o in svc.operator_repo.list(status=OperatorStatus.ACTIVE.value)
+        if o and str(o.operator_id or "").strip()
+    }
+
+
+def _build_operator_machine_maps(
+    rows: List[Dict[str, Any]],
+    *,
+    active_machines: set,
+    active_ops: set,
+) -> Tuple[Dict[str, List[Tuple[int, str]]], Dict[str, List[str]], Dict[Tuple[str, str], int]]:
+    operators_by_machine: Dict[str, List[Tuple[int, str]]] = {}  # machine_id -> [(rank, operator_id)]
+    machines_by_operator: Dict[str, List[str]] = {}
+    pair_rank: Dict[Tuple[str, str], int] = {}
+
+    for r in rows:
+        oid = str(r["operator_id"] or "").strip()
+        mid = str(r["machine_id"] or "").strip()
+        if not oid or not mid:
+            continue
+        if mid not in active_machines:
+            continue
+        if oid not in active_ops:
+            continue
+        is_primary = str(r["is_primary"] or "").strip().lower()
+        sr = _skill_rank(r["skill_level"])
+        rank = (0 if is_primary in ("yes", "y", "true", "1", "on") else 1) * 10 + sr
+        operators_by_machine.setdefault(mid, []).append((int(rank), oid))
+        machines_by_operator.setdefault(oid, []).append(mid)
+        pair_rank[(oid, mid)] = int(rank)
+
+    return operators_by_machine, machines_by_operator, pair_rank
+
+
+def _sort_operators_by_machine(operators_by_machine: Dict[str, List[Tuple[int, str]]]) -> Dict[str, List[str]]:
+    # 排序：rank 越小越优（主操优先，其次高技能）
+    out: Dict[str, List[str]] = {}
+    for mid, items in operators_by_machine.items():
+        items.sort(key=lambda x: (x[0], x[1]))
+        out[mid] = [oid for _, oid in items]
+    return out
 
 
 def load_machine_downtimes(
@@ -91,82 +196,23 @@ def build_resource_pool(
 
     try:
         # 仅考虑 active 资源
-        machines = svc.machine_repo.list(status="active")
-        active_machines = {str(m.machine_id or "").strip() for m in machines if m and str(m.machine_id or "").strip()}
+        machines = svc.machine_repo.list(status=MachineStatus.ACTIVE.value)
+        active_machines = _active_machine_ids(machines)
 
         # 仅对本次排产涉及的 op_type_id 构建映射（缺省/为空则退化为全量）
-        op_type_ids = {
-            str(getattr(o, "op_type_id", "") or "").strip()
-            for o in algo_ops
-            if (getattr(o, "source", "") or "").strip().lower() == SourceType.INTERNAL.value
-            and str(getattr(o, "op_type_id", "") or "").strip()
-        }
-        machines_by_op_type: Dict[str, List[str]] = {}
-        for m in machines:
-            mid = str(m.machine_id or "").strip()
-            ot = str(m.op_type_id or "").strip()
-            if not mid or mid not in active_machines:
-                continue
-            if op_type_ids and ot and ot not in op_type_ids:
-                continue
-            machines_by_op_type.setdefault(ot, []).append(mid)
+        op_type_ids = _op_type_ids_for_ops(algo_ops)
+        machines_by_op_type = _machines_by_op_type(machines, active_machines=active_machines, op_type_ids=op_type_ids)
 
-        active_ops = {str(o.operator_id or "").strip() for o in svc.operator_repo.list(status="active") if o and str(o.operator_id or "").strip()}
+        active_ops = _active_operator_ids(svc)
 
         # OperatorMachine：一次性取出，按设备聚合（并按“主操/技能”做轻量排序）
         rows = svc.operator_machine_repo.list_simple_rows()
-        operators_by_machine: Dict[str, List[Tuple[int, str]]] = {}  # machine_id -> [(rank, operator_id)]
-        machines_by_operator: Dict[str, List[str]] = {}
-        pair_rank: Dict[Tuple[str, str], int] = {}
-
-        def _skill_rank(v: Any) -> int:
-            """
-            技能等级排序（数值越小越优）。
-
-            兼容：
-            - 新口径：beginner/normal/expert（见 OperatorMachineService）
-            - 旧口径：low/normal/high（历史数据/脚本）
-            - 常见中文：初级/普通/熟练（以及 高级/专家/一般/中级/新手）
-            """
-            s0 = str(v or "").strip()
-            if s0 == "":
-                return 9
-            low = s0.lower()
-            if low in ("expert", "high", "skilled"):
-                return 0
-            if low in ("normal",):
-                return 1
-            if low in ("beginner", "low"):
-                return 2
-            if s0 in ("熟练", "高级", "专家"):
-                return 0
-            if s0 in ("普通", "一般", "中级"):
-                return 1
-            if s0 in ("初级", "新手"):
-                return 2
-            return 9
-
-        for r in rows:
-            oid = str(r["operator_id"] or "").strip()
-            mid = str(r["machine_id"] or "").strip()
-            if not oid or not mid:
-                continue
-            if mid not in active_machines:
-                continue
-            if oid not in active_ops:
-                continue
-            is_primary = str(r["is_primary"] or "").strip().lower()
-            sr = _skill_rank(r["skill_level"])
-            rank = (0 if is_primary in ("yes", "y", "true", "1", "on") else 1) * 10 + sr
-            operators_by_machine.setdefault(mid, []).append((int(rank), oid))
-            machines_by_operator.setdefault(oid, []).append(mid)
-            pair_rank[(oid, mid)] = int(rank)
-
-        # 排序：rank 越小越优（主操优先，其次高技能）
-        operators_by_machine_sorted: Dict[str, List[str]] = {}
-        for mid, items in operators_by_machine.items():
-            items.sort(key=lambda x: (x[0], x[1]))
-            operators_by_machine_sorted[mid] = [oid for _, oid in items]
+        operators_by_machine, machines_by_operator, pair_rank = _build_operator_machine_maps(
+            rows,
+            active_machines=active_machines,
+            active_ops=active_ops,
+        )
+        operators_by_machine_sorted = _sort_operators_by_machine(operators_by_machine)
 
         resource_pool = {
             "machines_by_op_type": machines_by_op_type,

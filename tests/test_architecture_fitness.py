@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 import os
 import re
 import sys
@@ -16,7 +17,8 @@ from typing import Dict, List, Set, Tuple
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-CORE_DIRS = ["web/routes", "core/services", "data/repositories", "core/models", "core/infrastructure"]
+CORE_DIRS = ["web/routes", "core/services", "data/repositories", "core/models", "core/infrastructure", "web/viewmodels"]
+NO_WILDCARD_DIRS = CORE_DIRS
 
 
 def _collect_py_files(*rel_dirs: str) -> List[str]:
@@ -28,7 +30,7 @@ def _collect_py_files(*rel_dirs: str) -> List[str]:
             continue
         for dirpath, _, filenames in os.walk(base):
             for fn in filenames:
-                if fn.endswith(".py") and not fn.startswith("__"):
+                if fn.endswith(".py") and (fn == "__init__.py" or not fn.startswith("__")):
                     files.append(os.path.relpath(os.path.join(dirpath, fn), REPO_ROOT).replace("\\", "/"))
     return files
 
@@ -94,6 +96,87 @@ def test_routes_do_not_import_repository():
     )
 
 
+def test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes():
+    """
+    ViewModel 层（web/viewmodels）必须是纯数据变换。
+
+    允许清单（allowlist）语义：
+    - 允许：标准库、core.models*、相对导入
+    - 禁止：flask*、core.*（除 core.models*）、data.*、web.*
+    """
+
+    def _is_stdlib_root_module(root: str) -> bool:
+        if not root:
+            return False
+        if root in sys.builtin_module_names:
+            return True
+        try:
+            spec = importlib.util.find_spec(root)
+        except Exception:
+            return False
+        if spec is None:
+            return False
+        origin = getattr(spec, "origin", None)
+        if origin in ("built-in", "frozen"):
+            return True
+        if not origin:
+            return False
+        origin_path = os.path.normcase(os.path.abspath(str(origin)))
+        lower = origin_path.lower()
+        if ("site-packages" in lower) or ("dist-packages" in lower):
+            return False
+        for bp in (getattr(sys, "base_prefix", None), getattr(sys, "prefix", None)):
+            if not bp:
+                continue
+            bp_path = os.path.normcase(os.path.abspath(str(bp)))
+            if origin_path.startswith(bp_path + os.sep):
+                return True
+        return False
+
+    def _is_allowed_viewmodel_import(mod: str) -> bool:
+        m = str(mod or "").strip()
+        if not m:
+            return False
+        if m == "core.models" or m.startswith("core.models."):
+            return True
+        root = m.split(".", 1)[0]
+        if root in ("flask", "web", "data"):
+            return False
+        if root == "core":
+            return False
+        return _is_stdlib_root_module(root)
+
+    violations: List[str] = []
+    for fp in _collect_py_files("web/viewmodels"):
+        src = _read(fp)
+        try:
+            tree = ast.parse(src, filename=fp)
+        except SyntaxError as e:
+            violations.append(f"{fp}:{getattr(e, 'lineno', 0) or 0}: SyntaxError: {e}")
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    mod = str(alias.name or "")
+                    if not _is_allowed_viewmodel_import(mod):
+                        violations.append(f"{fp}:{node.lineno}: import {mod}")
+            elif isinstance(node, ast.ImportFrom):
+                # 禁止 viewmodels 内使用 import *
+                if any(a.name == "*" for a in node.names or []):
+                    violations.append(f"{fp}:{node.lineno}: from {node.module} import *")
+
+                # 相对导入（from .foo import bar）允许
+                if int(getattr(node, "level", 0) or 0) > 0:
+                    continue
+
+                mod = str(node.module or "")
+                if mod and not _is_allowed_viewmodel_import(mod):
+                    violations.append(f"{fp}:{node.lineno}: from {mod} import ...")
+
+    assert not violations, "ViewModel 导入越界:\n" + "\n".join(violations)
+
+
 # ─── Fitness 2: 循环依赖 ──────────────────────────────────────
 
 def test_no_circular_service_dependencies():
@@ -140,11 +223,33 @@ def test_no_circular_service_dependencies():
 def test_no_wildcard_imports():
     """核心目录禁止 import *。"""
     violations = []
-    for fp in _collect_py_files(*CORE_DIRS):
+    for fp in _collect_py_files(*NO_WILDCARD_DIRS):
         for i, line in enumerate(_read(fp).splitlines(), 1):
             if re.match(r"\s*from\s+\S+\s+import\s+\*", line):
                 violations.append(f"{fp}:{i}")
     assert not violations, "import * 违反:\n" + "\n".join(violations)
+
+
+def test_services_do_not_use_assert_for_runtime_guards():
+    """
+    Service 层业务路径禁止使用 assert 作为运行期保障。
+
+    原因：
+    - `python -O` 会移除 assert，导致防线失效
+    - assert 更适合开发期不变量，而不是业务输入/契约保障
+    """
+    violations: List[str] = []
+    for fp in _collect_py_files("core/services"):
+        src = _read(fp)
+        try:
+            tree = ast.parse(src, filename=fp)
+        except SyntaxError as e:
+            violations.append(f"{fp}:{getattr(e, 'lineno', 0) or 0}: SyntaxError: {e}")
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assert):
+                violations.append(f"{fp}:{node.lineno}: assert ...")
+    assert not violations, "Service 使用 assert（禁止）:\n" + "\n".join(violations)
 
 
 def test_no_silent_exception_swallow():
@@ -250,6 +355,18 @@ def test_no_silent_exception_swallow():
         "web/routes/system_utils.py:100",
     }
 
+    # 白名单采用“按文件计数上限”策略：
+    # - 允许减少（修复/重构后吞异常点变少）
+    # - 禁止增加（新增 except Exception: pass/...）
+    # 目的：避免因机械插入 import/拆分函数导致行号漂移而误判“新增”。
+    known_counts: Dict[str, int] = {}
+    for v in known_violations:
+        try:
+            fp, _ = v.rsplit(":", 1)
+        except ValueError:
+            continue
+        known_counts[fp] = int(known_counts.get(fp, 0)) + 1
+
     def _scan_file(fp: str) -> List[str]:
         try:
             tree = ast.parse(_read(fp), filename=fp)
@@ -277,14 +394,24 @@ def test_no_silent_exception_swallow():
                     out.append(f"{fp}:{h.lineno}")
         return out
 
-    violations = []
+    violations_by_file: Dict[str, List[str]] = {}
     for fp in _collect_py_files(*CORE_DIRS):
-        violations.extend(_scan_file(fp))
+        hits = _scan_file(fp)
+        if hits:
+            violations_by_file[fp] = hits
 
-    new_violations = [v for v in violations if v not in known_violations]
-    assert not new_violations, (
-        "新增静默吞异常（except Exception: pass / ...）违反：\n"
-        + "\n".join(sorted(new_violations))
+    new_files = []
+    for fp, hits in sorted(violations_by_file.items(), key=lambda x: x[0]):
+        expected_max = int(known_counts.get(fp, 0))
+        if len(hits) > expected_max:
+            new_files.append(
+                f"{fp}: expected<={expected_max} got={len(hits)}\n  "
+                + "\n  ".join(sorted(hits))
+            )
+
+    assert not new_files, (
+        "新增静默吞异常（except Exception: pass / ...）违反（按文件计数上限判定）：\n"
+        + "\n".join(new_files)
         + "\n\n如有合理理由，请添加到 known_violations 白名单并说明原因。"
     )
 
@@ -345,6 +472,8 @@ def test_cyclomatic_complexity_threshold():
         "web/routes/scheduler_run.py:run_schedule",
         "web/routes/scheduler_week_plan.py:week_plan_export",
         "web/routes/system_logs.py:logs_page",
+        # --- ViewModel 层 ---
+        "web/viewmodels/scheduler_analysis_vm.py:build_selected_details",
         # --- Service 层 ---
         "core/services/common/openpyxl_backend.py:read",
         "core/services/common/pandas_backend.py:read",

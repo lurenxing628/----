@@ -6,43 +6,49 @@
 - 字段名与数据库列名保持一致，便于 repo 映射与 Excel 导入导出
 """
 
-from .enums import (
-    YesNo,
-    OperatorStatus,
-    MachineStatus,
-    SourceType,
-    BatchPriority,
-    ReadyStatus,
-    BatchStatus,
-    CalendarDayType,
-    MergeMode,
-)
-from .operator import Operator
-from .op_type import OpType
-from .machine import Machine
-from .machine_downtime import MachineDowntime
-from .operator_machine import OperatorMachine
-from .supplier import Supplier
-from .part import Part
-from .part_operation import PartOperation
-from .external_group import ExternalGroup
+from __future__ import annotations
+
 from .batch import Batch
+from .batch_material import BatchMaterial
 from .batch_operation import BatchOperation
-from .schedule import Schedule
 from .calendar import OperatorCalendar, WorkCalendar
 from .config import ScheduleConfig
-from .system_config import SystemConfig
-from .operation_log import OperationLog
-from .schedule_history import ScheduleHistory
-from .system_job_state import SystemJobState
+from .enums import (
+    BatchPriority,
+    BatchStatus,
+    CalendarDayType,
+    MachineStatus,
+    MaterialStatus,
+    MergeMode,
+    OperatorStatus,
+    ReadyStatus,
+    SourceType,
+    SupplierStatus,
+    YesNo,
+)
+from .external_group import ExternalGroup
+from .machine import Machine
+from .machine_downtime import MachineDowntime
 from .material import Material
-from .batch_material import BatchMaterial
+from .op_type import OpType
+from .operation_log import OperationLog
+from .operator import Operator
+from .operator_machine import OperatorMachine
+from .part import Part
+from .part_operation import PartOperation
+from .schedule import Schedule
+from .schedule_history import ScheduleHistory
+from .supplier import Supplier
+from .system_config import SystemConfig
+from .system_job_state import SystemJobState
 
 __all__ = [
     # enums
     "YesNo",
     "OperatorStatus",
     "MachineStatus",
+    "SupplierStatus",
+    "MaterialStatus",
     "SourceType",
     "BatchPriority",
     "ReadyStatus",

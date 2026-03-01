@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 import json
 import os
@@ -7,6 +9,8 @@ from typing import Any, Dict, List
 from flask import Blueprint, current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.models.enums import OperatorStatus
+from core.services.common.enum_normalizers import normalize_operator_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.common.openpyxl_backend import OpenpyxlBackend
@@ -35,12 +39,12 @@ def _validate_operator_row(row: Dict[str, Any]) -> str:
     if not row.get("姓名") or str(row.get("姓名")).strip() == "":
         return "“姓名”不能为空"
 
-    status = row.get("状态")
-    if status is None or str(status).strip() == "":
+    st = normalize_operator_status(row.get("状态"))
+    if not st:
         return "“状态”不能为空（允许：active / inactive）"
-    status = str(status).strip()
-    if status not in ("active", "inactive"):
+    if st not in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
         return "“状态”不合法（允许：active / inactive）"
+    row["状态"] = st
     return None
 
 
@@ -257,7 +261,7 @@ def download_template():
     ws = wb.active
     ws.title = "Sheet1"
     ws.append(["工号", "姓名", "状态", "备注"])
-    ws.append(["OP001", "张三", "active", "示例备注"])
+    ws.append(["OP001", "张三", OperatorStatus.ACTIVE.value, "示例备注"])
 
     output = io.BytesIO()
     wb.save(output)

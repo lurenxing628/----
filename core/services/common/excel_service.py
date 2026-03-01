@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict, Tuple, Any, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
+
 from .tabular_backend import TabularBackend
 
 
@@ -61,8 +62,8 @@ class ExcelService:
     def read_rows(self, file_path: str, sheet: Optional[str] = None) -> List[Dict[str, Any]]:
         return self.backend.read(file_path, sheet=sheet)
 
-    def write_rows(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1"):
-        return self.backend.write(rows, file_path, sheet=sheet)
+    def write_rows(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1") -> None:
+        self.backend.write(rows, file_path, sheet=sheet)
 
     def preview_import(
         self,

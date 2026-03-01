@@ -11,6 +11,8 @@ Phase 6 范围：
 - 用户可见 message 尽量中文（便于 Win7 单机用户排障）
 """
 
+from __future__ import annotations
+
 from .batch_service import BatchService
 from .calendar_service import CalendarService
 from .config_service import ConfigService

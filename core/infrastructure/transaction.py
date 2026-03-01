@@ -1,9 +1,10 @@
-from contextlib import contextmanager
-from functools import wraps
+from __future__ import annotations
+
 import logging
 import threading
+from contextlib import contextmanager
+from functools import wraps
 from typing import Dict
-
 
 logger = logging.getLogger(__name__)
 

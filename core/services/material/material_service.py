@@ -5,13 +5,14 @@ from typing import Any, Dict, List, Optional
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Material
+from core.models.enums import MaterialStatus
 from data.repositories import MaterialRepository
 
 
 class MaterialService:
     """物料主数据服务（Materials）。"""
 
-    VALID_STATUS = ("active", "inactive")
+    VALID_STATUS = (MaterialStatus.ACTIVE.value, MaterialStatus.INACTIVE.value)
 
     def __init__(self, conn, logger=None, op_logger=None):
         self.conn = conn
@@ -33,8 +34,8 @@ class MaterialService:
             return 0.0
         try:
             x = float(v)
-        except Exception:
-            raise ValidationError(f"“{field}”必须是数字", field=field)
+        except Exception as e:
+            raise ValidationError(f"“{field}”必须是数字", field=field) from e
         if x < min_v:
             raise ValidationError(f"“{field}”不能小于 {min_v}", field=field)
         return float(x)
@@ -51,14 +52,14 @@ class MaterialService:
             raise BusinessError(ErrorCode.NOT_FOUND, f"物料“{mid}”不存在")
         return m
 
-    def create(self, material_id: Any, name: Any, spec: Any = None, unit: Any = None, stock_qty: Any = 0, status: Any = "active", remark: Any = None) -> Material:
+    def create(self, material_id: Any, name: Any, spec: Any = None, unit: Any = None, stock_qty: Any = 0, status: Any = MaterialStatus.ACTIVE.value, remark: Any = None) -> Material:
         mid = self._norm_text(material_id)
         if not mid:
             raise ValidationError("“物料ID”不能为空", field="material_id")
         nm = self._norm_text(name)
         if not nm:
             raise ValidationError("“物料名称”不能为空", field="name")
-        st = (self._norm_text(status) or "active").lower()
+        st = (self._norm_text(status) or MaterialStatus.ACTIVE.value).lower()
         if st not in self.VALID_STATUS:
             raise ValidationError("“状态”不合法（允许：active/inactive）", field="status")
         qty = self._norm_float(stock_qty, field="库存数量", min_v=0.0)

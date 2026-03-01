@@ -5,6 +5,16 @@ from typing import Any, Dict, List, Sequence
 
 import openpyxl
 
+from core.models.enums import (
+    BatchPriority,
+    CalendarDayType,
+    MachineStatus,
+    OperatorStatus,
+    ReadyStatus,
+    SourceType,
+    YesNo,
+)
+
 
 def _write_xlsx(path: str, headers: Sequence[str], sample_rows: Sequence[Sequence[Any]] = ()) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -37,29 +47,29 @@ def get_default_templates() -> List[Dict[str, Any]]:
         {
             "filename": "人员基本信息.xlsx",
             "headers": ["工号", "姓名", "状态", "备注"],
-            "sample_rows": [["OP001", "张三", "active", "示例备注"]],
+            "sample_rows": [["OP001", "张三", OperatorStatus.ACTIVE.value, "示例备注"]],
         },
         {
             "filename": "人员设备关联.xlsx",
             "headers": ["工号", "设备编号", "技能等级", "主操设备"],
-            "sample_rows": [["OP001", "CNC-01", "normal", "yes"]],
+            "sample_rows": [["OP001", "CNC-01", "normal", YesNo.YES.value]],
         },
         # 设备
         {
             "filename": "设备信息.xlsx",
             "headers": ["设备编号", "设备名称", "工种", "状态"],
-            "sample_rows": [["CNC-01", "数控车床1", "数车", "active"]],
+            "sample_rows": [["CNC-01", "数控车床1", "数车", MachineStatus.ACTIVE.value]],
         },
         {
             "filename": "设备人员关联.xlsx",
             "headers": ["设备编号", "工号", "技能等级", "主操设备"],
-            "sample_rows": [["CNC-01", "OP001", "normal", "yes"]],
+            "sample_rows": [["CNC-01", "OP001", "normal", YesNo.YES.value]],
         },
         # 工艺
         {
             "filename": "工种配置.xlsx",
             "headers": ["工种ID", "工种名称", "归属"],
-            "sample_rows": [["OT001", "数车", "internal"], ["OT002", "标印", "external"]],
+            "sample_rows": [["OT001", "数车", SourceType.INTERNAL.value], ["OT002", "标印", SourceType.EXTERNAL.value]],
         },
         {
             "filename": "供应商配置.xlsx",
@@ -81,12 +91,14 @@ def get_default_templates() -> List[Dict[str, Any]]:
             "filename": "批次信息.xlsx",
             # 对齐路由 `web/routes/scheduler_excel_batches.py` 的兜底模板与导入字段（含齐套日期）
             "headers": ["批次号", "图号", "数量", "交期", "优先级", "齐套", "齐套日期", "备注"],
-            "sample_rows": [["B001", "A1234", 50, "2026-01-25", "urgent", "yes", "2026-01-24", "示例"]],
+            "sample_rows": [
+                ["B001", "A1234", 50, "2026-01-25", BatchPriority.URGENT.value, ReadyStatus.YES.value, "2026-01-24", "示例"]
+            ],
         },
         {
             "filename": "工作日历.xlsx",
             "headers": ["日期", "类型", "可用工时", "效率", "允许普通件", "允许急件", "说明"],
-            "sample_rows": [["2026-01-21", "workday", 8, 1.0, "yes", "yes", "示例"]],
+            "sample_rows": [["2026-01-21", CalendarDayType.WORKDAY.value, 8, 1.0, YesNo.YES.value, YesNo.YES.value, "示例"]],
         },
     ]
 

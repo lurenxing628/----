@@ -8,14 +8,16 @@
 - `scheduler_excel_batches.py`：批次 Excel
 """
 
-from .scheduler_bp import bp
+from __future__ import annotations
+
+from . import scheduler_excel_batches as _excel_batches  # noqa: F401
+from . import scheduler_excel_calendar as _excel_calendar  # noqa: F401
+from . import scheduler_gantt as _gantt  # noqa: F401
 
 # 导入子模块以注册路由（side-effect）
 from . import scheduler_pages as _pages  # noqa: F401
-from . import scheduler_excel_calendar as _excel_calendar  # noqa: F401
-from . import scheduler_excel_batches as _excel_batches  # noqa: F401
-from . import scheduler_gantt as _gantt  # noqa: F401
 from . import scheduler_week_plan as _week_plan  # noqa: F401
+from .scheduler_bp import bp
 
 __all__ = ["bp"]
 

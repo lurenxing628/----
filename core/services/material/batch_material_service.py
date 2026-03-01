@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models.enums import ReadyStatus
 from data.repositories import BatchMaterialRepository, BatchRepository, MaterialRepository
 
 
@@ -34,8 +35,8 @@ class BatchMaterialService:
             raise ValidationError(f"“{field}”不能为空", field=field)
         try:
             x = float(raw)
-        except Exception:
-            raise ValidationError(f"“{field}”必须是数字", field=field)
+        except Exception as e:
+            raise ValidationError(f"“{field}”必须是数字", field=field) from e
         if x < min_v:
             raise ValidationError(f"“{field}”不能小于 {min_v}", field=field)
         return float(x)
@@ -44,33 +45,7 @@ class BatchMaterialService:
         bid = self._norm_text(batch_id)
         if not bid:
             raise ValidationError("“批次号”不能为空", field="batch_id")
-        rows = self.conn.execute(
-            """
-            SELECT bm.id, bm.batch_id, bm.material_id, m.name AS material_name, m.spec, m.unit,
-                   bm.required_qty, bm.available_qty, bm.ready_status
-            FROM BatchMaterials bm
-            LEFT JOIN Materials m ON m.material_id = bm.material_id
-            WHERE bm.batch_id = ?
-            ORDER BY bm.id
-            """,
-            (bid,),
-        ).fetchall()
-        result: List[Dict[str, Any]] = []
-        for r in rows:
-            result.append(
-                {
-                    "id": r["id"],
-                    "batch_id": r["batch_id"],
-                    "material_id": r["material_id"],
-                    "material_name": r["material_name"],
-                    "spec": r["spec"],
-                    "unit": r["unit"],
-                    "required_qty": r["required_qty"],
-                    "available_qty": r["available_qty"],
-                    "ready_status": r["ready_status"],
-                }
-            )
-        return result
+        return self.repo.list_with_material_details_by_batch(bid)
 
     def add_requirement(self, batch_id: Any, material_id: Any, required_qty: Any, available_qty: Any = 0) -> None:
         bid = self._norm_text(batch_id)
@@ -88,7 +63,8 @@ class BatchMaterialService:
 
         req = self._norm_float_required(required_qty, field="需求数量", min_v=0.000001)
         avail = self._norm_float_required(available_qty, field="到料数量", min_v=0.0)
-        ready = "yes" if avail >= req else "no"
+        # 设计意图：单行物料按“够/不够”二值判定；partial 仅用于批次汇总 ready_status（见 _calc_batch_ready）。
+        ready = ReadyStatus.YES.value if avail >= req else ReadyStatus.NO.value
 
         with self.tx.transaction():
             self.repo.add(bid, mid, required_qty=req, available_qty=avail, ready_status=ready)
@@ -105,8 +81,8 @@ class BatchMaterialService:
     def update_requirement(self, bm_id: Any, *, required_qty: Any = None, available_qty: Any = None) -> None:
         try:
             bid_int = int(str(bm_id).strip())
-        except Exception:
-            raise ValidationError("“ID”不合法", field="id")
+        except Exception as e:
+            raise ValidationError("“ID”不合法", field="id") from e
         bm = self.repo.get(bid_int)
         if not bm:
             raise BusinessError(ErrorCode.NOT_FOUND, f"批次物料记录不存在：ID={bid_int}")
@@ -117,7 +93,7 @@ class BatchMaterialService:
             req = self._norm_float_required(required_qty, field="需求数量", min_v=0.000001)
         if available_qty is not None and str(available_qty).strip() != "":
             avail = self._norm_float_required(available_qty, field="到料数量", min_v=0.0)
-        ready = "yes" if avail >= req else "no"
+        ready = ReadyStatus.YES.value if avail >= req else ReadyStatus.NO.value
 
         with self.tx.transaction():
             self.repo.update_qty(bid_int, required_qty=req, available_qty=avail, ready_status=ready)
@@ -134,8 +110,8 @@ class BatchMaterialService:
     def delete_requirement(self, bm_id: Any) -> None:
         try:
             bid_int = int(str(bm_id).strip())
-        except Exception:
-            raise ValidationError("“ID”不合法", field="id")
+        except Exception as e:
+            raise ValidationError("“ID”不合法", field="id") from e
         bm = self.repo.get(bid_int)
         if not bm:
             return
@@ -169,15 +145,17 @@ class BatchMaterialService:
             return "", None
 
         total = len(rows)
-        ready_cnt = sum(1 for r in rows if (r.ready_status or "no") == "yes")
+        ready_cnt = sum(
+            1 for r in rows if (r.ready_status or ReadyStatus.NO.value) == ReadyStatus.YES.value
+        )
         if ready_cnt >= total:
             b = self.batch_repo.get(batch_id)
             if b and b.ready_date:
-                return "yes", b.ready_date
-            return "yes", date.today().isoformat()
+                return ReadyStatus.YES.value, b.ready_date
+            return ReadyStatus.YES.value, date.today().isoformat()
         if ready_cnt > 0:
-            return "partial", None
-        return "no", None
+            return ReadyStatus.PARTIAL.value, None
+        return ReadyStatus.NO.value, None
 
     def _recalc_and_sync_batch_ready(self, batch_id: str) -> None:
         bid = self._norm_text(batch_id)

@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import MachineDowntime
+from core.models.enums import MachineDowntimeStatus, MachineStatus
 from core.services.common.normalize import normalize_text
 from data.repositories import MachineDowntimeRepository, MachineRepository
 
@@ -127,7 +128,7 @@ class MachineDowntimeService:
                     "end_time": et_db,
                     "reason_code": rc,
                     "reason_detail": rd,
-                    "status": "active",
+                    "status": MachineDowntimeStatus.ACTIVE.value,
                 }
             )
         return d
@@ -181,10 +182,10 @@ class MachineDowntimeService:
         elif stype == "category":
             if not sval:
                 raise ValidationError("scope_value 不能为空（category 模式）", field="scope_value")
-            ms = self.machine_repo.list(status="active" if only_active_machines else None, category=sval)
+            ms = self.machine_repo.list(status=MachineStatus.ACTIVE.value if only_active_machines else None, category=sval)
             target_machine_ids = [m.machine_id for m in ms]
         else:
-            ms = self.machine_repo.list(status="active" if only_active_machines else None)
+            ms = self.machine_repo.list(status=MachineStatus.ACTIVE.value if only_active_machines else None)
             target_machine_ids = [m.machine_id for m in ms]
             sval = sval or "*"
 
@@ -208,7 +209,7 @@ class MachineDowntimeService:
                         "end_time": et_db,
                         "reason_code": rc,
                         "reason_detail": rd,
-                        "status": "active",
+                        "status": MachineDowntimeStatus.ACTIVE.value,
                     }
                 )
                 if d.id is not None:
@@ -231,7 +232,7 @@ class MachineDowntimeService:
             if mc_id and d.machine_id != mc_id:
                 raise BusinessError(ErrorCode.PERMISSION_DENIED, "该停机记录不属于当前设备，不能操作。")
 
-        if (d.status or "").strip() != "active":
+        if (d.status or "").strip() != MachineDowntimeStatus.ACTIVE.value:
             # 幂等：已取消就不报错
             return
 

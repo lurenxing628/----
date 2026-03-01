@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.models.enums import MachineStatus, OperatorStatus, SourceType
+from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus
 
 
 def _text(value: Any) -> str:
@@ -67,15 +67,15 @@ def normalize_supplier_status(value: Any) -> str:
     """
     v = _text(value)
     if not v:
-        return "active"
+        return SupplierStatus.ACTIVE.value
 
     if v in ("启用", "在用", "正常"):
-        return "active"
+        return SupplierStatus.ACTIVE.value
     if v in ("停用", "禁用"):
-        return "inactive"
+        return SupplierStatus.INACTIVE.value
 
     v_lower = v.lower()
-    if v_lower in ("active", "inactive"):
+    if v_lower in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
         return v_lower
     return v
 

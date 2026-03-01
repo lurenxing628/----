@@ -4,9 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import BatchOperation
-from core.models.enums import BatchOperationStatus, MachineStatus, MergeMode, OperatorStatus, SourceType
-
-_SUPPLIER_ACTIVE_STATUS = "active"
+from core.models.enums import BatchOperationStatus, MachineStatus, MergeMode, OperatorStatus, SourceType, SupplierStatus
 
 
 def list_batch_operations(svc, batch_id: Any) -> List[BatchOperation]:
@@ -183,7 +181,7 @@ def update_external_operation(
         s = svc.supplier_repo.get(sup_id)
         if not s:
             raise BusinessError(ErrorCode.NOT_FOUND, f"供应商“{sup_id}”不存在")
-        if (s.status or "").strip().lower() != _SUPPLIER_ACTIVE_STATUS:
+        if (s.status or "").strip().lower() != SupplierStatus.ACTIVE.value:
             raise BusinessError(ErrorCode.RESOURCE_NOT_AVAILABLE, f"供应商“{sup_id}”已停用，不可用于排产。")
 
     # 合并周期（merged）时：周期不在 BatchOperations.ext_days 上维护

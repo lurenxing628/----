@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import json
 import logging
 import logging.handlers
 import os
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from core.infrastructure.transaction import in_transaction_context
 

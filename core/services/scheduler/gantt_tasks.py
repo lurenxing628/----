@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
+from core.models.enums import CalendarDayType, YesNo
 from core.services.scheduler.calendar_service import CalendarService
 
+from ._sched_utils import _safe_int
 from .gantt_range import WeekRange
 
 
@@ -83,8 +85,10 @@ def build_calendar_days(conn, *, wr: WeekRange, logger=None, op_logger=None) -> 
             allow_urgent = str(getattr(cal, "allow_urgent", "") or "")
             remark = getattr(cal, "remark", None)
 
-            is_holiday = (day_type or "") != "workday"
-            is_nonworking = bool(shift_hours <= 0 or (allow_normal == "no" and allow_urgent == "no"))
+            is_holiday = (day_type or "") != CalendarDayType.WORKDAY.value
+            is_nonworking = bool(
+                shift_hours <= 0 or (allow_normal == YesNo.NO.value and allow_urgent == YesNo.NO.value)
+            )
 
             calendar_days.append(
                 {
@@ -104,6 +108,147 @@ def build_calendar_days(conn, *, wr: WeekRange, logger=None, op_logger=None) -> 
     return calendar_days
 
 
+def _clamp_to_week(st: datetime, et: datetime, *, wr: WeekRange) -> Optional[Tuple[datetime, datetime]]:
+    # clamp 到本周范围（避免跨周任务把时间轴拉很长）
+    st2 = max(st, wr.start_dt)
+    et2 = min(et, wr.end_dt_exclusive)
+    if not (st2 < et2):
+        return None
+    return st2, et2
+
+
+def _task_name_and_group(
+    *,
+    view: str,
+    task_id: str,
+    machine_disp: str,
+    operator_disp: str,
+    machine_id: Optional[str],
+    operator_id: Optional[str],
+) -> Tuple[str, str]:
+    if view == "machine":
+        name = f"{task_id} {machine_disp} {operator_disp}".strip()
+        group_key = (machine_id or "").strip() or "外协/未分配"
+    else:
+        name = f"{task_id} {operator_disp} {machine_disp}".strip()
+        group_key = (operator_id or "").strip() or "外协/未分配"
+    return name, group_key
+
+
+def _build_one_task(
+    *,
+    view: str,
+    wr: WeekRange,
+    r: Dict[str, Any],
+    overdue_set: Set[str],
+) -> Optional[Dict[str, Any]]:
+    st = _parse_dt(r.get("start_time"))
+    et = _parse_dt(r.get("end_time"))
+    if not st or not et or not (st < et):
+        return None
+
+    clamped = _clamp_to_week(st, et, wr=wr)
+    if not clamped:
+        return None
+    st2, et2 = clamped
+
+    op_code = (r.get("op_code") or "").strip()
+    task_id = op_code or f"op_{r.get('op_id')}"
+    batch_id = (r.get("batch_id") or "").strip()
+
+    machine_disp = _display_machine(r.get("machine_id"), r.get("machine_name"), r.get("supplier_name"))
+    operator_disp = _display_operator(r.get("operator_id"), r.get("operator_name"))
+    name, group_key = _task_name_and_group(
+        view=view,
+        task_id=task_id,
+        machine_disp=machine_disp,
+        operator_disp=operator_disp,
+        machine_id=r.get("machine_id"),
+        operator_id=r.get("operator_id"),
+    )
+
+    css = [_priority_class(r.get("priority"))]
+    is_overdue = bool(batch_id and batch_id in overdue_set)
+    if is_overdue:
+        css.append("overdue")
+
+    duration = _duration_minutes(st2, et2)
+    return {
+        "id": task_id,
+        "schedule_id": r.get("schedule_id"),
+        "name": name,
+        "start": _fmt_dt(st2),
+        "end": _fmt_dt(et2),
+        "duration_minutes": duration,
+        "progress": 0,
+        "lock_status": r.get("lock_status"),
+        "dependencies": "",
+        "edge_type": "",
+        "custom_class": " ".join(css),
+        # 附加信息（前端可用于 tooltip / 调试，不影响 Frappe Gantt）
+        "meta": {
+            "schedule_id": r.get("schedule_id"),
+            "op_id": r.get("op_id"),
+            "batch_id": batch_id,
+            "piece_id": r.get("piece_id"),
+            "part_no": r.get("part_no"),
+            "seq": r.get("seq"),
+            "op_type_name": r.get("op_type_name"),
+            "source": r.get("source"),
+            "status": r.get("op_status"),
+            "machine_id": r.get("machine_id"),
+            "operator_id": r.get("operator_id"),
+            "machine": machine_disp,
+            "operator": operator_disp,
+            "group_key": group_key,
+            "priority": r.get("priority"),
+            "lock_status": r.get("lock_status"),
+            "duration_minutes": duration,
+            "due_date": r.get("due_date"),
+            "is_overdue": is_overdue,
+        },
+    }
+
+
+def _attach_process_dependencies(tasks: List[Dict[str, Any]]) -> None:
+    # 工艺依赖：同 (batch_id, piece_id) 的 seq 链（仅在本次 tasks 集合内连线，避免跨窗口缺失）
+    chains: Dict[Tuple[str, str], List[Tuple[int, Dict[str, Any]]]] = {}
+    for t in tasks:
+        meta = t.get("meta") or {}
+        bid = str(meta.get("batch_id") or "").strip()
+        if not bid:
+            continue
+        piece_id = str(meta.get("piece_id") or "").strip()
+        seq_int = _safe_int(meta.get("seq"), default=0)
+        chains.setdefault((bid, piece_id), []).append((seq_int, t))
+
+    for _, items in chains.items():
+        items.sort(key=lambda x: (int(x[0]), str(x[1].get("start") or ""), str(x[1].get("id") or "")))
+        prev_id: Optional[str] = None
+        for _, t in items:
+            tid = str(t.get("id") or "").strip()
+            if not tid:
+                continue
+            if prev_id:
+                # Frappe Gantt：dependencies 为逗号分隔的 task.id 字符串
+                t["dependencies"] = prev_id
+                t["edge_type"] = "process"
+                t_meta = t.get("meta")
+                if isinstance(t_meta, dict):
+                    t_meta["edge_type"] = "process"
+                    t_meta["dependency_from"] = prev_id
+            prev_id = tid
+
+
+def _sort_tasks(tasks: List[Dict[str, Any]]) -> None:
+    # 排序：让同一资源尽量聚在一起（视觉上更像“设备/人员视图”）
+    def _sort_key(t: Dict[str, Any]):
+        meta = t.get("meta") or {}
+        return (str(meta.get("group_key") or ""), str(t.get("start") or ""), str(t.get("id") or ""))
+
+    tasks.sort(key=_sort_key)
+
+
 def build_tasks(
     *,
     view: str,
@@ -116,113 +261,11 @@ def build_tasks(
     """
     tasks: List[Dict[str, Any]] = []
     for r in rows:
-        st = _parse_dt(r.get("start_time"))
-        et = _parse_dt(r.get("end_time"))
-        if not st or not et or not (st < et):
-            continue
+        t = _build_one_task(view=view, wr=wr, r=dict(r), overdue_set=overdue_set)
+        if t:
+            tasks.append(t)
 
-        # clamp 到本周范围（避免跨周任务把时间轴拉很长）
-        st2 = max(st, wr.start_dt)
-        et2 = min(et, wr.end_dt_exclusive)
-        if not (st2 < et2):
-            continue
-
-        op_code = (r.get("op_code") or "").strip()
-        task_id = op_code or f"op_{r.get('op_id')}"
-        batch_id = (r.get("batch_id") or "").strip()
-
-        machine_disp = _display_machine(r.get("machine_id"), r.get("machine_name"), r.get("supplier_name"))
-        operator_disp = _display_operator(r.get("operator_id"), r.get("operator_name"))
-
-        if view == "machine":
-            name = f"{task_id} {machine_disp} {operator_disp}".strip()
-            group_key = (r.get("machine_id") or "").strip() or "外协/未分配"
-        else:
-            name = f"{task_id} {operator_disp} {machine_disp}".strip()
-            group_key = (r.get("operator_id") or "").strip() or "外协/未分配"
-
-        css = [_priority_class(r.get("priority"))]
-        is_overdue = bool(batch_id and batch_id in overdue_set)
-        if is_overdue:
-            css.append("overdue")
-
-        tasks.append(
-            {
-                "id": task_id,
-                "schedule_id": r.get("schedule_id"),
-                "name": name,
-                "start": _fmt_dt(st2),
-                "end": _fmt_dt(et2),
-                "duration_minutes": _duration_minutes(st2, et2),
-                "progress": 0,
-                "lock_status": r.get("lock_status"),
-                "dependencies": "",
-                "edge_type": "",
-                "custom_class": " ".join(css),
-                # 附加信息（前端可用于 tooltip / 调试，不影响 Frappe Gantt）
-                "meta": {
-                    "schedule_id": r.get("schedule_id"),
-                    "op_id": r.get("op_id"),
-                    "batch_id": batch_id,
-                    "piece_id": r.get("piece_id"),
-                    "part_no": r.get("part_no"),
-                    "seq": r.get("seq"),
-                    "op_type_name": r.get("op_type_name"),
-                    "source": r.get("source"),
-                    "status": r.get("op_status"),
-                    "machine_id": r.get("machine_id"),
-                    "operator_id": r.get("operator_id"),
-                    "machine": machine_disp,
-                    "operator": operator_disp,
-                    "group_key": group_key,
-                    "priority": r.get("priority"),
-                    "lock_status": r.get("lock_status"),
-                    "duration_minutes": _duration_minutes(st2, et2),
-                    "due_date": r.get("due_date"),
-                    "is_overdue": is_overdue,
-                },
-            }
-        )
-
-    # 工艺依赖：同 (batch_id, piece_id) 的 seq 链（仅在本次 tasks 集合内连线，避免跨窗口缺失）
-    chains: Dict[Tuple[str, str], List[Tuple[int, Dict[str, Any]]]] = {}
-    for t in tasks:
-        meta = t.get("meta") or {}
-        bid = str(meta.get("batch_id") or "").strip()
-        if not bid:
-            continue
-        piece_id = str(meta.get("piece_id") or "").strip()
-        seq_raw = meta.get("seq")
-        try:
-            seq_int = int(seq_raw) if seq_raw is not None and str(seq_raw).strip() != "" else 0
-        except Exception:
-            seq_int = 0
-        chains.setdefault((bid, piece_id), []).append((seq_int, t))
-
-    for _, items in chains.items():
-        items.sort(key=lambda x: (int(x[0]), str(x[1].get("start") or ""), str(x[1].get("id") or "")))
-        prev_id: Optional[str] = None
-        for _, t in items:
-            tid = str(t.get("id") or "").strip()
-            if prev_id and tid:
-                # Frappe Gantt：dependencies 为逗号分隔的 task.id 字符串
-                t["dependencies"] = prev_id
-                t["edge_type"] = "process"
-                try:
-                    t_meta = t.setdefault("meta", {})
-                    if isinstance(t_meta, dict):
-                        t_meta["edge_type"] = "process"
-                        t_meta["dependency_from"] = prev_id
-                except Exception:
-                    pass
-            if tid:
-                prev_id = tid
-
-    # 排序：让同一资源尽量聚在一起（视觉上更像“设备/人员视图”）
-    def _sort_key(t: Dict[str, Any]):
-        meta = t.get("meta") or {}
-        return (str(meta.get("group_key") or ""), str(t.get("start") or ""), str(t.get("id") or ""))
-
-    tasks.sort(key=_sort_key)
+    _attach_process_dependencies(tasks)
+    _sort_tasks(tasks)
     return tasks
 

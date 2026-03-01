@@ -56,56 +56,67 @@ class UnitExcelParser:
                     continue
                 row_values = list(row)
 
-                part_no = self._to_text(self._pick_cell(row_values, 0))
-                if part_no:
-                    current_part_no = part_no
-                    part_name = self._to_text(self._pick_cell(row_values, 1))
-                    route_raw = self._to_text(self._pick_cell(row_values, 4))
-                    route_map = self._parse_route_map(route_raw)
-                    existing_ctx = parts.get(part_no)
-                    if existing_ctx is None:
-                        parts[part_no] = PartContext(
-                            part_no=part_no,
-                            part_name=part_name or part_no,
-                            route_raw=route_raw,
-                            route_map=route_map,
-                        )
-                    else:
-                        if part_name:
-                            existing_ctx.part_name = part_name
-                        if route_raw:
-                            existing_ctx.route_raw = route_raw
-                        if route_map:
-                            existing_ctx.route_map = route_map
-
-                if not current_part_no or current_part_no not in parts:
+                current_part_no = self._maybe_update_part_context(parts, current_part_no=current_part_no, row_values=row_values)
+                if not current_part_no:
                     continue
 
                 ctx = parts[current_part_no]
-                for station in stations:
-                    step_text = self._to_text(self._pick_cell(row_values, station.col_start))
-                    if not step_text:
-                        continue
-
-                    seq, has_step_code = self._parse_step_seq(step_text)
-                    rec = StepRecord(
-                        part_no=ctx.part_no,
-                        seq=seq,
-                        step_text=step_text,
-                        has_step_code=has_step_code,
-                        machine_id=station.machine_id,
-                        operators=list(station.operators),
-                        setup_min=self._to_float(self._pick_cell(row_values, station.col_start + 1)),
-                        unit_min=self._to_float(self._pick_cell(row_values, station.col_start + 2)),
-                        batch_min=self._to_float(self._pick_cell(row_values, station.col_start + 3)),
-                    )
-                    ctx.step_records.append(rec)
+                self._append_station_step_records(ctx, row_values=row_values, stations=stations)
             return parts, stations
         finally:
             try:
                 wb.close()
             except Exception:
                 pass
+
+    def _maybe_update_part_context(
+        self, parts: Dict[str, PartContext], *, current_part_no: Optional[str], row_values: Sequence[Any]
+    ) -> Optional[str]:
+        part_no = self._to_text(self._pick_cell(row_values, 0))
+        if not part_no:
+            return current_part_no if current_part_no in parts else None
+
+        part_name = self._to_text(self._pick_cell(row_values, 1))
+        route_raw = self._to_text(self._pick_cell(row_values, 4))
+        route_map = self._parse_route_map(route_raw)
+
+        existing_ctx = parts.get(part_no)
+        if existing_ctx is None:
+            parts[part_no] = PartContext(
+                part_no=part_no,
+                part_name=part_name or part_no,
+                route_raw=route_raw,
+                route_map=route_map,
+            )
+        else:
+            if part_name:
+                existing_ctx.part_name = part_name
+            if route_raw:
+                existing_ctx.route_raw = route_raw
+            if route_map:
+                existing_ctx.route_map = route_map
+
+        return part_no
+
+    def _append_station_step_records(self, ctx: PartContext, *, row_values: Sequence[Any], stations: Sequence[StationMeta]) -> None:
+        for station in stations:
+            step_text = self._to_text(self._pick_cell(row_values, station.col_start))
+            if not step_text:
+                continue
+
+            seq, has_step_code = self._parse_step_seq(step_text)
+            rec = StepRecord(
+                part_no=ctx.part_no,
+                seq=seq,
+                step_text=step_text,
+                has_step_code=has_step_code,
+                machine_id=station.machine_id,
+                operators=list(station.operators),
+                setup_min=self._to_float(self._pick_cell(row_values, station.col_start + 1)),
+                unit_min=self._to_float(self._pick_cell(row_values, station.col_start + 2)),
+                batch_min=self._to_float(self._pick_cell(row_values, station.col_start + 3)),
+            )
+            ctx.step_records.append(rec)
 
     def _build_station_columns(self, headers: Sequence[str]) -> List[StationMeta]:
         stations: List[StationMeta] = []

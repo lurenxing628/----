@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import gc
 import os
 import shutil
@@ -5,7 +7,6 @@ import sqlite3
 import sys
 import time
 from typing import Optional
-
 
 CURRENT_SCHEMA_VERSION = 4
 
@@ -144,7 +145,7 @@ def ensure_schema(db_path: str, logger=None, schema_path: Optional[str] = None, 
     current_version: int = 0
     try:
         try:
-            with open(schema_path, "r", encoding="utf-8") as f:
+            with open(schema_path, encoding="utf-8") as f:
                 sql = f.read()
             # sqlite3.executescript 默认不保证原子性：中途失败会留下“半初始化表结构”。
             # 这里用显式 BEGIN/COMMIT 包裹，让失败时可通过 rollback 回滚。

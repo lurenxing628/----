@@ -281,6 +281,9 @@ def _check_scheduler_schedule_logging(repo_root: str) -> CheckResult:
             and call.func.value.attr == "op_logger"
         )
 
+    def _is_call_to_name(call: ast.Call, func_name: str) -> bool:
+        return isinstance(call.func, ast.Name) and call.func.id == func_name
+
     def _kw(call: ast.Call, name: str) -> Optional[ast.AST]:
         for k in call.keywords or []:
             if k is not None and k.arg == name:
@@ -297,6 +300,36 @@ def _check_scheduler_schedule_logging(repo_root: str) -> CheckResult:
         if not (isinstance(v.orelse, ast.Constant) and v.orelse.value == "schedule"):
             return False
         return True
+
+    # 允许将“DB 留痕/OperationLogs”拆分到 helper（避免 persist_schedule 复杂度膨胀），
+    # 但仍要求：
+    # - history helper 在 transaction 内被调用
+    # - op_logger helper 被调用且 action kw 形如：("simulate" if simulate else "schedule")
+    history_helper = next(
+        (n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_persist_schedule_history"), None
+    )
+    op_log_helper = next(
+        (n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_log_schedule_operation"), None
+    )
+
+    history_helper_create_lineno = None
+    if history_helper is not None:
+        for sub in ast.walk(history_helper):
+            if isinstance(sub, ast.Call) and _is_history_repo_create(sub):
+                history_helper_create_lineno = int(getattr(sub, "lineno", 0) or 0) or None
+                break
+
+    op_helper_info_lineno = None
+    op_helper_action_ok = False
+    if op_log_helper is not None:
+        for sub in ast.walk(op_log_helper):
+            if not (isinstance(sub, ast.Call) and _is_op_logger_info(sub)):
+                continue
+            op_helper_info_lineno = int(getattr(sub, "lineno", 0) or 0) or None
+            action_expr = _kw(sub, "action")
+            op_helper_action_ok = _is_action_ifexp(action_expr) if action_expr is not None else False
+            if op_helper_action_ok:
+                break
 
     tx_with_lineno = None
     history_create_lineno = None
@@ -316,6 +349,14 @@ def _check_scheduler_schedule_logging(repo_root: str) -> CheckResult:
                 history_create_lineno = int(getattr(sub, "lineno", 0) or 0) or None
                 history_inside_tx = True
                 break
+            if (
+                isinstance(sub, ast.Call)
+                and _is_call_to_name(sub, "_persist_schedule_history")
+                and history_helper_create_lineno is not None
+            ):
+                history_create_lineno = history_helper_create_lineno
+                history_inside_tx = True
+                break
         if history_inside_tx:
             break
 
@@ -331,6 +372,14 @@ def _check_scheduler_schedule_logging(repo_root: str) -> CheckResult:
         action_ok = _is_action_ifexp(action_expr) if action_expr is not None else False
         if action_ok:
             break
+
+    if not (op_info_lineno and action_ok):
+        called_helper = any(
+            isinstance(sub, ast.Call) and _is_call_to_name(sub, "_log_schedule_operation") for sub in ast.walk(persist)
+        )
+        if called_helper and op_helper_info_lineno and op_helper_action_ok:
+            op_info_lineno = op_helper_info_lineno
+            action_ok = op_helper_action_ok
 
     ok = bool(history_inside_tx and op_info_lineno and action_ok)
     evidence.append(f"- persist_schedule(): line={getattr(persist, 'lineno', None)}")

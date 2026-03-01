@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from flask import Blueprint, current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
+from core.models.enums import MaterialStatus
 from core.services.material import BatchMaterialService, MaterialService
 from core.services.scheduler import BatchService
 from web.ui_mode import render_ui_template as render_template
@@ -29,7 +30,7 @@ def materials_page():
         "material/materials.html",
         title="物料管理 - 物料主数据",
         materials=items,
-        status_options=[("active", "可用"), ("inactive", "停用")],
+        status_options=[(MaterialStatus.ACTIVE.value, "可用"), (MaterialStatus.INACTIVE.value, "停用")],
         pager=pager,
     )
 
@@ -44,7 +45,7 @@ def materials_create():
             spec=request.form.get("spec"),
             unit=request.form.get("unit"),
             stock_qty=request.form.get("stock_qty"),
-            status=request.form.get("status") or "active",
+            status=request.form.get("status") or MaterialStatus.ACTIVE.value,
             remark=request.form.get("remark"),
         )
         flash(f"已创建物料：{m.material_id} {m.name}", "success")
@@ -119,7 +120,7 @@ def batch_materials_page():
     if batch_id:
         req_rows = BatchMaterialService(g.db, op_logger=getattr(g, "op_logger", None)).list_for_batch(batch_id)
 
-    mats = MaterialService(g.db, op_logger=getattr(g, "op_logger", None)).list(status="active")
+    mats = MaterialService(g.db, op_logger=getattr(g, "op_logger", None)).list(status=MaterialStatus.ACTIVE.value)
     mat_options = [(m.material_id, f"{m.material_id} {m.name}".strip()) for m in mats]
 
     return render_template(

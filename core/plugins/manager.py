@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from core.models.enums import YesNo
 from data.repositories import SystemConfigRepository
 
 from .registry import PluginRegistry
@@ -166,7 +167,7 @@ class PluginManager:
                 err = None
                 cap_keys: List[str] = []
 
-                if enabled == "yes":
+                if enabled == YesNo.YES.value:
                     try:
                         # 注册能力
                         if hasattr(mod, "register"):

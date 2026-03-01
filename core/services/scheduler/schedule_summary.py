@@ -26,6 +26,143 @@ def _serialize_end_date(end_date: Optional[Any]) -> Optional[str]:
     return s if s else None
 
 
+def _finish_time_by_batch(results: List[Any]) -> Dict[str, datetime]:
+    finish_by_batch: Dict[str, datetime] = {}
+    for r in results:
+        if not getattr(r, "end_time", None):
+            continue
+        bid = str(getattr(r, "batch_id", "") or "")
+        cur = finish_by_batch.get(bid)
+        if (cur is None) or (r.end_time > cur):
+            finish_by_batch[bid] = r.end_time
+    return finish_by_batch
+
+
+def _build_overdue_items(svc, *, batches: Dict[str, Any], finish_by_batch: Dict[str, datetime], summary: Any) -> List[Dict[str, Any]]:
+    overdue_items: List[Dict[str, Any]] = []
+
+    invalid_due_count = 0
+    invalid_due_ids_sample: List[str] = []
+    invalid_due_raw_sample: List[str] = []
+
+    for bid, b in batches.items():
+        due = svc._normalize_text(getattr(b, "due_date", None))
+        if not due:
+            continue
+        try:
+            due_date = datetime.strptime(due.replace("/", "-"), "%Y-%m-%d").date()
+        except Exception:
+            invalid_due_count += 1
+            if len(invalid_due_ids_sample) < 10:
+                invalid_due_ids_sample.append(str(bid))
+            if len(invalid_due_raw_sample) < 5:
+                invalid_due_raw_sample.append(f"{bid}={due!r}")
+            continue
+
+        finish = finish_by_batch.get(str(bid))
+        if not finish:
+            continue
+        if finish.date() > due_date:
+            overdue_items.append(
+                {
+                    "batch_id": bid,
+                    "due_date": due,
+                    "finish_time": svc._format_dt(finish),
+                }
+            )
+
+    if invalid_due_count > 0:
+        sample_ids = "，".join(invalid_due_ids_sample[:10])
+        msg = f"存在 {invalid_due_count} 个批次 due_date 格式不合法，已忽略超期判断（示例批次：{sample_ids}）"
+        try:
+            summary.warnings.append(msg)
+        except Exception:
+            pass
+        if svc.logger:
+            try:
+                raw_sample = "；".join(invalid_due_raw_sample[:5])
+                svc.logger.warning(f"{msg}；示例原始 due_date：{raw_sample}")
+            except Exception:
+                pass
+
+    return overdue_items
+
+
+def _compute_result_status(summary: Any, *, simulate: bool) -> str:
+    if getattr(summary, "success", False):
+        result_status = "success"
+    elif int(getattr(summary, "scheduled_ops", 0) or 0) > 0:
+        result_status = "partial"
+    else:
+        result_status = "failed"
+    if simulate:
+        result_status = "simulated"
+    return result_status
+
+
+def _frozen_batch_ids(operations: List[Any], *, frozen_op_ids: Set[int]) -> List[str]:
+    return sorted(
+        {
+            str(op.batch_id or "")
+            for op in operations
+            if op and getattr(op, "id", None) and int(op.id) in frozen_op_ids and str(op.batch_id or "").strip()
+        }
+    )
+
+
+def _extract_freeze_warnings(summary: Any) -> List[str]:
+    all_warnings = getattr(summary, "warnings", None) or []
+    freeze_warnings: List[str] = []
+    try:
+        for w in list(all_warnings or []):
+            ws = str(w)
+            if ws.startswith("【冻结窗口】"):
+                freeze_warnings.append(ws)
+    except Exception:
+        freeze_warnings = []
+    return freeze_warnings
+
+
+def _compute_downtime_degradation(cfg: Any, *, downtime_meta: Optional[Dict[str, Any]]) -> Tuple[bool, bool, bool, Optional[str], bool]:
+    auto_assign_enabled = (
+        to_yes_no(getattr(cfg, "auto_assign_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
+    )
+
+    meta = downtime_meta if isinstance(downtime_meta, dict) else {}
+
+    downtime_load_ok = True if "downtime_load_ok" not in meta else bool(meta.get("downtime_load_ok"))
+    downtime_load_error = meta.get("downtime_load_error")
+
+    downtime_extend_attempted = bool(meta.get("downtime_extend_attempted") or False)
+    extend_ok_raw = meta.get("downtime_extend_ok")
+    downtime_extend_ok = True if extend_ok_raw is None else bool(extend_ok_raw)
+    downtime_extend_error = meta.get("downtime_extend_error")
+
+    extend_failed = bool(auto_assign_enabled and downtime_extend_attempted and (not downtime_extend_ok))
+    downtime_degraded = (not downtime_load_ok) or extend_failed
+    downtime_degradation_reason = None
+    if downtime_degraded:
+        if not downtime_load_ok:
+            downtime_degradation_reason = str(downtime_load_error or "停机区间加载失败")
+        elif extend_failed:
+            downtime_degradation_reason = str(downtime_extend_error or "停机区间扩展加载失败")
+
+    return auto_assign_enabled, downtime_load_ok, downtime_degraded, downtime_degradation_reason, downtime_extend_attempted
+
+
+def _hard_constraints(cfg: Any, *, downtime_degraded: bool) -> List[str]:
+    hard_constraints: List[str] = [
+        "precedence",
+        "calendar",
+        "resource_machine_operator",
+    ]
+    if not downtime_degraded:
+        hard_constraints.append("downtime_avoid")
+    if to_yes_no(getattr(cfg, "freeze_window_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value:
+        hard_constraints.append("freeze_window")
+    return hard_constraints
+
+
 def build_result_summary(
     svc,
     *,
@@ -60,125 +197,25 @@ def build_result_summary(
         (overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms)
     """
     # 超期预警：批次预计完工时间 vs due_date
-    overdue_items: List[Dict[str, Any]] = []
-    finish_by_batch: Dict[str, datetime] = {}
-    for r in results:
-        if not getattr(r, "end_time", None):
-            continue
-        bid = str(getattr(r, "batch_id", "") or "")
-        cur = finish_by_batch.get(bid)
-        if (cur is None) or (r.end_time > cur):
-            finish_by_batch[bid] = r.end_time
+    finish_by_batch = _finish_time_by_batch(results)
+    overdue_items = _build_overdue_items(svc, batches=batches, finish_by_batch=finish_by_batch, summary=summary)
 
-    invalid_due_count = 0
-    invalid_due_ids_sample: List[str] = []
-    invalid_due_raw_sample: List[str] = []
-    for bid, b in batches.items():
-        due = svc._normalize_text(getattr(b, "due_date", None))
-        if not due:
-            continue
-        try:
-            due_date = datetime.strptime(due.replace("/", "-"), "%Y-%m-%d").date()
-        except Exception:
-            invalid_due_count += 1
-            if len(invalid_due_ids_sample) < 10:
-                invalid_due_ids_sample.append(str(bid))
-            if len(invalid_due_raw_sample) < 5:
-                invalid_due_raw_sample.append(f"{bid}={due!r}")
-            continue
-        finish = finish_by_batch.get(str(bid))
-        if not finish:
-            continue
-        if finish.date() > due_date:
-            overdue_items.append(
-                {
-                    "batch_id": bid,
-                    "due_date": due,
-                    "finish_time": svc._format_dt(finish),
-                }
-            )
-
-    if invalid_due_count > 0:
-        sample_ids = "，".join(invalid_due_ids_sample[:10])
-        msg = f"存在 {invalid_due_count} 个批次 due_date 格式不合法，已忽略超期判断（示例批次：{sample_ids}）"
-        try:
-            summary.warnings.append(msg)
-        except Exception:
-            pass
-        if svc.logger:
-            try:
-                raw_sample = "；".join(invalid_due_raw_sample[:5])
-                svc.logger.warning(f"{msg}；示例原始 due_date：{raw_sample}")
-            except Exception:
-                pass
-
-    # result_status：success/partial/failed
-    if getattr(summary, "success", False):
-        result_status = "success"
-    elif int(getattr(summary, "scheduled_ops", 0) or 0) > 0:
-        result_status = "partial"
-    else:
-        result_status = "failed"
-    if simulate:
-        result_status = "simulated"
+    # result_status：success/partial/failed/simulated
+    result_status = _compute_result_status(summary, simulate=simulate)
 
     time_cost_ms = int((time.time() - float(t0)) * 1000)
 
-    frozen_batch_ids = sorted(
-        {
-            str(op.batch_id or "")
-            for op in operations
-            if op and getattr(op, "id", None) and int(op.id) in frozen_op_ids and str(op.batch_id or "").strip()
-        }
-    )
+    frozen_batch_ids = _frozen_batch_ids(operations, frozen_op_ids=frozen_op_ids)
 
     # 冻结窗口降级识别：目前以 warnings 前缀为准（freeze_window.py 会统一加前缀）
     all_warnings = getattr(summary, "warnings", None) or []
-    freeze_warnings: List[str] = []
-    try:
-        for w in list(all_warnings or []):
-            ws = str(w)
-            if ws.startswith("【冻结窗口】"):
-                freeze_warnings.append(ws)
-    except Exception:
-        freeze_warnings = []
+    freeze_warnings = _extract_freeze_warnings(summary)
 
     # 停机约束状态：避免“停机加载失败但摘要仍宣称硬约束已启用”
-    auto_assign_enabled = to_yes_no(getattr(cfg, "auto_assign_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
-    downtime_load_ok = True
-    downtime_load_error = None
-    downtime_extend_attempted = False
-    downtime_extend_ok = True
-    downtime_extend_error = None
-    try:
-        if isinstance(downtime_meta, dict):
-            if "downtime_load_ok" in downtime_meta:
-                downtime_load_ok = bool(downtime_meta.get("downtime_load_ok"))
-            downtime_load_error = downtime_meta.get("downtime_load_error")
-            downtime_extend_attempted = bool(downtime_meta.get("downtime_extend_attempted") or False)
-            if "downtime_extend_ok" in downtime_meta and downtime_meta.get("downtime_extend_ok") is not None:
-                downtime_extend_ok = bool(downtime_meta.get("downtime_extend_ok"))
-            downtime_extend_error = downtime_meta.get("downtime_extend_error")
-    except Exception:
-        pass
-
-    downtime_degraded = (not downtime_load_ok) or (auto_assign_enabled and downtime_extend_attempted and (not downtime_extend_ok))
-    downtime_degradation_reason = None
-    if downtime_degraded:
-        if not downtime_load_ok:
-            downtime_degradation_reason = str(downtime_load_error or "停机区间加载失败")
-        elif auto_assign_enabled and downtime_extend_attempted and (not downtime_extend_ok):
-            downtime_degradation_reason = str(downtime_extend_error or "停机区间扩展加载失败")
-
-    hard_constraints: List[str] = [
-        "precedence",
-        "calendar",
-        "resource_machine_operator",
-    ]
-    if not downtime_degraded:
-        hard_constraints.append("downtime_avoid")
-    if to_yes_no(getattr(cfg, "freeze_window_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value:
-        hard_constraints.append("freeze_window")
+    auto_assign_enabled, downtime_load_ok, downtime_degraded, downtime_degradation_reason, downtime_extend_attempted = (
+        _compute_downtime_degradation(cfg, downtime_meta=downtime_meta)
+    )
+    hard_constraints = _hard_constraints(cfg, downtime_degraded=downtime_degraded)
 
     result_summary_obj: Dict[str, Any] = {
         "summary_schema_version": "1.0",

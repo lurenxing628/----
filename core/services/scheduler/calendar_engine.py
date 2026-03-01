@@ -102,6 +102,49 @@ class CalendarEngine:
             remark="默认工作日（未配置）",
         )
 
+    def _resolve_calendar_row(self, date_str: str, op_id: Optional[str]) -> Any:
+        if op_id:
+            row_op = self.operator_calendar_repo.get(op_id, date_str)
+            if row_op:
+                return row_op
+        row = self.repo.get(date_str)
+        return row if row else self._default_for_date(date_str)
+
+    @staticmethod
+    def _normalize_efficiency(cal: Any) -> float:
+        efficiency = float(getattr(cal, "efficiency", 1.0) or 1.0)
+        return 1.0 if efficiency <= 0 else efficiency
+
+    @staticmethod
+    def _parse_shift_start(cal: Any) -> time:
+        ss = (cal.shift_start or "").strip() if getattr(cal, "shift_start", None) else ""
+        if not ss:
+            ss = "08:00"
+        ss = ss.replace("：", ":")
+        try:
+            return datetime.strptime(ss, "%H:%M").time()
+        except Exception:
+            return time(8, 0, 0)
+
+    @staticmethod
+    def _override_shift_hours_by_shift_end(cal: Any, *, date_str: str, shift_start_t: time, shift_hours: float) -> float:
+        se = (cal.shift_end or "").strip() if getattr(cal, "shift_end", None) else ""
+        if not se:
+            return shift_hours
+        se = se.replace("：", ":")
+        try:
+            se_t = datetime.strptime(se, "%H:%M").time()
+            base_d = date.fromisoformat(getattr(cal, "date", None) or date_str)
+            st_dt = datetime.combine(base_d, shift_start_t)
+            et_dt = datetime.combine(base_d, se_t)
+            # 跨午夜：shift_end <= shift_start 表示次日结束（含相等：24h）
+            if et_dt <= st_dt:
+                et_dt = et_dt + timedelta(days=1)
+            return (et_dt - st_dt).total_seconds() / 3600.0
+        except (ValueError, TypeError):
+            # shift_end 非法：回退到 shift_hours（已从 cal.shift_hours 读取）
+            return shift_hours
+
     def _policy_for_date(self, date_str: str, operator_id: Optional[str] = None) -> DayPolicy:
         """获取某个“日期键”的 DayPolicy（不做跨午夜归属判断）。"""
         op_id = self._normalize_text(operator_id) if operator_id is not None else None
@@ -110,46 +153,15 @@ class CalendarEngine:
         if cached is not None:
             return cached
 
-        cal: Any = None
-        if op_id:
-            row_op = self.operator_calendar_repo.get(op_id, date_str)
-            if row_op:
-                cal = row_op
-        if cal is None:
-            row = self.repo.get(date_str)
-            cal = row if row else self._default_for_date(date_str)
+        cal = self._resolve_calendar_row(date_str, op_id)
 
         # 防御：异常值兜底
         shift_hours = float(getattr(cal, "shift_hours", 0.0) or 0.0)
-        efficiency = float(getattr(cal, "efficiency", 1.0) or 1.0)
-        if efficiency <= 0:
-            efficiency = 1.0
+        efficiency = self._normalize_efficiency(cal)
 
         # shift_start/shift_end：默认 08:00；若提供 shift_end 则优先用其推导 shift_hours
-        ss = (cal.shift_start or "").strip() if getattr(cal, "shift_start", None) else ""
-        if not ss:
-            ss = "08:00"
-        ss = ss.replace("：", ":")
-        try:
-            ss_t = datetime.strptime(ss, "%H:%M").time()
-        except Exception:
-            ss_t = time(8, 0, 0)
-
-        se = (cal.shift_end or "").strip() if getattr(cal, "shift_end", None) else ""
-        if se:
-            se = se.replace("：", ":")
-            try:
-                se_t = datetime.strptime(se, "%H:%M").time()
-                base_d = date.fromisoformat(getattr(cal, "date", None) or date_str)
-                st_dt = datetime.combine(base_d, ss_t)
-                et_dt = datetime.combine(base_d, se_t)
-                # 跨午夜：shift_end <= shift_start 表示次日结束（含相等：24h）
-                if et_dt <= st_dt:
-                    et_dt = et_dt + timedelta(days=1)
-                shift_hours = (et_dt - st_dt).total_seconds() / 3600.0
-            except (ValueError, TypeError):
-                # shift_end 非法：回退到 shift_hours（已从 cal.shift_hours 读取）
-                pass
+        ss_t = self._parse_shift_start(cal)
+        shift_hours = self._override_shift_hours_by_shift_end(cal, date_str=date_str, shift_start_t=ss_t, shift_hours=shift_hours)
 
         p = DayPolicy(
             date_str=getattr(cal, "date", None) or date_str,

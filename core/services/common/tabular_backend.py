@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 
 class TabularBackend(ABC):
@@ -14,6 +16,6 @@ class TabularBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def write(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1"):
+    def write(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1") -> None:
         raise NotImplementedError
 

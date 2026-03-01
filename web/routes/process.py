@@ -13,17 +13,19 @@
 - `process_excel_part_operation_hours.py`：零件工序工时 Excel 导入/导出
 """
 
-from .process_bp import bp
+from __future__ import annotations
+
+from . import process_excel_op_types as _excel_op_types  # noqa: F401
+from . import process_excel_part_operation_hours as _excel_part_op_hours  # noqa: F401
+from . import process_excel_part_operations as _excel_part_ops  # noqa: F401
+from . import process_excel_routes as _excel_routes  # noqa: F401
+from . import process_excel_suppliers as _excel_suppliers  # noqa: F401
+from . import process_op_types as _op_types  # noqa: F401
 
 # 导入子模块以注册路由（side-effect）
 from . import process_parts as _parts  # noqa: F401
-from . import process_op_types as _op_types  # noqa: F401
 from . import process_suppliers as _suppliers  # noqa: F401
-from . import process_excel_op_types as _excel_op_types  # noqa: F401
-from . import process_excel_suppliers as _excel_suppliers  # noqa: F401
-from . import process_excel_routes as _excel_routes  # noqa: F401
-from . import process_excel_part_operations as _excel_part_ops  # noqa: F401
-from . import process_excel_part_operation_hours as _excel_part_op_hours  # noqa: F401
+from .process_bp import bp
 
 __all__ = ["bp"]
 

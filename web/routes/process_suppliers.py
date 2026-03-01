@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from flask import flash, g, redirect, request, url_for
 
+from core.models.enums import SupplierStatus
+from core.services.process import OpTypeService, SupplierService
 from web.ui_mode import render_ui_template as render_template
 
-from core.services.process import OpTypeService, SupplierService
-
-from .process_bp import bp
 from .pagination import paginate_rows, parse_page_args
-
+from .process_bp import bp
 
 # ============================================================
 # 供应商配置（页面）
@@ -16,7 +15,7 @@ from .pagination import paginate_rows, parse_page_args
 
 
 def _supplier_status_zh(status: str) -> str:
-    if status == "inactive":
+    if status == SupplierStatus.INACTIVE.value:
         return "停用"
     return "启用"
 
@@ -34,7 +33,7 @@ def suppliers_page():
         view_rows.append(
             {
                 **r,
-                "status_zh": _supplier_status_zh(r.get("status") or "active"),
+                "status_zh": _supplier_status_zh(r.get("status") or SupplierStatus.ACTIVE.value),
                 "op_type_name": (ot.name if ot else None),
             }
         )
@@ -46,7 +45,7 @@ def suppliers_page():
         title="供应商配置",
         suppliers=view_rows,
         op_type_options=op_type_options,
-        status_options=[("active", "启用"), ("inactive", "停用")],
+        status_options=[(SupplierStatus.ACTIVE.value, "启用"), (SupplierStatus.INACTIVE.value, "停用")],
         pager=pager,
     )
 
@@ -57,7 +56,7 @@ def create_supplier():
     name = request.form.get("name")
     op_type_id = request.form.get("op_type_id") or None
     default_days = request.form.get("default_days") or "1"
-    status = request.form.get("status") or "active"
+    status = request.form.get("status") or SupplierStatus.ACTIVE.value
     remark = request.form.get("remark")
 
     svc = SupplierService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -86,7 +85,7 @@ def supplier_detail(supplier_id: str):
         supplier=s.to_dict(),
         op_type_name=(op_types.get(s.op_type_id or "")).name if s.op_type_id and op_types.get(s.op_type_id) else None,
         op_type_options=op_type_options,
-        status_options=[("active", "启用"), ("inactive", "停用")],
+        status_options=[(SupplierStatus.ACTIVE.value, "启用"), (SupplierStatus.INACTIVE.value, "停用")],
         supplier_status_zh=_supplier_status_zh(s.status),
     )
 

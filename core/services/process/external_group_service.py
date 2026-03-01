@@ -4,7 +4,8 @@ from typing import Any, Dict, List, Optional
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.models.enums import MergeMode
+from core.models import ExternalGroup, PartOperation
+from core.models.enums import MergeMode, SourceType
 from core.services.common.normalize import normalize_text
 from data.repositories import ExternalGroupRepository, PartOperationRepository
 
@@ -39,8 +40,96 @@ class ExternalGroupService:
             raise BusinessError(ErrorCode.EXTERNAL_GROUP_ERROR, f"外部工序组“{group_id}”不存在")
         return g
 
-    def list_by_part(self, part_no: str):
+    def list_by_part(self, part_no: str) -> List[ExternalGroup]:
         return self.group_repo.list_by_part(part_no)
+
+    def _list_external_ops_in_group(self, part_no: str, group_id: str) -> List[PartOperation]:
+        ops = self.op_repo.list_by_part(part_no, include_deleted=False)
+        out: List[PartOperation] = []
+        for op in ops:
+            if op.ext_group_id != group_id:
+                continue
+            if (op.source or "").strip().lower() != SourceType.EXTERNAL.value:
+                continue
+            out.append(op)
+        return out
+
+    def _update_group_common_fields(
+        self,
+        group_id: str,
+        *,
+        merge_mode: str,
+        total_days: Optional[float],
+        supplier_id: Any,
+        remark: Any,
+        normalized_supplier_id: Optional[str],
+        normalized_remark: Optional[str],
+    ) -> None:
+        updates: Dict[str, Any] = {"merge_mode": merge_mode, "total_days": total_days}
+        if supplier_id is not None:
+            updates["supplier_id"] = normalized_supplier_id
+        if remark is not None:
+            updates["remark"] = normalized_remark
+        self.group_repo.update(group_id, updates)
+
+    def _apply_merged_mode(
+        self,
+        group_id: str,
+        *,
+        total_days: Any,
+        part_no: str,
+        seqs: List[int],
+        supplier_id: Any,
+        remark: Any,
+        normalized_supplier_id: Optional[str],
+        normalized_remark: Optional[str],
+    ) -> None:
+        td = self._normalize_float(total_days)
+        if td is None or td <= 0:
+            raise ValidationError("合并周期（天）必须大于 0", field="total_days")
+
+        self._update_group_common_fields(
+            group_id,
+            merge_mode=MergeMode.MERGED.value,
+            total_days=float(td),
+            supplier_id=supplier_id,
+            remark=remark,
+            normalized_supplier_id=normalized_supplier_id,
+            normalized_remark=normalized_remark,
+        )
+        for seq in seqs:
+            self.op_repo.update(part_no, int(seq), {"ext_days": None})
+
+    def _apply_separate_mode(
+        self,
+        group_id: str,
+        *,
+        part_no: str,
+        ops: List[PartOperation],
+        per_op_days: Optional[Dict[int, Any]],
+        supplier_id: Any,
+        remark: Any,
+        normalized_supplier_id: Optional[str],
+        normalized_remark: Optional[str],
+    ) -> None:
+        self._update_group_common_fields(
+            group_id,
+            merge_mode=MergeMode.SEPARATE.value,
+            total_days=None,
+            supplier_id=supplier_id,
+            remark=remark,
+            normalized_supplier_id=normalized_supplier_id,
+            normalized_remark=normalized_remark,
+        )
+
+        per_op_days = per_op_days or {}
+        for op in ops:
+            d = per_op_days.get(int(op.seq))
+            dv = self._normalize_float(d)
+            if dv is None or dv <= 0:
+                # 没填时给默认 1 天（避免写入 NULL 导致后续排产无法计算）
+                dv = 1.0
+            self.op_repo.update(part_no, int(op.seq), {"ext_days": float(dv)})
 
     def set_merge_mode(
         self,
@@ -50,7 +139,7 @@ class ExternalGroupService:
         per_op_days: Optional[Dict[int, Any]] = None,
         supplier_id: Any = None,
         remark: Any = None,
-    ):
+    ) -> ExternalGroup:
         """
         设置外部组周期模式：
         - separate：每道外部工序在 PartOperations.ext_days 维护；ExternalGroups.total_days=NULL
@@ -66,12 +155,7 @@ class ExternalGroupService:
 
         g = self._get_group_or_raise(gid)
 
-        # 取该组内外部工序
-        ops = [
-            op
-            for op in self.op_repo.list_by_part(g.part_no, include_deleted=False)
-            if op.ext_group_id == gid and (op.source or "").strip().lower() == "external"
-        ]
+        ops = self._list_external_ops_in_group(g.part_no, gid)
         seqs = [int(op.seq) for op in ops]
 
         sup_id = self._normalize_text(supplier_id)
@@ -79,44 +163,27 @@ class ExternalGroupService:
 
         with self.tx_manager.transaction():
             if mode == MergeMode.MERGED.value:
-                td = self._normalize_float(total_days)
-                if td is None or td <= 0:
-                    raise ValidationError("合并周期（天）必须大于 0", field="total_days")
-
-                # 组表：写 total_days；工序表：清空 ext_days
-                self.group_repo.update(
+                self._apply_merged_mode(
                     gid,
-                    {
-                        "merge_mode": mode,
-                        "total_days": float(td),
-                        # 允许可选字段覆盖
-                        **({"supplier_id": sup_id} if supplier_id is not None else {}),
-                        **({"remark": rmk} if remark is not None else {}),
-                    },
+                    total_days=total_days,
+                    part_no=g.part_no,
+                    seqs=seqs,
+                    supplier_id=supplier_id,
+                    remark=remark,
+                    normalized_supplier_id=sup_id,
+                    normalized_remark=rmk,
                 )
-                for seq in seqs:
-                    self.op_repo.update(g.part_no, seq, {"ext_days": None})
-
             else:
-                # separate：组表 total_days 清空；工序表写每道 ext_days
-                self.group_repo.update(
+                self._apply_separate_mode(
                     gid,
-                    {
-                        "merge_mode": mode,
-                        "total_days": None,
-                        **({"supplier_id": sup_id} if supplier_id is not None else {}),
-                        **({"remark": rmk} if remark is not None else {}),
-                    },
+                    part_no=g.part_no,
+                    ops=ops,
+                    per_op_days=per_op_days,
+                    supplier_id=supplier_id,
+                    remark=remark,
+                    normalized_supplier_id=sup_id,
+                    normalized_remark=rmk,
                 )
-
-                per_op_days = per_op_days or {}
-                for op in ops:
-                    d = per_op_days.get(int(op.seq))
-                    dv = self._normalize_float(d)
-                    if dv is None or dv <= 0:
-                        # 没填时给默认 1 天（避免写入 NULL 导致后续排产无法计算）
-                        dv = 1.0
-                    self.op_repo.update(g.part_no, int(op.seq), {"ext_days": float(dv)})
 
         return self._get_group_or_raise(gid)
 

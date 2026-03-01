@@ -66,7 +66,9 @@ class PartOperationHoursExcelImportService:
         if err:
             stats.add_error(pr.row_num, err)
             return
-        assert parsed is not None
+        if parsed is None:
+            stats.add_error(pr.row_num, "内部解析异常：返回值意外为空")
+            return
         part_no, seq, sh, uh = parsed
 
         try:

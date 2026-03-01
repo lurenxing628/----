@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
 
-from .excel_service import ImportPreviewRow, RowStatus, ImportMode, ImportResult
+from .excel_service import ImportMode, ImportPreviewRow, ImportResult, RowStatus
 
 
 def _calc_stats_from_preview(preview_rows: List[ImportPreviewRow]) -> Dict[str, Any]:
@@ -39,7 +39,7 @@ def log_excel_import(
     errors_sample: Optional[List[Dict[str, Any]]] = None,
     file_hash: Optional[str] = None,
     target_id: Optional[str] = None,
-):
+) -> None:
     """
     Excel 导入留痕（OperationLogs.action=import）。
 
@@ -101,7 +101,7 @@ def log_excel_export(
     time_range: Optional[Dict[str, Any]],
     time_cost_ms: int,
     target_id: Optional[str] = None,
-):
+) -> None:
     """
     Excel 导出留痕（OperationLogs.action=export）。
     """

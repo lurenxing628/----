@@ -1,10 +1,67 @@
+from __future__ import annotations
+
 import os
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 import openpyxl
 
 from core.infrastructure.errors import AppError, ErrorCode
+
 from .tabular_backend import TabularBackend
+
+
+def _normalize_header_cell(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _normalize_cell_value(value: Any) -> Any:
+    if isinstance(value, str):
+        s = value.strip()
+        return None if s == "" else s
+    return value
+
+
+def _is_blank_cell(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        return str(value).strip() == ""
+    except Exception:
+        return False
+
+
+def _is_blank_row(raw: Any) -> bool:
+    if raw is None:
+        return True
+    return all(_is_blank_cell(v) for v in raw)
+
+
+def _row_to_item(headers: List[str], raw: Any) -> Dict[str, Any]:
+    item: Dict[str, Any] = {}
+    for idx, key in enumerate(headers):
+        if not key:
+            continue
+        val = raw[idx] if idx < len(raw) else None
+        item[key] = _normalize_cell_value(val)
+    return item
+
+
+def _convert_worksheet_rows(rows: List[Any]) -> List[Dict[str, Any]]:
+    if not rows:
+        return []
+
+    headers = [_normalize_header_cell(h) for h in rows[0]]
+    result: List[Dict[str, Any]] = []
+
+    for raw in rows[1:]:
+        # 跳过空行
+        if _is_blank_row(raw):
+            continue
+        result.append(_row_to_item(headers, raw))
+
+    return result
 
 
 class OpenpyxlBackend(TabularBackend):
@@ -17,30 +74,7 @@ class OpenpyxlBackend(TabularBackend):
             ws = wb[sheet] if sheet else wb.active
 
             rows = list(ws.iter_rows(values_only=True))
-            if not rows:
-                return []
-
-            headers = [str(h).strip() if h is not None else "" for h in rows[0]]
-            result: List[Dict[str, Any]] = []
-
-            for raw in rows[1:]:
-                # 跳过空行
-                if raw is None or all(v is None or str(v).strip() == "" for v in raw):
-                    continue
-
-                item: Dict[str, Any] = {}
-                for idx, key in enumerate(headers):
-                    if not key:
-                        continue
-                    val = raw[idx] if idx < len(raw) else None
-                    if isinstance(val, str):
-                        val = val.strip()
-                        if val == "":
-                            val = None
-                    item[key] = val
-                result.append(item)
-
-            return result
+            return _convert_worksheet_rows(rows)
         except AppError:
             raise
         except Exception as e:
@@ -49,7 +83,7 @@ class OpenpyxlBackend(TabularBackend):
                 message="读取 Excel 文件失败，请确认文件未损坏且未被其他程序占用。",
                 details={"file_path": file_path, "sheet": sheet},
                 cause=e,
-            )
+            ) from e
         finally:
             try:
                 if wb is not None:
@@ -57,7 +91,7 @@ class OpenpyxlBackend(TabularBackend):
             except Exception:
                 pass
 
-    def write(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1"):
+    def write(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1") -> None:
         wb = None
         try:
             os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
@@ -84,7 +118,7 @@ class OpenpyxlBackend(TabularBackend):
                 message="写入 Excel 文件失败，请确认目标路径可写。",
                 details={"file_path": file_path, "sheet": sheet},
                 cause=e,
-            )
+            ) from e
         finally:
             try:
                 if wb is not None:

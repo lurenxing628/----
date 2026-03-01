@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from ._helpers import RowLike, as_dict, get, parse_int
+from .enums import MachineDowntimeStatus
 
 
 @dataclass
@@ -24,12 +25,12 @@ class MachineDowntime:
     end_time: str = ""
     reason_code: Optional[str] = None
     reason_detail: Optional[str] = None
-    status: str = "active"  # active/cancelled
+    status: str = MachineDowntimeStatus.ACTIVE.value  # active/cancelled
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: RowLike) -> "MachineDowntime":
+    def from_row(cls, row: RowLike) -> MachineDowntime:
         raw_id = get(row, "id")
         _id = parse_int(raw_id, default=None)
         return cls(
@@ -41,7 +42,10 @@ class MachineDowntime:
             end_time=str(get(row, "end_time") or ""),
             reason_code=get(row, "reason_code"),
             reason_detail=get(row, "reason_detail"),
-            status=(str(get(row, "status") or "active").strip().lower() or "active"),
+            status=(
+                str(get(row, "status") or MachineDowntimeStatus.ACTIVE.value).strip().lower()
+                or MachineDowntimeStatus.ACTIVE.value
+            ),
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),
         )

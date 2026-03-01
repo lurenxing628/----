@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from flask import flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
+from core.models.enums import MachineStatus, YesNo
 from core.services.equipment import MachineDowntimeService, MachineService
 from core.services.equipment.machine_downtime_query_service import MachineDowntimeQueryService
 from core.services.personnel import OperatorMachineService, OperatorService
@@ -81,7 +82,11 @@ def list_page():
         title="设备管理",
         machines=view_rows,
         op_type_options=op_type_options,
-        status_options=[("active", "可用"), ("maintain", "维修"), ("inactive", "停用")],
+        status_options=[
+            (MachineStatus.ACTIVE.value, "可用"),
+            (MachineStatus.MAINTAIN.value, "维修"),
+            (MachineStatus.INACTIVE.value, "停用"),
+        ],
         pager=pager,
     )
 
@@ -92,7 +97,7 @@ def create_machine():
     name = request.form.get("name")
     op_type_id = request.form.get("op_type_id") or None
     category = request.form.get("category") or None
-    status = request.form.get("status") or "active"
+    status = request.form.get("status") or MachineStatus.ACTIVE.value
     remark = request.form.get("remark")
 
     svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -156,7 +161,11 @@ def detail_page(machine_id: str):
         machine_status_zh=_machine_status_zh(m.status),
         op_type_name=(op_types.get(m.op_type_id or "")).name if m.op_type_id and op_types.get(m.op_type_id) else None,
         op_type_options=op_type_options,
-        status_options=[("active", "可用"), ("maintain", "维修"), ("inactive", "停用")],
+        status_options=[
+            (MachineStatus.ACTIVE.value, "可用"),
+            (MachineStatus.MAINTAIN.value, "维修"),
+            (MachineStatus.INACTIVE.value, "停用"),
+        ],
         linked_operators=linked_operators,
         available_operators=available_operators,
         downtime_rows=[d.to_dict() for d in downtimes],
@@ -211,7 +220,7 @@ def bulk_set_status():
     if not machine_ids:
         flash("请至少选择 1 台设备。", "error")
         return redirect(url_for("equipment.list_page"))
-    if status not in ("active", "maintain", "inactive"):
+    if status not in (MachineStatus.ACTIVE.value, MachineStatus.MAINTAIN.value, MachineStatus.INACTIVE.value):
         raise ValidationError("状态不合法（允许：active / maintain / inactive）", field="status")
 
     svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -273,7 +282,7 @@ def add_link(machine_id: str):
 def update_link(machine_id: str):
     operator_id = request.form.get("operator_id")
     skill_level = request.form.get("skill_level")
-    is_primary = "yes" if request.form.get("is_primary") else "no"
+    is_primary = YesNo.YES.value if request.form.get("is_primary") else YesNo.NO.value
     svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
     svc.update_link_fields(operator_id=operator_id, machine_id=machine_id, skill_level=skill_level, is_primary=is_primary)
     flash("已更新关联字段（技能等级/主操设备）。", "success")

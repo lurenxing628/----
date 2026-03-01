@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple
 from flask import flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
+from core.models.enums import PartOperationStatus, SourceType, YesNo
 from core.services.process import ExternalGroupService, PartService, SupplierService
 from web.ui_mode import render_ui_template as render_template
 
@@ -14,9 +15,9 @@ from .process_bp import _merge_mode_zh, _source_zh, bp
 
 
 def _summarize_active_ops(ops: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int, int, int]:
-    active_ops = [o for o in ops if o.get("status") == "active"]
-    internal_count = sum(1 for o in active_ops if o.get("source") == "internal")
-    external_count = sum(1 for o in active_ops if o.get("source") == "external")
+    active_ops = [o for o in ops if o.get("status") == PartOperationStatus.ACTIVE.value]
+    internal_count = sum(1 for o in active_ops if o.get("source") == SourceType.INTERNAL.value)
+    external_count = sum(1 for o in active_ops if o.get("source") == SourceType.EXTERNAL.value)
     total_count = len(active_ops)
     return active_ops, total_count, internal_count, external_count
 
@@ -51,7 +52,7 @@ def list_parts():
                 "route_raw": p.route_raw,
                 "route_short": route_short if route_short else None,
                 "route_parsed": p.route_parsed,
-                "route_parsed_zh": "已解析" if p.route_parsed == "yes" else "未解析",
+                "route_parsed_zh": "已解析" if p.route_parsed == YesNo.YES.value else "未解析",
             }
         )
 

@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Set, Tuple
 
 from flask import g, request
 
-from core.models.enums import SourceType
+from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
 from core.services.equipment import MachineService
 from core.services.personnel import OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
@@ -45,7 +45,7 @@ def _collect_selected_resource_ids(ops: List[Any]) -> Tuple[Set[str], Set[str], 
 
 
 def _build_machine_options(machine_svc: MachineService, selected_machine_ids: Set[str]) -> List[Dict[str, Any]]:
-    machines_active = machine_svc.list(status="active")
+    machines_active = machine_svc.list(status=MachineStatus.ACTIVE.value)
     machines_by_id = {m.machine_id: m for m in machines_active}
     missing_machine_ids: Set[str] = set()
     for mid in sorted(selected_machine_ids):
@@ -58,9 +58,12 @@ def _build_machine_options(machine_svc: MachineService, selected_machine_ids: Se
             missing_machine_ids.add(mid)
 
     machine_options: List[Dict[str, Any]] = []
-    for m in sorted(machines_by_id.values(), key=lambda x: ((x.status or "").strip() != "active", x.machine_id)):
+    for m in sorted(
+        machines_by_id.values(),
+        key=lambda x: ((x.status or "").strip() != MachineStatus.ACTIVE.value, x.machine_id),
+    ):
         status_text = (m.status or "").strip()
-        disabled = status_text != "active"
+        disabled = status_text != MachineStatus.ACTIVE.value
         status_note = f"（不可用：{status_text}）" if disabled else ""
         machine_options.append(
             {"value": m.machine_id, "label": f"{m.machine_id} {m.name}{status_note}", "disabled": disabled}
@@ -71,7 +74,7 @@ def _build_machine_options(machine_svc: MachineService, selected_machine_ids: Se
 
 
 def _build_operator_options(operator_svc: OperatorService, selected_operator_ids: Set[str]) -> List[Dict[str, Any]]:
-    operators_active = operator_svc.list(status="active")
+    operators_active = operator_svc.list(status=OperatorStatus.ACTIVE.value)
     operators_by_id = {o.operator_id: o for o in operators_active}
     missing_operator_ids: Set[str] = set()
     for oid in sorted(selected_operator_ids):
@@ -84,9 +87,12 @@ def _build_operator_options(operator_svc: OperatorService, selected_operator_ids
             missing_operator_ids.add(oid)
 
     operator_options: List[Dict[str, Any]] = []
-    for o in sorted(operators_by_id.values(), key=lambda x: ((x.status or "").strip() != "active", x.operator_id)):
+    for o in sorted(
+        operators_by_id.values(),
+        key=lambda x: ((x.status or "").strip() != OperatorStatus.ACTIVE.value, x.operator_id),
+    ):
         status_text = (o.status or "").strip()
-        disabled = status_text != "active"
+        disabled = status_text != OperatorStatus.ACTIVE.value
         status_note = f"（不可用：{status_text}）" if disabled else ""
         operator_options.append(
             {"value": o.operator_id, "label": f"{o.operator_id} {o.name}{status_note}", "disabled": disabled}
@@ -97,7 +103,7 @@ def _build_operator_options(operator_svc: OperatorService, selected_operator_ids
 
 
 def _build_supplier_options(supplier_svc: SupplierService, selected_supplier_ids: Set[str]) -> List[Dict[str, Any]]:
-    suppliers_active = supplier_svc.list(status="active")
+    suppliers_active = supplier_svc.list(status=SupplierStatus.ACTIVE.value)
     suppliers_by_id = {s.supplier_id: s for s in suppliers_active}
     missing_supplier_ids: Set[str] = set()
     for sid in sorted(selected_supplier_ids):
@@ -110,9 +116,12 @@ def _build_supplier_options(supplier_svc: SupplierService, selected_supplier_ids
             missing_supplier_ids.add(sid)
 
     supplier_options: List[Dict[str, Any]] = []
-    for s in sorted(suppliers_by_id.values(), key=lambda x: ((x.status or "").strip() != "active", x.supplier_id)):
+    for s in sorted(
+        suppliers_by_id.values(),
+        key=lambda x: ((x.status or "").strip() != SupplierStatus.ACTIVE.value, x.supplier_id),
+    ):
         status_text = (s.status or "").strip()
-        disabled = status_text != "active"
+        disabled = status_text != SupplierStatus.ACTIVE.value
         status_note = f"（不可用：{status_text}）" if disabled else ""
         name = (s.name or "").strip()
         label = f"{s.supplier_id} {name}".strip() + status_note
@@ -163,7 +172,7 @@ def _build_machine_operator_maps(
         if not mc_id or not op_id:
             continue
         machine_operators.setdefault(mc_id, []).append(op_id)
-        if prefer_primary_skill == "yes":
+        if prefer_primary_skill == YesNo.YES.value:
             machine_operator_meta.setdefault(mc_id, {})[op_id] = {
                 "skill_level": r.get("skill_level"),
                 "is_primary": r.get("is_primary"),

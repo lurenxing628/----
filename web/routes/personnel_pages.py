@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from flask import flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
+from core.models.enums import OperatorStatus, YesNo
 from core.services.equipment import MachineService
 from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
@@ -64,7 +65,7 @@ def list_page():
         "personnel/list.html",
         title="人员管理",
         operators=view_rows,
-        status_options=[("active", "在岗"), ("inactive", "停用/休假")],
+        status_options=[(OperatorStatus.ACTIVE.value, "在岗"), (OperatorStatus.INACTIVE.value, "停用/休假")],
         pager=pager,
     )
 
@@ -73,7 +74,7 @@ def list_page():
 def create_operator():
     op_id = request.form.get("operator_id")
     name = request.form.get("name")
-    status = request.form.get("status") or "active"
+    status = request.form.get("status") or OperatorStatus.ACTIVE.value
     remark = request.form.get("remark")
 
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -127,7 +128,7 @@ def detail_page(operator_id: str):
         title=f"人员详情 - {op.operator_id} {op.name}",
         operator=op.to_dict(),
         operator_status_zh=_operator_status_zh(op.status),
-        status_options=[("active", "在岗"), ("inactive", "停用/休假")],
+        status_options=[(OperatorStatus.ACTIVE.value, "在岗"), (OperatorStatus.INACTIVE.value, "停用/休假")],
         linked_machines=linked_machines,
         available_machines=available_machines,
         skill_level_options=[("beginner", "初级"), ("normal", "普通"), ("expert", "熟练")],
@@ -178,7 +179,7 @@ def bulk_set_status():
     if not operator_ids:
         flash("请至少选择 1 个人员。", "error")
         return redirect(url_for("personnel.list_page"))
-    if status not in ("active", "inactive"):
+    if status not in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
         raise ValidationError("状态不合法（允许：active / inactive）", field="status")
 
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -241,7 +242,7 @@ def update_link(operator_id: str):
     machine_id = request.form.get("machine_id")
     skill_level = request.form.get("skill_level")
     # checkbox：未勾选时 form 中不存在该 key
-    is_primary = "yes" if request.form.get("is_primary") else "no"
+    is_primary = YesNo.YES.value if request.form.get("is_primary") else YesNo.NO.value
     svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
     svc.update_link_fields(operator_id=operator_id, machine_id=machine_id, skill_level=skill_level, is_primary=is_primary)
     flash("已更新关联字段（技能等级/主操设备）。", "success")

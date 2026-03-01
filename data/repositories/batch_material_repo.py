@@ -39,6 +39,19 @@ class BatchMaterialRepository(BaseRepository):
         )
         return [BatchMaterial.from_row(r) for r in rows]
 
+    def list_with_material_details_by_batch(self, batch_id: str) -> List[Dict[str, Any]]:
+        return self.fetchall(
+            """
+            SELECT bm.id, bm.batch_id, bm.material_id, m.name AS material_name, m.spec, m.unit,
+                   bm.required_qty, bm.available_qty, bm.ready_status
+            FROM BatchMaterials bm
+            LEFT JOIN Materials m ON m.material_id = bm.material_id
+            WHERE bm.batch_id = ?
+            ORDER BY bm.id
+            """,
+            (str(batch_id),),
+        )
+
     def add(self, batch_id: str, material_id: str, *, required_qty: float, available_qty: float, ready_status: str) -> BatchMaterial:
         cur = self.execute(
             """

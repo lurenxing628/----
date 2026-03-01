@@ -8,6 +8,45 @@ from core.infrastructure.errors import AppError, ErrorCode
 from .tabular_backend import TabularBackend
 
 
+def _normalize_header_key(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _normalize_cell_value(value: Any) -> Any:
+    if isinstance(value, str):
+        s = value.strip()
+        return None if s == "" else s
+    return value
+
+
+def _is_blank_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    return False
+
+
+def _normalize_record(record: Any) -> Dict[str, Any]:
+    item: Dict[str, Any] = {}
+    if not record:
+        return item
+    for k, v in (record or {}).items():
+        key = _normalize_header_key(k)
+        if not key:
+            continue
+        item[key] = _normalize_cell_value(v)
+    return item
+
+
+def _is_blank_item(item: Dict[str, Any]) -> bool:
+    if not item:
+        return True
+    return all(_is_blank_value(v) for v in item.values())
+
+
 class PandasBackend(TabularBackend):
     """
     可选 Excel 后端：pandas + numpy（读取/写入 xlsx）。
@@ -26,19 +65,9 @@ class PandasBackend(TabularBackend):
 
             result: List[Dict[str, Any]] = []
             for r in raw_rows:
-                item: Dict[str, Any] = {}
-                for k, v in (r or {}).items():
-                    key = str(k).strip() if k is not None else ""
-                    if not key:
-                        continue
-                    val = v
-                    if isinstance(val, str):
-                        val = val.strip()
-                        if val == "":
-                            val = None
-                    item[key] = val
+                item = _normalize_record(r)
                 # 跳过空行
-                if not item or all(v is None or (isinstance(v, str) and v.strip() == "") for v in item.values()):
+                if _is_blank_item(item):
                     continue
                 result.append(item)
             return result
@@ -50,9 +79,9 @@ class PandasBackend(TabularBackend):
                 message="读取 Excel 文件失败（pandas），请确认文件未损坏且未被其他程序占用。",
                 details={"file_path": file_path, "sheet": sheet},
                 cause=e,
-            )
+            ) from e
 
-    def write(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1"):
+    def write(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1") -> None:
         try:
             import pandas as pd
 
@@ -82,5 +111,5 @@ class PandasBackend(TabularBackend):
                 message="写入 Excel 文件失败（pandas），请确认目标路径可写。",
                 details={"file_path": file_path, "sheet": sheet},
                 cause=e,
-            )
+            ) from e
 

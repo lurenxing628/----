@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import ExternalGroup, Part, PartOperation
+from core.models.enums import MergeMode, PartOperationStatus, SourceType, YesNo
 from core.services.common.normalize import normalize_text
 from data.repositories import (
     ExternalGroupRepository,
@@ -67,7 +68,7 @@ class PartService:
         snapshot: Dict[int, Tuple[float, float]] = {}
         ops = self.op_repo.list_by_part(part_no, include_deleted=False)
         for op in ops:
-            if (op.source or "").strip().lower() != "internal":
+            if (op.source or "").strip().lower() != SourceType.INTERNAL.value:
                 continue
             try:
                 seq = int(op.seq)
@@ -80,7 +81,7 @@ class PartService:
     # Parts CRUD
     # -------------------------
     def list(self, route_parsed: Optional[str] = None) -> List[Part]:
-        if route_parsed and route_parsed not in ("yes", "no"):
+        if route_parsed and route_parsed not in (YesNo.YES.value, YesNo.NO.value):
             raise ValidationError("route_parsed 参数不合法（允许：yes / no）", field="route_parsed")
         return self.part_repo.list(route_parsed=route_parsed)
 
@@ -109,7 +110,7 @@ class PartService:
                     "part_no": pn,
                     "part_name": name,
                     "route_raw": rr,
-                    "route_parsed": "no",
+                    "route_parsed": YesNo.NO.value,
                     "remark": rmk,
                 }
             )
@@ -244,9 +245,9 @@ class PartService:
         # upsert part
         existed = self.part_repo.get(pn)
         if existed:
-            self.part_repo.update(pn, {"part_name": name, "route_raw": rr, "route_parsed": "yes"})
+            self.part_repo.update(pn, {"part_name": name, "route_raw": rr, "route_parsed": YesNo.YES.value})
         else:
-            self.part_repo.create({"part_no": pn, "part_name": name, "route_raw": rr, "route_parsed": "yes"})
+            self.part_repo.create({"part_no": pn, "part_name": name, "route_raw": rr, "route_parsed": YesNo.YES.value})
 
         old_internal_hours = self._build_internal_hours_snapshot(pn)
 
@@ -271,7 +272,7 @@ class PartService:
         """
         # operations
         for op in parse_result.operations:
-            if (op.source or "").strip().lower() == "internal":
+            if (op.source or "").strip().lower() == SourceType.INTERNAL.value:
                 seq = int(op.seq)
                 setup_hours = 0.0
                 unit_hours = 0.0
@@ -285,13 +286,13 @@ class PartService:
                         "seq": seq,
                         "op_type_id": op.op_type_id,
                         "op_type_name": op.op_type_name,
-                        "source": "internal",
+                        "source": SourceType.INTERNAL.value,
                         "supplier_id": None,
                         "ext_days": None,
                         "ext_group_id": None,
                         "setup_hours": setup_hours,
                         "unit_hours": unit_hours,
-                        "status": "active",
+                        "status": PartOperationStatus.ACTIVE.value,
                     }
                 )
             else:
@@ -301,13 +302,13 @@ class PartService:
                         "seq": int(op.seq),
                         "op_type_id": op.op_type_id,
                         "op_type_name": op.op_type_name,
-                        "source": "external",
+                        "source": SourceType.EXTERNAL.value,
                         "supplier_id": op.supplier_id,
                         "ext_days": float(op.default_days or 1.0),
                         "ext_group_id": op.ext_group_id,
                         "setup_hours": 0.0,
                         "unit_hours": 0.0,
-                        "status": "active",
+                        "status": PartOperationStatus.ACTIVE.value,
                     }
                 )
 
@@ -324,7 +325,7 @@ class PartService:
                     "part_no": part_no,
                     "start_seq": int(g.start_seq),
                     "end_seq": int(g.end_seq),
-                    "merge_mode": "separate",
+                    "merge_mode": MergeMode.SEPARATE.value,
                     "total_days": None,
                     "supplier_id": main_supplier_id,
                     "remark": None,
@@ -367,9 +368,9 @@ class PartService:
             raise ValidationError("工时不能为负数", field="工时")
 
         op = self.op_repo.get(pn, s)
-        if not op or (op.status or "").strip().lower() != "active":
+        if not op or (op.status or "").strip().lower() != PartOperationStatus.ACTIVE.value:
             raise BusinessError(ErrorCode.NOT_FOUND, f"工序 {s} 不存在或已删除")
-        if (op.source or "").strip().lower() != "internal":
+        if (op.source or "").strip().lower() != SourceType.INTERNAL.value:
             raise ValidationError("只能编辑内部工序工时", field="工序")
 
         with self.tx_manager.transaction():
@@ -393,8 +394,8 @@ class PartService:
             int(op.seq)
             for op in ops
             if op.ext_group_id == gid
-            and (op.source or "").strip().lower() == "external"
-            and (op.status or "").strip().lower() == "active"
+            and (op.source or "").strip().lower() == SourceType.EXTERNAL.value
+            and (op.status or "").strip().lower() == PartOperationStatus.ACTIVE.value
         ]
 
         # 严格按文档规则：仅允许删除“首部连续外部组”或“尾部连续外部组”
@@ -446,8 +447,8 @@ class PartService:
                 int(op.seq)
                 for op in ops
                 if op.ext_group_id == group.group_id
-                and (op.source or "").strip().lower() == "external"
-                and (op.status or "").strip().lower() == "active"
+                and (op.source or "").strip().lower() == SourceType.EXTERNAL.value
+                and (op.status or "").strip().lower() == PartOperationStatus.ACTIVE.value
             ]
             if seqs and all(s in deletable_seqs for s in seqs):
                 group_ids.append(group.group_id)

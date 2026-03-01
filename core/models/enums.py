@@ -19,6 +19,16 @@ class MachineStatus(str, Enum):
     MAINTAIN = "maintain"
 
 
+class SupplierStatus(str, Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+class MaterialStatus(str, Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
 class SourceType(str, Enum):
     INTERNAL = "internal"
     EXTERNAL = "external"
@@ -61,4 +71,14 @@ class CalendarDayType(str, Enum):
 class MergeMode(str, Enum):
     SEPARATE = "separate"
     MERGED = "merged"
+
+
+class PartOperationStatus(str, Enum):
+    ACTIVE = "active"
+    DELETED = "deleted"
+
+
+class MachineDowntimeStatus(str, Enum):
+    ACTIVE = "active"
+    CANCELLED = "cancelled"
 

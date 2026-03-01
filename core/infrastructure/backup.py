@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import os
 import sqlite3
@@ -5,7 +7,6 @@ import threading
 import time
 from contextlib import closing
 from datetime import datetime, timedelta
-
 
 _MAINT_MUTEX = threading.Lock()
 
@@ -87,7 +88,7 @@ class BackupManager:
             try:
                 lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 try:
-                    os.write(lock_fd, f"pid={os.getpid()} ts={datetime.now().isoformat()}".encode("utf-8"))
+                    os.write(lock_fd, f"pid={os.getpid()} ts={datetime.now().isoformat()}".encode())
                 except Exception:
                     pass
             except FileExistsError:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, url_for
@@ -8,6 +7,7 @@ from flask import current_app, flash, g, redirect, request, url_for
 from core.services.system import SystemConfigService
 from core.services.system.operation_log_service import OperationLogService
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.system_logs_vm import build_operation_log_view_rows
 
 from .pagination import paginate_rows, parse_page_args
 from .system_bp import bp
@@ -36,20 +36,7 @@ def logs_page():
         end_time=end_norm,
     )
 
-    view_rows = []
-    for it in items:
-        d = it.to_dict()
-        detail_raw = d.get("detail")
-        detail_obj: Optional[Dict[str, Any]] = None
-        if detail_raw:
-            try:
-                parsed = json.loads(detail_raw)
-                if isinstance(parsed, dict):
-                    detail_obj = parsed
-            except Exception:
-                detail_obj = None
-        d["detail_obj"] = detail_obj
-        view_rows.append(d)
+    view_rows = build_operation_log_view_rows(items)
 
     # 语义约定：
     # - limit：总查询上限（仅在最近 N 条记录内分页）

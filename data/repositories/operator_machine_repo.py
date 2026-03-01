@@ -142,6 +142,11 @@ class OperatorMachineRepository(BaseRepository):
             (operator_id, machine_id),
         )
 
+    def delete_all(self) -> int:
+        """清空全部关联（用于 Excel REPLACE 导入）。"""
+        cur = self.execute("DELETE FROM OperatorMachine", None)
+        return int(getattr(cur, "rowcount", 0) or 0)
+
     def delete(self, link_id: int) -> None:
         self.execute("DELETE FROM OperatorMachine WHERE id = ?", (link_id,))
 

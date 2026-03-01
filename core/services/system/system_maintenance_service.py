@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
+from core.models.enums import YesNo
 from data.repositories import SystemJobStateRepository
 
 from .maintenance import (
@@ -91,7 +92,7 @@ class SystemMaintenanceService:
         # -------------------------
         # 1) 自动备份
         # -------------------------
-        if cfg.auto_backup_enabled == "yes":
+        if cfg.auto_backup_enabled == YesNo.YES.value:
             ran, d = maybe_run_auto_backup(
                 conn,
                 job_repo=job_repo,
@@ -112,7 +113,7 @@ class SystemMaintenanceService:
         # -------------------------
         # 2) 自动清理备份（保留策略）
         # -------------------------
-        if cfg.auto_backup_cleanup_enabled == "yes":
+        if cfg.auto_backup_cleanup_enabled == YesNo.YES.value:
             ran, d = maybe_run_auto_backup_cleanup(
                 conn,
                 job_repo=job_repo,
@@ -133,7 +134,7 @@ class SystemMaintenanceService:
         # -------------------------
         # 3) 自动清理操作日志（保留策略）
         # -------------------------
-        if cfg.auto_log_cleanup_enabled == "yes":
+        if cfg.auto_log_cleanup_enabled == YesNo.YES.value:
             ran, d = maybe_run_auto_log_cleanup(
                 conn,
                 job_repo=job_repo,

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
+from core.models.enums import SupplierStatus
 from core.services.common.enum_normalizers import normalize_supplier_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
@@ -94,10 +95,10 @@ def excel_supplier_preview():
         # 状态可选
         if "状态" in row:
             row["状态"] = _normalize_supplier_status(row.get("状态"))
-            if row["状态"] not in ("active", "inactive"):
+            if row["状态"] not in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
                 return "“状态”不合法（允许：active / inactive；或中文：启用/停用）"
         else:
-            row["状态"] = "active"
+            row["状态"] = SupplierStatus.ACTIVE.value
 
         # 工种可选（允许 id 或 名称），预览阶段标准化为“名称”
         try:
@@ -180,7 +181,7 @@ def excel_supplier_confirm():
         except Exception:
             return "“默认周期”必须是数字"
         row["状态"] = _normalize_supplier_status(row.get("状态"))
-        if row["状态"] not in ("active", "inactive"):
+        if row["状态"] not in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
             return "“状态”不合法（允许：active / inactive；或中文：启用/停用）"
         try:
             name = _resolve_op_type_name(row.get("对应工种"), op_type_svc=op_type_svc)
