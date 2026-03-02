@@ -1,7 +1,7 @@
 import os
-import sys
 import sqlite3
-from datetime import datetime, date
+import sys
+from datetime import date, datetime
 
 
 def find_repo_root() -> str:

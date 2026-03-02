@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from flask import flash, g, redirect, request, url_for
 
+from core.services.scheduler import CalendarService, ConfigService
 from web.ui_mode import render_ui_template as render_template
 
-from core.services.scheduler import CalendarService, ConfigService
-
-from .scheduler_bp import bp, _day_type_zh
+from .scheduler_bp import _day_type_zh, bp
 
 
 @bp.get("/calendar")

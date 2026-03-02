@@ -32,8 +32,8 @@ def main() -> None:
         sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import get_connection
-    from core.services.system import SystemMaintenanceService
     from core.infrastructure.logging import OperationLogger
+    from core.services.system import SystemMaintenanceService
 
     tmpdir = tempfile.mkdtemp(prefix="aps_regression_system_maintenance_")
     db_path = os.path.join(tmpdir, "aps_maintenance.db")

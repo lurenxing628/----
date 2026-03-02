@@ -50,15 +50,14 @@ def main():
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.errors import AppError, ErrorCode
     from core.infrastructure.transaction import TransactionManager
-
     from data.repositories import (
-        OperatorRepository,
-        OpTypeRepository,
-        MachineRepository,
-        OperatorMachineRepository,
         CalendarRepository,
         ConfigRepository,
+        MachineRepository,
         OperationLogRepository,
+        OperatorMachineRepository,
+        OperatorRepository,
+        OpTypeRepository,
         ScheduleHistoryRepository,
     )
 

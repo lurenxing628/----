@@ -117,8 +117,8 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
     if not rows:
         return
 
-    from datetime import date
     import re
+    from datetime import date
 
     def norm(value) -> Optional[str]:
         if value is None:

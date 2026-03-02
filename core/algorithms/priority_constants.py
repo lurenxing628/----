@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-
 DEFAULT_PRIORITY = "normal"
 
 # 约定：越小越优先（critical > urgent > normal）

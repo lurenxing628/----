@@ -174,8 +174,8 @@ def main():
         conn1.close()
 
     # 2) OpenpyxlBackend 读写 + ExcelService 预览
-    from core.services.common.openpyxl_backend import OpenpyxlBackend
     from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+    from core.services.common.openpyxl_backend import OpenpyxlBackend
 
     backend = OpenpyxlBackend()
     svc = ExcelService(backend=backend)
@@ -224,7 +224,7 @@ def main():
 
     # 3) 留痕：OperationLogs 写入（import/export）
     from core.infrastructure.logging import OperationLogger
-    from core.services.common.excel_audit import log_excel_import, log_excel_export
+    from core.services.common.excel_audit import log_excel_export, log_excel_import
 
     conn = get_connection(test_db)
     try:
@@ -299,8 +299,8 @@ def main():
     # 端到端：上传 → 预览 → 确认导入（验证 Operators + OperationLogs）
     lines.append("")
     lines.append("### 4.1 端到端：上传→预览→确认导入")
-    import re
     import html as html_module
+    import re
 
     wb = openpyxl.Workbook()
     ws = wb.active

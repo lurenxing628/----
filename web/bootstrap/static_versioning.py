@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 from typing import Any, Callable, Dict, Set
 
-from flask import Flask, url_for as flask_url_for
+from flask import Flask
+from flask import url_for as flask_url_for
 
 EXT_KEY_TEMPLATE_URL_FOR = "aps.template_url_for"
 

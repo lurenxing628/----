@@ -23,7 +23,6 @@ import sys
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)

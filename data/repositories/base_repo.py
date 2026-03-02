@@ -5,7 +5,6 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from core.infrastructure.errors import AppError, ErrorCode
 
-
 Params = Union[Sequence[Any], Dict[str, Any]]
 
 

@@ -119,7 +119,7 @@ def main():
             ("P_AUTO", "自动解析件", "5数铣10数铣", "no"),
         )
         conn.commit()
-        b_auto = batch_svc.create_batch_from_template(batch_id="B_AUTO", part_no="P_AUTO", quantity=1, priority="normal", ready_status="yes")
+        batch_svc.create_batch_from_template(batch_id="B_AUTO", part_no="P_AUTO", quantity=1, priority="normal", ready_status="yes")
         ops_auto = batch_svc.list_operations("B_AUTO")
         tmpl_cnt = conn.execute("SELECT COUNT(1) AS c FROM PartOperations WHERE part_no='P_AUTO'").fetchone()["c"]
         lines.append(f"- 自动解析：PartOperations={tmpl_cnt} BatchOperations={len(ops_auto)}（期望均 > 0）")
@@ -199,7 +199,7 @@ def main():
             lines.append(f"- 人机不匹配限制生效：{e.message}")
 
         # 清空（依赖 repo.update 支持 NULL）
-        cleared = sch_svc.update_internal_operation(op_internal.id, machine_id="", operator_id="", setup_hours=0, unit_hours=0)
+        sch_svc.update_internal_operation(op_internal.id, machine_id="", operator_id="", setup_hours=0, unit_hours=0)
         row = conn.execute("SELECT machine_id, operator_id FROM BatchOperations WHERE id=?", (op_internal.id,)).fetchone()
         lines.append(f"- 清空后：machine_id={row['machine_id']} operator_id={row['operator_id']}（期望均为 NULL）")
         if row["machine_id"] is not None or row["operator_id"] is not None:

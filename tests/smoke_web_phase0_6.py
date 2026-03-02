@@ -1,5 +1,5 @@
-import io
 import html as html_lib
+import io
 import json
 import os
 import re

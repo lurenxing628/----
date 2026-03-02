@@ -4,9 +4,8 @@ import traceback
 
 from flask import request
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import AppError, ErrorCode, error_response
+from web.ui_mode import render_ui_template as render_template
 
 
 def _wants_json() -> bool:

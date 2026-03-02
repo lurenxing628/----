@@ -138,7 +138,7 @@ def safe_url_for(endpoint: str, **values: Any) -> Optional[str]:
             logged = getattr(g, "_safe_url_for_missing_eps", None)
             if logged is None:
                 logged = set()
-                setattr(g, "_safe_url_for_missing_eps", logged)
+                g._safe_url_for_missing_eps = logged
             if endpoint not in logged:
                 logged.add(endpoint)
                 try:
@@ -183,7 +183,7 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
     # 保证模板里能直接用 ui_mode
     context.setdefault("ui_mode", mode)
     try:
-        setattr(g, "ui_mode", mode)
+        g.ui_mode = mode
     except Exception:
         pass
 

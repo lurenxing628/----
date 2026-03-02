@@ -30,7 +30,7 @@ def ensure_secret_key(app: Flask) -> None:
     if secret_file:
         try:
             if os.path.isfile(secret_file):
-                with open(secret_file, "r", encoding="utf-8") as f:
+                with open(secret_file, encoding="utf-8") as f:
                     key0 = (f.read() or "").strip()
                 if len(key0) >= min_len:
                     app.config["SECRET_KEY"] = key0

@@ -8,7 +8,6 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.scheduler import ConfigService
-
 from web.ui_mode import render_ui_template as render_template
 
 from .scheduler_bp import bp
@@ -77,7 +76,7 @@ def config_manual_page():
     manual_mtime = None
     if manual_path:
         try:
-            with open(manual_path, "r", encoding="utf-8") as f:
+            with open(manual_path, encoding="utf-8") as f:
                 manual_text = f.read()
             try:
                 manual_mtime = datetime.fromtimestamp(os.path.getmtime(manual_path)).strftime("%Y-%m-%d %H:%M:%S")

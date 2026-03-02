@@ -4,7 +4,6 @@ import re
 import sqlite3
 from typing import List, Optional, Tuple
 
-
 _PK_IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 _PK_CAST = rf"CAST\({_PK_IDENT} AS TEXT\)"
 _PK_LIT = r"'[^']*'"
