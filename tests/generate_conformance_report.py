@@ -158,23 +158,43 @@ def _check_excel_templates(repo_root: str) -> CheckResult:
 
 
 def _check_backup_on_exit(repo_root: str) -> CheckResult:
-    app_py = _read_text(os.path.join(repo_root, "app.py"))
-    ok = ("atexit.register" in app_py) and ("backup_manager.backup(suffix=\"auto\")" in app_py or "backup(suffix=\"auto\")" in app_py)
+    # 退出自动备份实现可能在：
+    # - 旧布局：app.py
+    # - 新布局：web/bootstrap/factory.py（create_app_core 内注册 atexit）
+    candidates = [
+        ("app.py", os.path.join(repo_root, "app.py")),
+        ("web/bootstrap/factory.py", os.path.join(repo_root, "web", "bootstrap", "factory.py")),
+    ]
+
+    def _has_exit_backup(txt: str) -> bool:
+        has_atexit = bool(re.search(r"\batexit\.register\s*\(", txt))
+        has_backup_auto = bool(re.search(r"\.backup\s*\(\s*suffix\s*=\s*['\"]auto['\"]\s*\)", txt))
+        return has_atexit and has_backup_auto
+
+    ok = False
     evidence = []
-    evidence.append("`app.py` 关键片段（退出自动备份）：")
-    lines = app_py.splitlines()
-    # 抽取 atexit.register 附近上下文
-    idx = None
-    for i, line in enumerate(lines):
-        if "atexit.register" in line:
-            idx = i
-            break
-    if idx is not None:
-        start = max(0, idx - 6)
-        end = min(len(lines), idx + 8)
-        evidence.extend(["```", *lines[start:end], "```"])
-    else:
-        evidence.append("未找到 atexit.register")
+    evidence.append("关键片段（退出自动备份）：")
+    for label, path in candidates:
+        if not os.path.exists(path):
+            evidence.append(f"- `{label}`：文件不存在")
+            continue
+        txt = _read_text(path)
+        if _has_exit_backup(txt):
+            ok = True
+
+        evidence.append(f"- `{label}`：")
+        lines = txt.splitlines()
+        idx = None
+        for i, line in enumerate(lines):
+            if "atexit.register" in line:
+                idx = i
+                break
+        if idx is not None:
+            start = max(0, idx - 6)
+            end = min(len(lines), idx + 8)
+            evidence.extend(["```", *lines[start:end], "```"])
+        else:
+            evidence.append("  - 未找到 atexit.register")
     return CheckResult(
         name="退出自动备份（atexit.register + suffix=auto；不启后台定时线程）",
         ok=ok,

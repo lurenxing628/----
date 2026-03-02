@@ -1,7 +1,7 @@
 {
   "meta": {
     "version": 1,
-    "week_start": "2026-02-25"
+    "week_start": "2026-03-03"
   },
   "tasks": [
     {
@@ -9,7 +9,7 @@
       "dependencies": "",
       "duration_minutes": 120,
       "edge_type": "",
-      "end": "2026-02-25 10:00:00",
+      "end": "2026-03-03 10:00:00",
       "id": "B001_05",
       "lock_status": "unlocked",
       "meta": {
@@ -36,14 +36,14 @@
       "name": "B001_05 MC001 CNC-01 OP001 张三",
       "progress": 0,
       "schedule_id": 1,
-      "start": "2026-02-25 08:00:00"
+      "start": "2026-03-03 08:00:00"
     },
     {
       "custom_class": "priority-urgent",
       "dependencies": "B001_05",
       "duration_minutes": 2880,
       "edge_type": "process",
-      "end": "2026-02-27 10:00:00",
+      "end": "2026-03-05 10:00:00",
       "id": "B001_35",
       "lock_status": "unlocked",
       "meta": {
@@ -72,7 +72,7 @@
       "name": "B001_35 外协 外协-标印厂 外协/未分配",
       "progress": 0,
       "schedule_id": 2,
-      "start": "2026-02-25 10:00:00"
+      "start": "2026-03-03 10:00:00"
     }
   ]
 }

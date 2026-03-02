@@ -1,6 +1,6 @@
 # 实现一致性对标报告（实现 vs 开发文档规划 + 架构合规）
 
-- 生成时间：2026-03-02 11:10:42
+- 生成时间：2026-03-02 12:49:00
 - 仓库根目录：`D:\Github\APS Test`
 
 ## 总结
@@ -58,9 +58,12 @@
 - **结果**：通过
 - **严重性**：INFO
 - **证据**：
-  - `app.py` 关键片段（退出自动备份）：
+  - 关键片段（退出自动备份）：
+  - - `app.py`：
+  -   - 未找到 atexit.register
+  - - `web/bootstrap/factory.py`：
 ```
-  -                 # 退出阶段尽量不抛错，记录到错误日志即可
+  -             except Exception as e:
   -                 try:
   -                     bm.logger.error(f"退出自动备份失败：{e}")
   -                 except Exception:
@@ -69,11 +72,11 @@
   -         atexit.register(_backup_on_exit)
   -         _EXIT_BACKUP_REGISTERED = True
   - 
-  -     app.logger.info("应用启动完成。")
+  -     if str(ui_mode or "").strip().lower() == "new_ui":
+  -         app.logger.info("应用启动完成 (UI Test Mode)。")
+  -     else:
+  -         app.logger.info("应用启动完成。")
   -     return app
-  - 
-  - 
-  - def create_app() -> Flask:
 ```
 
 ### 排产策略默认值（priority_first；权重 0.4/0.5/0.1）对齐开发文档

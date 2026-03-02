@@ -55,6 +55,9 @@ evidence/ComplexExcelCases/**
 !evidence/ComplexExcelCases/complex_cases_report.md
 !evidence/ComplexExcelCases/complex_cases_summary.json
 
+# Real DB replay evidence (heavy per-run artifacts including DB copies)
+evidence/RealDbReplay/
+
 # Local scratch outputs (temporary runs during development)
 evidence/ComplexExcelCases_CLI/
 evidence/ComplexExcelCases_Extreme*/
