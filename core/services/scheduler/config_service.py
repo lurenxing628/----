@@ -270,13 +270,21 @@ class ConfigService:
         v = str(raw).strip() if raw is not None else ""
         return v if v else None
 
-    def set_active_preset(self, name: Optional[str]) -> None:
+    def _active_preset_update(self, name: Optional[str]) -> Tuple[str, str, str]:
         v = ("" if name is None else str(name)).strip()
+        return (
+            self.ACTIVE_PRESET_KEY,
+            v if v else self.ACTIVE_PRESET_CUSTOM,
+            "当前启用排产配置模板",
+        )
+
+    def _set_active_preset(self, name: Optional[str]) -> None:
+        k, v, d = self._active_preset_update(name)
         with self.tx_manager.transaction():
-            self.repo.set(self.ACTIVE_PRESET_KEY, v if v else self.ACTIVE_PRESET_CUSTOM, description="当前启用排产配置模板")
+            self.repo.set(k, v, description=d)
 
     def mark_active_preset_custom(self) -> None:
-        self.set_active_preset(self.ACTIVE_PRESET_CUSTOM)
+        self._set_active_preset(self.ACTIVE_PRESET_CUSTOM)
 
     def list_presets(self) -> List[Dict[str, Any]]:
         return preset_ops.list_presets(self)
@@ -367,7 +375,7 @@ class ConfigService:
             ("objective", self.DEFAULT_OBJECTIVE, "目标函数：min_overdue/min_tardiness/min_changeover"),
             ("freeze_window_enabled", self.DEFAULT_FREEZE_WINDOW_ENABLED, "冻结窗口开关（yes/no）：复用上一版本窗口内排程"),
             ("freeze_window_days", str(self.DEFAULT_FREEZE_WINDOW_DAYS), "冻结窗口天数（>=0；仅 freeze_window_enabled=yes 生效）"),
-            (self.ACTIVE_PRESET_KEY, self.BUILTIN_PRESET_DEFAULT, "当前启用排产配置模板"),
+            self._active_preset_update(self.BUILTIN_PRESET_DEFAULT),
         ]
         with self.tx_manager.transaction():
             self.repo.set_batch(updates)

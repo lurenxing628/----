@@ -148,11 +148,8 @@ def ensure_builtin_presets(svc: Any, *, existing_keys: Optional[set] = None) -> 
         for k, v, d in presets_to_create:
             svc.repo.set(k, v, description=d)
         if need_active:
-            svc.repo.set(
-                svc.ACTIVE_PRESET_KEY,
-                str(active_value or svc.ACTIVE_PRESET_CUSTOM),
-                description="当前启用排产配置模板",
-            )
+            ak, av, ad = svc._active_preset_update(active_value)
+            svc.repo.set(ak, av, description=ad)
 
 
 def list_presets(svc: Any) -> List[Dict[str, Any]]:
@@ -183,7 +180,8 @@ def save_preset(svc: Any, name: Any) -> str:
     payload = json.dumps(snap.to_dict(), ensure_ascii=False, sort_keys=True)
     with svc.tx_manager.transaction():
         svc.repo.set(svc._preset_key(n), payload, description="排产配置模板（用户自定义）")
-        svc.repo.set(svc.ACTIVE_PRESET_KEY, n, description="当前启用排产配置模板")
+        ak, av, ad = svc._active_preset_update(n)
+        svc.repo.set(ak, av, description=ad)
     return n
 
 
@@ -198,7 +196,8 @@ def delete_preset(svc: Any, name: Any) -> None:
     with svc.tx_manager.transaction():
         svc.repo.delete(svc._preset_key(n))
         if active == n:
-            svc.repo.set(svc.ACTIVE_PRESET_KEY, svc.ACTIVE_PRESET_CUSTOM, description="当前启用排产配置模板")
+            ak, av, ad = svc._active_preset_update(svc.ACTIVE_PRESET_CUSTOM)
+            svc.repo.set(ak, av, description=ad)
 
 
 def normalize_preset_snapshot(svc: Any, data: Dict[str, Any]) -> ScheduleConfigSnapshot:
@@ -256,7 +255,7 @@ def apply_preset(svc: Any, name: Any) -> str:
         ("objective", str(snap.objective), None),
         ("freeze_window_enabled", str(snap.freeze_window_enabled), None),
         ("freeze_window_days", str(int(snap.freeze_window_days)), None),
-        (svc.ACTIVE_PRESET_KEY, n, "当前启用排产配置模板"),
+        svc._active_preset_update(n),
     ]
     with svc.tx_manager.transaction():
         svc.repo.set_batch(updates)
