@@ -15,7 +15,7 @@ class SystemConfig:
     updated_at: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: RowLike) -> "SystemConfig":
+    def from_row(cls, row: RowLike) -> SystemConfig:
         raw_id = get(row, "id")
         return cls(
             id=parse_int(raw_id, default=None),

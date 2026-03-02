@@ -26,7 +26,7 @@ class GanttService:
     """
     CONTRACT_VERSION = 2
     _CRITICAL_CHAIN_CACHE_MAX = 64
-    _CRITICAL_CHAIN_CACHE: "OrderedDict[tuple, Dict[str, Any]]" = OrderedDict()
+    _CRITICAL_CHAIN_CACHE: OrderedDict[tuple, Dict[str, Any]] = OrderedDict()
     _CRITICAL_CHAIN_CACHE_LOCK = threading.Lock()
 
     def __init__(self, conn, logger=None, op_logger=None):

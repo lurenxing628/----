@@ -19,7 +19,7 @@ class ScheduleHistory:
     created_by: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: RowLike) -> "ScheduleHistory":
+    def from_row(cls, row: RowLike) -> ScheduleHistory:
         raw_id = get(row, "id")
         version = get(row, "version")
         batch_count = get(row, "batch_count")
