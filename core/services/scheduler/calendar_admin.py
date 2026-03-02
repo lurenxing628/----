@@ -100,10 +100,6 @@ class CalendarAdmin:
     # -------------------------
     # WorkCalendar：CRUD（给页面/Excel用）
     # -------------------------
-    def get_row(self, date_value: Any) -> Optional[WorkCalendar]:
-        d = self._normalize_date(date_value)
-        return self.repo.get(d)
-
     def list_all(self) -> List[WorkCalendar]:
         return self.repo.list_all()
 

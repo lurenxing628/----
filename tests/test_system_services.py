@@ -105,8 +105,9 @@ def test_system_job_state_query_service_get_and_map() -> None:
     assert st.job_key == "auto_backup"
     assert st.last_run_time == "2026-03-01 10:00:00"
 
-    m = q.get_map(["auto_backup", "auto_log_cleanup"])
-    assert set(m.keys()) == {"auto_backup", "auto_log_cleanup"}
+    keys = ["auto_backup", "auto_log_cleanup"]
+    m = {k: q.get(k) for k in keys}
+    assert set(m.keys()) == set(keys)
     assert m["auto_backup"] is not None
     assert m["auto_log_cleanup"] is None
 

@@ -59,12 +59,6 @@ class ExcelService:
         self.op_logger = op_logger
         self.template_dir = template_dir
 
-    def read_rows(self, file_path: str, sheet: Optional[str] = None) -> List[Dict[str, Any]]:
-        return self.backend.read(file_path, sheet=sheet)
-
-    def write_rows(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1") -> None:
-        self.backend.write(rows, file_path, sheet=sheet)
-
     def preview_import(
         self,
         rows: List[Dict[str, Any]],

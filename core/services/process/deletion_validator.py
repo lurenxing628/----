@@ -164,17 +164,6 @@ class DeletionValidator:
                 return int(cur.seq), int(nxt.seq), between_seqs
         return None
 
-    def get_deletable_external_ops(self, operations: List[Operation]) -> List[int]:
-        """获取所有可删除的外部工序（逐个尝试判定）。"""
-        active_ops = self._filter_active_ops(operations)
-        external_ops = [op for op in active_ops if self._norm_source(op.source) == SourceType.EXTERNAL.value]
-        deletable: List[int] = []
-        for op in external_ops:
-            result = self.can_delete(operations, [op.seq])
-            if result.can_delete:
-                deletable.append(op.seq)
-        return deletable
-
     def get_deletion_groups(self, operations: List[Operation]) -> List[List[int]]:
         """
         获取可删除的外部工序组（首部连续外部组、尾部连续外部组）。

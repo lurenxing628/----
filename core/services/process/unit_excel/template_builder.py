@@ -32,12 +32,6 @@ class ConvertedTemplates:
             ("供应商配置.xlsx", ["供应商ID", "名称", "对应工种", "默认周期"], "suppliers_rows"),
         ]
 
-    def rows_by_filename(self) -> Dict[str, List[Dict[str, Any]]]:
-        result: Dict[str, List[Dict[str, Any]]] = {}
-        for filename, _headers, field_name in self.output_specs():
-            result[filename] = list(getattr(self, field_name))
-        return result
-
 
 class UnitTemplateBuilder:
     def build(self, parts: Dict[str, PartContext], stations: List[StationMeta]) -> ConvertedTemplates:

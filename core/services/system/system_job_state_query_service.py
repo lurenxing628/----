@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Iterable, Optional
+from typing import Optional
 
 from core.models import SystemJobState
 from data.repositories import SystemJobStateRepository
@@ -20,13 +20,4 @@ class SystemJobStateQueryService:
         if not key:
             return None
         return self.repo.get(key)
-
-    def get_map(self, keys: Iterable[str]) -> Dict[str, Optional[SystemJobState]]:
-        out: Dict[str, Optional[SystemJobState]] = {}
-        for k in keys:
-            kk = (str(k) if k is not None else "").strip()
-            if kk == "":
-                continue
-            out[kk] = self.repo.get(kk)
-        return out
 
