@@ -19,8 +19,8 @@ def parse_import_mode(value: str) -> ImportMode:
     """
     try:
         return ImportMode(value)
-    except Exception:
-        raise ValidationError("导入模式不合法", field="mode")
+    except Exception as e:
+        raise ValidationError("导入模式不合法", field="mode") from e
 
 
 def build_preview_baseline_token(

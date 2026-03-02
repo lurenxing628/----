@@ -130,10 +130,10 @@ def auto_assign_internal_resources(
             earliest = scheduler.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=oid)
 
             # 简化：效率取“开工时刻”的效率；若 earliest 因避让跨日/跨班次，则需重算
-            def _scaled_hours(start: datetime) -> float:
+            def _scaled_hours(start: datetime, _oid: str = oid) -> float:
                 eff = 1.0
                 try:
-                    raw_eff = scheduler.calendar.get_efficiency(start, operator_id=oid)
+                    raw_eff = scheduler.calendar.get_efficiency(start, operator_id=_oid)
                     eff = float(raw_eff) if raw_eff is not None else 1.0
                 except Exception:
                     eff = 1.0

@@ -4,11 +4,9 @@ from datetime import date, datetime, timedelta
 
 from flask import Blueprint, g, request, send_file
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import ValidationError
 from core.services.report import ReportEngine
-
+from web.ui_mode import render_ui_template as render_template
 
 bp = Blueprint("reports", __name__)
 
@@ -27,8 +25,8 @@ def _validate_ymd_date(raw: str, field: str) -> str:
     s = s.replace("/", "-")
     try:
         datetime.strptime(s, "%Y-%m-%d")
-    except Exception:
-        raise ValidationError("日期格式不正确（允许：YYYY-MM-DD / YYYY/MM/DD）", field=field)
+    except Exception as e:
+        raise ValidationError("日期格式不正确（允许：YYYY-MM-DD / YYYY/MM/DD）", field=field) from e
     return s
 
 
