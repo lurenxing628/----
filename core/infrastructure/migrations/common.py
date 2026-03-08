@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import sys
 
 
 def column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -29,4 +30,20 @@ def column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
         return False
     except Exception:
         return False
+
+
+def fallback_log(logger, level: str, message: str) -> None:
+    if not logger:
+        return
+    method = getattr(logger, str(level or "").strip(), None)
+    if callable(method):
+        try:
+            method(str(message))
+            return
+        except Exception:
+            pass
+    try:
+        print(str(message), file=sys.stderr)
+    except Exception:
+        pass
 

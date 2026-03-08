@@ -38,7 +38,7 @@ class OperatorMachineService:
         """规范化技能等级（可选列；空/缺失返回 None）。"""
         try:
             return normalize_skill_level(value, default="normal", allow_none=True)
-        except Exception as e:
+        except ValueError as e:
             raise ValidationError("“技能等级”不合法（允许：beginner/normal/expert 或 中文：初级/普通/熟练）", field="技能等级") from e
 
     @staticmethod
@@ -55,6 +55,34 @@ class OperatorMachineService:
         if low in ("no", "n", "false", "0", "off") or s in ("否", "非主操", "非主"):
             return YesNo.NO.value
         raise ValidationError("“主操设备”不合法（允许：yes/no 或 是/否）", field=field)
+
+
+    @staticmethod
+    def _normalize_skill_level_stored(value: Any) -> str:
+        try:
+            return normalize_skill_level(value, default="normal", allow_none=False)
+        except ValueError:
+            return "normal"
+
+    @staticmethod
+    def _normalize_yes_no_stored(value: Any) -> str:
+        if value is None:
+            return YesNo.NO.value
+        s = str(value).strip()
+        if s == "":
+            return YesNo.NO.value
+        low = s.lower()
+        if low in ("yes", "y", "true", "1", "on") or s in ("是", "主操", "主"):
+            return YesNo.YES.value
+        if low in ("no", "n", "false", "0", "off") or s in ("否", "非主操", "非主"):
+            return YesNo.NO.value
+        return YesNo.NO.value
+
+    @classmethod
+    def _normalize_link(cls, link: OperatorMachine) -> OperatorMachine:
+        link.skill_level = cls._normalize_skill_level_stored(getattr(link, "skill_level", None))
+        link.is_primary = cls._normalize_yes_no_stored(getattr(link, "is_primary", None))
+        return link
 
     def _ensure_operator_exists(self, operator_id: str) -> None:
         if not self.operator_repo.exists(operator_id):
@@ -85,8 +113,8 @@ class OperatorMachineService:
             if not op_id or not mc_id:
                 continue
             existing_map[f"{op_id}|{mc_id}"] = {
-                "skill_level": str(r.get("skill_level") or "normal"),
-                "is_primary": str(r.get("is_primary") or YesNo.NO.value),
+                "skill_level": self._normalize_skill_level_stored(r.get("skill_level")),
+                "is_primary": self._normalize_yes_no_stored(r.get("is_primary")),
             }
         return existing_map
 
@@ -141,9 +169,8 @@ class OperatorMachineService:
             if skill_norm is not None:
                 row["技能等级"] = skill_norm
             return skill_norm, None
-        except Exception as e:
-            msg = e.message if isinstance(e, ValidationError) else str(e)
-            return None, ImportPreviewRow(row_num=row_num, status=RowStatus.ERROR, data=row, message=msg)
+        except ValidationError as e:
+            return None, ImportPreviewRow(row_num=row_num, status=RowStatus.ERROR, data=row, message=e.message)
 
     def _parse_primary_optional_for_preview(self, row: Dict[str, Any], row_num: int, *, has_primary_col: bool) -> Tuple[Optional[str], Optional[ImportPreviewRow]]:
         if not has_primary_col:
@@ -154,9 +181,8 @@ class OperatorMachineService:
             if primary_norm is not None:
                 row["主操设备"] = primary_norm
             return primary_norm, None
-        except Exception as e:
-            msg = e.message if isinstance(e, ValidationError) else str(e)
-            return None, ImportPreviewRow(row_num=row_num, status=RowStatus.ERROR, data=row, message=msg)
+        except ValidationError as e:
+            return None, ImportPreviewRow(row_num=row_num, status=RowStatus.ERROR, data=row, message=e.message)
 
     def _build_overwrite_preview_for_existing(self, *, row: Dict[str, Any], row_num: int, key: str, existing_map: Dict[str, Dict[str, str]], has_skill_col: bool, has_primary_col: bool, skill_norm: Optional[str], primary_norm: Optional[str]) -> ImportPreviewRow:
         old = existing_map.get(key) or {"skill_level": "normal", "is_primary": YesNo.NO.value}
@@ -264,9 +290,8 @@ class OperatorMachineService:
         try:
             skill_norm = self._normalize_skill_level_optional(skill_raw) if has_skill_col else None
             primary_norm = self._normalize_yes_no_optional(primary_raw, field="主操设备") if has_primary_col else None
-        except Exception as e:
-            msg = e.message if isinstance(e, ValidationError) else str(e)
-            return None, None, msg
+        except ValidationError as e:
+            return None, None, e.message
 
         base_skill = (old.get("skill_level") if old else None) or "normal"
         base_primary = (old.get("is_primary") if old else None) or YesNo.NO.value
@@ -281,13 +306,13 @@ class OperatorMachineService:
         op_id = self._normalize_text(operator_id)
         if not op_id:
             raise ValidationError("“工号”不能为空", field="工号")
-        return self.repo.list_by_operator(op_id)
+        return [self._normalize_link(link) for link in self.repo.list_by_operator(op_id)]
 
     def list_by_machine(self, machine_id: str) -> List[OperatorMachine]:
         mc_id = self._normalize_text(machine_id)
         if not mc_id:
             raise ValidationError("“设备编号”不能为空", field="设备编号")
-        return self.repo.list_by_machine(mc_id)
+        return [self._normalize_link(link) for link in self.repo.list_by_machine(mc_id)]
 
     def add_link(
         self,

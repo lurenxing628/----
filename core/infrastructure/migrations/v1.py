@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Optional
 
-from .common import column_exists
+from .common import column_exists, fallback_log
 
 
 def run(conn: sqlite3.Connection, logger=None) -> None:
@@ -60,10 +60,7 @@ def _ensure_columns(conn: sqlite3.Connection, logger=None) -> None:
         msg = str(e).lower()
         if "no such table" in msg or "no such column" in msg:
             if logger:
-                try:
-                    logger.warning(f"数据库迁移 v1：OperatorMachine.skill_level 默认值回填已跳过（{e}）。")
-                except Exception:
-                    pass
+                fallback_log(logger, "warning", f"数据库迁移 v1：OperatorMachine.skill_level 默认值回填已跳过（{e}）。")
         else:
             raise
     try:
@@ -75,10 +72,7 @@ def _ensure_columns(conn: sqlite3.Connection, logger=None) -> None:
         msg = str(e).lower()
         if "no such table" in msg or "no such column" in msg:
             if logger:
-                try:
-                    logger.warning(f"数据库迁移 v1：OperatorMachine.is_primary 默认值回填已跳过（{e}）。")
-                except Exception:
-                    pass
+                fallback_log(logger, "warning", f"数据库迁移 v1：OperatorMachine.is_primary 默认值回填已跳过（{e}）。")
         else:
             raise
 
@@ -107,10 +101,7 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
         msg = str(e).lower()
         if "no such table" in msg or "no such column" in msg:
             if logger:
-                try:
-                    logger.warning(f"数据库迁移 v1：Batches 表/列不存在，已跳过日期清洗（{e}）。")
-                except Exception:
-                    pass
+                fallback_log(logger, "warning", f"数据库迁移 v1：Batches 表/列不存在，已跳过日期清洗（{e}）。")
             return
         raise
 
@@ -179,19 +170,17 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
             continue
 
     if changed and logger:
-        try:
-            sample_text = "，".join(changed_samples)
-            logger.warning(
-                f"已清洗 Batches 的日期字段（due_date/ready_date）：受影响批次数={changed}，样例批次号（最多10个）={sample_text}。"
-            )
-        except Exception:
-            pass
+        sample_text = "，".join(changed_samples)
+        fallback_log(
+            logger,
+            "warning",
+            f"已清洗 Batches 的日期字段（due_date/ready_date）：受影响批次数={changed}，样例批次号（最多10个）={sample_text}。",
+        )
 
     if failed and logger:
-        try:
-            sample_text = "，".join(failed_samples)
-            logger.warning(
-                f"Batches 日期字段清洗更新失败：失败批次数={failed}，样例批次号（最多10个）={sample_text}。"
-            )
-        except Exception:
-            pass
+        sample_text = "，".join(failed_samples)
+        fallback_log(
+            logger,
+            "warning",
+            f"Batches 日期字段清洗更新失败：失败批次数={failed}，样例批次号（最多10个）={sample_text}。",
+        )

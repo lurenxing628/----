@@ -5,8 +5,11 @@ import os
 import sqlite3
 import threading
 import time
+import traceback
 from contextlib import closing
 from datetime import datetime, timedelta
+
+from core.infrastructure.migrations.common import fallback_log
 
 _MAINT_MUTEX = threading.Lock()
 
@@ -53,14 +56,14 @@ class BackupManager:
                         rows = dest.execute("PRAGMA integrity_check").fetchall() or []
                     except Exception as e:
                         # 校验执行失败：不阻断备份，但记录 warning 便于排障
-                        self.logger.warning(f"备份 integrity_check 执行失败（已忽略）：{e}")
+                        fallback_log(self.logger, "warning", f"备份 integrity_check 执行失败（已忽略）：{e}")
                     else:
                         msg0 = str((rows[0][0] if rows else "") or "").strip().lower()
                         if msg0 != "ok":
-                            self.logger.error(f"备份 integrity_check 未通过：{rows}")
+                            fallback_log(self.logger, "error", f"备份 integrity_check 未通过：{rows}")
                             raise RuntimeError(f"backup integrity_check failed: {rows}")
             os.replace(tmp_path, backup_path)
-            self.logger.info(f"数据库已备份：{backup_path}")
+            fallback_log(self.logger, "info", f"数据库已备份：{backup_path}")
             return backup_path
         finally:
             # 异常路径清理临时文件（最佳努力）
@@ -72,12 +75,12 @@ class BackupManager:
 
     def restore(self, backup_path: str) -> bool:
         if not os.path.exists(backup_path):
-            self.logger.error(f"备份文件不存在：{backup_path}")
+            fallback_log(self.logger, "error", f"备份文件不存在：{backup_path}")
             return False
 
         # 进程内互斥：避免同一进程内并发 restore/backup_restore 请求互相打爆
         if not _MAINT_MUTEX.acquire(blocking=False):
-            self.logger.error("数据库正在维护/恢复中，请稍后重试。")
+            fallback_log(self.logger, "error", "数据库正在维护/恢复中，请稍后重试。")
             return False
 
         lock_path = os.path.abspath(self.db_path) + ".maintenance.lock"
@@ -92,11 +95,11 @@ class BackupManager:
                 except Exception:
                     pass
             except FileExistsError:
-                self.logger.error(f"检测到维护锁文件，可能已有恢复任务在进行：{lock_path}")
+                fallback_log(self.logger, "error", f"检测到维护锁文件，可能已有恢复任务在进行：{lock_path}")
                 return False
             except Exception as e:
                 # 锁文件创建失败不一定致命：继续尝试，但给出风险提示
-                self.logger.warning(f"维护锁文件创建失败（将继续尝试恢复，但可能被并发任务干扰）：{e}")
+                fallback_log(self.logger, "warning", f"维护锁文件创建失败（将继续尝试恢复，但可能被并发任务干扰）：{e}")
 
             # 恢复前自动备份
             before_restore_path = self.backup(suffix="before_restore")
@@ -112,18 +115,18 @@ class BackupManager:
                             except Exception:
                                 pass
                             source.backup(dest)
-                    self.logger.info(f"数据库已恢复：{backup_path}")
+                    fallback_log(self.logger, "info", f"数据库已恢复：{backup_path}")
                     return True
                 except sqlite3.OperationalError as e:
                     msg = str(e).lower()
                     if ("locked" in msg or "busy" in msg) and i < retries - 1:
-                        self.logger.warning(f"数据库被占用（可能有其它连接未释放），准备重试：{e}")
+                        fallback_log(self.logger, "warning", f"数据库被占用（可能有其它连接未释放），准备重试：{e}")
                         time.sleep(0.2 * (i + 1))
                         continue
                     raise
 
         except Exception:
-            self.logger.exception("数据库恢复失败")
+            fallback_log(self.logger, "error", f"数据库恢复失败\n{traceback.format_exc()}")
             # 若恢复过程导致主库处于不一致状态，尽最大努力回滚到恢复前备份
             try:
                 if before_restore_path and os.path.exists(before_restore_path):
@@ -137,17 +140,17 @@ class BackupManager:
                                     except Exception:
                                         pass
                                     source2.backup(dest2)
-                            self.logger.error(f"数据库恢复失败，已自动回滚到恢复前备份：{before_restore_path}")
+                            fallback_log(self.logger, "error", f"数据库恢复失败，已自动回滚到恢复前备份：{before_restore_path}")
                             break
                         except sqlite3.OperationalError as e2:
                             msg2 = str(e2).lower()
                             if ("locked" in msg2 or "busy" in msg2) and i < retries - 1:
-                                self.logger.warning(f"自动回滚时数据库被占用，准备重试：{e2}")
+                                fallback_log(self.logger, "warning", f"自动回滚时数据库被占用，准备重试：{e2}")
                                 time.sleep(0.2 * (i + 1))
                                 continue
                             raise
             except Exception:
-                self.logger.exception("数据库恢复失败且自动回滚失败")
+                fallback_log(self.logger, "error", f"数据库恢复失败且自动回滚失败\n{traceback.format_exc()}")
             return False
         finally:
             # 释放锁文件
@@ -180,9 +183,9 @@ class BackupManager:
                 file_time = datetime.fromtimestamp(os.path.getmtime(filepath))
                 if file_time < cutoff:
                     os.remove(filepath)
-                    self.logger.info(f"已清理过期备份：{filename}")
+                    fallback_log(self.logger, "info", f"已清理过期备份：{filename}")
             except Exception as e:
-                self.logger.warning(f"清理备份失败（{filename}）：{e}")
+                fallback_log(self.logger, "warning", f"清理备份失败（{filename}）：{e}")
 
     def list_backups(self) -> list:
         backups = []

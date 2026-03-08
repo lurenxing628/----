@@ -8,7 +8,9 @@ import sys
 import time
 from typing import Optional
 
-CURRENT_SCHEMA_VERSION = 4
+from .migrations.common import fallback_log
+
+CURRENT_SCHEMA_VERSION = 5
 
 
 def _is_windows_lock_error(e: Exception) -> bool:
@@ -32,10 +34,7 @@ def _cleanup_sqlite_sidecars(db_path: str, logger=None) -> None:
                 os.remove(p)
         except Exception as e:
             if logger:
-                try:
-                    logger.warning(f"清理 SQLite sidecar 失败：{e}（path={p}）")
-                except Exception:
-                    pass
+                fallback_log(logger, "warning", f"清理 SQLite sidecar 失败：{e}（path={p}）")
 
 
 def _restore_db_file_from_backup(
@@ -76,10 +75,7 @@ def _restore_db_file_from_backup(
                 pass
             if _is_windows_lock_error(e) and i < r - 1:
                 if logger and i == 0:
-                    try:
-                        logger.warning(f"数据库文件回滚遇到文件锁，准备重试：{e}（db={dp}）")
-                    except Exception:
-                        pass
+                    fallback_log(logger, "warning", f"数据库文件回滚遇到文件锁，准备重试：{e}（db={dp}）")
                 time.sleep(base_delay_s * (i + 1))
                 continue
             raise
@@ -163,7 +159,7 @@ def ensure_schema(db_path: str, logger=None, schema_path: Optional[str] = None, 
             current_version = _get_schema_version(conn)
             conn.commit()
             if logger:
-                logger.info("数据库结构检查完成（已确保所有表存在）。")
+                fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")
         except Exception:
             # 失败尽最大努力回滚，避免半初始化状态
             try:
@@ -176,10 +172,7 @@ def ensure_schema(db_path: str, logger=None, schema_path: Optional[str] = None, 
             conn.close()
         except Exception as e:
             if logger:
-                try:
-                    logger.warning(f"数据库连接关闭失败：{e}")
-                except Exception:
-                    pass
+                fallback_log(logger, "warning", f"数据库连接关闭失败：{e}")
 
     # 需要迁移（ALTER TABLE / 数据清洗等）：迁移前先备份，失败可回滚
     if current_version < CURRENT_SCHEMA_VERSION:
@@ -212,13 +205,30 @@ def _ensure_schema_version(conn: sqlite3.Connection, logger=None) -> None:
     conn.execute("INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0)")
 
     v = _get_schema_version(conn)
-    if v <= 0 and _detect_schema_is_current(conn):
+    if v <= 0 and _detect_schema_is_current(conn) and _is_truly_empty_db(conn):
         _set_schema_version(conn, CURRENT_SCHEMA_VERSION)
         if logger:
-            try:
-                logger.info(f"检测到新库结构已满足当前版本，SchemaVersion 已设为 {CURRENT_SCHEMA_VERSION}。")
-            except Exception:
-                pass
+            fallback_log(logger, "info", f"检测到新库结构已满足当前版本，SchemaVersion 已设为 {CURRENT_SCHEMA_VERSION}。")
+
+
+def _is_truly_empty_db(conn: sqlite3.Connection) -> bool:
+    rows = conn.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type='table'
+          AND name <> 'SchemaVersion'
+          AND name NOT LIKE 'sqlite_%'
+        ORDER BY name
+        """
+    ).fetchall()
+    names = [r["name"] if isinstance(r, sqlite3.Row) else r[0] for r in rows]
+    for name in names:
+        quoted_name = '"' + str(name).replace('"', '""') + '"'
+        row = conn.execute(f"SELECT 1 FROM {quoted_name} LIMIT 1").fetchone()
+        if row is not None:
+            return False
+    return True
 
 
 def _detect_schema_is_current(conn: sqlite3.Connection) -> bool:
@@ -291,20 +301,14 @@ def _migrate_with_backup(db_path: str, from_version: int, to_version: int, backu
     if not effective_backup_dir:
         effective_backup_dir = os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups")
         if logger:
-            try:
-                logger.warning(f"未提供 backup_dir，迁移将使用默认备份目录：{effective_backup_dir}")
-            except Exception:
-                pass
+            fallback_log(logger, "warning", f"未提供 backup_dir，迁移将使用默认备份目录：{effective_backup_dir}")
 
     # 2) 确保备份目录可用（不可创建则阻断迁移）
     try:
         os.makedirs(effective_backup_dir, exist_ok=True)
     except Exception as e:
         if logger:
-            try:
-                logger.error(f"数据库迁移前无法创建备份目录，已阻断迁移：{e}（dir={effective_backup_dir}）")
-            except Exception:
-                pass
+            fallback_log(logger, "error", f"数据库迁移前无法创建备份目录，已阻断迁移：{e}（dir={effective_backup_dir}）")
         raise
 
     # 3) 迁移前强制备份（失败则阻断迁移）
@@ -316,10 +320,7 @@ def _migrate_with_backup(db_path: str, from_version: int, to_version: int, backu
         backup_path = bm.backup(suffix=f"before_migrate_v{from_version}_to_v{to_version}")
     except Exception as e:
         if logger:
-            try:
-                logger.error(f"数据库迁移前备份失败，已阻断迁移：{e}（dir={effective_backup_dir}）")
-            except Exception:
-                pass
+            fallback_log(logger, "error", f"数据库迁移前备份失败，已阻断迁移：{e}（dir={effective_backup_dir}）")
         raise
 
     # 4) 执行迁移：使用事务包裹，失败后再用备份做文件级回滚兜底
@@ -340,19 +341,13 @@ def _migrate_with_backup(db_path: str, from_version: int, to_version: int, backu
                     _set_schema_version(conn, v)
 
             if logger:
-                try:
-                    logger.info(f"数据库迁移完成：SchemaVersion {current} -> {to_version}")
-                except Exception:
-                    pass
+                fallback_log(logger, "info", f"数据库迁移完成：SchemaVersion {current} -> {to_version}")
         finally:
             try:
                 conn.close()
             except Exception as e:
                 if logger:
-                    try:
-                        logger.warning(f"数据库连接关闭失败（可能导致文件锁未释放）：{e}")
-                    except Exception:
-                        pass
+                    fallback_log(logger, "warning", f"数据库连接关闭失败（可能导致文件锁未释放）：{e}")
             finally:
                 # 最佳努力释放 Windows 文件句柄
                 try:
@@ -369,16 +364,10 @@ def _migrate_with_backup(db_path: str, from_version: int, to_version: int, backu
             try:
                 _restore_db_file_from_backup(backup_path, db_path, logger=logger)
                 if logger:
-                    try:
-                        logger.error(f"数据库迁移失败，已从备份回滚：{backup_path}")
-                    except Exception:
-                        pass
+                    fallback_log(logger, "error", f"数据库迁移失败，已从备份回滚：{backup_path}")
             except Exception as e:
                 if logger:
-                    try:
-                        logger.error(f"数据库迁移失败且回滚失败：{e}（backup={backup_path}）")
-                    except Exception:
-                        pass
+                    fallback_log(logger, "error", f"数据库迁移失败且回滚失败：{e}（backup={backup_path}）")
         raise
 
 

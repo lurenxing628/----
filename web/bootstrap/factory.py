@@ -6,6 +6,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 from flask import Flask, g, request
 
@@ -13,6 +14,8 @@ from config import config as config_map
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger
+from core.infrastructure.migrations.common import fallback_log
+from core.models.enums import YesNo
 from core.services.common.excel_templates import ensure_excel_templates
 from web.error_handlers import register_error_handlers
 from web.routes.dashboard import bp as dashboard_bp
@@ -34,6 +37,54 @@ from .static_versioning import install_versioned_url_for
 # atexit 退出备份去重：避免 create_app_core() 在测试/脚本中被多次调用导致重复注册
 _EXIT_BACKUP_MANAGER = None
 _EXIT_BACKUP_REGISTERED = False
+
+
+def _should_register_exit_backup(*, debug: bool, frozen: Optional[bool] = None, run_main: Optional[str] = None) -> bool:
+    is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else bool(frozen)
+    if not debug or is_frozen:
+        return True
+    marker = os.environ.get("WERKZEUG_RUN_MAIN") if run_main is None else run_main
+    return str(marker or "").strip().lower() == "true"
+
+
+def _is_exit_backup_enabled(bm: BackupManager) -> Optional[bool]:
+    conn = None
+    try:
+        conn = get_connection(bm.db_path)
+        from core.services.system import SystemConfigService
+
+        cfg = SystemConfigService(conn, logger=bm.logger).get_snapshot_readonly(
+            backup_keep_days_default=int(getattr(bm, "keep_days", 7) or 7)
+        )
+        return cfg.auto_backup_enabled == YesNo.YES.value
+    except Exception as e:
+        fallback_log(bm.logger, "error", f"读取退出自动备份配置失败：{e}")
+        return None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _run_exit_backup(manager: Optional[BackupManager] = None) -> bool:
+    bm = manager or _EXIT_BACKUP_MANAGER
+    if bm is None:
+        return False
+    enabled = _is_exit_backup_enabled(bm)
+    if enabled is not True:
+        if enabled is None:
+            fallback_log(bm.logger, "warning", "退出自动备份已跳过：读取配置失败。")
+        else:
+            fallback_log(bm.logger, "info", "退出自动备份已跳过：auto_backup_enabled=no。")
+        return False
+    try:
+        bm.backup(suffix="exit")
+        return True
+    except Exception as e:
+        fallback_log(bm.logger, "error", f"退出自动备份失败：{e}")
+        return False
 
 
 def _default_anchor_file() -> str:
@@ -208,22 +259,11 @@ def create_app_core(
     global _EXIT_BACKUP_MANAGER, _EXIT_BACKUP_REGISTERED
     _EXIT_BACKUP_MANAGER = backup_manager
 
-    if not _EXIT_BACKUP_REGISTERED:
-
-        def _backup_on_exit():
-            bm = _EXIT_BACKUP_MANAGER
-            if bm is None:
-                return
-            try:
-                bm.backup(suffix="auto")
-            except Exception as e:
-                try:
-                    bm.logger.error(f"退出自动备份失败：{e}")
-                except Exception:
-                    pass
-
-        atexit.register(_backup_on_exit)
+    if not _EXIT_BACKUP_REGISTERED and _should_register_exit_backup(debug=bool(app.config.get("DEBUG", False))):
+        atexit.register(_run_exit_backup)
         _EXIT_BACKUP_REGISTERED = True
+    elif not _EXIT_BACKUP_REGISTERED:
+        app.logger.info("开发重载父进程跳过注册退出自动备份。")
 
     if str(ui_mode or "").strip().lower() == "new_ui":
         app.logger.info("应用启动完成 (UI Test Mode)。")

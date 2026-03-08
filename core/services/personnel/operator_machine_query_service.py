@@ -28,7 +28,7 @@ class OperatorMachineQueryService:
         if "skill_level" in out:
             try:
                 out["skill_level"] = normalize_skill_level(out.get("skill_level"), default="normal", allow_none=False)
-            except Exception:
+            except ValueError:
                 out["skill_level"] = "normal"
         if "is_primary" in out:
             out["is_primary"] = normalize_yes_no_wide(out.get("is_primary"), default=YesNo.NO.value, unknown_policy="no")

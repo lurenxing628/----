@@ -4,6 +4,8 @@ import re
 import sqlite3
 from typing import List, Optional, Tuple
 
+from .common import fallback_log
+
 _PK_IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 _PK_CAST = rf"CAST\({_PK_IDENT} AS TEXT\)"
 _PK_LIT = r"'[^']*'"
@@ -56,10 +58,7 @@ def _sanitize_field(
     f = str(field or "").strip()
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", t or "") or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", f or ""):
         if logger:
-            try:
-                logger.error(f"数据库迁移 v4：非法标识符，已跳过清洗（table={table!r} field={field!r}）")
-            except Exception:
-                pass
+            fallback_log(logger, "error", f"数据库迁移 v4：非法标识符，已跳过清洗（table={table!r} field={field!r}）")
         return 0, []
 
     # 防御：pk_expr 也会被拼接进 SQL（无法参数化），禁止可疑字符，避免语法注入
@@ -74,10 +73,7 @@ def _sanitize_field(
         or not _SAFE_PK_EXPR_RE.fullmatch(pk)
     ):
         if logger:
-            try:
-                logger.error(f"数据库迁移 v4：非法 pk_expr，已跳过清洗（table={table!r} field={field!r} pk_expr={pk_expr!r}）")
-            except Exception:
-                pass
+            fallback_log(logger, "error", f"数据库迁移 v4：非法 pk_expr，已跳过清洗（table={table!r} field={field!r} pk_expr={pk_expr!r}）")
         return 0, []
 
     # 1) 样例：找出需要被 lower/trim 的行（最多 10 条）
@@ -96,10 +92,7 @@ def _sanitize_field(
     except Exception as e:
         if _is_expected_missing_schema_error(e):
             if logger:
-                try:
-                    logger.warning(f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
-                except Exception:
-                    pass
+                fallback_log(logger, "warning", f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
             return 0, []
         sample = []
 
@@ -118,10 +111,7 @@ def _sanitize_field(
     except Exception as e:
         if _is_expected_missing_schema_error(e):
             if logger:
-                try:
-                    logger.warning(f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
-                except Exception:
-                    pass
+                fallback_log(logger, "warning", f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
             return 0, []
         raise
 
@@ -141,23 +131,19 @@ def _sanitize_field(
         except Exception as e:
             if _is_expected_missing_schema_error(e):
                 if logger:
-                    try:
-                        logger.warning(f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
-                    except Exception:
-                        pass
+                    fallback_log(logger, "warning", f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
                 return 0, []
             raise
 
     if changed and logger:
-        try:
-            sample_text = "，".join(sample[:10])
-            logger.warning(
-                f"数据库迁移 v4：已清洗 {table}.{field}（影响行数={changed}）"
-                + (f"，样例（最多10个）={sample_text}" if sample_text else "")
-                + (f"，default={default}" if default is not None else "")
-            )
-        except Exception:
-            pass
+        sample_text = "，".join(sample[:10])
+        fallback_log(
+            logger,
+            "warning",
+            f"数据库迁移 v4：已清洗 {table}.{field}（影响行数={changed}）"
+            + (f"，样例（最多10个）={sample_text}" if sample_text else "")
+            + (f"，default={default}" if default is not None else ""),
+        )
 
     return changed, sample
 

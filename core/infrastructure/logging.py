@@ -32,10 +32,38 @@ class AppLogger:
         self.logger.setLevel(self.log_level)
 
         # 避免重复添加 handler（例如热重载/多次 create_app）
-        if not self.logger.handlers:
+        if self._needs_reconfigure():
+            self._reset_handlers()
             self._add_console_handler()
             self._add_file_handler()
             self._add_error_file_handler()
+
+    def _expected_log_files(self) -> tuple[str, str]:
+        return (
+            os.path.abspath(os.path.join(self.log_dir, f"{self.app_name.lower()}.log")),
+            os.path.abspath(os.path.join(self.log_dir, f"{self.app_name.lower()}_error.log")),
+        )
+
+    def _needs_reconfigure(self) -> bool:
+        handlers = list(self.logger.handlers)
+        if not handlers:
+            return True
+        expected_log, expected_error_log = self._expected_log_files()
+        existing_files = {
+            os.path.abspath(str(handler.baseFilename or ""))
+            for handler in handlers
+            if getattr(handler, "baseFilename", None)
+        }
+        has_console = any(isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler) for handler in handlers)
+        return (not has_console) or expected_log not in existing_files or expected_error_log not in existing_files
+
+    def _reset_handlers(self) -> None:
+        for handler in list(self.logger.handlers):
+            self.logger.removeHandler(handler)
+            try:
+                handler.close()
+            except Exception:
+                pass
 
     def _add_console_handler(self):
         handler = logging.StreamHandler()
