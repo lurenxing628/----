@@ -129,5 +129,5 @@ MACHINE_DOWNTIME_STATUS_VALUES = tuple(m.value for m in MachineDowntimeStatus)
 
 LOCK_STATUS_VALUES = tuple(m.value for m in LockStatus)
 DOWNTIME_SCOPE_TYPE_VALUES = tuple(m.value for m in DowntimeScopeType)
-SKILL_LEVEL_VALUES = tuple(m.value for m in SkillLevel)
+SKILL_LEVEL_VALUES = (SkillLevel.BEGINNER.value, SkillLevel.NORMAL.value, SkillLevel.EXPERT.value)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
+from core.models.enums import MachineStatus, OperatorStatus, SkillLevel, SourceType, SupplierStatus, YesNo
 
 
 def _text(value: Any) -> str:
@@ -168,18 +168,18 @@ def normalize_skill_level(value: Any, *, default: str = "normal", allow_none: bo
     if s0 == "":
         return None if allow_none else normalize_skill_level(default, default="normal", allow_none=False)
     low = s0.lower()
-    if low in ("expert", "high", "skilled"):
-        return "expert"
-    if low in ("normal",):
-        return "normal"
-    if low in ("beginner", "low"):
-        return "beginner"
+    if low in (SkillLevel.EXPERT.value, "high", SkillLevel.SKILLED.value):
+        return SkillLevel.EXPERT.value
+    if low == SkillLevel.NORMAL.value:
+        return SkillLevel.NORMAL.value
+    if low in (SkillLevel.BEGINNER.value, "low"):
+        return SkillLevel.BEGINNER.value
     if s0 in ("熟练", "高级", "专家"):
-        return "expert"
+        return SkillLevel.EXPERT.value
     if s0 in ("普通", "一般", "中级"):
-        return "normal"
+        return SkillLevel.NORMAL.value
     if s0 in ("初级", "新手"):
-        return "beginner"
+        return SkillLevel.BEGINNER.value
     raise ValueError(f"invalid skill_level: {s0!r}")
 
 
@@ -197,11 +197,11 @@ def skill_rank(value: Any) -> int:
         return 9
     if s is None:
         return 9
-    if s == "expert":
+    if s == SkillLevel.EXPERT.value:
         return 0
-    if s == "normal":
+    if s == SkillLevel.NORMAL.value:
         return 1
-    if s == "beginner":
+    if s == SkillLevel.BEGINNER.value:
         return 2
     return 9
 
