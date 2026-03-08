@@ -32,9 +32,6 @@
     "/process/": 1,
     "/material/materials": 1,
     "/reports/": 1,
-    "/system/backup": 1,
-    "/system/logs": 1,
-    "/system/history": 1,
   };
 
   function requestIdle(cb, timeout) {
