@@ -1,0 +1,59 @@
+---
+description: APS Jinja2 模板质量规则（编辑 HTML 模板时自动注入）
+globs: ["templates/**/*.html", "web_new_test/templates/**/*.html"]
+alwaysApply: false
+---
+
+# Jinja2 模板质量规则
+
+编辑 HTML 模板文件时，遵守以下约束。
+
+## 禁止业务逻辑
+
+- 模板只负责**展示**，不做数据计算、状态判断、列表筛选等业务逻辑。
+- 允许的控制流：`{% if item.status == "completed" %}`（展示控制）、`{% for item in items %}`（渲染循环）。
+- 禁止的模式：在模板中做算术运算（`{{ a + b * c }}`）、复杂的嵌套条件判断（超过 2 层）、调用 Python 函数进行计算。
+- 数据加工必须在 Route 或 Service 层完成，模板只接收处理好的变量。
+
+## 安全：禁止 `| safe` 处理用户输入
+
+```jinja2
+{# ✅ Jinja2 自动转义（默认行为） #}
+{{ batch.remark }}
+
+{# ✅ 只对确认安全的内部 HTML 使用 Markup 或 safe #}
+{{ icon_html | safe }}
+
+{# ❌ 禁止对用户输入使用 safe #}
+{{ user_input | safe }}
+```
+
+## 静态资源引用
+
+所有 CSS/JS/图片引用必须使用 `url_for('static', ...)`，不硬编码路径：
+
+```jinja2
+{# ✅ 正确 #}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+{# ❌ 错误 #}
+<link rel="stylesheet" href="/static/css/style.css">
+```
+
+## 模板命名与继承
+
+- 模板文件按模块组织：`templates/<module>/<page>.html`（如 `templates/scheduler/batches.html`）。
+- 所有页面模板必须继承 `base.html`（`{% extends "base.html" %}`）。
+- 公共片段用 `{% include "partials/xxx.html" %}` 或 `{% macro %}` 复用，不复制粘贴。
+
+## 文案与国际化
+
+- 所有用户可见文案必须是中文。
+- 表格表头、按钮文字、提示信息等与 `开发文档/面板与接口清单.md` 保持一致。
+- 状态值的中文显示通过 Route 层传入 `_zh` 后缀变量（如 `status_zh`），不在模板中做映射。
+
+## 表单
+
+- 所有 POST 表单必须使用 `method="POST"`，不使用 GET 提交数据修改操作。
+- 表单中敏感操作（删除、批量修改）应有确认提示（`onclick="return confirm('...')"` 或模态框）。
+- 表单 `action` 使用 `url_for()`，不硬编码 URL。
