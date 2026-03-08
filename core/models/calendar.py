@@ -25,9 +25,11 @@ class WorkCalendar:
         raw_efficiency = get(row, "efficiency")
         shift_hours = parse_float(raw_shift_hours, default=8.0)
         efficiency = parse_float(raw_efficiency, default=1.0)
-        # 防御：<=0 视为非法，回落默认值
-        if shift_hours is None or shift_hours <= 0:
+        # 防御：负值归零；空值/非法值回落默认值
+        if shift_hours is None:
             shift_hours = 8.0
+        elif shift_hours < 0:
+            shift_hours = 0.0
         if efficiency is None or efficiency <= 0:
             efficiency = 1.0
         shift_start = get(row, "shift_start")
@@ -90,9 +92,11 @@ class OperatorCalendar:
         raw_efficiency = get(row, "efficiency")
         shift_hours = parse_float(raw_shift_hours, default=8.0)
         efficiency = parse_float(raw_efficiency, default=1.0)
-        # 防御：<=0 视为非法，回落默认值
-        if shift_hours is None or shift_hours <= 0:
+        # 防御：负值归零；空值/非法值回落默认值
+        if shift_hours is None:
             shift_hours = 8.0
+        elif shift_hours < 0:
+            shift_hours = 0.0
         if efficiency is None or efficiency <= 0:
             efficiency = 1.0
         shift_start = get(row, "shift_start")
