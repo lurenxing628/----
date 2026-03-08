@@ -6,6 +6,7 @@ from core.services.scheduler import CalendarService, ConfigService
 from web.ui_mode import render_ui_template as render_template
 
 from .scheduler_bp import _day_type_zh, bp
+from .scheduler_utils import _normalize_day_type, _normalize_yesno
 
 
 @bp.get("/calendar")
@@ -23,7 +24,15 @@ def calendar_page():
         hde = 0.8
     rows = [c.to_dict() for c in cal_svc.list_all()]
     for r in rows:
-        r["day_type_zh"] = _day_type_zh(r.get("day_type") or "")
+        day_type = _normalize_day_type(r.get("day_type"))
+        allow_normal = _normalize_yesno(r.get("allow_normal"))
+        allow_urgent = _normalize_yesno(r.get("allow_urgent"))
+        r["day_type"] = day_type
+        r["allow_normal"] = allow_normal
+        r["allow_urgent"] = allow_urgent
+        r["day_type_zh"] = _day_type_zh(day_type)
+        r["allow_normal_zh"] = "是" if allow_normal == "yes" else "否"
+        r["allow_urgent_zh"] = "是" if allow_urgent == "yes" else "否"
     return render_template("scheduler/calendar.html", title="工作日历配置", rows=rows, holiday_default_efficiency=hde)
 
 

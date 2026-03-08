@@ -375,8 +375,8 @@ def excel_operator_calendar_export():
                 c.shift_end,
                 c.shift_hours,
                 c.efficiency,
-                c.allow_normal,
-                c.allow_urgent,
+                _normalize_yesno(c.allow_normal),
+                _normalize_yesno(c.allow_urgent),
                 c.remark,
             ]
         )

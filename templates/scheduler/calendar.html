@@ -117,8 +117,8 @@
               <td>{% if r.shift_end %}{{ r.shift_end }}{% else %}<span class="muted">-</span>{% endif %}</td>
               <td>{{ r.shift_hours }}</td>
               <td>{{ r.efficiency }}</td>
-              <td>{{ '是' if r.allow_normal == 'yes' else '否' }}</td>
-              <td>{{ '是' if r.allow_urgent == 'yes' else '否' }}</td>
+              <td>{{ r.allow_normal_zh }}</td>
+              <td>{{ r.allow_urgent_zh }}</td>
               <td>{% if r.remark %}{{ r.remark }}{% else %}<span class="muted">-</span>{% endif %}</td>
             </tr>
           {% endfor %}

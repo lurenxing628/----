@@ -10,6 +10,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, YESNO_VALUES, CalendarDayType
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
@@ -117,13 +118,13 @@ def excel_calendar_preview():
             return e.message
 
         row["类型"] = _normalize_day_type(row.get("类型"))
-        if row["类型"] not in ("workday", "holiday"):
+        if row["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
             return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
 
         sh = row.get("可用工时")
         if sh is None or str(sh).strip() == "":
             # 允许空：按类型给默认
-            row["可用工时"] = 8 if row["类型"] == "workday" else 0
+            row["可用工时"] = 8 if row["类型"] == CalendarDayType.WORKDAY.value else 0
         else:
             try:
                 v = float(sh)
@@ -135,7 +136,7 @@ def excel_calendar_preview():
 
         eff = row.get("效率")
         if eff is None or str(eff).strip() == "":
-            row["效率"] = 1.0 if row["类型"] == "workday" else float(hde)
+            row["效率"] = 1.0 if row["类型"] == CalendarDayType.WORKDAY.value else float(hde)
         else:
             try:
                 v = float(eff)
@@ -146,10 +147,10 @@ def excel_calendar_preview():
                 return "“效率”必须是数字"
 
         row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
-        if row["允许普通件"] not in ("yes", "no"):
+        if row["允许普通件"] not in YESNO_VALUES:
             return "“允许普通件”不合法（允许：yes/no；或中文：是/否）"
         row["允许急件"] = _normalize_yesno(row.get("允许急件"))
-        if row["允许急件"] not in ("yes", "no"):
+        if row["允许急件"] not in YESNO_VALUES:
             return "“允许急件”不合法（允许：yes/no；或中文：是/否）"
 
         return None
@@ -236,13 +237,13 @@ def excel_calendar_confirm():
         except ValidationError as e:
             return e.message
         row["类型"] = _normalize_day_type(row.get("类型"))
-        if row["类型"] not in ("workday", "holiday"):
+        if row["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
             return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
 
         # 可用工时/效率/允许*
         sh = row.get("可用工时")
         if sh is None or str(sh).strip() == "":
-            row["可用工时"] = 8 if row["类型"] == "workday" else 0
+            row["可用工时"] = 8 if row["类型"] == CalendarDayType.WORKDAY.value else 0
         else:
             try:
                 v = float(sh)
@@ -254,7 +255,7 @@ def excel_calendar_confirm():
 
         eff = row.get("效率")
         if eff is None or str(eff).strip() == "":
-            row["效率"] = 1.0 if row["类型"] == "workday" else float(hde)
+            row["效率"] = 1.0 if row["类型"] == CalendarDayType.WORKDAY.value else float(hde)
         else:
             try:
                 v = float(eff)
@@ -265,10 +266,10 @@ def excel_calendar_confirm():
                 return "“效率”必须是数字"
 
         row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
-        if row["允许普通件"] not in ("yes", "no"):
+        if row["允许普通件"] not in YESNO_VALUES:
             return "“允许普通件”不合法（允许：yes/no；或中文：是/否）"
         row["允许急件"] = _normalize_yesno(row.get("允许急件"))
-        if row["允许急件"] not in ("yes", "no"):
+        if row["允许急件"] not in YESNO_VALUES:
             return "“允许急件”不合法（允许：yes/no；或中文：是/否）"
         return None
 
@@ -430,7 +431,17 @@ def excel_calendar_export():
     ws.title = "Sheet1"
     ws.append(["日期", "类型", "可用工时", "效率", "允许普通件", "允许急件", "说明"])
     for c in rows:
-        ws.append([c.date, _normalize_day_type(c.day_type), c.shift_hours, c.efficiency, c.allow_normal, c.allow_urgent, c.remark])
+        ws.append(
+            [
+                c.date,
+                _normalize_day_type(c.day_type),
+                c.shift_hours,
+                c.efficiency,
+                _normalize_yesno(c.allow_normal),
+                _normalize_yesno(c.allow_urgent),
+                c.remark,
+            ]
+        )
 
     output = io.BytesIO()
     wb.save(output)
