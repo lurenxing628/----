@@ -76,7 +76,12 @@ def backup_create():
 @bp.post("/backup/settings")
 def backup_settings():
     """
-    保存备份页的自动任务设置（按请求触发：自动备份/自动清理备份）。
+    保存备份页的自动任务设置。
+
+    说明：
+    - 自动备份：按请求触发
+    - 正常退出时的退出备份：与 auto_backup_enabled 共用同一开关
+    - 自动清理备份：按请求触发
     """
     svc = SystemConfigService(g.db, logger=current_app.logger)
     svc.update_backup_settings(

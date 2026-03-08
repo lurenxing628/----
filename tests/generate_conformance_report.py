@@ -168,8 +168,9 @@ def _check_backup_on_exit(repo_root: str) -> CheckResult:
 
     def _has_exit_backup(txt: str) -> bool:
         has_atexit = bool(re.search(r"\batexit\.register\s*\(", txt))
-        has_backup_auto = bool(re.search(r"\.backup\s*\(\s*suffix\s*=\s*['\"]auto['\"]\s*\)", txt))
-        return has_atexit and has_backup_auto
+        has_backup_exit = bool(re.search(r"\.backup\s*\(\s*suffix\s*=\s*['\"]exit['\"]\s*\)", txt))
+        has_cfg_guard = "get_snapshot_readonly" in txt and "auto_backup_enabled" in txt
+        return has_atexit and has_backup_exit and has_cfg_guard
 
     ok = False
     evidence = []
@@ -196,11 +197,11 @@ def _check_backup_on_exit(repo_root: str) -> CheckResult:
         else:
             evidence.append("  - 未找到 atexit.register")
     return CheckResult(
-        name="退出自动备份（atexit.register + suffix=auto；不启后台定时线程）",
+        name="退出自动备份（atexit.register + suffix=exit + 配置守卫；不启后台定时线程）",
         ok=ok,
         severity="MAJOR" if not ok else "INFO",
         evidence=evidence,
-        details=None if ok else "未发现退出自动备份实现（或未按 suffix=auto 执行）。",
+        details=None if ok else "未发现受 auto_backup_enabled 控制的退出自动备份实现（或未按 suffix=exit 执行）。",
     )
 
 

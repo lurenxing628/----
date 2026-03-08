@@ -76,34 +76,7 @@ class SystemConfigService:
         self.tx = TransactionManager(conn)
         self.repo = SystemConfigRepository(conn, logger=logger)
 
-    def ensure_defaults(self, backup_keep_days_default: int) -> None:
-        """
-        确保必要的 key 已落库（缺失则写入，不覆盖用户已有配置）。
-        """
-        existing = {c.config_key for c in self.repo.list_all()}
-
-        # 自动任务默认关闭；但保留策略给一个默认值（便于用户一键开启）
-        defaults: Dict[str, Tuple[str, str]] = {
-            "auto_backup_enabled": ("no", "自动备份（按请求触发）是否启用：yes/no"),
-            "auto_backup_interval_minutes": ("60", "自动备份触发间隔（分钟）"),
-            "auto_backup_cleanup_enabled": ("no", "自动清理备份（按请求触发）是否启用：yes/no"),
-            "auto_backup_keep_days": (str(int(backup_keep_days_default)), "备份保留天数（自动清理策略）"),
-            "auto_backup_cleanup_interval_minutes": ("1440", "自动清理备份触发间隔（分钟）"),
-            "auto_log_cleanup_enabled": ("no", "自动清理操作日志（按请求触发）是否启用：yes/no"),
-            "auto_log_cleanup_keep_days": ("30", "操作日志保留天数（自动清理策略）"),
-            "auto_log_cleanup_interval_minutes": ("60", "自动清理操作日志触发间隔（分钟）"),
-        }
-
-        to_set = [(k, v, d) for k, (v, d) in defaults.items() if k not in existing]
-        if not to_set:
-            return
-        with self.tx.transaction():
-            for k, v, d in to_set:
-                self.repo.set(k, v, description=d)
-
-    def get_snapshot(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
-        self.ensure_defaults(backup_keep_days_default=backup_keep_days_default)
-
+    def _read_snapshot(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
         def _get_yes_no(key: str, default: str) -> str:
             return _normalize_yes_no(self.repo.get_value(key, default=default))
 
@@ -136,6 +109,38 @@ class SystemConfigService:
             ),
         )
 
+    def ensure_defaults(self, backup_keep_days_default: int) -> None:
+        """
+        确保必要的 key 已落库（缺失则写入，不覆盖用户已有配置）。
+        """
+        existing = {c.config_key for c in self.repo.list_all()}
+
+        # 自动任务默认关闭；但保留策略给一个默认值（便于用户一键开启）
+        defaults: Dict[str, Tuple[str, str]] = {
+            "auto_backup_enabled": ("no", "自动备份（按请求触发；正常退出时也受此开关控制）是否启用：yes/no"),
+            "auto_backup_interval_minutes": ("60", "自动备份（按请求触发）触发间隔（分钟）"),
+            "auto_backup_cleanup_enabled": ("no", "自动清理备份（按请求触发）是否启用：yes/no"),
+            "auto_backup_keep_days": (str(int(backup_keep_days_default)), "备份保留天数（自动清理策略）"),
+            "auto_backup_cleanup_interval_minutes": ("1440", "自动清理备份触发间隔（分钟）"),
+            "auto_log_cleanup_enabled": ("no", "自动清理操作日志（按请求触发）是否启用：yes/no"),
+            "auto_log_cleanup_keep_days": ("30", "操作日志保留天数（自动清理策略）"),
+            "auto_log_cleanup_interval_minutes": ("60", "自动清理操作日志触发间隔（分钟）"),
+        }
+
+        to_set = [(k, v, d) for k, (v, d) in defaults.items() if k not in existing]
+        if not to_set:
+            return
+        with self.tx.transaction():
+            for k, v, d in to_set:
+                self.repo.set(k, v, description=d)
+
+    def get_snapshot(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
+        self.ensure_defaults(backup_keep_days_default=backup_keep_days_default)
+        return self._read_snapshot(backup_keep_days_default=backup_keep_days_default)
+
+    def get_snapshot_readonly(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
+        return self._read_snapshot(backup_keep_days_default=backup_keep_days_default)
+
     def set_value(self, config_key: str, value: Any, description: Optional[str] = None) -> None:
         key = (str(config_key) if config_key is not None else "").strip()
         if not key:
@@ -163,8 +168,8 @@ class SystemConfigService:
             max_v=self.MAX_INTERVAL_MINUTES,
         )
         with self.tx.transaction():
-            self.repo.set("auto_backup_enabled", enabled, description="自动备份（按请求触发）是否启用：yes/no")
-            self.repo.set("auto_backup_interval_minutes", str(interval), description="自动备份触发间隔（分钟）")
+            self.repo.set("auto_backup_enabled", enabled, description="自动备份（按请求触发；正常退出时也受此开关控制）是否启用：yes/no")
+            self.repo.set("auto_backup_interval_minutes", str(interval), description="自动备份（按请求触发）触发间隔（分钟）")
             self.repo.set("auto_backup_cleanup_enabled", cleanup_enabled, description="自动清理备份（按请求触发）是否启用：yes/no")
             self.repo.set("auto_backup_keep_days", str(keep_days), description="备份保留天数（自动清理策略）")
             self.repo.set("auto_backup_cleanup_interval_minutes", str(cleanup_interval), description="自动清理备份触发间隔（分钟）")

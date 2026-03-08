@@ -36,11 +36,12 @@
   </div>
 
   <div class="card">
-    <h3>自动任务设置（按请求触发）</h3>
+    <h3>自动任务设置</h3>
     <details class="muted">
       <summary>运行机制说明</summary>
       <ul class="list-tight">
-        <li>为避免后台线程占用资源，自动备份/自动清理在“有请求访问系统时”才会触发。</li>
+        <li>为避免后台线程占用资源，自动备份/自动清理备份会在“有请求访问系统时”按间隔检查并执行。</li>
+        <li>“自动备份”开关同时控制两类行为：按请求触发的自动备份（文件后缀 <code>_auto.db</code>）和程序正常退出时的退出备份（文件后缀 <code>_exit.db</code>）。</li>
         <li>内部有节流（不会每次请求都执行）。</li>
         {% if maintenance_limits %}
           <li>单次自动清理最多删除 {{ maintenance_limits.max_backup_delete_per_run }} 个备份文件（避免一次请求删太多）。</li>
@@ -59,6 +60,9 @@
             <input type="checkbox" name="auto_backup_enabled" {{ 'checked' if settings and settings.auto_backup_enabled=='yes' else '' }}>
             启用
           </label>
+          <div class="muted mt-2">
+            启用后，会在请求触发的自动备份与程序正常退出时共用同一开关。
+          </div>
           <div class="muted mt-2">
             间隔（分钟）：
             <input type="number" min="1" max="1440" step="1" name="auto_backup_interval_minutes" value="{{ settings.auto_backup_interval_minutes if settings else '60' }}" class="w-120">
