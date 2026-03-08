@@ -1,12 +1,12 @@
 # Phase8（甘特图与周计划 / M4）冒烟测试报告
 
-- 测试时间：2026-03-02 12:33:45
+- 测试时间：2026-03-08 17:36:39
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase8_z62w3gxa`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase8_z62w3gxa\aps_phase8_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase8_zxurb73o`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase8_zxurb73o\aps_phase8_test.db`
 
 ## 1. 基础数据准备（资源 + 工艺模板）
 
@@ -25,7 +25,7 @@
 - GET /scheduler/gantt/data：200
 - GET /scheduler/gantt/data (2nd)：200
 - 甘特图 tasks 校验：1 条（契约字段齐全，含 overdue 标记，关键链缓存命中）
-- 甘特图数据耗时：首次 5 ms，二次 6 ms
+- 甘特图数据耗时：首次 4 ms，二次 3 ms
 - GET /scheduler/week-plan：200
 - GET /scheduler/week-plan/export：200 content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 - 周计划表.xlsx 表头校验：通过
@@ -36,4 +36,4 @@
 
 ## 结论
 - 通过：Phase8（甘特图与周计划 / M4）冒烟测试通过（甘特图数据/周计划导出与留痕/插单模拟可追溯）。
-- 总耗时：2743 ms
+- 总耗时：2079 ms

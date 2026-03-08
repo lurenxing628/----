@@ -1,6 +1,6 @@
 # 实现一致性对标报告（实现 vs 开发文档规划 + 架构合规）
 
-- 生成时间：2026-03-02 12:49:00
+- 生成时间：2026-03-08 17:51:09
 - 仓库根目录：`D:\Github\APS Test`
 
 ## 总结
@@ -54,7 +54,7 @@
   - `templates_excel/` 文件数：12
   - 缺失模板：无
 
-### 退出自动备份（atexit.register + suffix=auto；不启后台定时线程）
+### 退出自动备份（atexit.register + suffix=exit + 配置守卫；不启后台定时线程）
 - **结果**：通过
 - **严重性**：INFO
 - **证据**：
@@ -63,20 +63,20 @@
   -   - 未找到 atexit.register
   - - `web/bootstrap/factory.py`：
 ```
-  -             except Exception as e:
-  -                 try:
-  -                     bm.logger.error(f"退出自动备份失败：{e}")
-  -                 except Exception:
-  -                     pass
+  -     )
   - 
-  -         atexit.register(_backup_on_exit)
+  -     global _EXIT_BACKUP_MANAGER, _EXIT_BACKUP_REGISTERED
+  -     _EXIT_BACKUP_MANAGER = backup_manager
+  - 
+  -     if not _EXIT_BACKUP_REGISTERED and _should_register_exit_backup(debug=bool(app.config.get("DEBUG", False))):
+  -         atexit.register(_run_exit_backup)
   -         _EXIT_BACKUP_REGISTERED = True
+  -     elif not _EXIT_BACKUP_REGISTERED:
+  -         app.logger.info("开发重载父进程跳过注册退出自动备份。")
   - 
   -     if str(ui_mode or "").strip().lower() == "new_ui":
   -         app.logger.info("应用启动完成 (UI Test Mode)。")
   -     else:
-  -         app.logger.info("应用启动完成。")
-  -     return app
 ```
 
 ### 排产策略默认值（priority_first；权重 0.4/0.5/0.1）对齐开发文档
@@ -130,10 +130,12 @@
   - 未在文档中出现的表：无
 
 ### 文件行数约束（核心目录 Python 文件不超过 500 行）
-- **结果**：通过
-- **严重性**：INFO
+- **结果**：不通过
+- **严重性**：MINOR
+- **说明**：建议按职责拆分超大文件（参考 scheduler.py 拆分先例）。
 - **证据**：
-  - 超过 500 行的文件数：0
+  - 超过 500 行的文件数：1
+  - core/services/personnel/operator_machine_service.py（506 行）
 
 ### 模板目录完整性（templates/ 子目录与模块对齐）
 - **结果**：通过
@@ -150,5 +152,5 @@
   - 关键路由缺失：无
 
 ## 差异项清单（便于验收沟通/修复排期）
-- 无
+- **[MINOR] 文件行数约束（核心目录 Python 文件不超过 500 行）**：建议按职责拆分超大文件（参考 scheduler.py 拆分先例）。
 

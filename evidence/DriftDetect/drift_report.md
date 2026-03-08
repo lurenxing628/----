@@ -1,6 +1,6 @@
 # APS 漂移检测（综合体检）报告
 
-- 生成时间：2026-02-28 21:38:07
+- 生成时间：2026-03-08 17:51:05
 - 仓库根目录：`D:\Github\APS Test`
 
 ## 1. 架构合规审计
@@ -15,18 +15,15 @@
 - 详细报告：`evidence/Conformance/conformance_report.md`
 
 ## 3. Ruff Lint 全量检查
-- 结论：FAIL
-- exit_code：1
-- 摘要：Found 78 errors.
+- 结论：PASS
+- exit_code：0
+- 摘要：All checks passed!
 
 ## 4. 文档新鲜度
-- 代码最新修改：`core/services/material/batch_material_service.py`
-- 以下文档可能需要更新：
-  - 开发文档/开发文档.md（落后代码 1 天）
-  - 开发文档/面板与接口清单.md（落后代码 1 天）
-  - 开发文档/阶段留痕与验收记录.md（落后代码 1 天）
+- 代码最新修改：`web/routes/system_backup.py`
+- 所有文档均在代码变更 1 天内更新过
 
 ## 总结
 - 健康状态：**需要修复**
-- 耗时：4.3 秒
+- 耗时：4.6 秒
 
