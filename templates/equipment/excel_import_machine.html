@@ -6,7 +6,7 @@
       <div class="page-title-group"><h2 class="page-title">设备信息（Excel）</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">支持：下载模板 → 上传预览 → 确认导入 → 导出。提示信息尽量中文，便于排查。</p>
+    <p class="page-subtitle text-meta">支持：下载模板  上传预览  确认导入  导出。提示信息尽量中文，便于排查。</p>
     {{ ui.equipment_nav('excel_machine') }}
     <div class="mt-2">
       {{ ui.link_button('导出当前数据（设备信息.xlsx）', export_url, 'secondary', 'md') }}
@@ -25,6 +25,7 @@
             <th>设备编号</th>
             <th>设备名称</th>
             <th>工种</th>
+            <th>班组</th>
             <th>状态</th>
           </tr>
         </thead>
@@ -34,6 +35,7 @@
               <td>{{ r["设备编号"] }}</td>
               <td>{{ r["设备名称"] }}</td>
               <td>{{ r["工种"] or '-' }}</td>
+              <td>{{ r["班组"] or '-' }}</td>
               <td>{{ r["状态"] }}</td>
             </tr>
           {% endfor %}
@@ -46,4 +48,3 @@
 
   <script src="{{ url_for('static', filename='js/excel_handler.js') }}" defer></script>
 {% endblock %}
-

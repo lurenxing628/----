@@ -6,7 +6,7 @@
       <div class="page-title-group"><h2 class="page-title">人员详情</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
+    <p class="page-subtitle text-meta">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong>　班组：<strong>{{ operator_team_name or '未设置' }}</strong></p>
     {{ ui.personnel_nav('list') }}
     {% set op_cal_url = safe_url_for('personnel.operator_calendar_page', operator_id=operator.operator_id) %}
     {% set global_cal_url = safe_url_for('scheduler.calendar_page') %}
@@ -62,6 +62,15 @@
           <select name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}" {% if operator.status == v %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-field">
+          <label>班组</label>
+          <select name="team_id">
+            <option value="" {% if not operator.team_id %}selected{% endif %}>（未设置）</option>
+            {% for t in team_options %}
+              <option value="{{ t.team_id }}" {% if operator.team_id == t.team_id %}selected{% endif %}>{{ t.name }}（{{ t.team_id }}）</option>
             {% endfor %}
           </select>
         </div>
@@ -162,4 +171,3 @@
   </div>
 
 {% endblock %}
-

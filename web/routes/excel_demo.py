@@ -232,7 +232,7 @@ def confirm():
 @bp.get("/template")
 def download_template():
     """
-    下载“人员基本信息.xlsx”模板（演示用）：列名与文档一致（工号/姓名/状态/备注）。
+    下载“人员基本信息.xlsx”模板（演示用）：列名与文档一致（工号/姓名/状态/班组/备注）。
     """
     start = time.time()
     template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "人员基本信息.xlsx")
@@ -260,8 +260,8 @@ def download_template():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
-    ws.append(["工号", "姓名", "状态", "备注"])
-    ws.append(["OP001", "张三", OperatorStatus.ACTIVE.value, "示例备注"])
+    ws.append(["工号", "姓名", "状态", "班组", "备注"])
+    ws.append(["OP001", "张三", OperatorStatus.ACTIVE.value, None, "示例备注"])
 
     output = io.BytesIO()
     wb.save(output)

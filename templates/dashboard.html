@@ -53,6 +53,10 @@
       {{ ui.link_button('去排产', url_for('scheduler.batches_page'), 'primary', 'md', 'schedule') }}
       {{ ui.link_button('批次管理', url_for('scheduler.batches_manage_page'), 'secondary', 'md', 'schedule') }}
       {{ ui.link_button('导入批次', url_for('scheduler.excel_batches_page'), 'secondary', 'md', 'excel') }}
+      {% set resource_dispatch_url = safe_url_for('scheduler.resource_dispatch_page') %}
+      {% if resource_dispatch_url %}
+        {{ ui.link_button('资源排班', resource_dispatch_url, 'secondary', 'md', 'chart') }}
+      {% endif %}
       {% set gantt_url = safe_url_for('scheduler.gantt_page', view='machine') %}
       {% if gantt_url %}
         {{ ui.link_button('甘特图', gantt_url, 'secondary', 'md', 'chart') }}

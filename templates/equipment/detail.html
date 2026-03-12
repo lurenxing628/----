@@ -6,7 +6,7 @@
       <div class="page-title-group"><h2 class="page-title">设备详情</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">设备编号：<strong>{{ machine.machine_id }}</strong>　设备名称：<strong>{{ machine.name }}</strong></p>
+    <p class="page-subtitle text-meta">设备编号：<strong>{{ machine.machine_id }}</strong>　设备名称：<strong>{{ machine.name }}</strong>　班组：<strong>{{ machine_team_name or '未设置' }}</strong></p>
     {{ ui.equipment_nav('list') }}
   </div>
 
@@ -34,6 +34,15 @@
         <div class="form-field">
           <label>类别（可选）</label>
           <input name="category" value="{{ machine.category or '' }}" placeholder="如：CNC / 铣床 / 装配" class="w-180">
+        </div>
+        <div class="form-field">
+          <label>班组</label>
+          <select name="team_id">
+            <option value="" {% if not machine.team_id %}selected{% endif %}>（未设置）</option>
+            {% for t in team_options %}
+              <option value="{{ t.team_id }}" {% if machine.team_id == t.team_id %}selected{% endif %}>{{ t.name }}（{{ t.team_id }}）</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="form-field">
           <label>状态</label>
@@ -209,4 +218,3 @@
   </div>
 
 {% endblock %}
-

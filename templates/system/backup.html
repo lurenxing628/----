@@ -17,22 +17,64 @@
   </div>
 
   <div class="card">
-    <h3>常用操作</h3>
-    <div class="muted">提示：批量删除需要先在“备份列表”中勾选文件。</div>
-    <div class="inline-flex-wrap">
+    <h3>备份列表</h3>
+    <div class="inline-flex-wrap mb-3">
       <form method="post" action="{{ url_for('system.backup_create') }}" class="d-inline-block">
         {{ ui.button('手动备份', 'primary', 'md', type_attr='submit') }}
       </form>
-
       <form method="post" action="{{ url_for('system.backup_cleanup') }}" class="d-inline-block">
         {{ ui.button('清理过期备份（保留 ' ~ keep_days ~ ' 天）', 'secondary', 'md', type_attr='submit') }}
       </form>
-
-      <form id="backupBatchDeleteForm" method="post" action="{{ url_for('system.backup_delete_batch') }}" class="d-inline-block"
-            data-confirm="确认批量删除选中的备份文件？删除后不可恢复。">
-        {{ ui.button('批量删除选中', 'danger', 'md', type_attr='submit') }}
-      </form>
+      {% if backups %}
+        <form id="backupBatchDeleteForm" method="post" action="{{ url_for('system.backup_delete_batch') }}" class="d-inline-block"
+              data-confirm="确认批量删除选中的备份文件？删除后不可恢复。">
+          {{ ui.button('批量删除选中', 'danger', 'md', type_attr='submit') }}
+        </form>
+      {% endif %}
     </div>
+    {% if not backups %}
+      <p class="muted">暂无备份文件。你可以先点击“手动备份”。</p>
+    {% else %}
+      <table class="table-sticky">
+        <thead>
+          <tr>
+            <th class="w-60">
+              <input type="checkbox" class="js-backup-select-all" title="全选" aria-label="全选备份">
+            </th>
+            <th>文件名</th>
+            <th>创建时间</th>
+            <th>大小(MB)</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in backups %}
+            <tr>
+              <td>
+                <input type="checkbox" name="filenames" value="{{ b.filename }}" form="backupBatchDeleteForm">
+              </td>
+              <td><code>{{ b.filename }}</code></td>
+              <td>{{ b.created_at }}</td>
+              <td>{{ b.size_mb }}</td>
+              <td>
+                <div class="table-actions">
+                  <form method="post" action="{{ url_for('system.backup_restore') }}"
+                        data-confirm="确认从该备份恢复数据库？恢复会覆盖当前数据。">
+                    <input type="hidden" name="filename" value="{{ b.filename }}">
+                    {{ ui.button('恢复', 'secondary', 'sm', type_attr='submit') }}
+                  </form>
+                  <form method="post" action="{{ url_for('system.backup_delete') }}"
+                        data-confirm="确认删除该备份文件？删除后不可恢复。">
+                    <input type="hidden" name="filename" value="{{ b.filename }}">
+                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
   </div>
 
   <div class="card">
@@ -102,53 +144,6 @@
         </div>
       </div>
     </form>
-  </div>
-
-  <div class="card">
-    <h3>备份列表</h3>
-    {% if not backups %}
-      <p class="muted">暂无备份文件。你可以先点击“手动备份”。</p>
-    {% else %}
-      <table class="table-sticky">
-        <thead>
-          <tr>
-            <th class="w-60">
-              <input type="checkbox" class="js-backup-select-all" title="全选" aria-label="全选备份">
-            </th>
-            <th>文件名</th>
-            <th>创建时间</th>
-            <th>大小(MB)</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for b in backups %}
-            <tr>
-              <td>
-                <input type="checkbox" name="filenames" value="{{ b.filename }}" form="backupBatchDeleteForm">
-              </td>
-              <td><code>{{ b.filename }}</code></td>
-              <td>{{ b.created_at }}</td>
-              <td>{{ b.size_mb }}</td>
-              <td>
-                <div class="table-actions">
-                  <form method="post" action="{{ url_for('system.backup_restore') }}"
-                        data-confirm="确认从该备份恢复数据库？恢复会覆盖当前数据。">
-                    <input type="hidden" name="filename" value="{{ b.filename }}">
-                    {{ ui.button('恢复', 'secondary', 'sm', type_attr='submit') }}
-                  </form>
-                  <form method="post" action="{{ url_for('system.backup_delete') }}"
-                        data-confirm="确认删除该备份文件？删除后不可恢复。">
-                    <input type="hidden" name="filename" value="{{ b.filename }}">
-                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
-                  </form>
-                </div>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endif %}
   </div>
 
   <div class="card">

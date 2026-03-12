@@ -16,6 +16,7 @@ from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.equipment import MachineService
 from core.services.equipment.machine_excel_import_service import MachineExcelImportService
+from core.services.personnel import ResourceTeamService
 from core.services.process import OpTypeService
 from web.ui_mode import render_ui_template as render_template
 
@@ -29,19 +30,18 @@ from .equipment_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, 
 
 def _validate_machine_excel_row(row: Dict[str, Any]) -> Optional[str]:
     if not row.get("设备编号") or str(row.get("设备编号")).strip() == "":
-        return "“设备编号”不能为空"
+        return "设备编号不能为空"
     if not row.get("设备名称") or str(row.get("设备名称")).strip() == "":
-        return "“设备名称”不能为空"
+        return "设备名称不能为空"
 
     status = row.get("状态")
     if status is None or str(status).strip() == "":
-        return "“状态”不能为空（允许：active / inactive / maintain）"
+        return "状态不能为空（允许：active / inactive / maintain）"
     st = _normalize_machine_status_for_excel(status)
     if st not in MACHINE_STATUS_VALUES:
-        return "“状态”不合法（允许：active / inactive / maintain；或中文：可用/停用/维修）"
+        return "状态不合法（允许：active / inactive / maintain；或中文：可用/停用/维修）"
     row["状态"] = st
 
-    # 工种可为空；不为空时在 confirm/preview 中做存在性校验并给出中文提示
     return None
 
 
@@ -57,7 +57,7 @@ def _normalize_machine_status_for_excel(value: Any) -> str:
 
 def _resolve_op_type(value: Any, op_type_svc: OpTypeService) -> Dict[str, Optional[str]]:
     """
-    解析 Excel 的“工种”字段：
+    解析 Excel 的工种字段：
     - 支持填写 op_type_id 或 工种名称
     - 返回 dict：{op_type_id, op_type_name}
     """
@@ -68,8 +68,35 @@ def _resolve_op_type(value: Any, op_type_svc: OpTypeService) -> Dict[str, Option
     if not ot:
         ot = op_type_svc.get_by_name_optional(v)
     if not ot:
-        raise ValidationError(f"工种“{v}”不存在，请先在工艺管理-工种配置中维护。", field="工种")
+        raise ValidationError(f"工种{v}不存在，请先在工艺管理-工种配置中维护。", field="工种")
     return {"op_type_id": ot.op_type_id, "op_type_name": ot.name}
+
+
+def _build_machine_template_output(template_path: str) -> io.BytesIO:
+    import openpyxl
+
+    if os.path.exists(template_path):
+        wb = openpyxl.load_workbook(template_path)
+        ws = wb.active
+    else:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Sheet1"
+
+    desired_headers = ["设备编号", "设备名称", "工种", "班组", "状态"]
+    current_headers = [str(ws.cell(1, idx + 1).value or "").strip() for idx in range(len(desired_headers))]
+    if current_headers != desired_headers:
+        if ws.max_row > 0:
+            ws.delete_rows(1, ws.max_row)
+        ws.append(desired_headers)
+        ws.append(["CNC-01", "数控车床1", "数车", "车工一组", "active"])
+    elif ws.max_row < 2:
+        ws.append(["CNC-01", "数控车床1", "数车", "车工一组", "active"])
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
 
 
 def _parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
@@ -145,21 +172,24 @@ def excel_machine_preview():
     _ensure_unique_ids(rows, id_column="设备编号")
 
     op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
+    team_svc = ResourceTeamService(g.db, op_logger=getattr(g, "op_logger", None))
 
-    # 预先做字段标准化，便于差异对比与落库
     normalized_rows: List[Dict[str, Any]] = []
     for r in rows:
         item = dict(r)
         if "状态" in item:
             item["状态"] = _normalize_machine_status_for_excel(item.get("状态"))
-        # 工种：预览时也尽量标准化为“工种名称”
         try:
             ot = _resolve_op_type(item.get("工种"), op_type_svc=op_type_svc)
             if ot.get("op_type_name") is not None:
                 item["工种"] = ot.get("op_type_name")
         except ValidationError:
-            # 让 validator 输出更友好的错误，不在这里中断
             pass
+        if "班组" in item:
+            try:
+                item["班组"] = team_svc.resolve_team_name_optional(item.get("班组"))
+            except ValidationError:
+                pass
         normalized_rows.append(item)
 
     m_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -170,13 +200,17 @@ def excel_machine_preview():
         if err:
             return err
 
-        # 工种存在性校验 + 标准化（允许为空）
         v = row.get("工种")
-        if v is None or str(v).strip() == "":
+        if v is not None and str(v).strip() != "":
+            try:
+                ot = _resolve_op_type(v, op_type_svc=op_type_svc)
+                row["工种"] = ot.get("op_type_name")
+            except ValidationError as e:
+                return e.message
+        if "班组" not in row:
             return None
         try:
-            ot = _resolve_op_type(v, op_type_svc=op_type_svc)
-            row["工种"] = ot.get("op_type_name")
+            row["班组"] = team_svc.resolve_team_name_optional(row.get("班组"))
         except ValidationError as e:
             return e.message
         return None
@@ -223,6 +257,7 @@ def excel_machine_confirm():
     _ensure_unique_ids(rows, id_column="设备编号")
 
     op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
+    team_svc = ResourceTeamService(g.db, op_logger=getattr(g, "op_logger", None))
     m_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = m_svc.build_existing_for_excel()
 
@@ -231,11 +266,16 @@ def excel_machine_confirm():
         if err:
             return err
         v = row.get("工种")
-        if v is None or str(v).strip() == "":
+        if v is not None and str(v).strip() != "":
+            try:
+                ot = _resolve_op_type(v, op_type_svc=op_type_svc)
+                row["工种"] = ot.get("op_type_name")
+            except ValidationError as e:
+                return e.message
+        if "班组" not in row:
             return None
         try:
-            ot = _resolve_op_type(v, op_type_svc=op_type_svc)
-            row["工种"] = ot.get("op_type_name")
+            row["班组"] = team_svc.resolve_team_name_optional(row.get("班组"))
         except ValidationError as e:
             return e.message
         return None
@@ -249,12 +289,14 @@ def excel_machine_confirm():
         mode=mode,
     )
 
-    # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
     error_rows = _extract_error_rows(preview_rows)
     if error_rows:
         sample = _format_error_sample(error_rows)
+        message = f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。"
+        if sample:
+            message += f"错误示例：{sample}"
         flash(
-            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
+            message,
             "error",
         )
         return _render_excel_machine_page(
@@ -298,36 +340,7 @@ def excel_machine_confirm():
 def excel_machine_template():
     start = time.time()
     template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "设备信息.xlsx")
-    if os.path.exists(template_path):
-        time_cost_ms = int((time.time() - start) * 1000)
-        log_excel_export(
-            op_logger=getattr(g, "op_logger", None),
-            module="equipment",
-            target_type="machine",
-            template_or_export_type="设备信息模板.xlsx",
-            filters={},
-            row_count=1,
-            time_range={},
-            time_cost_ms=time_cost_ms,
-        )
-        return send_file(
-            template_path,
-            as_attachment=True,
-            download_name="设备信息.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["设备编号", "设备名称", "工种", "状态"])
-    ws.append(["CNC-01", "数控车床1", "数车", "active"])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    output = _build_machine_template_output(template_path)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
@@ -340,7 +353,6 @@ def excel_machine_template():
         time_range={},
         time_cost_ms=time_cost_ms,
     )
-
     return send_file(
         output,
         as_attachment=True,
@@ -360,9 +372,9 @@ def excel_machine_export():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
-    ws.append(["设备编号", "设备名称", "工种", "状态"])
+    ws.append(["设备编号", "设备名称", "工种", "班组", "状态"])
     for r in rows:
-        ws.append([r["machine_id"], r["name"], r["op_type_name"], r["status"]])
+        ws.append([r["machine_id"], r["name"], r.get("op_type_name"), r.get("team_name"), r["status"]])
 
     output = io.BytesIO()
     wb.save(output)
@@ -386,4 +398,3 @@ def excel_machine_export():
         download_name="设备信息.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-

@@ -36,6 +36,15 @@
           <input id="machineCategoryInput" name="category" placeholder="如：CNC / 铣床 / 装配" class="w-180">
         </div>
         <div class="form-field">
+          <label for="machineTeamInput">班组</label>
+          <select id="machineTeamInput" name="team_id">
+            <option value="">（未设置）</option>
+            {% for t in team_options %}
+              <option value="{{ t.team_id }}">{{ t.name }}（{{ t.team_id }}）</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-field">
           <label for="machineStatusInput">状态</label>
           <select id="machineStatusInput" name="status">
             {% for v, label in status_options %}
@@ -57,6 +66,21 @@
     <div class="muted mb-2">
       批量操作：可批量切换状态/删除。若设备已被批次工序或排程引用，将禁止删除（请改为停用或维修）。
     </div>
+    <form method="get" action="{{ url_for('equipment.list_page') }}" class="form-row mb-2">
+      <div class="form-field">
+        <label for="equipmentTeamFilter">班组筛选</label>
+        <select id="equipmentTeamFilter" name="team_id">
+          <option value="">（全部班组）</option>
+          {% for t in team_options %}
+            <option value="{{ t.team_id }}" {% if selected_team_id == t.team_id %}selected{% endif %}>{{ t.name }}（{{ t.team_id }}）</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>{{ ui.button('筛选', 'secondary', 'md', type_attr='submit') }}</div>
+      {% if selected_team_id %}
+        <div>{{ ui.link_button('清空筛选', url_for('equipment.list_page'), 'secondary', 'md') }}</div>
+      {% endif %}
+    </form>
     <div class="form-row mb-2">
       <div class="form-field">
         <label for="equipmentSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索</label>
@@ -68,10 +92,10 @@
       <div class="info-line mb-2">
         <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
         {% if pager.has_prev %}
-          <a href="{{ url_for('equipment.list_page', page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+          <a href="{{ url_for('equipment.list_page', page=pager.prev_page, per_page=pager.per_page, team_id=selected_team_id) }}" class="table-action-link">上一页</a>
         {% endif %}
         {% if pager.has_next %}
-          <a href="{{ url_for('equipment.list_page', page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+          <a href="{{ url_for('equipment.list_page', page=pager.next_page, per_page=pager.per_page, team_id=selected_team_id) }}" class="table-action-link">下一页</a>
         {% endif %}
       </div>
     {% endif %}
@@ -84,6 +108,7 @@
             <th class="w-140">设备编号</th>
             <th class="w-220">设备名称</th>
             <th class="w-160">工种</th>
+            <th class="w-180">班组</th>
             <th class="w-120">状态</th>
             <th>可操作人员</th>
             <th class="w-160">操作</th>
@@ -100,6 +125,13 @@
               <td>
                 {% if r.op_type_name %}
                   {{ r.op_type_name }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if r.team_name %}
+                  {{ r.team_name }}
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
@@ -145,4 +177,3 @@
   </div>
 
 {% endblock %}
-

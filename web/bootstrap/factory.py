@@ -39,6 +39,16 @@ _EXIT_BACKUP_MANAGER = None
 _EXIT_BACKUP_REGISTERED = False
 
 
+def _apply_runtime_config(app: Flask, *, base_dir: str) -> None:
+    app.config["BASE_DIR"] = base_dir
+    app.config["DATABASE_PATH"] = (os.environ.get("APS_DB_PATH") or os.path.join(base_dir, "db", "aps.db"))
+    app.config["LOG_DIR"] = (os.environ.get("APS_LOG_DIR") or os.path.join(base_dir, "logs"))
+    app.config["BACKUP_DIR"] = (os.environ.get("APS_BACKUP_DIR") or os.path.join(base_dir, "backups"))
+    app.config["EXCEL_TEMPLATE_DIR"] = (
+        os.environ.get("APS_EXCEL_TEMPLATE_DIR") or os.path.join(base_dir, "templates_excel")
+    )
+
+
 def _should_register_exit_backup(*, debug: bool, frozen: Optional[bool] = None, run_main: Optional[str] = None) -> bool:
     is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else bool(frozen)
     if not debug or is_frozen:
@@ -113,6 +123,7 @@ def create_app_core(
 
     app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)
     app.config.from_object(cfg_class)
+    _apply_runtime_config(app, base_dir=base_dir)
     app.config["APP_UI_MODE"] = ui_mode
     # 静态资源长缓存（配合 url_for('static', ...) 版本参数）
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = int(app.config.get("SEND_FILE_MAX_AGE_DEFAULT") or 43200)

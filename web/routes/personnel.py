@@ -19,7 +19,8 @@ from . import personnel_excel_operators as _excel_ops  # noqa: F401
 
 # 导入子模块以注册路由（side-effect）
 from . import personnel_pages as _pages  # noqa: F401
+from . import personnel_teams as _teams
 from .personnel_bp import bp
 
+_ROUTE_IMPORTS = (_calendar_pages, _excel_links, _excel_op_cal, _excel_ops, _pages, _teams)
 __all__ = ["bp"]
-

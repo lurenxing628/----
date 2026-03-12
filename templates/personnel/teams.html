@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
+{% block content %}
+  <div class="card">
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">班组管理</h2></div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
+    <p class="page-subtitle text-meta">维护人员/设备所属班组，并查看当前引用数量。</p>
+    {{ ui.personnel_nav('teams') }}
+  </div>
+
+  <div class="card">
+    <h3>新增班组</h3>
+    <form method="post" action="{{ url_for('personnel.create_team') }}">
+      <div class="form-row">
+        <div class="form-field">
+          <label>班组ID</label>
+          <input name="team_id" required placeholder="如：TEAM-01">
+        </div>
+        <div class="form-field">
+          <label>班组名称</label>
+          <input name="name" required placeholder="如：车工一组">
+        </div>
+        <div class="form-field">
+          <label>状态</label>
+          <select name="status">
+            {% for v, label in status_options %}
+              <option value="{{ v }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-field flex-1 min-w-240">
+          <label>备注</label>
+          <input name="remark" placeholder="可选">
+        </div>
+        <div>{{ ui.button('添加班组', 'primary', 'md', type_attr='submit') }}</div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>班组列表</h3>
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('personnel.teams_page', page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('personnel.teams_page', page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
+    {% if teams and teams|length > 0 %}
+      {% for r in teams %}
+        <form id="teamform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_team', team_id=r.team_id) }}"></form>
+      {% endfor %}
+      <table>
+        <thead>
+          <tr>
+            <th class="w-140">班组ID</th>
+            <th class="w-220">班组名称</th>
+            <th class="w-120">状态</th>
+            <th class="w-100">人员数</th>
+            <th class="w-100">设备数</th>
+            <th>备注</th>
+            <th class="w-220">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in teams %}
+            <tr>
+              <td>{{ r.team_id }}</td>
+              <td><input name="name" value="{{ r.name }}" form="teamform_{{ loop.index0 }}"></td>
+              <td>
+                <select name="status" form="teamform_{{ loop.index0 }}">
+                  {% for v, label in status_options %}
+                    <option value="{{ v }}" {% if r.status == v %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td>{{ r.operator_count }}</td>
+              <td>{{ r.machine_count }}</td>
+              <td><input name="remark" value="{{ r.remark or '' }}" form="teamform_{{ loop.index0 }}"></td>
+              <td>
+                <div class="table-actions">
+                  {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='teamform_' ~ loop.index0) }}
+                  <form method="post" action="{{ url_for('personnel.delete_team', team_id=r.team_id) }}"
+                        data-confirm="确定删除班组 {{ r.team_id }} 吗？若仍被人员/设备引用将删除失败。">
+                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">暂无班组，可在上方新增。</div>
+    {% endif %}
+  </div>
+{% endblock %}

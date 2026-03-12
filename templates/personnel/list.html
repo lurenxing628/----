@@ -41,6 +41,15 @@
             {% endfor %}
           </select>
         </div>
+        <div class="form-field">
+          <label for="operatorTeamInput">班组</label>
+          <select id="operatorTeamInput" name="team_id">
+            <option value="">（未设置）</option>
+            {% for t in team_options %}
+              <option value="{{ t.team_id }}">{{ t.name }}（{{ t.team_id }}）</option>
+            {% endfor %}
+          </select>
+        </div>
         <div class="form-field flex-1 min-w-240">
           <label for="operatorRemarkInput">备注</label>
           <input id="operatorRemarkInput" name="remark" placeholder="可选">
@@ -55,6 +64,21 @@
     <div class="muted mb-2">
       批量操作：可批量停用/启用/删除。若人员已被批次工序或排程引用，将禁止删除（请改为停用）。
     </div>
+    <form method="get" action="{{ url_for('personnel.list_page') }}" class="form-row mb-2">
+      <div class="form-field">
+        <label for="personnelTeamFilter">班组筛选</label>
+        <select id="personnelTeamFilter" name="team_id">
+          <option value="">（全部班组）</option>
+          {% for t in team_options %}
+            <option value="{{ t.team_id }}" {% if selected_team_id == t.team_id %}selected{% endif %}>{{ t.name }}（{{ t.team_id }}）</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>{{ ui.button('筛选', 'secondary', 'md', type_attr='submit') }}</div>
+      {% if selected_team_id %}
+        <div>{{ ui.link_button('清空筛选', url_for('personnel.list_page'), 'secondary', 'md') }}</div>
+      {% endif %}
+    </form>
     <div class="form-row mb-2">
       <div class="form-field">
         <label for="personnelSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索</label>
@@ -66,10 +90,10 @@
       <div class="info-line mb-2">
         <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
         {% if pager.has_prev %}
-          <a href="{{ url_for('personnel.list_page', page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+          <a href="{{ url_for('personnel.list_page', page=pager.prev_page, per_page=pager.per_page, team_id=selected_team_id) }}" class="table-action-link">上一页</a>
         {% endif %}
         {% if pager.has_next %}
-          <a href="{{ url_for('personnel.list_page', page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+          <a href="{{ url_for('personnel.list_page', page=pager.next_page, per_page=pager.per_page, team_id=selected_team_id) }}" class="table-action-link">下一页</a>
         {% endif %}
       </div>
     {% endif %}
@@ -81,6 +105,7 @@
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选人员"></th>
             <th class="w-120">工号</th>
             <th class="w-160">姓名</th>
+            <th class="w-180">班组</th>
             <th class="w-120">状态</th>
             <th>可操作设备</th>
             <th class="w-160">操作</th>
@@ -94,6 +119,13 @@
               </td>
               <td><a href="{{ url_for('personnel.detail_page', operator_id=r.operator_id) }}">{{ r.operator_id }}</a></td>
               <td>{{ r.name }}</td>
+              <td>
+                {% if r.team_name %}
+                  {{ r.team_name }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
               <td>{{ r.status_zh }}</td>
               <td>
                 {% if r.machine_text %}
@@ -134,4 +166,3 @@
   </div>
 
 {% endblock %}
-

@@ -45,7 +45,7 @@
   排产主导航（唯一跨页主导航）
   active:
     batches | batches_manage | config |
-    gantt_machine | gantt_operator |
+    gantt_machine | gantt_operator | resource_dispatch |
     analysis | week_plan | calendar |
     excel_batches | excel_calendar
 #}
@@ -54,6 +54,7 @@
   {{ link_button('执行排产', url_for('scheduler.batches_page'), 'primary' if active == 'batches' else 'secondary', size) }}
   {{ link_button('批次管理', url_for('scheduler.batches_manage_page'), 'primary' if active == 'batches_manage' else 'secondary', size) }}
   {{ link_button('高级设置/模板', url_for('scheduler.config_page'), 'primary' if active == 'config' else 'secondary', size) }}
+  {{ link_button('资源排班中心', url_for('scheduler.resource_dispatch_page'), 'primary' if active == 'resource_dispatch' else 'secondary', size) }}
   {{ link_button('甘特图-设备', url_for('scheduler.gantt_page', view='machine'), 'primary' if active == 'gantt_machine' else 'secondary', size) }}
   {{ link_button('甘特图-人员', url_for('scheduler.gantt_page', view='operator'), 'primary' if active == 'gantt_operator' else 'secondary', size) }}
   {{ link_button('排产优化分析', url_for('scheduler.analysis_page'), 'primary' if active == 'analysis' else 'secondary', size) }}
@@ -116,6 +117,7 @@
 {% macro personnel_nav(active='', size='sm', class='') %}
 <div class="scheduler-subnav scheduler-subnav-main {{ class }}">
   {{ link_button('人员管理', url_for('personnel.list_page'), 'primary' if active == 'list' else 'secondary', size) }}
+  {{ link_button('班组管理', url_for('personnel.teams_page'), 'primary' if active == 'teams' else 'secondary', size) }}
   {{ link_button('人员基本信息（Excel）', url_for('personnel.excel_operator_page'), 'primary' if active == 'excel_operator' else 'secondary', size) }}
   {{ link_button('人员设备关联（Excel）', url_for('personnel.excel_link_page'), 'primary' if active == 'excel_link' else 'secondary', size) }}
   {% set op_cal_url = safe_url_for('personnel.excel_operator_calendar_page') %}
