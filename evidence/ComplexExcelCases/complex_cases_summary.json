@@ -5,8 +5,8 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 478001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case01_1_5bcmkdyc",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case01_1_5bcmkdyc\\aps.db",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case01_1_t44j7ncf",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case01_1_t44j7ncf\\aps.db",
     "start_dt": "2026-03-09 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case01\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case01\\run_01\\output",
@@ -125,7 +125,7 @@
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 26,
+                  "elapsed_ms": 24,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
@@ -216,7 +216,7 @@
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 61
+            "time_cost_ms": 57
           }
         },
         "sanity_issues": []
@@ -230,8 +230,8 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 479001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case02_1_503bie0l",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case02_1_503bie0l\\aps.db",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case02_1_e8o87z1o",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case02_1_e8o87z1o\\aps.db",
     "start_dt": "2026-03-09 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case02\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case02\\run_01\\output",
@@ -366,7 +366,7 @@
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 422,
+                  "elapsed_ms": 383,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
@@ -467,7 +467,7 @@
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 463
+            "time_cost_ms": 418
           }
         },
         "sanity_issues": []
@@ -481,8 +481,8 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 480001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case03_1_s_0o5yb4",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case03_1_s_0o5yb4\\aps.db",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case03_1_ny6oiryd",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case03_1_ny6oiryd\\aps.db",
     "start_dt": "2026-03-09 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case03\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case03\\run_01\\output",
@@ -638,7 +638,7 @@
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 38048,
+                  "elapsed_ms": 36810,
                   "tag": "start:weighted|sgs:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "sgs",
@@ -786,7 +786,7 @@
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 38091
+            "time_cost_ms": 36857
           }
         },
         "sanity_issues": []
@@ -1294,7 +1294,7 @@
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 902,
+                  "elapsed_ms": 832,
                   "tag": "start:weighted|sgs:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "sgs",
@@ -1326,7 +1326,7 @@
                   }
                 },
                 {
-                  "elapsed_ms": 2560,
+                  "elapsed_ms": 2396,
                   "tag": "start:weighted|sgs:atc",
                   "strategy": "weighted",
                   "dispatch_mode": "sgs",
@@ -1489,7 +1489,7 @@
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 15623
+            "time_cost_ms": 15620
           }
         },
         "sanity_issues": []
@@ -1503,8 +1503,8 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 481001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case04_1_et4023hg",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case04_1_et4023hg\\aps.db",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case04_1_jw1jw4jq",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case04_1_jw1jw4jq\\aps.db",
     "start_dt": "2026-03-09 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case04\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case04\\run_01\\output",
@@ -1607,7 +1607,7 @@
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 55,
+                  "elapsed_ms": 49,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
@@ -1676,7 +1676,7 @@
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 73
+            "time_cost_ms": 64
           }
         },
         "sanity_issues": []
@@ -1785,7 +1785,7 @@
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 77,
+                  "elapsed_ms": 67,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
@@ -1891,7 +1891,7 @@
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 95
+            "time_cost_ms": 87
           }
         },
         "sanity_issues": []
@@ -1905,8 +1905,8 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 482001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case05_1_6fodmz4d",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case05_1_6fodmz4d\\aps.db",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case05_1_8_jbjegj",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case05_1_8_jbjegj\\aps.db",
     "start_dt": "2026-03-09 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case05\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case05\\run_01\\output",
@@ -2041,7 +2041,7 @@
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 82,
+                  "elapsed_ms": 72,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
@@ -2323,7 +2323,7 @@
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 127
+            "time_cost_ms": 111
           }
         },
         "sanity_issues": []
@@ -2337,8 +2337,8 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 483001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case06_1_3nsvtwim",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case06_1_3nsvtwim\\aps.db",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case06_1_2fwmfaph",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case06_1_2fwmfaph\\aps.db",
     "start_dt": "2026-03-09 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case06\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case06\\run_01\\output",
@@ -2499,7 +2499,7 @@
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 1698,
+                  "elapsed_ms": 1528,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
@@ -2942,7 +2942,7 @@
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 1761
+            "time_cost_ms": 1581
           }
         },
         "sanity_issues": []
