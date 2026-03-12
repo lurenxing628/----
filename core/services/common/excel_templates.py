@@ -46,8 +46,8 @@ def get_default_templates() -> List[Dict[str, Any]]:
         # 人员
         {
             "filename": "人员基本信息.xlsx",
-            "headers": ["工号", "姓名", "状态", "备注"],
-            "sample_rows": [["OP001", "张三", OperatorStatus.ACTIVE.value, "示例备注"]],
+            "headers": ["工号", "姓名", "状态", "班组", "备注"],
+            "sample_rows": [["OP001", "张三", OperatorStatus.ACTIVE.value, None, "示例备注"]],
         },
         {
             "filename": "人员设备关联.xlsx",
@@ -57,8 +57,8 @@ def get_default_templates() -> List[Dict[str, Any]]:
         # 设备
         {
             "filename": "设备信息.xlsx",
-            "headers": ["设备编号", "设备名称", "工种", "状态"],
-            "sample_rows": [["CNC-01", "数控车床1", "数车", MachineStatus.ACTIVE.value]],
+            "headers": ["设备编号", "设备名称", "工种", "班组", "状态"],
+            "sample_rows": [["CNC-01", "数控车床1", "数车", None, MachineStatus.ACTIVE.value]],
         },
         {
             "filename": "设备人员关联.xlsx",

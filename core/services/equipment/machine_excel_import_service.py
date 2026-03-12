@@ -8,6 +8,7 @@ from core.services.common.enum_normalizers import normalize_machine_status
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
 from core.services.equipment.machine_service import MachineService
+from core.services.personnel.resource_team_service import ResourceTeamService
 from core.services.process.op_type_service import OpTypeService
 from data.repositories import MachineRepository
 
@@ -27,6 +28,7 @@ class MachineExcelImportService:
         self.op_logger = op_logger
 
         self.machine_svc = MachineService(conn, logger=logger, op_logger=op_logger)
+        self.team_svc = ResourceTeamService(conn, logger=logger, op_logger=op_logger)
         self.op_type_svc = OpTypeService(conn, logger=logger, op_logger=op_logger)
         self.repo = MachineRepository(conn, logger=logger)
 
@@ -55,23 +57,25 @@ class MachineExcelImportService:
             data = getattr(pr, "data", None) or {}
             machine_id = str(data.get("设备编号") or "").strip()
             if not machine_id:
-                raise ValidationError("“设备编号”不能为空", field="设备编号")
+                raise ValidationError("设备编号不能为空", field="设备编号")
 
             name = str(data.get("设备名称") or "").strip()
             if not name:
-                raise ValidationError("“设备名称”不能为空", field="设备名称")
+                raise ValidationError("设备名称不能为空", field="设备名称")
 
             status = self._normalize_machine_status_for_excel(data.get("状态"))
             if not status:
-                raise ValidationError("“状态”不能为空（允许：active / inactive / maintain）", field="状态")
+                raise ValidationError("状态不能为空（允许：active / inactive / maintain）", field="状态")
             if status not in MACHINE_STATUS_VALUES:
-                raise ValidationError("“状态”不合法（允许：active / inactive / maintain）", field="状态")
+                raise ValidationError("状态不合法（允许：active / inactive / maintain）", field="状态")
 
-            payload = {
+            payload: Dict[str, Any] = {
                 "name": name,
                 "op_type_id": self.op_type_svc.resolve_op_type_id_optional(data.get("工种")),
                 "status": status,
             }
+            if "班组" in data:
+                payload["team_id"] = self.team_svc.resolve_team_id_optional(data.get("班组"))
             if existed:
                 self.repo.update(machine_id, payload)
             else:
@@ -86,12 +90,9 @@ class MachineExcelImportService:
             row_id_getter=_row_id_getter,
             apply_row_no_tx=_apply_row_no_tx,
             max_error_sample=10,
-            # 保持既有语义：UNCHANGED 行也按 update 流程处理
             process_unchanged=True,
-            # 保持原语义：写库异常应中断并回滚事务
             continue_on_app_error=False,
         )
         out = stats.to_dict()
         out["total_rows"] = len(rows)
         return out
-

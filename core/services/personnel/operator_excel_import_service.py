@@ -9,6 +9,7 @@ from core.services.common.excel_import_executor import execute_preview_rows_tran
 from core.services.common.excel_service import ImportMode
 from core.services.common.normalize import normalize_text
 from core.services.personnel.operator_service import OperatorService
+from core.services.personnel.resource_team_service import ResourceTeamService
 from data.repositories import OperatorRepository
 
 
@@ -26,6 +27,7 @@ class OperatorExcelImportService:
         self.logger = logger
         self.op_logger = op_logger
         self.svc = OperatorService(conn, logger=logger, op_logger=op_logger)
+        self.team_svc = ResourceTeamService(conn, logger=logger, op_logger=op_logger)
         self.repo = OperatorRepository(conn, logger=logger)
 
     def apply_preview_rows(
@@ -49,20 +51,28 @@ class OperatorExcelImportService:
             data = getattr(pr, "data", None) or {}
             op_id = str(data.get("工号") or "").strip()
             if not op_id:
-                raise ValidationError("“工号”不能为空", field="工号")
+                raise ValidationError("工号不能为空", field="工号")
             name = normalize_text(data.get("姓名"))
             if not name:
-                raise ValidationError("“姓名”不能为空", field="姓名")
+                raise ValidationError("姓名不能为空", field="姓名")
             status = normalize_operator_status(data.get("状态"))
             if not status:
-                raise ValidationError("“状态”不能为空（允许：active / inactive）", field="状态")
+                raise ValidationError("状态不能为空（允许：active / inactive）", field="状态")
             if status not in OPERATOR_STATUS_VALUES:
-                raise ValidationError("“状态”不合法（允许：active / inactive）", field="状态")
+                raise ValidationError("状态不合法（允许：active / inactive）", field="状态")
             remark = normalize_text(data.get("备注"))
+            team_in_payload = "班组" in data
+            team_id = self.team_svc.resolve_team_id_optional(data.get("班组")) if team_in_payload else None
             if existed:
-                self.repo.update(op_id, {"name": name, "status": status, "remark": remark})
+                payload: Dict[str, Any] = {"name": name, "status": status, "remark": remark}
+                if team_in_payload:
+                    payload["team_id"] = team_id
+                self.repo.update(op_id, payload)
             else:
-                self.repo.create({"operator_id": op_id, "name": name, "status": status, "remark": remark})
+                payload = {"operator_id": op_id, "name": name, "status": status, "remark": remark}
+                if team_in_payload:
+                    payload["team_id"] = team_id
+                self.repo.create(payload)
 
         stats = execute_preview_rows_transactional(
             self.conn,
@@ -73,7 +83,6 @@ class OperatorExcelImportService:
             row_id_getter=_row_id_getter,
             apply_row_no_tx=_apply_row_no_tx,
             max_error_sample=10,
-            # 保持既有语义：即使 UNCHANGED 也会更新 updated_at，并计入 update_count
             process_unchanged=True,
             continue_on_app_error=False,
         )
@@ -81,4 +90,3 @@ class OperatorExcelImportService:
         out = stats.to_dict()
         out["total_rows"] = len(rows)
         return out
-

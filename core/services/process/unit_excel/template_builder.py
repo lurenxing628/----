@@ -25,8 +25,8 @@ class ConvertedTemplates:
         return [
             ("零件工艺路线.xlsx", ["图号", "名称", "工艺路线字符串"], "routes_rows"),
             ("零件工序工时.xlsx", ["图号", "工序", "换型时间(h)", "单件工时(h)"], "part_operation_hours_rows"),
-            ("人员基本信息.xlsx", ["工号", "姓名", "状态", "备注"], "operators_rows"),
-            ("设备信息.xlsx", ["设备编号", "设备名称", "工种", "状态"], "machines_rows"),
+            ("人员基本信息.xlsx", ["工号", "姓名", "状态", "班组", "备注"], "operators_rows"),
+            ("设备信息.xlsx", ["设备编号", "设备名称", "工种", "班组", "状态"], "machines_rows"),
             ("人员设备关联.xlsx", ["工号", "设备编号"], "operator_machine_rows"),
             ("工种配置.xlsx", ["工种ID", "工种名称", "归属"], "op_types_rows"),
             ("供应商配置.xlsx", ["供应商ID", "名称", "对应工种", "默认周期"], "suppliers_rows"),
@@ -254,7 +254,7 @@ class UnitTemplateBuilder:
             used_operator_ids.add(op_id)
             next_operator_no += 1
             operator_id_map[name] = op_id
-            operators_rows.append({"工号": op_id, "姓名": name, "状态": OperatorStatus.ACTIVE.value, "备注": None})
+            operators_rows.append({"工号": op_id, "姓名": name, "状态": OperatorStatus.ACTIVE.value, "班组": None, "备注": None})
         return operator_id_map, operators_rows
 
     def _build_machines_rows(
@@ -274,6 +274,7 @@ class UnitTemplateBuilder:
                     "设备编号": machine_id,
                     "设备名称": machine_name,
                     "工种": op_name,
+                    "班组": None,
                     "状态": MachineStatus.ACTIVE.value,
                 }
             )
