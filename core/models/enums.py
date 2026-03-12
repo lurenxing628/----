@@ -19,6 +19,11 @@ class MachineStatus(str, Enum):
     MAINTAIN = "maintain"
 
 
+class ResourceTeamStatus(str, Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
 class SupplierStatus(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
@@ -109,6 +114,7 @@ YESNO_VALUES = tuple(m.value for m in YesNo)
 
 OPERATOR_STATUS_VALUES = tuple(m.value for m in OperatorStatus)
 MACHINE_STATUS_VALUES = tuple(m.value for m in MachineStatus)
+RESOURCE_TEAM_STATUS_VALUES = tuple(m.value for m in ResourceTeamStatus)
 
 SUPPLIER_STATUS_VALUES = tuple(m.value for m in SupplierStatus)
 MATERIAL_STATUS_VALUES = tuple(m.value for m in MaterialStatus)
@@ -130,4 +136,3 @@ MACHINE_DOWNTIME_STATUS_VALUES = tuple(m.value for m in MachineDowntimeStatus)
 LOCK_STATUS_VALUES = tuple(m.value for m in LockStatus)
 DOWNTIME_SCOPE_TYPE_VALUES = tuple(m.value for m in DowntimeScopeType)
 SKILL_LEVEL_VALUES = (SkillLevel.BEGINNER.value, SkillLevel.NORMAL.value, SkillLevel.EXPERT.value)
-

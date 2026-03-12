@@ -10,7 +10,7 @@ from typing import Optional
 
 from .migrations.common import fallback_log
 
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 
 def _is_windows_lock_error(e: Exception) -> bool:
@@ -145,16 +145,26 @@ def ensure_schema(db_path: str, logger=None, schema_path: Optional[str] = None, 
                 sql = f.read()
             # sqlite3.executescript 默认不保证原子性：中途失败会留下“半初始化表结构”。
             # 这里用显式 BEGIN/COMMIT 包裹，让失败时可通过 rollback 回滚。
+            # 注意：SQLite 不支持在事务中执行 DDL（如 CREATE TABLE），executescript 会自动提交。
+            # 但为了尽可能保持原子性，我们仍尝试包裹。
             script = sql
             try:
                 import re
 
+                # 只有在没有显式 BEGIN 时才包裹
                 if not re.search(r"(?im)^\s*BEGIN\b", str(sql or "")):
-                    script = "BEGIN;\n" + str(sql or "") + "\nCOMMIT;\n"
+                    # 移除 PRAGMA foreign_keys = ON; 因为它不能在事务中执行
+                    clean_sql = re.sub(r"(?im)^\s*PRAGMA\s+foreign_keys\s*=\s*\w+;?", "", str(sql or ""))
+                    script = "BEGIN;\n" + clean_sql + "\nCOMMIT;\n"
             except Exception:
-                script = "BEGIN;\n" + str(sql or "") + "\nCOMMIT;\n"
-            conn.executescript(script)
-            # SchemaVersion（用于后续迁移判断；若是新库且结构已满足当前版本，会自动提升版本号）
+                script = str(sql or "")
+
+            # 只有在库完全为空时才运行 schema.sql
+            # 注意：_is_truly_empty_db 检查的是除 SchemaVersion 以外的表
+            if _is_truly_empty_db(conn):
+                conn.executescript(script)
+
+            # 确保 SchemaVersion 表存在，并获取当前版本
             _ensure_schema_version(conn, logger=logger)
             current_version = _get_schema_version(conn)
             conn.commit()
@@ -237,8 +247,11 @@ def _detect_schema_is_current(conn: sqlite3.Connection) -> bool:
     """
     # 这些字段/表是 V1.1 之后补齐的代表性特征
     needed = [
-        ("Batches", "ready_date"),
+        ("ResourceTeams", "team_id"),
+        ("Operators", "team_id"),
         ("Machines", "category"),
+        ("Machines", "team_id"),
+        ("Batches", "ready_date"),
         ("MachineDowntimes", "scope_type"),
         ("MachineDowntimes", "scope_value"),
         ("WorkCalendar", "shift_start"),

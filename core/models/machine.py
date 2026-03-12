@@ -15,6 +15,7 @@ class Machine:
     category: Optional[str] = None
     status: str = MachineStatus.ACTIVE.value  # active/inactive/maintain
     remark: Optional[str] = None
+    team_id: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -22,6 +23,7 @@ class Machine:
     def from_row(cls, row: RowLike) -> Machine:
         op_type_id = get(row, "op_type_id")
         category = get(row, "category")
+        team_id = get(row, "team_id")
         return cls(
             machine_id=str(get(row, "machine_id") or ""),
             name=str(get(row, "name") or ""),
@@ -31,6 +33,7 @@ class Machine:
                 str(get(row, "status") or MachineStatus.ACTIVE.value).strip().lower() or MachineStatus.ACTIVE.value
             ),
             remark=get(row, "remark"),
+            team_id=str(team_id) if team_id is not None and team_id != "" else None,
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),
         )
@@ -44,8 +47,8 @@ class Machine:
                 "category": self.category,
                 "status": self.status,
                 "remark": self.remark,
+                "team_id": self.team_id,
                 "created_at": self.created_at,
                 "updated_at": self.updated_at,
             }
         )
-

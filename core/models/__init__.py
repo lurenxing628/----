@@ -2,7 +2,7 @@
 领域模型（数据结构定义）。
 
 说明：
-- V1 使用 sqlite3（不引入 ORM），模型仅作为“数据载体”
+- V1 使用 sqlite3（不引入 ORM），模型仅作为数据载体
 - 字段名与数据库列名保持一致，便于 repo 映射与 Excel 导入导出
 """
 
@@ -24,6 +24,7 @@ from .enums import (
     MergeMode,
     OperatorStatus,
     ReadyStatus,
+    ResourceTeamStatus,
     SkillLevel,
     SourceType,
     SupplierStatus,
@@ -39,6 +40,7 @@ from .operator import Operator
 from .operator_machine import OperatorMachine
 from .part import Part
 from .part_operation import PartOperation
+from .resource_team import ResourceTeam
 from .schedule import Schedule
 from .schedule_history import ScheduleHistory
 from .supplier import Supplier
@@ -50,6 +52,7 @@ __all__ = [
     "YesNo",
     "OperatorStatus",
     "MachineStatus",
+    "ResourceTeamStatus",
     "SupplierStatus",
     "MaterialStatus",
     "SourceType",
@@ -65,6 +68,7 @@ __all__ = [
     "Operator",
     "OpType",
     "Machine",
+    "ResourceTeam",
     "MachineDowntime",
     "OperatorMachine",
     "Supplier",
@@ -84,4 +88,3 @@ __all__ = [
     "Material",
     "BatchMaterial",
 ]
-

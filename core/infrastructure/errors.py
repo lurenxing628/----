@@ -26,6 +26,9 @@ class ErrorCode(Enum):
     OPERATOR_NOT_FOUND = "3001"
     OPERATOR_ALREADY_EXISTS = "3002"
     OPERATOR_IN_USE = "3003"
+    TEAM_NOT_FOUND = "3101"
+    TEAM_ALREADY_EXISTS = "3102"
+    TEAM_IN_USE = "3103"
 
     # 业务错误 - 设备模块 (4xxx)
     MACHINE_NOT_FOUND = "4001"
@@ -107,7 +110,7 @@ class NotFoundError(AppError):
     def __init__(self, resource_type: str, resource_id: str):
         super().__init__(
             code=ErrorCode.NOT_FOUND,
-            message=f"{resource_type}“{resource_id}”不存在",
+            message=f"{resource_type}{resource_id}不存在",
             details={"resource_type": resource_type, "resource_id": resource_id},
         )
 
