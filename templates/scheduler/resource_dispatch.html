@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/frappe-gantt.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/aps_gantt.css') }}">
+{% endblock %}
+
+{% block content %}
+  {% set strategy_zh = {'improve': '优化排产', 'greedy': '快速排产', 'manual': '手动排产'} %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'ok': '成功'} %}
+  <div
+    id="rdPage"
+    data-filters='{{ filters | tojson }}'
+    data-url="{{ data_url }}"
+    data-has-history="{{ '1' if has_history else '0' }}"
+    data-can-query="{{ '1' if can_query else '0' }}"
+    data-export-url="{{ export_url or '' }}"
+  >
+
+  <div class="card">
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">资源排班中心</h2>
+        <div class="meta-inline text-meta">
+          {% if has_history and can_query %}
+            查询对象：<strong>{{ filters.scope_label }}</strong>
+            {% if filters.scope_type == 'team' %}
+              <span class="meta-sep">｜</span>
+              班组轴：<strong>{{ filters.team_axis_label }}</strong>
+            {% endif %}
+            <span class="meta-sep">｜</span>
+            区间：<strong>{{ filters.start_date }}</strong> ～ <strong>{{ filters.end_date }}</strong>
+            <span class="meta-sep">｜</span>
+            版本：<strong>v{{ filters.version }}</strong>
+          {% elif has_history %}
+            请选择单人、单机或班组后再查询排班任务。
+          {% else %}
+            当前暂无排产历史，请先执行排产。
+          {% endif %}
+        </div>
+      </div>
+      <div class="page-actions page-actions-context">
+        {% if export_url %}
+          {{ ui.link_button('导出资源排班.xlsx', export_url, 'secondary', 'md', 'download') }}
+        {% endif %}
+      </div>
+    </div>
+    {{ ui.scheduler_nav('resource_dispatch') }}
+  </div>
+
+  <div class="card">
+    <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="inline-flex-wrap items-end">
+      <div class="form-field">
+        <label>视角</label>
+        <select name="scope_type" id="rdScopeType" class="w-140">
+          <option value="operator" {% if filters.scope_type == 'operator' %}selected{% endif %}>人员</option>
+          <option value="machine" {% if filters.scope_type == 'machine' %}selected{% endif %}>设备</option>
+          <option value="team" {% if filters.scope_type == 'team' %}selected{% endif %}>班组</option>
+        </select>
+      </div>
+      <div class="form-field {% if filters.scope_type != 'operator' %}is-hidden{% endif %}" id="rdOperatorField">
+        <label>人员</label>
+        <select name="operator_id" class="w-240">
+          <option value="">请选择人员</option>
+          {% for item in operator_options %}
+            <option value="{{ item.id }}" {% if filters.operator_id == item.id %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-field {% if filters.scope_type != 'machine' %}is-hidden{% endif %}" id="rdMachineField">
+        <label>设备</label>
+        <select name="machine_id" class="w-240">
+          <option value="">请选择设备</option>
+          {% for item in machine_options %}
+            <option value="{{ item.id }}" {% if filters.machine_id == item.id %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-field {% if filters.scope_type != 'team' %}is-hidden{% endif %}" id="rdTeamField">
+        <label>班组</label>
+        <select name="team_id" class="w-240">
+          <option value="">请选择班组</option>
+          {% for item in team_options %}
+            <option value="{{ item.id }}" {% if filters.team_id == item.id %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-field {% if filters.scope_type != 'team' %}is-hidden{% endif %}" id="rdTeamAxisField">
+        <label>班组轴</label>
+        <select name="team_axis" class="w-140">
+          <option value="operator" {% if filters.team_axis == 'operator' %}selected{% endif %}>人员轴</option>
+          <option value="machine" {% if filters.team_axis == 'machine' %}selected{% endif %}>设备轴</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>区间类型</label>
+        <select name="period_preset" id="rdPeriodPreset" class="w-140">
+          <option value="week" {% if filters.period_preset == 'week' %}selected{% endif %}>按周</option>
+          <option value="month" {% if filters.period_preset == 'month' %}selected{% endif %}>按月</option>
+          <option value="custom" {% if filters.period_preset == 'custom' %}selected{% endif %}>自定义</option>
+        </select>
+      </div>
+      <div class="form-field {% if filters.period_preset == 'custom' %}is-hidden{% endif %}" id="rdQueryDateField">
+        <label>查询日期</label>
+        <input type="date" name="query_date" value="{{ filters.query_date }}" class="w-160">
+      </div>
+      <div class="form-field {% if filters.period_preset != 'custom' %}is-hidden{% endif %}" id="rdStartField">
+        <label>开始日期</label>
+        <input type="date" name="start_date" value="{{ filters.start_date }}" class="w-160">
+      </div>
+      <div class="form-field {% if filters.period_preset != 'custom' %}is-hidden{% endif %}" id="rdEndField">
+        <label>结束日期</label>
+        <input type="date" name="end_date" value="{{ filters.end_date }}" class="w-160">
+      </div>
+      <div class="form-field">
+        <label>版本</label>
+        {% if versions and versions|length > 0 %}
+          <select name="version" class="w-280">
+            {% for v in versions %}
+              <option value="{{ v.version }}" {% if v.version == filters.version %}selected{% endif %}>
+                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ status_zh.get(v.result_status, v.result_status or '-') }}）
+              </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <input name="version" value="{{ filters.version }}" class="w-160">
+        {% endif %}
+      </div>
+      <div class="inline-flex-wrap">
+        {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
+        {{ ui.link_button('重置', url_for('scheduler.resource_dispatch_page'), 'secondary', 'md') }}
+      </div>
+    </form>
+    {% if not has_history %}
+      <div class="error mt-2" role="alert" aria-live="assertive">当前数据库暂无排产版本。请先在【执行排产】页面生成排产结果。</div>
+    {% elif not can_query %}
+      <div class="muted mt-2">请选择单人、单机或班组后点击“查询”。</div>
+    {% else %}
+      <div class="text-meta mt-2">支持按周、按月和自定义区间查看单人、单机与班组排班，跨天任务会在日历矩阵中按自然日拆分展示。</div>
+    {% endif %}
+  </div>
+
+  <div id="rdSummaryCard" class="card {% if not has_history or not can_query %}is-hidden{% endif %}">
+    <div class="stat-grid">
+      <div class="stat-card type-primary">
+        <div class="stat-card-label">任务数</div>
+        <div class="stat-card-value primary" id="rdSummaryTotalTasks">--</div>
+      </div>
+      <div class="stat-card type-success">
+        <div class="stat-card-label">总工时（小时）</div>
+        <div class="stat-card-value success" id="rdSummaryTotalHours">--</div>
+      </div>
+      <div class="stat-card type-danger">
+        <div class="stat-card-label">超期任务</div>
+        <div class="stat-card-value danger" id="rdSummaryOverdue">--</div>
+      </div>
+      <div class="stat-card type-info">
+        <div class="stat-card-label">跨班组 / 外协未分配</div>
+        <div class="stat-card-value" id="rdSummaryCrossTeamExternal">--</div>
+      </div>
+      <div class="stat-card type-info">
+        <div class="stat-card-label">跨天任务</div>
+        <div class="stat-card-value" id="rdSummaryCrossDay">--</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="rdResultCard" class="card {% if not has_history or not can_query %}is-hidden{% endif %}">
+    <div class="inline-flex-wrap items-end">
+      <div class="inline-flex-wrap" id="rdTabBar">
+        {{ ui.button('任务明细', 'primary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabDetail') }}
+        {{ ui.button('日历矩阵', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabCalendar') }}
+        {{ ui.button('甘特图', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabGantt') }}
+      </div>
+      <div class="flex-1"></div>
+      <div class="form-field" id="rdGanttModeField">
+        <label>甘特粒度</label>
+        <select id="rdGanttMode" class="w-140">
+          <option value="Day" selected>日</option>
+          <option value="Week">周</option>
+          <option value="Month">月</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="rdError" class="error is-hidden mt-2" role="alert" aria-live="assertive"></div>
+    <div id="rdEmpty" class="muted is-hidden mt-2"></div>
+
+    <div id="rdDetailPanel" class="mt-3">
+      <div class="table-scroll">
+        <table class="table-sticky table-layout-fixed">
+          <thead>
+            <tr>
+              <th class="w-140">开始</th>
+              <th class="w-140">结束</th>
+              <th class="w-120">批次号</th>
+              <th class="w-140">图号</th>
+              <th class="w-120">工序编码</th>
+              <th class="w-80">工序</th>
+              <th>对应资源</th>
+              <th class="w-140">班组关系</th>
+              <th class="w-120">来源</th>
+              <th class="w-120">状态</th>
+            </tr>
+          </thead>
+          <tbody id="rdDetailBody">
+            <tr>
+              <td colspan="10" class="muted">加载中...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="rdCalendarPanel" class="mt-3 is-hidden">
+      <div class="table-scroll" id="rdCalendarWrap"></div>
+    </div>
+
+    <div id="rdGanttPanel" class="mt-3 is-hidden">
+      <div id="rdGantt" style="min-height: 360px;"></div>
+    </div>
+
+    <div id="rdTeamBlocks" class="mt-3 is-hidden">
+      <h3>班组人员任务</h3>
+      <div class="table-scroll">
+        <table class="table-sticky table-layout-fixed">
+          <thead>
+            <tr>
+              <th class="w-140">开始</th>
+              <th class="w-140">结束</th>
+              <th class="w-120">批次号</th>
+              <th class="w-140">图号</th>
+              <th class="w-120">工序编码</th>
+              <th class="w-80">工序</th>
+              <th>对应资源</th>
+              <th class="w-140">班组关系</th>
+              <th class="w-120">来源</th>
+              <th class="w-120">状态</th>
+            </tr>
+          </thead>
+          <tbody id="rdTeamOperatorBody">
+            <tr>
+              <td colspan="10" class="muted">暂无数据。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="mt-3">班组设备任务</h3>
+      <div class="table-scroll">
+        <table class="table-sticky table-layout-fixed">
+          <thead>
+            <tr>
+              <th class="w-140">开始</th>
+              <th class="w-140">结束</th>
+              <th class="w-120">批次号</th>
+              <th class="w-140">图号</th>
+              <th class="w-120">工序编码</th>
+              <th class="w-80">工序</th>
+              <th>对应资源</th>
+              <th class="w-140">班组关系</th>
+              <th class="w-120">来源</th>
+              <th class="w-120">状态</th>
+            </tr>
+          </thead>
+          <tbody id="rdTeamMachineBody">
+            <tr>
+              <td colspan="10" class="muted">暂无数据。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="rdTeamCrossWrap" class="is-hidden">
+        <h3 class="mt-3">跨班组借调</h3>
+        <div class="table-scroll">
+          <table class="table-sticky table-layout-fixed">
+            <thead>
+              <tr>
+                <th class="w-140">开始</th>
+                <th class="w-140">结束</th>
+                <th class="w-120">批次号</th>
+                <th class="w-140">图号</th>
+                <th class="w-120">工序编码</th>
+                <th class="w-80">工序</th>
+                <th>对应资源</th>
+                <th class="w-140">班组关系</th>
+                <th class="w-120">来源</th>
+                <th class="w-120">状态</th>
+              </tr>
+            </thead>
+            <tbody id="rdTeamCrossBody">
+              <tr>
+                <td colspan="10" class="muted">暂无跨班组借调任务。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  {% if has_history %}
+    <script src="{{ url_for('static', filename='js/frappe-gantt.min.js') }}" defer></script>
+  {% endif %}
+  <script src="{{ url_for('static', filename='js/resource_dispatch.js') }}" defer></script>
+{% endblock %}
