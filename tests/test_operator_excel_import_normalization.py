@@ -21,6 +21,13 @@ def _pr(data: Dict[str, Any], *, status: RowStatus = RowStatus.NEW, row_num: int
     return ImportPreviewRow(row_num=row_num, status=status, data=dict(data or {}), message="")
 
 
+def _insert_team(conn: sqlite3.Connection, team_id: str, name: str) -> None:
+    conn.execute(
+        "INSERT INTO ResourceTeams (team_id, name, status) VALUES (?, ?, ?)",
+        (team_id, name, "active"),
+    )
+
+
 def test_operator_excel_import_strips_name_and_normalizes_remark() -> None:
     conn = sqlite3.connect(":memory:")
     try:
@@ -72,3 +79,118 @@ def test_operator_excel_import_strips_name_and_normalizes_remark() -> None:
         except Exception:
             pass
 
+
+def test_operator_excel_import_update_without_team_column_preserves_existing_team_id() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+        _insert_team(conn, "TEAM-01", "车工一组")
+        conn.execute(
+            "INSERT INTO Operators (operator_id, name, status, team_id, remark) VALUES (?, ?, ?, ?, ?)",
+            ("OP001", "张三", "active", "TEAM-01", "旧备注"),
+        )
+        conn.commit()
+
+        svc = OperatorExcelImportService(conn)
+        stats = svc.apply_preview_rows(
+            [
+                _pr(
+                    {"工号": "OP001", "姓名": "张三-更新", "状态": "active", "备注": "新备注"},
+                    status=RowStatus.UPDATE,
+                    row_num=2,
+                )
+            ],
+            mode=ImportMode.OVERWRITE,
+            existing_ids={"OP001"},
+        )
+        assert int(stats.get("update_count", 0)) == 1, stats
+
+        row = conn.execute(
+            "SELECT name, status, team_id, remark FROM Operators WHERE operator_id=?",
+            ("OP001",),
+        ).fetchone()
+        assert row is not None
+        assert row["name"] == "张三-更新"
+        assert row["status"] == "active"
+        assert row["team_id"] == "TEAM-01"
+        assert row["remark"] == "新备注"
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def test_operator_excel_import_team_accepts_id_or_name_and_blank_clears() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+        _insert_team(conn, "TEAM-01", "车工一组")
+        _insert_team(conn, "TEAM-02", "车工二组")
+        conn.commit()
+
+        svc = OperatorExcelImportService(conn)
+        svc.apply_preview_rows(
+            [
+                _pr(
+                    {"工号": "OP001", "姓名": "张三", "状态": "active", "班组": "TEAM-01", "备注": "首次导入"},
+                    row_num=2,
+                )
+            ],
+            mode=ImportMode.OVERWRITE,
+            existing_ids=set(),
+        )
+        row1 = conn.execute(
+            "SELECT team_id, remark FROM Operators WHERE operator_id=?",
+            ("OP001",),
+        ).fetchone()
+        assert row1 is not None
+        assert row1["team_id"] == "TEAM-01"
+        assert row1["remark"] == "首次导入"
+
+        svc.apply_preview_rows(
+            [
+                _pr(
+                    {"工号": "OP001", "姓名": "张三", "状态": "active", "班组": "车工二组", "备注": "按名称切换"},
+                    status=RowStatus.UPDATE,
+                    row_num=3,
+                )
+            ],
+            mode=ImportMode.OVERWRITE,
+            existing_ids={"OP001"},
+        )
+        row2 = conn.execute(
+            "SELECT team_id, remark FROM Operators WHERE operator_id=?",
+            ("OP001",),
+        ).fetchone()
+        assert row2 is not None
+        assert row2["team_id"] == "TEAM-02"
+        assert row2["remark"] == "按名称切换"
+
+        svc.apply_preview_rows(
+            [
+                _pr(
+                    {"工号": "OP001", "姓名": "张三", "状态": "active", "班组": "", "备注": "显式清空"},
+                    status=RowStatus.UPDATE,
+                    row_num=4,
+                )
+            ],
+            mode=ImportMode.OVERWRITE,
+            existing_ids={"OP001"},
+        )
+        row3 = conn.execute(
+            "SELECT team_id, remark FROM Operators WHERE operator_id=?",
+            ("OP001",),
+        ).fetchone()
+        assert row3 is not None
+        assert row3["team_id"] is None
+        assert row3["remark"] == "显式清空"
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
