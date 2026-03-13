@@ -215,9 +215,10 @@ def scan_future_annotations(repo_root) -> List[str]:
     return issues
 
 
-def scan_public_func_annotations(repo_root) -> List[str]:
-    """扫描 Service/Repository 公开方法是否缺少返回类型注解。"""
+def scan_public_func_annotations(repo_root) -> Tuple[List[str], List[str]]:
+    """扫描 Service/Repository 公开方法是否缺少返回类型注解。返回 (issues, skipped)。"""
     issues = []
+    skipped = []
     for check_dir in ["core/services", "data/repositories"]:
         base = os.path.join(repo_root, check_dir)
         if not os.path.isdir(base):
@@ -232,12 +233,12 @@ def scan_public_func_annotations(repo_root) -> List[str]:
                     txt = _read(fpath)
                     tree = ast.parse(txt, filename=rel)
                 except SyntaxError as e:
-                    issues.append(
+                    skipped.append(
                         f"[TYPEHINT-SKIP] {rel}:{getattr(e, 'lineno', '?')} - SyntaxError，无法检查返回类型注解"
                     )
                     continue
                 except Exception as e:
-                    issues.append(f"[TYPEHINT-SKIP] {rel} - 解析失败：{type(e).__name__}: {e}")
+                    skipped.append(f"[TYPEHINT-SKIP] {rel} - 解析失败：{type(e).__name__}: {e}")
                     continue
 
                 for node in tree.body:
@@ -254,7 +255,7 @@ def scan_public_func_annotations(repo_root) -> List[str]:
                             issues.append(
                                 f"[TYPEHINT] {rel}:{item.lineno} - 公开方法 {cls_name}.{func_name}() 缺少返回类型注解"
                             )
-    return issues
+    return issues, skipped
 
 
 # --- 以下为 V3 新增：引用链级检查 ---
@@ -491,11 +492,12 @@ def scan_cyclomatic_complexity(repo_root) -> Tuple[List[str], Dict, List[str]]:
 VULTURE_MIN_CONFIDENCE = 80
 
 
-def scan_vulture_dead_code(repo_root) -> List[str]:
-    """运行 Vulture 死代码检测。"""
+def scan_vulture_dead_code(repo_root) -> Tuple[List[str], List[str]]:
+    """运行 Vulture 死代码检测。返回 (issues, skipped)。"""
     import subprocess as sp
 
     issues = []
+    skipped = []
     try:
         result = sp.run(
             ["vulture", "core/", "data/", "web/", "--min-confidence", str(int(VULTURE_MIN_CONFIDENCE))],
@@ -505,8 +507,8 @@ def scan_vulture_dead_code(repo_root) -> List[str]:
             if line.strip():
                 issues.append(f"[VULTURE] {line.strip()}")
     except FileNotFoundError:
-        issues.append("[VULTURE] vulture 未安装，跳过死代码检测")
-    return issues
+        skipped.append("[VULTURE] vulture 未安装，跳过死代码检测")
+    return issues, skipped
 
 
 def generate_report(repo_root) -> Tuple[str, int]:
@@ -516,18 +518,20 @@ def generate_report(repo_root) -> Tuple[str, int]:
     naming = scan_naming(repo_root)
     enums, enums_info = scan_bare_enum_strings(repo_root)
     future = scan_future_annotations(repo_root)
-    typehints = scan_public_func_annotations(repo_root)
+    typehints, typehint_skipped = scan_public_func_annotations(repo_root)
     circular = scan_circular_dependencies(repo_root)
     cross_layer = scan_route_imports_repository(repo_root)
     dead_code = scan_dead_public_methods(repo_root)
     complexity, complexity_stats, complexity_skipped = scan_cyclomatic_complexity(repo_root)
-    vulture = scan_vulture_dead_code(repo_root)
+    vulture, vulture_skipped = scan_vulture_dead_code(repo_root)
 
     all_issues = (
         layer + sizes + forbidden + naming + enums + future + typehints
-        + circular + cross_layer + dead_code + complexity + complexity_skipped + vulture
+        + circular + cross_layer + dead_code + complexity + vulture
     )
     total = len(all_issues)
+    all_skipped = typehint_skipped + complexity_skipped + vulture_skipped
+    skip_total = len(all_skipped)
 
     lines = []
     lines.append("# APS 架构合规审计报告")
@@ -550,7 +554,10 @@ def generate_report(repo_root) -> Tuple[str, int]:
     lines.append(f"  - 潜在死代码公开方法：{len(dead_code)}")
     lines.append(f"  - 圈复杂度超标（>15）：{len(complexity)}")
     lines.append(f"  - 圈复杂度扫描跳过：{len(complexity_skipped)}")
+    lines.append(f"  - 类型注解扫描跳过：{len(typehint_skipped)}")
     lines.append(f"  - Vulture 死代码（min_confidence={int(VULTURE_MIN_CONFIDENCE)}）：{len(vulture)}")
+    lines.append(f"  - Vulture 扫描跳过：{len(vulture_skipped)}")
+    lines.append(f"- 跳过/信息项总计：{skip_total}（不影响 PASS/FAIL）")
     lines.append(f"- 结论：{'PASS' if total == 0 else 'FAIL（存在违反项）'}")
     lines.append("")
 
@@ -584,7 +591,9 @@ def generate_report(repo_root) -> Tuple[str, int]:
         ("潜在死代码公开方法", dead_code),
         ("圈复杂度超标", complexity),
         ("圈复杂度扫描跳过", complexity_skipped),
+        ("类型注解扫描跳过", typehint_skipped),
         ("Vulture 死代码", vulture),
+        ("Vulture 扫描跳过", vulture_skipped),
     ]
     for title, items in sections:
         lines.append(f"## {title}")
