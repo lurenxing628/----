@@ -48,7 +48,7 @@ def normalize_preset_snapshot(
         raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
     rw = max(0.0, float(rw))
 
-    hde = _get_float("holiday_default_efficiency", float(base.holiday_default_efficiency), field="holiday_default_efficiency")
+    hde = _get_float("holiday_default_efficiency", float(base.holiday_default_efficiency), field="假期工作效率")
     if hde <= 0:
         hde = float(base.holiday_default_efficiency)
 
@@ -88,10 +88,10 @@ def normalize_preset_snapshot(
         "ortools_time_limit_seconds",
         int(base.ortools_time_limit_seconds),
         1,
-        field="ortools_time_limit_seconds",
+        field="自动优化计算时间",
     )
-    time_budget = _get_int("time_budget_seconds", int(base.time_budget_seconds), 1, field="time_budget_seconds")
-    fw_days = _get_int("freeze_window_days", int(base.freeze_window_days), 0, field="freeze_window_days")
+    time_budget = _get_int("time_budget_seconds", int(base.time_budget_seconds), 1, field="计算时间上限")
+    fw_days = _get_int("freeze_window_days", int(base.freeze_window_days), 0, field="锁定天数")
 
     return ScheduleConfigSnapshot(
         sort_strategy=st,

@@ -103,11 +103,11 @@
   }
 
   function isHeadingLine(line) {
-    return /^(#{1,3})\s+/.test(line || "");
+    return /^(#{1,6})\s+/.test(line || "");
   }
 
   function parseHeadingLine(line) {
-    const m = (line || "").match(/^(#{1,3})\s+(.+)$/);
+    const m = (line || "").match(/^(#{1,6})\s+(.+)$/);
     if (!m) return null;
     return { level: m[1].length, text: (m[2] || "").trim() };
   }
@@ -361,7 +361,7 @@
       const a = document.createElement("a");
       a.href = "#" + h.id;
       a.textContent = h.title; // 使用纯文本
-      a.className = h.level === 3 ? "toc-h3" : "";
+      a.className = h.level === 3 ? "toc-h3" : h.level === 4 ? "toc-h4" : "";
       a.addEventListener("click", function (e) {
         e.preventDefault();
         const target = document.getElementById(h.id);
@@ -431,11 +431,11 @@
     contentEl.innerHTML = html;
 
     // 基于 DOM 生成目录（更稳健）
-    const nodes = contentEl.querySelectorAll("h2, h3");
+    const nodes = contentEl.querySelectorAll("h2, h3, h4");
     const headings = Array.prototype.slice.call(nodes).map((n) => ({
       id: n.id,
       title: (n.textContent || "").trim(),
-      level: n.tagName === "H2" ? 2 : 3,
+      level: n.tagName === "H2" ? 2 : n.tagName === "H3" ? 3 : 4,
     }));
     renderToc(headings);
     setupScrollSpy(headings);

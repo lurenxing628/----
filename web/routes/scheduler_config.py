@@ -97,7 +97,7 @@ def config_manual_page():
     download_url = url_for("scheduler.config_manual_download") if manual_path else None
     return render_template(
         "scheduler/config_manual.html",
-        title="排产调度说明书",
+        title="排产说明书",
         manual_text=manual_text,
         manual_mtime=manual_mtime,
         download_url=download_url,
@@ -117,7 +117,7 @@ def config_manual_download():
         return send_file(
             manual_path,
             as_attachment=True,
-            download_name="排产调度说明书.md",
+            download_name="排产说明书.md",
             mimetype="text/markdown; charset=utf-8",
         )
     except Exception:
@@ -172,15 +172,15 @@ def preset_apply():
         name_text = ("" if name is None else str(name)).strip()
         if name_text == "" or name_text.lower() == str(ConfigService.ACTIVE_PRESET_CUSTOM).lower():
             cfg_svc.mark_active_preset_custom()
-            flash("已切换为：自定义（以当前高级设置为准）。", "success")
+            flash("已切换为：当前手动设置。", "success")
             return redirect(next_url)
         applied = cfg_svc.apply_preset(name)
-        flash(f"已应用排产模板：{applied}", "success")
+        flash(f"已应用方案：{applied}", "success")
     except AppError as e:
         flash(e.message, "error")
     except Exception:
         current_app.logger.exception("应用排产模板失败")
-        flash("应用模板失败，请稍后重试。", "error")
+        flash("应用方案失败，请稍后重试。", "error")
     return redirect(next_url)
 
 
@@ -193,12 +193,12 @@ def preset_save():
     name = request.form.get("preset_name") or request.form.get("name")
     try:
         saved = cfg_svc.save_preset(name)
-        flash(f"已保存为模板：{saved}", "success")
+        flash(f"已保存为方案：{saved}", "success")
     except AppError as e:
         flash(e.message, "error")
     except Exception:
         current_app.logger.exception("保存排产模板失败")
-        flash("保存模板失败，请稍后重试。", "error")
+        flash("保存方案失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
 
 
@@ -208,66 +208,71 @@ def preset_delete():
     name = request.form.get("preset_name") or request.form.get("name")
     try:
         cfg_svc.delete_preset(name)
-        flash(f"已删除模板：{name}", "success")
+        flash(f"已删除方案：{name}", "success")
     except AppError as e:
         flash(e.message, "error")
     except Exception:
         current_app.logger.exception("删除排产模板失败")
-        flash("删除模板失败，请稍后重试。", "error")
+        flash("删除方案失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
 
 
 @bp.post("/config")
 def update_config():
     cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    strategy = request.form.get("sort_strategy")
-    cfg_svc.set_strategy(strategy)
-    # 工作日历：假期默认效率（用于未填效率时的兜底）
-    cfg_svc.set_holiday_default_efficiency(request.form.get("holiday_default_efficiency"))
-    cfg_svc.set_prefer_primary_skill(request.form.get("prefer_primary_skill"))
-    # 排产页默认行为：是否默认启用“齐套约束”
-    cfg_svc.set_enforce_ready_default(request.form.get("enforce_ready_default"))
-    cfg_svc.set_dispatch(request.form.get("dispatch_mode"), request.form.get("dispatch_rule"))
-    cfg_svc.set_auto_assign_enabled(request.form.get("auto_assign_enabled"))
-    cfg_svc.set_ortools(request.form.get("ortools_enabled"), request.form.get("ortools_time_limit_seconds"))
-
-    # 算法增强（默认关闭 improve）
-    algo_mode = request.form.get("algo_mode")
-    if algo_mode is not None:
-        cfg_svc.set_algo_mode(algo_mode)
-    objective = request.form.get("objective")
-    if objective is not None:
-        cfg_svc.set_objective(objective)
-    tb = request.form.get("time_budget_seconds")
-    if tb is not None and str(tb).strip():
-        cfg_svc.set_time_budget_seconds(tb)
-    cfg_svc.set_freeze_window(request.form.get("freeze_window_enabled"), request.form.get("freeze_window_days"))
-
-    # 权重（仅暴露：优先级/交期；齐套权重为预留字段，当前不参与排产）
-    pw = request.form.get("priority_weight")
-    dw = request.form.get("due_weight")
-    if (pw is not None and str(pw).strip()) or (dw is not None and str(dw).strip()):
-        cur = cfg_svc.get_snapshot()
-        # 允许只填一个：未填的用当前值
-        pw_v = str(pw).strip() if pw is not None and str(pw).strip() else str(cur.priority_weight)
-        dw_v = str(dw).strip() if dw is not None and str(dw).strip() else str(cur.due_weight)
-        # 统一归一化（支持 0~1 或 0~100%）
-        pw_f = cfg_svc.normalize_weight(pw_v, field="优先级权重")
-        dw_f = cfg_svc.normalize_weight(dw_v, field="交期权重")
-        rw_f = 1.0 - pw_f - dw_f
-        if rw_f < -1e-9:
-            raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
-        # 防御：浮点误差
-        rw_f = max(0.0, float(rw_f))
-        cfg_svc.set_weights(pw_f, dw_f, rw_f, require_sum_1=True)
-
-    # 手工保存参数后：标记为 custom（避免“模板名”与实际参数不一致）
     try:
-        cfg_svc.mark_active_preset_custom()
-    except Exception:
-        pass
+        strategy = request.form.get("sort_strategy")
+        cfg_svc.set_strategy(strategy)
+        # 工作日历：假期默认效率（用于未填效率时的兜底）
+        cfg_svc.set_holiday_default_efficiency(request.form.get("holiday_default_efficiency"))
+        cfg_svc.set_prefer_primary_skill(request.form.get("prefer_primary_skill"))
+        # 排产页默认行为：是否默认启用“齐套约束”
+        cfg_svc.set_enforce_ready_default(request.form.get("enforce_ready_default"))
+        cfg_svc.set_dispatch(request.form.get("dispatch_mode"), request.form.get("dispatch_rule"))
+        cfg_svc.set_auto_assign_enabled(request.form.get("auto_assign_enabled"))
+        cfg_svc.set_ortools(request.form.get("ortools_enabled"), request.form.get("ortools_time_limit_seconds"))
 
-    flash("排产策略配置已保存。", "success")
+        # 算法增强（默认关闭 improve）
+        algo_mode = request.form.get("algo_mode")
+        if algo_mode is not None:
+            cfg_svc.set_algo_mode(algo_mode)
+        objective = request.form.get("objective")
+        if objective is not None:
+            cfg_svc.set_objective(objective)
+        tb = request.form.get("time_budget_seconds")
+        if tb is not None and str(tb).strip():
+            cfg_svc.set_time_budget_seconds(tb)
+        cfg_svc.set_freeze_window(request.form.get("freeze_window_enabled"), request.form.get("freeze_window_days"))
+
+        # 权重（仅暴露：优先级/交期；齐套权重为预留字段，当前不参与排产）
+        pw = request.form.get("priority_weight")
+        dw = request.form.get("due_weight")
+        if (pw is not None and str(pw).strip()) or (dw is not None and str(dw).strip()):
+            cur = cfg_svc.get_snapshot()
+            # 允许只填一个：未填的用当前值
+            pw_v = str(pw).strip() if pw is not None and str(pw).strip() else str(cur.priority_weight)
+            dw_v = str(dw).strip() if dw is not None and str(dw).strip() else str(cur.due_weight)
+            # 统一归一化（支持 0~1 或 0~100%）
+            pw_f = cfg_svc.normalize_weight(pw_v, field="优先级权重")
+            dw_f = cfg_svc.normalize_weight(dw_v, field="交期权重")
+            rw_f = 1.0 - pw_f - dw_f
+            if rw_f < -1e-9:
+                raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
+            # 防御：浮点误差
+            rw_f = max(0.0, float(rw_f))
+            cfg_svc.set_weights(pw_f, dw_f, rw_f, require_sum_1=True)
+
+        # 手工保存参数后：标记为 custom（避免“模板名”与实际参数不一致）
+        try:
+            cfg_svc.mark_active_preset_custom()
+        except Exception:
+            pass
+        flash("排产策略配置已保存。", "success")
+    except AppError as e:
+        flash(e.message, "error")
+    except Exception:
+        current_app.logger.exception("保存排产配置失败")
+        flash("保存排产配置失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
 
 
@@ -275,6 +280,6 @@ def update_config():
 def restore_config_default():
     cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     cfg_svc.restore_default()
-    flash("已恢复默认权重与策略。", "success")
+    flash("已恢复默认设置。", "success")
     return redirect(url_for("scheduler.config_page"))
 

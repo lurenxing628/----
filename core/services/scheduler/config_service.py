@@ -57,7 +57,7 @@ class ConfigService:
     STRATEGY_NAME_ZH = {
         "priority_first": "优先级优先",
         "due_date_first": "交期优先",
-        "weighted": "权重混合",
+        "weighted": "综合优先级和交期",
         "fifo": "先进先出",
     }
 
@@ -331,7 +331,7 @@ class ConfigService:
         if not v:
             raise ValidationError("“排产策略”不能为空", field="排产策略")
         if v not in self.VALID_STRATEGIES:
-            raise ValidationError("排产策略不合法", field="排产策略")
+            raise ValidationError("排产策略不正确，请重新选择。", field="排产策略")
         with self.tx_manager.transaction():
             self.repo.set("sort_strategy", v, description="当前排序策略")
 
@@ -385,13 +385,16 @@ class ConfigService:
         if not dm:
             dm = self.DEFAULT_DISPATCH_MODE
         if dm not in self.VALID_DISPATCH_MODES:
-            raise ValidationError("派工方式不合法（允许：batch_order / sgs）", field="dispatch_mode")
+            raise ValidationError("派工方式不正确，请选择：按批次顺序排 或 智能派工。", field="派工方式")
 
         dr = str(dispatch_rule or "").strip().lower()
         if not dr:
             dr = self.DEFAULT_DISPATCH_RULE
         if dr not in self.VALID_DISPATCH_RULES:
-            raise ValidationError("SGS 派工规则不合法（允许：slack / cr / atc）", field="dispatch_rule")
+            raise ValidationError(
+                "智能派工策略不正确，请选择：时间余量少的先做 / 交期更紧、剩余时间更吃紧的先做 / 综合判断更紧急的先做。",
+                field="智能派工策略",
+            )
 
         with self.tx_manager.transaction():
             self.repo.set("dispatch_mode", dm, description="派工方式：batch_order/sgs（sgs=就绪集合动态派工）")
@@ -409,7 +412,7 @@ class ConfigService:
         if time_limit_seconds is None or str(time_limit_seconds).strip() == "":
             tl = int(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS)
         else:
-            tl = int(parse_finite_int(time_limit_seconds, field="ortools_time_limit_seconds", allow_none=False) or 0)
+            tl = int(parse_finite_int(time_limit_seconds, field="自动优化计算时间", allow_none=False) or 0)
         tl = max(1, int(tl))
         with self.tx_manager.transaction():
             self.repo.set("ortools_enabled", en_yesno, description="可选 OR-Tools 高质量模式（若环境已安装）")
@@ -446,9 +449,9 @@ class ConfigService:
         if value is None or str(value).strip() == "":
             v = float(self.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
         else:
-            v = float(parse_finite_float(value, field="holiday_default_efficiency", allow_none=False) or 0.0)
+            v = float(parse_finite_float(value, field="假期工作效率", allow_none=False) or 0.0)
         if v <= 0:
-            raise ValidationError("假期默认效率必须大于 0", field="holiday_default_efficiency")
+            raise ValidationError("假期工作效率必须大于 0。", field="假期工作效率")
         with self.tx_manager.transaction():
             self.repo.set(
                 "holiday_default_efficiency",
@@ -459,14 +462,14 @@ class ConfigService:
     def set_algo_mode(self, value: Any) -> None:
         v = str(value or "").strip().lower()
         if v not in self.VALID_ALGO_MODES:
-            raise ValidationError("算法模式不合法（允许：greedy / improve）", field="algo_mode")
+            raise ValidationError("计算模式不正确，请选择：快速计算 或 精细计算。", field="计算模式")
         with self.tx_manager.transaction():
             self.repo.set("algo_mode", v, description="算法模式：greedy/improve（improve=多起点+目标函数+时间预算）")
 
     def set_time_budget_seconds(self, value: Any) -> None:
         if value is None or str(value).strip() == "":
-            raise ValidationError("时间预算不能为空", field="time_budget_seconds")
-        v = int(parse_finite_int(value, field="time_budget_seconds", allow_none=False) or 0)
+            raise ValidationError("计算时间上限不能为空。", field="计算时间上限")
+        v = int(parse_finite_int(value, field="计算时间上限", allow_none=False) or 0)
         v = max(1, int(v))
         with self.tx_manager.transaction():
             self.repo.set("time_budget_seconds", str(v), description="算法时间预算（秒；仅 improve 模式生效；建议<=180）")
@@ -474,7 +477,7 @@ class ConfigService:
     def set_objective(self, value: Any) -> None:
         v = str(value or "").strip()
         if v not in self.VALID_OBJECTIVES:
-            raise ValidationError("目标函数不合法（允许：min_overdue / min_tardiness / min_changeover）", field="objective")
+            raise ValidationError("优化目标不正确，请选择：最少超期 / 最少拖期小时 / 最少换型次数。", field="优化目标")
         with self.tx_manager.transaction():
             self.repo.set("objective", v, description="目标函数：min_overdue/min_tardiness/min_changeover")
 
@@ -484,7 +487,7 @@ class ConfigService:
         if days is None or str(days).strip() == "":
             d = 0
         else:
-            d = int(parse_finite_int(days, field="freeze_window_days", allow_none=False) or 0)
+            d = int(parse_finite_int(days, field="锁定天数", allow_none=False) or 0)
         d = max(0, int(d))
         with self.tx_manager.transaction():
             self.repo.set("freeze_window_enabled", en_yesno, description="冻结窗口开关（yes/no）：复用上一版本窗口内排程")

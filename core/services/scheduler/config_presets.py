@@ -170,11 +170,11 @@ def list_presets(svc: Any) -> List[Dict[str, Any]]:
 def save_preset(svc: Any, name: Any) -> str:
     n = svc._normalize_text(name)
     if not n:
-        raise ValidationError("模板名称不能为空", field="preset_name")
+        raise ValidationError("方案名称不能为空", field="方案名称")
     if len(n) > 50:
-        raise ValidationError("模板名称过长（建议 ≤50 字）", field="preset_name")
+        raise ValidationError("方案名称过长，建议不要超过 50 个字。", field="方案名称")
     if svc._is_builtin_preset(n):
-        raise ValidationError("内置模板不允许覆盖，请换一个名称另存", field="preset_name")
+        raise ValidationError("系统自带方案不能覆盖，请换个名字另存。", field="方案名称")
 
     snap = svc.get_snapshot()
     payload = json.dumps(snap.to_dict(), ensure_ascii=False, sort_keys=True)
@@ -188,9 +188,9 @@ def save_preset(svc: Any, name: Any) -> str:
 def delete_preset(svc: Any, name: Any) -> None:
     n = svc._normalize_text(name)
     if not n:
-        raise ValidationError("模板名称不能为空", field="preset_name")
+        raise ValidationError("方案名称不能为空", field="方案名称")
     if svc._is_builtin_preset(n):
-        raise ValidationError("内置模板不允许删除", field="preset_name")
+        raise ValidationError("系统自带方案不能删除。", field="方案名称")
 
     active = svc.get_active_preset()
     with svc.tx_manager.transaction():
@@ -220,19 +220,19 @@ def normalize_preset_snapshot(svc: Any, data: Dict[str, Any]) -> ScheduleConfigS
 def apply_preset(svc: Any, name: Any) -> str:
     n = svc._normalize_text(name)
     if not n:
-        raise ValidationError("模板名称不能为空", field="preset_name")
+        raise ValidationError("方案名称不能为空", field="方案名称")
 
     svc.ensure_defaults()
     raw = svc.repo.get_value(svc._preset_key(n), default=None)
     if raw is None or str(raw).strip() == "":
-        raise BusinessError(ErrorCode.NOT_FOUND, f"未找到模板：{n}")
+        raise BusinessError(ErrorCode.NOT_FOUND, f"未找到方案：{n}")
 
     try:
         data = json.loads(str(raw))
         if not isinstance(data, dict):
             raise ValueError("preset json is not dict")
     except Exception as e:
-        raise ValidationError("模板数据已损坏（JSON 无法解析）", field="preset") from e
+        raise ValidationError("方案数据已损坏，暂时无法读取。", field="方案数据") from e
 
     snap = normalize_preset_snapshot(svc, data)
 

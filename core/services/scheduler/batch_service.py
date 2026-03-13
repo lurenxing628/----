@@ -98,8 +98,15 @@ class BatchService:
         if value is None:
             return None
         if value not in allowed:
-            allow_text = " / ".join(list(allowed))
-            raise ValidationError(f"“{field}”不合法（允许：{allow_text}）", field=field)
+            if field == "优先级":
+                allow_text = "普通 / 急件 / 特急"
+            elif field == "齐套":
+                allow_text = "齐套 / 未齐套 / 部分齐套"
+            elif field == "状态":
+                allow_text = "待排 / 已排 / 加工中 / 已完成 / 已取消"
+            else:
+                allow_text = " / ".join(list(allowed))
+            raise ValidationError(f"“{field}”不正确，请选择：{allow_text}。", field=field)
         return value
 
     def _get_or_raise(self, batch_id: str) -> Batch:
