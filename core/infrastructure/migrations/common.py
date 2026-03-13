@@ -5,6 +5,30 @@ import sqlite3
 import sys
 
 
+def table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    """
+    判断指定表是否存在。
+
+    说明：
+    - 查询 sqlite_master，避免把“表不存在”和“列不存在”混为一谈
+    - 仅接受安全标识符，避免 SQL 注入/语法注入
+    """
+    try:
+        t = str(table or "").strip()
+    except Exception:
+        t = ""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", t or ""):
+        return False
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+            (t,),
+        ).fetchone()
+        return row is not None
+    except Exception:
+        return False
+
+
 def column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     """
     判断指定表是否存在指定列。

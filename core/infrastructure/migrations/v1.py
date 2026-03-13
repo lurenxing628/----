@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Optional
 
-from .common import column_exists, fallback_log
+from .common import column_exists, fallback_log, table_exists
 
 
 def run(conn: sqlite3.Connection, logger=None) -> None:
@@ -16,6 +16,16 @@ def run(conn: sqlite3.Connection, logger=None) -> None:
     _sanitize_batch_dates(conn, logger=logger)
 
 
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, ddl: str, logger=None) -> None:
+    if not table_exists(conn, table):
+        if logger:
+            fallback_log(logger, "warning", f"数据库迁移 v1：{table} 表不存在，已跳过 {column} 补列。")
+        return
+    if column_exists(conn, table, column):
+        return
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+
+
 def _ensure_columns(conn: sqlite3.Connection, logger=None) -> None:
     """
     轻量迁移（幂等）：为存量表补齐新增字段。
@@ -25,30 +35,40 @@ def _ensure_columns(conn: sqlite3.Connection, logger=None) -> None:
     - 这里用 PRAGMA table_info + ALTER TABLE ADD COLUMN 做“缺列补齐”
     """
     # Batches.ready_date（齐套日期）
-    if not column_exists(conn, "Batches", "ready_date"):
-        conn.execute("ALTER TABLE Batches ADD COLUMN ready_date DATE")
+    _add_column_if_missing(conn, "Batches", "ready_date", "ready_date DATE", logger=logger)
 
     # Machines.category（设备类别）
-    if not column_exists(conn, "Machines", "category"):
-        conn.execute("ALTER TABLE Machines ADD COLUMN category TEXT")
+    _add_column_if_missing(conn, "Machines", "category", "category TEXT", logger=logger)
 
     # MachineDowntimes.scope_type/scope_value（停机范围预留字段）
-    if not column_exists(conn, "MachineDowntimes", "scope_type"):
-        conn.execute("ALTER TABLE MachineDowntimes ADD COLUMN scope_type TEXT DEFAULT 'machine'")
-    if not column_exists(conn, "MachineDowntimes", "scope_value"):
-        conn.execute("ALTER TABLE MachineDowntimes ADD COLUMN scope_value TEXT")
+    _add_column_if_missing(
+        conn,
+        "MachineDowntimes",
+        "scope_type",
+        "scope_type TEXT DEFAULT 'machine'",
+        logger=logger,
+    )
+    _add_column_if_missing(conn, "MachineDowntimes", "scope_value", "scope_value TEXT", logger=logger)
 
     # WorkCalendar.shift_start/shift_end（班次起止时间）
-    if not column_exists(conn, "WorkCalendar", "shift_start"):
-        conn.execute("ALTER TABLE WorkCalendar ADD COLUMN shift_start TEXT")
-    if not column_exists(conn, "WorkCalendar", "shift_end"):
-        conn.execute("ALTER TABLE WorkCalendar ADD COLUMN shift_end TEXT")
+    _add_column_if_missing(conn, "WorkCalendar", "shift_start", "shift_start TEXT", logger=logger)
+    _add_column_if_missing(conn, "WorkCalendar", "shift_end", "shift_end TEXT", logger=logger)
 
     # OperatorMachine.skill_level/is_primary（人机关联：技能等级/主操设备）
-    if not column_exists(conn, "OperatorMachine", "skill_level"):
-        conn.execute("ALTER TABLE OperatorMachine ADD COLUMN skill_level TEXT DEFAULT 'normal'")
-    if not column_exists(conn, "OperatorMachine", "is_primary"):
-        conn.execute("ALTER TABLE OperatorMachine ADD COLUMN is_primary TEXT DEFAULT 'no'")
+    _add_column_if_missing(
+        conn,
+        "OperatorMachine",
+        "skill_level",
+        "skill_level TEXT DEFAULT 'normal'",
+        logger=logger,
+    )
+    _add_column_if_missing(
+        conn,
+        "OperatorMachine",
+        "is_primary",
+        "is_primary TEXT DEFAULT 'no'",
+        logger=logger,
+    )
 
     # 旧数据回填：将 NULL/空串统一为默认值（避免导出/排序出现空值）
     try:

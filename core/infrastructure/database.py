@@ -6,7 +6,7 @@ import shutil
 import sqlite3
 import sys
 import time
-from typing import Optional
+from typing import List, Optional
 
 from .migrations.common import fallback_log
 
@@ -159,9 +159,10 @@ def ensure_schema(db_path: str, logger=None, schema_path: Optional[str] = None, 
             except Exception:
                 script = str(sql or "")
 
-            # 只有在库完全为空时才运行 schema.sql
-            # 注意：_is_truly_empty_db 检查的是除 SchemaVersion 以外的表
-            if _is_truly_empty_db(conn):
+            # 仅在库中不存在任何业务表时才执行 schema.sql 建表。
+            # 旧 schema 的空表库不能走这里，否则 CREATE TABLE IF NOT EXISTS
+            # 不会修正既有表结构，后续索引/新列依赖会直接失败。
+            if _has_no_user_tables(conn):
                 conn.executescript(script)
 
             # 确保 SchemaVersion 表存在，并获取当前版本
@@ -201,7 +202,7 @@ def _ensure_schema_version(conn: sqlite3.Connection, logger=None) -> None:
 
     兼容策略：
     - 老库可能没有 SchemaVersion：插入 version=0
-    - 新库可能由 schema.sql 初始化为 version=0：若检测到结构已满足当前版本，则直接将版本提升到 CURRENT_SCHEMA_VERSION（避免无谓迁移/备份）
+    - 新库可能由 schema.sql 初始化为 version=0：若检测到结构已满足当前版本且库中仍无业务数据，则直接将版本提升到 CURRENT_SCHEMA_VERSION（避免无谓迁移/备份）
     """
     conn.execute(
         """
@@ -222,6 +223,15 @@ def _ensure_schema_version(conn: sqlite3.Connection, logger=None) -> None:
 
 
 def _is_truly_empty_db(conn: sqlite3.Connection) -> bool:
+    for name in _list_user_tables(conn):
+        quoted_name = '"' + str(name).replace('"', '""') + '"'
+        row = conn.execute(f"SELECT 1 FROM {quoted_name} LIMIT 1").fetchone()
+        if row is not None:
+            return False
+    return True
+
+
+def _list_user_tables(conn: sqlite3.Connection) -> List[str]:
     rows = conn.execute(
         """
         SELECT name
@@ -232,18 +242,21 @@ def _is_truly_empty_db(conn: sqlite3.Connection) -> bool:
         ORDER BY name
         """
     ).fetchall()
-    names = [r["name"] if isinstance(r, sqlite3.Row) else r[0] for r in rows]
-    for name in names:
-        quoted_name = '"' + str(name).replace('"', '""') + '"'
-        row = conn.execute(f"SELECT 1 FROM {quoted_name} LIMIT 1").fetchone()
-        if row is not None:
-            return False
-    return True
+    return [r["name"] if isinstance(r, sqlite3.Row) else r[0] for r in rows]
+
+
+def _has_no_user_tables(conn: sqlite3.Connection) -> bool:
+    return len(_list_user_tables(conn)) == 0
 
 
 def _detect_schema_is_current(conn: sqlite3.Connection) -> bool:
     """
-    用“结构特征”判断当前 DB 是否已经包含 V1.1 的关键字段（用于新库快速标定版本）。
+    用“结构特征”判断当前 DB 是否已经包含当前 schema.sql 的关键字段，
+    用于 brand-new 空库初始化后的版本快进。
+
+    注意：
+    - 这是“可快进”的结构特征检查，不等于对所有迁移副作用的完整等价证明
+    - 如未来新增迁移版本，需要同步审视这里的特征集合是否仍能代表当前结构
     """
     # 这些字段/表是 V1.1 之后补齐的代表性特征
     needed = [
