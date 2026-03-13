@@ -6,7 +6,7 @@
       <div class="page-title-group"><h2 class="page-title">供应商详情</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">供应商ID：<strong>{{ supplier.supplier_id }}</strong>　名称：<strong>{{ supplier.name }}</strong></p>
+    <p class="page-subtitle text-meta">供应商编号：<strong>{{ supplier.supplier_id }}</strong>　名称：<strong>{{ supplier.name }}</strong></p>
     {{ ui.process_nav('suppliers') }}
   </div>
 
@@ -15,7 +15,7 @@
     <form method="post" action="{{ url_for('process.update_supplier', supplier_id=supplier.supplier_id) }}">
       <div class="form-row">
         <div class="form-field">
-          <label>供应商ID</label>
+          <label>供应商编号</label>
           <input value="{{ supplier.supplier_id }}" disabled>
         </div>
         <div class="form-field">

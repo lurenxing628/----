@@ -1,8 +1,16 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
-  {% set strategy_zh = {'improve': '优化排产', 'greedy': '快速排产', 'manual': '手动排产'} %}
-  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
+  {% set strategy_zh = {
+      'priority_first': '优先级优先',
+      'due_date_first': '交期优先',
+      'weighted': '综合优先级和交期',
+      'fifo': '先进先出',
+      'improve': '优化排产',
+      'greedy': '快速排产',
+      'manual': '手动排产'
+    } %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {% set mode_zh = {'improve': '优化模式', 'greedy': '快速模式', 'single': '单次排产'} %}
   {% set objective_zh = {
       'weighted_tardiness': '加权拖期最小',
@@ -11,7 +19,10 @@
       'changeover': '换型最少',
       'min_overdue': '最少超期',
       'min_tardiness': '最少拖期小时',
-      'min_changeover': '最少换型次数'
+      'min_changeover': '最少换型次数',
+      'overdue_count': '超期批次数',
+      'total_tardiness_hours': '总拖期（小时）',
+      'changeover_count': '换型次数'
     } %}
 
   <div class="card">
@@ -131,12 +142,12 @@
           <div class="stat-card type-primary">
             <div class="stat-card-label">设备平均利用率</div>
             <div class="stat-card-value primary">{{ (m.get('machine_util_avg', 0) * 100)|round(2) }}%</div>
-            <div class="stat-card-delta">已用 {{ m.get('machine_used_count', 0) }} 台｜负载均衡 {{ m.get('machine_load_cv', 0) }}</div>
+            <div class="stat-card-delta">已用 {{ m.get('machine_used_count', 0) }} 台｜负载均衡 {{ (m.get('machine_load_cv') or 0)|round(2) }}</div>
           </div>
           <div class="stat-card type-success">
             <div class="stat-card-label">人员平均利用率</div>
             <div class="stat-card-value success">{{ (m.get('operator_util_avg', 0) * 100)|round(2) }}%</div>
-            <div class="stat-card-delta">已用 {{ m.get('operator_used_count', 0) }} 人｜负载均衡 {{ m.get('operator_load_cv', 0) }}</div>
+            <div class="stat-card-delta">已用 {{ m.get('operator_used_count', 0) }} 人｜负载均衡 {{ (m.get('operator_load_cv') or 0)|round(2) }}</div>
           </div>
         </div>
         <div class="muted mt-2">
@@ -157,7 +168,7 @@
             <circle cx="{{ trace_chart.last_x }}" cy="{{ trace_chart.last_y }}" r="3" fill="#1565c0"></circle>
           </svg>
         </div>
-        <div class="muted">min={{ trace_chart.y_min|round(4) }} max={{ trace_chart.y_max|round(4) }}</div>
+        <div class="muted">最小 {{ trace_chart.y_min|round(4) }} / 最大 {{ trace_chart.y_max|round(4) }}</div>
       {% endif %}
       {% if attempts and attempts|length > 0 %}
         <div class="overflow-x-auto">
@@ -218,7 +229,7 @@
               <circle cx="{{ trend_charts.overdue.last_x }}" cy="{{ trend_charts.overdue.last_y }}" r="3" fill="#1976d2"></circle>
             </svg>
           </div>
-          <div class="muted">min={{ trend_charts.overdue.y_min|round(4) }} max={{ trend_charts.overdue.y_max|round(4) }}</div>
+          <div class="muted">最小 {{ trend_charts.overdue.y_min|round(4) }} / 最大 {{ trend_charts.overdue.y_max|round(4) }}</div>
         {% endif %}
 
         {% if trend_charts.tardiness %}
@@ -229,7 +240,7 @@
               <circle cx="{{ trend_charts.tardiness.last_x }}" cy="{{ trend_charts.tardiness.last_y }}" r="3" fill="#7b1fa2"></circle>
             </svg>
           </div>
-          <div class="muted">min={{ trend_charts.tardiness.y_min|round(4) }} max={{ trend_charts.tardiness.y_max|round(4) }}</div>
+          <div class="muted">最小 {{ trend_charts.tardiness.y_min|round(4) }} / 最大 {{ trend_charts.tardiness.y_max|round(4) }}</div>
         {% endif %}
 
         {% if trend_charts.weighted_tardiness %}
@@ -240,7 +251,7 @@
               <circle cx="{{ trend_charts.weighted_tardiness.last_x }}" cy="{{ trend_charts.weighted_tardiness.last_y }}" r="3" fill="#5d4037"></circle>
             </svg>
           </div>
-          <div class="muted">min={{ trend_charts.weighted_tardiness.y_min|round(4) }} max={{ trend_charts.weighted_tardiness.y_max|round(4) }}</div>
+          <div class="muted">最小 {{ trend_charts.weighted_tardiness.y_min|round(4) }} / 最大 {{ trend_charts.weighted_tardiness.y_max|round(4) }}</div>
         {% endif %}
 
         {% if trend_charts.makespan %}
@@ -251,7 +262,7 @@
               <circle cx="{{ trend_charts.makespan.last_x }}" cy="{{ trend_charts.makespan.last_y }}" r="3" fill="#ef6c00"></circle>
             </svg>
           </div>
-          <div class="muted">min={{ trend_charts.makespan.y_min|round(4) }} max={{ trend_charts.makespan.y_max|round(4) }}</div>
+          <div class="muted">最小 {{ trend_charts.makespan.y_min|round(4) }} / 最大 {{ trend_charts.makespan.y_max|round(4) }}</div>
         {% endif %}
 
         {% if trend_charts.makespan_internal %}
@@ -262,7 +273,7 @@
               <circle cx="{{ trend_charts.makespan_internal.last_x }}" cy="{{ trend_charts.makespan_internal.last_y }}" r="3" fill="#00838f"></circle>
             </svg>
           </div>
-          <div class="muted">min={{ trend_charts.makespan_internal.y_min|round(4) }} max={{ trend_charts.makespan_internal.y_max|round(4) }}</div>
+          <div class="muted">最小 {{ trend_charts.makespan_internal.y_min|round(4) }} / 最大 {{ trend_charts.makespan_internal.y_max|round(4) }}</div>
         {% endif %}
 
         {% if trend_charts.changeover %}
@@ -273,7 +284,7 @@
               <circle cx="{{ trend_charts.changeover.last_x }}" cy="{{ trend_charts.changeover.last_y }}" r="3" fill="#2e7d32"></circle>
             </svg>
           </div>
-          <div class="muted">min={{ trend_charts.changeover.y_min|round(4) }} max={{ trend_charts.changeover.y_max|round(4) }}</div>
+          <div class="muted">最小 {{ trend_charts.changeover.y_min|round(4) }} / 最大 {{ trend_charts.changeover.y_max|round(4) }}</div>
         {% endif %}
 
         {% if trend_charts.machine_util %}
@@ -284,7 +295,7 @@
               <circle cx="{{ trend_charts.machine_util.last_x }}" cy="{{ trend_charts.machine_util.last_y }}" r="3" fill="#3949ab"></circle>
             </svg>
           </div>
-          <div class="muted">min={{ trend_charts.machine_util.y_min|round(6) }} max={{ trend_charts.machine_util.y_max|round(6) }}</div>
+          <div class="muted">最小 {{ trend_charts.machine_util.y_min|round(6) }} / 最大 {{ trend_charts.machine_util.y_max|round(6) }}</div>
         {% endif %}
 
         {% if trend_charts.operator_util %}
@@ -295,7 +306,7 @@
               <circle cx="{{ trend_charts.operator_util.last_x }}" cy="{{ trend_charts.operator_util.last_y }}" r="3" fill="#6d4c41"></circle>
             </svg>
           </div>
-          <div class="muted">min={{ trend_charts.operator_util.y_min|round(6) }} max={{ trend_charts.operator_util.y_max|round(6) }}</div>
+          <div class="muted">最小 {{ trend_charts.operator_util.y_min|round(6) }} / 最大 {{ trend_charts.operator_util.y_max|round(6) }}</div>
         {% endif %}
       {% else %}
         <div class="muted">暂无趋势数据（需要至少 2 个包含排产指标的版本）。</div>

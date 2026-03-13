@@ -8,7 +8,7 @@
 
 {% block content %}
   {% set strategy_zh = {'improve': '优化排产', 'greedy': '快速排产', 'manual': '手动排产'} %}
-  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {% set base_week_start = ((request.args.get('week_start') or '') | trim) or None %}
   {% set base_start_date = ((request.args.get('start_date') or '') | trim) or None %}
   {% set base_end_date = ((request.args.get('end_date') or '') | trim) or None %}
@@ -65,7 +65,7 @@
           </div>
           <div class="form-field">
             <label title="任意日期，系统会自动归到周一">指定周</label>
-            <input name="week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD" class="w-160">
+            <input name="week_start" value="{{ week_start }}" placeholder="如：2026-03-13" class="w-160">
           </div>
           <div class="form-field">
             <label>版本</label>

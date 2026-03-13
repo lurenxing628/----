@@ -15,7 +15,7 @@
     <form method="post" action="{{ url_for('process.create_supplier') }}">
       <div class="form-row">
         <div class="form-field">
-          <label>供应商ID</label>
+          <label>供应商编号</label>
           <input name="supplier_id" required placeholder="如：S001">
         </div>
         <div class="form-field">
@@ -69,7 +69,7 @@
       <table>
         <thead>
           <tr>
-            <th class="w-140">供应商ID</th>
+            <th class="w-140">供应商编号</th>
             <th class="w-240">名称</th>
             <th class="w-160">对应工种</th>
             <th class="w-120">默认周期（天）</th>

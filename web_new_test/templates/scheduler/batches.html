@@ -2,7 +2,7 @@
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
   {% set strategy_zh = {'improve': '优化排产', 'greedy': '快速排产', 'manual': '手动排产'} %}
-  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败'} %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {% set mode_zh = {'improve': '优化模式', 'greedy': '快速模式', 'single': '单次排产'} %}
   {% set objective_zh = {
       'weighted_tardiness': '加权拖期最小',

@@ -52,19 +52,19 @@
       <div class="inline-flex-wrap items-end gap-10">
         <div>
           <div class="muted">开始时间</div>
-          <input name="start_time" value="{{ filters.start_time }}" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS" class="w-260">
+          <input name="start_time" value="{{ filters.start_time }}" placeholder="如：2026-03-13 或 2026-03-13 08:00:00" class="w-260">
         </div>
         <div>
           <div class="muted">结束时间</div>
-          <input name="end_time" value="{{ filters.end_time }}" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS" class="w-260">
+          <input name="end_time" value="{{ filters.end_time }}" placeholder="如：2026-03-13 或 2026-03-13 08:00:00" class="w-260">
         </div>
         <div>
           <div class="muted">模块</div>
-          <input name="module" value="{{ filters.module }}" placeholder="例如：system/scheduler/process" class="w-180">
+          <input name="module" value="{{ filters.module }}" placeholder="如：system/scheduler/process（按英文值筛选）" class="w-180">
         </div>
         <div>
           <div class="muted">动作</div>
-          <input name="action" value="{{ filters.action }}" placeholder="例如：import/export/schedule" class="w-180">
+          <input name="action" value="{{ filters.action }}" placeholder="如：import/export/schedule（按英文值筛选）" class="w-180">
         </div>
         <div>
           <div class="muted">日志级别</div>
@@ -116,7 +116,7 @@
             <th class="w-60">
               <input type="checkbox" class="js-log-select-all" title="全选" aria-label="全选日志">
             </th>
-            <th>ID</th>
+            <th>编号</th>
             <th>时间</th>
             <th>级别</th>
             <th>模块</th>

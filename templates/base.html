@@ -45,7 +45,7 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body>
-  {% import "components/ui_macros.html" as ui %}
+  {% import "components/ui_macros.html" as ui with context %}
 
   <div class="container">
     <header class="no-print">
@@ -116,6 +116,7 @@
 
     {% block content %}{% endblock %}
   </div>
+  {{ ui.floating_manual_button() }}
   <div id="aps-toast-container" aria-live="polite"></div>
   <script src="{{ url_for('static', filename='js/common.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/common_required.js') }}" defer></script>

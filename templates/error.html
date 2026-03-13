@@ -6,10 +6,25 @@
     <p class="error"><strong>提示：</strong>{{ message or "发生未知错误，请查看日志。" }}</p>
 
     {% if details %}
-      <h3>详细信息</h3>
-      {% if details is string %}
+      {% if details is mapping and details.get("field") and details|length == 1 %}
+        {% set field_zh = {
+          "dispatch_mode": "派工方式",
+          "dispatch_rule": "智能派工策略",
+          "algo_mode": "计算模式",
+          "objective": "优化目标",
+          "time_budget_seconds": "计算时间上限",
+          "holiday_default_efficiency": "假期工作效率",
+          "ortools_time_limit_seconds": "自动优化计算时间",
+          "freeze_window_days": "锁定天数",
+          "preset_name": "方案名称",
+          "preset": "方案数据"
+        } %}
+        <p class="muted"><strong>相关字段：</strong>{{ field_zh.get(details.get("field"), details.get("field")) }}</p>
+      {% elif details is string %}
+        <h3>详细信息</h3>
         <pre>{{ details }}</pre>
       {% else %}
+        <h3>详细信息</h3>
         <pre>{{ details | tojson_zh(2) }}</pre>
       {% endif %}
     {% endif %}

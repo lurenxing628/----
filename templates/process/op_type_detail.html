@@ -6,7 +6,7 @@
       <div class="page-title-group"><h2 class="page-title">工种详情</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">工种ID：<strong>{{ op_type.op_type_id }}</strong>　工种名称：<strong>{{ op_type.name }}</strong></p>
+    <p class="page-subtitle text-meta">工种编号：<strong>{{ op_type.op_type_id }}</strong>　工种名称：<strong>{{ op_type.name }}</strong></p>
     {{ ui.process_nav('op_types') }}
   </div>
 
@@ -15,7 +15,7 @@
     <form method="post" action="{{ url_for('process.update_op_type', op_type_id=op_type.op_type_id) }}">
       <div class="form-row">
         <div class="form-field">
-          <label>工种ID</label>
+          <label>工种编号</label>
           <input value="{{ op_type.op_type_id }}" disabled>
         </div>
         <div class="form-field">

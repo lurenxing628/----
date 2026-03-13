@@ -72,6 +72,19 @@ def init_ui_mode(app, base_dir: str) -> None:
             pass
         app.extensions[_EXT_KEY_V2_ENV] = None
 
+    # 启动期即向 V1/V2 两套模板环境注入 safe_url_for，
+    # 兼容直接使用 Flask render_template 的路径以及 import 宏场景。
+    try:
+        app.jinja_env.globals.setdefault("safe_url_for", safe_url_for)
+    except Exception:
+        pass
+    try:
+        v2_env = app.extensions.get(_EXT_KEY_V2_ENV)
+        if v2_env is not None:
+            v2_env.globals.setdefault("safe_url_for", safe_url_for)
+    except Exception:
+        pass
+
 
 def _read_ui_mode_from_db() -> Optional[str]:
     """
