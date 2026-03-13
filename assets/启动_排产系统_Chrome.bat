@@ -1,5 +1,5 @@
 @echo off
-REM Launcher: start app first, then open URL with bundled Chrome109
+REM Launcher: start app first, then open URL with APS browser runtime
 REM Place next to app exe (after install: {app}\)
 
 setlocal EnableExtensions EnableDelayedExpansion
@@ -16,21 +16,67 @@ set "PORT_FILE=%CD%\logs\aps_port.txt"
 set "HOST_FILE=%CD%\logs\aps_host.txt"
 
 set "APP_EXE=%CD%\排产系统.exe"
-set "CHROME_EXE=%CD%\tools\chrome109\chrome.exe"
-if not exist "%CHROME_EXE%" set "CHROME_EXE=%CD%\tools\chrome109\App\chrome.exe"
+set "CHROME_EXE="
+set "CHROME_SOURCE="
+set "CHROME_DIR="
+set "CHROME_PROFILE_DIR=%LOCALAPPDATA%\APS\Chrome109Profile"
+if not defined LOCALAPPDATA set "CHROME_PROFILE_DIR=%CD%\chrome109_profile"
 
 if not exist "%APP_EXE%" (
-  echo [launcher] 未找到：%APP_EXE%
+  echo [launcher] 未找到主程序：%APP_EXE%
   pause
   exit /b 1
 )
 
-if not exist "%CHROME_EXE%" (
-  echo [launcher] 未找到 Chrome：%CD%\tools\chrome109\
-  echo [launcher] 期望存在：tools\chrome109\chrome.exe（优先）或 tools\chrome109\App\chrome.exe（备用）
+if defined APS_CHROME_EXE (
+  set "CHROME_EXE=%APS_CHROME_EXE:"=%"
+  if exist "%CHROME_EXE%" (
+    set "CHROME_SOURCE=APS_CHROME_EXE"
+  ) else (
+    echo [launcher] APS_CHROME_EXE 无效：%APS_CHROME_EXE%
+    echo [launcher] 请修正 APS_CHROME_EXE，或清除该变量后改用 APS_CHROME_DIR / APS_Chrome109_Runtime.exe。
+    pause
+    exit /b 4
+  )
+)
+
+if not defined CHROME_SOURCE if defined APS_CHROME_DIR (
+  set "CHROME_DIR=%APS_CHROME_DIR:"=%"
+  if exist "%CHROME_DIR%\chrome.exe" (
+    set "CHROME_EXE=%CHROME_DIR%\chrome.exe"
+    set "CHROME_SOURCE=APS_CHROME_DIR"
+  )
+)
+
+if not defined CHROME_SOURCE if defined APS_CHROME_DIR (
+  set "CHROME_DIR=%APS_CHROME_DIR:"=%"
+  if exist "%CHROME_DIR%\App\chrome.exe" (
+    set "CHROME_EXE=%CHROME_DIR%\App\chrome.exe"
+    set "CHROME_SOURCE=APS_CHROME_DIR\App"
+  )
+)
+
+if not defined CHROME_SOURCE if exist "%CD%\tools\chrome109\chrome.exe" (
+  set "CHROME_EXE=%CD%\tools\chrome109\chrome.exe"
+  set "CHROME_SOURCE=legacy tools\chrome109"
+)
+
+if not defined CHROME_SOURCE if exist "%CD%\tools\chrome109\App\chrome.exe" (
+  set "CHROME_EXE=%CD%\tools\chrome109\App\chrome.exe"
+  set "CHROME_SOURCE=legacy tools\chrome109\App"
+)
+
+if not defined CHROME_SOURCE (
+  echo [launcher] 未找到浏览器运行时。
+  echo [launcher] 处理方式：
+  echo [launcher] 1. 安装 APS_Chrome109_Runtime.exe（推荐）
+  echo [launcher] 2. 或设置 APS_CHROME_DIR=^<浏览器目录^>
+  echo [launcher] 3. 或设置 APS_CHROME_EXE=^<chrome.exe 完整路径^>
   pause
   exit /b 2
 )
+
+if not exist "%CHROME_PROFILE_DIR%" mkdir "%CHROME_PROFILE_DIR%" >nul 2>&1
 
 REM 若端口/host 文件存在，优先按文件指向的“真实端口/真实 host”打开
 REM - 端口：避免端口自动回退后仍按 5000 打开
@@ -61,8 +107,9 @@ exit /b 3
 
 :OPEN_CHROME
 set "URL=http://%HOST%:%PORT%/"
+echo [launcher] 浏览器来源：%CHROME_SOURCE%
 echo [launcher] 打开：%URL%
-start "" "%CHROME_EXE%" --app="%URL%" --no-first-run --disable-default-apps --no-default-browser-check --disable-background-networking
+start "" "%CHROME_EXE%" --user-data-dir="%CHROME_PROFILE_DIR%" --app="%URL%" --no-first-run --disable-default-apps --no-default-browser-check --disable-background-networking
 exit /b 0
 
 :is_port_listening

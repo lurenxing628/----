@@ -82,6 +82,14 @@ def run_script(repo_root, script_rel, label, *, timeout_s: int):
     except Exception as e:
         return -1, f"[ERROR] {label} 执行异常：{type(e).__name__}: {e}"
 
+
+def resolve_first_existing_script(repo_root, script_rels):
+    """返回首个存在的脚本相对路径。"""
+    for script_rel in script_rels:
+        if os.path.exists(os.path.join(repo_root, script_rel)):
+            return script_rel
+    return None
+
 def run_ruff_full(repo_root, *, timeout_s: int):
     """对核心目录运行 ruff check。"""
     dirs = ["web/routes", "core/services", "data/repositories", "core/infrastructure", "core/models"]
@@ -172,21 +180,35 @@ def main(argv=None):
     timeout_arch = int(args.timeout_arch) if args.timeout_arch is not None else int(args.timeout)
     timeout_conf = int(args.timeout_conf) if args.timeout_conf is not None else int(args.timeout)
     timeout_ruff = int(args.timeout_ruff)
+    arch_script_candidates = [
+        ".windsurf/skills/aps-arch-audit/scripts/arch_audit.py",
+        ".cursor/skills/aps-arch-audit/scripts/arch_audit.py",
+    ]
+    arch_script_rel = resolve_first_existing_script(repo_root, arch_script_candidates)
 
     # 1) 架构审计
     print("[1/4] 运行架构审计...")
-    arch_code, arch_out = run_script(
-        repo_root,
-        ".cursor/skills/aps-arch-audit/scripts/arch_audit.py",
-        "架构审计",
-        timeout_s=timeout_arch,
-    )
+    if arch_script_rel is None:
+        arch_code = -1
+        arch_out = "架构审计脚本不存在（已检查：{}）".format(", ".join(arch_script_candidates))
+    else:
+        arch_code, arch_out = run_script(
+            repo_root,
+            arch_script_rel,
+            "架构审计",
+            timeout_s=timeout_arch,
+        )
     arch_ok = arch_code == 0
     if not arch_ok:
         overall_ok = False
     lines.append("## 1. 架构合规审计")
     lines.append(f"- 结论：{'PASS' if arch_ok else 'FAIL'}")
     lines.append(f"- exit_code：{arch_code}")
+    if arch_script_rel is None:
+        lines.append("- 使用脚本：未找到")
+        lines.append(f"- 候选路径：`{arch_script_candidates[0]}`；`{arch_script_candidates[1]}`")
+    else:
+        lines.append(f"- 使用脚本：`{arch_script_rel}`")
     if not arch_ok:
         if arch_code == TIMEOUT_EXIT_CODE:
             lines.append(f"- 备注：TIMEOUT（>{timeout_arch}s）")

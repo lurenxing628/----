@@ -1,4 +1,4 @@
-; Win7 主程序安装包（不含浏览器运行时）
+; Win7 legacy full installer (internal fallback only)
 ; 依赖：Inno Setup 6.x（Unicode）
 
 #define MyAppName "排产系统"
@@ -25,7 +25,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 OutputDir={#SourcePath}\output
-OutputBaseFilename=APS_Main_Setup
+OutputBaseFilename=APS_Legacy_Full_Setup
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
@@ -37,10 +37,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务:"; Flags: unchecked
 
 [Files]
-; 1) 打包 onedir 产物（需先运行 build_win7_onedir.bat）
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-
-; 2) 安装启动器（从 assets 投放到安装目录根）
 Source: "{#LauncherBatSource}"; DestDir: "{app}"; DestName: "{#LauncherBatName}"; Flags: ignoreversion
 
 [Icons]
@@ -61,4 +58,3 @@ begin
       MB_YESNO or MB_DEFBUTTON2
     ) = IDYES;
 end;
-

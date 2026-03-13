@@ -321,9 +321,12 @@ def _seed_and_schedule(repo_root: Path, db_path: Path, view: str) -> Dict[str, A
             seq = int(op.seq or 0)
             if name == "MILL":
                 machine = f"{prefix}MC001" if (seq % 2 == 1) else f"{prefix}MC002"
-                operator = f"{prefix}OP001"
                 if batch_id in (f"{prefix}B001", f"{prefix}B002", f"{prefix}B101"):
                     operator = f"{prefix}OP001"
+                elif machine == f"{prefix}MC001":
+                    operator = f"{prefix}OP003"
+                else:
+                    operator = f"{prefix}OP002"
             else:
                 machine = f"{prefix}MC003"
                 operator = f"{prefix}OP002" if batch_id in (f"{prefix}B101", f"{prefix}B102") else f"{prefix}OP003"
