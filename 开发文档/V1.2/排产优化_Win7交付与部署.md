@@ -3,6 +3,8 @@
 > 归属版本：v1.3.0 | 最后修改：2026-03-12
 >
 > 总览入口：[APS测试系统_排产优化完整方案.md](APS测试系统_排产优化完整方案.md)
+>
+> 当前仓库现行交付口径（v1.3.x）：采用“双包交付（`APS_Main_Setup.exe` + `APS_Chrome109_Runtime.exe`）”。若本文中的目标态/历史口径与现状冲突，以仓库根目录的 `installer/README_WIN7_INSTALLER.md` 与 `DELIVERY_WIN7.md` 为准。
 
 ## 文档目的
 

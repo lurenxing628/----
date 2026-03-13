@@ -82,6 +82,8 @@ tools/ungoogled-chromium_*.zip
 /UI_LAYOUT_CHECK_REPORT.md
 /UI_V1_V2_CHECK_MANUAL.md
 /UI_V1_V2_CHECK_REPORT.md
+/config_ui_verification_report.json
+/config_ui_verification_summary.md
 /ui_check_helper.html
 /analyze_ui_pages.py
 /quick_ui_check.py
@@ -89,4 +91,5 @@ tools/ungoogled-chromium_*.zip
 /ui_v1_v2_check.py
 /check_server.py
 /test_ui_mode_switch.py
+/verify_config_ui.py
 /screenshot_*.png
