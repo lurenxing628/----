@@ -44,8 +44,8 @@ Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs cr
 Source: "{#LauncherBatSource}"; DestDir: "{app}"; DestName: "{#LauncherBatName}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#LauncherBatName}"; WorkingDir: "{app}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#LauncherBatName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{cmd}"; Parameters: "/c ""{app}\{#LauncherBatName}"""; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{cmd}"; Parameters: "/c ""{app}\{#LauncherBatName}"""; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Code]
 function InitializeUninstall(): Boolean;
@@ -60,5 +60,21 @@ begin
       mbConfirmation,
       MB_YESNO or MB_DEFBUTTON2
     ) = IDYES;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep <> ssPostInstall then
+    Exit;
+
+  MsgBox(
+    '安装完成后，请使用开始菜单或桌面快捷方式“排产系统”启动。' + #13#10#13#10 +
+    '不要直接双击 {app}\排产系统.exe；它只负责在后台启动本地服务。' + #13#10#13#10 +
+    '若快捷方式只闪一下且未打开 Chrome，请查看：' + #13#10 +
+    ExpandConstant('{app}\logs\launcher.log') + #13#10 +
+    '并将日志中的 chrome_cmd 复制到 cmd 中复现。',
+    mbInformation,
+    MB_OK
+  );
 end;
 

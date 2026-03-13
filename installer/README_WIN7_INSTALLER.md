@@ -146,6 +146,18 @@ ISCC.exe installer\aps_win7_legacy.iss
 - 启动器会优先读取 `logs\aps_host.txt` 与 `logs\aps_port.txt`，因此打开的 URL **不一定是** `http://127.0.0.1:5000/`
 - 浏览器会固定使用用户数据目录：`%LOCALAPPDATA%\APS\Chrome109Profile`
 
+## 启动排障（Win7 双包）
+
+- `排产系统.exe` 只负责在后台启动本地服务；双击它时如果没有弹出窗口，不代表启动失败。
+- 正常入口是开始菜单或桌面快捷方式 **“排产系统”**，其实际执行的是安装目录根下的 `启动_排产系统_Chrome.bat`。
+- 若快捷方式只闪一下且未打开 Chrome，请先查看：`%LOCALAPPDATA%\APS\排产系统\logs\launcher.log`
+- `launcher.log` 会记录：
+  - `chrome_exe`
+  - `chrome_run_dir`
+  - `chrome_cmd`
+- 若现场仍异常，可把 `launcher.log` 里的 `chrome_cmd` 整行复制到 `cmd` 中执行，用于区分“bat 启动方式问题”和“Chrome 本体问题”。
+- 当前 launcher 会显式以 Chrome 安装目录作为 working directory 启动 Chrome，避免 Win7 下 `start` 默认工作目录不一致导致的异常。
+
 ## 直拷目录与安装包的关系
 
 - `dist\排产系统\` 是最小直拷交付目录，允许直接运行 `排产系统.exe`

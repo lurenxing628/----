@@ -1,40 +1,58 @@
 @echo off
-REM Launcher: start app first, then open URL with APS browser runtime
-REM Place next to app exe (after install: {app}\)
+REM Launcher: start app first, then open URL with APS browser runtime.
+REM Keep this script ASCII-friendly for Win7 cmd compatibility.
 
 setlocal EnableExtensions EnableDelayedExpansion
-chcp 65001 >nul 2>&1
 
 cd /d "%~dp0"
-
+set "APP_DIR=%CD%"
 set "HOST=127.0.0.1"
 set "PORT=5000"
 if defined APS_HOST set "HOST=%APS_HOST%"
 if defined APS_PORT set "PORT=%APS_PORT%"
 set "MAX_WAIT=45"
-set "PORT_FILE=%CD%\logs\aps_port.txt"
-set "HOST_FILE=%CD%\logs\aps_host.txt"
 
-set "APP_EXE=%CD%\排产系统.exe"
+set "LOG_DIR=%APP_DIR%\logs"
+if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
+set "LAUNCHER_LOG=%LOG_DIR%\launcher.log"
+set "PORT_FILE=%LOG_DIR%\aps_port.txt"
+set "HOST_FILE=%LOG_DIR%\aps_host.txt"
+
+set "APP_EXE="
+for %%F in (*.exe) do (
+  set "CANDIDATE_NAME=%%~nxF"
+  set "CANDIDATE_STEM=%%~nF"
+  if /I not "!CANDIDATE_STEM:~0,5!"=="unins" if /I not "!CANDIDATE_NAME!"=="chrome.exe" if not defined APP_EXE set "APP_EXE=%APP_DIR%\%%~nxF"
+)
+
 set "CHROME_EXE="
 set "CHROME_SOURCE="
 set "CHROME_DIR="
+set "CHROME_RUN_DIR="
+set "DEFAULT_CHROME_DIR=%LOCALAPPDATA%\APS\Chrome109"
 set "CHROME_PROFILE_DIR=%LOCALAPPDATA%\APS\Chrome109Profile"
-if not defined LOCALAPPDATA set "CHROME_PROFILE_DIR=%CD%\chrome109_profile"
+if not defined LOCALAPPDATA set "DEFAULT_CHROME_DIR=%APP_DIR%\chrome109_runtime"
+if not defined LOCALAPPDATA set "CHROME_PROFILE_DIR=%APP_DIR%\chrome109_profile"
 
-if not exist "%APP_EXE%" (
-  echo [launcher] 未找到主程序：%APP_EXE%
+call :log launcher_begin
+call :log app_dir="%APP_DIR%"
+
+if not defined APP_EXE (
+  call :log app_exe_not_found
+  echo [launcher] App exe not found.
   pause
   exit /b 1
 )
+call :log app_exe="%APP_EXE%"
 
 if defined APS_CHROME_EXE (
   set "CHROME_EXE=%APS_CHROME_EXE:"=%"
-  if exist "%CHROME_EXE%" (
+  if exist "!CHROME_EXE!" (
     set "CHROME_SOURCE=APS_CHROME_EXE"
   ) else (
-    echo [launcher] APS_CHROME_EXE 无效：%APS_CHROME_EXE%
-    echo [launcher] 请修正 APS_CHROME_EXE，或清除该变量后改用 APS_CHROME_DIR / APS_Chrome109_Runtime.exe。
+    call :log invalid_APS_CHROME_EXE="%APS_CHROME_EXE%"
+    echo [launcher] APS_CHROME_EXE is invalid.
+    echo [launcher] Fix APS_CHROME_EXE or install APS_Chrome109_Runtime.exe.
     pause
     exit /b 4
   )
@@ -42,57 +60,68 @@ if defined APS_CHROME_EXE (
 
 if not defined CHROME_SOURCE if defined APS_CHROME_DIR (
   set "CHROME_DIR=%APS_CHROME_DIR:"=%"
-  if exist "%CHROME_DIR%\chrome.exe" (
-    set "CHROME_EXE=%CHROME_DIR%\chrome.exe"
+  if exist "!CHROME_DIR!\chrome.exe" (
+    set "CHROME_EXE=!CHROME_DIR!\chrome.exe"
     set "CHROME_SOURCE=APS_CHROME_DIR"
   )
 )
 
 if not defined CHROME_SOURCE if defined APS_CHROME_DIR (
   set "CHROME_DIR=%APS_CHROME_DIR:"=%"
-  if exist "%CHROME_DIR%\App\chrome.exe" (
-    set "CHROME_EXE=%CHROME_DIR%\App\chrome.exe"
+  if exist "!CHROME_DIR!\App\chrome.exe" (
+    set "CHROME_EXE=!CHROME_DIR!\App\chrome.exe"
     set "CHROME_SOURCE=APS_CHROME_DIR\App"
   )
 )
 
-if not defined CHROME_SOURCE if exist "%CD%\tools\chrome109\chrome.exe" (
-  set "CHROME_EXE=%CD%\tools\chrome109\chrome.exe"
+if not defined CHROME_SOURCE if exist "%DEFAULT_CHROME_DIR%\chrome.exe" (
+  set "CHROME_EXE=%DEFAULT_CHROME_DIR%\chrome.exe"
+  set "CHROME_SOURCE=default Chrome109 dir"
+)
+
+if not defined CHROME_SOURCE if exist "%DEFAULT_CHROME_DIR%\App\chrome.exe" (
+  set "CHROME_EXE=%DEFAULT_CHROME_DIR%\App\chrome.exe"
+  set "CHROME_SOURCE=default Chrome109 dir\App"
+)
+
+if not defined CHROME_SOURCE if exist "%APP_DIR%\tools\chrome109\chrome.exe" (
+  set "CHROME_EXE=%APP_DIR%\tools\chrome109\chrome.exe"
   set "CHROME_SOURCE=legacy tools\chrome109"
 )
 
-if not defined CHROME_SOURCE if exist "%CD%\tools\chrome109\App\chrome.exe" (
-  set "CHROME_EXE=%CD%\tools\chrome109\App\chrome.exe"
+if not defined CHROME_SOURCE if exist "%APP_DIR%\tools\chrome109\App\chrome.exe" (
+  set "CHROME_EXE=%APP_DIR%\tools\chrome109\App\chrome.exe"
   set "CHROME_SOURCE=legacy tools\chrome109\App"
 )
 
 if not defined CHROME_SOURCE (
-  echo [launcher] 未找到浏览器运行时。
-  echo [launcher] 处理方式：
-  echo [launcher] 1. 安装 APS_Chrome109_Runtime.exe（推荐）
-  echo [launcher] 2. 或设置 APS_CHROME_DIR=^<浏览器目录^>
-  echo [launcher] 3. 或设置 APS_CHROME_EXE=^<chrome.exe 完整路径^>
+  call :log chrome_runtime_not_found
+  echo [launcher] Chrome runtime not found.
+  echo [launcher] Install APS_Chrome109_Runtime.exe or set APS_CHROME_EXE.
   pause
   exit /b 2
 )
 
 if not exist "%CHROME_PROFILE_DIR%" mkdir "%CHROME_PROFILE_DIR%" >nul 2>&1
+for %%I in ("%CHROME_EXE%") do set "CHROME_RUN_DIR=%%~dpI"
 
-REM 若端口/host 文件存在，优先按文件指向的“真实端口/真实 host”打开
-REM - 端口：避免端口自动回退后仍按 5000 打开
-REM - host：避免 APS_HOST 不可绑定回退到 127.0.0.1 后仍按旧 host 打开
+call :log chrome_source="%CHROME_SOURCE%"
+call :log chrome_exe="%CHROME_EXE%"
+call :log chrome_run_dir="%CHROME_RUN_DIR%"
+call :log chrome_profile_dir="%CHROME_PROFILE_DIR%"
+
 call :read_host_file
 call :read_port_file
 call :is_port_listening
 if defined PORT_READY goto :OPEN_CHROME
 
-echo [launcher] 启动排产系统...
-REM 删除旧的端口/host 文件，避免读取到上次启动残留信息
+call :log app_start_required=1
+echo [launcher] Starting app...
 del /f /q "%PORT_FILE%" >nul 2>&1
 del /f /q "%HOST_FILE%" >nul 2>&1
 start "" "%APP_EXE%"
 
-echo [launcher] 等待服务就绪（最多 %MAX_WAIT%s）...
+echo [launcher] Waiting for app readiness (up to %MAX_WAIT%s)...
 for /l %%i in (1,1,%MAX_WAIT%) do (
   call :read_host_file
   call :read_port_file
@@ -101,15 +130,27 @@ for /l %%i in (1,1,%MAX_WAIT%) do (
   timeout /t 1 /nobreak >nul
 )
 
-echo [launcher] 超时仍未就绪。请查看 logs\aps_error.log
+call :log app_start_timeout
+echo [launcher] App did not become ready in time.
+echo [launcher] Check logs\aps_error.log
 pause
 exit /b 3
 
 :OPEN_CHROME
 set "URL=http://%HOST%:%PORT%/"
-echo [launcher] 浏览器来源：%CHROME_SOURCE%
-echo [launcher] 打开：%URL%
-start "" "%CHROME_EXE%" --user-data-dir="%CHROME_PROFILE_DIR%" --app="%URL%" --no-first-run --disable-default-apps --no-default-browser-check --disable-background-networking
+call :log url="%URL%"
+call :log chrome_cmd="%CHROME_EXE%" --user-data-dir="%CHROME_PROFILE_DIR%" --app="%URL%" --no-first-run --disable-default-apps --no-default-browser-check --disable-background-networking
+echo [launcher] Chrome source: %CHROME_SOURCE%
+echo [launcher] Opening: %URL%
+start "" /D "%CHROME_RUN_DIR%" "%CHROME_EXE%" --user-data-dir="%CHROME_PROFILE_DIR%" --app="%URL%" --no-first-run --disable-default-apps --no-default-browser-check --disable-background-networking
+set "START_RC=%ERRORLEVEL%"
+call :log chrome_start_rc=%START_RC%
+if not "%START_RC%"=="0" (
+  echo [launcher] Chrome start failed (rc=%START_RC%).
+  echo [launcher] Check logs\launcher.log and run the logged chrome_cmd in cmd.
+  pause
+  exit /b 5
+)
 exit /b 0
 
 :is_port_listening
@@ -119,21 +160,21 @@ if %errorlevel%==0 set "PORT_READY=1"
 exit /b 0
 
 :read_host_file
-REM 说明：应用启动后会写入 logs\aps_host.txt（一行 host），这里读取它以获得实际可访问 host。
 if exist "%HOST_FILE%" (
   set /p HOST=<"%HOST_FILE%"
-  REM 去掉可能的空格（注意：括号块内必须用 delayed expansion，否则会拿到旧的 %HOST%）
   set "HOST=!HOST: =!"
   if "!HOST!"=="" set "HOST=127.0.0.1"
 )
 exit /b 0
 
 :read_port_file
-REM 说明：应用启动后会写入 logs\aps_port.txt（仅数字），这里读取它以获得实际端口。
 if exist "%PORT_FILE%" (
   set /p PORT=<"%PORT_FILE%"
-  REM 去掉可能的空格（注意：括号块内必须用 delayed expansion，否则会拿到旧的 %PORT%）
   set "PORT=!PORT: =!"
 )
+exit /b 0
+
+:log
+>>"%LAUNCHER_LOG%" echo [%date% %time%] %*
 exit /b 0
 

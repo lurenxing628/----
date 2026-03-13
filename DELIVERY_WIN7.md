@@ -18,6 +18,14 @@
 - 正式运行时包会移除 `chrome_proxy.exe`、`chrome_pwa_launcher.exe`、`notification_helper.exe`、`elevation_service.exe`
 - 正式运行时包继续保留 `chrome_wer.dll` 与 `First Run`，兼顾崩溃诊断与首启稳定性
 
+安装后启动与排障：
+
+- 主程序 `排产系统.exe` 只负责在后台启动本地服务；双击它时如果没有弹出窗口，不代表启动失败。
+- 正常入口是开始菜单或桌面快捷方式 **“排产系统”**，其实际执行安装目录根下的 `启动_排产系统_Chrome.bat`。
+- 若快捷方式只闪一下且未打开 Chrome，请先查看：`%LOCALAPPDATA%\APS\排产系统\logs\launcher.log`
+- `launcher.log` 会记录 `chrome_exe`、`chrome_run_dir` 与 `chrome_cmd`
+- 现场排障时，可把 `launcher.log` 里的 `chrome_cmd` 整行复制到 `cmd` 中执行，用于区分“bat 启动方式问题”和“Chrome 本体问题”
+
 ### B. 最小直拷交付（支持）
 
 - 只复制 `dist/排产系统/`
