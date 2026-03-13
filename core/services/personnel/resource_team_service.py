@@ -44,7 +44,7 @@ class ResourceTeamService:
                 tstatus = ResourceTeamStatus.ACTIVE.value
 
         if tstatus is not None and tstatus not in RESOURCE_TEAM_STATUS_VALUES:
-            raise ValidationError("状态不合法（允许：active / inactive）", field="状态")
+            raise ValidationError("状态不正确，请选择：启用 / 停用。", field="状态")
 
         return tid, tname, tstatus
 

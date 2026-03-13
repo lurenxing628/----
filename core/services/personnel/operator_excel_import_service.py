@@ -57,9 +57,9 @@ class OperatorExcelImportService:
                 raise ValidationError("姓名不能为空", field="姓名")
             status = normalize_operator_status(data.get("状态"))
             if not status:
-                raise ValidationError("状态不能为空（允许：active / inactive）", field="状态")
+                raise ValidationError("状态不能为空，请填写：在岗 或 停用（也兼容 active / inactive）。", field="状态")
             if status not in OPERATOR_STATUS_VALUES:
-                raise ValidationError("状态不合法（允许：active / inactive）", field="状态")
+                raise ValidationError("状态不合法，可填写：在岗 / 停用（也兼容 active / inactive）。", field="状态")
             remark = normalize_text(data.get("备注"))
             team_in_payload = "班组" in data
             team_id = self.team_svc.resolve_team_id_optional(data.get("班组")) if team_in_payload else None

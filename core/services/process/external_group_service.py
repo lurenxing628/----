@@ -151,7 +151,7 @@ class ExternalGroupService:
 
         mode = (self._normalize_text(merge_mode) or MergeMode.SEPARATE.value).strip().lower()
         if mode not in MERGE_MODE_VALUES:
-            raise ValidationError("周期模式不合法（允许：separate / merged）", field="merge_mode")
+            raise ValidationError("周期模式不正确，请选择：分开算 / 合在一起算。", field="周期模式")
 
         g = self._get_group_or_raise(gid)
 

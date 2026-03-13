@@ -29,9 +29,9 @@ def _validate_operator_excel_row(row: Dict[str, Any]) -> Optional[str]:
 
     st = normalize_operator_status(row.get("状态"))
     if not st:
-        return "状态不能为空（允许：active / inactive）"
+        return "状态不能为空，请填写：在岗 或 停用（也兼容 active / inactive）。"
     if st not in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
-        return "状态不合法（允许：active / inactive）"
+        return "状态不合法，可填写：在岗 / 停用（也兼容 active / inactive）。"
     row["状态"] = st
     return None
 

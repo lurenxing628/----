@@ -39,7 +39,7 @@ class OperatorMachineService:
         try:
             return normalize_skill_level(value, default="normal", allow_none=True)
         except ValueError as e:
-            raise ValidationError("“技能等级”不合法（允许：beginner/normal/expert 或 中文：初级/普通/熟练）", field="技能等级") from e
+            raise ValidationError("“技能等级”不正确，可填写：初级 / 普通 / 熟练（也兼容 beginner / normal / expert）。", field="技能等级") from e
 
     @staticmethod
     def _normalize_yes_no_optional(value: Any, field: str) -> Optional[str]:
@@ -54,7 +54,7 @@ class OperatorMachineService:
             return YesNo.YES.value
         if low in ("no", "n", "false", "0", "off") or s in ("否", "非主操", "非主"):
             return YesNo.NO.value
-        raise ValidationError("“主操设备”不合法（允许：yes/no 或 是/否）", field=field)
+        raise ValidationError("“主操设备”不正确，可填写：是 / 否（也兼容 yes / no）。", field=field)
 
 
     @staticmethod

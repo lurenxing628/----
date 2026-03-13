@@ -53,7 +53,7 @@ def resolve_dispatch_range(
 ) -> DispatchRange:
     preset = str(period_preset or "week").strip().lower() or "week"
     if preset not in {"week", "month", "custom"}:
-        raise ValidationError("时间范围类型不合法（允许：week / month / custom）", field="period_preset")
+        raise ValidationError("时间范围类型不正确，请选择：按周 / 按月 / 自定义。", field="时间范围类型")
 
     anchor = _parse_date(query_date, field="查询日期")
     if anchor is None:

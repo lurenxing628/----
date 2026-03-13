@@ -73,7 +73,7 @@ class SupplierExcelImportService:
 
             status = self._normalize_supplier_status_for_excel(data.get("状态"))
             if status not in SUPPLIER_STATUS_VALUES:
-                raise ValidationError("“状态”不合法（允许：active / inactive；或中文：启用/停用）", field="状态")
+                raise ValidationError("“状态”不合法，可填写：启用 / 停用（也兼容 active / inactive）。", field="状态")
             remark = normalize_text(data.get("备注"))
 
             payload = {

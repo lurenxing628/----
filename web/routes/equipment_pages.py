@@ -266,7 +266,7 @@ def bulk_set_status():
         flash("请至少选择 1 台设备。", "error")
         return redirect(url_for("equipment.list_page"))
     if status not in (MachineStatus.ACTIVE.value, MachineStatus.MAINTAIN.value, MachineStatus.INACTIVE.value):
-        raise ValidationError("状态不合法（允许：active / maintain / inactive）", field="status")
+        raise ValidationError("状态不正确，请选择：可用 / 维修 / 停用。", field="状态")
 
     svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
     ok = 0

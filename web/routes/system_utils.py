@@ -63,7 +63,7 @@ def _parse_dt(value: str, field: str) -> Tuple[datetime, bool]:
                 continue
         raise ValueError("no fmt")
     except Exception as e:
-        raise ValidationError("时间格式不正确（允许：YYYY-MM-DD / YYYY/MM/DD / YYYY-MM-DD HH:MM(:SS)）", field=field) from e
+        raise ValidationError("时间格式不正确，请按 2026-03-13、2026/03/13 或 2026-03-13 08:00:00 这样的格式填写。", field=field) from e
 
 
 def _normalize_time_range(start_raw: Optional[str], end_raw: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -79,13 +79,13 @@ def _normalize_time_range(start_raw: Optional[str], end_raw: Optional[str]) -> T
     end_norm = None
 
     if start_s:
-        dt, is_date_only = _parse_dt(start_s, field="start_time")
+        dt, is_date_only = _parse_dt(start_s, field="开始时间")
         if is_date_only:
             dt = dt.replace(hour=0, minute=0, second=0)
         start_norm = dt.strftime("%Y-%m-%d %H:%M:%S")
 
     if end_s:
-        dt, is_date_only = _parse_dt(end_s, field="end_time")
+        dt, is_date_only = _parse_dt(end_s, field="结束时间")
         if is_date_only:
             dt = dt.replace(hour=23, minute=59, second=59)
         end_norm = dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -94,7 +94,7 @@ def _normalize_time_range(start_raw: Optional[str], end_raw: Optional[str]) -> T
     if start_norm and end_norm:
         try:
             if datetime.strptime(start_norm, "%Y-%m-%d %H:%M:%S") > datetime.strptime(end_norm, "%Y-%m-%d %H:%M:%S"):
-                raise ValidationError("开始时间不能晚于结束时间。", field="start_time")
+                raise ValidationError("开始时间不能晚于结束时间。", field="开始时间")
         except ValidationError:
             raise
         except Exception:

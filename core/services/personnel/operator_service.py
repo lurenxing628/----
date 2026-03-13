@@ -49,10 +49,10 @@ class OperatorService:
             if not op_name:
                 raise ValidationError("姓名不能为空", field="姓名")
             if not op_status:
-                raise ValidationError("状态不能为空（允许：active / inactive）", field="状态")
+                raise ValidationError("状态不能为空，请选择：在岗 或 停用/休假。", field="状态")
 
         if op_status is not None and op_status not in OPERATOR_STATUS_VALUES:
-            raise ValidationError("状态不合法（允许：active / inactive）", field="状态")
+            raise ValidationError("状态不正确，请选择：在岗 / 停用或休假。", field="状态")
         if op_team_id and not self.team_repo.get(op_team_id):
             raise BusinessError(ErrorCode.TEAM_NOT_FOUND, f"班组{op_team_id}不存在，请先维护班组。")
 

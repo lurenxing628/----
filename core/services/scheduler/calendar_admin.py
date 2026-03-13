@@ -86,7 +86,7 @@ class CalendarAdmin:
         if v == CalendarDayType.WEEKEND.value:
             return CalendarDayType.HOLIDAY.value
         if v not in CALENDAR_DAY_TYPE_STORED_VALUES:
-            raise ValidationError("“类型”不合法（允许：workday / holiday）", field="类型")
+            raise ValidationError("“类型”不正确，请选择：工作日 / 假期。", field="类型")
         return v
 
     @staticmethod
@@ -95,7 +95,7 @@ class CalendarAdmin:
         try:
             return normalize_yesno_narrow(v, default=YesNo.YES.value, unknown_policy="raise")
         except Exception as e:
-            raise ValidationError(f"“{field}”不合法（允许：yes / no）", field=field) from e
+            raise ValidationError(f"“{field}”不正确，请选择：是 / 否。", field=field) from e
 
     def _normalize_shift_window(
         self,

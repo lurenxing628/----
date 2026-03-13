@@ -36,10 +36,10 @@ def _validate_machine_excel_row(row: Dict[str, Any]) -> Optional[str]:
 
     status = row.get("状态")
     if status is None or str(status).strip() == "":
-        return "状态不能为空（允许：active / inactive / maintain）"
+        return "状态不能为空，请填写：可用 / 停用 / 维修（也兼容 active / inactive / maintain）。"
     st = _normalize_machine_status_for_excel(status)
     if st not in MACHINE_STATUS_VALUES:
-        return "状态不合法（允许：active / inactive / maintain；或中文：可用/停用/维修）"
+        return "状态不合法，可填写：可用 / 停用 / 维修（也兼容 active / inactive / maintain）。"
     row["状态"] = st
 
     return None

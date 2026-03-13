@@ -82,7 +82,7 @@ class PartService:
     # -------------------------
     def list(self, route_parsed: Optional[str] = None) -> List[Part]:
         if route_parsed and route_parsed not in YESNO_VALUES:
-            raise ValidationError("route_parsed 参数不合法（允许：yes / no）", field="route_parsed")
+            raise ValidationError("工艺路线解析状态不正确，请选择：是 / 否。", field="工艺路线解析状态")
         return self.part_repo.list(route_parsed=route_parsed)
 
     def get(self, part_no: str) -> Part:

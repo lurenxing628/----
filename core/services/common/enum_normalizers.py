@@ -44,12 +44,17 @@ def normalize_operator_status(value: Any) -> str:
     """
     标准化人员状态（Operators.status）。
 
+    - 中文别名 -> 标准英文枚举值（active/inactive）
     - 英文枚举值：大小写不敏感，返回标准小写
     - 其它未知值：原样透传（由调用方决定是否报错）
     """
     v = _text(value)
     if not v:
         return v
+    if v in ("在岗", "启用", "可用", "正常"):
+        return OperatorStatus.ACTIVE.value
+    if v in ("停用", "休假", "停用/休假", "离岗"):
+        return OperatorStatus.INACTIVE.value
     v_lower = v.lower()
     if v_lower in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
         return v_lower

@@ -198,7 +198,7 @@ def bulk_set_status():
         flash("请至少选择 1 个人员。", "error")
         return redirect(url_for("personnel.list_page"))
     if status not in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
-        raise ValidationError("状态不合法（允许：active / inactive）", field="status")
+        raise ValidationError("状态不正确，请选择：在岗 / 停用或休假。", field="状态")
 
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     ok = 0

@@ -46,7 +46,7 @@ class OpTypeService:
                 ot_category = SourceType.INTERNAL.value
 
         if ot_category is not None and ot_category not in SOURCE_TYPE_VALUES:
-            raise ValidationError("“归属”不合法（允许：internal / external）", field="归属")
+            raise ValidationError("“归属”不正确，请选择：内部 / 外部。", field="归属")
 
         return ot_id, ot_name, ot_category
 

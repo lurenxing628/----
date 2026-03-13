@@ -55,7 +55,7 @@ class OpTypeExcelImportService:
 
             cat = normalize_op_type_category(data.get("归属"))
             if cat not in SOURCE_TYPE_VALUES:
-                raise ValidationError("“归属”不合法（允许：internal / external；或中文：内部/外部）", field="归属")
+                raise ValidationError("“归属”不合法，可填写：内部 / 外部（也兼容 internal / external）。", field="归属")
             if existed:
                 self.repo.update(ot_id, {"name": name, "category": cat})
             else:

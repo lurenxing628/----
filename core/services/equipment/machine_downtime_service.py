@@ -169,7 +169,7 @@ class MachineDowntimeService:
 
         stype = (self._normalize_text(scope_type) or "").strip()
         if stype not in ("machine", "category", "all"):
-            raise ValidationError("scope_type 不合法（允许：machine / category / all）", field="scope_type")
+            raise ValidationError("停机范围不正确，请选择：指定设备 / 按类别 / 全部。", field="停机范围")
 
         sval = self._normalize_text(scope_value)
         target_machine_ids: List[str] = []

@@ -61,7 +61,7 @@ class MaterialService:
             raise ValidationError("“物料名称”不能为空", field="name")
         st = (self._norm_text(status) or MaterialStatus.ACTIVE.value).lower()
         if st not in self.VALID_STATUS:
-            raise ValidationError("“状态”不合法（允许：active/inactive）", field="status")
+            raise ValidationError("“状态”不正确，请选择：启用 / 停用。", field="状态")
         qty = self._norm_float(stock_qty, field="库存数量", min_v=0.0)
 
         if self.repo.exists(mid):
@@ -101,7 +101,7 @@ class MaterialService:
         if status is not None and str(status).strip() != "":
             st = str(status).strip().lower()
             if st not in self.VALID_STATUS:
-                raise ValidationError("“状态”不合法（允许：active/inactive）", field="status")
+                raise ValidationError("“状态”不正确，请选择：启用 / 停用。", field="状态")
             updates["status"] = st
         if remark is not None:
             updates["remark"] = self._norm_text(remark)

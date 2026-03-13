@@ -20,13 +20,13 @@ def _default_date_range(days: int = 7):
 def _validate_ymd_date(raw: str, field: str) -> str:
     s = (raw or "").strip()
     if not s:
-        raise ValidationError("缺少 start_date/end_date", field="date_range")
+        raise ValidationError("缺少开始日期或结束日期。", field="日期范围")
 
     s = s.replace("/", "-")
     try:
         datetime.strptime(s, "%Y-%m-%d")
     except Exception as e:
-        raise ValidationError("日期格式不正确（允许：YYYY-MM-DD / YYYY/MM/DD）", field=field) from e
+        raise ValidationError("日期格式不正确，请按 2026-03-13 或 2026/03/13 这样的格式填写。", field=field) from e
     return s
 
 
@@ -180,8 +180,8 @@ def utilization_export():
     if not start_raw or not end_raw:
         start_date, end_date = _default_date_range(days=7)
     else:
-        start_date = _validate_ymd_date(start_raw, field="start_date")
-        end_date = _validate_ymd_date(end_raw, field="end_date")
+        start_date = _validate_ymd_date(start_raw, field="开始日期")
+        end_date = _validate_ymd_date(end_raw, field="结束日期")
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     x = engine.export_utilization_xlsx(version, start_date, end_date)
@@ -233,8 +233,8 @@ def downtime_export():
     if not start_raw or not end_raw:
         start_date, end_date = _default_date_range(days=7)
     else:
-        start_date = _validate_ymd_date(start_raw, field="start_date")
-        end_date = _validate_ymd_date(end_raw, field="end_date")
+        start_date = _validate_ymd_date(start_raw, field="开始日期")
+        end_date = _validate_ymd_date(end_raw, field="结束日期")
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     x = engine.export_downtime_impact_xlsx(version, start_date, end_date)

@@ -58,7 +58,7 @@ class MachineService:
             MachineStatus.MAINTAIN.value,
         ):
             return v_lower
-        raise ValidationError("状态不合法（允许：active / inactive / maintain）", field="状态")
+        raise ValidationError("状态不正确，请选择：可用 / 维修 / 停用。", field="状态")
 
     def _validate_machine_fields(
         self,

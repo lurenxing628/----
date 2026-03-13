@@ -42,13 +42,13 @@ class ResourceDispatchService:
     def _normalize_scope_type(self, value: Any) -> str:
         scope_type = str(value or "operator").strip().lower() or "operator"
         if scope_type not in {"operator", "machine", "team"}:
-            raise ValidationError("视角类型不合法（允许：operator / machine / team）", field="scope_type")
+            raise ValidationError("视角类型不正确，请选择：人员 / 设备 / 班组。", field="视角类型")
         return scope_type
 
     def _normalize_team_axis(self, value: Any) -> str:
         team_axis = str(value or "operator").strip().lower() or "operator"
         if team_axis not in {"operator", "machine"}:
-            raise ValidationError("班组轴类型不合法（允许：operator / machine）", field="team_axis")
+            raise ValidationError("班组轴类型不正确，请选择：人员轴 / 设备轴。", field="班组轴类型")
         return team_axis
 
     def _resolve_scope_id(

@@ -147,7 +147,7 @@ class GanttService:
         """
         view = (view or "").strip() or "machine"
         if view not in ("machine", "operator"):
-            raise ValidationError("view 不合法（允许：machine/operator）", field="view")
+            raise ValidationError("视图不正确，请选择：设备 / 人员。", field="视图")
 
         wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
         ver = int(version) if version is not None and str(version).strip() != "" else self.get_latest_version_or_1()

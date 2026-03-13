@@ -74,7 +74,7 @@ class SupplierService:
                 sstatus = SupplierStatus.ACTIVE.value
 
         if sstatus is not None and sstatus not in SUPPLIER_STATUS_VALUES:
-            raise ValidationError("“状态”不合法（允许：active / inactive）", field="状态")
+            raise ValidationError("“状态”不正确，请选择：启用 / 停用。", field="状态")
         if sdays is not None and sdays <= 0:
             raise ValidationError("“默认周期”必须大于 0", field="默认周期")
 

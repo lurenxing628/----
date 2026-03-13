@@ -55,8 +55,7 @@ def _normalize_batch_op_status(svc, value: Any) -> Optional[str]:
         BatchOperationStatus.SKIPPED.value,
     )
     if st not in allowed:
-        allow_text = " / ".join(allowed)
-        raise ValidationError(f"“状态”不合法（允许：{allow_text}）", field="状态")
+        raise ValidationError("“状态”不正确，请选择：待排 / 已排 / 加工中 / 已完成 / 已跳过。", field="状态")
     return st
 
 
