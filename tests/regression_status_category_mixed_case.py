@@ -46,17 +46,23 @@ def main():
     # OperatorService._validate_operator_fields
     # -------------------------
     op_svc = OperatorService(conn=None, logger=None, op_logger=None)
-    op_id, op_name, op_status = op_svc._validate_operator_fields(operator_id="OP1", name="张三", status="Active")
+    op_id, op_name, op_status, op_team_id = op_svc._validate_operator_fields(
+        operator_id="OP1", name="张三", status="Active"
+    )
     assert op_id == "OP1"
     assert op_name == "张三"
     assert op_status == "active"
+    assert op_team_id is None
     assert_raises(
         ValidationError, op_svc._validate_operator_fields, operator_id="OP1", name="张三", status="bad_status"
     )
 
     # allow_partial=True：不应把缺失 status 强行默认（避免 update 时误写）
-    _id, _name, st = op_svc._validate_operator_fields(operator_id="OP1", name=None, status=None, allow_partial=True)
+    _id, _name, st, team = op_svc._validate_operator_fields(
+        operator_id="OP1", name=None, status=None, allow_partial=True
+    )
     assert st is None
+    assert team is None
 
     # -------------------------
     # SupplierService._validate_fields
@@ -122,29 +128,31 @@ def main():
     # -------------------------
     class _StubOperatorRepo:
         def __init__(self):
-            self.last_status = "__unset__"
+            self.last = ("__unset__", "__unset__")
 
-        def list(self, status: str = None):
-            self.last_status = status
+        def list(self, status: str = None, team_id: str = None):
+            self.last = (status, team_id)
             return []
 
     op_svc.repo = _StubOperatorRepo()
     op_svc.list(status=" Active ")
-    assert op_svc.repo.last_status == "active"
+    assert op_svc.repo.last[0] == "active"
+    assert op_svc.repo.last[1] is None
     assert_raises(ValidationError, op_svc.list, status="   ")
 
     class _StubMachineRepo:
         def __init__(self):
-            self.last = ("__unset__", "__unset__", "__unset__")
+            self.last = ("__unset__", "__unset__", "__unset__", "__unset__")
 
-        def list(self, status: str = None, op_type_id: str = None, category: str = None):
-            self.last = (status, op_type_id, category)
+        def list(self, status: str = None, op_type_id: str = None, category: str = None, team_id: str = None):
+            self.last = (status, op_type_id, category, team_id)
             return []
 
     mc_svc = MachineService(conn=None, logger=None, op_logger=None)
     mc_svc.repo = _StubMachineRepo()
     mc_svc.list(status=" ACTIVE ")
     assert mc_svc.repo.last[0] == "active"
+    assert mc_svc.repo.last[3] is None
     assert_raises(ValidationError, mc_svc.list, status="   ")
 
     class _StubSupplierRepo:

@@ -1,12 +1,12 @@
 # Phase3（人员管理模块）冒烟测试报告
 
-- 测试时间：2026-03-08 23:38:13
+- 测试时间：2026-03-13 12:26:40
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase3_ukyluyhm`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase3_ukyluyhm\aps_phase3_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase3_j2ffh22f`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase3_j2ffh22f\aps_phase3_test.db`
 
 ## 1. Schema 检查（Phase3 相关表）
 - 是否存在 Operators：True
@@ -19,7 +19,7 @@
 
 ## 2. 人员服务：创建/更新/清空备注（中文校验）
 - 清空备注后 remark=None（期望 None）
-- 非法状态异常：code=1001 message=状态不合法（允许：active / inactive）
+- 非法状态异常：code=1001 message=状态不正确，请选择：在岗 / 停用或休假。
 
 ## 3. 人员-设备关联服务：新增/预览/导入（复合键）
 - OP001 关联数量：1（期望 1）
@@ -34,4 +34,4 @@
 
 ## 结论
 - 通过：Phase3（人员管理模块）冒烟测试通过（CRUD/备注清空/关联预览与导入/Excel 预览/REPLACE 保护）。
-- 总耗时：1037 ms
+- 总耗时：796 ms

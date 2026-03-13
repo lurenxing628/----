@@ -1,12 +1,12 @@
 # Phase4（设备管理模块）冒烟测试报告
 
-- 测试时间：2026-03-08 23:38:15
+- 测试时间：2026-03-13 12:26:41
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase4_6ro8b9ul`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase4_6ro8b9ul\aps_phase4_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase4_bhs2rzyz`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase4_bhs2rzyz\aps_phase4_test.db`
 
 ## 1. Schema 检查（Phase4 相关表）
 - 是否存在 Machines：True
@@ -20,7 +20,7 @@
 
 ## 2. 设备服务：创建/更新/清空字段（中文校验）
 - 清空后：remark=None op_type_id=None（期望均为 None）
-- 非法状态异常：code=1001 message=状态不合法（允许：active / inactive / maintain）
+- 非法状态异常：code=1001 message=状态不正确，请选择：可用 / 维修 / 停用。
 
 ## 3. 设备-人员关联：新增/查询（双向一致底层表）
 - MC001 关联数量：1（期望 1）
@@ -38,4 +38,4 @@
 
 ## 结论
 - 通过：Phase4（设备管理模块）冒烟测试通过（CRUD/字段清空/关联/Excel 预览/REPLACE 保护/停机计划）。
-- 总耗时：1156 ms
+- 总耗时：874 ms
