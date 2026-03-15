@@ -141,6 +141,9 @@ class SystemConfigService:
     def get_snapshot_readonly(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
         return self._read_snapshot(backup_keep_days_default=backup_keep_days_default)
 
+    def get_value(self, config_key: str, default: Optional[str] = None) -> Optional[str]:
+        return self.repo.get_value(config_key, default=default)
+
     def set_value(self, config_key: str, value: Any, description: Optional[str] = None) -> None:
         key = (str(config_key) if config_key is not None else "").strip()
         if not key:

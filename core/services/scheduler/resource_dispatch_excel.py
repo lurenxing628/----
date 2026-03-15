@@ -58,33 +58,45 @@ def _detail_headers() -> List[str]:
     ]
 
 
+def _first_present(row: Dict[str, Any], *keys: str, default: Any = "") -> Any:
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return default
+
+
+def _yes_no_label(value: Any) -> str:
+    return "是" if value else "否"
+
+
+def _build_detail_row(row: Dict[str, Any]) -> List[Any]:
+    seq = row.get("seq")
+    return [
+        _first_present(row, "schedule_id"),
+        _first_present(row, "op_id"),
+        _first_present(row, "op_code"),
+        _first_present(row, "batch_id"),
+        _first_present(row, "part_no"),
+        seq if seq is not None else "",
+        _first_present(row, "op_type_name"),
+        _first_present(row, "start_time"),
+        _first_present(row, "end_time"),
+        _first_present(row, "duration_minutes", default=0),
+        _first_present(row, "current_resource_label", "scope_label"),
+        _first_present(row, "counterpart_resource_label"),
+        _first_present(row, "current_team_name", "current_team_id"),
+        _first_present(row, "counterpart_team_name", "counterpart_team_id"),
+        _first_present(row, "team_relation_label"),
+        _first_present(row, "source"),
+        _first_present(row, "lock_status"),
+        _yes_no_label(row.get("is_cross_day")),
+        _yes_no_label(row.get("is_overdue")),
+    ]
+
+
 def _detail_table_rows(detail_rows: Sequence[Dict[str, Any]]) -> List[List[Any]]:
-    table: List[List[Any]] = []
-    for row in detail_rows:
-        table.append(
-            [
-                row.get("schedule_id") or "",
-                row.get("op_id") or "",
-                row.get("op_code") or "",
-                row.get("batch_id") or "",
-                row.get("part_no") or "",
-                row.get("seq") if row.get("seq") is not None else "",
-                row.get("op_type_name") or "",
-                row.get("start_time") or "",
-                row.get("end_time") or "",
-                row.get("duration_minutes") or 0,
-                row.get("current_resource_label") or row.get("scope_label") or "",
-                row.get("counterpart_resource_label") or "",
-                row.get("current_team_name") or row.get("current_team_id") or "",
-                row.get("counterpart_team_name") or row.get("counterpart_team_id") or "",
-                row.get("team_relation_label") or "",
-                row.get("source") or "",
-                row.get("lock_status") or "",
-                "是" if row.get("is_cross_day") else "否",
-                "是" if row.get("is_overdue") else "否",
-            ]
-        )
-    return table
+    return [_build_detail_row(row) for row in detail_rows]
 
 
 def _calendar_table_rows(calendar_rows: Sequence[Dict[str, Any]]) -> List[List[Any]]:
@@ -98,34 +110,27 @@ def _calendar_table_rows(calendar_rows: Sequence[Dict[str, Any]]) -> List[List[A
     return table
 
 
-def build_resource_dispatch_workbook(payload: Dict[str, Any]) -> BytesIO:
-    wb = Workbook()
-    default_ws = wb.active
-    wb.remove(default_ws)
-
-    filters = payload.get("filters") or {}
-    summary = payload.get("summary") or {}
-    detail_rows: List[Dict[str, Any]] = list(payload.get("detail_rows") or [])
-    calendar_headers: List[str] = list(payload.get("calendar_headers") or [])
-    calendar_rows: List[Dict[str, Any]] = list(payload.get("calendar_rows") or [])
-
-    ws_summary = wb.create_sheet("查询摘要")
-    summary_pairs = [
-        ("视角", filters.get("scope_type_label") or ""),
-        ("查询对象", filters.get("scope_label") or ""),
-        ("班组轴", filters.get("team_axis_label") or ""),
-        ("区间类型", filters.get("period_preset_label") or ""),
-        ("开始日期", filters.get("start_date") or ""),
-        ("结束日期", filters.get("end_date") or ""),
-        ("排产版本", filters.get("version") or ""),
-        ("任务数量", summary.get("total_tasks") or 0),
-        ("总工时（小时）", summary.get("total_hours") or 0),
-        ("跨天任务", summary.get("cross_day_count") or 0),
-        ("超期批次任务", summary.get("overdue_count") or 0),
-        ("外协/未分配", summary.get("external_count") or 0),
-        ("跨班组借调", summary.get("cross_team_count") or 0),
+def _summary_pairs(filters: Dict[str, Any], summary: Dict[str, Any]) -> List[List[Any]]:
+    return [
+        ["视角", filters.get("scope_type_label") or ""],
+        ["查询对象", filters.get("scope_label") or ""],
+        ["班组轴", filters.get("team_axis_label") or ""],
+        ["区间类型", filters.get("period_preset_label") or ""],
+        ["开始日期", filters.get("start_date") or ""],
+        ["结束日期", filters.get("end_date") or ""],
+        ["排产版本", filters.get("version") or ""],
+        ["任务数量", summary.get("total_tasks") or 0],
+        ["总工时（小时）", summary.get("total_hours") or 0],
+        ["跨天任务", summary.get("cross_day_count") or 0],
+        ["超期批次任务", summary.get("overdue_count") or 0],
+        ["外协/未分配", summary.get("external_count") or 0],
+        ["跨班组借调", summary.get("cross_team_count") or 0],
     ]
-    for key, value in summary_pairs:
+
+
+def _write_summary_sheet(wb: Workbook, filters: Dict[str, Any], summary: Dict[str, Any]) -> None:
+    ws_summary = wb.create_sheet("查询摘要")
+    for key, value in _summary_pairs(filters, summary):
         ws_summary.append([key, value])
     for row in ws_summary.iter_rows():
         row[0].font = Font(bold=True)
@@ -133,44 +138,60 @@ def build_resource_dispatch_workbook(payload: Dict[str, Any]) -> BytesIO:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
     _auto_width(ws_summary)
 
+
+def _write_calendar_sheet(wb: Workbook, title: str, headers: Sequence[str], rows: Sequence[Dict[str, Any]]) -> None:
+    ws = wb.create_sheet(title)
+    _write_table(ws, ["查询对象"] + list(headers), _calendar_table_rows(rows))
+
+
+def _write_detail_sheet(wb: Workbook, title: str, rows: Sequence[Dict[str, Any]]) -> None:
+    ws = wb.create_sheet(title)
+    _write_table(ws, _detail_headers(), _detail_table_rows(rows))
+
+
+def _write_team_scope_sheets(wb: Workbook, payload: Dict[str, Any]) -> None:
+    _write_detail_sheet(wb, "班组人员任务明细", list(payload.get("operator_rows") or []))
+    _write_detail_sheet(wb, "班组设备任务明细", list(payload.get("machine_rows") or []))
+    _write_calendar_sheet(
+        wb,
+        "班组人员日历",
+        list(payload.get("operator_calendar_headers") or []),
+        list(payload.get("operator_calendar_rows") or []),
+    )
+    _write_calendar_sheet(
+        wb,
+        "班组设备日历",
+        list(payload.get("machine_calendar_headers") or []),
+        list(payload.get("machine_calendar_rows") or []),
+    )
+    cross_team_rows = list(payload.get("cross_team_rows") or [])
+    if cross_team_rows:
+        _write_detail_sheet(wb, "跨班组借调", cross_team_rows)
+
+
+def _write_resource_scope_sheets(wb: Workbook, payload: Dict[str, Any]) -> None:
+    _write_detail_sheet(wb, "任务明细", list(payload.get("detail_rows") or []))
+    _write_calendar_sheet(
+        wb,
+        "日历排班",
+        list(payload.get("calendar_headers") or []),
+        list(payload.get("calendar_rows") or []),
+    )
+
+
+def build_resource_dispatch_workbook(payload: Dict[str, Any]) -> BytesIO:
+    wb = Workbook()
+    default_ws = wb.active
+    wb.remove(default_ws)
+
+    filters = payload.get("filters") or {}
+    summary = payload.get("summary") or {}
+    _write_summary_sheet(wb, filters, summary)
+
     if str(filters.get("scope_type") or "") == "team":
-        operator_rows: List[Dict[str, Any]] = list(payload.get("operator_rows") or [])
-        machine_rows: List[Dict[str, Any]] = list(payload.get("machine_rows") or [])
-        cross_team_rows: List[Dict[str, Any]] = list(payload.get("cross_team_rows") or [])
-        operator_calendar_headers: List[str] = list(payload.get("operator_calendar_headers") or [])
-        operator_calendar_rows: List[Dict[str, Any]] = list(payload.get("operator_calendar_rows") or [])
-        machine_calendar_headers: List[str] = list(payload.get("machine_calendar_headers") or [])
-        machine_calendar_rows: List[Dict[str, Any]] = list(payload.get("machine_calendar_rows") or [])
-
-        ws_operator_detail = wb.create_sheet("班组人员任务明细")
-        _write_table(ws_operator_detail, _detail_headers(), _detail_table_rows(operator_rows))
-
-        ws_machine_detail = wb.create_sheet("班组设备任务明细")
-        _write_table(ws_machine_detail, _detail_headers(), _detail_table_rows(machine_rows))
-
-        ws_operator_calendar = wb.create_sheet("班组人员日历")
-        _write_table(
-            ws_operator_calendar,
-            ["查询对象"] + operator_calendar_headers,
-            _calendar_table_rows(operator_calendar_rows),
-        )
-
-        ws_machine_calendar = wb.create_sheet("班组设备日历")
-        _write_table(
-            ws_machine_calendar,
-            ["查询对象"] + machine_calendar_headers,
-            _calendar_table_rows(machine_calendar_rows),
-        )
-
-        if cross_team_rows:
-            ws_cross = wb.create_sheet("跨班组借调")
-            _write_table(ws_cross, _detail_headers(), _detail_table_rows(cross_team_rows))
+        _write_team_scope_sheets(wb, payload)
     else:
-        ws_detail = wb.create_sheet("任务明细")
-        _write_table(ws_detail, _detail_headers(), _detail_table_rows(detail_rows))
-
-        ws_calendar = wb.create_sheet("日历排班")
-        _write_table(ws_calendar, ["查询对象"] + calendar_headers, _calendar_table_rows(calendar_rows))
+        _write_resource_scope_sheets(wb, payload)
 
     buf = BytesIO()
     wb.save(buf)
