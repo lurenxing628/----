@@ -89,6 +89,7 @@ def main() -> None:
     # 7) 模板契约：脚本加载顺序 + A11y
     expected = [
         _script_tag("common.js"),
+        _script_tag("common_manual_popover.js"),
         _script_tag("common_required.js"),
         _script_tag("common_flash.js"),
         _script_tag("common_theme.js"),

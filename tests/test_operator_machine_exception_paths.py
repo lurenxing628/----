@@ -43,7 +43,7 @@ def test_normalize_skill_level_optional_only_converts_value_error() -> None:
     assert "技能等级" in exc_info.value.message
 
     with patch(
-        "core.services.personnel.operator_machine_service.normalize_skill_level",
+        "core.services.personnel.operator_machine_normalizers.normalize_skill_level",
         side_effect=RuntimeError("normalize exploded"),
     ):
         with pytest.raises(RuntimeError, match="normalize exploded"):
@@ -52,13 +52,13 @@ def test_normalize_skill_level_optional_only_converts_value_error() -> None:
 
 def test_normalize_skill_level_stored_only_falls_back_for_value_error() -> None:
     with patch(
-        "core.services.personnel.operator_machine_service.normalize_skill_level",
+        "core.services.personnel.operator_machine_normalizers.normalize_skill_level",
         side_effect=ValueError("invalid skill"),
     ):
         assert OperatorMachineService._normalize_skill_level_stored("bad") == "normal"
 
     with patch(
-        "core.services.personnel.operator_machine_service.normalize_skill_level",
+        "core.services.personnel.operator_machine_normalizers.normalize_skill_level",
         side_effect=RuntimeError("normalize exploded"),
     ):
         with pytest.raises(RuntimeError, match="normalize exploded"):
@@ -70,7 +70,7 @@ def test_list_by_operator_propagates_unexpected_readside_normalization_errors() 
     try:
         svc = OperatorMachineService(conn)
         with patch(
-            "core.services.personnel.operator_machine_service.normalize_skill_level",
+            "core.services.personnel.operator_machine_normalizers.normalize_skill_level",
             side_effect=RuntimeError("normalize exploded"),
         ):
             with pytest.raises(RuntimeError, match="normalize exploded"):
@@ -96,11 +96,17 @@ def test_preview_skill_and_primary_only_convert_validation_error() -> None:
         assert primary_err.status == RowStatus.ERROR
         assert "主操设备" in primary_err.message
 
-        with patch.object(OperatorMachineService, "_normalize_skill_level_optional", side_effect=RuntimeError("normalize exploded")):
+        with patch(
+            "core.services.personnel.operator_machine_normalizers.normalize_skill_level_optional",
+            side_effect=RuntimeError("normalize exploded"),
+        ):
             with pytest.raises(RuntimeError, match="normalize exploded"):
                 svc._parse_skill_optional_for_preview({"技能等级": "expert"}, 4, has_skill_col=True)
 
-        with patch.object(OperatorMachineService, "_normalize_yes_no_optional", side_effect=RuntimeError("yesno exploded")):
+        with patch(
+            "core.services.personnel.operator_machine_normalizers.normalize_yes_no_optional",
+            side_effect=RuntimeError("yesno exploded"),
+        ):
             with pytest.raises(RuntimeError, match="yesno exploded"):
                 svc._parse_primary_optional_for_preview({"主操设备": "yes"}, 5, has_primary_col=True)
     finally:
@@ -124,7 +130,10 @@ def test_resolve_write_values_only_converts_validation_error() -> None:
         assert err is not None
         assert "技能等级" in err
 
-        with patch.object(OperatorMachineService, "_normalize_skill_level_optional", side_effect=RuntimeError("write exploded")):
+        with patch(
+            "core.services.personnel.operator_machine_normalizers.normalize_skill_level_optional",
+            side_effect=RuntimeError("write exploded"),
+        ):
             with pytest.raises(RuntimeError, match="write exploded"):
                 svc._resolve_write_values(
                     ImportPreviewRow(row_num=3, status=RowStatus.UPDATE, data={"技能等级": "expert", "主操设备": "yes"}, message=""),

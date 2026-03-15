@@ -96,6 +96,34 @@ def test_routes_do_not_import_repository():
     )
 
 
+def test_web_helpers_do_not_import_repository():
+    """web/*.py 顶层辅助模块禁止直接导入 Repository。"""
+    known_imports = set()
+    violations = []
+    repo_re = re.compile(r"\b(\w+Repository)\b")
+    web_base = os.path.join(REPO_ROOT, "web")
+    if not os.path.isdir(web_base):
+        return
+    for fn in sorted(os.listdir(web_base)):
+        if not fn.endswith(".py"):
+            continue
+        fp = f"web/{fn}"
+        for line in _read(fp).splitlines():
+            s = line.strip()
+            if not (s.startswith("from ") or s.startswith("import ")):
+                continue
+            if "repositories" not in s:
+                continue
+            for name in repo_re.findall(s):
+                entry = f"{fp}: {name}"
+                if entry not in known_imports:
+                    violations.append(entry)
+    assert not violations, (
+        "web 顶层辅助模块新增了越层 Repository 导入:\n" + "\n".join(violations)
+        + "\n\n如有合理理由，请添加到 known_imports 白名单。"
+    )
+
+
 def test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes():
     """
     ViewModel 层（web/viewmodels）必须是纯数据变换。
@@ -286,7 +314,10 @@ def test_no_silent_exception_swallow():
         "core/infrastructure/database.py:379",
         "core/infrastructure/errors.py:75",
         "core/infrastructure/errors.py:81",
-        "core/infrastructure/logging.py:149",
+        "core/infrastructure/logging.py:65",
+        "core/infrastructure/logging.py:179",
+        "core/infrastructure/migrations/common.py:67",
+        "core/infrastructure/migrations/common.py:71",
         "core/infrastructure/migrations/v1.py:65",
         "core/infrastructure/migrations/v1.py:80",
         "core/infrastructure/migrations/v1.py:112",
@@ -345,9 +376,7 @@ def test_no_silent_exception_swallow():
         "data/repositories/schedule_history_repo.py:91",
         # web/routes/*
         "web/routes/excel_utils.py:109",
-        "web/routes/scheduler_config.py:30",
-        "web/routes/scheduler_config.py:94",
-        "web/routes/scheduler_config.py:268",
+        "web/routes/scheduler_config.py:114",
         "web/routes/system_backup.py:212",
         "web/routes/system_backup.py:252",
         "web/routes/system_ui_mode.py:35",
@@ -420,12 +449,7 @@ def test_no_silent_exception_swallow():
 
 def test_file_size_limit():
     """核心目录单文件不超过 500 行。"""
-    known_oversize = {
-        "core/services/scheduler/batch_service.py",
-        "core/services/scheduler/config_service.py",
-        "core/services/scheduler/schedule_optimizer.py",
-        "core/services/scheduler/schedule_service.py",
-    }
+    known_oversize = set()
     violations = []
     for fp in _collect_py_files(*CORE_DIRS):
         if fp in known_oversize:

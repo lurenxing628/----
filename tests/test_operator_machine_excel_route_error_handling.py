@@ -80,7 +80,7 @@ def test_personnel_excel_preview_hides_internal_runtime_error(monkeypatch) -> No
         client = app.test_client()
         try:
             with patch(
-                "core.services.personnel.operator_machine_service.OperatorMachineService._normalize_skill_level_optional",
+                "core.services.personnel.operator_machine_normalizers.normalize_skill_level_optional",
                 side_effect=RuntimeError("normalize exploded"),
             ):
                 resp = client.post(

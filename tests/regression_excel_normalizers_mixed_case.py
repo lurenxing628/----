@@ -38,6 +38,18 @@ def main():
     from core.services.common.excel_validators import (
         _normalize_yesno as core_yesno,
     )
+    from core.services.personnel.operator_machine_normalizers import (
+        normalize_skill_level_optional as om_skill_optional,
+    )
+    from core.services.personnel.operator_machine_normalizers import (
+        normalize_skill_level_stored as om_skill_stored,
+    )
+    from core.services.personnel.operator_machine_normalizers import (
+        normalize_yes_no_optional as om_yes_no_optional,
+    )
+    from core.services.personnel.operator_machine_normalizers import (
+        normalize_yes_no_stored as om_yes_no_stored,
+    )
     from core.services.scheduler.calendar_admin import CalendarAdmin
     from web.routes.normalizers import (
         _normalize_batch_priority as route_batch_priority,
@@ -240,6 +252,128 @@ def main():
     demo_row = {"工号": "OP002", "姓名": "李四", "状态": "INACTIVE"}
     assert demo_operator_row(demo_row) is None
     assert demo_row["状态"] == "inactive"
+
+    # -------------------------
+    # core/services/personnel/operator_machine_normalizers.py
+    # -------------------------
+    for raw, expected in [
+        (None, None),
+        ("", None),
+        ("  ", None),
+        ("beginner", "beginner"),
+        ("low", "beginner"),
+        ("初级", "beginner"),
+        ("新手", "beginner"),
+        ("normal", "normal"),
+        ("普通", "normal"),
+        ("一般", "normal"),
+        ("中级", "normal"),
+        ("expert", "expert"),
+        ("high", "expert"),
+        ("skilled", "expert"),
+        ("熟练", "expert"),
+        ("高级", "expert"),
+        ("专家", "expert"),
+    ]:
+        got = om_skill_optional(raw)
+        assert got == expected, f"om_skill_optional({raw!r}) 期望 {expected!r}，实际 {got!r}"
+
+    assert_raises(ValidationError, om_skill_optional, "unknown_skill")
+
+    for raw, expected in [
+        (None, "normal"),
+        ("", "normal"),
+        ("  ", "normal"),
+        ("beginner", "beginner"),
+        ("low", "beginner"),
+        ("初级", "beginner"),
+        ("新手", "beginner"),
+        ("normal", "normal"),
+        ("普通", "normal"),
+        ("一般", "normal"),
+        ("中级", "normal"),
+        ("expert", "expert"),
+        ("high", "expert"),
+        ("skilled", "expert"),
+        ("熟练", "expert"),
+        ("高级", "expert"),
+        ("专家", "expert"),
+        ("unknown_skill", "normal"),
+    ]:
+        got = om_skill_stored(raw)
+        assert got == expected, f"om_skill_stored({raw!r}) 期望 {expected!r}，实际 {got!r}"
+
+    for raw, expected in [
+        (None, None),
+        ("", None),
+        ("  ", None),
+        ("yes", "yes"),
+        ("Yes", "yes"),
+        ("YES", "yes"),
+        ("y", "yes"),
+        ("Y", "yes"),
+        ("true", "yes"),
+        ("True", "yes"),
+        ("1", "yes"),
+        ("on", "yes"),
+        ("ON", "yes"),
+        ("是", "yes"),
+        ("主操", "yes"),
+        ("主", "yes"),
+        ("no", "no"),
+        ("No", "no"),
+        ("NO", "no"),
+        ("n", "no"),
+        ("N", "no"),
+        ("false", "no"),
+        ("False", "no"),
+        ("0", "no"),
+        ("off", "no"),
+        ("OFF", "no"),
+        ("否", "no"),
+        ("非主操", "no"),
+        ("非主", "no"),
+    ]:
+        got = om_yes_no_optional(raw, field="主操设备")
+        assert got == expected, f"om_yes_no_optional({raw!r}) 期望 {expected!r}，实际 {got!r}"
+
+    assert_raises(ValidationError, om_yes_no_optional, "maybe", field="主操设备")
+
+    for raw, expected in [
+        (None, "no"),
+        ("", "no"),
+        ("  ", "no"),
+        ("yes", "yes"),
+        ("Yes", "yes"),
+        ("YES", "yes"),
+        ("y", "yes"),
+        ("Y", "yes"),
+        ("true", "yes"),
+        ("True", "yes"),
+        ("1", "yes"),
+        ("on", "yes"),
+        ("ON", "yes"),
+        ("是", "yes"),
+        ("主操", "yes"),
+        ("主", "yes"),
+        ("no", "no"),
+        ("No", "no"),
+        ("NO", "no"),
+        ("n", "no"),
+        ("N", "no"),
+        ("false", "no"),
+        ("False", "no"),
+        ("0", "no"),
+        ("off", "no"),
+        ("OFF", "no"),
+        ("否", "no"),
+        ("非主操", "no"),
+        ("非主", "no"),
+        ("maybe", "no"),
+        ("主操设备", "no"),
+    ]:
+        got = om_yes_no_stored(raw)
+        assert got == expected, f"om_yes_no_stored({raw!r}) 期望 {expected!r}，实际 {got!r}"
 
     print("OK")
 

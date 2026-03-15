@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 from core.services.system.operation_log_service import OperationLogService
+from core.services.system.system_config_service import SystemConfigService
 from core.services.system.system_job_state_query_service import SystemJobStateQueryService
 
 
@@ -42,6 +43,21 @@ def _create_system_job_state(conn: sqlite3.Connection) -> None:
           last_run_time TEXT,
           last_run_detail TEXT,
           updated_at TEXT
+        )
+        """
+    )
+    conn.commit()
+
+
+def _create_system_config(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE SystemConfig (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          config_key TEXT UNIQUE,
+          config_value TEXT,
+          description TEXT,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
@@ -110,4 +126,18 @@ def test_system_job_state_query_service_get_and_map() -> None:
     assert set(m.keys()) == set(keys)
     assert m["auto_backup"] is not None
     assert m["auto_log_cleanup"] is None
+
+
+def test_system_config_service_get_value() -> None:
+    conn = _mem_conn()
+    _create_system_config(conn)
+
+    svc = SystemConfigService(conn)
+
+    assert svc.get_value("ui_mode", default=None) is None
+    assert svc.get_value("ui_mode", default="v2") == "v2"
+
+    svc.set_value("ui_mode", "v1", description=None)
+
+    assert svc.get_value("ui_mode", default="v2") == "v1"
 
