@@ -4,56 +4,116 @@
   <div class="card">
     <div class="page-header">
       <div class="page-title-group">
-        <h2 class="page-title">排产说明书</h2>
+        <h2 class="page-title">{{ title }}</h2>
       </div>
       <div class="page-actions page-actions-context">
+        {% if back_url %}
+          {{ ui.link_button(back_button_label or '返回刚才页面', back_url, 'secondary', 'md') }}
+        {% endif %}
+        {% if manual_mode == 'page' and full_manual_section_url %}
+          {{ ui.link_button('查看完整原文对应章节', full_manual_section_url, 'secondary', 'md') }}
+        {% endif %}
         {% if download_url %}
-          {{ ui.link_button('下载说明书原文', download_url, 'secondary', 'md') }}
+          {{ ui.link_button(download_button_label or '下载说明书原文', download_url, 'secondary', 'md') }}
         {% endif %}
       </div>
     </div>
     <p class="page-subtitle text-meta">
-      这份说明书帮助你快速掌握排产系统的使用方法。选择左侧目录可快速跳转到对应章节。
+      {% if manual_mode == 'page' %}
+        这里展示当前页面的详细说明，以及相关模块的关键说明。需要更完整的上下文时，可跳回整本原文对应章节。
+      {% else %}
+        这份系统使用说明帮助你快速掌握 APS 系统的使用方法。选择左侧目录可快速跳转到对应章节。
+      {% endif %}
     </p>
-    {{ ui.scheduler_nav('config') }}
+    {% if show_scheduler_nav %}
+      {{ ui.scheduler_nav('config') }}
+    {% endif %}
   </div>
 
   <div class="card p-card-tight">
     <div class="inline-flex-wrap items-center">
+      {% if manual_mode == 'page' and current_manual %}
+        <span class="muted">当前页面主题：{{ current_manual['title'] }}</span>
+        {% if current_manual['full_manual_label'] %}
+          <span class="muted">对应整本章节：{{ current_manual['full_manual_label'] }}</span>
+        {% endif %}
+        {% if related_manuals %}
+          <span class="muted">相关模块：{{ related_manuals | length }} 个</span>
+        {% endif %}
+      {% endif %}
       {% if not download_url %}
         <span class="muted">下载：不可用（说明书文件缺失）</span>
       {% endif %}
 
       {% if manual_mtime %}
-        <span class="muted">更新时间：{{ manual_mtime }}</span>
+        <span class="muted">{% if manual_mode == 'page' %}整本说明书更新时间：{% else %}更新时间：{% endif %}{{ manual_mtime }}</span>
       {% endif %}
     </div>
   </div>
 
   <button class="toc-toggle" id="tocToggleBtn" type="button">展开/收起目录</button>
 
-  <div class="manual-wrapper">
+  <div class="manual-wrapper{% if manual_mode == 'page' %} manual-wrapper-page{% endif %}">
     <nav class="manual-toc" id="toc">
-      <h3 class="section-title">目录导航</h3>
+      <h3 class="section-title">{% if manual_mode == 'page' %}本页目录{% else %}目录导航{% endif %}</h3>
       <ul id="toc-list">
         <!-- 由 JavaScript 自动生成 -->
       </ul>
     </nav>
 
-    <div class="manual-content" id="content">
-      <noscript>
-        <pre class="manual-inline-pre">{{ manual_text }}</pre>
-        <div class="muted mt-2">提示：启用 JavaScript 可获得目录导航与更好的阅读体验。</div>
-      </noscript>
-    </div>
+    {% if manual_mode == 'page' %}
+      <div class="manual-main-column">
+    {% endif %}
+        <div class="manual-content manual-markdown-body" id="content">
+          <noscript>
+            <pre class="manual-inline-pre">{{ fallback_text if manual_mode == 'page' else manual_text }}</pre>
+            <div class="muted mt-2">提示：启用 JavaScript 可获得目录导航与更好的阅读体验。</div>
+          </noscript>
+        </div>
+
+        {% if manual_mode == 'page' and related_manuals %}
+          <div class="card no-print manual-related-panel">
+            <h3 class="section-title">相关模块说明</h3>
+            {% for item in related_manuals %}
+              <div{% if not loop.first %} class="mt-2"{% endif %}>
+                <div class="card p-card-tight">
+                  <div class="page-header">
+                    <div class="page-title-group">
+                      <h4 class="page-title">{{ item['title'] }}</h4>
+                    </div>
+                    <div class="page-actions page-actions-context">
+                      {% if item['url'] %}
+                        {{ ui.link_button('查看该页说明', item['url'], 'secondary', 'sm') }}
+                      {% endif %}
+                      {% if item['full_manual_section_url'] %}
+                        {{ ui.link_button('查看完整原文对应章节', item['full_manual_section_url'], 'ghost', 'sm') }}
+                      {% endif %}
+                    </div>
+                  </div>
+                  <p class="text-meta">{{ item['summary'] }}</p>
+                  {% for sec in item['preview_sections'] or [] %}
+                    <div{% if not loop.first %} class="mt-2"{% endif %}>
+                      <h5 class="section-title">{{ sec['title'] }}</h5>
+                      <div class="manual-related-body manual-markdown-body" data-manual-markdown="{{ sec['body_md'] | tojson | forceescape }}"></div>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+    {% if manual_mode == 'page' %}
+      </div>
+    {% endif %}
   </div>
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
-  window.__APS_CONFIG_MANUAL__ = {
-    manualText: {{ manual_text | tojson }}
-  };
-</script>
+<script id="aps-config-manual-data" type="application/json">{{ {
+  "mode": manual_mode,
+  "manualText": manual_text if manual_mode != 'page' else '',
+  "currentManual": current_manual,
+  "relatedManuals": related_manuals
+} | tojson }}</script>
 <script src="{{ url_for('static', filename='js/config_manual.js') }}" defer></script>
 {% endblock %}

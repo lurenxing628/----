@@ -5,6 +5,26 @@
   <p class="muted">
     上传 Excel 后先预览检查，确认无误再导入。
   </p>
+  {% set default_mode_options = [
+    {'value': 'overwrite', 'label': '覆盖（相同ID更新）'},
+    {'value': 'append', 'label': '追加（已存在则跳过）'},
+    {'value': 'replace', 'label': '替换（清空后导入）'}
+  ] %}
+  {% set selected_mode_options = mode_options if mode_options else default_mode_options %}
+  {% if ui is defined %}
+    {{ ui.excel_import_mode_help(selected_mode_options) }}
+  {% else %}
+    <div class="field-help no-print">
+      <strong>导入前先确认：</strong>
+      <ul class="list-tight">
+        <li>模板文件只支持 <code>.xlsx</code>，表头不要改。</li>
+        <li>系统只读取首个工作表（通常是 <code>Sheet1</code>），不要把有效数据挪到第二个工作表。</li>
+        <li>先“上传并预览”，把错误行全部修完，再点“确认导入”。</li>
+        <li>只要有 1 行是“错误”，整份文件都不会导入。</li>
+        <li>导入完成后，建议再导出一次当前数据做复核。</li>
+      </ul>
+    </div>
+  {% endif %}
 
   <div class="mb-3">
     {% if ui is defined %}
@@ -17,16 +37,15 @@
   <form action="{{ preview_url }}" method="post" enctype="multipart/form-data">
     <div class="mb-3">
       <label for="excelImportMode">导入模式：</label>
-      {% set default_mode_options = [
-        {'value': 'overwrite', 'label': '覆盖（相同ID更新）'},
-        {'value': 'append', 'label': '追加（已存在则跳过）'},
-        {'value': 'replace', 'label': '替换（清空后导入）'}
-      ] %}
-      {% set selected_mode_options = mode_options if mode_options else default_mode_options %}
       <select id="excelImportMode" name="mode">
         {% for opt in selected_mode_options %}
-          {% set opt_value = opt.value if opt is mapping else opt[0] %}
-          {% set opt_label = opt.label if opt is mapping else opt[1] %}
+          {% if ui is defined %}
+            {% set opt_value = ui.excel_import_option_value(opt) | trim %}
+            {% set opt_label = ui.excel_import_option_label(opt) | trim %}
+          {% else %}
+            {% set opt_value = opt.value if opt is mapping else opt[0] %}
+            {% set opt_label = opt.label if opt is mapping else opt[1] %}
+          {% endif %}
           <option value="{{ opt_value }}" {% if mode==opt_value %}selected{% endif %}>{{ opt_label }}</option>
         {% endfor %}
       </select>

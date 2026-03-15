@@ -1079,6 +1079,14 @@ body.aps-col-resize-active {
   align-items: flex-start;
 }
 
+.manual-main-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .manual-toc {
   width: 260px;
   flex-shrink: 0;
@@ -1178,7 +1186,22 @@ button.toc-toggle:hover {
   border: 1px solid var(--ui-border);
 }
 
-.manual-content h1 {
+.manual-wrapper-page .manual-main-column > .manual-content {
+  flex: none;
+  width: 100%;
+}
+
+.manual-wrapper-page .manual-main-column > .card {
+  margin-bottom: 0;
+}
+
+.manual-related-panel,
+.manual-related-body {
+  min-width: 0;
+}
+
+.manual-content h1,
+.manual-related-body h1 {
   font-size: 28px;
   margin: 0 0 16px 0;
   color: var(--ui-primary-hover);
@@ -1186,7 +1209,8 @@ button.toc-toggle:hover {
   padding-bottom: 12px;
 }
 
-.manual-content h2 {
+.manual-content h2,
+.manual-related-body h2 {
   font-size: 22px;
   margin: 32px 0 16px 0;
   color: var(--ui-primary);
@@ -1195,37 +1219,53 @@ button.toc-toggle:hover {
   scroll-margin-top: 20px;
 }
 
-.manual-content h3 {
+.manual-content h3,
+.manual-related-body h3 {
   font-size: 18px;
   margin: 24px 0 12px 0;
   color: var(--ui-text);
 }
 
-.manual-content h4 {
+.manual-content h4,
+.manual-related-body h4 {
   font-size: 15.5px;
   margin: 20px 0 10px 0;
   color: var(--ui-text);
   scroll-margin-top: 20px;
 }
 
-.manual-content p {
+.manual-content h5,
+.manual-content h6,
+.manual-related-body h5,
+.manual-related-body h6 {
+  font-size: 14px;
+  margin: 16px 0 8px 0;
+  color: var(--ui-text);
+}
+
+.manual-content p,
+.manual-related-body p {
   margin: 12px 0;
   line-height: 1.8;
   color: var(--ui-text);
 }
 
 .manual-content ul,
-.manual-content ol {
+.manual-content ol,
+.manual-related-body ul,
+.manual-related-body ol {
   margin: 12px 0;
   padding-left: 24px;
   line-height: 1.8;
 }
 
-.manual-content li {
+.manual-content li,
+.manual-related-body li {
   margin: 6px 0;
 }
 
-.manual-content blockquote {
+.manual-content blockquote,
+.manual-related-body blockquote {
   margin: 16px 0;
   padding: 12px 16px;
   background: #e8f5e9;
@@ -1234,12 +1274,14 @@ button.toc-toggle:hover {
   color: #2e7d32;
 }
 
-.manual-content blockquote p {
+.manual-content blockquote p,
+.manual-related-body blockquote p {
   margin: 0;
   color: inherit;
 }
 
-.manual-content code {
+.manual-content code,
+.manual-related-body code {
   background: #f1f5f9;
   padding: 2px 6px;
   border-radius: 4px;
@@ -1249,7 +1291,8 @@ button.toc-toggle:hover {
   font-weight: 500;
 }
 
-.manual-content pre {
+.manual-content pre,
+.manual-related-body pre {
   background: #f1f5f9;
   color: var(--ui-text);
   padding: 16px 20px;
@@ -1260,7 +1303,8 @@ button.toc-toggle:hover {
   line-height: 1.8;
 }
 
-.manual-content pre code {
+.manual-content pre code,
+.manual-related-body pre code {
   background: none;
   color: inherit;
   padding: 0;
@@ -1268,50 +1312,68 @@ button.toc-toggle:hover {
   font-size: 14px;
 }
 
-.manual-content table {
+.manual-content table,
+.manual-related-body table {
   width: 100%;
+  max-width: 100%;
   border-collapse: collapse;
   margin: 16px 0;
+  display: block;
+  overflow-x: auto;
 }
 
 .manual-content th,
-.manual-content td {
+.manual-content td,
+.manual-related-body th,
+.manual-related-body td {
   border: 1px solid var(--ui-border);
   padding: 10px 12px;
   text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
-.manual-content th {
+.manual-content th,
+.manual-related-body th {
   background: #f8fafc;
   font-weight: 600;
 }
 
-.manual-content tr:hover {
+.manual-content tr:hover,
+.manual-related-body tr:hover {
   background: #f8fafc;
 }
 
-.manual-content hr {
+.manual-content hr,
+.manual-related-body hr {
   border: none;
   border-top: 1px solid var(--ui-border);
   margin: 24px 0;
 }
 
-.manual-content a {
+.manual-content a,
+.manual-related-body a {
   color: var(--ui-primary);
   text-decoration: none;
 }
 
-.manual-content a:hover {
+.manual-content a:hover,
+.manual-related-body a:hover {
   text-decoration: underline;
 }
 
-.manual-content strong {
+.manual-content strong,
+.manual-related-body strong {
   color: var(--ui-primary-hover);
 }
 
 @media (max-width: 900px) {
   .manual-wrapper {
     flex-direction: column;
+  }
+
+  .manual-main-column {
+    width: 100%;
   }
 
   .manual-toc {
@@ -1332,16 +1394,21 @@ button.toc-toggle:hover {
 }
 
 /* 排产说明书悬浮按钮 */
-.floating-manual-btn {
+.floating-manual-wrapper {
   position: fixed;
   right: 24px;
   bottom: 88px;
   z-index: 9980;
+  max-width: calc(100vw - 32px);
+}
+
+.floating-manual-btn {
+  position: static;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-height: 40px;
-  max-width: calc(100vw - 32px);
+  max-width: 100%;
   padding: 10px 16px;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -1372,18 +1439,117 @@ button.toc-toggle:hover {
   display: inline-block;
 }
 
+.manual-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--ui-border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--ui-bg, #fff);
+  color: var(--ui-text, #1e293b);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  overflow-wrap: anywhere;
+  animation: popoverSlideUp 0.2s ease;
+}
+
+.manual-popover[hidden] {
+  display: none !important;
+}
+
+@keyframes popoverSlideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.manual-popover__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.manual-popover__title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--ui-text, #1e293b);
+}
+
+.manual-popover .manual-popover__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ui-muted, #64748b);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.manual-popover .manual-popover__close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ui-text, #1e293b);
+}
+
+.manual-popover__list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ui-text-secondary, #475569);
+}
+
+.manual-popover__list li + li {
+  margin-top: 4px;
+}
+
+.manual-popover__footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ui-border, #e2e8f0);
+}
+
 html[data-theme="dark"] .floating-manual-btn {
   border-color: rgba(148, 163, 184, 0.25);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
+html[data-theme="dark"] .manual-popover {
+  border-color: rgba(148, 163, 184, 0.25);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+html[data-theme="dark"] .manual-popover .manual-popover__close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f1f5f9;
+}
+
 @media (max-width: 640px) {
-  .floating-manual-btn {
+  .floating-manual-wrapper {
     right: 16px;
     bottom: 80px;
     max-width: calc(100vw - 24px);
+  }
+
+  .floating-manual-btn {
     padding: 10px 14px;
     font-size: 13px;
+  }
+
+  .manual-popover {
+    width: calc(100vw - 24px);
+    max-width: 320px;
   }
 }
 
@@ -1637,15 +1803,34 @@ html[data-theme="dark"] .manual-content {
   background: #1e293b;
 }
 
-html[data-theme="dark"] .manual-content pre {
+html[data-theme="dark"] .manual-content pre,
+html[data-theme="dark"] .manual-related-body pre {
   background: #0f172a;
   color: #e2e8f0;
   border-left-color: var(--ui-primary);
 }
 
-html[data-theme="dark"] .manual-content code {
+html[data-theme="dark"] .manual-content code,
+html[data-theme="dark"] .manual-related-body code {
   background: #334155;
   color: #fca5a5;
+}
+
+html[data-theme="dark"] .manual-content th,
+html[data-theme="dark"] .manual-related-body th {
+  background: #162032;
+}
+
+html[data-theme="dark"] .manual-content tr:hover,
+html[data-theme="dark"] .manual-related-body tr:hover {
+  background: #162032;
+}
+
+html[data-theme="dark"] .manual-content blockquote,
+html[data-theme="dark"] .manual-related-body blockquote {
+  background: #064e3b;
+  color: #a7f3d0;
+  border-left-color: #10b981;
 }
 
 html[data-theme="dark"] .manual-toc {

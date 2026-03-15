@@ -41,6 +41,50 @@
 </a>
 {% endmacro %}
 
+{% macro manual_entry_url(endpoint=None, src=None) -%}
+{{ get_manual_url(endpoint=endpoint, src=src) or '' }}
+{%- endmacro %}
+
+{% macro excel_import_option_value(opt) -%}
+{{ opt.value if opt is mapping else opt[0] }}
+{%- endmacro %}
+
+{% macro excel_import_option_label(opt) -%}
+{{ opt.label if opt is mapping else opt[1] }}
+{%- endmacro %}
+
+{% macro excel_import_mode_help(mode_options=None) %}
+{% set default_mode_options = [
+  {'value': 'overwrite', 'label': '覆盖（相同ID更新）'},
+  {'value': 'append', 'label': '追加（已存在则跳过）'},
+  {'value': 'replace', 'label': '替换（清空后导入）'}
+] %}
+{% set selected_mode_options = mode_options if mode_options else default_mode_options %}
+<div class="field-help no-print">
+  <strong>导入前先确认：</strong>
+  <ul class="list-tight">
+    <li>模板文件只支持 <code>.xlsx</code>，表头不要改。</li>
+    <li>系统只读取首个工作表（通常是 <code>Sheet1</code>），不要把有效数据挪到第二个工作表。</li>
+    <li>先“上传并预览”，把错误行全部修完，再点“确认导入”。</li>
+    <li>只要有 1 行是“错误”，整份文件都不会导入。</li>
+    <li>导入完成后，建议再导出一次当前数据做复核。</li>
+  </ul>
+  <div class="muted">当前页面可用模式：</div>
+  <ul class="list-tight">
+    {% for opt in selected_mode_options %}
+      {% set opt_value = excel_import_option_value(opt) | trim %}
+      {% if opt_value == 'overwrite' %}
+        <li><strong>覆盖</strong>：已存在的数据会更新，不存在的会新增。</li>
+      {% elif opt_value == 'append' %}
+        <li><strong>追加</strong>：已存在的数据跳过，只补新数据。</li>
+      {% elif opt_value == 'replace' %}
+        <li><strong>替换</strong>：先清空这一类数据再导入，执行前务必确认影响范围。</li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+</div>
+{% endmacro %}
+
 {#
   排产主导航（唯一跨页主导航）
   active:
@@ -66,22 +110,58 @@
 {% endmacro %}
 
 {#
-  排产说明书悬浮按钮：
-  - 仅在 scheduler 页面显示
+  系统使用说明悬浮按钮：
+  - 仅在白名单页面显示
   - 在说明书页自身隐藏，避免渲染“跳回当前页”的冗余入口
 #}
 {% macro floating_manual_button() %}
 {% set current_endpoint = request.endpoint or '' %}
-{% if current_endpoint[:10] == 'scheduler.' and current_endpoint != 'scheduler.config_manual_page' %}
-  {% set manual_url = safe_url_for('scheduler.config_manual_page') %}
+{% if current_endpoint != 'scheduler.config_manual_page' %}
+  {% set manual_url = manual_entry_url(endpoint=current_endpoint)|trim %}
+  {% set help = get_help_card(endpoint=current_endpoint) %}
   {% if manual_url %}
-    <a href="{{ manual_url }}" class="floating-manual-btn" title="查看排产说明书" aria-label="查看排产说明书">
-      <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="floating-manual-btn__icon" aria-hidden="true">
-        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-      </svg>
-      <span class="floating-manual-btn__text">排产说明书</span>
-    </a>
+    {% set popover_id = 'manual-popover-' ~ (current_endpoint | replace('.', '-') | replace('_', '-')) %}
+    {% set title_id = popover_id ~ '-title' %}
+    <div class="floating-manual-wrapper no-print">
+      {% if help %}
+        <div class="manual-popover"
+             id="{{ popover_id }}"
+             role="dialog"
+             aria-labelledby="{{ title_id }}"
+             hidden>
+          <div class="manual-popover__header">
+            <strong class="manual-popover__title" id="{{ title_id }}">{{ help['title'] }}</strong>
+            <button type="button" class="manual-popover__close" aria-label="关闭本页速览">&times;</button>
+          </div>
+          <ul class="manual-popover__list">
+            {% for item in help['items'] %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% if help['manual_url'] %}
+            <div class="manual-popover__footer">
+              {{ link_button('查看本页详细说明', help['manual_url'], 'secondary', 'sm') }}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+      <a href="{{ manual_url }}"
+         class="floating-manual-btn"
+         {% if help %}
+         data-manual-popover="1"
+         aria-haspopup="dialog"
+         aria-expanded="false"
+         aria-controls="{{ popover_id }}"
+         {% endif %}
+         title="查看本页说明"
+         aria-label="查看本页说明">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="floating-manual-btn__icon" aria-hidden="true">
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+        </svg>
+        <span class="floating-manual-btn__text">本页说明</span>
+      </a>
+    </div>
   {% endif %}
 {% endif %}
 {% endmacro %}

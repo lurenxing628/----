@@ -1,8 +1,25 @@
 (() => {
   "use strict";
 
-  const cfg = window.__APS_CONFIG_MANUAL__ || {};
+  function readConfig() {
+    try {
+      const dataEl = document.getElementById("aps-config-manual-data");
+      if (dataEl) {
+        const raw = (dataEl.textContent || "").trim();
+        if (raw) {
+          return JSON.parse(raw);
+        }
+      }
+    } catch (_e0) {
+      // fall through to legacy window contract
+    }
+    return window.__APS_CONFIG_MANUAL__ || {};
+  }
+
+  const cfg = readConfig();
+  const manualMode = cfg.mode === "page" ? "page" : "full";
   const rawMarkdown = typeof cfg.manualText === "string" ? cfg.manualText : "";
+  const currentManual = cfg.currentManual && typeof cfg.currentManual === "object" ? cfg.currentManual : null;
 
   function normalizeNewlines(s) {
     return (s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -349,6 +366,49 @@
     return state.out.join("\n");
   }
 
+  function buildPageMarkdown(manual) {
+    if (!manual || typeof manual !== "object") {
+      return "## 页面说明\n\n当前页面暂未配置详细说明。";
+    }
+
+    const parts = [];
+    const title = typeof manual.title === "string" ? manual.title.trim() : "";
+    const summary = typeof manual.summary === "string" ? manual.summary.trim() : "";
+    const sections = Array.isArray(manual.sections) ? manual.sections : [];
+
+    if (title) {
+      parts.push("## " + title, "");
+    }
+    if (summary) {
+      parts.push(summary, "");
+    }
+    sections.forEach((section) => {
+      const sectionTitle = typeof section.title === "string" ? section.title.trim() : "";
+      const bodyMd = typeof section.body_md === "string" ? section.body_md.trim() : "";
+      if (!sectionTitle || !bodyMd) return;
+      parts.push("### " + sectionTitle, "", bodyMd, "");
+    });
+
+    if (parts.length === 0) {
+      return "## 页面说明\n\n当前页面暂未配置详细说明。";
+    }
+    return normalizeNewlines(parts.join("\n"));
+  }
+
+  function renderEmbeddedMarkdownBlocks() {
+    const blocks = document.querySelectorAll("[data-manual-markdown]");
+    Array.prototype.forEach.call(blocks, (node) => {
+      const rawAttr = node.getAttribute("data-manual-markdown") || "";
+      let markdown = "";
+      try {
+        markdown = JSON.parse(rawAttr);
+      } catch (_e4) {
+        markdown = rawAttr;
+      }
+      node.innerHTML = renderMarkdown(markdown);
+    });
+  }
+
   // 渲染目录
   function renderToc(headings) {
     const tocList = document.getElementById("toc-list");
@@ -427,8 +487,10 @@
       });
     }
 
-    const html = renderMarkdown(rawMarkdown);
+    const markdownSource = manualMode === "page" ? buildPageMarkdown(currentManual) : rawMarkdown;
+    const html = renderMarkdown(markdownSource);
     contentEl.innerHTML = html;
+    renderEmbeddedMarkdownBlocks();
 
     // 基于 DOM 生成目录（更稳健）
     const nodes = contentEl.querySelectorAll("h2, h3, h4");
