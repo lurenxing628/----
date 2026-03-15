@@ -29,6 +29,8 @@ set "CHROME_EXE="
 set "CHROME_SOURCE="
 set "CHROME_DIR="
 set "CHROME_RUN_DIR="
+set "ENV_CHROME_DIR="
+set "REG_CHROME_DIR="
 set "DEFAULT_CHROME_DIR=%LOCALAPPDATA%\APS\Chrome109"
 set "CHROME_PROFILE_DIR=%LOCALAPPDATA%\APS\Chrome109Profile"
 if not defined LOCALAPPDATA set "DEFAULT_CHROME_DIR=%APP_DIR%\chrome109_runtime"
@@ -45,6 +47,21 @@ if not defined APP_EXE (
 )
 call :log app_exe="%APP_EXE%"
 
+if defined APS_CHROME_DIR set "ENV_CHROME_DIR=%APS_CHROME_DIR:"=%"
+if defined ENV_CHROME_DIR (
+  call :log env_APS_CHROME_DIR="%ENV_CHROME_DIR%"
+) else (
+  call :log env_APS_CHROME_DIR=
+)
+call :read_registry_chrome_dir
+if defined REG_CHROME_DIR (
+  call :log reg_APS_CHROME_DIR="%REG_CHROME_DIR%"
+) else (
+  call :log reg_APS_CHROME_DIR=
+)
+call :log default_chrome_dir="%DEFAULT_CHROME_DIR%"
+call :log legacy_chrome_dir="%APP_DIR%\tools\chrome109"
+
 if defined APS_CHROME_EXE (
   set "CHROME_EXE=%APS_CHROME_EXE:"=%"
   if exist "!CHROME_EXE!" (
@@ -58,41 +75,14 @@ if defined APS_CHROME_EXE (
   )
 )
 
-if not defined CHROME_SOURCE if defined APS_CHROME_DIR (
-  set "CHROME_DIR=%APS_CHROME_DIR:"=%"
-  if exist "!CHROME_DIR!\chrome.exe" (
-    set "CHROME_EXE=!CHROME_DIR!\chrome.exe"
-    set "CHROME_SOURCE=APS_CHROME_DIR"
-  )
-)
+if not defined CHROME_SOURCE if defined ENV_CHROME_DIR call :try_chrome_dir "%ENV_CHROME_DIR%" "APS_CHROME_DIR"
+if defined ENV_CHROME_DIR if not defined CHROME_SOURCE call :log env_APS_CHROME_DIR_not_found="%ENV_CHROME_DIR%"
 
-if not defined CHROME_SOURCE if defined APS_CHROME_DIR (
-  set "CHROME_DIR=%APS_CHROME_DIR:"=%"
-  if exist "!CHROME_DIR!\App\chrome.exe" (
-    set "CHROME_EXE=!CHROME_DIR!\App\chrome.exe"
-    set "CHROME_SOURCE=APS_CHROME_DIR\App"
-  )
-)
+if not defined CHROME_SOURCE if defined REG_CHROME_DIR call :try_chrome_dir "%REG_CHROME_DIR%" "HKCU\Environment\APS_CHROME_DIR"
+if defined REG_CHROME_DIR if not defined CHROME_SOURCE call :log reg_APS_CHROME_DIR_not_found="%REG_CHROME_DIR%"
 
-if not defined CHROME_SOURCE if exist "%DEFAULT_CHROME_DIR%\chrome.exe" (
-  set "CHROME_EXE=%DEFAULT_CHROME_DIR%\chrome.exe"
-  set "CHROME_SOURCE=default Chrome109 dir"
-)
-
-if not defined CHROME_SOURCE if exist "%DEFAULT_CHROME_DIR%\App\chrome.exe" (
-  set "CHROME_EXE=%DEFAULT_CHROME_DIR%\App\chrome.exe"
-  set "CHROME_SOURCE=default Chrome109 dir\App"
-)
-
-if not defined CHROME_SOURCE if exist "%APP_DIR%\tools\chrome109\chrome.exe" (
-  set "CHROME_EXE=%APP_DIR%\tools\chrome109\chrome.exe"
-  set "CHROME_SOURCE=legacy tools\chrome109"
-)
-
-if not defined CHROME_SOURCE if exist "%APP_DIR%\tools\chrome109\App\chrome.exe" (
-  set "CHROME_EXE=%APP_DIR%\tools\chrome109\App\chrome.exe"
-  set "CHROME_SOURCE=legacy tools\chrome109\App"
-)
+if not defined CHROME_SOURCE call :try_chrome_dir "%DEFAULT_CHROME_DIR%" "default Chrome109 dir"
+if not defined CHROME_SOURCE call :try_chrome_dir "%APP_DIR%\tools\chrome109" "legacy tools\chrome109"
 
 if not defined CHROME_SOURCE (
   call :log chrome_runtime_not_found
@@ -150,6 +140,31 @@ if not "%START_RC%"=="0" (
   echo [launcher] Check logs\launcher.log and run the logged chrome_cmd in cmd.
   pause
   exit /b 5
+)
+exit /b 0
+
+:read_registry_chrome_dir
+set "REG_CHROME_DIR="
+for /f "tokens=2,*" %%A in ('reg query "HKCU\Environment" /v APS_CHROME_DIR 2^>nul ^| findstr /I /C:"APS_CHROME_DIR"') do (
+  if /I "%%A"=="REG_SZ" set "REG_CHROME_DIR=%%B"
+  if /I "%%A"=="REG_EXPAND_SZ" set "REG_CHROME_DIR=%%B"
+)
+if defined REG_CHROME_DIR set "REG_CHROME_DIR=%REG_CHROME_DIR:"=%"
+exit /b 0
+
+:try_chrome_dir
+set "CHROME_DIR=%~1"
+set "CHROME_SOURCE_LABEL=%~2"
+if "%CHROME_DIR%"=="" exit /b 0
+if exist "%CHROME_DIR%\chrome.exe" (
+  set "CHROME_EXE=%CHROME_DIR%\chrome.exe"
+  set "CHROME_SOURCE=%CHROME_SOURCE_LABEL%"
+  exit /b 0
+)
+if exist "%CHROME_DIR%\App\chrome.exe" (
+  set "CHROME_EXE=%CHROME_DIR%\App\chrome.exe"
+  set "CHROME_SOURCE=%CHROME_SOURCE_LABEL%\App"
+  exit /b 0
 )
 exit /b 0
 

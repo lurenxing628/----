@@ -22,9 +22,12 @@
 
 - 主程序 `排产系统.exe` 只负责在后台启动本地服务；双击它时如果没有弹出窗口，不代表启动失败。
 - 正常入口是开始菜单或桌面快捷方式 **“排产系统”**，其实际执行安装目录根下的 `启动_排产系统_Chrome.bat`。
-- 若快捷方式只闪一下且未打开 Chrome，请先查看：`%LOCALAPPDATA%\APS\排产系统\logs\launcher.log`
-- `launcher.log` 会记录 `chrome_exe`、`chrome_run_dir` 与 `chrome_cmd`
+- 若快捷方式只闪一下且未打开 Chrome，请先查看主程序安装目录下的 `logs\launcher.log`
+  - 默认安装时通常是：`%LOCALAPPDATA%\APS\排产系统\logs\launcher.log`
+  - 如果主程序改装到自定义目录，应到该自定义目录下查看 `logs\launcher.log`
+- `launcher.log` 会记录 `env_APS_CHROME_DIR`、`reg_APS_CHROME_DIR`、`chrome_source`、`chrome_exe`、`chrome_run_dir` 与 `chrome_cmd`
 - 现场排障时，可把 `launcher.log` 里的 `chrome_cmd` 整行复制到 `cmd` 中执行，用于区分“bat 启动方式问题”和“Chrome 本体问题”
+- 启动器的浏览器查找顺序是：`APS_CHROME_EXE` → 当前进程 `APS_CHROME_DIR` → 注册表 `HKCU\Environment\APS_CHROME_DIR` → 默认 `%LOCALAPPDATA%\APS\Chrome109` → legacy `tools\chrome109`
 
 ### B. 最小直拷交付（支持）
 
@@ -78,6 +81,8 @@ python validate_dist_exe.py "dist\排产系统\排产系统.exe"
 若失败，请优先查看：
 
 - `dist/排产系统/logs/aps_error.log`
+
+> 注意：`validate_dist_exe.py` 只验证主程序 `exe` 冷启动与 HTTP 页面，不覆盖快捷方式、批处理脚本、环境变量刷新时序或 Chrome 启动链路。
 
 ## 4) 最小直拷交付怎么用
 

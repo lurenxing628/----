@@ -23,7 +23,8 @@ description: APS Win7 双包打包流程：生成 APS_Main_Setup.exe 与 APS_Chr
 4. 做冷启动验收，这是强制步骤。
    - 运行：`python validate_dist_exe.py "<dist 下主 exe 路径>"`
    - 验收目标：程序能启动、关键页面能正常返回
-   - 备注：该验收不依赖浏览器运行时
+   - 备注：该验收不依赖浏览器运行时，也不覆盖快捷方式、批处理脚本、环境变量刷新时序或 Chrome 启动链路
+   - 若本次变更涉及启动器或浏览器运行时目录解析，需额外做一次“安装后立即从快捷方式启动”的专项冒烟，并核对 `logs\launcher.log`
 
 5. 仅在内部应急场景下，才走 legacy 自包含全量包。
    - 需要先执行：`cmd /c stage_chrome109_to_dist.bat`

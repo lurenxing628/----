@@ -1,12 +1,12 @@
 # APS 架构合规审计报告
 
-- 生成时间：2026-03-13 13:53:59
+- 生成时间：2026-03-15 23:16:23
 - 仓库根目录：`D:\Github\APS Test`
 
 ## 总结
-- 总问题数：53
+- 总问题数：48
   - 分层违反：0
-  - 文件超限：1
+  - 文件超限：0
   - 禁止模式：0
   - 命名问题：1
   - 裸字符串枚举：4
@@ -16,7 +16,7 @@
   - Service 循环依赖：0
   - Route 越层导入 Repository：0
   - 潜在死代码公开方法：9
-  - 圈复杂度超标（>15）：38
+  - 圈复杂度超标（>15）：34
   - 圈复杂度扫描跳过：0
   - 类型注解扫描跳过：0
   - Vulture 死代码（min_confidence=80）：0
@@ -25,18 +25,18 @@
 - 结论：FAIL（存在违反项）
 
 ## 圈复杂度分布
-- A 简单(1-5): 1054 ##################################################
-- B 低(6-10): 289 ##################################################
-- C 中(11-20): 98 ##################################################
-- D 高(21-30): 16 ################
-- E 很高(31-40): 2 ##
+- A 简单(1-5): 1083 ##################################################
+- B 低(6-10): 294 ##################################################
+- C 中(11-20): 97 ##################################################
+- D 高(21-30): 15 ###############
+- E 很高(31-40): 1 #
 - F 极高(41+): 2 ##
 
 ## 分层违反
 - 无
 
 ## 文件超限
-- [SIZE] core/services/personnel/operator_machine_service.py - 503 行（超过 500 行限制）
+- 无
 
 ## 禁止模式
 - 无
@@ -57,10 +57,10 @@
 - [ENUM-INFO] web/routes/scheduler_gantt.py:32 - 枚举集合比较 ['no']（可能是输入校验），建议使用 enums.py/normalize
 - [ENUM-INFO] web/routes/system_plugins.py:28 - 枚举集合比较 ['yes']（可能是输入校验），建议使用 enums.py/normalize
 - [ENUM-INFO] core/services/common/enum_normalizers.py:149 - 枚举集合比较 ['yes']（可能是输入校验），建议使用 enums.py/normalize
-- [ENUM-INFO] core/services/personnel/operator_machine_service.py:53 - 枚举集合比较 ['yes']（可能是输入校验），建议使用 enums.py/normalize
-- [ENUM-INFO] core/services/personnel/operator_machine_service.py:55 - 枚举集合比较 ['no']（可能是输入校验），建议使用 enums.py/normalize
-- [ENUM-INFO] core/services/personnel/operator_machine_service.py:75 - 枚举集合比较 ['yes']（可能是输入校验），建议使用 enums.py/normalize
-- [ENUM-INFO] core/services/personnel/operator_machine_service.py:77 - 枚举集合比较 ['no']（可能是输入校验），建议使用 enums.py/normalize
+- [ENUM-INFO] core/services/personnel/operator_machine_normalizers.py:35 - 枚举集合比较 ['yes']（可能是输入校验），建议使用 enums.py/normalize
+- [ENUM-INFO] core/services/personnel/operator_machine_normalizers.py:37 - 枚举集合比较 ['no']（可能是输入校验），建议使用 enums.py/normalize
+- [ENUM-INFO] core/services/personnel/operator_machine_normalizers.py:56 - 枚举集合比较 ['yes']（可能是输入校验），建议使用 enums.py/normalize
+- [ENUM-INFO] core/services/personnel/operator_machine_normalizers.py:58 - 枚举集合比较 ['no']（可能是输入校验），建议使用 enums.py/normalize
 - [ENUM-INFO] core/services/scheduler/config_service.py:405 - 枚举集合比较 ['yes', 'no']（可能是输入校验），建议使用 enums.py/normalize
 - [ENUM-INFO] core/services/scheduler/config_service.py:411 - 枚举集合比较 ['yes', 'no']（可能是输入校验），建议使用 enums.py/normalize
 - [ENUM-INFO] core/services/scheduler/config_service.py:428 - 枚举集合比较 ['yes', 'no']（可能是输入校验），建议使用 enums.py/normalize
@@ -92,16 +92,14 @@
 - [DEAD-CODE] core/services/system/system_config_service.py:141 - 公开方法 get_snapshot_readonly() 无外部调用者（潜在死代码）
 
 ## 圈复杂度超标
-- [COMPLEXITY] web/routes/equipment_pages.py:62 list_page complexity=16 (rank C)
 - [COMPLEXITY] web/routes/excel_demo.py:69 preview complexity=19 (rank C)
 - [COMPLEXITY] web/routes/personnel_excel_operator_calendar.py:173 excel_operator_calendar_confirm complexity=19 (rank C)
 - [COMPLEXITY] web/routes/process_excel_routes.py:109 excel_routes_confirm complexity=23 (rank D)
-- [COMPLEXITY] web/routes/scheduler_config.py:221 update_config complexity=17 (rank C)
 - [COMPLEXITY] web/routes/scheduler_excel_calendar.py:194 excel_calendar_confirm complexity=24 (rank D)
 - [COMPLEXITY] web/routes/scheduler_run.py:25 run_schedule complexity=21 (rank D)
 - [COMPLEXITY] web/routes/scheduler_week_plan.py:89 week_plan_export complexity=16 (rank C)
 - [COMPLEXITY] core/services/equipment/machine_downtime_service.py:136 create_by_scope complexity=19 (rank C)
-- [COMPLEXITY] core/services/personnel/operator_machine_service.py:427 apply_import_links complexity=20 (rank C)
+- [COMPLEXITY] core/services/personnel/operator_machine_service.py:396 apply_import_links complexity=20 (rank C)
 - [COMPLEXITY] core/services/process/part_service.py:379 delete_external_group complexity=16 (rank C)
 - [COMPLEXITY] core/services/process/part_service.py:424 calc_deletable_external_group_ids complexity=16 (rank C)
 - [COMPLEXITY] core/services/process/route_parser.py:107 parse complexity=27 (rank D)
@@ -113,8 +111,6 @@
 - [COMPLEXITY] core/services/scheduler/freeze_window.py:133 build_freeze_window_seed complexity=16 (rank C)
 - [COMPLEXITY] core/services/scheduler/gantt_range.py:46 resolve_week_range complexity=16 (rank C)
 - [COMPLEXITY] core/services/scheduler/operation_edit_service.py:160 update_external_operation complexity=18 (rank C)
-- [COMPLEXITY] core/services/scheduler/resource_dispatch_excel.py:61 _detail_table_rows complexity=24 (rank D)
-- [COMPLEXITY] core/services/scheduler/resource_dispatch_excel.py:101 build_resource_dispatch_workbook complexity=32 (rank E)
 - [COMPLEXITY] core/services/scheduler/resource_pool_builder.py:102 load_machine_downtimes complexity=22 (rank D)
 - [COMPLEXITY] core/services/scheduler/resource_pool_builder.py:221 extend_downtime_map_for_resource_pool complexity=22 (rank D)
 - [COMPLEXITY] core/services/scheduler/schedule_optimizer.py:33 _run_local_search complexity=28 (rank D)

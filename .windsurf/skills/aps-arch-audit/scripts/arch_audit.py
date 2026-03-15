@@ -73,7 +73,7 @@ def scan_layer_violations(repo_root) -> List[str]:
 def scan_file_sizes(repo_root) -> List[str]:
     """扫描超大文件。"""
     issues = []
-    for check_dir in ["web/routes", "core/services", "data/repositories", "core/infrastructure", "core/models"]:
+    for check_dir in ["web/routes", "web/viewmodels", "core/services", "data/repositories", "core/infrastructure", "core/models"]:
         base = os.path.join(repo_root, check_dir)
         if not os.path.isdir(base):
             continue
@@ -92,7 +92,7 @@ def scan_file_sizes(repo_root) -> List[str]:
 def scan_forbidden_patterns(repo_root) -> List[str]:
     """扫描禁止模式。"""
     issues = []
-    for check_dir in ["web/routes", "core/services", "data/repositories"]:
+    for check_dir in ["web/routes", "web/viewmodels", "core/services", "data/repositories"]:
         base = os.path.join(repo_root, check_dir)
         if not os.path.isdir(base):
             continue
@@ -120,7 +120,7 @@ def scan_naming(repo_root) -> List[str]:
     """扫描文件命名是否为 snake_case。"""
     issues = []
     snake_re = re.compile(r"^[a-z][a-z0-9_]*$")
-    for check_dir in ["web/routes", "core/services", "data/repositories"]:
+    for check_dir in ["web/routes", "web/viewmodels", "core/services", "data/repositories"]:
         base = os.path.join(repo_root, check_dir)
         if not os.path.isdir(base):
             continue

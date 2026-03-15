@@ -136,13 +136,18 @@ ISCC.exe installer\aps_win7_legacy.iss
 
 ## 环境变量与启动器
 
-- 浏览器运行时包会写入用户级环境变量：`APS_CHROME_DIR={app}`
+- 浏览器运行时包会把 `APS_CHROME_DIR={app}` 写入用户级环境变量（注册表位置：`HKCU\Environment`）
 - 启动器查找顺序固定为：
   1. `APS_CHROME_EXE`
-  2. `APS_CHROME_DIR\chrome.exe`
-  3. `APS_CHROME_DIR\App\chrome.exe`
-  4. 当前安装目录 `tools\chrome109\chrome.exe`
-  5. 当前安装目录 `tools\chrome109\App\chrome.exe`
+  2. 当前进程 `APS_CHROME_DIR\chrome.exe`
+  3. 当前进程 `APS_CHROME_DIR\App\chrome.exe`
+  4. 注册表 `HKCU\Environment\APS_CHROME_DIR\chrome.exe`
+  5. 注册表 `HKCU\Environment\APS_CHROME_DIR\App\chrome.exe`
+  6. 默认目录 `%LOCALAPPDATA%\APS\Chrome109\chrome.exe`
+  7. 默认目录 `%LOCALAPPDATA%\APS\Chrome109\App\chrome.exe`
+  8. 当前安装目录 `tools\chrome109\chrome.exe`
+  9. 当前安装目录 `tools\chrome109\App\chrome.exe`
+- 这意味着即使安装完浏览器运行时后当前会话的环境变量还没刷新，启动器仍会继续读取 `HKCU\Environment\APS_CHROME_DIR`
 - 启动器会优先读取 `logs\aps_host.txt` 与 `logs\aps_port.txt`，因此打开的 URL **不一定是** `http://127.0.0.1:5000/`
 - 浏览器会固定使用用户数据目录：`%LOCALAPPDATA%\APS\Chrome109Profile`
 
@@ -150,8 +155,13 @@ ISCC.exe installer\aps_win7_legacy.iss
 
 - `排产系统.exe` 只负责在后台启动本地服务；双击它时如果没有弹出窗口，不代表启动失败。
 - 正常入口是开始菜单或桌面快捷方式 **“排产系统”**，其实际执行的是安装目录根下的 `启动_排产系统_Chrome.bat`。
-- 若快捷方式只闪一下且未打开 Chrome，请先查看：`%LOCALAPPDATA%\APS\排产系统\logs\launcher.log`
+- 若快捷方式只闪一下且未打开 Chrome，请先查看：**主程序安装目录**下的 `logs\launcher.log`。
+  - 默认安装时通常是：`%LOCALAPPDATA%\APS\排产系统\logs\launcher.log`
+  - 如果主程序改装到自定义目录，应到该自定义目录下查看 `logs\launcher.log`
 - `launcher.log` 会记录：
+  - `env_APS_CHROME_DIR`
+  - `reg_APS_CHROME_DIR`
+  - `chrome_source`
   - `chrome_exe`
   - `chrome_run_dir`
   - `chrome_cmd`
@@ -180,8 +190,12 @@ ISCC.exe installer\aps_win7_legacy.iss
 
 1. 在打包机执行 `python validate_dist_exe.py "dist\排产系统\排产系统.exe"`
 2. 在目标机安装双包后，点击 **“排产系统”** 能打开系统首页
-3. 检查关键页面：人员 / 设备 / 工艺 / 排产 / 系统管理
-4. 至少在一台实际 Win7 机器上完成一次端到端冒烟
+3. 至少覆盖一组“Chrome 运行时自定义目录（含中文或空格）”场景，并在**安装完成后立即**从开始菜单或桌面快捷方式启动
+4. 检查 `launcher.log` 中的 `chrome_source` / `chrome_exe` / `chrome_cmd` 是否与实际命中路径一致
+5. 检查关键页面：人员 / 设备 / 工艺 / 排产 / 系统管理
+6. 至少在一台实际 Win7 机器上完成一次端到端冒烟
+
+> 注意：`validate_dist_exe.py` 只覆盖主程序 `exe` 冷启动与 HTTP 页面可访问性，不覆盖快捷方式、批处理脚本、环境变量刷新时序或 Chrome 启动链路。
 
 ## 备注
 

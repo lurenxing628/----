@@ -9,12 +9,17 @@
 ## 2) 启动器的浏览器查找顺序是固定契约
 
 - `APS_CHROME_EXE`
-- `APS_CHROME_DIR\chrome.exe`
-- `APS_CHROME_DIR\App\chrome.exe`
+- 当前进程 `APS_CHROME_DIR\chrome.exe`
+- 当前进程 `APS_CHROME_DIR\App\chrome.exe`
+- 注册表 `HKCU\Environment\APS_CHROME_DIR\chrome.exe`
+- 注册表 `HKCU\Environment\APS_CHROME_DIR\App\chrome.exe`
+- 默认 `%LOCALAPPDATA%\APS\Chrome109\chrome.exe`
+- 默认 `%LOCALAPPDATA%\APS\Chrome109\App\chrome.exe`
 - 当前目录兼容路径 `tools\chrome109\chrome.exe`
 - 当前目录兼容路径 `tools\chrome109\App\chrome.exe`
 
 如果 `APS_CHROME_EXE` 已设置但路径失效，启动器会直接报错，不会静默回退。
+如果安装后当前会话里的 `APS_CHROME_DIR` 还没刷新，启动器会继续直读 `HKCU\Environment\APS_CHROME_DIR`。
 
 ## 3) 浏览器运行时目录必须可写
 
@@ -47,6 +52,7 @@
 
 - `validate_dist_exe.py` 只验证主程序，不依赖浏览器进程
 - 这一步仍能兜底“能启动 + 关键页面 200”
+- 浏览器定位 / 快捷方式 / 批处理链路需额外通过 `logs\launcher.log` 和安装后启动冒烟验证
 
 ## 8) PowerShell 5.1 编码注意
 
