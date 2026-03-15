@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+from typing import Any, Dict
+
+from .page_manuals_common import _card, _section, _topic
+
+SYSTEM_TOPICS: Dict[str, Dict[str, Any]] = {
+    "system_backup": _topic(
+        title="备份与恢复",
+        summary="备份与恢复是系统级高风险操作页，主要用于手工备份当前数据库和恢复历史快照。",
+        full_manual_anchor="#10-1备份与恢复",
+        help_card=_card(
+            "备份和恢复都是高风险操作",
+            "大批量导入前、替换模式导入前、恢复历史库前，都应该先备份。",
+            "恢复会覆盖现有数据，恢复前先确认备份文件是对的。",
+            "建议给备份文件按日期和用途命名，方便回滚和审计。",
+        ),
+        sections=[
+            _section("进入前准备", "{{backup_risk_basics}}"),
+            _section(
+                "什么时候应该先备份",
+                "\n".join(
+                    [
+                        "- 大批量导入前、替换模式导入前、恢复历史库前。",
+                        "- 对关键排程版本做大调整前，先留一份可回滚快照。",
+                    ]
+                ),
+            ),
+            _section(
+                "恢复前一定要确认什么",
+                "\n".join(
+                    [
+                        "- 恢复目标是不是正确的备份文件。",
+                        "- 现库中是否还有未导出、未确认或需要留痕的数据。",
+                    ]
+                ),
+            ),
+        ],
+        related_manual_ids=["system_logs", "system_history", "scheduler_batches_manage"],
+    ),
+    "system_logs": _topic(
+        title="操作日志",
+        summary="这里记录了谁在什么时候做了导入、排产、删除、恢复等操作，出了问题先来这里查。",
+        full_manual_anchor="#10-2操作日志",
+        help_card=_card(
+            "操作日志建议先缩小范围再查",
+            "优先按时间、模块、动作、级别筛选，不要一上来就查太大范围。",
+            "删除日志不可恢复；批量删前先确认筛选条件和已选条数。",
+            "想看导入或排产留痕时，先按模块和动作缩小范围。",
+        ),
+        sections=[
+            _section("怎么查最快", "{{reports_filter_basics}}"),
+            _section(
+                "哪些问题适合先查日志",
+                "\n".join(
+                    [
+                        "- Excel 导入为什么失败、谁执行了删除或替换。",
+                        "- 某次排产是什么时候执行的、用了哪个版本或动作。",
+                    ]
+                ),
+            ),
+            _section(
+                "删除日志前先确认什么",
+                "\n".join(
+                    [
+                        "- 日志删除不可恢复，先确认是否还需要审计或复盘。",
+                        "- 建议先用筛选精确定位，再做清理。",
+                    ]
+                ),
+            ),
+        ],
+        related_manual_ids=["system_history", "system_backup", "scheduler_batches"],
+    ),
+    "system_history": _topic(
+        title="排产历史",
+        summary="这里看每次排产生成的版本摘要和结果概况，想对比不同版本先从这里入手。",
+        full_manual_anchor="#10-3排产历史",
+        help_card=_card(
+            "排产历史和结果查看的分工",
+            "这里主要看版本摘要和排产结果概况。",
+            "想看具体排程时间安排，请去甘特图、周计划或资源排班页面。",
+            "执行排产和模拟排产都会生成版本。",
+        ),
+        sections=[
+            _section("这个页面主要看什么", "{{scheduler_version_basics}}"),
+            _section(
+                "如何从历史页继续排查",
+                "\n".join(
+                    [
+                        "- 先找到目标版本，再跳去甘特图、周计划或资源排班中心看细节。",
+                        "- 如果要比较优劣，再去排产优化分析页看指标差异。",
+                    ]
+                ),
+            ),
+            _section(
+                "容易误解的地方",
+                "\n".join(
+                    [
+                        "- 历史页给的是概况，不是全部细节。",
+                        "- 看版本时要区分执行排产与模拟排产，不要把模拟结果误当成正式依据。",
+                    ]
+                ),
+            ),
+        ],
+        related_manual_ids=["scheduler_gantt", "scheduler_week_plan", "system_logs"],
+    ),
+}
