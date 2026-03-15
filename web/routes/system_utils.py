@@ -20,12 +20,15 @@ def _safe_next_url(raw: Optional[str]) -> str:
     安全重定向：
     - 仅允许站内相对路径（禁止 http(s):// 或 //host 形式）
     - 兼容 request.full_path 末尾的 '?'（无查询时）
+    - 空值、非法值统一回退到 dashboard 首页
     """
     s = (raw or "").strip()
     if not s:
         return url_for("dashboard.index")
     if s.endswith("?"):
         s = s[:-1]
+    if any(ch in s for ch in ("\r", "\n", "\x00", "\\")):
+        return url_for("dashboard.index")
     try:
         p = urlparse(s)
         if p.scheme or p.netloc:

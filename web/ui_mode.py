@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import os
 from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
 
 from flask import Blueprint, current_app, g, has_request_context, request, url_for
 from jinja2 import ChoiceLoader, FileSystemLoader
 from werkzeug.routing.exceptions import BuildError
 
-from data.repositories import SystemConfigRepository
+from core.services.system import SystemConfigService
 from web.bootstrap.static_versioning import EXT_KEY_TEMPLATE_URL_FOR
+from web.viewmodels.page_manuals import build_manual_for_endpoint, resolve_manual_id
 
 # -------------------------
 # Constants
@@ -27,6 +29,89 @@ _BP_NAME_V2_STATIC = "ui_v2_static"
 def normalize_ui_mode(value: Any) -> Optional[str]:
     v = ("" if value is None else str(value)).strip().lower()
     return v if v in VALID_UI_MODES else None
+
+
+def _resolve_manual_endpoint(endpoint: Any = None) -> str:
+    if endpoint is not None:
+        return str(endpoint).strip()
+    if not has_request_context():
+        return ""
+    try:
+        return str(request.endpoint or "").strip()
+    except Exception:
+        return ""
+
+
+def normalize_manual_src(raw: Any = None) -> Optional[str]:
+    text = ("" if raw is None else str(raw)).strip()
+    if not text or not text.startswith("/") or text.startswith("//"):
+        return None
+    if any(ch in text for ch in ("\r", "\n", "\x00", "\\")):
+        return None
+    try:
+        parts = urlsplit(text)
+    except Exception:
+        return None
+    if parts.scheme or parts.netloc or not parts.path.startswith("/"):
+        return None
+    return text
+
+
+def _resolve_manual_src(src: Any = None) -> str:
+    if src is not None:
+        return str(src)
+    if not has_request_context():
+        return "/"
+    try:
+        full_path = getattr(request, "full_path", "") or ""
+        if full_path:
+            return str(full_path)
+    except Exception:
+        pass
+    try:
+        return str(getattr(request, "path", "") or "/")
+    except Exception:
+        return "/"
+
+
+def get_manual_url(endpoint: Any = None, src: Any = None) -> Optional[str]:
+    current_endpoint = _resolve_manual_endpoint(endpoint)
+    if not current_endpoint or resolve_manual_id(current_endpoint) is None:
+        return None
+    safe_src = normalize_manual_src(_resolve_manual_src(src))
+    return safe_url_for("scheduler.config_manual_page", page=current_endpoint, src=safe_src)
+
+
+def get_full_manual_section_url(endpoint: Any = None, src: Any = None) -> Optional[str]:
+    current_endpoint = _resolve_manual_endpoint(endpoint)
+    if not current_endpoint:
+        return None
+    manual = build_manual_for_endpoint(current_endpoint, include_sections=False)
+    if not manual:
+        return None
+    safe_src = normalize_manual_src(_resolve_manual_src(src))
+    base_url = safe_url_for("scheduler.config_manual_page", src=safe_src)
+    if not base_url:
+        return None
+    anchor = str(manual.get("full_manual_anchor") or "").strip()
+    return base_url + anchor if anchor else base_url
+
+
+def get_help_card(endpoint: Any = None, src: Any = None) -> Optional[Dict[str, Any]]:
+    current_endpoint = _resolve_manual_endpoint(endpoint)
+    if not current_endpoint:
+        return None
+    manual = build_manual_for_endpoint(current_endpoint, include_sections=False)
+    if not manual:
+        return None
+    help_card = manual.get("help_card")
+    if not help_card:
+        return None
+    return {
+        "title": str(help_card.get("title") or "").strip(),
+        "items": list(help_card.get("items") or []),
+        "manual_url": get_manual_url(endpoint=current_endpoint, src=src),
+    }
 
 
 def init_ui_mode(app, base_dir: str) -> None:
@@ -76,12 +161,18 @@ def init_ui_mode(app, base_dir: str) -> None:
     # 兼容直接使用 Flask render_template 的路径以及 import 宏场景。
     try:
         app.jinja_env.globals.setdefault("safe_url_for", safe_url_for)
+        app.jinja_env.globals["get_help_card"] = get_help_card
+        app.jinja_env.globals["get_manual_url"] = get_manual_url
+        app.jinja_env.globals["get_full_manual_section_url"] = get_full_manual_section_url
     except Exception:
         pass
     try:
         v2_env = app.extensions.get(_EXT_KEY_V2_ENV)
         if v2_env is not None:
             v2_env.globals.setdefault("safe_url_for", safe_url_for)
+            v2_env.globals["get_help_card"] = get_help_card
+            v2_env.globals["get_manual_url"] = get_manual_url
+            v2_env.globals["get_full_manual_section_url"] = get_full_manual_section_url
     except Exception:
         pass
 
@@ -96,8 +187,8 @@ def _read_ui_mode_from_db() -> Optional[str]:
         conn = getattr(g, "db", None)
         if conn is None:
             return None
-        repo = SystemConfigRepository(conn, logger=getattr(current_app, "logger", None))
-        return normalize_ui_mode(repo.get_value(UI_MODE_CONFIG_KEY, default=None))
+        svc = SystemConfigService(conn, logger=getattr(current_app, "logger", None))
+        return normalize_ui_mode(svc.get_value(UI_MODE_CONFIG_KEY, default=None))
     except Exception:
         return None
 
@@ -207,6 +298,9 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
 
     # 注入：模板可用的安全 url_for（可用于可选功能链接/灰度发布）
     context.setdefault("safe_url_for", safe_url_for)
+    context.setdefault("get_help_card", get_help_card)
+    context.setdefault("get_manual_url", get_manual_url)
+    context.setdefault("get_full_manual_section_url", get_full_manual_section_url)
 
     if mode == "v2":
         env = _get_v2_env(app) or app.jinja_env
@@ -217,6 +311,9 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
     try:
         env.globals.setdefault("safe_url_for", safe_url_for)
         env.globals["url_for"] = template_url_for
+        env.globals["get_help_card"] = get_help_card
+        env.globals["get_manual_url"] = get_manual_url
+        env.globals["get_full_manual_section_url"] = get_full_manual_section_url
     except Exception:
         pass
 

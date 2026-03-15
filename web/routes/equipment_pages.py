@@ -58,6 +58,62 @@ def _selected_op_type_name(op_types: Dict[str, Any], machine) -> Any:
     return op_type.name if op_type else None
 
 
+def _load_active_downtime_machine_ids() -> set:
+    try:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        dt_q = MachineDowntimeQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+        return dt_q.list_active_machine_ids_at(now_str)
+    except Exception:
+        return set()
+
+
+def _group_machine_operator_links(link_rows: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    links_by_machine: Dict[str, List[Dict[str, Any]]] = {}
+    for row in link_rows:
+        machine_id = row["machine_id"]
+        links_by_machine.setdefault(machine_id, []).append(
+            {
+                "operator_id": row["operator_id"],
+                "operator_name": row["operator_name"],
+                "operator_status": row["operator_status"],
+            }
+        )
+    return links_by_machine
+
+
+def _build_machine_list_rows(
+    machines,
+    *,
+    op_types: Dict[str, Any],
+    team_name_map: Dict[str, str],
+    links_by_machine: Dict[str, List[Dict[str, Any]]],
+    downtime_now_set: set,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for machine in machines:
+        op_type = op_types.get(machine.op_type_id or "")
+        links = links_by_machine.get(machine.machine_id, [])
+        operator_text = ", ".join(
+            [f"{item['operator_id']}{(' ' + item['operator_name']) if item.get('operator_name') else ''}".strip() for item in links]
+        )
+        rows.append(
+            {
+                "machine_id": machine.machine_id,
+                "name": machine.name,
+                "op_type_id": machine.op_type_id,
+                "op_type_name": (op_type.name if op_type else None),
+                "team_id": machine.team_id,
+                "team_name": team_name_map.get(machine.team_id or ""),
+                "status": machine.status,
+                "status_zh": ("停机（计划）" if machine.machine_id in downtime_now_set else _machine_status_zh(machine.status)),
+                "remark": machine.remark,
+                "operator_text": operator_text,
+                "operator_count": len(links),
+            }
+        )
+    return rows
+
+
 @bp.get("/")
 def list_page():
     svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -75,51 +131,17 @@ def list_page():
             return redirect(url_for("equipment.list_page"))
         raise
     op_types = {ot.op_type_id: ot for ot in op_type_svc.list()}
-
-    downtime_now_set = set()
-    try:
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        dt_q = MachineDowntimeQueryService(g.db, op_logger=getattr(g, "op_logger", None))
-        downtime_now_set = dt_q.list_active_machine_ids_at(now_str)
-    except Exception:
-        downtime_now_set = set()
+    downtime_now_set = _load_active_downtime_machine_ids()
 
     om_q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
-    link_rows = om_q.list_links_with_operator_info()
-
-    links_by_machine: Dict[str, List[Dict[str, Any]]] = {}
-    for r in link_rows:
-        mc_id = r["machine_id"]
-        links_by_machine.setdefault(mc_id, []).append(
-            {
-                "operator_id": r["operator_id"],
-                "operator_name": r["operator_name"],
-                "operator_status": r["operator_status"],
-            }
-        )
-
-    view_rows: List[Dict[str, Any]] = []
-    for m in machines:
-        ot = op_types.get(m.op_type_id or "")
-        links = links_by_machine.get(m.machine_id, [])
-        operator_text = ", ".join(
-            [f"{x['operator_id']}{(' ' + x['operator_name']) if x.get('operator_name') else ''}".strip() for x in links]
-        )
-        view_rows.append(
-            {
-                "machine_id": m.machine_id,
-                "name": m.name,
-                "op_type_id": m.op_type_id,
-                "op_type_name": (ot.name if ot else None),
-                "team_id": m.team_id,
-                "team_name": team_name_map.get(m.team_id or ""),
-                "status": m.status,
-                "status_zh": ("停机（计划）" if m.machine_id in downtime_now_set else _machine_status_zh(m.status)),
-                "remark": m.remark,
-                "operator_text": operator_text,
-                "operator_count": len(links),
-            }
-        )
+    links_by_machine = _group_machine_operator_links(om_q.list_links_with_operator_info())
+    view_rows = _build_machine_list_rows(
+        machines,
+        op_types=op_types,
+        team_name_map=team_name_map,
+        links_by_machine=links_by_machine,
+        downtime_now_set=downtime_now_set,
+    )
 
     view_rows, pager = paginate_rows(view_rows, page, per_page)
     op_type_options = [(ot.op_type_id, ot.name) for ot in sorted(op_types.values(), key=lambda x: x.name)]
