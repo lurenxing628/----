@@ -1,12 +1,12 @@
 # Phase2（Models + Repositories）冒烟测试报告
 
-- 测试时间：2026-03-13 12:26:40
+- 测试时间：2026-03-16 10:58:02
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase2_bu86mj02`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase2_bu86mj02\aps_phase2_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase2_p0r3du4w`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase2_p0r3du4w\aps_phase2_test.db`
 
 ## 1. Schema 检查（Phase2 相关表）
 - 表数量：26
@@ -46,4 +46,4 @@
 
 ## 结论
 - 通过：Phase2（Models + Repositories）冒烟测试通过（CRUD/UNIQUE/FK/日历/配置/留痕）。
-- 总耗时：254 ms
+- 总耗时：290 ms

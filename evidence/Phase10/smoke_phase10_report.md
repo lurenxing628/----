@@ -1,10 +1,10 @@
 # Phase10（SGS/自动分配/OR-Tools/冻结窗口）冒烟测试报告
 
-- 测试时间：2026-03-13 12:27:15
+- 测试时间：2026-03-16 10:58:38
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录：`D:\Github\APS Test`
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase10_93nd4w26`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase10_93nd4w26\aps_phase10_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase10_hp_njzoj`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase10_hp_njzoj\aps_phase10_test.db`
 
 ## 1. 基础数据准备
 
@@ -35,4 +35,4 @@
 
 ## 结论
 - PASS：SGS/自动分配/冻结窗口/外协合并周期/停机避让 基本链路可用。
-- 总耗时：1.367s
+- 总耗时：1.513s
