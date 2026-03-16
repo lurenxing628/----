@@ -85,8 +85,8 @@ def auto_assign_internal_resources(
             return None
         machine_candidates = [m for m in machine_candidates if m in allowed]
 
-    # 去重 + 稳定
-    machine_candidates = sorted(list({m for m in machine_candidates if m}), key=lambda x: x)
+    # 去重（后续会按更有利于早停的顺序重排）
+    machine_candidates = list(dict.fromkeys([m for m in machine_candidates if m]))
     if not machine_candidates:
         return None
 
@@ -102,6 +102,14 @@ def auto_assign_internal_resources(
         return None
 
     cur_type = (str(getattr(op, "op_type_name", None) or "") or "").strip()
+    machine_candidates = sorted(
+        machine_candidates,
+        key=lambda mid: (
+            0 if (cur_type and (str(last_op_type_by_machine.get(mid) or "").strip() == cur_type)) else 1,
+            float(machine_busy_hours.get(mid, 0.0) or 0.0),
+            mid,
+        ),
+    )
 
     best: Optional[Tuple[Any, ...]] = None
     best_pair: Optional[Tuple[str, str]] = None
@@ -123,11 +131,21 @@ def auto_assign_internal_resources(
 
         if not op_candidates:
             continue
+        op_candidates = sorted(
+            op_candidates,
+            key=lambda oid: (
+                int((pair_rank or {}).get((oid, mid), 9999)) if isinstance(pair_rank, dict) else 9999,
+                float(operator_busy_hours.get(oid, 0.0) or 0.0),
+                oid,
+            ),
+        )
 
         # 逐 (machine, operator) 评估可行最早区间
         for oid in op_candidates:
             earliest = max(prev_end, base_time)
             earliest = scheduler.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=oid)
+            if best is not None and earliest > best[0]:
+                continue
 
             # 简化：效率取“开工时刻”的效率；若 earliest 因避让跨日/跨班次，则需重算
             def _scaled_hours(start: datetime, _oid: str = oid) -> float:
@@ -167,10 +185,12 @@ def auto_assign_internal_resources(
                     break
                 earliest = max(earliest, shift_to)
                 earliest = scheduler.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=oid)
+                if best is not None and earliest > best[0]:
+                    break
                 total_hours = _scaled_hours(earliest)
                 end = scheduler.calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=oid)
 
-            if guard >= 200:
+            if guard >= 200 or (best is not None and earliest > best[0]):
                 continue
             if end_dt_exclusive is not None and end >= end_dt_exclusive:
                 continue

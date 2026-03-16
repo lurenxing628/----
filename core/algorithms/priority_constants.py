@@ -30,3 +30,13 @@ def normalize_priority(value: Any, *, default: str = DEFAULT_PRIORITY) -> str:
         return d
     return s if s in PRIORITY_RANK else d
 
+
+def priority_weight_scaled(value: Any, *, scale: int = 100, default: str = DEFAULT_PRIORITY) -> int:
+    pr = normalize_priority(value, default=default)
+    try:
+        scale_i = max(1, int(scale))
+    except Exception:
+        scale_i = 100
+    weight = float(PRIORITY_WEIGHT.get(pr, PRIORITY_WEIGHT[DEFAULT_PRIORITY]))
+    return int(round(weight * scale_i))
+

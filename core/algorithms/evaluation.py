@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.priority_constants import PRIORITY_WEIGHT, normalize_priority
@@ -26,6 +26,12 @@ def _parse_due_date(value: Any) -> Optional[date]:
         return datetime.strptime(s, "%Y-%m-%d").date()
     except Exception:
         return None
+
+
+def _due_exclusive(d: Optional[date]) -> datetime:
+    if not d:
+        return datetime.max
+    return datetime(d.year, d.month, d.day) + timedelta(days=1)
 
 
 @dataclass
@@ -112,10 +118,10 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
         fin = finish_by_batch.get(bid)
         if not fin:
             continue
-        due_end = datetime(due_d.year, due_d.month, due_d.day, 23, 59, 59)
-        if fin > due_end:
+        due_exclusive = _due_exclusive(due_d)
+        if fin >= due_exclusive:
             overdue_count += 1
-            delta_h = (fin - due_end).total_seconds() / 3600.0
+            delta_h = (fin - due_exclusive).total_seconds() / 3600.0
             tardiness_hours += delta_h
             pr = normalize_priority(getattr(b, "priority", None), default="normal")
             w = float(PRIORITY_WEIGHT.get(pr, 1.0))
@@ -244,14 +250,23 @@ def objective_score(objective: str, metrics: ScheduleMetrics) -> Tuple[float, ..
     """
     目标函数（越小越好）。
 
-    objective 取值（V1.1）：
+    objective 取值（V1.1+）：
     - min_overdue: 优先最小化超期批次数，其次总拖期小时，再其次 makespan，再其次换型次数
     - min_tardiness: 优先最小化总拖期小时，其次超期批次数，再其次 makespan，再其次换型次数
+    - min_weighted_tardiness: 优先最小化加权拖期小时，其次超期批次数，再其次总拖期小时，再其次 makespan，再其次换型次数
     - min_changeover: 优先最小化换型次数，其次超期批次数，再其次总拖期小时，再其次 makespan
     """
     obj = (objective or "min_overdue").strip().lower()
     if obj == "min_tardiness":
         return (metrics.total_tardiness_hours, float(metrics.overdue_count), metrics.makespan_hours, float(metrics.changeover_count))
+    if obj == "min_weighted_tardiness":
+        return (
+            metrics.weighted_tardiness_hours,
+            float(metrics.overdue_count),
+            metrics.total_tardiness_hours,
+            metrics.makespan_hours,
+            float(metrics.changeover_count),
+        )
     if obj == "min_changeover":
         return (float(metrics.changeover_count), float(metrics.overdue_count), metrics.total_tardiness_hours, metrics.makespan_hours)
     # default: min_overdue

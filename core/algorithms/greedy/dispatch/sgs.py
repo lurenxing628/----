@@ -8,7 +8,7 @@ from core.algorithms.dispatch_rules import DispatchInputs, DispatchRule, build_d
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import EXTERNAL, INTERNAL, MERGED
 
-from ..downtime import get_resource_available
+from ..downtime import find_earliest_available_start
 
 
 def _parse_date(value: Any) -> Optional[date]:
@@ -228,11 +228,10 @@ def dispatch_sgs(
                         change_pen = 1
                     else:
                         prev_end = batch_progress.get(bid, base_time)
+                        dt_list = []
+                        if machine_downtimes and machine_id:
+                            dt_list = machine_downtimes.get(machine_id) or []
                         est_start = max(prev_end, base_time)
-                        # 粗略考虑“资源最新占用结束”（不扫描间隙；用于评分足够）
-                        est_start = max(est_start, get_resource_available(machine_timeline, machine_id, base_time))
-                        est_start = max(est_start, get_resource_available(operator_timeline, operator_id, base_time))
-                        est_start = scheduler.calendar.adjust_to_working_time(est_start, priority=priority, operator_id=operator_id)
 
                         setup_hours = getattr(op, "setup_hours", 0) or 0
                         unit_hours = getattr(op, "unit_hours", 0) or 0
@@ -244,22 +243,30 @@ def dispatch_sgs(
                             score_penalty = 1.0
                         if (not score_penalty) and ((not math.isfinite(float(total_hours))) or float(total_hours) < 0):
                             score_penalty = 1.0
-                        eff = 1.0
-                        try:
-                            eff = float(scheduler.calendar.get_efficiency(est_start, operator_id=operator_id) or 1.0)
-                        except Exception:
-                            eff = 1.0
-                        if (not math.isfinite(float(eff))) or float(eff) <= 0:
-                            eff = 1.0
                         if score_penalty and score_penalty > 0:
                             # 工时不可解析：打分阶段按“不可估算”处理，避免成为最优候选
                             try:
                                 proc_h = max(float(avg_proc_hours), 1e-6)
                             except Exception:
                                 proc_h = 1.0
+                            est_start = find_earliest_available_start(machine_timeline.get(machine_id) or [], est_start, proc_h)
+                            est_start = find_earliest_available_start(operator_timeline.get(operator_id) or [], est_start, proc_h)
+                            est_start = find_earliest_available_start(dt_list, est_start, proc_h)
+                            est_start = scheduler.calendar.adjust_to_working_time(est_start, priority=priority, operator_id=operator_id)
                             est_end = est_start
                             change_pen = 1
                         else:
+                            est_start = find_earliest_available_start(machine_timeline.get(machine_id) or [], est_start, total_hours)
+                            est_start = find_earliest_available_start(operator_timeline.get(operator_id) or [], est_start, total_hours)
+                            est_start = find_earliest_available_start(dt_list, est_start, total_hours)
+                            est_start = scheduler.calendar.adjust_to_working_time(est_start, priority=priority, operator_id=operator_id)
+                            eff = 1.0
+                            try:
+                                eff = float(scheduler.calendar.get_efficiency(est_start, operator_id=operator_id) or 1.0)
+                            except Exception:
+                                eff = 1.0
+                            if (not math.isfinite(float(eff))) or float(eff) <= 0:
+                                eff = 1.0
                             if eff and eff > 0 and eff != 1.0:
                                 total_hours = total_hours / eff
                             proc_h = max(float(total_hours), 0.0)
