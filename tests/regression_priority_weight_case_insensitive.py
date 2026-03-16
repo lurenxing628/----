@@ -28,8 +28,8 @@ def main():
     )
     batches = {"B001": batch}
 
-    due_end = datetime(2026, 1, 1, 23, 59, 59)
-    fin = due_end + timedelta(hours=10)
+    due_exclusive = datetime(2026, 1, 2, 0, 0, 0)
+    fin = due_exclusive + timedelta(hours=10)
 
     results = [
         ScheduleResult(

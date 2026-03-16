@@ -606,7 +606,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--mode", choices=["greedy", "improve", "both"], default="both", help="运行 greedy / improve 或两者对比")
     p.add_argument(
         "--objective",
-        choices=["min_overdue", "min_tardiness", "min_changeover"],
+        choices=["min_overdue", "min_tardiness", "min_weighted_tardiness", "min_changeover"],
         default="min_tardiness",
         help="目标函数（lexicographic）",
     )
