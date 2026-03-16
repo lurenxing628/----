@@ -106,12 +106,31 @@ def _safe_load_json(value: Any) -> Dict[str, Any]:
 
 
 def _objective_key_from_algo_objective(obj: Any) -> str:
-    v = str(obj or "min_overdue").strip()
+    v = str(obj or "min_overdue").strip().lower()
     if v == "min_tardiness":
         return "total_tardiness_hours"
+    if v == "min_weighted_tardiness":
+        return "weighted_tardiness_hours"
     if v == "min_changeover":
         return "changeover_count"
     return "overdue_count"
+
+
+def _comparison_metric_from_algo(algo: Any) -> str:
+    if isinstance(algo, dict):
+        metric = str(algo.get("comparison_metric") or "").strip()
+        if metric:
+            return metric
+        schema = algo.get("best_score_schema")
+        if isinstance(schema, list):
+            for item in schema:
+                if not isinstance(item, dict):
+                    continue
+                key = str(item.get("key") or "").strip()
+                if key and key != "failed_ops":
+                    return key
+    obj = algo.get("objective") if isinstance(algo, dict) else None
+    return _objective_key_from_algo_objective(obj)
 
 
 def _metric_value(row: Dict[str, Any], key: str) -> float:
@@ -212,7 +231,7 @@ def build_selected_details(
 
     algo = selected_summary.get("algo") if isinstance(selected_summary, dict) else None
     algo = algo if isinstance(algo, dict) else {}
-    objective_key = _objective_key_from_algo_objective(algo.get("objective"))
+    objective_key = _comparison_metric_from_algo(algo)
 
     attempts = algo.get("attempts") if isinstance(algo, dict) else None
     if isinstance(attempts, list):
@@ -225,6 +244,8 @@ def build_selected_details(
                 {
                     "tag": a.get("tag") or "-",
                     "strategy": a.get("strategy") or "-",
+                    "dispatch_mode": a.get("dispatch_mode") or "-",
+                    "dispatch_rule": a.get("dispatch_rule") or "-",
                     "failed_ops": safe_int(a.get("failed_ops"), default=0),
                     "score": score,
                     "metrics": m,

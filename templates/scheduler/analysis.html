@@ -14,11 +14,13 @@
   {% set mode_zh = {'improve': '优化模式', 'greedy': '快速模式', 'single': '单次排产'} %}
   {% set objective_zh = {
       'weighted_tardiness': '加权拖期最小',
+      'weighted_tardiness_hours': '加权拖期（小时）',
       'tardiness': '拖期最小',
       'makespan': '总工期最短',
       'changeover': '换型最少',
       'min_overdue': '最少超期',
       'min_tardiness': '最少拖期小时',
+      'min_weighted_tardiness': '最少加权拖期小时',
       'min_changeover': '最少换型次数',
       'overdue_count': '超期批次数',
       'total_tardiness_hours': '总拖期（小时）',
@@ -87,6 +89,40 @@
         <span class="meta-sep">｜</span>
         实际用时：<strong>{{ selected_summary.time_cost_ms if selected_summary else '-' }}</strong> 毫秒
       </div>
+      {% if algo and algo.best_score_schema %}
+        <div class="muted mt-2">
+          评分顺序：
+          {% for item in algo.best_score_schema %}
+            {{ objective_zh.get(item.get('key'), item.get('label') or item.get('key') or '-') }}{% if not loop.last %} → {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if algo and algo.config_snapshot %}
+        <details class="mt-2">
+          <summary>本次配置快照</summary>
+          <div class="muted mt-2">
+            排序：{{ algo.config_snapshot.get('sort_strategy', '-') }}
+            <span class="meta-sep">｜</span>
+            派工：{{ algo.config_snapshot.get('dispatch_mode', '-') }}{% if algo.config_snapshot.get('dispatch_rule') %}/{{ algo.config_snapshot.get('dispatch_rule') }}{% endif %}
+            <span class="meta-sep">｜</span>
+            目标：{{ objective_zh.get(algo.config_snapshot.get('objective'), algo.config_snapshot.get('objective') or '-') }}
+            <span class="meta-sep">｜</span>
+            时间预算：{{ algo.config_snapshot.get('time_budget_seconds', '-') }} 秒
+          </div>
+        </details>
+      {% endif %}
+      {% set da = algo.get('downtime_avoid') or {} %}
+      {% set fw = algo.get('freeze_window') or {} %}
+      {% if da.get('degraded') or fw.get('degraded') %}
+        <div class="flash-card flash-warning mt-2">
+          {% if da.get('degraded') %}
+            <div>停机避让约束已降级{% if da.get('degradation_reason') %}：{{ da.get('degradation_reason') }}{% endif %}。</div>
+          {% endif %}
+          {% if fw.get('degraded') %}
+            <div>冻结窗口约束已降级{% if fw.get('degradation_reason') %}：{{ fw.get('degradation_reason') }}{% endif %}。</div>
+          {% endif %}
+        </div>
+      {% endif %}
 
       {% if selected_metrics %}
         {% set m = selected_metrics %}
@@ -158,6 +194,12 @@
       {% endif %}
     </div>
 
+    {% if selected_summary and selected_summary.get('summary_truncated') %}
+      <div class="flash-card flash-warning">
+        当前展示为裁剪后摘要（原始 {{ selected_summary.get('original_size_bytes', 0) }} 字节），attempts / 优化曲线 / 超期明细可能不完整。
+      </div>
+    {% endif %}
+
     <div class="card">
       <h3 class="section-title">优化过程</h3>
       {% if trace_chart %}
@@ -177,7 +219,8 @@
             <tr>
               <th>排序</th>
               <th>方案编号</th>
-              <th>排产方式</th>
+              <th>排序策略</th>
+              <th>派工</th>
               <th>失败工序数</th>
               <th data-col-key="objective">{{ objective_zh.get(objective_key, objective_key) }}</th>
               <th>条形</th>
@@ -191,6 +234,7 @@
                 <td>{{ loop.index }}</td>
                 <td class="mono-tag">{{ r.tag }}</td>
                 <td>{{ strategy_zh.get(r.strategy, r.strategy or '-') }}</td>
+                <td>{{ r.dispatch_mode }}/{{ r.dispatch_rule }}</td>
                 <td>{{ r.failed_ops }}</td>
                 <td>
                   {% if objective_key in mm %}

@@ -292,6 +292,7 @@
             <select name="objective">
               <option value="min_overdue" {% if cfg.objective == 'min_overdue' %}selected{% endif %}>最少超期</option>
               <option value="min_tardiness" {% if cfg.objective == 'min_tardiness' %}selected{% endif %}>最少拖期小时</option>
+              <option value="min_weighted_tardiness" {% if cfg.objective == 'min_weighted_tardiness' %}selected{% endif %}>最少加权拖期小时</option>
               <option value="min_changeover" {% if cfg.objective == 'min_changeover' %}selected{% endif %}>最少换型次数</option>
             </select>
           </div>
