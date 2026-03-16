@@ -93,3 +93,4 @@ tools/ungoogled-chromium_*.zip
 /test_ui_mode_switch.py
 /verify_config_ui.py
 /screenshot_*.png
+.playwright-mcp/
