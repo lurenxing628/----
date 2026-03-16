@@ -18,9 +18,27 @@ def normalize_preset_snapshot(
     valid_algo_modes: Tuple[str, ...],
     valid_objectives: Tuple[str, ...],
 ) -> ScheduleConfigSnapshot:
-    st = str(data.get("sort_strategy") or base.sort_strategy).strip()
-    if st not in valid_strategies:
-        st = base.sort_strategy
+    def _valid_norm(values: Tuple[str, ...]) -> Tuple[str, ...]:
+        out = []
+        seen = set()
+        for item in values or ():
+            text = str(item).strip().lower()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            out.append(text)
+        return tuple(out)
+
+    valid_strategies_norm = _valid_norm(valid_strategies)
+    valid_dispatch_modes_norm = _valid_norm(valid_dispatch_modes)
+    valid_dispatch_rules_norm = _valid_norm(valid_dispatch_rules)
+    valid_algo_modes_norm = _valid_norm(valid_algo_modes)
+    valid_objectives_norm = _valid_norm(valid_objectives)
+
+    st = str(data.get("sort_strategy") or base.sort_strategy).strip().lower()
+    base_strategy = str(base.sort_strategy).strip().lower()
+    if st not in valid_strategies_norm:
+        st = base_strategy
 
     def _get_float(key: str, default: float, field: str) -> float:
         raw = data.get(key)
@@ -62,18 +80,22 @@ def normalize_preset_snapshot(
     freeze_window_enabled = _yesno(data.get("freeze_window_enabled"), default=str(base.freeze_window_enabled))
 
     dm = str(data.get("dispatch_mode") or base.dispatch_mode).strip().lower()
-    if dm not in valid_dispatch_modes:
-        dm = base.dispatch_mode
+    base_dispatch_mode = str(base.dispatch_mode).strip().lower()
+    if dm not in valid_dispatch_modes_norm:
+        dm = base_dispatch_mode
     dr = str(data.get("dispatch_rule") or base.dispatch_rule).strip().lower()
-    if dr not in valid_dispatch_rules:
-        dr = base.dispatch_rule
+    base_dispatch_rule = str(base.dispatch_rule).strip().lower()
+    if dr not in valid_dispatch_rules_norm:
+        dr = base_dispatch_rule
 
     algo_mode = str(data.get("algo_mode") or base.algo_mode).strip().lower()
-    if algo_mode not in valid_algo_modes:
-        algo_mode = base.algo_mode
-    objective = str(data.get("objective") or base.objective).strip()
-    if objective not in valid_objectives:
-        objective = base.objective
+    base_algo_mode = str(base.algo_mode).strip().lower()
+    if algo_mode not in valid_algo_modes_norm:
+        algo_mode = base_algo_mode
+    objective = str(data.get("objective") or base.objective).strip().lower()
+    base_objective = str(base.objective).strip().lower()
+    if objective not in valid_objectives_norm:
+        objective = base_objective
 
     def _get_int(key: str, default: int, min_v: int, field: str) -> int:
         raw = data.get(key)

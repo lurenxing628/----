@@ -50,7 +50,7 @@ class ConfigService:
 
     VALID_STRATEGIES = ("priority_first", "due_date_first", "weighted", "fifo")
     VALID_ALGO_MODES = ("greedy", "improve")
-    VALID_OBJECTIVES = ("min_overdue", "min_tardiness", "min_changeover")
+    VALID_OBJECTIVES = ("min_overdue", "min_tardiness", "min_weighted_tardiness", "min_changeover")
     VALID_DISPATCH_MODES = ("batch_order", "sgs")
     VALID_DISPATCH_RULES = ("slack", "cr", "atc")
 
@@ -197,7 +197,7 @@ class ConfigService:
         if "time_budget_seconds" not in existing:
             to_set.append(("time_budget_seconds", str(self.DEFAULT_TIME_BUDGET_SECONDS), "算法时间预算（秒；仅 improve 模式生效；建议<=180）"))
         if "objective" not in existing:
-            to_set.append(("objective", self.DEFAULT_OBJECTIVE, "目标函数：min_overdue/min_tardiness/min_changeover"))
+            to_set.append(("objective", self.DEFAULT_OBJECTIVE, "目标函数：min_overdue/min_tardiness/min_weighted_tardiness/min_changeover"))
         if "freeze_window_enabled" not in existing:
             to_set.append(("freeze_window_enabled", self.DEFAULT_FREEZE_WINDOW_ENABLED, "冻结窗口开关（yes/no）：复用上一版本窗口内排程"))
         if "freeze_window_days" not in existing:
@@ -372,7 +372,7 @@ class ConfigService:
             ("ortools_time_limit_seconds", str(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS), "OR-Tools 单次求解时间上限（秒；仅 ortools_enabled=yes 生效）"),
             ("algo_mode", self.DEFAULT_ALGO_MODE, "算法模式：greedy/improve（improve=多起点+目标函数+时间预算）"),
             ("time_budget_seconds", str(self.DEFAULT_TIME_BUDGET_SECONDS), "算法时间预算（秒；仅 improve 模式生效；建议<=180）"),
-            ("objective", self.DEFAULT_OBJECTIVE, "目标函数：min_overdue/min_tardiness/min_changeover"),
+            ("objective", self.DEFAULT_OBJECTIVE, "目标函数：min_overdue/min_tardiness/min_weighted_tardiness/min_changeover"),
             ("freeze_window_enabled", self.DEFAULT_FREEZE_WINDOW_ENABLED, "冻结窗口开关（yes/no）：复用上一版本窗口内排程"),
             ("freeze_window_days", str(self.DEFAULT_FREEZE_WINDOW_DAYS), "冻结窗口天数（>=0；仅 freeze_window_enabled=yes 生效）"),
             self._active_preset_update(self.BUILTIN_PRESET_DEFAULT),
@@ -475,11 +475,11 @@ class ConfigService:
             self.repo.set("time_budget_seconds", str(v), description="算法时间预算（秒；仅 improve 模式生效；建议<=180）")
 
     def set_objective(self, value: Any) -> None:
-        v = str(value or "").strip()
+        v = str(value or "").strip().lower()
         if v not in self.VALID_OBJECTIVES:
-            raise ValidationError("优化目标不正确，请选择：最少超期 / 最少拖期小时 / 最少换型次数。", field="优化目标")
+            raise ValidationError("优化目标不正确，请选择：最少超期 / 最少拖期小时 / 最少加权拖期小时 / 最少换型次数。", field="优化目标")
         with self.tx_manager.transaction():
-            self.repo.set("objective", v, description="目标函数：min_overdue/min_tardiness/min_changeover")
+            self.repo.set("objective", v, description="目标函数：min_overdue/min_tardiness/min_weighted_tardiness/min_changeover")
 
     def set_freeze_window(self, enabled: Any, days: Any) -> None:
         en = str(enabled or "").strip().lower()

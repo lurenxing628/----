@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.models.enums import YesNo
 
 from .number_utils import to_yes_no
+
+_SUMMARY_SIZE_LIMIT_BYTES = 512 * 1024
 
 
 def _serialize_end_date(end_date: Optional[Any]) -> Optional[str]:
@@ -24,6 +26,190 @@ def _serialize_end_date(end_date: Optional[Any]) -> Optional[str]:
         pass
     s = str(end_date).strip()
     return s if s else None
+
+
+def _due_exclusive(due_date) -> datetime:
+    if not due_date:
+        return datetime.max
+    return datetime(due_date.year, due_date.month, due_date.day) + timedelta(days=1)
+
+
+def _config_snapshot_dict(cfg: Any) -> Dict[str, Any]:
+    if cfg is None:
+        return {}
+    if isinstance(cfg, dict):
+        return dict(cfg)
+
+    try:
+        to_dict = getattr(cfg, "to_dict", None)
+        if callable(to_dict):
+            obj = to_dict()
+            if isinstance(obj, dict):
+                return dict(obj)
+    except Exception:
+        pass
+
+    keys = (
+        "sort_strategy",
+        "priority_weight",
+        "due_weight",
+        "ready_weight",
+        "holiday_default_efficiency",
+        "enforce_ready_default",
+        "prefer_primary_skill",
+        "dispatch_mode",
+        "dispatch_rule",
+        "auto_assign_enabled",
+        "ortools_enabled",
+        "ortools_time_limit_seconds",
+        "algo_mode",
+        "time_budget_seconds",
+        "objective",
+        "freeze_window_enabled",
+        "freeze_window_days",
+    )
+    out: Dict[str, Any] = {}
+    for key in keys:
+        try:
+            if not hasattr(cfg, key):
+                continue
+            value = getattr(cfg, key)
+        except Exception:
+            continue
+        if value is None:
+            continue
+        if isinstance(value, (str, int, float, bool)):
+            out[key] = value
+            continue
+        out[key] = str(value)
+    return out
+
+
+def _cfg_value(cfg: Any, key: str, default: Any = None) -> Any:
+    from core.algorithms.greedy.config_adapter import cfg_get
+
+    return cfg_get(cfg, key, default)
+
+
+def _comparison_metric(objective_name: str) -> str:
+    obj = str(objective_name or "min_overdue").strip().lower()
+    if obj == "min_tardiness":
+        return "total_tardiness_hours"
+    if obj == "min_weighted_tardiness":
+        return "weighted_tardiness_hours"
+    if obj == "min_changeover":
+        return "changeover_count"
+    return "overdue_count"
+
+
+def _best_score_schema(objective_name: str) -> List[Dict[str, Any]]:
+    obj = str(objective_name or "min_overdue").strip().lower()
+    parts: List[Tuple[str, str]]
+    if obj == "min_tardiness":
+        parts = [
+            ("failed_ops", "失败工序数"),
+            ("total_tardiness_hours", "总拖期小时"),
+            ("overdue_count", "超期批次数"),
+            ("makespan_hours", "总工期小时"),
+            ("changeover_count", "换型次数"),
+        ]
+    elif obj == "min_weighted_tardiness":
+        parts = [
+            ("failed_ops", "失败工序数"),
+            ("weighted_tardiness_hours", "加权拖期小时"),
+            ("overdue_count", "超期批次数"),
+            ("total_tardiness_hours", "总拖期小时"),
+            ("makespan_hours", "总工期小时"),
+            ("changeover_count", "换型次数"),
+        ]
+    elif obj == "min_changeover":
+        parts = [
+            ("failed_ops", "失败工序数"),
+            ("changeover_count", "换型次数"),
+            ("overdue_count", "超期批次数"),
+            ("total_tardiness_hours", "总拖期小时"),
+            ("makespan_hours", "总工期小时"),
+        ]
+    else:
+        parts = [
+            ("failed_ops", "失败工序数"),
+            ("overdue_count", "超期批次数"),
+            ("total_tardiness_hours", "总拖期小时"),
+            ("makespan_hours", "总工期小时"),
+            ("changeover_count", "换型次数"),
+        ]
+    return [{"index": int(idx), "key": key, "label": label} for idx, (key, label) in enumerate(parts)]
+
+
+def _summary_size_bytes(obj: Dict[str, Any]) -> int:
+    return len(json.dumps(obj, ensure_ascii=False).encode("utf-8"))
+
+
+def _apply_summary_size_guard(result_summary_obj: Dict[str, Any]) -> Dict[str, Any]:
+    original_size = _summary_size_bytes(result_summary_obj)
+    if original_size <= _SUMMARY_SIZE_LIMIT_BYTES:
+        return result_summary_obj
+
+    algo = result_summary_obj.get("algo")
+    algo_dict = algo if isinstance(algo, dict) else {}
+    trace = algo_dict.get("improvement_trace")
+    warnings = result_summary_obj.get("warnings")
+    attempts = algo_dict.get("attempts")
+    best_batch_order = algo_dict.get("best_batch_order")
+    selected_batch_ids = result_summary_obj.get("selected_batch_ids")
+    overdue_batches = result_summary_obj.get("overdue_batches")
+    overdue_items = overdue_batches.get("items") if isinstance(overdue_batches, dict) else None
+
+    def _trim_trace(limit: int) -> None:
+        if isinstance(trace, list):
+            algo_dict["improvement_trace"] = trace[:limit]
+
+    def _trim_warnings(limit: int) -> None:
+        if isinstance(warnings, list):
+            result_summary_obj["warnings"] = warnings[:limit]
+
+    def _trim_attempts(limit: int) -> None:
+        if isinstance(attempts, list):
+            algo_dict["attempts"] = attempts[:limit]
+
+    def _trim_best_batch_order(limit: int) -> None:
+        if isinstance(best_batch_order, list):
+            algo_dict["best_batch_order"] = best_batch_order[:limit]
+
+    def _trim_selected_batch_ids(limit: int) -> None:
+        if isinstance(selected_batch_ids, list):
+            result_summary_obj["selected_batch_ids"] = selected_batch_ids[:limit]
+
+    def _trim_overdue_items(limit: int) -> None:
+        if isinstance(overdue_batches, dict) and isinstance(overdue_items, list):
+            overdue_batches["items"] = overdue_items[:limit]
+
+    for trace_limit, warning_limit, attempt_limit, best_order_limit, selected_ids_limit, overdue_items_limit in (
+        (80, 50, 12, None, None, None),
+        (20, 20, 12, None, None, None),
+        (0, 20, 12, None, None, None),
+        (0, 10, 6, None, None, None),
+        (0, 0, 6, 2000, 2000, 500),
+        (0, 0, 6, 500, 1000, 200),
+        (0, 0, 6, 100, 200, 50),
+        (0, 0, 6, 0, 50, 20),
+        (0, 0, 0, 0, 0, 0),
+    ):
+        _trim_trace(trace_limit)
+        _trim_warnings(warning_limit)
+        _trim_attempts(attempt_limit)
+        if best_order_limit is not None:
+            _trim_best_batch_order(best_order_limit)
+        if selected_ids_limit is not None:
+            _trim_selected_batch_ids(selected_ids_limit)
+        if overdue_items_limit is not None:
+            _trim_overdue_items(overdue_items_limit)
+        result_summary_obj["summary_truncated"] = True
+        result_summary_obj["original_size_bytes"] = int(original_size)
+        if _summary_size_bytes(result_summary_obj) <= _SUMMARY_SIZE_LIMIT_BYTES:
+            return result_summary_obj
+
+    return result_summary_obj
 
 
 def _finish_time_by_batch(results: List[Any]) -> Dict[str, datetime]:
@@ -62,7 +248,7 @@ def _build_overdue_items(svc, *, batches: Dict[str, Any], finish_by_batch: Dict[
         finish = finish_by_batch.get(str(bid))
         if not finish:
             continue
-        if finish.date() > due_date:
+        if finish >= _due_exclusive(due_date):
             overdue_items.append(
                 {
                     "batch_id": bid,
@@ -125,7 +311,7 @@ def _extract_freeze_warnings(summary: Any) -> List[str]:
 
 def _compute_downtime_degradation(cfg: Any, *, downtime_meta: Optional[Dict[str, Any]]) -> Tuple[bool, bool, bool, Optional[str], bool]:
     auto_assign_enabled = (
-        to_yes_no(getattr(cfg, "auto_assign_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
+        to_yes_no(_cfg_value(cfg, "auto_assign_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
     )
 
     meta = downtime_meta if isinstance(downtime_meta, dict) else {}
@@ -158,7 +344,7 @@ def _hard_constraints(cfg: Any, *, downtime_degraded: bool) -> List[str]:
     ]
     if not downtime_degraded:
         hard_constraints.append("downtime_avoid")
-    if to_yes_no(getattr(cfg, "freeze_window_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value:
+    if to_yes_no(_cfg_value(cfg, "freeze_window_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value:
         hard_constraints.append("freeze_window")
     return hard_constraints
 
@@ -217,8 +403,9 @@ def build_result_summary(
     )
     hard_constraints = _hard_constraints(cfg, downtime_degraded=downtime_degraded)
 
+    comparison_metric = _comparison_metric(objective_name)
     result_summary_obj: Dict[str, Any] = {
-        "summary_schema_version": "1.0",
+        "summary_schema_version": "1.1",
         "is_simulation": bool(simulate),
         "version": int(version),
         "strategy": used_strategy.value,
@@ -226,10 +413,13 @@ def build_result_summary(
         "algo": {
             "mode": algo_mode,
             "objective": objective_name,
+            "comparison_metric": comparison_metric,
+            "config_snapshot": _config_snapshot_dict(cfg),
             "time_budget_seconds": int(time_budget_seconds),
             "hard_constraints": hard_constraints,
             "soft_objectives": [objective_name],
             "best_score": list(best_score) if best_score is not None else None,
+            "best_score_schema": _best_score_schema(objective_name),
             "metrics": best_metrics.to_dict() if best_metrics is not None else None,
             "best_batch_order": list(best_order or []),
             "attempts": (attempts or [])[:12],
@@ -241,8 +431,8 @@ def build_result_summary(
                 "extend_attempted": bool(downtime_extend_attempted) if auto_assign_enabled else False,
             },
             "freeze_window": {
-                "enabled": getattr(cfg, "freeze_window_enabled", "no"),
-                "days": int(getattr(cfg, "freeze_window_days", 0) or 0),
+                "enabled": _cfg_value(cfg, "freeze_window_enabled", "no"),
+                "days": int(_cfg_value(cfg, "freeze_window_days", 0) or 0),
                 "frozen_op_count": int(len(frozen_op_ids)),
                 "frozen_batch_count": int(len(frozen_batch_ids)),
                 "frozen_batch_ids_sample": frozen_batch_ids[:20],
@@ -266,6 +456,7 @@ def build_result_summary(
         "time_cost_ms": int(time_cost_ms),
     }
 
+    result_summary_obj = _apply_summary_size_guard(result_summary_obj)
     result_summary_json = json.dumps(result_summary_obj, ensure_ascii=False)
     return overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms
 

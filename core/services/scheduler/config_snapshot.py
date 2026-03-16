@@ -59,9 +59,16 @@ def build_schedule_config_snapshot(
     valid_algo_modes: Tuple[str, ...],
     valid_objectives: Tuple[str, ...],
 ) -> ScheduleConfigSnapshot:
-    strategy = repo.get_value("sort_strategy", default=defaults["sort_strategy"]) or defaults["sort_strategy"]
-    if strategy not in valid_strategies:
-        strategy = defaults["sort_strategy"]
+    def _choice(key: str, default: Any, valid: Tuple[str, ...]) -> str:
+        valid_norm = tuple(str(item).strip().lower() for item in (valid or ()) if str(item).strip())
+        default_s = str(default or "").strip().lower()
+        if default_s not in valid_norm and valid_norm:
+            default_s = valid_norm[0]
+        raw = repo.get_value(key, default=default_s)
+        text = str(raw if raw is not None else default_s).strip().lower()
+        return text if text in valid_norm else default_s
+
+    strategy = _choice("sort_strategy", defaults["sort_strategy"], valid_strategies)
 
     def _get_float(key: str, default: float) -> float:
         raw = repo.get_value(key, default=str(default))
@@ -88,12 +95,8 @@ def build_schedule_config_snapshot(
     raw_pref = repo.get_value("prefer_primary_skill", default="no")
     pref = to_yes_no(raw_pref, default="no")
 
-    dm = (repo.get_value("dispatch_mode", default=defaults["dispatch_mode"]) or defaults["dispatch_mode"]).strip()
-    if dm not in valid_dispatch_modes:
-        dm = defaults["dispatch_mode"]
-    dr = (repo.get_value("dispatch_rule", default=defaults["dispatch_rule"]) or defaults["dispatch_rule"]).strip()
-    if dr not in valid_dispatch_rules:
-        dr = defaults["dispatch_rule"]
+    dm = _choice("dispatch_mode", defaults["dispatch_mode"], valid_dispatch_modes)
+    dr = _choice("dispatch_rule", defaults["dispatch_rule"], valid_dispatch_rules)
 
     aa_raw = repo.get_value("auto_assign_enabled", default=defaults["auto_assign_enabled"])
     aa = to_yes_no(aa_raw, default=defaults["auto_assign_enabled"])
@@ -111,13 +114,8 @@ def build_schedule_config_snapshot(
     ort_limit = _get_int("ortools_time_limit_seconds", int(defaults["ortools_time_limit_seconds"]))
     ort_limit = max(1, int(ort_limit))
 
-    algo_mode = (repo.get_value("algo_mode", default=defaults["algo_mode"]) or defaults["algo_mode"]).strip()
-    if algo_mode not in valid_algo_modes:
-        algo_mode = defaults["algo_mode"]
-
-    obj = (repo.get_value("objective", default=defaults["objective"]) or defaults["objective"]).strip()
-    if obj not in valid_objectives:
-        obj = defaults["objective"]
+    algo_mode = _choice("algo_mode", defaults["algo_mode"], valid_algo_modes)
+    obj = _choice("objective", defaults["objective"], valid_objectives)
 
     time_budget = _get_int("time_budget_seconds", int(defaults["time_budget_seconds"]))
     time_budget = max(1, int(time_budget))

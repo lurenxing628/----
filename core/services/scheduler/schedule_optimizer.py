@@ -30,6 +30,44 @@ class OptimizationOutcome:
     time_budget_seconds: int
 
 
+def _score_tuple(score: Any) -> Tuple[float, ...]:
+    if not isinstance(score, (list, tuple)) or not score:
+        return (float("inf"),)
+    out: List[float] = []
+    for x in score:
+        try:
+            out.append(float(x))
+        except Exception:
+            out.append(float("inf"))
+    return tuple(out)
+
+
+def _compact_attempts(attempts: List[Dict[str, Any]], *, limit: int = 12) -> List[Dict[str, Any]]:
+    if len(attempts or []) <= limit:
+        return list(attempts or [])
+
+    best_by_mode: Dict[str, Dict[str, Any]] = {}
+    for item in attempts or []:
+        mode = str(item.get("dispatch_mode") or "")
+        cur = best_by_mode.get(mode)
+        if cur is None or _score_tuple(item.get("score")) < _score_tuple(cur.get("score")):
+            best_by_mode[mode] = item
+
+    selected: List[Dict[str, Any]] = list(best_by_mode.values())
+    selected_tags = {str(it.get("tag") or "") for it in selected}
+    for item in sorted(list(attempts or []), key=lambda x: _score_tuple(x.get("score"))):
+        tag = str(item.get("tag") or "")
+        if tag in selected_tags:
+            continue
+        selected.append(item)
+        selected_tags.add(tag)
+        if len(selected) >= limit:
+            break
+
+    selected.sort(key=lambda x: _score_tuple(x.get("score")))
+    return selected[:limit]
+
+
 def _run_local_search(
     *,
     algo_mode: str,
@@ -207,19 +245,28 @@ def optimize_schedule(
     # 算法层只读取“纯配置快照”，不依赖 ConfigService 形态（仍兼容旧形态）
     cfg_snapshot = cfg.to_dict() if hasattr(cfg, "to_dict") else (cfg if isinstance(cfg, dict) else None)
     scheduler = GreedyScheduler(calendar_service=calendar_service, config_service=cfg_snapshot, logger=logger)
+    from core.algorithms.greedy.config_adapter import cfg_get
 
-    strategy_enum: SortStrategy = parse_strategy(getattr(cfg, "sort_strategy", None), default=SortStrategy.PRIORITY_FIRST)
+    def _cfg_value(key: str, default: Any = None) -> Any:
+        source = cfg_snapshot if cfg_snapshot is not None else cfg
+        return cfg_get(source, key, default)
+
+    def _norm_text(value: Any, default: str) -> str:
+        text = str(value if value is not None else default).strip().lower()
+        return text or str(default).strip().lower()
+
+    strategy_enum: SortStrategy = parse_strategy(_cfg_value("sort_strategy", None), default=SortStrategy.PRIORITY_FIRST)
 
     strategy_params: Optional[Dict[str, Any]] = None
     if strategy_enum == SortStrategy.WEIGHTED:
         strategy_params = {
-            "priority_weight": float(cfg.priority_weight),
-            "due_weight": float(cfg.due_weight),
+            "priority_weight": float(_cfg_value("priority_weight", 0.4) or 0.4),
+            "due_weight": float(_cfg_value("due_weight", 0.5) or 0.5),
         }
 
-    algo_mode = (getattr(cfg, "algo_mode", "greedy") or "greedy").strip()
-    objective_name = (getattr(cfg, "objective", "min_overdue") or "min_overdue").strip()
-    time_budget_seconds = int(getattr(cfg, "time_budget_seconds", 20) or 20)
+    algo_mode = _norm_text(_cfg_value("algo_mode", "greedy"), "greedy")
+    objective_name = _norm_text(_cfg_value("objective", "min_overdue"), "min_overdue")
+    time_budget_seconds = int(_cfg_value("time_budget_seconds", 20) or 20)
     time_budget_seconds = max(1, int(time_budget_seconds))
 
     def _parse_date(value: Any) -> Optional[Any]:
@@ -271,10 +318,30 @@ def optimize_schedule(
         sorter0 = StrategyFactory.create(strategy0, **(params or {}))
         return [x.batch_id for x in sorter0.sort(batch_for_sort, base_date=start_dt.date())]
 
+    def _cfg_choices(name: str, default: Tuple[str, ...]) -> List[str]:
+        raw = getattr(cfg_svc, name, default)
+        if not isinstance(raw, (list, tuple)):
+            raw = [raw]
+        out: List[str] = []
+        seen = set()
+        for item in raw:
+            text = str(item or "").strip().lower()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            out.append(text)
+        if out:
+            return out
+        return [str(item).strip().lower() for item in default]
+
+    valid_strategies = _cfg_choices("VALID_STRATEGIES", ("priority_first", "due_date_first", "weighted", "fifo"))
+    valid_dispatch_modes = _cfg_choices("VALID_DISPATCH_MODES", ("batch_order", "sgs"))
+    valid_dispatch_rules = _cfg_choices("VALID_DISPATCH_RULES", ("slack", "cr", "atc"))
+
     # multi-start：策略集（先用当前策略，再补全其它策略）
     current_key = str(strategy_enum.value)
     if algo_mode == "improve":
-        keys = [current_key] + [k for k in cfg_svc.VALID_STRATEGIES if k != current_key]  # type: ignore[attr-defined]
+        keys = [current_key] + [k for k in valid_strategies if k != current_key]
     else:
         keys = [current_key]
 
@@ -338,13 +405,13 @@ def optimize_schedule(
             except Exception:
                 _ = None
 
-    # improve：规则随机化（派工规则）+ 多起点
-    dispatch_mode_cfg = (getattr(cfg, "dispatch_mode", None) or "batch_order").strip() or "batch_order"
-    dispatch_rule_cfg = (getattr(cfg, "dispatch_rule", None) or "slack").strip() or "slack"
-    if algo_mode == "improve" and dispatch_mode_cfg == "sgs":
-        dispatch_rules = [dispatch_rule_cfg] + [x for x in cfg_svc.VALID_DISPATCH_RULES if x != dispatch_rule_cfg]  # type: ignore[attr-defined]
+    # improve：dispatch_mode × strategy × dispatch_rule（仅 sgs 扩 dispatch_rule）
+    dispatch_mode_cfg = _norm_text(_cfg_value("dispatch_mode", None), "batch_order")
+    dispatch_rule_cfg = _norm_text(_cfg_value("dispatch_rule", None), "slack")
+    if algo_mode == "improve":
+        dispatch_modes = [dispatch_mode_cfg] + [x for x in valid_dispatch_modes if x != dispatch_mode_cfg]
     else:
-        dispatch_rules = [dispatch_rule_cfg]
+        dispatch_modes = [dispatch_mode_cfg]
 
     # 可选：OR-Tools 高质量起点（瓶颈子问题）
     best = _run_ortools_warmstart(
@@ -373,7 +440,9 @@ def optimize_schedule(
     # 执行策略轮询（multi-start）
     best = _run_multi_start(
         keys=keys,
-        dispatch_rules=dispatch_rules,
+        dispatch_modes=dispatch_modes,
+        dispatch_rule_cfg=dispatch_rule_cfg,
+        valid_dispatch_rules=list(valid_dispatch_rules),
         scheduler=scheduler,
         algo_ops_to_schedule=algo_ops_to_schedule,
         batches=batches,
@@ -381,7 +450,6 @@ def optimize_schedule(
         end_date=end_date,
         downtime_map=downtime_map,
         seed_sr_list=seed_sr_list,
-        dispatch_mode_cfg=dispatch_mode_cfg,
         cfg=cfg,
         resource_pool=resource_pool,
         objective_name=objective_name,
@@ -440,7 +508,7 @@ def optimize_schedule(
             metrics=best_metrics,
             best_score=best_score,
             best_order=best_order,
-            attempts=attempts[:12],
+            attempts=_compact_attempts(attempts, limit=12),
             improvement_trace=improvement_trace[:200],
             algo_mode=algo_mode,
             objective_name=objective_name,
@@ -463,7 +531,7 @@ def optimize_schedule(
         metrics=best_metrics,
         best_score=best_score,
         best_order=list(best_order or []),
-        attempts=(attempts or [])[:12],
+        attempts=_compact_attempts(attempts, limit=12),
         improvement_trace=(improvement_trace or [])[:200],
         algo_mode=algo_mode,
         objective_name=objective_name,

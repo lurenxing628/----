@@ -30,6 +30,13 @@ class DayPolicy:
     allow_normal: str
     allow_urgent: str
     shift_start: time = time(8, 0, 0)
+    _window_start: Optional[datetime] = None
+    _window_end: Optional[datetime] = None
+
+    def __post_init__(self) -> None:
+        d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
+        self._window_start = datetime.combine(d, self.shift_start)
+        self._window_end = self._window_start + timedelta(hours=float(self.shift_hours or 0.0))
 
     def is_priority_allowed(self, priority: Optional[str]) -> bool:
         # 防御：priority 可能大小写不一致/非字符串/空值
@@ -42,9 +49,14 @@ class DayPolicy:
         return self.allow_urgent == YesNo.YES.value
 
     def work_window(self) -> Tuple[datetime, datetime]:
-        d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
-        start = datetime.combine(d, self.shift_start)
-        end = start + timedelta(hours=float(self.shift_hours or 0.0))
+        start = self._window_start
+        end = self._window_end
+        if start is None or end is None:
+            d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
+            start = datetime.combine(d, self.shift_start)
+            end = start + timedelta(hours=float(self.shift_hours or 0.0))
+            self._window_start = start
+            self._window_end = end
         return start, end
 
 

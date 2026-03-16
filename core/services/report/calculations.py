@@ -33,6 +33,16 @@ def parse_dt(value: Any) -> Optional[datetime]:
     return None
 
 
+def due_exclusive(due_dt: Optional[datetime]) -> datetime:
+    if due_dt is None:
+        return datetime.max
+    if isinstance(due_dt, date) and not isinstance(due_dt, datetime):
+        d = due_dt
+    else:
+        d = due_dt.date()
+    return datetime(d.year, d.month, d.day) + timedelta(days=1)
+
+
 def overlap_seconds(a_start: datetime, a_end: datetime, b_start: datetime, b_end: datetime) -> float:
     s = max(a_start, b_start)
     e = min(a_end, b_end)
@@ -70,8 +80,8 @@ def compute_overdue_buckets(
     计算“已排程逾期 / 未排程逾期”两类清单。
 
     返回：(scheduled_items, unscheduled_items, as_of_time_str)
-    - scheduled：有 finish_time 且 finish_time > due_end
-    - unscheduled：无 finish_time 且 now > due_end（以 now 作为截至时间）
+    - scheduled：有 finish_time 且 finish_time >= due_exclusive
+    - unscheduled：无 finish_time 且 now >= due_exclusive（以 now 作为截至时间）
     """
     now0 = now_dt or datetime.now()
     as_of = now0.strftime("%Y-%m-%d %H:%M:%S")
@@ -85,14 +95,14 @@ def compute_overdue_buckets(
         due_d = parse_dt(due_s)
         if not due_d:
             continue
-        due_end = datetime(due_d.year, due_d.month, due_d.day, 23, 59, 59)
+        due_excl = due_exclusive(due_d)
 
         finish_dt = parse_dt(finish_s)
         if finish_dt is not None:
             # 已排程：按实际完工时间判断
-            if finish_dt <= due_end:
+            if finish_dt < due_excl:
                 continue
-            delay_sec = (finish_dt - due_end).total_seconds()
+            delay_sec = (finish_dt - due_excl).total_seconds()
             delay_hours = round(delay_sec / 3600.0, 2)
             delay_days = round(delay_sec / 86400.0, 2)
             scheduled.append(
@@ -114,9 +124,9 @@ def compute_overdue_buckets(
             continue
 
         # 未排程：以 now 作为截至时间判断是否逾期
-        if now0 <= due_end:
+        if now0 < due_excl:
             continue
-        delay_sec = (now0 - due_end).total_seconds()
+        delay_sec = (now0 - due_excl).total_seconds()
         delay_hours = round(delay_sec / 3600.0, 2)
         delay_days = round(delay_sec / 86400.0, 2)
         unscheduled.append(
@@ -150,7 +160,7 @@ def compute_utilization(
     by_operator: Dict[str, Dict[str, Any]] = {}
 
     for r in schedule_rows:
-        if (r.get("source") or "").strip() != SourceType.INTERNAL.value:
+        if (r.get("source") or "").strip().lower() != SourceType.INTERNAL.value:
             continue
         s_dt = parse_dt(r.get("start_time"))
         e_dt = parse_dt(r.get("end_time"))
@@ -233,7 +243,7 @@ def compute_downtime_impact(
 
     by_machine_sch: Dict[str, List[Tuple[datetime, datetime]]] = {}
     for r in schedule_rows:
-        if (r.get("source") or "").strip() != SourceType.INTERNAL.value:
+        if (r.get("source") or "").strip().lower() != SourceType.INTERNAL.value:
             continue
         mc = str(r.get("machine_id") or "").strip()
         if not mc:

@@ -41,7 +41,12 @@ def _run_ortools_warmstart(
     logger: Any,
 ) -> Optional[Dict[str, Any]]:
     # 可选：OR-Tools 高质量起点（瓶颈子问题）
-    if algo_mode == "improve" and _is_yes(getattr(cfg, "ortools_enabled", None), default=YesNo.NO.value):
+    from core.algorithms.greedy.config_adapter import cfg_get
+
+    def _cfg_value(key: str, default: Any = None) -> Any:
+        return cfg_get(cfg, key, default)
+
+    if algo_mode == "improve" and _is_yes(_cfg_value("ortools_enabled", None), default=YesNo.NO.value):
         try:
             from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
 
@@ -51,7 +56,7 @@ def _run_ortools_warmstart(
             # - remaining<1：避免 int(remaining)=0 被 tl=max(1,...) 拉回 1s 导致超时
             ort_order = None
             if remaining >= 1.0:
-                tl_cfg = int(getattr(cfg, "ortools_time_limit_seconds", 5) or 5)
+                tl_cfg = int(_cfg_value("ortools_time_limit_seconds", 5) or 5)
                 tl = max(1, min(int(tl_cfg), int(remaining)))
                 ort_order = try_solve_bottleneck_batch_order(
                     operations=algo_ops_to_schedule,
@@ -66,8 +71,8 @@ def _run_ortools_warmstart(
                 ort_params: Dict[str, Any] = {}
                 if ort_strat == SortStrategy.WEIGHTED:
                     ort_params = {
-                        "priority_weight": float(cfg.priority_weight),
-                        "due_weight": float(cfg.due_weight),
+                        "priority_weight": float(_cfg_value("priority_weight", 0.4) or 0.4),
+                        "due_weight": float(_cfg_value("due_weight", 0.5) or 0.5),
                     }
                 res, summ, used_strat, used_params = scheduler.schedule(
                     operations=algo_ops_to_schedule,
@@ -136,7 +141,9 @@ def _run_ortools_warmstart(
 def _run_multi_start(
     *,
     keys: List[str],
-    dispatch_rules: List[str],
+    dispatch_modes: List[str],
+    dispatch_rule_cfg: str,
+    valid_dispatch_rules: List[str],
     scheduler: GreedyScheduler,
     algo_ops_to_schedule: List[Any],
     batches: Dict[str, Any],
@@ -144,7 +151,6 @@ def _run_multi_start(
     end_date: Optional[date],
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     seed_sr_list: List[ScheduleResult],
-    dispatch_mode_cfg: str,
     cfg: Any,
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
@@ -155,73 +161,84 @@ def _run_multi_start(
     t_begin: float,
     build_order: Any,
 ) -> Optional[Dict[str, Any]]:
+    from core.algorithms.greedy.config_adapter import cfg_get
+
+    def _cfg_value(key: str, default: Any = None) -> Any:
+        return cfg_get(cfg, key, default)
+
     # 执行策略轮询（multi-start）
-    for k in keys:
+    for dm in dispatch_modes:
         if time.time() > deadline:
             break
-        strat = parse_strategy(k, default=SortStrategy.PRIORITY_FIRST)
-        params0: Dict[str, Any] = {}
-        if strat == SortStrategy.WEIGHTED:
-            params0 = {
-                "priority_weight": float(cfg.priority_weight),
-                "due_weight": float(cfg.due_weight),
-            }
-
-        for dr in dispatch_rules:
+        dispatch_rules = [dispatch_rule_cfg]
+        if dm == "sgs":
+            dispatch_rules = [dispatch_rule_cfg] + [x for x in valid_dispatch_rules if x != dispatch_rule_cfg]
+        for k in keys:
             if time.time() > deadline:
                 break
-            order = build_order(strat, params0)
-            res, summ, used_strat, used_params = scheduler.schedule(
-                operations=algo_ops_to_schedule,
-                batches=batches,
-                strategy=strat,
-                strategy_params=params0,
-                start_dt=start_dt,
-                end_date=end_date,
-                machine_downtimes=downtime_map,
-                batch_order_override=order,
-                seed_results=seed_sr_list,
-                dispatch_mode=dispatch_mode_cfg,
-                dispatch_rule=dr,
-                resource_pool=resource_pool,
-            )
-            metrics = compute_metrics(res, batches)
-            score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
-            attempts.append(
-                {
-                    "tag": f"start:{k}|{dispatch_mode_cfg}:{dr}",
-                    "strategy": used_strat.value,
-                    "dispatch_mode": dispatch_mode_cfg,
-                    "dispatch_rule": dr,
-                    "score": list(score),
-                    "failed_ops": int(summ.failed_ops),
-                    "metrics": metrics.to_dict(),
+            strat = parse_strategy(k, default=SortStrategy.PRIORITY_FIRST)
+            params0: Dict[str, Any] = {}
+            if strat == SortStrategy.WEIGHTED:
+                params0 = {
+                    "priority_weight": float(_cfg_value("priority_weight", 0.4) or 0.4),
+                    "due_weight": float(_cfg_value("due_weight", 0.5) or 0.5),
                 }
-            )
-            cand = {
-                "results": res,
-                "summary": summ,
-                "strategy": used_strat,
-                "params": used_params,
-                "dispatch_mode": dispatch_mode_cfg,
-                "dispatch_rule": dr,
-                "order": order,
-                "metrics": metrics,
-                "score": score,
-            }
-            if best is None or score < best["score"]:
-                best = cand
-                if len(improvement_trace) < 200:
-                    improvement_trace.append(
-                        {
-                            "elapsed_ms": int((time.time() - t_begin) * 1000),
-                            "tag": f"start:{k}|{dispatch_mode_cfg}:{dr}",
-                            "strategy": used_strat.value,
-                            "dispatch_mode": dispatch_mode_cfg,
-                            "dispatch_rule": dr,
-                            "score": list(score),
-                            "metrics": metrics.to_dict(),
-                        }
-                    )
+
+            for dr in dispatch_rules:
+                if time.time() > deadline:
+                    break
+                order = build_order(strat, params0)
+                res, summ, used_strat, used_params = scheduler.schedule(
+                    operations=algo_ops_to_schedule,
+                    batches=batches,
+                    strategy=strat,
+                    strategy_params=params0,
+                    start_dt=start_dt,
+                    end_date=end_date,
+                    machine_downtimes=downtime_map,
+                    batch_order_override=order,
+                    seed_results=seed_sr_list,
+                    dispatch_mode=dm,
+                    dispatch_rule=dr,
+                    resource_pool=resource_pool,
+                )
+                metrics = compute_metrics(res, batches)
+                score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
+                attempts.append(
+                    {
+                        "tag": f"start:{k}|{dm}:{dr}",
+                        "strategy": used_strat.value,
+                        "dispatch_mode": dm,
+                        "dispatch_rule": dr,
+                        "score": list(score),
+                        "failed_ops": int(summ.failed_ops),
+                        "metrics": metrics.to_dict(),
+                    }
+                )
+                cand = {
+                    "results": res,
+                    "summary": summ,
+                    "strategy": used_strat,
+                    "params": used_params,
+                    "dispatch_mode": dm,
+                    "dispatch_rule": dr,
+                    "order": order,
+                    "metrics": metrics,
+                    "score": score,
+                }
+                if best is None or score < best["score"]:
+                    best = cand
+                    if len(improvement_trace) < 200:
+                        improvement_trace.append(
+                            {
+                                "elapsed_ms": int((time.time() - t_begin) * 1000),
+                                "tag": f"start:{k}|{dm}:{dr}",
+                                "strategy": used_strat.value,
+                                "dispatch_mode": dm,
+                                "dispatch_rule": dr,
+                                "score": list(score),
+                                "metrics": metrics.to_dict(),
+                            }
+                        )
     return best
 
