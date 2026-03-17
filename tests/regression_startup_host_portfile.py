@@ -133,6 +133,7 @@ def _assert_health(host: str, port: int, p: subprocess.Popen, timeout_s: float =
                 payload.get("app") == "aps"
                 and payload.get("status") == "ok"
                 and int(payload.get("contract_version") or 0) == 1
+                and str(payload.get("ui_mode") or "") == "default"
             ):
                 return
         except Exception:

@@ -46,9 +46,10 @@ powershell -ExecutionPolicy Bypass -File .cursor/skills/aps-package-win7/scripts
 1. 构建主程序 `onedir`
 2. 复制启动器到 `dist`（仅用于直拷目录辅助启动）
 3. 执行 `validate_dist_exe.py`
-4. 生成 `APS_Main_Setup.exe`
-5. 生成 APS 专用裁剪运行时 payload（保留 `zh-CN` / `en-US`，裁掉 PWA / 通知 / 更新修复辅助程序）
-6. 生成 `APS_Chrome109_Runtime.exe`
+4. 清理 `validate_dist_exe.py` 生成的运行时痕迹（`db` / `logs` / `backups` / runtime 契约）
+5. 生成 `APS_Main_Setup.exe`
+6. 生成 APS 专用裁剪运行时 payload（保留 `zh-CN` / `en-US`，裁掉 PWA / 通知 / 更新修复辅助程序）
+7. 生成 `APS_Chrome109_Runtime.exe`
 
 内部应急回退：
 
@@ -180,9 +181,13 @@ ISCC.exe installer\aps_win7_legacy.iss
 - “添加或删除程序”中会出现两个独立条目：
   - `排产系统`
   - `APS Chrome109 运行时`
-- 卸载主程序包会删除安装目录下的程序文件与本地数据（包括 `db`、`logs`、`backups`、`templates_excel`）
-- 卸载浏览器运行时包会删除浏览器运行时目录并清理 `APS_CHROME_DIR`
-- 卸载浏览器运行时包 **不会** 删除 `%LOCALAPPDATA%\APS\Chrome109Profile`
+- 卸载主程序包时，会先尝试自动关闭当前 APS 后端；如果关闭失败，会提示用户是否继续卸载
+- 卸载主程序包时会弹出二次确认：
+  - 选择“是”：同时彻底清空当前主程序目录下的 `db`、`logs`、`backups`、`templates_excel`
+  - 选择“否”：仅卸载程序文件，保留这些本地数据
+- 卸载主程序包 **不会** 顺带卸载 `APS Chrome109 运行时`；浏览器运行时仍需单独卸载
+- 卸载浏览器运行时包会先尝试关闭 APS 专用浏览器进程，再删除浏览器运行时目录并清理 `APS_CHROME_DIR`
+- 卸载浏览器运行时包时，会询问是否删除 `%LOCALAPPDATA%\APS\Chrome109Profile`
 
 ## 验收建议
 

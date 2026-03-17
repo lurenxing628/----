@@ -47,19 +47,79 @@ Source: "{#LauncherBatSource}"; DestDir: "{app}"; DestName: "{#LauncherBatName}"
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{cmd}"; Parameters: "/c ""{app}\{#LauncherBatName}"""; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{cmd}"; Parameters: "/c ""{app}\{#LauncherBatName}"""; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\db"; Check: ShouldDeleteLocalData
+Type: filesandordirs; Name: "{app}\logs"; Check: ShouldDeleteLocalData
+Type: filesandordirs; Name: "{app}\backups"; Check: ShouldDeleteLocalData
+Type: filesandordirs; Name: "{app}\templates_excel"; Check: ShouldDeleteLocalData
+
 [Code]
+var
+  DeleteLocalData: Boolean;
+
+function ShouldDeleteLocalData: Boolean;
+begin
+  Result := DeleteLocalData;
+end;
+
+function TryStopApsRuntime(const StopApsChrome: Boolean): Boolean;
+var
+  ExePath: String;
+  Params: String;
+  ResultCode: Integer;
+begin
+  Result := True;
+  ExePath := ExpandConstant('{app}\{#MyAppExeName}');
+  if not FileExists(ExePath) then
+    Exit;
+
+  Params := '--runtime-stop "' + ExpandConstant('{app}') + '"';
+  if StopApsChrome then
+    Params := Params + ' --stop-aps-chrome';
+
+  if not Exec(ExePath, Params, ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Result := False;
+    Exit;
+  end;
+  Result := ResultCode = 0;
+end;
+
 function InitializeUninstall(): Boolean;
 begin
   Result := True;
+  DeleteLocalData := False;
   if UninstallSilent() then
+  begin
+    if not TryStopApsRuntime(False) then
+      Log('silent uninstall: failed to stop APS runtime before uninstall');
     Exit;
+  end;
 
   Result :=
     MsgBox(
-      '卸载将删除安装目录下的程序文件与本地数据（包括 db、logs、backups、templates_excel）。如需保留，请先备份后再继续。',
+      '将卸载主程序“排产系统”。APS Chrome109 运行时需在“添加或删除程序”中单独卸载。是否继续？',
       mbConfirmation,
       MB_YESNO or MB_DEFBUTTON2
     ) = IDYES;
+  if not Result then
+    Exit;
+
+  DeleteLocalData :=
+    MsgBox(
+      '是否同时彻底清空当前主程序目录下的本地数据（db、logs、backups、templates_excel）？' + #13#10 +
+      '选择“否”则仅卸载程序并保留这些数据。',
+      mbConfirmation,
+      MB_YESNO or MB_DEFBUTTON2
+    ) = IDYES;
+
+  if not TryStopApsRuntime(False) then
+    Result :=
+      MsgBox(
+        '未能自动关闭正在运行的 APS 后端。继续卸载可能导致文件残留。是否仍要继续？',
+        mbConfirmation,
+        MB_YESNO or MB_DEFBUTTON2
+      ) = IDYES;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

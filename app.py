@@ -1,10 +1,21 @@
+import argparse
+import atexit
 import os
+import secrets
 import sys
 
 from flask import Flask
 
-from web.bootstrap.factory import create_app_core
-from web.bootstrap.launcher import pick_bind_host, pick_port, write_runtime_host_port_files
+from web.bootstrap.factory import create_app_core, serve_runtime_app, should_register_runtime_lifecycle_handlers
+from web.bootstrap.launcher import (
+    default_chrome_profile_dir,
+    delete_runtime_contract_files,
+    pick_bind_host,
+    pick_port,
+    stop_runtime_from_dir,
+    write_runtime_contract_file,
+    write_runtime_host_port_files,
+)
 from web.bootstrap.paths import runtime_base_dir
 
 
@@ -21,10 +32,57 @@ def create_app() -> Flask:
     )
 
 
-app = create_app()
+if __name__ != "__main__":
+    app = create_app()
 
 
-if __name__ == "__main__":
+def _parse_cli_args(argv):
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--runtime-stop", default="")
+    parser.add_argument("--stop-aps-chrome", action="store_true")
+    return parser.parse_known_args(argv)
+
+
+def _configure_runtime_contract(app: Flask, runtime_dir: str, host: str, port: int) -> None:
+    shutdown_token = secrets.token_urlsafe(32)
+    app.config["APS_RUNTIME_SHUTDOWN_TOKEN"] = shutdown_token
+    app.config["APS_RUNTIME_DIR"] = runtime_dir
+
+    write_runtime_host_port_files(
+        runtime_dir=runtime_dir,
+        cfg_log_dir=app.config.get("LOG_DIR"),
+        host=host,
+        port=port,
+        db_path=app.config.get("DATABASE_PATH"),
+        logger=app.logger,
+    )
+    write_runtime_contract_file(
+        runtime_dir,
+        host,
+        port,
+        db_path=app.config.get("DATABASE_PATH"),
+        shutdown_token=shutdown_token,
+        ui_mode=str(app.config.get("APP_UI_MODE") or "default"),
+        log_dir=app.config.get("LOG_DIR"),
+        backup_dir=app.config.get("BACKUP_DIR"),
+        excel_template_dir=app.config.get("EXCEL_TEMPLATE_DIR"),
+        exe_path=sys.executable,
+        chrome_profile_dir=default_chrome_profile_dir(runtime_dir),
+        logger=app.logger,
+    )
+
+
+def main(argv=None) -> int:
+    args, _unknown = _parse_cli_args(argv or sys.argv[1:])
+    if str(args.runtime_stop or "").strip():
+        return int(
+            stop_runtime_from_dir(
+                str(args.runtime_stop).strip(),
+                stop_aps_chrome=bool(args.stop_aps_chrome),
+            )
+        )
+
+    app = create_app()
     # Win7 本地运行（开发/调试）；打包后用 exe 启动
     # 端口策略（避免“端口被占用/受限就无法启动”）：
     # - 优先使用 APS_PORT（若提供）
@@ -33,6 +91,7 @@ if __name__ == "__main__":
     #
     # 说明：这能让启动器（bat）与运维排障更稳定：只要读取端口文件即可知道实际端口。
     # 仅支持 IPv4；若 APS_HOST 非法/IPv6/hostname，则回退到 127.0.0.1
+    runtime_dir = _runtime_base_dir()
     raw_host = os.environ.get("APS_HOST")
     host = pick_bind_host(raw_host, logger=app.logger)
 
@@ -60,27 +119,26 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    # 写入启动信息文件契约：
-    # - logs/aps_port.txt：仅端口数字 + 换行
-    # - logs/aps_host.txt：实际可访问 host + 换行
+    debug = bool(app.config.get("DEBUG", False))
     try:
-        write_runtime_host_port_files(
-            runtime_dir=_runtime_base_dir(),
-            cfg_log_dir=app.config.get("LOG_DIR"),
-            host=host,
-            port=port,
-            db_path=app.config.get("DATABASE_PATH"),
-            logger=app.logger,
-        )
+        _configure_runtime_contract(app, runtime_dir, host, port)
     except Exception as e:
         try:
-            app.logger.warning(f"写入启动信息文件失败（已忽略）：{e}")
+            app.logger.warning(f"写入运行时契约失败（已忽略）：{e}")
         except Exception:
             pass
+    if should_register_runtime_lifecycle_handlers(debug):
+        atexit.register(delete_runtime_contract_files, runtime_dir)
 
-    debug = bool(app.config.get("DEBUG", False))
     # PyInstaller 冻结环境禁用 reloader（会产生子进程/重复副作用）
     use_reloader = debug and not getattr(sys, "frozen", False)
+    if use_reloader:
+        app.run(host=host, port=port, debug=debug, use_reloader=True)
+        return 0
+    serve_runtime_app(app, host, port)
+    return 0
 
-    app.run(host=host, port=port, debug=debug, use_reloader=use_reloader)
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 

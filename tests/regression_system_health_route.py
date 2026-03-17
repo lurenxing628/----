@@ -5,6 +5,8 @@
 1) `app.py` / `app_new_ui.py` 均暴露 `GET /system/health`。
 2) 返回 JSON 包含 app/status/contract_version/ui_mode/timestamp。
 3) 请求健康检查时不打开 `g.db` / `g.op_logger`。
+4) `POST /system/runtime/shutdown` 仅允许本机 + 正确 token，且不打开数据库连接。
+5) `request_runtime_server_shutdown()` 返回 False 时应返回 503 + `shutdown_unavailable`。
 """
 
 from __future__ import annotations
@@ -76,6 +78,83 @@ def _assert_health(app, expected_ui_mode: str, factory_mod) -> None:
         factory_mod.get_connection = original_get_connection
 
 
+def _assert_runtime_shutdown(app, system_health_mod, factory_mod) -> None:
+    get_connection_calls = []
+    shutdown_calls = []
+    unavailable_calls = []
+    original_get_connection = factory_mod.get_connection
+    original_request_runtime_server_shutdown = factory_mod.request_runtime_server_shutdown
+
+    def _fail_get_connection(*args, **kwargs):
+        get_connection_calls.append((args, kwargs))
+        raise RuntimeError("停机路由不应触发数据库连接")
+
+    def _fake_request_runtime_server_shutdown(logger=None):
+        shutdown_calls.append(bool(logger))
+        return True
+
+    def _fake_request_runtime_server_shutdown_unavailable(logger=None):
+        unavailable_calls.append(bool(logger))
+        return False
+
+    factory_mod.get_connection = _fail_get_connection
+    factory_mod.request_runtime_server_shutdown = _fake_request_runtime_server_shutdown
+    app.config["APS_RUNTIME_SHUTDOWN_TOKEN"] = "aps-shutdown-route-token"
+    try:
+        with app.test_client() as client:
+            forbidden_remote = client.post(
+                "/system/runtime/shutdown",
+                headers={"X-APS-Shutdown-Token": "aps-shutdown-route-token"},
+                environ_overrides={"REMOTE_ADDR": "10.0.0.8"},
+            )
+            if forbidden_remote.status_code != 403:
+                raise RuntimeError(f"非本机地址不应触发停机：{forbidden_remote.status_code}")
+
+            forbidden_token = client.post(
+                "/system/runtime/shutdown",
+                headers={"X-APS-Shutdown-Token": "wrong-token"},
+                environ_overrides={"REMOTE_ADDR": "127.0.0.1"},
+            )
+            if forbidden_token.status_code != 403:
+                raise RuntimeError(f"错误 token 不应触发停机：{forbidden_token.status_code}")
+
+            ok_resp = client.post(
+                "/system/runtime/shutdown",
+                headers={"X-APS-Shutdown-Token": "aps-shutdown-route-token"},
+                environ_overrides={"REMOTE_ADDR": "127.0.0.1"},
+            )
+            if ok_resp.status_code != 202:
+                raise RuntimeError(f"合法停机请求应返回 202：{ok_resp.status_code}")
+            payload = json.loads(ok_resp.get_data(as_text=True))
+            if payload.get("status") != "shutting_down":
+                raise RuntimeError(f"停机路由返回值不正确：{payload!r}")
+
+            if not shutdown_calls:
+                raise RuntimeError("合法停机请求未触发 request_runtime_server_shutdown")
+            if get_connection_calls:
+                raise RuntimeError("停机路由不应打开数据库连接")
+
+            factory_mod.request_runtime_server_shutdown = _fake_request_runtime_server_shutdown_unavailable
+            unavailable_resp = client.post(
+                "/system/runtime/shutdown",
+                headers={"X-APS-Shutdown-Token": "aps-shutdown-route-token"},
+                environ_overrides={"REMOTE_ADDR": "127.0.0.1"},
+            )
+            if unavailable_resp.status_code != 503:
+                raise RuntimeError(f"停机不可用时应返回 503：{unavailable_resp.status_code}")
+            payload = json.loads(unavailable_resp.get_data(as_text=True))
+            if payload.get("status") != "shutdown_unavailable":
+                raise RuntimeError(f"停机不可用分支返回值不正确：{payload!r}")
+
+            if not unavailable_calls:
+                raise RuntimeError("503 分支未触发 request_runtime_server_shutdown")
+            if get_connection_calls:
+                raise RuntimeError("停机不可用分支不应打开数据库连接")
+    finally:
+        factory_mod.get_connection = original_get_connection
+        factory_mod.request_runtime_server_shutdown = original_request_runtime_server_shutdown
+
+
 def main() -> None:
     repo_root = find_repo_root()
     if repo_root not in sys.path:
@@ -87,9 +166,12 @@ def main() -> None:
     app_mod = _load_module("app")
     app_new_ui_mod = _load_module("app_new_ui")
     factory_mod = importlib.import_module("web.bootstrap.factory")
+    system_health_mod = importlib.import_module("web.routes.system_health")
 
     _assert_health(app_mod.create_app(), "default", factory_mod)
     _assert_health(app_new_ui_mod.create_app(), "new_ui", factory_mod)
+    _assert_runtime_shutdown(app_mod.create_app(), system_health_mod, factory_mod)
+    _assert_runtime_shutdown(app_new_ui_mod.create_app(), system_health_mod, factory_mod)
     print("OK")
 
 

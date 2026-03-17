@@ -189,7 +189,7 @@ if not defined HAS_POWERSHELL exit /b 0
 if "%HOST%"=="" set "HOST=127.0.0.1"
 if "%PORT%"=="" exit /b 0
 set "HEALTH_URL=http://%HOST%:%PORT%%HEALTH_PATH%"
-powershell -NoProfile -Command "$u='%HEALTH_URL%'; try { $req=[System.Net.HttpWebRequest]::Create($u); $req.Timeout=2000; $req.ReadWriteTimeout=2000; $resp=$req.GetResponse(); $sr=New-Object System.IO.StreamReader($resp.GetResponseStream()); $body=$sr.ReadToEnd(); $sr.Close(); $resp.Close(); if ($body.Contains('\"app\":\"aps\"') -and $body.Contains('\"status\":\"ok\"')) { exit 0 } else { exit 2 } } catch { exit 1 }" >nul 2>&1
+powershell -NoProfile -Command "$u='%HEALTH_URL%'; try { $req=[System.Net.HttpWebRequest]::Create($u); $req.Timeout=2000; $req.ReadWriteTimeout=2000; $resp=$req.GetResponse(); $sr=New-Object System.IO.StreamReader($resp.GetResponseStream()); $body=$sr.ReadToEnd(); $sr.Close(); $resp.Close(); if ($body.Contains('\"app\":\"aps\"') -and $body.Contains('\"status\":\"ok\"') -and $body.Contains('\"contract_version\":1')) { exit 0 } else { exit 2 } } catch { exit 1 }" >nul 2>&1
 set "HEALTH_RC=%ERRORLEVEL%"
 if "!HEALTH_RC!"=="0" (
   set "HEALTH_OK=1"

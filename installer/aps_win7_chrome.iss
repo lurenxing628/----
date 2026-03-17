@@ -38,3 +38,64 @@ Source: "{#RuntimeDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
 [Registry]
 Root: HKCU; Subkey: "Environment"; ValueType: string; ValueName: "APS_CHROME_DIR"; ValueData: "{app}"; Flags: uninsdeletevalue
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{localappdata}\APS\Chrome109Profile"; Check: ShouldDeleteChromeProfile
+
+[Code]
+var
+  DeleteChromeProfile: Boolean;
+
+function ShouldDeleteChromeProfile: Boolean;
+begin
+  Result := DeleteChromeProfile;
+end;
+
+function TryStopApsChromeProcesses: Boolean;
+var
+  ResultCode: Integer;
+  Params: String;
+begin
+  Params :=
+    'process where "Name=''chrome.exe'' and CommandLine like ''%Chrome109Profile%''" call terminate';
+  Result := Exec(ExpandConstant('{sys}\wbem\wmic.exe'), Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if Result then
+    Result := ResultCode = 0;
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  Result := True;
+  DeleteChromeProfile := False;
+  if UninstallSilent() then
+  begin
+    if not TryStopApsChromeProcesses then
+      Log('silent uninstall: failed to stop APS Chrome processes before uninstall');
+    Exit;
+  end;
+
+  Result :=
+    MsgBox(
+      '将卸载 APS Chrome109 运行时。是否继续？',
+      mbConfirmation,
+      MB_YESNO or MB_DEFBUTTON2
+    ) = IDYES;
+  if not Result then
+    Exit;
+
+  DeleteChromeProfile :=
+    MsgBox(
+      '是否同时删除 APS 专用浏览器用户数据目录（%LOCALAPPDATA%\APS\Chrome109Profile）？' + #13#10 +
+      '选择“否”则保留浏览器配置和缓存。',
+      mbConfirmation,
+      MB_YESNO or MB_DEFBUTTON2
+    ) = IDYES;
+
+  if not TryStopApsChromeProcesses then
+    Result :=
+      MsgBox(
+        '未能自动关闭正在运行的 APS 浏览器窗口。继续卸载可能导致文件残留。是否仍要继续？',
+        mbConfirmation,
+        MB_YESNO or MB_DEFBUTTON2
+      ) = IDYES;
+end;

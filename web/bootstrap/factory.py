@@ -4,11 +4,13 @@ import atexit
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from flask import Flask, g, request
+from werkzeug.serving import make_server
 
 from config import config as config_map
 from core.infrastructure.backup import BackupManager
@@ -37,6 +39,9 @@ from .static_versioning import install_versioned_url_for
 # atexit 退出备份去重：避免 create_app_core() 在测试/脚本中被多次调用导致重复注册
 _EXIT_BACKUP_MANAGER = None
 _EXIT_BACKUP_REGISTERED = False
+_RUNTIME_SERVER: Any = None
+_RUNTIME_SERVER_LOCK = threading.Lock()
+_RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
 
 
 def _apply_runtime_config(app: Flask, *, base_dir: str) -> None:
@@ -100,6 +105,49 @@ def _run_exit_backup(manager: Optional[BackupManager] = None) -> bool:
 def _default_anchor_file() -> str:
     # 源码布局固定：web/bootstrap/factory.py 向上两级即仓库根目录
     return str(Path(__file__).resolve().parents[2] / "app.py")
+
+
+def should_register_runtime_lifecycle_handlers(debug: bool) -> bool:
+    return _should_register_exit_backup(debug=bool(debug))
+
+
+def serve_runtime_app(app: Flask, host: str, port: int) -> None:
+    global _RUNTIME_SERVER, _RUNTIME_SERVER_SHUTDOWN_REQUESTED
+    server = make_server(host, int(port), app, threaded=True)
+    with _RUNTIME_SERVER_LOCK:
+        _RUNTIME_SERVER = server
+        _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
+    try:
+        server.serve_forever()
+    finally:
+        with _RUNTIME_SERVER_LOCK:
+            _RUNTIME_SERVER = None
+            _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
+
+
+def request_runtime_server_shutdown(logger=None) -> bool:
+    global _RUNTIME_SERVER_SHUTDOWN_REQUESTED
+    with _RUNTIME_SERVER_LOCK:
+        server = _RUNTIME_SERVER
+        if server is None:
+            return False
+        if _RUNTIME_SERVER_SHUTDOWN_REQUESTED:
+            return True
+        _RUNTIME_SERVER_SHUTDOWN_REQUESTED = True
+
+    def _shutdown() -> None:
+        time.sleep(0.05)
+        try:
+            server.shutdown()
+        except Exception as e:
+            if logger is not None:
+                try:
+                    logger.warning(f"请求运行时 Server 关闭失败：{e}")
+                except Exception:
+                    pass
+
+    threading.Thread(target=_shutdown, daemon=True).start()
+    return True
 
 
 def create_app_core(
@@ -188,7 +236,7 @@ def create_app_core(
             g._aps_req_started = None
         try:
             req_path = str(request.path or "")
-            if req_path.startswith("/static") or req_path == "/system/health":
+            if req_path.startswith("/static") or req_path in {"/system/health", "/system/runtime/shutdown"}:
                 return
         except Exception:
             pass

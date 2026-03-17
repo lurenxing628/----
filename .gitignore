@@ -69,6 +69,8 @@ evidence/ComplexExcelCases_Extreme*/
 # Runtime scratch
 logs/aps_port.txt
 logs/aps_host.txt
+logs/aps_db_path.txt
+logs/aps_runtime.json
 logs/aps_secret_key.txt
 
 # Full self-test runner logs (keep report file)
