@@ -1,12 +1,12 @@
 # Phase8（甘特图与周计划 / M4）冒烟测试报告
 
-- 测试时间：2026-03-16 15:43:36
+- 测试时间：2026-03-17 23:27:31
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase8_jl02ny59`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase8_jl02ny59\aps_phase8_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase8_0vcv62re`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase8_0vcv62re\aps_phase8_test.db`
 
 ## 1. 基础数据准备（资源 + 工艺模板）
 
@@ -36,4 +36,4 @@
 
 ## 结论
 - 通过：Phase8（甘特图与周计划 / M4）冒烟测试通过（甘特图数据/周计划导出与留痕/插单模拟可追溯）。
-- 总耗时：3280 ms
+- 总耗时：2348 ms
