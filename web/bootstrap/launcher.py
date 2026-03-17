@@ -81,11 +81,19 @@ def pick_port(host: str, preferred: int, *, logger: logging.Logger | None = None
             pass
 
 
+def _normalize_db_path_for_runtime(db_path: str | None) -> str:
+    raw = str(db_path or "").strip()
+    if not raw:
+        return ""
+    return os.path.normcase(os.path.abspath(raw))
+
+
 def write_runtime_host_port_files(
     runtime_dir: str,
     cfg_log_dir: str | None,
     host: str,
     port: int,
+    db_path: str | None = None,
     *,
     logger: logging.Logger | None = None,
 ) -> None:
@@ -93,6 +101,7 @@ def write_runtime_host_port_files(
     os.makedirs(runtime_log_dir, exist_ok=True)
     port_file = os.path.join(runtime_log_dir, "aps_port.txt")
     host_file = os.path.join(runtime_log_dir, "aps_host.txt")
+    db_file = os.path.join(runtime_log_dir, "aps_db_path.txt")
 
     with open(port_file, "w", encoding="utf-8") as f:
         f.write(str(int(port)) + "\n")
@@ -102,6 +111,10 @@ def write_runtime_host_port_files(
         host_for_client = "127.0.0.1"
     with open(host_file, "w", encoding="utf-8") as f:
         f.write(str(host_for_client) + "\n")
+
+    db_for_runtime = _normalize_db_path_for_runtime(db_path)
+    with open(db_file, "w", encoding="utf-8") as f:
+        f.write(db_for_runtime + "\n")
 
     cfg_log_dir_s = ""
     try:
@@ -118,6 +131,9 @@ def write_runtime_host_port_files(
                 mirror_host_file = os.path.join(cfg_log_dir_s, "aps_host.txt")
                 with open(mirror_host_file, "w", encoding="utf-8") as f3:
                     f3.write(str(host_for_client) + "\n")
+                mirror_db_file = os.path.join(cfg_log_dir_s, "aps_db_path.txt")
+                with open(mirror_db_file, "w", encoding="utf-8") as f4:
+                    f4.write(db_for_runtime + "\n")
         except Exception:
             pass
 
@@ -125,6 +141,7 @@ def write_runtime_host_port_files(
         try:
             logger.info(f"端口已写入：{port_file} -> {int(port)}")
             logger.info(f"Host 已写入：{host_file} -> {host_for_client}")
+            logger.info(f"DB 路径已写入：{db_file} -> {db_for_runtime}")
         except Exception:
             pass
 

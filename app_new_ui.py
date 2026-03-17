@@ -66,6 +66,7 @@ if __name__ == "__main__":
             cfg_log_dir=app.config.get("LOG_DIR"),
             host=host,
             port=port,
+            db_path=app.config.get("DATABASE_PATH"),
             logger=app.logger,
         )
     except Exception as e:

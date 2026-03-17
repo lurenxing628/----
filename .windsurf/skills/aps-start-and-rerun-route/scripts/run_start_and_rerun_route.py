@@ -5,7 +5,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 import urllib.error
 import urllib.request
 import webbrowser
@@ -36,54 +35,140 @@ def _find_repo_root() -> Path:
     raise RuntimeError("Unable to locate repo root (requires app.py and schema.sql).")
 
 
-def _http_ok(url: str, timeout: float = 2.0) -> bool:
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return int(getattr(resp, "status", 0) or 0) == 200
-    except Exception:
-        return False
+def _ensure_repo_on_path(repo_root: Path) -> None:
+    repo_root_str = str(repo_root)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
 
 
-def _wait_http_ok(url: str, timeout_s: int) -> bool:
-    deadline = time.time() + max(int(timeout_s), 1)
-    while time.time() < deadline:
-        if _http_ok(url, timeout=2.0):
-            return True
-        time.sleep(1.0)
-    return _http_ok(url, timeout=2.0)
+def _runtime_probe(repo_root: Path):
+    _ensure_repo_on_path(repo_root)
+    from web.bootstrap import runtime_probe as runtime_probe_mod
+
+    return runtime_probe_mod
 
 
-def _start_server_if_needed(repo_root: Path, host: str, port: int, wait_seconds: int) -> bool:
-    base_url = f"http://{host}:{int(port)}/"
-    if _http_ok(base_url, timeout=2.0):
-        return False
+def _normalize_db_path(path: Any) -> str:
+    raw = str(path or "").strip()
+    if not raw:
+        raise RuntimeError("DB path is empty.")
+    return os.path.normcase(os.path.abspath(raw))
+
+
+def _resolve_target_db_path(repo_root: Path, explicit_db_path: str = "") -> str:
+    raw = str(explicit_db_path or "").strip()
+    if raw:
+        return _normalize_db_path(raw)
+
+    env_db_path = str(os.environ.get("APS_DB_PATH") or "").strip()
+    if env_db_path:
+        return _normalize_db_path(env_db_path)
+
+    return _normalize_db_path(repo_root / "db" / "aps.db")
+
+
+def _assert_repo_runtime_matches_endpoint(
+    runtime_probe_mod,
+    repo_root: Path,
+    endpoint: Dict[str, Any],
+    target_db_path: str,
+) -> None:
+    runtime = runtime_probe_mod.read_runtime_host_port(str(repo_root))
+    if runtime is None:
+        raise RuntimeError(
+            "Detected a healthy APS endpoint, but current repo runtime host/port files are missing; "
+            "cannot prove instance identity. Please restart APS from this repo and retry."
+        )
+
+    runtime_host, runtime_port = runtime
+    runtime_base_url = str(runtime_probe_mod.build_base_url(runtime_host, runtime_port)).rstrip("/")
+    endpoint_base_url = str(endpoint.get("base_url") or "").rstrip("/")
+    if runtime_base_url != endpoint_base_url:
+        raise RuntimeError(
+            "Detected a healthy APS endpoint via preferred host/port, but current repo runtime files point to "
+            f"{runtime_base_url} instead of {endpoint_base_url}; refusing to reuse an instance that cannot be "
+            "proven to belong to this repo."
+        )
+
+    runtime_db_path = runtime_probe_mod.read_runtime_db_path(str(repo_root))
+    if not runtime_db_path:
+        raise RuntimeError(
+            "Current repo runtime DB contract file is missing; cannot verify DB consistency. "
+            "Please restart APS from this repo and retry."
+        )
+
+    normalized_target_db = _normalize_db_path(target_db_path)
+    if runtime_db_path != normalized_target_db:
+        raise RuntimeError(
+            f"Current repo APS instance is using DB {runtime_db_path}, but runner target DB is "
+            f"{normalized_target_db}; refusing to reuse the instance."
+        )
+
+
+def _start_server_if_needed(repo_root: Path, host: str, port: int, wait_seconds: int, db_path: str) -> Dict[str, Any]:
+    runtime_probe_mod = _runtime_probe(repo_root)
+    normalized_db_path = _normalize_db_path(db_path)
+    # Reuse is only allowed when the current repo runtime contract already resolves a healthy endpoint.
+    endpoint = runtime_probe_mod.resolve_healthy_endpoint(
+        str(repo_root),
+        timeout=2.0,
+    )
+    if endpoint is not None:
+        _assert_repo_runtime_matches_endpoint(
+            runtime_probe_mod=runtime_probe_mod,
+            repo_root=repo_root,
+            endpoint=endpoint,
+            target_db_path=normalized_db_path,
+        )
+        reused = dict(endpoint)
+        reused["started_now"] = False
+        return reused
+
+    runtime_probe_mod.delete_stale_runtime_files(str(repo_root))
+    env: Dict[str, str] = dict(os.environ)
+    env["APS_HOST"] = str(host)
+    env["APS_PORT"] = str(int(port))
+    env["APS_DB_PATH"] = normalized_db_path
 
     if os.name == "nt":
         subprocess.Popen(
             ["cmd", "/c", "start.bat"],
             cwd=str(repo_root),
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
     else:
         # Fallback for non-Windows environments.
         subprocess.Popen(
-            ["python", "app.py"],
+            [sys.executable, "app.py"],
             cwd=str(repo_root),
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
 
-    if not _wait_http_ok(base_url, timeout_s=wait_seconds):
-        raise RuntimeError(f"Server did not become healthy within {wait_seconds}s: {base_url}")
-    return True
+    started = dict(
+        runtime_probe_mod.wait_for_healthy_runtime_endpoint(
+            str(repo_root),
+            timeout_s=wait_seconds,
+            interval_s=0.5,
+        )
+    )
+    _assert_repo_runtime_matches_endpoint(
+        runtime_probe_mod=runtime_probe_mod,
+        repo_root=repo_root,
+        endpoint=started,
+        target_db_path=normalized_db_path,
+    )
+    started["started_now"] = True
+    return started
 
 
 def _seed_and_schedule(repo_root: Path, db_path: Path, view: str) -> Dict[str, Any]:
     os.environ["APS_ENV"] = "development"
     os.environ["APS_DB_PATH"] = str(db_path)
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
+    _ensure_repo_on_path(repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.logging import OperationLogger
@@ -436,52 +521,58 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=5000)
     p.add_argument("--view", choices=("machine", "operator"), default="machine")
+    p.add_argument("--db-path", default="", help="Target DB path. Priority: --db-path > APS_DB_PATH > repo_root/db/aps.db")
     p.add_argument("--wait-seconds", type=int, default=60)
     p.add_argument("--no-open", action="store_true", help="Do not auto-open browser page.")
     args = p.parse_args(argv)
 
     repo_root = _find_repo_root()
-    db_path = repo_root / "db" / "aps.db"
+    target_db_path = _resolve_target_db_path(repo_root, str(args.db_path))
 
-    started_now = _start_server_if_needed(
+    endpoint = _start_server_if_needed(
         repo_root=repo_root,
         host=str(args.host),
         port=int(args.port),
         wait_seconds=int(args.wait_seconds),
+        db_path=target_db_path,
     )
+    endpoint_host = str(endpoint["host"])
+    endpoint_port = int(endpoint["port"])
+    endpoint_base_url = str(endpoint["base_url"]).rstrip("/")
+    started_now = bool(endpoint.get("started_now"))
 
-    base_url = f"http://{args.host}:{int(args.port)}/"
     if str(args.command) == "start-only":
+        url = endpoint_base_url + "/"
         if not bool(args.no_open):
-            _open_url(base_url)
+            _open_url(url)
         result = {
             "ok": True,
             "mode": "start-only",
             "repo_root": repo_root.as_posix(),
-            "server_started_now": bool(started_now),
-            "host": str(args.host),
-            "port": int(args.port),
-            "url": base_url,
+            "server_started_now": started_now,
+            "host": endpoint_host,
+            "port": endpoint_port,
+            "url": url,
         }
         print(json.dumps(result, ensure_ascii=True))
         return 0
 
     seeded = _seed_and_schedule(
         repo_root=repo_root,
-        db_path=db_path,
+        db_path=Path(target_db_path),
         view=str(args.view),
     )
 
     route_task_count = _verify_route(
-        host=str(args.host),
-        port=int(args.port),
+        host=endpoint_host,
+        port=endpoint_port,
         view=str(args.view),
         week_start=str(seeded["week_start"]),
         version=int(seeded["version"]),
     )
 
     url = (
-        f"http://{args.host}:{int(args.port)}/scheduler/gantt"
+        f"{endpoint_base_url}/scheduler/gantt"
         f"?view={args.view}&week_start={seeded['week_start']}&version={seeded['version']}"
     )
     if not bool(args.no_open):
@@ -491,9 +582,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         "ok": True,
         "mode": "rerun",
         "repo_root": repo_root.as_posix(),
-        "server_started_now": bool(started_now),
-        "host": str(args.host),
-        "port": int(args.port),
+        "server_started_now": started_now,
+        "host": endpoint_host,
+        "port": endpoint_port,
         "view": str(args.view),
         "version": int(seeded["version"]),
         "week_start": str(seeded["week_start"]),

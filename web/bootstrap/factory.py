@@ -187,7 +187,8 @@ def create_app_core(
         except Exception:
             g._aps_req_started = None
         try:
-            if request.path and str(request.path).startswith("/static"):
+            req_path = str(request.path or "")
+            if req_path.startswith("/static") or req_path == "/system/health":
                 return
         except Exception:
             pass

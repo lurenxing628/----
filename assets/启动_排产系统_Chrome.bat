@@ -1,5 +1,5 @@
 @echo off
-REM Launcher: start app first, then open URL with APS browser runtime.
+REM Launcher: reuse healthy APS instance or start app, then open URL.
 REM Keep this script ASCII-friendly for Win7 cmd compatibility.
 
 setlocal EnableExtensions EnableDelayedExpansion
@@ -11,6 +11,7 @@ set "PORT=5000"
 if defined APS_HOST set "HOST=%APS_HOST%"
 if defined APS_PORT set "PORT=%APS_PORT%"
 set "MAX_WAIT=45"
+set "HEALTH_PATH=/system/health"
 
 set "LOG_DIR=%APP_DIR%\logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
@@ -100,10 +101,11 @@ call :log chrome_exe="%CHROME_EXE%"
 call :log chrome_run_dir="%CHROME_RUN_DIR%"
 call :log chrome_profile_dir="%CHROME_PROFILE_DIR%"
 
-call :read_host_file
-call :read_port_file
-call :is_port_listening
-if defined PORT_READY goto :OPEN_CHROME
+call :detect_powershell
+call :log powershell_available=%HAS_POWERSHELL%
+
+call :try_reuse_existing
+if defined CAN_REUSE_EXISTING goto :OPEN_CHROME
 
 call :log app_start_required=1
 echo [launcher] Starting app...
@@ -115,8 +117,15 @@ echo [launcher] Waiting for app readiness (up to %MAX_WAIT%s)...
 for /l %%i in (1,1,%MAX_WAIT%) do (
   call :read_host_file
   call :read_port_file
-  call :is_port_listening
-  if defined PORT_READY goto :OPEN_CHROME
+  if exist "%HOST_FILE%" if exist "%PORT_FILE%" (
+    if defined HAS_POWERSHELL (
+      call :probe_health
+      if defined HEALTH_OK goto :OPEN_CHROME
+    ) else (
+      call :is_port_listening
+      if defined PORT_READY goto :OPEN_CHROME
+    )
+  )
   timeout /t 1 /nobreak >nul
 )
 
@@ -140,6 +149,53 @@ if not "%START_RC%"=="0" (
   echo [launcher] Check logs\launcher.log and run the logged chrome_cmd in cmd.
   pause
   exit /b 5
+)
+exit /b 0
+
+:detect_powershell
+set "HAS_POWERSHELL="
+where powershell >nul 2>&1
+if %errorlevel%==0 set "HAS_POWERSHELL=1"
+exit /b 0
+
+:try_reuse_existing
+set "CAN_REUSE_EXISTING="
+if not defined HAS_POWERSHELL (
+  call :log existing_reuse_skipped=no_powershell
+  exit /b 0
+)
+if not exist "%HOST_FILE%" (
+  call :log existing_reuse_skipped=missing_host_file
+  exit /b 0
+)
+if not exist "%PORT_FILE%" (
+  call :log existing_reuse_skipped=missing_port_file
+  exit /b 0
+)
+call :read_host_file
+call :read_port_file
+call :probe_health
+if defined HEALTH_OK (
+  set "CAN_REUSE_EXISTING=1"
+  call :log existing_reuse=1
+) else (
+  call :log existing_reuse=0
+)
+exit /b 0
+
+:probe_health
+set "HEALTH_OK="
+if not defined HAS_POWERSHELL exit /b 0
+if "%HOST%"=="" set "HOST=127.0.0.1"
+if "%PORT%"=="" exit /b 0
+set "HEALTH_URL=http://%HOST%:%PORT%%HEALTH_PATH%"
+powershell -NoProfile -Command "$u='%HEALTH_URL%'; try { $req=[System.Net.HttpWebRequest]::Create($u); $req.Timeout=2000; $req.ReadWriteTimeout=2000; $resp=$req.GetResponse(); $sr=New-Object System.IO.StreamReader($resp.GetResponseStream()); $body=$sr.ReadToEnd(); $sr.Close(); $resp.Close(); if ($body.Contains('\"app\":\"aps\"') -and $body.Contains('\"status\":\"ok\"')) { exit 0 } else { exit 2 } } catch { exit 1 }" >nul 2>&1
+set "HEALTH_RC=%ERRORLEVEL%"
+if "!HEALTH_RC!"=="0" (
+  set "HEALTH_OK=1"
+  call :log health_ok="%HEALTH_URL%"
+) else (
+  call :log health_fail="%HEALTH_URL%" rc=!HEALTH_RC!
 )
 exit /b 0
 

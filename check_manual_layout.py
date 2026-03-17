@@ -2,12 +2,22 @@
 APS 说明书布局核验脚本
 自动检查 config_manual 页面在不同模式下的布局问题
 """
+from __future__ import annotations
+
+import argparse
 import json
 import re
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 from urllib.request import Request, urlopen
+
+REPO_ROOT = Path(__file__).resolve().parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from web.bootstrap.runtime_probe import probe_health, resolve_healthy_endpoint
 
 # 检查是否有 selenium
 try:
@@ -25,9 +35,7 @@ except ImportError:
     print("警告：未安装 selenium，无法进行浏览器自动化测试")
     print("请运行：pip install selenium")
 
-
-REPO_ROOT = Path(__file__).resolve().parent
-BASE_URL = "http://127.0.0.1:5000"
+_DEFAULT_BASE_URL = "http://127.0.0.1:5000"
 
 
 def _has_manual_related_min_width(css_content: str) -> bool:
@@ -38,14 +46,32 @@ def _has_manual_related_min_width(css_content: str) -> bool:
     return any(re.search(pattern, css_content, re.DOTALL) for pattern in patterns)
 
 
-def _server_is_reachable(url: str) -> bool:
-    try:
-        req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urlopen(req, timeout=2) as response:
-            status = getattr(response, "status", 200)
-            return 200 <= status < 500
-    except Exception:
-        return False
+def _normalize_base_url(base_url: str) -> str:
+    normalized = str(base_url or "").strip().rstrip("/")
+    return normalized or _DEFAULT_BASE_URL
+
+
+def _resolve_base_url(explicit_base_url: Optional[str], runtime_dir: Path = REPO_ROOT) -> tuple[str, str]:
+    if explicit_base_url and str(explicit_base_url).strip():
+        return _normalize_base_url(str(explicit_base_url)), "explicit"
+    endpoint = resolve_healthy_endpoint(str(runtime_dir))
+    if endpoint is not None:
+        return _normalize_base_url(str(endpoint["base_url"])), str(endpoint.get("source") or "runtime_files")
+    return _DEFAULT_BASE_URL, "default"
+
+
+def _server_is_reachable(base_url: str) -> bool:
+    return probe_health(_normalize_base_url(base_url), timeout=2.0) is not None
+
+
+def _parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="APS config_manual layout checker.")
+    parser.add_argument(
+        "--base-url",
+        default="",
+        help="显式指定浏览器自动化检查使用的 base URL，例如 http://127.0.0.1:5705",
+    )
+    return parser.parse_args(argv)
 
 
 def check_layout_via_styles():
@@ -78,13 +104,14 @@ def check_layout_via_styles():
     return all_pass
 
 
-def check_layout_via_browser():
+def check_layout_via_browser(base_url: str):
     """通过浏览器自动化检查实际渲染"""
     if not HAS_SELENIUM:
         return None
 
-    if not _server_is_reachable(f"{BASE_URL}/scheduler/config/manual"):
-        print("\n[WARN] 未检测到本地 APS 服务，跳过浏览器自动化布局检查")
+    base_url_s = _normalize_base_url(base_url)
+    if not _server_is_reachable(base_url_s):
+        print(f"\n[WARN] 未检测到可用 APS 服务（base_url={base_url_s}），跳过浏览器自动化布局检查")
         return None
 
     print("\n=== 浏览器自动化布局检查 ===\n")
@@ -92,49 +119,49 @@ def check_layout_via_browser():
     test_cases = [
         {
             "name": "Full 模式 - 经典界面",
-            "url": f"{BASE_URL}/scheduler/config/manual",
+            "url": f"{base_url_s}/scheduler/config/manual",
             "theme": "v1",
             "mode": "full",
         },
         {
             "name": "Full 模式 - 现代界面",
-            "url": f"{BASE_URL}/scheduler/config/manual",
+            "url": f"{base_url_s}/scheduler/config/manual",
             "theme": "v2",
             "mode": "full",
         },
         {
             "name": "Page 模式 (materials) - 经典界面",
-            "url": f"{BASE_URL}/scheduler/config/manual?page=material.materials_page",
+            "url": f"{base_url_s}/scheduler/config/manual?page=material.materials_page",
             "theme": "v1",
             "mode": "page",
         },
         {
             "name": "Page 模式 (materials) - 现代界面",
-            "url": f"{BASE_URL}/scheduler/config/manual?page=material.materials_page",
+            "url": f"{base_url_s}/scheduler/config/manual?page=material.materials_page",
             "theme": "v2",
             "mode": "page",
         },
         {
             "name": "Page 模式 (config) - 经典界面",
-            "url": f"{BASE_URL}/scheduler/config/manual?page=scheduler.config_page",
+            "url": f"{base_url_s}/scheduler/config/manual?page=scheduler.config_page",
             "theme": "v1",
             "mode": "page",
         },
         {
             "name": "Page 模式 (config) - 现代界面",
-            "url": f"{BASE_URL}/scheduler/config/manual?page=scheduler.config_page",
+            "url": f"{base_url_s}/scheduler/config/manual?page=scheduler.config_page",
             "theme": "v2",
             "mode": "page",
         },
         {
             "name": "Page 模式 (reports) - 经典界面",
-            "url": f"{BASE_URL}/scheduler/config/manual?page=reports.index",
+            "url": f"{base_url_s}/scheduler/config/manual?page=reports.index",
             "theme": "v1",
             "mode": "page",
         },
         {
             "name": "Page 模式 (reports) - 现代界面",
-            "url": f"{BASE_URL}/scheduler/config/manual?page=reports.index",
+            "url": f"{base_url_s}/scheduler/config/manual?page=reports.index",
             "theme": "v2",
             "mode": "page",
         },
@@ -240,11 +267,16 @@ def check_layout_via_browser():
     return results
 
 
-def main():
+def main(argv=None):
+    args = _parse_args(argv)
+    base_url, base_url_source = _resolve_base_url(args.base_url, runtime_dir=REPO_ROOT)
     print("APS 说明书布局核验工具\n")
+    print(f"[INFO] 浏览器检查基地址：{base_url}（source={base_url_source}）")
+    if base_url_source == "default":
+        print("[WARN] 未发现健康的运行时实例，浏览器分支将回退到默认地址。")
 
     css_ok = check_layout_via_styles()
-    browser_results = check_layout_via_browser()
+    browser_results = check_layout_via_browser(base_url)
 
     print("\n" + "=" * 60)
     print("核验结果汇总")
@@ -258,7 +290,7 @@ def main():
     if browser_results is None:
         print("\n[WARN] 浏览器自动化测试未执行（缺少 selenium / ChromeDriver / 本地 APS 服务）")
         print("\n手动核验清单：")
-        print(f"1. 访问 {BASE_URL}/scheduler/config/manual")
+        print(f"1. 访问 {base_url}/scheduler/config/manual")
         print("2. 切换 v1/v2 界面模式（页面右上角）")
         print("3. 检查：")
         print("   A. 左侧目录列宽 260px 稳定")

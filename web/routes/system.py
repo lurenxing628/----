@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 from . import system_backup as _backup  # noqa: F401
+from . import system_health as _health  # noqa: F401
 from . import system_history as _history  # noqa: F401
 from . import system_logs as _logs  # noqa: F401
 from . import system_plugins as _plugins  # noqa: F401
