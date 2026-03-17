@@ -1,12 +1,12 @@
 # Phase6（Scheduler：批次/工序/日历/配置）冒烟测试报告
 
-- 测试时间：2026-03-16 10:58:06
+- 测试时间：2026-03-16 15:43:26
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_oj6o7mui`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_oj6o7mui\aps_phase6_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_m6a9mkpr`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_m6a9mkpr\aps_phase6_test.db`
 
 ## 1. 准备基础数据（工艺模板/资源）
 
@@ -42,4 +42,4 @@
 
 ## 结论
 - 通过：Phase6（Scheduler 基础能力）冒烟测试通过（事务/工序补充/日历/配置）。
-- 总耗时：1177 ms
+- 总耗时：1994 ms

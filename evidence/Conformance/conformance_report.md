@@ -1,6 +1,6 @@
 # 实现一致性对标报告（实现 vs 开发文档规划 + 架构合规）
 
-- 生成时间：2026-03-13 13:54:01
+- 生成时间：2026-03-16 15:43:08
 - 仓库根目录：`D:\Github\APS Test`
 
 ## 总结
@@ -51,7 +51,7 @@
 - **结果**：通过
 - **严重性**：INFO
 - **证据**：
-  - `templates_excel/` 文件数：12
+  - `templates_excel/` 文件数：13
   - 缺失模板：无
 
 ### 退出自动备份（atexit.register + suffix=exit + 配置守卫；不启后台定时线程）
@@ -135,7 +135,7 @@
 - **说明**：建议按职责拆分超大文件（参考 scheduler.py 拆分先例）。
 - **证据**：
   - 超过 500 行的文件数：1
-  - core/services/personnel/operator_machine_service.py（503 行）
+  - core/services/scheduler/schedule_optimizer.py（540 行）
 
 ### 模板目录完整性（templates/ 子目录与模块对齐）
 - **结果**：通过
