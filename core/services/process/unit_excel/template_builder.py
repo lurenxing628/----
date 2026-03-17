@@ -5,7 +5,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from core.models.enums import MachineStatus, OperatorStatus, SourceType
+from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
+from core.services.common.excel_templates import get_template_definition
 
 from .parser import PartContext, StationMeta, StepRecord
 
@@ -23,13 +24,13 @@ class ConvertedTemplates:
     @staticmethod
     def output_specs() -> List[Tuple[str, List[str], str]]:
         return [
-            ("零件工艺路线.xlsx", ["图号", "名称", "工艺路线字符串"], "routes_rows"),
-            ("零件工序工时.xlsx", ["图号", "工序", "换型时间(h)", "单件工时(h)"], "part_operation_hours_rows"),
-            ("人员基本信息.xlsx", ["工号", "姓名", "状态", "班组", "备注"], "operators_rows"),
-            ("设备信息.xlsx", ["设备编号", "设备名称", "工种", "班组", "状态"], "machines_rows"),
-            ("人员设备关联.xlsx", ["工号", "设备编号"], "operator_machine_rows"),
-            ("工种配置.xlsx", ["工种ID", "工种名称", "归属"], "op_types_rows"),
-            ("供应商配置.xlsx", ["供应商ID", "名称", "对应工种", "默认周期"], "suppliers_rows"),
+            ("零件工艺路线.xlsx", list(get_template_definition("零件工艺路线.xlsx")["headers"]), "routes_rows"),
+            ("零件工序工时.xlsx", list(get_template_definition("零件工序工时.xlsx")["headers"]), "part_operation_hours_rows"),
+            ("人员基本信息.xlsx", list(get_template_definition("人员基本信息.xlsx")["headers"]), "operators_rows"),
+            ("设备信息.xlsx", list(get_template_definition("设备信息.xlsx")["headers"]), "machines_rows"),
+            ("人员设备关联.xlsx", list(get_template_definition("人员设备关联.xlsx")["headers"]), "operator_machine_rows"),
+            ("工种配置.xlsx", list(get_template_definition("工种配置.xlsx")["headers"]), "op_types_rows"),
+            ("供应商配置.xlsx", list(get_template_definition("供应商配置.xlsx")["headers"]), "suppliers_rows"),
         ]
 
 
@@ -287,7 +288,7 @@ class UnitTemplateBuilder:
             op_id = operator_id_map.get(operator_name)
             if not op_id:
                 continue
-            rows.append({"工号": op_id, "设备编号": machine_id})
+            rows.append({"工号": op_id, "设备编号": machine_id, "技能等级": "normal", "主操设备": YesNo.NO.value})
         return rows
 
     @staticmethod
@@ -330,6 +331,8 @@ class UnitTemplateBuilder:
                     "名称": f"外协-{op_name}",
                     "对应工种": op_name,
                     "默认周期": default_days,
+                    "状态": SupplierStatus.ACTIVE.value,
+                    "备注": None,
                 }
             )
         return suppliers_rows
