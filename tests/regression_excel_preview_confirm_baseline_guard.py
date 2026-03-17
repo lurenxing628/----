@@ -246,6 +246,193 @@ def main() -> None:
     finally:
         conn.close()
 
+    # ---------------------------------------------------------
+    # 3) 工作日历：preview 后并发写同主键，confirm 应拒绝并提示重新预览
+    # ---------------------------------------------------------
+    global_cal_rows = [
+        {
+            "日期": "2026-03-03",
+            "类型": "workday",
+            "可用工时": 8,
+            "效率": 1.0,
+            "允许普通件": "yes",
+            "允许急件": "yes",
+            "说明": "baseline-guard",
+        }
+    ]
+    global_cal_buf = _make_xlsx_bytes(
+        ["日期", "类型", "可用工时", "效率", "允许普通件", "允许急件", "说明"],
+        global_cal_rows,
+    )
+    resp5 = client.post(
+        "/scheduler/excel/calendar/preview",
+        data={"mode": "append", "file": (global_cal_buf, "global_calendar.xlsx")},
+        content_type="multipart/form-data",
+    )
+    _assert_status("calendar preview", resp5, 200)
+    html5 = resp5.data.decode("utf-8", errors="ignore")
+    raw_rows_json5 = _extract_raw_rows_json(html5)
+    preview_baseline5 = _extract_hidden_input(html5, "preview_baseline")
+    if not preview_baseline5:
+        raise RuntimeError("工作日历预览未生成 preview_baseline")
+
+    conn = get_connection(test_db)
+    try:
+        from core.services.scheduler import CalendarService
+
+        CalendarService(conn).upsert_no_tx(
+            {
+                "date": "2026-03-03",
+                "day_type": "workday",
+                "shift_hours": 8,
+                "efficiency": 1.0,
+                "allow_normal": "yes",
+                "allow_urgent": "yes",
+                "remark": "concurrent-write",
+            }
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    resp6 = client.post(
+        "/scheduler/excel/calendar/confirm",
+        data={
+            "mode": "append",
+            "filename": "global_calendar.xlsx",
+            "raw_rows_json": raw_rows_json5,
+            "preview_baseline": preview_baseline5,
+        },
+        follow_redirects=True,
+    )
+    _assert_status("calendar confirm", resp6, 200)
+    html6 = resp6.data.decode("utf-8", errors="ignore")
+    if "需重新预览" not in html6:
+        raise RuntimeError("工作日历确认未提示“需重新预览”")
+
+    # ---------------------------------------------------------
+    # 4) 设备信息：preview 后并发写同主键，confirm 应拒绝并提示重新预览
+    # ---------------------------------------------------------
+    machine_rows = [
+        {
+            "设备编号": "MC_CONC",
+            "设备名称": "测试设备",
+            "工种": None,
+            "班组": None,
+            "状态": "active",
+        }
+    ]
+    machine_buf = _make_xlsx_bytes(["设备编号", "设备名称", "工种", "班组", "状态"], machine_rows)
+    resp7 = client.post(
+        "/equipment/excel/machines/preview",
+        data={"mode": "append", "file": (machine_buf, "machines.xlsx")},
+        content_type="multipart/form-data",
+    )
+    _assert_status("machines preview", resp7, 200)
+    html7 = resp7.data.decode("utf-8", errors="ignore")
+    raw_rows_json7 = _extract_raw_rows_json(html7)
+    preview_baseline7 = _extract_hidden_input(html7, "preview_baseline")
+    if not preview_baseline7:
+        raise RuntimeError("设备预览未生成 preview_baseline")
+
+    conn = get_connection(test_db)
+    try:
+        from core.services.equipment.machine_service import MachineService
+
+        MachineService(conn).create(machine_id="MC_CONC", name="并发设备", status="active")
+    finally:
+        conn.close()
+
+    resp8 = client.post(
+        "/equipment/excel/machines/confirm",
+        data={
+            "mode": "append",
+            "filename": "machines.xlsx",
+            "raw_rows_json": raw_rows_json7,
+            "preview_baseline": preview_baseline7,
+        },
+        follow_redirects=True,
+    )
+    _assert_status("machines confirm", resp8, 200)
+    html8 = resp8.data.decode("utf-8", errors="ignore")
+    if "需重新预览" not in html8:
+        raise RuntimeError("设备确认未提示“需重新预览”")
+
+    conn = get_connection(test_db)
+    try:
+        cnt = conn.execute("SELECT COUNT(1) FROM Machines WHERE machine_id=?", ("MC_CONC",)).fetchone()[0]
+        if int(cnt) != 1:
+            raise RuntimeError(f"设备并发保护后数量异常：{cnt}")
+    finally:
+        conn.close()
+
+    # ---------------------------------------------------------
+    # 5) 设备人员关联：preview 后并发写同主键，confirm 应拒绝并提示重新预览
+    # ---------------------------------------------------------
+    conn = get_connection(test_db)
+    try:
+        from core.services.equipment.machine_service import MachineService
+
+        if conn.execute("SELECT COUNT(1) FROM Machines WHERE machine_id=?", ("MC_LINK",)).fetchone()[0] == 0:
+            MachineService(conn).create(machine_id="MC_LINK", name="关联设备", status="active")
+    finally:
+        conn.close()
+
+    link_rows = [
+        {
+            "设备编号": "MC_LINK",
+            "工号": "OP001",
+            "技能等级": "normal",
+            "主操设备": "yes",
+        }
+    ]
+    link_buf = _make_xlsx_bytes(["设备编号", "工号", "技能等级", "主操设备"], link_rows)
+    resp9 = client.post(
+        "/equipment/excel/links/preview",
+        data={"mode": "append", "file": (link_buf, "links.xlsx")},
+        content_type="multipart/form-data",
+    )
+    _assert_status("equipment links preview", resp9, 200)
+    html9 = resp9.data.decode("utf-8", errors="ignore")
+    raw_rows_json9 = _extract_raw_rows_json(html9)
+    preview_baseline9 = _extract_hidden_input(html9, "preview_baseline")
+    if not preview_baseline9:
+        raise RuntimeError("设备人员关联预览未生成 preview_baseline")
+
+    conn = get_connection(test_db)
+    try:
+        from core.services.personnel import OperatorMachineService
+
+        OperatorMachineService(conn).add_link("OP001", "MC_LINK", skill_level="normal", is_primary="yes")
+    finally:
+        conn.close()
+
+    resp10 = client.post(
+        "/equipment/excel/links/confirm",
+        data={
+            "mode": "append",
+            "filename": "links.xlsx",
+            "raw_rows_json": raw_rows_json9,
+            "preview_baseline": preview_baseline9,
+        },
+        follow_redirects=True,
+    )
+    _assert_status("equipment links confirm", resp10, 200)
+    html10 = resp10.data.decode("utf-8", errors="ignore")
+    if "需重新预览" not in html10:
+        raise RuntimeError("设备人员关联确认未提示“需重新预览”")
+
+    conn = get_connection(test_db)
+    try:
+        cnt = conn.execute(
+            "SELECT COUNT(1) FROM OperatorMachine WHERE operator_id=? AND machine_id=?",
+            ("OP001", "MC_LINK"),
+        ).fetchone()[0]
+        if int(cnt) != 1:
+            raise RuntimeError(f"设备人员关联并发保护后数量异常：{cnt}")
+    finally:
+        conn.close()
+
     print("OK")
 
 

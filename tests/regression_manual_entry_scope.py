@@ -92,6 +92,14 @@ def _extract_link_href_by_text(content: str, label: str) -> str | None:
     return None
 
 
+def _extract_template_content_by_id(content: str, template_id: str) -> str | None:
+    pattern = rf'<template[^>]*id="{re.escape(template_id)}"[^>]*>(.*?)</template>'
+    m = re.search(pattern, content, flags=re.S)
+    if not m:
+        return None
+    return html_module.unescape(m.group(1)).strip()
+
+
 def _collect_renderable_manual_endpoints(app, manual_endpoints: set[str]) -> list[str]:
     renderable = set()
     for rule in app.url_map.iter_rules():
@@ -170,6 +178,10 @@ def main() -> None:
         manual_html = manual_resp.get_data(as_text=True)
         _assert_contains(manual_html, "系统使用说明", f"{ui_mode} 模式下整本说明书页标题缺失")
         _assert_contains(manual_html, "返回刚才页面", f"{ui_mode} 模式下整本说明书页未保留来源页返回入口")
+        _assert_contains(manual_html, 'id="aps-config-manual-fallback"', f"{ui_mode} 模式下整本说明书页缺少服务端 fallback 模板")
+        full_fallback_text = _extract_template_content_by_id(manual_html, "aps-config-manual-fallback")
+        if not full_fallback_text or len(full_fallback_text) < 100:
+            raise RuntimeError(f"{ui_mode} 模式下整本说明书页 fallback 正文为空或过短")
         _assert_not_contains(manual_html, "floating-manual-btn", f"{ui_mode} 模式下说明书页不应显示悬浮入口")
         _assert_not_contains(manual_html, "当前页面主题：", f"{ui_mode} 模式下整本说明书页不应出现页面模式标识")
         _assert_not_contains(manual_html, "相关模块说明", f"{ui_mode} 模式下整本说明书页不应显示相关模块列表")
@@ -202,6 +214,12 @@ def main() -> None:
         _assert_contains(page_material_html, "下载整本说明书", f"{ui_mode} 模式下页面级说明下载按钮文案不正确")
         _assert_contains(page_material_html, "整本说明书更新时间：", f"{ui_mode} 模式下页面级说明更新时间文案不正确")
         _assert_contains(page_material_html, "维护顺序建议", f"{ui_mode} 模式下 related 模块未渲染关键说明段落")
+        _assert_contains(page_material_html, 'id="aps-config-manual-fallback"', f"{ui_mode} 模式下页面级说明缺少服务端 fallback 模板")
+        material_fallback_text = _extract_template_content_by_id(page_material_html, "aps-config-manual-fallback")
+        if not material_fallback_text:
+            raise RuntimeError(f"{ui_mode} 模式下页面级说明 fallback 正文为空")
+        _assert_contains(material_fallback_text, "物料主数据", f"{ui_mode} 模式下页面级说明 fallback 未保留当前主题")
+        _assert_contains(material_fallback_text, "齐套", f"{ui_mode} 模式下页面级说明 fallback 未注入当前页正文")
         _assert_contains(page_material_html, "manual-main-column", f"{ui_mode} 模式下页面级说明缺少右列容器")
         _assert_contains(page_material_html, "manual-related-panel", f"{ui_mode} 模式下页面级说明缺少相关模块面板类")
         if page_material_html.count('id="content"') != 1:

@@ -60,6 +60,19 @@ def _extract_heading_ids(markdown_text: str) -> set[str]:
     return ids
 
 
+def _build_payload_text(payload: dict) -> str:
+    parts: list[str] = []
+    parts.append(str(payload.get("title") or ""))
+    parts.append(str(payload.get("summary") or ""))
+    help_card = payload.get("help_card") or {}
+    parts.append(str(help_card.get("title") or ""))
+    parts.extend(str(item or "") for item in (help_card.get("items") or []))
+    for section in payload.get("sections") or []:
+        parts.append(str(section.get("title") or ""))
+        parts.append(str(section.get("body_md") or ""))
+    return "\n".join(part for part in parts if part)
+
+
 def main() -> None:
     repo_root = _find_repo_root()
     tmpdir = tempfile.mkdtemp(prefix="aps_page_manual_registry_")
@@ -68,7 +81,8 @@ def main() -> None:
 
     page_manuals = importlib.import_module("web.viewmodels.page_manuals")
     manual_path = os.path.join(repo_root, "static", "docs", "scheduler_manual.md")
-    manual_heading_ids = _extract_heading_ids(_read(manual_path))
+    manual_text = _read(manual_path)
+    manual_heading_ids = _extract_heading_ids(manual_text)
 
     endpoint_to_manual_id = dict(page_manuals.ENDPOINT_TO_MANUAL_ID)
     manual_entry_endpoints = dict(page_manuals.MANUAL_ENTRY_ENDPOINTS)
@@ -206,6 +220,34 @@ def main() -> None:
         assert preview_sections, f"{item.get('manual_id')} 缺少 preview_sections"
         assert len(preview_sections) <= 2, f"{item.get('manual_id')} 的 preview_sections 超过 2 个"
         assert "sections" not in item, f"{item.get('manual_id')} 不应向 related_manuals 暴露完整 sections"
+
+    # 6) 语义真值护栏：页面级说明必须写出真实允许值、默认值和危险边界
+    manual_semantic_cases = {
+        "excel_personnel": ["在岗/启用/可用/正常/active", "停用/休假/停用/休假/离岗/inactive"],
+        "excel_personnel_link": ["新手/一般/中级/高级/专家/low/high/skilled", "主/非主"],
+        "excel_op_types": ["内部/外部", "internal/external", "内/外"],
+        "excel_suppliers": ["填 `0`、负数或文字都会报错", "在用/正常/禁用", "状态和备注两列"],
+        "excel_calendar": ["留空按 `工作日/workday` 处理", "高级设置中的“假期默认效率”"],
+        "material_batch": ["需求数量必须大于 0", "已到数量允许为 0，但不能为负数"],
+        "system_backup": ["恢复前自动备份", "自动回滚"],
+    }
+    for manual_id, phrases in manual_semantic_cases.items():
+        payload = page_manuals.build_manual_payload(manual_id, include_sections=True)
+        assert payload is not None, f"{manual_id} 无法构建语义校验 payload"
+        payload_text = _build_payload_text(payload)
+        for phrase in phrases:
+            assert phrase in payload_text, f"{manual_id} 缺少已核实语义片段：{phrase}"
+
+    full_manual_phrases = [
+        "非 yes/no 枚举列填了 TRUE/FALSE",
+        '假期不填默认高级设置中的"假期默认效率"',
+        "库存数量可以为 0，但不能为负数",
+        '"需求数量"必须大于 0',
+        "恢复过程失败，系统会尽最大努力回滚到这份备份",
+        "批量删除前先确认筛选条件、已选条数和本次删除范围",
+    ]
+    for phrase in full_manual_phrases:
+        assert phrase in manual_text, f"总说明书缺少已核实语义片段：{phrase}"
 
     print("OK")
 

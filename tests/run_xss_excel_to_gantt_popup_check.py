@@ -6,7 +6,9 @@ import subprocess
 import tempfile
 from datetime import date
 from html import unescape as html_unescape
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+from excel_preview_confirm_helpers import build_confirm_payload
 
 XSS = "<img src=x onerror=alert(1)>"
  
@@ -62,23 +64,43 @@ def _assert_status(name: str, resp, expect_code: int = 200):
         raise RuntimeError(f"{name} -> {resp.status_code} (want {expect_code}) body={body[:800] if body else None}")
  
  
-def _excel_preview_confirm(client, *, base: str, filename: str, mode: str, buf, extra_confirm: Optional[Dict[str, Any]] = None):
+def _excel_preview_confirm(
+    client,
+    *,
+    base: str,
+    filename: str,
+    mode: str,
+    buf,
+    preview_extra: Optional[Dict[str, Any]] = None,
+    confirm_extra: Optional[Dict[str, Any]] = None,
+    confirm_hidden_fields: Optional[List[str]] = None,
+):
+    preview_data = {"mode": mode, "file": (buf, filename)}
+    if preview_extra:
+        preview_data.update(preview_extra)
     r = client.post(
         f"{base}/preview",
-        data={"mode": mode, "file": (buf, filename)},
+        data=preview_data,
         content_type="multipart/form-data",
     )
     _assert_status(f"{base}/preview", r, 200)
     html = r.data.decode("utf-8", errors="ignore")
-    raw = _extract_raw_rows_json(html)
-    data = {"mode": mode, "filename": filename, "raw_rows_json": raw}
-    preview_baseline = _extract_preview_baseline(html)
-    if preview_baseline:
-        data["preview_baseline"] = preview_baseline
-    if extra_confirm:
-        data.update(extra_confirm)
-    r2 = client.post(f"{base}/confirm", data=data, follow_redirects=True)
+    r2 = client.post(
+        f"{base}/confirm",
+        data=build_confirm_payload(
+            html,
+            mode=mode,
+            filename=filename,
+            context=f"{base}/preview",
+            confirm_extra=confirm_extra,
+            confirm_hidden_fields=confirm_hidden_fields,
+        ),
+        follow_redirects=True,
+    )
     _assert_status(f"{base}/confirm", r2, 200)
+    html2 = r2.data.decode("utf-8", errors="ignore")
+    if "导入被拒绝" in html2:
+        raise RuntimeError(f"{base}/confirm 被拒绝（页面提示“导入被拒绝”）")
  
  
 def _run_node_check(*, repo_root: str, hit_task_path: str) -> Dict[str, Any]:
@@ -326,7 +348,8 @@ def main():
             ["批次号", "图号", "数量", "交期", "优先级", "齐套", "备注"],
             [{"批次号": XSS, "图号": XSS, "数量": 1, "交期": "2099-12-31", "优先级": "urgent", "齐套": "yes", "备注": "xss"}],
         ),
-        extra_confirm={"auto_generate_ops": "1"},
+        preview_extra={"auto_generate_ops": "1"},
+        confirm_hidden_fields=["auto_generate_ops"],
     )
  
     # 5) Ensure at least one internal op has positive duration and assigned machine/operator

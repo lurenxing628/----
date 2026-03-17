@@ -50,9 +50,12 @@ def test_excel_and_route_yesno_is_narrow_default_yes_unknown_passthrough() -> No
         assert fn("是") == YesNo.YES.value
         assert fn("否") == YesNo.NO.value
 
-        # 窄口径：不把 true/1/on 视为 yes（应透传给上层校验）
-        assert fn("true") == "true"
-        assert fn("1") == "1"
+        # 窄口径现已放宽：接受 true/false/1/0，但 on/off 仍透传给上层校验
+        assert fn("true") == YesNo.YES.value
+        assert fn("1") == YesNo.YES.value
+        assert fn("false") == YesNo.NO.value
+        assert fn("0") == YesNo.NO.value
+        assert fn("on") == "on"
 
         # unknown：保持原样（strip 后）
         assert fn("  Maybe  ") == "Maybe"
@@ -64,9 +67,13 @@ def test_calendar_admin_yesno_is_narrow_unknown_raises() -> None:
     assert CalendarAdmin._normalize_yesno("NO", field="允许普通件") == YesNo.NO.value
     assert CalendarAdmin._normalize_yesno("是", field="允许普通件") == YesNo.YES.value
     assert CalendarAdmin._normalize_yesno("否", field="允许普通件") == YesNo.NO.value
+    assert CalendarAdmin._normalize_yesno("true", field="允许普通件") == YesNo.YES.value
+    assert CalendarAdmin._normalize_yesno("1", field="允许普通件") == YesNo.YES.value
+    assert CalendarAdmin._normalize_yesno("false", field="允许普通件") == YesNo.NO.value
+    assert CalendarAdmin._normalize_yesno("0", field="允许普通件") == YesNo.NO.value
 
     with pytest.raises(ValidationError):
         CalendarAdmin._normalize_yesno("maybe", field="允许普通件")
     with pytest.raises(ValidationError):
-        CalendarAdmin._normalize_yesno("true", field="允许普通件")
+        CalendarAdmin._normalize_yesno("on", field="允许普通件")
 

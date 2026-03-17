@@ -37,6 +37,16 @@ def _extract_raw_rows_json(html: str) -> str:
     return raw.strip()
 
 
+def _extract_hidden_input(html: str, name: str) -> str:
+    for m in re.finditer(r"<input[^>]+>", html, re.I):
+        tag = m.group(0)
+        if re.search(rf'name="{re.escape(name)}"', tag):
+            vm = re.search(r'value="([^"]*)"', tag)
+            value = vm.group(1) if vm else ""
+            return value.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&").strip()
+    return ""
+
+
 def _assert_status(name: str, resp, expect_code: int = 200):
     if resp.status_code != expect_code:
         body = None
@@ -55,10 +65,19 @@ def _preview_confirm_excel(client, *, preview_url: str, confirm_url: str, header
         content_type="multipart/form-data",
     )
     _assert_status(f"{filename} preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
+    preview_html = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(preview_html)
+    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    if not preview_baseline:
+        raise RuntimeError(f"{filename} 预览页面缺少 preview_baseline")
     r = client.post(
         confirm_url,
-        data={"mode": "overwrite", "filename": filename, "raw_rows_json": raw},
+        data={
+            "mode": "overwrite",
+            "filename": filename,
+            "raw_rows_json": raw,
+            "preview_baseline": preview_baseline,
+        },
         follow_redirects=True,
     )
     _assert_status(f"{filename} confirm", r, 200)

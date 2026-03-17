@@ -25,10 +25,14 @@ def write_report(path, lines):
         f.write("\n".join(lines) + "\n")
 
 
+def is_blank_value(value) -> bool:
+    return value is None or str(value).strip() == ""
+
+
 def validate_operator_row(row: dict) -> str:
-    if not row.get("工号") or str(row.get("工号")).strip() == "":
+    if is_blank_value(row.get("工号")):
         return "“工号”不能为空"
-    if not row.get("姓名") or str(row.get("姓名")).strip() == "":
+    if is_blank_value(row.get("姓名")):
         return "“姓名”不能为空"
     status = row.get("状态")
     if status is None or str(status).strip() == "":

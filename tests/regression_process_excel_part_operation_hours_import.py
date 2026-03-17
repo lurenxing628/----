@@ -37,6 +37,16 @@ def _extract_raw_rows_json(html: str) -> str:
     return raw.strip()
 
 
+def _extract_hidden_input(html: str, name: str) -> str:
+    for m in re.finditer(r"<input[^>]+>", html, re.I):
+        tag = m.group(0)
+        if re.search(rf'name="{re.escape(name)}"', tag):
+            vm = re.search(r'value="([^"]*)"', tag)
+            value = vm.group(1) if vm else ""
+            return value.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&").strip()
+    return ""
+
+
 def _assert_status(name: str, resp, expect_code: int = 200):
     if resp.status_code != expect_code:
         body = None
@@ -85,8 +95,16 @@ def main() -> None:
     buf = _make_xlsx_bytes(["工种ID", "工种名称", "归属"], op_types_rows)
     r = client.post("/process/excel/op-types/preview", data={"mode": "overwrite", "file": (buf, "op_types.xlsx")}, content_type="multipart/form-data")
     _assert_status("op_types preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/process/excel/op-types/confirm", data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    preview_html = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(preview_html)
+    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    if not preview_baseline:
+        raise RuntimeError("op_types preview 缺少 preview_baseline")
+    r = client.post(
+        "/process/excel/op-types/confirm",
+        data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("op_types confirm", r, 200)
 
     # 2) 路线导入（生成 PartOperations：5 internal / 10 external）
@@ -94,8 +112,16 @@ def main() -> None:
     buf = _make_xlsx_bytes(["图号", "名称", "工艺路线字符串"], routes_rows)
     r = client.post("/process/excel/routes/preview", data={"mode": "overwrite", "file": (buf, "routes.xlsx")}, content_type="multipart/form-data")
     _assert_status("routes preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/process/excel/routes/confirm", data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    preview_html = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(preview_html)
+    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    if not preview_baseline:
+        raise RuntimeError("routes preview 缺少 preview_baseline")
+    r = client.post(
+        "/process/excel/routes/confirm",
+        data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("routes confirm", r, 200)
 
     # 3) 先验证：包含 external 行时预览应给 ERROR
@@ -127,9 +153,17 @@ def main() -> None:
     if "必须是有限数字" not in html_nan:
         raise RuntimeError("预览未识别 NaN（期望提示：必须是有限数字）")
     raw_nan = _extract_raw_rows_json(html_nan)
+    preview_baseline_nan = _extract_hidden_input(html_nan, "preview_baseline")
+    if not preview_baseline_nan:
+        raise RuntimeError("part_operation_hours preview nan 缺少 preview_baseline")
     r = client.post(
         "/process/excel/part-operation-hours/confirm",
-        data={"mode": "overwrite", "filename": "part_op_hours_nan.xlsx", "raw_rows_json": raw_nan},
+        data={
+            "mode": "overwrite",
+            "filename": "part_op_hours_nan.xlsx",
+            "raw_rows_json": raw_nan,
+            "preview_baseline": preview_baseline_nan,
+        },
         follow_redirects=True,
     )
     _assert_status("part_operation_hours confirm nan", r, 200)
@@ -150,9 +184,17 @@ def main() -> None:
     if "必须是有限数字" not in html_inf:
         raise RuntimeError("预览未识别 Inf（期望提示：必须是有限数字）")
     raw_inf = _extract_raw_rows_json(html_inf)
+    preview_baseline_inf = _extract_hidden_input(html_inf, "preview_baseline")
+    if not preview_baseline_inf:
+        raise RuntimeError("part_operation_hours preview inf 缺少 preview_baseline")
     r = client.post(
         "/process/excel/part-operation-hours/confirm",
-        data={"mode": "overwrite", "filename": "part_op_hours_inf.xlsx", "raw_rows_json": raw_inf},
+        data={
+            "mode": "overwrite",
+            "filename": "part_op_hours_inf.xlsx",
+            "raw_rows_json": raw_inf,
+            "preview_baseline": preview_baseline_inf,
+        },
         follow_redirects=True,
     )
     _assert_status("part_operation_hours confirm inf", r, 200)
@@ -183,10 +225,19 @@ def main() -> None:
         content_type="multipart/form-data",
     )
     _assert_status("part_operation_hours preview ok", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
+    preview_html = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(preview_html)
+    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    if not preview_baseline:
+        raise RuntimeError("part_operation_hours preview ok 缺少 preview_baseline")
     r = client.post(
         "/process/excel/part-operation-hours/confirm",
-        data={"mode": "overwrite", "filename": "part_op_hours_ok.xlsx", "raw_rows_json": raw},
+        data={
+            "mode": "overwrite",
+            "filename": "part_op_hours_ok.xlsx",
+            "raw_rows_json": raw,
+            "preview_baseline": preview_baseline,
+        },
         follow_redirects=True,
     )
     _assert_status("part_operation_hours confirm", r, 200)

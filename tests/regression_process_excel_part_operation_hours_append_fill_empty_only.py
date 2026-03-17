@@ -37,6 +37,16 @@ def _extract_raw_rows_json(html: str) -> str:
     return raw.strip()
 
 
+def _extract_hidden_input(html: str, name: str) -> str:
+    for m in re.finditer(r"<input[^>]+>", html, re.I):
+        tag = m.group(0)
+        if re.search(rf'name="{re.escape(name)}"', tag):
+            vm = re.search(r'value="([^"]*)"', tag)
+            value = vm.group(1) if vm else ""
+            return value.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&").strip()
+    return ""
+
+
 def _assert_status(name: str, resp, expect_code: int = 200):
     if resp.status_code != expect_code:
         body = None
@@ -89,10 +99,14 @@ def main() -> None:
         content_type="multipart/form-data",
     )
     _assert_status("op_types preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
+    preview_html = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(preview_html)
+    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    if not preview_baseline:
+        raise RuntimeError("op_types preview 缺少 preview_baseline")
     r = client.post(
         "/process/excel/op-types/confirm",
-        data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw},
+        data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
     _assert_status("op_types confirm", r, 200)
@@ -106,10 +120,14 @@ def main() -> None:
         content_type="multipart/form-data",
     )
     _assert_status("routes preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
+    preview_html = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(preview_html)
+    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    if not preview_baseline:
+        raise RuntimeError("routes preview 缺少 preview_baseline")
     r = client.post(
         "/process/excel/routes/confirm",
-        data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw},
+        data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
     _assert_status("routes confirm", r, 200)
@@ -158,9 +176,17 @@ def main() -> None:
     if "工序不存在" not in html_mixed:
         raise RuntimeError("append 预览未识别不存在工序错误")
     raw_mixed = _extract_raw_rows_json(html_mixed)
+    preview_baseline_mixed = _extract_hidden_input(html_mixed, "preview_baseline")
+    if not preview_baseline_mixed:
+        raise RuntimeError("part_operation_hours append preview mixed 缺少 preview_baseline")
     r = client.post(
         "/process/excel/part-operation-hours/confirm",
-        data={"mode": "append", "filename": "part_op_hours_append_mixed.xlsx", "raw_rows_json": raw_mixed},
+        data={
+            "mode": "append",
+            "filename": "part_op_hours_append_mixed.xlsx",
+            "raw_rows_json": raw_mixed,
+            "preview_baseline": preview_baseline_mixed,
+        },
         follow_redirects=True,
     )
     _assert_status("part_operation_hours append confirm mixed", r, 200)
@@ -180,10 +206,19 @@ def main() -> None:
         content_type="multipart/form-data",
     )
     _assert_status("part_operation_hours append preview ok", r, 200)
-    raw_ok = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
+    preview_html = r.data.decode("utf-8", errors="ignore")
+    raw_ok = _extract_raw_rows_json(preview_html)
+    preview_baseline_ok = _extract_hidden_input(preview_html, "preview_baseline")
+    if not preview_baseline_ok:
+        raise RuntimeError("part_operation_hours append preview ok 缺少 preview_baseline")
     r = client.post(
         "/process/excel/part-operation-hours/confirm",
-        data={"mode": "append", "filename": "part_op_hours_append_ok.xlsx", "raw_rows_json": raw_ok},
+        data={
+            "mode": "append",
+            "filename": "part_op_hours_append_ok.xlsx",
+            "raw_rows_json": raw_ok,
+            "preview_baseline": preview_baseline_ok,
+        },
         follow_redirects=True,
     )
     _assert_status("part_operation_hours append confirm ok", r, 200)

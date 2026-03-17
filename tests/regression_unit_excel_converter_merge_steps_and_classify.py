@@ -109,6 +109,19 @@ def _build_source_xlsx(path: str) -> None:
             pass
 
 
+def _read_headers(path: str):
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        ws = wb.active
+        first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+        return list(first_row or [])
+    finally:
+        try:
+            wb.close()
+        except Exception:
+            pass
+
+
 def main() -> None:
     repo_root = find_repo_root()
     if repo_root not in sys.path:
@@ -147,14 +160,23 @@ def main() -> None:
         name = str(m.get("设备名称") or "")
         assert not name.startswith("设备"), f"设备名称不应带“设备”前缀，实际={name!r}"
 
-    # 3) 人员设备关联仅输出两列（不含 技能等级/主操设备）
+    # 3) 人员设备关联输出对齐主模板 4 列（补默认技能等级/主操设备）
     assert converted.operator_machine_rows, "人员设备关联输出为空"
     for row in converted.operator_machine_rows:
-        assert set(row.keys()) == {"工号", "设备编号"}, f"人员设备关联列不符合预期：{row.keys()}"
+        assert set(row.keys()) == {"工号", "设备编号", "技能等级", "主操设备"}, f"人员设备关联列不符合预期：{row.keys()}"
+        assert row["技能等级"] == "normal", f"人员设备关联默认技能等级异常：{row!r}"
+        assert row["主操设备"] == "no", f"人员设备关联默认主操设备异常：{row!r}"
 
     links = {(r["工号"], r["设备编号"]) for r in converted.operator_machine_rows}
     assert (operators["胡凡"], "3140124") in links
     assert (operators["罗辉"], "3140124") in links
+
+    # 3.1) 供应商配置输出对齐主模板 6 列（补默认状态/备注）
+    assert converted.suppliers_rows, "供应商配置输出为空"
+    for row in converted.suppliers_rows:
+        assert set(row.keys()) == {"供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"}, f"供应商配置列不符合预期：{row.keys()}"
+        assert row["状态"] == "active", f"供应商默认状态异常：{row!r}"
+        assert row["备注"] is None, f"供应商默认备注异常：{row!r}"
 
     # 4) 工种冲突自动改名：同名 internal/external 并存时，外协侧加“（外协）”
     op_types = {r["工种名称"]: r["归属"] for r in converted.op_types_rows}
@@ -207,6 +229,8 @@ def main() -> None:
     assert expected_files.issubset(set(output_paths.keys()))
     for fn in expected_files:
         assert os.path.exists(output_paths[fn]), f"输出文件缺失：{fn}"
+    assert _read_headers(output_paths["人员设备关联.xlsx"]) == ["工号", "设备编号", "技能等级", "主操设备"]
+    assert _read_headers(output_paths["供应商配置.xlsx"]) == ["供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"]
 
     print("OK")
 

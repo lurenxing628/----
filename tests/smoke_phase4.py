@@ -37,6 +37,10 @@ def write_report(path, lines):
         f.write("\n".join(lines) + "\n")
 
 
+def is_blank_value(value) -> bool:
+    return value is None or str(value).strip() == ""
+
+
 def validate_machine_row(row: dict, op_type_repo) -> str:
     """
     Excel 行校验（按文档列名）：
@@ -44,9 +48,9 @@ def validate_machine_row(row: dict, op_type_repo) -> str:
     - 状态限定 active/inactive/maintain（允许中文：可用/停用/维修）
     - 工种允许填写 op_type_id 或 工种名称；不识别则报中文错误
     """
-    if not row.get("设备编号") or str(row.get("设备编号")).strip() == "":
+    if is_blank_value(row.get("设备编号")):
         return "“设备编号”不能为空"
-    if not row.get("设备名称") or str(row.get("设备名称")).strip() == "":
+    if is_blank_value(row.get("设备名称")):
         return "“设备名称”不能为空"
 
     status = row.get("状态")

@@ -10,6 +10,8 @@ def test_unit_template_output_specs_include_team_headers() -> None:
 
     assert specs["人员基本信息.xlsx"] == ["工号", "姓名", "状态", "班组", "备注"]
     assert specs["设备信息.xlsx"] == ["设备编号", "设备名称", "工种", "班组", "状态"]
+    assert specs["人员设备关联.xlsx"] == ["工号", "设备编号", "技能等级", "主操设备"]
+    assert specs["供应商配置.xlsx"] == ["供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"]
 
 
 def test_unit_template_builder_rows_include_team_columns() -> None:

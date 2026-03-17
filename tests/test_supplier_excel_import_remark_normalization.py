@@ -68,3 +68,42 @@ def test_supplier_excel_import_normalizes_remark_text() -> None:
         except Exception:
             pass
 
+
+def test_supplier_excel_import_overwrite_preserves_existing_status_and_remark_when_columns_missing() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+        conn.execute(
+            "INSERT INTO Suppliers (supplier_id, name, default_days, status, remark) VALUES (?, ?, ?, ?, ?)",
+            ("S001", "旧供应商", 2.0, "inactive", "keep me"),
+        )
+        conn.commit()
+
+        svc = SupplierExcelImportService(conn)
+        stats = svc.apply_preview_rows(
+            [_pr({"供应商ID": "S001", "名称": "新供应商", "默认周期": 3.5}, status=RowStatus.UPDATE, row_num=2)],
+            mode=ImportMode.OVERWRITE,
+            existing_ids={"S001"},
+        )
+        assert int(stats.get("total_rows", 0)) == 1, stats
+        assert int(stats.get("update_count", 0)) == 1, stats
+        assert int(stats.get("error_count", 0)) == 0, stats
+
+        row = conn.execute(
+            "SELECT supplier_id, name, default_days, status, remark FROM Suppliers WHERE supplier_id=?",
+            ("S001",),
+        ).fetchone()
+        assert row is not None
+        assert row["supplier_id"] == "S001"
+        assert row["name"] == "新供应商"
+        assert float(row["default_days"] or 0) == 3.5
+        assert row["status"] == "inactive"
+        assert row["remark"] == "keep me"
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+

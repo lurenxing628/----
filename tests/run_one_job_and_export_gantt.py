@@ -6,6 +6,8 @@ import tempfile
 import time
 from datetime import date
 
+from excel_preview_confirm_helpers import build_confirm_payload
+
 
 def find_repo_root():
     here = os.path.dirname(os.path.abspath(__file__))
@@ -90,24 +92,42 @@ def main():
     buf = _make_xlsx_bytes(["设备编号", "设备名称", "工种", "状态"], machines_rows)
     r = client.post("/equipment/excel/machines/preview", data={"mode": "overwrite", "file": (buf, "machines.xlsx")}, content_type="multipart/form-data")
     _assert_status("machines preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/equipment/excel/machines/confirm", data={"mode": "overwrite", "filename": "machines.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/equipment/excel/machines/confirm",
+        data={"mode": "overwrite", "filename": "machines.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("machines confirm", r, 200)
 
     operators_rows = [{"工号": "OP001", "姓名": "张三", "状态": "active", "备注": "one_job"}]
     buf = _make_xlsx_bytes(["工号", "姓名", "状态", "备注"], operators_rows)
     r = client.post("/personnel/excel/operators/preview", data={"mode": "overwrite", "file": (buf, "operators.xlsx")}, content_type="multipart/form-data")
     _assert_status("operators preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/personnel/excel/operators/confirm", data={"mode": "overwrite", "filename": "operators.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/personnel/excel/operators/confirm",
+        data={"mode": "overwrite", "filename": "operators.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("operators confirm", r, 200)
 
     links_rows = [{"工号": "OP001", "设备编号": "MC001"}]
     buf = _make_xlsx_bytes(["工号", "设备编号"], links_rows)
     r = client.post("/personnel/excel/links/preview", data={"mode": "overwrite", "file": (buf, "links.xlsx")}, content_type="multipart/form-data")
     _assert_status("links preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/personnel/excel/links/confirm", data={"mode": "overwrite", "filename": "links.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/personnel/excel/links/confirm",
+        data={"mode": "overwrite", "filename": "links.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("links confirm", r, 200)
 
     # 2) 工艺：工种/供应商/路线（内部+外协）
@@ -118,46 +138,68 @@ def main():
     buf = _make_xlsx_bytes(["工种ID", "工种名称", "归属"], op_types_rows)
     r = client.post("/process/excel/op-types/preview", data={"mode": "overwrite", "file": (buf, "op_types.xlsx")}, content_type="multipart/form-data")
     _assert_status("op_types preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/process/excel/op-types/confirm", data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/process/excel/op-types/confirm",
+        data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("op_types confirm", r, 200)
 
     suppliers_rows = [{"供应商ID": "S001", "名称": "外协-标印厂", "对应工种": "标印", "默认周期": 2, "状态": "active"}]
     buf = _make_xlsx_bytes(["供应商ID", "名称", "对应工种", "默认周期", "状态"], suppliers_rows)
     r = client.post("/process/excel/suppliers/preview", data={"mode": "overwrite", "file": (buf, "suppliers.xlsx")}, content_type="multipart/form-data")
     _assert_status("suppliers preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/process/excel/suppliers/confirm", data={"mode": "overwrite", "filename": "suppliers.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/process/excel/suppliers/confirm",
+        data={"mode": "overwrite", "filename": "suppliers.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("suppliers confirm", r, 200)
 
     routes_rows = [{"图号": "A1234", "名称": "壳体-大", "工艺路线字符串": "5数铣35标印"}]
     buf = _make_xlsx_bytes(["图号", "名称", "工艺路线字符串"], routes_rows)
     r = client.post("/process/excel/routes/preview", data={"mode": "overwrite", "file": (buf, "routes.xlsx")}, content_type="multipart/form-data")
     _assert_status("routes preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/process/excel/routes/confirm", data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/process/excel/routes/confirm",
+        data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("routes confirm", r, 200)
 
     # 3) 批次导入并自动生成工序
     batches_rows = [{"批次号": "B001", "图号": "A1234", "数量": 2, "交期": "2099-12-31", "优先级": "urgent", "齐套": "yes", "备注": "one_job"}]
     buf = _make_xlsx_bytes(["批次号", "图号", "数量", "交期", "优先级", "齐套", "备注"], batches_rows)
-    r = client.post("/scheduler/excel/batches/preview", data={"mode": "overwrite", "file": (buf, "batches.xlsx")}, content_type="multipart/form-data")
+    r = client.post(
+        "/scheduler/excel/batches/preview",
+        data={"mode": "overwrite", "file": (buf, "batches.xlsx"), "auto_generate_ops": "1"},
+        content_type="multipart/form-data",
+    )
     _assert_status("batches preview", r, 200)
     html_batches_preview = r.data.decode("utf-8", errors="ignore")
-    raw = _extract_raw_rows_json(html_batches_preview)
-    preview_baseline = _extract_preview_baseline(html_batches_preview)
     r = client.post(
         "/scheduler/excel/batches/confirm",
-        data={
-            "mode": "overwrite",
-            "filename": "batches.xlsx",
-            "raw_rows_json": raw,
-            "preview_baseline": preview_baseline,
-            "auto_generate_ops": "1",
-        },
+        data=build_confirm_payload(
+            html_batches_preview,
+            mode="overwrite",
+            filename="batches.xlsx",
+            context="/scheduler/excel/batches/preview",
+            confirm_hidden_fields=["auto_generate_ops"],
+        ),
         follow_redirects=True,
     )
     _assert_status("batches confirm", r, 200)
+    if "导入被拒绝" in r.data.decode("utf-8", errors="ignore"):
+        raise RuntimeError("batches confirm 被拒绝（页面提示“导入被拒绝”）")
 
     # 4) 补齐内部工序：确保有正工时（避免甘特过滤掉零时长任务）
     conn = get_connection(test_db)

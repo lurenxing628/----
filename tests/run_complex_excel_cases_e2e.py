@@ -28,6 +28,8 @@ from datetime import date, datetime, timedelta
 from datetime import time as dt_time
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from excel_preview_confirm_helpers import build_confirm_payload
+
 # 确保仓库根目录在 sys.path（允许直接 python tests/xxx.py 运行）
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO_ROOT not in sys.path:
@@ -142,7 +144,9 @@ def _post_excel_import(
     rows: Sequence[Dict[str, Any]],
     filename: str,
     mode: str = "overwrite",
+    preview_extra: Optional[Dict[str, Any]] = None,
     confirm_extra: Optional[Dict[str, Any]] = None,
+    confirm_hidden_fields: Optional[Sequence[str]] = None,
     save_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -154,9 +158,12 @@ def _post_excel_import(
     if save_path:
         _save_xlsx(save_path, headers=headers, rows=rows)
     buf = _make_xlsx_bytes(headers, rows)
+    preview_data = {"mode": mode, "file": (buf, filename)}
+    if preview_extra:
+        preview_data.update(preview_extra)
     resp = client.post(
         preview_url,
-        data={"mode": mode, "file": (buf, filename)},
+        data=preview_data,
         content_type="multipart/form-data",
     )
     if resp.status_code != 200:
@@ -179,14 +186,18 @@ def _post_excel_import(
             samples = []
         sample_text = ("；".join(samples)) if samples else ""
         raise RuntimeError(f"preview 存在 ERROR 行，导入会被拒绝：{preview_url}{('；示例：' + sample_text) if sample_text else ''}")
-    raw_rows_json = _extract_raw_rows_json(html)
-    data = {"mode": mode, "filename": filename, "raw_rows_json": raw_rows_json}
-    preview_baseline = _extract_preview_baseline(html)
-    if preview_baseline:
-        data["preview_baseline"] = preview_baseline
-    if confirm_extra:
-        data.update(confirm_extra)
-    resp2 = client.post(confirm_url, data=data, follow_redirects=True)
+    resp2 = client.post(
+        confirm_url,
+        data=build_confirm_payload(
+            html,
+            mode=mode,
+            filename=filename,
+            context=preview_url,
+            confirm_extra=confirm_extra,
+            confirm_hidden_fields=confirm_hidden_fields,
+        ),
+        follow_redirects=True,
+    )
     if resp2.status_code != 200:
         body = resp2.data.decode("utf-8", errors="ignore") if getattr(resp2, "data", None) else ""
         raise RuntimeError(f"confirm 失败：{confirm_url} code={resp2.status_code} body={body[:500]}")
@@ -1480,7 +1491,8 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
         headers=headers["batches"],
         rows=batches_rows,
         filename="批次信息.xlsx",
-        confirm_extra={"auto_generate_ops": "1"},
+        preview_extra={"auto_generate_ops": "1"},
+        confirm_hidden_fields=["auto_generate_ops"],
         save_path=os.path.join(input_dir, "批次信息.xlsx"),
     )
 
@@ -1567,7 +1579,8 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
                 headers=headers["batches"],
                 rows=insert_rows,
                 filename="插单批次.xlsx",
-                confirm_extra={"auto_generate_ops": "1"},
+                preview_extra={"auto_generate_ops": "1"},
+                confirm_hidden_fields=["auto_generate_ops"],
                 save_path=os.path.join(input_dir, "插单批次.xlsx"),
             )
 

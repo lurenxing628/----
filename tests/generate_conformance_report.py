@@ -138,8 +138,10 @@ def _check_excel_templates(repo_root: str) -> CheckResult:
         "工种配置.xlsx",
         "供应商配置.xlsx",
         "零件工艺路线.xlsx",
+        "零件工序工时.xlsx",
         "批次信息.xlsx",
         "工作日历.xlsx",
+        "人员专属工作日历.xlsx",
     ]
     existing = _list_files(repo_root, "templates_excel")
     missing = [x for x in required if x not in existing]

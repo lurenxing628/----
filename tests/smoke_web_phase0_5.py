@@ -64,6 +64,22 @@ def _extract_raw_rows_json(html: str) -> str:
     return raw.strip()
 
 
+def _extract_preview_baseline(html: str) -> str:
+    m = re.search(r'<input[^>]+name="preview_baseline"[^>]+value="([^"]*)"', html, re.S)
+    if not m:
+        return ""
+    v = m.group(1)
+    v = v.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&")
+    return v.strip()
+
+
+def _require_preview_baseline(html: str, context: str) -> str:
+    preview_baseline = _extract_preview_baseline(html)
+    if not preview_baseline:
+        raise RuntimeError(f"{context} 预览页面缺少 preview_baseline")
+    return preview_baseline
+
+
 def _assert_status(lines, name: str, resp, expect_code: int = 200):
     lines.append(f"- {name}：{resp.status_code}")
     if resp.status_code != expect_code:
@@ -192,10 +208,11 @@ def main():
     if "导入预览" not in html:
         raise RuntimeError("设备 Excel 预览页面未包含“导入预览”")
     raw_rows_json = _extract_raw_rows_json(html)
+    preview_baseline = _require_preview_baseline(html, "machines")
 
     resp2 = client.post(
         "/equipment/excel/machines/confirm",
-        data={"mode": "overwrite", "filename": "machines.xlsx", "raw_rows_json": raw_rows_json},
+        data={"mode": "overwrite", "filename": "machines.xlsx", "raw_rows_json": raw_rows_json, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
     _assert_status(lines, "POST /equipment/excel/machines/confirm", resp2, 200)
@@ -236,10 +253,12 @@ def main():
         content_type="multipart/form-data",
     )
     _assert_status(lines, "POST /equipment/excel/machines/preview（valid）", resp_ok, 200)
-    raw_rows_json_ok = _extract_raw_rows_json(resp_ok.data.decode("utf-8", errors="ignore"))
+    html_ok = resp_ok.data.decode("utf-8", errors="ignore")
+    raw_rows_json_ok = _extract_raw_rows_json(html_ok)
+    preview_baseline_ok = _require_preview_baseline(html_ok, "machines valid")
     resp_ok2 = client.post(
         "/equipment/excel/machines/confirm",
-        data={"mode": "overwrite", "filename": "machines_ok.xlsx", "raw_rows_json": raw_rows_json_ok},
+        data={"mode": "overwrite", "filename": "machines_ok.xlsx", "raw_rows_json": raw_rows_json_ok, "preview_baseline": preview_baseline_ok},
         follow_redirects=True,
     )
     _assert_status(lines, "POST /equipment/excel/machines/confirm（valid）", resp_ok2, 200)
@@ -289,10 +308,11 @@ def main():
     if "导入预览" not in html:
         raise RuntimeError("人员 Excel 预览页面未包含“导入预览”")
     raw_rows_json = _extract_raw_rows_json(html)
+    preview_baseline = _require_preview_baseline(html, "operators")
 
     resp2 = client.post(
         "/personnel/excel/operators/confirm",
-        data={"mode": "overwrite", "filename": "operators.xlsx", "raw_rows_json": raw_rows_json},
+        data={"mode": "overwrite", "filename": "operators.xlsx", "raw_rows_json": raw_rows_json, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
     _assert_status(lines, "POST /personnel/excel/operators/confirm", resp2, 200)
@@ -332,10 +352,12 @@ def main():
         content_type="multipart/form-data",
     )
     _assert_status(lines, "POST /personnel/excel/operators/preview（valid）", resp_ok, 200)
-    raw_rows_json_ok = _extract_raw_rows_json(resp_ok.data.decode("utf-8", errors="ignore"))
+    html_ok = resp_ok.data.decode("utf-8", errors="ignore")
+    raw_rows_json_ok = _extract_raw_rows_json(html_ok)
+    preview_baseline_ok = _require_preview_baseline(html_ok, "operators valid")
     resp_ok2 = client.post(
         "/personnel/excel/operators/confirm",
-        data={"mode": "overwrite", "filename": "operators_ok.xlsx", "raw_rows_json": raw_rows_json_ok},
+        data={"mode": "overwrite", "filename": "operators_ok.xlsx", "raw_rows_json": raw_rows_json_ok, "preview_baseline": preview_baseline_ok},
         follow_redirects=True,
     )
     _assert_status(lines, "POST /personnel/excel/operators/confirm（valid）", resp_ok2, 200)
@@ -380,11 +402,13 @@ def main():
         content_type="multipart/form-data",
     )
     _assert_status(lines, "POST /personnel/excel/links/preview", resp, 200)
-    raw_rows_json = _extract_raw_rows_json(resp.data.decode("utf-8", errors="ignore"))
+    html = resp.data.decode("utf-8", errors="ignore")
+    raw_rows_json = _extract_raw_rows_json(html)
+    preview_baseline = _require_preview_baseline(html, "personnel links")
 
     resp2 = client.post(
         "/personnel/excel/links/confirm",
-        data={"mode": "overwrite", "filename": "op_links.xlsx", "raw_rows_json": raw_rows_json},
+        data={"mode": "overwrite", "filename": "op_links.xlsx", "raw_rows_json": raw_rows_json, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
     _assert_status(lines, "POST /personnel/excel/links/confirm", resp2, 200)
@@ -423,10 +447,12 @@ def main():
         content_type="multipart/form-data",
     )
     _assert_status(lines, "POST /personnel/excel/links/preview（valid）", resp_ok, 200)
-    raw_rows_json_ok = _extract_raw_rows_json(resp_ok.data.decode("utf-8", errors="ignore"))
+    html_ok = resp_ok.data.decode("utf-8", errors="ignore")
+    raw_rows_json_ok = _extract_raw_rows_json(html_ok)
+    preview_baseline_ok = _require_preview_baseline(html_ok, "personnel links valid")
     resp_ok2 = client.post(
         "/personnel/excel/links/confirm",
-        data={"mode": "overwrite", "filename": "op_links_ok.xlsx", "raw_rows_json": raw_rows_json_ok},
+        data={"mode": "overwrite", "filename": "op_links_ok.xlsx", "raw_rows_json": raw_rows_json_ok, "preview_baseline": preview_baseline_ok},
         follow_redirects=True,
     )
     _assert_status(lines, "POST /personnel/excel/links/confirm（valid）", resp_ok2, 200)
@@ -466,10 +492,12 @@ def main():
         content_type="multipart/form-data",
     )
     _assert_status(lines, "POST /process/excel/op-types/preview", resp, 200)
-    raw_rows_json = _extract_raw_rows_json(resp.data.decode("utf-8", errors="ignore"))
+    html = resp.data.decode("utf-8", errors="ignore")
+    raw_rows_json = _extract_raw_rows_json(html)
+    preview_baseline = _require_preview_baseline(html, "op_types")
     resp2 = client.post(
         "/process/excel/op-types/confirm",
-        data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw_rows_json},
+        data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw_rows_json, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
     _assert_status(lines, "POST /process/excel/op-types/confirm", resp2, 200)
@@ -487,10 +515,12 @@ def main():
         content_type="multipart/form-data",
     )
     _assert_status(lines, "POST /process/excel/suppliers/preview", resp, 200)
-    raw_rows_json = _extract_raw_rows_json(resp.data.decode("utf-8", errors="ignore"))
+    html = resp.data.decode("utf-8", errors="ignore")
+    raw_rows_json = _extract_raw_rows_json(html)
+    preview_baseline = _require_preview_baseline(html, "suppliers")
     resp2 = client.post(
         "/process/excel/suppliers/confirm",
-        data={"mode": "overwrite", "filename": "suppliers.xlsx", "raw_rows_json": raw_rows_json},
+        data={"mode": "overwrite", "filename": "suppliers.xlsx", "raw_rows_json": raw_rows_json, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
     _assert_status(lines, "POST /process/excel/suppliers/confirm", resp2, 200)
@@ -507,10 +537,12 @@ def main():
         content_type="multipart/form-data",
     )
     _assert_status(lines, "POST /process/excel/routes/preview", resp, 200)
-    raw_rows_json = _extract_raw_rows_json(resp.data.decode("utf-8", errors="ignore"))
+    html = resp.data.decode("utf-8", errors="ignore")
+    raw_rows_json = _extract_raw_rows_json(html)
+    preview_baseline = _require_preview_baseline(html, "routes")
     resp2 = client.post(
         "/process/excel/routes/confirm",
-        data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw_rows_json},
+        data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw_rows_json, "preview_baseline": preview_baseline},
         follow_redirects=True,
     )
     _assert_status(lines, "POST /process/excel/routes/confirm", resp2, 200)

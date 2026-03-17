@@ -14,12 +14,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 from pathlib import Path
 from typing import Dict
 
@@ -48,6 +50,15 @@ def _read_port_file(path: str) -> int:
 def _read_host_file(path: str) -> str:
     txt = Path(path).read_text(encoding="utf-8", errors="ignore").strip()
     return str(txt)
+
+
+def _read_db_file(path: str) -> str:
+    txt = Path(path).read_text(encoding="utf-8", errors="ignore").strip()
+    return str(txt)
+
+
+def _normalize_path(path: str) -> str:
+    return os.path.normcase(os.path.abspath(path))
 
 
 def _wait_for_port_file(path: str, p: subprocess.Popen, timeout_s: float = 12.0) -> int:
@@ -82,6 +93,22 @@ def _wait_for_host_file(path: str, p: subprocess.Popen, timeout_s: float = 12.0)
     raise TimeoutError(f"超时：未生成 host 文件：{path}")
 
 
+def _wait_for_db_file(path: str, p: subprocess.Popen, timeout_s: float = 12.0) -> str:
+    t0 = time.time()
+    while time.time() - t0 < timeout_s:
+        if p.poll() is not None:
+            raise RuntimeError(f"进程提前退出（exit_code={p.returncode}），未生成 db_path 文件：{path}")
+        if os.path.exists(path):
+            try:
+                db_path = _read_db_file(path)
+                if db_path:
+                    return db_path
+            except Exception:
+                pass
+        time.sleep(0.2)
+    raise TimeoutError(f"超时：未生成 db_path 文件：{path}")
+
+
 def _wait_port_open(host: str, port: int, p: subprocess.Popen, timeout_s: float = 12.0) -> None:
     t0 = time.time()
     while time.time() - t0 < timeout_s:
@@ -91,6 +118,27 @@ def _wait_port_open(host: str, port: int, p: subprocess.Popen, timeout_s: float 
             return
         time.sleep(0.2)
     raise TimeoutError(f"超时：端口未就绪：{host}:{port}")
+
+
+def _assert_health(host: str, port: int, p: subprocess.Popen, timeout_s: float = 12.0) -> None:
+    url = f"http://{host}:{port}/system/health"
+    t0 = time.time()
+    while time.time() - t0 < timeout_s:
+        if p.poll() is not None:
+            raise RuntimeError(f"进程提前退出（exit_code={p.returncode}），健康检查未就绪：{url}")
+        try:
+            with urllib.request.urlopen(url, timeout=1.5) as resp:
+                payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            if (
+                payload.get("app") == "aps"
+                and payload.get("status") == "ok"
+                and int(payload.get("contract_version") or 0) == 1
+            ):
+                return
+        except Exception:
+            pass
+        time.sleep(0.2)
+    raise TimeoutError(f"超时：健康检查未就绪：{url}")
 
 
 def _run_case(repo_root: str, aps_host: str) -> None:
@@ -115,12 +163,17 @@ def _run_case(repo_root: str, aps_host: str) -> None:
 
     port_file = os.path.join(repo_root, "logs", "aps_port.txt")
     host_file = os.path.join(repo_root, "logs", "aps_host.txt")
+    db_file = os.path.join(repo_root, "logs", "aps_db_path.txt")
     try:
         os.remove(port_file)
     except Exception:
         pass
     try:
         os.remove(host_file)
+    except Exception:
+        pass
+    try:
+        os.remove(db_file)
     except Exception:
         pass
 
@@ -141,6 +194,11 @@ def _run_case(repo_root: str, aps_host: str) -> None:
         if host != "127.0.0.1":
             raise RuntimeError(f"host 文件内容不符合预期：{host_file} -> {host!r}（期望 '127.0.0.1'）")
         _wait_port_open(host, port, p, timeout_s=15.0)
+        _assert_health(host, port, p, timeout_s=15.0)
+        runtime_db = _wait_for_db_file(db_file, p, timeout_s=15.0)
+        expected_db = _normalize_path(test_db)
+        if runtime_db != expected_db:
+            raise RuntimeError(f"db_path 文件内容不符合预期：{db_file} -> {runtime_db!r}（期望 {expected_db!r}）")
     finally:
         try:
             p.terminate()

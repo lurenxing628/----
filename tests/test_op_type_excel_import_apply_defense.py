@@ -48,3 +48,71 @@ def test_apply_preview_rows_commits_valid_rows_and_keeps_row_errors() -> None:
         except Exception:
             pass
 
+
+def test_apply_preview_rows_rejects_duplicate_name_on_create() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+        conn.execute(
+            "INSERT INTO OpTypes (op_type_id, name, category) VALUES (?, ?, ?)",
+            ("OT001", "数车", "internal"),
+        )
+        conn.commit()
+
+        svc = OpTypeExcelImportService(conn)
+        stats = svc.apply_preview_rows(
+            [_pr({"工种ID": "OT002", "工种名称": "数车", "归属": "internal"}, row_num=2)],
+            mode=ImportMode.OVERWRITE,
+            existing_ids={"OT001"},
+        )
+
+        assert int(stats.get("new_count", 0)) == 0, stats
+        assert int(stats.get("error_count", 0)) == 1, stats
+        assert "工种名称“数车”已存在" in str((stats.get("errors_sample") or [{}])[0].get("message") or "")
+
+        rows = conn.execute("SELECT op_type_id, name FROM OpTypes ORDER BY op_type_id").fetchall()
+        assert [(r["op_type_id"], r["name"]) for r in rows] == [("OT001", "数车")]
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def test_apply_preview_rows_rejects_duplicate_name_on_update() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+        conn.execute(
+            "INSERT INTO OpTypes (op_type_id, name, category) VALUES (?, ?, ?)",
+            ("OT001", "数车", "internal"),
+        )
+        conn.execute(
+            "INSERT INTO OpTypes (op_type_id, name, category) VALUES (?, ?, ?)",
+            ("OT002", "数铣", "internal"),
+        )
+        conn.commit()
+
+        svc = OpTypeExcelImportService(conn)
+        stats = svc.apply_preview_rows(
+            [_pr({"工种ID": "OT002", "工种名称": "数车", "归属": "internal"}, status=RowStatus.UPDATE, row_num=2)],
+            mode=ImportMode.OVERWRITE,
+            existing_ids={"OT001", "OT002"},
+        )
+
+        assert int(stats.get("update_count", 0)) == 0, stats
+        assert int(stats.get("error_count", 0)) == 1, stats
+        assert "工种名称“数车”已存在" in str((stats.get("errors_sample") or [{}])[0].get("message") or "")
+
+        rows = conn.execute("SELECT op_type_id, name FROM OpTypes ORDER BY op_type_id").fetchall()
+        assert [(r["op_type_id"], r["name"]) for r in rows] == [("OT001", "数车"), ("OT002", "数铣")]
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
