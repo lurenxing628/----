@@ -95,7 +95,10 @@ class CalendarAdmin:
         try:
             return normalize_yesno_narrow(v, default=YesNo.YES.value, unknown_policy="raise")
         except Exception as e:
-            raise ValidationError(f"“{field}”不正确，请选择：是 / 否。", field=field) from e
+            raise ValidationError(
+                f"“{field}”不正确，请选择：是 / 否（也兼容 yes/no、true/false、1/0）。",
+                field=field,
+            ) from e
 
     def _normalize_shift_window(
         self,

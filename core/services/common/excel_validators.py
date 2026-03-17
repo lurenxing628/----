@@ -17,6 +17,8 @@ from core.models.enums import (
 )
 from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
 from core.services.common.enum_normalizers import normalize_yesno_narrow
+from core.services.common.normalize import is_blank_value, to_str_or_blank
+from core.services.scheduler.number_utils import parse_finite_int
 from data.repositories import OperatorRepository, PartRepository
 
 
@@ -100,11 +102,11 @@ def get_batch_row_validate_and_normalize(
     def _validate_and_normalize(row: dict) -> str | None:
         target = row if inplace else dict(row)
 
-        if not target.get("批次号") or str(target.get("批次号")).strip() == "":
+        if is_blank_value(target.get("批次号")):
             return "“批次号”不能为空"
-        if not target.get("图号") or str(target.get("图号")).strip() == "":
+        if is_blank_value(target.get("图号")):
             return "“图号”不能为空"
-        pn = str(target.get("图号")).strip()
+        pn = to_str_or_blank(target.get("图号"))
         if pn not in parts:
             return f"图号“{pn}”不存在，请先在工艺管理中维护零件。"
 
@@ -112,12 +114,12 @@ def get_batch_row_validate_and_normalize(
         if qty is None or str(qty).strip() == "":
             return "“数量”不能为空"
         try:
-            q = int(qty)
+            q = parse_finite_int(qty, field="数量", allow_none=False)
             if q <= 0:
                 return "“数量”必须大于 0"
             target["数量"] = q
-        except Exception:
-            return "“数量”必须是整数"
+        except ValidationError as e:
+            return e.message
 
         target["优先级"] = _normalize_batch_priority(target.get("优先级"))
         if target["优先级"] not in BATCH_PRIORITY_VALUES:
@@ -154,13 +156,13 @@ def get_operator_calendar_row_validate_and_normalize(
     def _validate_and_normalize(row: dict) -> str | None:
         target = row if inplace else dict(row)
 
-        op_id = str(target.get("工号") or "").strip()
+        op_id = to_str_or_blank(target.get("工号"))
         if not op_id:
             return "“工号”不能为空"
         if not repo.exists(op_id):
             return f"人员“{op_id}”不存在，请先在人员管理中新增该人员。"
 
-        if not target.get("日期") or str(target.get("日期")).strip() == "":
+        if is_blank_value(target.get("日期")):
             return "“日期”不能为空"
         try:
             target["日期"] = normalize_date(target.get("日期"))
@@ -225,10 +227,10 @@ def get_operator_calendar_row_validate_and_normalize(
 
         target["允许普通件"] = _normalize_yesno(target.get("允许普通件"))
         if target["允许普通件"] not in YESNO_VALUES:
-            return "“允许普通件”不合法（允许：yes/no；或中文：是/否）"
+            return "“允许普通件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
         target["允许急件"] = _normalize_yesno(target.get("允许急件"))
         if target["允许急件"] not in YESNO_VALUES:
-            return "“允许急件”不合法（允许：yes/no；或中文：是/否）"
+            return "“允许急件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
 
         target["__id"] = f"{op_id}|{target.get('日期')}"
         return None

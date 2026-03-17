@@ -11,6 +11,7 @@ from core.services.common.normalize import normalize_text
 from data.repositories import BatchOperationRepository, BatchRepository, PartOperationRepository, PartRepository
 
 from . import batch_copy, batch_excel_import, batch_template_ops
+from .number_utils import parse_finite_int
 
 
 class BatchService:
@@ -43,12 +44,7 @@ class BatchService:
 
     @staticmethod
     def _normalize_int(value: Any, field: str, allow_none: bool = False) -> Optional[int]:
-        if value is None or (isinstance(value, str) and value.strip() == ""):
-            return None if allow_none else 0
-        try:
-            return int(value)
-        except Exception as e:
-            raise ValidationError(f"“{field}”必须是整数", field=field) from e
+        return parse_finite_int(value, field=field, allow_none=allow_none)
 
     @staticmethod
     def _safe_float(value: Any) -> Optional[float]:

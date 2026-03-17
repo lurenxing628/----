@@ -5,7 +5,9 @@ import hmac
 import json
 import os
 import tempfile
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+from flask import current_app, flash
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.services.common.excel_backend_factory import get_excel_backend
@@ -28,6 +30,7 @@ def build_preview_baseline_token(
     existing_data: Dict[str, Dict[str, Any]],
     mode: ImportMode,
     id_column: str,
+    extra_state: Any = None,
 ) -> str:
     """
     生成预览基线签名：
@@ -38,6 +41,7 @@ def build_preview_baseline_token(
         "mode": str(getattr(mode, "value", mode) or "").strip(),
         "id_column": str(id_column or "").strip(),
         "existing_data": existing_data or {},
+        "extra_state": extra_state if extra_state is not None else {},
     }
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -49,6 +53,7 @@ def preview_baseline_matches(
     existing_data: Dict[str, Dict[str, Any]],
     mode: ImportMode,
     id_column: str,
+    extra_state: Any = None,
 ) -> bool:
     """
     校验客户端回传的预览基线签名是否与当前数据库快照一致。
@@ -56,11 +61,47 @@ def preview_baseline_matches(
     provided = (token or "").strip()
     if not provided:
         return False
-    expected = build_preview_baseline_token(existing_data=existing_data, mode=mode, id_column=id_column)
+    expected = build_preview_baseline_token(
+        existing_data=existing_data,
+        mode=mode,
+        id_column=id_column,
+        extra_state=extra_state,
+    )
     try:
         return hmac.compare_digest(provided, expected)
     except Exception:
         return provided == expected
+
+
+def flash_import_result(
+    *,
+    new_count: int,
+    update_count: int,
+    skip_count: int,
+    error_count: int,
+    errors_sample: Optional[List[Dict[str, Any]]] = None,
+    suffix: str = "",
+) -> None:
+    """统一导入完成提示：有错误用 warning，无错误用 success。"""
+    if int(error_count or 0) > 0:
+        sample = "；".join(
+            [
+                f"第{item.get('row')}行：{item.get('message')}"
+                for item in list(errors_sample or [])[:3]
+                if item and item.get("message")
+            ]
+        )
+        message = f"导入部分完成：新增 {new_count}，更新 {update_count}，跳过 {skip_count}，错误 {error_count}。"
+        if sample:
+            message += f"错误示例：{sample}"
+        if suffix:
+            message += suffix
+        flash(message, "warning")
+        return
+    message = f"导入完成：新增 {new_count}，更新 {update_count}，跳过 {skip_count}，错误 {error_count}。"
+    if suffix:
+        message += suffix
+    flash(message, "success")
 
 
 def ensure_unique_ids(rows: List[Dict[str, Any]], id_column: str) -> None:
@@ -75,7 +116,10 @@ def ensure_unique_ids(rows: List[Dict[str, Any]], id_column: str) -> None:
         v = r.get(id_column)
         if v is None:
             continue
-        key = str(v).strip()
+        if isinstance(v, float) and v.is_integer():
+            key = str(int(v)).strip()
+        else:
+            key = str(v).strip()
         if not key:
             continue
         if key in seen:
@@ -96,6 +140,12 @@ def read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
     data = file_storage.read()
     if not data:
         raise AppError(ErrorCode.EXCEL_FORMAT_ERROR, "上传文件为空，请重新选择。")
+    max_bytes = int(current_app.config.get("EXCEL_MAX_UPLOAD_BYTES") or current_app.config.get("MAX_CONTENT_LENGTH") or 0)
+    if max_bytes > 0 and len(data) > max_bytes:
+        raise AppError(
+            ErrorCode.FILE_TOO_LARGE,
+            f"上传文件超过 {max_bytes // (1024 * 1024)}MB，请缩小文件后重试。",
+        )
 
     fd, tmp_path = tempfile.mkstemp(prefix="aps_upload_", suffix=".xlsx")
     try:

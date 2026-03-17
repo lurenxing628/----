@@ -56,6 +56,7 @@ class ErrorCode(Enum):
     EXCEL_WRITE_ERROR = "7002"
     EXCEL_FORMAT_ERROR = "7003"
     IMPORT_VALIDATION_ERROR = "7004"
+    FILE_TOO_LARGE = "7005"
 
 
 @dataclass

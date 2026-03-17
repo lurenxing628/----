@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import AppError
 from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_service import ImportPreviewRow, RowStatus
+from core.services.common.normalize import to_str_or_blank
 
 from .part_service import PartService
 
@@ -142,7 +143,7 @@ class PartOperationHoursExcelImportService:
     @classmethod
     def _parse_write_row(cls, pr: ImportPreviewRow) -> Tuple[Optional[Tuple[str, int, float, float]], Optional[str]]:
         data = pr.data or {}
-        part_no = str(data.get("图号") or "").strip()
+        part_no = to_str_or_blank(data.get("图号"))
         seq_int = cls._coerce_int(data.get("工序"))
         if not part_no or seq_int is None:
             return None, "缺少图号/工序，无法写入。"

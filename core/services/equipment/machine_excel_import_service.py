@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import MACHINE_STATUS_VALUES
 from core.services.common.enum_normalizers import normalize_machine_status
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
+from core.services.common.normalize import to_str_or_blank
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel.resource_team_service import ResourceTeamService
 from core.services.process.op_type_service import OpTypeService
@@ -36,6 +37,15 @@ class MachineExcelImportService:
     def _normalize_machine_status_for_excel(value: Any) -> str:
         return normalize_machine_status(value)
 
+    def _resolve_op_type_id_strict_for_excel(self, value: Any) -> Optional[str]:
+        raw = to_str_or_blank(value)
+        if not raw:
+            return None
+        op_type_id = self.op_type_svc.resolve_op_type_id_optional(raw)
+        if not op_type_id:
+            raise ValidationError(f"工种{raw}不存在，请先在工艺管理-工种配置中维护。", field="工种")
+        return op_type_id
+
     def apply_preview_rows(
         self,
         preview_rows: List[Any],
@@ -51,15 +61,15 @@ class MachineExcelImportService:
             self.repo.delete_all()
 
         def _row_id_getter(pr: Any) -> str:
-            return str((getattr(pr, "data", None) or {}).get("设备编号") or "").strip()
+            return to_str_or_blank((getattr(pr, "data", None) or {}).get("设备编号"))
 
         def _apply_row_no_tx(pr: Any, existed: bool) -> None:
             data = getattr(pr, "data", None) or {}
-            machine_id = str(data.get("设备编号") or "").strip()
+            machine_id = to_str_or_blank(data.get("设备编号"))
             if not machine_id:
                 raise ValidationError("设备编号不能为空", field="设备编号")
 
-            name = str(data.get("设备名称") or "").strip()
+            name = to_str_or_blank(data.get("设备名称"))
             if not name:
                 raise ValidationError("设备名称不能为空", field="设备名称")
 
@@ -71,7 +81,7 @@ class MachineExcelImportService:
 
             payload: Dict[str, Any] = {
                 "name": name,
-                "op_type_id": self.op_type_svc.resolve_op_type_id_optional(data.get("工种")),
+                "op_type_id": self._resolve_op_type_id_strict_for_excel(data.get("工种")),
                 "status": status,
             }
             if "班组" in data:
@@ -90,7 +100,7 @@ class MachineExcelImportService:
             row_id_getter=_row_id_getter,
             apply_row_no_tx=_apply_row_no_tx,
             max_error_sample=10,
-            process_unchanged=True,
+            process_unchanged=False,
             continue_on_app_error=False,
         )
         out = stats.to_dict()

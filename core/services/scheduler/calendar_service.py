@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Set
 from core.models import OperatorCalendar, WorkCalendar
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
+from core.services.common.normalize import to_str_or_blank
 
 from .calendar_admin import CalendarAdmin
 from .calendar_engine import CalendarEngine, DayPolicy
@@ -172,18 +173,18 @@ class CalendarService:
             self.delete_operator_calendar_all_no_tx()
 
         def _row_id_getter(pr: Any) -> str:
-            rid = str(pr.data.get("__id") or "").strip()
+            rid = to_str_or_blank(pr.data.get("__id"))
             if rid:
                 return rid
-            op_id = str(pr.data.get("工号") or "").strip()
-            date_str = str(pr.data.get("日期") or "").strip()
+            op_id = to_str_or_blank(pr.data.get("工号"))
+            date_str = to_str_or_blank(pr.data.get("日期"))
             return f"{op_id}|{date_str}"
 
         def _apply_row_no_tx(pr: Any, _existed: bool) -> None:
             self.upsert_operator_calendar_no_tx(
                 {
-                    "operator_id": str(pr.data.get("工号") or "").strip(),
-                    "date": str(pr.data.get("日期") or "").strip(),
+                    "operator_id": to_str_or_blank(pr.data.get("工号")),
+                    "date": to_str_or_blank(pr.data.get("日期")),
                     "day_type": pr.data.get("类型"),
                     "shift_start": pr.data.get("班次开始"),
                     "shift_end": pr.data.get("班次结束") or None,

@@ -36,7 +36,10 @@ def normalize_yes_no_optional(value: Any, field: str) -> Optional[str]:
         return YesNo.YES.value
     if low in ("no", "n", "false", "0", "off") or s in ("否", "非主操", "非主"):
         return YesNo.NO.value
-    raise ValidationError("“主操设备”不正确，可填写：是 / 否（也兼容 yes / no）。", field=field)
+    raise ValidationError(
+        "“主操设备”不正确，可填写：是 / 否 / 主操 / 非主操（也兼容 yes/no、true/false、1/0、on/off）。",
+        field=field,
+    )
 
 
 def normalize_skill_level_stored(value: Any) -> str:

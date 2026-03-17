@@ -7,7 +7,7 @@ from core.models.enums import OPERATOR_STATUS_VALUES
 from core.services.common.enum_normalizers import normalize_operator_status
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
-from core.services.common.normalize import normalize_text
+from core.services.common.normalize import normalize_text, to_str_or_blank
 from core.services.personnel.operator_service import OperatorService
 from core.services.personnel.resource_team_service import ResourceTeamService
 from data.repositories import OperatorRepository
@@ -45,11 +45,11 @@ class OperatorExcelImportService:
             self.repo.delete_all()
 
         def _row_id_getter(pr: Any) -> str:
-            return str((getattr(pr, "data", None) or {}).get("工号") or "").strip()
+            return to_str_or_blank((getattr(pr, "data", None) or {}).get("工号"))
 
         def _apply_row_no_tx(pr: Any, existed: bool) -> None:
             data = getattr(pr, "data", None) or {}
-            op_id = str(data.get("工号") or "").strip()
+            op_id = to_str_or_blank(data.get("工号"))
             if not op_id:
                 raise ValidationError("工号不能为空", field="工号")
             name = normalize_text(data.get("姓名"))
@@ -83,7 +83,7 @@ class OperatorExcelImportService:
             row_id_getter=_row_id_getter,
             apply_row_no_tx=_apply_row_no_tx,
             max_error_sample=10,
-            process_unchanged=True,
+            process_unchanged=False,
             continue_on_app_error=False,
         )
 

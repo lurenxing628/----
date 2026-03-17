@@ -35,6 +35,7 @@ def import_batches_from_preview_rows(
     def _apply_row_no_tx(pr: Any, existed: bool) -> None:
         bid = str(pr.data.get("批次号") or "").strip()
         pn = str(pr.data.get("图号") or "").strip()
+        # 依赖 preview 阶段已将“数量”校验并标准化为整数；此处仅做防御性转换。
         qty = int(pr.data.get("数量"))
         dd = pr.data.get("交期")
         prio = str(pr.data.get("优先级") or BatchPriority.NORMAL.value).strip()

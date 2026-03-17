@@ -39,3 +39,20 @@ def normalize_text(value: Any) -> Optional[str]:
     v = str(value).strip()
     return v if v != "" else None
 
+
+def to_str_or_blank(value: Any) -> str:
+    """
+    将任意输入标准化为“去首尾空白的文本”；空值返回空串。
+
+    说明：
+    - 与 `normalize_text()` 不同，此函数不会返回 None
+    - 对数字 0 返回 "0"，避免 `value or ""` 把 0 误判为空
+    """
+    normalized = normalize_text(value)
+    return "" if normalized is None else normalized
+
+
+def is_blank_value(value: Any) -> bool:
+    """判断 Excel/表单值是否为空，不把数字 0 视为空。"""
+    return normalize_text(value) is None
+

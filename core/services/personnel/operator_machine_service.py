@@ -7,6 +7,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorMachine
 from core.models.enums import YesNo
 from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
+from core.services.common.normalize import to_str_or_blank
 from data.repositories import MachineRepository, OperatorMachineRepository, OperatorRepository
 
 from . import operator_machine_normalizers as om_normalizers
@@ -77,8 +78,8 @@ class OperatorMachineService:
         existing_links = self.repo.list_simple_rows()
         existing_map: Dict[str, Dict[str, str]] = {}
         for r in existing_links or []:
-            op_id = str(r.get("operator_id") or "").strip()
-            mc_id = str(r.get("machine_id") or "").strip()
+            op_id = to_str_or_blank(r.get("operator_id"))
+            mc_id = to_str_or_blank(r.get("machine_id"))
             if not op_id or not mc_id:
                 continue
             existing_map[f"{op_id}|{mc_id}"] = {
@@ -211,7 +212,10 @@ class OperatorMachineService:
 
     @staticmethod
     def _is_primary_yes(data: Dict[str, Any]) -> bool:
-        v = str((data or {}).get("主操设备") or (data or {}).get("is_primary") or "").strip().lower()
+        primary_raw = (data or {}).get("主操设备")
+        if primary_raw is None or to_str_or_blank(primary_raw) == "":
+            primary_raw = (data or {}).get("is_primary")
+        v = to_str_or_blank(primary_raw).lower()
         return v == YesNo.YES.value
 
     def _collect_dup_primary_yes_operators(self, preview: List[ImportPreviewRow]) -> Set[str]:
@@ -231,7 +235,7 @@ class OperatorMachineService:
         for pr in preview or []:
             if pr.status == RowStatus.ERROR:
                 continue
-            op_id = str((pr.data or {}).get("工号") or "").strip()
+            op_id = to_str_or_blank((pr.data or {}).get("工号"))
             if not op_id:
                 continue
             if op_id in dup_ops and OperatorMachineService._is_primary_yes(pr.data or {}):
@@ -423,8 +427,8 @@ class OperatorMachineService:
                     skip_count += 1
                     continue
 
-                op_id = str(pr.data.get("工号") or "").strip()
-                mc_id = str(pr.data.get("设备编号") or "").strip()
+                op_id = to_str_or_blank(pr.data.get("工号"))
+                mc_id = to_str_or_blank(pr.data.get("设备编号"))
                 if not op_id or not mc_id:
                     error_count += 1
                     if len(errors_sample) < 10:

@@ -139,8 +139,8 @@ def normalize_yes_no_wide(value: Any, *, default: str = YesNo.NO.value, unknown_
 def normalize_yesno_narrow(value: Any, *, default: str = YesNo.YES.value, unknown_policy: str = "passthrough") -> str:
     """
     归一化“窄口径”的 yes/no：
-    - 仅兼容 yes/no/y/n 与中文 是/否
-    - 不把 true/1/on 等视为 yes（由上层按值域决定是否报错）
+    - 兼容 yes/no/y/n、true/false、1/0 与中文 是/否
+    - 不把 on/off 视为 yes/no（由上层按值域决定是否报错）
 
     unknown_policy:
     - "passthrough"：未知值原样透传（strip 后）；供上层显式 not in(...) 校验报错展示用户输入
@@ -151,9 +151,9 @@ def normalize_yesno_narrow(value: Any, *, default: str = YesNo.YES.value, unknow
     if v == "":
         return default_norm
     v_lower = v.lower()
-    if v == "是" or v_lower in ("y", YesNo.YES.value):
+    if v == "是" or v_lower in ("y", YesNo.YES.value, "true", "1"):
         return YesNo.YES.value
-    if v == "否" or v_lower in ("n", YesNo.NO.value):
+    if v == "否" or v_lower in ("n", YesNo.NO.value, "false", "0"):
         return YesNo.NO.value
     if unknown_policy == "raise":
         raise ValueError(f"invalid yes/no: {v!r}")

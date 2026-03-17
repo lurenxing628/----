@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Sequence
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 
+from core.services.common.excel_templates import _sanitize_export_cell
+
 
 def _auto_width(ws) -> None:
     for column in ws.columns:
@@ -21,13 +23,18 @@ def _auto_width(ws) -> None:
             ws.column_dimensions[column_letter].width = min(max(max_length + 2, 12), 36)
 
 
+def _append_row(ws, values: Sequence[Any]) -> None:
+    ws.append([_sanitize_export_cell(v) for v in values])
+
+
 def _write_table(ws, headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> None:
-    ws.append(list(headers))
+    _append_row(ws, list(headers))
+    ws.freeze_panes = "A2"
     for cell in ws[1]:
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal="center", vertical="center")
     for row in rows:
-        ws.append(list(row))
+        _append_row(ws, list(row))
     for row in ws.iter_rows(min_row=2):
         for cell in row:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
@@ -131,7 +138,8 @@ def _summary_pairs(filters: Dict[str, Any], summary: Dict[str, Any]) -> List[Lis
 def _write_summary_sheet(wb: Workbook, filters: Dict[str, Any], summary: Dict[str, Any]) -> None:
     ws_summary = wb.create_sheet("查询摘要")
     for key, value in _summary_pairs(filters, summary):
-        ws_summary.append([key, value])
+        _append_row(ws_summary, [key, value])
+    ws_summary.freeze_panes = "A2"
     for row in ws_summary.iter_rows():
         row[0].font = Font(bold=True)
         for cell in row:
