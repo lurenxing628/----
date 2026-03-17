@@ -28,11 +28,17 @@
       <input type="hidden" name="mode" value="{{ mode }}">
       <input type="hidden" name="filename" value="{{ filename }}">
       <input type="hidden" name="preview_baseline" value="{{ preview_baseline or '' }}">
+      <input type="hidden" name="auto_generate_ops" value="{{ '1' if auto_generate_ops else '' }}">
       <textarea name="raw_rows_json" class="d-none">{{ raw_rows_json }}</textarea>
       <label>
-        <input type="checkbox" name="auto_generate_ops" value="1" checked>
-        导入后自动从模板生成/重建批次工序（推荐）
+        <input type="checkbox" value="1" {% if auto_generate_ops %}checked{% endif %} disabled>
+        {% if auto_generate_ops %}
+          确认导入时会自动从模板生成/重建批次工序
+        {% else %}
+          确认导入时不会自动从模板生成/重建批次工序
+        {% endif %}
       </label>
+      <div class="muted">如需切换该选项，请重新上传并预览。</div>
       <div class="mt-2">
         {{ ui.button('确认导入（写入数据库）', 'primary', 'md', type_attr='submit', disabled=(not can_confirm)) }}
         <span class="muted">（请先“上传并预览”，再确认导入）</span>
@@ -54,6 +60,12 @@
           <option value="append" {% if mode=='append' %}selected{% endif %}>追加（已存在则跳过）</option>
           <option value="replace" {% if mode=='replace' %}selected{% endif %}>替换（清空后导入）</option>
         </select>
+      </div>
+      <div class="mb-3">
+        <label>
+          <input type="checkbox" name="auto_generate_ops" value="1" {% if auto_generate_ops %}checked{% endif %}>
+          预览和确认都按“自动从模板生成/重建批次工序”执行（推荐）
+        </label>
       </div>
       <div class="mb-3 inline-flex-wrap">
         <input type="file" name="file" accept=".xlsx" required>

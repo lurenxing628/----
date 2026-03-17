@@ -70,6 +70,7 @@
             <div class="muted mt-2">提示：启用 JavaScript 可获得目录导航与更好的阅读体验。</div>
           </noscript>
         </div>
+        <template id="aps-config-manual-fallback">{{ fallback_text if manual_mode == 'page' else manual_text }}</template>
 
         {% if manual_mode == 'page' and related_manuals %}
           <div class="card no-print manual-related-panel">

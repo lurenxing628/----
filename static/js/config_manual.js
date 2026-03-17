@@ -21,6 +21,13 @@
   const rawMarkdown = typeof cfg.manualText === "string" ? cfg.manualText : "";
   const currentManual = cfg.currentManual && typeof cfg.currentManual === "object" ? cfg.currentManual : null;
 
+  function readFallbackText() {
+    const fallbackEl = document.getElementById("aps-config-manual-fallback");
+    return fallbackEl ? (fallbackEl.textContent || "").trim() : "";
+  }
+
+  const fallbackMarkdown = readFallbackText();
+
   function normalizeNewlines(s) {
     return (s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   }
@@ -487,7 +494,21 @@
       });
     }
 
-    const markdownSource = manualMode === "page" ? buildPageMarkdown(currentManual) : rawMarkdown;
+    let markdownSource = "";
+    if (manualMode === "page" && currentManual) {
+      markdownSource = buildPageMarkdown(currentManual);
+    } else if (manualMode !== "page" && rawMarkdown.trim()) {
+      markdownSource = rawMarkdown;
+    }
+    if (!markdownSource.trim()) {
+      markdownSource = fallbackMarkdown;
+    }
+    if (!markdownSource.trim()) {
+      markdownSource =
+        manualMode === "page"
+          ? "## 页面说明\n\n当前页面暂未配置详细说明。"
+          : "## 系统使用说明\n\n说明内容暂不可用。";
+    }
     const html = renderMarkdown(markdownSource);
     contentEl.innerHTML = html;
     renderEmbeddedMarkdownBlocks();
