@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
@@ -13,10 +12,13 @@ from core.infrastructure.transaction import TransactionManager
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
+from core.services.common.normalize import is_blank_value
 from core.services.process import PartService
 from core.services.scheduler.batch_query_service import BatchQueryService
 from web.ui_mode import render_ui_template as render_template
 
+from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
@@ -24,22 +26,42 @@ from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 # ============================================================
 
 
-@bp.get("/excel/routes")
-def excel_routes_page():
-    svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
-    existing = svc.build_existing_for_excel_routes()
+def _render_excel_routes_page(
+    *,
+    existing: Dict[str, Dict[str, Any]],
+    preview_rows: Any,
+    raw_rows_json: Optional[str],
+    preview_baseline: Optional[str],
+    mode_value: str,
+    filename: Optional[str],
+):
     return render_template(
         "process/excel_import_routes.html",
         title="零件工艺路线 - Excel 导入/导出",
         existing_list=list(existing.values()),
-        preview_rows=None,
-        raw_rows_json=None,
-        mode=ImportMode.OVERWRITE.value,
-        filename=None,
+        preview_rows=preview_rows,
+        raw_rows_json=raw_rows_json,
+        preview_baseline=preview_baseline,
+        mode=mode_value,
+        filename=filename,
         preview_url=url_for("process.excel_routes_preview"),
         confirm_url=url_for("process.excel_routes_confirm"),
         template_download_url=url_for("process.excel_routes_template"),
         export_url=url_for("process.excel_routes_export"),
+    )
+
+
+@bp.get("/excel/routes")
+def excel_routes_page():
+    svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
+    existing = svc.build_existing_for_excel_routes()
+    return _render_excel_routes_page(
+        existing=existing,
+        preview_rows=None,
+        raw_rows_json=None,
+        preview_baseline=None,
+        mode_value=ImportMode.OVERWRITE.value,
+        filename=None,
     )
 
 
@@ -58,9 +80,9 @@ def excel_routes_preview():
     existing = part_svc.build_existing_for_excel_routes()
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if not row.get("图号") or str(row.get("图号")).strip() == "":
+        if is_blank_value(row.get("图号")):
             return "“图号”不能为空"
-        if not row.get("名称") or str(row.get("名称")).strip() == "":
+        if is_blank_value(row.get("名称")):
             return "“名称”不能为空"
         route_raw = row.get("工艺路线字符串")
         if route_raw is None or str(route_raw).strip() == "":
@@ -78,6 +100,7 @@ def excel_routes_preview():
         validators=[validate_row],
         mode=mode,
     )
+    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column="图号")
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -90,18 +113,13 @@ def excel_routes_preview():
         time_cost_ms=time_cost_ms,
     )
 
-    return render_template(
-        "process/excel_import_routes.html",
-        title="零件工艺路线 - Excel 导入/导出",
-        existing_list=list(existing.values()),
+    return _render_excel_routes_page(
+        existing=existing,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(rows, ensure_ascii=False),
-        mode=mode.value,
+        preview_baseline=preview_baseline,
+        mode_value=mode.value,
         filename=file.filename,
-        preview_url=url_for("process.excel_routes_preview"),
-        confirm_url=url_for("process.excel_routes_confirm"),
-        template_download_url=url_for("process.excel_routes_template"),
-        export_url=url_for("process.excel_routes_export"),
     )
 
 
@@ -111,8 +129,11 @@ def excel_routes_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     raw_rows_json = request.form.get("raw_rows_json")
+    preview_baseline = (request.form.get("preview_baseline") or "").strip()
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
+    if not preview_baseline:
+        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
 
     try:
         rows = json.loads(raw_rows_json)
@@ -125,11 +146,21 @@ def excel_routes_confirm():
 
     part_svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = part_svc.build_existing_for_excel_routes()
+    if not preview_baseline_matches(preview_baseline, existing_data=existing, mode=mode, id_column="图号"):
+        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        return _render_excel_routes_page(
+            existing=existing,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode_value=mode.value,
+            filename=filename,
+        )
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if not row.get("图号") or str(row.get("图号")).strip() == "":
+        if is_blank_value(row.get("图号")):
             return "“图号”不能为空"
-        if not row.get("名称") or str(row.get("名称")).strip() == "":
+        if is_blank_value(row.get("名称")):
             return "“名称”不能为空"
         route_raw = row.get("工艺路线字符串")
         if route_raw is None or str(route_raw).strip() == "":
@@ -156,18 +187,13 @@ def excel_routes_confirm():
             f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
             "error",
         )
-        return render_template(
-            "process/excel_import_routes.html",
-            title="零件工艺路线 - Excel 导入/导出",
-            existing_list=list(existing.values()),
+        return _render_excel_routes_page(
+            existing=existing,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            mode=mode.value,
+            preview_baseline=preview_baseline,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("process.excel_routes_preview"),
-            confirm_url=url_for("process.excel_routes_confirm"),
-            template_download_url=url_for("process.excel_routes_template"),
-            export_url=url_for("process.excel_routes_export"),
         )
 
     tx = TransactionManager(g.db)
@@ -181,12 +207,19 @@ def excel_routes_confirm():
             if batch_q.has_any():
                 raise ValidationError("已存在批次数据，不能执行“替换（清空后导入）”。请改用“覆盖/追加”。")
             part_svc.delete_all_no_tx()
+            existing = {}
 
         for pr in preview_rows:
             if pr.status == RowStatus.ERROR:
                 error_count += 1
                 if pr.message and len(errors_sample) < 10:
                     errors_sample.append({"row": pr.row_num, "message": pr.message})
+                continue
+            if pr.status == RowStatus.SKIP:
+                skip_count += 1
+                continue
+            if pr.status == RowStatus.UNCHANGED and mode != ImportMode.REPLACE:
+                skip_count += 1
                 continue
 
             pn = str(pr.data.get("图号")).strip()
@@ -228,7 +261,13 @@ def excel_routes_confirm():
         time_cost_ms=time_cost_ms,
     )
 
-    flash(f"导入完成：新增 {new_count}，更新 {update_count}，跳过 {skip_count}，错误 {error_count}。", "success")
+    flash_import_result(
+        new_count=new_count,
+        update_count=update_count,
+        skip_count=skip_count,
+        error_count=error_count,
+        errors_sample=errors_sample,
+    )
     return redirect(url_for("process.excel_routes_page"))
 
 
@@ -255,17 +294,13 @@ def excel_routes_template():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["图号", "名称", "工艺路线字符串"])
-    ws.append(["A1234", "壳体-大", "5数铣10钳20数车35标印40总检45表处理"])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("零件工艺路线.xlsx")
+    sample_rows = template_def.get("sample_rows") or []
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        sample_rows,
+        format_spec=template_def.get("format_spec"),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
@@ -274,7 +309,7 @@ def excel_routes_template():
         target_type="part_route",
         template_or_export_type="零件工艺路线模板.xlsx",
         filters={},
-        row_count=1,
+        row_count=len(sample_rows),
         time_range={},
         time_cost_ms=time_cost_ms,
     )
@@ -293,19 +328,13 @@ def excel_routes_export():
     svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
     parts = svc.list()
     rows = [{"part_no": p.part_no, "part_name": p.part_name, "route_raw": p.route_raw} for p in parts]
-
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["图号", "名称", "工艺路线字符串"])
-    for r in rows:
-        ws.append([r["part_no"], r["part_name"], r["route_raw"]])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("零件工艺路线.xlsx")
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        [[r["part_no"], r["part_name"], r["route_raw"]] for r in rows],
+        format_spec=template_def.get("format_spec"),
+        sanitize_formula=True,
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(

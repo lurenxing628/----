@@ -1,29 +1,30 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ImportMode, RowStatus
-from core.services.personnel import OperatorMachineService
+from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
+from core.services.equipment import MachineService
+from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 from web.ui_mode import render_ui_template as render_template
 
 from .equipment_bp import _parse_mode, _read_uploaded_xlsx, bp
+from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
 
 # ============================================================
 # Excel：设备人员关联（OperatorMachine）
 # ============================================================
 
 
-@bp.get("/excel/links")
-def excel_link_page():
+def _build_existing_machine_link_page_data() -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
     q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
     rows = q.list_with_names_by_machine()
     existing_list = [
@@ -37,19 +38,63 @@ def excel_link_page():
         }
         for r in rows
     ]
+    existing_snapshot: Dict[str, Dict[str, Any]] = {}
+    for r in q.list_simple_rows():
+        op_id = str(r.get("operator_id") or "").strip()
+        machine_id = str(r.get("machine_id") or "").strip()
+        if not op_id or not machine_id:
+            continue
+        existing_snapshot[f"{op_id}|{machine_id}"] = {
+            "skill_level": r.get("skill_level"),
+            "is_primary": r.get("is_primary"),
+        }
+    return existing_list, existing_snapshot
 
+
+def _operator_machine_reference_snapshot() -> Dict[str, Any]:
+    operator_svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
+    machine_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
+    return {
+        "operator_ids": sorted([str(op.operator_id) for op in operator_svc.list(status=None) if getattr(op, "operator_id", None)]),
+        "machine_ids": sorted([str(machine.machine_id) for machine in machine_svc.list(status=None) if getattr(machine, "machine_id", None)]),
+    }
+
+
+def _render_excel_link_page(
+    *,
+    existing_list: List[Dict[str, Any]],
+    preview_rows: Any,
+    raw_rows_json: Optional[str],
+    preview_baseline: Optional[str],
+    mode_value: str,
+    filename: Optional[str],
+):
     return render_template(
         "equipment/excel_import_machine_operator.html",
         title="设备人员关联 - Excel 导入/导出",
         existing_list=existing_list,
-        preview_rows=None,
-        raw_rows_json=None,
-        mode=ImportMode.OVERWRITE.value,
-        filename=None,
+        preview_rows=preview_rows,
+        raw_rows_json=raw_rows_json,
+        preview_baseline=preview_baseline,
+        mode=mode_value,
+        filename=filename,
         preview_url=url_for("equipment.excel_link_preview"),
         confirm_url=url_for("equipment.excel_link_confirm"),
         template_download_url=url_for("equipment.excel_link_template"),
         export_url=url_for("equipment.excel_link_export"),
+    )
+
+
+@bp.get("/excel/links")
+def excel_link_page():
+    existing_list, _existing_snapshot = _build_existing_machine_link_page_data()
+    return _render_excel_link_page(
+        existing_list=existing_list,
+        preview_rows=None,
+        raw_rows_json=None,
+        preview_baseline=None,
+        mode_value=ImportMode.OVERWRITE.value,
+        filename=None,
     )
 
 
@@ -79,6 +124,13 @@ def excel_link_preview():
 
     link_svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
     preview_rows = link_svc.preview_import_links(rows=normalized_rows, mode=mode)
+    existing_list, existing_snapshot = _build_existing_machine_link_page_data()
+    preview_baseline = build_preview_baseline_token(
+        existing_data=existing_snapshot,
+        mode=mode,
+        id_column="工号|设备编号",
+        extra_state=_operator_machine_reference_snapshot(),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -91,33 +143,13 @@ def excel_link_preview():
         time_cost_ms=time_cost_ms,
     )
 
-    # 刷新 existing list
-    q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
-    existing_rows = q.list_with_names_by_machine()
-    existing_list = [
-        {
-            "设备编号": r["machine_id"],
-            "设备名称": r["machine_name"],
-            "工号": r["operator_id"],
-            "姓名": r["operator_name"],
-            "技能等级": r["skill_level"],
-            "主操设备": r["is_primary"],
-        }
-        for r in existing_rows
-    ]
-
-    return render_template(
-        "equipment/excel_import_machine_operator.html",
-        title="设备人员关联 - Excel 导入/导出",
+    return _render_excel_link_page(
         existing_list=existing_list,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(normalized_rows, ensure_ascii=False),
-        mode=mode.value,
+        preview_baseline=preview_baseline,
+        mode_value=mode.value,
         filename=file.filename,
-        preview_url=url_for("equipment.excel_link_preview"),
-        confirm_url=url_for("equipment.excel_link_confirm"),
-        template_download_url=url_for("equipment.excel_link_template"),
-        export_url=url_for("equipment.excel_link_export"),
     )
 
 
@@ -127,8 +159,11 @@ def excel_link_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     raw_rows_json = request.form.get("raw_rows_json")
+    preview_baseline = (request.form.get("preview_baseline") or "").strip()
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
+    if not preview_baseline:
+        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
 
     try:
         rows = json.loads(raw_rows_json)
@@ -136,6 +171,24 @@ def excel_link_confirm():
             raise ValueError("rows not list")
     except Exception as e:
         raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
+
+    existing_list, existing_snapshot = _build_existing_machine_link_page_data()
+    if not preview_baseline_matches(
+        preview_baseline,
+        existing_data=existing_snapshot,
+        mode=mode,
+        id_column="工号|设备编号",
+        extra_state=_operator_machine_reference_snapshot(),
+    ):
+        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        return _render_excel_link_page(
+            existing_list=existing_list,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode_value=mode.value,
+            filename=filename,
+        )
 
     link_svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
     preview_rows = link_svc.preview_import_links(rows=rows, mode=mode)
@@ -149,33 +202,13 @@ def excel_link_confirm():
             "error",
         )
 
-        # 刷新 existing list（与 preview 保持一致）
-        q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
-        existing_rows = q.list_with_names_by_machine()
-        existing_list = [
-            {
-                "设备编号": r["machine_id"],
-                "设备名称": r["machine_name"],
-                "工号": r["operator_id"],
-                "姓名": r["operator_name"],
-                "技能等级": r["skill_level"],
-                "主操设备": r["is_primary"],
-            }
-            for r in existing_rows
-        ]
-
-        return render_template(
-            "equipment/excel_import_machine_operator.html",
-            title="设备人员关联 - Excel 导入/导出",
+        return _render_excel_link_page(
             existing_list=existing_list,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            mode=mode.value,
+            preview_baseline=preview_baseline,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("equipment.excel_link_preview"),
-            confirm_url=url_for("equipment.excel_link_confirm"),
-            template_download_url=url_for("equipment.excel_link_template"),
-            export_url=url_for("equipment.excel_link_export"),
         )
 
     stats = link_svc.apply_import_links(preview_rows=preview_rows, mode=mode)
@@ -191,9 +224,12 @@ def excel_link_confirm():
         time_cost_ms=time_cost_ms,
     )
 
-    flash(
-        f"导入完成：新增 {stats.get('new_count', 0)}，更新 {stats.get('update_count', 0)}，跳过 {stats.get('skip_count', 0)}，错误 {stats.get('error_count', 0)}。",
-        "success",
+    flash_import_result(
+        new_count=int(stats.get("new_count", 0)),
+        update_count=int(stats.get("update_count", 0)),
+        skip_count=int(stats.get("skip_count", 0)),
+        error_count=int(stats.get("error_count", 0)),
+        errors_sample=list(stats.get("errors_sample") or []),
     )
     return redirect(url_for("equipment.excel_link_page"))
 
@@ -221,17 +257,13 @@ def excel_link_template():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["设备编号", "工号", "技能等级", "主操设备"])
-    ws.append(["CNC-01", "OP001", "normal", "yes"])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("设备人员关联.xlsx")
+    sample_rows = template_def.get("sample_rows") or []
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        sample_rows,
+        format_spec=template_def.get("format_spec"),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
@@ -240,7 +272,7 @@ def excel_link_template():
         target_type="operator_machine",
         template_or_export_type="设备人员关联模板.xlsx",
         filters={},
-        row_count=1,
+        row_count=len(sample_rows),
         time_range={},
         time_cost_ms=time_cost_ms,
     )
@@ -259,19 +291,13 @@ def excel_link_export():
     q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
     rows = q.list_simple_rows()
     rows.sort(key=lambda r: (str(r.get("machine_id") or ""), str(r.get("operator_id") or "")))
-
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["设备编号", "工号", "技能等级", "主操设备"])
-    for r in rows:
-        ws.append([r["machine_id"], r["operator_id"], r["skill_level"], r["is_primary"]])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("设备人员关联.xlsx")
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        [[r["machine_id"], r["operator_id"], r["skill_level"], r["is_primary"]] for r in rows],
+        format_spec=template_def.get("format_spec"),
+        sanitize_formula=True,
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(

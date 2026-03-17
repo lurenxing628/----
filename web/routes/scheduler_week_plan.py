@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import time
 from datetime import date
 from typing import Optional
@@ -9,6 +8,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.common.excel_audit import log_excel_export
+from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.scheduler import GanttService, ScheduleService
 from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 from web.ui_mode import render_ui_template as render_template
@@ -111,19 +111,19 @@ def week_plan_export():
         ws = data.get("week_start")
         we = data.get("week_end")
 
-        import openpyxl
-
-        wb = openpyxl.Workbook()
-        sheet = wb.active
-        sheet.title = "周计划"
         headers = ["日期", "批次号", "图号", "工序", "设备", "人员", "时段"]
-        sheet.append(headers)
-        for r in rows:
-            sheet.append([r.get(h, "") for h in headers])
-
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
+        output = build_xlsx_bytes(
+            headers,
+            [[r.get(h, "") for h in headers] for r in rows],
+            format_spec={
+                "date_cols": [0],
+                "text_cols": [1, 2, 4, 5, 6],
+                "int_cols": [3],
+                "column_widths": {0: 12, 1: 14, 2: 14, 3: 10, 4: 14, 5: 14, 6: 18},
+            },
+            sheet_title="周计划",
+            sanitize_formula=True,
+        )
 
         time_cost_ms = int((time.time() - start) * 1000)
         log_excel_export(

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
@@ -14,9 +13,12 @@ from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, YESNO_VALUES, Cal
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
+from core.services.common.normalize import is_blank_value
 from core.services.scheduler import CalendarService, ConfigService
 from web.ui_mode import render_ui_template as render_template
 
+from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
 from .scheduler_bp import bp
 from .scheduler_utils import (
     _ensure_unique_ids,
@@ -32,34 +34,81 @@ from .scheduler_utils import (
 # ============================================================
 
 
-@bp.get("/excel/calendar")
-def excel_calendar_page():
+def _parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
+    try:
+        rows = json.loads(raw_rows_json)
+        if not isinstance(rows, list):
+            raise ValueError("rows not list")
+        return rows
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
+
+
+def _canonicalize_calendar_date(value: Any) -> str:
+    try:
+        return CalendarService._normalize_date(value)  # type: ignore[attr-defined]
+    except ValidationError:
+        return _normalize_calendar_date(value)
+
+
+def _build_existing_preview_data() -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
     cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
-    existing_list = []
+    existing: Dict[str, Dict[str, Any]] = {}
+    existing_list: List[Dict[str, Any]] = []
     for c in cal_svc.list_all():
-        existing_list.append(
-            {
-                "日期": c.date,
-                "类型": _normalize_day_type(c.day_type),
-                "可用工时": c.shift_hours,
-                "效率": c.efficiency,
-                "允许普通件": c.allow_normal,
-                "允许急件": c.allow_urgent,
-                "说明": c.remark,
-            }
-        )
+        item = {
+            "日期": c.date,
+            "类型": _normalize_day_type(c.day_type),
+            "可用工时": c.shift_hours,
+            "效率": c.efficiency,
+            "允许普通件": c.allow_normal,
+            "允许急件": c.allow_urgent,
+            "说明": c.remark,
+        }
+        existing[c.date] = item
+        existing_list.append(item)
+    return existing, existing_list
+
+
+def _calendar_baseline_extra_state(*, holiday_default_efficiency: float) -> Dict[str, Any]:
+    return {"holiday_default_efficiency": float(holiday_default_efficiency)}
+
+
+def _render_excel_calendar_page(
+    *,
+    existing_list: List[Dict[str, Any]],
+    preview_rows: Any,
+    raw_rows_json: Optional[str],
+    preview_baseline: Optional[str],
+    mode_value: str,
+    filename: Optional[str],
+):
     return render_template(
         "scheduler/excel_import_calendar.html",
         title="工作日历 - Excel 导入/导出",
         existing_list=existing_list,
-        preview_rows=None,
-        raw_rows_json=None,
-        mode=ImportMode.OVERWRITE.value,
-        filename=None,
+        preview_rows=preview_rows,
+        raw_rows_json=raw_rows_json,
+        preview_baseline=preview_baseline,
+        mode=mode_value,
+        filename=filename,
         preview_url=url_for("scheduler.excel_calendar_preview"),
         confirm_url=url_for("scheduler.excel_calendar_confirm"),
         template_download_url=url_for("scheduler.excel_calendar_template"),
         export_url=url_for("scheduler.excel_calendar_export"),
+    )
+
+
+@bp.get("/excel/calendar")
+def excel_calendar_page():
+    _existing, existing_list = _build_existing_preview_data()
+    return _render_excel_calendar_page(
+        existing_list=existing_list,
+        preview_rows=None,
+        raw_rows_json=None,
+        preview_baseline=None,
+        mode_value=ImportMode.OVERWRITE.value,
+        filename=None,
     )
 
 
@@ -80,36 +129,22 @@ def excel_calendar_preview():
         hde = 0.8
 
     rows = _read_uploaded_xlsx(file)
-    _ensure_unique_ids(rows, id_column="日期")
 
     normalized_rows: List[Dict[str, Any]] = []
     for r in rows:
         item = dict(r)
-        item["日期"] = _normalize_calendar_date(item.get("日期"))
+        item["日期"] = _canonicalize_calendar_date(item.get("日期"))
         item["类型"] = _normalize_day_type(item.get("类型"))
         item["允许普通件"] = _normalize_yesno(item.get("允许普通件"))
         item["允许急件"] = _normalize_yesno(item.get("允许急件"))
         # 说明字段：允许为空
         normalized_rows.append(item)
+    _ensure_unique_ids(normalized_rows, id_column="日期")
 
-    cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
-    existing = {}
-    existing_list = []
-    for c in cal_svc.list_all():
-        d = {
-            "日期": c.date,
-            "类型": _normalize_day_type(c.day_type),
-            "可用工时": c.shift_hours,
-            "效率": c.efficiency,
-            "允许普通件": c.allow_normal,
-            "允许急件": c.allow_urgent,
-            "说明": c.remark,
-        }
-        existing[c.date] = d
-        existing_list.append(d)
+    existing, existing_list = _build_existing_preview_data()
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if not row.get("日期") or str(row.get("日期")).strip() == "":
+        if is_blank_value(row.get("日期")):
             return "“日期”不能为空"
         # 严格日期校验（允许 YYYY/MM/DD；统一写回 YYYY-MM-DD）
         try:
@@ -148,10 +183,10 @@ def excel_calendar_preview():
 
         row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
         if row["允许普通件"] not in YESNO_VALUES:
-            return "“允许普通件”不合法（允许：yes/no；或中文：是/否）"
+            return "“允许普通件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
         row["允许急件"] = _normalize_yesno(row.get("允许急件"))
         if row["允许急件"] not in YESNO_VALUES:
-            return "“允许急件”不合法（允许：yes/no；或中文：是/否）"
+            return "“允许急件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
 
         return None
 
@@ -162,6 +197,12 @@ def excel_calendar_preview():
         existing_data=existing,
         validators=[validate_row],
         mode=mode,
+    )
+    preview_baseline = build_preview_baseline_token(
+        existing_data=existing,
+        mode=mode,
+        id_column="日期",
+        extra_state=_calendar_baseline_extra_state(holiday_default_efficiency=hde),
     )
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -175,18 +216,13 @@ def excel_calendar_preview():
         time_cost_ms=time_cost_ms,
     )
 
-    return render_template(
-        "scheduler/excel_import_calendar.html",
-        title="工作日历 - Excel 导入/导出",
+    return _render_excel_calendar_page(
         existing_list=existing_list,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(normalized_rows, ensure_ascii=False),
-        mode=mode.value,
+        preview_baseline=preview_baseline,
+        mode_value=mode.value,
         filename=file.filename,
-        preview_url=url_for("scheduler.excel_calendar_preview"),
-        confirm_url=url_for("scheduler.excel_calendar_confirm"),
-        template_download_url=url_for("scheduler.excel_calendar_template"),
-        export_url=url_for("scheduler.excel_calendar_export"),
     )
 
 
@@ -196,8 +232,11 @@ def excel_calendar_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     raw_rows_json = request.form.get("raw_rows_json")
+    preview_baseline = (request.form.get("preview_baseline") or "").strip()
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
+    if not preview_baseline:
+        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
 
     cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
     try:
@@ -207,30 +246,37 @@ def excel_calendar_confirm():
     except Exception:
         hde = 0.8
 
-    try:
-        rows = json.loads(raw_rows_json)
-        if not isinstance(rows, list):
-            raise ValueError("rows not list")
-    except Exception as e:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
+    rows = _parse_preview_rows_json(raw_rows_json)
+    existing, existing_list = _build_existing_preview_data()
+    if not preview_baseline_matches(
+        preview_baseline,
+        existing_data=existing,
+        mode=mode,
+        id_column="日期",
+        extra_state=_calendar_baseline_extra_state(holiday_default_efficiency=hde),
+    ):
+        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        return _render_excel_calendar_page(
+            existing_list=existing_list,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode_value=mode.value,
+            filename=filename,
+        )
 
-    _ensure_unique_ids(rows, id_column="日期")
-
-    cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
-    existing = {}
-    for c in cal_svc.list_all():
-        existing[c.date] = {
-            "日期": c.date,
-            "类型": _normalize_day_type(c.day_type),
-            "可用工时": c.shift_hours,
-            "效率": c.efficiency,
-            "允许普通件": c.allow_normal,
-            "允许急件": c.allow_urgent,
-            "说明": c.remark,
-        }
+    normalized_rows: List[Dict[str, Any]] = []
+    for r in rows:
+        item = dict(r)
+        item["日期"] = _canonicalize_calendar_date(item.get("日期"))
+        item["类型"] = _normalize_day_type(item.get("类型"))
+        item["允许普通件"] = _normalize_yesno(item.get("允许普通件"))
+        item["允许急件"] = _normalize_yesno(item.get("允许急件"))
+        normalized_rows.append(item)
+    _ensure_unique_ids(normalized_rows, id_column="日期")
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if not row.get("日期") or str(row.get("日期")).strip() == "":
+        if is_blank_value(row.get("日期")):
             return "“日期”不能为空"
         try:
             row["日期"] = CalendarService._normalize_date(row.get("日期"))  # type: ignore[attr-defined]
@@ -267,15 +313,15 @@ def excel_calendar_confirm():
 
         row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
         if row["允许普通件"] not in YESNO_VALUES:
-            return "“允许普通件”不合法（允许：yes/no；或中文：是/否）"
+            return "“允许普通件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
         row["允许急件"] = _normalize_yesno(row.get("允许急件"))
         if row["允许急件"] not in YESNO_VALUES:
-            return "“允许急件”不合法（允许：yes/no；或中文：是/否）"
+            return "“允许急件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
         return None
 
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
-        rows=rows,
+        rows=normalized_rows,
         id_column="日期",
         existing_data=existing,
         validators=[validate_row],
@@ -290,20 +336,16 @@ def excel_calendar_confirm():
             f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
             "error",
         )
-        return render_template(
-            "scheduler/excel_import_calendar.html",
-            title="工作日历 - Excel 导入/导出",
-            existing_list=list(existing.values()),
+        return _render_excel_calendar_page(
+            existing_list=existing_list,
             preview_rows=preview_rows,
-            raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            mode=mode.value,
+            raw_rows_json=json.dumps(normalized_rows, ensure_ascii=False),
+            preview_baseline=preview_baseline,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("scheduler.excel_calendar_preview"),
-            confirm_url=url_for("scheduler.excel_calendar_confirm"),
-            template_download_url=url_for("scheduler.excel_calendar_template"),
-            export_url=url_for("scheduler.excel_calendar_export"),
         )
 
+    cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
     tx = TransactionManager(g.db)
     new_count = update_count = skip_count = error_count = 0
     errors_sample: List[Dict[str, Any]] = []
@@ -318,6 +360,12 @@ def excel_calendar_confirm():
                 error_count += 1
                 if pr.message and len(errors_sample) < 10:
                     errors_sample.append({"row": pr.row_num, "message": pr.message})
+                continue
+            if pr.status == RowStatus.SKIP:
+                skip_count += 1
+                continue
+            if pr.status == RowStatus.UNCHANGED and mode != ImportMode.REPLACE:
+                skip_count += 1
                 continue
 
             ds = str(pr.data.get("日期")).strip()
@@ -361,7 +409,13 @@ def excel_calendar_confirm():
         time_cost_ms=time_cost_ms,
     )
 
-    flash(f"导入完成：新增 {new_count}，更新 {update_count}，跳过 {skip_count}，错误 {error_count}。", "success")
+    flash_import_result(
+        new_count=new_count,
+        update_count=update_count,
+        skip_count=skip_count,
+        error_count=error_count,
+        errors_sample=errors_sample,
+    )
     return redirect(url_for("scheduler.excel_calendar_page"))
 
 
@@ -388,16 +442,13 @@ def excel_calendar_template():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["日期", "类型", "可用工时", "效率", "允许普通件", "允许急件", "说明"])
-    ws.append(["2026-01-21", "workday", 8, 1.0, "yes", "yes", "示例"])
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("工作日历.xlsx")
+    sample_rows = template_def.get("sample_rows") or []
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        sample_rows,
+        format_spec=template_def.get("format_spec"),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
@@ -406,7 +457,7 @@ def excel_calendar_template():
         target_type="calendar",
         template_or_export_type="工作日历模板.xlsx",
         filters={},
-        row_count=1,
+        row_count=len(sample_rows),
         time_range={},
         time_cost_ms=time_cost_ms,
     )
@@ -423,15 +474,10 @@ def excel_calendar_export():
     start = time.time()
     cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
     rows = cal_svc.list_all()
-
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["日期", "类型", "可用工时", "效率", "允许普通件", "允许急件", "说明"])
-    for c in rows:
-        ws.append(
+    template_def = get_template_definition("工作日历.xlsx")
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        [
             [
                 c.date,
                 _normalize_day_type(c.day_type),
@@ -441,11 +487,11 @@ def excel_calendar_export():
                 _normalize_yesno(c.allow_urgent),
                 c.remark,
             ]
-        )
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+            for c in rows
+        ],
+        format_spec=template_def.get("format_spec"),
+        sanitize_formula=True,
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(

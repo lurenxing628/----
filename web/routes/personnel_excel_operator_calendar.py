@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
@@ -13,11 +12,14 @@ from core.infrastructure.errors import ValidationError
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.excel_validators import get_operator_calendar_row_validate_and_normalize
+from core.services.common.normalize import to_str_or_blank
+from core.services.personnel import OperatorService
 from core.services.scheduler import CalendarService, ConfigService
 from web.ui_mode import render_ui_template as render_template
 
-from .excel_utils import build_preview_baseline_token, preview_baseline_matches
+from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
 from .personnel_bp import (
     _ensure_unique_ids,
     _normalize_operator_calendar_day_type,
@@ -30,6 +32,18 @@ from .personnel_bp import (
 # ============================================================
 # Excel：人员专属工作日历（OperatorCalendar）
 # ============================================================
+
+
+def _list_operator_ids() -> List[str]:
+    op_svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
+    return sorted([str(op.operator_id) for op in op_svc.list(status=None) if getattr(op, "operator_id", None)])
+
+
+def _operator_calendar_baseline_extra_state(*, holiday_default_efficiency: float, operator_ids: List[str]) -> Dict[str, Any]:
+    return {
+        "holiday_default_efficiency": float(holiday_default_efficiency),
+        "operator_ids": list(operator_ids or []),
+    }
 
 
 @bp.get("/excel/operator_calendar")
@@ -90,17 +104,29 @@ def excel_operator_calendar_preview():
     normalized_rows: List[Dict[str, Any]] = []
     for r in rows:
         item = dict(r)
-        op_id = str(item.get("工号") or "").strip()
+        op_id = to_str_or_blank(item.get("工号"))
         item["工号"] = op_id
         # 日期尽量标准化（失败留原值，让 validator 报错）
+        raw_date = item.get("日期")
         try:
-            item["日期"] = CalendarService._normalize_date(item.get("日期"))
+            item["日期"] = CalendarService._normalize_date(raw_date)
         except Exception:
-            item["日期"] = ("" if item.get("日期") is None else str(item.get("日期")).strip().replace("/", "-"))
+            if hasattr(raw_date, "date"):
+                try:
+                    item["日期"] = raw_date.date().isoformat()
+                except Exception:
+                    item["日期"] = to_str_or_blank(raw_date).replace("/", "-")[:10]
+            elif hasattr(raw_date, "isoformat") and not isinstance(raw_date, str):
+                try:
+                    item["日期"] = raw_date.isoformat()
+                except Exception:
+                    item["日期"] = to_str_or_blank(raw_date).replace("/", "-")[:10]
+            else:
+                item["日期"] = to_str_or_blank(raw_date).replace("/", "-")[:10]
         item["类型"] = _normalize_operator_calendar_day_type(item.get("类型"))
         item["允许普通件"] = _normalize_yesno(item.get("允许普通件"))
         item["允许急件"] = _normalize_yesno(item.get("允许急件"))
-        item["__id"] = f"{op_id}|{str(item.get('日期') or '').strip()}"
+        item["__id"] = f"{op_id}|{to_str_or_blank(item.get('日期'))}"
         normalized_rows.append(item)
 
     _ensure_unique_ids(normalized_rows, id_column="__id")
@@ -140,7 +166,16 @@ def excel_operator_calendar_preview():
         validators=[validate_row],
         mode=mode,
     )
-    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column="__id")
+    operator_ids = _list_operator_ids()
+    preview_baseline = build_preview_baseline_token(
+        existing_data=existing,
+        mode=mode,
+        id_column="__id",
+        extra_state=_operator_calendar_baseline_extra_state(
+            holiday_default_efficiency=hde,
+            operator_ids=operator_ids,
+        ),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -215,11 +250,16 @@ def excel_operator_calendar_confirm():
             "说明": c.remark,
             "__id": f"{c.operator_id}|{c.date}",
         }
+    operator_ids = _list_operator_ids()
     if not preview_baseline_matches(
         preview_baseline,
         existing_data=existing,
         mode=mode,
         id_column="__id",
+        extra_state=_operator_calendar_baseline_extra_state(
+            holiday_default_efficiency=hde,
+            operator_ids=operator_ids,
+        ),
     ):
         flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
         return render_template(
@@ -295,7 +335,13 @@ def excel_operator_calendar_confirm():
         time_cost_ms=time_cost_ms,
     )
 
-    flash(f"导入完成：新增 {new_count}，更新 {update_count}，跳过 {skip_count}，错误 {error_count}。", "success")
+    flash_import_result(
+        new_count=new_count,
+        update_count=update_count,
+        skip_count=skip_count,
+        error_count=error_count,
+        errors_sample=list(import_stats.get("errors_sample") or []),
+    )
     return redirect(url_for("personnel.excel_operator_calendar_page"))
 
 
@@ -322,17 +368,13 @@ def excel_operator_calendar_template():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["工号", "日期", "类型", "班次开始", "班次结束", "可用工时", "效率", "允许普通件", "允许急件", "说明"])
-    ws.append(["OP001", "2026-01-25", "holiday", "08:00", "", 0, 0.8, "no", "no", "示例：休假"])
-    ws.append(["OP001", "2026-01-26", "holiday", "08:00", "16:00", "", "", "yes", "yes", "示例：假期加班（用班次结束推导工时）"])
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("人员专属工作日历.xlsx")
+    sample_rows = template_def.get("sample_rows") or []
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        sample_rows,
+        format_spec=template_def.get("format_spec"),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
@@ -341,7 +383,7 @@ def excel_operator_calendar_template():
         target_type="operator_calendar",
         template_or_export_type="人员专属工作日历模板.xlsx",
         filters={},
-        row_count=2,
+        row_count=len(sample_rows),
         time_range={},
         time_cost_ms=time_cost_ms,
     )
@@ -358,15 +400,10 @@ def excel_operator_calendar_export():
     start = time.time()
     cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
     rows = cal_svc.list_operator_calendar_all()
-
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["工号", "日期", "类型", "班次开始", "班次结束", "可用工时", "效率", "允许普通件", "允许急件", "说明"])
-    for c in rows:
-        ws.append(
+    template_def = get_template_definition("人员专属工作日历.xlsx")
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        [
             [
                 c.operator_id,
                 c.date,
@@ -379,11 +416,11 @@ def excel_operator_calendar_export():
                 _normalize_yesno(c.allow_urgent),
                 c.remark,
             ]
-        )
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+            for c in rows
+        ],
+        format_spec=template_def.get("format_spec"),
+        sanitize_formula=True,
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(

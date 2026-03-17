@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
@@ -14,6 +13,8 @@ from core.services.common.enum_normalizers import normalize_machine_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
+from core.services.common.normalize import is_blank_value
 from core.services.equipment import MachineService
 from core.services.equipment.machine_excel_import_service import MachineExcelImportService
 from core.services.personnel import ResourceTeamService
@@ -21,6 +22,7 @@ from core.services.process import OpTypeService
 from web.ui_mode import render_ui_template as render_template
 
 from .equipment_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
+from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
 
 # ============================================================
 # Excel：设备信息（Machines）
@@ -29,9 +31,9 @@ from .equipment_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, 
 
 
 def _validate_machine_excel_row(row: Dict[str, Any]) -> Optional[str]:
-    if not row.get("设备编号") or str(row.get("设备编号")).strip() == "":
+    if is_blank_value(row.get("设备编号")):
         return "设备编号不能为空"
-    if not row.get("设备名称") or str(row.get("设备名称")).strip() == "":
+    if is_blank_value(row.get("设备名称")):
         return "设备名称不能为空"
 
     status = row.get("状态")
@@ -72,33 +74,6 @@ def _resolve_op_type(value: Any, op_type_svc: OpTypeService) -> Dict[str, Option
     return {"op_type_id": ot.op_type_id, "op_type_name": ot.name}
 
 
-def _build_machine_template_output(template_path: str) -> io.BytesIO:
-    import openpyxl
-
-    if os.path.exists(template_path):
-        wb = openpyxl.load_workbook(template_path)
-        ws = wb.active
-    else:
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Sheet1"
-
-    desired_headers = ["设备编号", "设备名称", "工种", "班组", "状态"]
-    current_headers = [str(ws.cell(1, idx + 1).value or "").strip() for idx in range(len(desired_headers))]
-    if current_headers != desired_headers:
-        if ws.max_row > 0:
-            ws.delete_rows(1, ws.max_row)
-        ws.append(desired_headers)
-        ws.append(["CNC-01", "数控车床1", "数车", "车工一组", "active"])
-    elif ws.max_row < 2:
-        ws.append(["CNC-01", "数控车床1", "数车", "车工一组", "active"])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return output
-
-
 def _parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
     try:
         rows = json.loads(raw_rows_json)
@@ -118,11 +93,33 @@ def _format_error_sample(error_rows: List[Any]) -> str:
     return "；".join(items)
 
 
+def _machine_reference_snapshot(*, op_type_svc: OpTypeService, team_svc: ResourceTeamService) -> Dict[str, Any]:
+    return {
+        "op_types": [
+            {
+                "op_type_id": ot.op_type_id,
+                "name": ot.name,
+                "category": ot.category,
+            }
+            for ot in sorted(op_type_svc.list(), key=lambda item: str(item.op_type_id))
+        ],
+        "teams": [
+            {
+                "team_id": team.team_id,
+                "name": team.name,
+                "status": team.status,
+            }
+            for team in sorted(team_svc.list(status=None), key=lambda item: str(item.team_id))
+        ],
+    }
+
+
 def _render_excel_machine_page(
     *,
     existing: Dict[str, Dict[str, Any]],
     preview_rows: Any,
     raw_rows_json: Optional[str],
+    preview_baseline: Optional[str],
     mode_value: str,
     filename: Optional[str],
 ):
@@ -132,6 +129,7 @@ def _render_excel_machine_page(
         existing_list=list(existing.values()),
         preview_rows=preview_rows,
         raw_rows_json=raw_rows_json,
+        preview_baseline=preview_baseline,
         mode=mode_value,
         filename=filename,
         preview_url=url_for("equipment.excel_machine_preview"),
@@ -145,18 +143,13 @@ def _render_excel_machine_page(
 def excel_machine_page():
     svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = svc.build_existing_for_excel()
-    return render_template(
-        "equipment/excel_import_machine.html",
-        title="设备信息 - Excel 导入/导出",
-        existing_list=list(existing.values()),
+    return _render_excel_machine_page(
+        existing=existing,
         preview_rows=None,
         raw_rows_json=None,
-        mode=ImportMode.OVERWRITE.value,
+        preview_baseline=None,
+        mode_value=ImportMode.OVERWRITE.value,
         filename=None,
-        preview_url=url_for("equipment.excel_machine_preview"),
-        confirm_url=url_for("equipment.excel_machine_confirm"),
-        template_download_url=url_for("equipment.excel_machine_template"),
-        export_url=url_for("equipment.excel_machine_export"),
     )
 
 
@@ -223,6 +216,12 @@ def excel_machine_preview():
         validators=[validate_row],
         mode=mode,
     )
+    preview_baseline = build_preview_baseline_token(
+        existing_data=existing,
+        mode=mode,
+        id_column="设备编号",
+        extra_state=_machine_reference_snapshot(op_type_svc=op_type_svc, team_svc=team_svc),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -239,6 +238,7 @@ def excel_machine_preview():
         existing=existing,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(normalized_rows, ensure_ascii=False),
+        preview_baseline=preview_baseline,
         mode_value=mode.value,
         filename=file.filename,
     )
@@ -250,8 +250,11 @@ def excel_machine_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     raw_rows_json = request.form.get("raw_rows_json")
+    preview_baseline = (request.form.get("preview_baseline") or "").strip()
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
+    if not preview_baseline:
+        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
     rows = _parse_preview_rows_json(raw_rows_json)
 
     _ensure_unique_ids(rows, id_column="设备编号")
@@ -260,6 +263,22 @@ def excel_machine_confirm():
     team_svc = ResourceTeamService(g.db, op_logger=getattr(g, "op_logger", None))
     m_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = m_svc.build_existing_for_excel()
+    if not preview_baseline_matches(
+        preview_baseline,
+        existing_data=existing,
+        mode=mode,
+        id_column="设备编号",
+        extra_state=_machine_reference_snapshot(op_type_svc=op_type_svc, team_svc=team_svc),
+    ):
+        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        return _render_excel_machine_page(
+            existing=existing,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode_value=mode.value,
+            filename=filename,
+        )
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
         err = _validate_machine_excel_row(row)
@@ -303,6 +322,7 @@ def excel_machine_confirm():
             existing=existing,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
+            preview_baseline=preview_baseline,
             mode_value=mode.value,
             filename=filename,
         )
@@ -329,9 +349,12 @@ def excel_machine_confirm():
         time_cost_ms=time_cost_ms,
     )
 
-    flash(
-        f"导入完成：新增 {new_count}，更新 {update_count}，跳过 {skip_count}，错误 {error_count}。",
-        "success",
+    flash_import_result(
+        new_count=new_count,
+        update_count=update_count,
+        skip_count=skip_count,
+        error_count=error_count,
+        errors_sample=list(import_stats.get("errors_sample") or []),
     )
     return redirect(url_for("equipment.excel_machine_page"))
 
@@ -340,7 +363,32 @@ def excel_machine_confirm():
 def excel_machine_template():
     start = time.time()
     template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "设备信息.xlsx")
-    output = _build_machine_template_output(template_path)
+    if os.path.exists(template_path):
+        time_cost_ms = int((time.time() - start) * 1000)
+        log_excel_export(
+            op_logger=getattr(g, "op_logger", None),
+            module="equipment",
+            target_type="machine",
+            template_or_export_type="设备信息模板.xlsx",
+            filters={},
+            row_count=1,
+            time_range={},
+            time_cost_ms=time_cost_ms,
+        )
+        return send_file(
+            template_path,
+            as_attachment=True,
+            download_name="设备信息.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    template_def = get_template_definition("设备信息.xlsx")
+    sample_rows = template_def.get("sample_rows") or []
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        sample_rows,
+        format_spec=template_def.get("format_spec"),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
@@ -349,7 +397,7 @@ def excel_machine_template():
         target_type="machine",
         template_or_export_type="设备信息模板.xlsx",
         filters={},
-        row_count=1,
+        row_count=len(sample_rows),
         time_range={},
         time_cost_ms=time_cost_ms,
     )
@@ -366,19 +414,13 @@ def excel_machine_export():
     start = time.time()
     m_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
     rows = m_svc.list_for_export()
-
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["设备编号", "设备名称", "工种", "班组", "状态"])
-    for r in rows:
-        ws.append([r["machine_id"], r["name"], r.get("op_type_name"), r.get("team_name"), r["status"]])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("设备信息.xlsx")
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        [[r["machine_id"], r["name"], r.get("op_type_name"), r.get("team_name"), r["status"]] for r in rows],
+        format_spec=template_def.get("format_spec"),
+        sanitize_formula=True,
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(

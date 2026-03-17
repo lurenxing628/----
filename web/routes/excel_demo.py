@@ -13,12 +13,14 @@ from core.models.enums import OperatorStatus
 from core.services.common.enum_normalizers import normalize_operator_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
+from core.services.common.normalize import is_blank_value
 from core.services.common.openpyxl_backend import OpenpyxlBackend
 from core.services.personnel import OperatorService
 from core.services.personnel.operator_excel_import_service import OperatorExcelImportService
 from web.ui_mode import render_ui_template as render_template
 
-from .excel_utils import parse_import_mode
+from .excel_utils import build_preview_baseline_token, flash_import_result, parse_import_mode, preview_baseline_matches
 
 bp = Blueprint("excel_demo", __name__)
 
@@ -32,11 +34,35 @@ def _parse_mode(value: str) -> ImportMode:
     return parse_import_mode(value)
 
 
+def _render_demo_page(
+    *,
+    existing: Dict[str, Dict[str, Any]],
+    preview_rows: Any,
+    raw_rows_json: Any,
+    preview_baseline: str,
+    mode_value: str,
+    filename: Any,
+):
+    return render_template(
+        "excel/demo.html",
+        title="Excel 导入演示",
+        existing_list=list(existing.values()),
+        preview_rows=preview_rows,
+        raw_rows_json=raw_rows_json,
+        preview_baseline=preview_baseline,
+        mode=mode_value,
+        filename=filename,
+        preview_url=url_for("excel_demo.preview"),
+        confirm_url=url_for("excel_demo.confirm"),
+        template_download_url=url_for("excel_demo.download_template"),
+    )
+
+
 def _validate_operator_row(row: Dict[str, Any]) -> str:
     # 返回中文错误提示；返回 None 表示通过
-    if not row.get("工号") or str(row.get("工号")).strip() == "":
+    if is_blank_value(row.get("工号")):
         return "“工号”不能为空"
-    if not row.get("姓名") or str(row.get("姓名")).strip() == "":
+    if is_blank_value(row.get("姓名")):
         return "“姓名”不能为空"
 
     st = normalize_operator_status(row.get("状态"))
@@ -51,17 +77,13 @@ def _validate_operator_row(row: Dict[str, Any]) -> str:
 @bp.get("/")
 def index():
     existing = _fetch_existing_operators(g.db)
-    return render_template(
-        "excel/demo.html",
-        title="Excel 导入演示",
-        existing_list=list(existing.values()),
+    return _render_demo_page(
+        existing=existing,
         preview_rows=None,
         raw_rows_json=None,
-        mode=ImportMode.OVERWRITE.value,
+        preview_baseline="",
+        mode_value=ImportMode.OVERWRITE.value,
         filename=None,
-        preview_url=url_for("excel_demo.preview"),
-        confirm_url=url_for("excel_demo.confirm"),
-        template_download_url=url_for("excel_demo.download_template"),
     )
 
 
@@ -125,6 +147,7 @@ def preview():
         validators=[_validate_operator_row],
         mode=mode,
     )
+    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column="工号")
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -137,17 +160,13 @@ def preview():
         time_cost_ms=time_cost_ms,
     )
 
-    return render_template(
-        "excel/demo.html",
-        title="Excel 导入演示",
-        existing_list=list(existing.values()),
+    return _render_demo_page(
+        existing=existing,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(parsed_rows, ensure_ascii=False),
-        mode=mode.value,
+        preview_baseline=preview_baseline,
+        mode_value=mode.value,
         filename=file.filename,
-        preview_url=url_for("excel_demo.preview"),
-        confirm_url=url_for("excel_demo.confirm"),
-        template_download_url=url_for("excel_demo.download_template"),
     )
 
 
@@ -158,8 +177,11 @@ def confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     raw_rows_json = request.form.get("raw_rows_json")
+    preview_baseline = (request.form.get("preview_baseline") or "").strip()
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
+    if not preview_baseline:
+        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
 
     try:
         rows = json.loads(raw_rows_json)
@@ -169,6 +191,16 @@ def confirm():
         raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
     existing = _fetch_existing_operators(g.db)
+    if not preview_baseline_matches(preview_baseline, existing_data=existing, mode=mode, id_column="工号"):
+        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        return _render_demo_page(
+            existing=existing,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline="",
+            mode_value=mode.value,
+            filename=filename,
+        )
     backend = OpenpyxlBackend()
     svc = ExcelService(backend=backend, logger=None, op_logger=g.op_logger)
     preview_rows = svc.preview_import(
@@ -187,17 +219,13 @@ def confirm():
             f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
             "error",
         )
-        return render_template(
-            "excel/demo.html",
-            title="Excel 导入演示",
-            existing_list=list(existing.values()),
+        return _render_demo_page(
+            existing=existing,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            mode=mode.value,
+            preview_baseline=preview_baseline,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("excel_demo.preview"),
-            confirm_url=url_for("excel_demo.confirm"),
-            template_download_url=url_for("excel_demo.download_template"),
         )
 
     import_svc = OperatorExcelImportService(
@@ -222,9 +250,12 @@ def confirm():
         time_cost_ms=time_cost_ms,
     )
 
-    flash(
-        f"导入完成：新增 {new_count}，更新 {update_count}，跳过 {skip_count}，错误 {error_count}。",
-        "success",
+    flash_import_result(
+        new_count=new_count,
+        update_count=update_count,
+        skip_count=skip_count,
+        error_count=error_count,
+        errors_sample=list(import_stats.get("errors_sample") or []),
     )
     return redirect(url_for("excel_demo.index"))
 
@@ -255,17 +286,13 @@ def download_template():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["工号", "姓名", "状态", "班组", "备注"])
-    ws.append(["OP001", "张三", OperatorStatus.ACTIVE.value, None, "示例备注"])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("人员基本信息.xlsx")
+    sample_rows = template_def.get("sample_rows") or []
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        sample_rows,
+        format_spec=template_def.get("format_spec"),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
@@ -274,7 +301,7 @@ def download_template():
         target_type="operator",
         template_or_export_type="人员基本信息模板.xlsx",
         filters={},
-        row_count=1,
+        row_count=len(sample_rows),
         time_range={},
         time_cost_ms=time_cost_ms,
     )

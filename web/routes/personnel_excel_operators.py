@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
@@ -14,17 +13,20 @@ from core.services.common.enum_normalizers import normalize_operator_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
+from core.services.common.normalize import is_blank_value
 from core.services.personnel import OperatorService, ResourceTeamService
 from core.services.personnel.operator_excel_import_service import OperatorExcelImportService
 from web.ui_mode import render_ui_template as render_template
 
+from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
 from .personnel_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 
 def _validate_operator_excel_row(row: Dict[str, Any]) -> Optional[str]:
-    if not row.get("工号") or str(row.get("工号")).strip() == "":
+    if is_blank_value(row.get("工号")):
         return "工号不能为空"
-    if not row.get("姓名") or str(row.get("姓名")).strip() == "":
+    if is_blank_value(row.get("姓名")):
         return "姓名不能为空"
 
     st = normalize_operator_status(row.get("状态"))
@@ -36,36 +38,47 @@ def _validate_operator_excel_row(row: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _build_operator_template_output(template_path: str) -> io.BytesIO:
-    import openpyxl
-
-    if os.path.exists(template_path):
-        wb = openpyxl.load_workbook(template_path)
-        ws = wb.active
-    else:
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Sheet1"
-
-    desired_headers = ["工号", "姓名", "状态", "班组", "备注"]
-    current_headers = [str(ws.cell(1, idx + 1).value or "").strip() for idx in range(len(desired_headers))]
-    if current_headers != desired_headers:
-        if ws.max_row > 0:
-            ws.delete_rows(1, ws.max_row)
-        ws.append(desired_headers)
-        ws.append(["OP001", "张三", OperatorStatus.ACTIVE.value, "车工一组", "示例备注"])
-    elif ws.max_row < 2:
-        ws.append(["OP001", "张三", OperatorStatus.ACTIVE.value, "车工一组", "示例备注"])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return output
-
-
 # ============================================================
 # Excel：人员基本信息（Operators）
 # ============================================================
+
+
+def _render_excel_operator_page(
+    *,
+    existing: Dict[str, Dict[str, Any]],
+    preview_rows: Any,
+    raw_rows_json: Optional[str],
+    preview_baseline: Optional[str],
+    mode_value: str,
+    filename: Optional[str],
+):
+    return render_template(
+        "personnel/excel_import_operator.html",
+        title="人员基本信息 - Excel 导入/导出",
+        existing_list=list(existing.values()),
+        preview_rows=preview_rows,
+        raw_rows_json=raw_rows_json,
+        preview_baseline=preview_baseline,
+        mode=mode_value,
+        filename=filename,
+        preview_url=url_for("personnel.excel_operator_preview"),
+        confirm_url=url_for("personnel.excel_operator_confirm"),
+        template_download_url=url_for("personnel.excel_operator_template"),
+        export_url=url_for("personnel.excel_operator_export"),
+    )
+
+
+def _operator_team_snapshot(team_svc: ResourceTeamService) -> Dict[str, Any]:
+    return {
+        "teams": [
+            {
+                "team_id": team.team_id,
+                "name": team.name,
+                "status": team.status,
+            }
+            for team in sorted(team_svc.list(status=None), key=lambda item: str(item.team_id))
+        ]
+    }
 
 
 @bp.get("/excel/operators")
@@ -73,18 +86,13 @@ def excel_operator_page():
     op_svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = op_svc.build_existing_for_excel()
 
-    return render_template(
-        "personnel/excel_import_operator.html",
-        title="人员基本信息 - Excel 导入/导出",
-        existing_list=list(existing.values()),
+    return _render_excel_operator_page(
+        existing=existing,
         preview_rows=None,
         raw_rows_json=None,
-        mode=ImportMode.OVERWRITE.value,
+        preview_baseline=None,
+        mode_value=ImportMode.OVERWRITE.value,
         filename=None,
-        preview_url=url_for("personnel.excel_operator_preview"),
-        confirm_url=url_for("personnel.excel_operator_confirm"),
-        template_download_url=url_for("personnel.excel_operator_template"),
-        export_url=url_for("personnel.excel_operator_export"),
     )
 
 
@@ -136,6 +144,12 @@ def excel_operator_preview():
         validators=[validate_row],
         mode=mode,
     )
+    preview_baseline = build_preview_baseline_token(
+        existing_data=existing,
+        mode=mode,
+        id_column="工号",
+        extra_state=_operator_team_snapshot(team_svc),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -148,18 +162,13 @@ def excel_operator_preview():
         time_cost_ms=time_cost_ms,
     )
 
-    return render_template(
-        "personnel/excel_import_operator.html",
-        title="人员基本信息 - Excel 导入/导出",
-        existing_list=list(existing.values()),
+    return _render_excel_operator_page(
+        existing=existing,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(normalized_rows, ensure_ascii=False),
-        mode=mode.value,
+        preview_baseline=preview_baseline,
+        mode_value=mode.value,
         filename=file.filename,
-        preview_url=url_for("personnel.excel_operator_preview"),
-        confirm_url=url_for("personnel.excel_operator_confirm"),
-        template_download_url=url_for("personnel.excel_operator_template"),
-        export_url=url_for("personnel.excel_operator_export"),
     )
 
 
@@ -170,8 +179,11 @@ def excel_operator_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     raw_rows_json = request.form.get("raw_rows_json")
+    preview_baseline = (request.form.get("preview_baseline") or "").strip()
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
+    if not preview_baseline:
+        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
 
     try:
         rows = json.loads(raw_rows_json)
@@ -185,6 +197,22 @@ def excel_operator_confirm():
     op_svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     team_svc = ResourceTeamService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = op_svc.build_existing_for_excel()
+    if not preview_baseline_matches(
+        preview_baseline,
+        existing_data=existing,
+        mode=mode,
+        id_column="工号",
+        extra_state=_operator_team_snapshot(team_svc),
+    ):
+        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        return _render_excel_operator_page(
+            existing=existing,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode_value=mode.value,
+            filename=filename,
+        )
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
         err = _validate_operator_excel_row(row)
@@ -217,18 +245,13 @@ def excel_operator_confirm():
             message,
             "error",
         )
-        return render_template(
-            "personnel/excel_import_operator.html",
-            title="人员基本信息 - Excel 导入/导出",
-            existing_list=list(existing.values()),
+        return _render_excel_operator_page(
+            existing=existing,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            mode=mode.value,
+            preview_baseline=preview_baseline,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("personnel.excel_operator_preview"),
-            confirm_url=url_for("personnel.excel_operator_confirm"),
-            template_download_url=url_for("personnel.excel_operator_template"),
-            export_url=url_for("personnel.excel_operator_export"),
         )
 
     import_svc = OperatorExcelImportService(
@@ -253,9 +276,12 @@ def excel_operator_confirm():
         time_cost_ms=time_cost_ms,
     )
 
-    flash(
-        f"导入完成：新增 {new_count}，更新 {update_count}，跳过 {skip_count}，错误 {error_count}。",
-        "success",
+    flash_import_result(
+        new_count=new_count,
+        update_count=update_count,
+        skip_count=skip_count,
+        error_count=error_count,
+        errors_sample=list(import_stats.get("errors_sample") or []),
     )
     return redirect(url_for("personnel.excel_operator_page"))
 
@@ -265,7 +291,32 @@ def excel_operator_template():
     start = time.time()
 
     template_path = os.path.join(current_app.config["EXCEL_TEMPLATE_DIR"], "人员基本信息.xlsx")
-    output = _build_operator_template_output(template_path)
+    if os.path.exists(template_path):
+        time_cost_ms = int((time.time() - start) * 1000)
+        log_excel_export(
+            op_logger=getattr(g, "op_logger", None),
+            module="personnel",
+            target_type="operator",
+            template_or_export_type="人员基本信息模板.xlsx",
+            filters={},
+            row_count=1,
+            time_range={},
+            time_cost_ms=time_cost_ms,
+        )
+        return send_file(
+            template_path,
+            as_attachment=True,
+            download_name="人员基本信息.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    template_def = get_template_definition("人员基本信息.xlsx")
+    sample_rows = template_def.get("sample_rows") or []
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        sample_rows,
+        format_spec=template_def.get("format_spec"),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
@@ -274,7 +325,7 @@ def excel_operator_template():
         target_type="operator",
         template_or_export_type="人员基本信息模板.xlsx",
         filters={},
-        row_count=1,
+        row_count=len(sample_rows),
         time_range={},
         time_cost_ms=time_cost_ms,
     )
@@ -293,19 +344,13 @@ def excel_operator_export():
 
     existing = OperatorService(g.db, op_logger=getattr(g, "op_logger", None)).build_existing_for_excel()
     export_rows = list(existing.values())
-
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["工号", "姓名", "状态", "班组", "备注"])
-    for r in export_rows:
-        ws.append([r.get("工号"), r.get("姓名"), r.get("状态"), r.get("班组"), r.get("备注")])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("人员基本信息.xlsx")
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        [[r.get("工号"), r.get("姓名"), r.get("状态"), r.get("班组"), r.get("备注")] for r in export_rows],
+        format_spec=template_def.get("format_spec"),
+        sanitize_formula=True,
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(

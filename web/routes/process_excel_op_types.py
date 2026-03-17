@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
@@ -9,15 +8,18 @@ from typing import Any, Dict, List, Optional
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
-from core.models.enums import SOURCE_TYPE_VALUES, SourceType
+from core.models.enums import SOURCE_TYPE_VALUES
 from core.services.common.enum_normalizers import normalize_op_type_category
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
+from core.services.common.normalize import normalize_text
 from core.services.process import OpTypeService
 from core.services.process.op_type_excel_import_service import OpTypeExcelImportService
 from web.ui_mode import render_ui_template as render_template
 
+from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
@@ -25,26 +27,98 @@ from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 # ============================================================
 
 
+def _render_excel_op_type_page(
+    *,
+    existing: Dict[str, Dict[str, Any]],
+    preview_rows: Any,
+    raw_rows_json: Optional[str],
+    preview_baseline: Optional[str],
+    mode_value: str,
+    filename: Optional[str],
+):
+    return render_template(
+        "process/excel_import_op_types.html",
+        title="工种配置 - Excel 导入/导出",
+        existing_list=list(existing.values()),
+        preview_rows=preview_rows,
+        raw_rows_json=raw_rows_json,
+        preview_baseline=preview_baseline,
+        mode=mode_value,
+        filename=filename,
+        preview_url=url_for("process.excel_op_type_preview"),
+        confirm_url=url_for("process.excel_op_type_confirm"),
+        template_download_url=url_for("process.excel_op_type_template"),
+        export_url=url_for("process.excel_op_type_export"),
+    )
+
+
 def _normalize_op_type_category(value: Any) -> str:
     return normalize_op_type_category(value)
+
+
+def _normalize_op_type_name(value: Any) -> str:
+    return normalize_text(value) or ""
+
+
+def _build_op_type_row_validator(
+    *,
+    rows: List[Dict[str, Any]],
+    existing: Dict[str, Dict[str, Any]],
+    mode: ImportMode,
+):
+    name_counts: Dict[str, int] = {}
+    for row in rows:
+        name = _normalize_op_type_name(row.get("工种名称"))
+        if name:
+            name_counts[name] = int(name_counts.get(name, 0) or 0) + 1
+
+    existing_name_to_id: Dict[str, str] = {}
+    if mode != ImportMode.REPLACE:
+        for ot_id, existing_row in (existing or {}).items():
+            name = _normalize_op_type_name((existing_row or {}).get("工种名称"))
+            normalized_id = str(ot_id or "").strip()
+            if name and normalized_id:
+                existing_name_to_id[name] = normalized_id
+
+    def validate_row(row: Dict[str, Any]) -> Optional[str]:
+        ot_id = normalize_text(row.get("工种ID")) or ""
+        if not ot_id:
+            return "“工种ID”不能为空"
+        row["工种ID"] = ot_id
+
+        name = _normalize_op_type_name(row.get("工种名称"))
+        if not name:
+            return "“工种名称”不能为空"
+        row["工种名称"] = name
+
+        cat = _normalize_op_type_category(row.get("归属"))
+        if cat not in SOURCE_TYPE_VALUES:
+            return "“归属”不合法（允许：internal / external；或中文：内部/外部）"
+        row["归属"] = cat
+
+        if int(name_counts.get(name, 0) or 0) > 1:
+            return f"工种名称“{name}”在导入文件中重复，名称必须唯一。"
+
+        existing_owner_id = existing_name_to_id.get(name)
+        if existing_owner_id and existing_owner_id != ot_id:
+            return f"工种名称“{name}”已被工种ID“{existing_owner_id}”占用，名称必须唯一。"
+
+        return None
+
+    return validate_row
 
 
 @bp.get("/excel/op-types")
 def excel_op_type_page():
     svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = svc.build_existing_for_excel()
-    return render_template(
-        "process/excel_import_op_types.html",
-        title="工种配置 - Excel 导入/导出",
-        existing_list=list(existing.values()),
+    return _render_excel_op_type_page(
+        existing=existing,
         preview_rows=None,
         raw_rows_json=None,
-        mode=ImportMode.OVERWRITE.value,
+        preview_baseline=None,
+        mode_value=ImportMode.OVERWRITE.value,
         filename=None,
-        preview_url=url_for("process.excel_op_type_preview"),
-        confirm_url=url_for("process.excel_op_type_confirm"),
-        template_download_url=url_for("process.excel_op_type_template"),
-        export_url=url_for("process.excel_op_type_export"),
     )
 
 
@@ -62,16 +136,7 @@ def excel_op_type_preview():
     svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = svc.build_existing_for_excel()
 
-    def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if not row.get("工种ID") or str(row.get("工种ID")).strip() == "":
-            return "“工种ID”不能为空"
-        if not row.get("工种名称") or str(row.get("工种名称")).strip() == "":
-            return "“工种名称”不能为空"
-        cat = _normalize_op_type_category(row.get("归属"))
-        if cat not in SOURCE_TYPE_VALUES:
-            return "“归属”不合法（允许：internal / external；或中文：内部/外部）"
-        row["归属"] = cat
-        return None
+    validate_row = _build_op_type_row_validator(rows=rows, existing=existing, mode=mode)
 
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
@@ -81,6 +146,7 @@ def excel_op_type_preview():
         validators=[validate_row],
         mode=mode,
     )
+    preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mode, id_column="工种ID")
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -93,18 +159,13 @@ def excel_op_type_preview():
         time_cost_ms=time_cost_ms,
     )
 
-    return render_template(
-        "process/excel_import_op_types.html",
-        title="工种配置 - Excel 导入/导出",
-        existing_list=list(existing.values()),
+    return _render_excel_op_type_page(
+        existing=existing,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(rows, ensure_ascii=False),
-        mode=mode.value,
+        preview_baseline=preview_baseline,
+        mode_value=mode.value,
         filename=file.filename,
-        preview_url=url_for("process.excel_op_type_preview"),
-        confirm_url=url_for("process.excel_op_type_confirm"),
-        template_download_url=url_for("process.excel_op_type_template"),
-        export_url=url_for("process.excel_op_type_export"),
     )
 
 
@@ -114,8 +175,11 @@ def excel_op_type_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     raw_rows_json = request.form.get("raw_rows_json")
+    preview_baseline = (request.form.get("preview_baseline") or "").strip()
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
+    if not preview_baseline:
+        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
 
     try:
         rows = json.loads(raw_rows_json)
@@ -128,17 +192,18 @@ def excel_op_type_confirm():
 
     op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = op_type_svc.build_existing_for_excel()
+    if not preview_baseline_matches(preview_baseline, existing_data=existing, mode=mode, id_column="工种ID"):
+        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        return _render_excel_op_type_page(
+            existing=existing,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode_value=mode.value,
+            filename=filename,
+        )
 
-    def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if not row.get("工种ID") or str(row.get("工种ID")).strip() == "":
-            return "“工种ID”不能为空"
-        if not row.get("工种名称") or str(row.get("工种名称")).strip() == "":
-            return "“工种名称”不能为空"
-        cat = _normalize_op_type_category(row.get("归属"))
-        if cat not in SOURCE_TYPE_VALUES:
-            return "“归属”不合法（允许：internal / external；或中文：内部/外部）"
-        row["归属"] = cat
-        return None
+    validate_row = _build_op_type_row_validator(rows=rows, existing=existing, mode=mode)
 
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
@@ -157,18 +222,13 @@ def excel_op_type_confirm():
             f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
             "error",
         )
-        return render_template(
-            "process/excel_import_op_types.html",
-            title="工种配置 - Excel 导入/导出",
-            existing_list=list(existing.values()),
+        return _render_excel_op_type_page(
+            existing=existing,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            mode=mode.value,
+            preview_baseline=preview_baseline,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("process.excel_op_type_preview"),
-            confirm_url=url_for("process.excel_op_type_confirm"),
-            template_download_url=url_for("process.excel_op_type_template"),
-            export_url=url_for("process.excel_op_type_export"),
         )
 
     import_svc = OpTypeExcelImportService(
@@ -181,6 +241,7 @@ def excel_op_type_confirm():
     update_count = int(import_stats.get("update_count", 0))
     skip_count = int(import_stats.get("skip_count", 0))
     error_count = int(import_stats.get("error_count", 0))
+    errors_sample = list(import_stats.get("errors_sample") or [])
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -193,7 +254,13 @@ def excel_op_type_confirm():
         time_cost_ms=time_cost_ms,
     )
 
-    flash(f"导入完成：新增 {new_count}，更新 {update_count}，跳过 {skip_count}，错误 {error_count}。", "success")
+    flash_import_result(
+        new_count=new_count,
+        update_count=update_count,
+        skip_count=skip_count,
+        error_count=error_count,
+        errors_sample=errors_sample,
+    )
     return redirect(url_for("process.excel_op_type_page"))
 
 
@@ -220,18 +287,13 @@ def excel_op_type_template():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["工种ID", "工种名称", "归属"])
-    ws.append(["OT001", "数车", SourceType.INTERNAL.value])
-    ws.append(["OT002", "标印", SourceType.EXTERNAL.value])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("工种配置.xlsx")
+    sample_rows = template_def.get("sample_rows") or []
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        sample_rows,
+        format_spec=template_def.get("format_spec"),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
@@ -240,7 +302,7 @@ def excel_op_type_template():
         target_type="op_type",
         template_or_export_type="工种配置模板.xlsx",
         filters={},
-        row_count=2,
+        row_count=len(sample_rows),
         time_range={},
         time_cost_ms=time_cost_ms,
     )
@@ -258,19 +320,13 @@ def excel_op_type_export():
     start = time.time()
     svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     rows = svc.list()
-
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["工种ID", "工种名称", "归属"])
-    for r in rows:
-        ws.append([r.op_type_id, r.name, r.category])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("工种配置.xlsx")
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        [[r.op_type_id, r.name, r.category] for r in rows],
+        format_spec=template_def.get("format_spec"),
+        sanitize_formula=True,
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
