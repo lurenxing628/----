@@ -96,3 +96,6 @@ tools/ungoogled-chromium_*.zip
 /verify_config_ui.py
 /screenshot_*.png
 .playwright-mcp/
+
+# 本地提示词存档（不纳入版本控制）
+提示词存档/
