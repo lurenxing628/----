@@ -6,7 +6,7 @@
 2) `start-only` / `rerun` 输出的 `host` / `port` / `url` 来自实际 endpoint。
 3) fresh-start 会把统一目标 DB 传给子服务环境。
 4) DB 错配或 runtime endpoint 身份不可证实时必须拒绝复用。
-5) `.cursor` 与 `.windsurf` 两份 runner 行为保持一致。
+5) `.cursor` 现行 runner 行为保持契约一致。
 """
 
 from __future__ import annotations
@@ -58,7 +58,6 @@ def _runner_paths(repo_root: str) -> list[Path]:
     base = Path(repo_root)
     return [
         base / ".cursor" / "skills" / "aps-start-and-rerun-route" / "scripts" / "run_start_and_rerun_route.py",
-        base / ".windsurf" / "skills" / "aps-start-and-rerun-route" / "scripts" / "run_start_and_rerun_route.py",
     ]
 
 
