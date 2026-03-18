@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import getpass
 import ipaddress
 import json
 import logging
@@ -14,6 +15,8 @@ from typing import Any, Dict, Optional
 
 _RUNTIME_CONTRACT_VERSION = 1
 _RUNTIME_SHUTDOWN_PATH = "/system/runtime/shutdown"
+_RUNTIME_LOCK_FILE = "aps_runtime.lock"
+_RUNTIME_ERROR_FILE = "aps_launch_error.txt"
 
 
 def pick_bind_host(raw_host: str | None, *, logger: logging.Logger | None = None) -> str:
@@ -98,6 +101,299 @@ def _normalize_db_path_for_runtime(db_path: str | None) -> str:
     return os.path.normcase(os.path.abspath(raw))
 
 
+def current_runtime_owner() -> str:
+    user = str(os.environ.get("USERNAME") or "").strip()
+    if not user:
+        try:
+            user = str(getpass.getuser() or "").strip()
+        except Exception:
+            user = ""
+    domain = str(os.environ.get("USERDOMAIN") or os.environ.get("COMPUTERNAME") or "").strip()
+    if domain and user and domain.lower() != user.lower():
+        return f"{domain}\\{user}"
+    return user or domain or "unknown"
+
+
+def _runtime_log_dir(runtime_dir: str) -> str:
+    return os.path.join(str(runtime_dir), "logs")
+
+
+def resolve_runtime_state_dir(runtime_dir: str, cfg_log_dir: str | None = None) -> str:
+    cfg_log_dir_s = ""
+    try:
+        cfg_log_dir_s = str(cfg_log_dir).strip() if cfg_log_dir is not None else ""
+    except Exception:
+        cfg_log_dir_s = ""
+    if cfg_log_dir_s:
+        return os.path.abspath(cfg_log_dir_s)
+    return os.path.abspath(_runtime_log_dir(runtime_dir))
+
+
+def _resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir: str) -> str:
+    base = os.path.abspath(str(runtime_dir_or_state_dir))
+    if os.path.basename(base).strip().lower() == "logs":
+        return base
+    direct_files = [
+        "aps_host.txt",
+        "aps_port.txt",
+        "aps_db_path.txt",
+        "aps_runtime.json",
+        _RUNTIME_LOCK_FILE,
+        _RUNTIME_ERROR_FILE,
+    ]
+    if any(os.path.exists(os.path.join(base, name)) for name in direct_files):
+        return base
+    return os.path.join(base, "logs")
+
+
+def _runtime_log_mirror_dir(runtime_dir: str, cfg_log_dir: str | None = None) -> str:
+    runtime_log_dir = os.path.abspath(_runtime_log_dir(runtime_dir))
+    state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
+    if os.path.normcase(runtime_log_dir) == os.path.normcase(state_dir):
+        return ""
+    return runtime_log_dir
+
+
+def _state_contract_paths(state_dir: str) -> tuple[str, str, str, str]:
+    return (
+        os.path.join(state_dir, "aps_host.txt"),
+        os.path.join(state_dir, "aps_port.txt"),
+        os.path.join(state_dir, "aps_db_path.txt"),
+        os.path.join(state_dir, "aps_runtime.json"),
+    )
+
+
+def _runtime_lock_path(state_dir: str) -> str:
+    return os.path.join(state_dir, _RUNTIME_LOCK_FILE)
+
+
+def _launch_error_path(state_dir: str) -> str:
+    return os.path.join(state_dir, _RUNTIME_ERROR_FILE)
+
+
+def _write_runtime_state_triplet(state_dir: str, host: str, port: int, db_for_runtime: str) -> None:
+    host_file, port_file, db_file, _contract_file = _state_contract_paths(state_dir)
+    with open(port_file, "w", encoding="utf-8") as f:
+        f.write(str(int(port)) + "\n")
+    host_for_client = (str(host or "").strip() or "127.0.0.1")
+    if host_for_client == "0.0.0.0":
+        host_for_client = "127.0.0.1"
+    with open(host_file, "w", encoding="utf-8") as f:
+        f.write(str(host_for_client) + "\n")
+    with open(db_file, "w", encoding="utf-8") as f:
+        f.write(db_for_runtime + "\n")
+
+
+def _write_key_value_file(path: str, data: Dict[str, Any]) -> None:
+    lines = []
+    for key, value in (data or {}).items():
+        key_s = str(key or "").strip()
+        if not key_s:
+            continue
+        value_s = str(value if value is not None else "").replace("\r", " ").replace("\n", " ").strip()
+        lines.append(f"{key_s}={value_s}")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + ("\n" if lines else ""))
+
+
+def _read_key_value_file(path: str) -> Dict[str, str]:
+    if not os.path.exists(path):
+        return {}
+    data: Dict[str, str] = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.readlines()
+    except Exception:
+        return {}
+    for raw in lines:
+        line = str(raw or "").strip()
+        if not line or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key_s = str(key or "").strip()
+        if not key_s:
+            continue
+        data[key_s] = str(value or "").strip()
+    return data
+
+
+def _pid_exists(pid: int) -> bool:
+    try:
+        pid_i = int(pid)
+    except Exception:
+        return False
+    if pid_i <= 0:
+        return False
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid_i}", "/NH", "/FO", "CSV"],
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+        except Exception:
+            return False
+        for line in (result.stdout or "").splitlines():
+            line_s = str(line or "").strip()
+            if line_s.startswith('"') and f',"{pid_i}",' in line_s:
+                return True
+        return False
+    try:
+        os.kill(pid_i, 0)
+        return True
+    except Exception:
+        return False
+
+
+class RuntimeLockError(RuntimeError):
+    def __init__(self, message: str, *, owner: str = "", pid: int = 0):
+        super().__init__(message)
+        self.owner = str(owner or "").strip()
+        try:
+            self.pid = int(pid or 0)
+        except Exception:
+            self.pid = 0
+
+
+def read_runtime_lock(runtime_dir_or_state_dir: str) -> Optional[Dict[str, Any]]:
+    state_dir = _resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir)
+    lock_path = _runtime_lock_path(state_dir)
+    if not os.path.exists(lock_path):
+        return None
+    payload = _read_key_value_file(lock_path)
+    if not payload:
+        return None
+    try:
+        payload["pid"] = int(payload.get("pid") or 0)
+    except Exception:
+        payload["pid"] = 0
+    payload["state_dir"] = state_dir
+    payload["path"] = lock_path
+    return payload
+
+
+def _is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str = "") -> bool:
+    if not isinstance(lock_payload, dict):
+        return False
+    try:
+        pid = int(lock_payload.get("pid") or 0)
+    except Exception:
+        pid = 0
+    if pid <= 0 or not _pid_exists(pid):
+        return False
+    exe_path = str(lock_payload.get("exe_path") or expected_exe_path or "").strip()
+    if exe_path:
+        pid_match = _pid_matches_contract(pid, exe_path)
+        if pid_match is False:
+            return False
+    return True
+
+
+def acquire_runtime_lock(
+    runtime_dir: str,
+    cfg_log_dir: str | None = None,
+    *,
+    owner: str | None = None,
+    exe_path: str | None = None,
+) -> Dict[str, Any]:
+    state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
+    os.makedirs(state_dir, exist_ok=True)
+    lock_path = _runtime_lock_path(state_dir)
+    owner_s = str(owner or current_runtime_owner()).strip() or "unknown"
+    exe_path_s = os.path.abspath(str(exe_path or sys.executable or "")).strip()
+    payload: Dict[str, Any] = {
+        "pid": int(os.getpid()),
+        "owner": owner_s,
+        "exe_path": exe_path_s,
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    for _ in range(2):
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            existing = read_runtime_lock(state_dir) or {}
+            if _is_runtime_lock_active(existing, expected_exe_path=exe_path_s):
+                existing_owner = str(existing.get("owner") or "").strip()
+                existing_pid = int(existing.get("pid") or 0)
+                if existing_owner and existing_owner != owner_s:
+                    raise RuntimeLockError(
+                        f"系统当前正由 {existing_owner} 使用，请等待其退出后再试。",
+                        owner=existing_owner,
+                        pid=existing_pid,
+                    ) from None
+                raise RuntimeLockError(
+                    "系统已在当前账户运行，请直接使用现有窗口，不要重复启动。",
+                    owner=existing_owner or owner_s,
+                    pid=existing_pid,
+                ) from None
+            try:
+                os.remove(lock_path)
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                raise RuntimeLockError(f"检测到失效运行时锁，但无法清理：{e}") from e
+            continue
+        except Exception as e:
+            raise RuntimeLockError(f"创建运行时锁失败：{e}") from e
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                for key, value in payload.items():
+                    value_s = str(value if value is not None else "").replace("\r", " ").replace("\n", " ").strip()
+                    f.write(f"{key}={value_s}\n")
+        except Exception:
+            try:
+                os.remove(lock_path)
+            except Exception:
+                pass
+            raise
+        payload["state_dir"] = state_dir
+        payload["path"] = lock_path
+        return payload
+    raise RuntimeLockError("创建运行时锁失败，请稍后重试。")
+
+
+def release_runtime_lock(runtime_dir_or_state_dir: str, expected_pid: int | None = None) -> None:
+    existing = read_runtime_lock(runtime_dir_or_state_dir)
+    if not existing:
+        return
+    pid0 = int(existing.get("pid") or 0)
+    pid_expected = 0
+    try:
+        pid_expected = int(expected_pid if expected_pid is not None else os.getpid())
+    except Exception:
+        pid_expected = 0
+    if pid_expected > 0 and pid0 > 0 and pid0 != pid_expected:
+        return
+    try:
+        os.remove(str(existing.get("path") or ""))
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+
+def write_launch_error(runtime_dir: str, message: str, cfg_log_dir: str | None = None) -> str:
+    state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
+    os.makedirs(state_dir, exist_ok=True)
+    error_path = _launch_error_path(state_dir)
+    with open(error_path, "w", encoding="utf-8") as f:
+        f.write((str(message or "").strip() or "应用启动失败。") + "\n")
+    return error_path
+
+
+def clear_launch_error(runtime_dir_or_state_dir: str) -> None:
+    state_dir = _resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir)
+    error_path = _launch_error_path(state_dir)
+    try:
+        os.remove(error_path)
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+
 def write_runtime_host_port_files(
     runtime_dir: str,
     cfg_log_dir: str | None,
@@ -107,49 +403,23 @@ def write_runtime_host_port_files(
     *,
     logger: logging.Logger | None = None,
 ) -> None:
-    runtime_log_dir = os.path.join(runtime_dir, "logs")
-    os.makedirs(runtime_log_dir, exist_ok=True)
-    port_file = os.path.join(runtime_log_dir, "aps_port.txt")
-    host_file = os.path.join(runtime_log_dir, "aps_host.txt")
-    db_file = os.path.join(runtime_log_dir, "aps_db_path.txt")
-
-    with open(port_file, "w", encoding="utf-8") as f:
-        f.write(str(int(port)) + "\n")
-
-    host_for_client = (str(host or "").strip() or "127.0.0.1")
-    if host_for_client == "0.0.0.0":
-        host_for_client = "127.0.0.1"
-    with open(host_file, "w", encoding="utf-8") as f:
-        f.write(str(host_for_client) + "\n")
-
     db_for_runtime = _normalize_db_path_for_runtime(db_path)
-    with open(db_file, "w", encoding="utf-8") as f:
-        f.write(db_for_runtime + "\n")
+    state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
+    os.makedirs(state_dir, exist_ok=True)
+    _write_runtime_state_triplet(state_dir, host, port, db_for_runtime)
 
-    cfg_log_dir_s = ""
-    try:
-        cfg_log_dir_s = str(cfg_log_dir).strip() if cfg_log_dir is not None else ""
-    except Exception:
-        cfg_log_dir_s = ""
-    if cfg_log_dir_s:
+    mirror_log_dir = _runtime_log_mirror_dir(runtime_dir, cfg_log_dir)
+    if mirror_log_dir:
         try:
-            if os.path.abspath(cfg_log_dir_s) != os.path.abspath(runtime_log_dir):
-                os.makedirs(cfg_log_dir_s, exist_ok=True)
-                mirror_port_file = os.path.join(cfg_log_dir_s, "aps_port.txt")
-                with open(mirror_port_file, "w", encoding="utf-8") as f2:
-                    f2.write(str(int(port)) + "\n")
-                mirror_host_file = os.path.join(cfg_log_dir_s, "aps_host.txt")
-                with open(mirror_host_file, "w", encoding="utf-8") as f3:
-                    f3.write(str(host_for_client) + "\n")
-                mirror_db_file = os.path.join(cfg_log_dir_s, "aps_db_path.txt")
-                with open(mirror_db_file, "w", encoding="utf-8") as f4:
-                    f4.write(db_for_runtime + "\n")
+            os.makedirs(mirror_log_dir, exist_ok=True)
+            _write_runtime_state_triplet(mirror_log_dir, host, port, db_for_runtime)
         except Exception:
             pass
     if logger is not None:
         try:
+            host_file, port_file, db_file, _contract_file = _state_contract_paths(state_dir)
             logger.info(f"端口已写入：{port_file} -> {int(port)}")
-            logger.info(f"Host 已写入：{host_file} -> {host_for_client}")
+            logger.info(f"Host 已写入：{host_file}")
             logger.info(f"DB 路径已写入：{db_file} -> {db_for_runtime}")
         except Exception:
             pass
@@ -162,12 +432,8 @@ def default_chrome_profile_dir(runtime_dir: str) -> str:
     return os.path.join(str(runtime_dir), "chrome109_profile")
 
 
-def _runtime_log_dir(runtime_dir: str) -> str:
-    return os.path.join(str(runtime_dir), "logs")
-
-
-def _runtime_contract_path(runtime_dir: str) -> str:
-    return os.path.join(_runtime_log_dir(runtime_dir), "aps_runtime.json")
+def _runtime_contract_path(state_dir: str) -> str:
+    return os.path.join(str(state_dir), "aps_runtime.json")
 
 
 def _runtime_contract_payload(
@@ -183,6 +449,7 @@ def _runtime_contract_payload(
     excel_template_dir: str | None,
     exe_path: str | None = None,
     chrome_profile_dir: str | None = None,
+    owner: str | None = None,
 ) -> Dict[str, Any]:
     host_for_client = (str(host or "").strip() or "127.0.0.1")
     if host_for_client == "0.0.0.0":
@@ -196,6 +463,7 @@ def _runtime_contract_payload(
         "ui_mode": str(ui_mode or "").strip() or "unknown",
         "runtime_dir": runtime_dir_abs,
         "exe_path": os.path.abspath(str(exe_path or sys.executable or "")).strip(),
+        "owner": str(owner or current_runtime_owner()).strip() or "unknown",
         "shutdown_path": _RUNTIME_SHUTDOWN_PATH,
         "shutdown_token": str(shutdown_token or "").strip(),
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -226,6 +494,7 @@ def write_runtime_contract_file(
     excel_template_dir: str | None,
     exe_path: str | None = None,
     chrome_profile_dir: str | None = None,
+    owner: str | None = None,
     logger: logging.Logger | None = None,
 ) -> str:
     payload = _runtime_contract_payload(
@@ -240,13 +509,24 @@ def write_runtime_contract_file(
         excel_template_dir=excel_template_dir,
         exe_path=exe_path,
         chrome_profile_dir=chrome_profile_dir,
+        owner=owner,
     )
-    log_dir_abs = _runtime_log_dir(runtime_dir)
-    os.makedirs(log_dir_abs, exist_ok=True)
-    contract_path = _runtime_contract_path(runtime_dir)
+    state_dir = resolve_runtime_state_dir(runtime_dir, log_dir)
+    os.makedirs(state_dir, exist_ok=True)
+    contract_path = _runtime_contract_path(state_dir)
     with open(contract_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
         f.write("\n")
+    mirror_log_dir = _runtime_log_mirror_dir(runtime_dir, log_dir)
+    if mirror_log_dir:
+        try:
+            os.makedirs(mirror_log_dir, exist_ok=True)
+            mirror_contract_path = _runtime_contract_path(mirror_log_dir)
+            with open(mirror_contract_path, "w", encoding="utf-8") as f2:
+                json.dump(payload, f2, ensure_ascii=False, indent=2, sort_keys=True)
+                f2.write("\n")
+        except Exception:
+            pass
     if logger is not None:
         try:
             logger.info(f"运行时契约已写入：{contract_path}")
@@ -256,7 +536,8 @@ def write_runtime_contract_file(
 
 
 def read_runtime_contract(runtime_dir: str) -> Optional[Dict[str, Any]]:
-    contract_path = _runtime_contract_path(runtime_dir)
+    state_dir = _resolve_runtime_state_dir_for_read(runtime_dir)
+    contract_path = _runtime_contract_path(state_dir)
     if not os.path.exists(contract_path):
         return None
     try:
@@ -284,31 +565,38 @@ def read_runtime_contract(runtime_dir: str) -> Optional[Dict[str, Any]]:
 
 
 def delete_runtime_contract_files(runtime_dir: str) -> None:
-    runtime_dir_abs = os.path.abspath(str(runtime_dir))
-    runtime_log_dir = _runtime_log_dir(runtime_dir_abs)
-    contract_path = _runtime_contract_path(runtime_dir_abs)
-    log_dirs = [runtime_log_dir]
+    state_dir = _resolve_runtime_state_dir_for_read(runtime_dir)
+    log_dirs = [state_dir]
+    contract_path = _runtime_contract_path(state_dir)
     try:
         with open(contract_path, encoding="utf-8") as f:
             payload = json.load(f)
         if isinstance(payload, dict):
+            runtime_dir_raw = str(payload.get("runtime_dir") or "").strip()
+            if runtime_dir_raw:
+                runtime_log_dir = os.path.abspath(_runtime_log_dir(runtime_dir_raw))
+                if os.path.normcase(runtime_log_dir) != os.path.normcase(os.path.abspath(state_dir)):
+                    log_dirs.append(runtime_log_dir)
             data_dirs = payload.get("data_dirs") or {}
             if isinstance(data_dirs, dict):
                 mirror_log_dir = str(data_dirs.get("log_dir") or "").strip()
                 if mirror_log_dir:
                     mirror_log_dir_abs = os.path.abspath(mirror_log_dir)
-                    if os.path.normcase(mirror_log_dir_abs) != os.path.normcase(os.path.abspath(runtime_log_dir)):
+                    if os.path.normcase(mirror_log_dir_abs) != os.path.normcase(os.path.abspath(state_dir)):
                         log_dirs.append(mirror_log_dir_abs)
     except Exception:
         pass
 
-    paths = [contract_path]
+    paths = []
     for log_dir in log_dirs:
         paths.extend(
             [
+                os.path.join(log_dir, "aps_runtime.json"),
                 os.path.join(log_dir, "aps_port.txt"),
                 os.path.join(log_dir, "aps_host.txt"),
                 os.path.join(log_dir, "aps_db_path.txt"),
+                os.path.join(log_dir, _RUNTIME_LOCK_FILE),
+                os.path.join(log_dir, _RUNTIME_ERROR_FILE),
             ]
         )
     for path in paths:

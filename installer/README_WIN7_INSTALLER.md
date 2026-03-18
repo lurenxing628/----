@@ -4,6 +4,9 @@
 > 1. `APS_Main_Setup.exe`（主程序包）
 > 2. `APS_Chrome109_Runtime.exe`（浏览器运行时包）
 
+> 当前交付边界（v1.3.x）：**管理员统一安装 + 共享同一套 APS 数据 + 仅允许单活用户**。
+> 也就是说，不同域账户可以轮流使用同一套数据，但不能并发进入。
+
 ## 前置条件（离线打包机）
 
 - **Windows 7 x64（建议 SP1）**
@@ -135,37 +138,61 @@ ISCC.exe installer\aps_win7_legacy.iss
 
 也支持先装主程序包、后装浏览器运行时包；但首波双包口径下，主程序包安装完成后不会自动启动。
 
+### 共享安装目录与共享数据目录
+
+- 主程序默认安装到：`C:\Program Files\APS\SchedulerApp`
+- Chrome109 运行时默认安装到：`C:\Program Files\APS\Chrome109`
+- 共享数据目录默认位于：`C:\ProgramData\APS\shared-data`
+- 共享数据目录下固定包含：
+  - `db\`
+  - `logs\`
+  - `backups\`
+  - `templates_excel\`
+
+说明：
+
+- 安装器会为 `shared-data` 及其子目录授予普通用户写权限。
+- 启动器会把 `APS_DB_PATH` / `APS_LOG_DIR` / `APS_BACKUP_DIR` / `APS_EXCEL_TEMPLATE_DIR` 注入到当前进程，确保主程序写共享数据目录，而不是写 `Program Files`。
+- 旧版 per-user 数据若存在，只会尝试复制**当前安装账户**下的旧目录到共享数据目录；源目录会保留，便于回退。
+
 ## 环境变量与启动器
 
-- 浏览器运行时包会把 `APS_CHROME_DIR={app}` 写入用户级环境变量（注册表位置：`HKCU\Environment`）
+- 主程序包会把共享数据根写入机器级注册表：`HKLM\SOFTWARE\APS\SharedDataRoot`
+- 浏览器运行时包会把 Chrome 目录写入机器级注册表：`HKLM\SOFTWARE\APS\ChromeDir`
 - 启动器查找顺序固定为：
   1. `APS_CHROME_EXE`
   2. 当前进程 `APS_CHROME_DIR\chrome.exe`
   3. 当前进程 `APS_CHROME_DIR\App\chrome.exe`
-  4. 注册表 `HKCU\Environment\APS_CHROME_DIR\chrome.exe`
-  5. 注册表 `HKCU\Environment\APS_CHROME_DIR\App\chrome.exe`
-  6. 默认目录 `%LOCALAPPDATA%\APS\Chrome109\chrome.exe`
-  7. 默认目录 `%LOCALAPPDATA%\APS\Chrome109\App\chrome.exe`
-  8. 当前安装目录 `tools\chrome109\chrome.exe`
-  9. 当前安装目录 `tools\chrome109\App\chrome.exe`
-- 这意味着即使安装完浏览器运行时后当前会话的环境变量还没刷新，启动器仍会继续读取 `HKCU\Environment\APS_CHROME_DIR`
-- 启动器会优先读取 `logs\aps_host.txt` 与 `logs\aps_port.txt`，因此打开的 URL **不一定是** `http://127.0.0.1:5000/`
+  4. 机器级注册表 `HKLM\SOFTWARE\APS\ChromeDir\chrome.exe`
+  5. 机器级注册表 `HKLM\SOFTWARE\APS\ChromeDir\App\chrome.exe`
+  6. 兼容旧版注册表 `HKCU\Environment\APS_CHROME_DIR\chrome.exe`
+  7. 兼容旧版注册表 `HKCU\Environment\APS_CHROME_DIR\App\chrome.exe`
+  8. 默认目录 `C:\Program Files\APS\Chrome109\chrome.exe`
+  9. 默认目录 `C:\Program Files (x86)\APS\Chrome109\chrome.exe`
+  10. 默认目录 `%LOCALAPPDATA%\APS\Chrome109\chrome.exe`
+  11. 默认目录 `%LOCALAPPDATA%\APS\Chrome109\App\chrome.exe`
+  12. 当前安装目录 `tools\chrome109\chrome.exe`
+  13. 当前安装目录 `tools\chrome109\App\chrome.exe`
+- 启动器会优先读取共享日志目录中的 `aps_host.txt` 与 `aps_port.txt`，因此打开的 URL **不一定是** `http://127.0.0.1:5000/`
 - 浏览器会固定使用用户数据目录：`%LOCALAPPDATA%\APS\Chrome109Profile`
+- 启动器会读取共享日志目录中的 `aps_runtime.lock`；若检测到别的账户正在使用，第二个账户会被明确阻止，而不是静默复用。
 
 ## 启动排障（Win7 双包）
 
 - `排产系统.exe` 只负责在后台启动本地服务；双击它时如果没有弹出窗口，不代表启动失败。
 - 正常入口是开始菜单或桌面快捷方式 **“排产系统”**，其实际执行的是安装目录根下的 `启动_排产系统_Chrome.bat`。
-- 若快捷方式只闪一下且未打开 Chrome，请先查看：**主程序安装目录**下的 `logs\launcher.log`。
-  - 默认安装时通常是：`%LOCALAPPDATA%\APS\排产系统\logs\launcher.log`
-  - 如果主程序改装到自定义目录，应到该自定义目录下查看 `logs\launcher.log`
+- 若快捷方式只闪一下且未打开 Chrome，请先查看：**共享数据目录**下的 `logs\launcher.log`。
+  - 默认安装时通常是：`C:\ProgramData\APS\shared-data\logs\launcher.log`
+  - 如果安装时自定义了共享数据目录，应到该共享目录下查看 `logs\launcher.log`
 - `launcher.log` 会记录：
   - `env_APS_CHROME_DIR`
-  - `reg_APS_CHROME_DIR`
+  - `reg_HKLM_ChromeDir`
+  - `reg_HKCU_APS_CHROME_DIR`
   - `chrome_source`
   - `chrome_exe`
   - `chrome_run_dir`
   - `chrome_cmd`
+- 若提示“正在被其他账户使用”，说明共享数据目录里已有有效运行时锁。此时应让当前使用者先退出程序，再由下一位账户启动。
 - 若现场仍异常，可把 `launcher.log` 里的 `chrome_cmd` 整行复制到 `cmd` 中执行，用于区分“bat 启动方式问题”和“Chrome 本体问题”。
 - 当前 launcher 会显式以 Chrome 安装目录作为 working directory 启动 Chrome，避免 Win7 下 `start` 默认工作目录不一致导致的异常。
 
@@ -183,22 +210,24 @@ ISCC.exe installer\aps_win7_legacy.iss
   - `APS Chrome109 运行时`
 - 卸载主程序包时，会先尝试自动关闭当前 APS 后端；如果关闭失败，会提示用户是否继续卸载
 - 卸载主程序包时会弹出二次确认：
-  - 选择“是”：同时彻底清空当前主程序目录下的 `db`、`logs`、`backups`、`templates_excel`
-  - 选择“否”：仅卸载程序文件，保留这些本地数据
+  - 选择“是”：同时彻底清空共享数据目录下的 `db`、`logs`、`backups`、`templates_excel`
+  - 选择“否”：仅卸载程序文件，保留共享数据
 - 卸载主程序包 **不会** 顺带卸载 `APS Chrome109 运行时`；浏览器运行时仍需单独卸载
-- 卸载浏览器运行时包会先尝试关闭 APS 专用浏览器进程，再删除浏览器运行时目录并清理 `APS_CHROME_DIR`
-- 卸载浏览器运行时包时，会询问是否删除 `%LOCALAPPDATA%\APS\Chrome109Profile`
+- 卸载浏览器运行时包会先尝试关闭 APS 专用浏览器进程，再删除机器级 Chrome109 目录并清理 `HKLM\SOFTWARE\APS\ChromeDir`
+- 为避免管理员卸载时误删错误账户的用户目录，浏览器运行时卸载器**不会自动删除任何账户的** `%LOCALAPPDATA%\APS\Chrome109Profile`；如需清理，请登录对应账户手动删除
 
 ## 验收建议
 
 至少完成以下检查：
 
 1. 在打包机执行 `python validate_dist_exe.py "dist\排产系统\排产系统.exe"`
-2. 在目标机安装双包后，点击 **“排产系统”** 能打开系统首页
-3. 至少覆盖一组“Chrome 运行时自定义目录（含中文或空格）”场景，并在**安装完成后立即**从开始菜单或桌面快捷方式启动
-4. 检查 `launcher.log` 中的 `chrome_source` / `chrome_exe` / `chrome_cmd` 是否与实际命中路径一致
-5. 检查关键页面：人员 / 设备 / 工艺 / 排产 / 系统管理
-6. 至少在一台实际 Win7 机器上完成一次端到端冒烟
+2. 在目标机上以管理员身份安装 `APS_Chrome109_Runtime.exe` 与 `APS_Main_Setup.exe`
+3. 切换到域账户后，确认开始菜单或桌面可见 **“排产系统”**，点击后能打开系统首页
+4. 检查共享数据目录 `C:\ProgramData\APS\shared-data\` 下的 `db/ logs/ backups/ templates_excel/` 已建立并可写
+5. 检查 `launcher.log` 中的 `chrome_source` / `chrome_exe` / `chrome_cmd` 是否与实际命中路径一致
+6. 在已有一个账户运行时，再用第二个账户点击快捷方式，必须收到“正在被其他账户使用”的明确提示
+7. 检查关键页面：人员 / 设备 / 工艺 / 排产 / 系统管理
+8. 至少在一台实际 Win7 机器上完成一次端到端冒烟
 
 > 注意：`validate_dist_exe.py` 只覆盖主程序 `exe` 冷启动与 HTTP 页面可访问性，不覆盖快捷方式、批处理脚本、环境变量刷新时序或 Chrome 启动链路。
 

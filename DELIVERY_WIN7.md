@@ -17,17 +17,19 @@
 - 正式运行时包仅保留 `locales\zh-CN.pak` 与 `locales\en-US.pak`
 - 正式运行时包会移除 `chrome_proxy.exe`、`chrome_pwa_launcher.exe`、`notification_helper.exe`、`elevation_service.exe`
 - 正式运行时包继续保留 `chrome_wer.dll` 与 `First Run`，兼顾崩溃诊断与首启稳定性
+- 正式安装口径为：**管理员统一安装 + 共享数据目录 + 仅允许单活用户**
 
 安装后启动与排障：
 
 - 主程序 `排产系统.exe` 只负责在后台启动本地服务；双击它时如果没有弹出窗口，不代表启动失败。
 - 正常入口是开始菜单或桌面快捷方式 **“排产系统”**，其实际执行安装目录根下的 `启动_排产系统_Chrome.bat`。
-- 若快捷方式只闪一下且未打开 Chrome，请先查看主程序安装目录下的 `logs\launcher.log`
-  - 默认安装时通常是：`%LOCALAPPDATA%\APS\排产系统\logs\launcher.log`
-  - 如果主程序改装到自定义目录，应到该自定义目录下查看 `logs\launcher.log`
-- `launcher.log` 会记录 `env_APS_CHROME_DIR`、`reg_APS_CHROME_DIR`、`chrome_source`、`chrome_exe`、`chrome_run_dir` 与 `chrome_cmd`
+- 若快捷方式只闪一下且未打开 Chrome，请先查看共享数据目录下的 `logs\launcher.log`
+  - 默认安装时通常是：`C:\ProgramData\APS\shared-data\logs\launcher.log`
+  - 如果共享数据目录被自定义，应到该共享目录下查看 `logs\launcher.log`
+- `launcher.log` 会记录 `env_APS_CHROME_DIR`、`reg_HKLM_ChromeDir`、`reg_HKCU_APS_CHROME_DIR`、`chrome_source`、`chrome_exe`、`chrome_run_dir` 与 `chrome_cmd`
 - 现场排障时，可把 `launcher.log` 里的 `chrome_cmd` 整行复制到 `cmd` 中执行，用于区分“bat 启动方式问题”和“Chrome 本体问题”
-- 启动器的浏览器查找顺序是：`APS_CHROME_EXE` → 当前进程 `APS_CHROME_DIR` → 注册表 `HKCU\Environment\APS_CHROME_DIR` → 默认 `%LOCALAPPDATA%\APS\Chrome109` → legacy `tools\chrome109`
+- 启动器的浏览器查找顺序是：`APS_CHROME_EXE` → 当前进程 `APS_CHROME_DIR` → 机器级注册表 `HKLM\SOFTWARE\APS\ChromeDir` → 兼容旧版注册表 `HKCU\Environment\APS_CHROME_DIR` → 默认 `C:\Program Files\APS\Chrome109` / `%LOCALAPPDATA%\APS\Chrome109` → legacy `tools\chrome109`
+- 若另一账户正在使用共享数据目录，启动器会直接阻止第二个账户进入，而不是复用已有实例
 
 ### B. 最小直拷交付（支持）
 
@@ -136,6 +138,9 @@ copy /y "assets\启动_排产系统_Chrome.bat" "dist\排产系统\启动_排产
 ## 7) 与安装包口径的关系
 
 - 正式对外交付优先使用双包安装器
+- 双包安装器与最小直拷的运行边界不同：
+  - 双包安装器：共享同一套数据，要求只允许单活用户
+  - 最小直拷：目录自包含，仍按当前目录生成 `db/logs/backups`
 - `dist/排产系统/` 的价值主要是：
   - 冷启动验收
   - 内部直拷调试

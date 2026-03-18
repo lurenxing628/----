@@ -4,20 +4,20 @@
 #define MyAppName "APS Chrome109 运行时"
 #define MyAppVersion "109.0.5414.120"
 #define MyAppPublisher "APS"
+#define MyChromeDirName "Chrome109"
 #ifndef RuntimeDir
   #define RuntimeDir "..\build\chrome109_runtime_payload"
 #endif
 
 [Setup]
-AppId={{4B8D2DE0-6E0D-45B5-9F2C-50C77B5F6B70}}
+AppId={{9731D9A0-2287-4D67-B6AE-2B6F0658C4D6}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={localappdata}\APS\Chrome109
+DefaultDirName={commonpf}\APS\{#MyChromeDirName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
-PrivilegesRequired=lowest
-ChangesEnvironment=yes
+PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; package_win7.ps1 prepares an APS-specific trimmed runtime payload.
@@ -37,10 +37,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "{#RuntimeDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Registry]
-Root: HKCU; Subkey: "Environment"; ValueType: string; ValueName: "APS_CHROME_DIR"; ValueData: "{app}"; Flags: uninsdeletevalue
-
-[UninstallDelete]
-Type: filesandordirs; Name: "{localappdata}\APS\Chrome109Profile"; Check: ShouldDeleteChromeProfile
+Root: HKLM; Subkey: "SOFTWARE\APS"; ValueType: string; ValueName: "ChromeDir"; ValueData: "{app}"; Flags: uninsdeletevalue
 
 [Code]
 var
@@ -85,8 +82,8 @@ begin
 
   DeleteChromeProfile :=
     MsgBox(
-      '是否同时删除 APS 专用浏览器用户数据目录（%LOCALAPPDATA%\APS\Chrome109Profile）？' + #13#10 +
-      '选择“否”则保留浏览器配置和缓存。',
+      '是否在卸载说明中提示手动删除当前账户的 APS 浏览器用户数据目录（%LOCALAPPDATA%\APS\Chrome109Profile）？' + #13#10 +
+      '为避免管理员卸载时误删错误账户的 profile，安装器不会自动删除任何账户的浏览器用户数据。',
       mbConfirmation,
       MB_YESNO or MB_DEFBUTTON2
     ) = IDYES;
@@ -98,4 +95,11 @@ begin
         mbConfirmation,
         MB_YESNO or MB_DEFBUTTON2
       ) = IDYES;
+  if Result and DeleteChromeProfile then
+    MsgBox(
+      '请在需要时手动删除当前账户的浏览器用户数据目录：' + #13#10 +
+      ExpandConstant('{localappdata}\APS\Chrome109Profile'),
+      mbInformation,
+      MB_OK
+    );
 end;
