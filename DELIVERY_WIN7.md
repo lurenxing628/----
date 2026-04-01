@@ -18,6 +18,10 @@
 - 正式运行时包会移除 `chrome_proxy.exe`、`chrome_pwa_launcher.exe`、`notification_helper.exe`、`elevation_service.exe`
 - 正式运行时包继续保留 `chrome_wer.dll` 与 `First Run`，兼顾崩溃诊断与首启稳定性
 - 正式安装口径为：**管理员统一安装 + 共享数据目录 + 仅允许单活用户**
+- 若目标机已存在旧 APS 安装或残留目录，`APS_Main_Setup.exe` / `APS_Legacy_Full_Setup.exe` 会在复制文件前弹出一次“强制清理”确认框
+- 你确认后，安装器会删除旧主程序安装目录、`C:\ProgramData\APS\shared-data`、当前安装账户 `%LOCALAPPDATA%\APS\排产系统`
+- 上述强制清理**不会**删除 `%LOCALAPPDATA%\APS\Chrome109Profile`，也不会删除独立 Chrome109 运行时目录；`APS_Chrome109_Runtime.exe` 仍保持独立安装/卸载边界
+- 如果你取消确认，安装器会退出且不执行清理
 
 安装后启动与排障：
 

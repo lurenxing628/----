@@ -13,7 +13,8 @@ if defined APS_PORT set "PORT=%APS_PORT%"
 set "MAX_WAIT=45"
 set "HEALTH_PATH=/system/health"
 set "CURRENT_OWNER=%USERNAME%"
-if defined USERDOMAIN set "CURRENT_OWNER=%USERDOMAIN%\%USERNAME%"
+if defined USERDOMAIN if /I not "%USERDOMAIN%"=="%USERNAME%" set "CURRENT_OWNER=%USERDOMAIN%\%USERNAME%"
+if not defined USERDOMAIN if defined COMPUTERNAME if /I not "%COMPUTERNAME%"=="%USERNAME%" set "CURRENT_OWNER=%COMPUTERNAME%\%USERNAME%"
 
 set "APP_EXE="
 for %%F in (*.exe) do (
@@ -301,7 +302,7 @@ if not defined HAS_POWERSHELL exit /b 0
 if "%HOST%"=="" set "HOST=127.0.0.1"
 if "%PORT%"=="" exit /b 0
 set "HEALTH_URL=http://%HOST%:%PORT%%HEALTH_PATH%"
-powershell -NoProfile -Command "$u='%HEALTH_URL%'; try { $req=[System.Net.HttpWebRequest]::Create($u); $req.Timeout=2000; $req.ReadWriteTimeout=2000; $resp=$req.GetResponse(); $sr=New-Object System.IO.StreamReader($resp.GetResponseStream()); $body=$sr.ReadToEnd(); $sr.Close(); $resp.Close(); if ($body.Contains('\"app\":\"aps\"') -and $body.Contains('\"status\":\"ok\"') -and $body.Contains('\"contract_version\":1')) { exit 0 } else { exit 2 } } catch { exit 1 }" >nul 2>&1
+powershell -NoProfile -Command "$u='%HEALTH_URL%'; try { $req=[System.Net.HttpWebRequest]::Create($u); $req.Timeout=2000; $req.ReadWriteTimeout=2000; $resp=$req.GetResponse(); $sr=New-Object System.IO.StreamReader($resp.GetResponseStream()); $body=$sr.ReadToEnd(); $sr.Close(); $resp.Close(); $ok=$false; try { if (Get-Command ConvertFrom-Json -ErrorAction SilentlyContinue) { $obj=$body | ConvertFrom-Json; if (($obj.app -eq 'aps') -and ($obj.status -eq 'ok') -and ([int]($obj.contract_version) -eq 1)) { $ok=$true } } } catch { $ok=$false }; if (-not $ok) { if (($body -match '\x22app\x22\s*:\s*\x22aps\x22') -and ($body -match '\x22status\x22\s*:\s*\x22ok\x22') -and ($body -match '\x22contract_version\x22\s*:\s*1')) { $ok=$true } }; if ($ok) { exit 0 } else { exit 2 } } catch { exit 1 }" >nul 2>&1
 set "HEALTH_RC=%ERRORLEVEL%"
 if "!HEALTH_RC!"=="0" (
   set "HEALTH_OK=1"

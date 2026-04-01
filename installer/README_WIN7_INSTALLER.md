@@ -154,6 +154,21 @@ ISCC.exe installer\aps_win7_legacy.iss
 - 安装器会为 `shared-data` 及其子目录授予普通用户写权限。
 - 启动器会把 `APS_DB_PATH` / `APS_LOG_DIR` / `APS_BACKUP_DIR` / `APS_EXCEL_TEMPLATE_DIR` 注入到当前进程，确保主程序写共享数据目录，而不是写 `Program Files`。
 - 旧版 per-user 数据若存在，只会尝试复制**当前安装账户**下的旧目录到共享数据目录；源目录会保留，便于回退。
+- 如果本次安装前选择了“强制清理”，安装器会删除当前安装账户的 legacy 目录，并显式跳过本次 legacy 数据迁移回填。
+
+### 安装前强制清理（主程序包 / legacy 包）
+
+- 当 `APS_Main_Setup.exe` 或 `APS_Legacy_Full_Setup.exe` 检测到本机存在 APS 运行实例、旧主程序安装目录、`shared-data` 或当前安装账户的 legacy 目录时，会在真正复制文件前弹出一次确认框。
+- 你确认后，安装器会先解析可用停机 helper（优先运行时锁/契约中的 `exe_path`，其次注册表 `HKLM\SOFTWARE\APS\MainAppDir`，最后当前 `{app}`），再用 `--runtime-stop` 尝试关闭 APS。
+- 若当前目标删除范围涉及 APS 专用 Chrome，安装器会一并请求关闭 APS Chrome 进程。
+- 强制清理会删除：
+  - 旧主程序安装目录
+  - `C:\ProgramData\APS\shared-data`
+  - 当前安装账户 `%LOCALAPPDATA%\APS\排产系统`
+- 强制清理不会删除：
+  - `%LOCALAPPDATA%\APS\Chrome109Profile`
+  - 独立 Chrome109 运行时目录（`APS_Chrome109_Runtime.exe` 安装的 `ChromeDir`）
+- 如果你在确认后安装后续失败，现场会处于“已清空、需重新安装”的状态。
 
 ## 环境变量与启动器
 
@@ -208,10 +223,11 @@ ISCC.exe installer\aps_win7_legacy.iss
 - “添加或删除程序”中会出现两个独立条目：
   - `排产系统`
   - `APS Chrome109 运行时`
-- 卸载主程序包时，会先尝试自动关闭当前 APS 后端；如果关闭失败，会提示用户是否继续卸载
+- 卸载主程序包时，会先解析可用停机 helper，并对 `shared-data`、当前安装账户 legacy 目录、安装目录轮询执行 `--runtime-stop`；如果关闭失败，会提示用户是否继续卸载
 - 卸载主程序包时会弹出二次确认：
   - 选择“是”：同时彻底清空共享数据目录下的 `db`、`logs`、`backups`、`templates_excel`
   - 选择“否”：仅卸载程序文件，保留共享数据
+- 卸载 legacy 全量包时，会按同一套 helper 解析逻辑执行 `--runtime-stop ... --stop-aps-chrome`，同时关闭后端与 legacy 内置浏览器
 - 卸载主程序包 **不会** 顺带卸载 `APS Chrome109 运行时`；浏览器运行时仍需单独卸载
 - 卸载浏览器运行时包会先尝试关闭 APS 专用浏览器进程，再删除机器级 Chrome109 目录并清理 `HKLM\SOFTWARE\APS\ChromeDir`
 - 为避免管理员卸载时误删错误账户的用户目录，浏览器运行时卸载器**不会自动删除任何账户的** `%LOCALAPPDATA%\APS\Chrome109Profile`；如需清理，请登录对应账户手动删除
