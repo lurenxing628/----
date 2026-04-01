@@ -1,0 +1,69 @@
+inventory_id,family,file,function,line_range_text,line_start,line_end,implementation_count,primary_visibility,risk_level,remediation_priority,scope,intent,acceptance_status,typical_fallback_behavior
+CFM-001,输入 / 标准化族,core/algorithms/priority_constants.py,normalize_priority,18-31,18,31,2,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,空值/未知优先级回 default，非法 default 再回 normal
+CFM-002,输入 / 标准化族,core/algorithms/priority_constants.py,priority_weight_scaled,34-41,34,41,1,完全静默,低,P3,read_side_or_parameter_normalization,compatibility_contract,pending,scale 解析失败回 100
+CFM-003,输入 / 标准化族,core/algorithms/sort_strategies.py,parse_strategy,160-172,160,172,1,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,空值/非法策略统一回默认策略
+CFM-004,输入 / 标准化族,core/algorithms/dispatch_rules.py,parse_dispatch_rule,31-38,31,38,1,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,非法派工规则回默认规则
+CFM-005,输入 / 标准化族,core/algorithms/greedy/config_adapter.py,cfg_get,6-26,6,26,2,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,getattr/get 读取异常时继续探测并最终回 default
+CFM-006,输入 / 标准化族,core/algorithms/greedy/date_parsers.py,parse_date,7-21,7,21,1,完全静默,低,P3,read_side_or_parameter_normalization,compatibility_contract,pending,日期解析失败返回 None
+CFM-007,输入 / 标准化族,core/algorithms/greedy/date_parsers.py,parse_datetime,24-41,24,41,2,完全静默,低,P3,read_side_or_parameter_normalization,compatibility_contract,pending,多格式轮询失败后返回 None
+CFM-008,输入 / 标准化族,core/models/_helpers.py,get,19-27,19,27,1,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,sqlite3.Row 下标访问失败回 default
+CFM-009,输入 / 标准化族,core/models/_helpers.py,parse_int,30-71,30,71,4,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,float/str/Decimal 任一解析链路失败都回 default
+CFM-010,输入 / 标准化族,core/models/_helpers.py,parse_float,74-98,74,98,1,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,非法/非有限数回 default
+CFM-011,输入 / 标准化族,core/models/calendar.py,WorkCalendar.from_row,22-50,22,50,2,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,shift_hours/efficiency 非法时回默认并钳制
+CFM-012,输入 / 标准化族,core/models/calendar.py,OperatorCalendar.from_row,89-118,89,118,2,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,人员日历读侧同样自动修正非法工时/效率
+CFM-013,输入 / 标准化族,core/services/common/enum_normalizers.py,normalize_supplier_status,64-85,64,85,1,混合（空值默认/未知值透传）,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,空值默认 active；未知非空值原样透传给上层
+CFM-014,输入 / 标准化族,core/services/common/enum_normalizers.py,normalize_op_type_category,88-109,88,109,1,混合（空值默认/未知值透传）,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,空值默认 internal；未知非空值原样透传给上层
+CFM-015,输入 / 标准化族,core/services/common/enum_normalizers.py,normalize_yes_no_wide,116-136,116,136,2,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,None / 未知值按 no 或 default 保守回退
+CFM-016,输入 / 标准化族,core/services/common/enum_normalizers.py,normalize_yesno_narrow,139-160,139,160,2,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,空值回默认；未知值可透传给上层
+CFM-017,输入 / 标准化族,core/services/common/enum_normalizers.py,normalize_skill_level,163-188,163,188,2,混合（空值默认/非空非法抛错）,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,None/空串回默认等级或 None；未知非空值抛 ValueError
+CFM-018,输入 / 标准化族,core/services/common/enum_normalizers.py,skill_rank,191-211,191,211,1,完全静默,低,P3,read_side_or_parameter_normalization,compatibility_contract,pending,规范化失败统一排到最差 rank=9
+CFM-019,输入 / 标准化族,core/services/common/excel_backend_factory.py,get_excel_backend,11-34,11,34,1,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,pandas provider 异常时回 openpyxl
+CFM-020,输入 / 标准化族,core/services/common/excel_service.py,_normalize_for_compare,157-186,157,186,2,完全静默,低,P3,read_side_or_parameter_normalization,compatibility_contract,pending,Decimal/数值归一失败后保留原字符串或 float
+CFM-021,输入 / 标准化族,core/services/common/excel_service.py,_calc_changes,188-218,188,218,2,完全静默,低,P3,read_side_or_parameter_normalization,compatibility_contract,pending,Mapping/vars() 取值失败按空字典处理
+CFM-022,输入 / 标准化族,core/services/scheduler/config_snapshot.py,build_schedule_config_snapshot,52-148,52,148,3,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,choice/float/int 读取异常统一回默认配置
+CFM-023,输入 / 标准化族,core/services/system/system_config_service.py,SystemConfigService._read_snapshot,79-110,79,110,4,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,配置 int 解析失败回默认、越界自动 clamp
+CFM-024,输入 / 标准化族,core/services/equipment/machine_service.py,MachineService._validate_machine_fields,63-94,63,94,1,混合（空值默认/非法值显式报错）,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,create 场景未显式给状态则默认 active；非法非空状态仍显式报错
+CFM-025,输入 / 标准化族,core/services/scheduler/calendar_admin.py,CalendarAdmin._get_holiday_default_efficiency,36-52,36,52,2,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,配置异常或 <=0 时回默认效率
+CFM-026,输入 / 标准化族,core/services/scheduler/calendar_engine.py,CalendarEngine._parse_shift_start,131-139,131,139,1,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,班次开始时间非法回 08:00
+CFM-027,输入 / 标准化族,core/services/scheduler/calendar_engine.py,CalendarEngine._override_shift_hours_by_shift_end,142-158,142,158,1,完全静默,中,P2,read_side_or_parameter_normalization,compatibility_contract,pending,shift_end 非法回既有 shift_hours
+CFM-028,输入 / 标准化族,core/services/scheduler/_sched_utils.py,_safe_int,6-28,6,28,1,完全静默,低,P3,read_side_or_parameter_normalization,compatibility_contract,pending,非整数/异常回 default
+CFM-029,算法调度族,core/algorithms/dispatch_rules.py,build_dispatch_key,58-112,58,112,2,完全静默,高,P1,algorithm_runtime,runtime_degradation_risk,pending,proc_hours 不可用时改用 avg_proc_hours，再不行用 1h
+CFM-030,算法调度族,core/algorithms/ortools_bottleneck.py,try_solve_bottleneck_batch_order,45-215,45,215,6,显式可观测,中,P2,algorithm_runtime,runtime_degradation_risk,pending,缺依赖/求解异常/参数异常时降级为 None，主流程继续
+CFM-031,算法调度族,core/algorithms/greedy/schedule_params.py,resolve_schedule_params,26-163,26,163,12,弱可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,非法 start_dt/end_date/strategy/dispatch/auto_assign 全部回默认，并通过 warnings 暴露
+CFM-032,算法调度族,core/algorithms/greedy/seed.py,normalize_seed_results,9-153,9,153,8,弱可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,坏 seed 会回填 op_id、去重、丢弃坏记录而不阻断排产
+CFM-033,算法调度族,core/algorithms/greedy/auto_assign.py,auto_assign_internal_resources,10-212,10,212,4,完全静默,高,P1,algorithm_runtime,runtime_degradation_risk,pending,工时/效率/rank/候选异常时直接放弃候选或降成默认分数
+CFM-034,算法调度族,core/algorithms/greedy/scheduler.py,GreedyScheduler.schedule,53-373,53,373,8,弱可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,脏 batch_id/seq/ready_date/seed 都走防御式回退，不让排产直接崩
+CFM-035,算法调度族,core/algorithms/greedy/dispatch/sgs.py,dispatch_sgs,32-442,32,442,15,弱可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,评分、资源估算、工时、效率大量退化为“惩罚 key / 最差可比较 key”
+CFM-036,算法调度族,core/services/scheduler/schedule_optimizer_steps.py,_run_ortools_warmstart,20-138,20,138,1,显式可观测,中,P2,algorithm_runtime,runtime_degradation_risk,pending,OR-Tools 高质量起点失败只记 warning，不阻断优化流程
+CFM-037,算法调度族,core/services/scheduler/schedule_optimizer.py,optimize_schedule,225-539,225,539,4,弱可观测,中,P2,algorithm_runtime,runtime_degradation_risk,pending,坏 seed_results 会被忽略；best=None 时回退单次 schedule()
+CFM-038,算法调度族,core/services/scheduler/schedule_service.py,ScheduleService._run_schedule_impl,211-513,211,513,4,弱可观测,中,P2,algorithm_runtime,runtime_degradation_risk,pending,warnings 合并失败时改用替代 merge 或直接忽略
+CFM-039,算法调度族,core/services/scheduler/resource_pool_builder.py,load_machine_downtimes,102-160,102,160,1,显式可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,停机区间加载失败直接忽略停机约束
+CFM-040,算法调度族,core/services/scheduler/resource_pool_builder.py,build_resource_pool,163-218,163,218,1,显式可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,资源池构建失败直接关闭 auto-assign
+CFM-041,算法调度族,core/services/scheduler/resource_pool_builder.py,extend_downtime_map_for_resource_pool,221-282,221,282,1,显式可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,候选设备停机扩展失败后，部分设备可能不再受停机约束
+CFM-042,算法调度族,core/services/scheduler/freeze_window.py,_safe_load_schedule_map,27-56,27,56,2,弱可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,冻结窗口读取失败直接降级为“不冻结”
+CFM-043,基础设施 / 插件族,core/infrastructure/migrations/common.py,fallback_log,92-105,92,105,2,显式可观测,低,P3,infra_runtime,resilience_or_availability_contract,pending,logger 写失败时退到 stderr，再失败才吞掉
+CFM-044,基础设施 / 插件族,core/infrastructure/migrations/common.py,add_column_if_missing,70-89,70,89,1,显式可观测,中,P2,infra_runtime,resilience_or_availability_contract,pending,缺表时跳过补列并返回 SKIPPED
+CFM-045,基础设施 / 插件族,core/infrastructure/migrations/v1.py,_run_fill_update,18-28,18,28,1,显式可观测,中,P2,infra_runtime,resilience_or_availability_contract,pending,缺表/缺列时跳过默认值回填
+CFM-046,基础设施 / 插件族,core/infrastructure/migrations/v1.py,_sanitize_batch_dates,101-212,101,212,2,显式可观测,中,P2,infra_runtime,resilience_or_availability_contract,pending,非法日期写 NULL；单行更新失败记为 PARTIAL
+CFM-047,基础设施 / 插件族,core/infrastructure/migrations/v3.py,run,8-28,8,28,1,显式可观测,中,P2,infra_runtime,resilience_or_availability_contract,pending,OperatorCalendar 不存在时跳过版本推进阻断
+CFM-048,基础设施 / 插件族,core/infrastructure/migrations/v4.py,_sanitize_field,36-148,36,148,5,显式可观测,中,P2,infra_runtime,resilience_or_availability_contract,pending,非法标识符/非法 pk_expr/缺表缺列时 PARTIAL 或 SKIPPED
+CFM-049,基础设施 / 插件族,core/infrastructure/migrations/v5.py,_run_update,8-21,8,21,1,显式可观测,中,P2,infra_runtime,resilience_or_availability_contract,pending,缺表/缺列时跳过 legacy 值归一化
+CFM-050,基础设施 / 插件族,core/infrastructure/migrations/v6.py,_create_index_if_possible,8-18,8,18,2,显式可观测,中,P2,infra_runtime,resilience_or_availability_contract,pending,缺表/缺列时不建索引
+CFM-051,基础设施 / 插件族,core/infrastructure/database.py,_migrate_with_backup,493-604,493,604,4,显式可观测,高,P1,infra_runtime,resilience_or_availability_contract,pending,backup_dir 缺失用默认目录；迁移失败自动从备份回滚
+CFM-052,基础设施 / 插件族,core/infrastructure/backup.py,read_maintenance_lock_state,85-122,85,122,4,完全静默,低,P3,infra_runtime,resilience_or_availability_contract,pending,锁文件读取/字段解析失败时返回“部分状态”对象
+CFM-053,基础设施 / 插件族,core/infrastructure/backup.py,is_maintenance_window_active,140-161,140,161,2,显式可观测,中,P2,infra_runtime,resilience_or_availability_contract,pending,陈旧锁清理失败时仍视为活跃；外层异常直接 False
+CFM-054,基础设施 / 插件族,core/infrastructure/backup.py,BackupManager.backup,250-291,250,291,2,显式可观测,中,P2,infra_runtime,resilience_or_availability_contract,pending,integrity_check 执行失败只告警不阻断备份产物生成
+CFM-055,基础设施 / 插件族,core/infrastructure/backup.py,BackupManager.restore,293-374,293,374,4,显式可观测,高,P1,infra_runtime,resilience_or_availability_contract,pending,恢复失败时尽量自动回滚到恢复前备份，并返回失败结果而非继续抛穿
+CFM-056,基础设施 / 插件族,core/infrastructure/logging.py,OperationLogger.log,124-190,124,190,4,显式可观测,中,P2,infra_runtime,resilience_or_availability_contract,pending,操作日志写库失败返回 False，主业务继续
+CFM-057,基础设施 / 插件族,core/infrastructure/transaction.py,TransactionManager.transaction,56-146,56,146,4,显式可观测,高,P1,infra_runtime,resilience_or_availability_contract,pending,savepoint/commit/rollback 出错时做 best-effort 清场
+CFM-058,基础设施 / 插件族,core/plugins/manager.py,PluginManager.load_from_base_dir,85-235,85,235,6,显式可观测,中,P2,infra_runtime,resilience_or_availability_contract,pending,插件路径/加载/注册失败后将插件标记为不可用，但不阻断主程序
+CFM-059,业务与展示非阻断族,core/services/system/maintenance/backup_task.py,maybe_run_auto_backup,55-149,55,149,2,显式可观测,中,P2,business_or_ui_runtime,business_semantics_or_ui_risk,pending,备份大小统计失败写 None；自动备份失败返回 error payload
+CFM-060,业务与展示非阻断族,core/services/system/maintenance/cleanup_task.py,cleanup_backups_with_limit,54-89,54,89,2,弱可观测,低,P3,business_or_ui_runtime,business_semantics_or_ui_risk,pending,mtime 读取失败 / 删除失败时直接 continue
+CFM-061,业务与展示非阻断族,core/services/system/maintenance/cleanup_task.py,maybe_run_auto_backup_cleanup,132-223,132,223,1,显式可观测,中,P2,business_or_ui_runtime,business_semantics_or_ui_risk,pending,自动清理备份失败返回 error payload，不抛异常
+CFM-062,业务与展示非阻断族,core/services/system/maintenance/cleanup_task.py,maybe_run_auto_log_cleanup,226-323,226,323,1,显式可观测,中,P2,business_or_ui_runtime,business_semantics_or_ui_risk,pending,自动清理日志失败返回 error payload，不抛异常
+CFM-063,业务与展示非阻断族,core/services/process/external_group_service.py,ExternalGroupService._apply_separate_mode,103-132,103,132,1,完全静默,高,P1,business_or_ui_runtime,business_semantics_or_ui_risk,pending,per_op_days 缺失/非法/<=0 时强制默认 1.0 天
+CFM-064,业务与展示非阻断族,core/services/process/part_service.py,PartService.create,94-126,94,126,1,弱可观测,中,P2,business_or_ui_runtime,business_semantics_or_ui_risk,pending,自动 reparse_and_save 失败后仍保留零件创建成功
+CFM-065,业务与展示非阻断族,core/services/process/route_parser.py,RouteParser.parse,107-256,107,256,4,弱可观测,高,P1,business_or_ui_runtime,business_semantics_or_ui_risk,pending,坏工序跳过、未知工种默认 external、无供应商默认 1 天
+CFM-066,业务与展示非阻断族,core/services/scheduler/gantt_tasks.py,build_calendar_days,65-108,65,108,2,完全静默,中,P2,business_or_ui_runtime,business_semantics_or_ui_risk,pending,shift_hours 解析失败置 0.0；任意异常返回空数组
+CFM-067,业务与展示非阻断族,core/services/scheduler/gantt_service.py,GanttService._overdue_batch_ids_from_history,52-69,52,69,1,完全静默,中,P2,business_or_ui_runtime,business_semantics_or_ui_risk,pending,result_summary JSON 坏掉时直接返回空超期集合
+CFM-068,业务与展示非阻断族,core/services/process/route_parser.py,RouteParser._build_supplier_map,277-296,277,296,2,完全静默,中,P2,business_or_ui_runtime,business_semantics_or_ui_risk,pending,供应商映射取工种失败时该条映射被静默跳过；falsy default_days（尤其 0.0）会被收敛为 1.0 天
