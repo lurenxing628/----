@@ -10,6 +10,48 @@ from core.infrastructure.backup import BackupManager
 from core.infrastructure.transaction import TransactionManager
 
 
+def _safe_logger_emit(logger, level: str, message: str) -> None:
+    if logger is None:
+        return
+    try:
+        fn = getattr(logger, str(level or "").strip(), None)
+        if callable(fn):
+            fn(message)
+    except Exception:
+        pass
+
+
+def _write_oplog(conn, *, op_logger, logger=None, level: str, **kwargs) -> bool:
+    if op_logger is None:
+        return True
+    try:
+        with TransactionManager(conn).transaction():
+            if level == "error":
+                result = op_logger.error(**kwargs)
+            else:
+                result = op_logger.info(**kwargs)
+            if result is False:
+                raise RuntimeError("OperationLogs 未成功落库。")
+        return True
+    except Exception as e:
+        _safe_logger_emit(logger, "warning", f"自动备份 telemetry 写入 OperationLogs 失败：{e}")
+        return False
+
+
+def _write_job_state(conn, *, job_repo, job_key: str, last_run_time: str, last_run_detail: str, logger=None) -> bool:
+    try:
+        with TransactionManager(conn).transaction():
+            job_repo.set_last_run(
+                job_key,
+                last_run_time=last_run_time,
+                last_run_detail=last_run_detail,
+            )
+        return True
+    except Exception as e:
+        _safe_logger_emit(logger, "warning", f"自动备份 telemetry 写入 SystemJobState 失败：{e}")
+        return False
+
+
 def maybe_run_auto_backup(
     conn,
     *,
@@ -41,53 +83,68 @@ def maybe_run_auto_backup(
         except Exception:
             size_mb = None
 
-        with TransactionManager(conn).transaction():
-            if op_logger is not None:
-                op_logger.info(
-                    module="system",
-                    action="backup",
-                    target_type="backup",
-                    target_id=filename,
-                    detail={
-                        "filename": filename,
-                        "suffix": "auto",
-                        "size_mb": size_mb,
-                        "mode": "auto",
-                        "time_cost_ms": time_cost_ms,
-                    },
-                )
+        detail = {
+            "filename": filename,
+            "suffix": "auto",
+            "size_mb": size_mb,
+            "mode": "auto",
+            "time_cost_ms": time_cost_ms,
+        }
+        job_detail = json.dumps({"filename": filename, "size_mb": size_mb, "time_cost_ms": time_cost_ms}, ensure_ascii=False)
 
-            job_repo.set_last_run(
-                job_key,
-                last_run_time=fmt_db_dt_fn(now),
-                last_run_detail=json.dumps(
-                    {"filename": filename, "size_mb": size_mb, "time_cost_ms": time_cost_ms},
-                    ensure_ascii=False,
-                ),
-            )
-        return True, {"due": True, "created": filename}
+        oplog_written = _write_oplog(
+            conn,
+            op_logger=op_logger,
+            logger=logger,
+            level="info",
+            module="system",
+            action="backup",
+            target_type="backup",
+            target_id=filename,
+            detail=detail,
+        )
+        job_state_written = _write_job_state(
+            conn,
+            job_repo=job_repo,
+            job_key=job_key,
+            last_run_time=fmt_db_dt_fn(now),
+            last_run_detail=job_detail,
+            logger=logger,
+        )
+        return True, {
+            "due": True,
+            "created": filename,
+            "oplog_persisted": bool(oplog_written),
+            "job_state_persisted": bool(job_state_written),
+        }
     except Exception as e:
-        if logger:
-            logger.error(f"自动备份失败：{e}")
+        _safe_logger_emit(logger, "error", f"自动备份失败：{e}")
         time_cost_ms = int((time.time() - t0) * 1000)
-        try:
-            with TransactionManager(conn).transaction():
-                if op_logger is not None:
-                    op_logger.error(
-                        module="system",
-                        action="backup",
-                        target_type="backup",
-                        target_id=None,
-                        detail={"mode": "auto", "time_cost_ms": time_cost_ms},
-                        error_code="auto_backup_failed",
-                        error_message=str(e),
-                    )
-                job_repo.set_last_run(
-                    job_key,
-                    last_run_time=fmt_db_dt_fn(now),
-                    last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
-                )
-        except Exception:
-            pass
-        return False, {"due": True, "error": str(e)}
+        oplog_written = _write_oplog(
+            conn,
+            op_logger=op_logger,
+            logger=logger,
+            level="error",
+            module="system",
+            action="backup",
+            target_type="backup",
+            target_id=None,
+            detail={"mode": "auto", "time_cost_ms": time_cost_ms},
+            error_code="auto_backup_failed",
+            error_message=str(e),
+        )
+        job_state_written = _write_job_state(
+            conn,
+            job_repo=job_repo,
+            job_key=job_key,
+            last_run_time=fmt_db_dt_fn(now),
+            last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
+            logger=logger,
+        )
+        return False, {
+            "due": True,
+            "error": str(e),
+            "oplog_persisted": bool(oplog_written),
+            "job_state_persisted": bool(job_state_written),
+        }
 

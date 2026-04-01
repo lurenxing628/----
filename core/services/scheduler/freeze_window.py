@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithms.value_domains import INTERNAL
 from core.models.enums import YesNo
@@ -137,11 +137,13 @@ def build_freeze_window_seed(
     prev_version: int,
     start_dt: datetime,
     operations: List[Any],
+    reschedulable_operations: Optional[List[Any]] = None,
 ) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
     """
     冻结窗口（硬约束；默认关闭）：
     - 复用上一版本在窗口内的排程结果，不再重排
     - 为保证批次前后约束：按批次 seq 前缀冻结（冻结到窗口内出现的最大 seq）
+    - 若调用方已传入 `reschedulable_operations`，seed 路径与主排产链共享同一套可重排工序集合
 
     Returns:
         (frozen_op_ids, seed_results, warnings)
@@ -158,8 +160,11 @@ def build_freeze_window_seed(
     freeze_end_str = svc._format_dt(freeze_end)
     start_str = svc._format_dt(start_dt)
 
-    op_by_id: Dict[int, Any] = {int(op.id): op for op in operations if op and op.id}
+    seed_operations = reschedulable_operations if reschedulable_operations is not None else operations
+    op_by_id: Dict[int, Any] = {int(op.id): op for op in seed_operations if op and op.id}
     op_ids_all = sorted(list(op_by_id.keys()))
+    if not op_ids_all:
+        return frozen_op_ids, seed_results, warnings
 
     # 查询上一版本在窗口内的排程（仅查本次选中批次的工序）
     schedule_map = _safe_load_schedule_map(
@@ -180,7 +185,7 @@ def build_freeze_window_seed(
     for bid, max_seq in max_seq_by_batch.items():
         if max_seq <= 0:
             continue
-        prefix = _prefix_op_ids_for_batch(operations, bid, max_seq)
+        prefix = _prefix_op_ids_for_batch(seed_operations, bid, max_seq)
         missing = [oid for oid in prefix if oid not in schedule_map]
         if missing:
             sample = ", ".join([str(x) for x in missing[:5]])

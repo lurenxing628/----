@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Batch, BatchOperation, ExternalGroup, PartOperation
-from core.models.enums import ReadyStatus, SourceType, YesNo
+from core.models.enums import BatchOperationStatus, BatchStatus, ReadyStatus, SourceType, YesNo
 from core.services.common.normalize import normalize_text
 from data.repositories import (
     BatchOperationRepository,
@@ -34,6 +34,14 @@ from .schedule_summary import build_result_summary
 from .schedule_template_lookup import get_template_and_group_for_op
 
 _RUN_SCHEDULE_LOCK = threading.Lock()
+_TERMINAL_OPERATION_STATUSES = frozenset(
+    (BatchOperationStatus.COMPLETED.value, BatchOperationStatus.SKIPPED.value)
+)
+_FAIL_FAST_BATCH_STATUSES = frozenset((BatchStatus.COMPLETED.value, BatchStatus.CANCELLED.value))
+
+
+def _normalized_status_text(value: Any) -> str:
+    return (normalize_text(value) or "").strip().lower()
 
 
 class ScheduleService:
@@ -71,6 +79,11 @@ class ScheduleService:
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
         return normalize_text(value)
+
+    @staticmethod
+    def _is_reschedulable_operation(op: Any) -> bool:
+        status = _normalized_status_text(getattr(op, "status", None)) or BatchOperationStatus.PENDING.value
+        return status not in _TERMINAL_OPERATION_STATUSES
 
     @staticmethod
     def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
@@ -278,15 +291,29 @@ class ScheduleService:
         # 读取批次与工序
         batches: Dict[str, Batch] = {}
         operations: List[BatchOperation] = []
+        blocked_batch_ids: List[str] = []
         for bid in normalized:
             b = self._get_batch_or_raise(bid)
             batches[bid] = b
+            if _normalized_status_text(getattr(b, "status", None)) in _FAIL_FAST_BATCH_STATUSES:
+                blocked_batch_ids.append(bid)
+                continue
             operations.extend(self.op_repo.list_by_batch(bid))
+        if blocked_batch_ids:
+            sample = "，".join(blocked_batch_ids[:20])
+            raise ValidationError(f"以下批次状态不允许排产（completed/cancelled）：{sample}", field="批次")
+
+        reschedulable_operations = [op for op in operations if self._is_reschedulable_operation(op)]
+        reschedulable_op_ids = {
+            int(op.id)
+            for op in reschedulable_operations
+            if op and getattr(op, "id", None) and int(getattr(op, "id", 0) or 0) > 0
+        }
 
         # 自动分配资源：记录哪些内部工序原本缺省 machine/operator（便于在“非模拟”时回写补全）
         missing_internal_resource_op_ids = {
             int(op.id)
-            for op in operations
+            for op in reschedulable_operations
             if op
             and op.id
             and (op.source or "").strip().lower() == SourceType.INTERNAL.value
@@ -305,7 +332,7 @@ class ScheduleService:
                 raise ValidationError(f"以下批次未齐套（ready_status!=yes），禁止排产：{sample}", field="齐套")
 
         # 算法输入（补充 merged 外部组信息）
-        algo_ops = build_algo_operations(self, operations)
+        algo_ops = build_algo_operations(self, reschedulable_operations)
 
         # 上一版本号（供冻结窗口复用使用）
         latest = self.history_repo.get_latest_version()
@@ -318,7 +345,12 @@ class ScheduleService:
 
         # 冻结窗口（可选）
         frozen_op_ids, seed_results, algo_warnings = build_freeze_window_seed(
-            self, cfg=cfg, prev_version=prev_version, start_dt=start_dt_norm, operations=operations
+            self,
+            cfg=cfg,
+            prev_version=prev_version,
+            start_dt=start_dt_norm,
+            operations=operations,
+            reschedulable_operations=reschedulable_operations,
         )
 
         # 防御：warnings 预期为 list，但外部 stub/历史调用可能返回 None
@@ -447,6 +479,8 @@ class ScheduleService:
             used_params=used_params,
             batches=batches,
             operations=operations,
+            reschedulable_operations=reschedulable_operations,
+            reschedulable_op_ids=set(reschedulable_op_ids),
             normalized_batch_ids=normalized,
             created_by=created_by_text,
             simulate=simulate,

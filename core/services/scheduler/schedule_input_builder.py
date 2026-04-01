@@ -51,12 +51,16 @@ def _safe_float(value: Any, *, default: Optional[float]) -> Optional[float]:
         return default
 
 
-def build_algo_operations(svc, operations: List[Any]) -> List[OpForScheduleAlgo]:
+def build_algo_operations(svc, reschedulable_operations: List[Any]) -> List[OpForScheduleAlgo]:
     """
-    把批次工序（BatchOperation）转换为算法输入（补充 merged 外部组信息）。
+    把已收口的可重排工序（BatchOperation）转换为算法输入。
+
+    约定：
+    - `completed/skipped` 之类的终态过滤由 `ScheduleService` 统一负责；
+    - 本层只消费调用方传入的 `reschedulable_operations`，不再自行扩散状态语义。
     """
     algo_ops: List[OpForScheduleAlgo] = []
-    for op in operations:
+    for op in reschedulable_operations:
         ext_group_id = None
         merge_mode = None
         total_days = None

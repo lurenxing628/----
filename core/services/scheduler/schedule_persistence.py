@@ -6,6 +6,15 @@ from core.models.enums import BatchOperationStatus, BatchStatus, SourceType, Yes
 
 from .number_utils import to_yes_no
 
+_TERMINAL_OPERATION_STATUSES = frozenset(
+    (BatchOperationStatus.COMPLETED.value, BatchOperationStatus.SKIPPED.value)
+)
+
+
+def _normalized_status_text(value: Any, *, default: str) -> str:
+    text = str(value or "").strip().lower()
+    return text or default
+
 
 def _build_schedule_rows(
     svc,
@@ -13,12 +22,15 @@ def _build_schedule_rows(
     version: int,
     results: List[Any],
     frozen_op_ids: Set[int],
+    allowed_op_ids: Optional[Set[int]] = None,
 ) -> List[Dict[str, Any]]:
     schedule_rows: List[Dict[str, Any]] = []
     for r in results:
         if not getattr(r, "start_time", None) or not getattr(r, "end_time", None):
             continue
         oid = int(r.op_id)
+        if allowed_op_ids is not None and oid not in allowed_op_ids:
+            continue
         schedule_rows.append(
             {
                 "op_id": oid,
@@ -33,16 +45,20 @@ def _build_schedule_rows(
     return schedule_rows
 
 
-def _scheduled_op_ids(results: List[Any]) -> Set[int]:
-    return {int(r.op_id) for r in results if r and getattr(r, "op_id", None)}
+def _scheduled_op_ids(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> Set[int]:
+    scheduled = {int(r.op_id) for r in results if r and getattr(r, "op_id", None)}
+    if allowed_op_ids is None:
+        return scheduled
+    return {op_id for op_id in scheduled if op_id in allowed_op_ids}
 
 
-def _assigned_by_op_id(results: List[Any]) -> Dict[int, Dict[str, Any]]:
+def _assigned_by_op_id(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> Dict[int, Dict[str, Any]]:
     return {
         int(r.op_id): {"machine_id": r.machine_id, "operator_id": r.operator_id}
         for r in results
         if r
         and int(getattr(r, "op_id", 0) or 0) > 0
+        and (allowed_op_ids is None or int(getattr(r, "op_id", 0) or 0) in allowed_op_ids)
         and (str(getattr(r, "source", "") or "").strip().lower() == SourceType.INTERNAL.value)
     }
 
@@ -74,17 +90,19 @@ def _maybe_persist_auto_assign_resources(
 def _persist_operation_statuses(
     svc,
     *,
-    operations: List[Any],
+    reschedulable_operations: List[Any],
     scheduled_op_ids: Set[int],
     auto_assign_persist: bool,
     missing_internal_resource_op_ids: Set[int],
     assigned_by_op_id: Dict[int, Dict[str, Any]],
 ) -> None:
-    for op in operations:
+    for op in reschedulable_operations:
         if not op.id:
             continue
         op_id = int(op.id)
         if op_id not in scheduled_op_ids:
+            continue
+        if _normalized_status_text(getattr(op, "status", None), default=BatchOperationStatus.PENDING.value) in _TERMINAL_OPERATION_STATUSES:
             continue
         svc.op_repo.update(op_id, {"status": BatchOperationStatus.SCHEDULED.value})
         _maybe_persist_auto_assign_resources(
@@ -101,21 +119,25 @@ def _persist_batch_statuses(
     svc,
     *,
     batches: Dict[str, Any],
-    operations: List[Any],
+    reschedulable_operations: List[Any],
     scheduled_op_ids: Set[int],
 ) -> None:
     by_batch_total: Dict[str, int] = {}
     by_batch_scheduled: Dict[str, int] = {}
-    for op in operations:
+    for op in reschedulable_operations:
         by_batch_total[op.batch_id] = by_batch_total.get(op.batch_id, 0) + 1
         if op.id and int(op.id) in scheduled_op_ids:
             by_batch_scheduled[op.batch_id] = by_batch_scheduled.get(op.batch_id, 0) + 1
 
-    for bid, _b in batches.items():
+    for bid, batch in batches.items():
         total = by_batch_total.get(bid, 0)
+        if total <= 0:
+            continue
         ok = by_batch_scheduled.get(bid, 0)
         new_status = BatchStatus.SCHEDULED.value if total > 0 and ok == total else BatchStatus.PENDING.value
-        svc.batch_repo.update(bid, {"status": new_status})
+        current_status = _normalized_status_text(getattr(batch, "status", None), default=BatchStatus.PENDING.value)
+        if new_status != current_status:
+            svc.batch_repo.update(bid, {"status": new_status})
 
 
 def _persist_schedule_history(
@@ -195,6 +217,8 @@ def persist_schedule(
     used_params: Dict[str, Any],
     batches: Dict[str, Any],
     operations: List[Any],
+    reschedulable_operations: List[Any],
+    reschedulable_op_ids: Set[int],
     normalized_batch_ids: List[str],
     created_by: str,
     simulate: bool,
@@ -210,7 +234,13 @@ def persist_schedule(
     原子落库：Schedule + 状态更新 + ScheduleHistory
     事务后：OperationLogs（避免 logger 内部 commit 干扰原子性）
     """
-    schedule_rows = _build_schedule_rows(svc, version=int(version), results=results, frozen_op_ids=frozen_op_ids)
+    schedule_rows = _build_schedule_rows(
+        svc,
+        version=int(version),
+        results=results,
+        frozen_op_ids=frozen_op_ids,
+        allowed_op_ids=set(reschedulable_op_ids),
+    )
 
     with svc.tx_manager.transaction():
         if schedule_rows:
@@ -220,13 +250,13 @@ def persist_schedule(
             auto_assign_persist = (
                 to_yes_no(getattr(cfg, "auto_assign_persist", YesNo.YES.value), default=YesNo.YES.value) == YesNo.YES.value
             )
-            scheduled_op_ids = _scheduled_op_ids(results)
-            assigned_by_op_id = _assigned_by_op_id(results)
+            scheduled_op_ids = _scheduled_op_ids(results, allowed_op_ids=set(reschedulable_op_ids))
+            assigned_by_op_id = _assigned_by_op_id(results, allowed_op_ids=set(reschedulable_op_ids))
 
             # 批次工序：成功排到的置 scheduled；失败的保持原状态（便于继续补全）
             _persist_operation_statuses(
                 svc,
-                operations=operations,
+                reschedulable_operations=reschedulable_operations,
                 scheduled_op_ids=scheduled_op_ids,
                 auto_assign_persist=auto_assign_persist,
                 missing_internal_resource_op_ids=missing_internal_resource_op_ids,
@@ -234,7 +264,12 @@ def persist_schedule(
             )
 
             # 批次：若本批次所有工序都排到 -> scheduled，否则保持 pending
-            _persist_batch_statuses(svc, batches=batches, operations=operations, scheduled_op_ids=scheduled_op_ids)
+            _persist_batch_statuses(
+                svc,
+                batches=batches,
+                reschedulable_operations=reschedulable_operations,
+                scheduled_op_ids=scheduled_op_ids,
+            )
 
         # 排产历史留痕（DB）
         _persist_schedule_history(
