@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import sqlite3
 
-from .common import fallback_log
+from .common import MigrationOutcome, fallback_log
 
 
-def run(conn: sqlite3.Connection, logger=None) -> None:
+def run(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
     """
     v3 迁移：把历史 OperatorCalendar.day_type='weekend' 统一写成 'holiday'。
     - 幂等：可重复执行
-    - 若表不存在（极端场景）：静默跳过（由 schema.sql 后续创建）
+    - 若表不存在（极端场景）：显式返回 skipped，由外层决定是否推进版本
     """
     try:
         # 表不存在时 sqlite 会抛错；这里不阻断迁移版本推进
@@ -23,6 +23,7 @@ def run(conn: sqlite3.Connection, logger=None) -> None:
         if "no such table" in msg or "no such column" in msg:
             if logger:
                 fallback_log(logger, "warning", f"数据库迁移 v3：OperatorCalendar 不存在，已跳过（{e}）。")
-            return
+            return MigrationOutcome.SKIPPED
         raise
+    return MigrationOutcome.APPLIED
 

@@ -3,6 +3,23 @@ from __future__ import annotations
 import re
 import sqlite3
 import sys
+from enum import Enum
+
+
+class MigrationOutcome(str, Enum):
+    APPLIED = "applied"
+    SKIPPED = "skipped"
+    PARTIAL = "partial"
+
+
+def merge_outcomes(*outcomes: MigrationOutcome) -> MigrationOutcome:
+    filtered = [o for o in outcomes if o is not None]
+    if not filtered:
+        return MigrationOutcome.SKIPPED
+    first = filtered[0]
+    if all(o == first for o in filtered[1:]):
+        return first
+    return MigrationOutcome.PARTIAL
 
 
 def table_exists(conn: sqlite3.Connection, table: str) -> bool:
@@ -19,14 +36,11 @@ def table_exists(conn: sqlite3.Connection, table: str) -> bool:
         t = ""
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", t or ""):
         return False
-    try:
-        row = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
-            (t,),
-        ).fetchone()
-        return row is not None
-    except Exception:
-        return False
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+        (t,),
+    ).fetchone()
+    return row is not None
 
 
 def column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -45,15 +59,34 @@ def column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
         t = ""
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", t or ""):
         return False
-    try:
-        rows = conn.execute(f"PRAGMA table_info({t})").fetchall()
-        for r in rows:
-            name = r["name"] if isinstance(r, sqlite3.Row) else r[1]
-            if name == column:
-                return True
-        return False
-    except Exception:
-        return False
+    rows = conn.execute(f"PRAGMA table_info({t})").fetchall()
+    for r in rows:
+        name = r["name"] if isinstance(r, sqlite3.Row) else r[1]
+        if name == column:
+            return True
+    return False
+
+
+def add_column_if_missing(
+    conn: sqlite3.Connection,
+    table: str,
+    column: str,
+    ddl: str,
+    *,
+    migration_label: str,
+    logger=None,
+    log_added: bool = False,
+) -> MigrationOutcome:
+    if not table_exists(conn, table):
+        if logger:
+            fallback_log(logger, "warning", f"数据库迁移 {migration_label}：{table} 表不存在，已跳过 {column} 补列。")
+        return MigrationOutcome.SKIPPED
+    if column_exists(conn, table, column):
+        return MigrationOutcome.APPLIED
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+    if log_added and logger:
+        fallback_log(logger, "info", f"数据库迁移 {migration_label}：已为 {table}.{column} 补列。")
+    return MigrationOutcome.APPLIED
 
 
 def fallback_log(logger, level: str, message: str) -> None:

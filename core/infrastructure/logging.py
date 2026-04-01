@@ -132,7 +132,8 @@ class OperationLogger:
         detail: Dict[str, Any] = None,
         error_code: str = None,
         error_message: str = None,
-    ):
+        raise_on_fail: bool = False,
+    ) -> bool:
         auto_commit = False
         try:
             # 注意：不要在外层事务（TransactionManager）中隐式 commit()，否则会破坏原子性。
@@ -171,6 +172,7 @@ class OperationLogger:
                     post_in_tx = True
                 if post_in_tx:
                     self.conn.commit()
+            return True
         except Exception as e:
             # 若我们决定自动提交，则异常路径也要尽量结束事务，避免悬挂
             if auto_commit:
@@ -179,19 +181,35 @@ class OperationLogger:
                 except Exception:
                     pass
             # 记录失败时写文件日志，避免影响主流程
-            self.logger.error(f"写入操作日志失败：{e}")
+            try:
+                self.logger.error(f"写入操作日志失败：{e}")
+            except Exception:
+                pass
+            if raise_on_fail:
+                raise
+            return False
 
-    def info(self, module: str, action: str, **kwargs):
-        self.log("INFO", module, action, **kwargs)
-        # 控制台/文件日志也记录一条简要信息（中文）
-        self.logger.info(f"[{module}] 操作：{action}（{kwargs.get('target_type') or ''} {kwargs.get('target_id') or ''}）")
+    def info(self, module: str, action: str, **kwargs) -> bool:
+        ok = self.log("INFO", module, action, **kwargs)
+        if ok:
+            try:
+                # 控制台/文件日志也记录一条简要信息（中文）
+                self.logger.info(f"[{module}] 操作：{action}（{kwargs.get('target_type') or ''} {kwargs.get('target_id') or ''}）")
+            except Exception:
+                pass
+        return bool(ok)
 
-    def warn(self, module: str, action: str, **kwargs):
-        self.log("WARN", module, action, **kwargs)
-        self.logger.warning(f"[{module}] 警告：{action}（{kwargs}）")
+    def warn(self, module: str, action: str, **kwargs) -> bool:
+        ok = self.log("WARN", module, action, **kwargs)
+        if ok:
+            try:
+                self.logger.warning(f"[{module}] 警告：{action}（{kwargs}）")
+            except Exception:
+                pass
+        return bool(ok)
 
-    def error(self, module: str, action: str, error_code: str, error_message: str, **kwargs):
-        self.log(
+    def error(self, module: str, action: str, error_code: str, error_message: str, **kwargs) -> bool:
+        ok = self.log(
             "ERROR",
             module,
             action,
@@ -199,5 +217,10 @@ class OperationLogger:
             error_message=error_message,
             **kwargs,
         )
-        self.logger.error(f"[{module}] 失败：{action}（[{error_code}] {error_message}）")
+        if ok:
+            try:
+                self.logger.error(f"[{module}] 失败：{action}（[{error_code}] {error_message}）")
+            except Exception:
+                pass
+        return bool(ok)
 
