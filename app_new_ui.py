@@ -6,7 +6,13 @@ import sys
 
 from flask import Flask
 
-from web.bootstrap.factory import create_app_core, serve_runtime_app, should_register_runtime_lifecycle_handlers
+from web.bootstrap.factory import (
+    create_app_core,
+    serve_runtime_app,
+    should_own_runtime_resources,
+    should_register_runtime_lifecycle_handlers,
+    should_use_runtime_reloader,
+)
 from web.bootstrap.launcher import (
     acquire_runtime_lock,
     clear_launch_error,
@@ -16,6 +22,7 @@ from web.bootstrap.launcher import (
     pick_bind_host,
     pick_port,
     release_runtime_lock,
+    resolve_prelaunch_log_dir,
     stop_runtime_from_dir,
     write_launch_error,
     write_runtime_contract_file,
@@ -29,10 +36,7 @@ def _runtime_base_dir() -> str:
 
 
 def _prelaunch_log_dir(runtime_dir: str) -> str:
-    raw = str(os.environ.get("APS_LOG_DIR") or "").strip()
-    if raw:
-        return os.path.abspath(raw)
-    return os.path.join(runtime_dir, "logs")
+    return resolve_prelaunch_log_dir(runtime_dir)
 
 
 def create_app() -> Flask:
@@ -104,20 +108,6 @@ def main(argv=None) -> int:
         clear_launch_error(prelaunch_log_dir)
     except Exception:
         pass
-    try:
-        acquire_runtime_lock(
-            runtime_dir,
-            prelaunch_log_dir,
-            owner=runtime_owner,
-            exe_path=sys.executable,
-        )
-    except Exception as e:
-        try:
-            write_launch_error(runtime_dir, str(e), prelaunch_log_dir)
-        except Exception:
-            pass
-        return 13
-    atexit.register(release_runtime_lock, prelaunch_log_dir, os.getpid())
 
     try:
         app = create_app()
@@ -127,6 +117,10 @@ def main(argv=None) -> int:
         except Exception:
             pass
         return 14
+    debug = bool(app.config.get("DEBUG", False))
+    use_reloader = should_use_runtime_reloader(debug)
+    owns_runtime_resources = should_own_runtime_resources(debug)
+
     # Win7 本地运行（开发/调试）；打包后用 exe 启动
     # 端口策略（避免“端口被占用/受限就无法启动”）：
     # - 优先使用 APS_PORT（若提供）
@@ -158,23 +152,42 @@ def main(argv=None) -> int:
     except Exception:
         pass
 
-    debug = bool(app.config.get("DEBUG", False))
-    try:
-        _configure_runtime_contract(app, runtime_dir, host, port, runtime_owner)
-    except Exception as e:
+    if owns_runtime_resources:
         try:
-            app.logger.error(f"写入运行时契约失败：{e}")
-        except Exception:
-            pass
-        try:
-            write_launch_error(runtime_dir, f"写入运行时契约失败：{e}", app.config.get("LOG_DIR"))
-        except Exception:
-            pass
-        return 15
-    if should_register_runtime_lifecycle_handlers(debug):
-        atexit.register(delete_runtime_contract_files, app.config.get("LOG_DIR") or runtime_dir)
+            acquire_runtime_lock(
+                runtime_dir,
+                prelaunch_log_dir,
+                owner=runtime_owner,
+                exe_path=sys.executable,
+            )
+        except Exception as e:
+            try:
+                write_launch_error(runtime_dir, str(e), prelaunch_log_dir)
+            except Exception:
+                pass
+            return 13
+        atexit.register(release_runtime_lock, prelaunch_log_dir, os.getpid())
 
-    use_reloader = debug and not getattr(sys, "frozen", False)
+        try:
+            _configure_runtime_contract(app, runtime_dir, host, port, runtime_owner)
+        except Exception as e:
+            try:
+                app.logger.error(f"写入运行时契约失败：{e}")
+            except Exception:
+                pass
+            try:
+                write_launch_error(runtime_dir, f"写入运行时契约失败：{e}", app.config.get("LOG_DIR"))
+            except Exception:
+                pass
+            return 15
+        if should_register_runtime_lifecycle_handlers(debug):
+            atexit.register(delete_runtime_contract_files, app.config.get("LOG_DIR") or runtime_dir)
+    else:
+        try:
+            app.logger.info("开发重载父进程跳过获取运行时锁与运行时契约。")
+        except Exception:
+            pass
+
     if use_reloader:
         app.run(host=host, port=port, debug=debug, use_reloader=True)
         return 0

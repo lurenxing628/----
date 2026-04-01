@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, url_for
 
+from core.infrastructure.backup import MaintenanceWindowError, maintenance_window
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.logging import OperationLogger
@@ -14,6 +15,12 @@ from web.ui_mode import render_ui_template as render_template
 
 from .system_bp import bp
 from .system_utils import _get_backup_manager, _get_job_state_map, _get_system_cfg_snapshot, _validate_backup_filename
+
+
+def _user_maintenance_message(err: MaintenanceWindowError) -> str:
+    if getattr(err, "code", "") == "busy":
+        return str(getattr(err, "message", "") or "数据库正在维护/恢复中，请稍后重试。")
+    return "系统维护锁处理失败，请查看日志后稍后重试。"
 
 
 @bp.get("/")
@@ -48,7 +55,13 @@ def backup_page():
 def backup_create():
     cfg = _get_system_cfg_snapshot()
     mgr = _get_backup_manager(keep_days=int(cfg.auto_backup_keep_days))
-    path = mgr.backup(suffix="manual")
+    try:
+        path = mgr.backup(suffix="manual")
+    except MaintenanceWindowError as e:
+        if e.code != "busy":
+            current_app.logger.error("手动备份触发维护锁异常：code=%s message=%s", e.code, e.message)
+        flash(_user_maintenance_message(e), "warning" if e.code == "busy" else "error")
+        return redirect(url_for("system.backup_page"))
     filename = os.path.basename(path)
     size_mb = None
     try:
@@ -218,35 +231,51 @@ def backup_restore():
     g.pop("op_logger", None)
 
     mgr = _get_backup_manager()
-    ok = mgr.restore(backup_path)
-    if not ok:
-        raise AppError(ErrorCode.DB_QUERY_ERROR, "数据库恢复失败，请查看日志。")
-
-    # 恢复后确保 schema（索引/新表）
     try:
-        ensure_schema(
-            current_app.config["DATABASE_PATH"],
-            current_app.logger,
-            backup_dir=current_app.config.get("BACKUP_DIR"),
-        )
-    except Exception:
-        current_app.logger.exception("恢复后 ensure_schema 失败（不阻断）")
+        with maintenance_window(current_app.config["DATABASE_PATH"], logger=current_app.logger, action="restore_flow"):
+            result = mgr.restore(backup_path)
+            if not result.ok:
+                flash(result.message, "warning" if result.code == "busy" else "error")
+                return redirect(url_for("system.backup_page"))
+
+            # 恢复后确保 schema（索引/新表）：
+            # 这里必须与 restore 处于同一 maintenance window，避免刚恢复完就被并发请求打断。
+            try:
+                ensure_schema(
+                    current_app.config["DATABASE_PATH"],
+                    current_app.logger,
+                    backup_dir=current_app.config.get("BACKUP_DIR"),
+                )
+            except Exception:
+                current_app.logger.exception("恢复后 ensure_schema 失败")
+                flash("数据库文件已恢复，但后续结构检查失败，请查看日志后再继续使用。", "error")
+                return redirect(url_for("system.backup_page"))
+    except MaintenanceWindowError as e:
+        if e.code != "busy":
+            current_app.logger.error("数据库恢复触发维护锁异常：code=%s message=%s", e.code, e.message)
+        flash(_user_maintenance_message(e), "warning" if e.code == "busy" else "error")
+        return redirect(url_for("system.backup_page"))
 
     # 写入操作日志（独立连接）
     conn = None
     try:
         conn = sqlite3.connect(current_app.config["DATABASE_PATH"])
         op_logger = OperationLogger(conn, logger=current_app.logger)
-        op_logger.info(
+        logged = op_logger.info(
             module="system",
             action="restore",
             target_type="backup",
             target_id=filename,
             detail={
                 "filename": filename,
-                "note": "已恢复数据库；恢复前自动备份 before_restore 已执行。",
+                "note": "已恢复数据库；恢复前自动备份 before_restore 已执行，且后续 ensure_schema 已成功完成。",
+                "before_restore_filename": (
+                    os.path.basename(result.before_restore_path) if getattr(result, "before_restore_path", None) else None
+                ),
             },
         )
+        if not logged:
+            current_app.logger.warning("恢复成功留痕写入 OperationLogs 失败：filename=%s", filename)
     except Exception:
         current_app.logger.exception("恢复后写入操作日志失败（不阻断）")
     finally:
@@ -256,6 +285,7 @@ def backup_restore():
             except Exception:
                 pass
 
+    current_app.logger.info("数据库恢复流程完成：%s", filename)
     flash(f"已从备份恢复：{filename}。建议刷新页面/重新打开浏览器以加载最新数据。", "success")
     return redirect(url_for("system.backup_page"))
 

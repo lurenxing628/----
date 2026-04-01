@@ -101,6 +101,21 @@ def _normalize_db_path_for_runtime(db_path: str | None) -> str:
     return os.path.normcase(os.path.abspath(raw))
 
 
+def _normalize_abs_dir(path: str | None) -> str:
+    raw = str(path or "").strip()
+    if not raw:
+        return ""
+    return os.path.abspath(raw)
+
+
+def _compose_runtime_owner(user: str | None, domain: str | None) -> str:
+    user_s = str(user or "").strip()
+    domain_s = str(domain or "").strip()
+    if domain_s and user_s and domain_s.lower() != user_s.lower():
+        return f"{domain_s}\\{user_s}"
+    return user_s or domain_s or "unknown"
+
+
 def current_runtime_owner() -> str:
     user = str(os.environ.get("USERNAME") or "").strip()
     if not user:
@@ -109,9 +124,60 @@ def current_runtime_owner() -> str:
         except Exception:
             user = ""
     domain = str(os.environ.get("USERDOMAIN") or os.environ.get("COMPUTERNAME") or "").strip()
-    if domain and user and domain.lower() != user.lower():
-        return f"{domain}\\{user}"
-    return user or domain or "unknown"
+    return _compose_runtime_owner(user, domain)
+
+
+def read_shared_data_root_from_registry() -> str:
+    try:
+        import winreg  # type: ignore
+    except ImportError:
+        return ""
+    key_read = int(getattr(winreg, "KEY_READ", 0))
+    wow64_64 = int(getattr(winreg, "KEY_WOW64_64KEY", 0))
+    for access in (key_read | wow64_64, key_read):
+        try:
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\APS", 0, access)
+        except Exception:
+            continue
+        try:
+            value, _value_type = winreg.QueryValueEx(key, "SharedDataRoot")
+        except Exception:
+            value = ""
+        finally:
+            try:
+                winreg.CloseKey(key)
+            except Exception:
+                pass
+        shared_root = _normalize_abs_dir(value)
+        if shared_root:
+            return shared_root
+    return ""
+
+
+def resolve_shared_data_root(base_dir: str, *, frozen: Optional[bool] = None) -> str:
+    explicit_root = _normalize_abs_dir(os.environ.get("APS_SHARED_DATA_ROOT"))
+    if explicit_root:
+        return explicit_root
+    base_dir_abs = _normalize_abs_dir(base_dir) or os.path.abspath(str(base_dir or "."))
+    is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else bool(frozen)
+    if not is_frozen:
+        return base_dir_abs
+    registry_root = read_shared_data_root_from_registry()
+    if registry_root:
+        return registry_root
+    program_data = _normalize_abs_dir(os.environ.get("ProgramData"))
+    if program_data:
+        candidate = os.path.join(program_data, "APS", "shared-data")
+        if os.path.isdir(candidate):
+            return candidate
+    return base_dir_abs
+
+
+def resolve_prelaunch_log_dir(runtime_dir: str, *, frozen: Optional[bool] = None) -> str:
+    explicit_log_dir = _normalize_abs_dir(os.environ.get("APS_LOG_DIR"))
+    if explicit_log_dir:
+        return explicit_log_dir
+    return os.path.join(resolve_shared_data_root(runtime_dir, frozen=frozen), "logs")
 
 
 def _runtime_log_dir(runtime_dir: str) -> str:
@@ -144,6 +210,25 @@ def _resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir: str) -> str:
     if any(os.path.exists(os.path.join(base, name)) for name in direct_files):
         return base
     return os.path.join(base, "logs")
+
+
+def _runtime_dir_from_state_dir(state_dir: str) -> str:
+    state_dir_abs = os.path.abspath(str(state_dir or ""))
+    if os.path.basename(state_dir_abs).strip().lower() == "logs":
+        parent_dir = os.path.dirname(state_dir_abs)
+        if parent_dir:
+            return parent_dir
+    return state_dir_abs
+
+
+def _resolve_runtime_stop_context(runtime_dir_or_state_dir: str) -> tuple[str, str]:
+    raw_path = os.path.abspath(str(runtime_dir_or_state_dir))
+    state_dir = _resolve_runtime_state_dir_for_read(raw_path)
+    if os.path.normcase(raw_path) == os.path.normcase(state_dir):
+        runtime_dir = _runtime_dir_from_state_dir(state_dir)
+    else:
+        runtime_dir = raw_path
+    return runtime_dir, state_dir
 
 
 def _runtime_log_mirror_dir(runtime_dir: str, cfg_log_dir: str | None = None) -> str:
@@ -778,11 +863,11 @@ def stop_runtime_from_dir(
     timeout_s: float = 15.0,
     logger: logging.Logger | None = None,
 ) -> int:
-    runtime_dir_abs = os.path.abspath(str(runtime_dir))
-    contract = read_runtime_contract(runtime_dir_abs)
+    runtime_dir_abs, state_dir = _resolve_runtime_stop_context(runtime_dir)
+    contract = read_runtime_contract(state_dir)
     if contract is None:
-        host_file = os.path.join(_runtime_log_dir(runtime_dir_abs), "aps_host.txt")
-        port_file = os.path.join(_runtime_log_dir(runtime_dir_abs), "aps_port.txt")
+        host_file = os.path.join(state_dir, "aps_host.txt")
+        port_file = os.path.join(state_dir, "aps_port.txt")
         if os.path.exists(host_file) and os.path.exists(port_file):
             try:
                 with open(host_file, encoding="utf-8") as f:
@@ -794,7 +879,7 @@ def stop_runtime_from_dir(
                 port0 = 0
             if host0 and port0 > 0 and _probe_runtime_health(host0, port0, timeout_s=1.0):
                 return 1
-        delete_runtime_contract_files(runtime_dir_abs)
+        delete_runtime_contract_files(state_dir)
         if stop_aps_chrome:
             stop_aps_chrome_processes(default_chrome_profile_dir(runtime_dir_abs), logger=logger)
         return 0
@@ -811,7 +896,7 @@ def stop_runtime_from_dir(
 
     while time.time() < grace_deadline:
         if port > 0 and not _probe_runtime_health(host, port, timeout_s=0.5):
-            delete_runtime_contract_files(runtime_dir_abs)
+            delete_runtime_contract_files(state_dir)
             if stop_aps_chrome:
                 stop_aps_chrome_processes(contract.get("chrome_profile_dir"), logger=logger)
             return 0
@@ -826,7 +911,7 @@ def stop_runtime_from_dir(
         kill_deadline = time.time() + 6.0
         while time.time() < kill_deadline:
             if port > 0 and not _probe_runtime_health(host, port, timeout_s=0.5):
-                delete_runtime_contract_files(runtime_dir_abs)
+                delete_runtime_contract_files(state_dir)
                 if stop_aps_chrome:
                     stop_aps_chrome_processes(contract.get("chrome_profile_dir"), logger=logger)
                 return 0

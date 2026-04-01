@@ -13,7 +13,7 @@ from flask import Flask, g, request
 from werkzeug.serving import make_server
 
 from config import config as config_map
-from core.infrastructure.backup import BackupManager
+from core.infrastructure.backup import BackupManager, MaintenanceWindowError, is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger
 from core.infrastructure.migrations.common import fallback_log
@@ -30,7 +30,9 @@ from web.routes.reports import bp as reports_bp
 from web.routes.scheduler import bp as scheduler_bp
 from web.routes.system import bp as system_bp
 from web.ui_mode import init_ui_mode
+from web.ui_mode import render_ui_template as render_template
 
+from .launcher import resolve_shared_data_root
 from .paths import runtime_base_dir
 from .plugins import bootstrap_plugins
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
@@ -46,20 +48,34 @@ _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
 
 def _apply_runtime_config(app: Flask, *, base_dir: str) -> None:
     app.config["BASE_DIR"] = base_dir
-    app.config["DATABASE_PATH"] = (os.environ.get("APS_DB_PATH") or os.path.join(base_dir, "db", "aps.db"))
-    app.config["LOG_DIR"] = (os.environ.get("APS_LOG_DIR") or os.path.join(base_dir, "logs"))
-    app.config["BACKUP_DIR"] = (os.environ.get("APS_BACKUP_DIR") or os.path.join(base_dir, "backups"))
+    data_root = resolve_shared_data_root(base_dir)
+    app.config["DATABASE_PATH"] = (os.environ.get("APS_DB_PATH") or os.path.join(data_root, "db", "aps.db"))
+    app.config["LOG_DIR"] = (os.environ.get("APS_LOG_DIR") or os.path.join(data_root, "logs"))
+    app.config["BACKUP_DIR"] = (os.environ.get("APS_BACKUP_DIR") or os.path.join(data_root, "backups"))
     app.config["EXCEL_TEMPLATE_DIR"] = (
-        os.environ.get("APS_EXCEL_TEMPLATE_DIR") or os.path.join(base_dir, "templates_excel")
+        os.environ.get("APS_EXCEL_TEMPLATE_DIR") or os.path.join(data_root, "templates_excel")
     )
+
+
+def should_use_runtime_reloader(debug: bool, frozen: Optional[bool] = None) -> bool:
+    is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else bool(frozen)
+    return bool(debug) and not is_frozen
 
 
 def _should_register_exit_backup(*, debug: bool, frozen: Optional[bool] = None, run_main: Optional[str] = None) -> bool:
     is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else bool(frozen)
-    if not debug or is_frozen:
+    if not should_use_runtime_reloader(debug=bool(debug), frozen=is_frozen):
         return True
     marker = os.environ.get("WERKZEUG_RUN_MAIN") if run_main is None else run_main
     return str(marker or "").strip().lower() == "true"
+
+
+def should_own_runtime_resources(
+    debug: bool,
+    frozen: Optional[bool] = None,
+    run_main: Optional[str] = None,
+) -> bool:
+    return _should_register_exit_backup(debug=bool(debug), frozen=frozen, run_main=run_main)
 
 
 def _is_exit_backup_enabled(bm: BackupManager) -> Optional[bool]:
@@ -97,9 +113,24 @@ def _run_exit_backup(manager: Optional[BackupManager] = None) -> bool:
     try:
         bm.backup(suffix="exit")
         return True
+    except MaintenanceWindowError as e:
+        fallback_log(bm.logger, "warning" if e.code == "busy" else "error", f"退出自动备份已跳过：{e.message}")
+        return False
     except Exception as e:
         fallback_log(bm.logger, "error", f"退出自动备份失败：{e}")
         return False
+
+
+def _maintenance_gate_response():
+    message = "系统正在维护中，请稍后重试。"
+    try:
+        req_path = str(request.path or "")
+        accept_best = (request.accept_mimetypes.best or "").lower()
+        if req_path.startswith("/api/") or "json" in accept_best or bool(request.is_json):
+            return {"success": False, "error": {"code": "503", "message": message}}, 503
+    except Exception:
+        pass
+    return render_template("error.html", title="系统维护中", code="503", message=message), 503
 
 
 def _default_anchor_file() -> str:
@@ -108,7 +139,7 @@ def _default_anchor_file() -> str:
 
 
 def should_register_runtime_lifecycle_handlers(debug: bool) -> bool:
-    return _should_register_exit_backup(debug=bool(debug))
+    return should_own_runtime_resources(debug=bool(debug))
 
 
 def serve_runtime_app(app: Flask, host: str, port: int) -> None:
@@ -240,6 +271,11 @@ def create_app_core(
                 return
         except Exception:
             pass
+        try:
+            if is_maintenance_window_active(app.config["DATABASE_PATH"], logger=app.logger):
+                return _maintenance_gate_response()
+        except Exception as e:
+            app.logger.warning(f"维护窗口检测失败，将继续处理请求：{e}")
         if "db" not in g:
             g.db = get_connection(app.config["DATABASE_PATH"])
             g.op_logger = OperationLogger(g.db, logger=app.logger)
