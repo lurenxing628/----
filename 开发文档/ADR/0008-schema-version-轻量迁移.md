@@ -11,15 +11,24 @@
 ## 决策
 
 - 使用 `SchemaVersion` 表记录当前版本号。
-- 应用启动时自动检测版本，按顺序执行必要的迁移脚本（`core/infrastructure/migrations/v1.py` ~ `v4.py`）。
-- 迁移前自动备份数据库文件。
+- 应用启动时自动检测版本，按顺序执行必要的迁移脚本（`core/infrastructure/migrations/v1.py` ~ `v6.py`）。
+- 迁移前自动备份数据库文件；迁移失败时使用该备份执行文件级回滚。
 - 迁移脚本存放在 `core/infrastructure/migrations/` 目录，文件名为 `v{N}.py`。
+- 迁移脚本统一返回 `MigrationOutcome`：
+  - `APPLIED`：迁移意图完整执行（含幂等 no-op）
+  - `SKIPPED`：前置表/列不存在，整个迁移跳过
+  - `PARTIAL`：部分步骤成功、部分跳过或部分失败
+- 版本推进规则：**仅当 outcome=`APPLIED` 时才推进 `SchemaVersion`**；`SKIPPED`/`PARTIAL` 时停在最后真实完成版本。
+- 对“非空但缺整表”的旧库，允许先按 `schema.sql` 受控补齐整表/索引，再继续迁移。
+- 对“表已存在但列/索引不完整”的复杂残缺库，迁移前必须先预检；若预检仍会得到 `SKIPPED`/`PARTIAL`，则直接 fail-fast，不允许静默重试或重复生成迁移前备份。
+- 迁移执行在 `maintenance_window` 内完成，与 restore / 普通 backup 共用同一维护互斥。
 
 ## 理由
 
 - 轻量级，适合 SQLite 单文件数据库。
 - 自动备份降低迁移失败风险。
 - 顺序执行确保迁移的可预测性。
+- “缺整表可补、复杂残缺 fail-fast”可以兼顾历史兼容性与数据安全，避免把复杂残缺库悄悄卡在旧版本反复重试。
 
 ## 被拒绝的替代方案
 
@@ -32,3 +41,4 @@
 - 每次 schema 变更必须创建新的迁移脚本（递增版本号）。
 - `schema.sql` 保持为"当前最新版本"的完整定义。
 - 迁移脚本必须幂等或有版本检查，避免重复执行。
+- 新增迁移时必须明确该版本在 `APPLIED/SKIPPED/PARTIAL` 三种 outcome 下的语义，并补对应回归测试。
