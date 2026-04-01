@@ -71,12 +71,15 @@ def main():
     ]
     assert backup_files, f"未找到迁移前备份文件（dir={fallback_backups}）"
 
-    # 4) 附加校验：SchemaVersion 应提升到当前版本（确保确实完成迁移路径）
+    # 4) 附加校验：缺整表会被先补齐，再继续迁移到当前版本
     conn = get_connection(test_db)
     try:
+        row_cols = conn.execute("PRAGMA table_info(OperatorMachine)").fetchall()
+        cols = {r["name"] if isinstance(r, sqlite3.Row) else r[1] for r in row_cols}
+        assert {"skill_level", "is_primary"} <= cols, f"预期 OperatorMachine 已补齐关键列，实际 {cols}"
         row = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
         v = int(row["version"] if isinstance(row, sqlite3.Row) else row[0])
-        assert v >= CURRENT_SCHEMA_VERSION, f"预期 SchemaVersion>={CURRENT_SCHEMA_VERSION}，实际 {v}"
+        assert v >= CURRENT_SCHEMA_VERSION, f"预期 SchemaVersion 升到当前版本，实际 {v}"
     finally:
         try:
             conn.close()

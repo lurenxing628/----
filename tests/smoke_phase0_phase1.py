@@ -1,9 +1,13 @@
+import html as html_module
 import io
 import json
 import os
+import re
 import tempfile
 import time
 import traceback
+
+from excel_preview_confirm_helpers import require_preview_baseline
 
 
 def find_repo_root():
@@ -107,7 +111,7 @@ def main():
     finally:
         conn.close()
 
-    # 1.1) 迁移机制验证（构造“旧库”缺列场景，确认：迁移前备份 + 缺列补齐 + SchemaVersion 升级）
+    # 1.1) 迁移机制验证（构造“旧库”缺列场景，确认：迁移前备份 + 缺列补齐 + partial 不误升版）
     lines.append("")
     lines.append("## 1.1 Schema 迁移机制（缺列补齐 + 迁移前备份）")
 
@@ -148,7 +152,7 @@ def main():
     finally:
         conn0.close()
 
-    # 对旧库执行 ensure_schema（应触发：SchemaVersion=0 -> 迁移到当前版本，并生成 before_migrate 备份）
+    # 对旧库执行 ensure_schema（应先补缺整表，再完成迁移，不再静默卡在 v0）
     ensure_schema(old_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=migrate_backups)
 
     expected_suffix = f"before_migrate_v0_to_v{CURRENT_SCHEMA_VERSION}"
@@ -169,7 +173,7 @@ def main():
         v = int(row[0]) if row else 0
         lines.append(f"- 旧库迁移后 SchemaVersion.version：{v}")
         if v < CURRENT_SCHEMA_VERSION:
-            raise RuntimeError(f"旧库迁移后 SchemaVersion.version 异常：{v}（期望 >= {CURRENT_SCHEMA_VERSION}）")
+            raise RuntimeError(f"旧库迁移后 SchemaVersion.version 异常：{v}（预期 >= {CURRENT_SCHEMA_VERSION}）")
     finally:
         conn1.close()
 
@@ -299,8 +303,6 @@ def main():
     # 端到端：上传 → 预览 → 确认导入（验证 Operators + OperationLogs）
     lines.append("")
     lines.append("### 4.1 端到端：上传→预览→确认导入")
-    import html as html_module
-    import re
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -332,6 +334,7 @@ def main():
     if not m:
         raise RuntimeError("未能从预览页面提取 raw_rows_json（确认导入需要该字段）")
     raw_rows_json = html_module.unescape(m.group(1)).strip()
+    preview_baseline = require_preview_baseline(html, "excel-demo")
 
     resp2 = client.post(
         "/excel-demo/confirm",
@@ -339,6 +342,7 @@ def main():
             "mode": "overwrite",
             "filename": "e2e.xlsx",
             "raw_rows_json": raw_rows_json,
+            "preview_baseline": preview_baseline,
         },
         follow_redirects=True,
     )

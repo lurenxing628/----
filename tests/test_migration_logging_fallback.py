@@ -13,6 +13,7 @@ from core.infrastructure.migrations.v2 import run as run_v2
 from core.infrastructure.migrations.v3 import run as run_v3
 from core.infrastructure.migrations.v4 import run as run_v4
 from core.infrastructure.migrations.v5 import run as run_v5
+from core.infrastructure.migrations.v6 import run as run_v6
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCHEMA_PATH = os.path.join(REPO_ROOT, "schema.sql")
@@ -198,3 +199,33 @@ def test_ensure_schema_migration_entry_path_survives_broken_logger(capsys: pytes
 
         stderr = capsys.readouterr().err
         assert "数据库已备份" in stderr or "数据库迁移完成" in stderr, stderr
+
+
+def test_v6_run_falls_back_to_stderr_when_logger_is_broken(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.executescript(
+            """
+            CREATE TABLE Operators (
+                operator_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL
+            );
+            CREATE TABLE Machines (
+                machine_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL
+            );
+            """
+        )
+        conn.commit()
+
+        logger = _BrokenLogger()
+        run_v6(conn, logger=logger)
+
+        stderr = capsys.readouterr().err
+        assert logger.calls, "预期 broken logger 至少被调用一次"
+        assert "数据库迁移 v6：已为 Operators.team_id 补列。" in stderr, stderr
+    finally:
+        conn.close()
