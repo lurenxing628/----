@@ -10,7 +10,7 @@
   },
   "counts": {
     "strict_method_count": 68,
-    "strict_implementation_count_total": 178,
+    "strict_implementation_count_total": 179,
     "representative_implementation_sample_count": 25
   },
   "acceptance_readiness": {
@@ -757,7 +757,7 @@
     },
     {
       "inventory_id": "CFM-029",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/algorithms/dispatch_rules.py",
       "function": "build_dispatch_key",
@@ -783,7 +783,7 @@
     },
     {
       "inventory_id": "CFM-030",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/algorithms/ortools_bottleneck.py",
       "function": "try_solve_bottleneck_batch_order",
@@ -809,7 +809,7 @@
     },
     {
       "inventory_id": "CFM-031",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/algorithms/greedy/schedule_params.py",
       "function": "resolve_schedule_params",
@@ -835,7 +835,7 @@
     },
     {
       "inventory_id": "CFM-032",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/algorithms/greedy/seed.py",
       "function": "normalize_seed_results",
@@ -861,7 +861,7 @@
     },
     {
       "inventory_id": "CFM-033",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/algorithms/greedy/auto_assign.py",
       "function": "auto_assign_internal_resources",
@@ -887,7 +887,7 @@
     },
     {
       "inventory_id": "CFM-034",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/algorithms/greedy/scheduler.py",
       "function": "GreedyScheduler.schedule",
@@ -913,7 +913,7 @@
     },
     {
       "inventory_id": "CFM-035",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/algorithms/greedy/dispatch/sgs.py",
       "function": "dispatch_sgs",
@@ -939,7 +939,7 @@
     },
     {
       "inventory_id": "CFM-036",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/services/scheduler/schedule_optimizer_steps.py",
       "function": "_run_ortools_warmstart",
@@ -965,7 +965,7 @@
     },
     {
       "inventory_id": "CFM-037",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/services/scheduler/schedule_optimizer.py",
       "function": "optimize_schedule",
@@ -974,11 +974,11 @@
         "start": 225,
         "end": 539
       },
-      "implementation_count": 4,
+      "implementation_count": 5,
       "primary_visibility": "弱可观测",
       "risk_level": "中",
       "remediation_priority": "P2",
-      "typical_fallback_behavior": "坏 seed_results 会被忽略；best=None 时回退单次 schedule()",
+      "typical_fallback_behavior": "坏 seed_results 会被忽略；best=None 时回退单次 schedule()；float(...or 0.4/0.5) 会把 falsy 权重收敛为默认值",
       "scope": "algorithm_runtime",
       "intent": "runtime_degradation_risk",
       "acceptance_status": "pending",
@@ -991,7 +991,7 @@
     },
     {
       "inventory_id": "CFM-038",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/services/scheduler/schedule_service.py",
       "function": "ScheduleService._run_schedule_impl",
@@ -1017,7 +1017,7 @@
     },
     {
       "inventory_id": "CFM-039",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/services/scheduler/resource_pool_builder.py",
       "function": "load_machine_downtimes",
@@ -1043,7 +1043,7 @@
     },
     {
       "inventory_id": "CFM-040",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/services/scheduler/resource_pool_builder.py",
       "function": "build_resource_pool",
@@ -1069,7 +1069,7 @@
     },
     {
       "inventory_id": "CFM-041",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/services/scheduler/resource_pool_builder.py",
       "function": "extend_downtime_map_for_resource_pool",
@@ -1095,7 +1095,7 @@
     },
     {
       "inventory_id": "CFM-042",
-      "source_report_section": "4.2 算法调度族（14 个方法 / 69 个实现点）",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
       "family": "算法调度族",
       "file": "core/services/scheduler/freeze_window.py",
       "function": "_safe_load_schedule_map",

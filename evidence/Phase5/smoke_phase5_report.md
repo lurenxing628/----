@@ -1,12 +1,12 @@
 # Phase5（工艺管理模块）冒烟测试报告
 
-- 测试时间：2026-03-16 15:43:23
+- 测试时间：2026-04-02 16:54:39
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_martetfp`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_martetfp\aps_phase5_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_k8ngsv_q`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase5_k8ngsv_q\aps_phase5_test.db`
 
 ## 1. Schema 检查（Phase5 相关表）
 - 是否存在 OpTypes：True
@@ -16,7 +16,7 @@
 - 是否存在 ExternalGroups：True
 
 ## 2. 工艺路线解析器：预处理/识别/连续外部组
-- 解析状态：success
+- 解析状态：partial
 - 统计：{'total': 6, 'internal': 3, 'external': 3, 'unknown': 0}
 - 连续外部组数量：1（期望 1）
 - 分隔符兼容（->/>/→）解析状态：success
@@ -31,10 +31,10 @@
 - 重复工序号 operations：[(5, '数铣'), (10, '数车')]
 - 未识别工种解析状态：partial
 - 未识别工种统计：{'total': 2, 'internal': 1, 'external': 1, 'unknown': 1}
-- 未识别工种 warnings：['工种“未知工种”未在系统中配置，已默认标记为外部工序']
+- 未识别工种 warnings：['工种“未知工种”未在系统中配置，已默认标记为外部工序', '工种“未知工种”未找到供应商配置，已按默认 1.0 天初始化外协周期']
 
 ## 3. 零件模板保存：解析后写 PartOperations + ExternalGroups
-- 保存后解析状态：success
+- 保存后解析状态：partial
 - 工序数量：6（期望 6）
 - 外部组数量：1（期望 1）
 - 外部组ID：A1234_EXT_1
@@ -61,4 +61,4 @@
 
 ## 结论
 - 通过：Phase5（工艺管理模块）冒烟测试通过（解析器/边界用例/模板保存/合并周期/删除规则）。
-- 总耗时：1265 ms
+- 总耗时：1057 ms

@@ -35,7 +35,7 @@ CFM-033,算法调度族,core/algorithms/greedy/auto_assign.py,auto_assign_intern
 CFM-034,算法调度族,core/algorithms/greedy/scheduler.py,GreedyScheduler.schedule,53-373,53,373,8,弱可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,脏 batch_id/seq/ready_date/seed 都走防御式回退，不让排产直接崩
 CFM-035,算法调度族,core/algorithms/greedy/dispatch/sgs.py,dispatch_sgs,32-442,32,442,15,弱可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,评分、资源估算、工时、效率大量退化为“惩罚 key / 最差可比较 key”
 CFM-036,算法调度族,core/services/scheduler/schedule_optimizer_steps.py,_run_ortools_warmstart,20-138,20,138,1,显式可观测,中,P2,algorithm_runtime,runtime_degradation_risk,pending,OR-Tools 高质量起点失败只记 warning，不阻断优化流程
-CFM-037,算法调度族,core/services/scheduler/schedule_optimizer.py,optimize_schedule,225-539,225,539,4,弱可观测,中,P2,algorithm_runtime,runtime_degradation_risk,pending,坏 seed_results 会被忽略；best=None 时回退单次 schedule()
+CFM-037,算法调度族,core/services/scheduler/schedule_optimizer.py,optimize_schedule,225-539,225,539,5,弱可观测,中,P2,algorithm_runtime,runtime_degradation_risk,pending,坏 seed_results 会被忽略；best=None 时回退单次 schedule()；float(...or 0.4/0.5) 会把 falsy 权重收敛为默认值
 CFM-038,算法调度族,core/services/scheduler/schedule_service.py,ScheduleService._run_schedule_impl,211-513,211,513,4,弱可观测,中,P2,algorithm_runtime,runtime_degradation_risk,pending,warnings 合并失败时改用替代 merge 或直接忽略
 CFM-039,算法调度族,core/services/scheduler/resource_pool_builder.py,load_machine_downtimes,102-160,102,160,1,显式可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,停机区间加载失败直接忽略停机约束
 CFM-040,算法调度族,core/services/scheduler/resource_pool_builder.py,build_resource_pool,163-218,163,218,1,显式可观测,高,P1,algorithm_runtime,runtime_degradation_risk,pending,资源池构建失败直接关闭 auto-assign
