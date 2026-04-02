@@ -7,6 +7,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models import Supplier
 from core.models.enums import SUPPLIER_STATUS_VALUES, SupplierStatus
 from core.services.common.normalize import normalize_text
+from core.services.common.safe_logging import safe_warning
 from data.repositories import OpTypeRepository, SupplierRepository
 
 
@@ -26,13 +27,25 @@ class SupplierService:
         return normalize_text(value)
 
     @staticmethod
-    def _normalize_float(value: Any, default: float = 0.0) -> float:
-        if value is None or (isinstance(value, str) and value.strip() == ""):
-            return float(default)
+    def _normalize_default_days(value: Any, *, allow_none: bool = False, default: float = 1.0) -> Tuple[Optional[float], Optional[str]]:
+        if value is None:
+            if allow_none:
+                return None, None
+            return float(default), None
+        if isinstance(value, str) and value.strip() == "":
+            return float(default), "blank"
         try:
-            return float(value)
+            return float(value), None
         except Exception:
-            return float(default)
+            return float(default), "invalid"
+
+    def _log_default_days_fallback(self, raw_value: Any, *, supplier_id: Any = None) -> None:
+        if not self.logger:
+            return
+        prefix = "供应商默认周期输入无效，已回退为 1.0 天"
+        if supplier_id is not None:
+            prefix = f"供应商“{supplier_id}”默认周期输入无效，已回退为 1.0 天"
+        safe_warning(self.logger, f"{prefix}：raw={raw_value!r}")
 
     def _resolve_op_type_id(self, value: Any) -> Optional[str]:
         """
@@ -63,7 +76,9 @@ class SupplierService:
         sstatus = self._normalize_text(status)
         if sstatus is not None:
             sstatus = sstatus.lower()
-        sdays = None if default_days is None and allow_partial else self._normalize_float(default_days, default=1.0)
+        sdays, default_days_fallback = self._normalize_default_days(default_days, allow_none=allow_partial, default=1.0)
+        if default_days_fallback is not None:
+            self._log_default_days_fallback(default_days, supplier_id=supplier_id)
 
         if not allow_partial:
             if not sid:
@@ -123,6 +138,8 @@ class SupplierService:
         remark: Any = None,
     ) -> Supplier:
         sid, sname, sdays, sstatus = self._validate_fields(supplier_id, name, default_days, status)
+        if not sid:
+            raise ValidationError("“供应商ID”不能为空", field="供应商ID")
         op_type_id = self._resolve_op_type_id(op_type_value) if op_type_value is not None else None
         sremark = self._normalize_text(remark)
 
@@ -135,7 +152,7 @@ class SupplierService:
                     "supplier_id": sid,
                     "name": sname,
                     "op_type_id": op_type_id,
-                    "default_days": float(sdays or 1.0),
+                    "default_days": float(sdays if sdays is not None else 1.0),
                     "status": sstatus or SupplierStatus.ACTIVE.value,
                     "remark": sremark,
                 }
@@ -164,7 +181,7 @@ class SupplierService:
         if status is not None:
             updates["status"] = sstatus
         if default_days is not None:
-            updates["default_days"] = float(sdays or 1.0)
+            updates["default_days"] = float(sdays if sdays is not None else 1.0)
         if op_type_value is not None:
             # 允许显式清空：传空字符串/None
             updates["op_type_id"] = self._resolve_op_type_id(op_type_value)

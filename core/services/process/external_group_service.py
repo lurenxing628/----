@@ -7,6 +7,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models import ExternalGroup, PartOperation
 from core.models.enums import MERGE_MODE_VALUES, MergeMode, SourceType
 from core.services.common.normalize import normalize_text
+from core.services.common.safe_logging import safe_warning
 from data.repositories import ExternalGroupRepository, PartOperationRepository
 
 
@@ -111,6 +112,7 @@ class ExternalGroupService:
         remark: Any,
         normalized_supplier_id: Optional[str],
         normalized_remark: Optional[str],
+        strict_mode: bool = False,
     ) -> None:
         self._update_group_common_fields(
             group_id,
@@ -126,10 +128,19 @@ class ExternalGroupService:
         for op in ops:
             d = per_op_days.get(int(op.seq))
             dv = self._normalize_float(d)
+            seq = int(op.seq)
             if dv is None or dv <= 0:
-                # 没填时给默认 1 天（避免写入 NULL 导致后续排产无法计算）
+                op_type_name = normalize_text(getattr(op, "op_type_name", None)) or f"seq={seq}"
+                if strict_mode:
+                    raise ValidationError(
+                        f"外部工序 {seq}（{op_type_name}）周期必须大于 0；strict_mode 已拒绝按 1.0 天回退",
+                        field=f"ext_days_{seq}",
+                    )
+                safe_warning(
+                    self.logger, f"外部工序 {seq}（{op_type_name}）周期输入无效（raw={d!r}），compatible mode 已按 1.0 天回退写入 ext_days"
+                )
                 dv = 1.0
-            self.op_repo.update(part_no, int(op.seq), {"ext_days": float(dv)})
+            self.op_repo.update(part_no, seq, {"ext_days": float(dv)})
 
     def set_merge_mode(
         self,
@@ -139,6 +150,7 @@ class ExternalGroupService:
         per_op_days: Optional[Dict[int, Any]] = None,
         supplier_id: Any = None,
         remark: Any = None,
+        strict_mode: bool = False,
     ) -> ExternalGroup:
         """
         设置外部组周期模式：
@@ -183,6 +195,7 @@ class ExternalGroupService:
                     remark=remark,
                     normalized_supplier_id=sup_id,
                     normalized_remark=rmk,
+                    strict_mode=bool(strict_mode),
                 )
 
         return self._get_group_or_raise(gid)
