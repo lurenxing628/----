@@ -18,7 +18,7 @@ from core.models.enums import (
 from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
 from core.services.common.enum_normalizers import normalize_yesno_narrow
 from core.services.common.normalize import is_blank_value, to_str_or_blank
-from core.services.scheduler.number_utils import parse_finite_int
+from core.services.common.number_utils import parse_finite_float, parse_finite_int
 from data.repositories import OperatorRepository, PartRepository
 
 
@@ -115,7 +115,7 @@ def get_batch_row_validate_and_normalize(
             return "“数量”不能为空"
         try:
             q = parse_finite_int(qty, field="数量", allow_none=False)
-            if q <= 0:
+            if q is None or q <= 0:
                 return "“数量”必须大于 0"
             target["数量"] = q
         except ValidationError as e:
@@ -151,7 +151,10 @@ def get_operator_calendar_row_validate_and_normalize(
     inplace: bool = True,
 ) -> Callable[[dict], str | None]:
     repo = op_repo if op_repo is not None else OperatorRepository(conn)
-    hde = float(holiday_default_efficiency) if float(holiday_default_efficiency) > 0 else 0.8
+    parsed_hde = parse_finite_float(holiday_default_efficiency, field="假期默认效率", allow_none=False)
+    hde = float(parsed_hde if parsed_hde is not None else 0.0)
+    if hde <= 0:
+        raise ValidationError("假期默认效率必须大于 0。", field="假期默认效率")
 
     def _validate_and_normalize(row: dict) -> str | None:
         target = row if inplace else dict(row)

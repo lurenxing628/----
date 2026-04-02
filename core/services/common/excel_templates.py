@@ -21,6 +21,27 @@ from core.models.enums import (
 )
 
 
+def _close_workbook_quietly(wb: Any) -> None:
+    try:
+        wb.close()
+    except Exception:
+        return
+
+
+def _active_sheet_or_none(wb: Any) -> Any:
+    try:
+        return wb.active
+    except Exception:
+        return None
+
+
+def _require_active_sheet(wb: Any) -> Any:
+    ws = _active_sheet_or_none(wb)
+    if ws is None:
+        raise ValueError("Workbook 缺少活动工作表")
+    return ws
+
+
 def _sanitize_export_cell(value: Any) -> Any:
     if isinstance(value, str) and value and value[0] in ("=", "+", "-", "@"):
         return "'" + value
@@ -107,7 +128,7 @@ def build_xlsx_bytes(
 ) -> io.BytesIO:
     wb = openpyxl.Workbook()
     try:
-        ws = wb.active
+        ws = _require_active_sheet(wb)
         ws.title = sheet_title
         ws.append(list(headers))
         for r in rows:
@@ -119,10 +140,7 @@ def build_xlsx_bytes(
         output.seek(0)
         return output
     finally:
-        try:
-            wb.close()
-        except Exception:
-            pass
+        _close_workbook_quietly(wb)
 
 
 def _write_xlsx(
@@ -144,7 +162,9 @@ def _read_xlsx_headers(path: str) -> List[str]:
     except Exception:
         return []
     try:
-        ws = wb.active
+        ws = _active_sheet_or_none(wb)
+        if ws is None:
+            return []
         first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
         if not first_row:
             return []
@@ -152,10 +172,7 @@ def _read_xlsx_headers(path: str) -> List[str]:
     except Exception:
         return []
     finally:
-        try:
-            wb.close()
-        except Exception:
-            pass
+        _close_workbook_quietly(wb)
 
 
 def get_template_definition(filename: str) -> Dict[str, Any]:

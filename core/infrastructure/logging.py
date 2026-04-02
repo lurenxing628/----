@@ -4,9 +4,17 @@ import json
 import logging
 import logging.handlers
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from core.infrastructure.transaction import in_transaction_context
+
+
+def _invoke_safely(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> bool:
+    try:
+        fn(*args, **kwargs)
+        return True
+    except Exception:
+        return False
 
 
 class AppLogger:
@@ -49,21 +57,20 @@ class AppLogger:
         if not handlers:
             return True
         expected_log, expected_error_log = self._expected_log_files()
-        existing_files = {
-            os.path.abspath(str(handler.baseFilename or ""))
-            for handler in handlers
-            if getattr(handler, "baseFilename", None)
-        }
+        existing_files = set()
+        for handler in handlers:
+            if not isinstance(handler, logging.FileHandler):
+                continue
+            base_filename = handler.baseFilename
+            if base_filename:
+                existing_files.add(os.path.abspath(str(base_filename)))
         has_console = any(isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler) for handler in handlers)
         return (not has_console) or expected_log not in existing_files or expected_error_log not in existing_files
 
     def _reset_handlers(self) -> None:
         for handler in list(self.logger.handlers):
             self.logger.removeHandler(handler)
-            try:
-                handler.close()
-            except Exception:
-                pass
+            _invoke_safely(handler.close)
 
     def _add_console_handler(self):
         handler = logging.StreamHandler()
@@ -117,7 +124,7 @@ class AppLogger:
 class OperationLogger:
     """操作日志记录器（写入数据库 OperationLogs 表）。"""
 
-    def __init__(self, db_connection, logger: logging.Logger = None):
+    def __init__(self, db_connection: Any, logger: Optional[logging.Logger] = None):
         self.conn = db_connection
         self.logger = logger or logging.getLogger(__name__)
 
@@ -126,12 +133,12 @@ class OperationLogger:
         level: str,
         module: str,
         action: str,
-        target_type: str = None,
-        target_id: str = None,
-        operator: str = None,
-        detail: Dict[str, Any] = None,
-        error_code: str = None,
-        error_message: str = None,
+        target_type: Optional[str] = None,
+        target_id: Optional[str] = None,
+        operator: Optional[str] = None,
+        detail: Optional[Dict[str, Any]] = None,
+        error_code: Optional[str] = None,
+        error_message: Optional[str] = None,
         raise_on_fail: bool = False,
     ) -> bool:
         auto_commit = False
@@ -176,15 +183,9 @@ class OperationLogger:
         except Exception as e:
             # 若我们决定自动提交，则异常路径也要尽量结束事务，避免悬挂
             if auto_commit:
-                try:
-                    self.conn.rollback()
-                except Exception:
-                    pass
+                _invoke_safely(self.conn.rollback)
             # 记录失败时写文件日志，避免影响主流程
-            try:
-                self.logger.error(f"写入操作日志失败：{e}")
-            except Exception:
-                pass
+            _invoke_safely(self.logger.error, f"写入操作日志失败：{e}")
             if raise_on_fail:
                 raise
             return False
@@ -192,20 +193,13 @@ class OperationLogger:
     def info(self, module: str, action: str, **kwargs) -> bool:
         ok = self.log("INFO", module, action, **kwargs)
         if ok:
-            try:
-                # 控制台/文件日志也记录一条简要信息（中文）
-                self.logger.info(f"[{module}] 操作：{action}（{kwargs.get('target_type') or ''} {kwargs.get('target_id') or ''}）")
-            except Exception:
-                pass
+            _invoke_safely(self.logger.info, f"[{module}] 操作：{action}（{kwargs.get('target_type') or ''} {kwargs.get('target_id') or ''}）")
         return bool(ok)
 
     def warn(self, module: str, action: str, **kwargs) -> bool:
         ok = self.log("WARN", module, action, **kwargs)
         if ok:
-            try:
-                self.logger.warning(f"[{module}] 警告：{action}（{kwargs}）")
-            except Exception:
-                pass
+            _invoke_safely(self.logger.warning, f"[{module}] 警告：{action}（{kwargs}）")
         return bool(ok)
 
     def error(self, module: str, action: str, error_code: str, error_message: str, **kwargs) -> bool:
@@ -218,9 +212,6 @@ class OperationLogger:
             **kwargs,
         )
         if ok:
-            try:
-                self.logger.error(f"[{module}] 失败：{action}（[{error_code}] {error_message}）")
-            except Exception:
-                pass
+            _invoke_safely(self.logger.error, f"[{module}] 失败：{action}（[{error_code}] {error_message}）")
         return bool(ok)
 

@@ -102,7 +102,10 @@ class AppError(Exception):
 
 
 class ValidationError(AppError):
-    def __init__(self, message: str, field: str = None, **kwargs):
+    field: Optional[str]
+
+    def __init__(self, message: str, field: Optional[str] = None, **kwargs):
+        self.field = field
         details = {"field": field} if field else None
         super().__init__(code=ErrorCode.VALIDATION_ERROR, message=message, details=details, **kwargs)
 
