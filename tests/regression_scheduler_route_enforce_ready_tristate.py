@@ -24,6 +24,7 @@ def _invoke_scheduler_run(form_data: Dict[str, Any]):
 
         def run_schedule(self, **kwargs):
             captured["enforce_ready"] = kwargs.get("enforce_ready")
+            captured["strict_mode"] = kwargs.get("strict_mode")
             return {
                 "version": 1,
                 "summary": {"scheduled_ops": 1, "total_ops": 1, "failed_ops": 0, "warnings": [], "errors": []},
@@ -42,7 +43,7 @@ def _invoke_scheduler_run(form_data: Dict[str, Any]):
             g.op_logger = None
             resp = route_mod.run_schedule()
         assert getattr(resp, "status_code", 0) in (301, 302), "run_schedule 应返回 redirect"
-        return captured.get("enforce_ready")
+        return dict(captured)
     finally:
         route_mod.ScheduleService = old_svc
         route_mod.url_for = old_url_for
@@ -59,6 +60,7 @@ def _invoke_scheduler_simulate(form_data: Dict[str, Any]):
 
         def run_schedule(self, **kwargs):
             captured["enforce_ready"] = kwargs.get("enforce_ready")
+            captured["strict_mode"] = kwargs.get("strict_mode")
             return {"version": 1, "summary": {"warnings": []}}
 
     old_svc = route_mod.ScheduleService
@@ -74,7 +76,7 @@ def _invoke_scheduler_simulate(form_data: Dict[str, Any]):
             g.op_logger = None
             resp = route_mod.simulate_schedule()
         assert getattr(resp, "status_code", 0) in (301, 302), "simulate_schedule 应返回 redirect"
-        return captured.get("enforce_ready")
+        return dict(captured)
     finally:
         route_mod.ScheduleService = old_svc
         route_mod.url_for = old_url_for
@@ -86,14 +88,36 @@ def main() -> None:
         sys.path.insert(0, repo_root)
 
     # /scheduler/run
-    assert _invoke_scheduler_run({"batch_ids": ["B001"]}) is None, "未传 enforce_ready 时应传递 None"
-    assert _invoke_scheduler_run({"batch_ids": ["B001"], "enforce_ready": "on"}) is True, "勾选时应传递 True"
-    assert _invoke_scheduler_run({"batch_ids": ["B001"], "enforce_ready": "false"}) is False, "显式 false 应传递 False"
+    run_default = _invoke_scheduler_run({"batch_ids": ["B001"]})
+    assert run_default.get("enforce_ready") is None, f"未传 enforce_ready 时应传递 None：{run_default!r}"
+    assert run_default.get("strict_mode") is False, f"未传 strict_mode 时应传递 False：{run_default!r}"
+
+    run_true = _invoke_scheduler_run({"batch_ids": ["B001"], "enforce_ready": "on", "strict_mode": "yes"})
+    assert run_true.get("enforce_ready") is True, f"勾选 enforce_ready 时应传递 True：{run_true!r}"
+    assert run_true.get("strict_mode") is True, f"勾选 strict_mode 时应传递 True：{run_true!r}"
+
+    run_false = _invoke_scheduler_run({"batch_ids": ["B001"], "enforce_ready": "false", "strict_mode": "no"})
+    assert run_false.get("enforce_ready") is False, f"显式 false 应传递 False：{run_false!r}"
+    assert run_false.get("strict_mode") is False, f"显式 no 应传递 False：{run_false!r}"
 
     # /scheduler/simulate
-    assert _invoke_scheduler_simulate({"batch_ids": ["B001"]}) is None, "simulate 未传 enforce_ready 时应传递 None"
-    assert _invoke_scheduler_simulate({"batch_ids": ["B001"], "enforce_ready": "1"}) is True, "simulate 勾选时应传递 True"
-    assert _invoke_scheduler_simulate({"batch_ids": ["B001"], "enforce_ready": "no"}) is False, "simulate 显式 no 应传递 False"
+    sim_default = _invoke_scheduler_simulate({"batch_ids": ["B001"]})
+    assert sim_default.get("enforce_ready") is None, f"simulate 未传 enforce_ready 时应传递 None：{sim_default!r}"
+    assert sim_default.get("strict_mode") is False, f"simulate 未传 strict_mode 时应传递 False：{sim_default!r}"
+
+    sim_true = _invoke_scheduler_simulate({"batch_ids": ["B001"], "enforce_ready": "1", "strict_mode": "on"})
+    assert sim_true.get("enforce_ready") is True, f"simulate 勾选 enforce_ready 时应传递 True：{sim_true!r}"
+    assert sim_true.get("strict_mode") is True, f"simulate 勾选 strict_mode 时应传递 True：{sim_true!r}"
+
+    sim_false = _invoke_scheduler_simulate({"batch_ids": ["B001"], "enforce_ready": "no", "strict_mode": "false"})
+    assert sim_false.get("enforce_ready") is False, f"simulate 显式 no 应传递 False：{sim_false!r}"
+    assert sim_false.get("strict_mode") is False, f"simulate 显式 false 应传递 False：{sim_false!r}"
+
+    tpl_path = os.path.join(repo_root, "templates", "scheduler", "batches.html")
+    with open(tpl_path, "r", encoding="utf-8") as f:
+        tpl = f.read()
+    assert 'name="strict_mode"' in tpl, "batches.html 缺少 strict_mode 入口"
+    assert "严格调度参数校验" in tpl, "batches.html 缺少 strict_mode 文案"
 
     print("OK")
 

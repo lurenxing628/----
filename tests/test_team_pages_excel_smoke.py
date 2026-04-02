@@ -20,8 +20,13 @@ def _xlsx_headers(content: bytes) -> List[str]:
     import openpyxl
 
     wb = openpyxl.load_workbook(io.BytesIO(content))
-    ws = wb.active
-    return [str(ws.cell(1, idx).value or "").strip() for idx in range(1, ws.max_column + 1)]
+    try:
+        ws = wb.active
+        if ws is None:
+            return []
+        return [str(ws.cell(1, idx).value or "").strip() for idx in range(1, ws.max_column + 1)]
+    finally:
+        wb.close()
 
 
 def test_team_pages_and_excel_routes_show_team_columns_and_headers(tmp_path, monkeypatch) -> None:

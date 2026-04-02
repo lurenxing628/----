@@ -141,6 +141,7 @@ def main() -> None:
             reschedulable_op_ids={2},
             normalized_batch_ids=["B_MIX", "B_ZERO"],
             created_by="regression",
+            has_actionable_schedule=True,
             simulate=False,
             frozen_op_ids=set(),
             result_status="success",

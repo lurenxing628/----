@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import tempfile
+from typing import Any, Dict
 
 
 def _find_repo_root() -> str:
@@ -35,7 +36,7 @@ def main() -> None:
 
     app = create_app()
 
-    ctx = dict(
+    ctx: Dict[str, Any] = dict(
         title="regression",
         ui_mode="v1",
         batch={
@@ -77,7 +78,7 @@ def main() -> None:
 
     with app.test_request_context("/scheduler/batches/B_TEST?lazy_select=1"):
         html = render_template("scheduler/batch_detail.html", **ctx)
-        ctx_null = dict(ctx)
+        ctx_null: Dict[str, Any] = dict(ctx)
         ctx_null["operator_machines"] = None
         html_null = render_template("scheduler/batch_detail.html", **ctx_null)
 
@@ -88,12 +89,13 @@ def main() -> None:
     assert "（已删除）" in html, "缺少已删除回退占位项"
 
     # 链接脚本注入契约
+    assert 'id="batch-detail-linkage-data"' in html, "缺少 linkage JSON 注入节点"
     assert "window.__APS_BATCH_DETAIL_LINKAGE__" in html, "缺少 linkage 配置注入"
     assert "machineOperators" in html and "operatorMachines" in html, "缺少 linkage 双向映射注入"
     assert "lazySelectEnabled" in html, "缺少 lazySelectEnabled 注入"
 
     # 契约：允许 operatorMachines 为 null（由 machineOperators 反推）
-    assert re.search(r"operatorMachines\s*:\s*null\b", html_null), "operatorMachines=None 时应注入为 null"
+    assert re.search(r'"operatorMachines"\s*:\s*null\b', html_null), "operatorMachines=None 时应以 JSON null 注入"
 
     # JS 契约：核心函数与关键分支存在（仅验证语义钩子）
     js_path = os.path.join(repo_root, "static", "js", "batch_detail_linkage.js")

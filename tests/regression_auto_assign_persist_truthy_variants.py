@@ -72,8 +72,8 @@ def main() -> None:
         # 4) 注入 cfg.auto_assign_persist='1'（truthy 变体），验证不会被当成 False
         orig_get_snapshot = _ConfigService.get_snapshot
 
-        def _patched_get_snapshot(self):
-            snap = orig_get_snapshot(self)
+        def _patched_get_snapshot(self, *args, **kwargs):
+            snap = orig_get_snapshot(self, *args, **kwargs)
             setattr(snap, "auto_assign_persist", "1")
             return snap
 

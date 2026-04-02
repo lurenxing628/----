@@ -338,6 +338,10 @@ def main() -> None:
         "degraded": True,
         "degradation_reason": "mock-fail",
         "extend_attempted": True,
+        "load_partial_fail_count": 0,
+        "load_partial_fail_machines_sample": [],
+        "extend_partial_fail_count": 0,
+        "extend_partial_fail_machines_sample": [],
     }, f"dict cfg downtime_avoid 摘要错误：{dict_algo.get('downtime_avoid')!r}"
     assert dict_algo.get("config_snapshot", {}).get("freeze_window_enabled") == "yes", "config_snapshot 未保留 dict cfg freeze_window_enabled"
     assert dict_algo.get("config_snapshot", {}).get("freeze_window_days") == 3, "config_snapshot 未保留 dict cfg freeze_window_days"
