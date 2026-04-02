@@ -77,7 +77,7 @@ def snapshot_close(a: ScheduleConfigSnapshot, b: ScheduleConfigSnapshot) -> bool
     return all(checks)
 
 
-def get_snapshot_from_repo(svc: Any) -> ScheduleConfigSnapshot:
+def get_snapshot_from_repo(svc: Any, *, strict_mode: bool = False) -> ScheduleConfigSnapshot:
     """
     从 repo 读取 snapshot（不调用 ensure_defaults；避免递归）。
     - 缺键时使用默认值
@@ -109,6 +109,7 @@ def get_snapshot_from_repo(svc: Any) -> ScheduleConfigSnapshot:
         valid_dispatch_rules=svc.VALID_DISPATCH_RULES,
         valid_algo_modes=svc.VALID_ALGO_MODES,
         valid_objectives=svc.VALID_OBJECTIVES,
+        strict_mode=bool(strict_mode),
     )
 
 

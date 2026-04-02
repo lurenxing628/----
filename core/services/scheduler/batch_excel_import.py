@@ -14,6 +14,7 @@ def import_batches_from_preview_rows(
     mode: ImportMode,
     parts_cache: Dict[str, Any],
     auto_generate_ops: bool = False,
+    strict_mode: bool = False,
     existing_ids: Optional[Set[str]] = None,
 ) -> Dict[str, Any]:
     """
@@ -86,6 +87,7 @@ def import_batches_from_preview_rows(
                 ready_date=svc._normalize_date(ready_date),
                 remark=(str(remark).strip() if remark is not None and str(remark).strip() else None),
                 rebuild_ops=True,
+                strict_mode=bool(strict_mode),
             )
 
     stats = execute_preview_rows_transactional(

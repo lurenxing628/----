@@ -261,8 +261,8 @@ class ConfigService:
     def _ensure_builtin_presets(self, existing_keys: Optional[set] = None) -> None:
         preset_ops.ensure_builtin_presets(self, existing_keys=existing_keys)
 
-    def _get_snapshot_from_repo(self) -> ScheduleConfigSnapshot:
-        return preset_ops.get_snapshot_from_repo(self)
+    def _get_snapshot_from_repo(self, *, strict_mode: bool = False) -> ScheduleConfigSnapshot:
+        return preset_ops.get_snapshot_from_repo(self, strict_mode=bool(strict_mode))
 
     def get_active_preset(self) -> Optional[str]:
         self.ensure_defaults()
@@ -313,15 +313,26 @@ class ConfigService:
         self.ensure_defaults()
         return self.repo.get_value(str(config_key), default=str(default) if default is not None else None)
 
+    def get_holiday_default_efficiency(self) -> float:
+        raw = self.get(
+            "holiday_default_efficiency",
+            default=self.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY,
+        )
+        value = parse_finite_float(raw, field="假期工作效率", allow_none=False)
+        v = float(value if value is not None else 0.0)
+        if v <= 0:
+            raise ValidationError("假期工作效率必须大于 0。", field="假期工作效率")
+        return float(v)
+
     # -------------------------
     # 查询
     # -------------------------
     def get_available_strategies(self) -> List[Dict[str, str]]:
         return [{"key": k, "name": self.STRATEGY_NAME_ZH.get(k, k)} for k in self.VALID_STRATEGIES]
 
-    def get_snapshot(self) -> ScheduleConfigSnapshot:
+    def get_snapshot(self, *, strict_mode: bool = False) -> ScheduleConfigSnapshot:
         self.ensure_defaults()
-        return self._get_snapshot_from_repo()
+        return self._get_snapshot_from_repo(strict_mode=bool(strict_mode))
 
     # -------------------------
     # 更新

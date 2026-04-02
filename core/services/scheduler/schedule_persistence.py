@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set
 
+from core.infrastructure.errors import ValidationError
 from core.models.enums import BatchOperationStatus, BatchStatus, SourceType, YesNo
 
 from .number_utils import to_yes_no
@@ -221,6 +222,7 @@ def persist_schedule(
     reschedulable_op_ids: Set[int],
     normalized_batch_ids: List[str],
     created_by: str,
+    has_actionable_schedule: bool,
     simulate: bool,
     frozen_op_ids: Set[int],
     result_status: str,
@@ -234,6 +236,9 @@ def persist_schedule(
     原子落库：Schedule + 状态更新 + ScheduleHistory
     事务后：OperationLogs（避免 logger 内部 commit 干扰原子性）
     """
+    if not has_actionable_schedule:
+        raise ValidationError("本次没有实际可执行排产任务，禁止写入排产历史。", field="排产")
+
     schedule_rows = _build_schedule_rows(
         svc,
         version=int(version),

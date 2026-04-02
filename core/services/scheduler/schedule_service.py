@@ -44,6 +44,19 @@ def _normalized_status_text(value: Any) -> str:
     return (normalize_text(value) or "").strip().lower()
 
 
+def _get_snapshot_with_optional_strict_mode(cfg_svc: Any, *, strict_mode: bool) -> Any:
+    try:
+        return cfg_svc.get_snapshot(strict_mode=bool(strict_mode))
+    except TypeError as exc:
+        message = str(exc)
+        if (
+            "strict_mode" in message
+            and ("unexpected keyword argument" in message or "got an unexpected keyword argument" in message)
+        ):
+            return cfg_svc.get_snapshot()
+        raise
+
+
 class ScheduleService:
     """
     排产服务（Phase 6：先做“非算法部分”）。
@@ -191,6 +204,7 @@ class ScheduleService:
         created_by: Optional[str] = None,
         simulate: bool = False,
         enforce_ready: Optional[bool] = None,
+        strict_mode: bool = False,
     ) -> Dict[str, Any]:
         if not _RUN_SCHEDULE_LOCK.acquire(blocking=False):
             raise ValidationError("系统正在执行排产，请稍后重试。", field="排产")
@@ -203,6 +217,7 @@ class ScheduleService:
                 created_by=created_by,
                 simulate=simulate,
                 enforce_ready=enforce_ready,
+                strict_mode=strict_mode,
             )
         finally:
             self._aps_schedule_input_cache = None
@@ -216,6 +231,7 @@ class ScheduleService:
         created_by: Optional[str] = None,
         simulate: bool = False,
         enforce_ready: Optional[bool] = None,
+        strict_mode: bool = False,
     ) -> Dict[str, Any]:
         """
         执行排产并落库（Schedule）+ 留痕（ScheduleHistory + OperationLogs）。
@@ -262,6 +278,7 @@ class ScheduleService:
             tomorrow = (datetime.now() + timedelta(days=1)).date()
             start_dt_norm = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 8, 0, 0)
         created_by_text = self._normalize_text(created_by) or "system"
+        run_label = "模拟排产" if simulate else "排产"
 
         end_date_norm = None
         if end_date is not None and str(end_date).strip() != "":
@@ -278,7 +295,7 @@ class ScheduleService:
 
         cal_svc = CalendarService(self.conn, logger=self.logger, op_logger=self.op_logger)
         cfg_svc = ConfigService(self.conn, logger=self.logger, op_logger=self.op_logger)
-        cfg = cfg_svc.get_snapshot()
+        cfg = _get_snapshot_with_optional_strict_mode(cfg_svc, strict_mode=bool(strict_mode))
         if enforce_ready is None:
             enforce_ready_effective = (
                 to_yes_no(getattr(cfg, "enforce_ready_default", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
@@ -305,10 +322,12 @@ class ScheduleService:
 
         reschedulable_operations = [op for op in operations if self._is_reschedulable_operation(op)]
         reschedulable_op_ids = {
-            int(op.id)
+            int(getattr(op, "id", 0) or 0)
             for op in reschedulable_operations
             if op and getattr(op, "id", None) and int(getattr(op, "id", 0) or 0) > 0
         }
+        if not reschedulable_operations:
+            raise ValidationError(f"所选批次没有可重排工序，本次未执行{run_label}。", field="排产")
 
         # 自动分配资源：记录哪些内部工序原本缺省 machine/operator（便于在“非模拟”时回写补全）
         missing_internal_resource_op_ids = {
@@ -338,11 +357,6 @@ class ScheduleService:
         latest = self.history_repo.get_latest_version()
         prev_version = int(latest or 0)
 
-        # 分配新版本号（数据库原子分配；避免并发下 MAX(version)+1 复用）
-        # 注意：只占用极短写事务，避免长时间锁库影响算法执行。
-        with self.tx_manager.transaction():
-            version = int(self.history_repo.allocate_next_version())
-
         # 冻结窗口（可选）
         frozen_op_ids, seed_results, algo_warnings = build_freeze_window_seed(
             self,
@@ -357,8 +371,13 @@ class ScheduleService:
         if algo_warnings is None:
             algo_warnings = []
 
+        algo_ops_to_schedule = [x for x in algo_ops if int(getattr(x, "id", 0) or 0) not in frozen_op_ids]
+        if not algo_ops_to_schedule:
+            raise ValidationError(f"冻结窗口内无可调整工序，本次未执行{run_label}。", field="排产")
+
         # 停机区间（用于算法避让）
         downtime_meta: Dict[str, Any] = {}
+        resource_pool_meta: Dict[str, Any] = {}
         downtime_map = load_machine_downtimes(
             self,
             algo_ops=algo_ops,
@@ -368,7 +387,7 @@ class ScheduleService:
         )
 
         # 自动分配资源池（可选）
-        resource_pool, pool_warnings = build_resource_pool(self, cfg=cfg, algo_ops=algo_ops)
+        resource_pool, pool_warnings = build_resource_pool(self, cfg=cfg, algo_ops=algo_ops, meta=resource_pool_meta)
         if pool_warnings:
             try:
                 if algo_warnings is None:
@@ -391,8 +410,10 @@ class ScheduleService:
             meta=downtime_meta,
         )
 
-        # 过滤掉冻结工序（由 seed_results 复用）
-        algo_ops_to_schedule = [x for x in algo_ops if int(getattr(x, "id", 0) or 0) not in frozen_op_ids]
+        # 分配新版本号（数据库原子分配；避免并发下 MAX(version)+1 复用）
+        # 注意：只占用极短写事务，避免长时间锁库影响算法执行。
+        with self.tx_manager.transaction():
+            version = int(self.history_repo.allocate_next_version())
 
         outcome = optimize_schedule(
             calendar_service=cal_svc,
@@ -407,6 +428,7 @@ class ScheduleService:
             resource_pool=resource_pool,
             version=version,
             logger=self.logger,
+            strict_mode=bool(strict_mode),
         )
 
         results = outcome.results
@@ -420,8 +442,14 @@ class ScheduleService:
         improvement_trace = outcome.improvement_trace
         algo_mode = outcome.algo_mode
         objective_name = outcome.objective_name
+        algo_stats = getattr(outcome, "algo_stats", {}) or {}
         time_budget_seconds = outcome.time_budget_seconds
 
+        warning_merge_status: Dict[str, Any] = {
+            "summary_merge_attempted": bool(algo_warnings),
+            "summary_merge_failed": False,
+            "summary_merge_error": None,
+        }
         # 把“冻结窗口/资源池”等 warning 合并到算法 warning 中
         if algo_warnings:
             try:
@@ -438,9 +466,12 @@ class ScheduleService:
                     else:
                         merged = list(algo_warnings)
                     summary.warnings = merged
-                except Exception:
-                    if getattr(self, "logger", None):
-                        self.logger.warning("合并排产 warnings 失败（已忽略）", exc_info=True)
+                except Exception as exc:
+                    warning_merge_status["summary_merge_failed"] = True
+                    warning_merge_status["summary_merge_error"] = str(exc)
+                    logger_obj = getattr(self, "logger", None)
+                    if logger_obj is not None:
+                        logger_obj.warning("合并排产 warnings 失败（已忽略）", exc_info=True)
 
         overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms = build_result_summary(
             self,
@@ -465,6 +496,10 @@ class ScheduleService:
             improvement_trace=improvement_trace,
             frozen_op_ids=set(frozen_op_ids),
             downtime_meta=downtime_meta,
+            resource_pool_meta=resource_pool_meta,
+            algo_stats=algo_stats,
+            algo_warnings=list(algo_warnings or []),
+            warning_merge_status=warning_merge_status,
             simulate=simulate,
             t0=t0,
         )
@@ -483,6 +518,7 @@ class ScheduleService:
             reschedulable_op_ids=set(reschedulable_op_ids),
             normalized_batch_ids=normalized,
             created_by=created_by_text,
+            has_actionable_schedule=True,
             simulate=simulate,
             frozen_op_ids=set(frozen_op_ids),
             result_status=result_status,

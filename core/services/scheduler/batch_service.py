@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
@@ -22,7 +23,7 @@ class BatchService:
         conn,
         logger=None,
         op_logger=None,
-        template_resolver: Optional[Callable[[str, str, str, bool], None]] = None,
+        template_resolver: Optional[Callable[..., None]] = None,
     ):
         self.conn = conn
         self.logger = logger
@@ -111,17 +112,34 @@ class BatchService:
             raise BusinessError(ErrorCode.BATCH_NOT_FOUND, f"批次“{batch_id}”不存在")
         return b
 
-    def _default_template_resolver(self, part_no: str, part_name: str, route_raw: str, no_tx: bool) -> None:
+    def _default_template_resolver(
+        self, part_no: str, part_name: str, route_raw: str, no_tx: bool, *, strict_mode: bool = False
+    ) -> None:
         # 懒加载跨域依赖：默认行为与历史实现等价
         from core.services.process.part_service import PartService
 
         svc = PartService(self.conn, logger=self.logger, op_logger=self.op_logger)
         if no_tx:
-            svc.upsert_and_parse_no_tx(part_no=part_no, part_name=part_name, route_raw=route_raw)
+            svc.upsert_and_parse_no_tx(part_no=part_no, part_name=part_name, route_raw=route_raw, strict_mode=strict_mode)
         else:
-            svc.reparse_and_save(part_no=part_no, route_raw=route_raw)
+            svc.reparse_and_save(part_no=part_no, route_raw=route_raw, strict_mode=strict_mode)
 
-    def _load_template_ops_with_fallback(self, part_no: str, part, *, no_tx: bool):
+    def _invoke_template_resolver(self, part_no: str, part_name: str, route_raw: str, no_tx: bool, *, strict_mode: bool) -> None:
+        resolver = self._template_resolver
+        try:
+            sig = inspect.signature(resolver)
+            supports_strict_mode = any(
+                param.kind == inspect.Parameter.VAR_KEYWORD or param.name == "strict_mode"
+                for param in sig.parameters.values()
+            )
+        except Exception:
+            supports_strict_mode = False
+        if supports_strict_mode:
+            resolver(part_no, part_name, route_raw, no_tx, strict_mode=strict_mode)
+            return
+        resolver(part_no, part_name, route_raw, no_tx)
+
+    def _load_template_ops_with_fallback(self, part_no: str, part, *, no_tx: bool, strict_mode: bool = False):
         template_ops = self.part_op_repo.list_by_part(part_no, include_deleted=False)
         if template_ops:
             return template_ops
@@ -129,7 +147,7 @@ class BatchService:
         rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
         if rr:
             try:
-                self._template_resolver(part_no, part.part_name or part_no, rr, no_tx)
+                self._invoke_template_resolver(part_no, part.part_name or part_no, rr, no_tx, strict_mode=bool(strict_mode))
             except Exception as e:
                 raise BusinessError(
                     ErrorCode.ROUTE_PARSE_ERROR,
@@ -375,6 +393,7 @@ class BatchService:
         mode: ImportMode,
         parts_cache: Dict[str, Any],
         auto_generate_ops: bool = False,
+        strict_mode: bool = False,
         existing_ids: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
         return batch_excel_import.import_batches_from_preview_rows(
@@ -383,6 +402,7 @@ class BatchService:
             mode=mode,
             parts_cache=parts_cache,
             auto_generate_ops=auto_generate_ops,
+            strict_mode=bool(strict_mode),
             existing_ids=existing_ids,
         )
 
@@ -403,6 +423,7 @@ class BatchService:
         ready_date: Any = None,
         remark: Any = None,
         rebuild_ops: bool = False,
+        strict_mode: bool = False,
     ) -> Batch:
         """
         从零件模板创建批次（事务保护）：
@@ -433,7 +454,7 @@ class BatchService:
             raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{pn}”不存在，请先在工艺管理中维护零件。")
 
         # 预检：确保零件模板存在（必要时触发一次自动解析）
-        self._load_template_ops_with_fallback(pn, part, no_tx=False)
+        self._load_template_ops_with_fallback(pn, part, no_tx=False, strict_mode=bool(strict_mode))
 
         with self.tx_manager.transaction():
             self.create_batch_from_template_no_tx(
@@ -446,6 +467,7 @@ class BatchService:
                 ready_date=rd,
                 remark=self._normalize_text(remark),
                 rebuild_ops=rebuild_ops,
+                strict_mode=bool(strict_mode),
             )
 
         return self._get_or_raise(bid)
@@ -461,6 +483,7 @@ class BatchService:
         ready_date: Optional[str],
         remark: Optional[str],
         rebuild_ops: bool = False,
+        strict_mode: bool = False,
     ) -> None:
         batch_template_ops.create_batch_from_template_no_tx(
             self,
@@ -473,6 +496,7 @@ class BatchService:
             ready_date=ready_date,
             remark=remark,
             rebuild_ops=rebuild_ops,
+            strict_mode=bool(strict_mode),
         )
 
     def list_operations(self, batch_id: Any) -> List[BatchOperation]:

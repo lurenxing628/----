@@ -91,6 +91,80 @@ def _cfg_value(cfg: Any, key: str, default: Any = None) -> Any:
     return cfg_get(cfg, key, default)
 
 
+def _warning_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw_items = [value]
+    elif isinstance(value, dict):
+        raw_items = [value]
+    elif isinstance(value, list):
+        raw_items = value
+    elif isinstance(value, tuple):
+        raw_items = list(value)
+    else:
+        try:
+            raw_items = list(value)
+        except Exception:
+            raw_items = [value]
+
+    out: List[str] = []
+    for item in raw_items:
+        try:
+            text = str(item)
+        except Exception:
+            continue
+        if text:
+            out.append(text)
+    return out
+
+
+def _merge_warning_lists(primary: Any, extra: Any) -> List[str]:
+    merged = _warning_list(primary)
+    seen = set(merged)
+    for text in _warning_list(extra):
+        if text in seen:
+            continue
+        seen.add(text)
+        merged.append(text)
+    return merged
+
+
+def _append_summary_warning(summary: Any, message: str) -> bool:
+    if isinstance(summary, dict):
+        warnings = _warning_list(summary.get("warnings"))
+        warnings.append(message)
+        summary["warnings"] = warnings
+        return True
+
+    warnings = getattr(summary, "warnings", None)
+    if isinstance(warnings, list):
+        warnings.append(message)
+        return True
+
+    normalized_warnings = _warning_list(warnings)
+    normalized_warnings.append(message)
+    try:
+        summary.warnings = normalized_warnings
+        return True
+    except Exception:
+        return False
+
+
+def _counter_dict(value: Any) -> Dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    out: Dict[str, int] = {}
+    for key, raw in value.items():
+        try:
+            count = int(raw)
+        except Exception:
+            continue
+        if count != 0:
+            out[str(key)] = int(count)
+    return out
+
+
 def _comparison_metric(objective_name: str) -> str:
     obj = str(objective_name or "min_overdue").strip().lower()
     if obj == "min_tardiness":
@@ -260,14 +334,14 @@ def _build_overdue_items(svc, *, batches: Dict[str, Any], finish_by_batch: Dict[
     if invalid_due_count > 0:
         sample_ids = "，".join(invalid_due_ids_sample[:10])
         msg = f"存在 {invalid_due_count} 个批次 due_date 格式不合法，已忽略超期判断（示例批次：{sample_ids}）"
-        try:
-            summary.warnings.append(msg)
-        except Exception:
-            pass
+        warning_appended = _append_summary_warning(summary, msg)
         if svc.logger:
             try:
                 raw_sample = "；".join(invalid_due_raw_sample[:5])
-                svc.logger.warning(f"{msg}；示例原始 due_date：{raw_sample}")
+                detail = f"{msg}；示例原始 due_date：{raw_sample}"
+                if not warning_appended:
+                    detail += "；且 summary.warnings 追加失败"
+                svc.logger.warning(detail)
             except Exception:
                 pass
 
@@ -297,43 +371,137 @@ def _frozen_batch_ids(operations: List[Any], *, frozen_op_ids: Set[int]) -> List
 
 
 def _extract_freeze_warnings(summary: Any) -> List[str]:
-    all_warnings = getattr(summary, "warnings", None) or []
+    all_warnings = _warning_list(summary if isinstance(summary, (list, tuple, str)) else getattr(summary, "warnings", None))
     freeze_warnings: List[str] = []
-    try:
-        for w in list(all_warnings or []):
-            ws = str(w)
-            if ws.startswith("【冻结窗口】"):
-                freeze_warnings.append(ws)
-    except Exception:
-        freeze_warnings = []
+    for w in all_warnings:
+        ws = str(w)
+        if ws.startswith("【冻结窗口】"):
+            freeze_warnings.append(ws)
     return freeze_warnings
 
 
-def _compute_downtime_degradation(cfg: Any, *, downtime_meta: Optional[Dict[str, Any]]) -> Tuple[bool, bool, bool, Optional[str], bool]:
+def _meta_int(meta: Dict[str, Any], key: str) -> int:
+    try:
+        return max(0, int(meta.get(key) or 0))
+    except Exception:
+        return 0
+
+
+def _meta_sample(meta: Dict[str, Any], key: str, *, limit: int = 5) -> List[str]:
+    raw = meta.get(key)
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: List[str] = []
+    for item in raw:
+        try:
+            text = str(item).strip()
+        except Exception:
+            continue
+        if not text or text in out:
+            continue
+        out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _partial_fail_reason(prefix: str, count: int, sample: List[str], suffix: str) -> str:
+    sample_text = "、".join(sample)
+    message = f"{prefix}（{count} 台"
+    if sample_text:
+        message += f"，如：{sample_text}"
+    return message + f"），{suffix}"
+
+
+def _downtime_reason(
+    *,
+    auto_assign_enabled: bool,
+    downtime_extend_attempted: bool,
+    load_failed: bool,
+    downtime_load_error: Any,
+    load_partial_fail_count: int,
+    load_partial_fail_machines_sample: List[str],
+    extend_failed: bool,
+    downtime_extend_error: Any,
+    extend_partial_fail_count: int,
+    extend_partial_fail_machines_sample: List[str],
+) -> Optional[str]:
+    if load_partial_fail_count > 0:
+        return _partial_fail_reason(
+            "部分设备停机区间加载失败", load_partial_fail_count, load_partial_fail_machines_sample, "这些设备已降级为忽略停机约束"
+        )
+    if load_failed:
+        return str(downtime_load_error or "停机区间加载失败")
+    if auto_assign_enabled and downtime_extend_attempted and extend_partial_fail_count > 0:
+        return _partial_fail_reason(
+            "部分候选设备停机区间扩展加载失败", extend_partial_fail_count, extend_partial_fail_machines_sample, "这些候选设备可能未覆盖停机约束"
+        )
+    if extend_failed:
+        return str(downtime_extend_error or "停机区间扩展加载失败")
+    return None
+
+
+def _compute_downtime_degradation(cfg: Any, *, downtime_meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     auto_assign_enabled = (
         to_yes_no(_cfg_value(cfg, "auto_assign_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
     )
-
     meta = downtime_meta if isinstance(downtime_meta, dict) else {}
 
     downtime_load_ok = True if "downtime_load_ok" not in meta else bool(meta.get("downtime_load_ok"))
     downtime_load_error = meta.get("downtime_load_error")
+    load_partial_fail_count = _meta_int(meta, "downtime_partial_fail_count")
+    load_partial_fail_machines_sample = _meta_sample(meta, "downtime_partial_fail_machines_sample")
 
     downtime_extend_attempted = bool(meta.get("downtime_extend_attempted") or False)
     extend_ok_raw = meta.get("downtime_extend_ok")
     downtime_extend_ok = True if extend_ok_raw is None else bool(extend_ok_raw)
     downtime_extend_error = meta.get("downtime_extend_error")
+    extend_partial_fail_count = _meta_int(meta, "downtime_extend_partial_fail_count")
+    extend_partial_fail_machines_sample = _meta_sample(meta, "downtime_extend_partial_fail_machines_sample")
 
+    load_failed = bool(not downtime_load_ok)
     extend_failed = bool(auto_assign_enabled and downtime_extend_attempted and (not downtime_extend_ok))
-    downtime_degraded = (not downtime_load_ok) or extend_failed
-    downtime_degradation_reason = None
-    if downtime_degraded:
-        if not downtime_load_ok:
-            downtime_degradation_reason = str(downtime_load_error or "停机区间加载失败")
-        elif extend_failed:
-            downtime_degradation_reason = str(downtime_extend_error or "停机区间扩展加载失败")
+    downtime_degraded = load_failed or extend_failed
+    downtime_degradation_reason = _downtime_reason(
+        auto_assign_enabled=bool(auto_assign_enabled),
+        downtime_extend_attempted=bool(downtime_extend_attempted),
+        load_failed=bool(load_failed),
+        downtime_load_error=downtime_load_error,
+        load_partial_fail_count=int(load_partial_fail_count),
+        load_partial_fail_machines_sample=list(load_partial_fail_machines_sample),
+        extend_failed=bool(extend_failed),
+        downtime_extend_error=downtime_extend_error,
+        extend_partial_fail_count=int(extend_partial_fail_count),
+        extend_partial_fail_machines_sample=list(extend_partial_fail_machines_sample),
+    )
 
-    return auto_assign_enabled, downtime_load_ok, downtime_degraded, downtime_degradation_reason, downtime_extend_attempted
+    return {
+        "auto_assign_enabled": bool(auto_assign_enabled),
+        "downtime_load_ok": bool(downtime_load_ok),
+        "downtime_degraded": bool(downtime_degraded),
+        "downtime_degradation_reason": downtime_degradation_reason,
+        "downtime_extend_attempted": bool(downtime_extend_attempted),
+        "load_partial_fail_count": int(load_partial_fail_count),
+        "load_partial_fail_machines_sample": list(load_partial_fail_machines_sample),
+        "extend_partial_fail_count": int(extend_partial_fail_count),
+        "extend_partial_fail_machines_sample": list(extend_partial_fail_machines_sample),
+    }
+
+
+def _compute_resource_pool_degradation(cfg: Any, *, resource_pool_meta: Optional[Dict[str, Any]]) -> Tuple[bool, bool, Optional[str], bool]:
+    auto_assign_enabled = (
+        to_yes_no(_cfg_value(cfg, "auto_assign_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
+    )
+    meta = resource_pool_meta if isinstance(resource_pool_meta, dict) else {}
+
+    attempted = bool(meta.get("resource_pool_attempted") or False)
+    build_ok_raw = meta.get("resource_pool_build_ok")
+    build_ok = True if build_ok_raw is None else bool(build_ok_raw)
+    build_error = meta.get("resource_pool_build_error")
+
+    degraded = bool(auto_assign_enabled and attempted and (not build_ok))
+    degradation_reason = str(build_error or "自动分配资源池构建失败") if degraded else None
+    return auto_assign_enabled, degraded, degradation_reason, attempted
 
 
 def _hard_constraints(cfg: Any, *, downtime_degraded: bool) -> List[str]:
@@ -373,6 +541,10 @@ def build_result_summary(
     improvement_trace: List[Dict[str, Any]],
     frozen_op_ids: Set[int],
     downtime_meta: Optional[Dict[str, Any]] = None,
+    resource_pool_meta: Optional[Dict[str, Any]] = None,
+    algo_stats: Optional[Dict[str, Any]] = None,
+    algo_warnings: Optional[List[str]] = None,
+    warning_merge_status: Optional[Dict[str, Any]] = None,
     simulate: bool,
     t0: float,
 ) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], str, int]:
@@ -394,14 +566,31 @@ def build_result_summary(
     frozen_batch_ids = _frozen_batch_ids(operations, frozen_op_ids=frozen_op_ids)
 
     # 冻结窗口降级识别：目前以 warnings 前缀为准（freeze_window.py 会统一加前缀）
-    all_warnings = getattr(summary, "warnings", None) or []
-    freeze_warnings = _extract_freeze_warnings(summary)
+    summary_warnings = _warning_list(getattr(summary, "warnings", None))
+    algo_warning_list = _warning_list(algo_warnings)
+    all_warnings = _merge_warning_lists(summary_warnings, algo_warning_list)
+    freeze_warnings = _extract_freeze_warnings(all_warnings)
 
     # 停机约束状态：避免“停机加载失败但摘要仍宣称硬约束已启用”
-    auto_assign_enabled, downtime_load_ok, downtime_degraded, downtime_degradation_reason, downtime_extend_attempted = (
-        _compute_downtime_degradation(cfg, downtime_meta=downtime_meta)
+    downtime_state = _compute_downtime_degradation(cfg, downtime_meta=downtime_meta)
+    auto_assign_enabled = bool(downtime_state.get("auto_assign_enabled"))
+    downtime_load_ok = bool(downtime_state.get("downtime_load_ok"))
+    downtime_degraded = bool(downtime_state.get("downtime_degraded"))
+    downtime_degradation_reason = downtime_state.get("downtime_degradation_reason")
+    downtime_extend_attempted = bool(downtime_state.get("downtime_extend_attempted"))
+    downtime_load_partial_fail_count = int(downtime_state.get("load_partial_fail_count") or 0)
+    downtime_load_partial_fail_machines_sample = list(downtime_state.get("load_partial_fail_machines_sample") or [])
+    downtime_extend_partial_fail_count = int(downtime_state.get("extend_partial_fail_count") or 0)
+    downtime_extend_partial_fail_machines_sample = list(downtime_state.get("extend_partial_fail_machines_sample") or [])
+    resource_pool_enabled, resource_pool_degraded, resource_pool_degradation_reason, resource_pool_attempted = (
+        _compute_resource_pool_degradation(cfg, resource_pool_meta=resource_pool_meta)
     )
     hard_constraints = _hard_constraints(cfg, downtime_degraded=downtime_degraded)
+
+    warning_pipeline = warning_merge_status if isinstance(warning_merge_status, dict) else {}
+    algo_stats_dict = algo_stats if isinstance(algo_stats, dict) else {}
+    fallback_counts = _counter_dict(algo_stats_dict.get("fallback_counts"))
+    param_fallbacks = _counter_dict(algo_stats_dict.get("param_fallbacks"))
 
     comparison_metric = _comparison_metric(objective_name)
     result_summary_obj: Dict[str, Any] = {
@@ -429,6 +618,12 @@ def build_result_summary(
                 "degraded": bool(downtime_degraded),
                 "degradation_reason": downtime_degradation_reason,
                 "extend_attempted": bool(downtime_extend_attempted) if auto_assign_enabled else False,
+                "load_partial_fail_count": int(downtime_load_partial_fail_count),
+                "load_partial_fail_machines_sample": list(downtime_load_partial_fail_machines_sample),
+                "extend_partial_fail_count": int(downtime_extend_partial_fail_count) if auto_assign_enabled else 0,
+                "extend_partial_fail_machines_sample": (
+                    list(downtime_extend_partial_fail_machines_sample) if auto_assign_enabled else []
+                ),
             },
             "freeze_window": {
                 "enabled": _cfg_value(cfg, "freeze_window_enabled", "no"),
@@ -452,9 +647,31 @@ def build_result_summary(
         },
         "overdue_batches": {"count": len(overdue_items), "items": overdue_items},
         "errors_sample": (getattr(summary, "errors", None) or [])[:10],
-        "warnings": list(all_warnings or []),
+        "warnings": list(all_warnings),
         "time_cost_ms": int(time_cost_ms),
     }
+
+    algo_dict = result_summary_obj.get("algo") or {}
+    if resource_pool_enabled or (isinstance(resource_pool_meta, dict) and bool(resource_pool_meta)):
+        algo_dict["resource_pool"] = {
+            "enabled": _cfg_value(cfg, "auto_assign_enabled", "no"),
+            "attempted": bool(resource_pool_attempted) if resource_pool_enabled else False,
+            "degraded": bool(resource_pool_degraded),
+            "degradation_reason": resource_pool_degradation_reason,
+        }
+    if algo_warning_list or any(bool(x) for x in warning_pipeline.values()):
+        algo_dict["warning_pipeline"] = {
+            "algo_warning_count": int(len(algo_warning_list)),
+            "summary_warning_count": int(len(summary_warnings)),
+            "summary_merge_attempted": bool(warning_pipeline.get("summary_merge_attempted") or False),
+            "summary_merge_failed": bool(warning_pipeline.get("summary_merge_failed") or False),
+            "summary_merge_error": warning_pipeline.get("summary_merge_error"),
+        }
+    if fallback_counts:
+        algo_dict["fallback_counts"] = fallback_counts
+    if param_fallbacks:
+        algo_dict["param_fallbacks"] = param_fallbacks
+    result_summary_obj["algo"] = algo_dict
 
     result_summary_obj = _apply_summary_size_guard(result_summary_obj)
     result_summary_json = json.dumps(result_summary_obj, ensure_ascii=False)

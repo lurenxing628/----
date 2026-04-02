@@ -17,6 +17,7 @@ def normalize_preset_snapshot(
     valid_dispatch_rules: Tuple[str, ...],
     valid_algo_modes: Tuple[str, ...],
     valid_objectives: Tuple[str, ...],
+    strict_mode: bool = False,
 ) -> ScheduleConfigSnapshot:
     def _valid_norm(values: Tuple[str, ...]) -> Tuple[str, ...]:
         out = []
@@ -70,22 +71,39 @@ def normalize_preset_snapshot(
     if hde <= 0:
         hde = float(base.holiday_default_efficiency)
 
-    def _yesno(v: Any, default: str = "no") -> str:
+    def _yesno(v: Any, key: str, default: str = "no", *, strict: bool = False) -> str:
+        text = "" if v is None else str(v).strip().lower()
+        true_vals = {"yes", "y", "true", "1", "on"}
+        false_vals = {"no", "n", "false", "0", "off", ""}
+        if strict and text not in true_vals and text not in false_vals:
+            raise ValidationError(f"“{key}”取值不合法：{v!r}（允许值：yes / no）", field=key)
         return to_yes_no(v, default=default)
 
-    enforce_ready_default = _yesno(data.get("enforce_ready_default"), default=str(base.enforce_ready_default))
-    prefer_primary_skill = _yesno(data.get("prefer_primary_skill"), default=str(base.prefer_primary_skill))
-    auto_assign_enabled = _yesno(data.get("auto_assign_enabled"), default=str(base.auto_assign_enabled))
-    ortools_enabled = _yesno(data.get("ortools_enabled"), default=str(base.ortools_enabled))
-    freeze_window_enabled = _yesno(data.get("freeze_window_enabled"), default=str(base.freeze_window_enabled))
+    enforce_ready_default = _yesno(data.get("enforce_ready_default"), "enforce_ready_default", default=str(base.enforce_ready_default))
+    prefer_primary_skill = _yesno(data.get("prefer_primary_skill"), "prefer_primary_skill", default=str(base.prefer_primary_skill))
+    auto_assign_enabled = _yesno(
+        data.get("auto_assign_enabled"), "auto_assign_enabled", default=str(base.auto_assign_enabled), strict=bool(strict_mode)
+    )
+    ortools_enabled = _yesno(data.get("ortools_enabled"), "ortools_enabled", default=str(base.ortools_enabled))
+    freeze_window_enabled = _yesno(data.get("freeze_window_enabled"), "freeze_window_enabled", default=str(base.freeze_window_enabled))
 
-    dm = str(data.get("dispatch_mode") or base.dispatch_mode).strip().lower()
+    raw_dispatch_mode = data.get("dispatch_mode")
+    dm = str(base.dispatch_mode if raw_dispatch_mode is None else raw_dispatch_mode).strip().lower()
     base_dispatch_mode = str(base.dispatch_mode).strip().lower()
-    if dm not in valid_dispatch_modes_norm:
+    if dm == "":
         dm = base_dispatch_mode
-    dr = str(data.get("dispatch_rule") or base.dispatch_rule).strip().lower()
+    if dm not in valid_dispatch_modes_norm:
+        if strict_mode and raw_dispatch_mode is not None and str(raw_dispatch_mode).strip() != "":
+            raise ValidationError(f"“dispatch_mode”取值不合法：{raw_dispatch_mode!r}", field="dispatch_mode")
+        dm = base_dispatch_mode
+    raw_dispatch_rule = data.get("dispatch_rule")
+    dr = str(base.dispatch_rule if raw_dispatch_rule is None else raw_dispatch_rule).strip().lower()
     base_dispatch_rule = str(base.dispatch_rule).strip().lower()
+    if dr == "":
+        dr = base_dispatch_rule
     if dr not in valid_dispatch_rules_norm:
+        if strict_mode and raw_dispatch_rule is not None and str(raw_dispatch_rule).strip() != "":
+            raise ValidationError(f"“dispatch_rule”取值不合法：{raw_dispatch_rule!r}", field="dispatch_rule")
         dr = base_dispatch_rule
 
     algo_mode = str(data.get("algo_mode") or base.algo_mode).strip().lower()

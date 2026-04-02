@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+import math
 import random
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms import BatchForSort, GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
 from core.algorithms.evaluation import compute_metrics, objective_score
+from core.algorithms.greedy.algo_stats import increment_counter, merge_algo_stats, snapshot_algo_stats
 from core.algorithms.sort_strategies import parse_strategy
 from core.algorithms.value_domains import INTERNAL
 
-from .schedule_optimizer_steps import _run_multi_start, _run_ortools_warmstart
+from .schedule_optimizer_steps import _run_multi_start, _run_ortools_warmstart, _schedule_with_optional_strict_mode
 
 
 @dataclass
@@ -28,6 +30,7 @@ class OptimizationOutcome:
     algo_mode: str
     objective_name: str
     time_budget_seconds: int
+    algo_stats: Dict[str, Any] = field(default_factory=dict)
 
 
 def _score_tuple(score: Any) -> Tuple[float, ...]:
@@ -42,28 +45,51 @@ def _score_tuple(score: Any) -> Tuple[float, ...]:
     return tuple(out)
 
 
-def _compact_attempts(attempts: List[Dict[str, Any]], *, limit: int = 12) -> List[Dict[str, Any]]:
-    if len(attempts or []) <= limit:
-        return list(attempts or [])
+def _attempt_dispatch_mode(item: Dict[str, Any]) -> str:
+    return str(item.get("dispatch_mode") or "")
 
+
+def _attempt_tag(item: Dict[str, Any]) -> str:
+    return str(item.get("tag") or "")
+
+
+def _sorted_attempts_by_score(attempts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return sorted(list(attempts or []), key=lambda item: _score_tuple(item.get("score")))
+
+
+def _best_attempts_by_dispatch_mode(attempts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     best_by_mode: Dict[str, Dict[str, Any]] = {}
     for item in attempts or []:
-        mode = str(item.get("dispatch_mode") or "")
-        cur = best_by_mode.get(mode)
-        if cur is None or _score_tuple(item.get("score")) < _score_tuple(cur.get("score")):
+        mode = _attempt_dispatch_mode(item)
+        current = best_by_mode.get(mode)
+        if current is None or _score_tuple(item.get("score")) < _score_tuple(current.get("score")):
             best_by_mode[mode] = item
+    return list(best_by_mode.values())
 
-    selected: List[Dict[str, Any]] = list(best_by_mode.values())
-    selected_tags = {str(it.get("tag") or "") for it in selected}
-    for item in sorted(list(attempts or []), key=lambda x: _score_tuple(x.get("score"))):
-        tag = str(item.get("tag") or "")
+
+def _append_unique_best_attempts(
+    selected: List[Dict[str, Any]],
+    attempts: List[Dict[str, Any]],
+    *,
+    limit: int,
+) -> List[Dict[str, Any]]:
+    selected_tags = {_attempt_tag(item) for item in selected}
+    for item in _sorted_attempts_by_score(attempts):
+        tag = _attempt_tag(item)
         if tag in selected_tags:
             continue
         selected.append(item)
         selected_tags.add(tag)
         if len(selected) >= limit:
             break
+    return selected
 
+
+def _compact_attempts(attempts: List[Dict[str, Any]], *, limit: int = 12) -> List[Dict[str, Any]]:
+    if len(attempts or []) <= limit:
+        return list(attempts or [])
+    selected = _best_attempts_by_dispatch_mode(attempts)
+    selected = _append_unique_best_attempts(selected, attempts, limit=limit)
     selected.sort(key=lambda x: _score_tuple(x.get("score")))
     return selected[:limit]
 
@@ -88,7 +114,9 @@ def _run_local_search(
     objective_name: str,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
+    optimizer_algo_stats: Optional[Dict[str, Any]],
     t_begin: float,
+    strict_mode: bool = False,
 ) -> Optional[Dict[str, Any]]:
     # 局部搜索（可选）：在 best batch_order 上做随机 swap/insert
     if algo_mode == "improve" and best is not None and len(best.get("order") or []) >= 2:
@@ -144,7 +172,9 @@ def _run_local_search(
                 cand_order[i], cand_order[j] = cand_order[j], cand_order[i]
                 move = "swap_fallback"
 
-            res, summ, used_strat, used_params = scheduler.schedule(
+            res, summ, used_strat, used_params = _schedule_with_optional_strict_mode(
+                scheduler,
+                strict_mode=bool(strict_mode),
                 operations=algo_ops_to_schedule,
                 batches=batches,
                 strategy=cur_strat,
@@ -159,9 +189,11 @@ def _run_local_search(
                 resource_pool=resource_pool,
             )
             metrics = compute_metrics(res, batches)
+            algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
             score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
             if score < best["score"]:
                 best = {
+                    "algo_stats": algo_stats,
                     "results": res,
                     "summary": summ,
                     "strategy": used_strat,
@@ -196,6 +228,7 @@ def _run_local_search(
                             "dispatch_rule": cur_dispatch_rule,
                             "score": list(score),
                             "failed_ops": int(summ.failed_ops),
+                            "algo_stats": algo_stats,
                             "metrics": metrics.to_dict(),
                         }
                     )
@@ -236,6 +269,7 @@ def optimize_schedule(
     resource_pool: Optional[Dict[str, Any]],
     version: int,
     logger: Any = None,
+    strict_mode: bool = False,
 ) -> OptimizationOutcome:
     """
     执行算法（支持 improve：多起点 + 目标函数 + 时间预算；可选 OR-Tools 起点）。
@@ -255,13 +289,30 @@ def optimize_schedule(
         text = str(value if value is not None else default).strip().lower()
         return text or str(default).strip().lower()
 
+    optimizer_algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
+
+    def _cfg_float(key: str, default: float) -> float:
+        raw = _cfg_value(key, default)
+        if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+            increment_counter(optimizer_algo_stats, f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
+            return float(default)
+        try:
+            parsed = float(raw)
+        except Exception:
+            increment_counter(optimizer_algo_stats, f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
+            return float(default)
+        if not math.isfinite(parsed):
+            increment_counter(optimizer_algo_stats, f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
+            return float(default)
+        return float(parsed)
+
     strategy_enum: SortStrategy = parse_strategy(_cfg_value("sort_strategy", None), default=SortStrategy.PRIORITY_FIRST)
 
     strategy_params: Optional[Dict[str, Any]] = None
     if strategy_enum == SortStrategy.WEIGHTED:
         strategy_params = {
-            "priority_weight": float(_cfg_value("priority_weight", 0.4) or 0.4),
-            "due_weight": float(_cfg_value("due_weight", 0.5) or 0.5),
+            "priority_weight": _cfg_float("priority_weight", 0.4),
+            "due_weight": _cfg_float("due_weight", 0.5),
         }
 
     algo_mode = _norm_text(_cfg_value("algo_mode", "greedy"), "greedy")
@@ -397,6 +448,7 @@ def optimize_schedule(
                         sample = {"type": type(x).__name__}
                     invalid_seed_samples.append({"index": int(idx), "error": str(e), "sample": sample})
                 continue
+        increment_counter(optimizer_algo_stats, "optimizer_seed_result_invalid_count", invalid_seed_count)
         if invalid_seed_count > 0 and logger is not None:
             try:
                 logger.warning(
@@ -433,8 +485,10 @@ def optimize_schedule(
         attempts=attempts,
         improvement_trace=improvement_trace,
         best=best,
+        optimizer_algo_stats=optimizer_algo_stats,
         t_begin=t_begin,
         logger=logger,
+        strict_mode=bool(strict_mode),
     )
 
     # 执行策略轮询（multi-start）
@@ -457,8 +511,10 @@ def optimize_schedule(
         attempts=attempts,
         improvement_trace=improvement_trace,
         best=best,
+        optimizer_algo_stats=optimizer_algo_stats,
         t_begin=t_begin,
         build_order=_build_order,
+        strict_mode=bool(strict_mode),
     )
 
     # 局部搜索（可选）：在 best batch_order 上做随机 swap/insert
@@ -481,12 +537,16 @@ def optimize_schedule(
         objective_name=objective_name,
         attempts=attempts,
         improvement_trace=improvement_trace,
+        optimizer_algo_stats=optimizer_algo_stats,
         t_begin=t_begin,
+        strict_mode=bool(strict_mode),
     )
 
     if best is None:
         # 理论上不会发生；兜底为原始单次
-        results, summary, used_strategy, used_params = scheduler.schedule(
+        results, summary, used_strategy, used_params = _schedule_with_optional_strict_mode(
+            scheduler,
+            strict_mode=bool(strict_mode),
             operations=algo_ops_to_schedule,
             batches=batches,
             strategy=strategy_enum,
@@ -500,6 +560,7 @@ def optimize_schedule(
         best_metrics = compute_metrics(results, batches)
         best_score = (float(summary.failed_ops),) + objective_score(objective_name, best_metrics)
         best_order = _build_order(strategy_enum or SortStrategy.PRIORITY_FIRST, used_params or {})
+        algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
         return OptimizationOutcome(
             results=results,
             summary=summary,
@@ -513,6 +574,7 @@ def optimize_schedule(
             algo_mode=algo_mode,
             objective_name=objective_name,
             time_budget_seconds=time_budget_seconds,
+            algo_stats=algo_stats,
         )
 
     results = best["results"]
@@ -522,6 +584,10 @@ def optimize_schedule(
     best_metrics = best["metrics"]
     best_score = best["score"]
     best_order = best["order"]
+    best_algo_stats = best.get("algo_stats") if isinstance(best, dict) else None
+    algo_stats = (
+        merge_algo_stats(best_algo_stats) if isinstance(best_algo_stats, dict) else merge_algo_stats(optimizer_algo_stats)
+    )
 
     return OptimizationOutcome(
         results=results,
@@ -536,5 +602,6 @@ def optimize_schedule(
         algo_mode=algo_mode,
         objective_name=objective_name,
         time_budget_seconds=time_budget_seconds,
+        algo_stats=algo_stats,
     )
 

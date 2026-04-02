@@ -10,6 +10,7 @@ from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, CalendarDayType, 
 from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
 from core.services.common.enum_normalizers import normalize_yesno_narrow
 from core.services.common.normalize import normalize_text
+from core.services.common.safe_logging import safe_warning
 from core.services.scheduler.config_service import ConfigService
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
@@ -37,17 +38,13 @@ class CalendarAdmin:
         """
         获取“假期默认效率”（>0）。
         - 来自 ScheduleConfig.holiday_default_efficiency
-        - 任意异常都回退到 ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY
+        - 配置值非法时回退到 ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY，并记录 warning
         """
         try:
             cfg_svc = ConfigService(self.conn, logger=self.logger, op_logger=self.op_logger)
-            raw = cfg_svc.get("holiday_default_efficiency", default=ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
-            v = parse_finite_float(raw, field="holiday_default_efficiency", allow_none=False)
-            v = float(v or 0.0)
-            if v <= 0:
-                return float(ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
-            return float(v)
-        except Exception:
+            return float(cfg_svc.get_holiday_default_efficiency())
+        except ValidationError as exc:
+            safe_warning(self.logger, f"读取 holiday_default_efficiency 非法，已回退默认值：{exc.message}")
             return float(ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
 
     # -------------------------
