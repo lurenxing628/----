@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import io
 import json
 import os
 import tempfile
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from flask import current_app, flash
+from flask import current_app, flash, send_file
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ImportMode
+
+XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def parse_import_mode(value: str) -> ImportMode:
@@ -70,7 +74,8 @@ def preview_baseline_matches(
     try:
         return hmac.compare_digest(provided, expected)
     except Exception:
-        return provided == expected
+        current_app.logger.exception("预览基线签名比较失败")
+        return False
 
 
 def flash_import_result(
@@ -158,4 +163,18 @@ def read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
             os.remove(tmp_path)
         except Exception:
             pass
+
+
+def send_excel_template_file(
+    template_path: str,
+    *,
+    download_name: str,
+    mimetype: str = XLSX_MIMETYPE,
+):
+    return send_file(
+        io.BytesIO(Path(template_path).read_bytes()),
+        as_attachment=True,
+        download_name=download_name,
+        mimetype=mimetype,
+    )
 

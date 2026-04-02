@@ -23,6 +23,7 @@ DEFAULT_UI_MODE = "v2"
 VALID_UI_MODES = ("v1", "v2")
 
 _EXT_KEY_V2_ENV = "ui_mode.v2_env"
+_EXT_KEY_V2_RENDER_FALLBACK_WARNED = "ui_mode.v2_render_fallback_warned"
 _BP_NAME_V2_STATIC = "ui_v2_static"
 
 
@@ -156,6 +157,7 @@ def init_ui_mode(app, base_dir: str) -> None:
         except Exception:
             pass
         app.extensions[_EXT_KEY_V2_ENV] = None
+    app.extensions.setdefault(_EXT_KEY_V2_RENDER_FALLBACK_WARNED, False)
 
     # 启动期即向 V1/V2 两套模板环境注入 safe_url_for，
     # 兼容直接使用 Flask render_template 的路径以及 import 宏场景。
@@ -225,6 +227,35 @@ def _get_v2_env(app) -> Any:
     return env
 
 
+def _describe_template_name(template_name_or_list: Any) -> str:
+    if isinstance(template_name_or_list, str):
+        return template_name_or_list
+    try:
+        return ", ".join([str(item) for item in list(template_name_or_list)])
+    except Exception:
+        return str(template_name_or_list)
+
+
+def _warn_v2_render_fallback_once(app, *, template_name_or_list: Any) -> None:
+    warned = bool(app.extensions.get(_EXT_KEY_V2_RENDER_FALLBACK_WARNED))
+    if warned:
+        return
+    app.extensions[_EXT_KEY_V2_RENDER_FALLBACK_WARNED] = True
+    try:
+        path = str(getattr(request, "path", "") or "") if has_request_context() else ""
+    except Exception:
+        path = ""
+    try:
+        app.logger.warning(
+            "检测到 V2 模板运行期回退：mode=v2 but v2_env missing（template=%s, path=%s）。"
+            "可能原因：未重新打包 / overlay 创建失败 / 运行旧版本。",
+            _describe_template_name(template_name_or_list),
+            path,
+        )
+    except Exception:
+        pass
+
+
 def safe_url_for(endpoint: str, **values: Any) -> Optional[str]:
     """
     url_for 的安全封装：
@@ -266,7 +297,7 @@ def safe_url_for(endpoint: str, **values: Any) -> Optional[str]:
 
 def _resolve_template_url_for():
     try:
-        app = current_app._get_current_object()
+        app = current_app
         custom = app.extensions.get(EXT_KEY_TEMPLATE_URL_FOR)
         if callable(custom):
             return custom
@@ -281,7 +312,7 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
     - 根据 ui_mode 选择 V1/V2 的 Jinja env
     - 注入 ui_mode 到模板上下文
     """
-    app = current_app._get_current_object()
+    app = current_app
     mode = get_ui_mode()
 
     # 保证模板里能直接用 ui_mode
@@ -303,9 +334,28 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
     context.setdefault("get_full_manual_section_url", get_full_manual_section_url)
 
     if mode == "v2":
-        env = _get_v2_env(app) or app.jinja_env
+        v2_env = _get_v2_env(app)
+        if v2_env is None:
+            env = app.jinja_env
+            ui_template_env = "v1_fallback"
+            ui_template_env_degraded = True
+            _warn_v2_render_fallback_once(app, template_name_or_list=template_name_or_list)
+        else:
+            env = v2_env
+            ui_template_env = "v2"
+            ui_template_env_degraded = False
     else:
         env = app.jinja_env
+        ui_template_env = "v1"
+        ui_template_env_degraded = False
+
+    context.setdefault("ui_template_env", ui_template_env)
+    context.setdefault("ui_template_env_degraded", ui_template_env_degraded)
+    try:
+        g.ui_template_env = ui_template_env
+        g.ui_template_env_degraded = ui_template_env_degraded
+    except Exception:
+        pass
 
     # 同时写入 env.globals：避免某些模板渲染路径不走 context 注入
     try:

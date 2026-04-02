@@ -18,12 +18,44 @@ from core.services.process import PartService
 from core.services.scheduler.batch_query_service import BatchQueryService
 from web.ui_mode import render_ui_template as render_template
 
-from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
+from .excel_utils import (
+    build_preview_baseline_token,
+    flash_import_result,
+    preview_baseline_matches,
+    send_excel_template_file,
+)
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
 # Excel：零件工艺路线（Parts.route_raw + 解析生成模板）
 # ============================================================
+
+
+def _strict_mode_enabled(raw_value: Any) -> bool:
+    return str(raw_value or "").strip().lower() in {"1", "y", "yes", "true", "on"}
+
+
+def _validate_route_row(part_svc: PartService, row: Dict[str, Any], *, strict_mode: bool) -> Optional[str]:
+    if is_blank_value(row.get("图号")):
+        return "“图号”不能为空"
+    if is_blank_value(row.get("名称")):
+        return "“名称”不能为空"
+    route_raw = row.get("工艺路线字符串")
+    if route_raw is None or str(route_raw).strip() == "":
+        return "“工艺路线字符串”不能为空"
+    ok, msg = part_svc.validate_route_format(route_raw)
+    if not ok:
+        return f"工艺路线格式不合法：{msg}"
+    if strict_mode:
+        part_no = str(row.get("图号") or "").strip() or "<unknown>"
+        result = part_svc.parse(route_raw, part_no=part_no, strict_mode=True)
+        status_value = getattr(getattr(result, "status", None), "value", getattr(result, "status", None))
+        if str(status_value or "").strip().lower() == "failed":
+            sample = [str(msg) for msg in (getattr(result, "errors", None) or []) if str(msg).strip()]
+            if sample:
+                return "；".join(sample[:3])
+            return "工艺路线严格解析失败"
+    return None
 
 
 def _render_excel_routes_page(
@@ -34,6 +66,7 @@ def _render_excel_routes_page(
     preview_baseline: Optional[str],
     mode_value: str,
     filename: Optional[str],
+    strict_mode: bool,
 ):
     return render_template(
         "process/excel_import_routes.html",
@@ -48,6 +81,10 @@ def _render_excel_routes_page(
         confirm_url=url_for("process.excel_routes_confirm"),
         template_download_url=url_for("process.excel_routes_template"),
         export_url=url_for("process.excel_routes_export"),
+        strict_mode_supported=True,
+        strict_mode=bool(strict_mode),
+        strict_mode_label="严格模式：拒绝隐式 1.0 天回退",
+        strict_mode_help="开启后，缺供应商映射、供应商 default_days 无效/为空、未知工种等不再按兼容逻辑回退，而是直接标记该行为错误。",
     )
 
 
@@ -62,6 +99,7 @@ def excel_routes_page():
         preview_baseline=None,
         mode_value=ImportMode.OVERWRITE.value,
         filename=None,
+        strict_mode=False,
     )
 
 
@@ -69,6 +107,7 @@ def excel_routes_page():
 def excel_routes_preview():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     file = request.files.get("file")
     if not file or not file.filename:
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
@@ -79,18 +118,7 @@ def excel_routes_preview():
     part_svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = part_svc.build_existing_for_excel_routes()
 
-    def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if is_blank_value(row.get("图号")):
-            return "“图号”不能为空"
-        if is_blank_value(row.get("名称")):
-            return "“名称”不能为空"
-        route_raw = row.get("工艺路线字符串")
-        if route_raw is None or str(route_raw).strip() == "":
-            return "“工艺路线字符串”不能为空"
-        ok, msg = part_svc.validate_route_format(route_raw)
-        if not ok:
-            return f"工艺路线格式不合法：{msg}"
-        return None
+    def validate_row(row: Dict[str, Any]) -> Optional[str]: return _validate_route_row(part_svc, row, strict_mode=strict_mode)
 
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
@@ -120,6 +148,7 @@ def excel_routes_preview():
         preview_baseline=preview_baseline,
         mode_value=mode.value,
         filename=file.filename,
+        strict_mode=strict_mode,
     )
 
 
@@ -127,6 +156,7 @@ def excel_routes_preview():
 def excel_routes_confirm():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     filename = request.form.get("filename") or "unknown.xlsx"
     raw_rows_json = request.form.get("raw_rows_json")
     preview_baseline = (request.form.get("preview_baseline") or "").strip()
@@ -155,20 +185,10 @@ def excel_routes_confirm():
             preview_baseline=None,
             mode_value=mode.value,
             filename=filename,
+            strict_mode=strict_mode,
         )
 
-    def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if is_blank_value(row.get("图号")):
-            return "“图号”不能为空"
-        if is_blank_value(row.get("名称")):
-            return "“名称”不能为空"
-        route_raw = row.get("工艺路线字符串")
-        if route_raw is None or str(route_raw).strip() == "":
-            return "“工艺路线字符串”不能为空"
-        ok, msg = part_svc.validate_route_format(route_raw)
-        if not ok:
-            return f"工艺路线格式不合法：{msg}"
-        return None
+    def validate_row(row: Dict[str, Any]) -> Optional[str]: return _validate_route_row(part_svc, row, strict_mode=strict_mode)
 
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     preview_rows = excel_svc.preview_import(
@@ -194,6 +214,7 @@ def excel_routes_confirm():
             preview_baseline=preview_baseline,
             mode_value=mode.value,
             filename=filename,
+            strict_mode=strict_mode,
         )
 
     tx = TransactionManager(g.db)
@@ -232,7 +253,7 @@ def excel_routes_confirm():
 
             try:
                 existed = pn in existing
-                part_svc.upsert_and_parse_no_tx(part_no=pn, part_name=name, route_raw=route_raw)
+                part_svc.upsert_and_parse_no_tx(part_no=pn, part_name=name, route_raw=route_raw, strict_mode=strict_mode)
                 if existed:
                     update_count += 1
                 else:
@@ -287,12 +308,7 @@ def excel_routes_template():
             time_range={},
             time_cost_ms=time_cost_ms,
         )
-        return send_file(
-            template_path,
-            as_attachment=True,
-            download_name="零件工艺路线.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        return send_excel_template_file(template_path, download_name="零件工艺路线.xlsx")
 
     template_def = get_template_definition("零件工艺路线.xlsx")
     sample_rows = template_def.get("sample_rows") or []

@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import os
 import time
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
@@ -19,7 +19,12 @@ from core.services.personnel import OperatorService
 from core.services.scheduler import CalendarService, ConfigService
 from web.ui_mode import render_ui_template as render_template
 
-from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
+from .excel_utils import (
+    build_preview_baseline_token,
+    flash_import_result,
+    preview_baseline_matches,
+    send_excel_template_file,
+)
 from .personnel_bp import (
     _ensure_unique_ids,
     _normalize_operator_calendar_day_type,
@@ -46,38 +51,108 @@ def _operator_calendar_baseline_extra_state(*, holiday_default_efficiency: float
     }
 
 
-@bp.get("/excel/operator_calendar")
-def excel_operator_calendar_page():
+def _fallback_calendar_date_text(raw_date: Any) -> str:
+    if isinstance(raw_date, datetime):
+        return raw_date.date().isoformat()
+
+    if isinstance(raw_date, date):
+        return raw_date.isoformat()
+
+    return to_str_or_blank(raw_date).replace("/", "-")[:10]
+
+
+def _require_holiday_default_efficiency(value: Optional[float]) -> float:
+    if value is None:
+        raise ValidationError("holiday_default_efficiency 缺失，无法继续人员专属工作日历 Excel 导入。")
+    return float(value)
+
+
+def _build_existing_operator_calendar_preview_data() -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
     cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
+    existing: Dict[str, Dict[str, Any]] = {}
     existing_list: List[Dict[str, Any]] = []
     for c in cal_svc.list_operator_calendar_all():
-        existing_list.append(
-            {
-                "工号": c.operator_id,
-                "日期": c.date,
-                "类型": _normalize_operator_calendar_day_type(c.day_type),
-                "班次开始": c.shift_start,
-                "班次结束": c.shift_end,
-                "可用工时": c.shift_hours,
-                "效率": c.efficiency,
-                "允许普通件": c.allow_normal,
-                "允许急件": c.allow_urgent,
-                "说明": c.remark,
-            }
-        )
+        item = {
+            "工号": c.operator_id,
+            "日期": c.date,
+            "类型": _normalize_operator_calendar_day_type(c.day_type),
+            "班次开始": c.shift_start,
+            "班次结束": c.shift_end,
+            "可用工时": c.shift_hours,
+            "效率": c.efficiency,
+            "允许普通件": c.allow_normal,
+            "允许急件": c.allow_urgent,
+            "说明": c.remark,
+            "__id": f"{c.operator_id}|{c.date}",
+        }
+        existing[item["__id"]] = item
+        existing_list.append(item)
+    return existing, existing_list
+
+
+def _render_excel_operator_calendar_page(
+    *,
+    existing_list: List[Dict[str, Any]],
+    preview_rows: Any,
+    raw_rows_json: Optional[str],
+    preview_baseline: Optional[str],
+    mode_value: str,
+    filename: Optional[str],
+):
     return render_template(
         "personnel/excel_import_operator_calendar.html",
         title="人员专属工作日历 - Excel 导入/导出",
         existing_list=existing_list,
-        preview_rows=None,
-        raw_rows_json=None,
-        preview_baseline=None,
-        mode=ImportMode.OVERWRITE.value,
-        filename=None,
+        preview_rows=preview_rows,
+        raw_rows_json=raw_rows_json,
+        preview_baseline=preview_baseline,
+        mode=mode_value,
+        filename=filename,
         preview_url=url_for("personnel.excel_operator_calendar_preview"),
         confirm_url=url_for("personnel.excel_operator_calendar_confirm"),
         template_download_url=url_for("personnel.excel_operator_calendar_template"),
         export_url=url_for("personnel.excel_operator_calendar_export"),
+    )
+
+
+def _load_holiday_default_efficiency_for_excel(
+    *,
+    cfg_svc: ConfigService,
+    existing_list: List[Dict[str, Any]],
+    mode_value: str,
+    filename: Optional[str],
+) -> Tuple[Optional[float], Optional[Any]]:
+    try:
+        return float(cfg_svc.get_holiday_default_efficiency()), None
+    except ValidationError as exc:
+        current_app.logger.warning(
+            "人员专属工作日历 Excel 导入读取 holiday_default_efficiency 非法，已拒绝操作：%s",
+            exc.message,
+        )
+        flash(
+            "系统配置项 holiday_default_efficiency 非法，无法继续人员专属工作日历 Excel 导入，请先在排产参数中修复。",
+            "error",
+        )
+        return None, _render_excel_operator_calendar_page(
+            existing_list=existing_list,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode_value=mode_value,
+            filename=filename,
+        )
+
+
+@bp.get("/excel/operator_calendar")
+def excel_operator_calendar_page():
+    _existing, existing_list = _build_existing_operator_calendar_preview_data()
+    return _render_excel_operator_calendar_page(
+        existing_list=existing_list,
+        preview_rows=None,
+        raw_rows_json=None,
+        preview_baseline=None,
+        mode_value=ImportMode.OVERWRITE.value,
+        filename=None,
     )
 
 
@@ -89,14 +164,18 @@ def excel_operator_calendar_preview():
     if not file or not file.filename:
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
 
-    # 读取假期默认效率（用于效率空值兜底）
+    existing, existing_list = _build_existing_operator_calendar_preview_data()
+
     cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
-    try:
-        hde = float(cfg_svc.get("holiday_default_efficiency", default=0.8) or 0.8)
-        if hde <= 0:
-            hde = 0.8
-    except Exception:
-        hde = 0.8
+    hde, error_response = _load_holiday_default_efficiency_for_excel(
+        cfg_svc=cfg_svc,
+        existing_list=existing_list,
+        mode_value=mode.value,
+        filename=file.filename,
+    )
+    if error_response is not None:
+        return error_response
+    hde_value = _require_holiday_default_efficiency(hde)
 
     rows = _read_uploaded_xlsx(file)
 
@@ -110,19 +189,8 @@ def excel_operator_calendar_preview():
         raw_date = item.get("日期")
         try:
             item["日期"] = CalendarService._normalize_date(raw_date)
-        except Exception:
-            if hasattr(raw_date, "date"):
-                try:
-                    item["日期"] = raw_date.date().isoformat()
-                except Exception:
-                    item["日期"] = to_str_or_blank(raw_date).replace("/", "-")[:10]
-            elif hasattr(raw_date, "isoformat") and not isinstance(raw_date, str):
-                try:
-                    item["日期"] = raw_date.isoformat()
-                except Exception:
-                    item["日期"] = to_str_or_blank(raw_date).replace("/", "-")[:10]
-            else:
-                item["日期"] = to_str_or_blank(raw_date).replace("/", "-")[:10]
+        except ValidationError:
+            item["日期"] = _fallback_calendar_date_text(raw_date)
         item["类型"] = _normalize_operator_calendar_day_type(item.get("类型"))
         item["允许普通件"] = _normalize_yesno(item.get("允许普通件"))
         item["允许急件"] = _normalize_yesno(item.get("允许急件"))
@@ -131,30 +199,9 @@ def excel_operator_calendar_preview():
 
     _ensure_unique_ids(normalized_rows, id_column="__id")
 
-    # existing（复合键：工号|日期）
-    cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
-    existing: Dict[str, Dict[str, Any]] = {}
-    existing_list: List[Dict[str, Any]] = []
-    for c in cal_svc.list_operator_calendar_all():
-        d = {
-            "工号": c.operator_id,
-            "日期": c.date,
-            "类型": _normalize_operator_calendar_day_type(c.day_type),
-            "班次开始": c.shift_start,
-            "班次结束": c.shift_end,
-            "可用工时": c.shift_hours,
-            "效率": c.efficiency,
-            "允许普通件": c.allow_normal,
-            "允许急件": c.allow_urgent,
-            "说明": c.remark,
-            "__id": f"{c.operator_id}|{c.date}",
-        }
-        existing[d["__id"]] = d
-        existing_list.append(d)
-
     validate_row = get_operator_calendar_row_validate_and_normalize(
         g.db,
-        holiday_default_efficiency=hde,
+        holiday_default_efficiency=hde_value,
         inplace=True,
     )
 
@@ -172,7 +219,7 @@ def excel_operator_calendar_preview():
         mode=mode,
         id_column="__id",
         extra_state=_operator_calendar_baseline_extra_state(
-            holiday_default_efficiency=hde,
+            holiday_default_efficiency=hde_value,
             operator_ids=operator_ids,
         ),
     )
@@ -188,19 +235,13 @@ def excel_operator_calendar_preview():
         time_cost_ms=time_cost_ms,
     )
 
-    return render_template(
-        "personnel/excel_import_operator_calendar.html",
-        title="人员专属工作日历 - Excel 导入/导出",
+    return _render_excel_operator_calendar_page(
         existing_list=existing_list,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(normalized_rows, ensure_ascii=False),
         preview_baseline=preview_baseline,
-        mode=mode.value,
+        mode_value=mode.value,
         filename=file.filename,
-        preview_url=url_for("personnel.excel_operator_calendar_preview"),
-        confirm_url=url_for("personnel.excel_operator_calendar_confirm"),
-        template_download_url=url_for("personnel.excel_operator_calendar_template"),
-        export_url=url_for("personnel.excel_operator_calendar_export"),
     )
 
 
@@ -216,14 +257,17 @@ def excel_operator_calendar_confirm():
     if not preview_baseline:
         raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
 
-    # 读取假期默认效率（用于效率空值兜底）
+    existing, existing_list = _build_existing_operator_calendar_preview_data()
     cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
-    try:
-        hde = float(cfg_svc.get("holiday_default_efficiency", default=0.8) or 0.8)
-        if hde <= 0:
-            hde = 0.8
-    except Exception:
-        hde = 0.8
+    hde, error_response = _load_holiday_default_efficiency_for_excel(
+        cfg_svc=cfg_svc,
+        existing_list=existing_list,
+        mode_value=mode.value,
+        filename=filename,
+    )
+    if error_response is not None:
+        return error_response
+    hde_value = _require_holiday_default_efficiency(hde)
 
     try:
         rows = json.loads(raw_rows_json)
@@ -235,21 +279,6 @@ def excel_operator_calendar_confirm():
     _ensure_unique_ids(rows, id_column="__id")
 
     cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
-    existing: Dict[str, Dict[str, Any]] = {}
-    for c in cal_svc.list_operator_calendar_all():
-        existing[f"{c.operator_id}|{c.date}"] = {
-            "工号": c.operator_id,
-            "日期": c.date,
-            "类型": _normalize_operator_calendar_day_type(c.day_type),
-            "班次开始": c.shift_start,
-            "班次结束": c.shift_end,
-            "可用工时": c.shift_hours,
-            "效率": c.efficiency,
-            "允许普通件": c.allow_normal,
-            "允许急件": c.allow_urgent,
-            "说明": c.remark,
-            "__id": f"{c.operator_id}|{c.date}",
-        }
     operator_ids = _list_operator_ids()
     if not preview_baseline_matches(
         preview_baseline,
@@ -257,29 +286,23 @@ def excel_operator_calendar_confirm():
         mode=mode,
         id_column="__id",
         extra_state=_operator_calendar_baseline_extra_state(
-            holiday_default_efficiency=hde,
+            holiday_default_efficiency=hde_value,
             operator_ids=operator_ids,
         ),
     ):
         flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
-        return render_template(
-            "personnel/excel_import_operator_calendar.html",
-            title="人员专属工作日历 - Excel 导入/导出",
-            existing_list=list(existing.values()),
+        return _render_excel_operator_calendar_page(
+            existing_list=existing_list,
             preview_rows=None,
             raw_rows_json=None,
             preview_baseline=None,
-            mode=mode.value,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("personnel.excel_operator_calendar_preview"),
-            confirm_url=url_for("personnel.excel_operator_calendar_confirm"),
-            template_download_url=url_for("personnel.excel_operator_calendar_template"),
-            export_url=url_for("personnel.excel_operator_calendar_export"),
         )
 
     validate_row = get_operator_calendar_row_validate_and_normalize(
         g.db,
-        holiday_default_efficiency=hde,
+        holiday_default_efficiency=hde_value,
         inplace=True,
     )
 
@@ -299,19 +322,13 @@ def excel_operator_calendar_confirm():
             f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
             "error",
         )
-        return render_template(
-            "personnel/excel_import_operator_calendar.html",
-            title="人员专属工作日历 - Excel 导入/导出",
-            existing_list=list(existing.values()),
+        return _render_excel_operator_calendar_page(
+            existing_list=existing_list,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
             preview_baseline=preview_baseline,
-            mode=mode.value,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("personnel.excel_operator_calendar_preview"),
-            confirm_url=url_for("personnel.excel_operator_calendar_confirm"),
-            template_download_url=url_for("personnel.excel_operator_calendar_template"),
-            export_url=url_for("personnel.excel_operator_calendar_export"),
         )
 
     import_stats = cal_svc.import_operator_calendar_from_preview_rows(
@@ -361,12 +378,7 @@ def excel_operator_calendar_template():
             time_range={},
             time_cost_ms=time_cost_ms,
         )
-        return send_file(
-            template_path,
-            as_attachment=True,
-            download_name="人员专属工作日历.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        return send_excel_template_file(template_path, download_name="人员专属工作日历.xlsx")
 
     template_def = get_template_definition("人员专属工作日历.xlsx")
     sample_rows = template_def.get("sample_rows") or []

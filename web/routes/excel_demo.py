@@ -4,7 +4,7 @@ import io
 import json
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, current_app, flash, g, redirect, request, send_file, url_for
 
@@ -20,7 +20,13 @@ from core.services.personnel import OperatorService
 from core.services.personnel.operator_excel_import_service import OperatorExcelImportService
 from web.ui_mode import render_ui_template as render_template
 
-from .excel_utils import build_preview_baseline_token, flash_import_result, parse_import_mode, preview_baseline_matches
+from .excel_utils import (
+    build_preview_baseline_token,
+    flash_import_result,
+    parse_import_mode,
+    preview_baseline_matches,
+    send_excel_template_file,
+)
 
 bp = Blueprint("excel_demo", __name__)
 
@@ -58,7 +64,7 @@ def _render_demo_page(
     )
 
 
-def _validate_operator_row(row: Dict[str, Any]) -> str:
+def _validate_operator_row(row: Dict[str, Any]) -> Optional[str]:
     # 返回中文错误提示；返回 None 表示通过
     if is_blank_value(row.get("工号")):
         return "“工号”不能为空"
@@ -107,12 +113,14 @@ def preview():
     backend = OpenpyxlBackend()
     # openpyxl.load_workbook 需要类文件对象时要用 filename=...；这里用临时文件流不稳定
     # 因此：写入一个临时内存文件并交给 openpyxl（openpyxl 支持 BytesIO）
+    wb = None
     try:
-        wb = None  # 仅用于异常时提示
         import openpyxl
 
         wb = openpyxl.load_workbook(tmp, data_only=True)
         ws = wb.active
+        if ws is None:
+            raise AppError(ErrorCode.EXCEL_FORMAT_ERROR, "Excel 缺少活动工作表，无法读取。")
         rows = list(ws.iter_rows(values_only=True))
         if not rows:
             raise AppError(ErrorCode.EXCEL_FORMAT_ERROR, "Excel 内容为空，未读取到任何行。")
@@ -137,6 +145,9 @@ def preview():
         raise
     except Exception as e:
         raise AppError(ErrorCode.EXCEL_READ_ERROR, "读取 Excel 失败，请确认文件未损坏且未被占用。", cause=e) from e
+    finally:
+        if wb is not None:
+            wb.close()
 
     existing = _fetch_existing_operators(g.db)
     svc = ExcelService(backend=backend, logger=None, op_logger=g.op_logger)
@@ -279,12 +290,7 @@ def download_template():
             time_range={},
             time_cost_ms=time_cost_ms,
         )
-        return send_file(
-            template_path,
-            as_attachment=True,
-            download_name="人员基本信息.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        return send_excel_template_file(template_path, download_name="人员基本信息.xlsx")
 
     template_def = get_template_definition("人员基本信息.xlsx")
     sample_rows = template_def.get("sample_rows") or []

@@ -19,7 +19,12 @@ from core.services.personnel import OperatorService, ResourceTeamService
 from core.services.personnel.operator_excel_import_service import OperatorExcelImportService
 from web.ui_mode import render_ui_template as render_template
 
-from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
+from .excel_utils import (
+    build_preview_baseline_token,
+    flash_import_result,
+    preview_baseline_matches,
+    send_excel_template_file,
+)
 from .personnel_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 
@@ -303,12 +308,7 @@ def excel_operator_template():
             time_range={},
             time_cost_ms=time_cost_ms,
         )
-        return send_file(
-            template_path,
-            as_attachment=True,
-            download_name="人员基本信息.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        return send_excel_template_file(template_path, download_name="人员基本信息.xlsx")
 
     template_def = get_template_definition("人员基本信息.xlsx")
     sample_rows = template_def.get("sample_rows") or []

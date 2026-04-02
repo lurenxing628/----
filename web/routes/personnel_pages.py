@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from flask import flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.models.enums import OperatorStatus, YesNo
@@ -203,17 +203,24 @@ def bulk_set_status():
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     ok = 0
     failed: List[str] = []
+    failed_details: List[str] = []
     for oid in operator_ids:
         try:
             svc.set_status(oid, status=status)
             ok += 1
-        except Exception:
+        except AppError as e:
             failed.append(str(oid))
+            failed_details.append(f"{oid}: {e.message}")
+            continue
+        except Exception:
+            current_app.logger.exception("批量设置人员状态失败（operator_id=%s, status=%s）", oid, status)
+            failed.append(str(oid))
+            failed_details.append(f"{oid}: 内部错误，请查看日志")
             continue
 
     flash(f"批量状态更新完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:
-        sample = "，".join(failed[:10])
+        sample = "；".join(failed_details[:10])
         flash(f"失败人员（最多展示 10 个）：{sample}", "warning")
     return redirect(url_for("personnel.list_page"))
 
@@ -231,18 +238,25 @@ def bulk_delete():
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     ok = 0
     failed: List[str] = []
+    failed_details: List[str] = []
     for oid in operator_ids:
         try:
             svc.delete(oid)
             ok += 1
-        except Exception:
+        except AppError as e:
             failed.append(str(oid))
+            failed_details.append(f"{oid}: {e.message}")
+            continue
+        except Exception:
+            current_app.logger.exception("批量删除人员失败（operator_id=%s）", oid)
+            failed.append(str(oid))
+            failed_details.append(f"{oid}: 内部错误，请查看日志")
             continue
 
     flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:
-        sample = "，".join(failed[:10])
-        flash(f"删除失败（最多展示 10 个）：{sample}。常见原因：被批次工序/排程引用，请改为停用。", "warning")
+        sample = "；".join(failed_details[:10])
+        flash(f"删除失败（最多展示 10 个）：{sample}", "warning")
     return redirect(url_for("personnel.list_page"))
 
 

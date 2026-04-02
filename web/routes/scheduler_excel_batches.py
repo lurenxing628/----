@@ -18,7 +18,12 @@ from core.services.process.part_operation_query_service import PartOperationQuer
 from core.services.scheduler import BatchService
 from web.ui_mode import render_ui_template as render_template
 
-from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
+from .excel_utils import (
+    build_preview_baseline_token,
+    flash_import_result,
+    preview_baseline_matches,
+    send_excel_template_file,
+)
 from .scheduler_bp import bp
 from .scheduler_utils import (
     _ensure_unique_ids,
@@ -54,6 +59,10 @@ def _parse_auto_generate_ops(value: Any) -> bool:
     return str(value or "").strip().lower() in ("1", "true", "on", "yes")
 
 
+def _strict_mode_enabled(value: Any) -> bool:
+    return str(value or "").strip().lower() in ("1", "true", "on", "yes", "y")
+
+
 def _build_existing_preview_data(batch_svc: BatchService) -> Tuple[Dict[str, Any], Dict[str, Dict[str, Any]]]:
     existing = {b.batch_id: b for b in batch_svc.list()}
     existing_preview_data = {
@@ -85,7 +94,14 @@ def _build_template_ops_snapshot(conn, rows: List[Dict[str, Any]]) -> List[Dict[
     return query_svc.list_template_snapshot_for_parts(part_nos)
 
 
-def _batch_baseline_extra_state(*, conn, parts_cache: Dict[str, Any], auto_generate_ops: bool, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _batch_baseline_extra_state(
+    *,
+    conn,
+    parts_cache: Dict[str, Any],
+    auto_generate_ops: bool,
+    strict_mode: bool,
+    rows: List[Dict[str, Any]],
+) -> Dict[str, Any]:
     parts_snapshot = []
     for part_no in sorted(parts_cache.keys()):
         part = parts_cache.get(part_no)
@@ -98,6 +114,7 @@ def _batch_baseline_extra_state(*, conn, parts_cache: Dict[str, Any], auto_gener
         )
     return {
         "auto_generate_ops": bool(auto_generate_ops),
+        "strict_mode": bool(strict_mode),
         "parts_snapshot": parts_snapshot,
         "template_ops_snapshot": _build_template_ops_snapshot(conn, rows) if auto_generate_ops else [],
     }
@@ -112,6 +129,7 @@ def _render_excel_batches_page(
     mode_value: str,
     filename: Optional[str],
     auto_generate_ops: bool,
+    strict_mode: bool,
 ):
     return render_template(
         "scheduler/excel_import_batches.html",
@@ -124,6 +142,10 @@ def _render_excel_batches_page(
         filename=filename,
         auto_generate_ops=auto_generate_ops,
         preview_url=url_for("scheduler.excel_batches_preview"),
+        strict_mode_supported=True,
+        strict_mode=bool(strict_mode),
+        strict_mode_label="严格模式",
+        strict_mode_help="开启后，自动补建工序时不允许兼容性回退。",
         confirm_url=url_for("scheduler.excel_batches_confirm"),
         template_download_url=url_for("scheduler.excel_batches_template"),
         export_url=url_for("scheduler.excel_batches_export"),
@@ -141,7 +163,7 @@ def _format_error_sample(error_rows: List[Any]) -> str:
 
 @bp.get("/excel/batches")
 def excel_batches_page():
-    svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
+    svc = BatchService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
     existing = {
         b.batch_id: {
             "批次号": b.batch_id,
@@ -163,6 +185,7 @@ def excel_batches_page():
         mode_value=ImportMode.OVERWRITE.value,
         filename=None,
         auto_generate_ops=True,
+        strict_mode=False,
     )
 
 
@@ -171,6 +194,7 @@ def excel_batches_preview():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     auto_generate_ops = _parse_auto_generate_ops(request.form.get("auto_generate_ops"))
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     file = request.files.get("file")
     if not file or not file.filename:
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
@@ -192,7 +216,7 @@ def excel_batches_preview():
             item["交期"] = _normalize_due_date(item.get("交期"))
         normalized_rows.append(item)
 
-    svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
+    svc = BatchService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
     existing = {
         b.batch_id: {
             "批次号": b.batch_id,
@@ -227,6 +251,7 @@ def excel_batches_preview():
             conn=g.db,
             parts_cache=parts,
             auto_generate_ops=auto_generate_ops,
+            strict_mode=strict_mode,
             rows=normalized_rows,
         ),
     )
@@ -250,6 +275,7 @@ def excel_batches_preview():
         mode_value=mode.value,
         filename=file.filename,
         auto_generate_ops=auto_generate_ops,
+        strict_mode=strict_mode,
     )
 
 
@@ -260,6 +286,7 @@ def excel_batches_confirm():
     filename = request.form.get("filename") or "unknown.xlsx"
     raw_rows_json = request.form.get("raw_rows_json")
     preview_baseline = (request.form.get("preview_baseline") or "").strip()
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     auto_generate_ops = _parse_auto_generate_ops(request.form.get("auto_generate_ops"))
     if not raw_rows_json:
         raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
@@ -270,7 +297,7 @@ def excel_batches_confirm():
 
     _ensure_unique_ids(rows, id_column="批次号")
 
-    svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
+    svc = BatchService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
     existing, existing_preview_data = _build_existing_preview_data(svc)
     parts = _build_parts_cache(g.db)
     if not preview_baseline_matches(
@@ -282,6 +309,7 @@ def excel_batches_confirm():
             conn=g.db,
             parts_cache=parts,
             auto_generate_ops=auto_generate_ops,
+            strict_mode=strict_mode,
             rows=rows,
         ),
     ):
@@ -294,6 +322,7 @@ def excel_batches_confirm():
             mode_value=mode.value,
             filename=filename,
             auto_generate_ops=auto_generate_ops,
+            strict_mode=strict_mode,
         )
     validate_row = get_batch_row_validate_and_normalize(g.db, parts_cache=parts, inplace=True)
 
@@ -319,6 +348,7 @@ def excel_batches_confirm():
             mode_value=mode.value,
             filename=filename,
             auto_generate_ops=auto_generate_ops,
+            strict_mode=strict_mode,
         )
 
     import_stats = svc.import_from_preview_rows(
@@ -326,6 +356,7 @@ def excel_batches_confirm():
         mode=mode,
         parts_cache=parts,
         auto_generate_ops=auto_generate_ops,
+        strict_mode=strict_mode,
         existing_ids=set(existing.keys()),
     )
     new_count = int(import_stats.get("new_count", 0))
@@ -371,12 +402,7 @@ def excel_batches_template():
             time_range={},
             time_cost_ms=time_cost_ms,
         )
-        return send_file(
-            template_path,
-            as_attachment=True,
-            download_name="批次信息.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        return send_excel_template_file(template_path, download_name="批次信息.xlsx")
 
     template_def = get_template_definition("批次信息.xlsx")
     sample_rows = template_def.get("sample_rows") or []
@@ -408,7 +434,7 @@ def excel_batches_template():
 @bp.get("/excel/batches/export")
 def excel_batches_export():
     start = time.time()
-    svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
+    svc = BatchService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
     rows = svc.list()
     template_def = get_template_definition("批次信息.xlsx")
     output = build_xlsx_bytes(

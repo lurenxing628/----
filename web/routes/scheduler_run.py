@@ -8,6 +8,10 @@ from core.services.scheduler import ScheduleService
 from .scheduler_bp import bp
 
 
+def _strict_mode_enabled(raw_value: object) -> bool:
+    return str(raw_value or "").strip().lower() in ("yes", "y", "true", "1", "on")
+
+
 def _parse_optional_checkbox_flag(name: str):
     """
     解析 checkbox 三态：
@@ -30,6 +34,7 @@ def run_schedule():
     start_dt = request.form.get("start_dt") or None
     end_date = request.form.get("end_date") or None
     enforce_ready = _parse_optional_checkbox_flag("enforce_ready")
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     sch_svc = ScheduleService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     try:
         result = sch_svc.run_schedule(
@@ -38,6 +43,7 @@ def run_schedule():
             end_date=end_date,
             created_by="web",
             enforce_ready=enforce_ready,
+            strict_mode=strict_mode,
         )
         ver = result.get("version")
         summary = result.get("summary") or {}

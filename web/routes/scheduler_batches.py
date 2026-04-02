@@ -18,6 +18,10 @@ from .scheduler_bp import _batch_status_zh, _priority_zh, _ready_zh, bp
 from .system_utils import _safe_next_url
 
 
+def _strict_mode_enabled(raw_value: Any) -> bool:
+    return str(raw_value or "").strip().lower() in {"1", "y", "yes", "true", "on"}
+
+
 @bp.get("/")
 def batches_page():
     batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
@@ -54,19 +58,28 @@ def batches_page():
     # 最近一次排产（用于用户确认“留痕已写入”）
     latest_history = None
     latest_summary = None
+    hist_q = ScheduleHistoryQueryService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    )
     try:
-        hist_q = ScheduleHistoryQueryService(
-            g.db,
-            logger=getattr(g, "app_logger", None),
-            op_logger=getattr(g, "op_logger", None),
-        )
         items = hist_q.list_recent(limit=1)
         latest_history = items[0].to_dict() if items else None
-        if latest_history and latest_history.get("result_summary"):
-            latest_summary = json.loads(latest_history.get("result_summary") or "{}")
     except Exception:
+        current_app.logger.exception("排产页读取最近一次排产历史失败")
         latest_history = None
         latest_summary = None
+    if latest_history and latest_history.get("result_summary"):
+        try:
+            latest_summary = json.loads(latest_history.get("result_summary") or "{}")
+        except Exception as exc:
+            current_app.logger.warning(
+                "排产页 result_summary 解析失败（version=%s, error=%s）",
+                latest_history.get("version"),
+                exc.__class__.__name__,
+            )
+            latest_summary = None
 
     return render_template(
         "scheduler/batches.html",
@@ -142,6 +155,7 @@ def create_batch():
     priority = request.form.get("priority") or "normal"
     ready_status = request.form.get("ready_status") or "yes"
     ready_date = request.form.get("ready_date") or None
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     remark = request.form.get("remark") or None
 
     batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
@@ -157,6 +171,7 @@ def create_batch():
             ready_date=ready_date,
             remark=remark,
             rebuild_ops=False,
+            strict_mode=strict_mode,
         )
         flash(f"已创建批次并生成工序：{b.batch_id}（共 {len(batch_svc.list_operations(b.batch_id))} 道工序）", "success")
         return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))
@@ -193,17 +208,24 @@ def bulk_delete_batches():
     batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     ok = 0
     failed: List[str] = []
+    failed_details: List[str] = []
     for bid in batch_ids:
         try:
             batch_svc.delete(bid)
             ok += 1
-        except Exception:
+        except AppError as e:
             failed.append(str(bid))
+            failed_details.append(f"{bid}: {e.message}")
+            continue
+        except Exception:
+            current_app.logger.exception("批量删除批次失败（batch_id=%s）", bid)
+            failed.append(str(bid))
+            failed_details.append(f"{bid}: 内部错误，请查看日志")
             continue
 
     flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:
-        sample = "，".join(failed[:10])
+        sample = "；".join(failed_details[:10])
         flash(f"删除失败（最多展示 10 个）：{sample}", "warning")
     return redirect(url_for("scheduler.batches_manage_page"))
 
@@ -322,19 +344,24 @@ def bulk_update_batches():
 @bp.post("/batches/<batch_id>/generate-ops")
 def generate_ops(batch_id: str):
     batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     b = batch_svc.get(batch_id)
 
-    batch_svc.create_batch_from_template(
-        batch_id=b.batch_id,
-        part_no=b.part_no,
-        quantity=b.quantity,
-        due_date=b.due_date,
-        priority=b.priority,
-        ready_status=b.ready_status,
-        remark=b.remark,
-        rebuild_ops=True,
-    )
-    cnt = len(batch_svc.list_operations(b.batch_id))
-    flash(f"已重建批次工序：共 {cnt} 道工序。", "success")
+    try:
+        batch_svc.create_batch_from_template(
+            batch_id=b.batch_id,
+            part_no=b.part_no,
+            quantity=b.quantity,
+            due_date=b.due_date,
+            priority=b.priority,
+            ready_status=b.ready_status,
+            remark=b.remark,
+            rebuild_ops=True,
+            strict_mode=strict_mode,
+        )
+        cnt = len(batch_svc.list_operations(b.batch_id))
+        flash(f"已重建批次工序：共 {cnt} 道工序。", "success")
+    except AppError as e:
+        flash(e.message, "error")
     return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))
 

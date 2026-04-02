@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
-from flask import g, request
+from flask import current_app, g, request
 
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
@@ -12,6 +12,20 @@ from web.ui_mode import render_ui_template as render_template
 from .pagination import paginate_rows, parse_page_args
 from .system_bp import bp
 from .system_utils import _safe_int
+
+
+def _parse_result_summary(raw_summary: Any, *, version: Any, source: str) -> Optional[Any]:
+    try:
+        parsed = json.loads(raw_summary or "{}")
+    except Exception as exc:
+        current_app.logger.warning(
+            "排产历史页 result_summary 解析失败（version=%s, source=%s, error=%s）",
+            version,
+            source,
+            exc.__class__.__name__,
+        )
+        return None
+    return parsed if isinstance(parsed, dict) else parsed
 
 
 @bp.get("/history")
@@ -34,18 +48,20 @@ def history_page():
         if item:
             selected = item.to_dict()
             if selected.get("result_summary"):
-                try:
-                    selected_summary = json.loads(selected.get("result_summary") or "{}")
-                except Exception:
-                    selected_summary = None
+                selected_summary = _parse_result_summary(
+                    selected.get("result_summary"),
+                    version=ver,
+                    source="selected",
+                )
 
     items = [x.to_dict() for x in q.list_recent(limit=limit)]
     for it in items:
         if it.get("result_summary"):
-            try:
-                it["result_summary_obj"] = json.loads(it.get("result_summary") or "{}")
-            except Exception:
-                it["result_summary_obj"] = None
+            it["result_summary_obj"] = _parse_result_summary(
+                it.get("result_summary"),
+                version=it.get("version"),
+                source="list",
+            )
     # 语义约定：
     # - limit：总查询上限（仅在最近 N 条记录内分页）
     # - per_page：每页展示条数
@@ -61,4 +77,3 @@ def history_page():
         filters={"version": version_raw, "limit": str(limit)},
         pager=pager,
     )
-

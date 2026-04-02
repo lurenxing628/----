@@ -143,23 +143,29 @@ def backup_delete_batch():
     backup_dir = current_app.config["BACKUP_DIR"]
     ok = 0
     failed: List[str] = []
+    failed_details: List[str] = []
     deleted: List[str] = []
     for raw in filenames:
         try:
             fn = _validate_backup_filename(raw)
-        except Exception:
-            failed.append(str(raw))
+        except ValidationError as e:
+            shown = str(raw or "").strip() or "（空）"
+            failed.append(shown)
+            failed_details.append(f"{shown}: {e.message}")
             continue
         p = os.path.join(backup_dir, fn)
         if not os.path.exists(p):
             failed.append(fn)
+            failed_details.append(f"{fn}: 文件不存在")
             continue
         try:
             os.remove(p)
             ok += 1
             deleted.append(fn)
         except Exception:
+            current_app.logger.exception("批量删除备份失败（filename=%s）", fn)
             failed.append(fn)
+            failed_details.append(f"{fn}: 删除失败，请查看日志")
             continue
 
     if getattr(g, "op_logger", None) is not None:
@@ -179,7 +185,7 @@ def backup_delete_batch():
 
     flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:
-        sample = "，".join(failed[:10])
+        sample = "；".join(failed_details[:10])
         flash(f"删除失败（最多展示 10 个）：{sample}", "warning")
     return redirect(url_for("system.backup_page"))
 
@@ -259,6 +265,7 @@ def backup_restore():
     # 写入操作日志（独立连接）
     conn = None
     try:
+        before_restore_path = getattr(result, "before_restore_path", None)
         conn = sqlite3.connect(current_app.config["DATABASE_PATH"])
         op_logger = OperationLogger(conn, logger=current_app.logger)
         logged = op_logger.info(
@@ -269,9 +276,7 @@ def backup_restore():
             detail={
                 "filename": filename,
                 "note": "已恢复数据库；恢复前自动备份 before_restore 已执行，且后续 ensure_schema 已成功完成。",
-                "before_restore_filename": (
-                    os.path.basename(result.before_restore_path) if getattr(result, "before_restore_path", None) else None
-                ),
+                "before_restore_filename": os.path.basename(before_restore_path) if isinstance(before_restore_path, str) and before_restore_path else None,
             },
         )
         if not logged:

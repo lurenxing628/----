@@ -19,7 +19,12 @@ from core.services.process import OpTypeService, SupplierService
 from core.services.process.supplier_excel_import_service import SupplierExcelImportService
 from web.ui_mode import render_ui_template as render_template
 
-from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
+from .excel_utils import (
+    build_preview_baseline_token,
+    flash_import_result,
+    preview_baseline_matches,
+    send_excel_template_file,
+)
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
@@ -81,6 +86,20 @@ def _supplier_op_type_snapshot(op_type_svc: OpTypeService) -> Dict[str, Any]:
     }
 
 
+def _normalize_supplier_default_days(row: Dict[str, Any]) -> Optional[str]:
+    raw_value = row.get("默认周期")
+    if raw_value is None or str(raw_value).strip() == "":
+        raw_value = 1.0
+    try:
+        days = float(raw_value)
+    except (TypeError, ValueError):
+        return "“默认周期”必须是数字"
+    if days <= 0:
+        return "“默认周期”必须大于 0"
+    row["默认周期"] = days
+    return None
+
+
 @bp.get("/excel/suppliers")
 def excel_supplier_page():
     svc = SupplierService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -116,16 +135,9 @@ def excel_supplier_preview():
         if is_blank_value(row.get("名称")):
             return "“名称”不能为空"
 
-        # 默认周期
-        if row.get("默认周期") is None or str(row.get("默认周期")).strip() == "":
-            row["默认周期"] = 1.0
-        try:
-            d = float(row.get("默认周期"))
-            if d <= 0:
-                return "“默认周期”必须大于 0"
-            row["默认周期"] = d
-        except Exception:
-            return "“默认周期”必须是数字"
+        default_days_error = _normalize_supplier_default_days(row)
+        if default_days_error is not None:
+            return default_days_error
 
         # 状态可选
         if "状态" in row:
@@ -223,15 +235,9 @@ def excel_supplier_confirm():
             return "“供应商ID”不能为空"
         if is_blank_value(row.get("名称")):
             return "“名称”不能为空"
-        if row.get("默认周期") is None or str(row.get("默认周期")).strip() == "":
-            row["默认周期"] = 1.0
-        try:
-            d = float(row.get("默认周期"))
-            if d <= 0:
-                return "“默认周期”必须大于 0"
-            row["默认周期"] = d
-        except Exception:
-            return "“默认周期”必须是数字"
+        default_days_error = _normalize_supplier_default_days(row)
+        if default_days_error is not None:
+            return default_days_error
         if "状态" in row:
             row["状态"] = _normalize_supplier_status(row.get("状态"))
             if row["状态"] not in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
@@ -317,12 +323,7 @@ def excel_supplier_template():
             time_range={},
             time_cost_ms=time_cost_ms,
         )
-        return send_file(
-            template_path,
-            as_attachment=True,
-            download_name="供应商配置.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        return send_excel_template_file(template_path, download_name="供应商配置.xlsx")
 
     template_def = get_template_definition("供应商配置.xlsx")
     sample_rows = template_def.get("sample_rows") or []

@@ -18,7 +18,12 @@ from core.services.common.normalize import is_blank_value
 from core.services.scheduler import CalendarService, ConfigService
 from web.ui_mode import render_ui_template as render_template
 
-from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
+from .excel_utils import (
+    build_preview_baseline_token,
+    flash_import_result,
+    preview_baseline_matches,
+    send_excel_template_file,
+)
 from .scheduler_bp import bp
 from .scheduler_utils import (
     _ensure_unique_ids,
@@ -74,6 +79,12 @@ def _calendar_baseline_extra_state(*, holiday_default_efficiency: float) -> Dict
     return {"holiday_default_efficiency": float(holiday_default_efficiency)}
 
 
+def _require_holiday_default_efficiency(value: Optional[float]) -> float:
+    if value is None:
+        raise ValidationError("holiday_default_efficiency 缺失，无法继续工作日历 Excel 导入。")
+    return float(value)
+
+
 def _render_excel_calendar_page(
     *,
     existing_list: List[Dict[str, Any]],
@@ -99,6 +110,31 @@ def _render_excel_calendar_page(
     )
 
 
+def _load_holiday_default_efficiency_for_excel(
+    *,
+    cfg_svc: ConfigService,
+    existing_list: List[Dict[str, Any]],
+    mode_value: str,
+    filename: Optional[str],
+) -> Tuple[Optional[float], Optional[Any]]:
+    try:
+        return float(cfg_svc.get_holiday_default_efficiency()), None
+    except ValidationError as exc:
+        current_app.logger.warning(
+            "工作日历 Excel 导入读取 holiday_default_efficiency 非法，已拒绝操作：%s",
+            exc.message,
+        )
+        flash("系统配置项 holiday_default_efficiency 非法，无法继续工作日历 Excel 导入，请先在排产参数中修复。", "error")
+        return None, _render_excel_calendar_page(
+            existing_list=existing_list,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode_value=mode_value,
+            filename=filename,
+        )
+
+
 @bp.get("/excel/calendar")
 def excel_calendar_page():
     _existing, existing_list = _build_existing_preview_data()
@@ -120,13 +156,17 @@ def excel_calendar_preview():
     if not file or not file.filename:
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
 
+    existing, existing_list = _build_existing_preview_data()
     cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
-    try:
-        hde = float(cfg_svc.get("holiday_default_efficiency", default=0.8) or 0.8)
-        if hde <= 0:
-            hde = 0.8
-    except Exception:
-        hde = 0.8
+    hde, error_response = _load_holiday_default_efficiency_for_excel(
+        cfg_svc=cfg_svc,
+        existing_list=existing_list,
+        mode_value=mode.value,
+        filename=file.filename,
+    )
+    if error_response is not None:
+        return error_response
+    hde_value = _require_holiday_default_efficiency(hde)
 
     rows = _read_uploaded_xlsx(file)
 
@@ -140,8 +180,6 @@ def excel_calendar_preview():
         # 说明字段：允许为空
         normalized_rows.append(item)
     _ensure_unique_ids(normalized_rows, id_column="日期")
-
-    existing, existing_list = _build_existing_preview_data()
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
         if is_blank_value(row.get("日期")):
@@ -171,7 +209,7 @@ def excel_calendar_preview():
 
         eff = row.get("效率")
         if eff is None or str(eff).strip() == "":
-            row["效率"] = 1.0 if row["类型"] == CalendarDayType.WORKDAY.value else float(hde)
+            row["效率"] = 1.0 if row["类型"] == CalendarDayType.WORKDAY.value else hde_value
         else:
             try:
                 v = float(eff)
@@ -202,7 +240,7 @@ def excel_calendar_preview():
         existing_data=existing,
         mode=mode,
         id_column="日期",
-        extra_state=_calendar_baseline_extra_state(holiday_default_efficiency=hde),
+        extra_state=_calendar_baseline_extra_state(holiday_default_efficiency=hde_value),
     )
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -238,22 +276,25 @@ def excel_calendar_confirm():
     if not preview_baseline:
         raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
 
+    existing, existing_list = _build_existing_preview_data()
     cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
-    try:
-        hde = float(cfg_svc.get("holiday_default_efficiency", default=0.8) or 0.8)
-        if hde <= 0:
-            hde = 0.8
-    except Exception:
-        hde = 0.8
+    hde, error_response = _load_holiday_default_efficiency_for_excel(
+        cfg_svc=cfg_svc,
+        existing_list=existing_list,
+        mode_value=mode.value,
+        filename=filename,
+    )
+    if error_response is not None:
+        return error_response
+    hde_value = _require_holiday_default_efficiency(hde)
 
     rows = _parse_preview_rows_json(raw_rows_json)
-    existing, existing_list = _build_existing_preview_data()
     if not preview_baseline_matches(
         preview_baseline,
         existing_data=existing,
         mode=mode,
         id_column="日期",
-        extra_state=_calendar_baseline_extra_state(holiday_default_efficiency=hde),
+        extra_state=_calendar_baseline_extra_state(holiday_default_efficiency=hde_value),
     ):
         flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
         return _render_excel_calendar_page(
@@ -301,7 +342,7 @@ def excel_calendar_confirm():
 
         eff = row.get("效率")
         if eff is None or str(eff).strip() == "":
-            row["效率"] = 1.0 if row["类型"] == CalendarDayType.WORKDAY.value else float(hde)
+            row["效率"] = 1.0 if row["类型"] == CalendarDayType.WORKDAY.value else hde_value
         else:
             try:
                 v = float(eff)
@@ -435,12 +476,7 @@ def excel_calendar_template():
             time_range={},
             time_cost_ms=time_cost_ms,
         )
-        return send_file(
-            template_path,
-            as_attachment=True,
-            download_name="工作日历.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        return send_excel_template_file(template_path, download_name="工作日历.xlsx")
 
     template_def = get_template_definition("工作日历.xlsx")
     sample_rows = template_def.get("sample_rows") or []

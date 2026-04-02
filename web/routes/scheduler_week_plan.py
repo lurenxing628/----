@@ -26,6 +26,10 @@ def _get_int_arg(name: str, default: int = 0) -> int:
         raise ValidationError(f"{name} 不合法（期望整数）", field=name) from e
 
 
+def _strict_mode_enabled(raw_value: object) -> bool:
+    return str(raw_value or "").strip().lower() in ("yes", "y", "true", "1", "on")
+
+
 def _parse_optional_checkbox_flag(name: str):
     """
     解析 checkbox 三态：
@@ -165,6 +169,7 @@ def simulate_schedule():
     start_dt = request.form.get("start_dt") or None
     end_date = request.form.get("end_date") or None
     enforce_ready = _parse_optional_checkbox_flag("enforce_ready")
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     if not batch_ids:
         flash("请至少选择 1 个批次进行模拟排产。", "error")
         return redirect(url_for("scheduler.batches_page"))
@@ -178,6 +183,7 @@ def simulate_schedule():
             created_by="web",
             simulate=True,
             enforce_ready=enforce_ready,
+            strict_mode=strict_mode,
         )
         ver = int(result.get("version") or 1)
         flash(f"模拟排产完成：生成版本 {ver}（不影响批次状态）。", "success")

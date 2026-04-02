@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List
 
-from flask import flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.models.enums import MachineStatus, YesNo
@@ -58,13 +58,14 @@ def _selected_op_type_name(op_types: Dict[str, Any], machine) -> Any:
     return op_type.name if op_type else None
 
 
-def _load_active_downtime_machine_ids() -> set:
+def _load_active_downtime_machine_ids() -> Dict[str, Any]:
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         dt_q = MachineDowntimeQueryService(g.db, op_logger=getattr(g, "op_logger", None))
-        return dt_q.list_active_machine_ids_at(now_str)
+        return {"machine_ids": dt_q.list_active_machine_ids_at(now_str), "degraded": False, "reason": None}
     except Exception:
-        return set()
+        current_app.logger.exception("设备列表页读取计划停机状态失败（now=%s）", now_str)
+        return {"machine_ids": set(), "degraded": True, "reason": "query_failed"}
 
 
 def _group_machine_operator_links(link_rows: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
@@ -131,7 +132,9 @@ def list_page():
             return redirect(url_for("equipment.list_page"))
         raise
     op_types = {ot.op_type_id: ot for ot in op_type_svc.list()}
-    downtime_now_set = _load_active_downtime_machine_ids()
+    downtime_state = _load_active_downtime_machine_ids()
+    downtime_now_set = downtime_state["machine_ids"]
+    downtime_overlay_degraded = bool(downtime_state.get("degraded"))
 
     om_q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
     links_by_machine = _group_machine_operator_links(om_q.list_links_with_operator_info())
@@ -158,6 +161,7 @@ def list_page():
             (MachineStatus.MAINTAIN.value, "维修"),
             (MachineStatus.INACTIVE.value, "停用"),
         ],
+        downtime_overlay_degraded=downtime_overlay_degraded,
         pager=pager,
     )
 
@@ -293,17 +297,24 @@ def bulk_set_status():
     svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
     ok = 0
     failed: List[str] = []
+    failed_details: List[str] = []
     for mid in machine_ids:
         try:
             svc.set_status(mid, status=status)
             ok += 1
-        except Exception:
+        except AppError as e:
             failed.append(str(mid))
+            failed_details.append(f"{mid}: {e.message}")
+            continue
+        except Exception:
+            current_app.logger.exception("批量设置设备状态失败（machine_id=%s, status=%s）", mid, status)
+            failed.append(str(mid))
+            failed_details.append(f"{mid}: 内部错误，请查看日志")
             continue
 
     flash(f"批量状态更新完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:
-        sample = "，".join(failed[:10])
+        sample = "；".join(failed_details[:10])
         flash(f"失败设备（最多展示 10 个）：{sample}", "warning")
     return redirect(url_for("equipment.list_page"))
 
@@ -321,18 +332,25 @@ def bulk_delete():
     svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
     ok = 0
     failed: List[str] = []
+    failed_details: List[str] = []
     for mid in machine_ids:
         try:
             svc.delete(mid)
             ok += 1
-        except Exception:
+        except AppError as e:
             failed.append(str(mid))
+            failed_details.append(f"{mid}: {e.message}")
+            continue
+        except Exception:
+            current_app.logger.exception("批量删除设备失败（machine_id=%s）", mid)
+            failed.append(str(mid))
+            failed_details.append(f"{mid}: 内部错误，请查看日志")
             continue
 
     flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:
-        sample = "，".join(failed[:10])
-        flash(f"删除失败（最多展示 10 个）：{sample}。常见原因：被批次工序/排程引用，请改为停用。", "warning")
+        sample = "；".join(failed_details[:10])
+        flash(f"删除失败（最多展示 10 个）：{sample}", "warning")
     return redirect(url_for("equipment.list_page"))
 
 

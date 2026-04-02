@@ -17,7 +17,12 @@ from core.services.personnel.operator_machine_query_service import OperatorMachi
 from web.ui_mode import render_ui_template as render_template
 
 from .equipment_bp import _parse_mode, _read_uploaded_xlsx, bp
-from .excel_utils import build_preview_baseline_token, flash_import_result, preview_baseline_matches
+from .excel_utils import (
+    build_preview_baseline_token,
+    flash_import_result,
+    preview_baseline_matches,
+    send_excel_template_file,
+)
 
 # ============================================================
 # Excel：设备人员关联（OperatorMachine）
@@ -250,12 +255,7 @@ def excel_link_template():
             time_range={},
             time_cost_ms=time_cost_ms,
         )
-        return send_file(
-            template_path,
-            as_attachment=True,
-            download_name="设备人员关联.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        return send_excel_template_file(template_path, download_name="设备人员关联.xlsx")
 
     template_def = get_template_definition("设备人员关联.xlsx")
     sample_rows = template_def.get("sample_rows") or []

@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List, Tuple
 
-from flask import flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
 from core.models.enums import MergeMode, PartOperationStatus, SourceType, YesNo
@@ -12,6 +12,10 @@ from web.ui_mode import render_ui_template as render_template
 
 from .pagination import paginate_rows, parse_page_args
 from .process_bp import _merge_mode_zh, _source_zh, bp
+
+
+def _strict_mode_enabled(raw_value: Any) -> bool:
+    return str(raw_value or "").strip().lower() in {"1", "y", "yes", "true", "on"}
 
 
 def _summarize_active_ops(ops: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int, int, int]:
@@ -66,11 +70,16 @@ def create_part():
     part_name = request.form.get("part_name")
     route_raw = request.form.get("route_raw")
     remark = request.form.get("remark")
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
 
     svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
-    p = svc.create(part_no=part_no, part_name=part_name, route_raw=route_raw, remark=remark)
-    flash(f"已创建零件：{p.part_no} {p.part_name}", "success")
-    return redirect(url_for("process.part_detail", part_no=p.part_no))
+    try:
+        p = svc.create(part_no=part_no, part_name=part_name, route_raw=route_raw, remark=remark, strict_mode=strict_mode)
+        flash(f"已创建零件：{p.part_no} {p.part_name}", "success")
+        return redirect(url_for("process.part_detail", part_no=p.part_no))
+    except AppError as e:
+        flash(e.message, "error")
+        return redirect(url_for("process.list_parts"))
 
 
 @bp.get("/parts/<part_no>")
@@ -148,28 +157,40 @@ def bulk_delete_parts():
     svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
     ok = 0
     failed: List[str] = []
+    failed_details: List[str] = []
     for pn in part_nos:
         try:
             svc.delete(pn)
             ok += 1
-        except Exception:
+        except AppError as e:
             failed.append(str(pn))
+            failed_details.append(f"{pn}: {e.message}")
+            continue
+        except Exception:
+            current_app.logger.exception("批量删除零件失败（part_no=%s）", pn)
+            failed.append(str(pn))
+            failed_details.append(f"{pn}: 内部错误，请查看日志")
             continue
 
     flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:
-        sample = "，".join(failed[:10])
-        flash(f"删除失败（最多展示 10 个）：{sample}。常见原因：已被批次引用，请先删除/调整批次或停止引用。", "warning")
+        sample = "；".join(failed_details[:10])
+        flash(f"删除失败（最多展示 10 个）：{sample}", "warning")
     return redirect(url_for("process.list_parts"))
 
 
 @bp.post("/parts/<part_no>/reparse")
 def reparse_part(part_no: str):
     route_raw = request.form.get("route_raw")
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
 
     start = time.time()
-    result = svc.reparse_and_save(part_no=part_no, route_raw=route_raw)
+    try:
+        result = svc.reparse_and_save(part_no=part_no, route_raw=route_raw, strict_mode=strict_mode)
+    except AppError as e:
+        flash(e.message, "error")
+        return redirect(url_for("process.part_detail", part_no=part_no))
     ms = int((time.time() - start) * 1000)
 
     warn_text = f"，警告 {len(result.warnings)} 条" if result.warnings else ""
@@ -194,6 +215,7 @@ def update_internal_hours(part_no: str, seq: int):
 def set_group_mode(part_no: str, group_id: str):
     merge_mode = request.form.get("merge_mode") or MergeMode.SEPARATE.value
     total_days = request.form.get("total_days")
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
 
     per_op_days: Dict[int, Any] = {}
     for k, v in request.form.items():
@@ -205,14 +227,18 @@ def set_group_mode(part_no: str, group_id: str):
             continue
         per_op_days[seq] = v
 
-    svc = ExternalGroupService(g.db, op_logger=getattr(g, "op_logger", None))
-    svc.set_merge_mode(
-        group_id=group_id,
-        merge_mode=merge_mode,
-        total_days=total_days,
-        per_op_days=per_op_days,
-    )
-    flash(f"外部工序组周期模式已更新：{_merge_mode_zh(merge_mode)}。", "success")
+    svc = ExternalGroupService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
+    try:
+        svc.set_merge_mode(
+            group_id=group_id,
+            merge_mode=merge_mode,
+            total_days=total_days,
+            per_op_days=per_op_days,
+            strict_mode=strict_mode,
+        )
+        flash(f"外部工序组周期模式已更新：{_merge_mode_zh(merge_mode)}。", "success")
+    except AppError as e:
+        flash(e.message, "error")
     return redirect(url_for("process.part_detail", part_no=part_no))
 
 

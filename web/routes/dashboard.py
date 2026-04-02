@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from flask import Blueprint, g
+from flask import Blueprint, current_app, g
 
 from core.services.scheduler import BatchService
 from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
@@ -34,7 +34,12 @@ def index():
                 if isinstance(latest.result_summary, str)
                 else latest.result_summary
             )
-        except Exception:
+        except Exception as exc:
+            current_app.logger.warning(
+                "首页 result_summary 解析失败（version=%s, error=%s）",
+                getattr(latest, "version", None),
+                exc.__class__.__name__,
+            )
             latest_summary = None
 
     if isinstance(latest_summary, dict):
@@ -57,4 +62,3 @@ def index():
         latest_history=latest,
         latest_summary=latest_summary,
     )
-
