@@ -1,0 +1,52 @@
+{
+  "include": [
+    "app.py",
+    "app_new_ui.py",
+    "config.py",
+    "core",
+    "data",
+    "web",
+    "tests"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/.*",
+    "**/__pycache__",
+    ".git",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "assets",
+    "audit",
+    "backups",
+    "build",
+    "desktop",
+    "dist",
+    "evidence",
+    "installer",
+    "logs",
+    "scripts",
+    "templates_excel",
+    "tools",
+    "check_manual_layout.py",
+    "quick_ui_check.py",
+    "test_ui_mode_switch.py",
+    "ui_v1_v2_check.py",
+    "validate_dist_exe.py",
+    "verify_manual_styles.py",
+    "core/services/common/pandas_backend.py"
+  ],
+  "pythonVersion": "3.8",
+  "typeCheckingMode": "basic",
+  "venvPath": ".",
+  "venv": ".venv",
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": [
+        ".",
+        ".venv/Lib/site-packages"
+      ]
+    }
+  ]
+}

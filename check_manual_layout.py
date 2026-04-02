@@ -10,7 +10,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from urllib.request import Request, urlopen
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -20,20 +20,35 @@ if str(REPO_ROOT) not in sys.path:
 from web.bootstrap.runtime_probe import probe_health, resolve_healthy_endpoint
 
 # 检查是否有 selenium
-try:
-    from selenium import webdriver
-    from selenium.common.exceptions import NoSuchElementException
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.support.ui import WebDriverWait
+webdriver: Any = None
+Options: Any = None
+By: Any = None
+EC: Any = None
+WebDriverWait: Any = None
+NoSuchElementException: Any = Exception
 
-    HAS_SELENIUM = True
-except ImportError:
+try:
+    import importlib
+
+    webdriver = importlib.import_module("selenium.webdriver")
+    NoSuchElementException = getattr(importlib.import_module("selenium.common.exceptions"), "NoSuchElementException", Exception)
+    Options = getattr(importlib.import_module("selenium.webdriver.chrome.options"), "Options", None)
+    By = getattr(importlib.import_module("selenium.webdriver.common.by"), "By", None)
+    EC = importlib.import_module("selenium.webdriver.support.expected_conditions")
+    WebDriverWait = getattr(importlib.import_module("selenium.webdriver.support.ui"), "WebDriverWait", None)
+
+    HAS_SELENIUM = all(x is not None for x in (webdriver, Options, By, EC, WebDriverWait))
+except Exception:
     HAS_SELENIUM = False
-    NoSuchElementException = Exception
     print("警告：未安装 selenium，无法进行浏览器自动化测试")
     print("请运行：pip install selenium")
+
+if not HAS_SELENIUM:
+    webdriver = None
+    Options = None
+    By = None
+    EC = None
+    WebDriverWait = None
 
 _DEFAULT_BASE_URL = "http://127.0.0.1:5000"
 

@@ -8,6 +8,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from flask import url_for
 
@@ -36,7 +37,7 @@ def _mode_headers(ui_mode: str) -> dict:
     return {"Cookie": f"aps_ui_mode={ui_mode}"}
 
 
-def _build_url(app, endpoint: str, **values: str) -> str:
+def _build_url(app, endpoint: str, **values: Any) -> str:
     with app.test_request_context():
         return url_for(endpoint, **values)
 
