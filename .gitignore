@@ -76,6 +76,12 @@ logs/aps_secret_key.txt
 # Full self-test runner logs (keep report file)
 evidence/FullSelfTest/logs/
 
+# Raw test/benchmark console output (binary encoding, only keep formatted reports)
+evidence/FullSelfTest/pytest_tests_output.txt
+evidence/Benchmark/fjsp_benchmark_console.txt
+# Perf profile raw artifacts (keep report only)
+evidence/perf_profile_artifacts/
+
 # Large downloaded tools (do not commit)
 tools/ungoogled-chromium_*.zip
 
