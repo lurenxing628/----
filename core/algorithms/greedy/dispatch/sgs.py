@@ -8,6 +8,7 @@ from core.algorithms.dispatch_rules import DispatchInputs, DispatchRule, build_d
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import EXTERNAL, INTERNAL, MERGED
 
+from ..algo_stats import increment_counter
 from ..downtime import find_earliest_available_start
 
 
@@ -102,6 +103,8 @@ def dispatch_sgs(
             if h and h > 0 and math.isfinite(float(h)):
                 proc_samples.append(float(h))
     avg_proc_hours = (sum(proc_samples) / float(len(proc_samples))) if proc_samples else 1.0
+    if not proc_samples:
+        increment_counter(scheduler, "dispatch_key_avg_proc_hours_fallback_count")
 
     while True:
         candidates: List[Tuple[str, Any]] = []
@@ -150,6 +153,7 @@ def dispatch_sgs(
                             except Exception:
                                 total_days_f = None
                             if not total_days_f or total_days_f <= 0:
+                                increment_counter(scheduler, "dispatch_sgs_external_duration_unscorable_count")
                                 # 不可估算：打分阶段给一个“惩罚 key”，避免 best_pair 为空后无条件选 candidates[0]
                                 score_penalty = 1.0
                                 est_start = prev_end
@@ -166,6 +170,7 @@ def dispatch_sgs(
                         if ext_days_f is None:
                             ext_days_f = 1.0
                         if ext_days_f <= 0:
+                            increment_counter(scheduler, "dispatch_sgs_external_duration_unscorable_count")
                             # 不可估算：打分阶段给惩罚 key（真实排产阶段仍会报错并阻断批次）
                             score_penalty = 1.0
                             est_start = prev_end
@@ -177,6 +182,7 @@ def dispatch_sgs(
                     change_pen = 0
                     if score_penalty and score_penalty > 0:
                         # 仅用于打分：避免 proc_hours=0 导致 CR/ATC 极端值；并使其在 tie-break 中更差
+                        increment_counter(scheduler, "dispatch_key_proc_hours_fallback_count")
                         try:
                             proc_h = max(float(avg_proc_hours), 1e-6)
                         except Exception:
@@ -207,21 +213,27 @@ def dispatch_sgs(
                                 )
                             if chosen:
                                 try:
-                                    m0, o0 = chosen
-                                    machine_id = str(m0 or "").strip()
-                                    operator_id = str(o0 or "").strip()
+                                    if isinstance(chosen, (list, tuple)) and len(chosen) >= 2:
+                                        machine_id = str(chosen[0] or "").strip()
+                                        operator_id = str(chosen[1] or "").strip()
+                                    else:
+                                        raise TypeError("auto_assign probe result is not a pair")
                                 except Exception:
+                                    increment_counter(scheduler, "dispatch_sgs_auto_assign_probe_exception_count")
                                     pass
                         except Exception:
+                            increment_counter(scheduler, "dispatch_sgs_auto_assign_probe_exception_count")
                             pass
 
                     if not machine_id or not operator_id:
+                        increment_counter(scheduler, "dispatch_sgs_missing_resource_unscorable_count")
                         # 缺资源且无法自动分配：打分阶段按“不可估算”惩罚，避免被优先选择。
                         score_penalty = 1.0
                         est_start = batch_progress.get(bid, base_time)
                         est_end = est_start
                         # 仅用于打分：给一个稳定的处理时间尺度，避免 proc_hours=0 触发极端派工 key
                         try:
+                            increment_counter(scheduler, "dispatch_key_proc_hours_fallback_count")
                             proc_h = max(float(avg_proc_hours), 1e-6)
                         except Exception:
                             proc_h = 1.0
@@ -240,12 +252,15 @@ def dispatch_sgs(
                             total_hours = float(setup_hours) + float(unit_hours) * float(qty)
                         except Exception:
                             total_hours = 0.0
+                            increment_counter(scheduler, "dispatch_sgs_total_hours_unscorable_count")
                             score_penalty = 1.0
                         if (not score_penalty) and ((not math.isfinite(float(total_hours))) or float(total_hours) < 0):
+                            increment_counter(scheduler, "dispatch_sgs_total_hours_unscorable_count")
                             score_penalty = 1.0
                         if score_penalty and score_penalty > 0:
                             # 工时不可解析：打分阶段按“不可估算”处理，避免成为最优候选
                             try:
+                                increment_counter(scheduler, "dispatch_key_proc_hours_fallback_count")
                                 proc_h = max(float(avg_proc_hours), 1e-6)
                             except Exception:
                                 proc_h = 1.0
@@ -302,6 +317,8 @@ def dispatch_sgs(
             except Exception:
                 # 评分异常：生成一个“最差但可比较”的 key，避免静默跳过导致 candidates[0] 退化
                 score_penalty = 1.0
+                increment_counter(scheduler, "dispatch_sgs_scoring_exception_count")
+                increment_counter(scheduler, "dispatch_key_proc_hours_fallback_count")
                 try:
                     batch = batches.get(bid)
                     priority = getattr(batch, "priority", None) if batch else None
@@ -405,6 +422,7 @@ def dispatch_sgs(
                         if oid0:
                             operator_busy_hours[oid0] = operator_busy_hours.get(oid0, 0.0) + float(h)
                     except Exception:
+                        increment_counter(scheduler, "dispatch_sgs_runtime_busy_hours_update_exception_count")
                         pass
                     ot = (result.op_type_name or "").strip()
                     if ot:

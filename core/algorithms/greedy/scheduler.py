@@ -20,6 +20,7 @@ from core.algorithms.value_domains import INTERNAL
 
 from ..sort_strategies import BatchForSort, SortStrategy, StrategyFactory
 from ..types import ScheduleResult, ScheduleSummary
+from .algo_stats import ensure_algo_stats, increment_counter
 from .auto_assign import auto_assign_internal_resources
 from .config_adapter import cfg_get
 from .dispatch import dispatch_batch_order, dispatch_sgs
@@ -38,6 +39,7 @@ class GreedyScheduler:
         self.calendar = calendar_service
         self.config = config_service
         self.logger = logger or logging.getLogger(__name__)
+        self._last_algo_stats = {"fallback_counts": {}, "param_fallbacks": {}}
 
     def _cfg_get(self, key: str, default: Any = None) -> Any:
         """
@@ -64,6 +66,7 @@ class GreedyScheduler:
         dispatch_mode: Optional[str] = None,  # batch_order/sgs（可选；默认从配置读取）
         dispatch_rule: Optional[str] = None,  # slack/cr/atc（仅 sgs 生效；可选；默认从配置读取）
         resource_pool: Optional[Dict[str, Any]] = None,  # 自动选人/选机的候选池（由服务层预构建；可选）
+        strict_mode: bool = False,
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         """
         执行排产。
@@ -74,6 +77,8 @@ class GreedyScheduler:
         t0 = datetime.now()
         warnings: List[str] = []
         errors: List[str] = []
+        self._last_algo_stats = {"fallback_counts": {}, "param_fallbacks": {}}
+        ensure_algo_stats(self)
 
         params = resolve_schedule_params(
             config=self.config,
@@ -84,6 +89,8 @@ class GreedyScheduler:
             dispatch_mode=dispatch_mode,
             dispatch_rule=dispatch_rule,
             resource_pool=resource_pool,
+            algo_stats=self,
+            strict_mode=bool(strict_mode),
         )
         warnings.extend(params.warnings)
         base_time = params.base_time
@@ -171,7 +178,7 @@ class GreedyScheduler:
         # seed_results：规范化 + 去重防御
         seed_op_ids = set()
         if seed_results:
-            normalized_seed, seed_op_ids, seed_warnings = normalize_seed_results(seed_results=seed_results, operations=operations)
+            normalized_seed, seed_op_ids, seed_warnings = normalize_seed_results(seed_results=seed_results, operations=operations, algo_stats=self)
             seed_results = normalized_seed
             if seed_warnings:
                 warnings.extend(seed_warnings)
@@ -191,6 +198,7 @@ class GreedyScheduler:
                 filtered.append(op)
             if dropped:
                 warnings.append(f"检测到 seed_results 与 operations 重叠：已过滤 {dropped} 道工序避免重复排产。")
+                increment_counter(self, "seed_overlap_filtered_count", dropped)
             ops_for_sort = filtered
 
         sorted_ops = sorted(ops_for_sort, key=_op_key)
@@ -299,12 +307,14 @@ class GreedyScheduler:
                     f"seed_results 内部工序缺少 machine_id：{missing_seed_machine} 条"
                     f"{('（示例 op_id=' + sample + '）') if sample else ''}；已按可用字段占用时间线，但这些 seed 无法冻结设备资源。"
                 )
+                increment_counter(self, "seed_missing_machine_id_count", missing_seed_machine)
             if missing_seed_operator:
                 sample = ", ".join([x for x in missing_seed_operator_samples if x and x != "?"][:5])
                 warnings.append(
                     f"seed_results 内部工序缺少 operator_id：{missing_seed_operator} 条"
                     f"{('（示例 op_id=' + sample + '）') if sample else ''}；已按可用字段占用时间线，但这些 seed 无法冻结人员资源。"
                 )
+                increment_counter(self, "seed_missing_operator_id_count", missing_seed_operator)
 
         if dispatch_mode_key == "sgs":
             scheduled_count, failed_count = dispatch_sgs(
@@ -420,6 +430,7 @@ class GreedyScheduler:
         if not machine_id or not operator_id:
             # resource_pool 可能是空 dict（调用方显式提供但无候选）；用 is not None 区分“未提供”(None)
             if auto_assign_enabled and resource_pool is not None:
+                increment_counter(self, "internal_auto_assign_attempt_count")
                 chosen = self._auto_assign_internal_resources(
                     op=op,
                     batch=batch,
@@ -435,12 +446,15 @@ class GreedyScheduler:
                     operator_busy_hours=(operator_busy_hours or {}),
                 )
                 if chosen:
+                    increment_counter(self, "internal_auto_assign_success_count")
                     machine_id, operator_id = chosen
                 else:
+                    increment_counter(self, "internal_auto_assign_failed_count")
                     op_code = getattr(op, "op_code", "-") or "-"
                     errors.append(f"内部工序未补全资源，且自动分配失败：工序 {op_code}")
                     return None, False
             else:
+                increment_counter(self, "internal_missing_resource_without_auto_assign_count")
                 op_code = getattr(op, "op_code", "-") or "-"
                 errors.append(f"内部工序未补全资源，无法排产：工序 {op_code}（machine_id/operator_id 必填）")
                 return None, False
@@ -474,6 +488,7 @@ class GreedyScheduler:
             except Exception:
                 eff = 1.0
             if (not math.isfinite(float(eff))) or float(eff) <= 0:
+                increment_counter(self, "internal_efficiency_fallback_count")
                 eff = 1.0
             h = float(total_hours_base)
             if eff and eff > 0 and eff != 1.0:

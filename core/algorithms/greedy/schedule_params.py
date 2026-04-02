@@ -5,8 +5,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from core.infrastructure.errors import ValidationError
+
 from ..dispatch_rules import DispatchRule, parse_dispatch_rule
 from ..sort_strategies import SortStrategy, parse_strategy
+from .algo_stats import increment_counter
 from .config_adapter import cfg_get
 from .date_parsers import parse_date, parse_datetime
 
@@ -33,6 +36,8 @@ def resolve_schedule_params(
     dispatch_mode: Optional[str],
     dispatch_rule: Optional[str],
     resource_pool: Optional[Dict[str, Any]],
+    algo_stats: Any = None,
+    strict_mode: bool = False,
 ) -> ScheduleParams:
     warnings: List[str] = []
 
@@ -41,9 +46,11 @@ def resolve_schedule_params(
         parsed = parse_datetime(base_time)
         if parsed is not None:
             base_time = parsed
+            increment_counter(algo_stats, "start_dt_parsed_count", bucket="param_fallbacks")
             warnings.append(f"start_dt 非 datetime，已解析为 {base_time.strftime('%Y-%m-%d %H:%M:%S')}。")
         else:
             warnings.append(f"start_dt 无法解析，已忽略并使用当前时间：{start_dt!r}")
+            increment_counter(algo_stats, "start_dt_default_now_count", bucket="param_fallbacks")
             base_time = datetime.now()
 
     end_d = parse_date(end_date)
@@ -51,6 +58,7 @@ def resolve_schedule_params(
         s0 = str(end_date).strip()
         if s0:
             warnings.append(f"end_date 无法解析，已忽略（不启用排产截止窗口）：{end_date!r}")
+            increment_counter(algo_stats, "end_date_ignored_count", bucket="param_fallbacks")
     end_dt_exclusive: Optional[datetime] = None
     if end_d:
         end_dt_exclusive = datetime(end_d.year, end_d.month, end_d.day, 0, 0, 0) + timedelta(days=1)
@@ -68,6 +76,7 @@ def resolve_schedule_params(
                 raw_s = str(strategy_key or "").strip().lower()
             if raw_s and raw_s not in {s.value for s in SortStrategy}:
                 warnings.append(f"sort_strategy 非法，已回退为 {strategy.value}：{strategy_key!r}")
+                increment_counter(algo_stats, "sort_strategy_defaulted_count", bucket="param_fallbacks")
         except Exception:
             pass
 
@@ -75,26 +84,38 @@ def resolve_schedule_params(
     if strategy == SortStrategy.WEIGHTED:
         if strategy_params is not None:
 
-            def _safe_float(v: Any, default: float) -> float:
+            def _safe_float(v: Any, default: float, key: str) -> float:
+                used_fallback = False
                 try:
                     f = float(v)
-                    return f if math.isfinite(f) else float(default)
+                    if math.isfinite(f):
+                        return f
+                    used_fallback = True
                 except Exception:
-                    return float(default)
+                    used_fallback = True
+                if used_fallback:
+                    increment_counter(algo_stats, f"weighted_{key}_defaulted_count", bucket="param_fallbacks")
+                return float(default)
 
             sp = strategy_params if isinstance(strategy_params, dict) else {}
             used_params = {
-                "priority_weight": _safe_float(sp.get("priority_weight", 0.4), 0.4),
-                "due_weight": _safe_float(sp.get("due_weight", 0.5), 0.5),
+                "priority_weight": _safe_float(sp.get("priority_weight", 0.4), 0.4, "priority_weight"),
+                "due_weight": _safe_float(sp.get("due_weight", 0.5), 0.5, "due_weight"),
             }
         elif config is not None:
 
             def _cfg_float(key: str, default: float) -> float:
+                used_fallback = False
                 try:
                     f = float(cfg_get(config, key, default))
-                    return f if math.isfinite(f) else float(default)
+                    if math.isfinite(f):
+                        return f
+                    used_fallback = True
                 except Exception:
-                    return float(default)
+                    used_fallback = True
+                if used_fallback:
+                    increment_counter(algo_stats, f"weighted_{key}_defaulted_count", bucket="param_fallbacks")
+                return float(default)
 
             used_params = {
                 "priority_weight": _cfg_float("priority_weight", 0.4),
@@ -110,10 +131,19 @@ def resolve_schedule_params(
             dispatch_mode = str(cfg_get(config, "dispatch_mode", "batch_order"))
         except Exception:
             dispatch_mode = "batch_order"
-    dispatch_mode_key = str(dispatch_mode or "batch_order").strip().lower() or "batch_order"
+    dispatch_mode_raw = dispatch_mode
+    dispatch_mode_key = str("batch_order" if dispatch_mode is None else dispatch_mode).strip().lower()
+    if dispatch_mode_key == "":
+        dispatch_mode_key = "batch_order"
     if dispatch_mode_key not in ("batch_order", "sgs"):
-        if dispatch_mode is not None and str(dispatch_mode).strip():
-            warnings.append(f"dispatch_mode 非法，已回退为 batch_order：{dispatch_mode!r}")
+        if strict_mode and dispatch_mode_raw is not None and str(dispatch_mode_raw).strip() != "":
+            raise ValidationError(
+                f"dispatch_mode 不合法：{dispatch_mode_raw!r}（允许值：batch_order / sgs）",
+                field="dispatch_mode",
+            )
+        if dispatch_mode_raw is not None and str(dispatch_mode_raw).strip() != "":
+            warnings.append(f"dispatch_mode 非法，已回退为 batch_order：{dispatch_mode_raw!r}")
+            increment_counter(algo_stats, "dispatch_mode_defaulted_count", bucket="param_fallbacks")
         dispatch_mode_key = "batch_order"
 
     if dispatch_rule is None and config is not None:
@@ -124,26 +154,41 @@ def resolve_schedule_params(
     try:
         if isinstance(dispatch_rule, DispatchRule):
             raw_rule_key = dispatch_rule.value
+            raw_rule_value = dispatch_rule.value
         else:
-            raw_rule_key = str(dispatch_rule or "").strip().lower()
+            raw_rule_value = dispatch_rule
+            raw_rule_key = str("" if dispatch_rule is None else dispatch_rule).strip().lower()
     except Exception:
+        raw_rule_value = dispatch_rule
         raw_rule_key = ""
     dispatch_rule_enum = parse_dispatch_rule(dispatch_rule, default=DispatchRule.SLACK)
+    if strict_mode and raw_rule_key and raw_rule_key not in {r.value for r in DispatchRule}:
+        raise ValidationError(
+            f"dispatch_rule 不合法：{raw_rule_value!r}（允许值：slack / cr / atc）",
+            field="dispatch_rule",
+        )
     if raw_rule_key and raw_rule_key not in {r.value for r in DispatchRule}:
-        warnings.append(f"dispatch_rule 非法，已回退为 {dispatch_rule_enum.value}：{dispatch_rule!r}")
+        warnings.append(f"dispatch_rule 非法，已回退为 {dispatch_rule_enum.value}：{raw_rule_value!r}")
+        increment_counter(algo_stats, "dispatch_rule_defaulted_count", bucket="param_fallbacks")
 
     auto_assign_enabled = False
     if config is not None:
         try:
             raw = cfg_get(config, "auto_assign_enabled", "no")
-            v = str(raw or "").strip().lower()
-            true_vals = ("yes", "y", "true", "1", "on")
-            false_vals = ("no", "n", "false", "0", "off", "")
-            auto_assign_enabled = v in true_vals
-            if v not in true_vals and v not in false_vals:
-                warnings.append(f"auto_assign_enabled 非法，已按 no 处理：{raw!r}")
         except Exception:
-            auto_assign_enabled = False
+            raw = "no"
+        v = str(raw or "").strip().lower()
+        true_vals = ("yes", "y", "true", "1", "on")
+        false_vals = ("no", "n", "false", "0", "off", "")
+        auto_assign_enabled = v in true_vals
+        if strict_mode and v not in true_vals and v not in false_vals:
+            raise ValidationError(
+                f"auto_assign_enabled 不合法：{raw!r}（允许值：yes / no）",
+                field="auto_assign_enabled",
+            )
+        if v not in true_vals and v not in false_vals:
+            warnings.append(f"auto_assign_enabled 非法，已按 no 处理：{raw!r}")
+            increment_counter(algo_stats, "auto_assign_enabled_defaulted_count", bucket="param_fallbacks")
     if auto_assign_enabled and resource_pool is None:
         warnings.append("auto_assign_enabled=yes 但未提供 resource_pool：内部工序缺省资源将无法自动分配。")
 
