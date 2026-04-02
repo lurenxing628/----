@@ -66,6 +66,11 @@
     <div class="muted mb-2">
       批量操作：可批量切换状态/删除。若设备已被批次工序或排程引用，将禁止删除（请改为停用或维修）。
     </div>
+    {% if downtime_overlay_degraded %}
+      <div class="flash-card flash-warning" role="alert" aria-live="polite">
+        计划停机状态读取失败，当前页面的“状态”列可能未展示“停机（计划）”覆盖状态，请查看日志并稍后刷新。
+      </div>
+    {% endif %}
     <form method="get" action="{{ url_for('equipment.list_page') }}" class="form-row mb-2">
       <div class="form-field">
         <label for="equipmentTeamFilter">班组筛选</label>

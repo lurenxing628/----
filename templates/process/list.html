@@ -30,6 +30,13 @@
           <label for="partRemarkInput">备注</label>
           <input id="partRemarkInput" name="remark" placeholder="可选">
         </div>
+        <div class="form-field min-w-260">
+          <label>
+            <input type="checkbox" name="strict_mode" value="yes">
+            严格模式
+          </label>
+          <div class="muted text-xs">开启后，route_raw 中的未知工种、缺供应商映射、default_days 无效等不再兼容回退，而是直接拒绝创建。</div>
+        </div>
         <div>{{ ui.button('添加零件', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>

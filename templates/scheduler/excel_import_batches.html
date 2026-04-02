@@ -29,6 +29,9 @@
       <input type="hidden" name="filename" value="{{ filename }}">
       <input type="hidden" name="preview_baseline" value="{{ preview_baseline or '' }}">
       <input type="hidden" name="auto_generate_ops" value="{{ '1' if auto_generate_ops else '' }}">
+      {% if strict_mode_supported %}
+        <input type="hidden" name="strict_mode" value="{{ 'yes' if strict_mode else 'no' }}">
+      {% endif %}
       <textarea name="raw_rows_json" class="d-none">{{ raw_rows_json }}</textarea>
       <label>
         <input type="checkbox" value="1" {% if auto_generate_ops %}checked{% endif %} disabled>
@@ -38,7 +41,18 @@
           确认导入时不会自动从模板生成/重建批次工序
         {% endif %}
       </label>
-      <div class="muted">如需切换该选项，请重新上传并预览。</div>
+      {% if strict_mode_supported %}
+        <label class="d-block mt-2">
+          <input type="checkbox" value="yes" {% if strict_mode %}checked{% endif %} disabled>
+          {% if strict_mode %}
+            {{ strict_mode_label or '严格模式' }}：确认导入时会禁止兼容性回退
+          {% else %}
+            {{ strict_mode_label or '严格模式' }}：确认导入时允许兼容性回退
+          {% endif %}
+        </label>
+        <div class="muted">{{ strict_mode_help or '开启后，兼容性回退会改为显式报错。' }}</div>
+      {% endif %}
+      <div class="muted">如需切换上述选项，请重新上传并预览。</div>
       <div class="mt-2">
         {{ ui.button('确认导入（写入数据库）', 'primary', 'md', type_attr='submit', disabled=(not can_confirm)) }}
         <span class="muted">（请先“上传并预览”，再确认导入）</span>
@@ -67,6 +81,12 @@
           预览和确认都按“自动从模板生成/重建批次工序”执行（推荐）
         </label>
       </div>
+      {% if strict_mode_supported %}
+        <div class="mb-3">
+          <label><input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}> {{ strict_mode_label or '严格模式' }}</label>
+          <div class="muted text-xs">{{ strict_mode_help or '开启后，兼容性回退会改为显式报错。' }}</div>
+        </div>
+      {% endif %}
       <div class="mb-3 inline-flex-wrap">
         <input type="file" name="file" accept=".xlsx" required>
         {{ ui.button('上传并预览', 'primary', 'md', type_attr='submit') }}

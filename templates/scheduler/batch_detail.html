@@ -44,8 +44,13 @@
     <div class="mt-2">
       <form method="post" action="{{ url_for('scheduler.generate_ops', batch_id=batch.batch_id) }}"
             data-confirm="将根据当前零件工序模板重建该批次工序（会清空已填写的设备/人员/工时/周期等补充信息）。确定继续？">
+        <label class="d-inline-block mr-3">
+          <input type="checkbox" name="strict_mode" value="yes">
+          严格工艺解析
+        </label>
         {{ ui.button('从零件模板重建工序（会覆盖补充信息）', 'secondary', 'md', type_attr='submit') }}
         <span class="muted">用于模板变更后同步（会清空已填写的设备/人员/工时/周期等补充信息）</span>
+        <div class="muted text-xs mt-2">仅在零件缺少模板、需要根据 route_raw 自动补建模板时生效：未知工种、缺供应商/default_days 无效将直接拒绝重建。</div>
       </form>
     </div>
 
@@ -226,6 +231,16 @@
     {% endif %}
   </div>
 
+  <script id="batch-detail-linkage-data" type="application/x-aps-json">
+    {{ {
+      "machineOperators": machine_operators,
+      "operatorMachines": operator_machines,
+      "machineOperatorMeta": machine_operator_meta,
+      "preferPrimarySkill": prefer_primary_skill == 'yes',
+      "lazySelectEnabled": lazy_select_enabled,
+    } | tojson }}
+  </script>
+
   <script>
     (function () {
       // DOM 减重：按需创建 opform_*，避免大批次页面首屏渲染 N 个隐藏 form
@@ -288,13 +303,13 @@
       }, true);
     })();
 
-    window.__APS_BATCH_DETAIL_LINKAGE__ = {
-      machineOperators: {{ machine_operators|tojson }},
-      operatorMachines: {{ operator_machines|tojson }},
-      machineOperatorMeta: {{ machine_operator_meta|tojson }},
-      preferPrimarySkill: {{ 'true' if prefer_primary_skill=='yes' else 'false' }},
-      lazySelectEnabled: {{ 'true' if lazy_select_enabled else 'false' }}
-    };
+    var linkageNode = document.getElementById("batch-detail-linkage-data");
+    var linkageText = linkageNode && linkageNode.textContent ? linkageNode.textContent : "{}";
+    try {
+      window.__APS_BATCH_DETAIL_LINKAGE__ = JSON.parse(linkageText);
+    } catch (_e) {
+      window.__APS_BATCH_DETAIL_LINKAGE__ = {};
+    }
   </script>
   <script src="{{ url_for('static', filename='js/batch_detail_linkage.js') }}" defer></script>
 {% endblock %}

@@ -61,6 +61,13 @@
           <label for="batchManageRemarkInput">备注</label>
           <input id="batchManageRemarkInput" name="remark" placeholder="可选">
         </div>
+        <div class="form-field min-w-280">
+          <label>
+            <input type="checkbox" name="strict_mode" value="yes">
+            严格工艺解析
+          </label>
+          <div class="muted text-xs">仅在零件尚未生成模板、需要根据 route_raw 自动补建模板时生效：未知工种、缺供应商/default_days 无效将直接拒绝建批。</div>
+        </div>
         <div>{{ ui.button('创建批次', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>

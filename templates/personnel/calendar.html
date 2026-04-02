@@ -38,6 +38,11 @@
 
   <div class="card wc-card-allow-overflow">
     <h3>新增 / 更新某一天</h3>
+    {% if holiday_default_efficiency_degraded %}
+      <div class="flash-card flash-warning" role="alert" aria-live="polite">
+        {{ holiday_default_efficiency_warning }}
+      </div>
+    {% endif %}
     <form method="post" action="{{ url_for('personnel.operator_calendar_upsert', operator_id=operator.operator_id) }}">
       <div class="form-row calendar-upsert-row">
         <div class="form-field wc-date-wrap">
@@ -147,11 +152,21 @@
 {% endblock %}
 
 {% block extra_scripts %}
+  <script id="aps-workcalendar-data" type="application/json">
+    {{ {
+      'rows': rows,
+      'holidayDefaultEfficiency': (holiday_default_efficiency if holiday_default_efficiency is defined else 0.8)
+    } | tojson }}
+  </script>
   <script>
-    window.__APS_WORKCALENDAR__ = {
-      rows: {{ rows|tojson }},
-      holidayDefaultEfficiency: {{ (holiday_default_efficiency if holiday_default_efficiency is defined else 0.8)|tojson }}
-    };
+    (function () {
+      var dataEl = document.getElementById("aps-workcalendar-data");
+      try {
+        window.__APS_WORKCALENDAR__ = JSON.parse((dataEl && dataEl.textContent) || "{}");
+      } catch (err) {
+        window.__APS_WORKCALENDAR__ = { rows: [], holidayDefaultEfficiency: 0.8 };
+      }
+    })();
   </script>
   <script src="{{ url_for('static', filename='js/calendar_picker.js') }}" defer></script>
 {% endblock %}

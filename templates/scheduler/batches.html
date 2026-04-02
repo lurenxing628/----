@@ -229,6 +229,13 @@
                 启用齐套约束（未齐套禁止排产）
               </label>
             </div>
+            <div class="form-field min-w-320">
+              <label class="muted">
+                <input type="checkbox" name="strict_mode" value="yes">
+                严格调度参数校验
+              </label>
+              <div class="muted text-xs">仅对高级设置中的 dispatch_mode / dispatch_rule / auto_assign_enabled 生效：开启后，非法非空值会直接拒绝排产，不再按兼容逻辑回退。</div>
+            </div>
             <div class="muted flex-1 min-w-240">
               设了截止日期的话，排不完会提示失败。
             </div>

@@ -44,6 +44,13 @@
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
           <div class="muted">重新解析会覆盖现有工序模板（事务保护）。</div>
         </div>
+        <div class="form-field min-w-260">
+          <label>
+            <input type="checkbox" name="strict_mode" value="yes">
+            严格模式
+          </label>
+          <div class="muted text-xs">开启后，缺供应商映射、default_days 无效、未知工种等不再按兼容逻辑回退，会直接拒绝本次解析。</div>
+        </div>
         <div>{{ ui.button('重新解析（覆盖工序模板）', 'secondary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
@@ -161,6 +168,13 @@
                 <label>合计周期（天，仅合并设置使用）</label>
                 <input name="total_days" value="{{ g.total_days if g.total_days is not none else '' }}" placeholder="如：3">
                 <div class="muted">提示：合并设置时，组内工序不单独计时，整组按合计周期计算；分别设置时该字段会被忽略。</div>
+              </div>
+              <div class="form-field min-w-260">
+                <label>
+                  <input type="checkbox" name="strict_mode" value="yes">
+                  严格模式
+                </label>
+                <div class="muted text-xs">分别设置时，若某道 ext_days 为空、非数字或 <= 0，则直接报错，不再自动回退为 1.0 天。</div>
               </div>
               <div>
                 {{ ui.button('保存外部组设置', 'primary', 'md', type_attr='submit') }}
