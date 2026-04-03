@@ -19,11 +19,19 @@ class ConfigService:
 
     PRESET_PREFIX = "preset."
     ACTIVE_PRESET_KEY = "active_preset"
+    ACTIVE_PRESET_REASON_KEY = "active_preset_reason"
     ACTIVE_PRESET_CUSTOM = "custom"
     BUILTIN_PRESET_DEFAULT = "默认-稳定"
     BUILTIN_PRESET_DUE_FIRST = "交期优先"
     BUILTIN_PRESET_MIN_CHANGEOVER = "换型最少"
     BUILTIN_PRESET_IMPROVE_SLOW = "改进-更优(慢)"
+    ACTIVE_PRESET_REASON_MANUAL = "已手工修改排产配置。"
+    ACTIVE_PRESET_REASON_CUSTOM_SELECTED = "当前以手动设置为准。"
+    ACTIVE_PRESET_REASON_PRESET_ADJUSTED = "方案应用时发生规范化或修补，当前配置已切换为自定义。"
+    ACTIVE_PRESET_REASON_PRESET_MISMATCH = "方案写入后的实际配置与目标方案不一致，当前配置已切换为自定义。"
+    ACTIVE_PRESET_REASON_PRESET_DELETED = "当前方案已删除，现有配置已保留为自定义。"
+    ACTIVE_PRESET_REASON_BASELINE_MISMATCH = "当前配置与内置默认方案不一致。"
+    ACTIVE_PRESET_REASON_BASELINE_DEGRADED = "历史配置存在兼容修补，已按自定义配置处理。"
 
     # 开发文档默认值（weighted 模式）
     DEFAULT_SORT_STRATEGY = "priority_first"
@@ -84,7 +92,7 @@ class ConfigService:
         """
         if value is None or (isinstance(value, str) and value.strip() == ""):
             raise ValidationError(f"“{field}”不能为空", field=field)
-        v = float(parse_finite_float(value, field=field, allow_none=False) or 0.0)
+        v = float(parse_finite_float(value, field=field, allow_none=False))
         if v < 0:
             raise ValidationError(f"“{field}”不能为负数", field=field)
         if v > 1.0:
@@ -123,7 +131,7 @@ class ConfigService:
         def _to_float(val: Any, field: str) -> float:
             if val is None or (isinstance(val, str) and val.strip() == ""):
                 raise ValidationError(f"“{field}”不能为空", field=field)
-            return float(parse_finite_float(val, field=field, allow_none=False) or 0.0)
+            return float(parse_finite_float(val, field=field, allow_none=False))
 
         raw_pw = _to_float(priority_weight, "优先级权重")
         raw_dw = _to_float(due_weight, "交期权重")
@@ -270,6 +278,12 @@ class ConfigService:
         v = str(raw).strip() if raw is not None else ""
         return v if v else None
 
+    def get_active_preset_reason(self) -> Optional[str]:
+        self.ensure_defaults()
+        raw = self.repo.get_value(self.ACTIVE_PRESET_REASON_KEY, default=None)
+        v = str(raw).strip() if raw is not None else ""
+        return v if v else None
+
     def _active_preset_update(self, name: Optional[str]) -> Tuple[str, str, str]:
         v = ("" if name is None else str(name)).strip()
         return (
@@ -278,13 +292,29 @@ class ConfigService:
             "当前启用排产配置模板",
         )
 
-    def _set_active_preset(self, name: Optional[str]) -> None:
-        k, v, d = self._active_preset_update(name)
-        with self.tx_manager.transaction():
-            self.repo.set(k, v, description=d)
+    def _active_preset_reason_update(self, reason: Optional[str]) -> Tuple[str, str, str]:
+        v = ("" if reason is None else str(reason)).strip()
+        return (
+            self.ACTIVE_PRESET_REASON_KEY,
+            v,
+            "当前启用排产配置模板的状态说明",
+        )
 
-    def mark_active_preset_custom(self) -> None:
-        self._set_active_preset(self.ACTIVE_PRESET_CUSTOM)
+    def _active_preset_updates(self, name: Optional[str], reason: Optional[str] = None) -> List[Tuple[str, str, str]]:
+        return [
+            self._active_preset_update(name),
+            self._active_preset_reason_update(reason),
+        ]
+
+    def _set_active_preset(self, name: Optional[str], *, reason: Optional[str] = None) -> None:
+        with self.tx_manager.transaction():
+            self.repo.set_batch(self._active_preset_updates(name, reason=reason))
+
+    def mark_active_preset_custom(self, reason: Optional[str] = None) -> None:
+        self._set_active_preset(
+            self.ACTIVE_PRESET_CUSTOM,
+            reason=(self.ACTIVE_PRESET_REASON_CUSTOM_SELECTED if reason is None else reason),
+        )
 
     def list_presets(self) -> List[Dict[str, Any]]:
         return preset_ops.list_presets(self)
@@ -318,8 +348,7 @@ class ConfigService:
             "holiday_default_efficiency",
             default=self.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY,
         )
-        value = parse_finite_float(raw, field="假期工作效率", allow_none=False)
-        v = float(value if value is not None else 0.0)
+        v = float(parse_finite_float(raw, field="假期工作效率", allow_none=False))
         if v <= 0:
             raise ValidationError("假期工作效率必须大于 0。", field="假期工作效率")
         return float(v)
@@ -345,6 +374,9 @@ class ConfigService:
             raise ValidationError("排产策略不正确，请重新选择。", field="排产策略")
         with self.tx_manager.transaction():
             self.repo.set("sort_strategy", v, description="当前排序策略")
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 
     def set_weights(self, priority_weight: Any, due_weight: Any, ready_weight: Any, require_sum_1: bool = True) -> None:
         pw, dw, rw = self._normalize_weights_triplet(
@@ -358,6 +390,9 @@ class ConfigService:
             self.repo.set("priority_weight", str(pw), description="权重模式-优先级权重")
             self.repo.set("due_weight", str(dw), description="权重模式-交期权重")
             self.repo.set("ready_weight", str(rw), description="权重模式-齐套权重")
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 
     def restore_default(self) -> None:
         updates = [
@@ -386,7 +421,7 @@ class ConfigService:
             ("objective", self.DEFAULT_OBJECTIVE, "目标函数：min_overdue/min_tardiness/min_weighted_tardiness/min_changeover"),
             ("freeze_window_enabled", self.DEFAULT_FREEZE_WINDOW_ENABLED, "冻结窗口开关（yes/no）：复用上一版本窗口内排程"),
             ("freeze_window_days", str(self.DEFAULT_FREEZE_WINDOW_DAYS), "冻结窗口天数（>=0；仅 freeze_window_enabled=yes 生效）"),
-            self._active_preset_update(self.BUILTIN_PRESET_DEFAULT),
+            *self._active_preset_updates(self.BUILTIN_PRESET_DEFAULT),
         ]
         with self.tx_manager.transaction():
             self.repo.set_batch(updates)
@@ -410,12 +445,18 @@ class ConfigService:
         with self.tx_manager.transaction():
             self.repo.set("dispatch_mode", dm, description="派工方式：batch_order/sgs（sgs=就绪集合动态派工）")
             self.repo.set("dispatch_rule", dr, description="SGS 派工规则：slack/cr/atc（仅 dispatch_mode=sgs 生效）")
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 
     def set_auto_assign_enabled(self, value: Any) -> None:
         v = str(value or "").strip().lower()
         yes_no = "yes" if v in ("yes", "y", "true", "1", "on") else "no"
         with self.tx_manager.transaction():
             self.repo.set("auto_assign_enabled", yes_no, description="算法自动分配缺省资源（内部工序 machine/operator 未填时）")
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 
     def set_ortools(self, enabled: Any, time_limit_seconds: Any) -> None:
         en = str(enabled or "").strip().lower()
@@ -423,11 +464,14 @@ class ConfigService:
         if time_limit_seconds is None or str(time_limit_seconds).strip() == "":
             tl = int(self.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS)
         else:
-            tl = int(parse_finite_int(time_limit_seconds, field="自动优化计算时间", allow_none=False) or 0)
+            tl = int(parse_finite_int(time_limit_seconds, field="自动优化计算时间", allow_none=False))
         tl = max(1, int(tl))
         with self.tx_manager.transaction():
             self.repo.set("ortools_enabled", en_yesno, description="可选 OR-Tools 高质量模式（若环境已安装）")
             self.repo.set("ortools_time_limit_seconds", str(tl), description="OR-Tools 单次求解时间上限（秒；仅 ortools_enabled=yes 生效）")
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 
     def set_prefer_primary_skill(self, value: Any) -> None:
         """
@@ -439,6 +483,9 @@ class ConfigService:
         yes_no = "yes" if v in ("yes", "y", "true", "1", "on") else "no"
         with self.tx_manager.transaction():
             self.repo.set("prefer_primary_skill", yes_no, description="工序补充页：优先推荐主操/高技能人员（yes/no）")
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 
     def set_enforce_ready_default(self, value: Any) -> None:
         """
@@ -450,6 +497,9 @@ class ConfigService:
         yes_no = "yes" if v in ("yes", "y", "true", "1", "on") else "no"
         with self.tx_manager.transaction():
             self.repo.set("enforce_ready_default", yes_no, description="执行排产：默认启用齐套约束（yes/no）")
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 
     def set_holiday_default_efficiency(self, value: Any) -> None:
         """
@@ -460,7 +510,7 @@ class ConfigService:
         if value is None or str(value).strip() == "":
             v = float(self.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
         else:
-            v = float(parse_finite_float(value, field="假期工作效率", allow_none=False) or 0.0)
+            v = float(parse_finite_float(value, field="假期工作效率", allow_none=False))
         if v <= 0:
             raise ValidationError("假期工作效率必须大于 0。", field="假期工作效率")
         with self.tx_manager.transaction():
@@ -469,6 +519,9 @@ class ConfigService:
                 str(float(v)),
                 description="工作日历：假期默认效率（>0；假期安排工作且效率未填时使用）",
             )
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 
     def set_algo_mode(self, value: Any) -> None:
         v = str(value or "").strip().lower()
@@ -476,14 +529,20 @@ class ConfigService:
             raise ValidationError("计算模式不正确，请选择：快速计算 或 精细计算。", field="计算模式")
         with self.tx_manager.transaction():
             self.repo.set("algo_mode", v, description="算法模式：greedy/improve（improve=多起点+目标函数+时间预算）")
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 
     def set_time_budget_seconds(self, value: Any) -> None:
         if value is None or str(value).strip() == "":
             raise ValidationError("计算时间上限不能为空。", field="计算时间上限")
-        v = int(parse_finite_int(value, field="计算时间上限", allow_none=False) or 0)
+        v = int(parse_finite_int(value, field="计算时间上限", allow_none=False))
         v = max(1, int(v))
         with self.tx_manager.transaction():
             self.repo.set("time_budget_seconds", str(v), description="算法时间预算（秒；仅 improve 模式生效；建议<=180）")
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 
     def set_objective(self, value: Any) -> None:
         v = str(value or "").strip().lower()
@@ -491,6 +550,9 @@ class ConfigService:
             raise ValidationError("优化目标不正确，请选择：最少超期 / 最少拖期小时 / 最少加权拖期小时 / 最少换型次数。", field="优化目标")
         with self.tx_manager.transaction():
             self.repo.set("objective", v, description="目标函数：min_overdue/min_tardiness/min_weighted_tardiness/min_changeover")
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 
     def set_freeze_window(self, enabled: Any, days: Any) -> None:
         en = str(enabled or "").strip().lower()
@@ -498,9 +560,12 @@ class ConfigService:
         if days is None or str(days).strip() == "":
             d = 0
         else:
-            d = int(parse_finite_int(days, field="锁定天数", allow_none=False) or 0)
+            d = int(parse_finite_int(days, field="锁定天数", allow_none=False))
         d = max(0, int(d))
         with self.tx_manager.transaction():
             self.repo.set("freeze_window_enabled", en_yesno, description="冻结窗口开关（yes/no）：复用上一版本窗口内排程")
             self.repo.set("freeze_window_days", str(d), description="冻结窗口天数（>=0；仅 freeze_window_enabled=yes 生效）")
+            self.repo.set_batch(
+                self._active_preset_updates(self.ACTIVE_PRESET_CUSTOM, reason=self.ACTIVE_PRESET_REASON_MANUAL)
+            )
 

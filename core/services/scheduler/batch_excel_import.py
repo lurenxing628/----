@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set
 
+from core.infrastructure.errors import ValidationError
 from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
@@ -47,6 +48,13 @@ def import_batches_from_preview_rows(
         part = parts_cache.get(pn)
         part_name = part.part_name if part else None
         if existed:
+            existing_batch = svc.get(bid)
+            existing_part_no = str(getattr(existing_batch, "part_no", "") or "").strip()
+            if existing_part_no and pn and existing_part_no != pn and not auto_generate_ops:
+                raise ValidationError(
+                    "已存在批次图号变更，必须开启自动生成工序后再试。",
+                    field="图号",
+                )
             svc.update_no_tx(
                 bid,
                 {

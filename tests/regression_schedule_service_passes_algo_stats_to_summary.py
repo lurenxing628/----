@@ -69,6 +69,20 @@ def main() -> None:
 
     def _stub_optimize_schedule(**_kwargs):
         captured["optimize_strict_mode"] = _kwargs.get("strict_mode")
+        results = [
+            SimpleNamespace(
+                op_id=1,
+                op_code="B001_10",
+                batch_id="B001",
+                seq=10,
+                machine_id="MC001",
+                operator_id="OP001",
+                start_time=datetime(2026, 4, 1, 8, 0, 0),
+                end_time=datetime(2026, 4, 1, 9, 0, 0),
+                source="internal",
+                op_type_name="工序A",
+            )
+        ]
         summary = SimpleNamespace(
             success=True,
             total_ops=1,
@@ -79,7 +93,7 @@ def main() -> None:
             duration_seconds=0.0,
         )
         return SimpleNamespace(
-            results=[],
+            results=results,
             summary=summary,
             used_strategy=SimpleNamespace(value="priority_first"),
             used_params={},

@@ -77,6 +77,27 @@ def snapshot_close(a: ScheduleConfigSnapshot, b: ScheduleConfigSnapshot) -> bool
     return all(checks)
 
 
+def snapshot_payload_matches(data: Dict[str, Any], snap: ScheduleConfigSnapshot) -> Tuple[bool, List[str]]:
+    canonical = snap.to_dict()
+    if not isinstance(data, dict):
+        return False, sorted(canonical.keys())
+
+    diff_fields: List[str] = []
+    for key, expected in canonical.items():
+        if key not in data or data.get(key) != expected:
+            diff_fields.append(str(key))
+    for key in data.keys():
+        if key not in canonical:
+            diff_fields.append(str(key))
+    ordered = list(dict.fromkeys(diff_fields))
+    return not ordered, ordered
+
+
+def _preset_adjust_reason(svc: Any, fields: List[str]) -> str:
+    sample = "、".join([str(field) for field in (fields or [])[:5]])
+    return svc.ACTIVE_PRESET_REASON_PRESET_ADJUSTED if not sample else f"{svc.ACTIVE_PRESET_REASON_PRESET_ADJUSTED} 涉及字段：{sample}。"
+
+
 def get_snapshot_from_repo(svc: Any, *, strict_mode: bool = False) -> ScheduleConfigSnapshot:
     """
     从 repo 读取 snapshot（不调用 ensure_defaults；避免递归）。
@@ -138,9 +159,18 @@ def ensure_builtin_presets(svc: Any, *, existing_keys: Optional[set] = None) -> 
         try:
             cur = get_snapshot_from_repo(svc)
             default_snap = svc._default_snapshot()
-            active_value = svc.BUILTIN_PRESET_DEFAULT if snapshot_close(cur, default_snap) else svc.ACTIVE_PRESET_CUSTOM
+            if getattr(cur, "degradation_counters", None):
+                active_value = svc.ACTIVE_PRESET_CUSTOM
+                active_reason = svc.ACTIVE_PRESET_REASON_BASELINE_DEGRADED
+            elif snapshot_close(cur, default_snap):
+                active_value = svc.BUILTIN_PRESET_DEFAULT
+                active_reason = None
+            else:
+                active_value = svc.ACTIVE_PRESET_CUSTOM
+                active_reason = svc.ACTIVE_PRESET_REASON_BASELINE_MISMATCH
         except Exception:
             active_value = svc.ACTIVE_PRESET_CUSTOM
+            active_reason = svc.ACTIVE_PRESET_REASON_BASELINE_DEGRADED
 
     if not presets_to_create and not need_active:
         return
@@ -149,8 +179,7 @@ def ensure_builtin_presets(svc: Any, *, existing_keys: Optional[set] = None) -> 
         for k, v, d in presets_to_create:
             svc.repo.set(k, v, description=d)
         if need_active:
-            ak, av, ad = svc._active_preset_update(active_value)
-            svc.repo.set(ak, av, description=ad)
+            svc.repo.set_batch(svc._active_preset_updates(active_value, reason=active_reason))
 
 
 def list_presets(svc: Any) -> List[Dict[str, Any]]:
@@ -181,8 +210,7 @@ def save_preset(svc: Any, name: Any) -> str:
     payload = json.dumps(snap.to_dict(), ensure_ascii=False, sort_keys=True)
     with svc.tx_manager.transaction():
         svc.repo.set(svc._preset_key(n), payload, description="排产配置模板（用户自定义）")
-        ak, av, ad = svc._active_preset_update(n)
-        svc.repo.set(ak, av, description=ad)
+        svc.repo.set_batch(svc._active_preset_updates(n))
     return n
 
 
@@ -197,8 +225,7 @@ def delete_preset(svc: Any, name: Any) -> None:
     with svc.tx_manager.transaction():
         svc.repo.delete(svc._preset_key(n))
         if active == n:
-            ak, av, ad = svc._active_preset_update(svc.ACTIVE_PRESET_CUSTOM)
-            svc.repo.set(ak, av, description=ad)
+            svc.repo.set_batch(svc._active_preset_updates(svc.ACTIVE_PRESET_CUSTOM, reason=svc.ACTIVE_PRESET_REASON_PRESET_DELETED))
 
 
 def normalize_preset_snapshot(svc: Any, data: Dict[str, Any]) -> ScheduleConfigSnapshot:
@@ -236,9 +263,9 @@ def apply_preset(svc: Any, name: Any) -> str:
         raise ValidationError("方案数据已损坏，暂时无法读取。", field="方案数据") from e
 
     snap = normalize_preset_snapshot(svc, data)
+    payload_matches, diff_fields = snapshot_payload_matches(data, snap)
 
-    # 原子写入：一次性更新所有配置键 + active_preset
-    updates = [
+    config_updates = [
         ("sort_strategy", snap.sort_strategy, None),
         ("priority_weight", str(float(snap.priority_weight)), None),
         ("due_weight", str(float(snap.due_weight)), None),
@@ -256,10 +283,25 @@ def apply_preset(svc: Any, name: Any) -> str:
         ("objective", str(snap.objective), None),
         ("freeze_window_enabled", str(snap.freeze_window_enabled), None),
         ("freeze_window_days", str(int(snap.freeze_window_days)), None),
-        svc._active_preset_update(n),
     ]
+
     with svc.tx_manager.transaction():
-        svc.repo.set_batch(updates)
+        svc.repo.set_batch(config_updates)
+        final_snap = get_snapshot_from_repo(svc, strict_mode=True)
+        if payload_matches and snapshot_close(snap, final_snap):
+            svc.repo.set_batch(svc._active_preset_updates(n))
+        else:
+            reason = (
+                _preset_adjust_reason(svc, diff_fields)
+                if not payload_matches
+                else svc.ACTIVE_PRESET_REASON_PRESET_MISMATCH
+            )
+            svc.repo.set_batch(
+                svc._active_preset_updates(
+                    svc.ACTIVE_PRESET_CUSTOM,
+                    reason=reason,
+                )
+            )
 
     return n
 

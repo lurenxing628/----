@@ -119,7 +119,9 @@ def main() -> None:
             raise RuntimeError("持久化保险丝应拒绝 has_actionable_schedule=False")
         except ValidationError as exc:
             message = getattr(exc, "message", str(exc))
-            assert "本次没有实际可执行排产任务" in message, f"保险丝提示异常：{message!r}"
+            assert "有效可落库排程行" in message, f"保险丝提示异常：{message!r}"
+            details = getattr(exc, "details", None) or {}
+            assert details.get("reason") == "no_actionable_schedule_rows", f"原因标识异常：{details!r}"
 
         after = _snapshot(conn)
         assert before == after, f"保险丝拒绝后不应写入任何留痕或状态：before={before!r}, after={after!r}"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import BatchOperationStatus, BatchStatus, SourceType, YesNo
@@ -17,6 +17,50 @@ def _normalized_status_text(value: Any, *, default: str) -> str:
     return text or default
 
 
+def _iter_actionable_results(
+    results: List[Any],
+    *,
+    allowed_op_ids: Optional[Set[int]] = None,
+) -> Iterator[Tuple[int, Any]]:
+    for result in results:
+        if result is None or getattr(result, "op_id", None) is None:
+            continue
+        try:
+            op_id = int(getattr(result, "op_id", 0) or 0)
+        except Exception:
+            continue
+        if op_id <= 0:
+            continue
+        if allowed_op_ids is not None and op_id not in allowed_op_ids:
+            continue
+
+        start_time = getattr(result, "start_time", None)
+        end_time = getattr(result, "end_time", None)
+        if not start_time or not end_time:
+            continue
+        try:
+            if not (start_time < end_time):
+                continue
+        except Exception:
+            continue
+        yield op_id, result
+
+
+def count_actionable_schedule_rows(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> int:
+    return sum(1 for _op_id, _result in _iter_actionable_results(results, allowed_op_ids=allowed_op_ids))
+
+
+def has_actionable_schedule_rows(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> bool:
+    return count_actionable_schedule_rows(results, allowed_op_ids=allowed_op_ids) > 0
+
+
+def _raise_no_actionable_schedule_error() -> None:
+    exc = ValidationError("优化结果未生成有效可落库排程行，禁止写入排产历史。", field="排产")
+    exc.details = dict(exc.details or {})
+    exc.details["reason"] = "no_actionable_schedule_rows"
+    raise exc
+
+
 def _build_schedule_rows(
     svc,
     *,
@@ -26,20 +70,15 @@ def _build_schedule_rows(
     allowed_op_ids: Optional[Set[int]] = None,
 ) -> List[Dict[str, Any]]:
     schedule_rows: List[Dict[str, Any]] = []
-    for r in results:
-        if not getattr(r, "start_time", None) or not getattr(r, "end_time", None):
-            continue
-        oid = int(r.op_id)
-        if allowed_op_ids is not None and oid not in allowed_op_ids:
-            continue
+    for op_id, result in _iter_actionable_results(results, allowed_op_ids=allowed_op_ids):
         schedule_rows.append(
             {
-                "op_id": oid,
-                "machine_id": r.machine_id,
-                "operator_id": r.operator_id,
-                "start_time": svc._format_dt(r.start_time),
-                "end_time": svc._format_dt(r.end_time),
-                "lock_status": "locked" if oid in frozen_op_ids else "unlocked",
+                "op_id": int(op_id),
+                "machine_id": result.machine_id,
+                "operator_id": result.operator_id,
+                "start_time": svc._format_dt(result.start_time),
+                "end_time": svc._format_dt(result.end_time),
+                "lock_status": "locked" if int(op_id) in frozen_op_ids else "unlocked",
                 "version": int(version),
             }
         )
@@ -47,21 +86,16 @@ def _build_schedule_rows(
 
 
 def _scheduled_op_ids(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> Set[int]:
-    scheduled = {int(r.op_id) for r in results if r and getattr(r, "op_id", None)}
-    if allowed_op_ids is None:
-        return scheduled
-    return {op_id for op_id in scheduled if op_id in allowed_op_ids}
+    return {op_id for op_id, _result in _iter_actionable_results(results, allowed_op_ids=allowed_op_ids)}
 
 
 def _assigned_by_op_id(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> Dict[int, Dict[str, Any]]:
-    return {
-        int(r.op_id): {"machine_id": r.machine_id, "operator_id": r.operator_id}
-        for r in results
-        if r
-        and int(getattr(r, "op_id", 0) or 0) > 0
-        and (allowed_op_ids is None or int(getattr(r, "op_id", 0) or 0) in allowed_op_ids)
-        and (str(getattr(r, "source", "") or "").strip().lower() == SourceType.INTERNAL.value)
-    }
+    assigned: Dict[int, Dict[str, Any]] = {}
+    for op_id, result in _iter_actionable_results(results, allowed_op_ids=allowed_op_ids):
+        if str(getattr(result, "source", "") or "").strip().lower() != SourceType.INTERNAL.value:
+            continue
+        assigned[int(op_id)] = {"machine_id": result.machine_id, "operator_id": result.operator_id}
+    return assigned
 
 
 def _maybe_persist_auto_assign_resources(
@@ -237,7 +271,7 @@ def persist_schedule(
     事务后：OperationLogs（避免 logger 内部 commit 干扰原子性）
     """
     if not has_actionable_schedule:
-        raise ValidationError("本次没有实际可执行排产任务，禁止写入排产历史。", field="排产")
+        _raise_no_actionable_schedule_error()
 
     schedule_rows = _build_schedule_rows(
         svc,
@@ -303,4 +337,3 @@ def persist_schedule(
         overdue_items=overdue_items,
         time_cost_ms=time_cost_ms,
     )
-

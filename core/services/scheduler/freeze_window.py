@@ -4,55 +4,102 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithms.value_domains import INTERNAL
+from core.infrastructure.errors import ValidationError
 from core.models.enums import YesNo
 
 from .number_utils import to_yes_no
 
+_FREEZE_DEGRADATION_CODE = "freeze_seed_unavailable"
 
-def _freeze_window_days(cfg: Any, prev_version: int) -> int:
+
+def _init_freeze_meta(meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    out = meta if isinstance(meta, dict) else {}
+    out.setdefault("freeze_state", "disabled")
+    out.setdefault("freeze_applied", False)
+    out.setdefault("freeze_degradation_codes", [])
+    out.setdefault("freeze_enabled", False)
+    out.setdefault("freeze_days", 0)
+    out.setdefault("freeze_degradation_reason", None)
+    return out
+
+
+def _freeze_window_days(cfg: Any, prev_version: int, *, strict_mode: bool, meta: Dict[str, Any], warnings: List[str]) -> int:
     enabled = (
         to_yes_no(getattr(cfg, "freeze_window_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
     )
+    meta["freeze_enabled"] = bool(enabled)
     if not enabled:
+        meta["freeze_state"] = "disabled"
+        meta["freeze_days"] = 0
         return 0
 
+    cfg_events = list(getattr(cfg, "degradation_events", ()) or ())
+    cfg_degraded = any(
+        str(event.get("field") or "") == "freeze_window_days" or str(event.get("code") or "") == _FREEZE_DEGRADATION_CODE
+        for event in cfg_events
+        if isinstance(event, dict)
+    )
     days = int(getattr(cfg, "freeze_window_days", 0) or 0)
+    meta["freeze_days"] = int(days)
+
+    if cfg_degraded:
+        _record_freeze_degradation(
+            meta,
+            warnings,
+            "冻结窗口配置存在历史坏值，已降级为不冻结。",
+            strict_mode=strict_mode,
+        )
+        return 0
     if days <= 0:
+        meta["freeze_state"] = "disabled"
         return 0
     if int(prev_version or 0) <= 0:
+        meta["freeze_state"] = "disabled"
         return 0
-    return days
+    return int(days)
 
 
-def _safe_load_schedule_map(
+def _record_freeze_degradation(
+    meta: Dict[str, Any],
+    warnings: List[str],
+    message: str,
+    *,
+    strict_mode: bool,
+) -> None:
+    meta["freeze_state"] = "degraded"
+    codes = [str(code).strip() for code in list(meta.get("freeze_degradation_codes") or []) if str(code).strip()]
+    if _FREEZE_DEGRADATION_CODE not in codes:
+        codes.append(_FREEZE_DEGRADATION_CODE)
+    meta["freeze_degradation_codes"] = codes
+    meta["freeze_degradation_reason"] = str(message)
+    if strict_mode:
+        raise ValidationError(f"【冻结窗口】{message}", field="freeze_window")
+    warnings.append(f"【冻结窗口】{message}")
+
+
+def _load_schedule_map(
     svc,
     *,
     prev_version: int,
     op_ids: List[int],
     start_str: str,
     freeze_end_str: str,
-    warnings: List[str],
 ) -> Dict[int, Dict[str, Any]]:
     schedule_map: Dict[int, Dict[str, Any]] = {}
-    try:
-        rows = svc.schedule_repo.list_version_rows_by_op_ids_start_range(
-            version=int(prev_version),
-            op_ids=op_ids,
-            start_time=start_str,
-            end_time=freeze_end_str,
-        )
-        for r in rows:
-            try:
-                oid = int(r.get("op_id") or 0)
-                if oid <= 0:
-                    continue
-                schedule_map[int(oid)] = dict(r)
-            except Exception:
+    rows = svc.schedule_repo.list_version_rows_by_op_ids_start_range(
+        version=int(prev_version),
+        op_ids=op_ids,
+        start_time=start_str,
+        end_time=freeze_end_str,
+    )
+    for row in rows:
+        try:
+            oid = int(row.get("op_id") or 0)
+            if oid <= 0:
                 continue
-    except Exception as e:
-        warnings.append(f"【冻结窗口】启用但读取上一版本排程失败，已降级为不冻结：{e}")
-        return {}
-
+            schedule_map[int(oid)] = dict(row)
+        except Exception:
+            continue
     return schedule_map
 
 
@@ -138,6 +185,8 @@ def build_freeze_window_seed(
     start_dt: datetime,
     operations: List[Any],
     reschedulable_operations: Optional[List[Any]] = None,
+    strict_mode: bool = False,
+    meta: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
     """
     冻结窗口（硬约束；默认关闭）：
@@ -151,9 +200,17 @@ def build_freeze_window_seed(
     frozen_op_ids: Set[int] = set()
     seed_results: List[Dict[str, Any]] = []
     warnings: List[str] = []
+    freeze_meta = _init_freeze_meta(meta)
 
-    freeze_days = _freeze_window_days(cfg, prev_version)
+    freeze_days = _freeze_window_days(
+        cfg,
+        prev_version,
+        strict_mode=bool(strict_mode),
+        meta=freeze_meta,
+        warnings=warnings,
+    )
     if freeze_days <= 0:
+        freeze_meta["freeze_applied"] = False
         return frozen_op_ids, seed_results, warnings
 
     freeze_end = start_dt + timedelta(days=freeze_days)
@@ -164,21 +221,31 @@ def build_freeze_window_seed(
     op_by_id: Dict[int, Any] = {int(op.id): op for op in seed_operations if op and op.id}
     op_ids_all = sorted(list(op_by_id.keys()))
     if not op_ids_all:
+        freeze_meta["freeze_applied"] = False
         return frozen_op_ids, seed_results, warnings
 
-    # 查询上一版本在窗口内的排程（仅查本次选中批次的工序）
-    schedule_map = _safe_load_schedule_map(
-        svc,
-        prev_version=int(prev_version),
-        op_ids=op_ids_all,
-        start_str=start_str,
-        freeze_end_str=freeze_end_str,
-        warnings=warnings,
-    )
+    try:
+        schedule_map = _load_schedule_map(
+            svc,
+            prev_version=int(prev_version),
+            op_ids=op_ids_all,
+            start_str=start_str,
+            freeze_end_str=freeze_end_str,
+        )
+    except Exception as exc:
+        _record_freeze_degradation(
+            freeze_meta,
+            warnings,
+            f"启用但读取上一版本排程失败，已降级为不冻结：{exc}",
+            strict_mode=bool(strict_mode),
+        )
+        freeze_meta["freeze_applied"] = False
+        return frozen_op_ids, seed_results, warnings
+
     if not schedule_map:
+        freeze_meta["freeze_applied"] = False
         return frozen_op_ids, seed_results, warnings
 
-    # 冻结到窗口内出现的最大 seq（按批次前缀冻结）
     seed_tmp: Dict[int, Dict[str, Any]] = {}
     max_seq_by_batch = _max_seq_by_batch(schedule_map, op_by_id)
 
@@ -189,24 +256,32 @@ def build_freeze_window_seed(
         missing = [oid for oid in prefix if oid not in schedule_map]
         if missing:
             sample = ", ".join([str(x) for x in missing[:5]])
-            warnings.append(f"【冻结窗口】跳过批次 {bid}：上一版本缺少前缀工序排程（示例 op_id={sample}）")
+            _record_freeze_degradation(
+                freeze_meta,
+                warnings,
+                f"跳过批次 {bid}：上一版本缺少前缀工序排程（示例 op_id={sample}）",
+                strict_mode=bool(strict_mode),
+            )
             continue
 
-        # 校验时间有效（否则不冻结该批次，避免“冻结但无有效区间”导致工序丢失）
         invalid_oid = _cache_seed_for_prefix(svc, prefix=prefix, schedule_map=schedule_map, seed_tmp=seed_tmp)
         if invalid_oid:
-            warnings.append(f"【冻结窗口】跳过批次 {bid}：上一版本工序时间无效（op_id={invalid_oid}）")
+            _record_freeze_degradation(
+                freeze_meta,
+                warnings,
+                f"跳过批次 {bid}：上一版本工序时间无效（op_id={invalid_oid}）",
+                strict_mode=bool(strict_mode),
+            )
             _discard_seed_cache(prefix, seed_tmp)
             continue
 
         for oid in prefix:
             frozen_op_ids.add(int(oid))
 
-    # 生成 seed_results（用于算法占用资源 + 新版本回写）
     seed_results = _build_seed_results(frozen_op_ids, op_by_id=op_by_id, seed_tmp=seed_tmp)
-
-    # 排序（便于人类阅读/留痕）
     seed_results.sort(key=lambda x: (x.get("start_time") or datetime.min, x.get("op_id") or 0))
 
+    freeze_meta["freeze_applied"] = bool(frozen_op_ids)
+    if str(freeze_meta.get("freeze_state") or "").strip().lower() != "degraded":
+        freeze_meta["freeze_state"] = "active" if frozen_op_ids else "disabled"
     return frozen_op_ids, seed_results, warnings
-

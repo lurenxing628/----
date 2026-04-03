@@ -9,6 +9,7 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Batch, BatchOperation, ExternalGroup, PartOperation
 from core.models.enums import BatchOperationStatus, BatchStatus, ReadyStatus, SourceType, YesNo
+from core.services.common.build_outcome import BuildOutcome
 from core.services.common.normalize import normalize_text
 from data.repositories import (
     BatchOperationRepository,
@@ -29,7 +30,7 @@ from .number_utils import parse_finite_float, to_yes_no
 from .resource_pool_builder import build_resource_pool, extend_downtime_map_for_resource_pool, load_machine_downtimes
 from .schedule_input_builder import build_algo_operations
 from .schedule_optimizer import optimize_schedule
-from .schedule_persistence import persist_schedule
+from .schedule_persistence import has_actionable_schedule_rows, persist_schedule
 from .schedule_summary import build_result_summary
 from .schedule_template_lookup import get_template_and_group_for_op
 
@@ -55,6 +56,75 @@ def _get_snapshot_with_optional_strict_mode(cfg_svc: Any, *, strict_mode: bool) 
         ):
             return cfg_svc.get_snapshot()
         raise
+
+
+def _build_algo_operations_with_optional_outcome(svc, operations: List[Any], *, strict_mode: bool) -> BuildOutcome[List[Any]]:
+    try:
+        outcome = build_algo_operations(
+            svc,
+            operations,
+            strict_mode=bool(strict_mode),
+            return_outcome=True,
+        )
+    except TypeError as exc:
+        message = str(exc)
+        if (
+            ("strict_mode" in message or "return_outcome" in message)
+            and ("unexpected keyword argument" in message or "got an unexpected keyword argument" in message)
+        ):
+            outcome = build_algo_operations(svc, operations)
+        else:
+            raise
+    if isinstance(outcome, BuildOutcome):
+        return outcome
+    return BuildOutcome(value=list(outcome or []))
+
+
+def _build_freeze_window_seed_with_optional_meta(
+    svc,
+    *,
+    cfg: Any,
+    prev_version: int,
+    start_dt: datetime,
+    operations: List[Any],
+    reschedulable_operations: Optional[List[Any]],
+    strict_mode: bool,
+) -> Tuple[set, List[Dict[str, Any]], List[str], Dict[str, Any]]:
+    freeze_meta: Dict[str, Any] = {}
+    try:
+        result = build_freeze_window_seed(
+            svc,
+            cfg=cfg,
+            prev_version=prev_version,
+            start_dt=start_dt,
+            operations=operations,
+            reschedulable_operations=reschedulable_operations,
+            strict_mode=bool(strict_mode),
+            meta=freeze_meta,
+        )
+    except TypeError as exc:
+        message = str(exc)
+        if ("strict_mode" in message or "meta" in message) and (
+            "unexpected keyword argument" in message or "got an unexpected keyword argument" in message
+        ):
+            result = build_freeze_window_seed(
+                svc,
+                cfg=cfg,
+                prev_version=prev_version,
+                start_dt=start_dt,
+                operations=operations,
+                reschedulable_operations=reschedulable_operations,
+            )
+        else:
+            raise
+    return result[0], result[1], result[2], freeze_meta
+
+
+def _raise_schedule_empty_result(message: str, *, reason: str) -> None:
+    exc = ValidationError(message, field="排产")
+    exc.details = dict(exc.details or {})
+    exc.details["reason"] = reason
+    raise exc
 
 
 class ScheduleService:
@@ -327,7 +397,10 @@ class ScheduleService:
             if op and getattr(op, "id", None) and int(getattr(op, "id", 0) or 0) > 0
         }
         if not reschedulable_operations:
-            raise ValidationError(f"所选批次没有可重排工序，本次未执行{run_label}。", field="排产")
+            _raise_schedule_empty_result(
+                f"所选批次没有可重排工序，本次未执行{run_label}。",
+                reason="no_reschedulable_operations",
+            )
 
         # 自动分配资源：记录哪些内部工序原本缺省 machine/operator（便于在“非模拟”时回写补全）
         missing_internal_resource_op_ids = {
@@ -351,20 +424,24 @@ class ScheduleService:
                 raise ValidationError(f"以下批次未齐套（ready_status!=yes），禁止排产：{sample}", field="齐套")
 
         # 算法输入（补充 merged 外部组信息）
-        algo_ops = build_algo_operations(self, reschedulable_operations)
+        algo_input_outcome = _build_algo_operations_with_optional_outcome(
+            self, reschedulable_operations, strict_mode=bool(strict_mode)
+        )
+        algo_ops = list(algo_input_outcome.value or [])
 
         # 上一版本号（供冻结窗口复用使用）
         latest = self.history_repo.get_latest_version()
         prev_version = int(latest or 0)
 
         # 冻结窗口（可选）
-        frozen_op_ids, seed_results, algo_warnings = build_freeze_window_seed(
+        frozen_op_ids, seed_results, algo_warnings, freeze_meta = _build_freeze_window_seed_with_optional_meta(
             self,
             cfg=cfg,
             prev_version=prev_version,
             start_dt=start_dt_norm,
             operations=operations,
             reschedulable_operations=reschedulable_operations,
+            strict_mode=bool(strict_mode),
         )
 
         # 防御：warnings 预期为 list，但外部 stub/历史调用可能返回 None
@@ -373,7 +450,10 @@ class ScheduleService:
 
         algo_ops_to_schedule = [x for x in algo_ops if int(getattr(x, "id", 0) or 0) not in frozen_op_ids]
         if not algo_ops_to_schedule:
-            raise ValidationError(f"冻结窗口内无可调整工序，本次未执行{run_label}。", field="排产")
+            _raise_schedule_empty_result(
+                f"冻结窗口内无可调整工序，本次未执行{run_label}。",
+                reason="all_operations_frozen",
+            )
 
         # 停机区间（用于算法避让）
         downtime_meta: Dict[str, Any] = {}
@@ -403,10 +483,9 @@ class ScheduleService:
             meta=downtime_meta,
         )
 
-        # 分配新版本号（数据库原子分配；避免并发下 MAX(version)+1 复用）
-        # 注意：只占用极短写事务，避免长时间锁库影响算法执行。
-        with self.tx_manager.transaction():
-            version = int(self.history_repo.allocate_next_version())
+        # 算法阶段仅使用一个稳定种子版本，真正版本号延后到确认可落库后再原子分配，
+        # 避免“无有效排程行”这类失败路径占用版本号序列。
+        optimizer_seed_version = max(int(prev_version) + 1, 1)
 
         outcome = optimize_schedule(
             calendar_service=cal_svc,
@@ -419,7 +498,7 @@ class ScheduleService:
             downtime_map=downtime_map,
             seed_results=seed_results,
             resource_pool=resource_pool,
-            version=version,
+            version=optimizer_seed_version,
             logger=self.logger,
             strict_mode=bool(strict_mode),
         )
@@ -438,6 +517,13 @@ class ScheduleService:
         algo_stats = getattr(outcome, "algo_stats", {}) or {}
         time_budget_seconds = outcome.time_budget_seconds
 
+        has_actionable_schedule = has_actionable_schedule_rows(results, allowed_op_ids=set(reschedulable_op_ids))
+        if not has_actionable_schedule:
+            _raise_schedule_empty_result(
+                f"优化结果未生成有效可落库排程行，本次未执行{run_label}。",
+                reason="no_actionable_schedule_rows",
+            )
+
         warning_merge_status: Dict[str, Any] = {
             "summary_merge_attempted": bool(algo_warnings),
             "summary_merge_failed": False,
@@ -445,26 +531,12 @@ class ScheduleService:
         }
         # 把“冻结窗口/资源池”等 warning 合并到算法 warning 中
         if algo_warnings:
-            try:
-                summary.warnings.extend(list(algo_warnings))  # type: ignore[attr-defined]
-            except Exception:
-                try:
-                    existing = getattr(summary, "warnings", None)
-                    if isinstance(existing, list):
-                        merged = list(existing) + list(algo_warnings)
-                    elif isinstance(existing, tuple):
-                        merged = list(existing) + list(algo_warnings)
-                    elif existing is None:
-                        merged = list(algo_warnings)
-                    else:
-                        merged = list(algo_warnings)
-                    summary.warnings = merged
-                except Exception as exc:
-                    warning_merge_status["summary_merge_failed"] = True
-                    warning_merge_status["summary_merge_error"] = str(exc)
-                    logger_obj = getattr(self, "logger", None)
-                    if logger_obj is not None:
-                        logger_obj.warning("合并排产 warnings 失败（已忽略）", exc_info=True)
+            summary.warnings.extend(algo_warnings)
+
+        # 仅在确认存在可落库结果后再占用正式版本号，避免空结果推进序列。
+        # 这里仍使用数据库原子分配，保持跨进程唯一递增语义。
+        with self.tx_manager.transaction():
+            version = int(self.history_repo.allocate_next_version())
 
         overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms = build_result_summary(
             self,
@@ -488,6 +560,8 @@ class ScheduleService:
             attempts=attempts,
             improvement_trace=improvement_trace,
             frozen_op_ids=set(frozen_op_ids),
+            freeze_meta=freeze_meta,
+            input_build_outcome=algo_input_outcome,
             downtime_meta=downtime_meta,
             resource_pool_meta=resource_pool_meta,
             algo_stats=algo_stats,
@@ -511,7 +585,7 @@ class ScheduleService:
             reschedulable_op_ids=set(reschedulable_op_ids),
             normalized_batch_ids=normalized,
             created_by=created_by_text,
-            has_actionable_schedule=True,
+            has_actionable_schedule=has_actionable_schedule,
             simulate=simulate,
             frozen_op_ids=set(frozen_op_ids),
             result_status=result_status,

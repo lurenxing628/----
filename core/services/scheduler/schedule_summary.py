@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.models.enums import YesNo
+from core.services.common.build_outcome import BuildOutcome
+from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
 
 from .number_utils import to_yes_no
 
@@ -291,14 +293,20 @@ def _finish_time_by_batch(results: List[Any]) -> Dict[str, datetime]:
     for r in results:
         if not getattr(r, "end_time", None):
             continue
-        bid = str(getattr(r, "batch_id", "") or "")
+        bid = str(getattr(r, "batch_id", "") or "").strip()
         cur = finish_by_batch.get(bid)
         if (cur is None) or (r.end_time > cur):
             finish_by_batch[bid] = r.end_time
     return finish_by_batch
 
 
-def _build_overdue_items(svc, *, batches: Dict[str, Any], finish_by_batch: Dict[str, datetime], summary: Any) -> List[Dict[str, Any]]:
+def _build_overdue_items(
+    svc,
+    *,
+    batches: Dict[str, Any],
+    finish_by_batch: Dict[str, datetime],
+    summary: Any,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     overdue_items: List[Dict[str, Any]] = []
 
     invalid_due_count = 0
@@ -345,7 +353,11 @@ def _build_overdue_items(svc, *, batches: Dict[str, Any], finish_by_batch: Dict[
             except Exception:
                 pass
 
-    return overdue_items
+    return overdue_items, {
+        "invalid_due_count": int(invalid_due_count),
+        "invalid_due_batch_ids_sample": list(invalid_due_ids_sample),
+        "invalid_due_raw_sample": list(invalid_due_raw_sample),
+    }
 
 
 def _compute_result_status(summary: Any, *, simulate: bool) -> str:
@@ -380,6 +392,69 @@ def _extract_freeze_warnings(summary: Any) -> List[str]:
     return freeze_warnings
 
 
+def _freeze_meta_dict(
+    cfg: Any,
+    *,
+    frozen_op_ids: Set[int],
+    freeze_meta: Optional[Dict[str, Any]],
+    freeze_warnings: List[str],
+) -> Dict[str, Any]:
+    meta = freeze_meta if isinstance(freeze_meta, dict) else {}
+    enabled = to_yes_no(_cfg_value(cfg, "freeze_window_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
+    try:
+        days = int(_cfg_value(cfg, "freeze_window_days", 0) or 0)
+    except Exception:
+        days = 0
+    raw_state = str(meta.get("freeze_state") or "").strip().lower()
+    degradation_codes = [
+        str(code).strip()
+        for code in list(meta.get("freeze_degradation_codes") or [])
+        if str(code).strip()
+    ]
+    degraded = raw_state == "degraded" or bool(freeze_warnings) or bool(degradation_codes)
+    applied = bool(meta.get("freeze_applied")) if "freeze_applied" in meta else bool(frozen_op_ids)
+    if degraded:
+        freeze_state = "degraded"
+    elif enabled and days > 0 and applied:
+        freeze_state = "active"
+    else:
+        freeze_state = "disabled"
+    return {
+        "enabled": bool(enabled),
+        "days": int(days),
+        "freeze_state": freeze_state,
+        "freeze_applied": bool(applied),
+        "freeze_degradation_codes": degradation_codes,
+        "degradation_reason": meta.get("freeze_degradation_reason") or (freeze_warnings[0] if freeze_warnings else None),
+    }
+
+
+def _input_build_state(input_build_outcome: Optional[BuildOutcome[Any]]) -> Dict[str, Any]:
+    if isinstance(input_build_outcome, BuildOutcome):
+        event_dicts = degradation_events_to_dicts(input_build_outcome.events)
+        merge_context_events = [
+            event
+            for event in event_dicts
+            if str(event.get("code") or "") in {"template_missing", "external_group_missing"}
+        ]
+        return {
+            "degraded": bool(input_build_outcome.has_events),
+            "degradation_events": event_dicts,
+            "degradation_counters": dict(input_build_outcome.counters or {}),
+            "empty_reason": input_build_outcome.empty_reason,
+            "merge_context_degraded": bool(merge_context_events),
+            "merge_context_events": merge_context_events,
+        }
+    return {
+        "degraded": False,
+        "degradation_events": [],
+        "degradation_counters": {},
+        "empty_reason": None,
+        "merge_context_degraded": False,
+        "merge_context_events": [],
+    }
+
+
 def _meta_int(meta: Dict[str, Any], key: str) -> int:
     try:
         return max(0, int(meta.get(key) or 0))
@@ -403,6 +478,99 @@ def _meta_sample(meta: Dict[str, Any], key: str, *, limit: int = 5) -> List[str]
         if len(out) >= limit:
             break
     return out
+
+
+def _metric_int(metrics: Any, key: str) -> int:
+    if metrics is None:
+        return 0
+    try:
+        return max(0, int(getattr(metrics, key, 0) or 0))
+    except Exception:
+        return 0
+
+
+def _metric_sample(metrics: Any, key: str, *, limit: int) -> List[str]:
+    if metrics is None:
+        return []
+    raw = getattr(metrics, key, None)
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: List[str] = []
+    for item in raw:
+        try:
+            text = str(item).strip()
+        except Exception:
+            continue
+        if not text or text in out:
+            continue
+        out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _summary_degradation_state(
+    *,
+    input_state: Dict[str, Any],
+    invalid_due_count: int,
+    invalid_due_batch_ids_sample: List[str],
+    legacy_external_days_defaulted_count: int,
+    ortools_warmstart_failed_count: int,
+) -> Dict[str, Any]:
+    collector = DegradationCollector()
+
+    for event in list(input_state.get("degradation_events") or []):
+        if not isinstance(event, dict):
+            continue
+        code = str(event.get("code") or "").strip()
+        if not code:
+            continue
+        scope = str(event.get("scope") or "schedule.input_contract").strip() or "schedule.input_contract"
+        message = str(event.get("message") or code or "退化事件").strip() or "退化事件"
+        field = event.get("field")
+        sample = event.get("sample")
+        try:
+            count = max(1, int(event.get("count") or 1))
+        except Exception:
+            count = 1
+        collector.add(
+            code=code,
+            scope=scope,
+            field=(None if field is None else str(field)),
+            message=message,
+            count=count,
+            sample=(None if sample is None else str(sample)),
+        )
+
+    if invalid_due_count > 0:
+        collector.add(
+            code="invalid_due_date",
+            scope="schedule.summary",
+            field="due_date",
+            message="存在坏交期，超期判断已忽略这些批次。",
+            count=int(invalid_due_count),
+            sample="、".join(invalid_due_batch_ids_sample[:5]) or None,
+        )
+
+    if legacy_external_days_defaulted_count > 0:
+        collector.add(
+            code="legacy_external_days_defaulted",
+            scope="greedy.external",
+            field="ext_days",
+            message="历史外协周期缺失或不合法，已按 1.0 天兼容读取。",
+            count=int(legacy_external_days_defaulted_count),
+        )
+
+    if ortools_warmstart_failed_count > 0:
+        collector.add(
+            code="ortools_warmstart_failed",
+            scope="optimizer.warmstart",
+            field="ortools_enabled",
+            message="OR-Tools 预热失败，已回退到常规求解路径。",
+            count=int(ortools_warmstart_failed_count),
+        )
+
+    return {"events": degradation_events_to_dicts(collector.to_list()), "counters": collector.to_counters()}
 
 
 def _partial_fail_reason(prefix: str, count: int, sample: List[str], suffix: str) -> str:
@@ -504,7 +672,7 @@ def _compute_resource_pool_degradation(cfg: Any, *, resource_pool_meta: Optional
     return auto_assign_enabled, degraded, degradation_reason, attempted
 
 
-def _hard_constraints(cfg: Any, *, downtime_degraded: bool) -> List[str]:
+def _hard_constraints(cfg: Any, *, downtime_degraded: bool, freeze_state: str) -> List[str]:
     hard_constraints: List[str] = [
         "precedence",
         "calendar",
@@ -512,7 +680,7 @@ def _hard_constraints(cfg: Any, *, downtime_degraded: bool) -> List[str]:
     ]
     if not downtime_degraded:
         hard_constraints.append("downtime_avoid")
-    if to_yes_no(_cfg_value(cfg, "freeze_window_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value:
+    if str(freeze_state or "").strip().lower() == "active":
         hard_constraints.append("freeze_window")
     return hard_constraints
 
@@ -540,6 +708,8 @@ def build_result_summary(
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
     frozen_op_ids: Set[int],
+    freeze_meta: Optional[Dict[str, Any]] = None,
+    input_build_outcome: Optional[BuildOutcome[Any]] = None,
     downtime_meta: Optional[Dict[str, Any]] = None,
     resource_pool_meta: Optional[Dict[str, Any]] = None,
     algo_stats: Optional[Dict[str, Any]] = None,
@@ -556,7 +726,20 @@ def build_result_summary(
     """
     # 超期预警：批次预计完工时间 vs due_date
     finish_by_batch = _finish_time_by_batch(results)
-    overdue_items = _build_overdue_items(svc, batches=batches, finish_by_batch=finish_by_batch, summary=summary)
+    overdue_items, overdue_meta = _build_overdue_items(svc, batches=batches, finish_by_batch=finish_by_batch, summary=summary)
+    invalid_due_count = _metric_int(best_metrics, "invalid_due_count") or int(overdue_meta.get("invalid_due_count") or 0)
+    invalid_due_batch_ids_sample = _metric_sample(best_metrics, "invalid_due_batch_ids_sample", limit=10) or list(
+        overdue_meta.get("invalid_due_batch_ids_sample") or []
+    )
+    unscheduled_batch_ids_all = [
+        str(bid).strip()
+        for bid in sorted(batches.keys(), key=lambda item: str(item).strip())
+        if str(bid).strip() and str(bid).strip() not in finish_by_batch
+    ]
+    unscheduled_batch_count = _metric_int(best_metrics, "unscheduled_batch_count") or int(len(unscheduled_batch_ids_all))
+    unscheduled_batch_ids_sample = _metric_sample(best_metrics, "unscheduled_batch_ids_sample", limit=20) or list(
+        unscheduled_batch_ids_all[:20]
+    )
 
     # result_status：success/partial/failed/simulated
     result_status = _compute_result_status(summary, simulate=simulate)
@@ -570,6 +753,28 @@ def build_result_summary(
     algo_warning_list = _warning_list(algo_warnings)
     all_warnings = _merge_warning_lists(summary_warnings, algo_warning_list)
     freeze_warnings = _extract_freeze_warnings(all_warnings)
+    input_state = _input_build_state(input_build_outcome)
+    merge_context_degraded = bool(input_state.get("merge_context_degraded"))
+    merge_context_events = list(input_state.get("merge_context_events") or [])
+    if merge_context_degraded:
+        all_warnings = _merge_warning_lists(
+            all_warnings,
+            ["组合并语义已退化：部分外协工序缺少模板或外部组，已按逐道外协语义继续排产。"],
+        )
+    if unscheduled_batch_count > 0:
+        sample_text = "、".join(unscheduled_batch_ids_sample[:10])
+        all_warnings = _merge_warning_lists(
+            all_warnings,
+            [f"存在 {unscheduled_batch_count} 个批次未形成完工结果（示例批次：{sample_text}）。"],
+        )
+    freeze_state = _freeze_meta_dict(
+        cfg,
+        frozen_op_ids=frozen_op_ids,
+        freeze_meta=freeze_meta,
+        freeze_warnings=freeze_warnings,
+    )
+    if str(freeze_state.get("freeze_state") or "") == "degraded" and freeze_state.get("degradation_reason"):
+        all_warnings = _merge_warning_lists(all_warnings, [f"【冻结窗口】未生效：{freeze_state.get('degradation_reason')}"])
 
     # 停机约束状态：避免“停机加载失败但摘要仍宣称硬约束已启用”
     downtime_state = _compute_downtime_degradation(cfg, downtime_meta=downtime_meta)
@@ -585,12 +790,31 @@ def build_result_summary(
     resource_pool_enabled, resource_pool_degraded, resource_pool_degradation_reason, resource_pool_attempted = (
         _compute_resource_pool_degradation(cfg, resource_pool_meta=resource_pool_meta)
     )
-    hard_constraints = _hard_constraints(cfg, downtime_degraded=downtime_degraded)
+    hard_constraints = _hard_constraints(
+        cfg, downtime_degraded=downtime_degraded, freeze_state=str(freeze_state.get("freeze_state") or "disabled")
+    )
 
     warning_pipeline = warning_merge_status if isinstance(warning_merge_status, dict) else {}
     algo_stats_dict = algo_stats if isinstance(algo_stats, dict) else {}
     fallback_counts = _counter_dict(algo_stats_dict.get("fallback_counts"))
     param_fallbacks = _counter_dict(algo_stats_dict.get("param_fallbacks"))
+    legacy_external_days_defaulted_count = int(fallback_counts.get("legacy_external_days_defaulted_count") or 0)
+    ortools_warmstart_failed_count = int(fallback_counts.get("ortools_warmstart_failed_count") or 0)
+    if legacy_external_days_defaulted_count > 0:
+        all_warnings = _merge_warning_lists(
+            all_warnings,
+            [f"存在 {legacy_external_days_defaulted_count} 道外协工序使用了历史兼容周期 1.0 天。"],
+        )
+    if ortools_warmstart_failed_count > 0:
+        all_warnings = _merge_warning_lists(all_warnings, ["OR-Tools 预热失败，已回退到常规求解路径。"])
+
+    summary_degradation = _summary_degradation_state(
+        input_state=input_state,
+        invalid_due_count=int(invalid_due_count),
+        invalid_due_batch_ids_sample=list(invalid_due_batch_ids_sample),
+        legacy_external_days_defaulted_count=int(legacy_external_days_defaulted_count),
+        ortools_warmstart_failed_count=int(ortools_warmstart_failed_count),
+    )
 
     comparison_metric = _comparison_metric(objective_name)
     result_summary_obj: Dict[str, Any] = {
@@ -625,25 +849,44 @@ def build_result_summary(
                     list(downtime_extend_partial_fail_machines_sample) if auto_assign_enabled else []
                 ),
             },
+            "input_contract": {
+                "degraded": bool(input_state.get("degraded")),
+                "degradation_events": list(input_state.get("degradation_events") or []),
+                "degradation_counters": dict(input_state.get("degradation_counters") or {}),
+                "empty_reason": input_state.get("empty_reason"),
+            },
+            "merge_context_degraded": bool(merge_context_degraded),
+            "merge_context_events": list(merge_context_events),
             "freeze_window": {
-                "enabled": _cfg_value(cfg, "freeze_window_enabled", "no"),
-                "days": int(_cfg_value(cfg, "freeze_window_days", 0) or 0),
+                "enabled": YesNo.YES.value if bool(freeze_state.get("enabled")) else YesNo.NO.value,
+                "days": int(freeze_state.get("days") or 0),
                 "frozen_op_count": int(len(frozen_op_ids)),
                 "frozen_batch_count": int(len(frozen_batch_ids)),
                 "frozen_batch_ids_sample": frozen_batch_ids[:20],
-                "degraded": bool(freeze_warnings),
-                "degradation_reason": (freeze_warnings[0] if freeze_warnings else None),
+                "freeze_state": freeze_state.get("freeze_state"),
+                "freeze_applied": bool(freeze_state.get("freeze_applied")),
+                "freeze_degradation_codes": list(freeze_state.get("freeze_degradation_codes") or []),
+                "degraded": str(freeze_state.get("freeze_state") or "") == "degraded",
+                "degradation_reason": freeze_state.get("degradation_reason"),
             },
         },
         "selected_batch_ids": list(normalized_batch_ids),
         "start_time": svc._format_dt(start_dt),
         "end_date": _serialize_end_date(end_date),
+        "invalid_due_count": int(invalid_due_count),
+        "invalid_due_batch_ids_sample": list(invalid_due_batch_ids_sample[:10]),
+        "unscheduled_batch_count": int(unscheduled_batch_count),
+        "unscheduled_batch_ids_sample": list(unscheduled_batch_ids_sample[:20]),
+        "legacy_external_days_defaulted_count": int(legacy_external_days_defaulted_count),
+        "degradation_events": list(summary_degradation.get("events") or []),
+        "degradation_counters": dict(summary_degradation.get("counters") or {}),
         "counts": {
             "batch_count": len(batches),
             # 与调度器 summary 同口径（包含 seed_results；并考虑 seed 与 operations 去重过滤）
             "op_count": int(getattr(summary, "total_ops", 0)),
             "scheduled_ops": int(getattr(summary, "scheduled_ops", 0)),
             "failed_ops": int(getattr(summary, "failed_ops", 0)),
+            "unscheduled_batch_count": int(unscheduled_batch_count),
         },
         "overdue_batches": {"count": len(overdue_items), "items": overdue_items},
         "errors_sample": (getattr(summary, "errors", None) or [])[:10],
