@@ -4,11 +4,11 @@ from typing import Optional
 
 from flask import g, request
 
-from core.infrastructure.errors import ValidationError
 from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_analysis_vm import build_analysis_context, safe_int
 
+from .normalizers import normalize_version_or_latest
 from .scheduler_bp import bp
 
 
@@ -22,13 +22,10 @@ def analysis_page():
     q = ScheduleHistoryQueryService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     versions = q.list_versions(limit=50)
 
-    ver_raw = (request.args.get("version") or "").strip()
+    latest_version = safe_int((versions[0] or {}).get("version"), default=0) if versions else 0
     selected_ver: Optional[int] = None
-    if ver_raw:
-        try:
-            selected_ver = int(ver_raw)
-        except Exception as e:
-            raise ValidationError("version 不合法（期望整数）", field="version") from e
+    if "version" in request.args:
+        selected_ver = normalize_version_or_latest(request.args.get("version"), latest_version=latest_version) or None
     else:
         if versions:
             selected_ver = safe_int((versions[0] or {}).get("version"), default=0) or None

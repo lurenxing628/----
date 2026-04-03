@@ -74,3 +74,19 @@ def _normalize_yesno(value: Any) -> str:
     """
     return normalize_yesno_narrow(value, default=YesNo.YES.value, unknown_policy="passthrough")
 
+
+def normalize_version_or_latest(value: Any, *, latest_version: int) -> int:
+    """
+    版本号入口统一口径：空值、非整数、0、负数统一回退到最新版本。
+    """
+    latest = int(latest_version or 0)
+    if value is None:
+        return latest
+    text = str(value).strip()
+    if not text:
+        return latest
+    try:
+        version = int(text)
+    except Exception:
+        return latest
+    return version if version > 0 else latest

@@ -5,7 +5,7 @@ from flask import current_app, flash, g, redirect, request, url_for
 from core.infrastructure.errors import AppError
 from core.services.scheduler import ScheduleService
 
-from .scheduler_bp import bp
+from .scheduler_bp import _surface_schedule_warnings, bp
 
 
 def _strict_mode_enabled(raw_value: object) -> bool:
@@ -61,17 +61,7 @@ def run_schedule():
             if sample:
                 flash(f"超期批次（最多展示10个）：{sample}", "warning")
 
-        # 重要 warnings：冻结窗口/停机降级等（最多展示 8 条，避免刷屏）
-        warns = summary.get("warnings") or []
-        if warns:
-            shown = 0
-            for w in warns:
-                ws = str(w)
-                if ws.startswith("【冻结窗口】") or ws.startswith("【停机】"):
-                    flash(ws, "warning")
-                    shown += 1
-                    if shown >= 8:
-                        break
+        _surface_schedule_warnings(summary.get("warnings"))
 
         # 有错误则补充提示（最多 5 条）
         errs = summary.get("errors") or []

@@ -388,16 +388,9 @@ class ScheduleService:
 
         # 自动分配资源池（可选）
         resource_pool, pool_warnings = build_resource_pool(self, cfg=cfg, algo_ops=algo_ops, meta=resource_pool_meta)
+        pool_warnings = list(pool_warnings or [])
         if pool_warnings:
-            try:
-                if algo_warnings is None:
-                    algo_warnings = []
-                algo_warnings.extend(list(pool_warnings))
-            except Exception:
-                try:
-                    algo_warnings = list(algo_warnings or []) + list(pool_warnings or [])
-                except Exception:
-                    algo_warnings = list(pool_warnings or [])
+            algo_warnings.extend(pool_warnings)
 
         # auto-assign 启用时：停机区间覆盖候选设备
         downtime_map = extend_downtime_map_for_resource_pool(

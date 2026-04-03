@@ -13,7 +13,8 @@ from core.services.scheduler import GanttService, ScheduleService
 from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 from web.ui_mode import render_ui_template as render_template
 
-from .scheduler_bp import bp
+from .normalizers import normalize_version_or_latest
+from .scheduler_bp import _surface_schedule_warnings, bp
 
 
 def _get_int_arg(name: str, default: int = 0) -> int:
@@ -49,17 +50,10 @@ def week_plan_page():
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
-    version_raw = (request.args.get("version") or "").strip()
-    version: Optional[int] = None
-    if version_raw:
-        try:
-            version = int(version_raw)
-        except Exception as e:
-            raise ValidationError("version 不合法（期望整数）", field="version") from e
-
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    latest_version = svc.get_latest_version_or_1()
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
-    ver = version if version is not None else svc.get_latest_version_or_1()
+    ver = normalize_version_or_latest(request.args.get("version"), latest_version=latest_version)
 
     versions = ScheduleHistoryQueryService(
         g.db,
@@ -96,16 +90,10 @@ def week_plan_export():
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
-    version_raw = (request.args.get("version") or "").strip()
 
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     try:
-        version: Optional[int] = None
-        if version_raw:
-            try:
-                version = int(version_raw)
-            except Exception as e:
-                raise ValidationError("version 不合法（期望整数）", field="version") from e
+        version = normalize_version_or_latest(request.args.get("version"), latest_version=svc.get_latest_version_or_1())
 
         data = svc.get_week_plan_rows(
             week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date, version=version
@@ -188,18 +176,8 @@ def simulate_schedule():
         ver = int(result.get("version") or 1)
         flash(f"模拟排产完成：生成版本 {ver}（不影响批次状态）。", "success")
 
-        # 重要 warnings：冻结窗口/停机降级等（最多展示 8 条）
         summary = result.get("summary") or {}
-        warns = summary.get("warnings") or []
-        if warns:
-            shown = 0
-            for w in warns:
-                ws = str(w)
-                if ws.startswith("【冻结窗口】") or ws.startswith("【停机】"):
-                    flash(ws, "warning")
-                    shown += 1
-                    if shown >= 8:
-                        break
+        _surface_schedule_warnings(summary.get("warnings"))
 
         # 默认跳到“本周”甘特图（设备视图）
         today = date.today().isoformat()
