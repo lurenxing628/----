@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from flask import Flask, g, request
+from flask import Flask, current_app, g, request
 from werkzeug.serving import make_server
 
 from config import config as config_map
@@ -276,9 +276,10 @@ def create_app_core(
                 return _maintenance_gate_response()
         except Exception as e:
             app.logger.warning(f"维护窗口检测失败，将继续处理请求：{e}")
+        g.app_logger = current_app.logger
         if "db" not in g:
             g.db = get_connection(app.config["DATABASE_PATH"])
-            g.op_logger = OperationLogger(g.db, logger=app.logger)
+            g.op_logger = OperationLogger(g.db, logger=current_app.logger)
             try:
                 from core.services.system import SystemMaintenanceService
 

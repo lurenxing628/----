@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from decimal import Decimal, InvalidOperation
-from typing import Any, Optional
+from typing import Any, MutableSequence, Optional
 
 
 def normalize_text(value: Any) -> Optional[str]:
@@ -55,4 +55,16 @@ def to_str_or_blank(value: Any) -> str:
 def is_blank_value(value: Any) -> bool:
     """判断 Excel/表单值是否为空，不把数字 0 视为空。"""
     return normalize_text(value) is None
+
+
+def append_unique_text_messages(buffer: Optional[MutableSequence[str]], messages: Any) -> None:
+    """向消息缓冲区按原顺序追加非空且不重复的文本。"""
+    if buffer is None:
+        return
+    items = messages if isinstance(messages, (list, tuple, set)) else [messages]
+    for item in items:
+        text = str(item or "").strip()
+        if not text or text in buffer:
+            continue
+        buffer.append(text)
 
