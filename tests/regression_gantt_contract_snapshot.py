@@ -105,6 +105,9 @@ def main() -> None:
         "tasks",
         "calendar_days",
         "critical_chain",
+        "overdue_markers_degraded",
+        "overdue_markers_partial",
+        "overdue_markers_message",
     }
     missing_top = sorted(required_top_keys - set(data.keys()))
     if missing_top:
@@ -159,8 +162,13 @@ def main() -> None:
     for k in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "cache_hit"):
         if k not in cc_empty:
             raise RuntimeError(f"空数据版本 critical_chain 缺少字段：{k}")
+    raw_edge_count = cc_empty.get("edge_count")
+    if raw_edge_count is None:
+        raise RuntimeError("空数据版本 edge_count 缺失")
+    if not isinstance(raw_edge_count, (int, str, bytes, bytearray)):
+        raise RuntimeError(f"空数据版本 edge_count 类型不正确：{type(raw_edge_count)!r}")
     try:
-        edge_count = int(cc_empty.get("edge_count"))
+        edge_count = int(raw_edge_count)
     except Exception:
         raise RuntimeError(f"空数据版本 edge_count 不是整数：{cc_empty.get('edge_count')!r}")
     if edge_count != 0:

@@ -94,6 +94,39 @@
     }
   }
 
+  function resetOverdueMarkerState() {
+    state.overdueMarkersDegraded = false;
+    state.overdueMarkersPartial = false;
+    state.overdueMarkersMessage = "";
+  }
+
+  function applyOverdueMarkerState() {
+    const warningEl = $("ganttOverdueWarning");
+    const overdueToggle = $("ganttOnlyOverdue");
+    const degraded = !!state.overdueMarkersDegraded;
+    const partial = !!state.overdueMarkersPartial && !degraded;
+    const visible = degraded || partial;
+    const message =
+      str(state.overdueMarkersMessage || "").trim() ||
+      (partial ? "部分超期标记可能不完整，当前仍按已识别条目标记。" : "超期标记可能不完整，请稍后重试或查看系统历史。");
+
+    if (warningEl) {
+      warningEl.textContent = message;
+      show(warningEl, visible);
+    }
+
+    if (!overdueToggle) return;
+    overdueToggle.disabled = degraded;
+    if (degraded) {
+      overdueToggle.checked = false;
+    }
+    if (visible) {
+      overdueToggle.title = message;
+    } else {
+      overdueToggle.title = "";
+    }
+  }
+
   function _withFetchTimeout(url, timeoutMs) {
     const timeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 12000;
     if (typeof AbortController === "undefined") {
@@ -155,6 +188,8 @@
       }
       show(emptyEl, true);
       const host = $("gantt");
+      resetOverdueMarkerState();
+      applyOverdueMarkerState();
       if (host) host.innerHTML = "";
       return;
     }
@@ -164,6 +199,8 @@
       if (errEl) {
         errEl.textContent = "甘特图配置缺失：未找到数据接口 URL（data-url；兼容 data-data-url）。";
       }
+      resetOverdueMarkerState();
+      applyOverdueMarkerState();
       show(errEl, true);
       return;
     }
@@ -175,6 +212,8 @@
       if (errEl) {
         errEl.textContent = `甘特图配置错误：数据接口 URL 不合法（dataUrl=${str(dataUrl)}）。`;
       }
+      resetOverdueMarkerState();
+      applyOverdueMarkerState();
       show(errEl, true);
       return;
     }
@@ -225,6 +264,8 @@
           // ignore
         }
       }
+      resetOverdueMarkerState();
+      applyOverdueMarkerState();
       show(errEl, true);
       return;
     }
@@ -232,11 +273,15 @@
     const data = payload.data || {};
     const tasks = Array.isArray(data.tasks) ? data.tasks : [];
     state.allTasks = tasks;
+    state.overdueMarkersDegraded = data.overdue_markers_degraded === true;
+    state.overdueMarkersPartial = data.overdue_markers_partial === true;
+    state.overdueMarkersMessage = str(data.overdue_markers_message || "");
     initCriticalChain(data.critical_chain || null);
     initCalendarDays(data.calendar_days || null);
     refreshFilterSelectOptions();
 
     applyUiFromUrl();
+    applyOverdueMarkerState();
     bindUi();
     readUi();
     persistUiToUrl();

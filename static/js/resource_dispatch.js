@@ -328,6 +328,16 @@
     show(el, !!trim(message));
   }
 
+  function setOverdueWarning(message) {
+    const el = $("rdOverdueWarning");
+    if (!el) return;
+    const textMessage = trim(message);
+    if (textMessage) {
+      el.textContent = textMessage;
+    }
+    show(el, !!textMessage);
+  }
+
   function currentQueryString() {
     const qs = trim(window.location.search || "");
     if (qs) return qs;
@@ -353,6 +363,7 @@
     renderCalendar([], []);
     setError("");
     setEmpty("");
+    setOverdueWarning("");
     try {
       const resp = await fetch(state.cfg.dataUrl + currentQueryString(), { headers: { Accept: "application/json" } });
       const payload = await resp.json();
@@ -367,14 +378,23 @@
       renderCalendar(state.data.calendar_headers || [], state.data.calendar_rows || []);
       activateTab(state.activeTab || "detail");
       setEmpty(state.data.empty_message || "");
+      const hasOverdueWarning = state.data.overdue_markers_degraded === true || state.data.overdue_markers_partial === true;
+      const overdueWarningFallback = state.data.overdue_markers_partial
+        ? "部分超期标记可能不完整，当前仍按已识别条目标记。"
+        : "超期统计和标记可能不完整，请稍后重试或查看系统历史。";
+      setOverdueWarning(
+        hasOverdueWarning ? (state.data.overdue_markers_message || overdueWarningFallback) : ""
+      );
       if (state.activeTab === "gantt") {
         renderGantt(state.data.tasks || []);
       }
     } catch (err) {
       setError(err && err.message ? err.message : "资源排班数据加载失败，请稍后重试。");
       renderDetailRows([]);
+      state.data = null;
       renderTeamTables({});
       renderCalendar([], []);
+      setOverdueWarning("");
     }
   }
 

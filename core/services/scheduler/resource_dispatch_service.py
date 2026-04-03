@@ -17,6 +17,7 @@ from .resource_dispatch_support import (
     build_team_scope_payload,
     empty_dispatch_payload,
     extract_overdue_batch_ids,
+    extract_overdue_batch_ids_with_meta,
 )
 from .schedule_history_query_service import ScheduleHistoryQueryService
 
@@ -141,11 +142,48 @@ class ResourceDispatchService:
         ]
         return operator_options, machine_options, team_options
 
-    def _load_overdue_set(self, version: int) -> Set[str]:
+    def _log_overdue_marker_degraded(self, *, version: int, reason: str, message: str) -> None:
+        if self.logger is None:
+            return
+        self.logger.warning(
+            "资源排班超期标记降级（service=ResourceDispatchService, page=resource_dispatch, version=%s, source=%s, message=%s）",
+            version,
+            reason or "unknown",
+            message or "",
+        )
+
+    def _log_overdue_marker_partial(self, *, version: int, reason: str, message: str) -> None:
+        if self.logger is None:
+            return
+        self.logger.warning(
+            "资源排班超期标记部分不完整（service=ResourceDispatchService, page=resource_dispatch, version=%s, source=%s, message=%s）",
+            version,
+            reason or "unknown",
+            message or "",
+        )
+
+    def _load_overdue_meta(self, version: int) -> Dict[str, Any]:
         hist = self.history_service.get_by_version(int(version))
         if not hist:
-            return set()
-        return extract_overdue_batch_ids(hist.result_summary)
+            meta = {
+                "ids": [],
+                "degraded": True,
+                "partial": False,
+                "message": "排产历史缺失，超期统计和标记可能不完整。",
+                "reason": "history_missing",
+            }
+            self._log_overdue_marker_degraded(version=int(version), reason=str(meta["reason"]), message=str(meta["message"]))
+            return meta
+        meta = extract_overdue_batch_ids_with_meta(hist.result_summary)
+        if meta.get("degraded"):
+            self._log_overdue_marker_degraded(
+                version=int(version), reason=str(meta.get("reason") or "unknown"), message=str(meta.get("message") or "")
+            )
+        elif meta.get("partial"):
+            self._log_overdue_marker_partial(
+                version=int(version), reason=str(meta.get("reason") or "unknown"), message=str(meta.get("message") or "")
+            )
+        return meta
 
     def build_page_context(
         self,
@@ -253,7 +291,8 @@ class ResourceDispatchService:
             start_date=start_date,
             end_date=end_date,
         )
-        overdue_set = self._load_overdue_set(selected_version)
+        overdue_meta = self._load_overdue_meta(selected_version)
+        overdue_set = set(overdue_meta.get("ids") or [])
         rows = self.schedule_repo.list_dispatch_rows_with_resource_context(
             start_time=dr.start_time,
             end_time=dr.end_time,
@@ -291,6 +330,9 @@ class ResourceDispatchService:
             selected_version=selected_version,
         )
         payload["has_history"] = True
+        payload["overdue_markers_degraded"] = bool(overdue_meta.get("degraded"))
+        payload["overdue_markers_partial"] = bool(overdue_meta.get("partial"))
+        payload["overdue_markers_message"] = str(overdue_meta.get("message") or "")
         payload["empty_message"] = build_empty_dispatch_message(
             normalized_scope_type=normalized_scope_type,
             dr=dr,

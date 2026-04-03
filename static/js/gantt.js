@@ -201,6 +201,9 @@
     ccPrevByTo: new Map(),
     ccEdgeMetaByTo: new Map(),
     calendarDays: [],
+    overdueMarkersDegraded: false,
+    overdueMarkersPartial: false,
+    overdueMarkersMessage: "",
     // 默认：按批次配色；高亮关键链；仅显示关键链箭头（避免全图箭头过密）
     ui: {
       viewMode: "Day",

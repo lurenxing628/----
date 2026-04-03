@@ -219,6 +219,16 @@
   cursor: pointer;
 }
 
+#ganttOverdueWarning,
+#rdOverdueWarning {
+  margin-top: 12px;
+}
+
+#ganttOnlyOverdue:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* ---- legend / help ---- */
 .aps-gantt-legend {
   color: #64748b;

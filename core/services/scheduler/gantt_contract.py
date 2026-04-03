@@ -23,6 +23,9 @@ class GanttContractDTO:
     tasks: List[Dict[str, Any]] = field(default_factory=list)
     calendar_days: List[Dict[str, Any]] = field(default_factory=list)
     critical_chain: Dict[str, Any] = field(default_factory=dict)
+    overdue_markers_degraded: bool = False
+    overdue_markers_partial: bool = False
+    overdue_markers_message: str = ""
     history: Optional[Dict[str, Any]] = None
 
     def to_dict(self, *, include_history: bool = False) -> Dict[str, Any]:
@@ -36,6 +39,9 @@ class GanttContractDTO:
             "tasks": list(self.tasks or []),
             "calendar_days": list(self.calendar_days or []),
             "critical_chain": dict(self.critical_chain or {}),
+            "overdue_markers_degraded": bool(self.overdue_markers_degraded),
+            "overdue_markers_partial": bool(self.overdue_markers_partial),
+            "overdue_markers_message": str(self.overdue_markers_message or ""),
         }
         if include_history:
             out["history"] = dict(self.history) if isinstance(self.history, dict) else None
@@ -52,6 +58,9 @@ def build_gantt_contract(
     tasks: List[Dict[str, Any]],
     calendar_days: List[Dict[str, Any]],
     critical_chain: Dict[str, Any],
+    overdue_markers_degraded: bool = False,
+    overdue_markers_partial: bool = False,
+    overdue_markers_message: str = "",
     include_history: bool = False,
     history: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -65,6 +74,9 @@ def build_gantt_contract(
         tasks=list(tasks or []),
         calendar_days=list(calendar_days or []),
         critical_chain=dict(critical_chain or {}),
+        overdue_markers_degraded=bool(overdue_markers_degraded),
+        overdue_markers_partial=bool(overdue_markers_partial),
+        overdue_markers_message=str(overdue_markers_message or ""),
         history=dict(history or {}) if isinstance(history, dict) else None,
     )
     return dto.to_dict(include_history=bool(include_history))

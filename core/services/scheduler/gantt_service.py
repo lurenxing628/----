@@ -13,6 +13,7 @@ from .gantt_critical_chain import compute_critical_chain
 from .gantt_range import WeekRange, resolve_week_range
 from .gantt_tasks import build_calendar_days, build_tasks
 from .gantt_week_plan import build_week_plan_rows
+from .resource_dispatch_support import extract_overdue_batch_ids_with_meta
 
 
 class GanttService:
@@ -49,24 +50,49 @@ class GanttService:
     ) -> WeekRange:
         return resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
 
-    def _overdue_batch_ids_from_history(self, version: int) -> Sequence[str]:
-        hist = self.history_repo.get_by_version(int(version))
-        if not hist or not hist.result_summary:
-            return []
-        try:
-            obj = json.loads(hist.result_summary or "{}")
-        except Exception:
-            return []
+    def _log_overdue_marker_degraded(self, *, version: int, reason: str, message: str) -> None:
+        if self.logger is None:
+            return
+        self.logger.warning(
+            "甘特图超期标记降级（service=GanttService, page=gantt, version=%s, source=%s, message=%s）",
+            version,
+            reason or "unknown",
+            message or "",
+        )
 
-        overdue = obj.get("overdue_batches")
-        # 兼容两种结构：list 或 {count, items}
-        if isinstance(overdue, list):
-            return [str(x.get("batch_id")) for x in overdue if isinstance(x, dict) and x.get("batch_id")]
-        if isinstance(overdue, dict):
-            items = overdue.get("items") or []
-            if isinstance(items, list):
-                return [str(x.get("batch_id")) for x in items if isinstance(x, dict) and x.get("batch_id")]
-        return []
+    def _log_overdue_marker_partial(self, *, version: int, reason: str, message: str) -> None:
+        if self.logger is None:
+            return
+        self.logger.warning(
+            "甘特图超期标记部分不完整（service=GanttService, page=gantt, version=%s, source=%s, message=%s）",
+            version,
+            reason or "unknown",
+            message or "",
+        )
+
+    def _overdue_batch_ids_from_history(self, version: int) -> Dict[str, Any]:
+        hist = self.history_repo.get_by_version(int(version))
+        if not hist:
+            meta = {
+                "ids": [],
+                "degraded": True,
+                "partial": False,
+                "message": "排产历史缺失，超期标记可能不完整。",
+                "reason": "history_missing",
+            }
+            self._log_overdue_marker_degraded(version=int(version), reason=str(meta["reason"]), message=str(meta["message"]))
+            return meta
+
+        meta = extract_overdue_batch_ids_with_meta(hist.result_summary)
+        if meta.get("degraded"):
+            self._log_overdue_marker_degraded(
+                version=int(version), reason=str(meta.get("reason") or "unknown"), message=str(meta.get("message") or "")
+            )
+        elif meta.get("partial"):
+            self._log_overdue_marker_partial(
+                version=int(version), reason=str(meta.get("reason") or "unknown"), message=str(meta.get("message") or "")
+            )
+        return meta
 
     def _critical_chain_cache_key(self, version: int) -> tuple:
         scope = str(id(self.conn))
@@ -154,7 +180,8 @@ class GanttService:
 
         calendar_days = build_calendar_days(self.conn, wr=wr, logger=self.logger, op_logger=self.op_logger)
         rows = self.schedule_repo.list_overlapping_with_details(wr.start_str, wr.end_exclusive_str, ver)
-        overdue_set = set(self._overdue_batch_ids_from_history(ver))
+        overdue_meta = self._overdue_batch_ids_from_history(ver)
+        overdue_set = set(overdue_meta.get("ids") or [])
 
         tasks = build_tasks(view=view, wr=wr, rows=rows, overdue_set=overdue_set)
 
@@ -174,6 +201,9 @@ class GanttService:
             tasks=tasks,
             calendar_days=calendar_days,
             critical_chain=critical_chain,
+            overdue_markers_degraded=bool(overdue_meta.get("degraded")),
+            overdue_markers_partial=bool(overdue_meta.get("partial")),
+            overdue_markers_message=str(overdue_meta.get("message") or ""),
             include_history=include_history,
             history=hist_dict if include_history else None,
         )
