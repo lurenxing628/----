@@ -61,6 +61,13 @@
           <label for="batchManageRemarkInput">备注</label>
           <input id="batchManageRemarkInput" name="remark" placeholder="可选">
         </div>
+        <div class="form-field min-w-280">
+          <label>
+            <input type="checkbox" name="strict_mode" value="yes">
+            严格模式
+          </label>
+          <div class="muted text-xs">开启后，模板自动补建不会再按兼容逻辑回退；解析器不支持 strict_mode 时会直接报错。</div>
+        </div>
         <div>{{ ui.button('创建批次', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
