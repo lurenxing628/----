@@ -44,6 +44,8 @@ def gantt_page():
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
+    use_explicit_range = bool(start_date or end_date)
+    effective_offset = 0 if use_explicit_range else offset
     version_raw = (request.args.get("version") or "").strip()
     version: Optional[int] = None
     if version_raw:
@@ -53,7 +55,12 @@ def gantt_page():
             raise ValidationError("version 不合法（期望整数）", field="version") from e
 
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
+    wr = svc.resolve_week_range(
+        week_start=week_start,
+        offset_weeks=effective_offset,
+        start_date=start_date,
+        end_date=end_date,
+    )
     ver = version if version is not None else svc.get_latest_version_or_1()
 
     versions = ScheduleHistoryQueryService(
@@ -67,9 +74,10 @@ def gantt_page():
         view=view,
         week_start=wr.week_start_date.isoformat(),
         week_end=wr.week_end_date.isoformat(),
-        start_date=wr.week_start_date.isoformat(),
-        end_date=wr.week_end_date.isoformat(),
-        offset=offset,
+        start_date=wr.week_start_date.isoformat() if use_explicit_range else "",
+        end_date=wr.week_end_date.isoformat() if use_explicit_range else "",
+        request_week_start=week_start or "",
+        offset=effective_offset,
         version=ver,
         versions=versions,
         has_history=bool(versions),
@@ -117,4 +125,3 @@ def gantt_data():
         return jsonify(
             {"success": False, "error": {"code": "UNKNOWN", "message": "甘特图数据生成失败，请稍后重试。"}}
         ), 500
-

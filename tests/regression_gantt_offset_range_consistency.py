@@ -48,6 +48,28 @@ def _call_data(client, data_url: str, query: dict) -> dict:
     return payload.get("data") or {}
 
 
+def _seed_history() -> None:
+    from core.infrastructure.database import get_connection
+    from data.repositories.schedule_history_repo import ScheduleHistoryRepository
+
+    conn = get_connection(os.environ["APS_DB_PATH"])
+    try:
+        ScheduleHistoryRepository(conn, logger=None).create(
+            {
+                "version": 1,
+                "strategy": "priority_first",
+                "batch_count": 0,
+                "op_count": 0,
+                "result_status": "success",
+                "result_summary": "{}",
+                "created_by": "regression",
+            }
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def main() -> None:
     _setup_runtime()
     repo_root = _find_repo_root()
@@ -57,6 +79,7 @@ def main() -> None:
     from core.infrastructure.database import ensure_schema
 
     ensure_schema(os.environ["APS_DB_PATH"], logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
+    _seed_history()
 
     from app import create_app
 
@@ -75,7 +98,12 @@ def main() -> None:
         "end_date": _pick_data_attr(html, "data-end-date"),
         "offset": _pick_data_attr(html, "data-offset"),
         "version": _pick_data_attr(html, "data-version"),
+        "has_history": _pick_data_attr(html, "data-has-history"),
     }
+    _assert_true(attrs["week_start"] == "2026-03-03", f"周模式应保留原始 week_start：{attrs['week_start']!r}")
+    _assert_true(attrs["start_date"] == "", f"周模式不应下发 start_date：{attrs['start_date']!r}")
+    _assert_true(attrs["end_date"] == "", f"周模式不应下发 end_date：{attrs['end_date']!r}")
+    _assert_true(attrs["offset"] == "1", f"周模式 offset 应保持原值：{attrs['offset']!r}")
     base_query = {
         "view": attrs["view"] or "machine",
         "week_start": attrs["week_start"] or "2026-03-03",
@@ -89,7 +117,7 @@ def main() -> None:
     _assert_true(bool(expected_start and expected_end), "无法确定有效区间（start/end）")
 
     # 兼容 has_history=false：页面不输出 data-start/end 时，必须给出明确提示。
-    if not (attrs["start_date"] and attrs["end_date"]):
+    if attrs["has_history"] != "1" and not (attrs["start_date"] and attrs["end_date"]):
         _assert_true("当前数据库暂无排产版本" in html, "无历史版本场景缺少提示文案")
 
     # 兼容旧前端行为：即使把 start/end + offset 一并发送，也不能出现区间二次偏移。
@@ -106,6 +134,20 @@ def main() -> None:
     new_style_data = _call_data(client, data_url, new_style_query)
     _assert_true(new_style_data.get("week_start") == expected_start, "新参数风格 week_start 与有效 start_date 不一致")
     _assert_true(new_style_data.get("week_end") == expected_end, "新参数风格 week_end 与有效 end_date 不一致")
+
+    interval_resp = client.get("/scheduler/gantt?view=machine&start_date=2026-03-10&end_date=2026-03-12&offset=1&version=1")
+    _assert_true(interval_resp.status_code == 200, f"区间模式 GET /scheduler/gantt 返回 {interval_resp.status_code}")
+    interval_html = interval_resp.data.decode("utf-8", errors="ignore")
+    interval_attrs = {
+        "week_start": _pick_data_attr(interval_html, "data-week-start"),
+        "start_date": _pick_data_attr(interval_html, "data-start-date"),
+        "end_date": _pick_data_attr(interval_html, "data-end-date"),
+        "offset": _pick_data_attr(interval_html, "data-offset"),
+    }
+    _assert_true(interval_attrs["week_start"] == "", f"区间模式不应伪造 week_start：{interval_attrs['week_start']!r}")
+    _assert_true(interval_attrs["start_date"] == "2026-03-10", f"区间模式 start_date 异常：{interval_attrs['start_date']!r}")
+    _assert_true(interval_attrs["end_date"] == "2026-03-12", f"区间模式 end_date 异常：{interval_attrs['end_date']!r}")
+    _assert_true(interval_attrs["offset"] == "0", f"区间模式应清零 offset，避免页面/接口漂移：{interval_attrs['offset']!r}")
 
     boot_js_path = os.path.join(repo_root, "static", "js", "gantt_boot.js")
     with open(boot_js_path, "r", encoding="utf-8") as f:
