@@ -36,6 +36,7 @@ set "PORT_FILE=%LOG_DIR%\aps_port.txt"
 set "HOST_FILE=%LOG_DIR%\aps_host.txt"
 set "DB_FILE=%LOG_DIR%\aps_db_path.txt"
 set "LOCK_FILE=%LOG_DIR%\aps_runtime.lock"
+set "RUNTIME_CONTRACT_FILE=%LOG_DIR%\aps_runtime.json"
 set "LAUNCH_ERROR_FILE=%LOG_DIR%\aps_launch_error.txt"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
 if not exist "%LOG_DIR%" (
@@ -146,6 +147,7 @@ call :log powershell_available=%HAS_POWERSHELL%
 
 call :try_reuse_existing
 if defined BLOCKED_BY_OTHER goto :BLOCKED
+if defined BLOCKED_BY_UNCERTAIN goto :BLOCKED_UNCERTAIN
 if defined CAN_REUSE_EXISTING goto :OPEN_CHROME
 
 call :log app_start_required=1
@@ -172,7 +174,9 @@ for /l %%i in (1,1,%MAX_WAIT%) do (
   )
   call :read_host_file
   call :read_port_file
-  if exist "%HOST_FILE%" if exist "%PORT_FILE%" (
+  if defined FILE_HOST if defined FILE_PORT (
+    set "HOST=%FILE_HOST%"
+    set "PORT=%FILE_PORT%"
     if defined HAS_POWERSHELL (
       call :probe_health
       if defined HEALTH_OK goto :OPEN_CHROME
@@ -201,12 +205,21 @@ echo [launcher] Please wait for the other user to exit, then try again.
 pause
 exit /b 8
 
+:BLOCKED_UNCERTAIN
+if defined BLOCK_REASON call :log blocked_by_uncertain=%BLOCK_REASON%
+echo [launcher] 无法确认现有实例归属，已阻止新实例启动。
+echo [launcher] 请先关闭现有实例或清理运行时信号后重试。
+pause
+exit /b 9
+
 :OPEN_CHROME
 set "URL=http://%HOST%:%PORT%/"
 call :log url="%URL%"
 call :log chrome_cmd="%CHROME_EXE%" --user-data-dir="%CHROME_PROFILE_DIR%" --app="%URL%" --no-first-run --disable-default-apps --no-default-browser-check --disable-background-networking
 echo [launcher] Chrome source: %CHROME_SOURCE%
 echo [launcher] Opening: %URL%
+REM 这里只能覆盖“路径校验后到执行前被移除”的极端竞态，
+REM 不能证明 Chrome 启动后一定稳定运行。
 start "" /D "%CHROME_RUN_DIR%" "%CHROME_EXE%" --user-data-dir="%CHROME_PROFILE_DIR%" --app="%URL%" --no-first-run --disable-default-apps --no-default-browser-check --disable-background-networking
 set "START_RC=%ERRORLEVEL%"
 call :log chrome_start_rc=%START_RC%
@@ -238,63 +251,140 @@ where powershell >nul 2>&1
 if %errorlevel%==0 set "HAS_POWERSHELL=1"
 exit /b 0
 
+:block_uncertain
+set "BLOCKED_BY_UNCERTAIN=1"
+set "BLOCK_REASON=%~1"
+call :log existing_reuse_blocked=%~1
+exit /b 0
+
 :try_reuse_existing
 set "CAN_REUSE_EXISTING="
 set "BLOCKED_BY_OTHER="
+set "BLOCKED_BY_UNCERTAIN="
+set "BLOCK_REASON="
+set "LOCK_QUERY_ERROR="
 call :read_lock_file
 call :lock_is_active
-if defined LOCK_ACTIVE if defined LOCK_OWNER if /I not "%LOCK_OWNER%"=="%CURRENT_OWNER%" (
-  if exist "%HOST_FILE%" if exist "%PORT_FILE%" (
-    call :read_host_file
-    call :read_port_file
-    if defined HAS_POWERSHELL (
-      call :probe_health
-      if defined HEALTH_OK (
-        set "BLOCKED_BY_OTHER=1"
-        exit /b 0
-      )
-    ) else (
-      call :is_port_listening
-      if defined PORT_READY (
-        set "BLOCKED_BY_OTHER=1"
-        exit /b 0
-      )
-    )
+call :read_runtime_contract
+
+if /I "%LOCK_ACTIVE%"=="1" (
+  if not defined LOCK_OWNER (
+    call :block_uncertain lock_owner_missing
+    exit /b 0
   )
-)
-if not exist "%HOST_FILE%" (
-  call :log existing_reuse_skipped=missing_host_file
-  exit /b 0
-)
-if not exist "%PORT_FILE%" (
-  call :log existing_reuse_skipped=missing_port_file
-  exit /b 0
-)
-call :read_host_file
-call :read_port_file
-if defined HAS_POWERSHELL (
-  call :probe_health
-  if defined HEALTH_OK (
-    if defined LOCK_ACTIVE if defined LOCK_OWNER if /I not "%LOCK_OWNER%"=="%CURRENT_OWNER%" (
-      set "BLOCKED_BY_OTHER=1"
-    ) else (
+
+  call :load_existing_endpoint
+  if /I not "%LOCK_OWNER%"=="%CURRENT_OWNER%" (
+    if defined ENDPOINT_HOST set "HOST=!ENDPOINT_HOST!"
+    if defined ENDPOINT_PORT set "PORT=!ENDPOINT_PORT!"
+    set "BLOCKED_BY_OTHER=1"
+    call :log existing_reuse_blocked=other_owner_active owner="%LOCK_OWNER%"
+    exit /b 0
+  )
+
+  if not defined ENDPOINT_HOST (
+    call :block_uncertain lock_active_missing_host
+    exit /b 0
+  )
+  if not defined ENDPOINT_PORT (
+    call :block_uncertain lock_active_missing_port
+    exit /b 0
+  )
+
+  set "HOST=!ENDPOINT_HOST!"
+  set "PORT=!ENDPOINT_PORT!"
+  if defined HAS_POWERSHELL (
+    call :probe_health
+    if defined HEALTH_OK (
       set "CAN_REUSE_EXISTING=1"
-      call :log existing_reuse=1
+      call :log existing_reuse=lock_active_same_owner
+      exit /b 0
     )
-  ) else (
-    call :log existing_reuse=0
+    call :block_uncertain lock_active_health_failed
+    exit /b 0
   )
-) else (
+
   call :is_port_listening
   if defined PORT_READY (
-    if defined LOCK_ACTIVE if defined LOCK_OWNER if /I not "%LOCK_OWNER%"=="%CURRENT_OWNER%" (
-      set "BLOCKED_BY_OTHER=1"
-    ) else (
-      set "CAN_REUSE_EXISTING=1"
+    set "CAN_REUSE_EXISTING=1"
+    call :log existing_reuse=lock_active_same_owner_port
+  ) else (
+    call :block_uncertain lock_active_port_not_listening
+  )
+  exit /b 0
+)
+
+if /I "%LOCK_ACTIVE%"=="UNKNOWN" (
+  call :try_reuse_by_contract
+  if defined CAN_REUSE_EXISTING exit /b 0
+  if defined BLOCKED_BY_OTHER exit /b 0
+  if defined LOCK_QUERY_ERROR (
+    call :block_uncertain %LOCK_QUERY_ERROR%
+  ) else (
+    call :block_uncertain lock_query_unknown
+  )
+  exit /b 0
+)
+
+call :try_reuse_by_contract
+if defined CAN_REUSE_EXISTING exit /b 0
+if defined BLOCKED_BY_OTHER exit /b 0
+
+call :load_existing_endpoint
+if defined ENDPOINT_HOST if defined ENDPOINT_PORT (
+  set "HOST=%ENDPOINT_HOST%"
+  set "PORT=%ENDPOINT_PORT%"
+  if defined HAS_POWERSHELL (
+    call :probe_health
+    if defined HEALTH_OK (
+      call :block_uncertain healthy_without_owner_proof
+      exit /b 0
+    )
+  ) else (
+    call :is_port_listening
+    if defined PORT_READY (
+      call :block_uncertain port_only_without_owner_proof
+      exit /b 0
     )
   )
 )
+
+call :log existing_reuse=0
 exit /b 0
+
+:try_reuse_by_contract
+if not defined CONTRACT_VALID exit /b 0
+if not defined CONTRACT_HOST exit /b 0
+if not defined CONTRACT_PORT exit /b 0
+if not defined HAS_POWERSHELL exit /b 0
+
+set "HOST=%CONTRACT_HOST%"
+set "PORT=%CONTRACT_PORT%"
+call :probe_health
+if not defined HEALTH_OK exit /b 0
+
+if /I "%CONTRACT_OWNER%"=="%CURRENT_OWNER%" (
+  set "CAN_REUSE_EXISTING=1"
+  call :log existing_reuse=contract_owner_match
+) else (
+  set "BLOCKED_BY_OTHER=1"
+  set "LOCK_OWNER=%CONTRACT_OWNER%"
+  call :log existing_reuse_blocked=contract_owner_mismatch owner="%CONTRACT_OWNER%"
+)
+exit /b 0
+
+:load_existing_endpoint
+set "ENDPOINT_HOST="
+set "ENDPOINT_PORT="
+call :read_host_file
+if defined FILE_HOST set "ENDPOINT_HOST=%FILE_HOST%"
+call :read_port_file
+if defined FILE_PORT set "ENDPOINT_PORT=%FILE_PORT%"
+if not defined ENDPOINT_HOST if defined CONTRACT_HOST set "ENDPOINT_HOST=%CONTRACT_HOST%"
+if not defined ENDPOINT_PORT if defined CONTRACT_PORT set "ENDPOINT_PORT=%CONTRACT_PORT%"
+exit /b 0
+
+
 
 :probe_health
 set "HEALTH_OK="
@@ -349,12 +439,89 @@ for /f "usebackq tokens=1,* delims==" %%A in ("%LOCK_FILE%") do (
 )
 exit /b 0
 
+:read_runtime_contract
+set "CONTRACT_OWNER="
+set "CONTRACT_PID="
+set "CONTRACT_VERSION="
+set "CONTRACT_HOST="
+set "CONTRACT_PORT="
+set "CONTRACT_VALID="
+set "CONTRACT_READ_ERROR="
+if not exist "%RUNTIME_CONTRACT_FILE%" exit /b 0
+for /f "tokens=1,* delims=:" %%A in ('findstr /R /C:"\"owner\"" "%RUNTIME_CONTRACT_FILE%"') do (
+  set "RAW_VALUE=%%B"
+  set "RAW_VALUE=!RAW_VALUE:,=!"
+  set "RAW_VALUE=!RAW_VALUE:"=!"
+  for /f "tokens=* delims= " %%V in ("!RAW_VALUE!") do if not defined CONTRACT_OWNER set "CONTRACT_OWNER=%%V"
+)
+for /f "tokens=1,* delims=:" %%A in ('findstr /R /C:"\"pid\"" "%RUNTIME_CONTRACT_FILE%"') do (
+  set "RAW_VALUE=%%B"
+  set "RAW_VALUE=!RAW_VALUE:,=!"
+  set "RAW_VALUE=!RAW_VALUE:"=!"
+  for /f "tokens=* delims= " %%V in ("!RAW_VALUE!") do if not defined CONTRACT_PID set "CONTRACT_PID=%%V"
+)
+for /f "tokens=1,* delims=:" %%A in ('findstr /R /C:"\"contract_version\"" "%RUNTIME_CONTRACT_FILE%"') do (
+  set "RAW_VALUE=%%B"
+  set "RAW_VALUE=!RAW_VALUE:,=!"
+  set "RAW_VALUE=!RAW_VALUE:"=!"
+  for /f "tokens=* delims= " %%V in ("!RAW_VALUE!") do if not defined CONTRACT_VERSION set "CONTRACT_VERSION=%%V"
+)
+for /f "tokens=1,* delims=:" %%A in ('findstr /R /C:"\"host\"" "%RUNTIME_CONTRACT_FILE%"') do (
+  set "RAW_VALUE=%%B"
+  set "RAW_VALUE=!RAW_VALUE:,=!"
+  set "RAW_VALUE=!RAW_VALUE:"=!"
+  for /f "tokens=* delims= " %%V in ("!RAW_VALUE!") do if not defined CONTRACT_HOST set "CONTRACT_HOST=%%V"
+)
+for /f "tokens=1,* delims=:" %%A in ('findstr /R /C:"\"port\"" "%RUNTIME_CONTRACT_FILE%"') do (
+  set "RAW_VALUE=%%B"
+  set "RAW_VALUE=!RAW_VALUE:,=!"
+  set "RAW_VALUE=!RAW_VALUE:"=!"
+  for /f "tokens=* delims= " %%V in ("!RAW_VALUE!") do if not defined CONTRACT_PORT set "CONTRACT_PORT=%%V"
+)
+
+if defined CONTRACT_PID (
+  echo !CONTRACT_PID! | findstr /R "^[0-9][0-9]*$" >nul
+  if not !errorlevel!==0 set "CONTRACT_PID="
+)
+if defined CONTRACT_PORT (
+  echo !CONTRACT_PORT! | findstr /R "^[0-9][0-9]*$" >nul
+  if not !errorlevel!==0 set "CONTRACT_PORT="
+)
+if not "%CONTRACT_VERSION%"=="1" (
+  set "CONTRACT_READ_ERROR=contract_version_invalid"
+  set "CONTRACT_OWNER="
+  set "CONTRACT_PID="
+  set "CONTRACT_HOST="
+  set "CONTRACT_PORT="
+  exit /b 0
+)
+if defined CONTRACT_OWNER if defined CONTRACT_PID set "CONTRACT_VALID=1"
+if not defined CONTRACT_VALID set "CONTRACT_READ_ERROR=contract_missing_fields"
+exit /b 0
+
 :lock_is_active
 set "LOCK_ACTIVE="
+set "LOCK_QUERY_TMP="
 if not defined LOCK_PID exit /b 0
-for /f "tokens=2 delims==" %%A in ('wmic process where "ProcessId=%LOCK_PID%" get ProcessId /value 2^>nul ^| findstr /I /C:"ProcessId="') do (
+where wmic >nul 2>&1
+if not %errorlevel%==0 (
+  set "LOCK_ACTIVE=UNKNOWN"
+  set "LOCK_QUERY_ERROR=wmic_missing"
+  exit /b 0
+)
+set "LOCK_QUERY_TMP=%TEMP%\aps_lock_query_%RANDOM%_%RANDOM%.tmp"
+wmic process where "ProcessId=%LOCK_PID%" get ProcessId /value > "%LOCK_QUERY_TMP%" 2>nul
+set "LOCK_QUERY_RC=%ERRORLEVEL%"
+if not "%LOCK_QUERY_RC%"=="0" (
+  del /f /q "%LOCK_QUERY_TMP%" >nul 2>&1
+  set "LOCK_ACTIVE=UNKNOWN"
+  set "LOCK_QUERY_ERROR=wmic_failed"
+  exit /b 0
+)
+for /f "usebackq tokens=2 delims==" %%A in (`findstr /I /C:"ProcessId=" "%LOCK_QUERY_TMP%"`) do (
   if /I not "%%A"=="" set "LOCK_ACTIVE=1"
 )
+del /f /q "%LOCK_QUERY_TMP%" >nul 2>&1
 exit /b 0
 
 :read_launch_error
@@ -387,17 +554,24 @@ if %errorlevel%==0 set "PORT_READY=1"
 exit /b 0
 
 :read_host_file
+set "FILE_HOST="
 if exist "%HOST_FILE%" (
-  set /p HOST=<"%HOST_FILE%"
-  set "HOST=!HOST: =!"
-  if "!HOST!"=="" set "HOST=127.0.0.1"
+  set /p FILE_HOST=<"%HOST_FILE%"
+  set "FILE_HOST=!FILE_HOST: =!"
+  if "!FILE_HOST!"=="" set "FILE_HOST=127.0.0.1"
 )
 exit /b 0
 
 :read_port_file
+set "FILE_PORT="
 if exist "%PORT_FILE%" (
-  set /p PORT=<"%PORT_FILE%"
-  set "PORT=!PORT: =!"
+  set /p FILE_PORT=<"%PORT_FILE%"
+  set "FILE_PORT=!FILE_PORT: =!"
+  echo !FILE_PORT! | findstr /R "^[0-9][0-9]*$" >nul
+  if not !errorlevel!==0 (
+    call :log port_file_invalid=!FILE_PORT!
+    set "FILE_PORT="
+  )
 )
 exit /b 0
 
