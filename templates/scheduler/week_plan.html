@@ -73,6 +73,9 @@
 
   <div class="card">
     <h3 class="section-title">预览（前 50 行 / 共 {{ total_rows }} 行）</h3>
+    {% if degradation_message %}
+      <div class="flash-card flash-warning mb-2">{{ degradation_message }}</div>
+    {% endif %}
     {% if preview_rows and preview_rows|length > 0 %}
       <table>
         <thead>
@@ -101,7 +104,7 @@
         </tbody>
       </table>
     {% else %}
-      <div class="muted">暂无数据（该周/该版本没有排程记录）。</div>
+      <div class="muted">{{ empty_message }}</div>
     {% endif %}
   </div>
 {% endblock %}

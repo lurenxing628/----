@@ -190,6 +190,9 @@
         {% endif %}
       </strong>
     </div>
+    {% if active_preset_reason %}
+      <div class="muted mt-1">说明：{{ active_preset_reason }}</div>
+    {% endif %}
     <div class="inline-flex-wrap items-end mt-3">
       {% set preset_apply_url = safe_url_for('scheduler.preset_apply') %}
       {% if preset_apply_url %}

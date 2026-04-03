@@ -15,6 +15,17 @@
       <p class="muted">保底/限额：至少保留最近 {{ maintenance_limits.min_keep_logs }} 条日志；单次自动清理最多删除 {{ maintenance_limits.max_log_delete_per_run }} 条。</p>
     {% endif %}
 
+    {% if settings and settings.dirty_fields %}
+      <div class="warning mt-2">
+        检测到系统配置包含历史兼容读取结果：{{ settings.dirty_fields | join('、') }}。
+      </div>
+      <ul class="list-tight muted mt-2">
+        {% for field in settings.dirty_fields %}
+          <li><code>{{ field }}</code>：{{ settings.dirty_reasons.get(field) or '已发生兼容读取或钳制。' }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
     {% set st_lc = job_state.auto_log_cleanup if job_state else None %}
 
     <form method="post" action="{{ url_for('system.logs_settings') }}" class="mb-2">
@@ -34,7 +45,14 @@
           <input type="number" min="1" max="1440" step="1" name="auto_log_cleanup_interval_minutes" value="{{ settings.auto_log_cleanup_interval_minutes if settings else '60' }}" class="w-120">
         </div>
         <div class="muted">
-          上次执行：{{ st_lc.last_run_time if st_lc and st_lc.last_run_time else '-' }}
+          上次执行：
+          {% if st_lc and st_lc.last_run_state == 'invalid' %}
+            时间损坏（原始值：{{ st_lc.last_run_raw or '-' }}）
+          {% elif st_lc and st_lc.last_run_time %}
+            {{ st_lc.last_run_time }}
+          {% else %}
+            -
+          {% endif %}
         </div>
         {% if st_lc and st_lc.last_run_detail_obj %}
           <div class="muted min-w-420">

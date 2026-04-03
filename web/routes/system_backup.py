@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from dataclasses import replace
 from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, url_for
@@ -14,7 +15,12 @@ from core.services.system import SystemConfigService
 from web.ui_mode import render_ui_template as render_template
 
 from .system_bp import bp
-from .system_utils import _get_backup_manager, _get_job_state_map, _get_system_cfg_snapshot, _validate_backup_filename
+from .system_utils import (
+    _get_backup_manager,
+    _get_job_state_map,
+    _get_system_cfg_snapshot,
+    _validate_backup_filename,
+)
 
 
 def _user_maintenance_message(err: MaintenanceWindowError) -> str:
@@ -240,6 +246,7 @@ def backup_restore():
     try:
         with maintenance_window(current_app.config["DATABASE_PATH"], logger=current_app.logger, action="restore_flow"):
             result = mgr.restore(backup_path)
+            copied_pending_verify = str(getattr(result, "code", "") or "") == "copied_pending_verify"
             if not result.ok:
                 flash(result.message, "warning" if result.code == "busy" else "error")
                 return redirect(url_for("system.backup_page"))
@@ -253,9 +260,14 @@ def backup_restore():
                     backup_dir=current_app.config.get("BACKUP_DIR"),
                 )
             except Exception:
+                if copied_pending_verify:
+                    current_app.logger.exception("恢复后结构校验失败：数据库文件已复制，但未通过 ensure_schema")
+                    flash("数据库文件已复制，但结构校验失败，请查看日志后再继续使用。", "error")
+                    return redirect(url_for("system.backup_page"))
                 current_app.logger.exception("恢复后 ensure_schema 失败")
                 flash("数据库文件已恢复，但后续结构检查失败，请查看日志后再继续使用。", "error")
                 return redirect(url_for("system.backup_page"))
+            result = replace(result, code="verified", message=f"数据库文件已恢复并完成结构校验：{filename}")
     except MaintenanceWindowError as e:
         if e.code != "busy":
             current_app.logger.error("数据库恢复触发维护锁异常：code=%s message=%s", e.code, e.message)
@@ -275,7 +287,8 @@ def backup_restore():
             target_id=filename,
             detail={
                 "filename": filename,
-                "note": "已恢复数据库；恢复前自动备份 before_restore 已执行，且后续 ensure_schema 已成功完成。",
+                "restore_code": str(getattr(result, "code", "") or "verified"),
+                "note": "数据库文件已恢复并完成结构校验；恢复前自动备份 before_restore 已执行。",
                 "before_restore_filename": os.path.basename(before_restore_path) if isinstance(before_restore_path, str) and before_restore_path else None,
             },
         )
@@ -291,6 +304,6 @@ def backup_restore():
                 pass
 
     current_app.logger.info("数据库恢复流程完成：%s", filename)
-    flash(f"已从备份恢复：{filename}。建议刷新页面/重新打开浏览器以加载最新数据。", "success")
+    flash(f"已从备份恢复并完成结构校验：{filename}。建议刷新页面/重新打开浏览器以加载最新数据。", "success")
     return redirect(url_for("system.backup_page"))
 

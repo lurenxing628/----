@@ -13,6 +13,7 @@ from core.infrastructure.backup import BackupManager
 from core.infrastructure.errors import ValidationError
 from core.services.system import SystemConfigService
 from core.services.system.system_job_state_query_service import SystemJobStateQueryService
+from core.services.system.system_maintenance_service import _parse_db_dt
 
 
 def _safe_next_url(raw: Optional[str]) -> str:
@@ -143,6 +144,9 @@ def _get_job_state_map() -> Dict[str, Any]:
         if not it:
             return None
         d = it.to_dict()
+        parsed = _parse_db_dt(d.get("last_run_time"))
+        d["last_run_state"] = parsed.state
+        d["last_run_raw"] = parsed.raw
         raw = d.get("last_run_detail")
         try:
             d["last_run_detail_obj"] = json.loads(raw) if raw else None

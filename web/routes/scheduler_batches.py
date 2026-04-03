@@ -80,6 +80,7 @@ def batches_page():
     strategies = cfg_svc.get_available_strategies()
     presets = cfg_svc.list_presets()
     active_preset = cfg_svc.get_active_preset()
+    active_preset_reason = cfg_svc.get_active_preset_reason()
 
     # 最近一次排产（用于用户确认“留痕已写入”）
     latest_history = None
@@ -121,6 +122,7 @@ def batches_page():
         strategies=strategies,
         presets=presets,
         active_preset=active_preset,
+        active_preset_reason=active_preset_reason,
         latest_history=latest_history,
         latest_summary=latest_summary,
         latest_warning_preview=latest_warning_preview,

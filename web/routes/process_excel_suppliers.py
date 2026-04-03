@@ -89,7 +89,7 @@ def _supplier_op_type_snapshot(op_type_svc: OpTypeService) -> Dict[str, Any]:
 def _normalize_supplier_default_days(row: Dict[str, Any]) -> Optional[str]:
     raw_value = row.get("默认周期")
     if raw_value is None or str(raw_value).strip() == "":
-        raw_value = 1.0
+        return "“默认周期”不能为空"
     try:
         days = float(raw_value)
     except (TypeError, ValueError):

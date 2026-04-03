@@ -87,7 +87,7 @@ def _resolve_manual_back_url(raw_src: Optional[str]) -> Optional[str]:
 
 
 def _build_manual_page_url(raw_src: Optional[str], raw_page: Optional[str]) -> str:
-    values: Dict[str, str] = {}
+    values: Dict[str, Any] = {}
     if raw_src:
         values["src"] = raw_src
     if raw_page:
@@ -130,7 +130,7 @@ def _build_manual_download_url(manual_path: Optional[str], safe_src: Optional[st
     if not manual_path:
         return None
 
-    download_values: Dict[str, str] = {}
+    download_values: Dict[str, Any] = {}
     if safe_src:
         download_values["src"] = safe_src
     if safe_page:
@@ -284,6 +284,7 @@ def config_page():
 
     presets = cfg_svc.list_presets()
     active_preset = cfg_svc.get_active_preset()
+    active_preset_reason = cfg_svc.get_active_preset_reason()
     builtin_presets = [
         ConfigService.BUILTIN_PRESET_DEFAULT,
         ConfigService.BUILTIN_PRESET_DUE_FIRST,
@@ -298,6 +299,7 @@ def config_page():
         strategies=strategies,
         presets=presets,
         active_preset=active_preset,
+        active_preset_reason=active_preset_reason,
         builtin_presets=builtin_presets,
     )
 
@@ -403,13 +405,6 @@ def _apply_weight_settings_if_present(cfg_svc: ConfigService, form) -> None:
     cfg_svc.set_weights(pw_f, dw_f, max(0.0, float(rw_f)), require_sum_1=True)
 
 
-def _mark_active_preset_custom_safely(cfg_svc: ConfigService) -> None:
-    try:
-        cfg_svc.mark_active_preset_custom()
-    except Exception:
-        current_app.logger.warning("标记当前方案为自定义失败。", exc_info=True)
-
-
 @bp.post("/config")
 def update_config():
     cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
@@ -417,7 +412,6 @@ def update_config():
         form = request.form
         _apply_basic_scheduler_config(cfg_svc, form)
         _apply_weight_settings_if_present(cfg_svc, form)
-        _mark_active_preset_custom_safely(cfg_svc)
         flash("排产策略配置已保存。", "success")
     except AppError as e:
         flash(e.message, "error")

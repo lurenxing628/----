@@ -92,6 +92,16 @@
       设置该人员可以操作哪些设备。
       可选字段：技能等级（初级/普通/熟练，兼容 expert）与主操设备（同一人员仅允许 1 台主操设备）。
     </p>
+    {% if link_dirty_summary and link_dirty_summary.row_count > 0 %}
+      <div class="warning mt-2">
+        当前展示包含 {{ link_dirty_summary.row_count }} 条历史兼容归一结果；相关字段：{{ link_dirty_summary.fields | join('、') }}。
+      </div>
+      <ul class="list-tight muted mt-2">
+        {% for field, reason in (link_dirty_summary.reasons or {}).items() %}
+          <li><code>{{ field }}</code>：{{ reason }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
     <!-- OperatorMachine -->
 
     {% if linked_machines and linked_machines|length > 0 %}
@@ -123,6 +133,9 @@
                     <option value="{{ v }}" {% if cur == v %}selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
+                {% if m.dirty_fields and 'skill_level' in m.dirty_fields %}
+                  <div class="muted mt-1">兼容归一：{{ (m.dirty_reasons or {}).get('skill_level') }}</div>
+                {% endif %}
               </td>
               <td>
                 <label class="muted">
@@ -130,6 +143,9 @@
                          {{ 'checked' if (m.is_primary or 'no') == 'yes' else '' }}>
                   主操
                 </label>
+                {% if m.dirty_fields and 'is_primary' in m.dirty_fields %}
+                  <div class="muted mt-1">兼容归一：{{ (m.dirty_reasons or {}).get('is_primary') }}</div>
+                {% endif %}
               </td>
               <td>
                 <div class="table-actions">

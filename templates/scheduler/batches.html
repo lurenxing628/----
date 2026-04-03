@@ -65,6 +65,9 @@
           </details>
         {% endif %}
       </form>
+      {% if active_preset_reason %}
+        <div class="muted mt-2">说明：{{ active_preset_reason }}</div>
+      {% endif %}
     {% else %}
       <div class="muted">该功能需要更新版本后使用，请重启系统。</div>
       <details class="debug-details muted">

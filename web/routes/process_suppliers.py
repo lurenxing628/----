@@ -55,7 +55,7 @@ def create_supplier():
     supplier_id = request.form.get("supplier_id")
     name = request.form.get("name")
     op_type_id = request.form.get("op_type_id") or None
-    default_days = request.form.get("default_days") or "1"
+    default_days = request.form.get("default_days")
     status = request.form.get("status") or SupplierStatus.ACTIVE.value
     remark = request.form.get("remark")
 
@@ -78,12 +78,13 @@ def supplier_detail(supplier_id: str):
     s = svc.get(supplier_id)
     op_types = {ot.op_type_id: ot for ot in OpTypeService(g.db).list()}  # type: ignore[arg-type]
     op_type_options = [(ot.op_type_id, ot.name) for ot in sorted(op_types.values(), key=lambda x: x.name)]
+    current_op_type = op_types.get(s.op_type_id or "") if s.op_type_id else None
 
     return render_template(
         "process/supplier_detail.html",
         title=f"供应商详情 - {s.supplier_id}",
         supplier=s.to_dict(),
-        op_type_name=(op_types.get(s.op_type_id or "")).name if s.op_type_id and op_types.get(s.op_type_id) else None,
+        op_type_name=current_op_type.name if current_op_type is not None else None,
         op_type_options=op_type_options,
         status_options=[(SupplierStatus.ACTIVE.value, "启用"), (SupplierStatus.INACTIVE.value, "停用")],
         supplier_status_zh=_supplier_status_zh(s.status),

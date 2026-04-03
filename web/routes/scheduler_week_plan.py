@@ -63,11 +63,22 @@ def week_plan_page():
     data = svc.get_week_plan_rows(start_date=wr.week_start_date.isoformat(), end_date=wr.week_end_date.isoformat(), version=ver)
 
     rows = data.get("rows") or []
+    degradation_counters = data.get("degradation_counters") or {}
+    bad_time_skipped = int(degradation_counters.get("bad_time_row_skipped") or 0)
     preview_rows = rows[:50]
+    degradation_message = ""
+    if bad_time_skipped > 0:
+        degradation_message = f"已过滤 {bad_time_skipped} 条时间不合法的排程记录。"
+    empty_message = "暂无数据（该周/该版本没有排程记录）。"
+    if not rows and str(data.get("empty_reason") or "") == "all_rows_filtered_by_invalid_time":
+        empty_message = "当前区间存在时间非法的排程数据，已全部过滤，请检查排产结果。"
 
     return render_template(
         "scheduler/week_plan.html",
         title="周计划（导出）",
+        degraded=bool(data.get("degraded")),
+        degradation_message=degradation_message,
+        empty_message=empty_message,
         week_start=wr.week_start_date.isoformat(),
         week_end=wr.week_end_date.isoformat(),
         start_date=wr.week_start_date.isoformat(),

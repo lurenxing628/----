@@ -100,6 +100,49 @@
     state.overdueMarkersMessage = "";
   }
 
+  function resetCalendarDegradationState() {
+    state.degraded = false;
+    state.degradationEvents = [];
+    state.degradationCounters = {};
+    state.emptyReason = "";
+  }
+
+  function _findDegradationEvent(code) {
+    const target = norm(code);
+    const events = Array.isArray(state.degradationEvents) ? state.degradationEvents : [];
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i] || {};
+      if (norm(event.code) === target) {
+        return event;
+      }
+    }
+    return null;
+  }
+
+  function applyCalendarDegradationState() {
+    const warningEl = $("ganttDegradationWarning");
+    const counters = state.degradationCounters && typeof state.degradationCounters === "object"
+      ? state.degradationCounters
+      : {};
+    const failedCount = Number(counters.calendar_load_failed || 0);
+    const emptyReason = str(state.emptyReason || "").trim();
+    const event = _findDegradationEvent("calendar_load_failed");
+    const visible = failedCount > 0 || emptyReason === "calendar_load_failed";
+    let message = "工作日历加载失败，当前不显示假期/停工背景标注。";
+
+    if (event && str(event.message || "").trim()) {
+      const eventMessage = str(event.message || "").trim();
+      message = eventMessage.indexOf("工作日历加载失败") >= 0
+        ? "工作日历加载失败，当前不显示假期/停工背景标注。"
+        : eventMessage;
+    }
+
+    if (warningEl) {
+      warningEl.textContent = message;
+      show(warningEl, visible);
+    }
+  }
+
   function applyOverdueMarkerState() {
     const warningEl = $("ganttOverdueWarning");
     const overdueToggle = $("ganttOnlyOverdue");
@@ -188,8 +231,10 @@
       }
       show(emptyEl, true);
       const host = $("gantt");
+      resetCalendarDegradationState();
       resetOverdueMarkerState();
       applyOverdueMarkerState();
+      applyCalendarDegradationState();
       if (host) host.innerHTML = "";
       return;
     }
@@ -199,6 +244,8 @@
       if (errEl) {
         errEl.textContent = "甘特图配置缺失：未找到数据接口 URL（data-url；兼容 data-data-url）。";
       }
+      resetCalendarDegradationState();
+      applyCalendarDegradationState();
       resetOverdueMarkerState();
       applyOverdueMarkerState();
       show(errEl, true);
@@ -212,6 +259,8 @@
       if (errEl) {
         errEl.textContent = `甘特图配置错误：数据接口 URL 不合法（dataUrl=${str(dataUrl)}）。`;
       }
+      resetCalendarDegradationState();
+      applyCalendarDegradationState();
       resetOverdueMarkerState();
       applyOverdueMarkerState();
       show(errEl, true);
@@ -265,6 +314,8 @@
         }
       }
       resetOverdueMarkerState();
+      resetCalendarDegradationState();
+      applyCalendarDegradationState();
       applyOverdueMarkerState();
       show(errEl, true);
       return;
@@ -272,10 +323,17 @@
 
     const data = payload.data || {};
     const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    state.degraded = data.degraded === true;
+    state.degradationEvents = Array.isArray(data.degradation_events) ? data.degradation_events : [];
+    state.degradationCounters = data.degradation_counters && typeof data.degradation_counters === "object"
+      ? data.degradation_counters
+      : {};
+    state.emptyReason = str(data.empty_reason || "");
     state.allTasks = tasks;
     state.overdueMarkersDegraded = data.overdue_markers_degraded === true;
     state.overdueMarkersPartial = data.overdue_markers_partial === true;
     state.overdueMarkersMessage = str(data.overdue_markers_message || "");
+    applyCalendarDegradationState();
     initCriticalChain(data.critical_chain || null);
     initCalendarDays(data.calendar_days || null);
     refreshFilterSelectOptions();

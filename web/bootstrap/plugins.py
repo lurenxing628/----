@@ -7,6 +7,27 @@ from core.infrastructure.logging import OperationLogger
 from core.plugins import PluginManager, get_plugin_status
 
 
+def _append_plugin_degradation(status, *, code: str, message: str, sample: str | None = None):
+    base = dict(status or {}) if isinstance(status, dict) else {}
+    events = list(base.get("degradation_events") or [])
+    counters = dict(base.get("degradation_counters") or {})
+    events.append(
+        {
+            "code": str(code),
+            "scope": "plugins.bootstrap",
+            "field": "telemetry",
+            "message": str(message),
+            "count": 1,
+            "sample": sample,
+        }
+    )
+    counters[str(code)] = int(counters.get(str(code), 0) or 0) + 1
+    base["degraded"] = True
+    base["degradation_events"] = events
+    base["degradation_counters"] = counters
+    return base
+
+
 def bootstrap_plugins(base_dir: str, database_path: str, *, logger: logging.Logger | None = None):
     """
     加载可选插件并记录运行留痕。
@@ -38,17 +59,30 @@ def bootstrap_plugins(base_dir: str, database_path: str, *, logger: logging.Logg
         except Exception:
             plugin_status = None
 
+    if isinstance(plugin_status, dict):
+        plugin_status.setdefault("degraded", False)
+        plugin_status.setdefault("degradation_events", [])
+        plugin_status.setdefault("degradation_counters", {})
+
     if conn0 is not None:
         try:
-            OperationLogger(conn0, logger=logger).info(
+            logged = OperationLogger(conn0, logger=logger).info(
                 "plugins",
                 "load",
                 target_type="runtime",
                 target_id="plugins",
                 detail=plugin_status,
             )
-        except Exception:
-            pass
+            if isinstance(plugin_status, dict):
+                plugin_status["telemetry_persisted"] = bool(logged)
+            if logged is False:
+                plugin_status = _append_plugin_degradation(plugin_status, code="plugin_bootstrap_telemetry_failed", message="插件启动留痕写入 OperationLogs 失败。")
+        except Exception as exc:
+            if isinstance(plugin_status, dict):
+                plugin_status["telemetry_persisted"] = False
+            plugin_status = _append_plugin_degradation(
+                plugin_status, code="plugin_bootstrap_telemetry_failed", message="插件启动留痕写入 OperationLogs 异常。", sample=exc.__class__.__name__
+            )
         finally:
             try:
                 conn0.close()
