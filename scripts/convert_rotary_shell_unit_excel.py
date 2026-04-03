@@ -28,14 +28,42 @@ def _print_paths(paths: Dict[str, str]) -> None:
         print(f"- {filename}: {paths[filename]}")
 
 
-def main() -> int:
+def _print_diagnostics(diagnostics: Dict[str, object]) -> None:
+    counters = diagnostics.get("counters") if isinstance(diagnostics, dict) else {}
+    samples = diagnostics.get("samples") if isinstance(diagnostics, dict) else {}
+    counters = counters if isinstance(counters, dict) else {}
+    samples = samples if isinstance(samples, dict) else {}
+
+    default_filled = int(counters.get("default_filled") or 0)
+    inferred_field = int(counters.get("inferred_field") or 0)
+    compatible_row = int(counters.get("compatible_row") or 0)
+
+    print("诊断汇总：")
+    print(f"- 默认补齐次数：{default_filled}")
+    print(f"- 推断字段次数：{inferred_field}")
+    print(f"- 兼容行数：{compatible_row}")
+
+    if samples:
+        print("- 退化样本：")
+        for code in sorted(samples.keys()):
+            sample_items = samples.get(code)
+            if not isinstance(sample_items, list) or not sample_items:
+                continue
+            print(f"  - {code}: {sample_items[:3]}")
+
+
+def _try_reconfigure_utf8(stream: object) -> None:
     try:
-        if hasattr(sys.stdout, "reconfigure"):
-            sys.stdout.reconfigure(encoding="utf-8")
-        if hasattr(sys.stderr, "reconfigure"):
-            sys.stderr.reconfigure(encoding="utf-8")
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
     except Exception:
         pass
+
+
+def main() -> int:
+    _try_reconfigure_utf8(sys.stdout)
+    _try_reconfigure_utf8(sys.stderr)
 
     repo_root = _find_repo_root()
     if repo_root not in sys.path:
@@ -77,13 +105,18 @@ def main() -> int:
     converted = converter.convert(input_path=input_path, sheet_name=args.sheet_name)
     paths = converter.write_templates(converted=converted, output_dir=output_dir)
 
-    print("转换完成。")
+    diagnostics = dict(getattr(converted, "diagnostics", {}) or {})
+    diag_total = sum(int(v or 0) for v in dict(diagnostics.get("counters") or {}).values()) if isinstance(diagnostics, dict) else 0
+
+    print("转换完成（带退化成功）。" if diag_total > 0 else "转换完成。")
     _print_paths(paths)
+    print("")
+    _print_diagnostics(diagnostics)
     print("")
     print("关键口径：")
     print("- 仅“有工步(XX-X)+有人员”的工序判为内部；其余按外协。")
     print("- 工步时间会累计成工序时间，并输出“零件工序工时.xlsx”。")
-    print("- 人员设备关联仅输出 工号/设备编号 两列。")
+    print("- 人员设备关联会输出 工号/设备编号/技能等级/主操设备 四列；默认补齐会进入诊断汇总。")
     return 0
 
 
