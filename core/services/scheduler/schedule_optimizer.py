@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import random
 import time
 from dataclasses import dataclass, field
@@ -12,8 +11,15 @@ from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import increment_counter, merge_algo_stats, snapshot_algo_stats
 from core.algorithms.sort_strategies import parse_strategy
 from core.algorithms.value_domains import INTERNAL
+from core.services.common.strict_parse import parse_optional_date
 
-from .schedule_optimizer_steps import _run_multi_start, _run_ortools_warmstart, _schedule_with_optional_strict_mode
+from .schedule_optimizer_steps import (
+    _cfg_float,
+    _cfg_int,
+    _run_multi_start,
+    _run_ortools_warmstart,
+    _schedule_with_optional_strict_mode,
+)
 
 
 @dataclass
@@ -291,48 +297,46 @@ def optimize_schedule(
 
     optimizer_algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
 
-    def _cfg_float(key: str, default: float) -> float:
-        raw = _cfg_value(key, default)
-        if raw is None or (isinstance(raw, str) and raw.strip() == ""):
-            increment_counter(optimizer_algo_stats, f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
-            return float(default)
-        try:
-            parsed = float(raw)
-        except Exception:
-            increment_counter(optimizer_algo_stats, f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
-            return float(default)
-        if not math.isfinite(parsed):
-            increment_counter(optimizer_algo_stats, f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
-            return float(default)
-        return float(parsed)
-
     strategy_enum: SortStrategy = parse_strategy(_cfg_value("sort_strategy", None), default=SortStrategy.PRIORITY_FIRST)
 
     strategy_params: Optional[Dict[str, Any]] = None
     if strategy_enum == SortStrategy.WEIGHTED:
         strategy_params = {
-            "priority_weight": _cfg_float("priority_weight", 0.4),
-            "due_weight": _cfg_float("due_weight", 0.5),
+            "priority_weight": _cfg_float(
+                _cfg_value,
+                "priority_weight",
+                0.4,
+                strict_mode=bool(strict_mode),
+                algo_stats=optimizer_algo_stats,
+                min_value=0.0,
+            ),
+            "due_weight": _cfg_float(
+                _cfg_value,
+                "due_weight",
+                0.5,
+                strict_mode=bool(strict_mode),
+                algo_stats=optimizer_algo_stats,
+                min_value=0.0,
+            ),
         }
 
     algo_mode = _norm_text(_cfg_value("algo_mode", "greedy"), "greedy")
     objective_name = _norm_text(_cfg_value("objective", "min_overdue"), "min_overdue")
-    time_budget_seconds = int(_cfg_value("time_budget_seconds", 20) or 20)
-    time_budget_seconds = max(1, int(time_budget_seconds))
+    time_budget_seconds = _cfg_int(
+        _cfg_value,
+        "time_budget_seconds",
+        20,
+        strict_mode=bool(strict_mode),
+        algo_stats=optimizer_algo_stats,
+        min_value=1,
+        min_violation_fallback=1,
+    )
 
     def _parse_date(value: Any) -> Optional[Any]:
-        if value is None:
-            return None
-        if hasattr(value, "date"):
-            try:
-                return value.date()
-            except Exception:
-                return None
-        s = str(value).strip().replace("/", "-")
-        if not s:
-            return None
+        if strict_mode:
+            return parse_optional_date(value, field="due_date")
         try:
-            return datetime.strptime(s, "%Y-%m-%d").date()
+            return parse_optional_date(value, field="due_date")
         except Exception:
             return None
 

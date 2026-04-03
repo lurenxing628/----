@@ -2,13 +2,37 @@ from __future__ import annotations
 
 import math
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.priority_constants import PRIORITY_WEIGHT, normalize_priority
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import INTERNAL
+
+
+def _due_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    return str(value or "").strip()
+
+
+def _parse_due_date_state(value: Any) -> Tuple[Optional[date], bool]:
+    if value is None:
+        return None, False
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value, False
+    if isinstance(value, datetime):
+        return value.date(), False
+    s = str(value or "").strip()
+    if not s:
+        return None, False
+    parsed = _parse_due_date(s)
+    return parsed, parsed is None
 
 
 def _parse_due_date(value: Any) -> Optional[date]:
@@ -54,6 +78,10 @@ class ScheduleMetrics:
     # P2：指标边界语义（向后兼容新增字段）
     internal_horizon_hours: float = 0.0  # internal 利用率的时间窗（=makespan_internal_hours）
     util_defined: bool = False  # horizon>0 才为 True；否则 util_avg 仅为 0.0 占位
+    invalid_due_count: int = 0
+    unscheduled_batch_count: int = 0
+    invalid_due_batch_ids_sample: List[str] = field(default_factory=list)
+    unscheduled_batch_ids_sample: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         def _round_finite(v: Any, ndigits: int) -> float:
@@ -82,6 +110,10 @@ class ScheduleMetrics:
             "operator_load_cv": _round_finite(self.operator_load_cv, 6),
             "internal_horizon_hours": _round_finite(self.internal_horizon_hours, 4),
             "util_defined": bool(self.util_defined),
+            "invalid_due_count": int(self.invalid_due_count),
+            "unscheduled_batch_count": int(self.unscheduled_batch_count),
+            "invalid_due_batch_ids_sample": [str(x) for x in list(self.invalid_due_batch_ids_sample or [])[:10]],
+            "unscheduled_batch_ids_sample": [str(x) for x in list(self.unscheduled_batch_ids_sample or [])[:20]],
         }
 
 
@@ -108,15 +140,31 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
     overdue_count = 0
     tardiness_hours = 0.0
     weighted_tardiness_hours = 0.0
+    invalid_due_count = 0
+    unscheduled_batch_count = 0
+    invalid_due_batch_ids_sample: List[str] = []
+    unscheduled_batch_ids_sample: List[str] = []
     for bid0, b in batches.items():
         bid = str(bid0 or "").strip()
         if not bid:
             continue
-        due_d = _parse_due_date(getattr(b, "due_date", None))
-        if not due_d:
-            continue
+        due_raw = getattr(b, "due_date", None)
+        due_d, due_invalid = _parse_due_date_state(due_raw)
+        if due_invalid:
+            invalid_due_count += 1
+            if len(invalid_due_batch_ids_sample) < 10:
+                invalid_due_batch_ids_sample.append(bid)
         fin = finish_by_batch.get(bid)
         if not fin:
+            unscheduled_batch_count += 1
+            if len(unscheduled_batch_ids_sample) < 20:
+                due_text = _due_text(due_raw)
+                if due_text:
+                    unscheduled_batch_ids_sample.append(f"{bid}({due_text})")
+                else:
+                    unscheduled_batch_ids_sample.append(bid)
+            continue
+        if not due_d:
             continue
         due_exclusive = _due_exclusive(due_d)
         if fin >= due_exclusive:
@@ -243,6 +291,10 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
         operator_load_cv=float(_cv(operator_hours)),
         internal_horizon_hours=float(horizon),
         util_defined=bool(util_defined),
+        invalid_due_count=int(invalid_due_count),
+        unscheduled_batch_count=int(unscheduled_batch_count),
+        invalid_due_batch_ids_sample=list(invalid_due_batch_ids_sample),
+        unscheduled_batch_ids_sample=list(unscheduled_batch_ids_sample),
     )
 
 

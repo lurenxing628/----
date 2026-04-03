@@ -7,25 +7,19 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.algorithms.dispatch_rules import DispatchInputs, DispatchRule, build_dispatch_key
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import EXTERNAL, INTERNAL, MERGED
+from core.services.common.degradation import DegradationCollector
+from core.services.common.field_parse import parse_field_float
+from core.services.common.strict_parse import parse_optional_date, parse_required_float
 
 from ..algo_stats import increment_counter
 from ..downtime import find_earliest_available_start
 
 
-def _parse_date(value: Any) -> Optional[date]:
-    if value is None:
-        return None
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value
-    if isinstance(value, datetime):
-        return value.date()
-    s = str(value).strip()
-    if not s:
-        return None
-    # 兼容 YYYY/MM/DD
-    s = s.replace("/", "-")
+def _parse_date(value: Any, *, strict_mode: bool = False) -> Optional[date]:
+    if strict_mode:
+        return parse_optional_date(value, field="due_date")
     try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
+        return parse_optional_date(value, field="due_date")
     except Exception:
         return None
 
@@ -55,6 +49,7 @@ def dispatch_sgs(
     blocked_batches: set,
     scheduled_count: int,
     failed_count: int,
+    strict_mode: bool = False,
 ) -> Tuple[int, int]:
     """
     Serial SGS（eligible set）派工：每个批次只暴露“下一道”可排工序，动态选择最优候选。
@@ -90,15 +85,17 @@ def dispatch_sgs(
         b = batches.get(bid)
         if not b:
             continue
-        qty = getattr(b, "quantity", 0) or 0
         for op in lst:
             if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() != INTERNAL:
                 continue
-            setup_hours = getattr(op, "setup_hours", 0) or 0
-            unit_hours = getattr(op, "unit_hours", 0) or 0
             try:
+                setup_hours = float(parse_required_float(getattr(op, "setup_hours", 0), field="setup_hours", min_value=0.0))
+                unit_hours = float(parse_required_float(getattr(op, "unit_hours", 0), field="unit_hours", min_value=0.0))
+                qty = float(parse_required_float(getattr(b, "quantity", 0), field="quantity", min_value=0.0))
                 h = float(setup_hours) + float(unit_hours) * float(qty)
-            except Exception:
+            except Exception as exc:
+                if strict_mode and isinstance(exc, Exception):
+                    raise
                 h = 0.0
             if h and h > 0 and math.isfinite(float(h)):
                 proc_samples.append(float(h))
@@ -126,7 +123,7 @@ def dispatch_sgs(
             try:
                 batch = batches[bid]
                 priority = getattr(batch, "priority", None)
-                due_d = _parse_date(getattr(batch, "due_date", None))
+                due_d = _parse_date(getattr(batch, "due_date", None), strict_mode=bool(strict_mode))
                 try:
                     seq = int(getattr(op, "seq", 0) or 0)
                 except Exception:
@@ -148,11 +145,23 @@ def dispatch_sgs(
                             est_start, est_end = cached
                         else:
                             total_days = getattr(op, "ext_group_total_days", None)
+                            total_days_collector = DegradationCollector()
                             try:
-                                total_days_f = float(total_days) if total_days is not None and str(total_days).strip() != "" else None
+                                total_days_f = float(
+                                    parse_field_float(
+                                        total_days,
+                                        field="ext_group_total_days",
+                                        strict_mode=bool(strict_mode),
+                                        scope="greedy.dispatch.sgs",
+                                        fallback=0.0,
+                                        collector=total_days_collector,
+                                        min_value=0.0,
+                                        min_inclusive=False,
+                                    )
+                                )
                             except Exception:
-                                total_days_f = None
-                            if not total_days_f or total_days_f <= 0:
+                                if strict_mode:
+                                    raise
                                 increment_counter(scheduler, "dispatch_sgs_external_duration_unscorable_count")
                                 # 不可估算：打分阶段给一个“惩罚 key”，避免 best_pair 为空后无条件选 candidates[0]
                                 score_penalty = 1.0
@@ -163,19 +172,32 @@ def dispatch_sgs(
                                 est_end = scheduler.calendar.add_calendar_days(est_start, total_days_f)
                     else:
                         ext_days = getattr(op, "ext_days", None)
+                        ext_days_collector = DegradationCollector()
                         try:
-                            ext_days_f = float(ext_days) if ext_days is not None and str(ext_days).strip() != "" else None
+                            ext_days_f = float(
+                                parse_field_float(
+                                    ext_days,
+                                    field="ext_days",
+                                    strict_mode=bool(strict_mode),
+                                    scope="greedy.dispatch.sgs",
+                                    fallback=1.0,
+                                    collector=ext_days_collector,
+                                    min_value=0.0,
+                                    min_inclusive=False,
+                                )
+                            )
                         except Exception:
-                            ext_days_f = None
-                        if ext_days_f is None:
-                            ext_days_f = 1.0
-                        if ext_days_f <= 0:
+                            if strict_mode:
+                                raise
                             increment_counter(scheduler, "dispatch_sgs_external_duration_unscorable_count")
                             # 不可估算：打分阶段给惩罚 key（真实排产阶段仍会报错并阻断批次）
                             score_penalty = 1.0
                             est_start = prev_end
                             est_end = prev_end
                         else:
+                            legacy_defaulted = int(ext_days_collector.to_counters().get("legacy_external_days_defaulted") or 0) + int(ext_days_collector.to_counters().get("blank_required") or 0)
+                            if legacy_defaulted > 0:
+                                increment_counter(scheduler, "legacy_external_days_defaulted_count", legacy_defaulted)
                             est_start = prev_end
                             est_end = scheduler.calendar.add_calendar_days(est_start, ext_days_f)
                     proc_h = max((est_end - est_start).total_seconds() / 3600.0, 0.0)
@@ -245,12 +267,18 @@ def dispatch_sgs(
                             dt_list = machine_downtimes.get(machine_id) or []
                         est_start = max(prev_end, base_time)
 
-                        setup_hours = getattr(op, "setup_hours", 0) or 0
-                        unit_hours = getattr(op, "unit_hours", 0) or 0
-                        qty = getattr(batch, "quantity", 0) or 0
                         try:
+                            setup_hours = float(
+                                parse_required_float(getattr(op, "setup_hours", 0), field="setup_hours", min_value=0.0)
+                            )
+                            unit_hours = float(
+                                parse_required_float(getattr(op, "unit_hours", 0), field="unit_hours", min_value=0.0)
+                            )
+                            qty = float(parse_required_float(getattr(batch, "quantity", 0), field="quantity", min_value=0.0))
                             total_hours = float(setup_hours) + float(unit_hours) * float(qty)
                         except Exception:
+                            if strict_mode:
+                                raise
                             total_hours = 0.0
                             increment_counter(scheduler, "dispatch_sgs_total_hours_unscorable_count")
                             score_penalty = 1.0
@@ -315,6 +343,8 @@ def dispatch_sgs(
                 # 评分 key：先按可估算性排序（正常优于不可估算），再按 dispatch rule/tie-break 排序
                 k = (float(score_penalty),) + tuple(k0)
             except Exception:
+                if strict_mode:
+                    raise
                 # 评分异常：生成一个“最差但可比较”的 key，避免静默跳过导致 candidates[0] 退化
                 score_penalty = 1.0
                 increment_counter(scheduler, "dispatch_sgs_scoring_exception_count")
@@ -322,7 +352,7 @@ def dispatch_sgs(
                 try:
                     batch = batches.get(bid)
                     priority = getattr(batch, "priority", None) if batch else None
-                    due_d = _parse_date(getattr(batch, "due_date", None)) if batch else None
+                    due_d = _parse_date(getattr(batch, "due_date", None), strict_mode=False) if batch else None
                 except Exception:
                     priority = None
                     due_d = None
@@ -384,7 +414,8 @@ def dispatch_sgs(
             batch = batches[bid]
             if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
                 result, _blocked = scheduler._schedule_external(  # type: ignore[attr-defined]
-                    op, batch, batch_progress, external_group_cache, base_time, errors, end_dt_exclusive
+                    op, batch, batch_progress, external_group_cache, base_time, errors, end_dt_exclusive,
+                    strict_mode=bool(strict_mode)
                 )
             else:
                 result, _blocked = scheduler._schedule_internal(  # type: ignore[attr-defined]

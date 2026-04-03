@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.value_domains import INTERNAL
+from core.services.common.strict_parse import parse_optional_date
 
 from ..sort_strategies import BatchForSort, SortStrategy, StrategyFactory
 from ..types import ScheduleResult, ScheduleSummary
@@ -133,11 +134,13 @@ class GreedyScheduler:
         sorter = StrategyFactory.create(strategy, **used_params)
         batch_list: List[BatchForSort] = []
         for bid0, b in batches.items():
+            due_raw = getattr(b, "due_date", None)
+            due_date = parse_optional_date(due_raw, field="due_date") if strict_mode else _parse_date(due_raw)
             batch_list.append(
                 BatchForSort(
                     batch_id=str(bid0 or "").strip(),
                     priority=str(getattr(b, "priority", "") or "normal"),
-                    due_date=_parse_date(getattr(b, "due_date", None)),
+                    due_date=due_date,
                     ready_status=str(getattr(b, "ready_status", "") or "yes"),
                     ready_date=_parse_date(getattr(b, "ready_date", None)),
                     created_at=_parse_datetime(getattr(b, "created_at", None)),
@@ -341,6 +344,7 @@ class GreedyScheduler:
                 blocked_batches=blocked_batches,
                 scheduled_count=scheduled_count,
                 failed_count=failed_count,
+                strict_mode=bool(strict_mode),
             )
         else:
             scheduled_count, failed_count = dispatch_batch_order(
@@ -365,6 +369,7 @@ class GreedyScheduler:
                 blocked_batches=blocked_batches,
                 scheduled_count=scheduled_count,
                 failed_count=failed_count,
+                strict_mode=bool(strict_mode),
             )
 
         duration = (datetime.now() - t0).total_seconds()
@@ -391,6 +396,7 @@ class GreedyScheduler:
         base_time: datetime,
         errors: List[str],
         end_dt_exclusive: Optional[datetime],
+        strict_mode: bool = False,
     ) -> Tuple[Optional[ScheduleResult], bool]:
         return schedule_external(
             self,
@@ -401,6 +407,7 @@ class GreedyScheduler:
             base_time=base_time,
             errors=errors,
             end_dt_exclusive=end_dt_exclusive,
+            strict_mode=bool(strict_mode),
         )
 
     def _schedule_internal(

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.degradation import DegradationCollector
+from core.services.common.field_parse import parse_field_float
 
 from ..dispatch_rules import DispatchRule, parse_dispatch_rule
 from ..sort_strategies import SortStrategy, parse_strategy
@@ -81,45 +82,33 @@ def resolve_schedule_params(
             pass
 
     used_params: Dict[str, Any] = {}
+
+    def _weighted_value(raw_value: Any, key: str, default: float) -> float:
+        collector = DegradationCollector()
+        parsed = parse_field_float(
+            raw_value,
+            field=key,
+            strict_mode=bool(strict_mode),
+            scope="schedule_params.weighted",
+            fallback=float(default),
+            collector=collector,
+            min_value=0.0,
+        )
+        if collector:
+            increment_counter(algo_stats, f"weighted_{key}_defaulted_count", bucket="param_fallbacks")
+        return float(parsed)
+
     if strategy == SortStrategy.WEIGHTED:
         if strategy_params is not None:
-
-            def _safe_float(v: Any, default: float, key: str) -> float:
-                used_fallback = False
-                try:
-                    f = float(v)
-                    if math.isfinite(f):
-                        return f
-                    used_fallback = True
-                except Exception:
-                    used_fallback = True
-                if used_fallback:
-                    increment_counter(algo_stats, f"weighted_{key}_defaulted_count", bucket="param_fallbacks")
-                return float(default)
-
             sp = strategy_params if isinstance(strategy_params, dict) else {}
             used_params = {
-                "priority_weight": _safe_float(sp.get("priority_weight", 0.4), 0.4, "priority_weight"),
-                "due_weight": _safe_float(sp.get("due_weight", 0.5), 0.5, "due_weight"),
+                "priority_weight": _weighted_value(sp.get("priority_weight", 0.4), "priority_weight", 0.4),
+                "due_weight": _weighted_value(sp.get("due_weight", 0.5), "due_weight", 0.5),
             }
         elif config is not None:
-
-            def _cfg_float(key: str, default: float) -> float:
-                used_fallback = False
-                try:
-                    f = float(cfg_get(config, key, default))
-                    if math.isfinite(f):
-                        return f
-                    used_fallback = True
-                except Exception:
-                    used_fallback = True
-                if used_fallback:
-                    increment_counter(algo_stats, f"weighted_{key}_defaulted_count", bucket="param_fallbacks")
-                return float(default)
-
             used_params = {
-                "priority_weight": _cfg_float("priority_weight", 0.4),
-                "due_weight": _cfg_float("due_weight", 0.5),
+                "priority_weight": _weighted_value(cfg_get(config, "priority_weight", 0.4), "priority_weight", 0.4),
+                "due_weight": _weighted_value(cfg_get(config, "due_weight", 0.5), "due_weight", 0.5),
             }
         else:
             used_params = {"priority_weight": 0.4, "due_weight": 0.5}

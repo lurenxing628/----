@@ -57,19 +57,23 @@ def main() -> None:
         supplier_id="SUP01",
         setup_hours=None,
         unit_hours=None,
-        ext_days="  ",  # 空白字符串：应回退为 None（不应抛异常）
+        ext_days="  ",  # 空白字符串：应按兼容读取回退为 1.0（不应抛异常）
     )
 
-    out = build_algo_operations(svc, [internal, external])
+    outcome = build_algo_operations(svc, [internal, external], return_outcome=True)
+    out = outcome.value
     assert len(out) == 2, f"build_algo_operations 输出数量异常：{len(out)}"
     assert svc.called is True, "external 工序应触发 _get_template_and_group_for_op（source 大小写需容错）"
+    assert outcome.has_events is True, "兼容读取坏值后应保留结构化退化事件"
 
     op0 = out[0]
     op1 = out[1]
 
     assert float(op0.setup_hours) == 0.0, f"setup_hours 解析异常：{op0.setup_hours!r}"
     assert float(op0.unit_hours) == 0.0, f"unit_hours 解析异常：{op0.unit_hours!r}"
-    assert op1.ext_days is None, f"ext_days 解析异常：{op1.ext_days!r}"
+    assert float(op1.ext_days or 0.0) == 1.0, f"ext_days 兼容回退异常：{op1.ext_days!r}"
+    codes = [event.code for event in outcome.events]
+    assert "blank_required" in codes, f"兼容读取事件缺少 blank_required：{codes!r}"
 
     print("OK")
 

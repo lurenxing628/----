@@ -30,6 +30,7 @@ def dispatch_batch_order(
     blocked_batches: set,
     scheduled_count: int,
     failed_count: int,
+    strict_mode: bool = False,
 ) -> Tuple[int, int]:
     """
     batch_order 派工：按 batch_order 全局排序后的工序列表逐条排入。
@@ -55,7 +56,14 @@ def dispatch_batch_order(
 
             if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
                 result, _blocked = scheduler._schedule_external(  # type: ignore[attr-defined]
-                    op, batch, batch_progress, external_group_cache, base_time, errors, end_dt_exclusive
+                    op,
+                    batch,
+                    batch_progress,
+                    external_group_cache,
+                    base_time,
+                    errors,
+                    end_dt_exclusive,
+                    strict_mode=bool(strict_mode),
                 )
             else:
                 result, _blocked = scheduler._schedule_internal(  # type: ignore[attr-defined]

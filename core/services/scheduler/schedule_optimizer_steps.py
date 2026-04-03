@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import math
 import time
 import traceback
 from datetime import date, datetime
@@ -12,6 +11,8 @@ from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import increment_counter, merge_algo_stats, snapshot_algo_stats
 from core.algorithms.sort_strategies import parse_strategy
 from core.models.enums import YesNo
+from core.services.common.degradation import DegradationCollector
+from core.services.common.field_parse import parse_field_float, parse_field_int
 
 from .number_utils import to_yes_no
 
@@ -25,20 +26,60 @@ def _is_yes(value: Any, *, default: str = YesNo.NO.value) -> bool:
     return to_yes_no(value, default=default) == YesNo.YES.value
 
 
-def _cfg_float(_cfg_value, key: str, default: float, *, algo_stats: Any = None, counter_key: Optional[str] = None) -> float:
-    raw = _cfg_value(key, default)
-    if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+def _cfg_float(
+    _cfg_value,
+    key: str,
+    default: float,
+    *,
+    strict_mode: bool = False,
+    algo_stats: Any = None,
+    counter_key: Optional[str] = None,
+    min_value: Optional[float] = None,
+    min_inclusive: bool = True,
+    min_violation_fallback: Any = None,
+) -> float:
+    collector = DegradationCollector()
+    parsed = parse_field_float(
+        _cfg_value(key, default),
+        field=key,
+        strict_mode=bool(strict_mode),
+        scope="schedule_optimizer.runtime",
+        fallback=float(default),
+        collector=collector,
+        min_value=min_value,
+        min_inclusive=min_inclusive,
+        min_violation_fallback=(default if min_violation_fallback is None else min_violation_fallback),
+    )
+    if collector:
         increment_counter(algo_stats, counter_key or f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
-        return float(default)
-    try:
-        parsed = float(raw)
-    except Exception:
-        increment_counter(algo_stats, counter_key or f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
-        return float(default)
-    if not math.isfinite(parsed):
-        increment_counter(algo_stats, counter_key or f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
-        return float(default)
     return float(parsed)
+
+
+def _cfg_int(
+    _cfg_value,
+    key: str,
+    default: int,
+    *,
+    strict_mode: bool = False,
+    algo_stats: Any = None,
+    counter_key: Optional[str] = None,
+    min_value: Optional[int] = None,
+    min_violation_fallback: Any = None,
+) -> int:
+    collector = DegradationCollector()
+    parsed = parse_field_int(
+        _cfg_value(key, default),
+        field=key,
+        strict_mode=bool(strict_mode),
+        scope="schedule_optimizer.runtime",
+        fallback=int(default),
+        collector=collector,
+        min_value=min_value,
+        min_violation_fallback=(default if min_violation_fallback is None else min_violation_fallback),
+    )
+    if collector:
+        increment_counter(algo_stats, counter_key or f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
+    return int(parsed)
 
 
 def _scheduler_accepts_strict_mode(scheduler: SchedulerLike) -> Optional[bool]:
@@ -115,7 +156,15 @@ def _run_ortools_warmstart(
             # - remaining<1：避免 int(remaining)=0 被 tl=max(1,...) 拉回 1s 导致超时
             ort_order = None
             if remaining >= 1.0:
-                tl_cfg = int(_cfg_value("ortools_time_limit_seconds", 5) or 5)
+                tl_cfg = _cfg_int(
+                    _cfg_value,
+                    "ortools_time_limit_seconds",
+                    5,
+                    strict_mode=bool(strict_mode),
+                    algo_stats=optimizer_algo_stats,
+                    min_value=1,
+                    min_violation_fallback=1,
+                )
                 tl = max(1, min(int(tl_cfg), int(remaining)))
                 ort_order = try_solve_bottleneck_batch_order(
                     operations=algo_ops_to_schedule,
@@ -130,8 +179,22 @@ def _run_ortools_warmstart(
                 ort_params: Dict[str, Any] = {}
                 if ort_strat == SortStrategy.WEIGHTED:
                     ort_params = {
-                        "priority_weight": _cfg_float(_cfg_value, "priority_weight", 0.4, algo_stats=optimizer_algo_stats),
-                        "due_weight": _cfg_float(_cfg_value, "due_weight", 0.5, algo_stats=optimizer_algo_stats),
+                        "priority_weight": _cfg_float(
+                            _cfg_value,
+                            "priority_weight",
+                            0.4,
+                            strict_mode=bool(strict_mode),
+                            algo_stats=optimizer_algo_stats,
+                            min_value=0.0,
+                        ),
+                        "due_weight": _cfg_float(
+                            _cfg_value,
+                            "due_weight",
+                            0.5,
+                            strict_mode=bool(strict_mode),
+                            algo_stats=optimizer_algo_stats,
+                            min_value=0.0,
+                        ),
                     }
                 res, summ, used_strat, used_params = _schedule_with_optional_strict_mode(
                     scheduler,
@@ -192,6 +255,7 @@ def _run_ortools_warmstart(
                         )
         except Exception as e:
             # 可选项失败不阻断主流程
+            increment_counter(optimizer_algo_stats if isinstance(optimizer_algo_stats, dict) else scheduler, "ortools_warmstart_failed_count")
             if logger:
                 tb = traceback.format_exc(limit=10)
                 # 尽量带堆栈（便于定位依赖缺失/配置错误等）；若 logger 不支持 exc_info 参数则回退为拼接文本。
@@ -246,8 +310,22 @@ def _run_multi_start(
             params0: Dict[str, Any] = {}
             if strat == SortStrategy.WEIGHTED:
                 params0 = {
-                    "priority_weight": _cfg_float(_cfg_value, "priority_weight", 0.4, algo_stats=optimizer_algo_stats),
-                    "due_weight": _cfg_float(_cfg_value, "due_weight", 0.5, algo_stats=optimizer_algo_stats),
+                    "priority_weight": _cfg_float(
+                        _cfg_value,
+                        "priority_weight",
+                        0.4,
+                        strict_mode=bool(strict_mode),
+                        algo_stats=optimizer_algo_stats,
+                        min_value=0.0,
+                    ),
+                    "due_weight": _cfg_float(
+                        _cfg_value,
+                        "due_weight",
+                        0.5,
+                        strict_mode=bool(strict_mode),
+                        algo_stats=optimizer_algo_stats,
+                        min_value=0.0,
+                    ),
                 }
 
             for dr in dispatch_rules:

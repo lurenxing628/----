@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-import math
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import EXTERNAL, MERGED
+from core.services.common.degradation import DegradationCollector
+from core.services.common.field_parse import parse_field_float
+
+from .algo_stats import increment_counter
 
 
 def schedule_external(
@@ -18,8 +21,17 @@ def schedule_external(
     base_time: datetime,
     errors: List[str],
     end_dt_exclusive: Optional[datetime],
+    strict_mode: bool = False,
 ) -> Tuple[Optional[ScheduleResult], bool]:
     """排产外部工序：不占资源，只占用自然日周期。"""
+
+    def _record_compat_counters(collector: DegradationCollector) -> None:
+        counters = collector.to_counters()
+        legacy_defaulted = int(counters.get("legacy_external_days_defaulted") or 0) + int(counters.get("blank_required") or 0)
+        if legacy_defaulted > 0:
+            increment_counter(scheduler, "legacy_external_days_defaulted_count", legacy_defaulted)
+
+
     bid = str(getattr(op, "batch_id", "") or "").strip()
     prev_end = batch_progress.get(bid, base_time)
 
@@ -33,12 +45,24 @@ def schedule_external(
             start, end = cached
         else:
             total_days = getattr(op, "ext_group_total_days", None)
+            collector = DegradationCollector()
             try:
-                total_days_f = float(total_days) if total_days is not None and str(total_days).strip() != "" else None
-                if total_days_f is not None and not math.isfinite(float(total_days_f)):
-                    total_days_f = None
+                total_days_f = float(
+                    parse_field_float(
+                        total_days,
+                        field="ext_group_total_days",
+                        strict_mode=bool(strict_mode),
+                        scope="greedy.external.schedule",
+                        fallback=0.0,
+                        collector=collector,
+                        min_value=0.0,
+                        min_inclusive=False,
+                    )
+                )
             except Exception:
-                total_days_f = None
+                if strict_mode:
+                    raise
+                total_days_f = 0.0
             if not total_days_f or total_days_f <= 0:
                 errors.append(f"外部组合并周期未设置或不合法：批次 {bid} 组 {ext_group_id} total_days={total_days!r}")
                 return None, False
@@ -69,14 +93,25 @@ def schedule_external(
 
     # separate（或无组）：按单道工序 ext_days 推进
     ext_days = getattr(op, "ext_days", None)
+    collector = DegradationCollector()
     try:
-        ext_days_f = float(ext_days) if ext_days is not None and str(ext_days).strip() != "" else None
-        if ext_days_f is not None and not math.isfinite(float(ext_days_f)):
-            ext_days_f = None
+        ext_days_f = float(
+            parse_field_float(
+                ext_days,
+                field="ext_days",
+                strict_mode=bool(strict_mode),
+                scope="greedy.external.schedule",
+                fallback=1.0,
+                collector=collector,
+                min_value=0.0,
+                min_inclusive=False,
+            )
+        )
     except Exception:
-        ext_days_f = None
-    if ext_days_f is None:
-        ext_days_f = 1.0
+        if strict_mode:
+            raise
+        ext_days_f = 0.0
+    _record_compat_counters(collector)
     if ext_days_f <= 0:
         errors.append(f"外协周期不合法：工序 {getattr(op, 'op_code', '-') or '-'} ext_days={ext_days!r}")
         return None, False
