@@ -16,7 +16,6 @@ from .resource_dispatch_support import (
     build_single_scope_payload,
     build_team_scope_payload,
     empty_dispatch_payload,
-    extract_overdue_batch_ids,
     extract_overdue_batch_ids_with_meta,
 )
 from .schedule_history_query_service import ScheduleHistoryQueryService
@@ -336,6 +335,7 @@ class ResourceDispatchService:
         payload["empty_message"] = build_empty_dispatch_message(
             normalized_scope_type=normalized_scope_type,
             dr=dr,
+            summary=payload["summary"],
             detail_rows=payload["detail_rows"],
             operator_rows=payload["operator_rows"],
             machine_rows=payload["machine_rows"],

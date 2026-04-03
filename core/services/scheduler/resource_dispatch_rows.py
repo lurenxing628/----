@@ -3,18 +3,43 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
-from .gantt_tasks import (
-    _attach_process_dependencies,
-    _display_machine,
-    _display_operator,
-    _duration_minutes,
-    _fmt_dt,
-    _parse_dt,
-    _priority_class,
-    _sort_tasks,
+from core.services.common.build_outcome import BuildOutcome
+from core.services.common.degradation import DegradationCollector
+
+from ._sched_display_utils import (
+    BAD_TIME_EMPTY_REASON as _BAD_TIME_EMPTY_REASON,
 )
-from .gantt_week_plan import _fmt_hhmm, _split_by_day
+from ._sched_display_utils import (
+    display_machine as _display_machine,
+)
+from ._sched_display_utils import (
+    display_operator as _display_operator,
+)
+from ._sched_display_utils import (
+    duration_minutes as _duration_minutes,
+)
+from ._sched_display_utils import (
+    fmt_dt as _fmt_dt,
+)
+from ._sched_display_utils import (
+    fmt_hhmm as _fmt_hhmm,
+)
+from ._sched_display_utils import (
+    parse_dt as _parse_dt,
+)
+from ._sched_display_utils import (
+    priority_class as _priority_class,
+)
+from ._sched_display_utils import (
+    record_bad_time_row as _record_bad_time_row,
+)
+from ._sched_display_utils import (
+    split_by_day as _split_by_day,
+)
+from .gantt_tasks import _attach_process_dependencies, _sort_tasks
 from .resource_dispatch_range import DispatchRange
+
+_BAD_TIME_ROW_MESSAGE = "存在开始/结束时间不合法的排班行，已跳过。"
 
 
 def _text(value: Any) -> str:
@@ -91,6 +116,43 @@ def _clamp_to_range(st: datetime, et: datetime, dr: DispatchRange) -> Optional[T
     return st2, et2
 
 
+def _prepared_time_range(row: Dict[str, Any]) -> Tuple[Optional[datetime], Optional[datetime]]:
+    start_time = row.get("_parsed_start_time")
+    end_time = row.get("_parsed_end_time")
+    if isinstance(start_time, datetime) and isinstance(end_time, datetime):
+        return start_time, end_time
+    return _parse_dt(row.get("start_time")), _parse_dt(row.get("end_time"))
+
+
+def prepare_dispatch_rows(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    scope: str = "resource_dispatch.rows",
+) -> BuildOutcome[List[Dict[str, Any]]]:
+    collector = DegradationCollector()
+    prepared_rows: List[Dict[str, Any]] = []
+    for row in rows:
+        current = dict(row)
+        st = _parse_dt(current.get("start_time"))
+        et = _parse_dt(current.get("end_time"))
+        if not st or not et or not (st < et):
+            _record_bad_time_row(
+                collector,
+                scope=scope,
+                row=current,
+                message=_BAD_TIME_ROW_MESSAGE,
+            )
+            continue
+        current["_parsed_start_time"] = st
+        current["_parsed_end_time"] = et
+        prepared_rows.append(current)
+
+    empty_reason = None
+    if not prepared_rows and collector.to_counters().get("bad_time_row_skipped", 0) > 0:
+        empty_reason = _BAD_TIME_EMPTY_REASON
+    return BuildOutcome.from_collector(prepared_rows, collector, empty_reason=empty_reason)
+
+
 def normalize_dispatch_row(
     *,
     scope_type: str,
@@ -98,11 +160,17 @@ def normalize_dispatch_row(
     scope_name: str,
     row: Dict[str, Any],
     overdue_set: Set[str],
-) -> Optional[Dict[str, Any]]:
-    st = _parse_dt(row.get("start_time"))
-    et = _parse_dt(row.get("end_time"))
+) -> BuildOutcome[Optional[Dict[str, Any]]]:
+    collector = DegradationCollector()
+    st, et = _prepared_time_range(row)
     if not st or not et or not (st < et):
-        return None
+        _record_bad_time_row(
+            collector,
+            scope="resource_dispatch.detail_rows",
+            row=row,
+            message=_BAD_TIME_ROW_MESSAGE,
+        )
+        return BuildOutcome.from_collector(None, collector)
 
     current = _current_resource(scope_type, row)
     counterpart = _counterpart_resource(scope_type, row)
@@ -110,7 +178,7 @@ def normalize_dispatch_row(
     task_code = _text(row.get("op_code")) or (f"op_{row.get('op_id')}" if row.get("op_id") is not None else "")
     team_relation = _team_relation_label(current["team_id"], counterpart["team_id"])
     is_cross_team = bool(current["team_id"] and counterpart["team_id"] and current["team_id"] != counterpart["team_id"])
-    return {
+    normalized = {
         "schedule_id": row.get("schedule_id"),
         "op_id": row.get("op_id"),
         "op_code": task_code,
@@ -143,12 +211,21 @@ def normalize_dispatch_row(
         "counterpart_resource_label": counterpart["label"],
         "counterpart_team_id": counterpart["team_id"],
         "counterpart_team_name": counterpart["team_name"],
+        "machine_id": _text(row.get("machine_id")),
+        "machine_name": _text(row.get("machine_name")),
+        "machine_team_id": _text(row.get("machine_team_id")),
+        "machine_team_name": _text(row.get("machine_team_name")),
+        "operator_id": _text(row.get("operator_id")),
+        "operator_name": _text(row.get("operator_name")),
+        "operator_team_id": _text(row.get("operator_team_id")),
+        "operator_team_name": _text(row.get("operator_team_name")),
         "supplier_name": _text(row.get("supplier_name")),
         "team_relation_label": team_relation,
         "is_cross_team": is_cross_team,
         "is_cross_day": st.date() != et.date(),
         "is_overdue": bool(batch_id and batch_id in overdue_set),
     }
+    return BuildOutcome.from_collector(normalized, collector)
 
 
 def build_dispatch_detail_rows(
@@ -158,7 +235,8 @@ def build_dispatch_detail_rows(
     scope_name: str,
     rows: Sequence[Dict[str, Any]],
     overdue_set: Set[str],
-) -> List[Dict[str, Any]]:
+) -> BuildOutcome[List[Dict[str, Any]]]:
+    collector = DegradationCollector()
     out: List[Dict[str, Any]] = []
     for row in rows:
         item = normalize_dispatch_row(
@@ -168,38 +246,36 @@ def build_dispatch_detail_rows(
             row=dict(row),
             overdue_set=overdue_set,
         )
-        if item:
-            out.append(item)
+        collector.extend(item.events)
+        if item.value is not None:
+            out.append(item.value)
     out.sort(key=lambda item: (str(item.get("start_time") or ""), str(item.get("schedule_id") or "")))
-    return out
+    empty_reason = None
+    if not out and collector.to_counters().get("bad_time_row_skipped", 0) > 0:
+        empty_reason = _BAD_TIME_EMPTY_REASON
+    return BuildOutcome.from_collector(out, collector, empty_reason=empty_reason)
 
 
 def _normalized_row_in_range(
     *,
-    scope_type: str,
-    scope_id: str,
-    scope_name: str,
     dr: DispatchRange,
     row: Dict[str, Any],
-    overdue_set: Set[str],
-) -> Optional[Tuple[Dict[str, Any], datetime, datetime]]:
-    normalized = normalize_dispatch_row(
-        scope_type=scope_type,
-        scope_id=scope_id,
-        scope_name=scope_name,
-        row=dict(row),
-        overdue_set=overdue_set,
-    )
-    if not normalized:
-        return None
-    st = _parse_dt(normalized.get("start_time"))
-    et = _parse_dt(normalized.get("end_time"))
-    if not st or not et:
-        return None
+) -> BuildOutcome[Optional[Tuple[Dict[str, Any], datetime, datetime]]]:
+    collector = DegradationCollector()
+    st = _parse_dt(row.get("start_time"))
+    et = _parse_dt(row.get("end_time"))
+    if not st or not et or not (st < et):
+        _record_bad_time_row(
+            collector,
+            scope="resource_dispatch.range",
+            row=row,
+            message=_BAD_TIME_ROW_MESSAGE,
+        )
+        return BuildOutcome.from_collector(None, collector)
     clamped = _clamp_to_range(st, et, dr)
     if not clamped:
-        return None
-    return normalized, clamped[0], clamped[1]
+        return BuildOutcome.from_collector(None, collector)
+    return BuildOutcome.from_collector((row, clamped[0], clamped[1]), collector)
 
 
 def _task_id(normalized: Dict[str, Any]) -> str:
@@ -252,31 +328,26 @@ def _build_dispatch_task(normalized: Dict[str, Any], scope_id: str, start_dt: da
 
 def build_dispatch_tasks(
     *,
-    scope_type: str,
     scope_id: str,
-    scope_name: str,
     dr: DispatchRange,
     rows: Sequence[Dict[str, Any]],
-    overdue_set: Set[str],
-) -> List[Dict[str, Any]]:
+) -> BuildOutcome[List[Dict[str, Any]]]:
+    collector = DegradationCollector()
     tasks: List[Dict[str, Any]] = []
     for row in rows:
-        parsed = _normalized_row_in_range(
-            scope_type=scope_type,
-            scope_id=scope_id,
-            scope_name=scope_name,
-            dr=dr,
-            row=dict(row),
-            overdue_set=overdue_set,
-        )
-        if not parsed:
+        parsed = _normalized_row_in_range(dr=dr, row=dict(row))
+        collector.extend(parsed.events)
+        if parsed.value is None:
             continue
-        normalized, start_dt, end_dt = parsed
+        normalized, start_dt, end_dt = parsed.value
         tasks.append(_build_dispatch_task(normalized, scope_id, start_dt, end_dt))
 
     _attach_process_dependencies(tasks)
     _sort_tasks(tasks)
-    return tasks
+    empty_reason = None
+    if not tasks and collector.to_counters().get("bad_time_row_skipped", 0) > 0:
+        empty_reason = _BAD_TIME_EMPTY_REASON
+    return BuildOutcome.from_collector(tasks, collector, empty_reason=empty_reason)
 
 
 def _calendar_item_text(item: Dict[str, Any], start_dt: datetime, end_dt: datetime) -> str:
@@ -368,25 +439,18 @@ def build_dispatch_calendar_matrix(
     *,
     scope_type: str,
     scope_id: str,
-    scope_name: str,
     dr: DispatchRange,
     rows: Sequence[Dict[str, Any]],
-    overdue_set: Set[str],
-) -> Tuple[List[str], List[Dict[str, Any]]]:
+) -> BuildOutcome[Tuple[List[str], List[Dict[str, Any]]]]:
+    collector = DegradationCollector()
     headers = _calendar_headers(dr)
     grouped: Dict[Tuple[str, str], Dict[str, Any]] = {}
     for row in rows:
-        parsed = _normalized_row_in_range(
-            scope_type=scope_type,
-            scope_id=scope_id,
-            scope_name=scope_name,
-            dr=dr,
-            row=dict(row),
-            overdue_set=overdue_set,
-        )
-        if not parsed:
+        parsed = _normalized_row_in_range(dr=dr, row=dict(row))
+        collector.extend(parsed.events)
+        if parsed.value is None:
             continue
-        normalized, start_dt, end_dt = parsed
+        normalized, start_dt, end_dt = parsed.value
         group_item = _ensure_calendar_group(
             grouped,
             headers=headers,
@@ -409,4 +473,7 @@ def build_dispatch_calendar_matrix(
             }
         )
 
-    return headers, out_rows
+    empty_reason = None
+    if not out_rows and collector.to_counters().get("bad_time_row_skipped", 0) > 0:
+        empty_reason = _BAD_TIME_EMPTY_REASON
+    return BuildOutcome.from_collector((headers, out_rows), collector, empty_reason=empty_reason)

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 import threading
 from collections import OrderedDict
 from typing import Any, Dict, Optional, Sequence
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
 from data.repositories import ScheduleHistoryRepository, ScheduleRepository
 
 from .gantt_contract import build_gantt_contract
@@ -178,17 +178,21 @@ class GanttService:
         wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
         ver = int(version) if version is not None and str(version).strip() != "" else self.get_latest_version_or_1()
 
-        calendar_days = build_calendar_days(self.conn, wr=wr, logger=self.logger, op_logger=self.op_logger)
+        calendar_days_outcome = build_calendar_days(self.conn, wr=wr, logger=self.logger, op_logger=self.op_logger)
         rows = self.schedule_repo.list_overlapping_with_details(wr.start_str, wr.end_exclusive_str, ver)
         overdue_meta = self._overdue_batch_ids_from_history(ver)
         overdue_set = set(overdue_meta.get("ids") or [])
-
-        tasks = build_tasks(view=view, wr=wr, rows=rows, overdue_set=overdue_set)
 
         hist_dict = None
         if include_history:
             hist = self.history_repo.get_by_version(ver)
             hist_dict = hist.to_dict() if hist else None
+
+        tasks_outcome = build_tasks(view=view, wr=wr, rows=rows, overdue_set=overdue_set)
+        degradation_collector = DegradationCollector()
+        degradation_collector.extend(calendar_days_outcome.events)
+        degradation_collector.extend(tasks_outcome.events)
+        empty_reason = tasks_outcome.empty_reason or calendar_days_outcome.empty_reason
 
         critical_chain = self._get_critical_chain(ver)
 
@@ -198,9 +202,13 @@ class GanttService:
             version=ver,
             week_start=wr.week_start_date.isoformat(),
             week_end=wr.week_end_date.isoformat(),
-            tasks=tasks,
-            calendar_days=calendar_days,
+            tasks=tasks_outcome.value,
+            calendar_days=calendar_days_outcome.value,
             critical_chain=critical_chain,
+            degraded=bool(degradation_collector),
+            degradation_events=degradation_events_to_dicts(degradation_collector.to_list()),
+            degradation_counters=degradation_collector.to_counters(),
+            empty_reason=empty_reason,
             overdue_markers_degraded=bool(overdue_meta.get("degraded")),
             overdue_markers_partial=bool(overdue_meta.get("partial")),
             overdue_markers_message=str(overdue_meta.get("message") or ""),
@@ -225,14 +233,18 @@ class GanttService:
         ver = int(version) if version is not None and str(version).strip() != "" else self.get_latest_version_or_1()
 
         rows = self.schedule_repo.list_overlapping_with_details(wr.start_str, wr.end_exclusive_str, ver)
-        out = build_week_plan_rows(rows=rows, wr=wr)
+        outcome = build_week_plan_rows(rows=rows, wr=wr)
 
         hist = self.history_repo.get_by_version(ver)
         return {
             "version": ver,
             "week_start": wr.week_start_date.isoformat(),
             "week_end": wr.week_end_date.isoformat(),
-            "rows": out,
+            "rows": outcome.value,
+            "degraded": outcome.has_events,
+            "degradation_events": degradation_events_to_dicts(outcome.events),
+            "degradation_counters": outcome.counters,
+            "empty_reason": outcome.empty_reason,
             "history": hist.to_dict() if hist else None,
         }
 

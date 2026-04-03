@@ -6,8 +6,10 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import cast
 
 import openpyxl
+from openpyxl.worksheet.worksheet import Worksheet
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -72,6 +74,7 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
             "INSERT INTO BatchOperations (op_code, batch_id, piece_id, seq, op_type_name, source, machine_id, operator_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("OP-B001-10", "B001", "P1", 10, "车削", "internal", "MC001", "OP001", "scheduled"),
         )
+        assert cur.lastrowid is not None
         op_id = int(cur.lastrowid)
         conn.execute(
             "INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -131,6 +134,11 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
     assert (data.get("filters") or {}).get("scope_id") == "OP001"
     assert len(data.get("detail_rows") or []) == 1
     assert len(data.get("tasks") or []) == 1
+    summary = data.get("summary") or {}
+    assert summary.get("degraded") is False
+    assert summary.get("degradation_events") == []
+    assert summary.get("degradation_counters") == {}
+    assert summary.get("empty_reason") is None
     assert len(data.get("calendar_rows") or []) == 1
     first_row = (data.get("detail_rows") or [])[0]
     assert first_row.get("team_relation_label") == "跨班组借调"
@@ -140,8 +148,9 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
     _assert_status(resp_export, "GET /scheduler/resource-dispatch/export")
     wb = openpyxl.load_workbook(io.BytesIO(resp_export.data))
     assert wb.sheetnames == ["查询摘要", "任务明细", "日历排班"]
-    ws_detail = wb["任务明细"]
-    headers = [str(ws_detail.cell(1, idx).value or "").strip() for idx in range(1, ws_detail.max_column + 1)]
+    ws_detail = cast(Worksheet, wb["任务明细"])
+    max_column = int(ws_detail.max_column)
+    headers = [str(ws_detail.cell(1, idx).value or "").strip() for idx in range(1, max_column + 1)]
     assert headers[:8] == ["排程ID", "工序ID", "工序编码", "批次号", "图号", "工序", "工序名称", "开始时间"]
     assert str(ws_detail.cell(2, 4).value or "").strip() == "B001"
 

@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Sequence, Set
+from typing import Any, Dict, List, Optional, Sequence, Set
 
+from core.services.common.build_outcome import BuildOutcome
+from core.services.common.degradation import (
+    DegradationCollector,
+    degradation_events_to_dicts,
+)
+
+from ._sched_display_utils import BAD_TIME_EMPTY_REASON as _BAD_TIME_EMPTY_REASON
 from .resource_dispatch_range import DispatchRange
-from .resource_dispatch_rows import build_dispatch_calendar_matrix, build_dispatch_detail_rows, build_dispatch_tasks
+from .resource_dispatch_rows import (
+    build_dispatch_calendar_matrix,
+    build_dispatch_detail_rows,
+    build_dispatch_tasks,
+    prepare_dispatch_rows,
+)
 
 
 def _text(value: Any) -> str:
@@ -94,7 +106,12 @@ def filter_team_rows_by_axis(rows: Sequence[Dict[str, Any]], *, team_id: str, ax
     return out
 
 
-def build_dispatch_summary(detail_rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+def build_dispatch_summary(
+    detail_rows: Sequence[Dict[str, Any]],
+    *,
+    collector: DegradationCollector,
+    empty_reason: Optional[str] = "",
+) -> Dict[str, Any]:
     total_minutes = 0
     cross_day_count = 0
     overdue_count = 0
@@ -125,6 +142,8 @@ def build_dispatch_summary(detail_rows: Sequence[Dict[str, Any]]) -> Dict[str, A
         counterpart_label = _text(item.get("counterpart_resource_label"))
         if not counterpart_id or counterpart_label.startswith("外协"):
             external_count += 1
+
+    summary_empty_reason = empty_reason if not seen else None
     return {
         "total_tasks": len(seen),
         "total_hours": round(total_minutes / 60.0, 2),
@@ -132,6 +151,10 @@ def build_dispatch_summary(detail_rows: Sequence[Dict[str, Any]]) -> Dict[str, A
         "overdue_count": overdue_count,
         "external_count": external_count,
         "cross_team_count": cross_team_count,
+        "degraded": bool(collector),
+        "degradation_events": degradation_events_to_dicts(collector.to_list()),
+        "degradation_counters": collector.to_counters(),
+        "empty_reason": summary_empty_reason,
     }
 
 
@@ -145,7 +168,8 @@ def build_team_cross_rows(
     team_name: str,
     rows: Sequence[Dict[str, Any]],
     overdue_set: Set[str],
-) -> List[Dict[str, Any]]:
+) -> BuildOutcome[List[Dict[str, Any]]]:
+    collector = DegradationCollector()
     out: List[Dict[str, Any]] = []
     seen = set()
     for row in rows:
@@ -167,16 +191,28 @@ def build_team_cross_rows(
             rows=[row],
             overdue_set=overdue_set,
         )
-        if not normalized:
+        collector.extend(normalized.events)
+        if not normalized.value:
             continue
-        item = normalized[0]
+        item = normalized.value[0]
         marker = item.get("schedule_id")
+        if marker is None:
+            marker = (
+                item.get("op_id"),
+                item.get("start_time"),
+                item.get("end_time"),
+                item.get("current_resource_id"),
+                item.get("counterpart_resource_id"),
+            )
         if marker in seen:
             continue
         seen.add(marker)
         out.append(item)
     out.sort(key=lambda item: (_text(item.get("start_time")), _text(item.get("schedule_id"))))
-    return out
+    empty_reason = None
+    if not out and collector.to_counters().get("bad_time_row_skipped", 0) > 0:
+        empty_reason = _BAD_TIME_EMPTY_REASON
+    return BuildOutcome.from_collector(out, collector, empty_reason=empty_reason)
 
 
 def build_scope_result(
@@ -187,36 +223,42 @@ def build_scope_result(
     dr: DispatchRange,
     rows: Sequence[Dict[str, Any]],
     overdue_set: Set[str],
-) -> Dict[str, Any]:
-    detail_rows = build_dispatch_detail_rows(
+) -> BuildOutcome[Dict[str, Any]]:
+    detail_rows_outcome = build_dispatch_detail_rows(
         scope_type=scope_type,
         scope_id=scope_id,
         scope_name=scope_name,
         rows=rows,
         overdue_set=overdue_set,
     )
-    tasks = build_dispatch_tasks(
-        scope_type=scope_type,
+    tasks_outcome = build_dispatch_tasks(
         scope_id=scope_id,
-        scope_name=scope_name,
         dr=dr,
-        rows=rows,
-        overdue_set=overdue_set,
+        rows=detail_rows_outcome.value,
     )
-    calendar_headers, calendar_rows = build_dispatch_calendar_matrix(
+    calendar_outcome = build_dispatch_calendar_matrix(
         scope_type=scope_type,
         scope_id=scope_id,
-        scope_name=scope_name,
         dr=dr,
-        rows=rows,
-        overdue_set=overdue_set,
+        rows=detail_rows_outcome.value,
     )
-    return {
-        "detail_rows": detail_rows,
-        "tasks": tasks,
-        "calendar_headers": calendar_headers,
-        "calendar_rows": calendar_rows,
-    }
+
+    collector = DegradationCollector()
+    collector.extend(detail_rows_outcome.events)
+    collector.extend(tasks_outcome.events)
+    collector.extend(calendar_outcome.events)
+    empty_reason = detail_rows_outcome.empty_reason or tasks_outcome.empty_reason or calendar_outcome.empty_reason
+    headers, calendar_rows = calendar_outcome.value
+    return BuildOutcome.from_collector(
+        {
+            "detail_rows": detail_rows_outcome.value,
+            "tasks": tasks_outcome.value,
+            "calendar_headers": headers,
+            "calendar_rows": calendar_rows,
+        },
+        collector,
+        empty_reason=empty_reason,
+    )
 
 
 def empty_dispatch_payload(
@@ -242,6 +284,10 @@ def empty_dispatch_payload(
             "overdue_count": 0,
             "external_count": 0,
             "cross_team_count": 0,
+            "degraded": False,
+            "degradation_events": [],
+            "degradation_counters": {},
+            "empty_reason": None,
         },
         "tasks": [],
         "detail_rows": [],
@@ -271,12 +317,13 @@ def build_team_scope_payload(
     rows: List[Dict[str, Any]],
     overdue_set: Set[str],
 ) -> Dict[str, Any]:
+    prepared_rows = prepare_dispatch_rows(rows)
     operator_scope = build_scope_result(
         scope_type="operator",
         scope_id=selected_scope_id,
         scope_name=selected_scope_name,
         dr=dr,
-        rows=filter_team_rows_by_axis(rows, team_id=selected_scope_id, axis="operator"),
+        rows=filter_team_rows_by_axis(prepared_rows.value, team_id=selected_scope_id, axis="operator"),
         overdue_set=overdue_set,
     )
     machine_scope = build_scope_result(
@@ -284,22 +331,40 @@ def build_team_scope_payload(
         scope_id=selected_scope_id,
         scope_name=selected_scope_name,
         dr=dr,
-        rows=filter_team_rows_by_axis(rows, team_id=selected_scope_id, axis="machine"),
+        rows=filter_team_rows_by_axis(prepared_rows.value, team_id=selected_scope_id, axis="machine"),
         overdue_set=overdue_set,
     )
-    operator_rows = operator_scope["detail_rows"]
-    machine_rows = machine_scope["detail_rows"]
     cross_team_rows = build_team_cross_rows(
         team_id=selected_scope_id,
         team_name=selected_scope_name,
-        rows=rows,
+        rows=prepared_rows.value,
         overdue_set=overdue_set,
     )
-    axis_scope = machine_scope if normalized_team_axis == "machine" else operator_scope
-    summary = build_dispatch_summary(list(operator_rows) + list(machine_rows))
+
+    operator_payload = operator_scope.value
+    machine_payload = machine_scope.value
+    operator_rows = operator_payload["detail_rows"]
+    machine_rows = machine_payload["detail_rows"]
+    axis_scope = machine_payload if normalized_team_axis == "machine" else operator_payload
+
+    summary_collector = DegradationCollector()
+    summary_collector.extend(prepared_rows.events)
+    summary_collector.extend(operator_scope.events)
+    summary_collector.extend(machine_scope.events)
+    summary_collector.extend(cross_team_rows.events)
+    summary = build_dispatch_summary(
+        list(operator_rows) + list(machine_rows),
+        collector=summary_collector,
+        empty_reason=(
+            prepared_rows.empty_reason
+            or operator_scope.empty_reason
+            or machine_scope.empty_reason
+            or cross_team_rows.empty_reason
+        ),
+    )
     summary["operator_task_count"] = count_unique_schedule_ids(operator_rows)
     summary["machine_task_count"] = count_unique_schedule_ids(machine_rows)
-    summary["cross_team_sheet_count"] = len(cross_team_rows)
+    summary["cross_team_sheet_count"] = len(cross_team_rows.value)
     return {
         "summary": summary,
         "tasks": axis_scope["tasks"],
@@ -308,11 +373,11 @@ def build_team_scope_payload(
         "calendar_rows": axis_scope["calendar_rows"],
         "operator_rows": operator_rows,
         "machine_rows": machine_rows,
-        "cross_team_rows": cross_team_rows,
-        "operator_calendar_headers": operator_scope["calendar_headers"],
-        "operator_calendar_rows": operator_scope["calendar_rows"],
-        "machine_calendar_headers": machine_scope["calendar_headers"],
-        "machine_calendar_rows": machine_scope["calendar_rows"],
+        "cross_team_rows": cross_team_rows.value,
+        "operator_calendar_headers": operator_payload["calendar_headers"],
+        "operator_calendar_rows": operator_payload["calendar_rows"],
+        "machine_calendar_headers": machine_payload["calendar_headers"],
+        "machine_calendar_rows": machine_payload["calendar_rows"],
     }
 
 
@@ -325,20 +390,29 @@ def build_single_scope_payload(
     rows: List[Dict[str, Any]],
     overdue_set: Set[str],
 ) -> Dict[str, Any]:
+    prepared_rows = prepare_dispatch_rows(rows)
     scope_result = build_scope_result(
         scope_type=normalized_scope_type,
         scope_id=selected_scope_id,
         scope_name=selected_scope_name,
         dr=dr,
-        rows=rows,
+        rows=prepared_rows.value,
         overdue_set=overdue_set,
     )
+    scope_payload = scope_result.value
+    summary_collector = DegradationCollector()
+    summary_collector.extend(prepared_rows.events)
+    summary_collector.extend(scope_result.events)
     return {
-        "summary": build_dispatch_summary(scope_result["detail_rows"]),
-        "tasks": scope_result["tasks"],
-        "detail_rows": scope_result["detail_rows"],
-        "calendar_headers": scope_result["calendar_headers"],
-        "calendar_rows": scope_result["calendar_rows"],
+        "summary": build_dispatch_summary(
+            scope_payload["detail_rows"],
+            collector=summary_collector,
+            empty_reason=prepared_rows.empty_reason or scope_result.empty_reason or "",
+        ),
+        "tasks": scope_payload["tasks"],
+        "detail_rows": scope_payload["detail_rows"],
+        "calendar_headers": scope_payload["calendar_headers"],
+        "calendar_rows": scope_payload["calendar_rows"],
         "operator_rows": [],
         "machine_rows": [],
         "cross_team_rows": [],
@@ -388,10 +462,14 @@ def build_empty_dispatch_message(
     *,
     normalized_scope_type: str,
     dr: DispatchRange,
+    summary: Dict[str, Any],
     detail_rows: List[Dict[str, Any]],
     operator_rows: List[Dict[str, Any]],
     machine_rows: List[Dict[str, Any]],
 ) -> str:
+    empty_reason = _text((summary or {}).get("empty_reason"))
+    if empty_reason == _BAD_TIME_EMPTY_REASON:
+        return f"在 {dr.start_date.isoformat()} 至 {dr.end_date.isoformat()} 范围内存在时间非法的排班数据，已全部过滤，请检查排产结果。"
     if normalized_scope_type == "team":
         if not operator_rows and not machine_rows:
             return f"在 {dr.start_date.isoformat()} 至 {dr.end_date.isoformat()} 范围内未查询到该班组的排班任务。"

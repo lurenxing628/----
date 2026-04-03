@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, cast
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import Cell
 from openpyxl.styles import Alignment, Font
+from openpyxl.worksheet.worksheet import Worksheet
 
 from core.services.common.excel_templates import _sanitize_export_cell
 
 
-def _auto_width(ws) -> None:
+def _auto_width(ws: Worksheet) -> None:
     for column in ws.columns:
         max_length = 0
         column_letter = None
@@ -23,20 +25,22 @@ def _auto_width(ws) -> None:
             ws.column_dimensions[column_letter].width = min(max(max_length + 2, 12), 36)
 
 
-def _append_row(ws, values: Sequence[Any]) -> None:
+def _append_row(ws: Worksheet, values: Sequence[Any]) -> None:
     ws.append([_sanitize_export_cell(v) for v in values])
 
 
-def _write_table(ws, headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> None:
+def _write_table(ws: Worksheet, headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> None:
     _append_row(ws, list(headers))
     ws.freeze_panes = "A2"
-    for cell in ws[1]:
+    for cell_obj in ws[1]:
+        cell = cast(Cell, cell_obj)
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal="center", vertical="center")
     for row in rows:
         _append_row(ws, list(row))
     for row in ws.iter_rows(min_row=2):
-        for cell in row:
+        for cell_obj in row:
+            cell = cast(Cell, cell_obj)
             cell.alignment = Alignment(vertical="top", wrap_text=True)
     _auto_width(ws)
 
@@ -117,7 +121,39 @@ def _calendar_table_rows(calendar_rows: Sequence[Dict[str, Any]]) -> List[List[A
     return table
 
 
-def _summary_pairs(filters: Dict[str, Any], summary: Dict[str, Any]) -> List[List[Any]]:
+def _empty_reason_text(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text == "all_rows_filtered_by_invalid_time":
+        return "存在时间非法的排班数据，已全部过滤。"
+    return text
+
+
+def _degradation_message_text(summary: Dict[str, Any]) -> str:
+    events = summary.get("degradation_events") or []
+    messages: List[str] = []
+    for item in events:
+        if not isinstance(item, dict):
+            continue
+        message = str(item.get("message") or "").strip()
+        if not message:
+            continue
+        try:
+            count = int(item.get("count") or 0)
+        except Exception:
+            count = 0
+        text = f"{message}（{count}）" if count > 1 else message
+        if text not in messages:
+            messages.append(text)
+    return "；".join(messages)
+
+
+def _summary_pairs(payload: Dict[str, Any]) -> List[List[Any]]:
+    filters = payload.get("filters") or {}
+    summary = payload.get("summary") or {}
+    counters = summary.get("degradation_counters") or {}
+    overdue_markers_message = payload.get("overdue_markers_message") or ""
     return [
         ["视角", filters.get("scope_type_label") or ""],
         ["查询对象", filters.get("scope_label") or ""],
@@ -132,12 +168,18 @@ def _summary_pairs(filters: Dict[str, Any], summary: Dict[str, Any]) -> List[Lis
         ["超期批次任务", summary.get("overdue_count") or 0],
         ["外协/未分配", summary.get("external_count") or 0],
         ["跨班组借调", summary.get("cross_team_count") or 0],
+        ["数据退化", _yes_no_label(summary.get("degraded"))],
+        ["退化空结果", _yes_no_label(bool(summary.get("empty_reason")))],
+        ["退化空结果原因", _empty_reason_text(summary.get("empty_reason"))],
+        ["坏时间过滤数量", int(counters.get("bad_time_row_skipped") or 0)],
+        ["退化事件", _degradation_message_text(summary)],
+        ["超期标记说明", overdue_markers_message],
     ]
 
 
-def _write_summary_sheet(wb: Workbook, filters: Dict[str, Any], summary: Dict[str, Any]) -> None:
-    ws_summary = wb.create_sheet("查询摘要")
-    for key, value in _summary_pairs(filters, summary):
+def _write_summary_sheet(wb: Workbook, payload: Dict[str, Any]) -> None:
+    ws_summary = cast(Worksheet, wb.create_sheet("查询摘要"))
+    for key, value in _summary_pairs(payload):
         _append_row(ws_summary, [key, value])
     ws_summary.freeze_panes = "A2"
     for row in ws_summary.iter_rows():
@@ -148,12 +190,12 @@ def _write_summary_sheet(wb: Workbook, filters: Dict[str, Any], summary: Dict[st
 
 
 def _write_calendar_sheet(wb: Workbook, title: str, headers: Sequence[str], rows: Sequence[Dict[str, Any]]) -> None:
-    ws = wb.create_sheet(title)
+    ws = cast(Worksheet, wb.create_sheet(title))
     _write_table(ws, ["查询对象"] + list(headers), _calendar_table_rows(rows))
 
 
 def _write_detail_sheet(wb: Workbook, title: str, rows: Sequence[Dict[str, Any]]) -> None:
-    ws = wb.create_sheet(title)
+    ws = cast(Worksheet, wb.create_sheet(title))
     _write_table(ws, _detail_headers(), _detail_table_rows(rows))
 
 
@@ -193,8 +235,7 @@ def build_resource_dispatch_workbook(payload: Dict[str, Any]) -> BytesIO:
     wb.remove(default_ws)
 
     filters = payload.get("filters") or {}
-    summary = payload.get("summary") or {}
-    _write_summary_sheet(wb, filters, summary)
+    _write_summary_sheet(wb, payload)
 
     if str(filters.get("scope_type") or "") == "team":
         _write_team_scope_sheets(wb, payload)

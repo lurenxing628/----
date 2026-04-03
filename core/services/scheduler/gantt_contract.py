@@ -23,6 +23,10 @@ class GanttContractDTO:
     tasks: List[Dict[str, Any]] = field(default_factory=list)
     calendar_days: List[Dict[str, Any]] = field(default_factory=list)
     critical_chain: Dict[str, Any] = field(default_factory=dict)
+    degraded: bool = False
+    degradation_events: List[Dict[str, Any]] = field(default_factory=list)
+    degradation_counters: Dict[str, int] = field(default_factory=dict)
+    empty_reason: Optional[str] = None
     overdue_markers_degraded: bool = False
     overdue_markers_partial: bool = False
     overdue_markers_message: str = ""
@@ -39,6 +43,10 @@ class GanttContractDTO:
             "tasks": list(self.tasks or []),
             "calendar_days": list(self.calendar_days or []),
             "critical_chain": dict(self.critical_chain or {}),
+            "degraded": bool(self.degraded),
+            "degradation_events": list(self.degradation_events or []),
+            "degradation_counters": dict(self.degradation_counters or {}),
+            "empty_reason": self.empty_reason,
             "overdue_markers_degraded": bool(self.overdue_markers_degraded),
             "overdue_markers_partial": bool(self.overdue_markers_partial),
             "overdue_markers_message": str(self.overdue_markers_message or ""),
@@ -58,6 +66,10 @@ def build_gantt_contract(
     tasks: List[Dict[str, Any]],
     calendar_days: List[Dict[str, Any]],
     critical_chain: Dict[str, Any],
+    degraded: bool = False,
+    degradation_events: Optional[List[Dict[str, Any]]] = None,
+    degradation_counters: Optional[Dict[str, int]] = None,
+    empty_reason: Optional[str] = None,
     overdue_markers_degraded: bool = False,
     overdue_markers_partial: bool = False,
     overdue_markers_message: str = "",
@@ -74,10 +86,13 @@ def build_gantt_contract(
         tasks=list(tasks or []),
         calendar_days=list(calendar_days or []),
         critical_chain=dict(critical_chain or {}),
+        degraded=bool(degraded),
+        degradation_events=list(degradation_events or []),
+        degradation_counters=dict(degradation_counters or {}),
+        empty_reason=empty_reason,
         overdue_markers_degraded=bool(overdue_markers_degraded),
         overdue_markers_partial=bool(overdue_markers_partial),
         overdue_markers_message=str(overdue_markers_message or ""),
         history=dict(history or {}) if isinstance(history, dict) else None,
     )
     return dto.to_dict(include_history=bool(include_history))
-
