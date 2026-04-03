@@ -8,6 +8,7 @@ from core.services.common.enum_normalizers import normalize_supplier_status
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
 from core.services.common.normalize import normalize_text, to_str_or_blank
+from core.services.common.strict_parse import parse_required_float
 from core.services.process.op_type_service import OpTypeService
 from core.services.process.supplier_service import SupplierService
 from data.repositories import SupplierRepository
@@ -69,21 +70,14 @@ class SupplierExcelImportService:
             if not name:
                 raise ValidationError("“名称”不能为空", field="名称")
             op_type_id = self._resolve_op_type_id_strict_for_excel(data.get("对应工种"))
-            default_raw = data.get("默认周期")
-            if default_raw is None or (isinstance(default_raw, str) and default_raw.strip() == ""):
-                default_days = 1.0
-            else:
-                try:
-                    default_days = float(default_raw)
-                except Exception as e:
-                    raise ValidationError("“默认周期”必须是数字", field="默认周期") from e
-                if default_days <= 0:
-                    raise ValidationError("“默认周期”必须大于 0", field="默认周期")
+            default_days = parse_required_float(data.get("默认周期"), field="默认周期")
+            if default_days <= 0:
+                raise ValidationError("“默认周期”必须大于 0", field="默认周期")
 
             payload = {
                 "name": name,
                 "op_type_id": op_type_id,
-                "default_days": default_days,
+                "default_days": float(default_days),
             }
             if "状态" in data or not existed:
                 status = self._normalize_supplier_status_for_excel(data.get("状态"))

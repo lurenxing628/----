@@ -4,10 +4,12 @@ import json
 import os
 import time
 from datetime import datetime
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Tuple, Union
 
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.transaction import TransactionManager
+
+IsDueResult = Union[Tuple[bool, Any], Tuple[bool, Any, str, Any]]
 
 
 def _safe_logger_emit(logger, level: str, message: str) -> None:
@@ -52,6 +54,21 @@ def _write_job_state(conn, *, job_repo, job_key: str, last_run_time: str, last_r
         return False
 
 
+def _unpack_due_info(result) -> Tuple[bool, Any, str, Any]:
+    if not isinstance(result, tuple):
+        return bool(result), None, "missing", None
+    due = bool(result[0]) if len(result) >= 1 else False
+    last_run = result[1] if len(result) >= 2 else None
+    last_run_state = str(result[2]).strip() if len(result) >= 3 else ""
+    last_run_raw = result[3] if len(result) >= 4 else None
+    if last_run_state not in {"valid", "missing", "invalid"}:
+        if last_run is None:
+            last_run_state = "missing"
+        else:
+            last_run_state = "valid"
+    return due, last_run, last_run_state, last_run_raw
+
+
 def maybe_run_auto_backup(
     conn,
     *,
@@ -64,12 +81,12 @@ def maybe_run_auto_backup(
     job_key: str,
     logger=None,
     op_logger=None,
-    is_due_fn: Callable[..., Tuple[bool, str | None]],
+    is_due_fn: Callable[..., IsDueResult],
     fmt_db_dt_fn: Callable[[datetime], str],
 ) -> Tuple[bool, Dict[str, Any]]:
-    due, last_run = is_due_fn(job_repo, job_key, now, interval_minutes)
+    due, last_run, last_run_state, last_run_raw = _unpack_due_info(is_due_fn(job_repo, job_key, now, interval_minutes))
     if not due:
-        return False, {"due": False, "last_run_time": last_run}
+        return False, {"due": False, "last_run_time": last_run, "last_run_state": last_run_state, "last_run_raw": last_run_raw}
 
     mgr = BackupManager(db_path=db_path, backup_dir=backup_dir, keep_days=int(keep_days), logger=logger)
     t0 = time.time()

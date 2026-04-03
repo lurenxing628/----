@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
+from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
 from core.services.common.excel_templates import get_template_definition
 
 from .parser import PartContext, StationMeta, StepRecord
@@ -20,6 +21,7 @@ class ConvertedTemplates:
     operator_machine_rows: List[Dict[str, Any]]
     op_types_rows: List[Dict[str, Any]]
     suppliers_rows: List[Dict[str, Any]]
+    diagnostics: Dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
     def output_specs() -> List[Tuple[str, List[str], str]]:
@@ -36,11 +38,16 @@ class ConvertedTemplates:
 
 class UnitTemplateBuilder:
     def build(self, parts: Dict[str, PartContext], stations: List[StationMeta]) -> ConvertedTemplates:
+        collector = DegradationCollector()
+        samples: Dict[str, List[Any]] = {}
         machine_label_map = {s.machine_id: s.machine_label for s in stations}
         machine_op_hint = self._build_machine_op_hint(parts)
 
         op_records, machine_internal_counter, operator_names, used_machine_ids, links = self._collect_op_records(
-            parts, machine_op_hint
+            parts,
+            machine_op_hint,
+            collector=collector,
+            samples=samples,
         )
 
         conflict_names = self._conflict_names(op_records)
@@ -56,10 +63,16 @@ class UnitTemplateBuilder:
             machine_label_map=machine_label_map,
             machine_internal_counter=machine_internal_counter,
         )
-        operator_machine_rows = self._build_operator_machine_rows(links, operator_id_map)
+        operator_machine_rows = self._build_operator_machine_rows(links, operator_id_map, collector=collector, samples=samples)
 
         op_types_rows = self._build_op_types_rows(op_records)
-        suppliers_rows = self._build_suppliers_rows(op_records, op_types_rows)
+        suppliers_rows = self._build_suppliers_rows(op_records, op_types_rows, collector=collector, samples=samples)
+
+        diagnostics = {
+            "events": degradation_events_to_dicts(collector.to_list()),
+            "counters": collector.to_counters(),
+            "samples": {str(code): list(items or [])[:10] for code, items in samples.items()},
+        }
 
         return ConvertedTemplates(
             routes_rows=route_rows,
@@ -69,7 +82,34 @@ class UnitTemplateBuilder:
             operator_machine_rows=operator_machine_rows,
             op_types_rows=op_types_rows,
             suppliers_rows=suppliers_rows,
+            diagnostics=diagnostics,
         )
+
+    @staticmethod
+    def _record_diagnostic(
+        collector: DegradationCollector,
+        samples: Dict[str, List[Any]],
+        *,
+        code: str,
+        scope: str,
+        field: str,
+        message: str,
+        sample: Any,
+    ) -> None:
+        collector.add(
+            code=code,
+            scope=scope,
+            field=field,
+            message=message,
+            sample=(str(sample)[:200] if sample is not None else None),
+        )
+        bucket = samples.setdefault(str(code), [])
+        if len(bucket) >= 10:
+            return
+        try:
+            bucket.append(sample)
+        except Exception:
+            bucket.append(str(sample))
 
     @staticmethod
     def _build_machine_op_hint(parts: Dict[str, PartContext]) -> Dict[str, Counter]:
@@ -120,7 +160,12 @@ class UnitTemplateBuilder:
         return sorted(set(ctx.route_map.keys()) | set(internal_seq_set))
 
     def _collect_op_records(
-        self, parts: Dict[str, PartContext], machine_op_hint: Dict[str, Counter]
+        self,
+        parts: Dict[str, PartContext],
+        machine_op_hint: Dict[str, Counter],
+        *,
+        collector: DegradationCollector,
+        samples: Dict[str, List[Any]],
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Counter], Set[str], Set[str], Set[Tuple[str, str]]]:
         op_records: List[Dict[str, Any]] = []
         machine_internal_counter: Dict[str, Counter] = defaultdict(Counter)
@@ -131,12 +176,43 @@ class UnitTemplateBuilder:
         for part_no in sorted(parts.keys()):
             ctx = parts[part_no]
             seq_to_records, internal_seq_set = self._build_seq_maps(ctx)
+            for rec in ctx.step_records:
+                if not rec.step_text:
+                    continue
+                if rec.has_step_code and rec.operators:
+                    continue
+                self._record_diagnostic(
+                    collector,
+                    samples,
+                    code="compatible_row",
+                    scope="unit_excel.step_record",
+                    field="step_text",
+                    message="存在兼容行，已按读侧兼容规则继续转换。",
+                    sample={
+                        "part_no": ctx.part_no,
+                        "machine_id": rec.machine_id,
+                        "step_text": rec.step_text,
+                        "has_step_code": bool(rec.has_step_code),
+                        "operator_count": int(len(rec.operators or [])),
+                    },
+                )
+
             inferred_missing_name = self._infer_missing_name_map(
                 ctx,
                 internal_seq_set=internal_seq_set,
                 seq_to_records=seq_to_records,
                 machine_op_hint=machine_op_hint,
             )
+            for seq, inferred_name in inferred_missing_name.items():
+                self._record_diagnostic(
+                    collector,
+                    samples,
+                    code="inferred_field",
+                    scope="unit_excel.route",
+                    field="工序名称",
+                    message="工艺路线缺少工序名称，已按上下文推断。",
+                    sample={"part_no": ctx.part_no, "seq": int(seq), "value": inferred_name},
+                )
 
             for seq in self._all_seqs(ctx, internal_seq_set):
                 base_name = (ctx.route_map.get(seq) or inferred_missing_name.get(seq) or f"工序{seq}").strip()
@@ -282,12 +358,36 @@ class UnitTemplateBuilder:
         return machines_rows
 
     @staticmethod
-    def _build_operator_machine_rows(links: Set[Tuple[str, str]], operator_id_map: Dict[str, str]) -> List[Dict[str, Any]]:
+    def _build_operator_machine_rows(
+        links: Set[Tuple[str, str]],
+        operator_id_map: Dict[str, str],
+        *,
+        collector: DegradationCollector,
+        samples: Dict[str, List[Any]],
+    ) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
         for operator_name, machine_id in sorted(links, key=lambda x: (operator_id_map.get(x[0], x[0]), x[1])):
             op_id = operator_id_map.get(operator_name)
             if not op_id:
                 continue
+            UnitTemplateBuilder._record_diagnostic(
+                collector,
+                samples,
+                code="default_filled",
+                scope="unit_excel.operator_machine",
+                field="技能等级",
+                message="人员设备关联缺少技能等级，已默认补齐为 normal。",
+                sample={"工号": op_id, "设备编号": machine_id, "value": "normal"},
+            )
+            UnitTemplateBuilder._record_diagnostic(
+                collector,
+                samples,
+                code="default_filled",
+                scope="unit_excel.operator_machine",
+                field="主操设备",
+                message="人员设备关联缺少主操标记，已默认补齐为 no。",
+                sample={"工号": op_id, "设备编号": machine_id, "value": YesNo.NO.value},
+            )
             rows.append({"工号": op_id, "设备编号": machine_id, "技能等级": "normal", "主操设备": YesNo.NO.value})
         return rows
 
@@ -306,7 +406,13 @@ class UnitTemplateBuilder:
         return op_types_rows
 
     @staticmethod
-    def _build_suppliers_rows(op_records: Sequence[Dict[str, Any]], op_types_rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _build_suppliers_rows(
+        op_records: Sequence[Dict[str, Any]],
+        op_types_rows: Sequence[Dict[str, Any]],
+        *,
+        collector: DegradationCollector,
+        samples: Dict[str, List[Any]],
+    ) -> List[Dict[str, Any]]:
         external_days_by_name: Dict[str, List[float]] = defaultdict(list)
         for rec in op_records:
             if rec.get("source_internal"):
@@ -325,6 +431,34 @@ class UnitTemplateBuilder:
         for idx, op_name in enumerate(sorted([n for n in external_names if n]), start=1):
             days_list = external_days_by_name.get(op_name) or []
             default_days = round(sum(days_list) / len(days_list), 4) if days_list else 1.0
+            if not days_list:
+                UnitTemplateBuilder._record_diagnostic(
+                    collector,
+                    samples,
+                    code="default_filled",
+                    scope="unit_excel.suppliers",
+                    field="默认周期",
+                    message="外协供应商缺少周期样本，已默认补齐为 1.0 天。",
+                    sample={"对应工种": op_name, "value": 1.0},
+                )
+            UnitTemplateBuilder._record_diagnostic(
+                collector,
+                samples,
+                code="default_filled",
+                scope="unit_excel.suppliers",
+                field="状态",
+                message="外协供应商状态未提供，已默认补齐为 active。",
+                sample={"对应工种": op_name, "value": SupplierStatus.ACTIVE.value},
+            )
+            UnitTemplateBuilder._record_diagnostic(
+                collector,
+                samples,
+                code="default_filled",
+                scope="unit_excel.suppliers",
+                field="备注",
+                message="外协供应商备注未提供，已默认补齐为空。",
+                sample={"对应工种": op_name, "value": None},
+            )
             suppliers_rows.append(
                 {
                     "供应商ID": f"S{idx:03d}",

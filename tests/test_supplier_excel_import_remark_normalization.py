@@ -32,7 +32,7 @@ def test_supplier_excel_import_normalizes_remark_text() -> None:
         stats = svc.apply_preview_rows(
             [
                 _pr({"供应商ID": " S001 ", "名称": " 外协-标印厂 ", "默认周期": 2, "状态": None, "备注": "  abc  "}, row_num=2),
-                _pr({"供应商ID": "S002", "名称": "外协-热处理厂", "默认周期": "", "状态": "启用", "备注": "   "}, row_num=3),
+                _pr({"供应商ID": "S002", "名称": "外协-热处理厂", "默认周期": 1.0, "状态": "启用", "备注": "   "}, row_num=3),
             ],
             mode=ImportMode.OVERWRITE,
             existing_ids=set(),
@@ -106,4 +106,29 @@ def test_supplier_excel_import_overwrite_preserves_existing_status_and_remark_wh
             conn.close()
         except Exception:
             pass
+
+
+def test_supplier_excel_import_rejects_blank_default_days() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        svc = SupplierExcelImportService(conn)
+        stats = svc.apply_preview_rows(
+            [_pr({"供应商ID": "S003", "名称": "空白周期供应商", "默认周期": ""}, row_num=2)],
+            mode=ImportMode.OVERWRITE,
+            existing_ids=set(),
+        )
+        assert int(stats.get("total_rows", 0)) == 1, stats
+        assert int(stats.get("new_count", 0)) == 0, stats
+        assert int(stats.get("error_count", 0)) == 1, stats
+        errors_sample = stats.get("errors_sample") or []
+        assert errors_sample and "默认周期" in str(errors_sample[0].get("message") or "")
+
+        row = conn.execute("SELECT COUNT(1) AS cnt FROM Suppliers WHERE supplier_id=?", ("S003",)).fetchone()
+        assert row is not None and int(row["cnt"] or 0) == 0
+    finally:
+        conn.close()
 

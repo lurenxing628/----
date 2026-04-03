@@ -7,7 +7,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models import Supplier
 from core.models.enums import SUPPLIER_STATUS_VALUES, SupplierStatus
 from core.services.common.normalize import normalize_text
-from core.services.common.safe_logging import safe_warning
+from core.services.common.strict_parse import parse_required_float
 from data.repositories import OpTypeRepository, SupplierRepository
 
 
@@ -27,25 +27,13 @@ class SupplierService:
         return normalize_text(value)
 
     @staticmethod
-    def _normalize_default_days(value: Any, *, allow_none: bool = False, default: float = 1.0) -> Tuple[Optional[float], Optional[str]]:
-        if value is None:
-            if allow_none:
-                return None, None
-            return float(default), None
-        if isinstance(value, str) and value.strip() == "":
-            return float(default), "blank"
-        try:
-            return float(value), None
-        except Exception:
-            return float(default), "invalid"
-
-    def _log_default_days_fallback(self, raw_value: Any, *, supplier_id: Any = None) -> None:
-        if not self.logger:
-            return
-        prefix = "供应商默认周期输入无效，已回退为 1.0 天"
-        if supplier_id is not None:
-            prefix = f"供应商“{supplier_id}”默认周期输入无效，已回退为 1.0 天"
-        safe_warning(self.logger, f"{prefix}：raw={raw_value!r}")
+    def _normalize_default_days(value: Any, *, allow_missing: bool = False) -> Optional[float]:
+        if value is None and allow_missing:
+            return None
+        parsed = parse_required_float(value, field="默认周期")
+        if parsed <= 0:
+            raise ValidationError("“默认周期”必须大于 0", field="默认周期")
+        return float(parsed)
 
     def _resolve_op_type_id(self, value: Any) -> Optional[str]:
         """
@@ -76,9 +64,7 @@ class SupplierService:
         sstatus = self._normalize_text(status)
         if sstatus is not None:
             sstatus = sstatus.lower()
-        sdays, default_days_fallback = self._normalize_default_days(default_days, allow_none=allow_partial, default=1.0)
-        if default_days_fallback is not None:
-            self._log_default_days_fallback(default_days, supplier_id=supplier_id)
+        sdays = self._normalize_default_days(default_days, allow_missing=allow_partial)
 
         if not allow_partial:
             if not sid:
@@ -90,8 +76,6 @@ class SupplierService:
 
         if sstatus is not None and sstatus not in SUPPLIER_STATUS_VALUES:
             raise ValidationError("“状态”不正确，请选择：启用 / 停用。", field="状态")
-        if sdays is not None and sdays <= 0:
-            raise ValidationError("“默认周期”必须大于 0", field="默认周期")
 
         return sid, sname, sdays, sstatus
 
@@ -133,13 +117,15 @@ class SupplierService:
         supplier_id: Any,
         name: Any,
         op_type_value: Any = None,
-        default_days: Any = 1.0,
+        default_days: Any = None,
         status: Any = SupplierStatus.ACTIVE.value,
         remark: Any = None,
     ) -> Supplier:
         sid, sname, sdays, sstatus = self._validate_fields(supplier_id, name, default_days, status)
         if not sid:
             raise ValidationError("“供应商ID”不能为空", field="供应商ID")
+        if sdays is None:
+            raise ValidationError("“默认周期”不能为空", field="默认周期")
         op_type_id = self._resolve_op_type_id(op_type_value) if op_type_value is not None else None
         sremark = self._normalize_text(remark)
 
@@ -152,7 +138,7 @@ class SupplierService:
                     "supplier_id": sid,
                     "name": sname,
                     "op_type_id": op_type_id,
-                    "default_days": float(sdays if sdays is not None else 1.0),
+                    "default_days": float(sdays),
                     "status": sstatus or SupplierStatus.ACTIVE.value,
                     "remark": sremark,
                 }
@@ -181,7 +167,9 @@ class SupplierService:
         if status is not None:
             updates["status"] = sstatus
         if default_days is not None:
-            updates["default_days"] = float(sdays if sdays is not None else 1.0)
+            if sdays is None:
+                raise ValidationError("“默认周期”不能为空", field="默认周期")
+            updates["default_days"] = float(sdays)
         if op_type_value is not None:
             # 允许显式清空：传空字符串/None
             updates["op_type_id"] = self._resolve_op_type_id(op_type_value)
@@ -247,4 +235,3 @@ class SupplierService:
             raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有批次工序引用了供应商，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
         if self.repo.has_any_external_group_reference():
             raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有外部工序组绑定了供应商，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
-

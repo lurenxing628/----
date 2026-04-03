@@ -238,7 +238,7 @@ class BackupManager:
         db_path: str,
         backup_dir: str = "backups",
         keep_days: int = 7,
-        logger: logging.Logger = None,
+        logger: Optional[logging.Logger] = None,
     ):
         self.db_path = db_path
         self.backup_dir = backup_dir
@@ -247,7 +247,7 @@ class BackupManager:
 
         os.makedirs(backup_dir, exist_ok=True)
 
-    def backup(self, suffix: str = None) -> str:
+    def backup(self, suffix: Optional[str] = None) -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         suffix_str = f"_{suffix}" if suffix else ""
         backup_name = f"aps_backup_{timestamp}{suffix_str}.db"
@@ -315,8 +315,8 @@ class BackupManager:
                         fallback_log(self.logger, "info", f"数据库文件复制完成，等待后续结构校验：{backup_path}")
                         return RestoreResult(
                             ok=True,
-                            code="success",
-                            message=f"数据库文件复制完成：{backup_path}",
+                            code="copied_pending_verify",
+                            message=f"数据库文件已复制，等待后续结构校验：{backup_path}",
                             before_restore_path=before_restore_path,
                         )
                     except sqlite3.OperationalError as e:
@@ -372,6 +372,12 @@ class BackupManager:
                 message="数据库恢复失败，请查看日志。",
                 before_restore_path=before_restore_path,
             )
+        return RestoreResult(
+            ok=False,
+            code="restore_failed",
+            message="数据库恢复失败，请查看日志。",
+            before_restore_path=before_restore_path,
+        )
 
     def cleanup_old_backups(self):
         cutoff = datetime.now() - timedelta(days=self.keep_days)

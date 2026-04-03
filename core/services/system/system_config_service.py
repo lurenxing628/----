@@ -41,6 +41,8 @@ class SystemConfigSnapshot:
     auto_log_cleanup_enabled: str
     auto_log_cleanup_keep_days: int
     auto_log_cleanup_interval_minutes: int
+    dirty_fields: list[str]
+    dirty_reasons: Dict[str, str]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -52,6 +54,8 @@ class SystemConfigSnapshot:
             "auto_log_cleanup_enabled": self.auto_log_cleanup_enabled,
             "auto_log_cleanup_keep_days": int(self.auto_log_cleanup_keep_days),
             "auto_log_cleanup_interval_minutes": int(self.auto_log_cleanup_interval_minutes),
+            "dirty_fields": list(self.dirty_fields or []),
+            "dirty_reasons": dict(self.dirty_reasons or {}),
         }
 
 
@@ -77,18 +81,46 @@ class SystemConfigService:
         self.repo = SystemConfigRepository(conn, logger=logger)
 
     def _read_snapshot(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
+        dirty_fields: list[str] = []
+        dirty_reasons: Dict[str, str] = {}
+
+        def _mark_dirty(key: str, reason: str) -> None:
+            field = str(key or "").strip()
+            text = str(reason or "").strip()
+            if not field or not text:
+                return
+            if field not in dirty_fields:
+                dirty_fields.append(field)
+            dirty_reasons[field] = text
+
         def _get_yes_no(key: str, default: str) -> str:
-            return _normalize_yes_no(self.repo.get_value(key, default=default))
+            raw = self.repo.get_value(key, default=default)
+            normalized = _normalize_yes_no(raw)
+            raw_text = "" if raw is None else str(raw).strip()
+            if raw_text and raw_text.lower() not in {"yes", "no"}:
+                _mark_dirty(key, f"原始值 {raw_text!r} 已兼容归一为 {normalized}。")
+            elif raw is not None and not raw_text:
+                _mark_dirty(key, f"原始值为空，已按 {normalized} 兼容读取。")
+            return normalized
 
         def _get_int(key: str, default: int, min_v: int, max_v: int) -> int:
-            raw = self.repo.get_value(key, default=str(default))
+            raw = self.repo.get_value(key, default=None)
+            if raw is None:
+                return int(default)
+            raw_text = str(raw).strip()
+            if raw_text == "":
+                _mark_dirty(key, f"原始值为空，已回退为 {default}。")
+                return int(default)
             try:
-                v = int(str(raw).strip()) if raw is not None else int(default)
+                v = int(raw_text)
             except Exception:
+                _mark_dirty(key, f"原始值 {raw_text!r} 不是整数，已回退为 {default}。")
                 return int(default)
             if v < min_v:
+                _mark_dirty(key, f"原始值 {raw_text!r} 小于最小值 {min_v}，已钳制为 {min_v}。")
                 return int(min_v)
             if v > max_v:
+                _mark_dirty(key, f"原始值 {raw_text!r} 大于最大值 {max_v}，已钳制为 {max_v}。")
                 return int(max_v)
             return int(v)
 
@@ -107,6 +139,8 @@ class SystemConfigService:
             auto_log_cleanup_interval_minutes=_get_int(
                 "auto_log_cleanup_interval_minutes", default=60, min_v=self.MIN_INTERVAL_MINUTES, max_v=self.MAX_INTERVAL_MINUTES
             ),
+            dirty_fields=list(dirty_fields),
+            dirty_reasons=dict(dirty_reasons),
         )
 
     def ensure_defaults(self, backup_keep_days_default: int) -> None:

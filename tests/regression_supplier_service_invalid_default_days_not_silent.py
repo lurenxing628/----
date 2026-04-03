@@ -1,63 +1,49 @@
-import os
+from __future__ import annotations
+
 import sqlite3
-import sys
-from typing import List
+from pathlib import Path
+
+import pytest
+
+from core.infrastructure.errors import ValidationError
+from core.services.process.supplier_service import SupplierService
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def find_repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(here, ".."))
-    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
-        return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+def _load_schema(conn: sqlite3.Connection) -> None:
+    schema_path = REPO_ROOT / "schema.sql"
+    conn.executescript(schema_path.read_text(encoding="utf-8"))
+    conn.commit()
 
 
-class _Logger:
-    def __init__(self) -> None:
-        self.messages: List[str] = []
-
-    def warning(self, message, *args, **kwargs) -> None:
-        self.messages.append(str(message))
+def _message(exc: ValidationError) -> str:
+    return getattr(exc, "message", str(exc))
 
 
-def main() -> None:
-    repo_root = find_repo_root()
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-
-    from core.services.process.supplier_service import SupplierService
-
-    schema_sql = open(os.path.join(repo_root, "schema.sql"), "r", encoding="utf-8").read()
+def test_supplier_service_invalid_default_days_rejected_on_create_and_update() -> None:
     conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    logger = _Logger()
     try:
-        conn.executescript(schema_sql)
-        svc = SupplierService(conn, logger=logger, op_logger=None)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+        svc = SupplierService(conn, logger=None, op_logger=None)
 
-        created = svc.create("S_BAD", "坏默认周期供应商", default_days="abc", status="active")
-        assert created.supplier_id == "S_BAD", f"供应商创建失败：{created!r}"
-        row1 = conn.execute("SELECT default_days FROM Suppliers WHERE supplier_id=?", ("S_BAD",)).fetchone()
-        assert row1 is not None, "供应商未落库"
-        assert abs(float(row1["default_days"] or 0.0) - 1.0) < 1e-9, f"create fallback 默认周期异常：{row1['default_days']!r}"
+        with pytest.raises(ValidationError) as create_exc:
+            svc.create("S_BAD", "坏默认周期供应商", default_days="abc", status="active")
+        assert "默认周期" in _message(create_exc.value)
+        count_row = conn.execute("SELECT COUNT(1) AS cnt FROM Suppliers WHERE supplier_id=?", ("S_BAD",)).fetchone()
+        assert count_row is not None and int(count_row["cnt"] or 0) == 0
 
-        updated = svc.update("S_BAD", default_days="")
-        assert updated.supplier_id == "S_BAD", f"供应商更新失败：{updated!r}"
-        row2 = conn.execute("SELECT default_days FROM Suppliers WHERE supplier_id=?", ("S_BAD",)).fetchone()
-        assert row2 is not None, "供应商更新后读取失败"
-        assert abs(float(row2["default_days"] or 0.0) - 1.0) < 1e-9, f"update fallback 默认周期异常：{row2['default_days']!r}"
+        created = svc.create("S_OK", "正常供应商", default_days=2.5, status="active")
+        assert created.supplier_id == "S_OK"
 
-        messages = list(logger.messages)
-        assert len(messages) >= 2, f"create/update fallback 未留痕：{messages!r}"
-        assert all("默认周期输入无效" in msg for msg in messages[:2]), f"fallback 日志文案异常：{messages!r}"
+        with pytest.raises(ValidationError) as update_exc:
+            svc.update("S_OK", default_days="")
+        assert "不能为空" in _message(update_exc.value)
 
-        print("OK")
+        row = conn.execute("SELECT default_days FROM Suppliers WHERE supplier_id=?", ("S_OK",)).fetchone()
+        assert row is not None
+        assert abs(float(row["default_days"] or 0.0) - 2.5) < 1e-9
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-
-
-if __name__ == "__main__":
-    main()
+        conn.close()
