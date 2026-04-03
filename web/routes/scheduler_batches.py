@@ -22,6 +22,32 @@ def _strict_mode_enabled(raw_value: Any) -> bool:
     return str(raw_value or "").strip().lower() in {"1", "y", "yes", "true", "on"}
 
 
+def _normalize_warning_texts(values: object) -> List[str]:
+    if not isinstance(values, (list, tuple)):
+        return []
+    out: List[str] = []
+    seen = set()
+    for item in values:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
+def _surface_route_warnings(messages: object, *, limit: int = 3) -> None:
+    warnings = _normalize_warning_texts(messages)
+    if not warnings:
+        return
+    shown = warnings[: max(1, int(limit))]
+    for item in shown:
+        flash(item, "warning")
+    remaining = len(warnings) - len(shown)
+    if remaining > 0:
+        flash(f"另有 {remaining} 条告警，请到系统历史查看。", "warning")
+
+
 @bp.get("/")
 def batches_page():
     batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
@@ -80,6 +106,10 @@ def batches_page():
                 exc.__class__.__name__,
             )
             latest_summary = None
+    latest_warning_messages = _normalize_warning_texts((latest_summary or {}).get("warnings") if isinstance(latest_summary, dict) else None)
+    latest_warning_preview = latest_warning_messages[:3]
+    latest_warning_total = len(latest_warning_messages)
+    latest_warning_hidden_count = max(0, latest_warning_total - len(latest_warning_preview))
 
     return render_template(
         "scheduler/batches.html",
@@ -93,6 +123,9 @@ def batches_page():
         active_preset=active_preset,
         latest_history=latest_history,
         latest_summary=latest_summary,
+        latest_warning_preview=latest_warning_preview,
+        latest_warning_total=latest_warning_total,
+        latest_warning_hidden_count=latest_warning_hidden_count,
         default_start_dt=(datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d 08:00"),
         pager=pager,
     )
@@ -174,6 +207,7 @@ def create_batch():
             strict_mode=strict_mode,
         )
         flash(f"已创建批次并生成工序：{b.batch_id}（共 {len(batch_svc.list_operations(b.batch_id))} 道工序）", "success")
+        _surface_route_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
         return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))
     except AppError as e:
         flash(e.message, "error")
@@ -361,6 +395,7 @@ def generate_ops(batch_id: str):
         )
         cnt = len(batch_svc.list_operations(b.batch_id))
         flash(f"已重建批次工序：共 {cnt} 道工序。", "success")
+        _surface_route_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
     except AppError as e:
         flash(e.message, "error")
     return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))

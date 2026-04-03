@@ -7,7 +7,7 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import ExternalGroup, Part, PartOperation
 from core.models.enums import YESNO_VALUES, MergeMode, PartOperationStatus, SourceType, YesNo
-from core.services.common.normalize import normalize_text
+from core.services.common.normalize import append_unique_text_messages, normalize_text
 from core.services.common.safe_logging import safe_warning
 from data.repositories import (
     ExternalGroupRepository,
@@ -129,7 +129,16 @@ class PartService:
             raise ValidationError("“图号”不能为空", field="图号")
         return self._get_or_raise(pn)
 
-    def create(self, part_no: Any, part_name: Any, route_raw: Any = None, remark: Any = None, *, strict_mode: bool = False) -> Part:
+    def create(
+        self,
+        part_no: Any,
+        part_name: Any,
+        route_raw: Any = None,
+        remark: Any = None,
+        *,
+        strict_mode: bool = False,
+        user_warnings: Optional[List[str]] = None,
+    ) -> Part:
         pn = self._normalize_text(part_no)
         name = self._normalize_text(part_name)
         rr = None if route_raw is None else str(route_raw)
@@ -162,11 +171,16 @@ class PartService:
         # 如果填写了工艺路线字符串，则尝试自动解析（失败时仍保留零件）
         if rr and str(rr).strip() and not strict_mode:
             try:
-                self.reparse_and_save(part_no=pn, route_raw=rr, strict_mode=False)
+                auto_parse_result = self.reparse_and_save(part_no=pn, route_raw=rr, strict_mode=False)
+                append_unique_text_messages(user_warnings, getattr(auto_parse_result, "warnings", None))
             except (BusinessError, ValidationError) as exc:
                 # 不阻断创建；错误在详情页可见
                 detail = getattr(exc, "message", None) or str(exc)
                 safe_warning(self.logger, f"零件“{pn}”工艺路线自动解析失败，已保留零件：{detail}")
+                append_unique_text_messages(
+                    user_warnings,
+                    f"零件已创建，但工序模板未成功生成，请检查工艺路线并重新解析。原因：{detail}",
+                )
 
         return self._get_or_raise(pn)
 

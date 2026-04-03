@@ -16,15 +16,12 @@ from .scheduler_bp import _batch_status_zh, _priority_zh, _ready_zh, bp
 
 
 def _count_internal_ops(ops: List[Any]) -> int:
-    try:
-        cnt = 0
-        for op in ops or []:
-            src = (getattr(op, "source", "") or "").strip().lower()
-            if src == SourceType.INTERNAL.value:
-                cnt += 1
-        return cnt
-    except Exception:
-        return 0
+    cnt = 0
+    for op in ops or []:
+        src = (getattr(op, "source", "") or "").strip().lower()
+        if src == SourceType.INTERNAL.value:
+            cnt += 1
+    return cnt
 
 
 def _collect_selected_resource_ids(ops: List[Any]) -> Tuple[Set[str], Set[str], Set[str]]:

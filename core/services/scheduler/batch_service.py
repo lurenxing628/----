@@ -8,7 +8,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models import Batch, BatchOperation
 from core.models.enums import BatchPriority, BatchStatus, ReadyStatus, SourceType
 from core.services.common.excel_service import ImportMode
-from core.services.common.normalize import normalize_text
+from core.services.common.normalize import append_unique_text_messages, normalize_text
 from data.repositories import BatchOperationRepository, BatchRepository, PartOperationRepository, PartRepository
 
 from . import batch_copy, batch_excel_import, batch_template_ops
@@ -23,18 +23,24 @@ class BatchService:
         conn,
         logger=None,
         op_logger=None,
-        template_resolver: Optional[Callable[..., None]] = None,
+        template_resolver: Optional[Callable[..., Any]] = None,
     ):
         self.conn = conn
         self.logger = logger
         self.op_logger = op_logger
         self.tx_manager = TransactionManager(conn)
+        self._user_visible_warnings: List[str] = []
 
         self.batch_repo = BatchRepository(conn, logger=logger)
         self.batch_op_repo = BatchOperationRepository(conn, logger=logger)
         self.part_repo = PartRepository(conn, logger=logger)
         self.part_op_repo = PartOperationRepository(conn, logger=logger)
         self._template_resolver = template_resolver or self._default_template_resolver
+
+    def consume_user_visible_warnings(self) -> List[str]:
+        warnings = list(self._user_visible_warnings)
+        self._user_visible_warnings.clear()
+        return warnings
 
     # -------------------------
     # 工具方法 / 校验
@@ -114,17 +120,16 @@ class BatchService:
 
     def _default_template_resolver(
         self, part_no: str, part_name: str, route_raw: str, no_tx: bool, *, strict_mode: bool = False
-    ) -> None:
+    ):
         # 懒加载跨域依赖：默认行为与历史实现等价
         from core.services.process.part_service import PartService
 
         svc = PartService(self.conn, logger=self.logger, op_logger=self.op_logger)
         if no_tx:
-            svc.upsert_and_parse_no_tx(part_no=part_no, part_name=part_name, route_raw=route_raw, strict_mode=strict_mode)
-        else:
-            svc.reparse_and_save(part_no=part_no, route_raw=route_raw, strict_mode=strict_mode)
+            return svc.upsert_and_parse_no_tx(part_no=part_no, part_name=part_name, route_raw=route_raw, strict_mode=strict_mode)
+        return svc.reparse_and_save(part_no=part_no, route_raw=route_raw, strict_mode=strict_mode)
 
-    def _invoke_template_resolver(self, part_no: str, part_name: str, route_raw: str, no_tx: bool, *, strict_mode: bool) -> None:
+    def _invoke_template_resolver(self, part_no: str, part_name: str, route_raw: str, no_tx: bool, *, strict_mode: bool):
         resolver = self._template_resolver
         try:
             sig = inspect.signature(resolver)
@@ -132,12 +137,24 @@ class BatchService:
                 param.kind == inspect.Parameter.VAR_KEYWORD or param.name == "strict_mode"
                 for param in sig.parameters.values()
             )
-        except Exception:
-            supports_strict_mode = False
+        except Exception as exc:
+            if strict_mode:
+                raise BusinessError(
+                    ErrorCode.ROUTE_PARSE_ERROR,
+                    "当前模板解析器版本过旧，不支持 strict_mode，请升级解析器后重试。",
+                    details={"reason": "strict_mode_unsupported"},
+                    cause=exc,
+                ) from exc
+            return resolver(part_no, part_name, route_raw, no_tx)
         if supports_strict_mode:
-            resolver(part_no, part_name, route_raw, no_tx, strict_mode=strict_mode)
-            return
-        resolver(part_no, part_name, route_raw, no_tx)
+            return resolver(part_no, part_name, route_raw, no_tx, strict_mode=strict_mode)
+        if strict_mode:
+            raise BusinessError(
+                ErrorCode.ROUTE_PARSE_ERROR,
+                "当前模板解析器版本过旧，不支持 strict_mode，请升级解析器后重试。",
+                details={"reason": "strict_mode_unsupported"},
+            )
+        return resolver(part_no, part_name, route_raw, no_tx)
 
     def _load_template_ops_with_fallback(self, part_no: str, part, *, no_tx: bool, strict_mode: bool = False):
         template_ops = self.part_op_repo.list_by_part(part_no, include_deleted=False)
@@ -147,7 +164,22 @@ class BatchService:
         rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
         if rr:
             try:
-                self._invoke_template_resolver(part_no, part.part_name or part_no, rr, no_tx, strict_mode=bool(strict_mode))
+                parse_result = self._invoke_template_resolver(
+                    part_no,
+                    part.part_name or part_no,
+                    rr,
+                    no_tx,
+                    strict_mode=bool(strict_mode),
+                )
+                append_unique_text_messages(self._user_visible_warnings, getattr(parse_result, "warnings", None))
+            except BusinessError as e:
+                if ((getattr(e, "details", None) or {}).get("reason")) == "strict_mode_unsupported":
+                    raise
+                raise BusinessError(
+                    ErrorCode.ROUTE_PARSE_ERROR,
+                    "该零件尚未生成工序模板，且自动解析失败。请到【工艺管理-工序模板】中检查工艺路线并重新解析。",
+                    cause=e,
+                ) from e
             except Exception as e:
                 raise BusinessError(
                     ErrorCode.ROUTE_PARSE_ERROR,
@@ -431,6 +463,7 @@ class BatchService:
         - 再复制 PartOperations -> BatchOperations
         任意一步失败必须整体回滚，避免“批次有了但工序没生成”的脏数据。
         """
+        self.consume_user_visible_warnings()
         bid = self._normalize_text(batch_id)
         if not bid:
             raise ValidationError("“批次号”不能为空", field="批次号")

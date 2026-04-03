@@ -6,7 +6,7 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import ExternalGroup, PartOperation
 from core.models.enums import MERGE_MODE_VALUES, MergeMode, SourceType
-from core.services.common.normalize import normalize_text
+from core.services.common.normalize import append_unique_text_messages, normalize_text
 from core.services.common.safe_logging import safe_warning
 from data.repositories import ExternalGroupRepository, PartOperationRepository
 
@@ -112,6 +112,7 @@ class ExternalGroupService:
         remark: Any,
         normalized_supplier_id: Optional[str],
         normalized_remark: Optional[str],
+        user_warnings: Optional[List[str]] = None,
         strict_mode: bool = False,
     ) -> None:
         self._update_group_common_fields(
@@ -136,9 +137,11 @@ class ExternalGroupService:
                         f"外部工序 {seq}（{op_type_name}）周期必须大于 0；strict_mode 已拒绝按 1.0 天回退",
                         field=f"ext_days_{seq}",
                     )
-                safe_warning(
-                    self.logger, f"外部工序 {seq}（{op_type_name}）周期输入无效（raw={d!r}），compatible mode 已按 1.0 天回退写入 ext_days"
+                warning_text = (
+                    f"外部工序 {seq}（{op_type_name}）周期输入无效（raw={d!r}），compatible mode 已按 1.0 天回退写入 ext_days"
                 )
+                safe_warning(self.logger, warning_text)
+                append_unique_text_messages(user_warnings, warning_text)
                 dv = 1.0
             self.op_repo.update(part_no, seq, {"ext_days": float(dv)})
 
@@ -150,6 +153,7 @@ class ExternalGroupService:
         per_op_days: Optional[Dict[int, Any]] = None,
         supplier_id: Any = None,
         remark: Any = None,
+        user_warnings: Optional[List[str]] = None,
         strict_mode: bool = False,
     ) -> ExternalGroup:
         """
@@ -195,6 +199,7 @@ class ExternalGroupService:
                     remark=remark,
                     normalized_supplier_id=sup_id,
                     normalized_remark=rmk,
+                    user_warnings=user_warnings,
                     strict_mode=bool(strict_mode),
                 )
 

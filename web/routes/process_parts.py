@@ -26,6 +26,26 @@ def _summarize_active_ops(ops: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any
     return active_ops, total_count, internal_count, external_count
 
 
+def _surface_route_warnings(messages: object, *, limit: int = 5) -> None:
+    if not isinstance(messages, (list, tuple)):
+        return
+    normalized: List[str] = []
+    seen = set()
+    for item in messages:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        normalized.append(text)
+    if not normalized:
+        return
+    shown = normalized[: max(1, int(limit))]
+    for item in shown:
+        flash(item, "warning")
+    if len(normalized) > len(shown):
+        flash(f"另有 {len(normalized) - len(shown)} 条告警，请按需重试或查看日志。", "warning")
+
+
 def _build_ops_by_group(active_ops: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     ops_by_group: Dict[str, List[Dict[str, Any]]] = {}
     for o in active_ops:
@@ -72,10 +92,19 @@ def create_part():
     remark = request.form.get("remark")
     strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
 
-    svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
+    user_warnings: List[str] = []
+    svc = PartService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
     try:
-        p = svc.create(part_no=part_no, part_name=part_name, route_raw=route_raw, remark=remark, strict_mode=strict_mode)
+        p = svc.create(
+            part_no=part_no,
+            part_name=part_name,
+            route_raw=route_raw,
+            remark=remark,
+            strict_mode=strict_mode,
+            user_warnings=user_warnings,
+        )
         flash(f"已创建零件：{p.part_no} {p.part_name}", "success")
+        _surface_route_warnings(user_warnings, limit=3)
         return redirect(url_for("process.part_detail", part_no=p.part_no))
     except AppError as e:
         flash(e.message, "error")
@@ -198,6 +227,7 @@ def reparse_part(part_no: str):
         f"工艺路线解析完成：共 {result.stats.get('total', 0)} 道工序（内部 {result.stats.get(SourceType.INTERNAL.value, 0)}，外部 {result.stats.get(SourceType.EXTERNAL.value, 0)}）{warn_text}。耗时 {ms} ms。",
         "success",
     )
+    _surface_route_warnings(result.warnings, limit=5)
     return redirect(url_for("process.part_detail", part_no=part_no))
 
 
@@ -227,6 +257,7 @@ def set_group_mode(part_no: str, group_id: str):
             continue
         per_op_days[seq] = v
 
+    user_warnings: List[str] = []
     svc = ExternalGroupService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
     try:
         svc.set_merge_mode(
@@ -235,8 +266,10 @@ def set_group_mode(part_no: str, group_id: str):
             total_days=total_days,
             per_op_days=per_op_days,
             strict_mode=strict_mode,
+            user_warnings=user_warnings,
         )
         flash(f"外部工序组周期模式已更新：{_merge_mode_zh(merge_mode)}。", "success")
+        _surface_route_warnings(user_warnings, limit=5)
     except AppError as e:
         flash(e.message, "error")
     return redirect(url_for("process.part_detail", part_no=part_no))
