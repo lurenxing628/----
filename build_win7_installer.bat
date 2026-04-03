@@ -28,9 +28,10 @@ set "DIST_ROOT="
 for /f "delims=" %%E in ('dir /b /s "%CD%\dist\*.exe" 2^>nul') do if not defined DIST_ROOT set "DIST_ROOT=%%~dpE"
 if not defined DIST_ROOT goto :dist_missing
 
-set "LAUNCHER_FILE="
-for /f "delims=" %%F in ('dir /b /s "%CD%\assets\*Chrome*.bat" 2^>nul') do if not defined LAUNCHER_FILE set "LAUNCHER_FILE=%%~fF"
-if defined LAUNCHER_FILE copy /y "%LAUNCHER_FILE%" "%DIST_ROOT%" >> "%LOG%" 2>&1
+set "LAUNCHER_FILE=%CD%\assets\启动_排产系统_Chrome.bat"
+if not exist "%LAUNCHER_FILE%" goto :launcher_missing
+copy /y "%LAUNCHER_FILE%" "%DIST_ROOT%" >> "%LOG%" 2>&1
+if errorlevel 1 goto :launcher_copy_failed
 
 echo.
 echo [installer] Step 2/2: build main setup.exe (Inno Setup)...
@@ -63,6 +64,22 @@ start "" notepad "%LOG%" >nul 2>&1
 pause
 popd >nul 2>&1
 endlocal & exit /b 11
+
+:launcher_missing
+echo [installer] launcher file missing: %LAUNCHER_FILE%
+echo [installer] launcher_missing>> "%LOG%"
+start "" notepad "%LOG%" >nul 2>&1
+pause
+popd >nul 2>&1
+endlocal & exit /b 13
+
+:launcher_copy_failed
+echo [installer] launcher copy failed. See log: %LOG%
+echo [installer] launcher_copy_failed>> "%LOG%"
+start "" notepad "%LOG%" >nul 2>&1
+pause
+popd >nul 2>&1
+endlocal & exit /b 14
 
 :iscc_missing
 echo [installer] ISCC.exe not found.
