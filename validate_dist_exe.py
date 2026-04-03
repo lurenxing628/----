@@ -84,14 +84,22 @@ def _read_runtime_contract(log_dir: str) -> tuple[str, int, str] | None:
     host_file, port_file, db_file = _runtime_contract_paths(log_dir)
     if not (os.path.exists(host_file) and os.path.exists(port_file) and os.path.exists(db_file)):
         return None
+
+    host = _read_host_file(host_file)
+    if not host:
+        raise RuntimeError(f"运行时契约文件解析失败：host 文件为空：{host_file}")
+
     try:
-        host = _read_host_file(host_file)
         port = _read_port_file(port_file)
-        db_path = _read_db_file(db_file)
-    except Exception:
-        return None
-    if not host or port <= 0 or not db_path:
-        return None
+    except Exception as e:
+        raise RuntimeError(f"运行时契约文件解析失败：port 文件无效：{port_file}") from e
+    if port <= 0:
+        raise RuntimeError(f"运行时契约文件解析失败：port 必须大于 0：{port_file}")
+
+    db_path = _read_db_file(db_file)
+    if not db_path:
+        raise RuntimeError(f"运行时契约文件解析失败：db_path 文件为空：{db_file}")
+
     return host, port, db_path
 
 
@@ -232,11 +240,13 @@ def main() -> int:
         try:
             p.terminate()
             p.wait(timeout=5)
-        except Exception:
+        except Exception as e:
+            print(f"[validate] 警告：terminate 失败：{e}")
             try:
                 p.kill()
-            except Exception:
-                pass
+                p.wait(timeout=5)
+            except Exception as kill_e:
+                print(f"[validate] 警告：kill 失败：{kill_e}")
 
 
 if __name__ == "__main__":

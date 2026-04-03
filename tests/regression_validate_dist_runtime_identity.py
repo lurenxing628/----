@@ -83,6 +83,24 @@ def main() -> None:
     _write_text(log_dir / "aps_port.txt", "5721\n")
     _assert(mod._read_runtime_contract(str(log_dir)) is None, "缺少 db_path 时不应视为完整运行时契约")
 
+    _write_contract(log_dir, "127.0.0.1", 5723, str(db_path))
+    _write_text(log_dir / "aps_port.txt", "bad-port\n")
+    try:
+        mod._read_runtime_contract(str(log_dir))
+        raise RuntimeError("存在全部契约文件但 port 非法时应立即报错")
+    except RuntimeError as e:
+        _assert("port 文件无效" in str(e), "非法 port 的错误信息不正确")
+
+    _write_contract(log_dir, "127.0.0.1", 5724, str(db_path))
+    _write_text(log_dir / "aps_db_path.txt", "\n")
+    try:
+        mod._read_runtime_contract(str(log_dir))
+        raise RuntimeError("存在全部契约文件但 db_path 为空时应立即报错")
+    except RuntimeError as e:
+        _assert("db_path 文件为空" in str(e), "空 db_path 的错误信息不正确")
+
+    _write_contract(log_dir, "127.0.0.1", 5725, str(db_path))
+
     delayed_runtime_dir = Path(tempfile.mkdtemp(prefix="aps_validate_identity_wait_"))
     delayed_log_dir = delayed_runtime_dir / "logs"
     delayed_db_path = delayed_runtime_dir / "delayed.db"
@@ -104,6 +122,15 @@ def main() -> None:
     _assert(waited_contract[0] == "127.0.0.1", "等待得到的 host 不正确")
     _assert(waited_contract[1] == 5722, "等待得到的 port 不正确")
     _assert(waited_contract[2] == os.path.normcase(os.path.abspath(str(delayed_db_path))), "等待得到的 db_path 不正确")
+
+    _write_text(delayed_log_dir / "aps_host.txt", "127.0.0.1\n")
+    _write_text(delayed_log_dir / "aps_port.txt", "oops\n")
+    _write_text(delayed_log_dir / "aps_db_path.txt", str(delayed_db_path) + "\n")
+    try:
+        mod._wait_for_runtime_contract(str(delayed_log_dir), _DummyProc(), timeout_s=0.2)
+        raise RuntimeError("解析失败时不应继续等待到超时")
+    except RuntimeError as e:
+        _assert("port 文件无效" in str(e), "等待阶段的解析失败信息不正确")
 
     try:
         mod._wait_for_runtime_contract(str(Path(tempfile.mkdtemp(prefix="aps_validate_identity_exit_")) / "logs"), _DummyProc(exit_code=9), timeout_s=0.1)

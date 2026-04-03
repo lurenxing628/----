@@ -134,6 +134,10 @@ def test_launcher_bat_contains_json_health_probe_and_owner_fallback():
     assert "ConvertFrom-Json" in text
     assert r"Contains('\"app\":\"aps\"')" not in text
     assert "%COMPUTERNAME%" in text
+    assert "LOCK_ACTIVE=UNKNOWN" in text
+    assert "BLOCKED_BY_UNCERTAIN" in text
+    assert "RUNTIME_CONTRACT_FILE" in text
+    assert "port_file_invalid" in text
 
 
 def test_installer_uninstall_stop_checks_multiple_runtime_roots():
@@ -150,6 +154,9 @@ def test_main_installer_contains_precleanup_and_skip_legacy_migration():
     assert "SkipLegacyMigration" in text
     assert "ResolveStopHelperExe" in text
     assert "RegisteredMainAppDirPath" in text
+    assert "TryMigrateLegacyDataBeforeInstall" in text
+    assert "CleanupMigrationPartialData" in text
+    assert "MigrateLegacyDataIfNeeded" not in text
 
 
 def test_legacy_installer_uses_runtime_root_stop_contract():
@@ -159,6 +166,33 @@ def test_legacy_installer_uses_runtime_root_stop_contract():
     assert "TryStopApsRuntimeAtDir(HelperExePath, SharedDataRootPath" in text
     assert "TryStopApsRuntimeAtDir(HelperExePath, LegacyDataRootPath" in text
     assert "Params := '--runtime-stop \"' + SharedLogDirPath" not in text
+    assert "TryMigrateLegacyDataBeforeInstall" in text
+    assert "CleanupMigrationPartialData" in text
+    assert "MigrateLegacyDataIfNeeded" not in text
+
+
+def test_installers_fail_closed_on_silent_uninstall_and_retry_delete():
+    repo_root = Path(_repo_root())
+    main_text = (repo_root / "installer" / "aps_win7.iss").read_text(encoding="utf-8")
+    legacy_text = (repo_root / "installer" / "aps_win7_legacy.iss").read_text(encoding="utf-8")
+    chrome_text = (repo_root / "installer" / "aps_win7_chrome.iss").read_text(encoding="utf-8")
+
+    assert "silent uninstall: failed to stop APS runtime before uninstall" in main_text
+    assert "silent uninstall: failed to stop APS runtime or bundled Chrome before uninstall" in legacy_text
+    assert "silent uninstall: failed to stop APS Chrome processes before uninstall" in chrome_text
+    assert "Sleep(1000)" in main_text
+    assert "Sleep(1000)" in legacy_text
+
+
+def test_build_scripts_guard_vendor_and_launcher_path():
+    repo_root = Path(_repo_root())
+    onedir_text = (repo_root / "build_win7_onedir.bat").read_text(encoding="utf-8")
+    installer_text = (repo_root / "build_win7_installer.bat").read_text(encoding="utf-8")
+
+    assert "if exist vendor (" in onedir_text
+    assert "vendor 目录不存在，跳过 vendor 数据目录。" in onedir_text
+    assert r"assets\启动_排产系统_Chrome.bat" in installer_text
+    assert "*Chrome*.bat" not in installer_text
 
 
 def test_chrome_installer_remains_non_target_for_precleanup():
