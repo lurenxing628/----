@@ -72,7 +72,10 @@ Type: filesandordirs; Name: "{#SharedDataRoot}\templates_excel"; Check: ShouldDe
 var
   DeleteSharedData: Boolean;
   MigrationNote: String;
+  PreInstallWarning: String;
   SkipLegacyMigration: Boolean;
+
+function TryDeleteDirTree(const DirName: String; var ErrorMessage: String): Boolean; forward;
 
 function SharedDataRootPath: String;
 begin
@@ -169,15 +172,23 @@ begin
     DirHasEntries(SharedDataRootPath + '\templates_excel');
 end;
 
-procedure CopyDirTree(const SourceDir, DestDir: String);
+function CopyDirTree(const SourceDir, DestDir: String): Integer;
 var
   FindRec: TFindRec;
   SourcePath: String;
   DestPath: String;
 begin
+  Result := 0;
   if not DirExists(SourceDir) then
     Exit;
-  ForceDirectories(DestDir);
+
+  if not ForceDirectories(DestDir) then
+  begin
+    Log('legacy migration: failed to create directory: ' + DestDir);
+    Result := Result + 1;
+    Exit;
+  end;
+
   if FindFirst(SourceDir + '\*', FindRec) then
   begin
     try
@@ -187,9 +198,15 @@ begin
         SourcePath := SourceDir + '\' + FindRec.Name;
         DestPath := DestDir + '\' + FindRec.Name;
         if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
-          CopyDirTree(SourcePath, DestPath)
+          Result := Result + CopyDirTree(SourcePath, DestPath)
         else
-          CopyFile(SourcePath, DestPath, False);
+        begin
+          if not CopyFile(SourcePath, DestPath, False) then
+          begin
+            Log('legacy migration: failed to copy file: ' + SourcePath + ' -> ' + DestPath);
+            Result := Result + 1;
+          end;
+        end;
       until not FindNext(FindRec);
     finally
       FindClose(FindRec);
@@ -448,6 +465,8 @@ begin
       Result := True;
       Exit;
     end;
+    if Attempt < 3 then
+      Sleep(1000);
   end;
 
   Result := False;
@@ -462,55 +481,111 @@ begin
   Result :=
     KnownRuntimeSignalsExist or
     DirExists(SharedDataRootPath) or
-    DirExists(LegacyDataRootPath) or
     DirExists(ExpandConstant('{app}')) or
     ((RegisteredAppDir <> '') and DirExists(RegisteredAppDir));
 end;
 
-procedure MigrateLegacyDataIfNeeded;
+procedure CleanupMigrationPartialData(const SharedRoot: String);
+var
+  DeleteError: String;
+  NotePath: String;
+begin
+  if Trim(SharedRoot) = '' then
+    Exit;
+
+  if not TryDeleteDirTree(SharedRoot + '\db', DeleteError) then
+    Log('legacy migration cleanup: ' + DeleteError);
+  if not TryDeleteDirTree(SharedRoot + '\logs', DeleteError) then
+    Log('legacy migration cleanup: ' + DeleteError);
+  if not TryDeleteDirTree(SharedRoot + '\backups', DeleteError) then
+    Log('legacy migration cleanup: ' + DeleteError);
+  if not TryDeleteDirTree(SharedRoot + '\templates_excel', DeleteError) then
+    Log('legacy migration cleanup: ' + DeleteError);
+
+  NotePath := SharedRoot + '\migration_note.txt';
+  if FileExists(NotePath) and (not DeleteFile(NotePath)) then
+    Log('legacy migration cleanup: failed to delete ' + NotePath);
+end;
+
+function TryMigrateLegacyDataBeforeInstall(var FailureReason: String): Boolean;
 var
   LegacyRoot: String;
   SharedRoot: String;
+  FailCount: Integer;
 begin
+  FailureReason := '';
   if SkipLegacyMigration then
   begin
     if MigrationNote = '' then
       MigrationNote := '本次安装前已执行强制清理，已跳过当前安装账户 legacy 数据迁移。';
+    Result := True;
     Exit;
   end;
+
   MigrationNote := '';
   LegacyRoot := LegacyDataRootPath;
   SharedRoot := SharedDataRootPath;
+
   if HasSharedData then
   begin
     MigrationNote :=
       '已检测到共享数据目录中已有数据，安装器不会覆盖旧数据。';
+    Result := True;
     Exit;
   end;
+
   if not HasLegacyData then
   begin
     MigrationNote :=
       '未检测到当前安装账户下的旧版 per-user 数据，无需迁移。';
+    Result := True;
     Exit;
   end;
+
   try
-    ForceDirectories(SharedRoot);
-    CopyDirTree(LegacyRoot + '\db', SharedRoot + '\db');
-    CopyDirTree(LegacyRoot + '\logs', SharedRoot + '\logs');
-    CopyDirTree(LegacyRoot + '\backups', SharedRoot + '\backups');
-    CopyDirTree(LegacyRoot + '\templates_excel', SharedRoot + '\templates_excel');
-    SaveStringToFile(
+    if not ForceDirectories(SharedRoot) then
+    begin
+      CleanupMigrationPartialData(SharedRoot);
+      FailureReason := '旧版数据迁移失败：创建共享目录失败，已清理共享目录半成品。';
+      Result := False;
+      Exit;
+    end;
+
+    FailCount := 0;
+    FailCount := FailCount + CopyDirTree(LegacyRoot + '\db', SharedRoot + '\db');
+    FailCount := FailCount + CopyDirTree(LegacyRoot + '\logs', SharedRoot + '\logs');
+    FailCount := FailCount + CopyDirTree(LegacyRoot + '\backups', SharedRoot + '\backups');
+    FailCount := FailCount + CopyDirTree(LegacyRoot + '\templates_excel', SharedRoot + '\templates_excel');
+    if FailCount > 0 then
+    begin
+      CleanupMigrationPartialData(SharedRoot);
+      FailureReason :=
+        '旧版数据迁移失败：共有 ' + IntToStr(FailCount) + ' 个文件复制失败，已清理共享目录半成品。';
+      Result := False;
+      Exit;
+    end;
+
+    if not SaveStringToFile(
       SharedRoot + '\migration_note.txt',
       'source=' + LegacyRoot + #13#10 +
       'mode=copy_only' + #13#10 +
       'note=legacy per-user data copied into shared-data root; source preserved for rollback' + #13#10,
       False
-    );
+    ) then
+    begin
+      CleanupMigrationPartialData(SharedRoot);
+      FailureReason := '旧版数据迁移失败：写入 migration_note.txt 失败，已清理共享目录半成品。';
+      Result := False;
+      Exit;
+    end;
+
     MigrationNote :=
       '已将当前安装账户下的旧版 per-user 数据复制到共享数据目录；旧目录未删除，可作为回退来源。';
+    Result := True;
   except
-    MigrationNote :=
-      '旧版 per-user 数据迁移失败；原始目录未被删除，可删除共享目录后重新安装以回退。';
+    CleanupMigrationPartialData(SharedRoot);
+    FailureReason := '旧版数据迁移失败：' + GetExceptionMessage + '；已清理共享目录半成品。';
+    Result := False;
   end;
 end;
 
@@ -584,7 +659,7 @@ begin
   StopFailure := '';
   StopOk := TryStopKnownApsRuntime(StopApsChrome);
   if not StopOk then
-    StopFailure := '安装器未能确认 APS 已通过停机 helper 正常退出，将继续尝试删除残留目录。';
+    StopFailure := '目录已清理，但无法确认 APS 已正常退出。';
 
   if not TryDeleteDirTree(SharedDataRootPath, DeleteError) then
     AppendMessage(DeleteErrors, DeleteError);
@@ -609,6 +684,19 @@ begin
     Exit;
   end;
 
+  PreInstallWarning := '';
+  if StopFailure <> '' then
+  begin
+    PreInstallWarning := StopFailure;
+    Log('preinstall wipe warning: ' + StopFailure);
+    MsgBox(
+      StopFailure + #13#10#13#10 +
+      '请确认 APS 窗口已经关闭，再继续本次安装。',
+      mbInformation,
+      MB_OK
+    );
+  end;
+
   SkipLegacyMigration := True;
   MigrationNote := '本次安装前已执行强制清理，已跳过当前安装账户 legacy 数据迁移。';
   Result := True;
@@ -618,26 +706,30 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
   NeedsRestart := False;
+  PreInstallWarning := '';
   SkipLegacyMigration := False;
-  if not HasInstallCleanupTargets then
-    Exit;
-
-  if MsgBox(
-    '检测到本机存在 APS 运行实例或历史残留。继续安装前，安装器将强制清理：' + #13#10 +
-    '1. 旧主程序安装目录' + #13#10 +
-    '2. 共享数据目录（C:\ProgramData\APS\shared-data）' + #13#10 +
-    '3. 当前安装账户的 legacy 目录（%LOCALAPPDATA%\APS\排产系统）' + #13#10#13#10 +
-    '不会删除：%LOCALAPPDATA%\APS\Chrome109Profile 与独立 Chrome109 运行时目录。' + #13#10#13#10 +
-    '注意：这是破坏性操作。若你确认后安装后续失败，机器会处于“已清空，需重新安装”的状态。是否继续？',
-    mbConfirmation,
-    MB_YESNO or MB_DEFBUTTON2
-  ) <> IDYES then
+  if HasInstallCleanupTargets then
   begin
-    Result := '已取消安装，未执行安装前强制清理。';
-    Exit;
+    if MsgBox(
+      '检测到本机存在 APS 运行实例或历史残留。继续安装前，安装器将强制清理：' + #13#10 +
+      '1. 旧主程序安装目录' + #13#10 +
+      '2. 共享数据目录（C:\ProgramData\APS\shared-data）' + #13#10 +
+      '3. 当前安装账户的 legacy 目录（%LOCALAPPDATA%\APS\排产系统）' + #13#10#13#10 +
+      '不会删除：%LOCALAPPDATA%\APS\Chrome109Profile 与独立 Chrome109 运行时目录。' + #13#10#13#10 +
+      '注意：这是破坏性操作。若你确认后安装后续失败，机器会处于“已清空，需重新安装”的状态。是否继续？',
+      mbConfirmation,
+      MB_YESNO or MB_DEFBUTTON2
+    ) <> IDYES then
+    begin
+      Result := '已取消安装，未执行安装前强制清理。';
+      Exit;
+    end;
+
+    if not RunPreInstallFullWipe(True, Result) then
+      Exit;
   end;
 
-  if not RunPreInstallFullWipe(True, Result) then
+  if not TryMigrateLegacyDataBeforeInstall(Result) then
     Exit;
 end;
 
@@ -648,7 +740,10 @@ begin
   if UninstallSilent() then
   begin
     if not TryStopKnownApsRuntime(False) then
+    begin
       Log('silent uninstall: failed to stop APS runtime before uninstall');
+      Result := False;
+    end;
     Exit;
   end;
 
@@ -679,12 +774,13 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  MessageText: String;
 begin
   if CurStep <> ssPostInstall then
     Exit;
 
-  MigrateLegacyDataIfNeeded;
-  MsgBox(
+  MessageText :=
     '安装完成后，请使用开始菜单或桌面快捷方式“排产系统”启动。' + #13#10#13#10 +
     '不要直接双击 {app}\排产系统.exe；它只负责在后台启动本地服务。' + #13#10#13#10 +
     '共享数据目录：' + #13#10 +
@@ -693,9 +789,14 @@ begin
     SharedLogDirPath + '\launcher.log' + #13#10 +
     '并将日志中的 chrome_cmd 复制到 cmd 中复现。' + #13#10#13#10 +
     '迁移说明：' + #13#10 +
-    MigrationNote,
-    mbInformation,
-    MB_OK
-  );
+    MigrationNote;
+
+  if PreInstallWarning <> '' then
+    MessageText :=
+      MessageText + #13#10#13#10 +
+      '安装前提示：' + #13#10 +
+      PreInstallWarning;
+
+  MsgBox(MessageText, mbInformation, MB_OK);
 end;
 

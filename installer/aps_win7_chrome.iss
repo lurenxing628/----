@@ -67,7 +67,10 @@ begin
   if UninstallSilent() then
   begin
     if not TryStopApsChromeProcesses then
+    begin
       Log('silent uninstall: failed to stop APS Chrome processes before uninstall');
+      Result := False;
+    end;
     Exit;
   end;
 
