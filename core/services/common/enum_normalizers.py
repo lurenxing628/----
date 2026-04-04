@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.models.enums import MachineStatus, OperatorStatus, SkillLevel, SourceType, SupplierStatus, YesNo
+from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
+from core.services.common.normalization_matrix import (
+    normalize_skill_level_value,
+    normalize_yes_no_narrow_value,
+    normalize_yes_no_wide_value,
+    skill_level_rank,
+)
 
 
 def _text(value: Any) -> str:
@@ -114,99 +120,17 @@ _YES_NO_FALSE_WIDE = ("no", "n", "false", "0", "off", "")
 
 
 def normalize_yes_no_wide(value: Any, *, default: str = YesNo.NO.value, unknown_policy: str = "no") -> str:
-    """
-    归一化“宽口径”的 yes/no 开关：
-    - 兼容 HTML checkbox（on/None）
-    - 兼容常见布尔文本（true/false/1/0）
-
-    unknown_policy:
-    - "no"：未知值一律视为 no（保守；适用于系统配置/调度配置等）
-    - "default"：未知值回退 default（适用于 plugin enabled 等）
-    """
-    default_norm = YesNo.YES.value if str(default).strip().lower() in _YES_NO_TRUE_WIDE else YesNo.NO.value
-    if value is None:
-        return default_norm
-    v = str(value).strip().lower()
-    if v in _YES_NO_TRUE_WIDE:
-        return YesNo.YES.value
-    if v in _YES_NO_FALSE_WIDE:
-        return YesNo.NO.value
-    if unknown_policy == "default":
-        return default_norm
-    return YesNo.NO.value
+    return normalize_yes_no_wide_value(value, default=default, unknown_policy=unknown_policy)
 
 
 def normalize_yesno_narrow(value: Any, *, default: str = YesNo.YES.value, unknown_policy: str = "passthrough") -> str:
-    """
-    归一化“窄口径”的 yes/no：
-    - 兼容 yes/no/y/n、true/false、1/0 与中文 是/否
-    - 不把 on/off 视为 yes/no（由上层按值域决定是否报错）
-
-    unknown_policy:
-    - "passthrough"：未知值原样透传（strip 后）；供上层显式 not in(...) 校验报错展示用户输入
-    - "raise"：未知值直接抛 ValueError（由上层决定如何转成 ValidationError）
-    """
-    default_norm = YesNo.YES.value if str(default).strip().lower() in ("y", "yes", YesNo.YES.value) else YesNo.NO.value
-    v = "" if value is None else str(value).strip()
-    if v == "":
-        return default_norm
-    v_lower = v.lower()
-    if v == "是" or v_lower in ("y", YesNo.YES.value, "true", "1"):
-        return YesNo.YES.value
-    if v == "否" or v_lower in ("n", YesNo.NO.value, "false", "0"):
-        return YesNo.NO.value
-    if unknown_policy == "raise":
-        raise ValueError(f"invalid yes/no: {v!r}")
-    return v
+    return normalize_yes_no_narrow_value(value, default=default, unknown_policy=unknown_policy)
 
 
 def normalize_skill_level(value: Any, *, default: str = "normal", allow_none: bool = False):
-    """
-    skill_level 归一化（canonical3）：
-    - 输出只可能是 beginner/normal/expert
-    - 兼容 legacy alias：low/normal/high、skilled
-    - 兼容常见中文：初级/普通/熟练（以及 高级/专家/一般/中级/新手）
-    """
-    if value is None:
-        return None if allow_none else normalize_skill_level(default, default="normal", allow_none=False)
-    s0 = str(value).strip()
-    if s0 == "":
-        return None if allow_none else normalize_skill_level(default, default="normal", allow_none=False)
-    low = s0.lower()
-    if low in (SkillLevel.EXPERT.value, "high", SkillLevel.SKILLED.value):
-        return SkillLevel.EXPERT.value
-    if low == SkillLevel.NORMAL.value:
-        return SkillLevel.NORMAL.value
-    if low in (SkillLevel.BEGINNER.value, "low"):
-        return SkillLevel.BEGINNER.value
-    if s0 in ("熟练", "高级", "专家"):
-        return SkillLevel.EXPERT.value
-    if s0 in ("普通", "一般", "中级"):
-        return SkillLevel.NORMAL.value
-    if s0 in ("初级", "新手"):
-        return SkillLevel.BEGINNER.value
-    raise ValueError(f"invalid skill_level: {s0!r}")
+    return normalize_skill_level_value(value, default=default, allow_none=allow_none, unknown_policy="raise")
 
 
 def skill_rank(value: Any) -> int:
-    """
-    技能等级排序（数值越小越优）。
-    - expert/high/skilled -> 0
-    - normal -> 1
-    - beginner/low -> 2
-    - unknown/empty -> 9
-    """
-    try:
-        s = normalize_skill_level(value, default="normal", allow_none=True)
-    except Exception:
-        return 9
-    if s is None:
-        return 9
-    if s == SkillLevel.EXPERT.value:
-        return 0
-    if s == SkillLevel.NORMAL.value:
-        return 1
-    if s == SkillLevel.BEGINNER.value:
-        return 2
-    return 9
+    return skill_level_rank(value)
 
