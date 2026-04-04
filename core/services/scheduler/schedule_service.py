@@ -29,7 +29,9 @@ from .freeze_window import build_freeze_window_seed
 from .number_utils import parse_finite_float, to_yes_no
 from .resource_pool_builder import build_resource_pool, extend_downtime_map_for_resource_pool, load_machine_downtimes
 from .schedule_input_builder import build_algo_operations
+from .schedule_input_collector import collect_schedule_run_input
 from .schedule_optimizer import optimize_schedule
+from .schedule_orchestrator import orchestrate_schedule_run
 from .schedule_persistence import has_actionable_schedule_rows, persist_schedule
 from .schedule_summary import build_result_summary
 from .schedule_template_lookup import get_template_and_group_for_op
@@ -317,301 +319,79 @@ class ScheduleService:
           - 显式传入 True/False：按传入值执行
           - 传入 None：回退读取配置 `enforce_ready_default`
         """
-        if not batch_ids:
-            raise ValidationError("请至少选择 1 个批次执行排产。", field="batch_ids")
-
-        # 去重 + 保序
-        normalized: List[str] = []
-        seen = set()
-        for x in batch_ids:
-            bid = self._normalize_text(x)
-            if not bid:
-                continue
-            if bid in seen:
-                continue
-            seen.add(bid)
-            normalized.append(bid)
-        if not normalized:
-            raise ValidationError("请至少选择 1 个批次执行排产。", field="batch_ids")
-
-        t0 = time.time()
-        start_dt_norm: Optional[datetime] = None
-        start_dt_provided = start_dt is not None and str(start_dt).strip() != ""
-        if start_dt_provided:
-            start_dt_norm = self._normalize_datetime(start_dt)
-            if start_dt_norm is None:
-                raise ValidationError(
-                    "start_dt 格式不合法（允许：YYYY-MM-DD / YYYY-MM-DD HH:MM(:SS)）",
-                    field="start_dt",
-                )
-        else:
-            tomorrow = (datetime.now() + timedelta(days=1)).date()
-            start_dt_norm = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 8, 0, 0)
-        created_by_text = self._normalize_text(created_by) or "system"
-        run_label = "模拟排产" if simulate else "排产"
-
-        end_date_norm = None
-        if end_date is not None and str(end_date).strip() != "":
-            dt = self._normalize_datetime(end_date)
-            if not dt:
-                raise ValidationError("end_date 格式不合法（期望：YYYY-MM-DD）", field="end_date")
-            end_date_norm = dt.date()
-            if end_date_norm < start_dt_norm.date():
-                raise ValidationError("end_date 不能早于 start_dt 所在日期", field="end_date")
-
-        # 读取配置与日历服务（避免从包 __init__ 导入导致循环）
         from .calendar_service import CalendarService
         from .config_service import ConfigService
 
-        cal_svc = CalendarService(self.conn, logger=self.logger, op_logger=self.op_logger)
-        cfg_svc = ConfigService(self.conn, logger=self.logger, op_logger=self.op_logger)
-        cfg = _get_snapshot_with_optional_strict_mode(cfg_svc, strict_mode=bool(strict_mode))
-        if enforce_ready is None:
-            enforce_ready_effective = (
-                to_yes_no(getattr(cfg, "enforce_ready_default", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
-            )
-        elif isinstance(enforce_ready, str):
-            enforce_ready_effective = to_yes_no(enforce_ready, default=YesNo.NO.value) == YesNo.YES.value
-        else:
-            enforce_ready_effective = bool(enforce_ready)
-
-        # 读取批次与工序
-        batches: Dict[str, Batch] = {}
-        operations: List[BatchOperation] = []
-        blocked_batch_ids: List[str] = []
-        for bid in normalized:
-            b = self._get_batch_or_raise(bid)
-            batches[bid] = b
-            if _normalized_status_text(getattr(b, "status", None)) in _FAIL_FAST_BATCH_STATUSES:
-                blocked_batch_ids.append(bid)
-                continue
-            operations.extend(self.op_repo.list_by_batch(bid))
-        if blocked_batch_ids:
-            sample = "，".join(blocked_batch_ids[:20])
-            raise ValidationError(f"以下批次状态不允许排产（completed/cancelled）：{sample}", field="批次")
-
-        reschedulable_operations = [op for op in operations if self._is_reschedulable_operation(op)]
-        reschedulable_op_ids = {
-            int(getattr(op, "id", 0) or 0)
-            for op in reschedulable_operations
-            if op and getattr(op, "id", None) and int(getattr(op, "id", 0) or 0) > 0
-        }
-        if not reschedulable_operations:
-            _raise_schedule_empty_result(
-                f"所选批次没有可重排工序，本次未执行{run_label}。",
-                reason="no_reschedulable_operations",
-            )
-
-        # 自动分配资源：记录哪些内部工序原本缺省 machine/operator（便于在“非模拟”时回写补全）
-        missing_internal_resource_op_ids = {
-            int(op.id)
-            for op in reschedulable_operations
-            if op
-            and op.id
-            and (op.source or "").strip().lower() == SourceType.INTERNAL.value
-            and (((op.machine_id or "").strip() == "") or ((op.operator_id or "").strip() == ""))
-        }
-
-        # 齐套约束（可选）：仅允许排产“齐套=yes”的批次
-        if enforce_ready_effective:
-            not_ready = [
-                bid
-                for bid, b in batches.items()
-                if (self._normalize_text(getattr(b, "ready_status", None)) or "").strip().lower() != ReadyStatus.YES.value
-            ]
-            if not_ready:
-                sample = "，".join(not_ready[:20])
-                raise ValidationError(f"以下批次未齐套（ready_status!=yes），禁止排产：{sample}", field="齐套")
-
-        # 算法输入（补充 merged 外部组信息）
-        algo_input_outcome = _build_algo_operations_with_optional_outcome(
-            self, reschedulable_operations, strict_mode=bool(strict_mode)
-        )
-        algo_ops = list(algo_input_outcome.value or [])
-
-        # 上一版本号（供冻结窗口复用使用）
-        latest = self.history_repo.get_latest_version()
-        prev_version = int(latest or 0)
-
-        # 冻结窗口（可选）
-        frozen_op_ids, seed_results, algo_warnings, freeze_meta = _build_freeze_window_seed_with_optional_meta(
+        schedule_input = collect_schedule_run_input(
             self,
-            cfg=cfg,
-            prev_version=prev_version,
-            start_dt=start_dt_norm,
-            operations=operations,
-            reschedulable_operations=reschedulable_operations,
-            strict_mode=bool(strict_mode),
-        )
-
-        # 防御：warnings 预期为 list，但外部 stub/历史调用可能返回 None
-        if algo_warnings is None:
-            algo_warnings = []
-
-        algo_ops_to_schedule = [x for x in algo_ops if int(getattr(x, "id", 0) or 0) not in frozen_op_ids]
-        if not algo_ops_to_schedule:
-            _raise_schedule_empty_result(
-                f"冻结窗口内无可调整工序，本次未执行{run_label}。",
-                reason="all_operations_frozen",
-            )
-
-        # 停机区间（用于算法避让）
-        downtime_meta: Dict[str, Any] = {}
-        resource_pool_meta: Dict[str, Any] = {}
-        downtime_map = load_machine_downtimes(
-            self,
-            algo_ops=algo_ops,
-            start_dt=start_dt_norm,
-            warnings=algo_warnings,
-            meta=downtime_meta,
-        )
-
-        # 自动分配资源池（可选）
-        resource_pool, pool_warnings = build_resource_pool(self, cfg=cfg, algo_ops=algo_ops, meta=resource_pool_meta)
-        pool_warnings = list(pool_warnings or [])
-        if pool_warnings:
-            algo_warnings.extend(pool_warnings)
-
-        # auto-assign 启用时：停机区间覆盖候选设备
-        downtime_map = extend_downtime_map_for_resource_pool(
-            self,
-            cfg=cfg,
-            resource_pool=resource_pool,
-            downtime_map=downtime_map,
-            start_dt=start_dt_norm,
-            warnings=algo_warnings,
-            meta=downtime_meta,
-        )
-
-        # 算法阶段仅使用一个稳定种子版本，真正版本号延后到确认可落库后再原子分配，
-        # 避免“无有效排程行”这类失败路径占用版本号序列。
-        optimizer_seed_version = max(int(prev_version) + 1, 1)
-
-        outcome = optimize_schedule(
-            calendar_service=cal_svc,
-            cfg_svc=cfg_svc,
-            cfg=cfg,
-            algo_ops_to_schedule=algo_ops_to_schedule,
-            batches=batches,
-            start_dt=start_dt_norm,
-            end_date=end_date_norm,
-            downtime_map=downtime_map,
-            seed_results=seed_results,
-            resource_pool=resource_pool,
-            version=optimizer_seed_version,
-            logger=self.logger,
-            strict_mode=bool(strict_mode),
-        )
-
-        results = outcome.results
-        summary = outcome.summary
-        used_strategy = outcome.used_strategy
-        used_params = outcome.used_params
-        best_metrics = outcome.metrics
-        best_score = outcome.best_score
-        best_order = outcome.best_order
-        attempts = outcome.attempts
-        improvement_trace = outcome.improvement_trace
-        algo_mode = outcome.algo_mode
-        objective_name = outcome.objective_name
-        algo_stats = getattr(outcome, "algo_stats", {}) or {}
-        time_budget_seconds = outcome.time_budget_seconds
-
-        has_actionable_schedule = has_actionable_schedule_rows(results, allowed_op_ids=set(reschedulable_op_ids))
-        if not has_actionable_schedule:
-            _raise_schedule_empty_result(
-                f"优化结果未生成有效可落库排程行，本次未执行{run_label}。",
-                reason="no_actionable_schedule_rows",
-            )
-
-        warning_merge_status: Dict[str, Any] = {
-            "summary_merge_attempted": bool(algo_warnings),
-            "summary_merge_failed": False,
-            "summary_merge_error": None,
-        }
-        # 把“冻结窗口/资源池”等 warning 合并到算法 warning 中
-        if algo_warnings:
-            summary.warnings.extend(algo_warnings)
-
-        # 仅在确认存在可落库结果后再占用正式版本号，避免空结果推进序列。
-        # 这里仍使用数据库原子分配，保持跨进程唯一递增语义。
-        with self.tx_manager.transaction():
-            version = int(self.history_repo.allocate_next_version())
-
-        overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms = build_result_summary(
-            self,
-            cfg=cfg,
-            version=version,
-            normalized_batch_ids=normalized,
-            start_dt=start_dt_norm,
-            end_date=end_date_norm,
-            batches=batches,
-            operations=operations,
-            results=results,
-            summary=summary,
-            used_strategy=used_strategy,
-            used_params=used_params,
-            algo_mode=algo_mode,
-            objective_name=objective_name,
-            time_budget_seconds=int(time_budget_seconds),
-            best_score=best_score,
-            best_metrics=best_metrics,
-            best_order=best_order,
-            attempts=attempts,
-            improvement_trace=improvement_trace,
-            frozen_op_ids=set(frozen_op_ids),
-            freeze_meta=freeze_meta,
-            input_build_outcome=algo_input_outcome,
-            downtime_meta=downtime_meta,
-            resource_pool_meta=resource_pool_meta,
-            algo_stats=algo_stats,
-            algo_warnings=list(algo_warnings or []),
-            warning_merge_status=warning_merge_status,
+            batch_ids=batch_ids,
+            start_dt=start_dt,
+            end_date=end_date,
+            created_by=created_by,
             simulate=simulate,
-            t0=t0,
+            enforce_ready=enforce_ready,
+            strict_mode=bool(strict_mode),
+            calendar_service_cls=CalendarService,
+            config_service_cls=ConfigService,
+            get_snapshot_with_optional_strict_mode=_get_snapshot_with_optional_strict_mode,
+            build_algo_operations_fn=build_algo_operations,
+            build_freeze_window_seed_fn=build_freeze_window_seed,
+            load_machine_downtimes_fn=load_machine_downtimes,
+            build_resource_pool_fn=build_resource_pool,
+            extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool,
+        )
+
+        orchestration = orchestrate_schedule_run(
+            self,
+            schedule_input=schedule_input,
+            simulate=simulate,
+            strict_mode=bool(strict_mode),
+            optimize_schedule_fn=optimize_schedule,
+            has_actionable_schedule_rows_fn=has_actionable_schedule_rows,
+            build_result_summary_fn=build_result_summary,
         )
 
         persist_schedule(
             self,
-            cfg=cfg,
-            version=version,
-            results=results,
-            summary=summary,
-            used_strategy=used_strategy,
-            used_params=used_params,
-            batches=batches,
-            operations=operations,
-            reschedulable_operations=reschedulable_operations,
-            reschedulable_op_ids=set(reschedulable_op_ids),
-            normalized_batch_ids=normalized,
-            created_by=created_by_text,
-            has_actionable_schedule=has_actionable_schedule,
+            cfg=schedule_input.cfg,
+            version=orchestration.version,
+            results=orchestration.results,
+            summary=orchestration.summary,
+            used_strategy=orchestration.used_strategy,
+            used_params=orchestration.used_params,
+            batches=schedule_input.batches,
+            operations=schedule_input.operations,
+            reschedulable_operations=schedule_input.reschedulable_operations,
+            reschedulable_op_ids=set(schedule_input.reschedulable_op_ids),
+            normalized_batch_ids=schedule_input.normalized_batch_ids,
+            created_by=schedule_input.created_by_text,
+            has_actionable_schedule=orchestration.has_actionable_schedule,
             simulate=simulate,
-            frozen_op_ids=set(frozen_op_ids),
-            result_status=result_status,
-            result_summary_json=result_summary_json,
-            result_summary_obj=result_summary_obj,
-            missing_internal_resource_op_ids=missing_internal_resource_op_ids,
-            overdue_items=overdue_items,
-            time_cost_ms=time_cost_ms,
+            frozen_op_ids=set(schedule_input.frozen_op_ids),
+            result_status=orchestration.result_status,
+            result_summary_json=orchestration.result_summary_json,
+            result_summary_obj=orchestration.result_summary_obj,
+            missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
+            overdue_items=orchestration.overdue_items,
+            time_cost_ms=orchestration.time_cost_ms,
         )
 
         return {
             "is_simulation": bool(simulate),
-            "version": int(version),
-            "strategy": used_strategy.value,
-            "strategy_params": used_params or {},
-            "result_status": result_status,
+            "version": int(orchestration.version),
+            "strategy": orchestration.used_strategy.value,
+            "strategy_params": orchestration.used_params or {},
+            "result_status": orchestration.result_status,
             "summary": {
-                "success": getattr(summary, "success", False),
-                "total_ops": int(getattr(summary, "total_ops", 0)),
-                "scheduled_ops": int(getattr(summary, "scheduled_ops", 0)),
-                "failed_ops": int(getattr(summary, "failed_ops", 0)),
-                "warnings": getattr(summary, "warnings", None),
-                "errors": getattr(summary, "errors", None),
-                "duration_seconds": getattr(summary, "duration_seconds", 0.0),
+                "success": getattr(orchestration.summary, "success", False),
+                "total_ops": int(getattr(orchestration.summary, "total_ops", 0)),
+                "scheduled_ops": int(getattr(orchestration.summary, "scheduled_ops", 0)),
+                "failed_ops": int(getattr(orchestration.summary, "failed_ops", 0)),
+                "warnings": getattr(orchestration.summary, "warnings", None),
+                "errors": getattr(orchestration.summary, "errors", None),
+                "duration_seconds": getattr(orchestration.summary, "duration_seconds", 0.0),
             },
-            "overdue_batches": overdue_items,
-            "time_cost_ms": int(time_cost_ms),
+            "overdue_batches": orchestration.overdue_items,
+            "time_cost_ms": int(orchestration.time_cost_ms),
         }
 
