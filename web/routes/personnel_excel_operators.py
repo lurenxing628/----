@@ -242,7 +242,7 @@ def excel_operator_confirm():
 
     error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
     if error_rows:
-        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        sample = "；".join([f"第{(getattr(pr, 'source_row_num', None) or pr.row_num)}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
         message = f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。"
         if sample:
             message += f"错误示例：{sample}"

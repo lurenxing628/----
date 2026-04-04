@@ -119,23 +119,49 @@
     return null;
   }
 
-  function applyCalendarDegradationState() {
-    const warningEl = $("ganttDegradationWarning");
+  function _degradationCount(code) {
+    const target = norm(code);
     const counters = state.degradationCounters && typeof state.degradationCounters === "object"
       ? state.degradationCounters
       : {};
-    const failedCount = Number(counters.calendar_load_failed || 0);
-    const emptyReason = str(state.emptyReason || "").trim();
-    const event = _findDegradationEvent("calendar_load_failed");
-    const visible = failedCount > 0 || emptyReason === "calendar_load_failed";
-    let message = "工作日历加载失败，当前不显示假期/停工背景标注。";
+    return Number(counters[target] || 0);
+  }
 
-    if (event && str(event.message || "").trim()) {
-      const eventMessage = str(event.message || "").trim();
-      message = eventMessage.indexOf("工作日历加载失败") >= 0
-        ? "工作日历加载失败，当前不显示假期/停工背景标注。"
-        : eventMessage;
+  function _buildDegradationMessages() {
+    const messages = [];
+    const emptyReason = str(state.emptyReason || "").trim();
+    const calendarEvent = _findDegradationEvent("calendar_load_failed");
+    const calendarFailed = _degradationCount("calendar_load_failed") > 0 || emptyReason === "calendar_load_failed";
+    const badTimeSkipped = _degradationCount("bad_time_row_skipped");
+    const allFiltered = emptyReason === "all_rows_filtered_by_invalid_time";
+
+    if (calendarFailed) {
+      let calendarMessage = "工作日历加载失败，当前不显示假期/停工背景标注。";
+      if (calendarEvent && str(calendarEvent.message || "").trim()) {
+        const eventMessage = str(calendarEvent.message || "").trim();
+        calendarMessage = eventMessage.indexOf("工作日历加载失败") >= 0
+          ? "工作日历加载失败，当前不显示假期/停工背景标注。"
+          : eventMessage;
+      }
+      messages.push(calendarMessage);
     }
+
+    if (allFiltered) {
+      messages.push("当前区间存在时间非法的排程数据，已全部过滤，请检查排产结果。");
+    } else if (badTimeSkipped > 0) {
+      messages.push("已过滤 " + badTimeSkipped + " 条时间不合法的排程记录。");
+    }
+
+    return messages;
+  }
+
+  function applyCalendarDegradationState() {
+    const warningEl = $("ganttDegradationWarning");
+    const messages = _buildDegradationMessages();
+    const visible = messages.length > 0;
+    const message = visible
+      ? messages.join(" ")
+      : "存在影响展示的排程退化，请检查数据。";
 
     if (warningEl) {
       warningEl.textContent = message;

@@ -7,6 +7,7 @@ from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.models.enums import MachineStatus, YesNo
+from core.services.common.normalization_matrix import skill_level_options
 from core.services.equipment import MachineDowntimeService, MachineService
 from core.services.equipment.machine_downtime_query_service import MachineDowntimeQueryService
 from core.services.personnel import OperatorMachineService, OperatorService
@@ -232,7 +233,7 @@ def detail_page(machine_id: str):
         available_operators=available_operators,
         downtime_rows=[d.to_dict() for d in downtimes],
         downtime_reason_options=list(MachineDowntimeService.REASON_OPTIONS),
-        skill_level_options=[("beginner", "初级"), ("normal", "普通"), ("expert", "熟练")],
+        skill_level_options=list(skill_level_options()),
     )
 
 

@@ -111,17 +111,42 @@
           </div>
         </details>
       {% endif %}
-      {% set da = algo.get('downtime_avoid') or {} %}
-      {% set fw = algo.get('freeze_window') or {} %}
-      {% if da.get('degraded') or fw.get('degraded') %}
+      {% if summary_degradation_messages %}
         <div class="flash-card flash-warning mt-2">
-          {% if da.get('degraded') %}
-            <div>停机避让约束已降级{% if da.get('degradation_reason') %}：{{ da.get('degradation_reason') }}{% endif %}。</div>
-          {% endif %}
-          {% if fw.get('degraded') %}
-            <div>冻结窗口约束已降级{% if fw.get('degradation_reason') %}：{{ fw.get('degradation_reason') }}{% endif %}。</div>
+          {% for item in summary_degradation_messages %}
+            <div>
+              <strong>{{ item.label }}</strong>{% if item.count and item.count > 1 %}（{{ item.count }}）{% endif %}
+              {% if item.message %}：{{ item.message }}{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if freeze_display %}
+        <div class="muted mt-2">
+          {% if not freeze_display.enabled %}
+            冻结窗口：未启用
+          {% else %}
+            冻结窗口：已启用
+            <span class="meta-sep">｜</span>
+            当前状态：{{ freeze_display.state_label }}
+            <span class="meta-sep">｜</span>
+            锁定天数：{{ freeze_display.days }} 天
+            <span class="meta-sep">｜</span>
+            实际生效：{{ '是' if freeze_display.applied else '否' }}
+            <span class="meta-sep">｜</span>
+            冻结工序数：{{ freeze_display.frozen_op_count }}
+            <span class="meta-sep">｜</span>
+            冻结批次数：{{ freeze_display.frozen_batch_count }}
           {% endif %}
         </div>
+        {% if freeze_display.enabled and freeze_display.sample_batches %}
+          <div class="muted mt-2">
+            示例批次：{{ freeze_display.sample_batches|join('、') }}{% if freeze_display.sample_more_count > 0 %} 及其他 {{ freeze_display.sample_more_count }} 个…{% endif %}
+          </div>
+        {% endif %}
+        {% if freeze_display.degradation_reason %}
+          <div class="muted mt-2">降级原因：{{ freeze_display.degradation_reason }}</div>
+        {% endif %}
       {% endif %}
 
       {% if selected_metrics %}
@@ -192,6 +217,19 @@
       {% else %}
         <div class="muted mt-2">该版本未记录排产指标（可能是旧版本）。</div>
       {% endif %}
+      {% if extra_cards %}
+        <div class="stat-grid mt-2">
+          {% for card in extra_cards %}
+            <div class="stat-card{% if card.type_class %} {{ card.type_class }}{% endif %}">
+              <div class="stat-card-label">{{ card.label }}</div>
+              <div class="stat-card-value">{{ card.value }}</div>
+              {% if card.delta is not none %}
+                <div class="stat-card-delta">对比上一版：{{ '+' if card.delta > 0 else '' }}{{ card.delta }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
     </div>
 
     {% if selected_summary and selected_summary.get('summary_truncated') %}
@@ -244,7 +282,12 @@
                   {% endif %}
                 </td>
                 <td>
-                  <div class="analysis-bar-track"><div style="width: {{ r.bar_pct }}%;"></div></div>
+                  <progress
+                    class="analysis-score-bar"
+                    value="{{ r.bar_pct }}"
+                    max="100"
+                    aria-label="综合评分条"
+                  >{{ r.bar_pct }}%</progress>
                 </td>
                 <td>{{ r.score }}</td>
               </tr>

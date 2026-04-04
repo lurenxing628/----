@@ -6,6 +6,7 @@ from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.models.enums import OperatorStatus, YesNo
+from core.services.common.normalization_matrix import skill_level_options
 from core.services.equipment import MachineService
 from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
@@ -173,7 +174,7 @@ def detail_page(operator_id: str):
             "reasons": dirty_link_reasons,
         },
         available_machines=available_machines,
-        skill_level_options=[("beginner", "初级"), ("normal", "普通"), ("expert", "熟练")],
+        skill_level_options=list(skill_level_options()),
     )
 
 

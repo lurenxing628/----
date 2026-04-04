@@ -31,6 +31,135 @@ def extract_metrics_from_summary(summary: Dict[str, Any]) -> Optional[Dict[str, 
     return None
 
 
+_EXTRA_CARD_SPECS = (
+    ("invalid_due_count", "数据异常批次数", "type-info"),
+    ("unscheduled_batch_count", "未排批次数", ""),
+)
+
+_FREEZE_STATE_LABELS = {
+    "disabled": "未启用",
+    "active": "已生效",
+    "degraded": "已降级",
+}
+
+_SUMMARY_DEGRADATION_LABELS = {
+    "freeze_window_degraded": "冻结窗口约束已降级",
+    "downtime_avoid_degraded": "停机避让约束已降级",
+    "resource_pool_degraded": "资源池构建已降级",
+    "invalid_due_date": "交期数据已降级",
+    "legacy_external_days_defaulted": "历史外协周期已兼容回退",
+    "ortools_warmstart_failed": "预热已降级",
+    "template_missing": "组合并模板上下文已降级",
+    "external_group_missing": "组合并外部组上下文已降级",
+}
+
+
+def _summary_metric_value(
+    selected_summary: Optional[Dict[str, Any]],
+    selected_metrics: Optional[Dict[str, Any]],
+    key: str,
+) -> Optional[Any]:
+    if selected_metrics and key in selected_metrics:
+        return selected_metrics[key]
+    if selected_summary and key in selected_summary:
+        return selected_summary[key]
+    return None
+
+
+def build_extra_cards(
+    selected_summary: Optional[Dict[str, Any]],
+    selected_metrics: Optional[Dict[str, Any]],
+    prev_metrics: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    cards: List[Dict[str, Any]] = []
+    for key, label, type_class in _EXTRA_CARD_SPECS:
+        value = _summary_metric_value(selected_summary, selected_metrics, key)
+        if value is None:
+            continue
+        delta = int(value) - int(prev_metrics[key]) if prev_metrics and key in prev_metrics else None
+        cards.append(
+            {
+                "key": key,
+                "label": label,
+                "value": int(value),
+                "delta": delta,
+                "type_class": type_class,
+            }
+        )
+    return cards
+
+
+def build_freeze_display(selected_summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    algo = selected_summary.get("algo") if selected_summary else None
+    if not algo or "freeze_window" not in algo:
+        return None
+
+    freeze_window = algo.get("freeze_window")
+    if not freeze_window:
+        return None
+
+    enabled = str(freeze_window.get("enabled", "")).strip().lower() == "yes"
+    applied = bool(freeze_window.get("freeze_applied"))
+    raw_state = str(freeze_window.get("freeze_state") or "").strip().lower()
+    sample_batches = list(freeze_window.get("frozen_batch_ids_sample") or [])[:5]
+    sample_total = int(freeze_window.get("frozen_batch_count") or 0)
+    degraded = bool(freeze_window.get("degraded")) or raw_state == "degraded"
+    if degraded:
+        state = "degraded"
+    elif raw_state in _FREEZE_STATE_LABELS:
+        state = raw_state
+    elif enabled and applied:
+        state = "active"
+    else:
+        state = "disabled"
+    return {
+        "enabled": enabled,
+        "days": int(freeze_window.get("days") or 0),
+        "state": state,
+        "state_label": _FREEZE_STATE_LABELS[state],
+        "applied": applied,
+        "frozen_op_count": int(freeze_window.get("frozen_op_count") or 0),
+        "frozen_batch_count": sample_total,
+        "sample_batches": sample_batches,
+        "sample_total": sample_total,
+        "sample_more_count": max(sample_total - len(sample_batches), 0),
+        "degraded": degraded,
+        "degradation_reason": freeze_window.get("degradation_reason") or None,
+    }
+
+
+def build_summary_degradation_messages(selected_summary: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not isinstance(selected_summary, dict):
+        return []
+
+    events = selected_summary.get("degradation_events")
+    if not isinstance(events, list):
+        return []
+
+    items: List[Dict[str, Any]] = []
+    seen: set[Tuple[str, str]] = set()
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        code = str(event.get("code") or "").strip()
+        message = str(event.get("message") or "").strip()
+        if not code and not message:
+            continue
+        dedupe_key = (code, message)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        items.append(
+            {
+                "code": code,
+                "label": _SUMMARY_DEGRADATION_LABELS.get(code) or "排产摘要存在可见退化",
+                "message": message,
+                "count": max(1, safe_int(event.get("count"), default=1)),
+            }
+        )
+    return items
+
+
 def build_svg_polyline(values: List[Tuple[int, float]], *, width: int = 520, height: int = 120, pad: int = 18) -> Optional[Dict[str, Any]]:
     """
     把 (x_label, y) 序列转为简单折线图（SVG polyline）。
@@ -316,6 +445,9 @@ def build_analysis_context(
         attempts_rows,
         trace_chart,
     ) = build_selected_details(selected_ver=selected_ver, selected_item=selected_item, trend_all=trend_all)
+    extra_cards = build_extra_cards(selected_summary, selected_metrics, prev_metrics)
+    freeze_display = build_freeze_display(selected_summary)
+    summary_degradation_messages = build_summary_degradation_messages(selected_summary)
     attempts = sort_and_enrich_attempts(attempts_rows, selected_metrics=selected_metrics, objective_key=objective_key)
     return {
         "selected": selected,
@@ -327,5 +459,8 @@ def build_analysis_context(
         "trace_chart": trace_chart,
         "trend_rows": trend_rows,
         "trend_charts": trend_charts,
+        "extra_cards": extra_cards,
+        "freeze_display": freeze_display,
+        "summary_degradation_messages": summary_degradation_messages,
     }
 

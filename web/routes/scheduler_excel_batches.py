@@ -157,7 +157,7 @@ def _extract_error_rows(preview_rows: Any) -> List[Any]:
 
 
 def _format_error_sample(error_rows: List[Any]) -> str:
-    items = [f"第{pr.row_num}行：{pr.message}" for pr in (error_rows or [])[:5] if pr and getattr(pr, "message", None)]
+    items = [f"第{(getattr(pr, 'source_row_num', None) or pr.row_num)}行：{pr.message}" for pr in (error_rows or [])[:5] if pr and getattr(pr, "message", None)]
     return "；".join(items)
 
 

@@ -887,6 +887,18 @@
     }
   }
 
+  function _emptyStateMessage() {
+    const reason = norm(state.emptyReason);
+    const allTasks = Array.isArray(state.allTasks) ? state.allTasks : [];
+    if (reason === "all_rows_filtered_by_invalid_time") {
+      return "当前区间存在时间非法的排程数据，已全部过滤，请检查排产结果。";
+    }
+    if (allTasks.length > 0) {
+      return "当前筛选条件下暂无可显示任务。";
+    }
+    return "暂无排程数据（该周/该版本）。";
+  }
+
   function render() {
     const emptyEl = $("ganttEmpty");
     const errEl = $("ganttError");
@@ -894,6 +906,9 @@
 
     state.filteredTasks = applyFilters(state.allTasks);
     if (!state.filteredTasks.length) {
+      if (emptyEl) {
+        emptyEl.textContent = _emptyStateMessage();
+      }
       show(emptyEl, true);
       const host = $("gantt");
       if (host) {

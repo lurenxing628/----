@@ -8,10 +8,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
 from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, YESNO_VALUES, CalendarDayType
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
+from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.normalize import is_blank_value
@@ -372,7 +372,11 @@ def excel_calendar_confirm():
     # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
     error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
     if error_rows:
-        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        sample = "；".join(
+            [
+                f"第{(getattr(pr, 'source_row_num', None) or pr.row_num)}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message
+            ]
+        )
         flash(
             f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
             "error",
@@ -387,50 +391,43 @@ def excel_calendar_confirm():
         )
 
     cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
-    tx = TransactionManager(g.db)
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample: List[Dict[str, Any]] = []
+    existing_row_ids = set(existing.keys())
 
-    with tx.transaction():
+    def _replace_existing_no_tx() -> None:
         if mode == ImportMode.REPLACE:
             cal_svc.delete_all_no_tx()
-            existing = {}  # 重要：REPLACE 后按“全新导入”处理，避免 APPEND/统计走错
 
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": pr.message})
-                continue
-            if pr.status == RowStatus.SKIP:
-                skip_count += 1
-                continue
-            if pr.status == RowStatus.UNCHANGED and mode != ImportMode.REPLACE:
-                skip_count += 1
-                continue
+    def _row_id_getter(pr: Any) -> str:
+        return str((getattr(pr, "data", None) or {}).get("日期") or "").strip()
 
-            ds = str(pr.data.get("日期")).strip()
-            if mode == ImportMode.APPEND and ds in existing:
-                skip_count += 1
-                continue
+    def _apply_row_no_tx(pr: Any, _existed: bool) -> None:
+        ds = _row_id_getter(pr)
+        cal_svc.upsert_no_tx(
+            {
+                "date": ds,
+                "day_type": pr.data.get("类型"),
+                "shift_hours": pr.data.get("可用工时"),
+                "efficiency": pr.data.get("效率"),
+                "allow_normal": pr.data.get("允许普通件"),
+                "allow_urgent": pr.data.get("允许急件"),
+                "remark": pr.data.get("说明"),
+            }
+        )
 
-            existed = ds in existing
-            # 注意：此处必须使用 no_tx，保证整批导入可整体回滚
-            cal_svc.upsert_no_tx(
-                {
-                    "date": ds,
-                    "day_type": pr.data.get("类型"),
-                    "shift_hours": pr.data.get("可用工时"),
-                    "efficiency": pr.data.get("效率"),
-                    "allow_normal": pr.data.get("允许普通件"),
-                    "allow_urgent": pr.data.get("允许急件"),
-                    "remark": pr.data.get("说明"),
-                }
-            )
-            if existed:
-                update_count += 1
-            else:
-                new_count += 1
+    stats = execute_preview_rows_transactional(
+        g.db,
+        mode=mode,
+        preview_rows=preview_rows,
+        existing_row_ids=existing_row_ids,
+        replace_existing_no_tx=_replace_existing_no_tx,
+        row_id_getter=_row_id_getter,
+        apply_row_no_tx=_apply_row_no_tx,
+        max_error_sample=10,
+        process_unchanged=False,
+        continue_on_app_error=False,
+    )
+    result = stats.to_dict()
+    result["total_rows"] = len(preview_rows)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -439,23 +436,16 @@ def excel_calendar_confirm():
         target_type="calendar",
         filename=filename,
         mode=mode,
-        preview_or_result={
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-        },
+        preview_or_result=result,
         time_cost_ms=time_cost_ms,
     )
 
     flash_import_result(
-        new_count=new_count,
-        update_count=update_count,
-        skip_count=skip_count,
-        error_count=error_count,
-        errors_sample=errors_sample,
+        new_count=result["new_count"],
+        update_count=result["update_count"],
+        skip_count=result["skip_count"],
+        error_count=result["error_count"],
+        errors_sample=result["errors_sample"],
     )
     return redirect(url_for("scheduler.excel_calendar_page"))
 

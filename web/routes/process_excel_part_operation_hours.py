@@ -104,17 +104,15 @@ def _build_existing_internal() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dic
 def _normalize_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     for r in rows:
-        part_no = to_str_or_blank(r.get("图号"))
-        seq = _parse_seq(r.get("工序"))
-        normalized.append(
-            {
-                "图号": part_no or None,
-                "工序": seq if seq is not None else r.get("工序"),
-                "换型时间(h)": r.get("换型时间(h)"),
-                "单件工时(h)": r.get("单件工时(h)"),
-                "__row_id__": (f"{part_no}|{seq}" if part_no and seq is not None else None),
-            }
-        )
+        item = dict(r or {})
+        part_no = to_str_or_blank(item.get("图号"))
+        seq = _parse_seq(item.get("工序"))
+        item["图号"] = part_no or None
+        item["工序"] = seq if seq is not None else item.get("工序")
+        item["换型时间(h)"] = item.get("换型时间(h)")
+        item["单件工时(h)"] = item.get("单件工时(h)")
+        item["__row_id__"] = f"{part_no}|{seq}" if part_no and seq is not None else None
+        normalized.append(item)
     return normalized
 
 
@@ -343,7 +341,7 @@ def excel_part_op_hours_confirm():
 
     error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
     if error_rows:
-        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
+        sample = "；".join([f"第{(getattr(pr, 'source_row_num', None) or pr.row_num)}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
         flash(
             f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
             "error",
