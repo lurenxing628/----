@@ -61,6 +61,23 @@ def _page_date_range_or_version_span(engine: ReportEngine, version: int, start_r
     return s7, e7, "default_7d", span
 
 
+def _send_report_export_file(report_export):
+    resp = send_file(
+        report_export.data,
+        as_attachment=True,
+        download_name=report_export.filename,
+        mimetype=report_export.content_type,
+    )
+    mode = str(getattr(report_export, "mode", "direct") or "direct").strip() or "direct"
+    try:
+        estimated_rows = int(getattr(report_export, "estimated_rows", 0) or 0)
+    except Exception:
+        estimated_rows = 0
+    resp.headers["X-APS-Report-Export-Mode"] = mode
+    resp.headers["X-APS-Report-Estimated-Rows"] = str(max(0, estimated_rows))
+    return resp
+
+
 @bp.get("/")
 def index():
     engine = ReportEngine(g.db)
@@ -111,7 +128,7 @@ def overdue_export():
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     x = engine.export_overdue_xlsx(version)
-    return send_file(x.data, as_attachment=True, download_name=x.filename, mimetype=x.content_type)
+    return _send_report_export_file(x)
 
 
 @bp.get("/utilization")
@@ -166,7 +183,7 @@ def utilization_export():
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     x = engine.export_utilization_xlsx(version, start_date, end_date)
-    return send_file(x.data, as_attachment=True, download_name=x.filename, mimetype=x.content_type)
+    return _send_report_export_file(x)
 
 
 @bp.get("/downtime")
@@ -219,5 +236,4 @@ def downtime_export():
     engine = ReportEngine(g.db)
     version = _export_version_or_latest(engine)
     x = engine.export_downtime_impact_xlsx(version, start_date, end_date)
-    return send_file(x.data, as_attachment=True, download_name=x.filename, mimetype=x.content_type)
-
+    return _send_report_export_file(x)
