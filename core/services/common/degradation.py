@@ -6,14 +6,21 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 STABLE_DEGRADATION_CODES = (
     "blank_required",
     "invalid_number",
+    "number_below_minimum",
     "invalid_due_date",
     "bad_time_row_skipped",
     "calendar_load_failed",
     "legacy_external_days_defaulted",
     "freeze_seed_unavailable",
+    "freeze_window_degraded",
+    "downtime_avoid_degraded",
+    "resource_pool_degraded",
     "template_missing",
     "external_group_missing",
     "ortools_warmstart_failed",
+    "plugin_bootstrap_db_unavailable",
+    "plugin_bootstrap_config_reader_failed",
+    "plugin_bootstrap_config_read_failed",
     "plugin_bootstrap_telemetry_failed",
 )
 

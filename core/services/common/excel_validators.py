@@ -16,50 +16,43 @@ from core.models.enums import (
     YesNo,
 )
 from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
-from core.services.common.enum_normalizers import normalize_yesno_narrow
+from core.services.common.normalization_matrix import (
+    normalize_batch_priority_value,
+    normalize_calendar_day_type_value,
+    normalize_ready_status_value,
+    normalize_yes_no_narrow_value,
+)
 from core.services.common.normalize import is_blank_value, to_str_or_blank
 from core.services.common.number_utils import parse_finite_float, parse_finite_int
 from data.repositories import OperatorRepository, PartRepository
 
 
 def _normalize_batch_priority(value: Any) -> str:
-    v = "" if value is None else str(value).strip()
-    v_lower = v.lower()
-    if v == "普通" or v_lower == BatchPriority.NORMAL.value:
-        return BatchPriority.NORMAL.value
-    if v in ("急", "急件") or v_lower == BatchPriority.URGENT.value:
-        return BatchPriority.URGENT.value
-    if v == "特急" or v_lower == BatchPriority.CRITICAL.value:
-        return BatchPriority.CRITICAL.value
-    return v or BatchPriority.NORMAL.value
+    return normalize_batch_priority_value(
+        value,
+        default=BatchPriority.NORMAL.value,
+        unknown_policy="passthrough",
+    )
 
 
 def _normalize_ready_status(value: Any) -> str:
-    v = "" if value is None else str(value).strip()
-    v_lower = v.lower()
-    if v in ("齐套", "是") or v_lower == ReadyStatus.YES.value:
-        return ReadyStatus.YES.value
-    if v == "部分齐套" or v_lower == ReadyStatus.PARTIAL.value:
-        return ReadyStatus.PARTIAL.value
-    if v in ("未齐套", "否") or v_lower == ReadyStatus.NO.value:
-        return ReadyStatus.NO.value
-    return v or ReadyStatus.YES.value
+    return normalize_ready_status_value(
+        value,
+        default=ReadyStatus.YES.value,
+        unknown_policy="passthrough",
+    )
 
 
 def _normalize_operator_calendar_day_type(value: Any) -> str:
-    v = "" if value is None else str(value).strip()
-    v_lower = v.lower()
-    if v == "工作日" or v_lower == CalendarDayType.WORKDAY.value:
-        return CalendarDayType.WORKDAY.value
-    if v == "周末" or v_lower == CalendarDayType.WEEKEND.value:
-        return CalendarDayType.HOLIDAY.value
-    if v in ("节假日", "假期") or v_lower == CalendarDayType.HOLIDAY.value:
-        return CalendarDayType.HOLIDAY.value
-    return v or CalendarDayType.WORKDAY.value
+    return normalize_calendar_day_type_value(
+        value,
+        default=CalendarDayType.WORKDAY.value,
+        unknown_policy="passthrough",
+    )
 
 
 def _normalize_yesno(value: Any) -> str:
-    return normalize_yesno_narrow(value, default=YesNo.YES.value, unknown_policy="passthrough")
+    return normalize_yes_no_narrow_value(value, default=YesNo.YES.value, unknown_policy="passthrough")
 
 
 def _normalize_batch_date_cell(value: Any, field_label: str) -> Dict[str, Any]:

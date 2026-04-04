@@ -52,6 +52,17 @@ def main() -> None:
     assert duplicated.counters["invalid_number"] == 4, f"BuildOutcome 重复事件计数异常：{duplicated.counters!r}"
     assert duplicated.empty_reason == "empty_after_filter", f"BuildOutcome empty_reason 保留异常：{duplicated.empty_reason!r}"
 
+    try:
+        BuildOutcome.from_collector(
+            value=[],
+            collector=collector,
+            counters={"invalid_number": 99},
+        )
+    except ValueError as exc:
+        assert "invalid_number" in str(exc), f"重复计数报错信息异常：{exc!r}"
+    else:
+        raise AssertionError("BuildOutcome 遇到 events/counters 原因码重叠时应快速失败")
+
     print("OK")
 
 

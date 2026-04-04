@@ -20,7 +20,7 @@ def parse_finite_float(value: Any, *, field: str, allow_none: Literal[True]) -> 
     ...
 
 
-def parse_finite_float(value: Any, *, field: str, allow_none: bool = True) -> Optional[float]:
+def parse_finite_float(value: Any, *, field: str, allow_none: bool = False) -> Optional[float]:
     """严格浮点解析门面：仅保留 allow_none 兼容形态。"""
     if allow_none:
         return parse_optional_float(value, field=field)

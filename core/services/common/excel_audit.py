@@ -13,10 +13,16 @@ def _calc_stats_from_preview(preview_rows: List[ImportPreviewRow]) -> Dict[str, 
     error_count = sum(1 for r in preview_rows if r.status == RowStatus.ERROR)
 
     errors_sample = [
-        {"row": r.row_num, "message": r.message}
+        {
+            "row": getattr(r, "source_row_num", None) or r.row_num,
+            "source_row_num": getattr(r, "source_row_num", None),
+            "source_sheet_name": getattr(r, "source_sheet_name", None),
+            "message": r.message,
+        }
         for r in preview_rows
         if r.status == RowStatus.ERROR and r.message
     ][:10]
+
 
     return {
         "total_rows": total_rows,

@@ -1,36 +1,50 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Generic, List, Optional, TypeVar
+from typing import Dict, Generic, Iterable, List, Mapping, Optional, TypeVar
 
 from core.services.common.degradation import DegradationCollector, DegradationEvent
 
 T = TypeVar("T")
 
 
-@dataclass
+@dataclass(init=False)
 class BuildOutcome(Generic[T]):
     value: T
     events: List[DegradationEvent] = field(default_factory=list)
     counters: Dict[str, int] = field(default_factory=dict)
     empty_reason: Optional[str] = None
 
+    def __init__(
+        self,
+        value: T,
+        events: Optional[Iterable[DegradationEvent]] = None,
+        counters: Optional[Mapping[str, int]] = None,
+        empty_reason: Optional[str] = None,
+    ) -> None:
+        self.value = value
+        self.events = list(events or [])
+        self.counters = dict(counters or {})
+        self.empty_reason = empty_reason
+        self.__post_init__()
+
     def __post_init__(self) -> None:
-        # 合并规则：先根据 events 归并退化事件并生成原因码计数，
-        # 再把外部 counters 逐项叠加到事件计数之上。
-        # 注意：若 counters 中的键与 events 导出的原因码重叠，会产生双倍计数。
-        # from_collector() 的 counters 参数仅应用于追加 collector 事件之外的额外统计。
         collector = DegradationCollector(self.events)
         self.events = collector.to_list()
 
         merged_counters = collector.to_counters()
-        for key, value in list(self.counters.items()):
-            merged_counters[str(key)] = merged_counters.get(str(key), 0) + int(value)
+        external_counters = {str(key): int(value) for key, value in list(self.counters.items())}
+        overlapping_keys = sorted(set(merged_counters.keys()) & set(external_counters.keys()))
+        if overlapping_keys:
+            joined = "、".join(overlapping_keys)
+            raise ValueError(f"BuildOutcome.counters 与 events 导出的原因码重复：{joined}")
+
+        merged_counters.update(external_counters)
         self.counters = merged_counters
 
     @classmethod
     def from_collector(
-        cls,
+        cls: type[BuildOutcome[T]],
         value: T,
         collector: Optional[DegradationCollector] = None,
         *,
@@ -40,8 +54,8 @@ class BuildOutcome(Generic[T]):
         """
         从 DegradationCollector 构建 BuildOutcome。
 
-        counters 仅用于补充 collector 事件之外的额外统计。
-        若 counters 中的键与 collector 事件原因码重叠，__post_init__ 会继续叠加计数。
+        counters 仅允许补充 collector 事件之外的额外统计；
+        若键名与 collector 导出的原因码重复，将直接抛出异常。
         """
         return cls(
             value=value,
