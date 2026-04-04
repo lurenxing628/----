@@ -20,10 +20,21 @@ class _ImportStats:
     error_count: int = 0
     errors_sample: List[Dict[str, Any]] = field(default_factory=list)
 
-    def add_error(self, row_num: int, message: str) -> None:
+    @staticmethod
+    def _row_error_reference(pr: ImportPreviewRow) -> Dict[str, Any]:
+        ref: Dict[str, Any] = {"row": getattr(pr, "source_row_num", None) or pr.row_num}
+        if getattr(pr, "source_row_num", None) is not None:
+            ref["source_row_num"] = getattr(pr, "source_row_num", None)
+        if getattr(pr, "source_sheet_name", None):
+            ref["source_sheet_name"] = getattr(pr, "source_sheet_name", None)
+        return ref
+
+    def add_error(self, pr: ImportPreviewRow, message: str) -> None:
         self.error_count += 1
         if message and len(self.errors_sample) < 10:
-            self.errors_sample.append({"row": row_num, "message": message})
+            sample = self._row_error_reference(pr)
+            sample["message"] = message
+            self.errors_sample.append(sample)
 
     def to_dict(self, total_rows: int) -> Dict[str, Any]:
         return {
@@ -65,17 +76,17 @@ class PartOperationHoursExcelImportService:
 
         parsed, err = self._parse_write_row(pr)
         if err:
-            stats.add_error(pr.row_num, err)
+            stats.add_error(pr, err)
             return
         if parsed is None:
-            stats.add_error(pr.row_num, "内部解析异常：返回值意外为空")
+            stats.add_error(pr, "内部解析异常：返回值意外为空")
             return
         part_no, seq, sh, uh = parsed
 
         try:
             self.part_svc.update_internal_hours(part_no=part_no, seq=seq, setup_hours=sh, unit_hours=uh)
         except AppError as e:
-            stats.add_error(pr.row_num, e.message)
+            stats.add_error(pr, e.message)
             return
 
         if pr.status == RowStatus.NEW:
@@ -86,7 +97,7 @@ class PartOperationHoursExcelImportService:
     @staticmethod
     def _apply_non_write_row(pr: ImportPreviewRow, stats: _ImportStats) -> None:
         if pr.status == RowStatus.ERROR:
-            stats.add_error(pr.row_num, pr.message)
+            stats.add_error(pr, pr.message)
             return
         if pr.status == RowStatus.SKIP:
             stats.skip_count += 1

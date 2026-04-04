@@ -126,7 +126,8 @@ def update_internal_operation(
     """
     op = get_operation(svc, op_id)
     _ensure_internal_operation_editable(op, op_id=op_id)
-    assert op.id is not None
+    if op.id is None:
+        raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
 
     op_id_int = int(op.id)
 

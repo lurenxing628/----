@@ -156,19 +156,38 @@ class BatchService:
             )
         return resolver(part_no, part_name, route_raw, no_tx)
 
-    def _load_template_ops_with_fallback(self, part_no: str, part, *, no_tx: bool, strict_mode: bool = False):
+    def _probe_template_ops_readonly(self, part_no: str, part) -> Dict[str, Any]:
+        template_ops = self.part_op_repo.list_by_part(part_no, include_deleted=False)
+        rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
+        return {
+            "has_template_ops": bool(template_ops),
+            "route_raw": rr,
+            "part_name": getattr(part, "part_name", None) or part_no,
+        }
+
+    def _ensure_template_ops_in_tx(
+        self,
+        part_no: str,
+        part,
+        *,
+        strict_mode: bool = False,
+        probe: Optional[Dict[str, Any]] = None,
+    ):
         template_ops = self.part_op_repo.list_by_part(part_no, include_deleted=False)
         if template_ops:
             return template_ops
 
-        rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
+        probe_data = dict(probe or {})
+        rr = str(probe_data.get("route_raw") or "").strip()
+        if not rr:
+            rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
         if rr:
             try:
                 parse_result = self._invoke_template_resolver(
                     part_no,
-                    part.part_name or part_no,
+                    str(probe_data.get("part_name") or getattr(part, "part_name", None) or part_no),
                     rr,
-                    no_tx,
+                    True,
                     strict_mode=bool(strict_mode),
                 )
                 append_unique_text_messages(self._user_visible_warnings, getattr(parse_result, "warnings", None))
@@ -486,8 +505,8 @@ class BatchService:
         if not part:
             raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{pn}”不存在，请先在工艺管理中维护零件。")
 
-        # 预检：确保零件模板存在（必要时触发一次自动解析）
-        self._load_template_ops_with_fallback(pn, part, no_tx=False, strict_mode=bool(strict_mode))
+        # 只读探测：事务外只判断模板是否已存在/是否具备可补建条件，不产生模板写入副作用。
+        template_probe = self._probe_template_ops_readonly(pn, part)
 
         with self.tx_manager.transaction():
             self.create_batch_from_template_no_tx(
@@ -501,6 +520,7 @@ class BatchService:
                 remark=self._normalize_text(remark),
                 rebuild_ops=rebuild_ops,
                 strict_mode=bool(strict_mode),
+                template_probe=template_probe,
             )
 
         return self._get_or_raise(bid)
@@ -517,6 +537,7 @@ class BatchService:
         remark: Optional[str],
         rebuild_ops: bool = False,
         strict_mode: bool = False,
+        template_probe: Optional[Dict[str, Any]] = None,
     ) -> None:
         batch_template_ops.create_batch_from_template_no_tx(
             self,
@@ -530,6 +551,7 @@ class BatchService:
             remark=remark,
             rebuild_ops=rebuild_ops,
             strict_mode=bool(strict_mode),
+            template_probe=template_probe,
         )
 
     def list_operations(self, batch_id: Any) -> List[BatchOperation]:

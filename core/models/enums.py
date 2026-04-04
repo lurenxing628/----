@@ -102,6 +102,7 @@ class DowntimeScopeType(str, Enum):
 class SkillLevel(str, Enum):
     BEGINNER = "beginner"
     NORMAL = "normal"
+    # 历史兼容别名：新写入与对外展示均不再使用该值。
     SKILLED = "skilled"
     EXPERT = "expert"
 
@@ -135,4 +136,5 @@ MACHINE_DOWNTIME_STATUS_VALUES = tuple(m.value for m in MachineDowntimeStatus)
 
 LOCK_STATUS_VALUES = tuple(m.value for m in LockStatus)
 DOWNTIME_SCOPE_TYPE_VALUES = tuple(m.value for m in DowntimeScopeType)
+# 正式合同只保留 canonical3；skilled 作为历史别名在归一化矩阵中折叠到 expert。
 SKILL_LEVEL_VALUES = (SkillLevel.BEGINNER.value, SkillLevel.NORMAL.value, SkillLevel.EXPERT.value)

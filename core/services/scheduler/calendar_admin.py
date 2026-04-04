@@ -8,7 +8,10 @@ from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorCalendar, WorkCalendar
 from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, CalendarDayType, YesNo
 from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
-from core.services.common.enum_normalizers import normalize_yesno_narrow
+from core.services.common.normalization_matrix import (
+    normalize_calendar_day_type_value,
+    normalize_yes_no_narrow_value,
+)
 from core.services.common.normalize import normalize_text
 from core.services.common.safe_logging import safe_warning
 from core.services.scheduler.config_service import ConfigService
@@ -68,29 +71,22 @@ class CalendarAdmin:
 
     @staticmethod
     def _validate_day_type(value: Any) -> str:
-        raw = CalendarAdmin._normalize_text(value) or CalendarDayType.WORKDAY.value
-        # 中文映射：与 _normalize_yesno 的中文友好程度保持一致
-        if raw == "工作日":
-            return CalendarDayType.WORKDAY.value
-        # 兼容：周末本质属于“假期”
-        if raw == "周末":
-            return CalendarDayType.HOLIDAY.value
-        if raw in ("节假日", "假期"):
-            return CalendarDayType.HOLIDAY.value
-
-        v = str(raw).strip().lower()
-        # 兼容：weekend 统一视为 holiday（存储只保留 workday/holiday）
-        if v == CalendarDayType.WEEKEND.value:
-            return CalendarDayType.HOLIDAY.value
-        if v not in CALENDAR_DAY_TYPE_STORED_VALUES:
+        try:
+            normalized = normalize_calendar_day_type_value(
+                value,
+                default=CalendarDayType.WORKDAY.value,
+                unknown_policy="raise",
+            )
+        except ValueError as exc:
+            raise ValidationError("“类型”不正确，请选择：工作日 / 假期。", field="类型") from exc
+        if normalized not in CALENDAR_DAY_TYPE_STORED_VALUES:
             raise ValidationError("“类型”不正确，请选择：工作日 / 假期。", field="类型")
-        return v
+        return normalized
 
     @staticmethod
     def _normalize_yesno(value: Any, field: str) -> str:
-        v = CalendarAdmin._normalize_text(value)
         try:
-            return normalize_yesno_narrow(v, default=YesNo.YES.value, unknown_policy="raise")
+            return normalize_yes_no_narrow_value(value, default=YesNo.YES.value, unknown_policy="raise")
         except Exception as e:
             raise ValidationError(
                 f"“{field}”不正确，请选择：是 / 否（也兼容 yes/no、true/false、1/0）。",

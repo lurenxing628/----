@@ -103,6 +103,13 @@ def main() -> None:
     assert bool(warning_pipeline.get("summary_merge_failed")), f"warning_pipeline 未标记 merge 失败：{warning_pipeline!r}"
     assert int(warning_pipeline.get("algo_warning_count") or 0) == 2, f"algo_warning_count 异常：{warning_pipeline!r}"
 
+    degradation_counters = dict(result_summary_obj.get("degradation_counters") or {})
+    assert int(degradation_counters.get("freeze_window_degraded") or 0) == 1, degradation_counters
+    assert int(degradation_counters.get("resource_pool_degraded") or 0) == 1, degradation_counters
+    degradation_events = list(result_summary_obj.get("degradation_events") or [])
+    assert any(str(evt.get("code") or "") == "freeze_window_degraded" for evt in degradation_events), degradation_events
+    assert any(str(evt.get("code") or "") == "resource_pool_degraded" for evt in degradation_events), degradation_events
+
     print("OK")
 
 

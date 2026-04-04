@@ -4,7 +4,7 @@ from typing import Any, Dict, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
-from core.services.common.field_parse import parse_field_float, parse_field_int
+from core.services.common.strict_parse import parse_required_float, parse_required_int
 
 from .config_snapshot import ScheduleConfigSnapshot
 from .number_utils import to_yes_no
@@ -35,6 +35,26 @@ def normalize_preset_snapshot(
     def _is_blank(value: Any) -> bool:
         return value is None or (isinstance(value, str) and value.strip() == "")
 
+    def _format_fallback_value(value: Any) -> str:
+        return "空值" if value is None else str(value)
+
+    def _record_min_violation(
+        *,
+        key: str,
+        raw: Any,
+        fallback: Any,
+        min_value: Any,
+        min_inclusive: bool = True,
+    ) -> None:
+        compare_text = "大于等于" if bool(min_inclusive) else "大于"
+        collector.add(
+            code="number_below_minimum",
+            scope="config_validator.preset",
+            field=key,
+            message=f"字段“{key}”数值低于最小值约束（要求{compare_text} {min_value}），已按兼容读取回退为 {_format_fallback_value(fallback)}。",
+            sample=repr(raw),
+        )
+
     collector = DegradationCollector()
 
     def _get_float(
@@ -47,78 +67,38 @@ def normalize_preset_snapshot(
         raw = data.get(key)
         if _is_blank(raw):
             return float(default)
+
         if strict_mode:
-            return float(
-                parse_field_float(
-                    raw,
-                    field=key,
-                    strict_mode=True,
-                    scope="config_validator.preset",
-                    fallback=float(default),
-                    collector=collector,
+            return float(parse_required_float(raw, field=key, min_value=min_value, min_inclusive=min_inclusive))
+
+        parsed = float(parse_required_float(raw, field=key))
+        if min_value is not None:
+            is_valid = parsed >= float(min_value) if bool(min_inclusive) else parsed > float(min_value)
+            if not is_valid:
+                fallback_value = float(default)
+                _record_min_violation(
+                    key=key,
+                    raw=raw,
+                    fallback=fallback_value,
                     min_value=min_value,
                     min_inclusive=min_inclusive,
                 )
-            )
-
-        parse_field_float(
-            raw,
-            field=key,
-            strict_mode=True,
-            scope="config_validator.preset",
-            fallback=float(default),
-            collector=collector,
-        )
-        return float(
-            parse_field_float(
-                raw,
-                field=key,
-                strict_mode=False,
-                scope="config_validator.preset",
-                fallback=float(default),
-                collector=collector,
-                min_value=min_value,
-                min_inclusive=min_inclusive,
-            )
-        )
+                return fallback_value
+        return float(parsed)
 
     def _get_int(key: str, default: int, *, min_v: int) -> int:
         raw = data.get(key)
         if _is_blank(raw):
             return int(default)
         if strict_mode:
-            return int(
-                parse_field_int(
-                    raw,
-                    field=key,
-                    strict_mode=True,
-                    scope="config_validator.preset",
-                    fallback=int(default),
-                    collector=collector,
-                    min_value=min_v,
-                )
-            )
+            return int(parse_required_int(raw, field=key, min_value=min_v))
 
-        parse_field_int(
-            raw,
-            field=key,
-            strict_mode=True,
-            scope="config_validator.preset",
-            fallback=int(default),
-            collector=collector,
-        )
-        return int(
-            parse_field_int(
-                raw,
-                field=key,
-                strict_mode=False,
-                scope="config_validator.preset",
-                fallback=int(default),
-                collector=collector,
-                min_value=min_v,
-                min_violation_fallback=int(min_v),
-            )
-        )
+        parsed = int(parse_required_int(raw, field=key))
+        if parsed < int(min_v):
+            fallback_value = int(min_v)
+            _record_min_violation(key=key, raw=raw, fallback=fallback_value, min_value=min_v)
+            return fallback_value
+        return int(parsed)
 
     valid_strategies_norm = _valid_norm(valid_strategies)
     valid_dispatch_modes_norm = _valid_norm(valid_dispatch_modes)

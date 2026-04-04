@@ -515,6 +515,11 @@ def _summary_degradation_state(
     invalid_due_count: int,
     invalid_due_batch_ids_sample: List[str],
     legacy_external_days_defaulted_count: int,
+    freeze_state: Dict[str, Any],
+    downtime_state: Dict[str, Any],
+    resource_pool_enabled: bool,
+    resource_pool_degraded: bool,
+    resource_pool_degradation_reason: Optional[str],
     ortools_warmstart_failed_count: int,
 ) -> Dict[str, Any]:
     collector = DegradationCollector()
@@ -547,7 +552,7 @@ def _summary_degradation_state(
             code="invalid_due_date",
             scope="schedule.summary",
             field="due_date",
-            message="存在坏交期，超期判断已忽略这些批次。",
+            message="存在交期数据异常，超期判断已忽略这些批次。",
             count=int(invalid_due_count),
             sample="、".join(invalid_due_batch_ids_sample[:5]) or None,
         )
@@ -568,6 +573,30 @@ def _summary_degradation_state(
             field="ortools_enabled",
             message="OR-Tools 预热失败，已回退到常规求解路径。",
             count=int(ortools_warmstart_failed_count),
+        )
+
+    if str(freeze_state.get("freeze_state") or "").strip().lower() == "degraded":
+        collector.add(
+            code="freeze_window_degraded",
+            scope="schedule.summary.freeze_window",
+            field="freeze_window",
+            message=str(freeze_state.get("degradation_reason") or "冻结窗口约束已降级。"),
+        )
+
+    if bool(downtime_state.get("downtime_degraded")):
+        collector.add(
+            code="downtime_avoid_degraded",
+            scope="schedule.summary.downtime_avoid",
+            field="downtime_avoid",
+            message=str(downtime_state.get("downtime_degradation_reason") or "停机避让约束已降级。"),
+        )
+
+    if bool(resource_pool_enabled and resource_pool_degraded):
+        collector.add(
+            code="resource_pool_degraded",
+            scope="schedule.summary.resource_pool",
+            field="resource_pool",
+            message=str(resource_pool_degradation_reason or "自动分配资源池构建已降级。"),
         )
 
     return {"events": degradation_events_to_dicts(collector.to_list()), "counters": collector.to_counters()}
@@ -813,6 +842,11 @@ def build_result_summary(
         invalid_due_count=int(invalid_due_count),
         invalid_due_batch_ids_sample=list(invalid_due_batch_ids_sample),
         legacy_external_days_defaulted_count=int(legacy_external_days_defaulted_count),
+        freeze_state=freeze_state,
+        downtime_state=downtime_state,
+        resource_pool_enabled=bool(resource_pool_enabled),
+        resource_pool_degraded=bool(resource_pool_degraded),
+        resource_pool_degradation_reason=resource_pool_degradation_reason,
         ortools_warmstart_failed_count=int(ortools_warmstart_failed_count),
     )
 

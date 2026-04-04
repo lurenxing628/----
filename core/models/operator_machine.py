@@ -12,7 +12,7 @@ class OperatorMachine:
     id: Optional[int]
     operator_id: str
     machine_id: str
-    skill_level: str = SkillLevel.NORMAL.value  # 预留：beginner/normal/skilled/expert
+    skill_level: str = SkillLevel.NORMAL.value  # 正式写入口径：beginner/normal/expert；skilled 仅历史兼容别名
     is_primary: str = YesNo.NO.value  # yes/no（预留）
     created_at: Optional[str] = None
 

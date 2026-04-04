@@ -44,16 +44,22 @@ class OperatorMachineQueryService:
                 out["skill_level"] = normalize_skill_level(out.get("skill_level"), default="normal", allow_none=False)
             except ValueError:
                 out["skill_level"] = "normal"
-                if raw_skill_text:
+                if raw_skill is None or raw_skill_text == "":
+                    _mark_dirty("skill_level", "历史技能等级为空，已兼容归一为 normal。")
+                else:
                     _mark_dirty("skill_level", f"历史技能等级 {raw_skill_text!r} 无效，已兼容归一为 normal。")
             else:
-                if raw_skill_text and raw_skill_text.lower() != str(out.get("skill_level") or "").strip().lower():
+                if raw_skill is None or raw_skill_text == "":
+                    _mark_dirty("skill_level", "历史技能等级为空，已兼容归一为 normal。")
+                elif raw_skill_text.lower() != str(out.get("skill_level") or "").strip().lower():
                     _mark_dirty("skill_level", f"历史技能等级 {raw_skill_text!r} 已兼容归一为 {out.get('skill_level')}。")
         if "is_primary" in out:
             raw_primary = out.get("is_primary")
             raw_primary_text = "" if raw_primary is None else str(raw_primary).strip()
             out["is_primary"] = normalize_yes_no_wide(out.get("is_primary"), default=YesNo.NO.value, unknown_policy="no")
-            if raw_primary_text and raw_primary_text.lower() != str(out.get("is_primary") or "").strip().lower():
+            if raw_primary is None or raw_primary_text == "":
+                _mark_dirty("is_primary", "历史主操标记为空，已兼容归一为 no。")
+            elif raw_primary_text.lower() != str(out.get("is_primary") or "").strip().lower():
                 _mark_dirty("is_primary", f"历史主操标记 {raw_primary_text!r} 已兼容归一为 {out.get('is_primary')}。")
         if dirty_fields:
             out["dirty_fields"] = list(dirty_fields)

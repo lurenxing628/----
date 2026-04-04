@@ -35,7 +35,7 @@ def main() -> None:
     from core.services.scheduler.schedule_summary import _build_overdue_items
 
     summary = SimpleNamespace(warnings=("已有告警",))
-    items = _build_overdue_items(
+    items, meta = _build_overdue_items(
         _StubSvc(),
         batches={"B_BAD": SimpleNamespace(due_date="2026-13-40")},
         finish_by_batch={},
@@ -43,6 +43,10 @@ def main() -> None:
     )
 
     assert items == [], f"非法 due_date 不应生成超期项：{items!r}"
+    assert int(meta.get("invalid_due_count") or 0) == 1, meta
+    assert meta.get("invalid_due_batch_ids_sample") == ["B_BAD"], meta
+    assert meta.get("invalid_due_raw_sample") == ["B_BAD='2026-13-40'"], meta
+
     assert isinstance(summary.warnings, list), f"warnings 未被归一化为 list：{summary.warnings!r}"
     assert summary.warnings[0] == "已有告警", f"原有告警未保留：{summary.warnings!r}"
     assert any("due_date 格式不合法" in str(item) for item in summary.warnings), (

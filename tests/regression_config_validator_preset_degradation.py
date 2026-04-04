@@ -68,8 +68,7 @@ def test_config_validator_preset_degradation_and_min_clamp() -> None:
     }.issubset(event_fields)
 
     counters = snap.degradation_counters or {}
-    assert int(counters.get("invalid_number") or 0) == 4
-    assert int(counters.get("freeze_seed_unavailable") or 0) == 1
+    assert int(counters.get("number_below_minimum") or 0) == 5
 
 
 def test_config_validator_preset_still_rejects_malformed_numeric() -> None:

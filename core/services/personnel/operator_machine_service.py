@@ -6,7 +6,14 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorMachine
 from core.models.enums import YesNo
-from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
+from core.services.common.excel_service import (
+    ImportMode,
+    ImportPreviewRow,
+    RowStatus,
+    resolve_source_row_num,
+    resolve_source_sheet_name,
+    strip_source_metadata,
+)
 from core.services.common.normalize import to_str_or_blank
 from data.repositories import MachineRepository, OperatorMachineRepository, OperatorRepository
 
@@ -15,9 +22,6 @@ from . import operator_machine_normalizers as om_normalizers
 
 class OperatorMachineService:
     """人员-设备关联服务（OperatorMachine）。"""
-
-    SKILL_LEVELS = ("beginner", "normal", "expert")
-    SKILL_LEVEL_ZH = {"beginner": "初级", "normal": "普通", "expert": "熟练"}
 
     def __init__(self, conn, logger=None, op_logger=None):
         self.conn = conn
@@ -255,19 +259,19 @@ class OperatorMachineService:
         has_skill_col: bool,
         has_primary_col: bool,
         old: Optional[Dict[str, str]],
-    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    ) -> Tuple[str, str, Optional[str]]:
         data = pr.data or {}
         skill_raw = data.get("技能等级") if "技能等级" in data else data.get("skill_level")
         primary_raw = data.get("主操设备") if "主操设备" in data else data.get("is_primary")
+        base_skill = (old.get("skill_level") if old else None) or "normal"
+        base_primary = (old.get("is_primary") if old else None) or YesNo.NO.value
 
         try:
             skill_norm = self._normalize_skill_level_optional(skill_raw) if has_skill_col else None
             primary_norm = self._normalize_yes_no_optional(primary_raw, field="主操设备") if has_primary_col else None
         except ValidationError as e:
-            return None, None, e.message
+            return str(base_skill), str(base_primary), e.message
 
-        base_skill = (old.get("skill_level") if old else None) or "normal"
-        base_primary = (old.get("is_primary") if old else None) or YesNo.NO.value
         new_skill = base_skill if skill_norm is None else skill_norm
         new_primary = base_primary if primary_norm is None else primary_norm
         return str(new_skill), str(new_primary), None
@@ -380,16 +384,20 @@ class OperatorMachineService:
         seen_in_file: Set[str] = set()
 
         for idx, row in enumerate(rows or []):
-            row_num = idx + 2
+            source_row_num = resolve_source_row_num(row or {}, fallback=idx + 2)
+            source_sheet_name = resolve_source_sheet_name(row or {})
             pr = self._preview_one_row(
-                row=row or {},
-                row_num=row_num,
+                row=strip_source_metadata(dict(row or {})),
+                row_num=source_row_num,
                 mode=mode,
                 has_skill_col=has_skill_col,
                 has_primary_col=has_primary_col,
                 existing_map=existing_map,
                 seen_in_file=seen_in_file,
             )
+            pr.row_num = int(source_row_num)
+            pr.source_row_num = int(source_row_num)
+            pr.source_sheet_name = source_sheet_name
             preview.append(pr)
 
         if has_primary_col:
@@ -416,7 +424,14 @@ class OperatorMachineService:
                 if pr.status == RowStatus.ERROR:
                     error_count += 1
                     if pr.message and len(errors_sample) < 10:
-                        errors_sample.append({"row": pr.row_num, "message": pr.message})
+                        errors_sample.append(
+                            {
+                                "row": getattr(pr, "source_row_num", None) or pr.row_num,
+                                "source_row_num": getattr(pr, "source_row_num", None),
+                                "source_sheet_name": getattr(pr, "source_sheet_name", None),
+                                "message": pr.message,
+                            }
+                        )
                     continue
 
                 if pr.status == RowStatus.SKIP:
@@ -432,7 +447,14 @@ class OperatorMachineService:
                 if not op_id or not mc_id:
                     error_count += 1
                     if len(errors_sample) < 10:
-                        errors_sample.append({"row": pr.row_num, "message": "缺少“工号/设备编号”，无法写入。"})
+                        errors_sample.append(
+                            {
+                                "row": getattr(pr, "source_row_num", None) or pr.row_num,
+                                "source_row_num": getattr(pr, "source_row_num", None),
+                                "source_sheet_name": getattr(pr, "source_sheet_name", None),
+                                "message": "缺少“工号/设备编号”，无法写入。",
+                            }
+                        )
                     continue
 
                 key = f"{op_id}|{mc_id}"
@@ -444,7 +466,14 @@ class OperatorMachineService:
                 if err:
                     error_count += 1
                     if len(errors_sample) < 10:
-                        errors_sample.append({"row": pr.row_num, "message": err})
+                        errors_sample.append(
+                            {
+                                "row": getattr(pr, "source_row_num", None) or pr.row_num,
+                                "source_row_num": getattr(pr, "source_row_num", None),
+                                "source_sheet_name": getattr(pr, "source_sheet_name", None),
+                                "message": err,
+                            }
+                        )
                     continue
 
                 # 写入

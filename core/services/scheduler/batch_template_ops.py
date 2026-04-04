@@ -85,6 +85,7 @@ def create_batch_from_template_no_tx(
     remark: Optional[str],
     rebuild_ops: bool = False,
     strict_mode: bool = False,
+    template_probe: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     从零件模板生成/重建批次工序（不控制事务）。
@@ -110,7 +111,7 @@ def create_batch_from_template_no_tx(
     if not part:
         raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{pn}”不存在，请先在工艺管理中维护零件。")
 
-    template_ops = svc._load_template_ops_with_fallback(pn, part, no_tx=True, strict_mode=bool(strict_mode))
+    template_ops = svc._ensure_template_ops_in_tx(pn, part, strict_mode=bool(strict_mode), probe=template_probe)
 
     _ensure_batch_exists_for_template_ops(
         svc,

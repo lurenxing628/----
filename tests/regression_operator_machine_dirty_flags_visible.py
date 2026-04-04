@@ -49,9 +49,14 @@ def main() -> None:
     try:
         conn.execute("INSERT INTO Operators (operator_id, name, status) VALUES (?, ?, ?)", ("OP200", "测试员乙", "active"))
         conn.execute("INSERT INTO Machines (machine_id, name, status) VALUES (?, ?, ?)", ("MC200", "设备乙", "active"))
+        conn.execute("INSERT INTO Machines (machine_id, name, status) VALUES (?, ?, ?)", ("MC201", "设备丙", "active"))
         conn.execute(
             "INSERT INTO OperatorMachine (operator_id, machine_id, skill_level, is_primary) VALUES (?, ?, ?, ?)",
             ("OP200", "MC200", "skilled", "off"),
+        )
+        conn.execute(
+            "INSERT INTO OperatorMachine (operator_id, machine_id, skill_level, is_primary) VALUES (?, ?, ?, ?)",
+            ("OP200", "MC201", "", None),
         )
         conn.commit()
 
@@ -59,11 +64,17 @@ def main() -> None:
     finally:
         conn.close()
 
-    row = next((item for item in rows if item.get("operator_id") == "OP200" and item.get("machine_id") == "MC200"), None)
-    assert row is not None, rows
-    assert set(row.get("dirty_fields") or []) == {"skill_level", "is_primary"}, row
-    assert "历史技能等级 'skilled' 已兼容归一为 expert。" == str((row.get("dirty_reasons") or {}).get("skill_level") or ""), row
-    assert "历史主操标记 'off' 已兼容归一为 no。" == str((row.get("dirty_reasons") or {}).get("is_primary") or ""), row
+    row_invalid = next((item for item in rows if item.get("operator_id") == "OP200" and item.get("machine_id") == "MC200"), None)
+    assert row_invalid is not None, rows
+    assert set(row_invalid.get("dirty_fields") or []) == {"skill_level", "is_primary"}, row_invalid
+    assert "历史技能等级 'skilled' 已兼容归一为 expert。" == str((row_invalid.get("dirty_reasons") or {}).get("skill_level") or ""), row_invalid
+    assert "历史主操标记 'off' 已兼容归一为 no。" == str((row_invalid.get("dirty_reasons") or {}).get("is_primary") or ""), row_invalid
+
+    row_blank = next((item for item in rows if item.get("operator_id") == "OP200" and item.get("machine_id") == "MC201"), None)
+    assert row_blank is not None, rows
+    assert set(row_blank.get("dirty_fields") or []) == {"skill_level", "is_primary"}, row_blank
+    assert "历史技能等级为空，已兼容归一为 normal。" == str((row_blank.get("dirty_reasons") or {}).get("skill_level") or ""), row_blank
+    assert "历史主操标记为空，已兼容归一为 no。" == str((row_blank.get("dirty_reasons") or {}).get("is_primary") or ""), row_blank
 
     app_mod = importlib.import_module("app")
     app = app_mod.create_app()
@@ -73,9 +84,11 @@ def main() -> None:
     _assert_status(resp, "GET /personnel/OP200")
     html = resp.data.decode("utf-8", errors="ignore")
 
-    assert "当前展示包含 1 条历史兼容归一结果" in html, html
+    assert "当前展示包含 2 条历史兼容归一结果" in html, html
     assert "历史技能等级 &#39;skilled&#39; 已兼容归一为 expert。" in html, html
     assert "历史主操标记 &#39;off&#39; 已兼容归一为 no。" in html, html
+    assert "历史技能等级为空，已兼容归一为 normal。" in html, html
+    assert "历史主操标记为空，已兼容归一为 no。" in html, html
 
     print("OK")
 
