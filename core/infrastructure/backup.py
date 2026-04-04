@@ -290,6 +290,58 @@ class BackupManager:
             except Exception:
                 pass
 
+    def _copy_db_file(self, source_path: str, *, locked_warning_message: str) -> None:
+        retries = 6
+        for i in range(retries):
+            try:
+                with closing(sqlite3.connect(source_path)) as source:
+                    with closing(sqlite3.connect(self.db_path, timeout=30)) as dest:
+                        try:
+                            dest.execute("PRAGMA busy_timeout = 30000")
+                        except Exception:
+                            pass
+                        source.backup(dest)
+                return
+            except sqlite3.OperationalError as exc:
+                message = str(exc).lower()
+                if ("locked" in message or "busy" in message) and i < retries - 1:
+                    fallback_log(self.logger, "warning", f"{locked_warning_message}：{exc}")
+                    time.sleep(0.2 * (i + 1))
+                    continue
+                raise
+
+    def _auto_rollback(
+        self,
+        before_restore_path: Optional[str],
+        *,
+        failure_subject: str,
+        rolled_back_code: str,
+        rollback_failed_code: str,
+    ) -> Optional[RestoreResult]:
+        if not before_restore_path or not os.path.exists(before_restore_path):
+            fallback_log(self.logger, "error", f"{failure_subject}，但缺少恢复前快照，无法自动回滚。")
+            return None
+
+        try:
+            self._copy_db_file(before_restore_path, locked_warning_message="自动回滚时数据库被占用，准备重试")
+        except Exception:
+            fallback_log(self.logger, "error", f"{failure_subject}且自动回滚失败\n{traceback.format_exc()}")
+            return RestoreResult(
+                ok=False,
+                code=rollback_failed_code,
+                message=f"{failure_subject}，且自动回滚也失败了，请立即检查日志并手动校验数据库。",
+                before_restore_path=before_restore_path,
+            )
+
+        snapshot_name = os.path.basename(before_restore_path)
+        fallback_log(self.logger, "error", f"{failure_subject}，已自动回滚到恢复前备份：{before_restore_path}")
+        return RestoreResult(
+            ok=False,
+            code=rolled_back_code,
+            message=f"{failure_subject}，但已自动回滚到恢复前备份：{snapshot_name}。",
+            before_restore_path=before_restore_path,
+        )
+
     def restore(self, backup_path: str) -> RestoreResult:
         if not os.path.exists(backup_path):
             fallback_log(self.logger, "error", f"备份文件不存在：{backup_path}")
@@ -301,71 +353,27 @@ class BackupManager:
                 # 恢复前自动备份
                 before_restore_path = self.backup(suffix="before_restore")
 
-                # 处理“其它连接/Windows 锁”的最小策略：busy_timeout + 重试
-                retries = 6
-                for i in range(retries):
-                    try:
-                        with closing(sqlite3.connect(backup_path)) as source:
-                            with closing(sqlite3.connect(self.db_path, timeout=30)) as dest:
-                                try:
-                                    dest.execute("PRAGMA busy_timeout = 30000")
-                                except Exception:
-                                    pass
-                                source.backup(dest)
-                        fallback_log(self.logger, "info", f"数据库文件复制完成，等待后续结构校验：{backup_path}")
-                        return RestoreResult(
-                            ok=True,
-                            code="copied_pending_verify",
-                            message=f"数据库文件已复制，等待后续结构校验：{backup_path}",
-                            before_restore_path=before_restore_path,
-                        )
-                    except sqlite3.OperationalError as e:
-                        msg = str(e).lower()
-                        if ("locked" in msg or "busy" in msg) and i < retries - 1:
-                            fallback_log(self.logger, "warning", f"数据库被占用（可能有其它连接未释放），准备重试：{e}")
-                            time.sleep(0.2 * (i + 1))
-                            continue
-                        raise
+                self._copy_db_file(backup_path, locked_warning_message="数据库被占用（可能有其它连接未释放），准备重试")
+                fallback_log(self.logger, "info", f"数据库文件复制完成，等待后续结构校验：{backup_path}")
+                return RestoreResult(
+                    ok=True,
+                    code="copied_pending_verify",
+                    message=f"数据库文件已复制，等待后续结构校验：{backup_path}",
+                    before_restore_path=before_restore_path,
+                )
         except MaintenanceWindowError as e:
             fallback_log(self.logger, "warning" if e.code == "busy" else "error", e.message)
             return RestoreResult(ok=False, code=e.code, message=e.message)
         except Exception:
             fallback_log(self.logger, "error", f"数据库恢复失败\n{traceback.format_exc()}")
-            # 若恢复过程导致主库处于不一致状态，尽最大努力回滚到恢复前备份
-            try:
-                if before_restore_path and os.path.exists(before_restore_path):
-                    retries = 6
-                    for i in range(retries):
-                        try:
-                            with closing(sqlite3.connect(before_restore_path)) as source2:
-                                with closing(sqlite3.connect(self.db_path, timeout=30)) as dest2:
-                                    try:
-                                        dest2.execute("PRAGMA busy_timeout = 30000")
-                                    except Exception:
-                                        pass
-                                    source2.backup(dest2)
-                            fallback_log(self.logger, "error", f"数据库恢复失败，已自动回滚到恢复前备份：{before_restore_path}")
-                            return RestoreResult(
-                                ok=False,
-                                code="restore_failed_rolled_back",
-                                message=f"数据库恢复失败，但已自动回滚到恢复前备份：{os.path.basename(before_restore_path)}。",
-                                before_restore_path=before_restore_path,
-                            )
-                        except sqlite3.OperationalError as e2:
-                            msg2 = str(e2).lower()
-                            if ("locked" in msg2 or "busy" in msg2) and i < retries - 1:
-                                fallback_log(self.logger, "warning", f"自动回滚时数据库被占用，准备重试：{e2}")
-                                time.sleep(0.2 * (i + 1))
-                                continue
-                            raise
-            except Exception:
-                fallback_log(self.logger, "error", f"数据库恢复失败且自动回滚失败\n{traceback.format_exc()}")
-                return RestoreResult(
-                    ok=False,
-                    code="restore_failed_rollback_failed",
-                    message="数据库恢复失败，且自动回滚也失败了，请立即检查日志并手动校验数据库。",
-                    before_restore_path=before_restore_path,
-                )
+            rollback_result = self._auto_rollback(
+                before_restore_path,
+                failure_subject="数据库恢复失败",
+                rolled_back_code="restore_failed_rolled_back",
+                rollback_failed_code="restore_failed_rollback_failed",
+            )
+            if rollback_result is not None:
+                return rollback_result
             return RestoreResult(
                 ok=False,
                 code="restore_failed",

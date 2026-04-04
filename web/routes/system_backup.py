@@ -253,6 +253,7 @@ def backup_restore():
 
             # 恢复后确保 schema（索引/新表）：
             # 这里必须与 restore 处于同一 maintenance window，避免刚恢复完就被并发请求打断。
+            before_restore_path = getattr(result, "before_restore_path", None)
             try:
                 ensure_schema(
                     current_app.config["DATABASE_PATH"],
@@ -262,7 +263,20 @@ def backup_restore():
             except Exception:
                 if copied_pending_verify:
                     current_app.logger.exception("恢复后结构校验失败：数据库文件已复制，但未通过 ensure_schema")
-                    flash("数据库文件已复制，但结构校验失败，请查看日志后再继续使用。", "error")
+                    rollback_result = mgr._auto_rollback(
+                        before_restore_path,
+                        failure_subject="数据库结构校验失败",
+                        rolled_back_code="verify_failed_rolled_back",
+                        rollback_failed_code="verify_failed_rollback_failed",
+                    )
+                    if rollback_result is None:
+                        rollback_result = type(result)(
+                            ok=False,
+                            code="verify_failed_rollback_failed",
+                            message="数据库结构校验失败，且自动回滚也失败了，请立即检查日志并手动校验数据库。",
+                            before_restore_path=before_restore_path,
+                        )
+                    flash(rollback_result.message, "error")
                     return redirect(url_for("system.backup_page"))
                 current_app.logger.exception("恢复后 ensure_schema 失败")
                 flash("数据库文件已恢复，但后续结构检查失败，请查看日志后再继续使用。", "error")
@@ -276,8 +290,8 @@ def backup_restore():
 
     # 写入操作日志（独立连接）
     conn = None
+    before_restore_path = getattr(result, "before_restore_path", None)
     try:
-        before_restore_path = getattr(result, "before_restore_path", None)
         conn = sqlite3.connect(current_app.config["DATABASE_PATH"])
         op_logger = OperationLogger(conn, logger=current_app.logger)
         logged = op_logger.info(

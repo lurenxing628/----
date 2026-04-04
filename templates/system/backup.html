@@ -186,6 +186,20 @@
       <div class="muted mt-2">
         加载时间：{{ plugin_status.loaded_at or '-' }}<br/>
         插件目录：<code>{{ plugin_status.plugins_dir or '-' }}</code><br/>
+        配置来源：
+        {% if plugin_status.config_source == 'config' %}
+          全部来自系统配置
+        {% elif plugin_status.config_source == 'mixed' %}
+          部分来自系统配置，部分按默认开关运行
+        {% elif plugin_status.config_source == 'default_due_to_db_unavailable' %}
+          数据库连接失败，当前按默认开关运行
+        {% elif plugin_status.config_source == 'default_due_to_config_reader_failed' %}
+          配置读取器初始化失败，当前按默认开关运行
+        {% elif plugin_status.config_source == 'default_due_to_config_read_failed' %}
+          配置读取失败，当前按默认开关运行
+        {% else %}
+          当前按默认开关运行
+        {% endif %}<br/>
         依赖路径：
         {% if plugin_status.vendor_paths %}
           <ul class="list-tight">
@@ -235,6 +249,20 @@
                       启用
                     </label>
                     {{ ui.button('保存', 'secondary', 'sm', type_attr='submit', class='ml-2') }}
+                    <div class="muted mt-1">
+                      当前来源：
+                      {% if s.enabled_source == 'config' %}
+                        系统配置
+                      {% elif s.enabled_source == 'default_due_to_db_unavailable' %}
+                        默认开关（数据库连接失败）
+                      {% elif s.enabled_source == 'default_due_to_config_reader_failed' %}
+                        默认开关（配置读取器初始化失败）
+                      {% elif s.enabled_source == 'default_due_to_config_read_failed' %}
+                        默认开关（配置读取失败）
+                      {% else %}
+                        默认开关
+                      {% endif %}
+                    </div>
                   </form>
                 </td>
                 <td>{{ s.loaded }}</td>

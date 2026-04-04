@@ -53,11 +53,15 @@ def _latest_restore_log_detail(db_path: str):
 
 
 class _FakeManager:
-    def __init__(self, result):
+    def __init__(self, result, rollback_result=None):
         self._result = result
+        self._rollback_result = rollback_result
 
     def restore(self, _backup_path):
         return self._result
+
+    def _auto_rollback(self, _before_restore_path, **_kwargs):
+        return self._rollback_result
 
     def list_backups(self):
         return []
@@ -132,19 +136,47 @@ def main() -> None:
     with mock.patch(
         "web.routes.system_backup._get_backup_manager",
         return_value=_FakeManager(
-            RestoreResult(ok=True, code="copied_pending_verify", message="restore copied", before_restore_path=before_restore_path)
+            RestoreResult(ok=True, code="copied_pending_verify", message="restore copied", before_restore_path=before_restore_path),
+            rollback_result=RestoreResult(
+                ok=False,
+                code="verify_failed_rolled_back",
+                message="数据库结构校验失败，但已自动回滚到恢复前备份：aps_backup_before.db。",
+                before_restore_path=before_restore_path,
+            ),
         ),
     ), mock.patch("web.routes.system_backup.ensure_schema", side_effect=RuntimeError("boom")):
         html = _assert_status(
             client.post("/system/backup/restore", data={"filename": backup_filename}, follow_redirects=True),
-            "POST /system/backup/restore (ensure_schema fail)",
+            "POST /system/backup/restore (ensure_schema fail rolled back)",
         )
-        if "数据库文件已复制，但结构校验失败，请查看日志后再继续使用。" not in html:
-            raise RuntimeError("ensure_schema 失败后未看到错误提示")
+        if "数据库结构校验失败，但已自动回滚到恢复前备份：aps_backup_before.db。" not in html:
+            raise RuntimeError("ensure_schema 失败后未看到自动回滚提示")
         if f"已从备份恢复：{backup_filename}" in html:
             raise RuntimeError("ensure_schema 失败后不应再显示 success flash")
         if _restore_log_count(test_db) != fail_before_count:
             raise RuntimeError("ensure_schema 失败后不应写入 restore success 日志")
+
+    rollback_fail_before_count = _restore_log_count(test_db)
+    with mock.patch(
+        "web.routes.system_backup._get_backup_manager",
+        return_value=_FakeManager(
+            RestoreResult(ok=True, code="copied_pending_verify", message="restore copied", before_restore_path=before_restore_path),
+            rollback_result=RestoreResult(
+                ok=False,
+                code="verify_failed_rollback_failed",
+                message="数据库结构校验失败，且自动回滚也失败了，请立即检查日志并手动校验数据库。",
+                before_restore_path=before_restore_path,
+            ),
+        ),
+    ), mock.patch("web.routes.system_backup.ensure_schema", side_effect=RuntimeError("boom")):
+        html = _assert_status(
+            client.post("/system/backup/restore", data={"filename": backup_filename}, follow_redirects=True),
+            "POST /system/backup/restore (ensure_schema fail rollback failed)",
+        )
+        if "数据库结构校验失败，且自动回滚也失败了，请立即检查日志并手动校验数据库。" not in html:
+            raise RuntimeError("ensure_schema 失败后未看到回滚失败提示")
+        if _restore_log_count(test_db) != rollback_fail_before_count:
+            raise RuntimeError("verify_failed_rollback_failed 不应写入 restore success 日志")
 
     with mock.patch(
         "web.routes.system_backup._get_backup_manager",
