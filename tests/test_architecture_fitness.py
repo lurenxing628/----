@@ -40,6 +40,37 @@ def _read(rel_path: str) -> str:
         return f.read()
 
 
+def _known_oversize_files() -> Set[str]:
+    return {
+        # Phase 5 采用“显式登记技术债”路径：这些历史大文件本轮不继续做高风险拆分，
+        # 仅在 strict_mode / silent fallback 收口完成后单独拆批处理。
+        "web/routes/scheduler_excel_calendar.py",
+        "core/services/process/part_service.py",
+        "core/services/process/unit_excel/template_builder.py",
+        "core/services/personnel/operator_machine_service.py",
+        "core/services/scheduler/batch_service.py",
+        "core/services/scheduler/config_service.py",
+        "core/services/scheduler/schedule_optimizer.py",
+        "core/services/scheduler/schedule_summary.py",
+        "core/infrastructure/database.py",
+    }
+
+
+LOCAL_PARSE_HELPER_NAMES = {"_safe_float", "_safe_int", "_cfg_float", "_cfg_int", "_get_float", "_get_int"}
+LOCAL_PARSE_HELPER_ALLOWLIST = {
+    "core/algorithms/greedy/scheduler.py:_safe_int",
+    "core/services/scheduler/_sched_utils.py:_safe_int",
+    "core/services/scheduler/batch_service.py:_safe_float",
+    "core/services/scheduler/config_snapshot.py:_get_float",
+    "core/services/scheduler/config_snapshot.py:_get_int",
+    "core/services/scheduler/config_validator.py:_get_float",
+    "core/services/scheduler/config_validator.py:_get_int",
+    "core/services/scheduler/schedule_optimizer_steps.py:_cfg_float",
+    "core/services/scheduler/schedule_optimizer_steps.py:_cfg_int",
+    "core/services/system/system_config_service.py:_get_int",
+}
+
+
 # ─── Fitness 1: 分层依赖方向 ───────────────────────────────────
 
 def test_routes_do_not_execute_sql_directly():
@@ -261,6 +292,82 @@ def test_no_wildcard_imports():
     assert not violations, "import * 违反:\n" + "\n".join(violations)
 
 
+def _string_constant(node: ast.AST | None) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return str(node.value)
+    return None
+
+
+def test_no_new_local_parse_helpers():
+    """禁止在 core/ 下继续新增局部解析函数。"""
+    violations: List[str] = []
+    found_allowlist: Set[str] = set()
+
+    for fp in _collect_py_files("core"):
+        src = _read(fp)
+        try:
+            tree = ast.parse(src, filename=fp)
+        except SyntaxError as e:
+            violations.append(f"{fp}:{getattr(e, 'lineno', 0) or 0}: SyntaxError: {e}")
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            name = str(getattr(node, "name", "") or "")
+            if name not in LOCAL_PARSE_HELPER_NAMES:
+                continue
+            entry = f"{fp}:{name}"
+            if entry in LOCAL_PARSE_HELPER_ALLOWLIST:
+                found_allowlist.add(entry)
+                continue
+            violations.append(entry)
+
+    stale_entries = sorted(LOCAL_PARSE_HELPER_ALLOWLIST - found_allowlist)
+    assert not violations, "core/ 新增了局部解析函数:\n" + "\n".join(sorted(violations))
+    assert not stale_entries, "局部解析函数白名单存在失效项:\n" + "\n".join(stale_entries)
+
+
+def test_stable_degradation_codes_cover_actual_usages():
+    """稳定退化原因码清单必须覆盖当前实际使用。"""
+    from core.services.common.degradation import STABLE_DEGRADATION_CODES
+
+    used_codes: Set[str] = set()
+    for fp in _collect_py_files("core", "web/bootstrap"):
+        src = _read(fp)
+        try:
+            tree = ast.parse(src, filename=fp)
+        except SyntaxError as e:
+            raise AssertionError(f"无法解析 {fp}: {e}") from e
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func_name = None
+            if isinstance(node.func, ast.Name):
+                func_name = node.func.id
+            elif isinstance(node.func, ast.Attribute):
+                func_name = node.func.attr
+
+            keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg}
+            if func_name == "FieldPolicy":
+                for key in ("strict_reason_code", "compat_reason_code", "blank_reason_code"):
+                    code = _string_constant(keywords.get(key))
+                    if code:
+                        used_codes.add(code)
+                continue
+
+            if func_name in {"add", "DegradationEvent"} and "code" in keywords and (
+                func_name == "DegradationEvent" or "scope" in keywords or "message" in keywords
+            ):
+                code = _string_constant(keywords.get("code"))
+                if code:
+                    used_codes.add(code)
+
+    missing = sorted(code for code in used_codes if code not in set(STABLE_DEGRADATION_CODES))
+    assert not missing, "存在未纳入 STABLE_DEGRADATION_CODES 的退化原因码:\n" + "\n".join(missing)
+
+
 def test_services_do_not_use_assert_for_runtime_guards():
     """
     Service 层业务路径禁止使用 assert 作为运行期保障。
@@ -450,26 +557,24 @@ def test_no_silent_exception_swallow():
 
 def test_file_size_limit():
     """核心目录单文件不超过 500 行。"""
-    known_oversize = {
-        # Phase 5 采用“显式登记技术债”路径：这些历史大文件本轮不继续做高风险拆分，
-        # 仅在 strict_mode / silent fallback 收口完成后单独拆批处理。
-        "web/routes/scheduler_excel_calendar.py",
-        "core/services/process/part_service.py",
-        "core/services/scheduler/batch_service.py",
-        "core/services/scheduler/config_service.py",
-        "core/services/scheduler/schedule_optimizer.py",
-        "core/services/scheduler/schedule_service.py",
-        "core/services/scheduler/schedule_summary.py",
-        "core/infrastructure/database.py",
-    }
     violations = []
     for fp in _collect_py_files(*CORE_DIRS):
-        if fp in known_oversize:
+        if fp in _known_oversize_files():
             continue
         line_count = len(_read(fp).splitlines())
         if line_count > 500:
             violations.append(f"{fp}: {line_count} lines")
     assert not violations, "文件超 500 行（新增）:\n" + "\n".join(violations)
+
+
+def test_known_oversize_entries_still_exceed_limit():
+    """超长文件白名单中的条目必须仍然真实超限。"""
+    stale_entries = []
+    for fp in sorted(_known_oversize_files()):
+        line_count = len(_read(fp).splitlines())
+        if line_count <= 500:
+            stale_entries.append(f"{fp}: {line_count} lines")
+    assert not stale_entries, "超长文件白名单存在已失效登记:\n" + "\n".join(stale_entries)
 
 
 # ─── Fitness 5: 圈复杂度门禁 ──────────────────────────────────
@@ -573,6 +678,19 @@ def test_cyclomatic_complexity_threshold():
         "core/infrastructure/migrations/v1.py:_ensure_columns",
         "core/infrastructure/migrations/v1.py:_sanitize_batch_dates",
         "core/infrastructure/migrations/v4.py:_sanitize_field",
+        # --- 阶段 04 最终验收：显式登记既有结构债，避免误判为本轮新增 ---
+        "web/routes/personnel_pages.py:detail_page",
+        "web/routes/scheduler_batches.py:batches_page",
+        "web/viewmodels/scheduler_analysis_vm.py:build_freeze_display",
+        "core/services/personnel/operator_machine_query_service.py:_normalize_row",
+        "core/services/process/unit_excel/template_builder.py:_build_suppliers_rows",
+        "core/services/scheduler/gantt_week_plan.py:build_week_plan_rows",
+        "core/services/scheduler/resource_dispatch_excel.py:_summary_pairs",
+        "core/services/scheduler/resource_dispatch_support.py:extract_overdue_batch_ids_with_meta",
+        "core/services/scheduler/schedule_input_builder.py:_build_algo_operations_outcome",
+        "core/services/scheduler/schedule_summary.py:_freeze_meta_dict",
+        "core/services/scheduler/schedule_summary.py:_summary_degradation_state",
+        "core/services/scheduler/schedule_template_lookup.py:lookup_template_group_context_for_op",
     }
 
     new_violations = []

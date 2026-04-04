@@ -105,3 +105,7 @@ tools/ungoogled-chromium_*.zip
 
 # 本地提示词存档（不纳入版本控制）
 提示词存档/
+
+
+# 临时架构债务扫描文件（由审计脚本生成，不纳入版本控制）
+backups/_tmp_arch_debt_scan.txt

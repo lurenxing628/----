@@ -41,7 +41,7 @@
 在仓库根目录运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .cursor/skills/aps-package-win7/scripts/package_win7.ps1
+powershell -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1
 ```
 
 默认会：
@@ -57,7 +57,7 @@ powershell -ExecutionPolicy Bypass -File .cursor/skills/aps-package-win7/scripts
 内部应急回退：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .cursor/skills/aps-package-win7/scripts/package_win7.ps1 -Legacy
+powershell -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1 -Legacy
 ```
 
 ### 找不到 ISCC.exe 怎么办
@@ -91,7 +91,7 @@ python validate_dist_exe.py "dist\排产系统\排产系统.exe"
 官方口径请使用打包脚本，它会先生成裁剪后的 APS 运行时 payload，再调用 Inno Setup：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .cursor/skills/aps-package-win7/scripts/package_win7.ps1 -ChromeOnly
+powershell -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1 -ChromeOnly
 ```
 
 产物：
