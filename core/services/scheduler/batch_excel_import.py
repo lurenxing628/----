@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set
 
-from core.infrastructure.errors import ValidationError
-from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
+from core.models.enums import BatchStatus
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
+
+from . import batch_write_rules
 
 
 def import_batches_from_preview_rows(
@@ -35,63 +36,54 @@ def import_batches_from_preview_rows(
         return str(pr.data.get("批次号") or "").strip()
 
     def _apply_row_no_tx(pr: Any, existed: bool) -> None:
-        bid = str(pr.data.get("批次号") or "").strip()
-        pn = str(pr.data.get("图号") or "").strip()
-        # 依赖 preview 阶段已将“数量”校验并标准化为整数；此处仅做防御性转换。
-        qty = int(pr.data.get("数量"))
-        dd = pr.data.get("交期")
-        prio = str(pr.data.get("优先级") or BatchPriority.NORMAL.value).strip()
-        ready = str(pr.data.get("齐套") or ReadyStatus.YES.value).strip()
+        batch_id = str(pr.data.get("批次号") or "").strip()
+        part_no = str(pr.data.get("图号") or "").strip()
+        part = parts_cache.get(part_no)
+        part_name = getattr(part, "part_name", None) if part is not None else None
+        due_date = pr.data.get("交期")
         ready_date = pr.data.get("齐套日期")
         remark = pr.data.get("备注")
 
-        part = parts_cache.get(pn)
-        part_name = part.part_name if part else None
         if existed:
-            existing_batch = svc.get(bid)
-            existing_part_no = str(getattr(existing_batch, "part_no", "") or "").strip()
-            if existing_part_no and pn and existing_part_no != pn and not auto_generate_ops:
-                raise ValidationError(
-                    "已存在批次图号变更，必须开启自动生成工序后再试。",
-                    field="图号",
-                )
-            svc.update_no_tx(
-                bid,
-                {
-                    "part_no": pn,
-                    "part_name": part_name,
-                    "quantity": qty,
-                    "due_date": dd,
-                    "priority": prio,
-                    "ready_status": ready,
-                    "ready_date": ready_date,
-                    "remark": remark,
-                },
-            )
+            existing_batch = svc.get(batch_id)
+            update_kwargs = {
+                "current_part_no": getattr(existing_batch, "part_no", None),
+                "auto_generate_ops": bool(auto_generate_ops),
+                "part_no": part_no,
+                "quantity": pr.data.get("数量"),
+                "due_date": due_date,
+                "priority": pr.data.get("优先级"),
+                "ready_status": pr.data.get("齐套"),
+                "ready_date": ready_date,
+                "remark": remark,
+            }
+            if part_name is not None:
+                update_kwargs["part_name"] = part_name
+            svc.update_no_tx(batch_id, batch_write_rules.build_update_payload(svc, **update_kwargs))
         else:
-            svc.create_no_tx(
-                {
-                    "batch_id": bid,
-                    "part_no": pn,
-                    "part_name": part_name,
-                    "quantity": qty,
-                    "due_date": dd,
-                    "priority": prio,
-                    "ready_status": ready,
-                    "ready_date": ready_date,
-                    "status": BatchStatus.PENDING.value,
-                    "remark": remark,
-                }
-            )
+            create_kwargs = {
+                "batch_id": batch_id,
+                "part_no": part_no,
+                "quantity": pr.data.get("数量"),
+                "due_date": due_date,
+                "priority": pr.data.get("优先级"),
+                "ready_status": pr.data.get("齐套"),
+                "ready_date": ready_date,
+                "status": BatchStatus.PENDING.value,
+                "remark": remark,
+            }
+            if part_name is not None:
+                create_kwargs["part_name"] = part_name
+            svc.create_no_tx(batch_write_rules.build_create_payload(svc, **create_kwargs))
 
         if auto_generate_ops:
             svc.create_batch_from_template_no_tx(
-                batch_id=bid,
-                part_no=pn,
-                quantity=qty,
-                due_date=svc._normalize_date(dd),
-                priority=prio,
-                ready_status=ready,
+                batch_id=batch_id,
+                part_no=part_no,
+                quantity=svc._normalize_int(pr.data.get("数量"), field="数量", allow_none=False),
+                due_date=svc._normalize_date(due_date),
+                priority=pr.data.get("优先级"),
+                ready_status=pr.data.get("齐套"),
                 ready_date=svc._normalize_date(ready_date),
                 remark=(str(remark).strip() if remark is not None and str(remark).strip() else None),
                 rebuild_ops=True,
@@ -113,4 +105,3 @@ def import_batches_from_preview_rows(
     result["total_rows"] = len(rows)
     result["auto_generate_ops"] = bool(auto_generate_ops)
     return result
-

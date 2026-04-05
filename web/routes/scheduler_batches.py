@@ -14,38 +14,19 @@ from core.services.scheduler.schedule_history_query_service import ScheduleHisto
 from web.ui_mode import render_ui_template as render_template
 
 from .pagination import paginate_rows, parse_page_args
-from .scheduler_bp import _batch_status_zh, _priority_zh, _ready_zh, bp
+from .scheduler_bp import (
+    _batch_status_zh,
+    _normalize_warning_texts,
+    _priority_zh,
+    _ready_zh,
+    _surface_schedule_warnings,
+    bp,
+)
 from .system_utils import _safe_next_url
 
 
 def _strict_mode_enabled(raw_value: Any) -> bool:
     return str(raw_value or "").strip().lower() in {"1", "y", "yes", "true", "on"}
-
-
-def _normalize_warning_texts(values: object) -> List[str]:
-    if not isinstance(values, (list, tuple)):
-        return []
-    out: List[str] = []
-    seen = set()
-    for item in values:
-        text = str(item or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text)
-    return out
-
-
-def _surface_route_warnings(messages: object, *, limit: int = 3) -> None:
-    warnings = _normalize_warning_texts(messages)
-    if not warnings:
-        return
-    shown = warnings[: max(1, int(limit))]
-    for item in shown:
-        flash(item, "warning")
-    remaining = len(warnings) - len(shown)
-    if remaining > 0:
-        flash(f"另有 {remaining} 条告警，请到系统历史查看。", "warning")
 
 
 @bp.get("/")
@@ -209,7 +190,7 @@ def create_batch():
             strict_mode=strict_mode,
         )
         flash(f"已创建批次并生成工序：{b.batch_id}（共 {len(batch_svc.list_operations(b.batch_id))} 道工序）", "success")
-        _surface_route_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
+        _surface_schedule_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
         return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))
     except AppError as e:
         flash(e.message, "error")
@@ -298,18 +279,21 @@ def _bulk_update_one_batch(
     remark: Optional[str],
 ) -> Optional[str]:
     try:
-        batch_svc.update(
-            batch_id=bid,
-            due_date=due_date if due_date is not None else None,
-            priority=priority if priority is not None else None,
-            remark=remark if remark is not None else None,
-        )
+        kwargs: Dict[str, Any] = {"batch_id": bid}
+        if due_date is not None:
+            kwargs["due_date"] = due_date
+        if priority is not None:
+            kwargs["priority"] = priority
+        if remark is not None:
+            kwargs["remark"] = remark
+        batch_svc.update(**kwargs)
         return None
     except AppError as e:
         return f"{bid}（{e.message}）"
     except Exception:
         current_app.logger.exception("批量修改批次失败（batch_id=%s）", bid)
         return f"{bid}（系统错误）"
+
 
 
 @bp.post("/batches/bulk/copy")
@@ -397,7 +381,7 @@ def generate_ops(batch_id: str):
         )
         cnt = len(batch_svc.list_operations(b.batch_id))
         flash(f"已重建批次工序：共 {cnt} 道工序。", "success")
-        _surface_route_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
+        _surface_schedule_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
     except AppError as e:
         flash(e.message, "error")
     return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))

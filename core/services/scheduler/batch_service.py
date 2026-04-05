@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import inspect
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Batch, BatchOperation
-from core.models.enums import BatchPriority, BatchStatus, ReadyStatus, SourceType
+from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
 from core.services.common.excel_service import ImportMode
-from core.services.common.normalize import append_unique_text_messages, normalize_text
+from core.services.common.normalize import normalize_text
 from data.repositories import BatchOperationRepository, BatchRepository, PartOperationRepository, PartRepository
 
-from . import batch_copy, batch_excel_import, batch_template_ops
+from . import batch_copy, batch_excel_import, batch_template_ops, batch_write_rules
 from .number_utils import parse_finite_int
 
 
@@ -35,7 +34,7 @@ class BatchService:
         self.batch_op_repo = BatchOperationRepository(conn, logger=logger)
         self.part_repo = PartRepository(conn, logger=logger)
         self.part_op_repo = PartOperationRepository(conn, logger=logger)
-        self._template_resolver = template_resolver or self._default_template_resolver
+        self._template_resolver = template_resolver or batch_template_ops.default_template_resolver_factory(self)
 
     def consume_user_visible_warnings(self) -> List[str]:
         warnings = list(self._user_visible_warnings)
@@ -68,6 +67,11 @@ class BatchService:
     def _normalize_date(value: Any) -> Optional[str]:
         """
         交期（due_date）存储为 SQLite DATE，V1 以字符串 `YYYY-MM-DD` 为主。
+
+        设计决策：Web 编辑接受含时间的日期并截断时间部分（如 "2026-01-01 08:00" → "2026-01-01"），
+        而 Excel 导入使用 excel_validators._normalize_batch_date_cell 更严格地拒绝含时间的值。
+        两者有意不统一：Excel 作为批量入口更应严格把关。
+
         - 允许为空
         - 支持字符串：YYYY-MM-DD / YYYY/MM/DD / YYYY-MM-DD HH:MM(:SS) / YYYY-MM-DDTHH:MM
         - 支持 datetime/date
@@ -82,22 +86,21 @@ class BatchService:
         if isinstance(value, _date):
             return value.isoformat()
 
-        v = str(value).strip()
-        if not v:
+        text = str(value).strip()
+        if not text:
             return None
-        v = v.replace("/", "-")
-        # 允许带时间：只取日期部分
-        if "T" in v:
-            v = v.split("T", 1)[0]
-        if " " in v:
-            v = v.split(" ", 1)[0]
+        text = text.replace("/", "-")
+        if "T" in text:
+            text = text.split("T", 1)[0]
+        if " " in text:
+            text = text.split(" ", 1)[0]
         try:
-            return _dt.strptime(v, "%Y-%m-%d").date().isoformat()
-        except Exception as e:
-            raise ValidationError("日期格式不合法（期望：YYYY-MM-DD）", field="日期") from e
+            return _dt.strptime(text, "%Y-%m-%d").date().isoformat()
+        except Exception as exc:
+            raise ValidationError("日期格式不合法（期望：YYYY-MM-DD）", field="日期") from exc
 
     @staticmethod
-    def _validate_enum(value: Optional[str], allowed: Tuple[str, ...], field: str) -> Optional[str]:
+    def _validate_enum(value: Optional[str], allowed: tuple[str, ...], field: str) -> Optional[str]:
         if value is None:
             return None
         if value not in allowed:
@@ -113,106 +116,10 @@ class BatchService:
         return value
 
     def _get_or_raise(self, batch_id: str) -> Batch:
-        b = self.batch_repo.get(batch_id)
-        if not b:
+        batch = self.batch_repo.get(batch_id)
+        if not batch:
             raise BusinessError(ErrorCode.BATCH_NOT_FOUND, f"批次“{batch_id}”不存在")
-        return b
-
-    def _default_template_resolver(
-        self, part_no: str, part_name: str, route_raw: str, no_tx: bool, *, strict_mode: bool = False
-    ):
-        # 懒加载跨域依赖：默认行为与历史实现等价
-        from core.services.process.part_service import PartService
-
-        svc = PartService(self.conn, logger=self.logger, op_logger=self.op_logger)
-        if no_tx:
-            return svc.upsert_and_parse_no_tx(part_no=part_no, part_name=part_name, route_raw=route_raw, strict_mode=strict_mode)
-        return svc.reparse_and_save(part_no=part_no, route_raw=route_raw, strict_mode=strict_mode)
-
-    def _invoke_template_resolver(self, part_no: str, part_name: str, route_raw: str, no_tx: bool, *, strict_mode: bool):
-        resolver = self._template_resolver
-        try:
-            sig = inspect.signature(resolver)
-            supports_strict_mode = any(
-                param.kind == inspect.Parameter.VAR_KEYWORD or param.name == "strict_mode"
-                for param in sig.parameters.values()
-            )
-        except Exception as exc:
-            if strict_mode:
-                raise BusinessError(
-                    ErrorCode.ROUTE_PARSE_ERROR,
-                    "当前模板解析器版本过旧，不支持 strict_mode，请升级解析器后重试。",
-                    details={"reason": "strict_mode_unsupported"},
-                    cause=exc,
-                ) from exc
-            return resolver(part_no, part_name, route_raw, no_tx)
-        if supports_strict_mode:
-            return resolver(part_no, part_name, route_raw, no_tx, strict_mode=strict_mode)
-        if strict_mode:
-            raise BusinessError(
-                ErrorCode.ROUTE_PARSE_ERROR,
-                "当前模板解析器版本过旧，不支持 strict_mode，请升级解析器后重试。",
-                details={"reason": "strict_mode_unsupported"},
-            )
-        return resolver(part_no, part_name, route_raw, no_tx)
-
-    def _probe_template_ops_readonly(self, part_no: str, part) -> Dict[str, Any]:
-        template_ops = self.part_op_repo.list_by_part(part_no, include_deleted=False)
-        rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
-        return {
-            "has_template_ops": bool(template_ops),
-            "route_raw": rr,
-            "part_name": getattr(part, "part_name", None) or part_no,
-        }
-
-    def _ensure_template_ops_in_tx(
-        self,
-        part_no: str,
-        part,
-        *,
-        strict_mode: bool = False,
-        probe: Optional[Dict[str, Any]] = None,
-    ):
-        template_ops = self.part_op_repo.list_by_part(part_no, include_deleted=False)
-        if template_ops:
-            return template_ops
-
-        probe_data = dict(probe or {})
-        rr = str(probe_data.get("route_raw") or "").strip()
-        if not rr:
-            rr = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
-        if rr:
-            try:
-                parse_result = self._invoke_template_resolver(
-                    part_no,
-                    str(probe_data.get("part_name") or getattr(part, "part_name", None) or part_no),
-                    rr,
-                    True,
-                    strict_mode=bool(strict_mode),
-                )
-                append_unique_text_messages(self._user_visible_warnings, getattr(parse_result, "warnings", None))
-            except BusinessError as e:
-                if ((getattr(e, "details", None) or {}).get("reason")) == "strict_mode_unsupported":
-                    raise
-                raise BusinessError(
-                    ErrorCode.ROUTE_PARSE_ERROR,
-                    "该零件尚未生成工序模板，且自动解析失败。请到【工艺管理-工序模板】中检查工艺路线并重新解析。",
-                    cause=e,
-                ) from e
-            except Exception as e:
-                raise BusinessError(
-                    ErrorCode.ROUTE_PARSE_ERROR,
-                    "该零件尚未生成工序模板，且自动解析失败。请到【工艺管理-工序模板】中检查工艺路线并重新解析。",
-                    cause=e,
-                ) from e
-            template_ops = self.part_op_repo.list_by_part(part_no, include_deleted=False)
-
-        if not template_ops:
-            raise BusinessError(
-                ErrorCode.ROUTE_PARSE_ERROR,
-                "该零件尚未生成工序模板，无法创建批次工序。请先在【工艺管理-工序模板】中解析工艺路线并保存模板。",
-            )
-        return template_ops
+        return batch
 
     # -------------------------
     # Batches CRUD
@@ -239,10 +146,10 @@ class BatchService:
         return self.batch_repo.list(status=status, priority=priority, part_no=part_no)
 
     def get(self, batch_id: Any) -> Batch:
-        bid = self._normalize_text(batch_id)
-        if not bid:
+        batch_id_text = self._normalize_text(batch_id)
+        if not batch_id_text:
             raise ValidationError("“批次号”不能为空", field="批次号")
-        return self._get_or_raise(bid)
+        return self._get_or_raise(batch_id_text)
 
     def create(
         self,
@@ -257,64 +164,28 @@ class BatchService:
         remark: Any = None,
         part_name: Any = None,
     ) -> Batch:
-        bid = self._normalize_text(batch_id)
-        pn = self._normalize_text(part_no)
-        qty = self._normalize_int(quantity, field="数量", allow_none=False)
-        dd = self._normalize_date(due_date)
-        pr = self._normalize_text(priority) or BatchPriority.NORMAL.value
-        rs = self._normalize_text(ready_status) or ReadyStatus.YES.value
-        rd = self._normalize_date(ready_date)
-        st = self._normalize_text(status) or BatchStatus.PENDING.value
-        rmk = self._normalize_text(remark)
-
-        if not bid:
+        batch_id_text = self._normalize_text(batch_id)
+        if not batch_id_text:
             raise ValidationError("“批次号”不能为空", field="批次号")
-        if not pn:
-            raise ValidationError("“图号”不能为空", field="图号")
-        if qty is None or qty <= 0:
-            raise ValidationError("“数量”必须大于 0", field="数量")
+        if self.batch_repo.get(batch_id_text):
+            raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS, f"批次号“{batch_id_text}”已存在，不能重复添加。")
 
-        self._validate_enum(pr, (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value), "优先级")
-        self._validate_enum(rs, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
-        self._validate_enum(
-            st,
-            (
-                BatchStatus.PENDING.value,
-                BatchStatus.SCHEDULED.value,
-                BatchStatus.PROCESSING.value,
-                BatchStatus.COMPLETED.value,
-                BatchStatus.CANCELLED.value,
-            ),
-            "状态",
+        payload = batch_write_rules.build_create_payload(
+            self,
+            batch_id=batch_id_text,
+            part_no=part_no,
+            quantity=quantity,
+            due_date=due_date,
+            priority=priority,
+            ready_status=ready_status,
+            ready_date=ready_date,
+            status=status,
+            remark=remark,
+            part_name=part_name,
         )
-
-        if self.batch_repo.get(bid):
-            raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS, f"批次号“{bid}”已存在，不能重复添加。")
-
-        part = self.part_repo.get(pn)
-        if not part:
-            raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{pn}”不存在，请先在工艺管理中维护零件。")
-
-        # 若未显式传 part_name，则默认使用零件名称
-        p_name = self._normalize_text(part_name) or part.part_name
-
         with self.tx_manager.transaction():
-            self.create_no_tx(
-                {
-                    "batch_id": bid,
-                    "part_no": pn,
-                    "part_name": p_name,
-                    "quantity": int(qty),
-                    "due_date": dd,
-                    "priority": pr,
-                    "ready_status": rs,
-                    "ready_date": rd,
-                    "status": st,
-                    "remark": rmk,
-                }
-            )
-
-        return self._get_or_raise(bid)
+            self.create_no_tx(payload)
+        return self._get_or_raise(batch_id_text)
 
     def create_no_tx(self, payload: Dict[str, Any]) -> Batch:
         """
@@ -323,90 +194,54 @@ class BatchService:
         说明：
         - 供 Excel 批量导入在“外部已开启事务”时使用，避免嵌套 commit 导致无法整体回滚。
         """
-        b = payload if isinstance(payload, Batch) else Batch.from_row(payload)
-        self.batch_repo.create(b.to_dict())
-        return b
+        batch = payload if isinstance(payload, Batch) else Batch.from_row(payload)
+        self.batch_repo.create(batch.to_dict())
+        return batch
 
     def update(
         self,
         batch_id: Any,
-        part_no: Any = None,
-        quantity: Any = None,
-        due_date: Any = None,
-        priority: Any = None,
-        ready_status: Any = None,
-        ready_date: Any = None,
-        status: Any = None,
-        remark: Any = None,
-        part_name: Any = None,
+        part_no: Any = batch_write_rules._MISSING,
+        quantity: Any = batch_write_rules._MISSING,
+        due_date: Any = batch_write_rules._MISSING,
+        priority: Any = batch_write_rules._MISSING,
+        ready_status: Any = batch_write_rules._MISSING,
+        ready_date: Any = batch_write_rules._MISSING,
+        status: Any = batch_write_rules._MISSING,
+        remark: Any = batch_write_rules._MISSING,
+        part_name: Any = batch_write_rules._MISSING,
     ) -> Batch:
-        bid = self._normalize_text(batch_id)
-        if not bid:
+        batch_id_text = self._normalize_text(batch_id)
+        if not batch_id_text:
             raise ValidationError("“批次号”不能为空", field="批次号")
-        self._get_or_raise(bid)
+        batch = self._get_or_raise(batch_id_text)
 
-        updates: Dict[str, Any] = {}
+        update_kwargs: Dict[str, Any] = {
+            "current_part_no": getattr(batch, "part_no", None),
+            # 公开更新接口默认不重建工序，因此图号切换保护始终生效
+            "auto_generate_ops": False,
+        }
+        for field_name, field_value in {
+            "part_no": part_no,
+            "quantity": quantity,
+            "due_date": due_date,
+            "priority": priority,
+            "ready_status": ready_status,
+            "ready_date": ready_date,
+            "status": status,
+            "remark": remark,
+            "part_name": part_name,
+        }.items():
+            if field_value is not batch_write_rules._MISSING:
+                update_kwargs[field_name] = field_value
 
-        if part_no is not None:
-            pn = self._normalize_text(part_no)
-            if not pn:
-                raise ValidationError("“图号”不能为空", field="图号")
-            part = self.part_repo.get(pn)
-            if not part:
-                raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{pn}”不存在，请先在工艺管理中维护零件。")
-            updates["part_no"] = pn
-            # 若未显式传 part_name，则切换图号时默认跟随零件名称
-            if part_name is None:
-                updates["part_name"] = part.part_name
-
-        if part_name is not None:
-            updates["part_name"] = self._normalize_text(part_name)
-
-        if quantity is not None:
-            qty = self._normalize_int(quantity, field="数量", allow_none=True)
-            if qty is None or qty <= 0:
-                raise ValidationError("“数量”必须大于 0", field="数量")
-            updates["quantity"] = int(qty)
-
-        if due_date is not None:
-            updates["due_date"] = self._normalize_date(due_date)
-
-        if priority is not None:
-            pr = self._normalize_text(priority)
-            self._validate_enum(pr, (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value), "优先级")
-            updates["priority"] = pr
-
-        if ready_status is not None:
-            rs = self._normalize_text(ready_status)
-            self._validate_enum(rs, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
-            updates["ready_status"] = rs
-
-        if ready_date is not None:
-            updates["ready_date"] = self._normalize_date(ready_date)
-
-        if status is not None:
-            st = self._normalize_text(status)
-            self._validate_enum(
-                st,
-                (
-                    BatchStatus.PENDING.value,
-                    BatchStatus.SCHEDULED.value,
-                    BatchStatus.PROCESSING.value,
-                    BatchStatus.COMPLETED.value,
-                    BatchStatus.CANCELLED.value,
-                ),
-                "状态",
-            )
-            updates["status"] = st
-
-        if remark is not None:
-            updates["remark"] = self._normalize_text(remark)  # 允许显式清空为 NULL
-
+        updates = batch_write_rules.build_update_payload(self, **update_kwargs)
         if updates:
             with self.tx_manager.transaction():
-                self.update_no_tx(bid, updates)
+                self.update_no_tx(batch_id_text, updates)
+        return self._get_or_raise(batch_id_text)
 
-        return self._get_or_raise(bid)
+
 
     def update_no_tx(self, batch_id: str, updates: Dict[str, Any]) -> None:
         """
@@ -418,14 +253,12 @@ class BatchService:
         self.batch_repo.update(batch_id, updates)
 
     def delete(self, batch_id: Any) -> None:
-        bid = self._normalize_text(batch_id)
-        if not bid:
+        batch_id_text = self._normalize_text(batch_id)
+        if not batch_id_text:
             raise ValidationError("“批次号”不能为空", field="批次号")
-        self._get_or_raise(bid)
-
-        # 按 schema 约束，删除批次会级联删除 BatchOperations；Schedule 也会因 op_id 外键级联删除
+        self._get_or_raise(batch_id_text)
         with self.tx_manager.transaction():
-            self.batch_repo.delete(bid)
+            self.batch_repo.delete(batch_id_text)
 
     def delete_all_no_tx(self) -> None:
         """
@@ -452,7 +285,7 @@ class BatchService:
             preview_rows=preview_rows,
             mode=mode,
             parts_cache=parts_cache,
-            auto_generate_ops=auto_generate_ops,
+            auto_generate_ops=bool(auto_generate_ops),
             strict_mode=bool(strict_mode),
             existing_ids=existing_ids,
         )
@@ -483,47 +316,44 @@ class BatchService:
         任意一步失败必须整体回滚，避免“批次有了但工序没生成”的脏数据。
         """
         self.consume_user_visible_warnings()
-        bid = self._normalize_text(batch_id)
-        if not bid:
+        batch_id_text = self._normalize_text(batch_id)
+        if not batch_id_text:
             raise ValidationError("“批次号”不能为空", field="批次号")
 
-        pn = self._normalize_text(part_no)
-        if not pn:
+        part_no_text = self._normalize_text(part_no)
+        if not part_no_text:
             raise ValidationError("“图号”不能为空", field="图号")
 
-        qty = self._normalize_int(quantity, field="数量", allow_none=False)
-        if qty is None or qty <= 0:
+        quantity_value = self._normalize_int(quantity, field="数量", allow_none=False)
+        if quantity_value is None or quantity_value <= 0:
             raise ValidationError("“数量”必须大于 0", field="数量")
 
-        pr = self._normalize_text(priority) or BatchPriority.NORMAL.value
-        rs = self._normalize_text(ready_status) or ReadyStatus.YES.value
-        rd = self._normalize_date(ready_date)
-        self._validate_enum(pr, (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value), "优先级")
-        self._validate_enum(rs, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
+        priority_text = self._normalize_text(priority) or BatchPriority.NORMAL.value
+        ready_status_text = self._normalize_text(ready_status) or ReadyStatus.YES.value
+        ready_date_text = self._normalize_date(ready_date)
+        self._validate_enum(priority_text, (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value), "优先级")
+        self._validate_enum(ready_status_text, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
 
-        part = self.part_repo.get(pn)
+        part = self.part_repo.get(part_no_text)
         if not part:
-            raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{pn}”不存在，请先在工艺管理中维护零件。")
+            raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{part_no_text}”不存在，请先在工艺管理中维护零件。")
 
-        # 只读探测：事务外只判断模板是否已存在/是否具备可补建条件，不产生模板写入副作用。
-        template_probe = self._probe_template_ops_readonly(pn, part)
-
+        template_probe = batch_template_ops.probe_template_ops_readonly(self, part_no_text, part)
         with self.tx_manager.transaction():
             self.create_batch_from_template_no_tx(
-                batch_id=bid,
-                part_no=pn,
-                quantity=int(qty),
+                batch_id=batch_id_text,
+                part_no=part_no_text,
+                quantity=int(quantity_value),
                 due_date=self._normalize_date(due_date),
-                priority=pr,
-                ready_status=rs,
-                ready_date=rd,
+                priority=priority_text,
+                ready_status=ready_status_text,
+                ready_date=ready_date_text,
                 remark=self._normalize_text(remark),
                 rebuild_ops=rebuild_ops,
                 strict_mode=bool(strict_mode),
                 template_probe=template_probe,
             )
-
-        return self._get_or_raise(bid)
+        return self._get_or_raise(batch_id_text)
 
     def create_batch_from_template_no_tx(
         self,
@@ -555,9 +385,8 @@ class BatchService:
         )
 
     def list_operations(self, batch_id: Any) -> List[BatchOperation]:
-        bid = self._normalize_text(batch_id)
-        if not bid:
+        batch_id_text = self._normalize_text(batch_id)
+        if not batch_id_text:
             raise ValidationError("“批次号”不能为空", field="批次号")
-        self._get_or_raise(bid)
-        return self.batch_op_repo.list_by_batch(bid)
-
+        self._get_or_raise(batch_id_text)
+        return self.batch_op_repo.list_by_batch(batch_id_text)

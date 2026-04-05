@@ -24,7 +24,7 @@ from .excel_utils import (
     preview_baseline_matches,
     send_excel_template_file,
 )
-from .scheduler_bp import bp
+from .scheduler_bp import _surface_schedule_warnings, bp
 from .scheduler_utils import (
     _ensure_unique_ids,
     _normalize_batch_priority,
@@ -383,6 +383,9 @@ def excel_batches_confirm():
         errors_sample=list(import_stats.get("errors_sample") or []),
         suffix="（已自动从模板生成/重建工序）" if auto_generate_ops else "",
     )
+    if auto_generate_ops:
+        _surface_schedule_warnings(svc.consume_user_visible_warnings(), limit=3)
+
     return redirect(url_for("scheduler.excel_batches_page"))
 
 
