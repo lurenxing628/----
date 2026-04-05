@@ -32,7 +32,7 @@ def resolve_schedule_params(
     config: Any,
     strategy: Optional[SortStrategy],
     strategy_params: Optional[Dict[str, Any]],
-    start_dt: Optional[datetime],
+    start_dt: Any,
     end_date: Any,
     dispatch_mode: Optional[str],
     dispatch_rule: Optional[str],

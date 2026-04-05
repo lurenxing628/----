@@ -3,6 +3,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from typing import Optional
 
 
 def find_repo_root() -> str:
@@ -21,16 +22,16 @@ class _StubCalendarService:
 
     efficiency: float = 1.2
 
-    def adjust_to_working_time(self, dt: datetime, priority=None, operator_id: str = None) -> datetime:  # noqa: D401
+    def adjust_to_working_time(self, dt: datetime, priority=None, operator_id: Optional[str] = None) -> datetime:  # noqa: D401
         return dt
 
-    def add_working_hours(self, dt: datetime, hours: float, priority=None, operator_id: str = None) -> datetime:
+    def add_working_hours(self, dt: datetime, hours: float, priority=None, operator_id: Optional[str] = None) -> datetime:
         return dt + timedelta(hours=float(hours or 0.0))
 
-    def get_efficiency(self, dt: datetime, machine_id: str = None, operator_id: str = None) -> float:
+    def get_efficiency(self, dt: datetime, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> float:
         return float(self.efficiency)
 
-    def add_calendar_days(self, dt: datetime, days: float, machine_id: str = None, operator_id: str = None) -> datetime:
+    def add_calendar_days(self, dt: datetime, days: float, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
         return dt + timedelta(days=float(days or 0.0))
 
 

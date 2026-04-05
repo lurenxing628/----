@@ -157,6 +157,7 @@ def dispatch_sgs(
                                         collector=total_days_collector,
                                         min_value=0.0,
                                         min_inclusive=False,
+                                        min_violation_fallback=0.0,
                                     )
                                 )
                             except Exception:
@@ -168,8 +169,14 @@ def dispatch_sgs(
                                 est_start = prev_end
                                 est_end = prev_end
                             else:
-                                est_start = prev_end
-                                est_end = scheduler.calendar.add_calendar_days(est_start, total_days_f)
+                                if total_days_f <= 0:
+                                    increment_counter(scheduler, "dispatch_sgs_external_duration_unscorable_count")
+                                    score_penalty = 1.0
+                                    est_start = prev_end
+                                    est_end = prev_end
+                                else:
+                                    est_start = prev_end
+                                    est_end = scheduler.calendar.add_calendar_days(est_start, total_days_f)
                     else:
                         ext_days = getattr(op, "ext_days", None)
                         ext_days_collector = DegradationCollector()
@@ -184,6 +191,7 @@ def dispatch_sgs(
                                     collector=ext_days_collector,
                                     min_value=0.0,
                                     min_inclusive=False,
+                                    min_violation_fallback=0.0,
                                 )
                             )
                         except Exception:
@@ -195,11 +203,17 @@ def dispatch_sgs(
                             est_start = prev_end
                             est_end = prev_end
                         else:
-                            legacy_defaulted = int(ext_days_collector.to_counters().get("legacy_external_days_defaulted") or 0) + int(ext_days_collector.to_counters().get("blank_required") or 0)
-                            if legacy_defaulted > 0:
-                                increment_counter(scheduler, "legacy_external_days_defaulted_count", legacy_defaulted)
-                            est_start = prev_end
-                            est_end = scheduler.calendar.add_calendar_days(est_start, ext_days_f)
+                            if ext_days_f <= 0:
+                                increment_counter(scheduler, "dispatch_sgs_external_duration_unscorable_count")
+                                score_penalty = 1.0
+                                est_start = prev_end
+                                est_end = prev_end
+                            else:
+                                legacy_defaulted = int(ext_days_collector.to_counters().get("legacy_external_days_defaulted") or 0) + int(ext_days_collector.to_counters().get("blank_required") or 0)
+                                if legacy_defaulted > 0:
+                                    increment_counter(scheduler, "legacy_external_days_defaulted_count", legacy_defaulted)
+                                est_start = prev_end
+                                est_end = scheduler.calendar.add_calendar_days(est_start, ext_days_f)
                     proc_h = max((est_end - est_start).total_seconds() / 3600.0, 0.0)
                     change_pen = 0
                     if score_penalty and score_penalty > 0:
@@ -232,6 +246,7 @@ def dispatch_sgs(
                                     last_op_type_by_machine=last_op_type_by_machine,
                                     machine_busy_hours=machine_busy_hours,
                                     operator_busy_hours=operator_busy_hours,
+                                    probe_only=True,
                                 )
                             if chosen:
                                 try:

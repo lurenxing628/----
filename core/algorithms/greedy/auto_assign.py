@@ -23,6 +23,7 @@ def auto_assign_internal_resources(
     last_op_type_by_machine: Dict[str, str],
     machine_busy_hours: Dict[str, float],
     operator_busy_hours: Dict[str, float],
+    probe_only: bool = False,
 ) -> Optional[Tuple[str, str]]:
     """
     内部工序缺省资源时，自动选择 (machine_id, operator_id)。
@@ -33,6 +34,8 @@ def auto_assign_internal_resources(
     3) 负荷均衡（优先选择当前更空闲的人/机）
     4) 若存在主操/高技能标记（pair_rank 更小），作为微弱 tie-break
     """
+    _count = increment_counter if not probe_only else (lambda *_args, **_kwargs: None)
+
     bid = str(getattr(op, "batch_id", "") or "").strip()
     prev_end = batch_progress.get(bid, base_time)
     priority = getattr(batch, "priority", None)
@@ -44,7 +47,7 @@ def auto_assign_internal_resources(
 
     # 若未固定 machine 且缺少 op_type_id，则无法保证自动选机的工种匹配
     if not fixed_machine and not op_type_id:
-        increment_counter(scheduler, "auto_assign_missing_op_type_id_count")
+        _count(scheduler, "auto_assign_missing_op_type_id_count")
         return None
 
     machines_by_op_type = resource_pool.get("machines_by_op_type") if isinstance(resource_pool, dict) else {}
@@ -78,21 +81,21 @@ def auto_assign_internal_resources(
             machine_candidates = [str(x) for x in (machines_by_op_type.get(op_type_id) or []) if str(x).strip()]
         else:
             # 无 op_type_id 或映射缺失：无法保证工种匹配；宁可失败也不要“全设备兜底”排错机
-            increment_counter(scheduler, "auto_assign_missing_machine_pool_count")
+            _count(scheduler, "auto_assign_missing_machine_pool_count")
             return None
 
     # 若已知 op_type_id：强制候选设备与工种映射一致（尤其是 fixed_operator 场景）
     if op_type_id and isinstance(machines_by_op_type, dict) and op_type_id in machines_by_op_type:
         allowed = {str(x).strip() for x in (machines_by_op_type.get(op_type_id) or []) if str(x).strip()}
         if not allowed:
-            increment_counter(scheduler, "auto_assign_missing_machine_pool_count")
+            _count(scheduler, "auto_assign_missing_machine_pool_count")
             return None
         machine_candidates = [m for m in machine_candidates if m in allowed]
 
     # 去重（后续会按更有利于早停的顺序重排）
     machine_candidates = list(dict.fromkeys([m for m in machine_candidates if m]))
     if not machine_candidates:
-        increment_counter(scheduler, "auto_assign_no_machine_candidate_count")
+        _count(scheduler, "auto_assign_no_machine_candidate_count")
         return None
 
     # 工时
@@ -102,10 +105,10 @@ def auto_assign_internal_resources(
     try:
         total_hours_base = float(setup_hours) + float(unit_hours) * float(qty)
     except Exception:
-        increment_counter(scheduler, "auto_assign_invalid_total_hours_count")
+        _count(scheduler, "auto_assign_invalid_total_hours_count")
         return None
     if not math.isfinite(float(total_hours_base)) or total_hours_base < 0:
-        increment_counter(scheduler, "auto_assign_invalid_total_hours_count")
+        _count(scheduler, "auto_assign_invalid_total_hours_count")
         return None
 
     cur_type = (str(getattr(op, "op_type_name", None) or "") or "").strip()
@@ -220,9 +223,9 @@ def auto_assign_internal_resources(
 
     if best_pair is None:
         if not seen_operator_candidate:
-            increment_counter(scheduler, "auto_assign_no_operator_candidate_count")
+            _count(scheduler, "auto_assign_no_operator_candidate_count")
         else:
-            increment_counter(scheduler, "auto_assign_no_feasible_pair_count")
+            _count(scheduler, "auto_assign_no_feasible_pair_count")
 
     return best_pair
 

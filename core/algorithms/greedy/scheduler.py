@@ -59,7 +59,7 @@ class GreedyScheduler:
         batches: Dict[str, Any],
         strategy: Optional[SortStrategy] = None,
         strategy_params: Optional[Dict[str, Any]] = None,
-        start_dt: Optional[datetime] = None,
+        start_dt: Any = None,
         end_date: Any = None,
         machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
         batch_order_override: Optional[List[str]] = None,
@@ -576,6 +576,7 @@ class GreedyScheduler:
         last_op_type_by_machine: Dict[str, str],
         machine_busy_hours: Dict[str, float],
         operator_busy_hours: Dict[str, float],
+        probe_only: bool = False,
     ) -> Optional[Tuple[str, str]]:
         return auto_assign_internal_resources(
             self,
@@ -591,6 +592,7 @@ class GreedyScheduler:
             last_op_type_by_machine=last_op_type_by_machine,
             machine_busy_hours=machine_busy_hours,
             operator_busy_hours=operator_busy_hours,
+            probe_only=probe_only,
         )
 
     # timeline 工具已统一到 greedy/downtime.py

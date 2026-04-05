@@ -105,6 +105,7 @@ def schedule_external(
                 collector=collector,
                 min_value=0.0,
                 min_inclusive=False,
+                min_violation_fallback=0.0,
             )
         )
     except Exception:
