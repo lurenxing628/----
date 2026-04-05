@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import openpyxl
+from openpyxl.worksheet.worksheet import Worksheet
 
 
 @dataclass
@@ -45,6 +46,11 @@ class UnitExcelParser:
         wb = openpyxl.load_workbook(input_path, data_only=True)
         try:
             ws = wb[sheet_name] if sheet_name else wb.active
+            if ws is None:
+                raise ValueError("Workbook 缺少活动工作表")
+            if not isinstance(ws, Worksheet):
+                raise ValueError("Workbook 工作表类型不受支持")
+
             headers = [self._to_text(v) for v in next(ws.iter_rows(min_row=1, max_row=1, values_only=True))]
             stations = self._build_station_columns(headers)
 

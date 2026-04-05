@@ -232,6 +232,9 @@ def _write_resource_scope_sheets(wb: Workbook, payload: Dict[str, Any]) -> None:
 def build_resource_dispatch_workbook(payload: Dict[str, Any]) -> BytesIO:
     wb = Workbook()
     default_ws = wb.active
+    if default_ws is None:
+        raise ValueError("Workbook 缺少活动工作表")
+
     wb.remove(default_ws)
 
     filters = payload.get("filters") or {}

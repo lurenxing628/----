@@ -70,6 +70,9 @@ def _openpyxl_source_rows(file_path: str, sheet: Optional[str]) -> List[int]:
     try:
         wb = openpyxl.load_workbook(file_path, data_only=True)
         ws = wb[sheet] if sheet else wb.active
+        if ws is None:
+            raise ValueError("Workbook 缺少活动工作表")
+
         source_rows: List[int] = []
         for excel_row_num, row in enumerate(_iter_sheet_rows(ws), start=1):
             if excel_row_num == 1:

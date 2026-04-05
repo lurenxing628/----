@@ -108,6 +108,9 @@ class OpenpyxlBackend(TabularBackend):
         try:
             wb = openpyxl.load_workbook(file_path, data_only=True)
             ws = wb[sheet] if sheet else wb.active
+            if ws is None:
+                raise AppError(code=ErrorCode.EXCEL_READ_ERROR, message="读取 Excel 文件失败：未找到活动工作表。")
+
             rows = _iter_sheet_rows(ws)
 
             return _convert_worksheet_rows(rows, source_sheet_name=getattr(ws, "title", None))
