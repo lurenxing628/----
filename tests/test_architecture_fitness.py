@@ -13,6 +13,7 @@ import importlib.util
 import os
 import re
 import sys
+from collections import Counter
 from typing import Any, Dict, Iterable, List, Set, Tuple, cast
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -47,11 +48,9 @@ def _known_oversize_files() -> Set[str]:
         "web/routes/scheduler_excel_calendar.py",
         "core/services/process/part_service.py",
         "core/services/process/unit_excel/template_builder.py",
-        "core/services/personnel/operator_machine_service.py",
-        "core/services/scheduler/batch_service.py",
         "core/services/scheduler/config_service.py",
         "core/services/scheduler/schedule_optimizer.py",
-        "core/services/scheduler/schedule_summary.py",
+        "core/services/personnel/operator_machine_service.py",
         "core/infrastructure/database.py",
     }
 
@@ -390,127 +389,76 @@ def test_services_do_not_use_assert_for_runtime_guards():
     assert not violations, "Service 使用 assert（禁止）:\n" + "\n".join(violations)
 
 
+def _find_enclosing_name(node: ast.AST) -> str:
+    """上溯 AST，返回最近的函数/类名；若不存在则返回 <module>。"""
+    cur = node
+    while hasattr(cur, "_ast_parent"):
+        cur = cur._ast_parent  # type: ignore[attr-defined]
+        if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return cur.name
+        if isinstance(cur, ast.ClassDef):
+            return cur.name
+    return "<module>"
+
+
 def test_no_silent_exception_swallow():
     """禁止 except Exception: pass / ...（静默吞异常）。新增违反必须修复。"""
 
-    known_violations = {
-        # core/infrastructure/*
-        "core/infrastructure/backup.py:42",
-        "core/infrastructure/backup.py:69",
-        "core/infrastructure/backup.py:91",
-        "core/infrastructure/backup.py:111",
-        "core/infrastructure/backup.py:136",
-        "core/infrastructure/backup.py:156",
-        "core/infrastructure/backup.py:161",
-        "core/infrastructure/backup.py:165",
-        "core/infrastructure/database.py:20",
-        "core/infrastructure/database.py:36",
-        "core/infrastructure/database.py:59",
-        "core/infrastructure/database.py:70",
-        "core/infrastructure/database.py:74",
-        "core/infrastructure/database.py:80",
-        "core/infrastructure/database.py:124",
-        "core/infrastructure/database.py:170",
-        "core/infrastructure/database.py:180",
-        "core/infrastructure/database.py:219",
-        "core/infrastructure/database.py:295",
-        "core/infrastructure/database.py:305",
-        "core/infrastructure/database.py:320",
-        "core/infrastructure/database.py:344",
-        "core/infrastructure/database.py:353",
-        "core/infrastructure/database.py:359",
-        "core/infrastructure/database.py:363",
-        "core/infrastructure/database.py:373",
-        "core/infrastructure/database.py:379",
-        "core/infrastructure/errors.py:75",
-        "core/infrastructure/errors.py:81",
-        "core/infrastructure/logging.py:65",
-        "core/infrastructure/logging.py:179",
-        "core/infrastructure/migrations/common.py:67",
-        "core/infrastructure/migrations/common.py:71",
-        "core/infrastructure/migrations/v1.py:65",
-        "core/infrastructure/migrations/v1.py:80",
-        "core/infrastructure/migrations/v1.py:112",
-        "core/infrastructure/migrations/v1.py:187",
-        "core/infrastructure/migrations/v1.py:196",
-        "core/infrastructure/migrations/v2.py:17",
-        "core/infrastructure/migrations/v3.py:19",
-        "core/infrastructure/migrations/v3.py:28",
-        "core/infrastructure/migrations/v4.py:62",
-        "core/infrastructure/migrations/v4.py:80",
-        "core/infrastructure/migrations/v4.py:102",
-        "core/infrastructure/migrations/v4.py:124",
-        "core/infrastructure/migrations/v4.py:147",
-        "core/infrastructure/migrations/v4.py:160",
-        "core/infrastructure/transaction.py:103",
-        "core/infrastructure/transaction.py:125",
-        "core/infrastructure/transaction.py:136",
-        # core/models/*
-        "core/models/_helpers.py:60",
-        # core/services/common/*
-        "core/services/common/excel_templates.py:22",
-        "core/services/common/openpyxl_backend.py:57",
-        "core/services/common/openpyxl_backend.py:92",
-        "core/services/common/pandas_backend.py:72",
-        # core/services/process/*
-        "core/services/process/part_service.py:121",
-        "core/services/process/route_parser.py:248",
-        "core/services/process/unit_excel/exporter.py:36",
-        "core/services/process/unit_excel/parser.py:107",
-        # core/services/report/*
-        "core/services/report/exporters/xlsx.py:36",
-        "core/services/report/exporters/xlsx.py:79",
-        "core/services/report/exporters/xlsx.py:107",
-        # core/services/scheduler/*
-        "core/services/scheduler/gantt_service.py:86",
-        "core/services/scheduler/gantt_service.py:97",
-        "core/services/scheduler/gantt_service.py:119",
-        "core/services/scheduler/schedule_summary.py:23",
-        "core/services/scheduler/schedule_summary.py:106",
-        "core/services/scheduler/schedule_summary.py:112",
-        "core/services/scheduler/schedule_summary.py:162",
-        "core/services/scheduler/resource_pool_builder.py:60",
-        "core/services/scheduler/resource_pool_builder.py:68",
-        "core/services/scheduler/resource_pool_builder.py:184",
-        "core/services/scheduler/resource_pool_builder.py:240",
-        "core/services/scheduler/resource_pool_builder.py:248",
-        "core/services/scheduler/gantt_tasks.py:216",
-        "core/services/scheduler/gantt_critical_chain.py:158",
-        # core/services/system/*
-        "core/services/system/maintenance/backup_task.py:90",
-        "core/services/system/maintenance/cleanup_task.py:164",
-        "core/services/system/maintenance/cleanup_task.py:248",
-        # data/repositories/*
-        "data/repositories/base_repo.py:166",
-        "data/repositories/external_group_repo.py:78",
-        "data/repositories/schedule_history_repo.py:91",
-        # web/routes/*
-        "web/routes/excel_utils.py:109",
-        "web/routes/scheduler_config.py:114",
-        "web/routes/system_backup.py:212",
-        "web/routes/system_backup.py:252",
-        "web/routes/system_ui_mode.py:35",
-        "web/routes/system_ui_mode.py:48",
-        "web/routes/system_utils.py:100",
-    }
-
-    # 白名单采用“按文件计数上限”策略：
-    # - 允许减少（修复/重构后吞异常点变少）
-    # - 禁止增加（新增 except Exception: pass/...）
-    # 目的：避免因机械插入 import/拆分函数导致行号漂移而误判“新增”。
-    known_counts: Dict[str, int] = {}
-    for v in known_violations:
-        try:
-            fp, _ = v.rsplit(":", 1)
-        except ValueError:
-            continue
-        known_counts[fp] = int(known_counts.get(fp, 0)) + 1
+    # 白名单采用 file:enclosing_func 指纹，并保留同一函数内的命中次数。
+    known_violations = Counter(
+        {
+            # core/infrastructure/*
+            "core/infrastructure/backup.py:maintenance_window": 3,
+            "core/infrastructure/backup.py:backup": 2,
+            "core/infrastructure/backup.py:_copy_db_file": 1,
+            "core/infrastructure/database.py:_is_windows_lock_error": 1,
+            "core/infrastructure/database.py:_restore_db_file_from_backup": 3,
+            "core/infrastructure/database.py:_bootstrap_missing_tables_from_schema": 1,
+            "core/infrastructure/database.py:_cleanup_probe_db": 1,
+            "core/infrastructure/database.py:_preflight_migration_contract": 3,
+            "core/infrastructure/database.py:ensure_schema": 2,
+            "core/infrastructure/database.py:_migrate_with_backup": 2,
+            "core/infrastructure/errors.py:__post_init__": 2,
+            "core/infrastructure/migrations/common.py:fallback_log": 2,
+            "core/infrastructure/transaction.py:transaction": 2,
+            # core/models/*
+            "core/models/_helpers.py:parse_int": 1,
+            # core/services/common/*
+            "core/services/common/openpyxl_backend.py:read": 1,
+            "core/services/common/openpyxl_backend.py:write": 1,
+            # core/services/process/*
+            "core/services/process/unit_excel/parser.py:parse": 1,
+            # core/services/report/*
+            "core/services/report/exporters/xlsx.py:export_overdue_xlsx": 1,
+            "core/services/report/exporters/xlsx.py:export_utilization_xlsx": 1,
+            "core/services/report/exporters/xlsx.py:export_downtime_impact_xlsx": 1,
+            # core/services/scheduler/*
+            "core/services/scheduler/gantt_service.py:_critical_chain_cache_key": 1,
+            "core/services/scheduler/gantt_service.py:_get_critical_chain": 2,
+            "core/services/scheduler/schedule_summary.py:serialize_end_date": 1,
+            # core/services/system/*
+            "core/services/system/maintenance/backup_task.py:_safe_logger_emit": 1,
+            "core/services/system/maintenance/cleanup_task.py:_safe_logger_emit": 1,
+            # data/repositories/*
+            "data/repositories/base_repo.py:_log_db_error": 1,
+            "data/repositories/external_group_repo.py:update": 1,
+            "data/repositories/schedule_history_repo.py:allocate_next_version": 1,
+            # web/routes/*
+            "web/routes/excel_utils.py:read_uploaded_xlsx": 1,
+            "web/routes/scheduler_config.py:_load_manual_text_and_mtime": 1,
+            "web/routes/system_backup.py:backup_restore": 2,
+        }
+    )
 
     def _scan_file(fp: str) -> List[str]:
         try:
-            tree = ast.parse(_read(fp), filename=fp)
+            source = _read(fp)
+            tree = ast.parse(source, filename=fp)
         except SyntaxError:
             return []
+        for node in ast.walk(tree):
+            for child in ast.iter_child_nodes(node):
+                child._ast_parent = node  # type: ignore[attr-defined]
         out: List[str] = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.Try):
@@ -527,31 +475,26 @@ def test_no_silent_exception_swallow():
                     if isinstance(expr_stmt, ast.Expr) and isinstance(expr_stmt.value, ast.Constant):
                         if expr_stmt.value.value is Ellipsis:
                             hit = True
-                if hit:
-                    out.append(f"{fp}:{h.lineno}")
+                if not hit:
+                    continue
+                out.append(f"{fp}:{_find_enclosing_name(h)}")
         return out
 
-    violations_by_file: Dict[str, List[str]] = {}
+    current_violations: Counter = Counter()
     for fp in _collect_py_files(*CORE_DIRS):
-        hits = _scan_file(fp)
-        if hits:
-            violations_by_file[fp] = hits
+        current_violations.update(_scan_file(fp))
 
-    new_files = []
-    for fp, hits in sorted(violations_by_file.items(), key=lambda x: x[0]):
-        expected_max = int(known_counts.get(fp, 0))
-        if len(hits) > expected_max:
-            new_files.append(
-                f"{fp}: expected<={expected_max} got={len(hits)}\n  "
-                + "\n  ".join(sorted(hits))
-            )
+    new_violations: List[str] = []
+    for hit, count in sorted(current_violations.items()):
+        allowed = int(known_violations.get(hit, 0))
+        if count > allowed:
+            new_violations.append(f"{hit}（当前 {count}，白名单 {allowed}）")
 
-    assert not new_files, (
-        "新增静默吞异常（except Exception: pass / ...）违反（按文件计数上限判定）：\n"
-        + "\n".join(new_files)
+    assert not new_violations, (
+        "新增静默吞异常（except Exception: pass / ...）违反：\n"
+        + "\n".join(new_violations)
         + "\n\n如有合理理由，请添加到 known_violations 白名单并说明原因。"
     )
-
 
 # ─── Fitness 4: 文件/函数规模 ─────────────────────────────────
 
@@ -602,7 +545,6 @@ def test_cyclomatic_complexity_threshold():
 
     known_violations = {
         # --- Route 层（Excel confirm 路由普遍复杂） ---
-        "web/routes/equipment_excel_machines.py:excel_machine_confirm",
         "web/routes/excel_demo.py:preview",
         "web/routes/excel_demo.py:confirm",
         "web/routes/personnel_excel_operators.py:excel_operator_confirm",
@@ -611,60 +553,31 @@ def test_cyclomatic_complexity_threshold():
         "web/routes/process_excel_part_operation_hours.py:excel_part_op_hours_confirm",
         "web/routes/process_excel_routes.py:excel_routes_confirm",
         "web/routes/process_excel_suppliers.py:excel_supplier_confirm",
-        "web/routes/process_parts.py:part_detail",
-        "web/routes/scheduler_analysis.py:analysis_page",
-        "web/routes/scheduler_batches.py:bulk_update_batches",
-        "web/routes/scheduler_batch_detail.py:batch_detail",
-        "web/routes/scheduler_excel_batches.py:excel_batches_confirm",
         "web/routes/scheduler_excel_calendar.py:excel_calendar_confirm",
-        "web/routes/scheduler_run.py:run_schedule",
-        "web/routes/scheduler_week_plan.py:week_plan_export",
-        "web/routes/system_logs.py:logs_page",
         # --- ViewModel 层 ---
         "web/viewmodels/scheduler_analysis_vm.py:build_selected_details",
         # --- Service 层 ---
-        "core/services/common/openpyxl_backend.py:read",
-        "core/services/common/pandas_backend.py:read",
         "core/services/equipment/machine_downtime_service.py:create_by_scope",
-        "core/services/personnel/operator_machine_service.py:preview_import_links",
         "core/services/personnel/operator_machine_service.py:apply_import_links",
-        "core/services/process/deletion_validator.py:can_delete",
-        "core/services/process/external_group_service.py:set_merge_mode",
         "core/services/process/part_service.py:delete_external_group",
         "core/services/process/part_service.py:calc_deletable_external_group_ids",
         "core/services/process/route_parser.py:parse",
-        "core/services/process/unit_excel/parser.py:parse",
-        "core/services/process/unit_excel/template_builder.py:build",
         "core/services/report/calculations.py:compute_downtime_impact",
         "core/services/report/calculations.py:compute_utilization",
-        "core/services/scheduler/batch_service.py:update",
-        "core/services/scheduler/batch_service.py:create_batch_from_template_no_tx",
-        "core/services/scheduler/calendar_engine.py:_policy_for_date",
         "core/services/scheduler/config_service.py:ensure_defaults",
-        "core/services/scheduler/config_service.py:_snapshot_close",
         "core/services/scheduler/config_validator.py:normalize_preset_snapshot",
         "core/services/scheduler/freeze_window.py:build_freeze_window_seed",
-        "core/services/scheduler/gantt_critical_chain.py:compute_critical_chain",
         "core/services/scheduler/gantt_range.py:resolve_week_range",
-        "core/services/scheduler/gantt_tasks.py:build_tasks",
-        "core/services/scheduler/operation_edit_service.py:update_internal_operation",
         "core/services/scheduler/operation_edit_service.py:update_external_operation",
-        "core/services/scheduler/resource_pool_builder.py:build_resource_pool",
         "core/services/scheduler/resource_pool_builder.py:load_machine_downtimes",
         "core/services/scheduler/resource_pool_builder.py:extend_downtime_map_for_resource_pool",
         "core/services/scheduler/schedule_optimizer.py:optimize_schedule",
         "core/services/scheduler/schedule_optimizer.py:_run_local_search",
-        "core/services/scheduler/schedule_persistence.py:persist_schedule",
-        "core/services/scheduler/schedule_service.py:_get_template_and_group_for_op",
-        "core/services/scheduler/schedule_service.py:_run_schedule_impl",
-        "core/services/scheduler/schedule_summary.py:build_result_summary",
         # --- Model 层（from_row 解析） ---
         "core/models/batch_operation.py:from_row",
         "core/models/calendar.py:from_row",
         "core/models/part_operation.py:from_row",
         # --- Infrastructure 层 ---
-        "core/infrastructure/backup.py:restore",
-        "core/infrastructure/database.py:_restore_db_file_from_backup",
         "core/infrastructure/database.py:ensure_schema",
         "core/infrastructure/database.py:_migrate_with_backup",
         # --- Infrastructure / Route 历史热点（本轮显式登记技术债，不在 strict_mode 收口批次内继续大拆） ---
@@ -675,7 +588,6 @@ def test_cyclomatic_complexity_threshold():
         "core/infrastructure/backup.py:maintenance_window",
         # --- Existing known violations ---
         "core/infrastructure/transaction.py:transaction",
-        "core/infrastructure/migrations/v1.py:_ensure_columns",
         "core/infrastructure/migrations/v1.py:_sanitize_batch_dates",
         "core/infrastructure/migrations/v4.py:_sanitize_field",
         # --- 阶段 04 最终验收：显式登记既有结构债，避免误判为本轮新增 ---
@@ -688,12 +600,11 @@ def test_cyclomatic_complexity_threshold():
         "core/services/scheduler/resource_dispatch_excel.py:_summary_pairs",
         "core/services/scheduler/resource_dispatch_support.py:extract_overdue_batch_ids_with_meta",
         "core/services/scheduler/schedule_input_builder.py:_build_algo_operations_outcome",
-        "core/services/scheduler/schedule_summary.py:_freeze_meta_dict",
-        "core/services/scheduler/schedule_summary.py:_summary_degradation_state",
         "core/services/scheduler/schedule_template_lookup.py:lookup_template_group_context_for_op",
     }
 
     new_violations = []
+    scan_errors = []
     for fp in _collect_py_files(*CORE_DIRS):
         try:
             source = _read(fp)
@@ -710,8 +621,12 @@ def test_cyclomatic_complexity_threshold():
                             f"{fp}:{lineno} {name} "
                             f"complexity={complexity} (rank {letter})"
                         )
-        except (SyntaxError, Exception):
-            pass
+        except SyntaxError as exc:
+            scan_errors.append(f"{fp}: SyntaxError: {exc}")
+        except Exception as exc:
+            scan_errors.append(f"{fp}: {type(exc).__name__}: {exc}")
+
+    assert not scan_errors, "复杂度扫描失败:\n" + "\n".join(scan_errors)
 
     assert not new_violations, (
         f"新增的高复杂度函数（超过 C 级/{THRESHOLD}）:\n"
