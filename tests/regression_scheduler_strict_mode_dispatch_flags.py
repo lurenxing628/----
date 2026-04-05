@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import sys
 
 
@@ -8,6 +9,12 @@ def find_repo_root() -> str:
     if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
         return repo_root
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+
+
+def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
+    with open(os.path.join(repo_root, "schema.sql"), "r", encoding="utf-8") as f:
+        conn.executescript(f.read())
+    conn.commit()
 
 
 class _StubRepo:
@@ -60,6 +67,7 @@ def main() -> None:
         sys.path.insert(0, repo_root)
 
     from core.algorithms.greedy.schedule_params import resolve_schedule_params
+    from core.services.scheduler.config_service import ConfigService
     from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
     from core.services.scheduler.config_validator import normalize_preset_snapshot
 
@@ -102,6 +110,87 @@ def main() -> None:
     )
 
     _expect_validation(
+        "resolve_schedule_params.sort_strategy.blank",
+        lambda: resolve_schedule_params(
+            config={
+                "sort_strategy": "   ",
+                "dispatch_mode": "sgs",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "no",
+            },
+            strategy=None,
+            strategy_params=None,
+            start_dt=None,
+            end_date=None,
+            dispatch_mode=None,
+            dispatch_rule=None,
+            resource_pool={},
+            strict_mode=True,
+        ),
+        "sort_strategy",
+    )
+    _expect_validation(
+        "resolve_schedule_params.dispatch_mode.blank",
+        lambda: resolve_schedule_params(
+            config={
+                "sort_strategy": "priority_first",
+                "dispatch_mode": "   ",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "no",
+            },
+            strategy=None,
+            strategy_params=None,
+            start_dt=None,
+            end_date=None,
+            dispatch_mode=None,
+            dispatch_rule=None,
+            resource_pool={},
+            strict_mode=True,
+        ),
+        "dispatch_mode",
+    )
+    _expect_validation(
+        "resolve_schedule_params.dispatch_rule.blank",
+        lambda: resolve_schedule_params(
+            config={
+                "sort_strategy": "priority_first",
+                "dispatch_mode": "sgs",
+                "dispatch_rule": "   ",
+                "auto_assign_enabled": "no",
+            },
+            strategy=None,
+            strategy_params=None,
+            start_dt=None,
+            end_date=None,
+            dispatch_mode=None,
+            dispatch_rule=None,
+            resource_pool={},
+            strict_mode=True,
+        ),
+        "dispatch_rule",
+    )
+    _expect_validation(
+        "resolve_schedule_params.auto_assign_enabled.blank",
+        lambda: resolve_schedule_params(
+            config={
+                "sort_strategy": "priority_first",
+                "dispatch_mode": "sgs",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "   ",
+            },
+            strategy=None,
+            strategy_params=None,
+            start_dt=None,
+            end_date=None,
+            dispatch_mode=None,
+            dispatch_rule=None,
+            resource_pool={},
+            strict_mode=True,
+        ),
+        "auto_assign_enabled",
+    )
+
+    _expect_validation(
         "resolve_schedule_params.auto_assign_enabled",
         lambda: resolve_schedule_params(
             config={
@@ -121,6 +210,32 @@ def main() -> None:
         ),
         "auto_assign_enabled",
     )
+
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    load_schema(conn, repo_root)
+
+    try:
+        cfg = ConfigService(conn, logger=None, op_logger=None)
+
+        def _expect_snapshot_validation(key: str) -> None:
+            cfg.restore_default()
+            cfg.repo.set(key, "   ", description="regression-blank")
+            cfg.get_snapshot(strict_mode=True)
+
+        _expect_validation(
+            "config_service.get_snapshot.dispatch_mode.blank",
+            lambda: _expect_snapshot_validation("dispatch_mode"),
+            "dispatch_mode",
+        )
+        _expect_validation(
+            "config_service.get_snapshot.auto_assign_enabled.blank",
+            lambda: _expect_snapshot_validation("auto_assign_enabled"),
+            "auto_assign_enabled",
+        )
+    finally:
+        conn.close()
 
     print("OK")
 

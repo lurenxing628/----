@@ -66,27 +66,51 @@ def build_schedule_config_snapshot(
     strict_mode: bool = False,
 ) -> ScheduleConfigSnapshot:
     collector = DegradationCollector()
+    raw_missing = object()
+
+    def _read_repo_raw_value(key: str) -> Tuple[bool, Any]:
+        repo_get = getattr(repo, "get", None)
+        if callable(repo_get):
+            record = repo_get(key)
+            if record is None:
+                return True, None
+            if hasattr(record, "config_value"):
+                return False, record.config_value
+            return False, record
+        raw = repo.get_value(key, default=raw_missing)
+        if raw is raw_missing:
+            return True, None
+        return False, raw
 
     def _choice(key: str, default: Any, valid: Tuple[str, ...], *, strict: bool = False) -> str:
         valid_norm = tuple(str(item).strip().lower() for item in (valid or ()) if str(item).strip())
         default_s = str(default or "").strip().lower()
         if default_s not in valid_norm and valid_norm:
             default_s = valid_norm[0]
-        raw = repo.get_value(key, default=default_s)
-        text = str(raw if raw is not None else default_s).strip().lower()
-        if strict and text and text not in valid_norm:
+        missing, raw = _read_repo_raw_value(key)
+        if missing:
+            return default_s
+        text = "" if raw is None else str(raw).strip().lower()
+        if strict and text == "":
+            raise ValidationError(f"“{key}”不能为空", field=key)
+        if strict and text not in valid_norm:
             allow_text = " / ".join(valid_norm) if valid_norm else "<empty>"
             raise ValidationError(f"“{key}”取值不合法：{raw!r}（允许值：{allow_text}）", field=key)
         return text if text in valid_norm else default_s
 
     def _yes_no(key: str, default: str, *, strict: bool = False) -> str:
-        raw = repo.get_value(key, default=str(default))
+        normalized_default = to_yes_no(default, default=default)
+        missing, raw = _read_repo_raw_value(key)
+        if missing:
+            return normalized_default
         text = "" if raw is None else str(raw).strip().lower()
         true_vals = {"yes", "y", "true", "1", "on"}
-        false_vals = {"no", "n", "false", "0", "off", ""}
+        false_vals = {"no", "n", "false", "0", "off"}
+        if strict and text == "":
+            raise ValidationError(f"“{key}”不能为空", field=key)
         if strict and text not in true_vals and text not in false_vals:
             raise ValidationError(f"“{key}”取值不合法：{raw!r}（允许值：yes / no）", field=key)
-        return to_yes_no(raw, default=default)
+        return to_yes_no(raw, default=normalized_default)
 
     def _get_float(
         key: str,

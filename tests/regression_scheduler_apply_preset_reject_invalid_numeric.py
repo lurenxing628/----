@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import tempfile
+from typing import Optional
 
 
 def find_repo_root() -> str:
@@ -12,13 +13,15 @@ def find_repo_root() -> str:
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
-def _expect_validation_error(fn, title: str) -> None:
+def _expect_validation_error(fn, title: str, field: Optional[str] = None) -> None:
     from core.infrastructure.errors import ValidationError
 
     ok = False
     try:
         fn()
-    except ValidationError:
+    except ValidationError as exc:
+        if field is not None and exc.field != field:
+            raise AssertionError(f"{title}：字段异常，期望 {field!r}，实际 {exc.field!r}") from exc
         ok = True
     assert ok, f"{title}：应抛出 ValidationError"
 
@@ -72,12 +75,40 @@ def main() -> None:
         _save_preset_raw(cfg_svc, "bad_int_float", p4)
         _expect_validation_error(lambda: cfg_svc.apply_preset("bad_int_float"), "ortools_time_limit_seconds=1.5")
 
-        # 4) 缺省字段仍允许回退默认（应通过）
+        # 4) 显式空白 choice / yes-no 字段（应拒绝）
         p5 = dict(base)
-        p5.pop("priority_weight", None)
-        p5.pop("due_weight", None)
-        p5.pop("holiday_default_efficiency", None)
-        _save_preset_raw(cfg_svc, "missing_numeric_allowed", p5)
+        p5["dispatch_mode"] = "   "
+        _save_preset_raw(cfg_svc, "blank_dispatch_mode", p5)
+        _expect_validation_error(lambda: cfg_svc.apply_preset("blank_dispatch_mode"), "dispatch_mode=blank", "dispatch_mode")
+
+        p6 = dict(base)
+        p6["auto_assign_enabled"] = "   "
+        _save_preset_raw(cfg_svc, "blank_auto_assign_enabled", p6)
+        _expect_validation_error(
+            lambda: cfg_svc.apply_preset("blank_auto_assign_enabled"), "auto_assign_enabled=blank", "auto_assign_enabled"
+        )
+
+        p7 = dict(base)
+        p7["sort_strategy"] = "   "
+        _save_preset_raw(cfg_svc, "blank_sort_strategy", p7)
+        _expect_validation_error(lambda: cfg_svc.apply_preset("blank_sort_strategy"), "sort_strategy=blank", "sort_strategy")
+
+        p8 = dict(base)
+        p8["algo_mode"] = "   "
+        _save_preset_raw(cfg_svc, "blank_algo_mode", p8)
+        _expect_validation_error(lambda: cfg_svc.apply_preset("blank_algo_mode"), "algo_mode=blank", "algo_mode")
+
+        p9 = dict(base)
+        p9["objective"] = "   "
+        _save_preset_raw(cfg_svc, "blank_objective", p9)
+        _expect_validation_error(lambda: cfg_svc.apply_preset("blank_objective"), "objective=blank", "objective")
+
+        # 5) 缺省字段仍允许回退默认（应通过）
+        p10 = dict(base)
+        p10.pop("priority_weight", None)
+        p10.pop("due_weight", None)
+        p10.pop("holiday_default_efficiency", None)
+        _save_preset_raw(cfg_svc, "missing_numeric_allowed", p10)
         applied = cfg_svc.apply_preset("missing_numeric_allowed")
         assert applied == "missing_numeric_allowed", f"缺省字段回退默认应可应用，实际={applied!r}"
 

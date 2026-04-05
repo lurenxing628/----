@@ -215,6 +215,7 @@ def _run_ortools_warmstart_case(cfg: Any) -> Tuple[bool, bool, bool]:
 
 def _run_summary_case(cfg: Any) -> Dict[str, Any]:
     from core.services.scheduler.schedule_summary import build_result_summary
+    from core.services.scheduler.schedule_summary_types import SummaryBuildContext
 
     summary = SimpleNamespace(success=True, total_ops=0, scheduled_ops=0, failed_ops=0, warnings=[], errors=[])
     downtime_meta = {
@@ -223,8 +224,7 @@ def _run_summary_case(cfg: Any) -> Dict[str, Any]:
         "downtime_extend_ok": False,
         "downtime_extend_error": "mock-fail",
     }
-    _, _, result_summary_obj, _, _ = build_result_summary(
-        _StubSvc(),
+    summary_ctx = SummaryBuildContext(
         cfg=cfg,
         version=1,
         normalized_batch_ids=[],
@@ -248,6 +248,10 @@ def _run_summary_case(cfg: Any) -> Dict[str, Any]:
         downtime_meta=downtime_meta,
         simulate=False,
         t0=time.time(),
+    )
+    _, _, result_summary_obj, _, _ = build_result_summary(
+        _StubSvc(),
+        ctx=summary_ctx,
     )
     return result_summary_obj.get("algo") or {}
 

@@ -106,11 +106,17 @@ def normalize_preset_snapshot(
     valid_algo_modes_norm = _valid_norm(valid_algo_modes)
     valid_objectives_norm = _valid_norm(valid_objectives)
 
-    st = str(data.get("sort_strategy") or base.sort_strategy).strip().lower()
+    raw_sort_strategy = data.get("sort_strategy")
+    sort_strategy_present = "sort_strategy" in data
     base_strategy = str(base.sort_strategy).strip().lower()
+    st = base_strategy if not sort_strategy_present else str("" if raw_sort_strategy is None else raw_sort_strategy).strip().lower()
+    if sort_strategy_present and st == "":
+        if strict_mode:
+            raise ValidationError("“sort_strategy”不能为空", field="sort_strategy")
+        st = base_strategy
     if st not in valid_strategies_norm:
-        if strict_mode and not _is_blank(data.get("sort_strategy")):
-            raise ValidationError(f"“sort_strategy”取值不合法：{data.get('sort_strategy')!r}", field="sort_strategy")
+        if strict_mode and not _is_blank(raw_sort_strategy):
+            raise ValidationError(f"“sort_strategy”取值不合法：{raw_sort_strategy!r}", field="sort_strategy")
         st = base_strategy
 
     pw = _get_float("priority_weight", float(base.priority_weight), min_value=0.0)
@@ -139,10 +145,14 @@ def normalize_preset_snapshot(
         min_inclusive=False,
     )
 
-    def _yesno(v: Any, key: str, default: str = "no", *, strict: bool = False) -> str:
+    def _yesno(v: Any, key: str, default: str = "no", *, strict: bool = False, missing: bool = False) -> str:
+        if missing:
+            return to_yes_no(default, default=default)
         text = "" if v is None else str(v).strip().lower()
         true_vals = {"yes", "y", "true", "1", "on"}
-        false_vals = {"no", "n", "false", "0", "off", ""}
+        false_vals = {"no", "n", "false", "0", "off"}
+        if strict and text == "":
+            raise ValidationError(f"“{key}”不能为空", field=key)
         if strict and text not in true_vals and text not in false_vals:
             raise ValidationError(f"“{key}”取值不合法：{v!r}（允许值：yes / no）", field=key)
         return to_yes_no(v, default=default)
@@ -152,36 +162,44 @@ def normalize_preset_snapshot(
         "enforce_ready_default",
         default=str(base.enforce_ready_default),
         strict=bool(strict_mode),
+        missing="enforce_ready_default" not in data,
     )
     prefer_primary_skill = _yesno(
         data.get("prefer_primary_skill"),
         "prefer_primary_skill",
         default=str(base.prefer_primary_skill),
         strict=bool(strict_mode),
+        missing="prefer_primary_skill" not in data,
     )
     auto_assign_enabled = _yesno(
         data.get("auto_assign_enabled"),
         "auto_assign_enabled",
         default=str(base.auto_assign_enabled),
         strict=bool(strict_mode),
+        missing="auto_assign_enabled" not in data,
     )
     ortools_enabled = _yesno(
         data.get("ortools_enabled"),
         "ortools_enabled",
         default=str(base.ortools_enabled),
         strict=bool(strict_mode),
+        missing="ortools_enabled" not in data,
     )
     freeze_window_enabled = _yesno(
         data.get("freeze_window_enabled"),
         "freeze_window_enabled",
         default=str(base.freeze_window_enabled),
         strict=bool(strict_mode),
+        missing="freeze_window_enabled" not in data,
     )
 
     raw_dispatch_mode = data.get("dispatch_mode")
-    dm = str(base.dispatch_mode if raw_dispatch_mode is None else raw_dispatch_mode).strip().lower()
+    dispatch_mode_present = "dispatch_mode" in data
     base_dispatch_mode = str(base.dispatch_mode).strip().lower()
-    if dm == "":
+    dm = base_dispatch_mode if not dispatch_mode_present else str("" if raw_dispatch_mode is None else raw_dispatch_mode).strip().lower()
+    if dispatch_mode_present and dm == "":
+        if strict_mode:
+            raise ValidationError("“dispatch_mode”不能为空", field="dispatch_mode")
         dm = base_dispatch_mode
     if dm not in valid_dispatch_modes_norm:
         if strict_mode and not _is_blank(raw_dispatch_mode):
@@ -189,27 +207,42 @@ def normalize_preset_snapshot(
         dm = base_dispatch_mode
 
     raw_dispatch_rule = data.get("dispatch_rule")
-    dr = str(base.dispatch_rule if raw_dispatch_rule is None else raw_dispatch_rule).strip().lower()
+    dispatch_rule_present = "dispatch_rule" in data
     base_dispatch_rule = str(base.dispatch_rule).strip().lower()
-    if dr == "":
+    dr = base_dispatch_rule if not dispatch_rule_present else str("" if raw_dispatch_rule is None else raw_dispatch_rule).strip().lower()
+    if dispatch_rule_present and dr == "":
+        if strict_mode:
+            raise ValidationError("“dispatch_rule”不能为空", field="dispatch_rule")
         dr = base_dispatch_rule
     if dr not in valid_dispatch_rules_norm:
         if strict_mode and not _is_blank(raw_dispatch_rule):
             raise ValidationError(f"“dispatch_rule”取值不合法：{raw_dispatch_rule!r}", field="dispatch_rule")
         dr = base_dispatch_rule
 
-    algo_mode = str(data.get("algo_mode") or base.algo_mode).strip().lower()
+    raw_algo_mode = data.get("algo_mode")
+    algo_mode_present = "algo_mode" in data
     base_algo_mode = str(base.algo_mode).strip().lower()
+    algo_mode = base_algo_mode if not algo_mode_present else str("" if raw_algo_mode is None else raw_algo_mode).strip().lower()
+    if algo_mode_present and algo_mode == "":
+        if strict_mode:
+            raise ValidationError("“algo_mode”不能为空", field="algo_mode")
+        algo_mode = base_algo_mode
     if algo_mode not in valid_algo_modes_norm:
-        if strict_mode and not _is_blank(data.get("algo_mode")):
-            raise ValidationError(f"“algo_mode”取值不合法：{data.get('algo_mode')!r}", field="algo_mode")
+        if strict_mode and not _is_blank(raw_algo_mode):
+            raise ValidationError(f"“algo_mode”取值不合法：{raw_algo_mode!r}", field="algo_mode")
         algo_mode = base_algo_mode
 
-    objective = str(data.get("objective") or base.objective).strip().lower()
+    raw_objective = data.get("objective")
+    objective_present = "objective" in data
     base_objective = str(base.objective).strip().lower()
+    objective = base_objective if not objective_present else str("" if raw_objective is None else raw_objective).strip().lower()
+    if objective_present and objective == "":
+        if strict_mode:
+            raise ValidationError("“objective”不能为空", field="objective")
+        objective = base_objective
     if objective not in valid_objectives_norm:
-        if strict_mode and not _is_blank(data.get("objective")):
-            raise ValidationError(f"“objective”取值不合法：{data.get('objective')!r}", field="objective")
+        if strict_mode and not _is_blank(raw_objective):
+            raise ValidationError(f"“objective”取值不合法：{raw_objective!r}", field="objective")
         objective = base_objective
 
     ort_limit = _get_int("ortools_time_limit_seconds", int(base.ortools_time_limit_seconds), min_v=1)

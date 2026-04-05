@@ -40,6 +40,7 @@ def main() -> None:
     from core.algorithms.types import ScheduleResult
     from core.services.report.calculations import compute_overdue_buckets
     from core.services.scheduler.schedule_summary import build_result_summary
+    from core.services.scheduler.schedule_summary_types import SummaryBuildContext
 
     due_d = date(2026, 2, 1)
     finish_dt = datetime(2026, 2, 2, 0, 0, 0)
@@ -77,8 +78,7 @@ def main() -> None:
         warnings=[],
         errors=[],
     )
-    _overdue, _status, result_summary_obj, _json_text, _ms = build_result_summary(
-        svc,
+    summary_ctx = SummaryBuildContext(
         cfg=cfg,
         version=1,
         normalized_batch_ids=["B001"],
@@ -102,6 +102,10 @@ def main() -> None:
         downtime_meta={},
         simulate=False,
         t0=time.time(),
+    )
+    _overdue, _status, result_summary_obj, _json_text, _ms = build_result_summary(
+        svc,
+        ctx=summary_ctx,
     )
     overdue_batches = result_summary_obj.get("overdue_batches") or {}
     assert int(overdue_batches.get("count") or 0) == 1, f"schedule_summary overdue_count 应为 1，实际={overdue_batches}"

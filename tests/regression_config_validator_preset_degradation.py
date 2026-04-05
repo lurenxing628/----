@@ -71,6 +71,102 @@ def test_config_validator_preset_degradation_and_min_clamp() -> None:
     assert int(counters.get("number_below_minimum") or 0) == 5
 
 
+def test_config_validator_preset_strict_blank_rejected_but_missing_allowed() -> None:
+    base = _base_snapshot()
+
+    snap = normalize_preset_snapshot(
+        {},
+        base=base,
+        valid_strategies=VALID_STRATEGIES,
+        valid_dispatch_modes=VALID_DISPATCH_MODES,
+        valid_dispatch_rules=VALID_DISPATCH_RULES,
+        valid_algo_modes=VALID_ALGO_MODES,
+        valid_objectives=VALID_OBJECTIVES,
+        strict_mode=True,
+    )
+    assert snap.dispatch_mode == base.dispatch_mode
+    assert snap.dispatch_rule == base.dispatch_rule
+    assert snap.auto_assign_enabled == base.auto_assign_enabled
+
+    with pytest.raises(ValidationError) as exc_info:
+        normalize_preset_snapshot(
+            {"sort_strategy": "   "},
+            base=base,
+            valid_strategies=VALID_STRATEGIES,
+            valid_dispatch_modes=VALID_DISPATCH_MODES,
+            valid_dispatch_rules=VALID_DISPATCH_RULES,
+            valid_algo_modes=VALID_ALGO_MODES,
+            valid_objectives=VALID_OBJECTIVES,
+            strict_mode=True,
+        )
+    assert exc_info.value.field == "sort_strategy"
+
+    with pytest.raises(ValidationError) as exc_info:
+        normalize_preset_snapshot(
+            {"dispatch_mode": "   "},
+            base=base,
+            valid_strategies=VALID_STRATEGIES,
+            valid_dispatch_modes=VALID_DISPATCH_MODES,
+            valid_dispatch_rules=VALID_DISPATCH_RULES,
+            valid_algo_modes=VALID_ALGO_MODES,
+            valid_objectives=VALID_OBJECTIVES,
+            strict_mode=True,
+        )
+    assert exc_info.value.field == "dispatch_mode"
+
+    with pytest.raises(ValidationError) as exc_info:
+        normalize_preset_snapshot(
+            {"dispatch_rule": "   "},
+            base=base,
+            valid_strategies=VALID_STRATEGIES,
+            valid_dispatch_modes=VALID_DISPATCH_MODES,
+            valid_dispatch_rules=VALID_DISPATCH_RULES,
+            valid_algo_modes=VALID_ALGO_MODES,
+            valid_objectives=VALID_OBJECTIVES,
+            strict_mode=True,
+        )
+    assert exc_info.value.field == "dispatch_rule"
+
+    with pytest.raises(ValidationError) as exc_info:
+        normalize_preset_snapshot(
+            {"auto_assign_enabled": "   "},
+            base=base,
+            valid_strategies=VALID_STRATEGIES,
+            valid_dispatch_modes=VALID_DISPATCH_MODES,
+            valid_dispatch_rules=VALID_DISPATCH_RULES,
+            valid_algo_modes=VALID_ALGO_MODES,
+            valid_objectives=VALID_OBJECTIVES,
+            strict_mode=True,
+        )
+    assert exc_info.value.field == "auto_assign_enabled"
+
+    with pytest.raises(ValidationError) as exc_info:
+        normalize_preset_snapshot(
+            {"algo_mode": "   "},
+            base=base,
+            valid_strategies=VALID_STRATEGIES,
+            valid_dispatch_modes=VALID_DISPATCH_MODES,
+            valid_dispatch_rules=VALID_DISPATCH_RULES,
+            valid_algo_modes=VALID_ALGO_MODES,
+            valid_objectives=VALID_OBJECTIVES,
+            strict_mode=True,
+        )
+    assert exc_info.value.field == "algo_mode"
+
+    with pytest.raises(ValidationError) as exc_info:
+        normalize_preset_snapshot(
+            {"objective": "   "},
+            base=base,
+            valid_strategies=VALID_STRATEGIES,
+            valid_dispatch_modes=VALID_DISPATCH_MODES,
+            valid_dispatch_rules=VALID_DISPATCH_RULES,
+            valid_algo_modes=VALID_ALGO_MODES,
+            valid_objectives=VALID_OBJECTIVES,
+            strict_mode=True,
+        )
+    assert exc_info.value.field == "objective"
+
+
 def test_config_validator_preset_still_rejects_malformed_numeric() -> None:
     with pytest.raises(ValidationError) as exc_info:
         normalize_preset_snapshot(

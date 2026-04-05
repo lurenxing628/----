@@ -231,12 +231,13 @@ def delete_preset(svc: Any, name: Any) -> None:
 def normalize_preset_snapshot(svc: Any, data: Dict[str, Any]) -> ScheduleConfigSnapshot:
     """
     将 JSON 里的 snapshot dict 归一化为合法 ScheduleConfigSnapshot。
-    说明：这里做“容错+兜底”，避免模板数据坏了导致整个系统不可用。
+    apply 路径要求数据本身合法；仅允许缺字段按 base 回退。
     """
     base = svc._default_snapshot()
     return normalize_preset_snapshot_dict(
         data,
         base=base,
+        strict_mode=True,
         valid_strategies=svc.VALID_STRATEGIES,
         valid_dispatch_modes=svc.VALID_DISPATCH_MODES,
         valid_dispatch_rules=svc.VALID_DISPATCH_RULES,

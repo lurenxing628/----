@@ -114,6 +114,14 @@ def main() -> None:
         lambda: _build({"freeze_window_days": "-1"}, strict_mode=True),
         "freeze_window_days",
     )
+    _expect_validation("strict.sort_strategy.blank", lambda: _build({"sort_strategy": "   "}, strict_mode=True), "sort_strategy")
+    _expect_validation("strict.dispatch_mode.blank", lambda: _build({"dispatch_mode": "   "}, strict_mode=True), "dispatch_mode")
+    _expect_validation("strict.dispatch_rule.blank", lambda: _build({"dispatch_rule": "   "}, strict_mode=True), "dispatch_rule")
+    _expect_validation(
+        "strict.auto_assign_enabled.blank",
+        lambda: _build({"auto_assign_enabled": "   "}, strict_mode=True),
+        "auto_assign_enabled",
+    )
 
     print("OK")
 
