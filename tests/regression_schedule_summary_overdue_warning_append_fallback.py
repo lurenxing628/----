@@ -32,10 +32,10 @@ def main() -> None:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from core.services.scheduler.schedule_summary import _build_overdue_items
+    from core.services.scheduler.schedule_summary import build_overdue_items
 
     summary = SimpleNamespace(warnings=("已有告警",))
-    items, meta = _build_overdue_items(
+    items, meta = build_overdue_items(
         _StubSvc(),
         batches={"B_BAD": SimpleNamespace(due_date="2026-13-40")},
         finish_by_batch={},

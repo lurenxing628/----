@@ -46,26 +46,26 @@ def main() -> None:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from core.services.scheduler.schedule_summary import _SUMMARY_SIZE_LIMIT_BYTES, _apply_summary_size_guard
+    from core.services.scheduler.schedule_summary import SUMMARY_SIZE_LIMIT_BYTES, apply_summary_size_guard
 
     selected_obj = _selected_case(60000)
     selected_before = _size_bytes(selected_obj)
-    assert selected_before > _SUMMARY_SIZE_LIMIT_BYTES, "selected_case 应先超过 size guard 上限"
-    selected_after_obj = _apply_summary_size_guard(selected_obj)
+    assert selected_before > SUMMARY_SIZE_LIMIT_BYTES, "selected_case 应先超过 size guard 上限"
+    selected_after_obj = apply_summary_size_guard(selected_obj)
     selected_after = _size_bytes(selected_after_obj)
     assert bool(selected_after_obj.get("summary_truncated")), "selected_case 未标记 summary_truncated"
     assert int(selected_after_obj.get("original_size_bytes") or 0) == selected_before, "selected_case 未记录原始大小"
-    assert selected_after <= _SUMMARY_SIZE_LIMIT_BYTES, "selected_case 截断后仍超过 512KB"
+    assert selected_after <= SUMMARY_SIZE_LIMIT_BYTES, "selected_case 截断后仍超过 512KB"
     assert len(selected_after_obj.get("selected_batch_ids") or []) < 60000, "selected_case 未裁剪 selected_batch_ids"
 
     overdue_obj = _overdue_case(6000)
     overdue_before = _size_bytes(overdue_obj)
-    assert overdue_before > _SUMMARY_SIZE_LIMIT_BYTES, "overdue_case 应先超过 size guard 上限"
-    overdue_after_obj = _apply_summary_size_guard(overdue_obj)
+    assert overdue_before > SUMMARY_SIZE_LIMIT_BYTES, "overdue_case 应先超过 size guard 上限"
+    overdue_after_obj = apply_summary_size_guard(overdue_obj)
     overdue_after = _size_bytes(overdue_after_obj)
     assert bool(overdue_after_obj.get("summary_truncated")), "overdue_case 未标记 summary_truncated"
     assert int(overdue_after_obj.get("original_size_bytes") or 0) == overdue_before, "overdue_case 未记录原始大小"
-    assert overdue_after <= _SUMMARY_SIZE_LIMIT_BYTES, "overdue_case 截断后仍超过 512KB"
+    assert overdue_after <= SUMMARY_SIZE_LIMIT_BYTES, "overdue_case 截断后仍超过 512KB"
     overdue_batches = overdue_after_obj.get("overdue_batches") or {}
     assert int(overdue_batches.get("count") or 0) == 6000, "overdue_case 不应改动 overdue count"
     assert len(overdue_batches.get("items") or []) < 6000, "overdue_case 未裁剪 overdue items"

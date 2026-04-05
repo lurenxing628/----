@@ -68,12 +68,14 @@ class _DeterministicClock:
 def _serialize_results(results: List[Any]) -> List[Dict[str, Any]]:
     serialized: List[Dict[str, Any]] = []
     for r in results:
+        start_time = getattr(r, "start_time", None)
+        end_time = getattr(r, "end_time", None)
         serialized.append(
             {
                 "op_id": int(getattr(r, "op_id", 0) or 0),
                 "batch_id": str(getattr(r, "batch_id", "") or ""),
-                "start_time": getattr(r, "start_time", None).isoformat() if getattr(r, "start_time", None) else None,
-                "end_time": getattr(r, "end_time", None).isoformat() if getattr(r, "end_time", None) else None,
+                "start_time": start_time.isoformat() if isinstance(start_time, datetime) else None,
+                "end_time": end_time.isoformat() if isinstance(end_time, datetime) else None,
             }
         )
     return serialized
@@ -82,7 +84,7 @@ def _serialize_results(results: List[Any]) -> List[Dict[str, Any]]:
 def probe_overdue_boundary() -> Dict[str, Any]:
     from core.algorithms.evaluation import compute_metrics
     from core.algorithms.types import ScheduleResult
-    from core.services.scheduler.schedule_summary import _build_overdue_items
+    from core.services.scheduler.schedule_summary import build_overdue_items
 
     batch = SimpleNamespace(batch_id="B001", priority="normal", due_date="2026-01-01")
     batches = {"B001": batch}
@@ -98,7 +100,7 @@ def probe_overdue_boundary() -> Dict[str, Any]:
     )
     metrics = compute_metrics([result], batches)
     summary = SimpleNamespace(warnings=[])
-    overdue_items = _build_overdue_items(
+    overdue_items, _ = build_overdue_items(
         _FakeSummaryService(),
         batches=batches,
         finish_by_batch={"B001": finish},
