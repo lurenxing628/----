@@ -144,8 +144,7 @@ def get_operator_calendar_row_validate_and_normalize(
     inplace: bool = True,
 ) -> Callable[[dict], str | None]:
     repo = op_repo if op_repo is not None else OperatorRepository(conn)
-    parsed_hde = parse_finite_float(holiday_default_efficiency, field="假期默认效率", allow_none=False)
-    hde = float(parsed_hde if parsed_hde is not None else 0.0)
+    hde = parse_finite_float(holiday_default_efficiency, field="假期默认效率", allow_none=False)
     if hde <= 0:
         raise ValidationError("假期默认效率必须大于 0。", field="假期默认效率")
 
@@ -188,16 +187,16 @@ def get_operator_calendar_row_validate_and_normalize(
         target["班次结束"] = se or ""
 
         sh = target.get("可用工时")
-        if sh is None or str(sh).strip() == "":
+        if sh is None or (isinstance(sh, str) and sh.strip() == ""):
             target["可用工时"] = 8 if target["类型"] == CalendarDayType.WORKDAY.value else 0
         else:
             try:
-                v = float(sh)
-                if v < 0:
+                parsed_shift_hours = parse_finite_float(sh, field="可用工时", allow_none=False)
+                if parsed_shift_hours < 0:
                     return "“可用工时”不能为负数"
-                target["可用工时"] = v
-            except Exception:
-                return "“可用工时”必须是数字"
+                target["可用工时"] = parsed_shift_hours
+            except ValidationError as e:
+                return e.message
 
         if target.get("班次结束"):
             try:
@@ -210,16 +209,16 @@ def get_operator_calendar_row_validate_and_normalize(
                 return "“班次开始/结束”格式不合法（期望：HH:MM）"
 
         eff = target.get("效率")
-        if eff is None or str(eff).strip() == "":
+        if eff is None or (isinstance(eff, str) and eff.strip() == ""):
             target["效率"] = 1.0 if target["类型"] == CalendarDayType.WORKDAY.value else hde
         else:
             try:
-                v = float(eff)
-                if v <= 0:
+                parsed_efficiency = parse_finite_float(eff, field="效率", allow_none=False)
+                if parsed_efficiency <= 0:
                     return "“效率”必须大于 0"
-                target["效率"] = v
-            except Exception:
-                return "“效率”必须是数字"
+                target["效率"] = parsed_efficiency
+            except ValidationError as e:
+                return e.message
 
         target["允许普通件"] = _normalize_yesno(target.get("允许普通件"))
         if target["允许普通件"] not in YESNO_VALUES:

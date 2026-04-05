@@ -15,6 +15,7 @@ from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.normalize import is_blank_value
+from core.services.common.strict_parse import parse_required_float
 from core.services.process import OpTypeService, SupplierService
 from core.services.process.supplier_excel_import_service import SupplierExcelImportService
 from web.ui_mode import render_ui_template as render_template
@@ -91,11 +92,10 @@ def _normalize_supplier_default_days(row: Dict[str, Any]) -> Optional[str]:
     if raw_value is None or str(raw_value).strip() == "":
         return "“默认周期”不能为空"
     try:
-        days = float(raw_value)
-    except (TypeError, ValueError):
-        return "“默认周期”必须是数字"
-    if days <= 0:
-        return "“默认周期”必须大于 0"
+        days = parse_required_float(raw_value, field="默认周期", min_value=0, min_inclusive=False)
+    except ValidationError as e:
+        return e.message
+
     row["默认周期"] = days
     return None
 

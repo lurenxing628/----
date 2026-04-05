@@ -21,7 +21,10 @@ from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.errors import ErrorCode, ValidationError
 from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
 from core.services.common.excel_templates import build_xlsx_bytes
-from core.services.common.excel_validators import get_batch_row_validate_and_normalize
+from core.services.common.excel_validators import (
+    get_batch_row_validate_and_normalize,
+    get_operator_calendar_row_validate_and_normalize,
+)
 from core.services.common.normalize import is_blank_value
 from core.services.process.op_type_excel_import_service import OpTypeExcelImportService
 from core.services.scheduler.batch_service import BatchService
@@ -58,6 +61,7 @@ def _make_xlsx(headers, rows) -> bytes:
     wb = openpyxl.Workbook()
     try:
         ws = wb.active
+        assert ws is not None
         ws.title = "Sheet1"
         ws.append(list(headers))
         for row in rows:
@@ -173,6 +177,97 @@ def test_operator_calendar_preview_fallback_trims_time_suffix(tmp_path, monkeypa
     rows = json.loads(captured["raw_rows_json"])
     assert rows[0]["日期"] == "2026-01-25"
     assert rows[0]["__id"] == "OP001|2026-01-25"
+
+
+def test_operator_calendar_validator_rejects_bool_and_nonfinite_numeric_inputs(tmp_path) -> None:
+    conn, _db_path = _new_conn(tmp_path)
+    try:
+        conn.execute("INSERT INTO Operators (operator_id, name, status) VALUES (?, ?, ?)", ("OP001", "张三", "active"))
+        conn.commit()
+
+        validator = get_operator_calendar_row_validate_and_normalize(
+            conn,
+            holiday_default_efficiency=0.8,
+            inplace=True,
+        )
+        base_row = {
+            "工号": "OP001",
+            "日期": "2026-04-03",
+            "类型": "workday",
+            "班次开始": "08:00",
+            "班次结束": "",
+            "可用工时": 8,
+            "效率": 1.0,
+            "允许普通件": "yes",
+            "允许急件": "yes",
+            "说明": "strict-number",
+        }
+        cases = [
+            ("可用工时", True, "“可用工时”必须是数字"),
+            ("效率", False, "“效率”必须是数字"),
+            ("可用工时", float("nan"), "“可用工时”必须是有限数字"),
+            ("效率", float("nan"), "“效率”必须是有限数字"),
+            ("可用工时", float("inf"), "“可用工时”必须是有限数字"),
+            ("效率", float("inf"), "“效率”必须是有限数字"),
+            ("可用工时", float("-inf"), "“可用工时”必须是有限数字"),
+            ("效率", float("-inf"), "“效率”必须是有限数字"),
+        ]
+
+        for field, value, expected in cases:
+            row = dict(base_row)
+            row[field] = value
+            assert validator(row) == expected
+    finally:
+        conn.close()
+
+
+def test_operator_calendar_preview_and_confirm_reject_bool_numeric_cells(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    conn = get_connection(db_path)
+    conn.execute("INSERT INTO Operators (operator_id, name, status) VALUES (?, ?, ?)", ("OP001", "张三", "active"))
+    conn.commit()
+    conn.close()
+
+    client = app.test_client()
+    file_bytes = _make_xlsx(
+        ["工号", "日期", "类型", "班次开始", "班次结束", "可用工时", "效率", "允许普通件", "允许急件", "说明"],
+        [["OP001", "2026-04-04", "workday", "08:00", "", True, 1.0, "yes", "yes", "bool-cell"]],
+    )
+
+    preview_resp = client.post(
+        "/personnel/excel/operator_calendar/preview",
+        data={"mode": ImportMode.OVERWRITE.value, "file": (io.BytesIO(file_bytes), "operator_calendar.xlsx")},
+        content_type="multipart/form-data",
+    )
+    preview_html = preview_resp.get_data(as_text=True)
+    assert preview_resp.status_code == 200
+    assert "“可用工时”必须是数字" in preview_html
+
+    raw_rows_json = _extract_raw_rows_json(preview_html)
+    preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")
+    assert preview_baseline
+
+    confirm_resp = client.post(
+        "/personnel/excel/operator_calendar/confirm",
+        data={
+            "mode": ImportMode.OVERWRITE.value,
+            "filename": "operator_calendar.xlsx",
+            "raw_rows_json": raw_rows_json,
+            "preview_baseline": preview_baseline,
+        },
+        follow_redirects=True,
+    )
+    confirm_html = confirm_resp.get_data(as_text=True)
+    assert confirm_resp.status_code == 200
+    assert "导入被拒绝：Excel 存在 1 行错误。" in confirm_html
+    assert "“可用工时”必须是数字" in confirm_html
+
+    verify_conn = get_connection(db_path)
+    try:
+        count = verify_conn.execute("SELECT COUNT(1) FROM OperatorCalendar WHERE operator_id=? AND date=?", ("OP001", "2026-04-04")).fetchone()[0]
+        assert int(count) == 0
+    finally:
+        verify_conn.close()
 
 
 def test_upload_over_limit_returns_413(tmp_path, monkeypatch) -> None:
@@ -317,6 +412,7 @@ def test_build_xlsx_bytes_sanitizes_formula_like_strings() -> None:
     wb = openpyxl.load_workbook(output)
     try:
         ws = wb.active
+        assert ws is not None
         assert ws["A2"].value == "'=cmd|' /C calc'!A0"
         assert ws["A3"].value == "'+SUM(1,1)"
         assert ws["A4"].value == "'-1"

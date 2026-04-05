@@ -15,6 +15,7 @@ from core.services.common.excel_import_executor import execute_preview_rows_tran
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.normalize import is_blank_value
+from core.services.common.number_utils import parse_finite_float
 from core.services.scheduler import CalendarService, ConfigService
 from web.ui_mode import render_ui_template as render_template
 
@@ -200,24 +201,24 @@ def excel_calendar_preview():
             row["可用工时"] = 8 if row["类型"] == CalendarDayType.WORKDAY.value else 0
         else:
             try:
-                v = float(sh)
+                v = parse_finite_float(sh, field="可用工时")
                 if v < 0:
                     return "“可用工时”不能为负数"
                 row["可用工时"] = v
-            except Exception:
-                return "“可用工时”必须是数字"
+            except ValidationError as e:
+                return e.message
 
         eff = row.get("效率")
         if eff is None or str(eff).strip() == "":
             row["效率"] = 1.0 if row["类型"] == CalendarDayType.WORKDAY.value else hde_value
         else:
             try:
-                v = float(eff)
+                v = parse_finite_float(eff, field="效率")
                 if v <= 0:
                     return "“效率”必须大于 0"
                 row["效率"] = v
-            except Exception:
-                return "“效率”必须是数字"
+            except ValidationError as e:
+                return e.message
 
         row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
         if row["允许普通件"] not in YESNO_VALUES:
@@ -333,24 +334,24 @@ def excel_calendar_confirm():
             row["可用工时"] = 8 if row["类型"] == CalendarDayType.WORKDAY.value else 0
         else:
             try:
-                v = float(sh)
+                v = parse_finite_float(sh, field="可用工时")
                 if v < 0:
                     return "“可用工时”不能为负数"
                 row["可用工时"] = v
-            except Exception:
-                return "“可用工时”必须是数字"
+            except ValidationError as e:
+                return e.message
 
         eff = row.get("效率")
         if eff is None or str(eff).strip() == "":
             row["效率"] = 1.0 if row["类型"] == CalendarDayType.WORKDAY.value else hde_value
         else:
             try:
-                v = float(eff)
+                v = parse_finite_float(eff, field="效率")
                 if v <= 0:
                     return "“效率”必须大于 0"
                 row["效率"] = v
-            except Exception:
-                return "“效率”必须是数字"
+            except ValidationError as e:
+                return e.message
 
         row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
         if row["允许普通件"] not in YESNO_VALUES:

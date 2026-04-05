@@ -55,6 +55,30 @@ def main() -> None:
 
         cal_svc = CalendarService(conn, logger=None, op_logger=None)
 
+        def _assert_operator_calendar_write_rejected(
+            *,
+            date_value: str,
+            shift_hours: Any = 8,
+            efficiency: Any = 1.0,
+            expected_text: str,
+        ) -> None:
+            _expect_validation_error(
+                lambda: cal_svc.upsert_operator_calendar_no_tx(
+                    {
+                        "operator_id": "OP100",
+                        "date": date_value,
+                        "day_type": "workday",
+                        "shift_hours": shift_hours,
+                        "efficiency": efficiency,
+                        "allow_normal": "yes",
+                        "allow_urgent": "yes",
+                    }
+                ),
+                expected_text,
+            )
+            cnt = conn.execute("SELECT COUNT(1) FROM OperatorCalendar WHERE operator_id=? AND date=?", ("OP100", date_value)).fetchone()[0]
+            assert int(cnt) == 0, f"非法个人日历 no_tx 不应落库，date={date_value} count={cnt}"
+
         tx_global = cal_svc.upsert(
             "2026-03-10",
             day_type="workday",
@@ -212,6 +236,20 @@ def main() -> None:
             ("OP100", "2026-03-17"),
         ).fetchone()[0]
         assert int(cnt_operator_eff) == 0, f"个人零效率 no_tx 不应落库，实际 count={cnt_operator_eff}"
+
+        for idx, value in enumerate((True, False, float("nan"), float("inf"), float("-inf")), start=18):
+            _assert_operator_calendar_write_rejected(
+                date_value=f"2026-03-{idx:02d}",
+                shift_hours=value,
+                expected_text="必须是数字" if isinstance(value, bool) else "必须是有限数字",
+            )
+
+        for idx, value in enumerate((True, False, float("nan"), float("inf"), float("-inf")), start=23):
+            _assert_operator_calendar_write_rejected(
+                date_value=f"2026-03-{idx:02d}",
+                efficiency=value,
+                expected_text="必须是数字" if isinstance(value, bool) else "必须是有限数字",
+            )
     finally:
         try:
             conn.close()

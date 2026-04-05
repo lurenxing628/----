@@ -40,6 +40,8 @@ def _make_xlsx_bytes(headers, rows):
 
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.title = "Sheet1"
     ws.append(headers)
     for row in rows:
@@ -349,6 +351,8 @@ def main() -> None:
     wb = openpyxl.Workbook()
     try:
         ws = wb.active
+        assert ws is not None
+
         ws.title = "Sheet1"
         ws.append(["工种ID", "工种名称", "归属"])
         ws.append(["OT_NEW", "新工种", "internal"])

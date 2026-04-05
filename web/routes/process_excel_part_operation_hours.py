@@ -44,7 +44,7 @@ def _part_op_hours_mode_options() -> List[Dict[str, str]]:
 
 
 def _parse_seq(value: Any) -> Optional[int]:
-    if value is None:
+    if value is None or isinstance(value, bool):
         return None
     if isinstance(value, int):
         return int(value)
@@ -54,6 +54,8 @@ def _parse_seq(value: Any) -> Optional[int]:
         return None
     s = str(value).strip()
     if not s:
+        return None
+    if "e" in s.lower():
         return None
     if re.fullmatch(r"\d+", s):
         return int(s)
