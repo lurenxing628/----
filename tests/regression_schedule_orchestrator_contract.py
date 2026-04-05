@@ -53,6 +53,7 @@ def main() -> None:
     from core.infrastructure.errors import ValidationError
     from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run
     from core.services.scheduler.schedule_service import ScheduleService
+    from core.services.scheduler.schedule_summary_types import SummaryBuildContext
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -173,15 +174,17 @@ def main() -> None:
     assert list(outcome.summary.warnings) == ["optimizer warning", "freeze warning"], outcome.summary.warnings
 
     summary_kwargs = captured_ok.get("summary_kwargs") or {}
-    assert summary_kwargs.get("version") == 7, summary_kwargs
-    assert summary_kwargs.get("simulate") is True, summary_kwargs
-    assert summary_kwargs.get("algo_warnings") == ["freeze warning"], summary_kwargs
-    assert summary_kwargs.get("warning_merge_status") == {
+    summary_ctx = summary_kwargs.get("ctx")
+    assert isinstance(summary_ctx, SummaryBuildContext), summary_kwargs
+    assert summary_ctx.version == 7, summary_ctx
+    assert summary_ctx.simulate is True, summary_ctx
+    assert summary_ctx.algo_warnings == ["freeze warning"], summary_ctx
+    assert summary_ctx.warning_merge_status == {
         "summary_merge_attempted": True,
         "summary_merge_failed": False,
         "summary_merge_error": None,
-    }, summary_kwargs
-    assert summary_kwargs.get("input_build_outcome") is collected.algo_input_outcome, summary_kwargs
+    }, summary_ctx
+    assert summary_ctx.input_build_outcome is collected.algo_input_outcome, summary_ctx
 
     print("OK")
 

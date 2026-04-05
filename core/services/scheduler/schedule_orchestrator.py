@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
 from .schedule_input_collector import ScheduleRunInput, _raise_schedule_empty_result
+from .schedule_summary_types import SummaryBuildContext
 
 
 @dataclass
@@ -144,8 +145,7 @@ def orchestrate_schedule_run(
     with svc.tx_manager.transaction():
         version = int(svc.history_repo.allocate_next_version())
 
-    overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms = build_result_summary_fn(
-        svc,
+    summary_ctx = SummaryBuildContext(
         cfg=schedule_input.cfg,
         version=version,
         normalized_batch_ids=schedule_input.normalized_batch_ids,
@@ -175,6 +175,11 @@ def orchestrate_schedule_run(
         warning_merge_status=warning_merge_status,
         simulate=simulate,
         t0=schedule_input.t0,
+    )
+
+    overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms = build_result_summary_fn(
+        svc,
+        ctx=summary_ctx,
     )
 
     return ScheduleOrchestrationOutcome(

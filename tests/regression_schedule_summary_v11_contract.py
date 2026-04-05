@@ -55,6 +55,7 @@ def _build_summary(
 ):
     from core.algorithms.evaluation import ScheduleMetrics
     from core.services.scheduler.schedule_summary import build_result_summary
+    from core.services.scheduler.schedule_summary_types import SummaryBuildContext
 
     cfg = SimpleNamespace(
         sort_strategy="priority_first",
@@ -87,8 +88,7 @@ def _build_summary(
         changeover_count=2,
         weighted_tardiness_hours=20.0,
     )
-    return build_result_summary(
-        _StubSvc(),
+    summary_ctx = SummaryBuildContext(
         cfg=cfg,
         version=1,
         normalized_batch_ids=["B001"],
@@ -112,6 +112,10 @@ def _build_summary(
         downtime_meta=dict(downtime_meta or {}),
         simulate=False,
         t0=time.time(),
+    )
+    return build_result_summary(
+        _StubSvc(),
+        ctx=summary_ctx,
     )
 
 

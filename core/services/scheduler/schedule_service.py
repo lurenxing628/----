@@ -9,7 +9,6 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Batch, BatchOperation, ExternalGroup, PartOperation
 from core.models.enums import BatchOperationStatus, BatchStatus, ReadyStatus, SourceType, YesNo
-from core.services.common.build_outcome import BuildOutcome
 from core.services.common.normalize import normalize_text
 from data.repositories import (
     BatchOperationRepository,
@@ -58,68 +57,6 @@ def _get_snapshot_with_optional_strict_mode(cfg_svc: Any, *, strict_mode: bool) 
         ):
             return cfg_svc.get_snapshot()
         raise
-
-
-def _build_algo_operations_with_optional_outcome(svc, operations: List[Any], *, strict_mode: bool) -> BuildOutcome[List[Any]]:
-    try:
-        outcome = build_algo_operations(
-            svc,
-            operations,
-            strict_mode=bool(strict_mode),
-            return_outcome=True,
-        )
-    except TypeError as exc:
-        message = str(exc)
-        if (
-            ("strict_mode" in message or "return_outcome" in message)
-            and ("unexpected keyword argument" in message or "got an unexpected keyword argument" in message)
-        ):
-            outcome = build_algo_operations(svc, operations)
-        else:
-            raise
-    if isinstance(outcome, BuildOutcome):
-        return outcome
-    return BuildOutcome(value=list(outcome or []))
-
-
-def _build_freeze_window_seed_with_optional_meta(
-    svc,
-    *,
-    cfg: Any,
-    prev_version: int,
-    start_dt: datetime,
-    operations: List[Any],
-    reschedulable_operations: Optional[List[Any]],
-    strict_mode: bool,
-) -> Tuple[set, List[Dict[str, Any]], List[str], Dict[str, Any]]:
-    freeze_meta: Dict[str, Any] = {}
-    try:
-        result = build_freeze_window_seed(
-            svc,
-            cfg=cfg,
-            prev_version=prev_version,
-            start_dt=start_dt,
-            operations=operations,
-            reschedulable_operations=reschedulable_operations,
-            strict_mode=bool(strict_mode),
-            meta=freeze_meta,
-        )
-    except TypeError as exc:
-        message = str(exc)
-        if ("strict_mode" in message or "meta" in message) and (
-            "unexpected keyword argument" in message or "got an unexpected keyword argument" in message
-        ):
-            result = build_freeze_window_seed(
-                svc,
-                cfg=cfg,
-                prev_version=prev_version,
-                start_dt=start_dt,
-                operations=operations,
-                reschedulable_operations=reschedulable_operations,
-            )
-        else:
-            raise
-    return result[0], result[1], result[2], freeze_meta
 
 
 def _raise_schedule_empty_result(message: str, *, reason: str) -> None:

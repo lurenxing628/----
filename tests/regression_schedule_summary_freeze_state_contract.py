@@ -1,8 +1,23 @@
 from __future__ import annotations
 
+import os
+import sys
 import time
 from datetime import datetime
 from types import SimpleNamespace
+
+
+def find_repo_root() -> str:
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(here, ".."))
+    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
+        return repo_root
+    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+
+
+REPO_ROOT = find_repo_root()
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 from core.services.scheduler.schedule_summary import build_result_summary
 
@@ -101,3 +116,12 @@ def test_schedule_summary_freeze_state_controls_hard_constraints() -> None:
     )
     warnings = degraded_summary.get("warnings") or []
     assert any("冻结窗口" in str(item) and "未生效" in str(item) for item in warnings), f"冻结窗口退化 warning 未外显：{warnings!r}"
+
+
+def main() -> None:
+    test_schedule_summary_freeze_state_controls_hard_constraints()
+    print("OK")
+
+
+if __name__ == "__main__":
+    main()

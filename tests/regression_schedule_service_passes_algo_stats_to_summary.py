@@ -112,7 +112,8 @@ def main() -> None:
         )
 
     def _stub_build_result_summary(*args, **kwargs):
-        captured["algo_stats"] = kwargs.get("algo_stats")
+        ctx = kwargs.get("ctx")
+        captured["algo_stats"] = getattr(ctx, "algo_stats", None)
         return [], "simulated", {"algo": {}}, "{}", 0
 
     original_build_algo_operations = schedule_service_mod.build_algo_operations
