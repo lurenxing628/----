@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from urllib.parse import urlsplit
 
@@ -26,10 +27,35 @@ _EXT_KEY_V2_ENV = "ui_mode.v2_env"
 _EXT_KEY_V2_RENDER_FALLBACK_WARNED = "ui_mode.v2_render_fallback_warned"
 _BP_NAME_V2_STATIC = "ui_v2_static"
 
+_G_KEY_INVALID_DB_UI_MODE_WARNED = "ui_mode_invalid_db_warned"
+
+
+@dataclass(frozen=True)
+class _UiModeDbReadResult:
+    mode: Optional[str] = None
+    missing: bool = False
+    invalid_raw_value: Any = None
+
 
 def normalize_ui_mode(value: Any) -> Optional[str]:
     v = ("" if value is None else str(value)).strip().lower()
     return v if v in VALID_UI_MODES else None
+
+
+def _log_warning(message: str, *args: Any) -> None:
+    try:
+        current_app.logger.warning(message, *args)
+    except Exception:
+        pass
+
+
+def _warn_invalid_db_ui_mode_once(raw_value: Any) -> None:
+    if has_request_context():
+        warned = bool(getattr(g, _G_KEY_INVALID_DB_UI_MODE_WARNED, False))
+        if warned:
+            return
+        setattr(g, _G_KEY_INVALID_DB_UI_MODE_WARNED, True)
+    _log_warning("UI 模式数据库配置非法，已回退默认值：%r", raw_value)
 
 
 def _resolve_manual_endpoint(endpoint: Any = None) -> str:
@@ -179,20 +205,38 @@ def init_ui_mode(app, base_dir: str) -> None:
         pass
 
 
-def _read_ui_mode_from_db() -> Optional[str]:
+def _read_ui_mode_from_db() -> _UiModeDbReadResult:
     """
     从 SystemConfig 读取 ui_mode（v1/v2）。
-    - 依赖 g.db；无 DB 时返回 None
-    - 任何异常都吞掉（保持页面可用）
+    - 无请求上下文 / 无 DB / 无配置值：返回缺失态
+    - 非法值：返回非法态，由调用方决定如何告警并回退
+    - 读取异常：记录 warning，再回退默认值
     """
+    if not has_request_context():
+        return _UiModeDbReadResult(missing=True)
+    conn = getattr(g, "db", None)
+    if conn is None:
+        return _UiModeDbReadResult(missing=True)
     try:
-        conn = getattr(g, "db", None)
-        if conn is None:
-            return None
         svc = SystemConfigService(conn, logger=getattr(current_app, "logger", None))
-        return normalize_ui_mode(svc.get_value(UI_MODE_CONFIG_KEY, default=None))
-    except Exception:
-        return None
+        repo = getattr(svc, "repo", None)
+        repo_get = getattr(repo, "get", None)
+        if callable(repo_get):
+            config_row = repo_get(UI_MODE_CONFIG_KEY)
+            if config_row is None:
+                return _UiModeDbReadResult(missing=True)
+            raw_value = getattr(config_row, "config_value", None)
+        else:
+            raw_value = svc.get_value(UI_MODE_CONFIG_KEY, default=None)
+            if raw_value is None:
+                return _UiModeDbReadResult(missing=True)
+    except Exception as exc:
+        _log_warning("读取 UI 模式数据库配置失败，已回退默认值：%s", exc)
+        return _UiModeDbReadResult(missing=True)
+    mode = normalize_ui_mode(raw_value)
+    if mode is None:
+        return _UiModeDbReadResult(missing=False, invalid_raw_value=raw_value)
+    return _UiModeDbReadResult(mode=mode)
 
 
 def get_ui_mode(default: str = DEFAULT_UI_MODE) -> str:
@@ -211,13 +255,15 @@ def get_ui_mode(default: str = DEFAULT_UI_MODE) -> str:
         cookie_mode = normalize_ui_mode(request.cookies.get(UI_MODE_COOKIE_KEY))
         if cookie_mode:
             return cookie_mode
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_warning("读取 UI 模式 cookie 失败，已回退到数据库/默认值：%s", exc)
 
     # 2) DB
-    db_mode = _read_ui_mode_from_db()
-    if db_mode:
-        return db_mode
+    db_read = _read_ui_mode_from_db()
+    if db_read.mode:
+        return db_read.mode
+    if not db_read.missing:
+        _warn_invalid_db_ui_mode_once(db_read.invalid_raw_value)
 
     return d
 
@@ -260,7 +306,7 @@ def safe_url_for(endpoint: str, **values: Any) -> Optional[str]:
     """
     url_for 的安全封装：
     - endpoint 不存在（BuildError）时返回 None（而不是抛异常导致整页 500）
-    - 其他异常同样吞掉并返回 None（保持页面可用，便于排障/渐进发布）
+    - 其他异常记录 warning 后返回 None（保持页面可用，便于排障/渐进发布）
     """
     if not has_request_context():
         return None
@@ -276,22 +322,26 @@ def safe_url_for(endpoint: str, **values: Any) -> Optional[str]:
                 g._safe_url_for_missing_eps = logged
             if endpoint not in logged:
                 logged.add(endpoint)
+                path = ""
                 try:
                     path = getattr(request, "path", "") or ""
                 except Exception:
                     path = ""
-                try:
-                    # values 里可能包含 id 等，便于定位；但避免超长
-                    current_app.logger.warning(
-                        f"模板链接不可用：endpoint 未注册（{endpoint}），path={path}。"
-                        "可能原因：运行旧版本/未重启/未重新打包。"
-                    )
-                except Exception:
-                    pass
+                _log_warning(
+                    "模板链接不可用：endpoint 未注册（%s），path=%s。可能原因：运行旧版本/未重启/未重新打包。",
+                    endpoint,
+                    path,
+                )
         except Exception:
             pass
         return None
-    except Exception:
+    except Exception as exc:
+        path = ""
+        try:
+            path = getattr(request, "path", "") or ""
+        except Exception:
+            path = ""
+        _log_warning("模板链接构建失败：endpoint=%s，path=%s，error=%s", endpoint, path, exc)
         return None
 
 

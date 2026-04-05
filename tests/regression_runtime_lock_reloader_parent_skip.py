@@ -16,8 +16,12 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any, cast
+
+from flask import Flask
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
 
 
 def _reset_aps_logger_handlers() -> None:
@@ -29,6 +33,7 @@ def _reset_aps_logger_handlers() -> None:
                 handler.close()
             except Exception:
                 pass
+
 
 
 def _prepare_import_env(tmpdir: str) -> dict[str, str]:
@@ -57,12 +62,14 @@ def _prepare_import_env(tmpdir: str) -> dict[str, str]:
     }
 
 
+
 def _load_entry_module(module_name: str):
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
     sys.modules.pop(module_name, None)
     return importlib.import_module(module_name)
+
 
 
 def _new_state() -> dict[str, list]:
@@ -117,8 +124,9 @@ class _FakeApp:
         )
 
 
-def _patch_entry_module(mod, fake_app: _FakeApp, state: dict[str, list]):
-    original_atexit_register = mod.atexit.register
+
+def _make_deps(fake_app: _FakeApp, state: dict[str, list]):
+    from web.bootstrap.entrypoint import EntryPointDeps
 
     def _fake_atexit_register(func, *args, **kwargs):
         state["atexit"].append(
@@ -133,6 +141,12 @@ def _patch_entry_module(mod, fake_app: _FakeApp, state: dict[str, list]):
     def _fake_acquire_runtime_lock(*args, **kwargs):
         state["acquire_runtime_lock"].append({"args": args, "kwargs": kwargs})
         return {"pid": 12345}
+
+    def _fake_release_runtime_lock(*args, **kwargs):
+        return None
+
+    def _fake_delete_runtime_contract_files(*args, **kwargs):
+        return None
 
     def _fake_write_runtime_host_port_files(*args, **kwargs):
         state["write_runtime_host_port_files"].append({"args": args, "kwargs": kwargs})
@@ -150,18 +164,42 @@ def _patch_entry_module(mod, fake_app: _FakeApp, state: dict[str, list]):
     def _fake_serve_runtime_app(app, host: str, port: int) -> None:
         state["serve_runtime_app"].append({"app": app, "host": str(host), "port": int(port)})
 
-    mod.atexit.register = _fake_atexit_register
-    mod.create_app = lambda: fake_app
-    mod.clear_launch_error = _fake_clear_launch_error
-    mod.write_launch_error = _fake_write_launch_error
-    mod.acquire_runtime_lock = _fake_acquire_runtime_lock
-    mod.write_runtime_host_port_files = _fake_write_runtime_host_port_files
-    mod.write_runtime_contract_file = _fake_write_runtime_contract_file
-    mod.pick_bind_host = lambda raw_host, logger=None: "127.0.0.1"
-    mod.pick_port = lambda host, preferred_port, logger=None: ("127.0.0.1", 58123)
-    mod.current_runtime_owner = lambda: "DOMAIN\\user"
-    mod.serve_runtime_app = _fake_serve_runtime_app
-    return original_atexit_register
+    def _fake_should_use_runtime_reloader(debug: bool) -> bool:
+        return bool(debug)
+
+    def _fake_should_own_runtime_resources(debug: bool) -> bool:
+        run_main = str(os.environ.get("WERKZEUG_RUN_MAIN") or "").strip().lower()
+        return (not debug) or run_main == "true"
+
+    def _fake_should_register_runtime_lifecycle_handlers(debug: bool) -> bool:
+        run_main = str(os.environ.get("WERKZEUG_RUN_MAIN") or "").strip().lower()
+        return (not debug) or run_main == "true"
+
+    def _fake_create_app() -> Flask:
+        return cast(Flask, fake_app)
+
+    return EntryPointDeps(
+        create_app=_fake_create_app,
+        clear_launch_error=_fake_clear_launch_error,
+        write_launch_error=_fake_write_launch_error,
+        current_runtime_owner=lambda: "DOMAIN\\user",
+        resolve_prelaunch_log_dir=lambda runtime_dir: os.path.join(runtime_dir, "prelaunch-logs"),
+        acquire_runtime_lock=_fake_acquire_runtime_lock,
+        release_runtime_lock=_fake_release_runtime_lock,
+        delete_runtime_contract_files=_fake_delete_runtime_contract_files,
+        write_runtime_host_port_files=_fake_write_runtime_host_port_files,
+        write_runtime_contract_file=_fake_write_runtime_contract_file,
+        default_chrome_profile_dir=lambda runtime_dir: os.path.join(runtime_dir, "chrome-profile"),
+        pick_bind_host=lambda raw_host, logger=None: "127.0.0.1",
+        pick_port=lambda host, preferred_port, logger=None: ("127.0.0.1", 58123),
+        stop_runtime_from_dir=lambda runtime_dir, stop_aps_chrome=False: 0,
+        serve_runtime_app=_fake_serve_runtime_app,
+        should_use_runtime_reloader=_fake_should_use_runtime_reloader,
+        should_own_runtime_resources=_fake_should_own_runtime_resources,
+        should_register_runtime_lifecycle_handlers=_fake_should_register_runtime_lifecycle_handlers,
+        atexit_register=_fake_atexit_register,
+    )
+
 
 
 def _execute_case(module_name: str, *, ui_mode: str, debug: bool, run_main: str | None):
@@ -170,7 +208,7 @@ def _execute_case(module_name: str, *, ui_mode: str, debug: bool, run_main: str 
     mod = _load_entry_module(module_name)
     state = _new_state()
     fake_app = _FakeApp(debug=debug, ui_mode=ui_mode, paths=paths, state=state)
-    original_atexit_register = _patch_entry_module(mod, fake_app, state)
+    deps = _make_deps(fake_app, state)
 
     if run_main is None:
         os.environ.pop("WERKZEUG_RUN_MAIN", None)
@@ -178,13 +216,13 @@ def _execute_case(module_name: str, *, ui_mode: str, debug: bool, run_main: str 
         os.environ["WERKZEUG_RUN_MAIN"] = str(run_main)
 
     try:
-        rc = mod.main([])
+        rc = mod.main([], deps=deps)
     finally:
-        mod.atexit.register = original_atexit_register
         _reset_aps_logger_handlers()
         logging.shutdown()
         sys.modules.pop(module_name, None)
     return rc, state, fake_app
+
 
 
 def _assert_parent_case(module_name: str, ui_mode: str) -> None:
@@ -209,6 +247,7 @@ def _assert_parent_case(module_name: str, ui_mode: str) -> None:
         raise RuntimeError(f"{module_name} debug 父进程应为子进程注入固定 host/port")
 
 
+
 def _assert_child_case(module_name: str, ui_mode: str) -> None:
     rc, state, fake_app = _execute_case(module_name, ui_mode=ui_mode, debug=True, run_main="true")
     if rc != 0:
@@ -222,7 +261,7 @@ def _assert_child_case(module_name: str, ui_mode: str) -> None:
     if len(state["app_run"]) != 1 or state["app_run"][0]["use_reloader"] is not True:
         raise RuntimeError(f"{module_name} debug 子进程应走 app.run(use_reloader=True)")
     registered = [item["name"] for item in state["atexit"]]
-    if registered != ["release_runtime_lock", "delete_runtime_contract_files"]:
+    if registered != ["_fake_release_runtime_lock", "_fake_delete_runtime_contract_files"]:
         raise RuntimeError(f"{module_name} debug 子进程注册的清理函数不符合预期：{registered!r}")
     if not str(fake_app.config.get("APS_RUNTIME_SHUTDOWN_TOKEN") or "").strip():
         raise RuntimeError(f"{module_name} debug 子进程应生成 shutdown token")
@@ -235,6 +274,7 @@ def _assert_child_case(module_name: str, ui_mode: str) -> None:
         raise RuntimeError(f"{module_name} debug 子进程 contract ui_mode 不正确：{contract_call!r}")
     if state["write_launch_error"]:
         raise RuntimeError(f"{module_name} debug 子进程不应写启动错误：{state['write_launch_error']!r}")
+
 
 
 def _assert_production_case(module_name: str, ui_mode: str) -> None:
@@ -250,12 +290,13 @@ def _assert_production_case(module_name: str, ui_mode: str) -> None:
     if len(state["serve_runtime_app"]) != 1:
         raise RuntimeError(f"{module_name} 非 debug 启动应走 serve_runtime_app：{state['serve_runtime_app']!r}")
     registered = [item["name"] for item in state["atexit"]]
-    if registered != ["release_runtime_lock", "delete_runtime_contract_files"]:
+    if registered != ["_fake_release_runtime_lock", "_fake_delete_runtime_contract_files"]:
         raise RuntimeError(f"{module_name} 非 debug 启动注册的清理函数不符合预期：{registered!r}")
     if not str(fake_app.config.get("APS_RUNTIME_SHUTDOWN_TOKEN") or "").strip():
         raise RuntimeError(f"{module_name} 非 debug 启动应生成 shutdown token")
     if state["write_launch_error"]:
         raise RuntimeError(f"{module_name} 非 debug 启动不应写启动错误：{state['write_launch_error']!r}")
+
 
 
 def main() -> None:

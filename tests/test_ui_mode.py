@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from types import SimpleNamespace
 
 from flask import Flask, g
 from jinja2 import DictLoader
@@ -85,17 +86,121 @@ def test_get_ui_mode_reads_db_when_cookie_missing() -> None:
         conn.close()
 
 
-def test_get_ui_mode_falls_back_to_default_for_invalid_db_value() -> None:
+def test_get_ui_mode_falls_back_to_default_for_invalid_db_value(monkeypatch) -> None:
     conn = _mem_conn()
     try:
         _create_system_config(conn)
         _set_ui_mode(conn, "invalid_mode")
         app = _app()
+        warnings = []
+
+        def _fake_warning(message, *args, **kwargs):
+            warnings.append(message % args if args else str(message))
+
+        monkeypatch.setattr(app.logger, "warning", _fake_warning)
         with app.test_request_context("/"):
             g.db = conn
             assert get_ui_mode(default="v1") == "v1"
+        assert any("UI 模式数据库配置非法" in msg and "invalid_mode" in msg for msg in warnings), warnings
     finally:
         conn.close()
+
+
+def test_get_ui_mode_logs_invalid_db_value_once_per_request(monkeypatch) -> None:
+    conn = _mem_conn()
+    try:
+        _create_system_config(conn)
+        _set_ui_mode(conn, "invalid_mode")
+        app = _app()
+        warnings = []
+
+        def _fake_warning(message, *args, **kwargs):
+            warnings.append(message % args if args else str(message))
+
+        monkeypatch.setattr(app.logger, "warning", _fake_warning)
+
+        with app.test_request_context("/"):
+            g.db = conn
+            assert get_ui_mode(default="v1") == "v1"
+            assert get_ui_mode(default="v1") == "v1"
+
+        invalid_warnings = [msg for msg in warnings if "UI 模式数据库配置非法" in msg]
+        assert len(invalid_warnings) == 1, warnings
+    finally:
+        conn.close()
+
+
+def test_get_ui_mode_logs_warning_when_cookie_read_fails(monkeypatch) -> None:
+    conn = _mem_conn()
+    try:
+        _create_system_config(conn)
+        _set_ui_mode(conn, "v1")
+        app = _app()
+        warnings = []
+
+        def _fake_warning(message, *args, **kwargs):
+            warnings.append(message % args if args else str(message))
+
+        class _RaisingCookies:
+            def get(self, *args, **kwargs):
+                raise RuntimeError("cookie exploded")
+
+        monkeypatch.setattr(app.logger, "warning", _fake_warning)
+        monkeypatch.setattr(ui_mode_mod, "request", SimpleNamespace(cookies=_RaisingCookies()))
+
+        with app.test_request_context("/"):
+            g.db = conn
+            assert get_ui_mode(default="v2") == "v1"
+
+        assert any("读取 UI 模式 cookie 失败" in msg for msg in warnings), warnings
+    finally:
+        conn.close()
+
+
+def test_get_ui_mode_logs_warning_when_db_read_fails(monkeypatch) -> None:
+    conn = _mem_conn()
+    try:
+        _create_system_config(conn)
+        app = _app()
+        warnings = []
+
+        def _fake_warning(message, *args, **kwargs):
+            warnings.append(message % args if args else str(message))
+
+        class _ExplodingSystemConfigService:
+            def __init__(self, conn, logger=None):
+                self.conn = conn
+                self.logger = logger
+
+            def get_value(self, key, default=None):
+                raise RuntimeError(f"db exploded: {key}")
+
+        monkeypatch.setattr(app.logger, "warning", _fake_warning)
+        monkeypatch.setattr(ui_mode_mod, "SystemConfigService", _ExplodingSystemConfigService)
+
+        with app.test_request_context("/"):
+            g.db = conn
+            assert get_ui_mode(default="v2") == "v2"
+
+        assert any("读取 UI 模式数据库配置失败" in msg for msg in warnings), warnings
+    finally:
+        conn.close()
+
+
+def test_safe_url_for_logs_warning_on_non_build_error(monkeypatch) -> None:
+    app = _app()
+    warnings = []
+
+    def _fake_warning(message, *args, **kwargs):
+        warnings.append(message % args if args else str(message))
+
+    monkeypatch.setattr(app.logger, "warning", _fake_warning)
+    monkeypatch.setattr(ui_mode_mod, "url_for", lambda endpoint, **values: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    with app.test_request_context("/demo"):
+        assert ui_mode_mod.safe_url_for("missing.endpoint") is None
+
+    assert any("模板链接构建失败" in msg for msg in warnings), warnings
 
 
 def test_render_ui_template_warns_once_when_v2_env_missing(monkeypatch) -> None:
