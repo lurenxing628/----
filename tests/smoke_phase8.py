@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import sys
 import tempfile
 import time
 import traceback
@@ -72,7 +73,7 @@ def main():
     lines.append("# Phase8（甘特图与周计划 / M4）冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{os.sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0]}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")
@@ -98,7 +99,7 @@ def main():
     os.environ["APS_BACKUP_DIR"] = test_backups
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
 
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.logging import OperationLogger
@@ -302,6 +303,8 @@ def main():
 
         wb = openpyxl.load_workbook(io.BytesIO(exp.data), data_only=True)
         ws = wb.active
+        assert ws is not None
+
         headers = [ws.cell(row=1, column=i + 1).value for i in range(7)]
         expect_headers = ["日期", "批次号", "图号", "工序", "设备", "人员", "时段"]
         if headers != expect_headers:

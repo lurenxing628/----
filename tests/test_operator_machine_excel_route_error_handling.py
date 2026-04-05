@@ -30,6 +30,8 @@ def _reset_aps_logger_handlers() -> None:
 def _build_excel_bytes() -> io.BytesIO:
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.append(["工号", "设备编号", "技能等级"])
     ws.append(["OP100", "MC100", "expert"])
     buf = io.BytesIO()

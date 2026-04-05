@@ -3,6 +3,7 @@ import io
 import json
 import os
 import re
+import sys
 import tempfile
 import time
 import traceback
@@ -49,7 +50,7 @@ def main():
     lines.append("# Phase0+Phase1 冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{os.sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0]}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")
@@ -71,7 +72,7 @@ def main():
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
 
     # 确保可以 import 项目模块
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
 
     # 0) 依赖版本（用于留痕）
     import flask
@@ -306,6 +307,8 @@ def main():
 
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.title = "Sheet1"
     ws.append(["工号", "姓名", "状态", "备注"])
     ws.append(["OP100", "测试员A", "active", "e2e"])

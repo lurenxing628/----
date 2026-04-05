@@ -2,6 +2,7 @@ import io
 import json
 import os
 import re
+import sys
 import tempfile
 import time
 import traceback
@@ -44,6 +45,8 @@ def _make_xlsx_bytes(headers, rows):
 
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.title = "Sheet1"
     ws.append(headers)
     for r in rows:
@@ -128,7 +131,7 @@ def main():
     lines.append("# Phase0~Phase5 Web + Excel 端到端冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{os.sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0]}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")
@@ -150,7 +153,7 @@ def main():
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
 
     # 确保可 import 项目模块
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
 
@@ -236,7 +239,8 @@ def main():
         d = _parse_detail_json(logs[0]["detail"])
         _require_keys(d, import_keys, "设备导入留痕(detail)")
         # 应包含错误样本（因为我们构造了 1 条 ERROR）
-        if not isinstance(d.get("errors_sample"), list) or len(d.get("errors_sample")) < 1:
+        errors_sample = d.get("errors_sample")
+        if not isinstance(errors_sample, list) or len(errors_sample) < 1:
             raise RuntimeError("设备导入留痕 errors_sample 期望至少 1 条")
     finally:
         conn.close()
@@ -335,7 +339,8 @@ def main():
             raise RuntimeError("人员导入留痕缺失（OperationLogs personnel/import/operator）")
         d = _parse_detail_json(logs[0]["detail"])
         _require_keys(d, import_keys, "人员导入留痕(detail)")
-        if not isinstance(d.get("errors_sample"), list) or len(d.get("errors_sample")) < 1:
+        errors_sample = d.get("errors_sample")
+        if not isinstance(errors_sample, list) or len(errors_sample) < 1:
             raise RuntimeError("人员导入留痕 errors_sample 期望至少 1 条")
     finally:
         conn.close()

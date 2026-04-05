@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Any, Optional, cast
 
 
 def find_repo_root() -> str:
@@ -71,6 +72,7 @@ def main():
     sid, sname, sdays, sstatus = sup_svc._validate_fields("S1", "供应商A", 1.0, "Active")
     assert sid == "S1"
     assert sname == "供应商A"
+    assert sdays is not None
     assert float(sdays) == 1.0
     assert sstatus == "active"
     assert_raises(ValidationError, sup_svc._validate_fields, "S1", "供应商A", 1.0, "bad_status")
@@ -130,54 +132,58 @@ def main():
         def __init__(self):
             self.last = ("__unset__", "__unset__")
 
-        def list(self, status: str = None, team_id: str = None):
+        def list(self, status: Optional[str] = None, team_id: Optional[str] = None):
             self.last = (status, team_id)
             return []
 
-    op_svc.repo = _StubOperatorRepo()
+    op_repo = _StubOperatorRepo()
+    op_svc.repo = cast(Any, op_repo)
     op_svc.list(status=" Active ")
-    assert op_svc.repo.last[0] == "active"
-    assert op_svc.repo.last[1] is None
+    assert op_repo.last[0] == "active"
+    assert op_repo.last[1] is None
     assert_raises(ValidationError, op_svc.list, status="   ")
 
     class _StubMachineRepo:
         def __init__(self):
             self.last = ("__unset__", "__unset__", "__unset__", "__unset__")
 
-        def list(self, status: str = None, op_type_id: str = None, category: str = None, team_id: str = None):
+        def list(self, status: Optional[str] = None, op_type_id: Optional[str] = None, category: Optional[str] = None, team_id: Optional[str] = None):
             self.last = (status, op_type_id, category, team_id)
             return []
 
     mc_svc = MachineService(conn=None, logger=None, op_logger=None)
-    mc_svc.repo = _StubMachineRepo()
+    mc_repo = _StubMachineRepo()
+    mc_svc.repo = cast(Any, mc_repo)
     mc_svc.list(status=" ACTIVE ")
-    assert mc_svc.repo.last[0] == "active"
-    assert mc_svc.repo.last[3] is None
+    assert mc_repo.last[0] == "active"
+    assert mc_repo.last[3] is None
     assert_raises(ValidationError, mc_svc.list, status="   ")
 
     class _StubSupplierRepo:
         def __init__(self):
             self.last = ("__unset__", "__unset__")
 
-        def list(self, status: str = None, op_type_id: str = None):
+        def list(self, status: Optional[str] = None, op_type_id: Optional[str] = None):
             self.last = (status, op_type_id)
             return []
 
-    sup_svc.repo = _StubSupplierRepo()
+    sup_repo = _StubSupplierRepo()
+    sup_svc.repo = cast(Any, sup_repo)
     sup_svc.list(status=" Inactive ")
-    assert sup_svc.repo.last[0] == "inactive"
+    assert sup_repo.last[0] == "inactive"
 
     class _StubOpTypeRepo:
         def __init__(self):
             self.last_category = "__unset__"
 
-        def list(self, category: str = None):
+        def list(self, category: Optional[str] = None):
             self.last_category = category
             return []
 
-    ot_svc.repo = _StubOpTypeRepo()
+    ot_repo = _StubOpTypeRepo()
+    ot_svc.repo = cast(Any, ot_repo)
     ot_svc.list(category=" Internal ")
-    assert ot_svc.repo.last_category == "internal"
+    assert ot_repo.last_category == "internal"
 
     print("OK")
 

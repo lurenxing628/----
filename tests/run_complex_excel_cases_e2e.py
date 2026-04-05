@@ -101,6 +101,8 @@ def _make_xlsx_bytes(headers: Sequence[str], rows: Sequence[Dict[str, Any]]) -> 
 
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.title = "Sheet1"
     ws.append(list(headers))
     for r in rows:
@@ -1804,7 +1806,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 report_lines.append(f"- 输入：`{res.get('input_dir')}`")
                 report_lines.append(f"- 输出：`{res.get('output_dir')}`")
                 report_lines.append(f"- start_dt：`{res.get('start_dt')}`")
-                report_lines.append(f"- 结果文件：`{os.path.join(res.get('case_id'), f'run_{r+1:02d}', 'result.json')}`（相对 --out 目录）")
+                case_id_text = str(res.get("case_id") or case.case_id)
+                result_rel_path = os.path.join(case_id_text, f"run_{r+1:02d}", "result.json")
+                report_lines.append(f"- 结果文件：`{result_rel_path}`（相对 --out 目录）")
                 report_lines.append("")
                 for rr in res.get("runs") or []:
                     ver = rr.get("version")

@@ -1,7 +1,9 @@
 import os
+import sys
 import tempfile
 import time
 import traceback
+from typing import Optional
 
 
 def find_repo_root():
@@ -41,7 +43,7 @@ def is_blank_value(value) -> bool:
     return value is None or str(value).strip() == ""
 
 
-def validate_machine_row(row: dict, op_type_repo) -> str:
+def validate_machine_row(row: dict, op_type_repo) -> Optional[str]:
     """
     Excel 行校验（按文档列名）：
     - 设备编号、设备名称必填
@@ -87,7 +89,7 @@ def main():
     lines.append("# Phase4（设备管理模块）冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{os.sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0]}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")
@@ -99,7 +101,7 @@ def main():
     lines.append(f"- 临时目录：`{tmpdir}`")
     lines.append(f"- 测试 DB：`{test_db}`")
 
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.errors import AppError, ErrorCode

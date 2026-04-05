@@ -18,6 +18,8 @@ def _make_xlsx_bytes(headers, rows):
 
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.title = "Sheet1"
     ws.append(headers)
     for r in rows:

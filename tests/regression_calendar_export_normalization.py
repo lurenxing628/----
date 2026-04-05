@@ -27,6 +27,8 @@ def _sheet_rows(resp_bytes: bytes) -> List[Dict[str, Any]]:
 
     wb = openpyxl.load_workbook(io.BytesIO(resp_bytes))
     ws = wb.active
+    assert ws is not None
+
     rows = list(ws.iter_rows(values_only=True))
     headers = [str(x) if x is not None else "" for x in rows[0]]
     out: List[Dict[str, Any]] = []

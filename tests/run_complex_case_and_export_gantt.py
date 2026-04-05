@@ -1,7 +1,9 @@
 import json
 import os
+import sys
 import tempfile
 from datetime import date
+from typing import Any, Dict, List, Optional
 
 
 def find_repo_root():
@@ -16,10 +18,10 @@ def _write_html(
     repo_root: str,
     rel_path: str,
     title: str,
-    meta: dict,
-    tasks: list,
-    calendar_days: list = None,
-    critical_chain: dict = None,
+    meta: Dict[str, Any],
+    tasks: List[Dict[str, Any]],
+    calendar_days: Optional[List[Dict[str, Any]]] = None,
+    critical_chain: Optional[Dict[str, Any]] = None,
 ):
     out_path = os.path.join(repo_root, rel_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -383,7 +385,7 @@ def main():
     os.environ["APS_BACKUP_DIR"] = test_backups
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
 
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.logging import OperationLogger

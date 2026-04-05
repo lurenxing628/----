@@ -20,7 +20,7 @@ def main() -> None:
     from core.algorithms.evaluation import _due_exclusive as evaluation_due_exclusive
     from core.algorithms.ortools_bottleneck import _due_exclusive as ortools_due_exclusive
     from core.services.report.calculations import due_exclusive as calculations_due_exclusive
-    from core.services.scheduler.schedule_summary import _due_exclusive as summary_due_exclusive
+    from core.services.scheduler.schedule_summary import due_exclusive as summary_due_exclusive
 
     expected = datetime.max
     assert evaluation_due_exclusive(None) == expected, "evaluation._due_exclusive(None) 应返回 datetime.max"

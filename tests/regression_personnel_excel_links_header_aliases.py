@@ -22,6 +22,8 @@ def _make_xlsx_bytes(headers, rows):
     wb = openpyxl.Workbook()
     try:
         ws = wb.active
+        assert ws is not None
+
         ws.title = "Sheet1"
         ws.append(headers)
         for row in rows:

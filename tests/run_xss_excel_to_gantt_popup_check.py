@@ -3,6 +3,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from datetime import date
 from html import unescape as html_unescape
@@ -26,6 +27,8 @@ def _make_xlsx_bytes(headers, rows):
  
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.title = "Sheet1"
     ws.append(headers)
     for r in rows:
@@ -282,7 +285,7 @@ def main():
     os.environ["APS_BACKUP_DIR"] = test_backups
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
  
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
  
     from core.infrastructure.database import ensure_schema, get_connection
  

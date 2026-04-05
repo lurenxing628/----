@@ -18,6 +18,8 @@ def _build_source_xlsx(path: str) -> None:
     wb = openpyxl.Workbook()
     try:
         ws = wb.active
+        assert ws is not None
+
         ws.title = "单元产品信息统计"
         ws.append(
             [
@@ -113,6 +115,8 @@ def _read_headers(path: str):
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     try:
         ws = wb.active
+        assert ws is not None
+
         first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
         return list(first_row or [])
     finally:
