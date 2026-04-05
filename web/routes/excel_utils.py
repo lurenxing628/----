@@ -6,14 +6,15 @@ import io
 import json
 import os
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, send_file
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.services.common.excel_backend_factory import get_excel_backend
-from core.services.common.excel_service import ImportMode
+from core.services.common.excel_service import ImportMode, RowStatus
 
 XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -76,6 +77,89 @@ def preview_baseline_matches(
     except Exception:
         current_app.logger.exception("预览基线签名比较失败")
         return False
+
+
+@dataclass(frozen=True)
+class ConfirmPayload:
+    rows: List[Dict[str, Any]]
+    preview_baseline: str
+
+
+def parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
+    try:
+        rows = json.loads(raw_rows_json)
+        if not isinstance(rows, list):
+            raise ValueError("rows not list")
+        return rows
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
+
+
+def _extract_error_rows(preview_rows: List[Any]) -> List[Any]:
+    return [pr for pr in (preview_rows or []) if getattr(pr, "status", None) == RowStatus.ERROR]
+
+
+def _format_error_sample(error_rows: List[Any]) -> str:
+    items = [
+        f"第{(getattr(pr, 'source_row_num', None) or pr.row_num)}行：{pr.message}"
+        for pr in (error_rows or [])[:5]
+        if pr and getattr(pr, "message", None)
+    ]
+    return "；".join(items)
+
+
+def strict_mode_enabled(raw_value: Any) -> bool:
+    return str(raw_value or "").strip().lower() in {"1", "y", "yes", "true", "on"}
+
+
+def load_confirm_payload(
+    raw_rows_json: Optional[str],
+    preview_baseline: Optional[str],
+) -> ConfirmPayload:
+    if not raw_rows_json:
+        raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
+    token = str(preview_baseline or "").strip()
+    if not token:
+        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
+    return ConfirmPayload(rows=parse_preview_rows_json(raw_rows_json), preview_baseline=token)
+
+
+def preview_baseline_is_stale(
+    preview_baseline: str,
+    *,
+    existing_data: Dict[str, Dict[str, Any]],
+    mode: ImportMode,
+    id_column: str,
+    extra_state: Any = None,
+) -> bool:
+    return not preview_baseline_matches(
+        preview_baseline,
+        existing_data=existing_data,
+        mode=mode,
+        id_column=id_column,
+        extra_state=extra_state,
+    )
+
+
+def collect_error_rows(preview_rows: List[Any]) -> List[Any]:
+    return _extract_error_rows(preview_rows)
+
+
+def build_error_rows_message(error_rows: List[Any]) -> str:
+    message = f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。"
+    sample = _format_error_sample(error_rows)
+    if sample:
+        message += f"错误示例：{sample}"
+    return message
+
+
+def extract_import_stats(import_stats: Dict[str, Any]) -> Tuple[int, int, int, int]:
+    return (
+        int(import_stats.get("new_count", 0) or 0),
+        int(import_stats.get("update_count", 0) or 0),
+        int(import_stats.get("skip_count", 0) or 0),
+        int(import_stats.get("error_count", 0) or 0),
+    )
 
 
 def flash_import_result(

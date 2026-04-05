@@ -13,6 +13,7 @@ from core.services.scheduler import BatchService, ConfigService
 from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 from web.ui_mode import render_ui_template as render_template
 
+from .excel_utils import strict_mode_enabled as _strict_mode_enabled
 from .pagination import paginate_rows, parse_page_args
 from .scheduler_bp import (
     _batch_status_zh,
@@ -23,10 +24,6 @@ from .scheduler_bp import (
     bp,
 )
 from .system_utils import _safe_next_url
-
-
-def _strict_mode_enabled(raw_value: Any) -> bool:
-    return str(raw_value or "").strip().lower() in {"1", "y", "yes", "true", "on"}
 
 
 @bp.get("/")

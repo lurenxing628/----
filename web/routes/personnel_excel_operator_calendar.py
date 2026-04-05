@@ -11,7 +11,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 from core.infrastructure.errors import ValidationError
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
-from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_service import ExcelService, ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.excel_validators import get_operator_calendar_row_validate_and_normalize
 from core.services.common.normalize import to_str_or_blank
@@ -20,9 +20,13 @@ from core.services.scheduler import CalendarService, ConfigService
 from web.ui_mode import render_ui_template as render_template
 
 from .excel_utils import (
+    build_error_rows_message,
     build_preview_baseline_token,
+    collect_error_rows,
+    extract_import_stats,
     flash_import_result,
-    preview_baseline_matches,
+    load_confirm_payload,
+    preview_baseline_is_stale,
     send_excel_template_file,
 )
 from .personnel_bp import (
@@ -250,12 +254,8 @@ def excel_operator_calendar_confirm():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
-    raw_rows_json = request.form.get("raw_rows_json")
-    preview_baseline = (request.form.get("preview_baseline") or "").strip()
-    if not raw_rows_json:
-        raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
-    if not preview_baseline:
-        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
+    payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
+    rows = payload.rows
 
     existing, existing_list = _build_existing_operator_calendar_preview_data()
     cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -269,19 +269,12 @@ def excel_operator_calendar_confirm():
         return error_response
     hde_value = _require_holiday_default_efficiency(hde)
 
-    try:
-        rows = json.loads(raw_rows_json)
-        if not isinstance(rows, list):
-            raise ValueError("rows not list")
-    except Exception as e:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
-
     _ensure_unique_ids(rows, id_column="__id")
 
     cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
     operator_ids = _list_operator_ids()
-    if not preview_baseline_matches(
-        preview_baseline,
+    if preview_baseline_is_stale(
+        payload.preview_baseline,
         existing_data=existing,
         mode=mode,
         id_column="__id",
@@ -315,18 +308,14 @@ def excel_operator_calendar_confirm():
         mode=mode,
     )
 
-    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    error_rows = collect_error_rows(preview_rows)
     if error_rows:
-        sample = "；".join([f"第{(getattr(pr, 'source_row_num', None) or pr.row_num)}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
-        flash(
-            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
-            "error",
-        )
+        flash(build_error_rows_message(error_rows), "error")
         return _render_excel_operator_calendar_page(
             existing_list=existing_list,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            preview_baseline=preview_baseline,
+            preview_baseline=payload.preview_baseline,
             mode_value=mode.value,
             filename=filename,
         )
@@ -336,10 +325,7 @@ def excel_operator_calendar_confirm():
         mode=mode,
         existing_ids=set(existing.keys()),
     )
-    new_count = int(import_stats.get("new_count", 0))
-    update_count = int(import_stats.get("update_count", 0))
-    skip_count = int(import_stats.get("skip_count", 0))
-    error_count = int(import_stats.get("error_count", 0))
+    new_count, update_count, skip_count, error_count = extract_import_stats(import_stats)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(

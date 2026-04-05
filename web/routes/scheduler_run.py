@@ -5,11 +5,8 @@ from flask import current_app, flash, g, redirect, request, url_for
 from core.infrastructure.errors import AppError
 from core.services.scheduler import ScheduleService
 
+from .excel_utils import strict_mode_enabled as _strict_mode_enabled
 from .scheduler_bp import _surface_schedule_warnings, bp
-
-
-def _strict_mode_enabled(raw_value: object) -> bool:
-    return str(raw_value or "").strip().lower() in ("yes", "y", "true", "1", "on")
 
 
 def _parse_optional_checkbox_flag(name: str):

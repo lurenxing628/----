@@ -13,6 +13,7 @@ from core.services.scheduler import GanttService, ScheduleService
 from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 from web.ui_mode import render_ui_template as render_template
 
+from .excel_utils import strict_mode_enabled as _strict_mode_enabled
 from .normalizers import normalize_version_or_latest
 from .scheduler_bp import _surface_schedule_warnings, bp
 
@@ -25,10 +26,6 @@ def _get_int_arg(name: str, default: int = 0) -> int:
         return int(str(raw).strip())
     except Exception as e:
         raise ValidationError(f"{name} 不合法（期望整数）", field=name) from e
-
-
-def _strict_mode_enabled(raw_value: object) -> bool:
-    return str(raw_value or "").strip().lower() in ("yes", "y", "true", "1", "on")
 
 
 def _parse_optional_checkbox_flag(name: str):

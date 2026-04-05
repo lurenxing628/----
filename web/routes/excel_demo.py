@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
@@ -8,24 +7,28 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, current_app, flash, g, redirect, request, send_file, url_for
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.infrastructure.errors import ValidationError
 from core.models.enums import OperatorStatus
 from core.services.common.enum_normalizers import normalize_operator_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
-from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_backend_factory import get_excel_backend
+from core.services.common.excel_service import ExcelService, ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.normalize import is_blank_value
-from core.services.common.openpyxl_backend import OpenpyxlBackend
-from core.services.common.tabular_backend import SOURCE_ROW_NUM_KEY, SOURCE_SHEET_NAME_KEY
 from core.services.personnel import OperatorService
 from core.services.personnel.operator_excel_import_service import OperatorExcelImportService
 from web.ui_mode import render_ui_template as render_template
 
 from .excel_utils import (
+    build_error_rows_message,
     build_preview_baseline_token,
+    collect_error_rows,
+    extract_import_stats,
     flash_import_result,
+    load_confirm_payload,
     parse_import_mode,
-    preview_baseline_matches,
+    preview_baseline_is_stale,
+    read_uploaded_xlsx,
     send_excel_template_file,
 )
 
@@ -103,58 +106,10 @@ def preview():
     if not file or not file.filename:
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
 
-    # 为了演示简单：直接读取上传流到内存（openpyxl 需要文件样式，因此保存到 BytesIO）
-    data = file.read()
-    if not data:
-        raise AppError(ErrorCode.EXCEL_FORMAT_ERROR, "上传文件为空，请重新选择。")
-
-    tmp = io.BytesIO(data)
-    tmp.seek(0)
-
-    backend = OpenpyxlBackend()
-    # openpyxl.load_workbook 需要类文件对象时要用 filename=...；这里用临时文件流不稳定
-    # 因此：写入一个临时内存文件并交给 openpyxl（openpyxl 支持 BytesIO）
-    wb = None
-    try:
-        import openpyxl
-
-        wb = openpyxl.load_workbook(tmp, data_only=True)
-        ws = wb.active
-        if ws is None:
-            raise AppError(ErrorCode.EXCEL_FORMAT_ERROR, "Excel 缺少活动工作表，无法读取。")
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows:
-            raise AppError(ErrorCode.EXCEL_FORMAT_ERROR, "Excel 内容为空，未读取到任何行。")
-
-        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
-        parsed_rows: List[Dict[str, Any]] = []
-        for excel_row_num, raw in enumerate(rows[1:], start=2):
-            if raw is None or all(v is None or str(v).strip() == "" for v in raw):
-                continue
-            item: Dict[str, Any] = {
-                SOURCE_ROW_NUM_KEY: int(excel_row_num),
-                SOURCE_SHEET_NAME_KEY: str(getattr(ws, "title", None) or "Sheet1"),
-            }
-            for idx, key in enumerate(headers):
-                if not key:
-                    continue
-                val = raw[idx] if idx < len(raw) else None
-                if isinstance(val, str):
-                    val = val.strip()
-                    if val == "":
-                        val = None
-                item[key] = val
-            parsed_rows.append(item)
-    except AppError:
-        raise
-    except Exception as e:
-        raise AppError(ErrorCode.EXCEL_READ_ERROR, "读取 Excel 失败，请确认文件未损坏且未被占用。", cause=e) from e
-    finally:
-        if wb is not None:
-            wb.close()
+    parsed_rows = read_uploaded_xlsx(file)
 
     existing = _fetch_existing_operators(g.db)
-    svc = ExcelService(backend=backend, logger=None, op_logger=g.op_logger)
+    svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=g.op_logger)
     preview_rows = svc.preview_import(
         rows=parsed_rows,
         id_column="工号",
@@ -191,22 +146,11 @@ def confirm():
 
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
-    raw_rows_json = request.form.get("raw_rows_json")
-    preview_baseline = (request.form.get("preview_baseline") or "").strip()
-    if not raw_rows_json:
-        raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
-    if not preview_baseline:
-        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
-
-    try:
-        rows = json.loads(raw_rows_json)
-        if not isinstance(rows, list):
-            raise ValueError("rows not list")
-    except Exception as e:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
+    payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
+    rows = payload.rows
 
     existing = _fetch_existing_operators(g.db)
-    if not preview_baseline_matches(preview_baseline, existing_data=existing, mode=mode, id_column="工号"):
+    if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, mode=mode, id_column="工号"):
         flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
         return _render_demo_page(
             existing=existing,
@@ -216,7 +160,7 @@ def confirm():
             mode_value=mode.value,
             filename=filename,
         )
-    backend = OpenpyxlBackend()
+    backend = get_excel_backend()
     svc = ExcelService(backend=backend, logger=None, op_logger=g.op_logger)
     preview_rows = svc.preview_import(
         rows=rows,
@@ -226,19 +170,14 @@ def confirm():
         mode=mode,
     )
 
-    # 严格模式：只要存在错误行，就拒绝导入（演示页也保持一致）
-    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    error_rows = collect_error_rows(preview_rows)
     if error_rows:
-        sample = "；".join([f"第{(getattr(pr, 'source_row_num', None) or pr.row_num)}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
-        flash(
-            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
-            "error",
-        )
+        flash(build_error_rows_message(error_rows), "error")
         return _render_demo_page(
             existing=existing,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            preview_baseline=preview_baseline,
+            preview_baseline=payload.preview_baseline,
             mode_value=mode.value,
             filename=filename,
         )
@@ -249,10 +188,7 @@ def confirm():
         op_logger=getattr(g, "op_logger", None),
     )
     import_stats = import_svc.apply_preview_rows(preview_rows, mode=mode, existing_ids=set(existing.keys()))
-    new_count = int(import_stats.get("new_count", 0))
-    update_count = int(import_stats.get("update_count", 0))
-    skip_count = int(import_stats.get("skip_count", 0))
-    error_count = int(import_stats.get("error_count", 0))
+    new_count, update_count, skip_count, error_count = extract_import_stats(import_stats)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(

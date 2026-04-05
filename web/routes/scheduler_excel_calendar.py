@@ -12,7 +12,7 @@ from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, YESNO_VALUES, Cal
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
-from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_service import ExcelService, ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.normalize import is_blank_value
 from core.services.common.number_utils import parse_finite_float
@@ -20,9 +20,13 @@ from core.services.scheduler import CalendarService, ConfigService
 from web.ui_mode import render_ui_template as render_template
 
 from .excel_utils import (
+    build_error_rows_message,
     build_preview_baseline_token,
+    collect_error_rows,
+    extract_import_stats,
     flash_import_result,
-    preview_baseline_matches,
+    load_confirm_payload,
+    preview_baseline_is_stale,
     send_excel_template_file,
 )
 from .scheduler_bp import bp
@@ -38,16 +42,6 @@ from .scheduler_utils import (
 # ============================================================
 # Excel：工作日历（WorkCalendar）
 # ============================================================
-
-
-def _parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
-    try:
-        rows = json.loads(raw_rows_json)
-        if not isinstance(rows, list):
-            raise ValueError("rows not list")
-        return rows
-    except Exception as e:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
 
 def _canonicalize_calendar_date(value: Any) -> str:
@@ -270,12 +264,8 @@ def excel_calendar_confirm():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
-    raw_rows_json = request.form.get("raw_rows_json")
-    preview_baseline = (request.form.get("preview_baseline") or "").strip()
-    if not raw_rows_json:
-        raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
-    if not preview_baseline:
-        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
+    payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
+    rows = payload.rows
 
     existing, existing_list = _build_existing_preview_data()
     cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
@@ -289,9 +279,8 @@ def excel_calendar_confirm():
         return error_response
     hde_value = _require_holiday_default_efficiency(hde)
 
-    rows = _parse_preview_rows_json(raw_rows_json)
-    if not preview_baseline_matches(
-        preview_baseline,
+    if preview_baseline_is_stale(
+        payload.preview_baseline,
         existing_data=existing,
         mode=mode,
         id_column="日期",
@@ -370,23 +359,14 @@ def excel_calendar_confirm():
         mode=mode,
     )
 
-    # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
-    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    error_rows = collect_error_rows(preview_rows)
     if error_rows:
-        sample = "；".join(
-            [
-                f"第{(getattr(pr, 'source_row_num', None) or pr.row_num)}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message
-            ]
-        )
-        flash(
-            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
-            "error",
-        )
+        flash(build_error_rows_message(error_rows), "error")
         return _render_excel_calendar_page(
             existing_list=existing_list,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(normalized_rows, ensure_ascii=False),
-            preview_baseline=preview_baseline,
+            preview_baseline=payload.preview_baseline,
             mode_value=mode.value,
             filename=filename,
         )
@@ -428,6 +408,7 @@ def excel_calendar_confirm():
         continue_on_app_error=False,
     )
     result = stats.to_dict()
+    new_count, update_count, skip_count, error_count = extract_import_stats(result)
     result["total_rows"] = len(preview_rows)
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -442,10 +423,10 @@ def excel_calendar_confirm():
     )
 
     flash_import_result(
-        new_count=result["new_count"],
-        update_count=result["update_count"],
-        skip_count=result["skip_count"],
-        error_count=result["error_count"],
+        new_count=new_count,
+        update_count=update_count,
+        skip_count=skip_count,
+        error_count=error_count,
         errors_sample=result["errors_sample"],
     )
     return redirect(url_for("scheduler.excel_calendar_page"))

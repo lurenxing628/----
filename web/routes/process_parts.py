@@ -10,12 +10,9 @@ from core.models.enums import MergeMode, PartOperationStatus, SourceType, YesNo
 from core.services.process import ExternalGroupService, PartService, SupplierService
 from web.ui_mode import render_ui_template as render_template
 
+from .excel_utils import strict_mode_enabled as _strict_mode_enabled
 from .pagination import paginate_rows, parse_page_args
 from .process_bp import _merge_mode_zh, _source_zh, bp
-
-
-def _strict_mode_enabled(raw_value: Any) -> bool:
-    return str(raw_value or "").strip().lower() in {"1", "y", "yes", "true", "on"}
 
 
 def _summarize_active_ops(ops: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int, int, int]:

@@ -21,9 +21,13 @@ from core.services.scheduler.number_utils import parse_finite_float
 from web.ui_mode import render_ui_template as render_template
 
 from .excel_utils import (
+    build_error_rows_message,
     build_preview_baseline_token,
+    collect_error_rows,
+    extract_import_stats,
     flash_import_result,
-    preview_baseline_matches,
+    load_confirm_payload,
+    preview_baseline_is_stale,
     send_excel_template_file,
 )
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
@@ -296,19 +300,8 @@ def excel_part_op_hours_confirm():
         raise ValidationError("该页面不支持“替换（清空后导入）”，请使用“覆盖”或“追加”。", field="mode")
 
     filename = request.form.get("filename") or "unknown.xlsx"
-    raw_rows_json = request.form.get("raw_rows_json")
-    preview_baseline = (request.form.get("preview_baseline") or "").strip()
-    if not raw_rows_json:
-        raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
-    if not preview_baseline:
-        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
-
-    try:
-        rows = json.loads(raw_rows_json)
-        if not isinstance(rows, list):
-            raise ValueError("rows not list")
-    except Exception as e:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
+    payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
+    rows = payload.rows
 
     _ensure_unique_ids(rows, id_column="__row_id__")
 
@@ -316,8 +309,8 @@ def excel_part_op_hours_confirm():
     validator = _build_validator(meta_all=meta_all)
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     existing_for_preview = existing_internal if mode != ImportMode.APPEND else _build_existing_for_append(existing_internal)
-    if not preview_baseline_matches(
-        preview_baseline,
+    if preview_baseline_is_stale(
+        payload.preview_baseline,
         existing_data=existing_for_preview,
         mode=mode,
         id_column="__row_id__",
@@ -341,18 +334,14 @@ def excel_part_op_hours_confirm():
     )
     _rewrite_append_preview_rows(preview_rows, mode)
 
-    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    error_rows = collect_error_rows(preview_rows)
     if error_rows:
-        sample = "；".join([f"第{(getattr(pr, 'source_row_num', None) or pr.row_num)}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
-        flash(
-            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
-            "error",
-        )
+        flash(build_error_rows_message(error_rows), "error")
         return _render_excel_part_op_hours_page(
             existing_list=existing_list,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            preview_baseline=preview_baseline,
+            preview_baseline=payload.preview_baseline,
             mode_value=mode.value,
             filename=filename,
         )
@@ -363,10 +352,7 @@ def excel_part_op_hours_confirm():
         op_logger=getattr(g, "op_logger", None),
     )
     stats = import_svc.apply_preview_rows(preview_rows)
-    new_count = int(stats.get("new_count", 0))
-    update_count = int(stats.get("update_count", 0))
-    skip_count = int(stats.get("skip_count", 0))
-    error_count = int(stats.get("error_count", 0))
+    new_count, update_count, skip_count, error_count = extract_import_stats(stats)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(

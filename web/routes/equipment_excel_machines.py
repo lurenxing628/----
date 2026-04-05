@@ -12,7 +12,7 @@ from core.models.enums import MACHINE_STATUS_VALUES
 from core.services.common.enum_normalizers import normalize_machine_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
-from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_service import ExcelService, ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.normalize import is_blank_value
 from core.services.equipment import MachineService
@@ -23,9 +23,13 @@ from web.ui_mode import render_ui_template as render_template
 
 from .equipment_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 from .excel_utils import (
+    build_error_rows_message,
     build_preview_baseline_token,
+    collect_error_rows,
+    extract_import_stats,
     flash_import_result,
-    preview_baseline_matches,
+    load_confirm_payload,
+    preview_baseline_is_stale,
     send_excel_template_file,
 )
 
@@ -77,25 +81,6 @@ def _resolve_op_type(value: Any, op_type_svc: OpTypeService) -> Dict[str, Option
     if not ot:
         raise ValidationError(f"工种{v}不存在，请先在工艺管理-工种配置中维护。", field="工种")
     return {"op_type_id": ot.op_type_id, "op_type_name": ot.name}
-
-
-def _parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
-    try:
-        rows = json.loads(raw_rows_json)
-        if not isinstance(rows, list):
-            raise ValueError("rows not list")
-        return rows
-    except Exception as e:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
-
-
-def _extract_error_rows(preview_rows: List[Any]) -> List[Any]:
-    return [pr for pr in (preview_rows or []) if getattr(pr, "status", None) == RowStatus.ERROR]
-
-
-def _format_error_sample(error_rows: List[Any]) -> str:
-    items = [f"第{(getattr(pr, 'source_row_num', None) or pr.row_num)}行：{pr.message}" for pr in (error_rows or [])[:5] if pr and getattr(pr, "message", None)]
-    return "；".join(items)
 
 
 def _machine_reference_snapshot(*, op_type_svc: OpTypeService, team_svc: ResourceTeamService) -> Dict[str, Any]:
@@ -254,13 +239,8 @@ def excel_machine_confirm():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
-    raw_rows_json = request.form.get("raw_rows_json")
-    preview_baseline = (request.form.get("preview_baseline") or "").strip()
-    if not raw_rows_json:
-        raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
-    if not preview_baseline:
-        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
-    rows = _parse_preview_rows_json(raw_rows_json)
+    payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
+    rows = payload.rows
 
     _ensure_unique_ids(rows, id_column="设备编号")
 
@@ -268,8 +248,8 @@ def excel_machine_confirm():
     team_svc = ResourceTeamService(g.db, op_logger=getattr(g, "op_logger", None))
     m_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = m_svc.build_existing_for_excel()
-    if not preview_baseline_matches(
-        preview_baseline,
+    if preview_baseline_is_stale(
+        payload.preview_baseline,
         existing_data=existing,
         mode=mode,
         id_column="设备编号",
@@ -313,21 +293,14 @@ def excel_machine_confirm():
         mode=mode,
     )
 
-    error_rows = _extract_error_rows(preview_rows)
+    error_rows = collect_error_rows(preview_rows)
     if error_rows:
-        sample = _format_error_sample(error_rows)
-        message = f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。"
-        if sample:
-            message += f"错误示例：{sample}"
-        flash(
-            message,
-            "error",
-        )
+        flash(build_error_rows_message(error_rows), "error")
         return _render_excel_machine_page(
             existing=existing,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            preview_baseline=preview_baseline,
+            preview_baseline=payload.preview_baseline,
             mode_value=mode.value,
             filename=filename,
         )
@@ -338,10 +311,7 @@ def excel_machine_confirm():
         op_logger=getattr(g, "op_logger", None),
     )
     import_stats = import_svc.apply_preview_rows(preview_rows, mode=mode, existing_ids=set(existing.keys()))
-    new_count = int(import_stats.get("new_count", 0))
-    update_count = int(import_stats.get("update_count", 0))
-    skip_count = int(import_stats.get("skip_count", 0))
-    error_count = int(import_stats.get("error_count", 0))
+    new_count, update_count, skip_count, error_count = extract_import_stats(import_stats)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(

@@ -10,7 +10,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 from core.infrastructure.errors import ValidationError
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
-from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_service import ExcelService, ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.excel_validators import get_batch_row_validate_and_normalize
 from core.services.process import PartService
@@ -19,10 +19,17 @@ from core.services.scheduler import BatchService
 from web.ui_mode import render_ui_template as render_template
 
 from .excel_utils import (
+    build_error_rows_message,
     build_preview_baseline_token,
+    collect_error_rows,
+    extract_import_stats,
     flash_import_result,
-    preview_baseline_matches,
+    load_confirm_payload,
+    preview_baseline_is_stale,
     send_excel_template_file,
+)
+from .excel_utils import (
+    strict_mode_enabled as _strict_mode_enabled,
 )
 from .scheduler_bp import _surface_schedule_warnings, bp
 from .scheduler_utils import (
@@ -39,16 +46,6 @@ from .scheduler_utils import (
 # ============================================================
 
 
-def _parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
-    try:
-        rows = json.loads(raw_rows_json)
-        if not isinstance(rows, list):
-            raise ValueError("rows not list")
-        return rows
-    except Exception as e:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
-
-
 def _sorted_existing_list(existing_preview_data: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     existing_list = list(existing_preview_data.values())
     existing_list.sort(key=lambda x: str(x.get("批次号") or ""))
@@ -57,10 +54,6 @@ def _sorted_existing_list(existing_preview_data: Dict[str, Dict[str, Any]]) -> L
 
 def _parse_auto_generate_ops(value: Any) -> bool:
     return str(value or "").strip().lower() in ("1", "true", "on", "yes")
-
-
-def _strict_mode_enabled(value: Any) -> bool:
-    return str(value or "").strip().lower() in ("1", "true", "on", "yes", "y")
 
 
 def _build_existing_preview_data(batch_svc: BatchService) -> Tuple[Dict[str, Any], Dict[str, Dict[str, Any]]]:
@@ -150,15 +143,6 @@ def _render_excel_batches_page(
         template_download_url=url_for("scheduler.excel_batches_template"),
         export_url=url_for("scheduler.excel_batches_export"),
     )
-
-
-def _extract_error_rows(preview_rows: Any) -> List[Any]:
-    return [pr for pr in (preview_rows or []) if getattr(pr, "status", None) == RowStatus.ERROR]
-
-
-def _format_error_sample(error_rows: List[Any]) -> str:
-    items = [f"第{(getattr(pr, 'source_row_num', None) or pr.row_num)}行：{pr.message}" for pr in (error_rows or [])[:5] if pr and getattr(pr, "message", None)]
-    return "；".join(items)
 
 
 @bp.get("/excel/batches")
@@ -284,24 +268,18 @@ def excel_batches_confirm():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
-    raw_rows_json = request.form.get("raw_rows_json")
-    preview_baseline = (request.form.get("preview_baseline") or "").strip()
     strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     auto_generate_ops = _parse_auto_generate_ops(request.form.get("auto_generate_ops"))
-    if not raw_rows_json:
-        raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
-    if not preview_baseline:
-        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
-
-    rows = _parse_preview_rows_json(raw_rows_json)
+    payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
+    rows = payload.rows
 
     _ensure_unique_ids(rows, id_column="批次号")
 
     svc = BatchService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
     existing, existing_preview_data = _build_existing_preview_data(svc)
     parts = _build_parts_cache(g.db)
-    if not preview_baseline_matches(
-        preview_baseline,
+    if preview_baseline_is_stale(
+        payload.preview_baseline,
         existing_data=existing_preview_data,
         mode=mode,
         id_column="批次号",
@@ -335,16 +313,14 @@ def excel_batches_confirm():
         mode=mode,
     )
 
-    # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
-    error_rows = _extract_error_rows(preview_rows)
+    error_rows = collect_error_rows(preview_rows)
     if error_rows:
-        sample = _format_error_sample(error_rows)
-        flash(f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}", "error")
+        flash(build_error_rows_message(error_rows), "error")
         return _render_excel_batches_page(
             existing_list=_sorted_existing_list(existing_preview_data),
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            preview_baseline=preview_baseline,
+            preview_baseline=payload.preview_baseline,
             mode_value=mode.value,
             filename=filename,
             auto_generate_ops=auto_generate_ops,
@@ -359,10 +335,7 @@ def excel_batches_confirm():
         strict_mode=strict_mode,
         existing_ids=set(existing.keys()),
     )
-    new_count = int(import_stats.get("new_count", 0))
-    update_count = int(import_stats.get("update_count", 0))
-    skip_count = int(import_stats.get("skip_count", 0))
-    error_count = int(import_stats.get("error_count", 0))
+    new_count, update_count, skip_count, error_count = extract_import_stats(import_stats)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
