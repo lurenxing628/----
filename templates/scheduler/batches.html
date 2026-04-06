@@ -248,9 +248,9 @@
             <div class="form-field min-w-320">
               <label class="muted">
                 <input type="checkbox" name="strict_mode" value="yes">
-                严格调度参数校验
+                严格校验排产参数
               </label>
-              <div class="muted text-xs">仅对高级设置中的 dispatch_mode / dispatch_rule / auto_assign_enabled 生效：开启后，非法非空值会直接拒绝排产，不再按兼容逻辑回退。</div>
+              <div class="muted text-xs">仅对"派工方式""智能派工策略""自动分配设备人员"这几项设置生效：开启后，如果填写了无效的值，将直接报错并拒绝排产，不会自动使用默认值替代。</div>
             </div>
             <div class="muted flex-1 min-w-240">
               设了截止日期的话，排不完会提示失败。

@@ -52,7 +52,7 @@
       {% if date_source == "version_span" %}
         已按所选版本的排程范围自动带入日期。
       {% elif date_source == "default_7d" %}
-        未识别到该版本的排程区间，已回退到最近 7 天。
+        未识别到该版本的排程范围，已自动显示最近 7 天。
       {% elif date_source == "query" %}
         已按你填写的日期范围查询。
       {% endif %}

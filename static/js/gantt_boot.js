@@ -161,7 +161,7 @@
     const visible = messages.length > 0;
     const message = visible
       ? messages.join(" ")
-      : "存在影响展示的排程退化，请检查数据。";
+      : "排程数据存在异常，可能影响甘特图展示，请检查数据。";
 
     if (warningEl) {
       warningEl.textContent = message;

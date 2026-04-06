@@ -46,11 +46,11 @@
             data-confirm="将根据当前零件工序模板重建该批次工序（会清空已填写的设备/人员/工时/周期等补充信息）。确定继续？">
         <label class="d-inline-block mr-3">
           <input type="checkbox" name="strict_mode" value="yes">
-          严格工艺解析
+          严格校验工艺路线
         </label>
         {{ ui.button('从零件模板重建工序（会覆盖补充信息）', 'secondary', 'md', type_attr='submit') }}
         <span class="muted">用于模板变更后同步（会清空已填写的设备/人员/工时/周期等补充信息）</span>
-        <div class="muted text-xs mt-2">仅在零件缺少模板、需要根据 route_raw 自动补建模板时生效：未知工种、缺供应商/default_days 无效将直接拒绝重建。</div>
+        <div class="muted text-xs mt-2">只在零件还没有工序模板、需要根据工艺路线自动生成模板时起作用：如果遇到系统不认识的工种、找不到供应商、或供应商默认周期无效，将直接报错并拒绝重建。</div>
       </form>
     </div>
 
@@ -194,7 +194,7 @@
                 {% if src == 'external' %}
                   {% if op.merge_hint and op.merge_hint.merge_mode == 'merged' %}
                     <input name="ext_days" form="opform_{{ op.id }}" value="" class="w-110" disabled>
-                    <div class="muted mt-2">该工序周期由“外部组合并周期”控制</div>
+                    <div class="muted mt-2">该工序的周期由所在外协工序组的“合计周期”统一控制</div>
                   {% else %}
                     <input name="ext_days" form="opform_{{ op.id }}" value="{{ op.ext_days }}" class="w-110">
                   {% endif %}

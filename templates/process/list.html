@@ -33,9 +33,9 @@
         <div class="form-field min-w-260">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
-            严格模式
+            严格校验
           </label>
-          <div class="muted text-xs">开启后，route_raw 中的未知工种、缺供应商映射、default_days 无效等不再兼容回退，而是直接拒绝创建。</div>
+          <div class="muted text-xs">开启后，如果工艺路线中有系统不认识的工种、找不到对应的供应商、或供应商的默认周期填写无效，将直接报错并拒绝创建，不会自动跳过。</div>
         </div>
         <div>{{ ui.button('添加零件', 'primary', 'md', type_attr='submit') }}</div>
       </div>
@@ -45,7 +45,7 @@
   <div class="card">
     <h3>零件工艺模板</h3>
     <div class="muted mb-2">
-      批量操作：可批量删除零件。若零件已被批次引用，将禁止删除（避免排产数据断链）。
+      批量操作：可批量删除零件。若零件已被批次引用，将禁止删除（避免影响已有的排产数据）。
     </div>
     <div class="form-row mb-2">
       <div class="form-field">

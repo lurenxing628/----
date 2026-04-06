@@ -45,12 +45,12 @@
         <label class="d-block mt-2">
           <input type="checkbox" value="yes" {% if strict_mode %}checked{% endif %} disabled>
           {% if strict_mode %}
-            {{ strict_mode_label or '严格模式' }}：确认导入时会禁止兼容性回退
+            {{ strict_mode_label or '严格校验' }}：确认导入时，遇到数据问题会直接报错
           {% else %}
-            {{ strict_mode_label or '严格模式' }}：确认导入时允许兼容性回退
+            {{ strict_mode_label or '严格校验' }}：确认导入时，遇到数据问题会自动跳过或使用默认值
           {% endif %}
         </label>
-        <div class="muted">{{ strict_mode_help or '开启后，兼容性回退会改为显式报错。' }}</div>
+        <div class="muted">{{ strict_mode_help or '开启后，遇到数据问题会直接报错提示，不会自动跳过或使用默认值替代。' }}</div>
       {% endif %}
       <div class="muted">如需切换上述选项，请重新上传并预览。</div>
       <div class="mt-2">
@@ -83,8 +83,8 @@
       </div>
       {% if strict_mode_supported %}
         <div class="mb-3">
-          <label><input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}> {{ strict_mode_label or '严格模式' }}</label>
-          <div class="muted text-xs">{{ strict_mode_help or '开启后，兼容性回退会改为显式报错。' }}</div>
+          <label><input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}> {{ strict_mode_label or '严格校验' }}</label>
+          <div class="muted text-xs">{{ strict_mode_help or '开启后，遇到数据问题会直接报错提示，不会自动跳过或使用默认值替代。' }}</div>
         </div>
       {% endif %}
       <div class="mb-3 inline-flex-wrap">

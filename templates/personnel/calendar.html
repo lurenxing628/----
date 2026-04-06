@@ -13,7 +13,7 @@
     <p class="page-subtitle text-meta">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
     <p class="text-meta">
       这里用于设置个人的特殊工作日（如请假、加班、轮班），会覆盖全局日历。
-      未配置日期会自动回退到全局日历；全局也没配时，按默认规则处理（工作日 8 小时，周末/假期不排产）。
+      未配置日期会自动使用全局日历；全局也没配时，按默认规则处理（工作日 8 小时，周末/假期不排产）。
     </p>
     {{ ui.personnel_nav('list') }}
     <div class="inline-flex-wrap mt-2">
@@ -107,7 +107,7 @@
         <div class="calendar-upsert-submit">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
       </div>
       <div class="muted mt-2">
-        提示：假期默认不排产（可用工时=0）。若假期需要上班，请把可用工时设置为 &gt;0；效率留空时会按“假期默认效率”兜底（当前：{{ holiday_default_efficiency if holiday_default_efficiency is defined else 0.8 }}）。
+        提示：假期默认不排产（可用工时为 0）。若假期需要上班，请把可用工时设置为 大于 0；效率留空时会按“假期默认效率”自动补充（当前：{{ holiday_default_efficiency if holiday_default_efficiency is defined else 0.8 }}）。
       </div>
     </form>
   </div>
@@ -146,7 +146,7 @@
         </tbody>
       </table>
     {% else %}
-      <div class="muted">暂无显式配置（将回退到全局工作日历）。</div>
+      <div class="muted">暂未单独配置（将使用全局工作日历）。</div>
     {% endif %}
   </div>
 {% endblock %}

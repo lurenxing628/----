@@ -42,14 +42,14 @@
         <div class="form-field flex-1 min-w-320">
           <label>用于解析的工艺路线字符串</label>
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
-          <div class="muted">重新解析会覆盖现有工序模板（事务保护）。</div>
+          <div class="muted">重新解析会覆盖现有工序模板；如果解析失败，已有数据不会被改动。</div>
         </div>
         <div class="form-field min-w-260">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
-            严格模式
+            严格校验
           </label>
-          <div class="muted text-xs">开启后，缺供应商映射、default_days 无效、未知工种等不再按兼容逻辑回退，会直接拒绝本次解析。</div>
+          <div class="muted text-xs">开启后，如果找不到对应供应商、供应商默认周期填写无效、或有系统不认识的工种，将直接报错并拒绝解析，不会自动跳过。</div>
         </div>
         <div>{{ ui.button('重新解析（覆盖工序模板）', 'secondary', 'md', type_attr='submit') }}</div>
       </div>
@@ -103,7 +103,7 @@
                     </div>
                   </form>
                 {% else %}
-                  <span class="muted">由外部工序组设置周期</span>
+                  <span class="muted">周期由外协工序组统一管理</span>
                 {% endif %}
               </td>
               <td>
@@ -133,7 +133,7 @@
   </div>
 
   <div class="card">
-    <h3>外部工序组（连续外部工序）</h3>
+    <h3>外协工序组（多道连续外协工序的管理）</h3>
     {% if groups and groups|length > 0 %}
       {% for g in groups %}
         {% set gid = g.group_id %}
@@ -150,7 +150,7 @@
                   {{ ui.button('删除此组', 'danger', 'sm', type_attr='submit') }}
                 </form>
               {% else %}
-                <span class="muted">删除：不允许（仅首部/尾部连续外部组可删）</span>
+                <span class="muted">不可删除（只有排在最前面或最后面的外协工序组才能删除）</span>
               {% endif %}
             </div>
           </div>
@@ -167,14 +167,14 @@
               <div class="form-field flex-1 min-w-240">
                 <label>合计周期（天，仅合并设置使用）</label>
                 <input name="total_days" value="{{ g.total_days if g.total_days is not none else '' }}" placeholder="如：3">
-                <div class="muted">提示：合并设置时，组内工序不单独计时，整组按合计周期计算；分别设置时该字段会被忽略。</div>
+                <div class="muted">提示：选择"合并设置"后，整组只按这里填的合计周期计算，下面每道工序的单独周期不再生效；选择"分别设置"时，这里的合计周期不生效，按下面每道工序各自的周期计算。</div>
               </div>
               <div class="form-field min-w-260">
                 <label>
                   <input type="checkbox" name="strict_mode" value="yes">
-                  严格模式
+                  严格校验
                 </label>
-                <div class="muted text-xs">分别设置时，若某道 ext_days 为空、非数字或 <= 0，则直接报错，不再自动回退为 1.0 天。</div>
+                <div class="muted text-xs">选择"分别设置"时，如果某道工序的外协周期填写为空、不是数字、或小于等于 0，将直接报错，不会自动按 1 天处理。</div>
               </div>
               <div>
                 {{ ui.button('保存外部组设置', 'primary', 'md', type_attr='submit') }}
@@ -201,7 +201,7 @@
                       </td>
                       <td class="muted">
                         {% if g.merge_mode == 'merged' %}
-                          当前为合并设置：该字段会被忽略（组内不单独计时）。
+                          当前为"合并设置"：这里的周期不生效，以上方填写的合计周期为准。
                         {% else %}
                           当前为分别设置：每道外部工序单独计时。
                         {% endif %}

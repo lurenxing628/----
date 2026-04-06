@@ -10,18 +10,18 @@
     <p class="muted">可按时间、模块、动作筛选日志。详情是 JSON 时会自动展开。</p>
 
     <h3 class="mt-3">日志自动清理（按请求触发）</h3>
-    <p class="muted">自动清理会在系统被访问时按间隔执行，内部有保底保留和限额，避免过度清理。</p>
+    <p class="muted">自动清理会在系统被访问时定期执行，系统会保证保留一定数量的最近日志，避免清理过多。</p>
     {% if maintenance_limits %}
-      <p class="muted">保底/限额：至少保留最近 {{ maintenance_limits.min_keep_logs }} 条日志；单次自动清理最多删除 {{ maintenance_limits.max_log_delete_per_run }} 条。</p>
+      <p class="muted">自动清理规则：至少保留最近 {{ maintenance_limits.min_keep_logs }} 条日志；每次自动清理最多删除 {{ maintenance_limits.max_log_delete_per_run }} 条。</p>
     {% endif %}
 
     {% if settings and settings.dirty_fields %}
       <div class="warning mt-2">
-        检测到系统配置包含历史兼容读取结果：{{ settings.dirty_fields | join('、') }}。
+        以下系统配置字段的值格式较旧，已被系统自动修正：{{ settings.dirty_fields | join('、') }}。
       </div>
       <ul class="list-tight muted mt-2">
         {% for field in settings.dirty_fields %}
-          <li><code>{{ field }}</code>：{{ settings.dirty_reasons.get(field) or '已发生兼容读取或钳制。' }}</li>
+          <li><code>{{ field }}</code>：{{ settings.dirty_reasons.get(field) or '旧格式已被自动修正。' }}</li>
         {% endfor %}
       </ul>
     {% endif %}

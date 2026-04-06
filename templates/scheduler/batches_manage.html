@@ -64,9 +64,9 @@
         <div class="form-field min-w-280">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
-            严格工艺解析
+            严格校验工艺路线
           </label>
-          <div class="muted text-xs">仅在零件尚未生成模板、需要根据 route_raw 自动补建模板时生效：未知工种、缺供应商/default_days 无效将直接拒绝建批。</div>
+          <div class="muted text-xs">只在零件还没有工序模板、需要根据工艺路线自动生成模板时起作用：如果遇到系统不认识的工种、找不到供应商、或供应商默认周期无效，将直接报错并拒绝创建。</div>
         </div>
         <div>{{ ui.button('创建批次', 'primary', 'md', type_attr='submit') }}</div>
       </div>

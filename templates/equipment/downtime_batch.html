@@ -8,7 +8,7 @@
     </div>
     <p class="page-subtitle text-meta">
       为设备安排停机时间。可以按单台、按类别或全部设备设置。
-      为兼容现有数据结构，系统会把范围展开为“按设备逐条写入 MachineDowntimes”。
+      系统会将停机范围按设备逐条展开保存，确保每台设备都有对应的停机记录。
     </p>
     {{ ui.equipment_nav('downtime_batch') }}
   </div>

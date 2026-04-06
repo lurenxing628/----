@@ -55,9 +55,9 @@
       <div class="mb-3">
         <label>
           <input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}>
-          {{ strict_mode_label or '严格模式' }}
+          {{ strict_mode_label or '严格校验' }}
         </label>
-        <div class="muted text-xs">{{ strict_mode_help or '开启后，兼容性回退会改为显式报错。' }}</div>
+        <div class="muted text-xs">{{ strict_mode_help or '开启后，遇到数据问题会直接报错提示，不会自动跳过或使用默认值替代。' }}</div>
       </div>
     {% endif %}
     <div class="mb-3">

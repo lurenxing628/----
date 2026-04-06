@@ -16,11 +16,11 @@
     </details>
     {% if settings and settings.dirty_fields %}
       <div class="warning mt-2">
-        检测到系统配置包含历史兼容读取结果：{{ settings.dirty_fields | join('、') }}。
+        以下系统配置字段的值格式较旧，已被系统自动修正：{{ settings.dirty_fields | join('、') }}。
       </div>
       <ul class="list-tight muted mt-2">
         {% for field in settings.dirty_fields %}
-          <li><code>{{ field }}</code>：{{ settings.dirty_reasons.get(field) or '已发生兼容读取或钳制。' }}</li>
+          <li><code>{{ field }}</code>：{{ settings.dirty_reasons.get(field) or '旧格式已被自动修正。' }}</li>
         {% endfor %}
       </ul>
     {% endif %}
@@ -213,7 +213,7 @@
       </div>
 
       {% if plugin_status.degraded %}
-        <div class="warning mt-2">插件启动存在可见退化，请先检查下列留痕问题。</div>
+        <div class="warning mt-2">插件启动时出现了问题，请先检查下列异常记录。</div>
         <ul class="list-tight muted mt-2">
           {% for event in plugin_status.degradation_events or [] %}
             <li><code>{{ event.code }}</code>：{{ event.message }}{% if event.sample %}（样本：{{ event.sample }}）{% endif %}</li>
