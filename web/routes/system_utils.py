@@ -12,7 +12,8 @@ from flask import current_app, g, request, url_for
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.errors import ValidationError
 from core.services.system import SystemConfigService
-from data.repositories import SystemJobStateRepository
+from core.services.system.system_job_state_query_service import SystemJobStateQueryService
+from core.services.system.system_maintenance_service import _parse_db_dt
 
 
 def _safe_next_url(raw: Optional[str]) -> str:
@@ -20,12 +21,15 @@ def _safe_next_url(raw: Optional[str]) -> str:
     安全重定向：
     - 仅允许站内相对路径（禁止 http(s):// 或 //host 形式）
     - 兼容 request.full_path 末尾的 '?'（无查询时）
+    - 空值、非法值统一回退到 dashboard 首页
     """
     s = (raw or "").strip()
     if not s:
         return url_for("dashboard.index")
     if s.endswith("?"):
         s = s[:-1]
+    if any(ch in s for ch in ("\r", "\n", "\x00", "\\")):
+        return url_for("dashboard.index")
     try:
         p = urlparse(s)
         if p.scheme or p.netloc:
@@ -62,8 +66,8 @@ def _parse_dt(value: str, field: str) -> Tuple[datetime, bool]:
             except Exception:
                 continue
         raise ValueError("no fmt")
-    except Exception:
-        raise ValidationError("时间格式不正确（允许：YYYY-MM-DD / YYYY/MM/DD / YYYY-MM-DD HH:MM(:SS)）", field=field)
+    except Exception as e:
+        raise ValidationError("时间格式不正确，请按 2026-03-13、2026/03/13 或 2026-03-13 08:00:00 这样的格式填写。", field=field) from e
 
 
 def _normalize_time_range(start_raw: Optional[str], end_raw: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -79,13 +83,13 @@ def _normalize_time_range(start_raw: Optional[str], end_raw: Optional[str]) -> T
     end_norm = None
 
     if start_s:
-        dt, is_date_only = _parse_dt(start_s, field="start_time")
+        dt, is_date_only = _parse_dt(start_s, field="开始时间")
         if is_date_only:
             dt = dt.replace(hour=0, minute=0, second=0)
         start_norm = dt.strftime("%Y-%m-%d %H:%M:%S")
 
     if end_s:
-        dt, is_date_only = _parse_dt(end_s, field="end_time")
+        dt, is_date_only = _parse_dt(end_s, field="结束时间")
         if is_date_only:
             dt = dt.replace(hour=23, minute=59, second=59)
         end_norm = dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -94,11 +98,11 @@ def _normalize_time_range(start_raw: Optional[str], end_raw: Optional[str]) -> T
     if start_norm and end_norm:
         try:
             if datetime.strptime(start_norm, "%Y-%m-%d %H:%M:%S") > datetime.strptime(end_norm, "%Y-%m-%d %H:%M:%S"):
-                raise ValidationError("开始时间不能晚于结束时间。", field="start_time")
+                raise ValidationError("开始时间不能晚于结束时间。", field="开始时间")
         except ValidationError:
             raise
         except Exception:
-            pass
+            _ = None
 
     return start_norm, end_norm
 
@@ -109,8 +113,8 @@ def _safe_int(value: Optional[str], field: str, default: int, min_v: int, max_v:
         return int(default)
     try:
         v = int(raw)
-    except Exception:
-        raise ValidationError(f"{field} 不合法（期望整数）", field=field)
+    except Exception as e:
+        raise ValidationError(f"{field} 不合法（期望整数）", field=field) from e
     if v < min_v:
         return int(min_v)
     if v > max_v:
@@ -133,13 +137,16 @@ def _get_system_cfg_snapshot():
 
 
 def _get_job_state_map() -> Dict[str, Any]:
-    repo = SystemJobStateRepository(g.db)
+    q = SystemJobStateQueryService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
 
     def _get(key: str) -> Optional[Dict[str, Any]]:
-        it = repo.get(key)
+        it = q.get(key)
         if not it:
             return None
         d = it.to_dict()
+        parsed = _parse_db_dt(d.get("last_run_time"))
+        d["last_run_state"] = parsed.state
+        d["last_run_raw"] = parsed.raw
         raw = d.get("last_run_detail")
         try:
             d["last_run_detail_obj"] = json.loads(raw) if raw else None

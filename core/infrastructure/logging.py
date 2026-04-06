@@ -1,10 +1,20 @@
+from __future__ import annotations
+
 import json
 import logging
 import logging.handlers
 import os
-from typing import Optional, Dict, Any
+from typing import Any, Callable, Dict, Optional
 
 from core.infrastructure.transaction import in_transaction_context
+
+
+def _invoke_safely(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> bool:
+    try:
+        fn(*args, **kwargs)
+        return True
+    except Exception:
+        return False
 
 
 class AppLogger:
@@ -30,10 +40,37 @@ class AppLogger:
         self.logger.setLevel(self.log_level)
 
         # 避免重复添加 handler（例如热重载/多次 create_app）
-        if not self.logger.handlers:
+        if self._needs_reconfigure():
+            self._reset_handlers()
             self._add_console_handler()
             self._add_file_handler()
             self._add_error_file_handler()
+
+    def _expected_log_files(self) -> tuple[str, str]:
+        return (
+            os.path.abspath(os.path.join(self.log_dir, f"{self.app_name.lower()}.log")),
+            os.path.abspath(os.path.join(self.log_dir, f"{self.app_name.lower()}_error.log")),
+        )
+
+    def _needs_reconfigure(self) -> bool:
+        handlers = list(self.logger.handlers)
+        if not handlers:
+            return True
+        expected_log, expected_error_log = self._expected_log_files()
+        existing_files = set()
+        for handler in handlers:
+            if not isinstance(handler, logging.FileHandler):
+                continue
+            base_filename = handler.baseFilename
+            if base_filename:
+                existing_files.add(os.path.abspath(str(base_filename)))
+        has_console = any(isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler) for handler in handlers)
+        return (not has_console) or expected_log not in existing_files or expected_error_log not in existing_files
+
+    def _reset_handlers(self) -> None:
+        for handler in list(self.logger.handlers):
+            self.logger.removeHandler(handler)
+            _invoke_safely(handler.close)
 
     def _add_console_handler(self):
         handler = logging.StreamHandler()
@@ -87,7 +124,7 @@ class AppLogger:
 class OperationLogger:
     """操作日志记录器（写入数据库 OperationLogs 表）。"""
 
-    def __init__(self, db_connection, logger: logging.Logger = None):
+    def __init__(self, db_connection: Any, logger: Optional[logging.Logger] = None):
         self.conn = db_connection
         self.logger = logger or logging.getLogger(__name__)
 
@@ -96,13 +133,14 @@ class OperationLogger:
         level: str,
         module: str,
         action: str,
-        target_type: str = None,
-        target_id: str = None,
-        operator: str = None,
-        detail: Dict[str, Any] = None,
-        error_code: str = None,
-        error_message: str = None,
-    ):
+        target_type: Optional[str] = None,
+        target_id: Optional[str] = None,
+        operator: Optional[str] = None,
+        detail: Optional[Dict[str, Any]] = None,
+        error_code: Optional[str] = None,
+        error_message: Optional[str] = None,
+        raise_on_fail: bool = False,
+    ) -> bool:
         auto_commit = False
         try:
             # 注意：不要在外层事务（TransactionManager）中隐式 commit()，否则会破坏原子性。
@@ -141,27 +179,31 @@ class OperationLogger:
                     post_in_tx = True
                 if post_in_tx:
                     self.conn.commit()
+            return True
         except Exception as e:
             # 若我们决定自动提交，则异常路径也要尽量结束事务，避免悬挂
             if auto_commit:
-                try:
-                    self.conn.rollback()
-                except Exception:
-                    pass
+                _invoke_safely(self.conn.rollback)
             # 记录失败时写文件日志，避免影响主流程
-            self.logger.error(f"写入操作日志失败：{e}")
+            _invoke_safely(self.logger.error, f"写入操作日志失败：{e}")
+            if raise_on_fail:
+                raise
+            return False
 
-    def info(self, module: str, action: str, **kwargs):
-        self.log("INFO", module, action, **kwargs)
-        # 控制台/文件日志也记录一条简要信息（中文）
-        self.logger.info(f"[{module}] 操作：{action}（{kwargs.get('target_type') or ''} {kwargs.get('target_id') or ''}）")
+    def info(self, module: str, action: str, **kwargs) -> bool:
+        ok = self.log("INFO", module, action, **kwargs)
+        if ok:
+            _invoke_safely(self.logger.info, f"[{module}] 操作：{action}（{kwargs.get('target_type') or ''} {kwargs.get('target_id') or ''}）")
+        return bool(ok)
 
-    def warn(self, module: str, action: str, **kwargs):
-        self.log("WARN", module, action, **kwargs)
-        self.logger.warning(f"[{module}] 警告：{action}（{kwargs}）")
+    def warn(self, module: str, action: str, **kwargs) -> bool:
+        ok = self.log("WARN", module, action, **kwargs)
+        if ok:
+            _invoke_safely(self.logger.warning, f"[{module}] 警告：{action}（{kwargs}）")
+        return bool(ok)
 
-    def error(self, module: str, action: str, error_code: str, error_message: str, **kwargs):
-        self.log(
+    def error(self, module: str, action: str, error_code: str, error_message: str, **kwargs) -> bool:
+        ok = self.log(
             "ERROR",
             module,
             action,
@@ -169,5 +211,7 @@ class OperationLogger:
             error_message=error_message,
             **kwargs,
         )
-        self.logger.error(f"[{module}] 失败：{action}（[{error_code}] {error_message}）")
+        if ok:
+            _invoke_safely(self.logger.error, f"[{module}] 失败：{action}（[{error_code}] {error_message}）")
+        return bool(ok)
 

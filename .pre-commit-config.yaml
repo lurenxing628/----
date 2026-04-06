@@ -1,0 +1,11 @@
+repos:
+  # 说明：
+  # - 当前环境无法稳定访问外网 pip（会导致 pre-commit 在安装 hook 环境时失败，进而阻断 git commit）
+  # - ruff 已在系统中安装（`ruff --version` 可用），因此这里改为本地 system hook，避免联网安装
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (system)
+        entry: ruff check --fix --exit-non-zero-on-fix
+        language: system
+        types_or: [python]

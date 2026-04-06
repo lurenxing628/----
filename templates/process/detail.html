@@ -1,71 +1,67 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
-  <style>
-    .row-internal { background: #f7fbff; }
-    .row-external { background: #fff7f0; }
-    .group-box { border: 1px dashed #ddd; padding: 12px; border-radius: 8px; margin: 10px 0; }
-    .hint { color:#666; font-size: 12px; }
-  </style>
-
   <div class="card">
-    <h2>工序模板</h2>
-    <p class="muted">图号：<strong>{{ part.part_no }}</strong>　名称：<strong>{{ part.part_name }}</strong></p>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('process.list_parts') }}">返回零件列表</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('process.op_types_page') }}">工种配置</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('process.suppliers_page') }}">供应商配置</a>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">工序模板</h2>
+      </div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">图号：<strong>{{ part.part_no }}</strong>　名称：<strong>{{ part.part_name }}</strong></p>
+    {{ ui.process_nav('parts') }}
   </div>
 
   <div class="card">
     <h3>零件信息</h3>
     <form method="post" action="{{ url_for('process.update_part', part_no=part.part_no) }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>图号</label><br/>
+      <div class="form-row">
+        <div class="form-field">
+          <label>图号</label>
           <input value="{{ part.part_no }}" disabled>
         </div>
-        <div>
-          <label>名称</label><br/>
+        <div class="form-field">
+          <label>名称</label>
           <input name="part_name" required value="{{ part.part_name }}">
         </div>
-        <div style="flex:1; min-width:360px;">
-          <label>原始工艺路线字符串</label><br/>
+        <div class="form-field flex-1 min-w-360">
+          <label>原始工艺路线字符串</label>
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
-          <div class="hint">提示：可包含空格/逗号/顿号/破折号等分隔符；解析时会统一处理。</div>
+          <div class="muted text-xs">提示：可包含空格/逗号/顿号/破折号等分隔符；解析时会统一处理。</div>
         </div>
-        <div style="flex:1; min-width:220px;">
-          <label>备注</label><br/>
+        <div class="form-field flex-1 min-w-220">
+          <label>备注</label>
           <input name="remark" value="{{ part.remark or '' }}" placeholder="可选">
         </div>
-        <div>
-          <button type="submit">保存</button>
-        </div>
+        <div>{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
 
-    <form method="post" action="{{ url_for('process.reparse_part', part_no=part.part_no) }}" style="margin-top:10px;">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div style="flex:1; min-width:360px;">
-          <label>用于解析的工艺路线字符串</label><br/>
+    <form method="post" action="{{ url_for('process.reparse_part', part_no=part.part_no) }}" class="mt-3">
+      <div class="form-row">
+        <div class="form-field flex-1 min-w-320">
+          <label>用于解析的工艺路线字符串</label>
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
-          <div class="hint">说明：解析会覆盖现有工序模板（事务保护）。</div>
+          <div class="muted">重新解析会覆盖现有工序模板；如果解析失败，已有数据不会被改动。</div>
         </div>
-        <div>
-          <button type="submit">重新解析（覆盖工序模板）</button>
+        <div class="form-field min-w-260">
+          <label>
+            <input type="checkbox" name="strict_mode" value="yes">
+            严格校验
+          </label>
+          <div class="muted text-xs">开启后，如果找不到对应供应商、供应商默认周期填写无效、或有系统不认识的工种，将直接报错并拒绝解析，不会自动跳过。</div>
         </div>
+        <div>{{ ui.button('重新解析（覆盖工序模板）', 'secondary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
 
   <div class="card">
     <h3>解析概况</h3>
-    <div class="muted">
+      <div class="muted">
       共 {{ total_count }} 道工序（内部 {{ internal_count }}，外部 {{ external_count }}）。
       {% if total_count == 0 %}
-        <div class="hint">提示：如果还未解析，请在上方填写工艺路线并点击“重新解析”。</div>
+        <div class="muted">提示：如果还未解析，请在上方填写工艺路线并点击“重新解析”。</div>
       {% endif %}
     </div>
   </div>
@@ -76,11 +72,11 @@
       <table>
         <thead>
           <tr>
-            <th style="width:90px;">工序</th>
-            <th style="width:160px;">工种</th>
-            <th style="width:100px;">归属</th>
-            <th style="width:220px;">配置</th>
-            <th style="width:220px;">外协信息</th>
+            <th class="w-90">工序</th>
+            <th class="w-160">工种</th>
+            <th class="w-100">归属</th>
+            <th class="w-220">配置</th>
+            <th class="w-220">外协信息</th>
           </tr>
         </thead>
         <tbody>
@@ -92,32 +88,32 @@
               <td>
                 {% if op.source == 'internal' %}
                   <form method="post" action="{{ url_for('process.update_internal_hours', part_no=part.part_no, seq=op.seq) }}">
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
-                      <div>
-                        <label class="hint">换型(h)</label><br/>
-                        <input name="setup_hours" style="width:90px;" value="{{ op.setup_hours or 0 }}">
+                    <div class="form-row">
+                      <div class="form-field">
+                        <label class="muted">换型(h)</label>
+                        <input name="setup_hours" class="w-90" value="{{ op.setup_hours or 0 }}">
+                      </div>
+                      <div class="form-field">
+                        <label class="muted">单件(h)</label>
+                        <input name="unit_hours" class="w-90" value="{{ op.unit_hours or 0 }}">
                       </div>
                       <div>
-                        <label class="hint">单件(h)</label><br/>
-                        <input name="unit_hours" style="width:90px;" value="{{ op.unit_hours or 0 }}">
-                      </div>
-                      <div>
-                        <button type="submit">保存</button>
+                        {{ ui.button('保存', 'primary', 'sm', type_attr='submit') }}
                       </div>
                     </div>
                   </form>
                 {% else %}
-                  <span class="muted">由外部工序组设置周期</span>
+                  <span class="muted">周期由外协工序组统一管理</span>
                 {% endif %}
               </td>
               <td>
                 {% if op.source == 'external' %}
                   {% set s = suppliers_map.get(op.supplier_id) %}
-                  <div class="hint">
+                  <div class="muted text-xs">
                     供应商：{{ (s.name if s else '-') }}
                     {% if op.ext_group_id %}｜组：{{ op.ext_group_id }}{% endif %}
                   </div>
-                  <div class="hint">
+                  <div class="muted text-xs">
                     周期：{% if op.ext_days is not none %}{{ op.ext_days }} 天{% else %}-{% endif %}
                   </div>
                 {% else %}
@@ -128,8 +124,8 @@
           {% endfor %}
         </tbody>
       </table>
-      <div class="hint" style="margin-top:8px;">
-        颜色说明：蓝色=内部工序，橙色=外部工序（外协）。
+      <div class="muted mt-2">
+        颜色标记：蓝色=内部工序，橙色=外部工序（外协）。
       </div>
     {% else %}
       <div class="muted">暂无工序模板。</div>
@@ -137,54 +133,61 @@
   </div>
 
   <div class="card">
-    <h3>外部工序组（连续外部工序）</h3>
+    <h3>外协工序组（多道连续外协工序的管理）</h3>
     {% if groups and groups|length > 0 %}
       {% for g in groups %}
         {% set gid = g.group_id %}
         {% set gops = ops_by_group.get(gid) or [] %}
         <div class="group-box">
-          <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+          <div class="inline-flex-wrap">
             <div>
               <strong>外部工序组：</strong>{{ gid }}（{{ g.start_seq }} - {{ g.end_seq }}）
               <span class="muted">｜模式：{{ merge_mode_zh(g.merge_mode) }}</span>
             </div>
             <div>
               {% if gid in deletable_group_ids %}
-                <form method="post" action="{{ url_for('process.delete_group', part_no=part.part_no, group_id=gid) }}" style="display:inline;">
-                  <button type="submit">删除此组</button>
+                <form method="post" action="{{ url_for('process.delete_group', part_no=part.part_no, group_id=gid) }}" class="d-inline">
+                  {{ ui.button('删除此组', 'danger', 'sm', type_attr='submit') }}
                 </form>
               {% else %}
-                <span class="muted">删除：不允许（仅首部/尾部连续外部组可删）</span>
+                <span class="muted">不可删除（只有排在最前面或最后面的外协工序组才能删除）</span>
               {% endif %}
             </div>
           </div>
 
-          <form method="post" action="{{ url_for('process.set_group_mode', part_no=part.part_no, group_id=gid) }}" style="margin-top:10px;">
-            <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-              <div>
-                <label>周期模式</label><br/>
+          <form method="post" action="{{ url_for('process.set_group_mode', part_no=part.part_no, group_id=gid) }}" class="mt-3">
+            <div class="form-row">
+              <div class="form-field">
+                <label>周期模式</label>
                 <select name="merge_mode">
                   <option value="separate" {% if g.merge_mode=='separate' %}selected{% endif %}>分别设置</option>
                   <option value="merged" {% if g.merge_mode=='merged' %}selected{% endif %}>合并设置</option>
                 </select>
               </div>
-              <div style="flex:1;">
-                <label>合计周期（天，仅合并设置使用）</label><br/>
+              <div class="form-field flex-1 min-w-240">
+                <label>合计周期（天，仅合并设置使用）</label>
                 <input name="total_days" value="{{ g.total_days if g.total_days is not none else '' }}" placeholder="如：3">
-                <div class="hint">提示：合并设置时，组内工序不单独计时，整组按合计周期计算；分别设置时该字段会被忽略。</div>
+                <div class="muted">提示：选择"合并设置"后，整组只按这里填的合计周期计算，下面每道工序的单独周期不再生效；选择"分别设置"时，这里的合计周期不生效，按下面每道工序各自的周期计算。</div>
+              </div>
+              <div class="form-field min-w-260">
+                <label>
+                  <input type="checkbox" name="strict_mode" value="yes">
+                  严格校验
+                </label>
+                <div class="muted text-xs">选择"分别设置"时，如果某道工序的外协周期填写为空、不是数字、或小于等于 0，将直接报错，不会自动按 1 天处理。</div>
               </div>
               <div>
-                <button type="submit">保存外部组设置</button>
+                {{ ui.button('保存外部组设置', 'primary', 'md', type_attr='submit') }}
               </div>
             </div>
 
             {% if gops and gops|length > 0 %}
-              <table style="margin-top:10px;">
+              <table class="mt-3">
                 <thead>
                   <tr>
-                    <th style="width:90px;">工序</th>
-                    <th style="width:160px;">工种</th>
-                    <th style="width:180px;">周期（天，仅分别设置使用）</th>
+                    <th class="w-90">工序</th>
+                    <th class="w-160">工种</th>
+                    <th class="w-180">周期（天，仅分别设置使用）</th>
                     <th>提示</th>
                   </tr>
                 </thead>
@@ -194,11 +197,11 @@
                       <td>{{ op.seq }}</td>
                       <td>{{ op.op_type_name }}</td>
                       <td>
-                        <input name="ext_days_{{ op.seq }}" style="width:140px;" value="{{ op.ext_days if op.ext_days is not none else '' }}" placeholder="如：1">
+                        <input name="ext_days_{{ op.seq }}" class="w-140" value="{{ op.ext_days if op.ext_days is not none else '' }}" placeholder="如：1">
                       </td>
-                      <td class="hint">
+                      <td class="muted">
                         {% if g.merge_mode == 'merged' %}
-                          当前为合并设置：该字段会被忽略（组内不单独计时）。
+                          当前为"合并设置"：这里的周期不生效，以上方填写的合计周期为准。
                         {% else %}
                           当前为分别设置：每道外部工序单独计时。
                         {% endif %}
@@ -208,13 +211,13 @@
                 </tbody>
               </table>
             {% else %}
-              <div class="muted" style="margin-top:8px;">该组暂无外部工序。</div>
+              <div class="muted mt-2">该组暂无外部工序。</div>
             {% endif %}
           </form>
         </div>
       {% endfor %}
     {% else %}
-      <div class="muted">暂无外部工序组（说明：当前模板中没有连续外部工序）。</div>
+      <div class="muted">暂无外部工序组（当前模板中没有连续外部工序）。</div>
     {% endif %}
   </div>
 {% endblock %}

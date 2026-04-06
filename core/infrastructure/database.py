@@ -1,13 +1,26 @@
+from __future__ import annotations
+
 import gc
 import os
+import re
 import shutil
 import sqlite3
 import sys
+import tempfile
 import time
-from typing import Optional
+from typing import List, Optional
+
+from .migrations.common import MigrationOutcome, fallback_log
+
+CURRENT_SCHEMA_VERSION = 6
+_CREATE_TABLE_RE = re.compile(r"(?ims)^\s*(CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(.*?\);)")
+_CREATE_INDEX_RE = re.compile(
+    r"(?im)^\s*(CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+[A-Za-z_][A-Za-z0-9_]*\s+ON\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(.*?\);)"
+)
 
 
-CURRENT_SCHEMA_VERSION = 4
+class MigrationContractError(RuntimeError):
+    """迁移契约不满足：允许补缺失整表，但不允许静默吞掉复杂残缺库。"""
 
 
 def _is_windows_lock_error(e: Exception) -> bool:
@@ -31,10 +44,7 @@ def _cleanup_sqlite_sidecars(db_path: str, logger=None) -> None:
                 os.remove(p)
         except Exception as e:
             if logger:
-                try:
-                    logger.warning(f"清理 SQLite sidecar 失败：{e}（path={p}）")
-                except Exception:
-                    pass
+                fallback_log(logger, "warning", f"清理 SQLite sidecar 失败：{e}（path={p}）")
 
 
 def _restore_db_file_from_backup(
@@ -75,10 +85,7 @@ def _restore_db_file_from_backup(
                 pass
             if _is_windows_lock_error(e) and i < r - 1:
                 if logger and i == 0:
-                    try:
-                        logger.warning(f"数据库文件回滚遇到文件锁，准备重试：{e}（db={dp}）")
-                    except Exception:
-                        pass
+                    fallback_log(logger, "warning", f"数据库文件回滚遇到文件锁，准备重试：{e}（db={dp}）")
                 time.sleep(base_delay_s * (i + 1))
                 continue
             raise
@@ -104,6 +111,182 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+
+
+def _load_schema_sql(schema_path: str) -> str:
+    with open(schema_path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _build_schema_exec_script(sql: str) -> str:
+    script = str(sql or "")
+    try:
+        # 只有在没有显式 BEGIN 时才包裹
+        if not re.search(r"(?im)^\s*BEGIN\b", script):
+            # 移除 PRAGMA foreign_keys = ON; 因为它不能在事务中执行
+            clean_sql = re.sub(r"(?im)^\s*PRAGMA\s+foreign_keys\s*=\s*\w+;?", "", script)
+            return "BEGIN;\n" + clean_sql + "\nCOMMIT;\n"
+    except Exception:
+        return script
+    return script
+
+
+def _declared_schema_tables(schema_sql: str) -> List[str]:
+    tables: List[str] = []
+    for match in _CREATE_TABLE_RE.finditer(str(schema_sql or "")):
+        name = str(match.group(2) or "").strip()
+        if not name or name == "SchemaVersion" or name in tables:
+            continue
+        tables.append(name)
+    return tables
+
+
+def _schema_create_table_statements(schema_sql: str) -> dict:
+    statements = {}
+    for match in _CREATE_TABLE_RE.finditer(str(schema_sql or "")):
+        stmt = str(match.group(1) or "").strip()
+        name = str(match.group(2) or "").strip()
+        if not stmt or not name or name == "SchemaVersion":
+            continue
+        statements[name] = stmt
+    return statements
+
+
+def _schema_index_statements(schema_sql: str) -> List[tuple]:
+    statements = []
+    for match in _CREATE_INDEX_RE.finditer(str(schema_sql or "")):
+        stmt = str(match.group(1) or "").strip()
+        table = str(match.group(2) or "").strip()
+        if not stmt or not table:
+            continue
+        statements.append((table, stmt))
+    return statements
+
+
+def _build_statement_script(statements: List[str]) -> str:
+    clean = [str(stmt or "").strip() for stmt in statements if str(stmt or "").strip()]
+    if not clean:
+        return ""
+    return "BEGIN;\n" + "\n".join(clean) + "\nCOMMIT;\n"
+
+
+def _missing_schema_tables(conn: sqlite3.Connection, schema_sql: str) -> List[str]:
+    existing = set(_list_user_tables(conn))
+    return [name for name in _declared_schema_tables(schema_sql) if name not in existing]
+
+
+def _bootstrap_missing_tables_from_schema(conn: sqlite3.Connection, schema_sql: str, logger=None) -> List[str]:
+    missing_tables = _missing_schema_tables(conn, schema_sql)
+    if not missing_tables:
+        return []
+    table_statements = _schema_create_table_statements(schema_sql)
+    index_statements = _schema_index_statements(schema_sql)
+    selected_statements: List[str] = []
+    for table in missing_tables:
+        stmt = table_statements.get(table)
+        if stmt:
+            selected_statements.append(stmt)
+    for table, stmt in index_statements:
+        if table in missing_tables:
+            selected_statements.append(stmt)
+    script = _build_statement_script(selected_statements)
+    if not script:
+        return []
+    conn.executescript(script)
+    try:
+        conn.commit()
+    except Exception:
+        pass
+    if logger:
+        fallback_log(logger, "warning", f"检测到非空数据库缺失整表，已按 schema.sql 补齐：{', '.join(missing_tables)}。")
+    return missing_tables
+
+
+def _cleanup_probe_db(db_path: str) -> None:
+    for suf in ("", "-wal", "-shm", "-journal"):
+        path = f"{db_path}{suf}"
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+
+
+def _build_contract_error(
+    *,
+    missing_tables: Optional[List[str]] = None,
+    blocked_version: Optional[int] = None,
+    blocked_outcome: Optional[MigrationOutcome] = None,
+    bootstrap_error: Optional[Exception] = None,
+) -> MigrationContractError:
+    parts = ["检测到非空数据库存在不受支持的残缺结构。"]
+    if missing_tables:
+        parts.append(f"已识别缺失整表：{', '.join(missing_tables)}。")
+    parts.append("系统只会自动补齐缺失整表；现有表结构残缺请先人工修复或恢复到完整备份后再重试。")
+    if bootstrap_error is not None:
+        parts.append(f"缺失整表预补齐失败：{bootstrap_error}")
+    elif blocked_version is not None and blocked_outcome is not None:
+        parts.append(f"迁移预检在 v{blocked_version} 返回 {blocked_outcome.value}。")
+    return MigrationContractError(" ".join(parts))
+
+
+def _preflight_migration_contract(
+    db_path: str,
+    *,
+    to_version: int,
+    schema_sql: str,
+) -> None:
+    fd, probe_path = tempfile.mkstemp(prefix="aps_migration_probe_", suffix=".db")
+    os.close(fd)
+    try:
+        src = None
+        probe = None
+        try:
+            src = get_connection(db_path)
+            probe = get_connection(probe_path)
+            src.backup(probe)
+        finally:
+            if probe is not None:
+                try:
+                    probe.close()
+                except Exception:
+                    pass
+            if src is not None:
+                try:
+                    src.close()
+                except Exception:
+                    pass
+
+        conn = None
+        try:
+            conn = get_connection(probe_path)
+            missing_tables = _missing_schema_tables(conn, schema_sql)
+            if missing_tables:
+                try:
+                    _bootstrap_missing_tables_from_schema(conn, schema_sql, logger=None)
+                except Exception as e:
+                    raise _build_contract_error(missing_tables=missing_tables, bootstrap_error=e) from e
+            _ensure_schema_version(conn, logger=None)
+            current = _get_schema_version(conn)
+            if current >= to_version:
+                return
+            with conn:
+                for v in range(current + 1, to_version + 1):
+                    outcome = _run_migration(conn, target_version=v, logger=None)
+                    if outcome != MigrationOutcome.APPLIED:
+                        raise _build_contract_error(
+                            missing_tables=missing_tables,
+                            blocked_version=v,
+                            blocked_outcome=outcome,
+                        )
+                    _set_schema_version(conn, v)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    finally:
+        _cleanup_probe_db(probe_path)
 
 
 def ensure_schema(db_path: str, logger=None, schema_path: Optional[str] = None, backup_dir: Optional[str] = None) -> None:
@@ -144,25 +327,21 @@ def ensure_schema(db_path: str, logger=None, schema_path: Optional[str] = None, 
     current_version: int = 0
     try:
         try:
-            with open(schema_path, "r", encoding="utf-8") as f:
-                sql = f.read()
-            # sqlite3.executescript 默认不保证原子性：中途失败会留下“半初始化表结构”。
-            # 这里用显式 BEGIN/COMMIT 包裹，让失败时可通过 rollback 回滚。
-            script = sql
-            try:
-                import re
+            sql = _load_schema_sql(schema_path)
+            script = _build_schema_exec_script(sql)
 
-                if not re.search(r"(?im)^\s*BEGIN\b", str(sql or "")):
-                    script = "BEGIN;\n" + str(sql or "") + "\nCOMMIT;\n"
-            except Exception:
-                script = "BEGIN;\n" + str(sql or "") + "\nCOMMIT;\n"
-            conn.executescript(script)
-            # SchemaVersion（用于后续迁移判断；若是新库且结构已满足当前版本，会自动提升版本号）
+            # 仅在库中不存在任何业务表时才执行 schema.sql 建表。
+            # 旧 schema 的空表库不能走这里，否则 CREATE TABLE IF NOT EXISTS
+            # 不会修正既有表结构，后续索引/新列依赖会直接失败。
+            if _has_no_user_tables(conn):
+                conn.executescript(script)
+
+            # 确保 SchemaVersion 表存在，并获取当前版本
             _ensure_schema_version(conn, logger=logger)
             current_version = _get_schema_version(conn)
             conn.commit()
             if logger:
-                logger.info("数据库结构检查完成（已确保所有表存在）。")
+                fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")
         except Exception:
             # 失败尽最大努力回滚，避免半初始化状态
             try:
@@ -175,18 +354,26 @@ def ensure_schema(db_path: str, logger=None, schema_path: Optional[str] = None, 
             conn.close()
         except Exception as e:
             if logger:
-                try:
-                    logger.warning(f"数据库连接关闭失败：{e}")
-                except Exception:
-                    pass
+                fallback_log(logger, "warning", f"数据库连接关闭失败：{e}")
 
     # 需要迁移（ALTER TABLE / 数据清洗等）：迁移前先备份，失败可回滚
     if current_version < CURRENT_SCHEMA_VERSION:
+        try:
+            _preflight_migration_contract(
+                db_path,
+                to_version=CURRENT_SCHEMA_VERSION,
+                schema_sql=sql,
+            )
+        except MigrationContractError as e:
+            if logger:
+                fallback_log(logger, "error", str(e))
+            raise
         _migrate_with_backup(
             db_path,
             from_version=current_version,
             to_version=CURRENT_SCHEMA_VERSION,
             backup_dir=backup_dir,
+            schema_sql=sql,
             logger=logger,
         )
 
@@ -197,7 +384,7 @@ def _ensure_schema_version(conn: sqlite3.Connection, logger=None) -> None:
 
     兼容策略：
     - 老库可能没有 SchemaVersion：插入 version=0
-    - 新库可能由 schema.sql 初始化为 version=0：若检测到结构已满足当前版本，则直接将版本提升到 CURRENT_SCHEMA_VERSION（避免无谓迁移/备份）
+    - 新库可能由 schema.sql 初始化为 version=0：若检测到结构已满足当前版本且库中仍无业务数据，则直接将版本提升到 CURRENT_SCHEMA_VERSION（避免无谓迁移/备份）
     """
     conn.execute(
         """
@@ -211,23 +398,55 @@ def _ensure_schema_version(conn: sqlite3.Connection, logger=None) -> None:
     conn.execute("INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0)")
 
     v = _get_schema_version(conn)
-    if v <= 0 and _detect_schema_is_current(conn):
+    if v <= 0 and _detect_schema_is_current(conn) and _is_truly_empty_db(conn):
         _set_schema_version(conn, CURRENT_SCHEMA_VERSION)
         if logger:
-            try:
-                logger.info(f"检测到新库结构已满足当前版本，SchemaVersion 已设为 {CURRENT_SCHEMA_VERSION}。")
-            except Exception:
-                pass
+            fallback_log(logger, "info", f"检测到新库结构已满足当前版本，SchemaVersion 已设为 {CURRENT_SCHEMA_VERSION}。")
+
+
+def _is_truly_empty_db(conn: sqlite3.Connection) -> bool:
+    for name in _list_user_tables(conn):
+        quoted_name = '"' + str(name).replace('"', '""') + '"'
+        row = conn.execute(f"SELECT 1 FROM {quoted_name} LIMIT 1").fetchone()
+        if row is not None:
+            return False
+    return True
+
+
+def _list_user_tables(conn: sqlite3.Connection) -> List[str]:
+    rows = conn.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type='table'
+          AND name <> 'SchemaVersion'
+          AND name NOT LIKE 'sqlite_%'
+        ORDER BY name
+        """
+    ).fetchall()
+    return [r["name"] if isinstance(r, sqlite3.Row) else r[0] for r in rows]
+
+
+def _has_no_user_tables(conn: sqlite3.Connection) -> bool:
+    return len(_list_user_tables(conn)) == 0
 
 
 def _detect_schema_is_current(conn: sqlite3.Connection) -> bool:
     """
-    用“结构特征”判断当前 DB 是否已经包含 V1.1 的关键字段（用于新库快速标定版本）。
+    用“结构特征”判断当前 DB 是否已经包含当前 schema.sql 的关键字段，
+    用于 brand-new 空库初始化后的版本快进。
+
+    注意：
+    - 这是“可快进”的结构特征检查，不等于对所有迁移副作用的完整等价证明
+    - 如未来新增迁移版本，需要同步审视这里的特征集合是否仍能代表当前结构
     """
     # 这些字段/表是 V1.1 之后补齐的代表性特征
     needed = [
-        ("Batches", "ready_date"),
+        ("ResourceTeams", "team_id"),
+        ("Operators", "team_id"),
         ("Machines", "category"),
+        ("Machines", "team_id"),
+        ("Batches", "ready_date"),
         ("MachineDowntimes", "scope_type"),
         ("MachineDowntimes", "scope_value"),
         ("WorkCalendar", "shift_start"),
@@ -271,7 +490,15 @@ def _set_schema_version(conn: sqlite3.Connection, version: int) -> None:
     conn.execute("UPDATE SchemaVersion SET version=?, updated_at=CURRENT_TIMESTAMP WHERE id=1", (int(version),))
 
 
-def _migrate_with_backup(db_path: str, from_version: int, to_version: int, backup_dir: Optional[str] = None, logger=None) -> None:
+def _migrate_with_backup(
+    db_path: str,
+    from_version: int,
+    to_version: int,
+    backup_dir: Optional[str] = None,
+    *,
+    schema_sql: Optional[str] = None,
+    logger=None,
+) -> None:
     """
     迁移入口（带强制备份）。
 
@@ -290,99 +517,95 @@ def _migrate_with_backup(db_path: str, from_version: int, to_version: int, backu
     if not effective_backup_dir:
         effective_backup_dir = os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups")
         if logger:
-            try:
-                logger.warning(f"未提供 backup_dir，迁移将使用默认备份目录：{effective_backup_dir}")
-            except Exception:
-                pass
+            fallback_log(logger, "warning", f"未提供 backup_dir，迁移将使用默认备份目录：{effective_backup_dir}")
 
     # 2) 确保备份目录可用（不可创建则阻断迁移）
     try:
         os.makedirs(effective_backup_dir, exist_ok=True)
     except Exception as e:
         if logger:
-            try:
-                logger.error(f"数据库迁移前无法创建备份目录，已阻断迁移：{e}（dir={effective_backup_dir}）")
-            except Exception:
-                pass
+            fallback_log(logger, "error", f"数据库迁移前无法创建备份目录，已阻断迁移：{e}（dir={effective_backup_dir}）")
         raise
 
-    # 3) 迁移前强制备份（失败则阻断迁移）
-    backup_path = None
-    try:
-        from core.infrastructure.backup import BackupManager
+    from core.infrastructure.backup import BackupManager, maintenance_window
 
-        bm = BackupManager(db_path=db_path, backup_dir=effective_backup_dir, keep_days=365, logger=logger)
-        backup_path = bm.backup(suffix=f"before_migrate_v{from_version}_to_v{to_version}")
-    except Exception as e:
-        if logger:
-            try:
-                logger.error(f"数据库迁移前备份失败，已阻断迁移：{e}（dir={effective_backup_dir}）")
-            except Exception:
-                pass
-        raise
-
-    # 4) 执行迁移：使用事务包裹，失败后再用备份做文件级回滚兜底
-    try:
-        conn = get_connection(db_path)
+    with maintenance_window(db_path, logger=logger, action="migrate"):
+        # 3) 迁移前强制备份（失败则阻断迁移）
+        backup_path = None
         try:
-            # sqlite3.Connection 的上下文管理器：异常自动 rollback，正常自动 commit
-            # 统一事务边界：版本确认 / 迁移 / SchemaVersion 更新都在同一事务中完成
-            with conn:
-                # 再次确认 version（避免并发/重复调用导致读到旧值）
-                _ensure_schema_version(conn, logger=logger)
-                current = _get_schema_version(conn)
-                if current >= to_version:
-                    return
-
-                for v in range(current + 1, to_version + 1):
-                    _run_migration(conn, target_version=v, logger=logger)
-                    _set_schema_version(conn, v)
-
+            bm = BackupManager(db_path=db_path, backup_dir=effective_backup_dir, keep_days=365, logger=logger)
+            backup_path = bm.backup(suffix=f"before_migrate_v{from_version}_to_v{to_version}")
+        except Exception as e:
             if logger:
-                try:
-                    logger.info(f"数据库迁移完成：SchemaVersion {current} -> {to_version}")
-                except Exception:
-                    pass
-        finally:
+                fallback_log(logger, "error", f"数据库迁移前备份失败，已阻断迁移：{e}（dir={effective_backup_dir}）")
+            raise
+
+        # 4) 执行迁移：使用事务包裹，失败后再用备份做文件级回滚兜底
+        try:
+            conn = None
             try:
-                conn.close()
-            except Exception as e:
+                conn = get_connection(db_path)
+                if schema_sql:
+                    _bootstrap_missing_tables_from_schema(conn, schema_sql, logger=logger)
+                # sqlite3.Connection 的上下文管理器：异常自动 rollback，正常自动 commit
+                # 统一事务边界：版本确认 / 迁移 / SchemaVersion 更新都在同一事务中完成
+                with conn:
+                    # 再次确认 version（避免并发/重复调用导致读到旧值）
+                    _ensure_schema_version(conn, logger=logger)
+                    current = _get_schema_version(conn)
+                    if current >= to_version:
+                        return
+
+                    applied_upto = current
+                    for v in range(current + 1, to_version + 1):
+                        outcome = _run_migration(conn, target_version=v, logger=logger)
+                        if outcome == MigrationOutcome.APPLIED:
+                            _set_schema_version(conn, v)
+                            applied_upto = v
+                            continue
+                        level = "warning" if outcome == MigrationOutcome.SKIPPED else "error"
+                        if logger:
+                            fallback_log(
+                                logger,
+                                level,
+                                f"数据库迁移 v{v} 未完整完成（outcome={outcome.value}），SchemaVersion 保持在 {applied_upto}。",
+                            )
+                        raise _build_contract_error(blocked_version=v, blocked_outcome=outcome)
+
                 if logger:
-                    try:
-                        logger.warning(f"数据库连接关闭失败（可能导致文件锁未释放）：{e}")
-                    except Exception:
-                        pass
+                    fallback_log(logger, "info", f"数据库迁移完成：SchemaVersion {current} -> {to_version}")
             finally:
-                # 最佳努力释放 Windows 文件句柄
-                try:
-                    del conn
-                except Exception:
-                    pass
-                try:
-                    gc.collect()
-                except Exception:
-                    pass
-    except Exception:
-        # 回滚：用备份文件恢复 db_path
-        if backup_path and os.path.exists(backup_path):
-            try:
-                _restore_db_file_from_backup(backup_path, db_path, logger=logger)
-                if logger:
+                if conn is not None:
                     try:
-                        logger.error(f"数据库迁移失败，已从备份回滚：{backup_path}")
-                    except Exception:
-                        pass
-            except Exception as e:
-                if logger:
-                    try:
-                        logger.error(f"数据库迁移失败且回滚失败：{e}（backup={backup_path}）")
-                    except Exception:
-                        pass
-        raise
+                        conn.close()
+                    except Exception as e:
+                        if logger:
+                            fallback_log(logger, "warning", f"数据库连接关闭失败（可能导致文件锁未释放）：{e}")
+                    finally:
+                        # 最佳努力释放 Windows 文件句柄
+                        try:
+                            del conn
+                        except Exception:
+                            pass
+                        try:
+                            gc.collect()
+                        except Exception:
+                            pass
+        except Exception:
+            # 回滚：用备份文件恢复 db_path
+            if backup_path and os.path.exists(backup_path):
+                try:
+                    _restore_db_file_from_backup(backup_path, db_path, logger=logger)
+                    if logger:
+                        fallback_log(logger, "error", f"数据库迁移失败，已从备份回滚：{backup_path}")
+                except Exception as e:
+                    if logger:
+                        fallback_log(logger, "error", f"数据库迁移失败且回滚失败：{e}（backup={backup_path}）")
+            raise
 
 
-def _run_migration(conn: sqlite3.Connection, target_version: int, logger=None) -> None:
+def _run_migration(conn: sqlite3.Connection, target_version: int, logger=None) -> MigrationOutcome:
     # 迁移实现按版本拆到 core/infrastructure/migrations/*
     from .migrations import run_migration
 
-    run_migration(conn, target_version=int(target_version), logger=logger)
+    return run_migration(conn, target_version=int(target_version), logger=logger)

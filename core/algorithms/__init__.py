@@ -10,9 +10,9 @@ Phase 7（目标：M3）范围：
 - 用户可见信息尽量中文（错误提示/日志/报告）
 """
 
-from .sort_strategies import SortStrategy, StrategyFactory, BatchForSort
-from .types import ScheduleResult, ScheduleSummary
 from .greedy import GreedyScheduler
+from .sort_strategies import BatchForSort, SortStrategy, StrategyFactory
+from .types import ScheduleResult, ScheduleSummary
 
 __all__ = [
     "SortStrategy",

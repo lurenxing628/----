@@ -1,5 +1,6 @@
 @echo off
-rem Stage offline Chrome109 into dist\...\tools\chrome109
+rem Legacy/internal only: stage offline Chrome109 into dist\...\tools\chrome109
+rem Used for self-contained dist delivery and legacy full installer fallback.
 rem Requires: robocopy (built-in on Win7)
 
 setlocal EnableExtensions

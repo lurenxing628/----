@@ -1,24 +1,29 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>设备详情</h2>
-    <p class="muted">设备编号：<strong>{{ machine.machine_id }}</strong>　设备名称：<strong>{{ machine.name }}</strong></p>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">设备详情</h2></div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
+    <p class="page-subtitle text-meta">设备编号：<strong>{{ machine.machine_id }}</strong>　设备名称：<strong>{{ machine.name }}</strong>　班组：<strong>{{ machine_team_name or '未设置' }}</strong></p>
+    {{ ui.equipment_nav('list') }}
   </div>
 
   <div class="card">
     <h3>基本信息</h3>
     <form method="post" action="{{ url_for('equipment.update_machine', machine_id=machine.machine_id) }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>设备编号</label><br/>
+      <div class="form-row">
+        <div class="form-field">
+          <label>设备编号</label>
           <input value="{{ machine.machine_id }}" disabled>
         </div>
-        <div>
-          <label>设备名称</label><br/>
+        <div class="form-field">
+          <label>设备名称</label>
           <input name="name" required value="{{ machine.name }}">
         </div>
-        <div>
-          <label>工种</label><br/>
+        <div class="form-field">
+          <label>工种</label>
           <select name="op_type_id">
             <option value="" {% if not machine.op_type_id %}selected{% endif %}>（未设置）</option>
             {% for v, label in op_type_options %}
@@ -26,25 +31,34 @@
             {% endfor %}
           </select>
         </div>
-        <div>
-          <label>类别（可选）</label><br/>
-          <input name="category" value="{{ machine.category or '' }}" placeholder="如：CNC / 铣床 / 装配" style="width:180px;">
+        <div class="form-field">
+          <label>类别（可选）</label>
+          <input name="category" value="{{ machine.category or '' }}" placeholder="如：CNC / 铣床 / 装配" class="w-180">
         </div>
-        <div>
-          <label>状态</label><br/>
+        <div class="form-field">
+          <label>班组</label>
+          <select name="team_id">
+            <option value="" {% if not machine.team_id %}selected{% endif %}>（未设置）</option>
+            {% for t in team_options %}
+              <option value="{{ t.team_id }}" {% if machine.team_id == t.team_id %}selected{% endif %}>{{ t.name }}（{{ t.team_id }}）</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-field">
+          <label>状态</label>
           <select name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}" {% if machine.status == v %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
-          <label>备注</label><br/>
+        <div class="form-field flex-1 min-w-240">
+          <label>备注</label>
           <input name="remark" value="{{ machine.remark or '' }}">
         </div>
-        <div>
-          <button type="submit">保存</button>
-          <a style="margin-left:10px;" href="{{ url_for('equipment.list_page') }}">返回列表</a>
+        <div class="inline-flex-wrap">
+          {{ ui.button('保存', 'primary', 'md', type_attr='submit') }}
+          {{ ui.link_button('返回列表', url_for('equipment.list_page'), 'secondary', 'sm') }}
         </div>
       </div>
     </form>
@@ -53,23 +67,24 @@
   <div class="card">
     <h3>可操作人员</h3>
     <p class="muted">
-      说明：这里维护设备-人员关联（底层写入 OperatorMachine 表）。
-      可选字段：技能等级（beginner/normal/expert）与主操设备（同一人员仅允许 1 台主操设备）。
+      设置哪些人员可以操作此设备。
+      可选字段：技能等级（初级/普通/熟练）与主操设备（同一人员仅允许 1 台主操设备）。
     </p>
+    <!-- OperatorMachine -->
 
     {% if linked_operators and linked_operators|length > 0 %}
       {% for op in linked_operators %}
-        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('equipment.update_link', machine_id=machine.machine_id) }}" style="display:none;"></form>
+        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('equipment.update_link', machine_id=machine.machine_id) }}" class="d-none"></form>
       {% endfor %}
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">工号</th>
+            <th class="w-140">工号</th>
             <th>姓名</th>
-            <th style="width:120px;">人员状态</th>
-            <th style="width:140px;">技能等级</th>
-            <th style="width:120px;">主操</th>
-            <th style="width:220px;">操作</th>
+            <th class="w-120">人员状态</th>
+            <th class="w-140">技能等级</th>
+            <th class="w-120">主操</th>
+            <th class="w-220">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -95,12 +110,14 @@
                 </label>
               </td>
               <td>
-                <button type="submit" form="linkform_{{ loop.index0 }}">保存</button>
-                <form method="post" action="{{ url_for('equipment.remove_link', machine_id=machine.machine_id) }}" style="display:inline-block;margin-left:6px;"
-                      data-confirm="确认解除该关联？">
-                  <input type="hidden" name="operator_id" value="{{ op.operator_id }}">
-                  <button type="submit">解除关联</button>
-                </form>
+                <div class="table-actions">
+                  {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='linkform_' ~ loop.index0) }}
+                  <form method="post" action="{{ url_for('equipment.remove_link', machine_id=machine.machine_id) }}"
+                        data-confirm="确认解除该关联？">
+                    <input type="hidden" name="operator_id" value="{{ op.operator_id }}">
+                    {{ ui.button('解除关联', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}
@@ -114,42 +131,40 @@
     <h4>添加人员关联</h4>
     {% if available_operators and available_operators|length > 0 %}
       <form method="post" action="{{ url_for('equipment.add_link', machine_id=machine.machine_id) }}">
-        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-          <div>
-            <label>选择人员</label><br/>
+        <div class="form-row">
+          <div class="form-field">
+            <label>选择人员</label>
             <select name="operator_id" required>
               {% for op in available_operators %}
                 <option value="{{ op.operator_id }}">{{ op.operator_id }} - {{ op.operator_name }}（{{ op.status_zh }}）</option>
               {% endfor %}
             </select>
           </div>
-          <div>
-            <button type="submit">添加关联</button>
-          </div>
+          <div>{{ ui.button('添加关联', 'primary', 'md', type_attr='submit') }}</div>
         </div>
       </form>
     {% else %}
-      <div class="muted">暂无可选人员（可能尚未维护人员信息，或已全部关联）。</div>
+      <div class="muted">没有更多人员可选了。</div>
     {% endif %}
   </div>
 
   <div class="card">
     <h3>停机计划</h3>
-    <p class="muted">说明：停机计划表示设备在某时间段不可用（预留停机原因）。此功能与“设备状态（可用/维修/停用）”并存。</p>
-    <div style="margin-top:6px;">
-      <a href="{{ url_for('equipment.downtime_batch_page') }}">批量停机计划（按设备/类别/全部）</a>
+    <p class="muted">设备的计划停机时间。</p>
+    <div class="mt-2">
+      {{ ui.link_button('批量停机计划（按设备/类别/全部）', url_for('equipment.downtime_batch_page'), 'secondary', 'sm') }}
     </div>
 
     {% if downtime_rows and downtime_rows|length > 0 %}
       <table>
         <thead>
           <tr>
-            <th style="width:80px;">ID</th>
-            <th style="width:200px;">开始</th>
-            <th style="width:200px;">结束</th>
-            <th style="width:160px;">原因</th>
+            <th class="w-80">编号</th>
+            <th class="w-200">开始</th>
+            <th class="w-200">结束</th>
+            <th class="w-160">原因</th>
             <th>备注</th>
-            <th style="width:120px;">操作</th>
+            <th class="w-220">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -162,7 +177,7 @@
               <td>{{ d.reason_detail or '-' }}</td>
               <td>
                 <form method="post" action="{{ url_for('equipment.cancel_downtime', machine_id=machine.machine_id, downtime_id=d.id) }}">
-                  <button type="submit">取消</button>
+                  {{ ui.button('取消', 'danger', 'sm', type_attr='submit') }}
                 </form>
               </td>
             </tr>
@@ -176,33 +191,30 @@
     <hr/>
     <h4>新增停机</h4>
     <form method="post" action="{{ url_for('equipment.create_downtime', machine_id=machine.machine_id) }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>开始时间</label><br/>
-          <input name="start_time" required placeholder="如：2026-01-22 08:00" style="min-width:220px;">
+      <div class="form-row">
+        <div class="form-field">
+          <label>开始时间</label>
+          <input name="start_time" required placeholder="如：2026-01-22 08:00" class="min-w-220">
         </div>
-        <div>
-          <label>结束时间</label><br/>
-          <input name="end_time" required placeholder="如：2026-01-22 12:00" style="min-width:220px;">
+        <div class="form-field">
+          <label>结束时间</label>
+          <input name="end_time" required placeholder="如：2026-01-22 12:00" class="min-w-220">
         </div>
-        <div>
-          <label>停机原因</label><br/>
+        <div class="form-field">
+          <label>停机原因</label>
           <select name="reason_code">
             {% for v, label in downtime_reason_options %}
               <option value="{{ v }}">{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
-          <label>原因备注（可选）</label><br/>
+        <div class="form-field flex-1 min-w-240">
+          <label>原因备注（可选）</label>
           <input name="reason_detail" placeholder="可选：更具体的停机原因说明">
         </div>
-        <div>
-          <button type="submit">新增</button>
-        </div>
+        <div>{{ ui.button('新增', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
 
 {% endblock %}
-

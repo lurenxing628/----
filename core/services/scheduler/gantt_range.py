@@ -62,8 +62,8 @@ def resolve_week_range(
     """
     try:
         offset_weeks_int = int(offset_weeks)
-    except Exception:
-        raise ValidationError("offset_weeks 不合法（期望整数）", field="offset_weeks")
+    except Exception as e:
+        raise ValidationError("offset_weeks 不合法（期望整数）", field="offset_weeks") from e
 
     start_date_provided = start_date is not None and str(start_date).strip() != ""
     end_date_provided = end_date is not None and str(end_date).strip() != ""

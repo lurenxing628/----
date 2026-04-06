@@ -3,12 +3,14 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from datetime import date
 from html import unescape as html_unescape
-from typing import Any, Dict, Optional
- 
- 
+from typing import Any, Dict, List, Optional
+
+from excel_preview_confirm_helpers import build_confirm_payload
+
 XSS = "<img src=x onerror=alert(1)>"
  
  
@@ -25,6 +27,8 @@ def _make_xlsx_bytes(headers, rows):
  
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.title = "Sheet1"
     ws.append(headers)
     for r in rows:
@@ -45,6 +49,13 @@ def _extract_raw_rows_json(html: str) -> str:
         raise RuntimeError("raw_rows_json not found in preview html")
     return html_unescape(m.group(1)).strip()
  
+
+def _extract_preview_baseline(html: str) -> str:
+    m = re.search(r'<input[^>]+name="preview_baseline"[^>]+value="([^"]*)"', html, re.S)
+    if not m:
+        return ""
+    return html_unescape(m.group(1)).strip()
+
  
 def _assert_status(name: str, resp, expect_code: int = 200):
     if resp.status_code != expect_code:
@@ -56,39 +67,67 @@ def _assert_status(name: str, resp, expect_code: int = 200):
         raise RuntimeError(f"{name} -> {resp.status_code} (want {expect_code}) body={body[:800] if body else None}")
  
  
-def _excel_preview_confirm(client, *, base: str, filename: str, mode: str, buf, extra_confirm: Optional[Dict[str, Any]] = None):
+def _excel_preview_confirm(
+    client,
+    *,
+    base: str,
+    filename: str,
+    mode: str,
+    buf,
+    preview_extra: Optional[Dict[str, Any]] = None,
+    confirm_extra: Optional[Dict[str, Any]] = None,
+    confirm_hidden_fields: Optional[List[str]] = None,
+):
+    preview_data = {"mode": mode, "file": (buf, filename)}
+    if preview_extra:
+        preview_data.update(preview_extra)
     r = client.post(
         f"{base}/preview",
-        data={"mode": mode, "file": (buf, filename)},
+        data=preview_data,
         content_type="multipart/form-data",
     )
     _assert_status(f"{base}/preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    data = {"mode": mode, "filename": filename, "raw_rows_json": raw}
-    if extra_confirm:
-        data.update(extra_confirm)
-    r2 = client.post(f"{base}/confirm", data=data, follow_redirects=True)
+    html = r.data.decode("utf-8", errors="ignore")
+    r2 = client.post(
+        f"{base}/confirm",
+        data=build_confirm_payload(
+            html,
+            mode=mode,
+            filename=filename,
+            context=f"{base}/preview",
+            confirm_extra=confirm_extra,
+            confirm_hidden_fields=confirm_hidden_fields,
+        ),
+        follow_redirects=True,
+    )
     _assert_status(f"{base}/confirm", r2, 200)
+    html2 = r2.data.decode("utf-8", errors="ignore")
+    if "导入被拒绝" in html2:
+        raise RuntimeError(f"{base}/confirm 被拒绝（页面提示“导入被拒绝”）")
  
  
 def _run_node_check(*, repo_root: str, hit_task_path: str) -> Dict[str, Any]:
-    gantt_js = os.path.join(repo_root, "static", "js", "gantt.js")
-    if not os.path.exists(gantt_js):
-        raise RuntimeError(f"missing {gantt_js}")
+    gantt_core_js = os.path.join(repo_root, "static", "js", "gantt.js")
+    gantt_render_js = os.path.join(repo_root, "static", "js", "gantt_render.js")
+    if not os.path.exists(gantt_core_js):
+        raise RuntimeError(f"missing {gantt_core_js}")
+    if not os.path.exists(gantt_render_js):
+        raise RuntimeError(f"missing {gantt_render_js}")
  
     node_code = r"""
 const fs = require("fs");
  
-const ganttPath = String(process.env.APS_GANTT_JS || "");
+const corePath = String(process.env.APS_GANTT_JS || "");
+const renderPath = String(process.env.APS_GANTT_RENDER_JS || "");
 const taskPath = String(process.env.APS_HIT_TASK_JSON || "");
 const xss = String(process.env.APS_XSS || "");
  
-if (!ganttPath || !taskPath) {
-  console.error("missing env APS_GANTT_JS/APS_HIT_TASK_JSON");
+if (!corePath || !renderPath || !taskPath) {
+  console.error("missing env APS_GANTT_JS/APS_GANTT_RENDER_JS/APS_HIT_TASK_JSON");
   process.exit(2);
 }
  
-const code = fs.readFileSync(ganttPath, "utf8");
+const code = fs.readFileSync(corePath, "utf8") + "\n" + fs.readFileSync(renderPath, "utf8");
 const task = JSON.parse(fs.readFileSync(taskPath, "utf8"));
  
 function escapeRe(s) {
@@ -168,7 +207,7 @@ function extractCustomPopupFunction() {
   throw new Error("cannot extract custom_popup_html function");
 }
  
-// Extract + eval functions from gantt.js (to ensure we test the real implementation)
+// Extract + eval functions from gantt modules (to ensure we test the real implementation)
 const strSrc = extractNamedFunction("str");
 const escapeSrc = extractNamedFunction("escapeHtml");
 const popupSrc = extractCustomPopupFunction(); // function(task){...}
@@ -206,7 +245,8 @@ process.stdout.write(JSON.stringify(result));
 """
  
     env = dict(os.environ)
-    env["APS_GANTT_JS"] = gantt_js
+    env["APS_GANTT_JS"] = gantt_core_js
+    env["APS_GANTT_RENDER_JS"] = gantt_render_js
     env["APS_HIT_TASK_JSON"] = hit_task_path
     env["APS_XSS"] = XSS
  
@@ -245,7 +285,7 @@ def main():
     os.environ["APS_BACKUP_DIR"] = test_backups
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
  
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
  
     from core.infrastructure.database import ensure_schema, get_connection
  
@@ -311,7 +351,8 @@ def main():
             ["批次号", "图号", "数量", "交期", "优先级", "齐套", "备注"],
             [{"批次号": XSS, "图号": XSS, "数量": 1, "交期": "2099-12-31", "优先级": "urgent", "齐套": "yes", "备注": "xss"}],
         ),
-        extra_confirm={"auto_generate_ops": "1"},
+        preview_extra={"auto_generate_ops": "1"},
+        confirm_hidden_fields=["auto_generate_ops"],
     )
  
     # 5) Ensure at least one internal op has positive duration and assigned machine/operator

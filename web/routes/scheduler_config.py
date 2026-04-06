@@ -2,14 +2,26 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.scheduler import ConfigService
-
-from web.ui_mode import render_ui_template as render_template
+from web.ui_mode import (
+    get_full_manual_section_url,
+    get_manual_url,
+    normalize_manual_src,
+)
+from web.ui_mode import (
+    render_ui_template as render_template,
+)
+from web.viewmodels.page_manuals import (
+    MANUAL_ENTRY_ENDPOINTS,
+    build_page_fallback_text,
+    build_page_manual_bundle,
+    resolve_manual_id,
+)
 
 from .scheduler_bp import bp
 from .system_utils import _safe_next_url
@@ -17,19 +29,14 @@ from .system_utils import _safe_next_url
 
 def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
     """
-    解析“排产调度说明书”的 md 文件路径。
+    解析“系统使用说明”的 md 文件路径。
 
     说明：
-    - app.py / app_new_ui.py 的 static_folder 不同，因此这里同时尝试多个候选路径
+    - 事实源固定为仓库根目录下的 static/docs/scheduler_manual.md
+    - current_app.static_folder 仅作为同路径兼容兜底，不再读取 v2 镜像副本
     - 返回：(命中的路径 or None, 所有候选路径)
     """
     candidates: List[str] = []
-    try:
-        if getattr(current_app, "static_folder", None):
-            candidates.append(os.path.join(str(current_app.static_folder), "docs", "scheduler_manual.md"))
-    except Exception:
-        pass
-
     base_dir = None
     try:
         base_dir = current_app.config.get("BASE_DIR")
@@ -38,7 +45,10 @@ def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
 
     if base_dir:
         candidates.append(os.path.join(str(base_dir), "static", "docs", "scheduler_manual.md"))
-        candidates.append(os.path.join(str(base_dir), "web_new_test", "static", "docs", "scheduler_manual.md"))
+
+    static_folder = getattr(current_app, "static_folder", None)
+    if static_folder:
+        candidates.append(os.path.join(str(static_folder), "docs", "scheduler_manual.md"))
 
     # 去重 + 绝对化
     normalized: List[str] = []
@@ -65,43 +75,173 @@ def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
     return None, normalized
 
 
+def _resolve_manual_back_url(raw_src: Optional[str]) -> Optional[str]:
+    """
+    输入应为已经过 normalize_manual_src() 过滤的站内相对地址。
+    这里只负责把空值折叠为 None，不再重复制造 fallback 语义。
+    """
+    safe_src = (raw_src or "").strip()
+    if not safe_src:
+        return None
+    return safe_src
+
+
+def _build_manual_page_url(raw_src: Optional[str], raw_page: Optional[str]) -> str:
+    values: Dict[str, Any] = {}
+    if raw_src:
+        values["src"] = raw_src
+    if raw_page:
+        values["page"] = raw_page
+    return url_for("scheduler.config_manual_page", **values)
+
+
+def _resolve_manual_entry_endpoint(manual_id: Optional[str]) -> Optional[str]:
+    target = str(manual_id or "").strip()
+    if not target:
+        return None
+    return MANUAL_ENTRY_ENDPOINTS.get(target)
+
+
+def _format_manual_mtime(manual_path: str) -> Optional[str]:
+    try:
+        return datetime.fromtimestamp(os.path.getmtime(manual_path)).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return None
+
+
+def _load_manual_text_and_mtime(manual_path: Optional[str], candidates: List[str]) -> Tuple[str, Optional[str]]:
+    if not manual_path:
+        try:
+            current_app.logger.warning("系统使用说明文件不存在（candidates=%s）", candidates)
+        except Exception:
+            pass
+        return "说明书文件缺失（可能是安装包未包含或文件被误删）。请联系管理员。", None
+
+    try:
+        with open(manual_path, encoding="utf-8") as f:
+            manual_text = f.read()
+        return manual_text, _format_manual_mtime(manual_path)
+    except Exception:
+        current_app.logger.exception("读取系统使用说明失败")
+        return "说明书加载失败，请稍后重试或联系管理员。", None
+
+
+def _build_manual_download_url(manual_path: Optional[str], safe_src: Optional[str], safe_page: Optional[str]) -> Optional[str]:
+    if not manual_path:
+        return None
+
+    download_values: Dict[str, Any] = {}
+    if safe_src:
+        download_values["src"] = safe_src
+    if safe_page:
+        download_values["page"] = safe_page
+    return url_for("scheduler.config_manual_download", **download_values)
+
+
+def _build_related_manual_links(related_manuals: List[Dict[str, Any]], link_src: str) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for item in related_manuals:
+        entry_endpoint = _resolve_manual_entry_endpoint(item.get("manual_id"))
+        enriched = dict(item)
+        enriched["entry_endpoint"] = entry_endpoint
+        enriched["url"] = get_manual_url(endpoint=entry_endpoint, src=link_src) if entry_endpoint else None
+        enriched["full_manual_section_url"] = (
+            get_full_manual_section_url(endpoint=entry_endpoint, src=link_src) if entry_endpoint else None
+        )
+        out.append(enriched)
+    return out
+
+
+def _resolve_page_back_action(raw_page: str, back_url: Optional[str]) -> Tuple[str, str]:
+    if back_url:
+        return back_url, "返回刚才页面"
+    if raw_page.startswith("scheduler."):
+        return url_for("scheduler.batches_page"), "返回排产首页"
+    return url_for("dashboard.index"), "返回首页"
+
+
+def _build_manual_page_view_state(
+    *,
+    raw_page: str,
+    bundle: Optional[Dict[str, Any]],
+    manual_text: str,
+    link_src: str,
+    back_url: Optional[str],
+    show_scheduler_nav: bool,
+) -> Dict[str, Any]:
+    base_state: Dict[str, Any] = {
+        "manual_mode": "full",
+        "current_manual": None,
+        "related_manuals": [],
+        "fallback_text": manual_text,
+        "full_manual_section_url": None,
+        "page_title": "系统使用说明",
+        "download_button_label": "下载说明书原文",
+        "back_button_label": "返回刚才页面",
+        "back_url": back_url,
+        "show_scheduler_nav": show_scheduler_nav,
+    }
+    if not bundle:
+        return base_state
+
+    current_manual = bundle["current_manual"]
+    resolved_back_url, back_button_label = _resolve_page_back_action(raw_page, back_url)
+    return {
+        "manual_mode": "page",
+        "current_manual": current_manual,
+        "related_manuals": _build_related_manual_links(bundle["related_manuals"], link_src),
+        "fallback_text": build_page_fallback_text(raw_page, bundle=bundle) or manual_text,
+        "full_manual_section_url": get_full_manual_section_url(endpoint=raw_page, src=link_src),
+        "page_title": f"本页说明 - {current_manual['title']}",
+        "download_button_label": "下载整本说明书",
+        "back_button_label": back_button_label,
+        "back_url": resolved_back_url,
+        "show_scheduler_nav": False,
+    }
+
+
 @bp.get("/config/manual")
 def config_manual_page():
     """
-    排产调度说明书（面向计划/工艺新手）。
+    系统使用说明（面向计划/工艺新手）。
     - 原样展示 Markdown（不做渲染，避免新增依赖）
     - 提供下载原始 md
     """
+    raw_src = (request.args.get("src") or "").strip()
+    raw_page = (request.args.get("page") or "").strip()
+    safe_src = normalize_manual_src(raw_src)
+    bundle = build_page_manual_bundle(raw_page) if raw_page else None
+    safe_page = raw_page if bundle else None
+    link_src = safe_src or ""
+    back_url = _resolve_manual_back_url(safe_src)
+    show_scheduler_nav = not back_url or back_url.startswith("/scheduler")
     manual_path, candidates = _resolve_scheduler_manual_md_path()
-    manual_text = ""
-    manual_mtime = None
-    if manual_path:
-        try:
-            with open(manual_path, "r", encoding="utf-8") as f:
-                manual_text = f.read()
-            try:
-                manual_mtime = datetime.fromtimestamp(os.path.getmtime(manual_path)).strftime("%Y-%m-%d %H:%M:%S")
-            except Exception:
-                manual_mtime = None
-        except Exception:
-            current_app.logger.exception("读取排产调度说明书失败")
-            manual_text = "说明书加载失败，请稍后重试或联系管理员。"
-            manual_mtime = None
-    else:
-        # 候选路径仅写日志，避免渲染给用户（信息泄露）
-        try:
-            current_app.logger.warning("排产调度说明书文件不存在（candidates=%s）", candidates)
-        except Exception:
-            pass
-        manual_text = "说明书文件缺失（可能是安装包未包含或文件被误删）。请联系管理员。"
+    manual_text, manual_mtime = _load_manual_text_and_mtime(manual_path, candidates)
+    download_url = _build_manual_download_url(manual_path, safe_src, safe_page)
+    view_state = _build_manual_page_view_state(
+        raw_page=raw_page,
+        bundle=bundle,
+        manual_text=manual_text,
+        link_src=link_src,
+        back_url=back_url,
+        show_scheduler_nav=show_scheduler_nav,
+    )
 
-    download_url = url_for("scheduler.config_manual_download") if manual_path else None
     return render_template(
         "scheduler/config_manual.html",
-        title="排产调度说明书",
+        title=view_state["page_title"],
+        manual_mode=view_state["manual_mode"],
         manual_text=manual_text,
+        fallback_text=view_state["fallback_text"],
         manual_mtime=manual_mtime,
         download_url=download_url,
+        back_url=view_state["back_url"],
+        show_scheduler_nav=view_state["show_scheduler_nav"],
+        current_manual=view_state["current_manual"],
+        related_manuals=view_state["related_manuals"],
+        full_manual_section_url=view_state["full_manual_section_url"],
+        download_button_label=view_state["download_button_label"],
+        back_button_label=view_state["back_button_label"],
     )
 
 
@@ -110,21 +250,25 @@ def config_manual_download():
     """
     下载原始说明书 Markdown。
     """
+    raw_src = (request.args.get("src") or "").strip()
+    raw_page = (request.args.get("page") or "").strip()
+    safe_src = normalize_manual_src(raw_src)
+    safe_page = raw_page if raw_page and resolve_manual_id(raw_page) is not None else None
     manual_path, _candidates = _resolve_scheduler_manual_md_path()
     if not manual_path:
         flash("说明书文件不存在，无法下载。", "error")
-        return redirect(url_for("scheduler.config_manual_page"))
+        return redirect(_build_manual_page_url(safe_src, safe_page))
     try:
         return send_file(
             manual_path,
             as_attachment=True,
-            download_name="排产调度说明书.md",
+            download_name="系统使用说明.md",
             mimetype="text/markdown; charset=utf-8",
         )
     except Exception:
-        current_app.logger.exception("下载排产调度说明书失败")
+        current_app.logger.exception("下载系统使用说明失败")
         flash("下载说明书失败，请稍后重试。", "error")
-        return redirect(url_for("scheduler.config_manual_page"))
+        return redirect(_build_manual_page_url(safe_src, safe_page))
 
 
 @bp.get("/config")
@@ -140,6 +284,7 @@ def config_page():
 
     presets = cfg_svc.list_presets()
     active_preset = cfg_svc.get_active_preset()
+    active_preset_reason = cfg_svc.get_active_preset_reason()
     builtin_presets = [
         ConfigService.BUILTIN_PRESET_DEFAULT,
         ConfigService.BUILTIN_PRESET_DUE_FIRST,
@@ -154,6 +299,7 @@ def config_page():
         strategies=strategies,
         presets=presets,
         active_preset=active_preset,
+        active_preset_reason=active_preset_reason,
         builtin_presets=builtin_presets,
     )
 
@@ -173,15 +319,15 @@ def preset_apply():
         name_text = ("" if name is None else str(name)).strip()
         if name_text == "" or name_text.lower() == str(ConfigService.ACTIVE_PRESET_CUSTOM).lower():
             cfg_svc.mark_active_preset_custom()
-            flash("已切换为：自定义（以当前高级设置为准）。", "success")
+            flash("已切换为：当前手动设置。", "success")
             return redirect(next_url)
         applied = cfg_svc.apply_preset(name)
-        flash(f"已应用排产模板：{applied}", "success")
+        flash(f"已应用方案：{applied}", "success")
     except AppError as e:
         flash(e.message, "error")
     except Exception:
         current_app.logger.exception("应用排产模板失败")
-        flash("应用模板失败，请稍后重试。", "error")
+        flash("应用方案失败，请稍后重试。", "error")
     return redirect(next_url)
 
 
@@ -194,12 +340,12 @@ def preset_save():
     name = request.form.get("preset_name") or request.form.get("name")
     try:
         saved = cfg_svc.save_preset(name)
-        flash(f"已保存为模板：{saved}", "success")
+        flash(f"已保存为方案：{saved}", "success")
     except AppError as e:
         flash(e.message, "error")
     except Exception:
         current_app.logger.exception("保存排产模板失败")
-        flash("保存模板失败，请稍后重试。", "error")
+        flash("保存方案失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
 
 
@@ -209,66 +355,69 @@ def preset_delete():
     name = request.form.get("preset_name") or request.form.get("name")
     try:
         cfg_svc.delete_preset(name)
-        flash(f"已删除模板：{name}", "success")
+        flash(f"已删除方案：{name}", "success")
     except AppError as e:
         flash(e.message, "error")
     except Exception:
         current_app.logger.exception("删除排产模板失败")
-        flash("删除模板失败，请稍后重试。", "error")
+        flash("删除方案失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
+
+
+def _apply_basic_scheduler_config(cfg_svc: ConfigService, form) -> None:
+    cfg_svc.set_strategy(form.get("sort_strategy"))
+    cfg_svc.set_holiday_default_efficiency(form.get("holiday_default_efficiency"))
+    cfg_svc.set_prefer_primary_skill(form.get("prefer_primary_skill"))
+    cfg_svc.set_enforce_ready_default(form.get("enforce_ready_default"))
+    cfg_svc.set_dispatch(form.get("dispatch_mode"), form.get("dispatch_rule"))
+    cfg_svc.set_auto_assign_enabled(form.get("auto_assign_enabled"))
+    cfg_svc.set_ortools(form.get("ortools_enabled"), form.get("ortools_time_limit_seconds"))
+
+    algo_mode = form.get("algo_mode")
+    if algo_mode is not None:
+        cfg_svc.set_algo_mode(algo_mode)
+
+    objective = form.get("objective")
+    if objective is not None:
+        cfg_svc.set_objective(objective)
+
+    tb = form.get("time_budget_seconds")
+    if tb is not None and str(tb).strip():
+        cfg_svc.set_time_budget_seconds(tb)
+
+    cfg_svc.set_freeze_window(form.get("freeze_window_enabled"), form.get("freeze_window_days"))
+
+
+def _apply_weight_settings_if_present(cfg_svc: ConfigService, form) -> None:
+    pw = form.get("priority_weight")
+    dw = form.get("due_weight")
+    if not ((pw is not None and str(pw).strip()) or (dw is not None and str(dw).strip())):
+        return
+
+    cur = cfg_svc.get_snapshot()
+    pw_v = str(pw).strip() if pw is not None and str(pw).strip() else str(cur.priority_weight)
+    dw_v = str(dw).strip() if dw is not None and str(dw).strip() else str(cur.due_weight)
+    pw_f = cfg_svc.normalize_weight(pw_v, field="优先级权重")
+    dw_f = cfg_svc.normalize_weight(dw_v, field="交期权重")
+    rw_f = 1.0 - pw_f - dw_f
+    if rw_f < -1e-9:
+        raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
+    cfg_svc.set_weights(pw_f, dw_f, max(0.0, float(rw_f)), require_sum_1=True)
 
 
 @bp.post("/config")
 def update_config():
     cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    strategy = request.form.get("sort_strategy")
-    cfg_svc.set_strategy(strategy)
-    # 工作日历：假期默认效率（用于未填效率时的兜底）
-    cfg_svc.set_holiday_default_efficiency(request.form.get("holiday_default_efficiency"))
-    cfg_svc.set_prefer_primary_skill(request.form.get("prefer_primary_skill"))
-    # 排产页默认行为：是否默认启用“齐套约束”
-    cfg_svc.set_enforce_ready_default(request.form.get("enforce_ready_default"))
-    cfg_svc.set_dispatch(request.form.get("dispatch_mode"), request.form.get("dispatch_rule"))
-    cfg_svc.set_auto_assign_enabled(request.form.get("auto_assign_enabled"))
-    cfg_svc.set_ortools(request.form.get("ortools_enabled"), request.form.get("ortools_time_limit_seconds"))
-
-    # 算法增强（默认关闭 improve）
-    algo_mode = request.form.get("algo_mode")
-    if algo_mode is not None:
-        cfg_svc.set_algo_mode(algo_mode)
-    objective = request.form.get("objective")
-    if objective is not None:
-        cfg_svc.set_objective(objective)
-    tb = request.form.get("time_budget_seconds")
-    if tb is not None and str(tb).strip():
-        cfg_svc.set_time_budget_seconds(tb)
-    cfg_svc.set_freeze_window(request.form.get("freeze_window_enabled"), request.form.get("freeze_window_days"))
-
-    # 权重（仅暴露：优先级/交期；齐套权重为预留字段，当前不参与排产）
-    pw = request.form.get("priority_weight")
-    dw = request.form.get("due_weight")
-    if (pw is not None and str(pw).strip()) or (dw is not None and str(dw).strip()):
-        cur = cfg_svc.get_snapshot()
-        # 允许只填一个：未填的用当前值
-        pw_v = str(pw).strip() if pw is not None and str(pw).strip() else str(cur.priority_weight)
-        dw_v = str(dw).strip() if dw is not None and str(dw).strip() else str(cur.due_weight)
-        # 统一归一化（支持 0~1 或 0~100%）
-        pw_f = cfg_svc.normalize_weight(pw_v, field="优先级权重")
-        dw_f = cfg_svc.normalize_weight(dw_v, field="交期权重")
-        rw_f = 1.0 - pw_f - dw_f
-        if rw_f < -1e-9:
-            raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
-        # 防御：浮点误差
-        rw_f = max(0.0, float(rw_f))
-        cfg_svc.set_weights(pw_f, dw_f, rw_f, require_sum_1=True)
-
-    # 手工保存参数后：标记为 custom（避免“模板名”与实际参数不一致）
     try:
-        cfg_svc.mark_active_preset_custom()
+        form = request.form
+        _apply_basic_scheduler_config(cfg_svc, form)
+        _apply_weight_settings_if_present(cfg_svc, form)
+        flash("排产策略配置已保存。", "success")
+    except AppError as e:
+        flash(e.message, "error")
     except Exception:
-        pass
-
-    flash("排产策略配置已保存。", "success")
+        current_app.logger.exception("保存排产配置失败")
+        flash("保存排产配置失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
 
 
@@ -276,6 +425,6 @@ def update_config():
 def restore_config_default():
     cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     cfg_svc.restore_default()
-    flash("已恢复默认权重与策略。", "success")
+    flash("已恢复默认设置。", "success")
     return redirect(url_for("scheduler.config_page"))
 

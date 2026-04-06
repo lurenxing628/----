@@ -2,9 +2,12 @@ import io
 import json
 import os
 import re
+import sys
 import tempfile
 import time
 import traceback
+
+from excel_preview_confirm_helpers import build_confirm_payload
 
 
 def find_repo_root():
@@ -43,6 +46,8 @@ def _make_xlsx_bytes(headers, rows):
 
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.title = "Sheet1"
     ws.append(headers)
     for r in rows:
@@ -110,7 +115,7 @@ def main():
     lines.append("# Phase0~Phase6 Web + Excel 端到端冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{os.sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0]}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")
@@ -131,7 +136,7 @@ def main():
     os.environ["APS_BACKUP_DIR"] = test_backups
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
 
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
 
@@ -237,18 +242,22 @@ def main():
     buf = _make_xlsx_bytes(["批次号", "图号", "数量", "交期", "优先级", "齐套", "备注"], batch_rows)
     resp = client.post(
         "/scheduler/excel/batches/preview",
-        data={"mode": "overwrite", "file": (buf, "batches.xlsx")},
+        data={"mode": "overwrite", "file": (buf, "batches.xlsx"), "auto_generate_ops": "1"},
         content_type="multipart/form-data",
     )
     _assert_status(lines, "POST /scheduler/excel/batches/preview", resp, 200)
     html = resp.data.decode("utf-8", errors="ignore")
     if "导入预览" not in html and "预览" not in html:
         raise RuntimeError("批次 Excel 预览页面未包含预览内容")
-    raw_rows_json = _extract_raw_rows_json(html)
-
     resp2 = client.post(
         "/scheduler/excel/batches/confirm",
-        data={"mode": "overwrite", "filename": "batches.xlsx", "raw_rows_json": raw_rows_json, "auto_generate_ops": "1"},
+        data=build_confirm_payload(
+            html,
+            mode="overwrite",
+            filename="batches.xlsx",
+            context="/scheduler/excel/batches/preview",
+            confirm_hidden_fields=["auto_generate_ops"],
+        ),
         follow_redirects=True,
     )
     _assert_status(lines, "POST /scheduler/excel/batches/confirm", resp2, 200)
@@ -275,16 +284,20 @@ def main():
     buf_ok = _make_xlsx_bytes(["批次号", "图号", "数量", "交期", "优先级", "齐套", "备注"], batch_rows_ok)
     resp_ok = client.post(
         "/scheduler/excel/batches/preview",
-        data={"mode": "overwrite", "file": (buf_ok, "batches_ok.xlsx")},
+        data={"mode": "overwrite", "file": (buf_ok, "batches_ok.xlsx"), "auto_generate_ops": "1"},
         content_type="multipart/form-data",
     )
     _assert_status(lines, "POST /scheduler/excel/batches/preview（valid）", resp_ok, 200)
     html_ok = resp_ok.data.decode("utf-8", errors="ignore")
-    raw_rows_json_ok = _extract_raw_rows_json(html_ok)
-
     resp_ok2 = client.post(
         "/scheduler/excel/batches/confirm",
-        data={"mode": "overwrite", "filename": "batches_ok.xlsx", "raw_rows_json": raw_rows_json_ok, "auto_generate_ops": "1"},
+        data=build_confirm_payload(
+            html_ok,
+            mode="overwrite",
+            filename="batches_ok.xlsx",
+            context="/scheduler/excel/batches/preview（valid）",
+            confirm_hidden_fields=["auto_generate_ops"],
+        ),
         follow_redirects=True,
     )
     _assert_status(lines, "POST /scheduler/excel/batches/confirm（valid）", resp_ok2, 200)
@@ -384,11 +397,15 @@ def main():
         content_type="multipart/form-data",
     )
     _assert_status(lines, "POST /scheduler/excel/calendar/preview", resp, 200)
-    raw_rows_json = _extract_raw_rows_json(resp.data.decode("utf-8", errors="ignore"))
-
+    html = resp.data.decode("utf-8", errors="ignore")
     resp2 = client.post(
         "/scheduler/excel/calendar/confirm",
-        data={"mode": "overwrite", "filename": "calendar.xlsx", "raw_rows_json": raw_rows_json},
+        data=build_confirm_payload(
+            html,
+            mode="overwrite",
+            filename="calendar.xlsx",
+            context="/scheduler/excel/calendar/preview",
+        ),
         follow_redirects=True,
     )
     _assert_status(lines, "POST /scheduler/excel/calendar/confirm", resp2, 200)
@@ -418,11 +435,15 @@ def main():
         content_type="multipart/form-data",
     )
     _assert_status(lines, "POST /scheduler/excel/calendar/preview（valid）", resp_ok, 200)
-    raw_rows_json_ok = _extract_raw_rows_json(resp_ok.data.decode("utf-8", errors="ignore"))
-
+    html_ok = resp_ok.data.decode("utf-8", errors="ignore")
     resp_ok2 = client.post(
         "/scheduler/excel/calendar/confirm",
-        data={"mode": "overwrite", "filename": "calendar_ok.xlsx", "raw_rows_json": raw_rows_json_ok},
+        data=build_confirm_payload(
+            html_ok,
+            mode="overwrite",
+            filename="calendar_ok.xlsx",
+            context="/scheduler/excel/calendar/preview（valid）",
+        ),
         follow_redirects=True,
     )
     _assert_status(lines, "POST /scheduler/excel/calendar/confirm（valid）", resp_ok2, 200)

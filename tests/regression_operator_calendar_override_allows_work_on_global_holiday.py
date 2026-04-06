@@ -24,9 +24,9 @@ def main():
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
+    from core.algorithms.greedy.scheduler import GreedyScheduler
     from core.infrastructure.database import ensure_schema, get_connection
     from core.services.scheduler import CalendarService
-    from core.algorithms.greedy.scheduler import GreedyScheduler
 
     tmpdir = tempfile.mkdtemp(prefix="aps_regression_operator_calendar_override_")
     test_db = os.path.join(tmpdir, "aps_operator_calendar_override.db")

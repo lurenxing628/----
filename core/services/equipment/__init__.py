@@ -6,8 +6,10 @@
 - 用户可见 message 尽量中文（便于 Win7 单机用户排障）
 """
 
-from .machine_service import MachineService
+from __future__ import annotations
+
 from .machine_downtime_service import MachineDowntimeService
+from .machine_service import MachineService
 
 __all__ = ["MachineService", "MachineDowntimeService"]
 

@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 import time
 import traceback
@@ -31,7 +32,7 @@ def main():
     lines.append("# Phase2（Models + Repositories）冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{os.sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0]}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")
@@ -45,20 +46,19 @@ def main():
     lines.append(f"- 测试 DB：`{test_db}`")
 
     # 确保可以 import 项目模块
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.errors import AppError, ErrorCode
     from core.infrastructure.transaction import TransactionManager
-
     from data.repositories import (
-        OperatorRepository,
-        OpTypeRepository,
-        MachineRepository,
-        OperatorMachineRepository,
         CalendarRepository,
         ConfigRepository,
+        MachineRepository,
         OperationLogRepository,
+        OperatorMachineRepository,
+        OperatorRepository,
+        OpTypeRepository,
         ScheduleHistoryRepository,
     )
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 class ErrorCode(Enum):
@@ -26,6 +26,9 @@ class ErrorCode(Enum):
     OPERATOR_NOT_FOUND = "3001"
     OPERATOR_ALREADY_EXISTS = "3002"
     OPERATOR_IN_USE = "3003"
+    TEAM_NOT_FOUND = "3101"
+    TEAM_ALREADY_EXISTS = "3102"
+    TEAM_IN_USE = "3103"
 
     # 业务错误 - 设备模块 (4xxx)
     MACHINE_NOT_FOUND = "4001"
@@ -53,6 +56,7 @@ class ErrorCode(Enum):
     EXCEL_WRITE_ERROR = "7002"
     EXCEL_FORMAT_ERROR = "7003"
     IMPORT_VALIDATION_ERROR = "7004"
+    FILE_TOO_LARGE = "7005"
 
 
 @dataclass
@@ -98,7 +102,10 @@ class AppError(Exception):
 
 
 class ValidationError(AppError):
-    def __init__(self, message: str, field: str = None, **kwargs):
+    field: Optional[str]
+
+    def __init__(self, message: str, field: Optional[str] = None, **kwargs):
+        self.field = field
         details = {"field": field} if field else None
         super().__init__(code=ErrorCode.VALIDATION_ERROR, message=message, details=details, **kwargs)
 
@@ -107,7 +114,7 @@ class NotFoundError(AppError):
     def __init__(self, resource_type: str, resource_id: str):
         super().__init__(
             code=ErrorCode.NOT_FOUND,
-            message=f"{resource_type}“{resource_id}”不存在",
+            message=f"{resource_type}{resource_id}不存在",
             details={"resource_type": resource_type, "resource_id": resource_id},
         )
 

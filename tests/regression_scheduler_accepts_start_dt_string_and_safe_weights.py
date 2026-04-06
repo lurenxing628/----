@@ -3,6 +3,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from typing import Optional
 
 
 def find_repo_root() -> str:
@@ -17,13 +18,13 @@ def find_repo_root() -> str:
 class _StubCalendarService:
     """满足 GreedyScheduler.schedule 最小接口的日历桩。"""
 
-    def adjust_to_working_time(self, dt: datetime, priority=None, operator_id: str = None) -> datetime:  # noqa: D401
+    def adjust_to_working_time(self, dt: datetime, priority=None, operator_id: Optional[str] = None) -> datetime:  # noqa: D401
         return dt
 
-    def add_working_hours(self, dt: datetime, hours: float, priority=None, operator_id: str = None) -> datetime:
+    def add_working_hours(self, dt: datetime, hours: float, priority=None, operator_id: Optional[str] = None) -> datetime:
         return dt + timedelta(hours=float(hours or 0.0))
 
-    def get_efficiency(self, dt: datetime, operator_id: str = None) -> float:
+    def get_efficiency(self, dt: datetime, operator_id: Optional[str] = None) -> float:
         return 1.0
 
     def add_calendar_days(self, dt: datetime, days: float) -> datetime:
@@ -91,8 +92,12 @@ def main() -> None:
     assert str(r0.operator_id) == "202", f"operator_id 应被安全转为字符串，实际 {r0.operator_id!r}"
 
     # 非法权重应回退默认，不应是 NaN/抛异常
-    assert abs(float(used_params.get("priority_weight")) - 0.4) < 1e-9, f"priority_weight 回退异常：{used_params}"
-    assert abs(float(used_params.get("due_weight")) - 0.5) < 1e-9, f"due_weight 回退异常：{used_params}"
+    priority_weight = used_params.get("priority_weight")
+    due_weight = used_params.get("due_weight")
+    assert priority_weight is not None, f"priority_weight 不应缺失：{used_params}"
+    assert due_weight is not None, f"due_weight 不应缺失：{used_params}"
+    assert abs(float(priority_weight) - 0.4) < 1e-9, f"priority_weight 回退异常：{used_params}"
+    assert abs(float(due_weight) - 0.5) < 1e-9, f"due_weight 回退异常：{used_params}"
 
     print("OK")
 

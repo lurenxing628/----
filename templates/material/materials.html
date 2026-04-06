@@ -1,85 +1,96 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>物料管理 - 物料主数据</h2>
-    <p class="muted">说明：维护物料主数据（Materials）。批次物料需求与齐套判定请到“批次物料需求”页。</p>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('material.batch_materials_page') }}">→ 批次物料需求（齐套判定）</a>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">物料管理 - 物料主数据</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">维护物料主数据，可在下方导航切换到批次齐套管理。</p>
+    {{ ui.material_nav('materials') }}
   </div>
 
   <div class="card">
     <h3>新增物料</h3>
     <form method="post" action="{{ url_for('material.materials_create') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>物料ID</label><br/>
-          <input name="material_id" required placeholder="如：MAT001" style="width:160px;">
+      <div class="form-row">
+        <div class="form-field">
+          <label>物料编号</label>
+          <input name="material_id" required placeholder="如：MAT001" class="w-160">
         </div>
-        <div>
-          <label>名称</label><br/>
-          <input name="name" required placeholder="如：圆钢" style="width:200px;">
+        <div class="form-field">
+          <label>名称</label>
+          <input name="name" required placeholder="如：圆钢" class="w-220">
         </div>
-        <div>
-          <label>规格（可选）</label><br/>
-          <input name="spec" placeholder="如：Φ30" style="width:160px;">
+        <div class="form-field">
+          <label>规格（可选）</label>
+          <input name="spec" placeholder="如：Φ30" class="w-160">
         </div>
-        <div>
-          <label>单位（可选）</label><br/>
-          <input name="unit" placeholder="如：kg/件" style="width:120px;">
+        <div class="form-field">
+          <label>单位（可选）</label>
+          <input name="unit" placeholder="如：kg/件" class="w-120">
         </div>
-        <div>
-          <label>库存数量</label><br/>
-          <input name="stock_qty" value="0" type="number" min="0" step="0.01" style="width:120px;">
+        <div class="form-field">
+          <label>库存数量</label>
+          <input name="stock_qty" value="0" type="number" min="0" step="0.01" class="w-120">
         </div>
-        <div>
-          <label>状态</label><br/>
+        <div class="form-field">
+          <label>状态</label>
           <select name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}" {% if v=='active' %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:220px;">
-          <label>备注（可选）</label><br/>
+        <div class="form-field flex-1 min-w-220">
+          <label>备注（可选）</label>
           <input name="remark" placeholder="可选备注">
         </div>
-        <div>
-          <button type="submit">创建</button>
-        </div>
+        <div>{{ ui.button('创建', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
 
   <div class="card">
     <h3>物料列表</h3>
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('material.materials_page', page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('material.materials_page', page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if not materials %}
-      <div class="muted">暂无物料。请先新增。</div>
+      <div class="muted">暂无物料数据，可以在上方手动新增。</div>
     {% else %}
       {% for m in materials %}
-        <form id="mform_{{ loop.index0 }}" method="post" action="{{ url_for('material.materials_update', material_id=m.material_id) }}" style="display:none;"></form>
+          <form id="mform_{{ loop.index0 }}" method="post" action="{{ url_for('material.materials_update', material_id=m.material_id) }}" class="d-none"></form>
       {% endfor %}
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">物料ID</th>
-            <th style="width:180px;">名称</th>
-            <th style="width:160px;">规格</th>
-            <th style="width:120px;">单位</th>
-            <th style="width:120px;">库存</th>
-            <th style="width:120px;">状态</th>
+            <th class="w-140">物料编号</th>
+            <th class="w-180">名称</th>
+            <th class="w-160">规格</th>
+            <th class="w-120">单位</th>
+            <th class="w-120">库存</th>
+            <th class="w-120">状态</th>
             <th>备注</th>
-            <th style="width:220px;">操作</th>
+            <th class="w-220">操作</th>
           </tr>
         </thead>
         <tbody>
           {% for m in materials %}
             <tr>
               <td><code>{{ m.material_id }}</code></td>
-              <td><input name="name" value="{{ m.name }}" form="mform_{{ loop.index0 }}" style="width:160px;"></td>
-              <td><input name="spec" value="{{ m.spec or '' }}" form="mform_{{ loop.index0 }}" style="width:140px;"></td>
-              <td><input name="unit" value="{{ m.unit or '' }}" form="mform_{{ loop.index0 }}" style="width:90px;"></td>
-              <td><input name="stock_qty" value="{{ m.stock_qty }}" form="mform_{{ loop.index0 }}" type="number" min="0" step="0.01" style="width:90px;"></td>
+              <td><input name="name" value="{{ m.name }}" form="mform_{{ loop.index0 }}" class="w-160"></td>
+              <td><input name="spec" value="{{ m.spec or '' }}" form="mform_{{ loop.index0 }}" class="w-140"></td>
+              <td><input name="unit" value="{{ m.unit or '' }}" form="mform_{{ loop.index0 }}" class="w-120"></td>
+              <td><input name="stock_qty" value="{{ m.stock_qty }}" form="mform_{{ loop.index0 }}" type="number" min="0" step="0.01" class="w-120"></td>
               <td>
                 <select name="status" form="mform_{{ loop.index0 }}">
                   {% for v, label in status_options %}
@@ -87,13 +98,15 @@
                   {% endfor %}
                 </select>
               </td>
-              <td><input name="remark" value="{{ m.remark or '' }}" form="mform_{{ loop.index0 }}" style="width:220px;"></td>
+              <td><input name="remark" value="{{ m.remark or '' }}" form="mform_{{ loop.index0 }}" class="w-220"></td>
               <td>
-                <button type="submit" form="mform_{{ loop.index0 }}">保存</button>
-                <form method="post" action="{{ url_for('material.materials_delete', material_id=m.material_id) }}" style="display:inline-block;margin-left:6px;"
-                      data-confirm="确认删除物料 {{ m.material_id }}？若被批次物料需求引用将删除失败/或级联删除。">
-                  <button type="submit">删除</button>
-                </form>
+                <div class="table-actions">
+                  <button type="submit" class="btn btn-primary btn-sm" form="mform_{{ loop.index0 }}">保存</button>
+                  <form method="post" action="{{ url_for('material.materials_delete', material_id=m.material_id) }}"
+                        data-confirm="确认删除物料 {{ m.material_id }}？若被批次物料需求引用将删除失败/或级联删除。">
+                    <button type="submit" class="btn btn-danger btn-sm">删除</button>
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}

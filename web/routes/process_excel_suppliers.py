@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
@@ -8,73 +7,114 @@ from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
-from core.infrastructure.errors import AppError, ValidationError
-from core.infrastructure.transaction import TransactionManager
+from core.infrastructure.errors import ValidationError
+from core.models.enums import SupplierStatus
+from core.services.common.enum_normalizers import normalize_supplier_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
-from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
-from core.services.process import SupplierService
-from data.repositories import OpTypeRepository, SupplierRepository
+from core.services.common.excel_service import ExcelService, ImportMode
+from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
+from core.services.common.normalize import is_blank_value
+from core.services.common.strict_parse import parse_required_float
+from core.services.process import OpTypeService, SupplierService
+from core.services.process.supplier_excel_import_service import SupplierExcelImportService
+from web.ui_mode import render_ui_template as render_template
 
-from .process_bp import bp, _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx
-
+from .excel_utils import (
+    build_error_rows_message,
+    build_preview_baseline_token,
+    collect_error_rows,
+    extract_import_stats,
+    flash_import_result,
+    load_confirm_payload,
+    preview_baseline_is_stale,
+    send_excel_template_file,
+)
+from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
 # Excel：供应商配置（Suppliers）
 # ============================================================
 
 
+def _render_excel_supplier_page(
+    *,
+    existing: Dict[str, Dict[str, Any]],
+    preview_rows: Any,
+    raw_rows_json: Optional[str],
+    preview_baseline: Optional[str],
+    mode_value: str,
+    filename: Optional[str],
+):
+    return render_template(
+        "process/excel_import_suppliers.html",
+        title="供应商配置 - Excel 导入/导出",
+        existing_list=list(existing.values()),
+        preview_rows=preview_rows,
+        raw_rows_json=raw_rows_json,
+        preview_baseline=preview_baseline,
+        mode=mode_value,
+        filename=filename,
+        preview_url=url_for("process.excel_supplier_preview"),
+        confirm_url=url_for("process.excel_supplier_confirm"),
+        template_download_url=url_for("process.excel_supplier_template"),
+        export_url=url_for("process.excel_supplier_export"),
+    )
+
+
 def _normalize_supplier_status(value: Any) -> str:
-    v = "" if value is None else str(value).strip()
-    if v in ("启用", "在用", "正常", "active"):
-        return "active"
-    if v in ("停用", "禁用", "inactive"):
-        return "inactive"
-    return v or "active"
+    return normalize_supplier_status(value)
 
 
-def _resolve_op_type_name(value: Any, op_type_repo: OpTypeRepository) -> Optional[str]:
+def _resolve_op_type_name(value: Any, op_type_svc: OpTypeService) -> Optional[str]:
     v = None if value is None else str(value).strip()
     if not v:
         return None
-    ot = op_type_repo.get(v)
+    ot = op_type_svc.get_optional(v)
     if not ot:
-        ot = op_type_repo.get_by_name(v)
-    if not ot:
+        ot = op_type_svc.get_by_name_optional(v)
+    if ot is None:
         raise ValidationError(f"工种“{v}”不存在，请先维护工种配置。", field="对应工种")
     return ot.name
 
 
-def _resolve_op_type_id(value: Any, op_type_repo: OpTypeRepository) -> Optional[str]:
-    v = None if value is None else str(value).strip()
-    if not v:
-        return None
-    ot = op_type_repo.get(v)
-    if not ot:
-        ot = op_type_repo.get_by_name(v)
-    if not ot:
-        raise ValidationError(f"工种“{v}”不存在，请先维护工种配置。", field="对应工种")
-    return ot.op_type_id
+def _supplier_op_type_snapshot(op_type_svc: OpTypeService) -> Dict[str, Any]:
+    return {
+        "op_types": [
+            {
+                "op_type_id": ot.op_type_id,
+                "name": ot.name,
+                "category": ot.category,
+            }
+            for ot in sorted(op_type_svc.list(), key=lambda item: str(item.op_type_id))
+        ]
+    }
+
+
+def _normalize_supplier_default_days(row: Dict[str, Any]) -> Optional[str]:
+    raw_value = row.get("默认周期")
+    if raw_value is None or str(raw_value).strip() == "":
+        return "“默认周期”不能为空"
+    try:
+        days = parse_required_float(raw_value, field="默认周期", min_value=0, min_inclusive=False)
+    except ValidationError as e:
+        return e.message
+
+    row["默认周期"] = days
+    return None
 
 
 @bp.get("/excel/suppliers")
 def excel_supplier_page():
     svc = SupplierService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = svc.build_existing_for_excel()
-    return render_template(
-        "process/excel_import_suppliers.html",
-        title="供应商配置 - Excel 导入/导出",
-        existing_list=list(existing.values()),
+    return _render_excel_supplier_page(
+        existing=existing,
         preview_rows=None,
         raw_rows_json=None,
-        mode=ImportMode.OVERWRITE.value,
+        preview_baseline=None,
+        mode_value=ImportMode.OVERWRITE.value,
         filename=None,
-        preview_url=url_for("process.excel_supplier_preview"),
-        confirm_url=url_for("process.excel_supplier_confirm"),
-        template_download_url=url_for("process.excel_supplier_template"),
-        export_url=url_for("process.excel_supplier_export"),
     )
 
 
@@ -91,36 +131,27 @@ def excel_supplier_preview():
 
     svc = SupplierService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = svc.build_existing_for_excel()
-    op_type_repo = OpTypeRepository(g.db)
+    op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if not row.get("供应商ID") or str(row.get("供应商ID")).strip() == "":
+        if is_blank_value(row.get("供应商ID")):
             return "“供应商ID”不能为空"
-        if not row.get("名称") or str(row.get("名称")).strip() == "":
+        if is_blank_value(row.get("名称")):
             return "“名称”不能为空"
 
-        # 默认周期
-        if row.get("默认周期") is None or str(row.get("默认周期")).strip() == "":
-            row["默认周期"] = 1.0
-        try:
-            d = float(row.get("默认周期"))
-            if d <= 0:
-                return "“默认周期”必须大于 0"
-            row["默认周期"] = d
-        except Exception:
-            return "“默认周期”必须是数字"
+        default_days_error = _normalize_supplier_default_days(row)
+        if default_days_error is not None:
+            return default_days_error
 
         # 状态可选
         if "状态" in row:
             row["状态"] = _normalize_supplier_status(row.get("状态"))
-            if row["状态"] not in ("active", "inactive"):
+            if row["状态"] not in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
                 return "“状态”不合法（允许：active / inactive；或中文：启用/停用）"
-        else:
-            row["状态"] = "active"
 
         # 工种可选（允许 id 或 名称），预览阶段标准化为“名称”
         try:
-            name = _resolve_op_type_name(row.get("对应工种"), op_type_repo=op_type_repo)
+            name = _resolve_op_type_name(row.get("对应工种"), op_type_svc=op_type_svc)
             row["对应工种"] = name
         except ValidationError as e:
             return e.message
@@ -134,6 +165,12 @@ def excel_supplier_preview():
         existing_data=existing,
         validators=[validate_row],
         mode=mode,
+    )
+    preview_baseline = build_preview_baseline_token(
+        existing_data=existing,
+        mode=mode,
+        id_column="供应商ID",
+        extra_state=_supplier_op_type_snapshot(op_type_svc),
     )
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -147,18 +184,13 @@ def excel_supplier_preview():
         time_cost_ms=time_cost_ms,
     )
 
-    return render_template(
-        "process/excel_import_suppliers.html",
-        title="供应商配置 - Excel 导入/导出",
-        existing_list=list(existing.values()),
+    return _render_excel_supplier_page(
+        existing=existing,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(rows, ensure_ascii=False),
-        mode=mode.value,
+        preview_baseline=preview_baseline,
+        mode_value=mode.value,
         filename=file.filename,
-        preview_url=url_for("process.excel_supplier_preview"),
-        confirm_url=url_for("process.excel_supplier_confirm"),
-        template_download_url=url_for("process.excel_supplier_template"),
-        export_url=url_for("process.excel_supplier_export"),
     )
 
 
@@ -167,42 +199,44 @@ def excel_supplier_confirm():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
-    raw_rows_json = request.form.get("raw_rows_json")
-    if not raw_rows_json:
-        raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
-
-    try:
-        rows = json.loads(raw_rows_json)
-        if not isinstance(rows, list):
-            raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
+    rows = payload.rows
 
     _ensure_unique_ids(rows, id_column="供应商ID")
 
     supplier_svc = SupplierService(g.db, op_logger=getattr(g, "op_logger", None))
+    op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = supplier_svc.build_existing_for_excel()
-    op_type_repo = OpTypeRepository(g.db)
-
+    if preview_baseline_is_stale(
+        payload.preview_baseline,
+        existing_data=existing,
+        mode=mode,
+        id_column="供应商ID",
+        extra_state=_supplier_op_type_snapshot(op_type_svc),
+    ):
+        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        return _render_excel_supplier_page(
+            existing=existing,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode_value=mode.value,
+            filename=filename,
+        )
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if not row.get("供应商ID") or str(row.get("供应商ID")).strip() == "":
+        if is_blank_value(row.get("供应商ID")):
             return "“供应商ID”不能为空"
-        if not row.get("名称") or str(row.get("名称")).strip() == "":
+        if is_blank_value(row.get("名称")):
             return "“名称”不能为空"
-        if row.get("默认周期") is None or str(row.get("默认周期")).strip() == "":
-            row["默认周期"] = 1.0
+        default_days_error = _normalize_supplier_default_days(row)
+        if default_days_error is not None:
+            return default_days_error
+        if "状态" in row:
+            row["状态"] = _normalize_supplier_status(row.get("状态"))
+            if row["状态"] not in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
+                return "“状态”不合法（允许：active / inactive；或中文：启用/停用）"
         try:
-            d = float(row.get("默认周期"))
-            if d <= 0:
-                return "“默认周期”必须大于 0"
-            row["默认周期"] = d
-        except Exception:
-            return "“默认周期”必须是数字"
-        row["状态"] = _normalize_supplier_status(row.get("状态"))
-        if row["状态"] not in ("active", "inactive"):
-            return "“状态”不合法（允许：active / inactive；或中文：启用/停用）"
-        try:
-            name = _resolve_op_type_name(row.get("对应工种"), op_type_repo=op_type_repo)
+            name = _resolve_op_type_name(row.get("对应工种"), op_type_svc=op_type_svc)
             row["对应工种"] = name
         except ValidationError as e:
             return e.message
@@ -217,91 +251,25 @@ def excel_supplier_confirm():
         mode=mode,
     )
 
-    # 严格模式：只要存在错误行，就拒绝导入（规范用户行为）
-    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    error_rows = collect_error_rows(preview_rows)
     if error_rows:
-        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
-        flash(
-            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
-            "error",
-        )
-        return render_template(
-            "process/excel_import_suppliers.html",
-            title="供应商配置 - Excel 导入/导出",
-            existing_list=list(existing.values()),
+        flash(build_error_rows_message(error_rows), "error")
+        return _render_excel_supplier_page(
+            existing=existing,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            mode=mode.value,
+            preview_baseline=payload.preview_baseline,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("process.excel_supplier_preview"),
-            confirm_url=url_for("process.excel_supplier_confirm"),
-            template_download_url=url_for("process.excel_supplier_template"),
-            export_url=url_for("process.excel_supplier_export"),
         )
 
-    tx = TransactionManager(g.db)
-    s_repo = SupplierRepository(g.db)
-
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample: List[Dict[str, Any]] = []
-
-    with tx.transaction():
-        if mode == ImportMode.REPLACE:
-            supplier_svc.ensure_replace_allowed()
-            g.db.execute("DELETE FROM Suppliers")
-
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": pr.message})
-                continue
-
-            sid = str(pr.data.get("供应商ID")).strip()
-            name = str(pr.data.get("名称")).strip()
-            op_type_id = None
-            try:
-                op_type_id = _resolve_op_type_id(pr.data.get("对应工种"), op_type_repo=op_type_repo)
-            except ValidationError:
-                op_type_id = None
-            default_days = float(pr.data.get("默认周期") or 1.0)
-            status = _normalize_supplier_status(pr.data.get("状态"))
-            remark = pr.data.get("备注")
-
-            if mode == ImportMode.APPEND and sid in existing:
-                skip_count += 1
-                continue
-
-            try:
-                if s_repo.get(sid):
-                    s_repo.update(
-                        sid,
-                        {
-                            "name": name,
-                            "op_type_id": op_type_id,
-                            "default_days": default_days,
-                            "status": status,
-                            "remark": remark,
-                        },
-                    )
-                    update_count += 1
-                else:
-                    s_repo.create(
-                        {
-                            "supplier_id": sid,
-                            "name": name,
-                            "op_type_id": op_type_id,
-                            "default_days": default_days,
-                            "status": status,
-                            "remark": remark,
-                        }
-                    )
-                    new_count += 1
-            except AppError as e:
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": e.message})
-                continue
+    import_svc = SupplierExcelImportService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    )
+    import_stats = import_svc.apply_preview_rows(preview_rows, mode=mode, existing_ids=set(existing.keys()))
+    new_count, update_count, skip_count, error_count = extract_import_stats(import_stats)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -310,18 +278,17 @@ def excel_supplier_confirm():
         target_type="supplier",
         filename=filename,
         mode=mode,
-        preview_or_result={
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-        },
+        preview_or_result=import_stats,
         time_cost_ms=time_cost_ms,
     )
 
-    flash(f"导入完成：新增 {new_count}，更新 {update_count}，跳过 {skip_count}，错误 {error_count}。", "success")
+    flash_import_result(
+        new_count=new_count,
+        update_count=update_count,
+        skip_count=skip_count,
+        error_count=error_count,
+        errors_sample=list(import_stats.get("errors_sample") or []),
+    )
     return redirect(url_for("process.excel_supplier_page"))
 
 
@@ -341,24 +308,15 @@ def excel_supplier_template():
             time_range={},
             time_cost_ms=time_cost_ms,
         )
-        return send_file(
-            template_path,
-            as_attachment=True,
-            download_name="供应商配置.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        return send_excel_template_file(template_path, download_name="供应商配置.xlsx")
 
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["供应商ID", "名称", "对应工种", "默认周期"])
-    ws.append(["S001", "外协-标印厂", "标印", 1])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("供应商配置.xlsx")
+    sample_rows = template_def.get("sample_rows") or []
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        sample_rows,
+        format_spec=template_def.get("format_spec"),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
@@ -367,7 +325,7 @@ def excel_supplier_template():
         target_type="supplier",
         template_or_export_type="供应商配置模板.xlsx",
         filters={},
-        row_count=1,
+        row_count=len(sample_rows),
         time_range={},
         time_cost_ms=time_cost_ms,
     )
@@ -383,27 +341,14 @@ def excel_supplier_template():
 @bp.get("/excel/suppliers/export")
 def excel_supplier_export():
     start = time.time()
-    rows = g.db.execute(
-        """
-        SELECT s.supplier_id, s.name, s.default_days, s.status, s.remark, ot.name AS op_type_name
-        FROM Suppliers s
-        LEFT JOIN OpTypes ot ON ot.op_type_id = s.op_type_id
-        ORDER BY s.supplier_id
-        """
-    ).fetchall()
-
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"])
-    for r in rows:
-        ws.append([r["supplier_id"], r["name"], r["op_type_name"], r["default_days"], r["status"], r["remark"]])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    rows = SupplierService(g.db, op_logger=getattr(g, "op_logger", None)).list_for_export_rows()
+    template_def = get_template_definition("供应商配置.xlsx")
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        [[r["supplier_id"], r["name"], r["op_type_name"], r["default_days"], r["status"], r["remark"]] for r in rows],
+        format_spec=template_def.get("format_spec"),
+        sanitize_formula=True,
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(

@@ -22,7 +22,7 @@ def main():
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from core.infrastructure.database import ensure_schema, get_connection
+    from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 
     tmpdir = tempfile.mkdtemp(prefix="aps_regression_sanitize_batch_dates_")
     test_db = os.path.join(tmpdir, "aps_sanitize_batch_dates_old.db")
@@ -75,10 +75,10 @@ def main():
             due_text = str(due)
         assert due_text == "2026-01-01", f"预期 due_date='2026-01-01'，实际 {due!r}"
 
-        # 附加断言：SchemaVersion 已提升到 1（确保走过迁移路径）
+        # 附加断言：缺整表被补齐后，应继续迁移到当前版本
         rowv = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
         v = int(rowv["version"] if isinstance(rowv, sqlite3.Row) else rowv[0])
-        assert v >= 1, f"预期 SchemaVersion>=1，实际 {v}"
+        assert v >= CURRENT_SCHEMA_VERSION, f"预期 SchemaVersion 升到当前版本，实际 {v}"
     finally:
         try:
             conn.close()

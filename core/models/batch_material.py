@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from ._helpers import RowLike, as_dict, get, parse_float, parse_int
+from .enums import YesNo
 
 
 @dataclass
@@ -13,10 +14,10 @@ class BatchMaterial:
     material_id: str
     required_qty: float
     available_qty: float = 0.0
-    ready_status: str = "no"  # yes/no
+    ready_status: str = YesNo.NO.value  # yes/no
 
     @classmethod
-    def from_row(cls, row: RowLike) -> "BatchMaterial":
+    def from_row(cls, row: RowLike) -> BatchMaterial:
         raw_id = get(row, "id")
         return cls(
             id=parse_int(raw_id, default=None),
@@ -24,7 +25,7 @@ class BatchMaterial:
             material_id=str(get(row, "material_id") or ""),
             required_qty=parse_float(get(row, "required_qty"), default=0.0) or 0.0,
             available_qty=parse_float(get(row, "available_qty"), default=0.0) or 0.0,
-            ready_status=(str(get(row, "ready_status") or "no").strip().lower() or "no"),
+            ready_status=(str(get(row, "ready_status") or YesNo.NO.value).strip().lower() or YesNo.NO.value),
         )
 
     def to_dict(self) -> Dict[str, Any]:

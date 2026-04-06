@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict, Tuple
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
+from core.services.common.strict_parse import parse_required_float, parse_required_int
 
 from .config_snapshot import ScheduleConfigSnapshot
-from .number_utils import parse_finite_float, parse_finite_int, to_yes_no
+from .number_utils import to_yes_no
 
 
 def normalize_preset_snapshot(
@@ -17,20 +19,108 @@ def normalize_preset_snapshot(
     valid_dispatch_rules: Tuple[str, ...],
     valid_algo_modes: Tuple[str, ...],
     valid_objectives: Tuple[str, ...],
+    strict_mode: bool = False,
 ) -> ScheduleConfigSnapshot:
-    st = str(data.get("sort_strategy") or base.sort_strategy).strip()
-    if st not in valid_strategies:
-        st = base.sort_strategy
+    def _valid_norm(values: Tuple[str, ...]) -> Tuple[str, ...]:
+        out = []
+        seen = set()
+        for item in values or ():
+            text = str(item).strip().lower()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            out.append(text)
+        return tuple(out)
 
-    def _get_float(key: str, default: float, field: str) -> float:
+    def _is_blank(value: Any) -> bool:
+        return value is None or (isinstance(value, str) and value.strip() == "")
+
+    def _format_fallback_value(value: Any) -> str:
+        return "空值" if value is None else str(value)
+
+    def _record_min_violation(
+        *,
+        key: str,
+        raw: Any,
+        fallback: Any,
+        min_value: Any,
+        min_inclusive: bool = True,
+    ) -> None:
+        compare_text = "大于等于" if bool(min_inclusive) else "大于"
+        collector.add(
+            code="number_below_minimum",
+            scope="config_validator.preset",
+            field=key,
+            message=f"字段“{key}”数值低于最小值约束（要求{compare_text} {min_value}），已按兼容读取回退为 {_format_fallback_value(fallback)}。",
+            sample=repr(raw),
+        )
+
+    collector = DegradationCollector()
+
+    def _get_float(
+        key: str,
+        default: float,
+        *,
+        min_value: float | None = None,
+        min_inclusive: bool = True,
+    ) -> float:
         raw = data.get(key)
-        if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+        if _is_blank(raw):
             return float(default)
-        v = parse_finite_float(raw, field=field, allow_none=False)
-        return float(v if v is not None else default)
 
-    pw = _get_float("priority_weight", float(base.priority_weight), field="优先级权重")
-    dw = _get_float("due_weight", float(base.due_weight), field="交期权重")
+        if strict_mode:
+            return float(parse_required_float(raw, field=key, min_value=min_value, min_inclusive=min_inclusive))
+
+        parsed = float(parse_required_float(raw, field=key))
+        if min_value is not None:
+            is_valid = parsed >= float(min_value) if bool(min_inclusive) else parsed > float(min_value)
+            if not is_valid:
+                fallback_value = float(default)
+                _record_min_violation(
+                    key=key,
+                    raw=raw,
+                    fallback=fallback_value,
+                    min_value=min_value,
+                    min_inclusive=min_inclusive,
+                )
+                return fallback_value
+        return float(parsed)
+
+    def _get_int(key: str, default: int, *, min_v: int) -> int:
+        raw = data.get(key)
+        if _is_blank(raw):
+            return int(default)
+        if strict_mode:
+            return int(parse_required_int(raw, field=key, min_value=min_v))
+
+        parsed = int(parse_required_int(raw, field=key))
+        if parsed < int(min_v):
+            fallback_value = int(min_v)
+            _record_min_violation(key=key, raw=raw, fallback=fallback_value, min_value=min_v)
+            return fallback_value
+        return int(parsed)
+
+    valid_strategies_norm = _valid_norm(valid_strategies)
+    valid_dispatch_modes_norm = _valid_norm(valid_dispatch_modes)
+    valid_dispatch_rules_norm = _valid_norm(valid_dispatch_rules)
+    valid_algo_modes_norm = _valid_norm(valid_algo_modes)
+    valid_objectives_norm = _valid_norm(valid_objectives)
+
+    raw_sort_strategy = data.get("sort_strategy")
+    sort_strategy_present = "sort_strategy" in data
+    base_strategy = str(base.sort_strategy).strip().lower()
+    st = base_strategy if not sort_strategy_present else str("" if raw_sort_strategy is None else raw_sort_strategy).strip().lower()
+    if sort_strategy_present and st == "":
+        if strict_mode:
+            raise ValidationError("“sort_strategy”不能为空", field="sort_strategy")
+        st = base_strategy
+    if st not in valid_strategies_norm:
+        if strict_mode and not _is_blank(raw_sort_strategy):
+            raise ValidationError(f"“sort_strategy”取值不合法：{raw_sort_strategy!r}", field="sort_strategy")
+        st = base_strategy
+
+    pw = _get_float("priority_weight", float(base.priority_weight), min_value=0.0)
+    dw = _get_float("due_weight", float(base.due_weight), min_value=0.0)
     if pw < 0 or dw < 0:
         raise ValidationError("权重不能为负数", field="权重")
     percent_mode = (pw > 1.0) or (dw > 1.0)
@@ -48,50 +138,116 @@ def normalize_preset_snapshot(
         raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
     rw = max(0.0, float(rw))
 
-    hde = _get_float("holiday_default_efficiency", float(base.holiday_default_efficiency), field="holiday_default_efficiency")
-    if hde <= 0:
-        hde = float(base.holiday_default_efficiency)
+    hde = _get_float(
+        "holiday_default_efficiency",
+        float(base.holiday_default_efficiency),
+        min_value=0.0,
+        min_inclusive=False,
+    )
 
-    def _yesno(v: Any, default: str = "no") -> str:
+    def _yesno(v: Any, key: str, default: str = "no", *, strict: bool = False, missing: bool = False) -> str:
+        if missing:
+            return to_yes_no(default, default=default)
+        text = "" if v is None else str(v).strip().lower()
+        true_vals = {"yes", "y", "true", "1", "on"}
+        false_vals = {"no", "n", "false", "0", "off"}
+        if strict and text == "":
+            raise ValidationError(f"“{key}”不能为空", field=key)
+        if strict and text not in true_vals and text not in false_vals:
+            raise ValidationError(f"“{key}”取值不合法：{v!r}（允许值：yes / no）", field=key)
         return to_yes_no(v, default=default)
 
-    enforce_ready_default = _yesno(data.get("enforce_ready_default"), default=str(base.enforce_ready_default))
-    prefer_primary_skill = _yesno(data.get("prefer_primary_skill"), default=str(base.prefer_primary_skill))
-    auto_assign_enabled = _yesno(data.get("auto_assign_enabled"), default=str(base.auto_assign_enabled))
-    ortools_enabled = _yesno(data.get("ortools_enabled"), default=str(base.ortools_enabled))
-    freeze_window_enabled = _yesno(data.get("freeze_window_enabled"), default=str(base.freeze_window_enabled))
-
-    dm = str(data.get("dispatch_mode") or base.dispatch_mode).strip().lower()
-    if dm not in valid_dispatch_modes:
-        dm = base.dispatch_mode
-    dr = str(data.get("dispatch_rule") or base.dispatch_rule).strip().lower()
-    if dr not in valid_dispatch_rules:
-        dr = base.dispatch_rule
-
-    algo_mode = str(data.get("algo_mode") or base.algo_mode).strip().lower()
-    if algo_mode not in valid_algo_modes:
-        algo_mode = base.algo_mode
-    objective = str(data.get("objective") or base.objective).strip()
-    if objective not in valid_objectives:
-        objective = base.objective
-
-    def _get_int(key: str, default: int, min_v: int, field: str) -> int:
-        raw = data.get(key)
-        if raw is None or (isinstance(raw, str) and raw.strip() == ""):
-            v = int(default)
-        else:
-            parsed = parse_finite_int(raw, field=field, allow_none=False)
-            v = int(parsed if parsed is not None else default)
-        return max(int(min_v), int(v))
-
-    ort_limit = _get_int(
-        "ortools_time_limit_seconds",
-        int(base.ortools_time_limit_seconds),
-        1,
-        field="ortools_time_limit_seconds",
+    enforce_ready_default = _yesno(
+        data.get("enforce_ready_default"),
+        "enforce_ready_default",
+        default=str(base.enforce_ready_default),
+        strict=bool(strict_mode),
+        missing="enforce_ready_default" not in data,
     )
-    time_budget = _get_int("time_budget_seconds", int(base.time_budget_seconds), 1, field="time_budget_seconds")
-    fw_days = _get_int("freeze_window_days", int(base.freeze_window_days), 0, field="freeze_window_days")
+    prefer_primary_skill = _yesno(
+        data.get("prefer_primary_skill"),
+        "prefer_primary_skill",
+        default=str(base.prefer_primary_skill),
+        strict=bool(strict_mode),
+        missing="prefer_primary_skill" not in data,
+    )
+    auto_assign_enabled = _yesno(
+        data.get("auto_assign_enabled"),
+        "auto_assign_enabled",
+        default=str(base.auto_assign_enabled),
+        strict=bool(strict_mode),
+        missing="auto_assign_enabled" not in data,
+    )
+    ortools_enabled = _yesno(
+        data.get("ortools_enabled"),
+        "ortools_enabled",
+        default=str(base.ortools_enabled),
+        strict=bool(strict_mode),
+        missing="ortools_enabled" not in data,
+    )
+    freeze_window_enabled = _yesno(
+        data.get("freeze_window_enabled"),
+        "freeze_window_enabled",
+        default=str(base.freeze_window_enabled),
+        strict=bool(strict_mode),
+        missing="freeze_window_enabled" not in data,
+    )
+
+    raw_dispatch_mode = data.get("dispatch_mode")
+    dispatch_mode_present = "dispatch_mode" in data
+    base_dispatch_mode = str(base.dispatch_mode).strip().lower()
+    dm = base_dispatch_mode if not dispatch_mode_present else str("" if raw_dispatch_mode is None else raw_dispatch_mode).strip().lower()
+    if dispatch_mode_present and dm == "":
+        if strict_mode:
+            raise ValidationError("“dispatch_mode”不能为空", field="dispatch_mode")
+        dm = base_dispatch_mode
+    if dm not in valid_dispatch_modes_norm:
+        if strict_mode and not _is_blank(raw_dispatch_mode):
+            raise ValidationError(f"“dispatch_mode”取值不合法：{raw_dispatch_mode!r}", field="dispatch_mode")
+        dm = base_dispatch_mode
+
+    raw_dispatch_rule = data.get("dispatch_rule")
+    dispatch_rule_present = "dispatch_rule" in data
+    base_dispatch_rule = str(base.dispatch_rule).strip().lower()
+    dr = base_dispatch_rule if not dispatch_rule_present else str("" if raw_dispatch_rule is None else raw_dispatch_rule).strip().lower()
+    if dispatch_rule_present and dr == "":
+        if strict_mode:
+            raise ValidationError("“dispatch_rule”不能为空", field="dispatch_rule")
+        dr = base_dispatch_rule
+    if dr not in valid_dispatch_rules_norm:
+        if strict_mode and not _is_blank(raw_dispatch_rule):
+            raise ValidationError(f"“dispatch_rule”取值不合法：{raw_dispatch_rule!r}", field="dispatch_rule")
+        dr = base_dispatch_rule
+
+    raw_algo_mode = data.get("algo_mode")
+    algo_mode_present = "algo_mode" in data
+    base_algo_mode = str(base.algo_mode).strip().lower()
+    algo_mode = base_algo_mode if not algo_mode_present else str("" if raw_algo_mode is None else raw_algo_mode).strip().lower()
+    if algo_mode_present and algo_mode == "":
+        if strict_mode:
+            raise ValidationError("“algo_mode”不能为空", field="algo_mode")
+        algo_mode = base_algo_mode
+    if algo_mode not in valid_algo_modes_norm:
+        if strict_mode and not _is_blank(raw_algo_mode):
+            raise ValidationError(f"“algo_mode”取值不合法：{raw_algo_mode!r}", field="algo_mode")
+        algo_mode = base_algo_mode
+
+    raw_objective = data.get("objective")
+    objective_present = "objective" in data
+    base_objective = str(base.objective).strip().lower()
+    objective = base_objective if not objective_present else str("" if raw_objective is None else raw_objective).strip().lower()
+    if objective_present and objective == "":
+        if strict_mode:
+            raise ValidationError("“objective”不能为空", field="objective")
+        objective = base_objective
+    if objective not in valid_objectives_norm:
+        if strict_mode and not _is_blank(raw_objective):
+            raise ValidationError(f"“objective”取值不合法：{raw_objective!r}", field="objective")
+        objective = base_objective
+
+    ort_limit = _get_int("ortools_time_limit_seconds", int(base.ortools_time_limit_seconds), min_v=1)
+    time_budget = _get_int("time_budget_seconds", int(base.time_budget_seconds), min_v=1)
+    fw_days = _get_int("freeze_window_days", int(base.freeze_window_days), min_v=0)
 
     return ScheduleConfigSnapshot(
         sort_strategy=st,
@@ -111,5 +267,6 @@ def normalize_preset_snapshot(
         objective=objective,
         freeze_window_enabled=freeze_window_enabled,
         freeze_window_days=int(fw_days),
+        degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
+        degradation_counters=collector.to_counters(),
     )
-

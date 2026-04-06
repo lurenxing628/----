@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from flask import current_app, flash, g, redirect, request, url_for
 
+from core.infrastructure.errors import AppError
+from core.services.equipment import MachineDowntimeService, MachineService
 from web.ui_mode import render_ui_template as render_template
 
-from core.infrastructure.errors import AppError
-from core.services.equipment import MachineDowntimeService
-from data.repositories import MachineRepository
-
 from .equipment_bp import bp
-
 
 # ============================================================
 # 设备停机（MachineDowntimes）
@@ -21,8 +18,8 @@ def downtime_batch_page():
     """
     批量停机计划：按设备/类别/全部创建停机区间。
     """
-    repo = MachineRepository(g.db)
-    machines = repo.list()
+    m_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
+    machines = m_svc.list()
     categories = sorted({(m.category or "").strip() for m in machines if (m.category or "").strip()})
     machine_options = [(m.machine_id, f"{m.machine_id} {m.name}".strip()) for m in machines]
     machine_options.sort(key=lambda x: x[0])

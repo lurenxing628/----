@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import ExternalGroup, Part, PartOperation
+from core.models.enums import YESNO_VALUES, MergeMode, PartOperationStatus, SourceType, YesNo
+from core.services.common.normalize import append_unique_text_messages, normalize_text
+from core.services.common.safe_logging import safe_warning
 from data.repositories import (
     ExternalGroupRepository,
     OpTypeRepository,
@@ -13,7 +17,8 @@ from data.repositories import (
     SupplierRepository,
 )
 
-from .deletion_validator import DeletionValidator, Operation as DeleteOp
+from .deletion_validator import DeletionValidator
+from .deletion_validator import Operation as DeleteOp
 from .route_parser import ParseResult, ParseStatus, RouteParser
 
 
@@ -40,13 +45,7 @@ class PartService:
     # -------------------------
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     @staticmethod
     def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
@@ -54,8 +53,8 @@ class PartService:
             return None if allow_none else 0.0
         try:
             return float(value)
-        except Exception:
-            raise ValidationError(f"“{field}”必须是数字", field=field)
+        except Exception as e:
+            raise ValidationError(f"“{field}”必须是数字", field=field) from e
 
     def _get_or_raise(self, part_no: str) -> Part:
         p = self.part_repo.get(part_no)
@@ -71,7 +70,7 @@ class PartService:
         snapshot: Dict[int, Tuple[float, float]] = {}
         ops = self.op_repo.list_by_part(part_no, include_deleted=False)
         for op in ops:
-            if (op.source or "").strip().lower() != "internal":
+            if (op.source or "").strip().lower() != SourceType.INTERNAL.value:
                 continue
             try:
                 seq = int(op.seq)
@@ -80,12 +79,48 @@ class PartService:
             snapshot[seq] = (float(op.setup_hours or 0.0), float(op.unit_hours or 0.0))
         return snapshot
 
+    def _coerce_external_default_days(
+        self,
+        op: Any,
+        *,
+        warnings: Optional[List[str]] = None,
+    ) -> Tuple[float, bool]:
+        raw_default_days = getattr(op, "default_days", None)
+        seq = int(getattr(op, "seq", 0) or 0)
+        op_type_name = self._normalize_text(getattr(op, "op_type_name", None)) or f"seq={seq}"
+
+        def _warn(message: str) -> None:
+            if warnings is not None:
+                warnings.append(message)
+            safe_warning(self.logger, message)
+
+        if raw_default_days is None or (isinstance(raw_default_days, str) and raw_default_days.strip() == ""):
+            _warn(f"外部工序 {seq}（{op_type_name}）缺少 default_days，保存模板时已按 1.0 天写入 ext_days")
+            return 1.0, True
+
+        try:
+            parsed_days = float(raw_default_days)
+        except Exception:
+            _warn(
+                f"外部工序 {seq}（{op_type_name}）default_days 无法解析（{raw_default_days!r}），保存模板时已按 1.0 天写入 ext_days"
+            )
+            return 1.0, True
+
+        if not math.isfinite(parsed_days) or parsed_days <= 0:
+            _warn(
+                f"外部工序 {seq}（{op_type_name}）default_days 无效（{raw_default_days!r}），保存模板时已按 1.0 天写入 ext_days"
+            )
+            return 1.0, True
+
+        return float(parsed_days), False
+
+
     # -------------------------
     # Parts CRUD
     # -------------------------
     def list(self, route_parsed: Optional[str] = None) -> List[Part]:
-        if route_parsed and route_parsed not in ("yes", "no"):
-            raise ValidationError("route_parsed 参数不合法（允许：yes / no）", field="route_parsed")
+        if route_parsed and route_parsed not in YESNO_VALUES:
+            raise ValidationError("工艺路线解析状态不正确，请选择：是 / 否。", field="工艺路线解析状态")
         return self.part_repo.list(route_parsed=route_parsed)
 
     def get(self, part_no: str) -> Part:
@@ -94,7 +129,16 @@ class PartService:
             raise ValidationError("“图号”不能为空", field="图号")
         return self._get_or_raise(pn)
 
-    def create(self, part_no: Any, part_name: Any, route_raw: Any = None, remark: Any = None) -> Part:
+    def create(
+        self,
+        part_no: Any,
+        part_name: Any,
+        route_raw: Any = None,
+        remark: Any = None,
+        *,
+        strict_mode: bool = False,
+        user_warnings: Optional[List[str]] = None,
+    ) -> Part:
         pn = self._normalize_text(part_no)
         name = self._normalize_text(part_name)
         rr = None if route_raw is None else str(route_raw)
@@ -107,24 +151,36 @@ class PartService:
         if self.part_repo.get(pn):
             raise BusinessError(ErrorCode.PART_ALREADY_EXISTS, f"图号“{pn}”已存在，不能重复添加。")
 
+        parse_result: Optional[ParseResult] = None
+        if rr and str(rr).strip() and strict_mode:
+            parse_result = self._parse_route_or_raise(part_no=pn, route_raw=rr, strict_mode=True)
+
         with self.tx_manager.transaction():
             self.part_repo.create(
                 {
                     "part_no": pn,
                     "part_name": name,
                     "route_raw": rr,
-                    "route_parsed": "no",
+                    "route_parsed": YesNo.YES.value if parse_result is not None else YesNo.NO.value,
                     "remark": rmk,
                 }
             )
+            if parse_result is not None:
+                self._save_template_no_tx(part_no=pn, parse_result=parse_result)
 
         # 如果填写了工艺路线字符串，则尝试自动解析（失败时仍保留零件）
-        if rr and str(rr).strip():
+        if rr and str(rr).strip() and not strict_mode:
             try:
-                self.reparse_and_save(part_no=pn, route_raw=rr)
-            except Exception:
+                auto_parse_result = self.reparse_and_save(part_no=pn, route_raw=rr, strict_mode=False)
+                append_unique_text_messages(user_warnings, getattr(auto_parse_result, "warnings", None))
+            except (BusinessError, ValidationError) as exc:
                 # 不阻断创建；错误在详情页可见
-                pass
+                detail = getattr(exc, "message", None) or str(exc)
+                safe_warning(self.logger, f"零件“{pn}”工艺路线自动解析失败，已保留零件：{detail}")
+                append_unique_text_messages(
+                    user_warnings,
+                    f"零件已创建，但工序模板未成功生成，请检查工艺路线并重新解析。原因：{detail}",
+                )
 
         return self._get_or_raise(pn)
 
@@ -164,16 +220,36 @@ class PartService:
         with self.tx_manager.transaction():
             self.part_repo.delete(pn)
 
+    def delete_all_no_tx(self) -> None:
+        self.part_repo.delete_all()
+
     # -------------------------
     # 解析与模板保存（关键事务边界）
     # -------------------------
     def validate_route_format(self, route_raw: Any) -> Tuple[bool, str]:
         return self.route_parser.validate_format(str(route_raw) if route_raw is not None else "")
 
-    def parse(self, route_raw: Any, part_no: str) -> ParseResult:
-        return self.route_parser.parse(str(route_raw) if route_raw is not None else "", part_no=part_no)
+    def _parse_route_or_raise(self, *, part_no: str, route_raw: Any, strict_mode: bool = False) -> ParseResult:
+        rr = str(route_raw) if route_raw is not None else ""
+        ok, msg = self.route_parser.validate_format(rr)
+        if not ok:
+            raise BusinessError(ErrorCode.ROUTE_PARSE_ERROR, f"工艺路线解析失败：{msg}")
 
-    def reparse_and_save(self, part_no: Any, route_raw: Any) -> ParseResult:
+        result = self.route_parser.parse(rr, part_no=part_no, strict_mode=bool(strict_mode))
+        if result.status == ParseStatus.FAILED:
+            raise BusinessError(
+                ErrorCode.ROUTE_PARSE_ERROR,
+                "工艺路线解析失败",
+                details={"errors": result.errors, "warnings": result.warnings, "stats": result.stats},
+            )
+        return result
+
+    def parse(self, route_raw: Any, part_no: str, *, strict_mode: bool = False) -> ParseResult:
+        return self.route_parser.parse(
+            str(route_raw) if route_raw is not None else "", part_no=part_no, strict_mode=bool(strict_mode)
+        )
+
+    def reparse_and_save(self, part_no: Any, route_raw: Any, *, strict_mode: bool = False) -> ParseResult:
         """
         重新解析并覆盖保存模板（事务保护）：
         - 更新 Parts.route_raw / route_parsed
@@ -185,17 +261,7 @@ class PartService:
         self._get_or_raise(pn)
 
         rr = str(route_raw) if route_raw is not None else ""
-        ok, msg = self.route_parser.validate_format(rr)
-        if not ok:
-            raise BusinessError(ErrorCode.ROUTE_PARSE_ERROR, f"工艺路线解析失败：{msg}")
-
-        result = self.route_parser.parse(rr, part_no=pn)
-        if result.status == ParseStatus.FAILED:
-            raise BusinessError(
-                ErrorCode.ROUTE_PARSE_ERROR,
-                "工艺路线解析失败",
-                details={"errors": result.errors, "warnings": result.warnings, "stats": result.stats},
-            )
+        result = self._parse_route_or_raise(part_no=pn, route_raw=rr, strict_mode=bool(strict_mode))
 
         with self.tx_manager.transaction():
             # 更新零件字段
@@ -217,7 +283,7 @@ class PartService:
 
         return result
 
-    def upsert_and_parse_no_tx(self, part_no: str, part_name: str, route_raw: str) -> ParseResult:
+    def upsert_and_parse_no_tx(self, part_no: str, part_name: str, route_raw: str, *, strict_mode: bool = False) -> ParseResult:
         """
         在“外部已开启事务”的情况下导入零件工艺路线：
         - 不自己开启事务（避免嵌套 commit）
@@ -230,24 +296,14 @@ class PartService:
             raise ValidationError("“图号”不能为空", field="图号")
         if not name:
             raise ValidationError("“名称”不能为空", field="名称")
-        ok, msg = self.route_parser.validate_format(rr)
-        if not ok:
-            raise BusinessError(ErrorCode.ROUTE_PARSE_ERROR, f"工艺路线解析失败：{msg}")
-
-        result = self.route_parser.parse(rr, part_no=pn)
-        if result.status == ParseStatus.FAILED:
-            raise BusinessError(
-                ErrorCode.ROUTE_PARSE_ERROR,
-                "工艺路线解析失败",
-                details={"errors": result.errors, "warnings": result.warnings, "stats": result.stats},
-            )
+        result = self._parse_route_or_raise(part_no=pn, route_raw=rr, strict_mode=bool(strict_mode))
 
         # upsert part
         existed = self.part_repo.get(pn)
         if existed:
-            self.part_repo.update(pn, {"part_name": name, "route_raw": rr, "route_parsed": "yes"})
+            self.part_repo.update(pn, {"part_name": name, "route_raw": rr, "route_parsed": YesNo.YES.value})
         else:
-            self.part_repo.create({"part_no": pn, "part_name": name, "route_raw": rr, "route_parsed": "yes"})
+            self.part_repo.create({"part_no": pn, "part_name": name, "route_raw": rr, "route_parsed": YesNo.YES.value})
 
         old_internal_hours = self._build_internal_hours_snapshot(pn)
 
@@ -272,7 +328,7 @@ class PartService:
         """
         # operations
         for op in parse_result.operations:
-            if (op.source or "").strip().lower() == "internal":
+            if (op.source or "").strip().lower() == SourceType.INTERNAL.value:
                 seq = int(op.seq)
                 setup_hours = 0.0
                 unit_hours = 0.0
@@ -286,29 +342,32 @@ class PartService:
                         "seq": seq,
                         "op_type_id": op.op_type_id,
                         "op_type_name": op.op_type_name,
-                        "source": "internal",
+                        "source": SourceType.INTERNAL.value,
                         "supplier_id": None,
                         "ext_days": None,
                         "ext_group_id": None,
                         "setup_hours": setup_hours,
                         "unit_hours": unit_hours,
-                        "status": "active",
+                        "status": PartOperationStatus.ACTIVE.value,
                     }
                 )
             else:
+                ext_days, used_fallback = self._coerce_external_default_days(op, warnings=parse_result.warnings)
+                if used_fallback and parse_result.status != ParseStatus.FAILED:
+                    parse_result.status = ParseStatus.PARTIAL
                 self.op_repo.create(
                     {
                         "part_no": part_no,
                         "seq": int(op.seq),
                         "op_type_id": op.op_type_id,
                         "op_type_name": op.op_type_name,
-                        "source": "external",
+                        "source": SourceType.EXTERNAL.value,
                         "supplier_id": op.supplier_id,
-                        "ext_days": float(op.default_days or 1.0),
+                        "ext_days": float(ext_days),
                         "ext_group_id": op.ext_group_id,
                         "setup_hours": 0.0,
                         "unit_hours": 0.0,
-                        "status": "active",
+                        "status": PartOperationStatus.ACTIVE.value,
                     }
                 )
 
@@ -325,7 +384,7 @@ class PartService:
                     "part_no": part_no,
                     "start_seq": int(g.start_seq),
                     "end_seq": int(g.end_seq),
-                    "merge_mode": "separate",
+                    "merge_mode": MergeMode.SEPARATE.value,
                     "total_days": None,
                     "supplier_id": main_supplier_id,
                     "remark": None,
@@ -355,8 +414,8 @@ class PartService:
 
         try:
             s = int(seq)
-        except Exception:
-            raise ValidationError("工序号不合法", field="工序")
+        except Exception as e:
+            raise ValidationError("工序号不合法", field="工序") from e
 
         sh = self._normalize_float(setup_hours, "换型时间(小时)", allow_none=False)
         uh = self._normalize_float(unit_hours, "单件工时(小时)", allow_none=False)
@@ -368,9 +427,9 @@ class PartService:
             raise ValidationError("工时不能为负数", field="工时")
 
         op = self.op_repo.get(pn, s)
-        if not op or (op.status or "").strip().lower() != "active":
+        if not op or (op.status or "").strip().lower() != PartOperationStatus.ACTIVE.value:
             raise BusinessError(ErrorCode.NOT_FOUND, f"工序 {s} 不存在或已删除")
-        if (op.source or "").strip().lower() != "internal":
+        if (op.source or "").strip().lower() != SourceType.INTERNAL.value:
             raise ValidationError("只能编辑内部工序工时", field="工序")
 
         with self.tx_manager.transaction():
@@ -394,8 +453,8 @@ class PartService:
             int(op.seq)
             for op in ops
             if op.ext_group_id == gid
-            and (op.source or "").strip().lower() == "external"
-            and (op.status or "").strip().lower() == "active"
+            and (op.source or "").strip().lower() == SourceType.EXTERNAL.value
+            and (op.status or "").strip().lower() == PartOperationStatus.ACTIVE.value
         ]
 
         # 严格按文档规则：仅允许删除“首部连续外部组”或“尾部连续外部组”
@@ -447,8 +506,8 @@ class PartService:
                 int(op.seq)
                 for op in ops
                 if op.ext_group_id == group.group_id
-                and (op.source or "").strip().lower() == "external"
-                and (op.status or "").strip().lower() == "active"
+                and (op.source or "").strip().lower() == SourceType.EXTERNAL.value
+                and (op.status or "").strip().lower() == PartOperationStatus.ACTIVE.value
             ]
             if seqs and all(s in deletable_seqs for s in seqs):
                 group_ids.append(group.group_id)

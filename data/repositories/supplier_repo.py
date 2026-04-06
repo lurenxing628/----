@@ -67,12 +67,9 @@ class SupplierRepository(BaseRepository):
             return
 
         # 兼容：部分库/旧 schema 可能没有 updated_at；存在则更新（最佳努力）
-        try:
-            cols = self.fetchall("PRAGMA table_info(Suppliers)")
-            if any(str(r.get("name")) == "updated_at" for r in (cols or [])):
-                set_parts.append("updated_at = CURRENT_TIMESTAMP")
-        except Exception:
-            pass
+        cols = self.fetchall("PRAGMA table_info(Suppliers)")
+        if any(str(r.get("name")) == "updated_at" for r in (cols or [])):
+            set_parts.append("updated_at = CURRENT_TIMESTAMP")
 
         params.append(supplier_id)
         sql = f"UPDATE Suppliers SET {', '.join(set_parts)} WHERE supplier_id = ?"
@@ -80,4 +77,77 @@ class SupplierRepository(BaseRepository):
 
     def delete(self, supplier_id: str) -> None:
         self.execute("DELETE FROM Suppliers WHERE supplier_id = ?", (supplier_id,))
+
+    def delete_all(self) -> None:
+        self.execute("DELETE FROM Suppliers")
+
+    def list_for_export(self) -> List[Dict[str, Any]]:
+        return self.fetchall(
+            """
+            SELECT s.supplier_id, s.name, s.default_days, s.status, s.remark, ot.name AS op_type_name
+            FROM Suppliers s
+            LEFT JOIN OpTypes ot ON ot.op_type_id = s.op_type_id
+            ORDER BY s.supplier_id
+            """
+        )
+
+    # -------------------------
+    # 引用检查（给 Service 层做删除/清空保护）
+    # -------------------------
+    def has_part_operation_reference(self, supplier_id: str) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM PartOperations WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' AND supplier_id = ? LIMIT 1",
+                (supplier_id,),
+                default=None,
+            )
+            is not None
+        )
+
+    def has_batch_operation_reference(self, supplier_id: str) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM BatchOperations WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' AND supplier_id = ? LIMIT 1",
+                (supplier_id,),
+                default=None,
+            )
+            is not None
+        )
+
+    def has_external_group_reference(self, supplier_id: str) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM ExternalGroups WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' AND supplier_id = ? LIMIT 1",
+                (supplier_id,),
+                default=None,
+            )
+            is not None
+        )
+
+    def has_any_part_operation_reference(self) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM PartOperations WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' LIMIT 1",
+                default=None,
+            )
+            is not None
+        )
+
+    def has_any_batch_operation_reference(self) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM BatchOperations WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' LIMIT 1",
+                default=None,
+            )
+            is not None
+        )
+
+    def has_any_external_group_reference(self) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM ExternalGroups WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' LIMIT 1",
+                default=None,
+            )
+            is not None
+        )
 

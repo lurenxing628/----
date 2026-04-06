@@ -3,12 +3,16 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithms.types import ScheduleResult
+from core.algorithms.value_domains import INTERNAL
+
+from .algo_stats import increment_counter
 
 
 def normalize_seed_results(
     *,
     seed_results: Optional[List[ScheduleResult]],
     operations: List[Any],
+    algo_stats: Any = None,
 ) -> Tuple[List[ScheduleResult], Set[int], List[str]]:
     """
     防御性处理：
@@ -67,10 +71,12 @@ def normalize_seed_results(
 
     for sr in seed_results:
         try:
-            if not sr or not getattr(sr, "start_time", None) or not getattr(sr, "end_time", None):
+            start_time = getattr(sr, "start_time", None)
+            end_time = getattr(sr, "end_time", None)
+            if not sr or start_time is None or end_time is None:
                 continue
             try:
-                if getattr(sr, "end_time", None) <= getattr(sr, "start_time", None):
+                if end_time <= start_time:
                     dropped_bad_time += 1
                     continue
             except Exception:
@@ -97,7 +103,7 @@ def normalize_seed_results(
 
                 if new_oid > 0:
                     try:
-                        setattr(sr, "op_id", int(new_oid))
+                        sr.op_id = int(new_oid)
                         oid0 = int(new_oid)
                         backfilled += 1
                     except Exception:
@@ -112,7 +118,7 @@ def normalize_seed_results(
                                 operator_id=(str(getattr(sr, "operator_id", "") or "") or None),
                                 start_time=getattr(sr, "start_time", None),
                                 end_time=getattr(sr, "end_time", None),
-                                source=str(getattr(sr, "source", "internal") or "internal"),
+                                source=str(getattr(sr, "source", INTERNAL) or INTERNAL),
                                 op_type_name=(str(getattr(sr, "op_type_name", "") or "") or None),
                             )
                             oid0 = int(new_oid)
@@ -134,7 +140,13 @@ def normalize_seed_results(
                 seed_op_ids.add(int(oid0))
                 normalized.append(sr)
         except Exception:
+            increment_counter(algo_stats, "seed_normalize_outer_exception_count")
             continue
+
+    increment_counter(algo_stats, "seed_op_id_backfilled_count", backfilled)
+    increment_counter(algo_stats, "seed_invalid_dropped_count", dropped_invalid)
+    increment_counter(algo_stats, "seed_bad_time_dropped_count", dropped_bad_time)
+    increment_counter(algo_stats, "seed_duplicate_dropped_count", dropped_dup)
 
     if backfilled:
         warnings.append(f"seed_results 存在 {backfilled} 条 op_id<=0 的记录，已按 op_code/batch_id+seq 回填 op_id 以避免重复排产。")

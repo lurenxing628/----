@@ -1,0 +1,94 @@
+/* APS print.css — 仅 @media print 生效，通过 <link media="print"> 引入 */
+@media print {
+  header,
+  nav,
+  .no-print,
+  .header-info,
+  form button,
+  form input[type="submit"],
+  .flash-card,
+  .flash-close,
+  select[name="mode"] {
+    display: none !important;
+  }
+
+  /* table resize UI should never appear in print */
+  table[data-col-resize="1"] .aps-col-resize-handle,
+  .aps-table-tools {
+    display: none !important;
+  }
+
+  /* force print density to standard */
+  html[data-table-density] table th,
+  html[data-table-density] table td {
+    padding: 10px 12px !important;
+    font-size: 9pt !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0;
+    padding: 10px;
+    font-size: 11pt;
+  }
+
+  .container {
+    max-width: none;
+    padding: 0;
+  }
+
+  .card {
+    border: 1px solid #cccccc;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+  }
+
+  table {
+    font-size: 9pt;
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+
+  th {
+    background: #eeeeee !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  tbody tr:nth-child(even),
+  tbody tr:hover {
+    background: transparent !important;
+  }
+
+  .table-sticky th,
+  .table-sticky-col th:first-child,
+  .table-sticky-col td:first-child {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    box-shadow: none !important;
+  }
+
+  .table-sticky-col td:first-child::after,
+  .table-sticky-col th:first-child::after {
+    display: none !important;
+  }
+
+  a {
+    color: #000000 !important;
+    text-decoration: none !important;
+  }
+
+  a[href]::after {
+    content: none !important;
+  }
+
+  @page {
+    margin: 15mm 10mm;
+    size: A4 landscape;
+  }
+}

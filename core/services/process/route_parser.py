@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+
+from core.models.enums import SourceType
+from core.services.common.safe_logging import safe_info, safe_warning
 
 
 class ParseStatus(Enum):
@@ -102,7 +106,7 @@ class RouteParser:
         self.suppliers_repo = suppliers_repo
         self.logger = logger
 
-    def parse(self, route_string: str, part_no: str) -> ParseResult:
+    def parse(self, route_string: str, part_no: str, *, strict_mode: bool = False) -> ParseResult:
         warnings: List[str] = []
         errors: List[str] = []
         original_input = route_string or ""
@@ -117,7 +121,7 @@ class RouteParser:
                 external_groups=[],
                 warnings=[],
                 errors=["工艺路线为空或格式无效"],
-                stats={"total": 0, "internal": 0, "external": 0, "unknown": 0},
+                stats={"total": 0, SourceType.INTERNAL.value: 0, SourceType.EXTERNAL.value: 0, "unknown": 0},
                 original_input=original_input,
                 normalized_input="",
             )
@@ -131,7 +135,18 @@ class RouteParser:
 
         # 加载配置
         op_types = {ot.name: ot for ot in (self.op_types_repo.list() or [])}
-        suppliers = self._build_supplier_map()
+        suppliers, supplier_issues = self._build_supplier_map()
+
+        def _strict_supplier_issue_messages(issue_messages: List[str], *, op_type_name: str) -> List[str]:
+            out: List[str] = []
+            for raw_msg in issue_messages or []:
+                text = str(raw_msg or "").strip()
+                if not text:
+                    continue
+                out.append(text.replace("已按 1.0 天处理", "strict_mode 已拒绝按 1.0 天处理"))
+            if out:
+                return out
+            return [f"工种“{op_type_name}”供应商默认周期配置无效，strict_mode 已拒绝按 1.0 天处理"]
 
         # Step 1: 正则匹配
         pattern = r"(\d+)([^\d]+)"
@@ -148,15 +163,16 @@ class RouteParser:
                 external_groups=[],
                 warnings=[],
                 errors=final_errors,
-                stats={"total": 0, "internal": 0, "external": 0, "unknown": 0},
+                stats={"total": 0, SourceType.INTERNAL.value: 0, SourceType.EXTERNAL.value: 0, "unknown": 0},
                 original_input=original_input,
                 normalized_input=normalized,
             )
 
         # Step 2: 工种识别
         operations: List[ParsedOperation] = []
-        stats = {"total": 0, "internal": 0, "external": 0, "unknown": 0}
+        stats = {"total": 0, SourceType.INTERNAL.value: 0, SourceType.EXTERNAL.value: 0, "unknown": 0}
         seen_seqs = set()
+        supplier_issue_added = set()
 
         for seq_str, op_type_name in matches:
             try:
@@ -179,22 +195,30 @@ class RouteParser:
             stats["total"] += 1
 
             op_type = op_types.get(op_type_name)
+            strict_unknown = False
             if op_type:
-                cat = str(getattr(op_type, "category", None) or "internal").strip().lower() or "internal"
-                is_internal = cat == "internal"
+                cat = (
+                    str(getattr(op_type, "category", None) or SourceType.INTERNAL.value).strip().lower()
+                    or SourceType.INTERNAL.value
+                )
+                is_internal = cat == SourceType.INTERNAL.value
                 is_recognized = True
             else:
                 # 未识别的工种，默认为外部
                 is_internal = False
                 is_recognized = False
-                warnings.append(f"工种“{op_type_name}”未在系统中配置，已默认标记为外部工序")
+                if strict_mode:
+                    errors.append(f"工种“{op_type_name}”未在系统中配置，strict_mode 已拒绝默认标记为外部工序")
+                    strict_unknown = True
+                else:
+                    warnings.append(f"工种“{op_type_name}”未在系统中配置，已默认标记为外部工序")
                 stats["unknown"] += 1
 
-            source = "internal" if is_internal else "external"
+            source = SourceType.INTERNAL.value if is_internal else SourceType.EXTERNAL.value
             if is_internal:
-                stats["internal"] += 1
+                stats[SourceType.INTERNAL.value] += 1
             else:
-                stats["external"] += 1
+                stats[SourceType.EXTERNAL.value] += 1
 
             op = ParsedOperation(
                 seq=seq,
@@ -205,13 +229,30 @@ class RouteParser:
             )
 
             # 外部工序：匹配供应商默认周期（用于初始化 ext_days）
-            if not is_internal:
+            if not is_internal and not strict_unknown:
                 supplier_info = suppliers.get(op_type_name)
+                issue_messages = supplier_issues.get(op_type_name) or []
                 if supplier_info:
                     op.supplier_id = supplier_info[0]
-                    op.default_days = supplier_info[1]
+                    if strict_mode and issue_messages:
+                        if op_type_name not in supplier_issue_added:
+                            errors.extend(_strict_supplier_issue_messages(issue_messages, op_type_name=op_type_name))
+                            supplier_issue_added.add(op_type_name)
+                    else:
+                        op.default_days = supplier_info[1]
+                        if issue_messages and op_type_name not in supplier_issue_added:
+                            warnings.extend([msg for msg in issue_messages if msg])
+                            supplier_issue_added.add(op_type_name)
                 else:
-                    op.default_days = 1.0  # 默认 1 天
+                    if strict_mode:
+                        errors.append(
+                            f"工种“{op_type_name}”未找到供应商配置，strict_mode 已拒绝按默认 1.0 天初始化外协周期"
+                        )
+                    else:
+                        op.default_days = 1.0
+                        warnings.append(
+                            f"工种“{op_type_name}”未找到供应商配置，已按默认 1.0 天初始化外协周期"
+                        )
 
             operations.append(op)
 
@@ -241,12 +282,10 @@ class RouteParser:
         )
 
         if self.logger:
-            try:
-                self.logger.info(
-                    f"工艺路线解析：{part_no} 共{stats['total']}道（内部{stats['internal']} 外部{stats['external']} 未识别{stats['unknown']}）"
-                )
-            except Exception:
-                pass
+            safe_info(
+                self.logger,
+                f"工艺路线解析：{part_no} 共{stats['total']}道（内部{stats[SourceType.INTERNAL.value]} 外部{stats[SourceType.EXTERNAL.value]} 未识别{stats['unknown']}）",
+            )
 
         return result
 
@@ -269,26 +308,61 @@ class RouteParser:
 
         return result
 
-    def _build_supplier_map(self) -> Dict[str, Tuple[str, float]]:
+    def _resolve_supplier_op_type_name(self, supplier: Any, supplier_id: str) -> Optional[str]:
+        try:
+            op_type = self.op_types_repo.get(supplier.op_type_id)
+        except Exception as exc:
+            safe_warning(self.logger, f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}）：{exc}")
+            return None
+        name = getattr(op_type, "name", None) if op_type else None
+        return str(name) if name else None
+
+    @staticmethod
+    def _resolve_supplier_default_days(
+        supplier: Any,
+        *,
+        supplier_id: str,
+        op_type_name: str,
+        has_default_days: bool,
+    ) -> Tuple[float, List[str]]:
+        raw_default_days: Any = getattr(supplier, "default_days", None)
+        if not has_default_days:
+            return 1.0, [f"供应商“{supplier_id}”未配置默认周期，工种“{op_type_name}”已按 1.0 天处理"]
+        if raw_default_days is None or (isinstance(raw_default_days, str) and raw_default_days.strip() == ""):
+            return 1.0, [f"供应商“{supplier_id}”默认周期为空，工种“{op_type_name}”已按 1.0 天处理"]
+        try:
+            parsed_default_days = float(raw_default_days)
+        except Exception:
+            return 1.0, [f"供应商“{supplier_id}”默认周期无法解析（{raw_default_days!r}），工种“{op_type_name}”已按 1.0 天处理"]
+        if not math.isfinite(parsed_default_days) or parsed_default_days <= 0:
+            return 1.0, [f"供应商“{supplier_id}”默认周期无效（{raw_default_days!r}），工种“{op_type_name}”已按 1.0 天处理"]
+        return float(parsed_default_days), []
+
+    def _build_supplier_map(self) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]]]:
         """
         构建 工种名 -> (supplier_id, default_days) 映射。
         规则：仅使用 Suppliers.op_type_id 有值且能映射到 OpTypes 的记录。
         """
-        result: Dict[str, Tuple[str, float]] = {}
+        supplier_map: Dict[str, Tuple[str, float]] = {}
+        issues: Dict[str, List[str]] = {}
         for supplier in (self.suppliers_repo.list() or []):
             if not getattr(supplier, "op_type_id", None):
                 continue
-            try:
-                op_type = self.op_types_repo.get(supplier.op_type_id)
-            except Exception:
-                op_type = None
-            if not op_type:
+            supplier_id = str(getattr(supplier, "supplier_id", "") or "").strip() or "?"
+            op_type_name = self._resolve_supplier_op_type_name(supplier, supplier_id)
+            if not op_type_name:
                 continue
-            name = getattr(op_type, "name", None)
-            if not name:
-                continue
-            result[str(name)] = (supplier.supplier_id, float(getattr(supplier, "default_days", 1.0) or 1.0))
-        return result
+            default_days, issue_messages = self._resolve_supplier_default_days(
+                supplier,
+                supplier_id=supplier_id,
+                op_type_name=op_type_name,
+                has_default_days=hasattr(supplier, "default_days"),
+            )
+            supplier_map[op_type_name] = (supplier_id, float(default_days))
+            if issue_messages:
+                issues[op_type_name] = issue_messages
+
+        return supplier_map, issues
 
     def _identify_external_groups(self, operations: List[ParsedOperation], part_no: str) -> List[ExternalGroup]:
         """识别连续外部工序组，并给外部工序填充 ext_group_id。"""
@@ -297,7 +371,7 @@ class RouteParser:
         group_counter = 1
 
         for op in operations:
-            if op.source == "external":
+            if op.source == SourceType.EXTERNAL.value:
                 if current_group is None:
                     group_id = f"{part_no}_EXT_{group_counter}"
                     current_group = ExternalGroup(

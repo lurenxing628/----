@@ -3,82 +3,135 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="aps-ui-template-env" content="{{ ui_template_env | default('unknown') }}">
+  <meta name="aps-ui-template-env-degraded" content="{{ '1' if ui_template_env_degraded else '0' }}">
   <title>{{ title or "排产系统" }}</title>
-  <style>
-    body { font-family: Arial, "Microsoft YaHei", sans-serif; margin: 24px; }
-    header { margin-bottom: 16px; }
-    nav a { margin-right: 12px; }
-    .container { max-width: 1080px; }
-    .card { border: 1px solid #ddd; padding: 16px; border-radius: 8px; margin-bottom: 16px; }
-    .muted { color: #666; }
-    .error { color: #b00020; }
-    .success { color: #1b5e20; }
-    .warning { color: #e65100; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-    th { background: #f6f6f6; text-align: left; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
-    .badge-new { background: #e8f5e9; }
-    .badge-update { background: #fff3e0; }
-    .badge-unchanged { background: #eceff1; }
-    .badge-skip { background: #ede7f6; }
-    .badge-error { background: #ffebee; }
-    pre { background: #f8f8f8; padding: 8px; overflow-x: auto; }
-  </style>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <script>
+    (function () {
+      var theme = "light";
+      try {
+        theme = localStorage.getItem("aps_theme") || "";
+      } catch (_e0) {}
+      if (!theme) {
+        try {
+          var m = document.cookie.match(/(?:^|; )aps_theme=([^;]+)/);
+          if (m && m[1]) {
+            theme = decodeURIComponent(m[1]);
+          }
+        } catch (_e1) {}
+      }
+      if (theme !== "dark" && theme !== "light") {
+        theme = "light";
+      }
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <script>
+    (function () {
+      var d = "";
+      try {
+        d = localStorage.getItem("aps_table_density:v1") || "";
+      } catch (_e0) {}
+      if (d !== "compact" && d !== "loose" && d !== "normal") {
+        d = "";
+      }
+      if (d && d !== "normal") {
+        document.documentElement.setAttribute("data-table-density", d);
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/compatibility.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/ui_contract.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}" media="print">
   {% block extra_head %}{% endblock %}
 </head>
 <body>
+  {% import "components/ui_macros.html" as ui with context %}
+
   <div class="container">
-    <header>
+    <header class="no-print">
       <nav>
-        <a href="{{ url_for('dashboard.index') }}">首页</a>
-        <a href="{{ url_for('personnel.list_page') }}">人员管理</a>
-        <a href="{{ url_for('equipment.list_page') }}">设备管理</a>
-        <a href="{{ url_for('process.list_parts') }}">工艺管理</a>
-        <a href="{{ url_for('scheduler.batches_page') }}">排产调度</a>
-        <a href="{{ url_for('material.materials_page') }}">物料管理</a>
-        <a href="{{ url_for('reports.index') }}">报表</a>
-        <a href="{{ url_for('system.backup_page') }}">系统管理</a>
-        <a href="{{ url_for('excel_demo.index') }}">Excel 导入演示</a>
+        <a href="{{ url_for('dashboard.index') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-schedule"/></svg> 首页</a>
+        <a href="{{ url_for('scheduler.batches_page') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-schedule"/></svg> 排产</a>
+        <a href="{{ url_for('process.list_parts') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-process"/></svg> 工艺</a>
+        <a href="{{ url_for('personnel.list_page') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-people"/></svg> 人员</a>
+        <a href="{{ url_for('equipment.list_page') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-device"/></svg> 设备</a>
+        <a href="{{ url_for('material.materials_page') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-material"/></svg> 物料</a>
+        <a href="{{ url_for('reports.index') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-chart"/></svg> 报表</a>
+        <a href="{{ url_for('system.backup_page') }}"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-settings"/></svg> 系统</a>
       </nav>
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-        <div class="muted">Win7 单机版：离线运行</div>
-        <form action="{{ url_for('system.ui_mode_set') }}" method="POST" style="display:flex; align-items:center; gap:6px;">
+      <div class="header-info aps-header-controls">
+        <form action="{{ url_for('system.ui_mode_set') }}" method="POST" class="inline-flex-wrap items-center aps-mode-picker">
           <input type="hidden" name="next" value="{{ request.full_path }}">
-          <span class="muted">界面：</span>
-          <select name="mode" onchange="this.form.submit()">
-            <option value="v1" {% if ui_mode == 'v1' %}selected{% endif %}>经典</option>
-            <option value="v2" {% if ui_mode == 'v2' %}selected{% endif %}>现代</option>
-          </select>
+          <span class="muted aps-mode-label">界面</span>
+          <div class="aps-mode-seg" role="group" aria-label="界面模式">
+            <button
+              type="submit"
+              name="mode"
+              value="v1"
+              class="aps-mode-seg-btn {% if ui_mode == 'v1' %}is-active{% endif %}"
+              aria-pressed="{% if ui_mode == 'v1' %}true{% else %}false{% endif %}"
+            >经典</button>
+            <button
+              type="submit"
+              name="mode"
+              value="v2"
+              class="aps-mode-seg-btn {% if ui_mode == 'v2' %}is-active{% endif %}"
+              aria-pressed="{% if ui_mode == 'v2' %}true{% else %}false{% endif %}"
+            >现代</button>
+          </div>
         </form>
+        <button
+          type="button"
+          id="apsTableDensityToggle"
+          class="btn btn-secondary btn-sm"
+          aria-label="切换表格密度"
+        >密度：标准</button>
+        <button
+          type="button"
+          id="apsThemeToggle"
+          class="aps-theme-switch btn-sm"
+          role="switch"
+          aria-pressed="false"
+          aria-checked="false"
+          aria-label="切换护眼模式"
+        >
+          <span class="aps-theme-switch-track" aria-hidden="true">
+            <span class="aps-theme-switch-thumb"></span>
+          </span>
+          <span id="apsThemeLabel" class="aps-theme-switch-text">护眼关</span>
+        </button>
       </div>
     </header>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="card">
-          {% for category, message in messages %}
-            <div class="{{ 'error' if category=='error' else 'warning' if category=='warning' else 'success' }}">{{ message }}</div>
-          {% endfor %}
-        </div>
+        {% for category, message in messages %}
+          <div class="flash-card flash-{{ category }}" data-flash="{{ category }}" role="alert" aria-live="assertive">
+            {{ message }}
+            <button type="button" class="flash-close" aria-label="关闭">&times;</button>
+          </div>
+        {% endfor %}
       {% endif %}
     {% endwith %}
 
     {% block content %}{% endblock %}
   </div>
-  <script>
-    // Simple confirmation script for forms
-    document.addEventListener('DOMContentLoaded', function() {
-      const forms = document.querySelectorAll('form[data-confirm]');
-      forms.forEach(form => {
-        form.addEventListener('submit', function(e) {
-          if (!confirm(this.dataset.confirm)) {
-            e.preventDefault();
-          }
-        });
-      });
-    });
-  </script>
+  {{ ui.floating_manual_button() }}
+  <div id="aps-toast-container" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='js/common.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/common_manual_popover.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/common_required.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/common_flash.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/common_theme.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/common_toast.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/common_confirm.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/common_table.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/common_draft.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/common_prefetch.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/table_resize.js') }}" defer></script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -41,6 +41,9 @@ class Config:
 
     # Excel模板
     EXCEL_TEMPLATE_DIR = os.environ.get("APS_EXCEL_TEMPLATE_DIR") or os.path.join(BASE_DIR, "templates_excel")
+    EXCEL_MAX_UPLOAD_BYTES = 16 * 1024 * 1024  # 16MB（Excel 文件本体）
+    # multipart/form-data 会包含 boundary/header 等额外开销，请求体上限需略大于文件本体上限。
+    MAX_CONTENT_LENGTH = EXCEL_MAX_UPLOAD_BYTES + 1 * 1024 * 1024
 
     # 排产默认配置（Phase 1 仅占位，后续模块会真正使用）
     DEFAULT_HOURS_PER_DAY = 8

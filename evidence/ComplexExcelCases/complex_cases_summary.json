@@ -5,9 +5,9 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 478001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case01_1_5czqbdq8",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case01_1_5czqbdq8\\aps.db",
-    "start_dt": "2026-02-14 08:00:00",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case01_1_p95o1ksi",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case01_1_p95o1ksi\\aps.db",
+    "start_dt": "2026-04-03 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case01\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case01\\run_01\\output",
     "runs": [
@@ -17,6 +17,7 @@
         "history": {
           "result_status": "success",
           "result_summary": {
+            "summary_schema_version": "1.1",
             "is_simulation": false,
             "version": 1,
             "strategy": "weighted",
@@ -30,6 +31,26 @@
             "algo": {
               "mode": "greedy",
               "objective": "min_overdue",
+              "comparison_metric": "overdue_count",
+              "config_snapshot": {
+                "sort_strategy": "weighted",
+                "priority_weight": 0.4,
+                "due_weight": 0.5,
+                "ready_weight": 0.1,
+                "holiday_default_efficiency": 0.8,
+                "enforce_ready_default": "no",
+                "prefer_primary_skill": "no",
+                "dispatch_mode": "batch_order",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "yes",
+                "ortools_enabled": "no",
+                "ortools_time_limit_seconds": 5,
+                "algo_mode": "greedy",
+                "time_budget_seconds": 5,
+                "objective": "min_overdue",
+                "freeze_window_enabled": "no",
+                "freeze_window_days": 0
+              },
               "time_budget_seconds": 5,
               "hard_constraints": [
                 "precedence",
@@ -42,27 +63,54 @@
               ],
               "best_score": [
                 0.0,
-                1.0,
-                81.77410493833332,
-                291.6859259258334,
+                2.0,
+                71.09025490305555,
+                291.2729709897222,
                 0.0
               ],
+              "best_score_schema": [
+                {
+                  "index": 0,
+                  "key": "failed_ops",
+                  "label": "失败工序数"
+                },
+                {
+                  "index": 1,
+                  "key": "overdue_count",
+                  "label": "超期批次数"
+                },
+                {
+                  "index": 2,
+                  "key": "total_tardiness_hours",
+                  "label": "总拖期小时"
+                },
+                {
+                  "index": 3,
+                  "key": "makespan_hours",
+                  "label": "总工期小时"
+                },
+                {
+                  "index": 4,
+                  "key": "changeover_count",
+                  "label": "换型次数"
+                }
+              ],
               "metrics": {
-                "overdue_count": 1,
-                "total_tardiness_hours": 81.7741,
-                "makespan_hours": 291.6859,
+                "overdue_count": 2,
+                "total_tardiness_hours": 71.0903,
+                "makespan_hours": 291.273,
                 "changeover_count": 0,
-                "weighted_tardiness_hours": 81.7741,
-                "makespan_internal_hours": 75.6859,
-                "machine_used_count": 3,
-                "operator_used_count": 8,
-                "machine_busy_hours_total": 83.0276,
-                "operator_busy_hours_total": 83.0276,
-                "machine_util_avg": 0.365667,
-                "operator_util_avg": 0.137125,
-                "machine_load_cv": 0.005617,
-                "operator_load_cv": 0.749607,
-                "internal_horizon_hours": 75.6859,
+                "weighted_tardiness_hours": 71.0903,
+                "makespan_internal_hours": 291.273,
+                "machine_used_count": 17,
+                "operator_used_count": 23,
+                "machine_busy_hours_total": 1733.4984,
+                "operator_busy_hours_total": 1733.4984,
+                "machine_util_avg": 0.350086,
+                "operator_util_avg": 0.258759,
+                "machine_load_cv": 0.482181,
+                "operator_load_cv": 0.379944,
+                "internal_horizon_hours": 291.273,
                 "util_defined": true
               },
               "best_batch_order": [
@@ -98,62 +146,69 @@
                   "dispatch_rule": "slack",
                   "score": [
                     0.0,
-                    1.0,
-                    81.77410493833332,
-                    291.6859259258334,
+                    2.0,
+                    71.09025490305555,
+                    291.2729709897222,
                     0.0
                   ],
                   "failed_ops": 0,
                   "metrics": {
-                    "overdue_count": 1,
-                    "total_tardiness_hours": 81.7741,
-                    "makespan_hours": 291.6859,
+                    "overdue_count": 2,
+                    "total_tardiness_hours": 71.0903,
+                    "makespan_hours": 291.273,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 81.7741,
-                    "makespan_internal_hours": 75.6859,
-                    "machine_used_count": 3,
-                    "operator_used_count": 8,
-                    "machine_busy_hours_total": 83.0276,
-                    "operator_busy_hours_total": 83.0276,
-                    "machine_util_avg": 0.365667,
-                    "operator_util_avg": 0.137125,
-                    "machine_load_cv": 0.005617,
-                    "operator_load_cv": 0.749607,
-                    "internal_horizon_hours": 75.6859,
+                    "weighted_tardiness_hours": 71.0903,
+                    "makespan_internal_hours": 291.273,
+                    "machine_used_count": 17,
+                    "operator_used_count": 23,
+                    "machine_busy_hours_total": 1733.4984,
+                    "operator_busy_hours_total": 1733.4984,
+                    "machine_util_avg": 0.350086,
+                    "operator_util_avg": 0.258759,
+                    "machine_load_cv": 0.482181,
+                    "operator_load_cv": 0.379944,
+                    "internal_horizon_hours": 291.273,
                     "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {
+                      "internal_auto_assign_attempt_count": 207,
+                      "internal_auto_assign_success_count": 207
+                    },
+                    "param_fallbacks": {}
                   }
                 }
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 742,
+                  "elapsed_ms": 113,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
                   "dispatch_rule": "slack",
                   "score": [
                     0.0,
-                    1.0,
-                    81.77410493833332,
-                    291.6859259258334,
+                    2.0,
+                    71.09025490305555,
+                    291.2729709897222,
                     0.0
                   ],
                   "metrics": {
-                    "overdue_count": 1,
-                    "total_tardiness_hours": 81.7741,
-                    "makespan_hours": 291.6859,
+                    "overdue_count": 2,
+                    "total_tardiness_hours": 71.0903,
+                    "makespan_hours": 291.273,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 81.7741,
-                    "makespan_internal_hours": 75.6859,
-                    "machine_used_count": 3,
-                    "operator_used_count": 8,
-                    "machine_busy_hours_total": 83.0276,
-                    "operator_busy_hours_total": 83.0276,
-                    "machine_util_avg": 0.365667,
-                    "operator_util_avg": 0.137125,
-                    "machine_load_cv": 0.005617,
-                    "operator_load_cv": 0.749607,
-                    "internal_horizon_hours": 75.6859,
+                    "weighted_tardiness_hours": 71.0903,
+                    "makespan_internal_hours": 291.273,
+                    "machine_used_count": 17,
+                    "operator_used_count": 23,
+                    "machine_busy_hours_total": 1733.4984,
+                    "operator_busy_hours_total": 1733.4984,
+                    "machine_util_avg": 0.350086,
+                    "operator_util_avg": 0.258759,
+                    "machine_load_cv": 0.482181,
+                    "operator_load_cv": 0.379944,
+                    "internal_horizon_hours": 291.273,
                     "util_defined": true
                   }
                 }
@@ -162,7 +217,11 @@
                 "loaded_ok": true,
                 "degraded": false,
                 "degradation_reason": null,
-                "extend_attempted": true
+                "extend_attempted": true,
+                "load_partial_fail_count": 0,
+                "load_partial_fail_machines_sample": [],
+                "extend_partial_fail_count": 0,
+                "extend_partial_fail_machines_sample": []
               },
               "freeze_window": {
                 "enabled": "no",
@@ -172,6 +231,16 @@
                 "frozen_batch_ids_sample": [],
                 "degraded": false,
                 "degradation_reason": null
+              },
+              "resource_pool": {
+                "enabled": "yes",
+                "attempted": true,
+                "degraded": false,
+                "degradation_reason": null
+              },
+              "fallback_counts": {
+                "internal_auto_assign_attempt_count": 207,
+                "internal_auto_assign_success_count": 207
               }
             },
             "selected_batch_ids": [
@@ -199,7 +268,7 @@
               "B1_0022",
               "B1_0023"
             ],
-            "start_time": "2026-02-14 08:00:00",
+            "start_time": "2026-04-03 08:00:00",
             "end_date": null,
             "counts": {
               "batch_count": 23,
@@ -208,18 +277,23 @@
               "failed_ops": 0
             },
             "overdue_batches": {
-              "count": 1,
+              "count": 2,
               "items": [
                 {
+                  "batch_id": "B1_0003",
+                  "due_date": "2026-04-12",
+                  "finish_time": "2026-04-13 12:00:25"
+                },
+                {
                   "batch_id": "B1_0015",
-                  "due_date": "2026-02-22",
-                  "finish_time": "2026-02-26 09:46:25"
+                  "due_date": "2026-04-11",
+                  "finish_time": "2026-04-14 11:04:59"
                 }
               ]
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 869
+            "time_cost_ms": 141
           }
         },
         "sanity_issues": []
@@ -233,9 +307,9 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 479001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case02_1_vmkoeted",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case02_1_vmkoeted\\aps.db",
-    "start_dt": "2026-02-14 08:00:00",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case02_1_yy2y7sxy",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case02_1_yy2y7sxy\\aps.db",
+    "start_dt": "2026-04-03 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case02\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case02\\run_01\\output",
     "runs": [
@@ -245,6 +319,7 @@
         "history": {
           "result_status": "success",
           "result_summary": {
+            "summary_schema_version": "1.1",
             "is_simulation": false,
             "version": 1,
             "strategy": "weighted",
@@ -258,6 +333,26 @@
             "algo": {
               "mode": "greedy",
               "objective": "min_overdue",
+              "comparison_metric": "overdue_count",
+              "config_snapshot": {
+                "sort_strategy": "weighted",
+                "priority_weight": 0.4,
+                "due_weight": 0.5,
+                "ready_weight": 0.1,
+                "holiday_default_efficiency": 0.8,
+                "enforce_ready_default": "no",
+                "prefer_primary_skill": "no",
+                "dispatch_mode": "batch_order",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "yes",
+                "ortools_enabled": "no",
+                "ortools_time_limit_seconds": 5,
+                "algo_mode": "greedy",
+                "time_budget_seconds": 5,
+                "objective": "min_overdue",
+                "freeze_window_enabled": "no",
+                "freeze_window_days": 0
+              },
               "time_budget_seconds": 5,
               "hard_constraints": [
                 "precedence",
@@ -271,62 +366,91 @@
               "best_score": [
                 0.0,
                 2.0,
-                141.38233641277776,
-                340.1062355661111,
+                68.04280339222223,
+                435.1247443763889,
                 0.0
+              ],
+              "best_score_schema": [
+                {
+                  "index": 0,
+                  "key": "failed_ops",
+                  "label": "失败工序数"
+                },
+                {
+                  "index": 1,
+                  "key": "overdue_count",
+                  "label": "超期批次数"
+                },
+                {
+                  "index": 2,
+                  "key": "total_tardiness_hours",
+                  "label": "总拖期小时"
+                },
+                {
+                  "index": 3,
+                  "key": "makespan_hours",
+                  "label": "总工期小时"
+                },
+                {
+                  "index": 4,
+                  "key": "changeover_count",
+                  "label": "换型次数"
+                }
               ],
               "metrics": {
                 "overdue_count": 2,
-                "total_tardiness_hours": 141.3823,
-                "makespan_hours": 340.1062,
+                "total_tardiness_hours": 68.0428,
+                "makespan_hours": 435.1247,
                 "changeover_count": 0,
-                "weighted_tardiness_hours": 162.4051,
-                "makespan_internal_hours": 340.1062,
+                "weighted_tardiness_hours": 68.0428,
+                "makespan_internal_hours": 435.1247,
                 "machine_used_count": 12,
                 "operator_used_count": 18,
-                "machine_busy_hours_total": 658.3993,
-                "operator_busy_hours_total": 658.3993,
-                "machine_util_avg": 0.161322,
-                "operator_util_avg": 0.107548,
-                "machine_load_cv": 0.639608,
-                "operator_load_cv": 0.515159,
-                "internal_horizon_hours": 340.1062,
+                "machine_busy_hours_total": 728.5522,
+                "operator_busy_hours_total": 728.5522,
+                "machine_util_avg": 0.139529,
+                "operator_util_avg": 0.09302,
+                "machine_load_cv": 0.838323,
+                "operator_load_cv": 0.404863,
+                "internal_horizon_hours": 435.1247,
                 "util_defined": true
               },
               "best_batch_order": [
                 "B2_0032",
-                "B2_0025",
-                "B2_0024",
-                "B2_0017",
-                "B2_0007",
-                "B2_0009",
-                "B2_0015",
-                "B2_0026",
-                "B2_0012",
-                "B2_0029",
-                "B2_0002",
-                "B2_0013",
-                "B2_0018",
-                "B2_0004",
-                "B2_0020",
-                "B2_0014",
-                "B2_0011",
                 "B2_0023",
-                "B2_0033",
-                "B2_0001",
-                "B2_0027",
-                "B2_0028",
-                "B2_0030",
-                "B2_0005",
                 "B2_0031",
-                "B2_0003",
+                "B2_0020",
+                "B2_0022",
+                "B2_0015",
+                "B2_0027",
+                "B2_0006",
+                "B2_0007",
                 "B2_0008",
-                "B2_0016",
+                "B2_0035",
+                "B2_0013",
+                "B2_0024",
+                "B2_0010",
+                "B2_0017",
+                "B2_0001",
+                "B2_0030",
+                "B2_0003",
+                "B2_0009",
                 "B2_0019",
                 "B2_0021",
-                "B2_0006",
-                "B2_0010",
-                "B2_0022"
+                "B2_0012",
+                "B2_0011",
+                "B2_0018",
+                "B2_0025",
+                "B2_0026",
+                "B2_0028",
+                "B2_0016",
+                "B2_0004",
+                "B2_0029",
+                "B2_0002",
+                "B2_0014",
+                "B2_0034",
+                "B2_0005",
+                "B2_0033"
               ],
               "attempts": [
                 {
@@ -337,34 +461,41 @@
                   "score": [
                     0.0,
                     2.0,
-                    141.38233641277776,
-                    340.1062355661111,
+                    68.04280339222223,
+                    435.1247443763889,
                     0.0
                   ],
                   "failed_ops": 0,
                   "metrics": {
                     "overdue_count": 2,
-                    "total_tardiness_hours": 141.3823,
-                    "makespan_hours": 340.1062,
+                    "total_tardiness_hours": 68.0428,
+                    "makespan_hours": 435.1247,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 162.4051,
-                    "makespan_internal_hours": 340.1062,
+                    "weighted_tardiness_hours": 68.0428,
+                    "makespan_internal_hours": 435.1247,
                     "machine_used_count": 12,
                     "operator_used_count": 18,
-                    "machine_busy_hours_total": 658.3993,
-                    "operator_busy_hours_total": 658.3993,
-                    "machine_util_avg": 0.161322,
-                    "operator_util_avg": 0.107548,
-                    "machine_load_cv": 0.639608,
-                    "operator_load_cv": 0.515159,
-                    "internal_horizon_hours": 340.1062,
+                    "machine_busy_hours_total": 728.5522,
+                    "operator_busy_hours_total": 728.5522,
+                    "machine_util_avg": 0.139529,
+                    "operator_util_avg": 0.09302,
+                    "machine_load_cv": 0.838323,
+                    "operator_load_cv": 0.404863,
+                    "internal_horizon_hours": 435.1247,
                     "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {
+                      "internal_auto_assign_attempt_count": 192,
+                      "internal_auto_assign_success_count": 192
+                    },
+                    "param_fallbacks": {}
                   }
                 }
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 7942,
+                  "elapsed_ms": 146,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
@@ -372,26 +503,26 @@
                   "score": [
                     0.0,
                     2.0,
-                    141.38233641277776,
-                    340.1062355661111,
+                    68.04280339222223,
+                    435.1247443763889,
                     0.0
                   ],
                   "metrics": {
                     "overdue_count": 2,
-                    "total_tardiness_hours": 141.3823,
-                    "makespan_hours": 340.1062,
+                    "total_tardiness_hours": 68.0428,
+                    "makespan_hours": 435.1247,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 162.4051,
-                    "makespan_internal_hours": 340.1062,
+                    "weighted_tardiness_hours": 68.0428,
+                    "makespan_internal_hours": 435.1247,
                     "machine_used_count": 12,
                     "operator_used_count": 18,
-                    "machine_busy_hours_total": 658.3993,
-                    "operator_busy_hours_total": 658.3993,
-                    "machine_util_avg": 0.161322,
-                    "operator_util_avg": 0.107548,
-                    "machine_load_cv": 0.639608,
-                    "operator_load_cv": 0.515159,
-                    "internal_horizon_hours": 340.1062,
+                    "machine_busy_hours_total": 728.5522,
+                    "operator_busy_hours_total": 728.5522,
+                    "machine_util_avg": 0.139529,
+                    "operator_util_avg": 0.09302,
+                    "machine_load_cv": 0.838323,
+                    "operator_load_cv": 0.404863,
+                    "internal_horizon_hours": 435.1247,
                     "util_defined": true
                   }
                 }
@@ -400,7 +531,11 @@
                 "loaded_ok": true,
                 "degraded": false,
                 "degradation_reason": null,
-                "extend_attempted": true
+                "extend_attempted": true,
+                "load_partial_fail_count": 0,
+                "load_partial_fail_machines_sample": [],
+                "extend_partial_fail_count": 0,
+                "extend_partial_fail_machines_sample": []
               },
               "freeze_window": {
                 "enabled": "no",
@@ -410,6 +545,16 @@
                 "frozen_batch_ids_sample": [],
                 "degraded": false,
                 "degradation_reason": null
+              },
+              "resource_pool": {
+                "enabled": "yes",
+                "attempted": true,
+                "degraded": false,
+                "degradation_reason": null
+              },
+              "fallback_counts": {
+                "internal_auto_assign_attempt_count": 192,
+                "internal_auto_assign_success_count": 192
               }
             },
             "selected_batch_ids": [
@@ -445,34 +590,36 @@
               "B2_0030",
               "B2_0031",
               "B2_0032",
-              "B2_0033"
+              "B2_0033",
+              "B2_0034",
+              "B2_0035"
             ],
-            "start_time": "2026-02-14 08:00:00",
+            "start_time": "2026-04-03 08:00:00",
             "end_date": null,
             "counts": {
-              "batch_count": 33,
-              "op_count": 254,
-              "scheduled_ops": 254,
+              "batch_count": 35,
+              "op_count": 268,
+              "scheduled_ops": 268,
               "failed_ops": 0
             },
             "overdue_batches": {
               "count": 2,
               "items": [
                 {
-                  "batch_id": "B2_0029",
-                  "due_date": "2026-02-24",
-                  "finish_time": "2026-03-02 10:52:14"
+                  "batch_id": "B2_0017",
+                  "due_date": "2026-04-14",
+                  "finish_time": "2026-04-15 10:20:28"
                 },
                 {
-                  "batch_id": "B2_0032",
-                  "due_date": "2026-02-26",
-                  "finish_time": "2026-02-27 10:30:40"
+                  "batch_id": "B2_0030",
+                  "due_date": "2026-04-17",
+                  "finish_time": "2026-04-20 09:42:05"
                 }
               ]
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 8004
+            "time_cost_ms": 181
           }
         },
         "sanity_issues": []
@@ -486,9 +633,9 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 480001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case03_1_cgaooi8u",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case03_1_cgaooi8u\\aps.db",
-    "start_dt": "2026-02-14 08:00:00",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case03_1_dpl6kgpa",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case03_1_dpl6kgpa\\aps.db",
+    "start_dt": "2026-04-03 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case03\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case03\\run_01\\output",
     "runs": [
@@ -498,6 +645,7 @@
         "history": {
           "result_status": "success",
           "result_summary": {
+            "summary_schema_version": "1.1",
             "is_simulation": false,
             "version": 1,
             "strategy": "weighted",
@@ -505,12 +653,32 @@
               "priority_weight": 0.4,
               "due_weight": 0.5,
               "dispatch_mode": "sgs",
-              "dispatch_rule": "slack",
+              "dispatch_rule": "atc",
               "auto_assign_enabled": "yes"
             },
             "algo": {
               "mode": "greedy",
               "objective": "min_tardiness",
+              "comparison_metric": "total_tardiness_hours",
+              "config_snapshot": {
+                "sort_strategy": "weighted",
+                "priority_weight": 0.4,
+                "due_weight": 0.5,
+                "ready_weight": 0.1,
+                "holiday_default_efficiency": 0.8,
+                "enforce_ready_default": "no",
+                "prefer_primary_skill": "no",
+                "dispatch_mode": "sgs",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "yes",
+                "ortools_enabled": "no",
+                "ortools_time_limit_seconds": 5,
+                "algo_mode": "greedy",
+                "time_budget_seconds": 5,
+                "objective": "min_tardiness",
+                "freeze_window_enabled": "no",
+                "freeze_window_days": 0
+              },
               "time_budget_seconds": 5,
               "hard_constraints": [
                 "precedence",
@@ -523,27 +691,54 @@
               ],
               "best_score": [
                 0.0,
-                532.6017410647223,
-                7.0,
-                696.8511749347222,
+                388.11778429916666,
+                9.0,
+                769.4071146247221,
                 0.0
               ],
+              "best_score_schema": [
+                {
+                  "index": 0,
+                  "key": "failed_ops",
+                  "label": "失败工序数"
+                },
+                {
+                  "index": 1,
+                  "key": "total_tardiness_hours",
+                  "label": "总拖期小时"
+                },
+                {
+                  "index": 2,
+                  "key": "overdue_count",
+                  "label": "超期批次数"
+                },
+                {
+                  "index": 3,
+                  "key": "makespan_hours",
+                  "label": "总工期小时"
+                },
+                {
+                  "index": 4,
+                  "key": "changeover_count",
+                  "label": "换型次数"
+                }
+              ],
               "metrics": {
-                "overdue_count": 7,
-                "total_tardiness_hours": 532.6017,
-                "makespan_hours": 696.8512,
+                "overdue_count": 9,
+                "total_tardiness_hours": 388.1178,
+                "makespan_hours": 769.4071,
                 "changeover_count": 0,
-                "weighted_tardiness_hours": 615.0537,
-                "makespan_internal_hours": 696.8512,
+                "weighted_tardiness_hours": 447.8074,
+                "makespan_internal_hours": 769.4071,
                 "machine_used_count": 17,
                 "operator_used_count": 22,
-                "machine_busy_hours_total": 3126.7165,
-                "operator_busy_hours_total": 3126.7165,
-                "machine_util_avg": 0.263937,
-                "operator_util_avg": 0.203951,
-                "machine_load_cv": 0.918827,
-                "operator_load_cv": 0.291662,
-                "internal_horizon_hours": 696.8512,
+                "machine_busy_hours_total": 3805.2497,
+                "operator_busy_hours_total": 3805.2497,
+                "machine_util_avg": 0.290923,
+                "operator_util_avg": 0.224804,
+                "machine_load_cv": 0.788309,
+                "operator_load_cv": 0.224622,
+                "internal_horizon_hours": 769.4071,
                 "util_defined": true
               },
               "best_batch_order": [
@@ -613,62 +808,211 @@
                   "dispatch_rule": "slack",
                   "score": [
                     0.0,
-                    532.6017410647223,
-                    7.0,
-                    696.8511749347222,
+                    823.0049763283333,
+                    11.0,
+                    751.3675889327778,
                     0.0
                   ],
                   "failed_ops": 0,
                   "metrics": {
-                    "overdue_count": 7,
-                    "total_tardiness_hours": 532.6017,
-                    "makespan_hours": 696.8512,
+                    "overdue_count": 11,
+                    "total_tardiness_hours": 823.005,
+                    "makespan_hours": 751.3676,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 615.0537,
-                    "makespan_internal_hours": 696.8512,
+                    "weighted_tardiness_hours": 942.1756,
+                    "makespan_internal_hours": 751.3676,
                     "machine_used_count": 17,
                     "operator_used_count": 22,
-                    "machine_busy_hours_total": 3126.7165,
-                    "operator_busy_hours_total": 3126.7165,
-                    "machine_util_avg": 0.263937,
-                    "operator_util_avg": 0.203951,
-                    "machine_load_cv": 0.918827,
-                    "operator_load_cv": 0.291662,
-                    "internal_horizon_hours": 696.8512,
+                    "machine_busy_hours_total": 3541.579,
+                    "operator_busy_hours_total": 3541.579,
+                    "machine_util_avg": 0.277265,
+                    "operator_util_avg": 0.21425,
+                    "machine_load_cv": 0.847865,
+                    "operator_load_cv": 0.270053,
+                    "internal_horizon_hours": 751.3676,
                     "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {
+                      "internal_auto_assign_attempt_count": 285,
+                      "internal_auto_assign_success_count": 285
+                    },
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:weighted|sgs:cr",
+                  "strategy": "weighted",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "cr",
+                  "score": [
+                    0.0,
+                    718.6973176361112,
+                    14.0,
+                    603.6535044291667,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 14,
+                    "total_tardiness_hours": 718.6973,
+                    "makespan_hours": 603.6535,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 777.3158,
+                    "makespan_internal_hours": 603.6535,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3477.4223,
+                    "operator_busy_hours_total": 3477.4223,
+                    "machine_util_avg": 0.33886,
+                    "operator_util_avg": 0.261847,
+                    "machine_load_cv": 0.753645,
+                    "operator_load_cv": 0.156996,
+                    "internal_horizon_hours": 603.6535,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {
+                      "internal_auto_assign_attempt_count": 285,
+                      "internal_auto_assign_success_count": 285
+                    },
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:weighted|sgs:atc",
+                  "strategy": "weighted",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "atc",
+                  "score": [
+                    0.0,
+                    388.11778429916666,
+                    9.0,
+                    769.4071146247221,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 9,
+                    "total_tardiness_hours": 388.1178,
+                    "makespan_hours": 769.4071,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 447.8074,
+                    "makespan_internal_hours": 769.4071,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3805.2497,
+                    "operator_busy_hours_total": 3805.2497,
+                    "machine_util_avg": 0.290923,
+                    "operator_util_avg": 0.224804,
+                    "machine_load_cv": 0.788309,
+                    "operator_load_cv": 0.224622,
+                    "internal_horizon_hours": 769.4071,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {
+                      "internal_auto_assign_attempt_count": 285,
+                      "internal_auto_assign_success_count": 285
+                    },
+                    "param_fallbacks": {}
                   }
                 }
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 1699135,
+                  "elapsed_ms": 8179,
                   "tag": "start:weighted|sgs:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "sgs",
                   "dispatch_rule": "slack",
                   "score": [
                     0.0,
-                    532.6017410647223,
-                    7.0,
-                    696.8511749347222,
+                    823.0049763283333,
+                    11.0,
+                    751.3675889327778,
                     0.0
                   ],
                   "metrics": {
-                    "overdue_count": 7,
-                    "total_tardiness_hours": 532.6017,
-                    "makespan_hours": 696.8512,
+                    "overdue_count": 11,
+                    "total_tardiness_hours": 823.005,
+                    "makespan_hours": 751.3676,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 615.0537,
-                    "makespan_internal_hours": 696.8512,
+                    "weighted_tardiness_hours": 942.1756,
+                    "makespan_internal_hours": 751.3676,
                     "machine_used_count": 17,
                     "operator_used_count": 22,
-                    "machine_busy_hours_total": 3126.7165,
-                    "operator_busy_hours_total": 3126.7165,
-                    "machine_util_avg": 0.263937,
-                    "operator_util_avg": 0.203951,
-                    "machine_load_cv": 0.918827,
-                    "operator_load_cv": 0.291662,
-                    "internal_horizon_hours": 696.8512,
+                    "machine_busy_hours_total": 3541.579,
+                    "operator_busy_hours_total": 3541.579,
+                    "machine_util_avg": 0.277265,
+                    "operator_util_avg": 0.21425,
+                    "machine_load_cv": 0.847865,
+                    "operator_load_cv": 0.270053,
+                    "internal_horizon_hours": 751.3676,
+                    "util_defined": true
+                  }
+                },
+                {
+                  "elapsed_ms": 17332,
+                  "tag": "start:weighted|sgs:cr",
+                  "strategy": "weighted",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "cr",
+                  "score": [
+                    0.0,
+                    718.6973176361112,
+                    14.0,
+                    603.6535044291667,
+                    0.0
+                  ],
+                  "metrics": {
+                    "overdue_count": 14,
+                    "total_tardiness_hours": 718.6973,
+                    "makespan_hours": 603.6535,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 777.3158,
+                    "makespan_internal_hours": 603.6535,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3477.4223,
+                    "operator_busy_hours_total": 3477.4223,
+                    "machine_util_avg": 0.33886,
+                    "operator_util_avg": 0.261847,
+                    "machine_load_cv": 0.753645,
+                    "operator_load_cv": 0.156996,
+                    "internal_horizon_hours": 603.6535,
+                    "util_defined": true
+                  }
+                },
+                {
+                  "elapsed_ms": 25864,
+                  "tag": "start:weighted|sgs:atc",
+                  "strategy": "weighted",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "atc",
+                  "score": [
+                    0.0,
+                    388.11778429916666,
+                    9.0,
+                    769.4071146247221,
+                    0.0
+                  ],
+                  "metrics": {
+                    "overdue_count": 9,
+                    "total_tardiness_hours": 388.1178,
+                    "makespan_hours": 769.4071,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 447.8074,
+                    "makespan_internal_hours": 769.4071,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3805.2497,
+                    "operator_busy_hours_total": 3805.2497,
+                    "machine_util_avg": 0.290923,
+                    "operator_util_avg": 0.224804,
+                    "machine_load_cv": 0.788309,
+                    "operator_load_cv": 0.224622,
+                    "internal_horizon_hours": 769.4071,
                     "util_defined": true
                   }
                 }
@@ -677,7 +1021,11 @@
                 "loaded_ok": true,
                 "degraded": false,
                 "degradation_reason": null,
-                "extend_attempted": true
+                "extend_attempted": true,
+                "load_partial_fail_count": 0,
+                "load_partial_fail_machines_sample": [],
+                "extend_partial_fail_count": 0,
+                "extend_partial_fail_machines_sample": []
               },
               "freeze_window": {
                 "enabled": "no",
@@ -687,6 +1035,16 @@
                 "frozen_batch_ids_sample": [],
                 "degraded": false,
                 "degradation_reason": null
+              },
+              "resource_pool": {
+                "enabled": "yes",
+                "attempted": true,
+                "degraded": false,
+                "degradation_reason": null
+              },
+              "fallback_counts": {
+                "internal_auto_assign_attempt_count": 285,
+                "internal_auto_assign_success_count": 285
               }
             },
             "selected_batch_ids": [
@@ -748,7 +1106,7 @@
               "B3_0056",
               "B3_0057"
             ],
-            "start_time": "2026-02-14 08:00:00",
+            "start_time": "2026-04-03 08:00:00",
             "end_date": null,
             "counts": {
               "batch_count": 57,
@@ -757,48 +1115,58 @@
               "failed_ops": 0
             },
             "overdue_batches": {
-              "count": 7,
+              "count": 9,
               "items": [
                 {
-                  "batch_id": "B3_0007",
-                  "due_date": "2026-02-28",
-                  "finish_time": "2026-03-02 14:06:43"
-                },
-                {
-                  "batch_id": "B3_0012",
-                  "due_date": "2026-03-06",
-                  "finish_time": "2026-03-11 09:36:45"
-                },
-                {
-                  "batch_id": "B3_0013",
-                  "due_date": "2026-03-07",
-                  "finish_time": "2026-03-11 10:27:06"
+                  "batch_id": "B3_0016",
+                  "due_date": "2026-04-24",
+                  "finish_time": "2026-04-27 11:41:22"
                 },
                 {
                   "batch_id": "B3_0025",
-                  "due_date": "2026-03-14",
-                  "finish_time": "2026-03-17 08:27:15"
+                  "due_date": "2026-05-01",
+                  "finish_time": "2026-05-05 08:31:56"
                 },
                 {
                   "batch_id": "B3_0027",
-                  "due_date": "2026-03-14",
-                  "finish_time": "2026-03-17 08:51:04"
+                  "due_date": "2026-05-01",
+                  "finish_time": "2026-05-04 08:51:04"
                 },
                 {
-                  "batch_id": "B3_0037",
-                  "due_date": "2026-03-01",
-                  "finish_time": "2026-03-02 14:27:09"
+                  "batch_id": "B3_0035",
+                  "due_date": "2026-04-19",
+                  "finish_time": "2026-04-21 13:19:35"
+                },
+                {
+                  "batch_id": "B3_0039",
+                  "due_date": "2026-04-30",
+                  "finish_time": "2026-05-04 12:52:48"
+                },
+                {
+                  "batch_id": "B3_0043",
+                  "due_date": "2026-05-03",
+                  "finish_time": "2026-05-04 13:13:02"
+                },
+                {
+                  "batch_id": "B3_0045",
+                  "due_date": "2026-05-04",
+                  "finish_time": "2026-05-05 08:54:32"
+                },
+                {
+                  "batch_id": "B3_0050",
+                  "due_date": "2026-04-13",
+                  "finish_time": "2026-04-14 08:43:14"
                 },
                 {
                   "batch_id": "B3_0057",
-                  "due_date": "2026-03-02",
-                  "finish_time": "2026-03-10 10:39:54"
+                  "due_date": "2026-04-19",
+                  "finish_time": "2026-04-21 13:59:27"
                 }
               ]
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 1699201
+            "time_cost_ms": 25912
           }
         },
         "sanity_issues": []
@@ -809,6 +1177,7 @@
         "history": {
           "result_status": "success",
           "result_summary": {
+            "summary_schema_version": "1.1",
             "is_simulation": false,
             "version": 2,
             "strategy": "weighted",
@@ -822,6 +1191,26 @@
             "algo": {
               "mode": "improve",
               "objective": "min_tardiness",
+              "comparison_metric": "total_tardiness_hours",
+              "config_snapshot": {
+                "sort_strategy": "weighted",
+                "priority_weight": 0.4,
+                "due_weight": 0.5,
+                "ready_weight": 0.1,
+                "holiday_default_efficiency": 0.8,
+                "enforce_ready_default": "no",
+                "prefer_primary_skill": "no",
+                "dispatch_mode": "sgs",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "yes",
+                "ortools_enabled": "no",
+                "ortools_time_limit_seconds": 5,
+                "algo_mode": "improve",
+                "time_budget_seconds": 15,
+                "objective": "min_tardiness",
+                "freeze_window_enabled": "no",
+                "freeze_window_days": 0
+              },
               "time_budget_seconds": 15,
               "hard_constraints": [
                 "precedence",
@@ -834,27 +1223,54 @@
               ],
               "best_score": [
                 0.0,
-                894.1588344427778,
-                12.0,
-                696.8511749347222,
+                478.932511115,
+                11.0,
+                774.5344241199999,
                 0.0
               ],
+              "best_score_schema": [
+                {
+                  "index": 0,
+                  "key": "failed_ops",
+                  "label": "失败工序数"
+                },
+                {
+                  "index": 1,
+                  "key": "total_tardiness_hours",
+                  "label": "总拖期小时"
+                },
+                {
+                  "index": 2,
+                  "key": "overdue_count",
+                  "label": "超期批次数"
+                },
+                {
+                  "index": 3,
+                  "key": "makespan_hours",
+                  "label": "总工期小时"
+                },
+                {
+                  "index": 4,
+                  "key": "changeover_count",
+                  "label": "换型次数"
+                }
+              ],
               "metrics": {
-                "overdue_count": 12,
-                "total_tardiness_hours": 894.1588,
-                "makespan_hours": 696.8512,
+                "overdue_count": 11,
+                "total_tardiness_hours": 478.9325,
+                "makespan_hours": 774.5344,
                 "changeover_count": 0,
-                "weighted_tardiness_hours": 977.7121,
-                "makespan_internal_hours": 696.8512,
+                "weighted_tardiness_hours": 735.9967,
+                "makespan_internal_hours": 774.5344,
                 "machine_used_count": 17,
                 "operator_used_count": 22,
-                "machine_busy_hours_total": 3073.4925,
-                "operator_busy_hours_total": 3073.4925,
-                "machine_util_avg": 0.259444,
-                "operator_util_avg": 0.200479,
-                "machine_load_cv": 0.973394,
-                "operator_load_cv": 0.503502,
-                "internal_horizon_hours": 696.8512,
+                "machine_busy_hours_total": 3455.0558,
+                "operator_busy_hours_total": 3455.0558,
+                "machine_util_avg": 0.262401,
+                "operator_util_avg": 0.202764,
+                "machine_load_cv": 0.744878,
+                "operator_load_cv": 0.412192,
+                "internal_horizon_hours": 774.5344,
                 "util_defined": true
               },
               "best_batch_order": [
@@ -924,62 +1340,462 @@
                   "dispatch_rule": "slack",
                   "score": [
                     0.0,
-                    894.1588344427778,
-                    12.0,
-                    696.8511749347222,
+                    478.932511115,
+                    11.0,
+                    774.5344241199999,
                     0.0
                   ],
                   "failed_ops": 0,
                   "metrics": {
-                    "overdue_count": 12,
-                    "total_tardiness_hours": 894.1588,
-                    "makespan_hours": 696.8512,
+                    "overdue_count": 11,
+                    "total_tardiness_hours": 478.9325,
+                    "makespan_hours": 774.5344,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 977.7121,
-                    "makespan_internal_hours": 696.8512,
+                    "weighted_tardiness_hours": 735.9967,
+                    "makespan_internal_hours": 774.5344,
                     "machine_used_count": 17,
                     "operator_used_count": 22,
-                    "machine_busy_hours_total": 3073.4925,
-                    "operator_busy_hours_total": 3073.4925,
-                    "machine_util_avg": 0.259444,
-                    "operator_util_avg": 0.200479,
-                    "machine_load_cv": 0.973394,
-                    "operator_load_cv": 0.503502,
-                    "internal_horizon_hours": 696.8512,
+                    "machine_busy_hours_total": 3455.0558,
+                    "operator_busy_hours_total": 3455.0558,
+                    "machine_util_avg": 0.262401,
+                    "operator_util_avg": 0.202764,
+                    "machine_load_cv": 0.744878,
+                    "operator_load_cv": 0.412192,
+                    "internal_horizon_hours": 774.5344,
                     "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:priority_first|sgs:slack",
+                  "strategy": "priority_first",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "slack",
+                  "score": [
+                    0.0,
+                    478.932511115,
+                    11.0,
+                    774.5344241199999,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 11,
+                    "total_tardiness_hours": 478.9325,
+                    "makespan_hours": 774.5344,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 735.9967,
+                    "makespan_internal_hours": 774.5344,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3455.0558,
+                    "operator_busy_hours_total": 3455.0558,
+                    "machine_util_avg": 0.262401,
+                    "operator_util_avg": 0.202764,
+                    "machine_load_cv": 0.744878,
+                    "operator_load_cv": 0.412192,
+                    "internal_horizon_hours": 774.5344,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:due_date_first|sgs:slack",
+                  "strategy": "due_date_first",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "slack",
+                  "score": [
+                    0.0,
+                    478.932511115,
+                    11.0,
+                    774.5344241199999,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 11,
+                    "total_tardiness_hours": 478.9325,
+                    "makespan_hours": 774.5344,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 735.9967,
+                    "makespan_internal_hours": 774.5344,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3455.0558,
+                    "operator_busy_hours_total": 3455.0558,
+                    "machine_util_avg": 0.262401,
+                    "operator_util_avg": 0.202764,
+                    "machine_load_cv": 0.744878,
+                    "operator_load_cv": 0.412192,
+                    "internal_horizon_hours": 774.5344,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:fifo|sgs:slack",
+                  "strategy": "fifo",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "slack",
+                  "score": [
+                    0.0,
+                    478.932511115,
+                    11.0,
+                    774.5344241199999,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 11,
+                    "total_tardiness_hours": 478.9325,
+                    "makespan_hours": 774.5344,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 735.9967,
+                    "makespan_internal_hours": 774.5344,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3455.0558,
+                    "operator_busy_hours_total": 3455.0558,
+                    "machine_util_avg": 0.262401,
+                    "operator_util_avg": 0.202764,
+                    "machine_load_cv": 0.744878,
+                    "operator_load_cv": 0.412192,
+                    "internal_horizon_hours": 774.5344,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:weighted|sgs:atc",
+                  "strategy": "weighted",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "atc",
+                  "score": [
+                    0.0,
+                    522.8433551713889,
+                    10.0,
+                    773.2871281063889,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 10,
+                    "total_tardiness_hours": 522.8434,
+                    "makespan_hours": 773.2871,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 647.2202,
+                    "makespan_internal_hours": 773.2871,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3763.5395,
+                    "operator_busy_hours_total": 3763.5395,
+                    "machine_util_avg": 0.28629,
+                    "operator_util_avg": 0.221224,
+                    "machine_load_cv": 0.797556,
+                    "operator_load_cv": 0.302785,
+                    "internal_horizon_hours": 773.2871,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:priority_first|sgs:atc",
+                  "strategy": "priority_first",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "atc",
+                  "score": [
+                    0.0,
+                    522.8433551713889,
+                    10.0,
+                    773.2871281063889,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 10,
+                    "total_tardiness_hours": 522.8434,
+                    "makespan_hours": 773.2871,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 647.2202,
+                    "makespan_internal_hours": 773.2871,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3763.5395,
+                    "operator_busy_hours_total": 3763.5395,
+                    "machine_util_avg": 0.28629,
+                    "operator_util_avg": 0.221224,
+                    "machine_load_cv": 0.797556,
+                    "operator_load_cv": 0.302785,
+                    "internal_horizon_hours": 773.2871,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:due_date_first|sgs:atc",
+                  "strategy": "due_date_first",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "atc",
+                  "score": [
+                    0.0,
+                    522.8433551713889,
+                    10.0,
+                    773.2871281063889,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 10,
+                    "total_tardiness_hours": 522.8434,
+                    "makespan_hours": 773.2871,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 647.2202,
+                    "makespan_internal_hours": 773.2871,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3763.5395,
+                    "operator_busy_hours_total": 3763.5395,
+                    "machine_util_avg": 0.28629,
+                    "operator_util_avg": 0.221224,
+                    "machine_load_cv": 0.797556,
+                    "operator_load_cv": 0.302785,
+                    "internal_horizon_hours": 773.2871,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:fifo|sgs:atc",
+                  "strategy": "fifo",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "atc",
+                  "score": [
+                    0.0,
+                    522.8433551713889,
+                    10.0,
+                    773.2871281063889,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 10,
+                    "total_tardiness_hours": 522.8434,
+                    "makespan_hours": 773.2871,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 647.2202,
+                    "makespan_internal_hours": 773.2871,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3763.5395,
+                    "operator_busy_hours_total": 3763.5395,
+                    "machine_util_avg": 0.28629,
+                    "operator_util_avg": 0.221224,
+                    "machine_load_cv": 0.797556,
+                    "operator_load_cv": 0.302785,
+                    "internal_horizon_hours": 773.2871,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:due_date_first|batch_order:slack",
+                  "strategy": "due_date_first",
+                  "dispatch_mode": "batch_order",
+                  "dispatch_rule": "slack",
+                  "score": [
+                    0.0,
+                    753.9824446344444,
+                    11.0,
+                    918.3401360544444,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 11,
+                    "total_tardiness_hours": 753.9824,
+                    "makespan_hours": 918.3401,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 804.5363,
+                    "makespan_internal_hours": 918.3401,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3595.0869,
+                    "operator_busy_hours_total": 3595.0869,
+                    "machine_util_avg": 0.23028,
+                    "operator_util_avg": 0.177944,
+                    "machine_load_cv": 0.684533,
+                    "operator_load_cv": 0.468816,
+                    "internal_horizon_hours": 918.3401,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:weighted|batch_order:slack",
+                  "strategy": "weighted",
+                  "dispatch_mode": "batch_order",
+                  "dispatch_rule": "slack",
+                  "score": [
+                    0.0,
+                    1405.3369762622222,
+                    21.0,
+                    773.401415571389,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 21,
+                    "total_tardiness_hours": 1405.337,
+                    "makespan_hours": 773.4014,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 1405.337,
+                    "makespan_internal_hours": 773.4014,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3672.7257,
+                    "operator_busy_hours_total": 3672.7257,
+                    "machine_util_avg": 0.279341,
+                    "operator_util_avg": 0.215854,
+                    "machine_load_cv": 0.748691,
+                    "operator_load_cv": 0.352281,
+                    "internal_horizon_hours": 773.4014,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:priority_first|batch_order:slack",
+                  "strategy": "priority_first",
+                  "dispatch_mode": "batch_order",
+                  "dispatch_rule": "slack",
+                  "score": [
+                    0.0,
+                    1405.3369762622222,
+                    21.0,
+                    773.401415571389,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 21,
+                    "total_tardiness_hours": 1405.337,
+                    "makespan_hours": 773.4014,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 1405.337,
+                    "makespan_internal_hours": 773.4014,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3672.7257,
+                    "operator_busy_hours_total": 3672.7257,
+                    "machine_util_avg": 0.279341,
+                    "operator_util_avg": 0.215854,
+                    "machine_load_cv": 0.748691,
+                    "operator_load_cv": 0.352281,
+                    "internal_horizon_hours": 773.4014,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
+                  }
+                },
+                {
+                  "tag": "start:weighted|sgs:cr",
+                  "strategy": "weighted",
+                  "dispatch_mode": "sgs",
+                  "dispatch_rule": "cr",
+                  "score": [
+                    0.0,
+                    2615.257971770278,
+                    23.0,
+                    769.6521739133334,
+                    0.0
+                  ],
+                  "failed_ops": 0,
+                  "metrics": {
+                    "overdue_count": 23,
+                    "total_tardiness_hours": 2615.258,
+                    "makespan_hours": 769.6522,
+                    "changeover_count": 0,
+                    "weighted_tardiness_hours": 3276.2065,
+                    "makespan_internal_hours": 769.6522,
+                    "machine_used_count": 17,
+                    "operator_used_count": 22,
+                    "machine_busy_hours_total": 3868.3139,
+                    "operator_busy_hours_total": 3868.3139,
+                    "machine_util_avg": 0.29565,
+                    "operator_util_avg": 0.228457,
+                    "machine_load_cv": 0.804127,
+                    "operator_load_cv": 0.505565,
+                    "internal_horizon_hours": 769.6522,
+                    "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {},
+                    "param_fallbacks": {}
                   }
                 }
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 19865,
+                  "elapsed_ms": 418,
                   "tag": "start:weighted|sgs:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "sgs",
                   "dispatch_rule": "slack",
                   "score": [
                     0.0,
-                    894.1588344427778,
-                    12.0,
-                    696.8511749347222,
+                    478.932511115,
+                    11.0,
+                    774.5344241199999,
                     0.0
                   ],
                   "metrics": {
-                    "overdue_count": 12,
-                    "total_tardiness_hours": 894.1588,
-                    "makespan_hours": 696.8512,
+                    "overdue_count": 11,
+                    "total_tardiness_hours": 478.9325,
+                    "makespan_hours": 774.5344,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 977.7121,
-                    "makespan_internal_hours": 696.8512,
+                    "weighted_tardiness_hours": 735.9967,
+                    "makespan_internal_hours": 774.5344,
                     "machine_used_count": 17,
                     "operator_used_count": 22,
-                    "machine_busy_hours_total": 3073.4925,
-                    "operator_busy_hours_total": 3073.4925,
-                    "machine_util_avg": 0.259444,
-                    "operator_util_avg": 0.200479,
-                    "machine_load_cv": 0.973394,
-                    "operator_load_cv": 0.503502,
-                    "internal_horizon_hours": 696.8512,
+                    "machine_busy_hours_total": 3455.0558,
+                    "operator_busy_hours_total": 3455.0558,
+                    "machine_util_avg": 0.262401,
+                    "operator_util_avg": 0.202764,
+                    "machine_load_cv": 0.744878,
+                    "operator_load_cv": 0.412192,
+                    "internal_horizon_hours": 774.5344,
                     "util_defined": true
                   }
                 }
@@ -988,7 +1804,11 @@
                 "loaded_ok": true,
                 "degraded": false,
                 "degradation_reason": null,
-                "extend_attempted": true
+                "extend_attempted": true,
+                "load_partial_fail_count": 0,
+                "load_partial_fail_machines_sample": [],
+                "extend_partial_fail_count": 0,
+                "extend_partial_fail_machines_sample": []
               },
               "freeze_window": {
                 "enabled": "no",
@@ -996,6 +1816,12 @@
                 "frozen_op_count": 0,
                 "frozen_batch_count": 0,
                 "frozen_batch_ids_sample": [],
+                "degraded": false,
+                "degradation_reason": null
+              },
+              "resource_pool": {
+                "enabled": "yes",
+                "attempted": true,
                 "degraded": false,
                 "degradation_reason": null
               }
@@ -1059,7 +1885,7 @@
               "B3_0056",
               "B3_0057"
             ],
-            "start_time": "2026-02-14 08:00:00",
+            "start_time": "2026-04-03 08:00:00",
             "end_date": null,
             "counts": {
               "batch_count": 57,
@@ -1068,73 +1894,68 @@
               "failed_ops": 0
             },
             "overdue_batches": {
-              "count": 12,
+              "count": 11,
               "items": [
                 {
-                  "batch_id": "B3_0002",
-                  "due_date": "2026-02-28",
-                  "finish_time": "2026-03-10 09:16:15"
-                },
-                {
                   "batch_id": "B3_0003",
-                  "due_date": "2026-03-10",
-                  "finish_time": "2026-03-11 15:07:00"
+                  "due_date": "2026-04-27",
+                  "finish_time": "2026-04-28 10:21:28"
                 },
                 {
-                  "batch_id": "B3_0005",
-                  "due_date": "2026-03-02",
-                  "finish_time": "2026-03-06 13:36:50"
+                  "batch_id": "B3_0016",
+                  "due_date": "2026-04-24",
+                  "finish_time": "2026-04-27 09:08:33"
                 },
                 {
-                  "batch_id": "B3_0006",
-                  "due_date": "2026-03-05",
-                  "finish_time": "2026-03-06 13:05:43"
-                },
-                {
-                  "batch_id": "B3_0012",
-                  "due_date": "2026-03-06",
-                  "finish_time": "2026-03-11 12:06:37"
-                },
-                {
-                  "batch_id": "B3_0013",
-                  "due_date": "2026-03-07",
-                  "finish_time": "2026-03-11 11:33:10"
-                },
-                {
-                  "batch_id": "B3_0023",
-                  "due_date": "2026-03-08",
-                  "finish_time": "2026-03-10 15:27:50"
+                  "batch_id": "B3_0026",
+                  "due_date": "2026-04-18",
+                  "finish_time": "2026-04-20 12:50:24"
                 },
                 {
                   "batch_id": "B3_0027",
-                  "due_date": "2026-03-14",
-                  "finish_time": "2026-03-17 08:51:04"
+                  "due_date": "2026-05-01",
+                  "finish_time": "2026-05-05 08:55:58"
                 },
                 {
-                  "batch_id": "B3_0029",
-                  "due_date": "2026-02-24",
-                  "finish_time": "2026-03-02 10:59:21"
+                  "batch_id": "B3_0028",
+                  "due_date": "2026-05-04",
+                  "finish_time": "2026-05-05 14:32:03"
                 },
                 {
-                  "batch_id": "B3_0037",
-                  "due_date": "2026-03-01",
-                  "finish_time": "2026-03-04 14:44:35"
+                  "batch_id": "B3_0035",
+                  "due_date": "2026-04-19",
+                  "finish_time": "2026-04-22 08:20:18"
                 },
                 {
                   "batch_id": "B3_0039",
-                  "due_date": "2026-03-13",
-                  "finish_time": "2026-03-16 12:50:07"
+                  "due_date": "2026-04-30",
+                  "finish_time": "2026-05-04 12:52:48"
                 },
                 {
-                  "batch_id": "B3_0055",
-                  "due_date": "2026-03-04",
-                  "finish_time": "2026-03-05 12:30:42"
+                  "batch_id": "B3_0043",
+                  "due_date": "2026-05-03",
+                  "finish_time": "2026-05-04 13:13:02"
+                },
+                {
+                  "batch_id": "B3_0045",
+                  "due_date": "2026-05-04",
+                  "finish_time": "2026-05-05 08:54:32"
+                },
+                {
+                  "batch_id": "B3_0053",
+                  "due_date": "2026-04-17",
+                  "finish_time": "2026-04-21 11:00:42"
+                },
+                {
+                  "batch_id": "B3_0054",
+                  "due_date": "2026-04-26",
+                  "finish_time": "2026-04-28 08:46:03"
                 }
               ]
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 19933
+            "time_cost_ms": 15208
           }
         },
         "sanity_issues": []
@@ -1148,9 +1969,9 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 481001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case04_1_dbb1dmvw",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case04_1_dbb1dmvw\\aps.db",
-    "start_dt": "2026-02-14 08:00:00",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case04_1_czi13rx7",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case04_1_czi13rx7\\aps.db",
+    "start_dt": "2026-04-03 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case04\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case04\\run_01\\output",
     "runs": [
@@ -1160,6 +1981,7 @@
         "history": {
           "result_status": "success",
           "result_summary": {
+            "summary_schema_version": "1.1",
             "is_simulation": false,
             "version": 1,
             "strategy": "weighted",
@@ -1173,6 +1995,26 @@
             "algo": {
               "mode": "greedy",
               "objective": "min_overdue",
+              "comparison_metric": "overdue_count",
+              "config_snapshot": {
+                "sort_strategy": "weighted",
+                "priority_weight": 0.4,
+                "due_weight": 0.5,
+                "ready_weight": 0.1,
+                "holiday_default_efficiency": 0.8,
+                "enforce_ready_default": "no",
+                "prefer_primary_skill": "no",
+                "dispatch_mode": "batch_order",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "yes",
+                "ortools_enabled": "no",
+                "ortools_time_limit_seconds": 5,
+                "algo_mode": "greedy",
+                "time_budget_seconds": 5,
+                "objective": "min_overdue",
+                "freeze_window_enabled": "no",
+                "freeze_window_days": 0
+              },
               "time_budget_seconds": 5,
               "hard_constraints": [
                 "precedence",
@@ -1190,6 +2032,33 @@
                 172.19045423694442,
                 0.0
               ],
+              "best_score_schema": [
+                {
+                  "index": 0,
+                  "key": "failed_ops",
+                  "label": "失败工序数"
+                },
+                {
+                  "index": 1,
+                  "key": "overdue_count",
+                  "label": "超期批次数"
+                },
+                {
+                  "index": 2,
+                  "key": "total_tardiness_hours",
+                  "label": "总拖期小时"
+                },
+                {
+                  "index": 3,
+                  "key": "makespan_hours",
+                  "label": "总工期小时"
+                },
+                {
+                  "index": 4,
+                  "key": "changeover_count",
+                  "label": "换型次数"
+                }
+              ],
               "metrics": {
                 "overdue_count": 0,
                 "total_tardiness_hours": 0.0,
@@ -1199,12 +2068,12 @@
                 "makespan_internal_hours": 172.1905,
                 "machine_used_count": 9,
                 "operator_used_count": 18,
-                "machine_busy_hours_total": 505.7247,
-                "operator_busy_hours_total": 505.7247,
-                "machine_util_avg": 0.326334,
-                "operator_util_avg": 0.163167,
-                "machine_load_cv": 0.633659,
-                "operator_load_cv": 0.758213,
+                "machine_busy_hours_total": 457.7247,
+                "operator_busy_hours_total": 457.7247,
+                "machine_util_avg": 0.295361,
+                "operator_util_avg": 0.14768,
+                "machine_load_cv": 0.880598,
+                "operator_load_cv": 0.729992,
                 "internal_horizon_hours": 172.1905,
                 "util_defined": true
               },
@@ -1239,20 +2108,27 @@
                     "makespan_internal_hours": 172.1905,
                     "machine_used_count": 9,
                     "operator_used_count": 18,
-                    "machine_busy_hours_total": 505.7247,
-                    "operator_busy_hours_total": 505.7247,
-                    "machine_util_avg": 0.326334,
-                    "operator_util_avg": 0.163167,
-                    "machine_load_cv": 0.633659,
-                    "operator_load_cv": 0.758213,
+                    "machine_busy_hours_total": 457.7247,
+                    "operator_busy_hours_total": 457.7247,
+                    "machine_util_avg": 0.295361,
+                    "operator_util_avg": 0.14768,
+                    "machine_load_cv": 0.880598,
+                    "operator_load_cv": 0.729992,
                     "internal_horizon_hours": 172.1905,
                     "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {
+                      "internal_auto_assign_attempt_count": 42,
+                      "internal_auto_assign_success_count": 42
+                    },
+                    "param_fallbacks": {}
                   }
                 }
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 1191,
+                  "elapsed_ms": 37,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
@@ -1273,12 +2149,12 @@
                     "makespan_internal_hours": 172.1905,
                     "machine_used_count": 9,
                     "operator_used_count": 18,
-                    "machine_busy_hours_total": 505.7247,
-                    "operator_busy_hours_total": 505.7247,
-                    "machine_util_avg": 0.326334,
-                    "operator_util_avg": 0.163167,
-                    "machine_load_cv": 0.633659,
-                    "operator_load_cv": 0.758213,
+                    "machine_busy_hours_total": 457.7247,
+                    "operator_busy_hours_total": 457.7247,
+                    "machine_util_avg": 0.295361,
+                    "operator_util_avg": 0.14768,
+                    "machine_load_cv": 0.880598,
+                    "operator_load_cv": 0.729992,
                     "internal_horizon_hours": 172.1905,
                     "util_defined": true
                   }
@@ -1288,7 +2164,11 @@
                 "loaded_ok": true,
                 "degraded": false,
                 "degradation_reason": null,
-                "extend_attempted": true
+                "extend_attempted": true,
+                "load_partial_fail_count": 0,
+                "load_partial_fail_machines_sample": [],
+                "extend_partial_fail_count": 0,
+                "extend_partial_fail_machines_sample": []
               },
               "freeze_window": {
                 "enabled": "no",
@@ -1298,6 +2178,16 @@
                 "frozen_batch_ids_sample": [],
                 "degraded": false,
                 "degradation_reason": null
+              },
+              "resource_pool": {
+                "enabled": "yes",
+                "attempted": true,
+                "degraded": false,
+                "degradation_reason": null
+              },
+              "fallback_counts": {
+                "internal_auto_assign_attempt_count": 42,
+                "internal_auto_assign_success_count": 42
               }
             },
             "selected_batch_ids": [
@@ -1308,7 +2198,7 @@
               "B4_0005",
               "B4_0006"
             ],
-            "start_time": "2026-02-14 08:00:00",
+            "start_time": "2026-04-03 08:00:00",
             "end_date": null,
             "counts": {
               "batch_count": 6,
@@ -1322,7 +2212,7 @@
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 1211
+            "time_cost_ms": 54
           }
         },
         "sanity_issues": []
@@ -1333,6 +2223,7 @@
         "history": {
           "result_status": "success",
           "result_summary": {
+            "summary_schema_version": "1.1",
             "is_simulation": false,
             "version": 2,
             "strategy": "weighted",
@@ -1346,6 +2237,26 @@
             "algo": {
               "mode": "greedy",
               "objective": "min_overdue",
+              "comparison_metric": "overdue_count",
+              "config_snapshot": {
+                "sort_strategy": "weighted",
+                "priority_weight": 0.4,
+                "due_weight": 0.5,
+                "ready_weight": 0.1,
+                "holiday_default_efficiency": 0.8,
+                "enforce_ready_default": "no",
+                "prefer_primary_skill": "no",
+                "dispatch_mode": "batch_order",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "yes",
+                "ortools_enabled": "no",
+                "ortools_time_limit_seconds": 5,
+                "algo_mode": "greedy",
+                "time_budget_seconds": 5,
+                "objective": "min_overdue",
+                "freeze_window_enabled": "yes",
+                "freeze_window_days": 3
+              },
               "time_budget_seconds": 5,
               "hard_constraints": [
                 "precedence",
@@ -1360,26 +2271,53 @@
               "best_score": [
                 0.0,
                 5.0,
-                348.04368519888885,
-                270.46270659416666,
+                252.04229630999998,
+                318.46270659416666,
                 0.0
+              ],
+              "best_score_schema": [
+                {
+                  "index": 0,
+                  "key": "failed_ops",
+                  "label": "失败工序数"
+                },
+                {
+                  "index": 1,
+                  "key": "overdue_count",
+                  "label": "超期批次数"
+                },
+                {
+                  "index": 2,
+                  "key": "total_tardiness_hours",
+                  "label": "总拖期小时"
+                },
+                {
+                  "index": 3,
+                  "key": "makespan_hours",
+                  "label": "总工期小时"
+                },
+                {
+                  "index": 4,
+                  "key": "changeover_count",
+                  "label": "换型次数"
+                }
               ],
               "metrics": {
                 "overdue_count": 5,
-                "total_tardiness_hours": 348.0437,
-                "makespan_hours": 270.4627,
+                "total_tardiness_hours": 252.0423,
+                "makespan_hours": 318.4627,
                 "changeover_count": 0,
-                "weighted_tardiness_hours": 1044.1311,
-                "makespan_internal_hours": 270.4627,
+                "weighted_tardiness_hours": 756.1269,
+                "makespan_internal_hours": 318.4627,
                 "machine_used_count": 9,
                 "operator_used_count": 18,
-                "machine_busy_hours_total": 992.1127,
-                "operator_busy_hours_total": 992.1127,
-                "machine_util_avg": 0.407578,
-                "operator_util_avg": 0.203789,
-                "machine_load_cv": 0.553797,
-                "operator_load_cv": 0.618709,
-                "internal_horizon_hours": 270.4627,
+                "machine_busy_hours_total": 1056.2929,
+                "operator_busy_hours_total": 1056.2929,
+                "machine_util_avg": 0.368539,
+                "operator_util_avg": 0.184269,
+                "machine_load_cv": 0.674922,
+                "operator_load_cv": 0.640323,
+                "internal_horizon_hours": 318.4627,
                 "util_defined": true
               },
               "best_batch_order": [
@@ -1404,34 +2342,41 @@
                   "score": [
                     0.0,
                     5.0,
-                    348.04368519888885,
-                    270.46270659416666,
+                    252.04229630999998,
+                    318.46270659416666,
                     0.0
                   ],
                   "failed_ops": 0,
                   "metrics": {
                     "overdue_count": 5,
-                    "total_tardiness_hours": 348.0437,
-                    "makespan_hours": 270.4627,
+                    "total_tardiness_hours": 252.0423,
+                    "makespan_hours": 318.4627,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 1044.1311,
-                    "makespan_internal_hours": 270.4627,
+                    "weighted_tardiness_hours": 756.1269,
+                    "makespan_internal_hours": 318.4627,
                     "machine_used_count": 9,
                     "operator_used_count": 18,
-                    "machine_busy_hours_total": 992.1127,
-                    "operator_busy_hours_total": 992.1127,
-                    "machine_util_avg": 0.407578,
-                    "operator_util_avg": 0.203789,
-                    "machine_load_cv": 0.553797,
-                    "operator_load_cv": 0.618709,
-                    "internal_horizon_hours": 270.4627,
+                    "machine_busy_hours_total": 1056.2929,
+                    "operator_busy_hours_total": 1056.2929,
+                    "machine_util_avg": 0.368539,
+                    "operator_util_avg": 0.184269,
+                    "machine_load_cv": 0.674922,
+                    "operator_load_cv": 0.640323,
+                    "internal_horizon_hours": 318.4627,
                     "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {
+                      "internal_auto_assign_attempt_count": 35,
+                      "internal_auto_assign_success_count": 35
+                    },
+                    "param_fallbacks": {}
                   }
                 }
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 1074,
+                  "elapsed_ms": 50,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
@@ -1439,26 +2384,26 @@
                   "score": [
                     0.0,
                     5.0,
-                    348.04368519888885,
-                    270.46270659416666,
+                    252.04229630999998,
+                    318.46270659416666,
                     0.0
                   ],
                   "metrics": {
                     "overdue_count": 5,
-                    "total_tardiness_hours": 348.0437,
-                    "makespan_hours": 270.4627,
+                    "total_tardiness_hours": 252.0423,
+                    "makespan_hours": 318.4627,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 1044.1311,
-                    "makespan_internal_hours": 270.4627,
+                    "weighted_tardiness_hours": 756.1269,
+                    "makespan_internal_hours": 318.4627,
                     "machine_used_count": 9,
                     "operator_used_count": 18,
-                    "machine_busy_hours_total": 992.1127,
-                    "operator_busy_hours_total": 992.1127,
-                    "machine_util_avg": 0.407578,
-                    "operator_util_avg": 0.203789,
-                    "machine_load_cv": 0.553797,
-                    "operator_load_cv": 0.618709,
-                    "internal_horizon_hours": 270.4627,
+                    "machine_busy_hours_total": 1056.2929,
+                    "operator_busy_hours_total": 1056.2929,
+                    "machine_util_avg": 0.368539,
+                    "operator_util_avg": 0.184269,
+                    "machine_load_cv": 0.674922,
+                    "operator_load_cv": 0.640323,
+                    "internal_horizon_hours": 318.4627,
                     "util_defined": true
                   }
                 }
@@ -1467,7 +2412,11 @@
                 "loaded_ok": true,
                 "degraded": false,
                 "degradation_reason": null,
-                "extend_attempted": true
+                "extend_attempted": true,
+                "load_partial_fail_count": 0,
+                "load_partial_fail_machines_sample": [],
+                "extend_partial_fail_count": 0,
+                "extend_partial_fail_machines_sample": []
               },
               "freeze_window": {
                 "enabled": "yes",
@@ -1480,6 +2429,16 @@
                 ],
                 "degraded": false,
                 "degradation_reason": null
+              },
+              "resource_pool": {
+                "enabled": "yes",
+                "attempted": true,
+                "degraded": false,
+                "degradation_reason": null
+              },
+              "fallback_counts": {
+                "internal_auto_assign_attempt_count": 35,
+                "internal_auto_assign_success_count": 35
               }
             },
             "selected_batch_ids": [
@@ -1495,7 +2454,7 @@
               "INS_004",
               "INS_005"
             ],
-            "start_time": "2026-02-14 08:00:00",
+            "start_time": "2026-04-03 08:00:00",
             "end_date": null,
             "counts": {
               "batch_count": 11,
@@ -1508,34 +2467,34 @@
               "items": [
                 {
                   "batch_id": "INS_001",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-02-20 12:00:26"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-04-09 12:00:26"
                 },
                 {
                   "batch_id": "INS_002",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-02-19 12:57:35"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-04-08 12:57:35"
                 },
                 {
                   "batch_id": "INS_003",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-02-23 11:10:08"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-04-10 11:10:08"
                 },
                 {
                   "batch_id": "INS_004",
-                  "due_date": "2026-02-20",
-                  "finish_time": "2026-02-24 13:03:16"
+                  "due_date": "2026-04-09",
+                  "finish_time": "2026-04-13 13:03:16"
                 },
                 {
                   "batch_id": "INS_005",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-02-23 10:51:05"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-04-10 10:51:05"
                 }
               ]
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 1095
+            "time_cost_ms": 68
           }
         },
         "sanity_issues": []
@@ -1549,9 +2508,9 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 482001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case05_1_7r3bthg1",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case05_1_7r3bthg1\\aps.db",
-    "start_dt": "2026-02-14 08:00:00",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case05_1_4bln256e",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case05_1_4bln256e\\aps.db",
+    "start_dt": "2026-04-03 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case05\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case05\\run_01\\output",
     "runs": [
@@ -1561,6 +2520,7 @@
         "history": {
           "result_status": "success",
           "result_summary": {
+            "summary_schema_version": "1.1",
             "is_simulation": false,
             "version": 1,
             "strategy": "weighted",
@@ -1574,6 +2534,26 @@
             "algo": {
               "mode": "greedy",
               "objective": "min_overdue",
+              "comparison_metric": "overdue_count",
+              "config_snapshot": {
+                "sort_strategy": "weighted",
+                "priority_weight": 0.4,
+                "due_weight": 0.5,
+                "ready_weight": 0.1,
+                "holiday_default_efficiency": 0.8,
+                "enforce_ready_default": "no",
+                "prefer_primary_skill": "no",
+                "dispatch_mode": "batch_order",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "yes",
+                "ortools_enabled": "no",
+                "ortools_time_limit_seconds": 5,
+                "algo_mode": "greedy",
+                "time_budget_seconds": 5,
+                "objective": "min_overdue",
+                "freeze_window_enabled": "no",
+                "freeze_window_days": 0
+              },
               "time_budget_seconds": 5,
               "hard_constraints": [
                 "precedence",
@@ -1587,26 +2567,53 @@
               "best_score": [
                 0.0,
                 37.0,
-                23222.635979476945,
-                1634.1392115969443,
+                87835.36788375251,
+                4515.5037999999995,
                 0.0
+              ],
+              "best_score_schema": [
+                {
+                  "index": 0,
+                  "key": "failed_ops",
+                  "label": "失败工序数"
+                },
+                {
+                  "index": 1,
+                  "key": "overdue_count",
+                  "label": "超期批次数"
+                },
+                {
+                  "index": 2,
+                  "key": "total_tardiness_hours",
+                  "label": "总拖期小时"
+                },
+                {
+                  "index": 3,
+                  "key": "makespan_hours",
+                  "label": "总工期小时"
+                },
+                {
+                  "index": 4,
+                  "key": "changeover_count",
+                  "label": "换型次数"
+                }
               ],
               "metrics": {
                 "overdue_count": 37,
-                "total_tardiness_hours": 23222.636,
-                "makespan_hours": 1634.1392,
+                "total_tardiness_hours": 87835.3679,
+                "makespan_hours": 4515.5038,
                 "changeover_count": 0,
-                "weighted_tardiness_hours": 24540.9912,
-                "makespan_internal_hours": 1370.1392,
-                "machine_used_count": 1,
-                "operator_used_count": 1,
-                "machine_busy_hours_total": 1209.0687,
-                "operator_busy_hours_total": 1209.0687,
-                "machine_util_avg": 0.882442,
-                "operator_util_avg": 0.882442,
-                "machine_load_cv": 0.0,
-                "operator_load_cv": 0.0,
-                "internal_horizon_hours": 1370.1392,
+                "weighted_tardiness_hours": 101260.2453,
+                "makespan_internal_hours": 4515.5038,
+                "machine_used_count": 6,
+                "operator_used_count": 7,
+                "machine_busy_hours_total": 9169.9531,
+                "operator_busy_hours_total": 9169.9531,
+                "machine_util_avg": 0.338462,
+                "operator_util_avg": 0.29011,
+                "machine_load_cv": 0.582238,
+                "operator_load_cv": 0.940445,
+                "internal_horizon_hours": 4515.5038,
                 "util_defined": true
               },
               "best_batch_order": [
@@ -1657,34 +2664,41 @@
                   "score": [
                     0.0,
                     37.0,
-                    23222.635979476945,
-                    1634.1392115969443,
+                    87835.36788375251,
+                    4515.5037999999995,
                     0.0
                   ],
                   "failed_ops": 0,
                   "metrics": {
                     "overdue_count": 37,
-                    "total_tardiness_hours": 23222.636,
-                    "makespan_hours": 1634.1392,
+                    "total_tardiness_hours": 87835.3679,
+                    "makespan_hours": 4515.5038,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 24540.9912,
-                    "makespan_internal_hours": 1370.1392,
-                    "machine_used_count": 1,
-                    "operator_used_count": 1,
-                    "machine_busy_hours_total": 1209.0687,
-                    "operator_busy_hours_total": 1209.0687,
-                    "machine_util_avg": 0.882442,
-                    "operator_util_avg": 0.882442,
-                    "machine_load_cv": 0.0,
-                    "operator_load_cv": 0.0,
-                    "internal_horizon_hours": 1370.1392,
+                    "weighted_tardiness_hours": 101260.2453,
+                    "makespan_internal_hours": 4515.5038,
+                    "machine_used_count": 6,
+                    "operator_used_count": 7,
+                    "machine_busy_hours_total": 9169.9531,
+                    "operator_busy_hours_total": 9169.9531,
+                    "machine_util_avg": 0.338462,
+                    "operator_util_avg": 0.29011,
+                    "machine_load_cv": 0.582238,
+                    "operator_load_cv": 0.940445,
+                    "internal_horizon_hours": 4515.5038,
                     "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {
+                      "internal_auto_assign_attempt_count": 407,
+                      "internal_auto_assign_success_count": 407
+                    },
+                    "param_fallbacks": {}
                   }
                 }
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 1857,
+                  "elapsed_ms": 298,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
@@ -1692,26 +2706,26 @@
                   "score": [
                     0.0,
                     37.0,
-                    23222.635979476945,
-                    1634.1392115969443,
+                    87835.36788375251,
+                    4515.5037999999995,
                     0.0
                   ],
                   "metrics": {
                     "overdue_count": 37,
-                    "total_tardiness_hours": 23222.636,
-                    "makespan_hours": 1634.1392,
+                    "total_tardiness_hours": 87835.3679,
+                    "makespan_hours": 4515.5038,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 24540.9912,
-                    "makespan_internal_hours": 1370.1392,
-                    "machine_used_count": 1,
-                    "operator_used_count": 1,
-                    "machine_busy_hours_total": 1209.0687,
-                    "operator_busy_hours_total": 1209.0687,
-                    "machine_util_avg": 0.882442,
-                    "operator_util_avg": 0.882442,
-                    "machine_load_cv": 0.0,
-                    "operator_load_cv": 0.0,
-                    "internal_horizon_hours": 1370.1392,
+                    "weighted_tardiness_hours": 101260.2453,
+                    "makespan_internal_hours": 4515.5038,
+                    "machine_used_count": 6,
+                    "operator_used_count": 7,
+                    "machine_busy_hours_total": 9169.9531,
+                    "operator_busy_hours_total": 9169.9531,
+                    "machine_util_avg": 0.338462,
+                    "operator_util_avg": 0.29011,
+                    "machine_load_cv": 0.582238,
+                    "operator_load_cv": 0.940445,
+                    "internal_horizon_hours": 4515.5038,
                     "util_defined": true
                   }
                 }
@@ -1720,7 +2734,11 @@
                 "loaded_ok": true,
                 "degraded": false,
                 "degradation_reason": null,
-                "extend_attempted": true
+                "extend_attempted": true,
+                "load_partial_fail_count": 0,
+                "load_partial_fail_machines_sample": [],
+                "extend_partial_fail_count": 0,
+                "extend_partial_fail_machines_sample": []
               },
               "freeze_window": {
                 "enabled": "no",
@@ -1730,6 +2748,16 @@
                 "frozen_batch_ids_sample": [],
                 "degraded": false,
                 "degradation_reason": null
+              },
+              "resource_pool": {
+                "enabled": "yes",
+                "attempted": true,
+                "degraded": false,
+                "degradation_reason": null
+              },
+              "fallback_counts": {
+                "internal_auto_assign_attempt_count": 407,
+                "internal_auto_assign_success_count": 407
               }
             },
             "selected_batch_ids": [
@@ -1771,7 +2799,7 @@
               "B5_0036",
               "B5_0037"
             ],
-            "start_time": "2026-02-14 08:00:00",
+            "start_time": "2026-04-03 08:00:00",
             "end_date": null,
             "counts": {
               "batch_count": 37,
@@ -1784,194 +2812,194 @@
               "items": [
                 {
                   "batch_id": "B5_0001",
-                  "due_date": "2026-02-21",
-                  "finish_time": "2026-03-16 13:52:10"
+                  "due_date": "2026-04-10",
+                  "finish_time": "2026-07-21 11:01:18"
                 },
                 {
                   "batch_id": "B5_0002",
-                  "due_date": "2026-03-03",
-                  "finish_time": "2026-04-21 10:18:32"
+                  "due_date": "2026-04-20",
+                  "finish_time": "2026-09-16 15:17:49"
                 },
                 {
                   "batch_id": "B5_0003",
-                  "due_date": "2026-02-27",
-                  "finish_time": "2026-04-06 12:54:13"
+                  "due_date": "2026-04-16",
+                  "finish_time": "2026-08-20 11:03:39"
                 },
                 {
                   "batch_id": "B5_0004",
-                  "due_date": "2026-02-24",
-                  "finish_time": "2026-03-26 15:12:19"
+                  "due_date": "2026-04-13",
+                  "finish_time": "2026-07-31 13:29:54"
                 },
                 {
                   "batch_id": "B5_0005",
-                  "due_date": "2026-02-22",
-                  "finish_time": "2026-02-25 14:49:42"
+                  "due_date": "2026-04-11",
+                  "finish_time": "2026-05-19 12:09:58"
                 },
                 {
                   "batch_id": "B5_0006",
-                  "due_date": "2026-02-27",
-                  "finish_time": "2026-03-04 15:21:01"
+                  "due_date": "2026-04-16",
+                  "finish_time": "2026-06-10 12:07:06"
                 },
                 {
                   "batch_id": "B5_0007",
-                  "due_date": "2026-02-20",
-                  "finish_time": "2026-03-11 09:23:21"
+                  "due_date": "2026-04-09",
+                  "finish_time": "2026-06-30 10:31:53"
                 },
                 {
                   "batch_id": "B5_0008",
-                  "due_date": "2026-03-03",
-                  "finish_time": "2026-03-05 12:38:15"
+                  "due_date": "2026-04-20",
+                  "finish_time": "2026-06-23 09:55:18"
                 },
                 {
                   "batch_id": "B5_0009",
-                  "due_date": "2026-02-27",
-                  "finish_time": "2026-04-06 15:49:15"
+                  "due_date": "2026-04-16",
+                  "finish_time": "2026-08-21 10:58:06"
                 },
                 {
                   "batch_id": "B5_0010",
-                  "due_date": "2026-03-02",
-                  "finish_time": "2026-04-15 13:10:35"
+                  "due_date": "2026-04-19",
+                  "finish_time": "2026-09-10 09:17:23"
                 },
                 {
                   "batch_id": "B5_0011",
-                  "due_date": "2026-02-24",
-                  "finish_time": "2026-03-03 15:46:05"
+                  "due_date": "2026-04-13",
+                  "finish_time": "2026-06-02 11:46:19"
                 },
                 {
                   "batch_id": "B5_0012",
-                  "due_date": "2026-02-26",
-                  "finish_time": "2026-03-31 09:13:01"
+                  "due_date": "2026-04-15",
+                  "finish_time": "2026-07-31 15:01:17"
                 },
                 {
                   "batch_id": "B5_0013",
-                  "due_date": "2026-02-20",
-                  "finish_time": "2026-03-11 13:09:24"
+                  "due_date": "2026-04-09",
+                  "finish_time": "2026-07-10 12:43:17"
                 },
                 {
                   "batch_id": "B5_0014",
-                  "due_date": "2026-02-27",
-                  "finish_time": "2026-03-03 09:14:19"
+                  "due_date": "2026-04-16",
+                  "finish_time": "2026-05-11 15:24:36"
                 },
                 {
                   "batch_id": "B5_0015",
-                  "due_date": "2026-02-21",
-                  "finish_time": "2026-02-25 10:39:48"
+                  "due_date": "2026-04-10",
+                  "finish_time": "2026-04-27 10:09:25"
                 },
                 {
                   "batch_id": "B5_0016",
-                  "due_date": "2026-02-27",
-                  "finish_time": "2026-04-08 09:21:00"
+                  "due_date": "2026-04-16",
+                  "finish_time": "2026-08-21 12:15:43"
                 },
                 {
                   "batch_id": "B5_0017",
-                  "due_date": "2026-02-20",
-                  "finish_time": "2026-03-16 08:35:26"
+                  "due_date": "2026-04-09",
+                  "finish_time": "2026-07-16 10:10:31"
                 },
                 {
                   "batch_id": "B5_0018",
-                  "due_date": "2026-02-26",
-                  "finish_time": "2026-03-31 13:29:15"
+                  "due_date": "2026-04-15",
+                  "finish_time": "2026-08-13 13:09:51"
                 },
                 {
                   "batch_id": "B5_0019",
-                  "due_date": "2026-03-01",
-                  "finish_time": "2026-04-08 15:24:20"
+                  "due_date": "2026-04-18",
+                  "finish_time": "2026-09-02 10:32:13"
                 },
                 {
                   "batch_id": "B5_0020",
-                  "due_date": "2026-03-04",
-                  "finish_time": "2026-04-22 10:08:43"
+                  "due_date": "2026-04-21",
+                  "finish_time": "2026-09-24 08:04:19"
                 },
                 {
                   "batch_id": "B5_0021",
-                  "due_date": "2026-02-20",
-                  "finish_time": "2026-03-16 11:30:10"
+                  "due_date": "2026-04-09",
+                  "finish_time": "2026-07-17 10:15:20"
                 },
                 {
                   "batch_id": "B5_0022",
-                  "due_date": "2026-02-25",
-                  "finish_time": "2026-02-27 12:46:36"
+                  "due_date": "2026-04-14",
+                  "finish_time": "2026-05-01 13:31:31"
                 },
                 {
                   "batch_id": "B5_0023",
-                  "due_date": "2026-02-24",
-                  "finish_time": "2026-03-04 10:29:45"
+                  "due_date": "2026-04-13",
+                  "finish_time": "2026-05-29 13:13:11"
                 },
                 {
                   "batch_id": "B5_0024",
-                  "due_date": "2026-03-01",
-                  "finish_time": "2026-04-15 09:48:28"
+                  "due_date": "2026-04-18",
+                  "finish_time": "2026-09-03 09:55:34"
                 },
                 {
                   "batch_id": "B5_0025",
-                  "due_date": "2026-02-22",
-                  "finish_time": "2026-03-26 09:57:03"
+                  "due_date": "2026-04-11",
+                  "finish_time": "2026-07-30 12:56:34"
                 },
                 {
                   "batch_id": "B5_0026",
-                  "due_date": "2026-02-26",
-                  "finish_time": "2026-03-04 12:43:24"
+                  "due_date": "2026-04-15",
+                  "finish_time": "2026-06-03 10:09:38"
                 },
                 {
                   "batch_id": "B5_0027",
-                  "due_date": "2026-03-04",
-                  "finish_time": "2026-04-22 12:36:17"
+                  "due_date": "2026-04-21",
+                  "finish_time": "2026-09-24 15:51:00"
                 },
                 {
                   "batch_id": "B5_0028",
-                  "due_date": "2026-03-02",
-                  "finish_time": "2026-04-15 15:12:19"
+                  "due_date": "2026-04-19",
+                  "finish_time": "2026-09-03 15:53:23"
                 },
                 {
                   "batch_id": "B5_0029",
-                  "due_date": "2026-03-03",
-                  "finish_time": "2026-03-06 08:06:03"
+                  "due_date": "2026-04-20",
+                  "finish_time": "2026-06-29 14:22:56"
                 },
                 {
                   "batch_id": "B5_0030",
-                  "due_date": "2026-02-22",
-                  "finish_time": "2026-03-26 11:40:39"
+                  "due_date": "2026-04-11",
+                  "finish_time": "2026-07-21 15:12:50"
                 },
                 {
                   "batch_id": "B5_0031",
-                  "due_date": "2026-02-27",
-                  "finish_time": "2026-04-08 13:02:45"
+                  "due_date": "2026-04-16",
+                  "finish_time": "2026-08-27 13:03:12"
                 },
                 {
                   "batch_id": "B5_0032",
-                  "due_date": "2026-02-22",
-                  "finish_time": "2026-03-03 12:16:23"
+                  "due_date": "2026-04-11",
+                  "finish_time": "2026-05-21 14:29:29"
                 },
                 {
                   "batch_id": "B5_0033",
-                  "due_date": "2026-03-04",
-                  "finish_time": "2026-04-22 14:44:09"
+                  "due_date": "2026-04-21",
+                  "finish_time": "2026-09-30 09:12:31"
                 },
                 {
                   "batch_id": "B5_0034",
-                  "due_date": "2026-03-04",
-                  "finish_time": "2026-04-23 10:08:21"
+                  "due_date": "2026-04-21",
+                  "finish_time": "2026-10-08 11:30:13"
                 },
                 {
                   "batch_id": "B5_0035",
-                  "due_date": "2026-03-03",
-                  "finish_time": "2026-04-21 14:35:38"
+                  "due_date": "2026-04-20",
+                  "finish_time": "2026-09-18 11:25:04"
                 },
                 {
                   "batch_id": "B5_0036",
-                  "due_date": "2026-03-02",
-                  "finish_time": "2026-03-05 09:28:41"
+                  "due_date": "2026-04-19",
+                  "finish_time": "2026-06-11 10:36:59"
                 },
                 {
                   "batch_id": "B5_0037",
-                  "due_date": "2026-02-26",
-                  "finish_time": "2026-04-06 08:59:49"
+                  "due_date": "2026-04-15",
+                  "finish_time": "2026-08-14 14:32:26"
                 }
               ]
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 2059
+            "time_cost_ms": 335
           }
         },
         "sanity_issues": []
@@ -1985,9 +3013,9 @@
     "repeat_idx": 1,
     "base_seed": 1000,
     "seed": 483001,
-    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case06_1_yn7w50dr",
-    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case06_1_yn7w50dr\\aps.db",
-    "start_dt": "2026-02-14 08:00:00",
+    "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case06_1_jofbqwab",
+    "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_complex_case06_1_jofbqwab\\aps.db",
+    "start_dt": "2026-04-03 08:00:00",
     "input_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case06\\run_01\\input",
     "output_dir": "D:\\Github\\APS Test\\evidence/ComplexExcelCases\\Case06\\run_01\\output",
     "runs": [
@@ -1997,6 +3025,7 @@
         "history": {
           "result_status": "success",
           "result_summary": {
+            "summary_schema_version": "1.1",
             "is_simulation": false,
             "version": 1,
             "strategy": "weighted",
@@ -2010,6 +3039,26 @@
             "algo": {
               "mode": "greedy",
               "objective": "min_overdue",
+              "comparison_metric": "overdue_count",
+              "config_snapshot": {
+                "sort_strategy": "weighted",
+                "priority_weight": 0.4,
+                "due_weight": 0.5,
+                "ready_weight": 0.1,
+                "holiday_default_efficiency": 0.8,
+                "enforce_ready_default": "no",
+                "prefer_primary_skill": "no",
+                "dispatch_mode": "batch_order",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "yes",
+                "ortools_enabled": "no",
+                "ortools_time_limit_seconds": 5,
+                "algo_mode": "greedy",
+                "time_budget_seconds": 5,
+                "objective": "min_overdue",
+                "freeze_window_enabled": "no",
+                "freeze_window_days": 0
+              },
               "time_budget_seconds": 5,
               "hard_constraints": [
                 "precedence",
@@ -2023,26 +3072,53 @@
               "best_score": [
                 0.0,
                 63.0,
-                100859.18652295943,
-                2714.157533990278,
+                100689.70921420834,
+                2762.2844,
                 0.0
+              ],
+              "best_score_schema": [
+                {
+                  "index": 0,
+                  "key": "failed_ops",
+                  "label": "失败工序数"
+                },
+                {
+                  "index": 1,
+                  "key": "overdue_count",
+                  "label": "超期批次数"
+                },
+                {
+                  "index": 2,
+                  "key": "total_tardiness_hours",
+                  "label": "总拖期小时"
+                },
+                {
+                  "index": 3,
+                  "key": "makespan_hours",
+                  "label": "总工期小时"
+                },
+                {
+                  "index": 4,
+                  "key": "changeover_count",
+                  "label": "换型次数"
+                }
               ],
               "metrics": {
                 "overdue_count": 63,
-                "total_tardiness_hours": 100859.1865,
-                "makespan_hours": 2714.1575,
+                "total_tardiness_hours": 100689.7092,
+                "makespan_hours": 2762.2844,
                 "changeover_count": 0,
-                "weighted_tardiness_hours": 119978.7588,
-                "makespan_internal_hours": 2714.1575,
+                "weighted_tardiness_hours": 119768.6036,
+                "makespan_internal_hours": 2762.2844,
                 "machine_used_count": 15,
                 "operator_used_count": 22,
-                "machine_busy_hours_total": 7236.1565,
-                "operator_busy_hours_total": 7236.1565,
-                "machine_util_avg": 0.177739,
-                "operator_util_avg": 0.121185,
-                "machine_load_cv": 0.985062,
-                "operator_load_cv": 0.339861,
-                "internal_horizon_hours": 2714.1575,
+                "machine_busy_hours_total": 7346.9262,
+                "operator_busy_hours_total": 7346.9262,
+                "machine_util_avg": 0.177315,
+                "operator_util_avg": 0.120897,
+                "machine_load_cv": 0.991574,
+                "operator_load_cv": 0.34221,
+                "internal_horizon_hours": 2762.2844,
                 "util_defined": true
               },
               "best_batch_order": [
@@ -2119,34 +3195,41 @@
                   "score": [
                     0.0,
                     63.0,
-                    100859.18652295943,
-                    2714.157533990278,
+                    100689.70921420834,
+                    2762.2844,
                     0.0
                   ],
                   "failed_ops": 0,
                   "metrics": {
                     "overdue_count": 63,
-                    "total_tardiness_hours": 100859.1865,
-                    "makespan_hours": 2714.1575,
+                    "total_tardiness_hours": 100689.7092,
+                    "makespan_hours": 2762.2844,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 119978.7588,
-                    "makespan_internal_hours": 2714.1575,
+                    "weighted_tardiness_hours": 119768.6036,
+                    "makespan_internal_hours": 2762.2844,
                     "machine_used_count": 15,
                     "operator_used_count": 22,
-                    "machine_busy_hours_total": 7236.1565,
-                    "operator_busy_hours_total": 7236.1565,
-                    "machine_util_avg": 0.177739,
-                    "operator_util_avg": 0.121185,
-                    "machine_load_cv": 0.985062,
-                    "operator_load_cv": 0.339861,
-                    "internal_horizon_hours": 2714.1575,
+                    "machine_busy_hours_total": 7346.9262,
+                    "operator_busy_hours_total": 7346.9262,
+                    "machine_util_avg": 0.177315,
+                    "operator_util_avg": 0.120897,
+                    "machine_load_cv": 0.991574,
+                    "operator_load_cv": 0.34221,
+                    "internal_horizon_hours": 2762.2844,
                     "util_defined": true
+                  },
+                  "algo_stats": {
+                    "fallback_counts": {
+                      "internal_auto_assign_attempt_count": 441,
+                      "internal_auto_assign_success_count": 441
+                    },
+                    "param_fallbacks": {}
                   }
                 }
               ],
               "improvement_trace": [
                 {
-                  "elapsed_ms": 30083,
+                  "elapsed_ms": 796,
                   "tag": "start:weighted|batch_order:slack",
                   "strategy": "weighted",
                   "dispatch_mode": "batch_order",
@@ -2154,26 +3237,26 @@
                   "score": [
                     0.0,
                     63.0,
-                    100859.18652295943,
-                    2714.157533990278,
+                    100689.70921420834,
+                    2762.2844,
                     0.0
                   ],
                   "metrics": {
                     "overdue_count": 63,
-                    "total_tardiness_hours": 100859.1865,
-                    "makespan_hours": 2714.1575,
+                    "total_tardiness_hours": 100689.7092,
+                    "makespan_hours": 2762.2844,
                     "changeover_count": 0,
-                    "weighted_tardiness_hours": 119978.7588,
-                    "makespan_internal_hours": 2714.1575,
+                    "weighted_tardiness_hours": 119768.6036,
+                    "makespan_internal_hours": 2762.2844,
                     "machine_used_count": 15,
                     "operator_used_count": 22,
-                    "machine_busy_hours_total": 7236.1565,
-                    "operator_busy_hours_total": 7236.1565,
-                    "machine_util_avg": 0.177739,
-                    "operator_util_avg": 0.121185,
-                    "machine_load_cv": 0.985062,
-                    "operator_load_cv": 0.339861,
-                    "internal_horizon_hours": 2714.1575,
+                    "machine_busy_hours_total": 7346.9262,
+                    "operator_busy_hours_total": 7346.9262,
+                    "machine_util_avg": 0.177315,
+                    "operator_util_avg": 0.120897,
+                    "machine_load_cv": 0.991574,
+                    "operator_load_cv": 0.34221,
+                    "internal_horizon_hours": 2762.2844,
                     "util_defined": true
                   }
                 }
@@ -2182,7 +3265,11 @@
                 "loaded_ok": true,
                 "degraded": false,
                 "degradation_reason": null,
-                "extend_attempted": true
+                "extend_attempted": true,
+                "load_partial_fail_count": 0,
+                "load_partial_fail_machines_sample": [],
+                "extend_partial_fail_count": 0,
+                "extend_partial_fail_machines_sample": []
               },
               "freeze_window": {
                 "enabled": "no",
@@ -2192,6 +3279,16 @@
                 "frozen_batch_ids_sample": [],
                 "degraded": false,
                 "degradation_reason": null
+              },
+              "resource_pool": {
+                "enabled": "yes",
+                "attempted": true,
+                "degraded": false,
+                "degradation_reason": null
+              },
+              "fallback_counts": {
+                "internal_auto_assign_attempt_count": 441,
+                "internal_auto_assign_success_count": 441
               }
             },
             "selected_batch_ids": [
@@ -2259,7 +3356,7 @@
               "B6_0062",
               "B6_0063"
             ],
-            "start_time": "2026-02-14 08:00:00",
+            "start_time": "2026-04-03 08:00:00",
             "end_date": null,
             "counts": {
               "batch_count": 63,
@@ -2272,324 +3369,324 @@
               "items": [
                 {
                   "batch_id": "B6_0001",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-06-08 08:48:56"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-07-27 08:48:56"
                 },
                 {
                   "batch_id": "B6_0002",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-03-31 08:37:59"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-05-18 11:04:35"
                 },
                 {
                   "batch_id": "B6_0003",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-05-25 09:33:28"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-07-10 09:33:28"
                 },
                 {
                   "batch_id": "B6_0004",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-05-05 13:55:58"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-06-23 12:44:20"
                 },
                 {
                   "batch_id": "B6_0005",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-06-09 10:09:27"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-07-27 10:17:03"
                 },
                 {
                   "batch_id": "B6_0006",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-05-25 12:45:17"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-07-10 12:45:17"
                 },
                 {
                   "batch_id": "B6_0007",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-04-22 08:04:35"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-06-08 09:28:12"
                 },
                 {
                   "batch_id": "B6_0008",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-04-22 14:05:39"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-06-09 14:33:33"
                 },
                 {
                   "batch_id": "B6_0009",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-03-17 11:28:36"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-05-04 11:28:36"
                 },
                 {
                   "batch_id": "B6_0010",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-05-25 14:24:56"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-07-10 14:24:56"
                 },
                 {
                   "batch_id": "B6_0011",
-                  "due_date": "2026-02-16",
-                  "finish_time": "2026-04-28 13:00:40"
+                  "due_date": "2026-04-05",
+                  "finish_time": "2026-06-15 14:47:04"
                 },
                 {
                   "batch_id": "B6_0012",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-03-30 11:02:51"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-05-15 11:02:51"
                 },
                 {
                   "batch_id": "B6_0013",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-04-01 11:48:59"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-05-19 11:48:59"
                 },
                 {
                   "batch_id": "B6_0014",
-                  "due_date": "2026-02-16",
-                  "finish_time": "2026-04-29 14:20:20"
+                  "due_date": "2026-04-05",
+                  "finish_time": "2026-06-17 13:24:46"
                 },
                 {
                   "batch_id": "B6_0015",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-03-19 09:31:36"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-05-06 09:31:36"
                 },
                 {
                   "batch_id": "B6_0016",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-05-07 09:54:09"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-06-25 08:20:49"
                 },
                 {
                   "batch_id": "B6_0017",
-                  "due_date": "2026-02-16",
-                  "finish_time": "2026-03-12 11:26:08"
+                  "due_date": "2026-04-05",
+                  "finish_time": "2026-04-29 11:26:08"
                 },
                 {
                   "batch_id": "B6_0018",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-04-15 13:49:43"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-06-04 13:56:15"
                 },
                 {
                   "batch_id": "B6_0019",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-06-03 10:12:48"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-07-21 11:22:20"
                 },
                 {
                   "batch_id": "B6_0020",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-05-06 15:53:28"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-06-23 15:53:28"
                 },
                 {
                   "batch_id": "B6_0021",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-05-14 13:54:47"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-07-01 13:54:47"
                 },
                 {
                   "batch_id": "B6_0022",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-03-18 11:56:11"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-05-05 13:12:09"
                 },
                 {
                   "batch_id": "B6_0023",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-03-20 09:22:29"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-05-07 09:22:29"
                 },
                 {
                   "batch_id": "B6_0024",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-05-20 12:03:43"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-07-07 12:03:43"
                 },
                 {
                   "batch_id": "B6_0025",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-04-01 14:20:20"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-05-19 15:27:53"
                 },
                 {
                   "batch_id": "B6_0026",
-                  "due_date": "2026-02-16",
-                  "finish_time": "2026-04-29 13:52:02"
+                  "due_date": "2026-04-05",
+                  "finish_time": "2026-06-12 15:33:33"
                 },
                 {
                   "batch_id": "B6_0027",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-04-17 15:21:08"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-06-05 10:50:04"
                 },
                 {
                   "batch_id": "B6_0028",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-06-08 10:15:55"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-07-22 10:15:55"
                 },
                 {
                   "batch_id": "B6_0029",
-                  "due_date": "2026-02-16",
-                  "finish_time": "2026-03-24 11:56:19"
+                  "due_date": "2026-04-05",
+                  "finish_time": "2026-05-11 11:05:18"
                 },
                 {
                   "batch_id": "B6_0030",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-05-12 12:22:59"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-06-29 12:22:59"
                 },
                 {
                   "batch_id": "B6_0031",
-                  "due_date": "2026-02-16",
-                  "finish_time": "2026-04-24 09:51:28"
+                  "due_date": "2026-04-05",
+                  "finish_time": "2026-06-11 09:51:28"
                 },
                 {
                   "batch_id": "B6_0032",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-06-03 11:01:36"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-07-21 11:01:36"
                 },
                 {
                   "batch_id": "B6_0033",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-05-08 09:40:23"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-06-25 09:40:23"
                 },
                 {
                   "batch_id": "B6_0034",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-06-05 08:43:45"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-07-23 08:43:45"
                 },
                 {
                   "batch_id": "B6_0035",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-03-27 13:05:55"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-05-14 13:05:55"
                 },
                 {
                   "batch_id": "B6_0036",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-03-12 12:43:04"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-04-29 12:43:04"
                 },
                 {
                   "batch_id": "B6_0037",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-05-20 15:46:43"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-07-07 15:46:43"
                 },
                 {
                   "batch_id": "B6_0038",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-05-21 10:02:34"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-07-08 10:02:34"
                 },
                 {
                   "batch_id": "B6_0039",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-05-21 09:28:17"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-07-08 09:28:17"
                 },
                 {
                   "batch_id": "B6_0040",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-05-13 15:36:21"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-06-30 09:12:40"
                 },
                 {
                   "batch_id": "B6_0041",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-05-13 13:56:25"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-06-30 10:04:35"
                 },
                 {
                   "batch_id": "B6_0042",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-04-17 11:26:01"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-06-05 09:36:29"
                 },
                 {
                   "batch_id": "B6_0043",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-04-09 15:26:33"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-05-28 08:55:19"
                 },
                 {
                   "batch_id": "B6_0044",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-06-01 12:41:24"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-07-22 09:28:30"
                 },
                 {
                   "batch_id": "B6_0045",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-06-02 08:06:12"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-07-22 13:10:44"
                 },
                 {
                   "batch_id": "B6_0046",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-02-26 09:38:17"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-04-15 10:00:00"
                 },
                 {
                   "batch_id": "B6_0047",
-                  "due_date": "2026-02-16",
-                  "finish_time": "2026-03-19 13:25:14"
+                  "due_date": "2026-04-05",
+                  "finish_time": "2026-05-06 14:37:34"
                 },
                 {
                   "batch_id": "B6_0048",
-                  "due_date": "2026-02-16",
-                  "finish_time": "2026-03-05 10:50:09"
+                  "due_date": "2026-04-05",
+                  "finish_time": "2026-04-22 10:50:09"
                 },
                 {
                   "batch_id": "B6_0049",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-05-06 10:47:23"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-06-22 13:20:34"
                 },
                 {
                   "batch_id": "B6_0050",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-03-12 15:56:36"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-04-29 15:56:36"
                 },
                 {
                   "batch_id": "B6_0051",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-02-27 15:37:20"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-04-15 08:19:36"
                 },
                 {
                   "batch_id": "B6_0052",
-                  "due_date": "2026-02-16",
-                  "finish_time": "2026-04-23 11:23:28"
+                  "due_date": "2026-04-05",
+                  "finish_time": "2026-06-10 15:18:58"
                 },
                 {
                   "batch_id": "B6_0053",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-03-26 09:08:23"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-05-13 08:01:55"
                 },
                 {
                   "batch_id": "B6_0054",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-03-12 13:49:12"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-04-29 13:49:12"
                 },
                 {
                   "batch_id": "B6_0055",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-05-27 13:13:19"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-07-15 13:13:19"
                 },
                 {
                   "batch_id": "B6_0056",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-05-27 08:12:38"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-07-15 08:12:38"
                 },
                 {
                   "batch_id": "B6_0057",
-                  "due_date": "2026-02-15",
-                  "finish_time": "2026-04-22 15:02:54"
+                  "due_date": "2026-04-04",
+                  "finish_time": "2026-06-10 14:52:09"
                 },
                 {
                   "batch_id": "B6_0058",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-05-28 08:17:12"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-07-16 08:17:12"
                 },
                 {
                   "batch_id": "B6_0059",
-                  "due_date": "2026-02-16",
-                  "finish_time": "2026-05-05 14:21:59"
+                  "due_date": "2026-04-05",
+                  "finish_time": "2026-06-18 08:04:53"
                 },
                 {
                   "batch_id": "B6_0060",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-05-19 11:45:11"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-07-01 14:14:05"
                 },
                 {
                   "batch_id": "B6_0061",
-                  "due_date": "2026-02-18",
-                  "finish_time": "2026-06-02 13:23:41"
+                  "due_date": "2026-04-07",
+                  "finish_time": "2026-07-21 13:23:41"
                 },
                 {
                   "batch_id": "B6_0062",
-                  "due_date": "2026-02-19",
-                  "finish_time": "2026-04-07 14:04:59"
+                  "due_date": "2026-04-08",
+                  "finish_time": "2026-05-27 08:02:00"
                 },
                 {
                   "batch_id": "B6_0063",
-                  "due_date": "2026-02-17",
-                  "finish_time": "2026-04-02 10:13:37"
+                  "due_date": "2026-04-06",
+                  "finish_time": "2026-05-21 09:23:26"
                 }
               ]
             },
             "errors_sample": [],
             "warnings": [],
-            "time_cost_ms": 30271
+            "time_cost_ms": 848
           }
         },
         "sanity_issues": []

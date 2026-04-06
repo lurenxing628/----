@@ -38,7 +38,7 @@ def main() -> None:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from core.services.process.route_parser import RouteParser, ParseStatus
+    from core.services.process.route_parser import ParseStatus, RouteParser
 
     # 关键：category 为大写/带空格时，仍应被识别为 internal
     ot = SimpleNamespace(op_type_id="OT001", name="数铣", category=" INTERNAL ")

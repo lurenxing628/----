@@ -1,41 +1,51 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
+  {% set strategy_zh = {
+      'priority_first': '优先级优先',
+      'due_date_first': '交期优先',
+      'weighted': '综合优先级和交期',
+      'fifo': '先进先出',
+      'improve': '优化排产',
+      'greedy': '快速排产',
+      'manual': '手动排产'
+    } %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
+  {% set mode_zh = {'improve': '优化模式', 'greedy': '快速模式', 'single': '单次排产'} %}
+  {% set objective_zh = {
+      'weighted_tardiness': '加权拖期最小',
+      'tardiness': '拖期最小',
+      'makespan': '总工期最短',
+      'changeover': '换型最少',
+      'min_overdue': '最少超期',
+      'min_tardiness': '最少拖期小时',
+      'min_weighted_tardiness': '最少加权拖期小时',
+      'min_changeover': '最少换型次数',
+      'overdue_count': '超期批次数',
+      'total_tardiness_hours': '总拖期（小时）',
+      'changeover_count': '换型次数'
+    } %}
+
   <div class="card">
-    <h2>排产调度</h2>
-    <p class="muted">
-      说明：主页面用于“选择批次 → 执行排产/模拟排产”。新增批次与批量编辑请到“批次管理”，算法参数请到“高级设置/模板”。
-    </p>
-    <div style="margin-top:8px;">
-      <strong>入口：</strong>
-      <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.batches_manage_page') }}">批次管理</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.config_page') }}">高级设置/模板</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.analysis_page') }}">排产优化分析</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">排产调度</h2>
+      </div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">选择批次后执行排产。新增和编辑批次请到「批次管理」。</p>
+    {{ ui.scheduler_nav('batches') }}
   </div>
 
   <div class="card">
-    <h3>常用方案（模板）</h3>
-    <div class="muted" style="margin-bottom:8px;">切换方案会立刻更新排产参数；执行排产会使用当前方案。</div>
+    <h3 class="section-title">常用方案（模板）</h3>
+    <div class="muted mb-2">切换后排产参数会立刻变化。</div>
     {% set preset_apply_url = safe_url_for('scheduler.preset_apply') %}
     {% if preset_apply_url %}
-      <form method="post" action="{{ preset_apply_url }}" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+      <form method="post" action="{{ preset_apply_url }}" class="form-row">
         <input type="hidden" name="next" value="{{ request.full_path }}">
-        <label class="muted">方案</label>
-        <select name="preset_name" onchange="this.form.submit()">
+        <label class="muted" for="schedulerPresetSelect">方案</label>
+        <select id="schedulerPresetSelect" name="preset_name" data-auto-submit="1">
           <option value="custom" {% if not active_preset or active_preset == 'custom' %}selected{% endif %}>自定义（以高级设置为准）</option>
           {% for p in presets or [] %}
             <option value="{{ p.name }}" {% if active_preset == p.name %}selected{% endif %}>{{ p.name }}</option>
@@ -43,63 +53,89 @@
         </select>
         {% set config_url = safe_url_for('scheduler.config_page') %}
         {% if config_url %}
-          <a href="{{ config_url }}">管理模板/高级设置</a>
+          {{ ui.link_button('管理模板/高级设置', config_url, 'secondary', 'sm') }}
         {% else %}
-          <span class="muted"
-                title="原因：后端接口未注册（endpoint：scheduler.config_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-            管理模板/高级设置（不可用：后端接口缺失，可能旧版本/未重启/未重新打包）
-          </span>
+          <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
+          <details class="debug-details muted">
+            <summary>排查信息</summary>
+            后端接口未注册（endpoint：scheduler.config_page）。<br/>
+            常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+            处理：重启服务或重新打包升级。<br/>
+            日志：logs/aps.log、logs/aps_error.log。
+          </details>
         {% endif %}
       </form>
+      {% if active_preset_reason %}
+        <div class="muted mt-2">说明：{{ active_preset_reason }}</div>
+      {% endif %}
     {% else %}
-      <div class="muted"
-           title="原因：后端接口未注册（endpoint：scheduler.preset_apply）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-        常用方案（模板）不可用：后端接口缺失（scheduler.preset_apply），可能旧版本/未重启/未重新打包。请重启服务或重新打包升级。
-      </div>
+      <div class="muted">该功能需要更新版本后使用，请重启系统。</div>
+      <details class="debug-details muted">
+        <summary>排查信息</summary>
+        后端接口未注册（endpoint：scheduler.preset_apply）。<br/>
+        常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+        处理：重启服务或重新打包升级。<br/>
+        日志：logs/aps.log、logs/aps_error.log。
+      </details>
     {% endif %}
   </div>
 
   <div class="card">
-    <h3>最近一次排产（留痕快照）</h3>
+    <h3 class="section-title">最近一次排产</h3>
     {% if latest_history %}
-      <div class="muted">
-        排产时间：<strong>{{ latest_history.schedule_time }}</strong>
-        <span class="muted">｜</span>
-        版本：<strong>{{ latest_history.version }}</strong>
-        <span class="muted">｜</span>
-        策略：<strong>{{ latest_history.strategy }}</strong>
-        <span class="muted">｜</span>
-        结果：<strong>{{ latest_history.result_status or '-' }}</strong>
+      <div class="info-line">
+        <span>时间：<strong>{{ latest_history.schedule_time }}</strong></span>
+        <span class="info-sep">|</span>
+        <span>版本：<strong>v{{ latest_history.version }}</strong></span>
+        <span class="info-sep">|</span>
+        <span>方式：<strong>{{ strategy_zh.get(latest_history.strategy, latest_history.strategy or '-') }}</strong></span>
+        <span class="info-sep">|</span>
+        <span>结果：<strong>{{ status_zh.get(latest_history.result_status, latest_history.result_status or '-') }}</strong></span>
       </div>
       {% if latest_summary and latest_summary.overdue_batches %}
-        <div class="muted" style="margin-top:6px;">
+        <div class="muted mt-2">
           超期：{{ latest_summary.overdue_batches.count or 0 }} 个
         </div>
       {% endif %}
+      {% if latest_warning_total %}
+        <div class="flash-card flash-warning mt-2">
+          <div>告警：{{ latest_warning_total }} 条</div>
+          <ul class="list-tight mt-1">
+            {% for item in latest_warning_preview %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% if latest_warning_hidden_count > 0 %}
+            <div class="muted text-xs">另有 {{ latest_warning_hidden_count }} 条告警，请到系统历史查看。</div>
+          {% endif %}
+        </div>
+      {% endif %}
       {% if latest_summary and latest_summary.algo and latest_summary.algo.metrics %}
-        <div class="muted" style="margin-top:6px;">
-          指标：拖期 {{ latest_summary.algo.metrics.total_tardiness_hours or 0 }} 小时，
-          加权拖期 {{ latest_summary.algo.metrics.weighted_tardiness_hours or 0 }} 小时，
-          makespan {{ latest_summary.algo.metrics.makespan_hours or 0 }} 小时，
-          换型 {{ latest_summary.algo.metrics.changeover_count or 0 }} 次
-          <span class="muted">｜</span>
-          机器利用率 {{ ((latest_summary.algo.metrics.machine_util_avg or 0) * 100) | round(2) }}%
-          <span class="muted">｜</span>
-          模式：{{ latest_summary.algo.mode or '-' }} / {{ latest_summary.algo.objective or '-' }}
+        {% set algo = latest_summary.algo %}
+        {% set m = algo.metrics %}
+        <div class="muted mt-2">
+          指标：拖期 {{ m.total_tardiness_hours or 0 }} 小时，
+          加权拖期 {{ m.weighted_tardiness_hours or 0 }} 小时，
+          总工期 {{ m.makespan_hours or 0 }} 小时，
+          换型 {{ m.changeover_count or 0 }} 次
+          <span class="info-sep">|</span>
+          设备利用率 {{ ((m.machine_util_avg or 0) * 100) | round(2) }}%
+          <span class="info-sep">|</span>
+          模式：{{ mode_zh.get(algo.mode, algo.mode or '-') }}，目标：{{ objective_zh.get(algo.objective, algo.objective or '-') }}
         </div>
       {% endif %}
     {% else %}
-      <div class="muted">暂无排产历史（执行排产/模拟后会在此展示）。</div>
+      <div class="muted">还没有排过产，排产后这里会显示结果。</div>
     {% endif %}
   </div>
 
   <div class="card">
-    <h3>选择批次并执行排产</h3>
-    <form method="get" action="{{ url_for('scheduler.batches_page') }}" style="margin-bottom:8px;">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>状态</label><br/>
-          <select name="status">
+    <h3 class="section-title">选择批次并执行排产</h3>
+    <form method="get" action="{{ url_for('scheduler.batches_page') }}" class="mb-2">
+      <div class="form-row">
+        <div class="form-field">
+          <label for="schedulerBatchesStatusFilter">状态</label>
+          <select id="schedulerBatchesStatusFilter" name="status">
             <option value="pending" {% if status=='pending' %}selected{% endif %}>待排</option>
             <option value="scheduled" {% if status=='scheduled' %}selected{% endif %}>已排</option>
             <option value="processing" {% if status=='processing' %}selected{% endif %}>加工中</option>
@@ -107,9 +143,9 @@
             <option value="cancelled" {% if status=='cancelled' %}selected{% endif %}>已取消</option>
           </select>
         </div>
-        <div>
-          <label>筛选：齐套</label><br/>
-          <select name="only_ready">
+        <div class="form-field">
+          <label for="schedulerBatchesReadyFilter">筛选：齐套</label>
+          <select id="schedulerBatchesReadyFilter" name="only_ready">
             <option value="" {% if not only_ready %}selected{% endif %}>（全部）</option>
             <option value="yes" {% if only_ready=='yes' %}selected{% endif %}>齐套</option>
             <option value="partial" {% if only_ready=='partial' %}selected{% endif %}>部分齐套</option>
@@ -117,25 +153,51 @@
           </select>
         </div>
         <div>
-          <button type="submit">查询</button>
+          {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
         </div>
       </div>
     </form>
 
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('scheduler.batches_page', status=status, only_ready=only_ready, page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('scheduler.batches_page', status=status, only_ready=only_ready, page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
+
     {% if batches and batches|length > 0 %}
+      {% for r in batches %}
+        <form id="batchDeleteForm_{{ loop.index0 }}" method="post" action="{{ url_for('scheduler.delete_batch', batch_id=r.batch_id) }}" class="d-none"
+              data-confirm="确定删除批次 {{ r.batch_id }} 吗？将级联删除批次工序与排程记录（若存在）。">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+        </form>
+      {% endfor %}
+      <div class="form-row mb-2">
+        <div class="form-field">
+          <label for="schedulerBatchesSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索批次</label>
+          <input id="schedulerBatchesSearchInput" data-table-search="batchesTable" placeholder="输入批次号、图号..." class="w-260">
+        </div>
+        <span class="muted text-xs">仅当前页排序</span>
+      </div>
       <form id="jsRunScheduleForm" method="post" action="{{ url_for('scheduler.run_schedule') }}">
-        <table>
+        <div class="overflow-x-auto">
+        <table id="batchesTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1" data-col-resize="1">
         <thead>
           <tr>
-            <th style="width:60px;">选</th>
-            <th style="width:140px;">批次号</th>
-            <th style="width:180px;">图号</th>
-            <th style="width:100px;">数量</th>
-            <th style="width:140px;">交期</th>
-            <th style="width:120px;">优先级</th>
-            <th style="width:140px;">齐套</th>
-            <th style="width:120px;">状态</th>
-            <th style="width:120px;">操作</th>
+            <th class="w-60"><input type="checkbox" class="js-select-all" title="全选"></th>
+            <th class="w-140" data-sort="text">批次号</th>
+            <th class="w-150" data-sort="text">图号</th>
+            <th class="w-100 text-right" data-sort="number">数量</th>
+            <th class="w-140" data-sort="date">交期</th>
+            <th class="w-120" data-sort="text">优先级</th>
+            <th class="w-120" data-sort="text">齐套</th>
+            <th class="w-120" data-sort="text">状态</th>
+            <th class="w-160">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -150,26 +212,32 @@
               </td>
               <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}">{{ r.batch_id }}</a></td>
               <td>{{ r.part_no }}</td>
-              <td>{{ r.quantity }}</td>
+              <td class="text-right">{{ r.quantity }}</td>
               <td>{% if r.due_date %}{{ r.due_date }}{% else %}<span class="muted">-</span>{% endif %}</td>
               <td>{{ r.priority_zh }}</td>
               <td>{{ r.ready_status_zh }}</td>
               <td>{{ r.status_zh }}</td>
-              <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}">查看/编辑</a></td>
+              <td>
+                <div class="table-actions">
+                  {{ ui.link_button('查看/编辑', url_for('scheduler.batch_detail', batch_id=r.batch_id), 'secondary', 'sm') }}
+                  {{ ui.button('删除', 'danger', 'sm', type_attr='submit', form='batchDeleteForm_' ~ loop.index0) }}
+                </div>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+        </div>
 
         {% if status == 'pending' %}
-          <div style="margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-            <div>
-              <label class="muted">排产开始时间（默认明天 08:00）</label><br/>
-              <input name="start_dt" value="{{ default_start_dt }}" placeholder="YYYY-MM-DD HH:MM" style="width:200px;">
+          <div class="form-row mt-3">
+            <div class="form-field">
+              <label class="muted" for="schedulerStartDtInput">排产开始时间（默认明天 08:00）</label>
+              <input id="schedulerStartDtInput" type="datetime-local" name="start_dt" value="{{ (default_start_dt or '')|replace(' ', 'T') }}" class="w-220">
             </div>
-            <div>
-              <label class="muted">排产截止日期（可选）</label><br/>
-              <input name="end_date" placeholder="YYYY-MM-DD" style="width:160px;">
+            <div class="form-field">
+              <label class="muted" for="schedulerEndDateInput">排产截止日期（可选）</label>
+              <input id="schedulerEndDateInput" type="date" name="end_date" class="w-180">
             </div>
             <div>
               <label class="muted">
@@ -177,57 +245,27 @@
                 启用齐套约束（未齐套禁止排产）
               </label>
             </div>
-            <div class="muted" style="flex:1; min-width:240px;">
-              说明：若设置截止日期，排产结果一旦超过该日期将判为失败并提示原因。
+            <div class="form-field min-w-320">
+              <label class="muted">
+                <input type="checkbox" name="strict_mode" value="yes">
+                严格校验排产参数
+              </label>
+              <div class="muted text-xs">仅对"派工方式""智能派工策略""自动分配设备人员"这几项设置生效：开启后，如果填写了无效的值，将直接报错并拒绝排产，不会自动使用默认值替代。</div>
+            </div>
+            <div class="muted flex-1 min-w-240">
+              设了截止日期的话，排不完会提示失败。
             </div>
           </div>
-          <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-            <button type="submit">执行排产</button>
-            <button type="submit" formaction="{{ url_for('scheduler.simulate_schedule') }}"
-                    onclick="return confirm('将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？');">
-              模拟排产（插单模拟）
-            </button>
+          <div class="action-bar mt-3">
+            {{ ui.button('执行排产', 'primary', 'md', type_attr='submit') }}
+            {{ ui.button('模拟排产（插单模拟）', 'success', 'md', type_attr='submit', formaction=url_for('scheduler.simulate_schedule'), confirm='将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？') }}
             <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
-            <span class="muted">提示：若内部工序未补全设备/人员/工时，将被判定为排产失败并提示原因。</span>
+            <span class="muted">工序的设备、人员、工时必须填写完整，否则排产会失败。</span>
           </div>
         {% endif %}
       </form>
-
-      {% if status == 'pending' %}
-        <script>
-          (function () {
-            function updateCount() {
-              const checks = Array.from(document.querySelectorAll(".js-batch-check"));
-              const cnt = checks.filter(x => x && x.checked).length;
-              const el = document.getElementById("jsSelectedCount");
-              if (el) el.textContent = String(cnt);
-            }
-            const checks = Array.from(document.querySelectorAll(".js-batch-check"));
-            for (const c of checks) c.addEventListener("change", updateCount);
-            updateCount();
-
-            // 防双击：提交后禁用按钮（仅 UI 互斥，不是资源锁）
-            const form = document.getElementById("jsRunScheduleForm");
-            if (form) {
-              form.addEventListener("submit", function (e) {
-                try {
-                  if (form.dataset && form.dataset.submitted === "1") {
-                    e.preventDefault();
-                    return false;
-                  }
-                  if (form.dataset) form.dataset.submitted = "1";
-                  const btns = Array.from(form.querySelectorAll("button[type='submit'], input[type='submit']"));
-                  for (const b of btns) {
-                    try { b.disabled = true; } catch (e2) {}
-                  }
-                } catch (e1) {}
-              });
-            }
-          })();
-        </script>
-      {% endif %}
     {% else %}
-      <div class="muted">暂无数据（可先新增批次或通过 Excel 导入）。</div>
+      <div class="muted">暂无批次数据，可以到批次管理手动新增或通过 Excel 导入。</div>
     {% endif %}
   </div>
 {% endblock %}

@@ -1,58 +1,65 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>工种配置</h2>
-    <p class="muted">说明：用于识别“内部/外部”工序。解析工艺路线时，未识别工种将默认标记为外部工序，并产生警告。</p>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('process.list_parts') }}">返回工艺管理</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('process.suppliers_page') }}">供应商配置</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('process.excel_op_type_page') }}">Excel 导入/导出</a>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">工种配置</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">用于标记每道工序是自己做（内部）还是外协加工（外部）。没有配置过的工种会默认当作外协工序处理。</p>
+    {{ ui.process_nav('op_types') }}
   </div>
 
   <div class="card">
     <h3>新增工种</h3>
     <form method="post" action="{{ url_for('process.create_op_type') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>工种ID</label><br/>
+      <div class="form-row">
+        <div class="form-field">
+          <label>工种编号</label>
           <input name="op_type_id" required placeholder="如：OT001">
         </div>
-        <div>
-          <label>工种名称</label><br/>
+        <div class="form-field">
+          <label>工种名称</label>
           <input name="name" required placeholder="如：数车/数铣/钳/标印/总检">
         </div>
-        <div>
-          <label>归属</label><br/>
+        <div class="form-field">
+          <label>归属</label>
           <select name="category">
             <option value="internal">内部</option>
             <option value="external">外部</option>
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
-          <label>备注</label><br/>
+        <div class="form-field flex-1 min-w-240">
+          <label>备注</label>
           <input name="remark" placeholder="可选">
         </div>
-        <div>
-          <button type="submit">添加工种</button>
-        </div>
+        <div>{{ ui.button('添加工种', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
 
   <div class="card">
     <h3>工种列表</h3>
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('process.op_types_page', page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('process.op_types_page', page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if op_types and op_types|length > 0 %}
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">工种ID</th>
-            <th style="width:220px;">工种名称</th>
-            <th style="width:120px;">归属</th>
+            <th class="w-140">工种编号</th>
+            <th class="w-220">工种名称</th>
+            <th class="w-120">归属</th>
             <th>备注</th>
-            <th style="width:160px;">操作</th>
+            <th class="w-220">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -63,19 +70,20 @@
               <td>{{ '内部' if r.category=='internal' else '外部' }}</td>
               <td>{{ r.remark or '-' }}</td>
               <td>
-                <a href="{{ url_for('process.op_type_detail', op_type_id=r.op_type_id) }}">查看/编辑</a>
-                <span class="muted">｜</span>
-                <form method="post" action="{{ url_for('process.delete_op_type', op_type_id=r.op_type_id) }}" style="display:inline;"
-                      data-confirm="确认删除工种 {{ r.op_type_id }} 吗？">
-                  <button type="submit">删除</button>
-                </form>
+                <div class="table-actions">
+                  {{ ui.link_button('查看/编辑', url_for('process.op_type_detail', op_type_id=r.op_type_id), 'secondary', 'sm') }}
+                  <form method="post" action="{{ url_for('process.delete_op_type', op_type_id=r.op_type_id) }}"
+                        data-confirm="确认删除工种 {{ r.op_type_id }} 吗？">
+                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     {% else %}
-      <div class="muted">暂无工种数据。</div>
+      <div class="muted">暂无工种数据，可以在上方手动新增或通过 Excel 导入。</div>
     {% endif %}
   </div>
 {% endblock %}

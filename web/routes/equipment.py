@@ -9,13 +9,15 @@
 - `equipment_excel_links.py`：设备人员关联 Excel
 """
 
-from .equipment_bp import bp
+from __future__ import annotations
+
+from . import equipment_downtimes as _downtimes  # noqa: F401
+from . import equipment_excel_links as _excel_links  # noqa: F401
+from . import equipment_excel_machines as _excel_machines  # noqa: F401
 
 # 导入子模块以注册路由（side-effect）
 from . import equipment_pages as _pages  # noqa: F401
-from . import equipment_downtimes as _downtimes  # noqa: F401
-from . import equipment_excel_machines as _excel_machines  # noqa: F401
-from . import equipment_excel_links as _excel_links  # noqa: F401
+from .equipment_bp import bp
 
 __all__ = ["bp"]
 

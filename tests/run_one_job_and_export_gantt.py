@@ -2,9 +2,12 @@ import io
 import json
 import os
 import re
+import sys
 import tempfile
 import time
 from datetime import date
+
+from excel_preview_confirm_helpers import build_confirm_payload
 
 
 def find_repo_root():
@@ -20,6 +23,8 @@ def _make_xlsx_bytes(headers, rows):
 
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.title = "Sheet1"
     ws.append(headers)
     for r in rows:
@@ -37,6 +42,13 @@ def _extract_raw_rows_json(html: str) -> str:
     raw = m.group(1)
     raw = raw.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&")
     return raw.strip()
+
+
+def _extract_preview_baseline(html: str) -> str:
+    m = re.search(r'<input[^>]*name=["\']preview_baseline["\'][^>]*value=["\']([^"\']+)["\']', html, re.I)
+    if not m:
+        raise RuntimeError("未能从预览页面提取 preview_baseline（确认导入需要该字段）")
+    return m.group(1).strip()
 
 
 def _assert_status(name: str, resp, expect_code: int = 200):
@@ -66,7 +78,7 @@ def main():
     os.environ["APS_BACKUP_DIR"] = test_backups
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
 
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
 
@@ -83,24 +95,42 @@ def main():
     buf = _make_xlsx_bytes(["设备编号", "设备名称", "工种", "状态"], machines_rows)
     r = client.post("/equipment/excel/machines/preview", data={"mode": "overwrite", "file": (buf, "machines.xlsx")}, content_type="multipart/form-data")
     _assert_status("machines preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/equipment/excel/machines/confirm", data={"mode": "overwrite", "filename": "machines.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/equipment/excel/machines/confirm",
+        data={"mode": "overwrite", "filename": "machines.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("machines confirm", r, 200)
 
     operators_rows = [{"工号": "OP001", "姓名": "张三", "状态": "active", "备注": "one_job"}]
     buf = _make_xlsx_bytes(["工号", "姓名", "状态", "备注"], operators_rows)
     r = client.post("/personnel/excel/operators/preview", data={"mode": "overwrite", "file": (buf, "operators.xlsx")}, content_type="multipart/form-data")
     _assert_status("operators preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/personnel/excel/operators/confirm", data={"mode": "overwrite", "filename": "operators.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/personnel/excel/operators/confirm",
+        data={"mode": "overwrite", "filename": "operators.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("operators confirm", r, 200)
 
     links_rows = [{"工号": "OP001", "设备编号": "MC001"}]
     buf = _make_xlsx_bytes(["工号", "设备编号"], links_rows)
     r = client.post("/personnel/excel/links/preview", data={"mode": "overwrite", "file": (buf, "links.xlsx")}, content_type="multipart/form-data")
     _assert_status("links preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/personnel/excel/links/confirm", data={"mode": "overwrite", "filename": "links.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/personnel/excel/links/confirm",
+        data={"mode": "overwrite", "filename": "links.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("links confirm", r, 200)
 
     # 2) 工艺：工种/供应商/路线（内部+外协）
@@ -111,38 +141,68 @@ def main():
     buf = _make_xlsx_bytes(["工种ID", "工种名称", "归属"], op_types_rows)
     r = client.post("/process/excel/op-types/preview", data={"mode": "overwrite", "file": (buf, "op_types.xlsx")}, content_type="multipart/form-data")
     _assert_status("op_types preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/process/excel/op-types/confirm", data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/process/excel/op-types/confirm",
+        data={"mode": "overwrite", "filename": "op_types.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("op_types confirm", r, 200)
 
     suppliers_rows = [{"供应商ID": "S001", "名称": "外协-标印厂", "对应工种": "标印", "默认周期": 2, "状态": "active"}]
     buf = _make_xlsx_bytes(["供应商ID", "名称", "对应工种", "默认周期", "状态"], suppliers_rows)
     r = client.post("/process/excel/suppliers/preview", data={"mode": "overwrite", "file": (buf, "suppliers.xlsx")}, content_type="multipart/form-data")
     _assert_status("suppliers preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/process/excel/suppliers/confirm", data={"mode": "overwrite", "filename": "suppliers.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/process/excel/suppliers/confirm",
+        data={"mode": "overwrite", "filename": "suppliers.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("suppliers confirm", r, 200)
 
     routes_rows = [{"图号": "A1234", "名称": "壳体-大", "工艺路线字符串": "5数铣35标印"}]
     buf = _make_xlsx_bytes(["图号", "名称", "工艺路线字符串"], routes_rows)
     r = client.post("/process/excel/routes/preview", data={"mode": "overwrite", "file": (buf, "routes.xlsx")}, content_type="multipart/form-data")
     _assert_status("routes preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
-    r = client.post("/process/excel/routes/confirm", data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw}, follow_redirects=True)
+    html_preview = r.data.decode("utf-8", errors="ignore")
+    raw = _extract_raw_rows_json(html_preview)
+    preview_baseline = _extract_preview_baseline(html_preview)
+    r = client.post(
+        "/process/excel/routes/confirm",
+        data={"mode": "overwrite", "filename": "routes.xlsx", "raw_rows_json": raw, "preview_baseline": preview_baseline},
+        follow_redirects=True,
+    )
     _assert_status("routes confirm", r, 200)
 
     # 3) 批次导入并自动生成工序
     batches_rows = [{"批次号": "B001", "图号": "A1234", "数量": 2, "交期": "2099-12-31", "优先级": "urgent", "齐套": "yes", "备注": "one_job"}]
     buf = _make_xlsx_bytes(["批次号", "图号", "数量", "交期", "优先级", "齐套", "备注"], batches_rows)
-    r = client.post("/scheduler/excel/batches/preview", data={"mode": "overwrite", "file": (buf, "batches.xlsx")}, content_type="multipart/form-data")
+    r = client.post(
+        "/scheduler/excel/batches/preview",
+        data={"mode": "overwrite", "file": (buf, "batches.xlsx"), "auto_generate_ops": "1"},
+        content_type="multipart/form-data",
+    )
     _assert_status("batches preview", r, 200)
-    raw = _extract_raw_rows_json(r.data.decode("utf-8", errors="ignore"))
+    html_batches_preview = r.data.decode("utf-8", errors="ignore")
     r = client.post(
         "/scheduler/excel/batches/confirm",
-        data={"mode": "overwrite", "filename": "batches.xlsx", "raw_rows_json": raw, "auto_generate_ops": "1"},
+        data=build_confirm_payload(
+            html_batches_preview,
+            mode="overwrite",
+            filename="batches.xlsx",
+            context="/scheduler/excel/batches/preview",
+            confirm_hidden_fields=["auto_generate_ops"],
+        ),
         follow_redirects=True,
     )
     _assert_status("batches confirm", r, 200)
+    if "导入被拒绝" in r.data.decode("utf-8", errors="ignore"):
+        raise RuntimeError("batches confirm 被拒绝（页面提示“导入被拒绝”）")
 
     # 4) 补齐内部工序：确保有正工时（避免甘特过滤掉零时长任务）
     conn = get_connection(test_db)
@@ -182,7 +242,9 @@ def main():
             raise RuntimeError("未写入 ScheduleHistory")
         version = int(hist["version"])
         min_start = conn.execute("SELECT MIN(start_time) AS st FROM Schedule WHERE version=?", (version,)).fetchone()["st"]
+        max_end = conn.execute("SELECT MAX(end_time) AS et FROM Schedule WHERE version=?", (version,)).fetchone()["et"]
         week_start = str(min_start)[:10] if min_start else date.today().isoformat()
+        week_end = str(max_end)[:10] if max_end else week_start
     finally:
         conn.close()
 
@@ -196,6 +258,35 @@ def main():
     tasks = data.get("tasks") or []
     if not isinstance(tasks, list) or not tasks:
         raise RuntimeError("甘特 tasks 为空")
+
+    # 8) 报表断言（避免只校验页面 200）
+    r = client.get(f"/reports/overdue?version={version}")
+    _assert_status("reports overdue", r, 200)
+    overdue_html = r.data.decode("utf-8", errors="ignore")
+    if "当前无超期批次" not in overdue_html:
+        raise RuntimeError("超期清单文案异常（期望“当前无超期批次”）")
+
+    r = client.get(f"/reports/utilization?version={version}")
+    _assert_status("reports utilization", r, 200)
+    util_html = r.data.decode("utf-8", errors="ignore")
+    if f'name="start_date" value="{week_start}"' not in util_html:
+        raise RuntimeError("utilization 默认开始日期未按版本排程范围带入")
+    if f'name="end_date" value="{week_end}"' not in util_html:
+        raise RuntimeError("utilization 默认结束日期未按版本排程范围带入")
+    if "已按所选版本的排程范围自动带入日期" not in util_html:
+        raise RuntimeError("utilization 缺少“按版本排程范围”提示文案")
+    if "MC001" not in util_html and "OP001" not in util_html:
+        raise RuntimeError("utilization 未展示任何排程资源行（期望至少包含 MC001 或 OP001）")
+
+    r = client.get(f"/reports/downtime?version={version}")
+    _assert_status("reports downtime", r, 200)
+    dt_html = r.data.decode("utf-8", errors="ignore")
+    if f'name="start_date" value="{week_start}"' not in dt_html:
+        raise RuntimeError("downtime 默认开始日期未按版本排程范围带入")
+    if f'name="end_date" value="{week_end}"' not in dt_html:
+        raise RuntimeError("downtime 默认结束日期未按版本排程范围带入")
+    if "已按所选版本的排程范围自动带入日期" not in dt_html:
+        raise RuntimeError("downtime 缺少“按版本排程范围”提示文案")
 
     out_dir = os.path.join(repo_root, "evidence", "FullE2E")
     os.makedirs(out_dir, exist_ok=True)

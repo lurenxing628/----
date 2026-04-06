@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.types import ScheduleResult
+from core.algorithms.value_domains import EXTERNAL, INTERNAL
 
 
 def dispatch_batch_order(
@@ -29,6 +30,7 @@ def dispatch_batch_order(
     blocked_batches: set,
     scheduled_count: int,
     failed_count: int,
+    strict_mode: bool = False,
 ) -> Tuple[int, int]:
     """
     batch_order 派工：按 batch_order 全局排序后的工序列表逐条排入。
@@ -52,9 +54,16 @@ def dispatch_batch_order(
 
             batch = batches[bid]
 
-            if (getattr(op, "source", "internal") or "internal").strip().lower() == "external":
+            if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
                 result, _blocked = scheduler._schedule_external(  # type: ignore[attr-defined]
-                    op, batch, batch_progress, external_group_cache, base_time, errors, end_dt_exclusive
+                    op,
+                    batch,
+                    batch_progress,
+                    external_group_cache,
+                    base_time,
+                    errors,
+                    end_dt_exclusive,
+                    strict_mode=bool(strict_mode),
                 )
             else:
                 result, _blocked = scheduler._schedule_internal(  # type: ignore[attr-defined]
@@ -78,7 +87,7 @@ def dispatch_batch_order(
                 results.append(result)
                 batch_progress[bid] = max(batch_progress.get(bid, base_time), result.end_time)
                 scheduled_count += 1
-                if (result.source or "").strip().lower() == "internal" and result.machine_id:
+                if (result.source or "").strip().lower() == INTERNAL and result.machine_id:
                     try:
                         mid0 = str(result.machine_id or "").strip()
                         oid0 = str(result.operator_id or "").strip()

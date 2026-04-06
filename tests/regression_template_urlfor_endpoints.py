@@ -57,7 +57,7 @@ def collect_endpoints_from_templates(repo_root: str) -> Tuple[Dict[str, List[str
     - url_for 引用：endpoint -> [relpath:line, ...]
     - safe_url_for 引用：endpoint -> [relpath:line, ...]
     """
-    pat_url_for = re.compile(r"url_for\(\s*['\"]([^'\"]+)['\"]")
+    pat_url_for = re.compile(r"(?<!safe_)url_for\(\s*['\"]([^'\"]+)['\"]")
     pat_safe = re.compile(r"safe_url_for\(\s*['\"]([^'\"]+)['\"]")
 
     url_refs: DefaultDict[str, List[str]] = defaultdict(list)

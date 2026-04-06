@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
@@ -9,18 +8,29 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
+from core.models.enums import SourceType
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
+from core.services.common.normalize import to_str_or_blank
+from core.services.process.part_operation_hours_excel_import_service import PartOperationHoursExcelImportService
+from core.services.process.part_operation_query_service import PartOperationQueryService
 from core.services.scheduler.number_utils import parse_finite_float
-from data.repositories import PartOperationRepository
+from web.ui_mode import render_ui_template as render_template
 
-from .process_bp import bp, _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx
-
+from .excel_utils import (
+    build_error_rows_message,
+    build_preview_baseline_token,
+    collect_error_rows,
+    extract_import_stats,
+    flash_import_result,
+    load_confirm_payload,
+    preview_baseline_is_stale,
+    send_excel_template_file,
+)
+from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 # ============================================================
 # Excel：零件工序工时（PartOperations.setup_hours / unit_hours）
@@ -38,7 +48,7 @@ def _part_op_hours_mode_options() -> List[Dict[str, str]]:
 
 
 def _parse_seq(value: Any) -> Optional[int]:
-    if value is None:
+    if value is None or isinstance(value, bool):
         return None
     if isinstance(value, int):
         return int(value)
@@ -48,6 +58,8 @@ def _parse_seq(value: Any) -> Optional[int]:
         return None
     s = str(value).strip()
     if not s:
+        return None
+    if "e" in s.lower():
         return None
     if re.fullmatch(r"\d+", s):
         return int(s)
@@ -61,24 +73,18 @@ def _parse_seq(value: Any) -> Optional[int]:
 
 
 def _build_existing_internal() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
-    rows = g.db.execute(
-        """
-        SELECT part_no, seq, op_type_name, source, setup_hours, unit_hours
-        FROM PartOperations
-        WHERE status='active'
-        ORDER BY part_no, seq
-        """
-    ).fetchall()
+    q = PartOperationQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+    rows = q.list_active_hours()
 
     existing_internal: Dict[str, Dict[str, Any]] = {}
     meta_all: Dict[str, Dict[str, Any]] = {}
     existing_list: List[Dict[str, Any]] = []
 
     for r in rows:
-        part_no = str(r["part_no"] or "").strip()
+        part_no = to_str_or_blank(r["part_no"])
         seq = int(r["seq"] or 0)
         row_id = f"{part_no}|{seq}"
-        source = str(r["source"] or "").strip().lower() or "internal"
+        source = to_str_or_blank(r["source"]).lower() or SourceType.INTERNAL.value
         item = {
             "图号": part_no,
             "工序": seq,
@@ -89,7 +95,7 @@ def _build_existing_internal() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dic
         }
         meta_all[row_id] = item
         existing_list.append(item)
-        if source == "internal":
+        if source == SourceType.INTERNAL.value:
             existing_internal[row_id] = {
                 "__row_id__": row_id,
                 "图号": part_no,
@@ -104,23 +110,21 @@ def _build_existing_internal() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dic
 def _normalize_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     for r in rows:
-        part_no = str(r.get("图号") or "").strip()
-        seq = _parse_seq(r.get("工序"))
-        normalized.append(
-            {
-                "图号": part_no or None,
-                "工序": seq if seq is not None else r.get("工序"),
-                "换型时间(h)": r.get("换型时间(h)"),
-                "单件工时(h)": r.get("单件工时(h)"),
-                "__row_id__": (f"{part_no}|{seq}" if part_no and seq is not None else None),
-            }
-        )
+        item = dict(r or {})
+        part_no = to_str_or_blank(item.get("图号"))
+        seq = _parse_seq(item.get("工序"))
+        item["图号"] = part_no or None
+        item["工序"] = seq if seq is not None else item.get("工序")
+        item["换型时间(h)"] = item.get("换型时间(h)")
+        item["单件工时(h)"] = item.get("单件工时(h)")
+        item["__row_id__"] = f"{part_no}|{seq}" if part_no and seq is not None else None
+        normalized.append(item)
     return normalized
 
 
 def _build_validator(meta_all: Dict[str, Dict[str, Any]]):
     def _validate_row(row: Dict[str, Any]) -> Optional[str]:
-        part_no = str(row.get("图号") or "").strip()
+        part_no = to_str_or_blank(row.get("图号"))
         if not part_no:
             return "“图号”不能为空"
 
@@ -146,11 +150,23 @@ def _build_validator(meta_all: Dict[str, Dict[str, Any]]):
         meta = meta_all.get(rid)
         if not meta:
             return f"工序不存在：图号={part_no} 工序={seq}"
-        if str(meta.get("归属") or "").strip().lower() != "internal":
+        if to_str_or_blank(meta.get("归属")).lower() != SourceType.INTERNAL.value:
             return f"仅支持内部工序导入工时：图号={part_no} 工序={seq}"
         return None
 
     return _validate_row
+
+
+def _build_part_op_hours_extra_state(meta_all: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    return {
+        "meta_rows": [
+            {
+                "row_id": str(row_id),
+                "source": to_str_or_blank((meta or {}).get("归属")).lower(),
+            }
+            for row_id, meta in sorted((meta_all or {}).items(), key=lambda item: str(item[0]))
+        ]
+    }
 
 
 def _build_existing_for_append(existing_internal: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -181,22 +197,42 @@ def _rewrite_append_preview_rows(preview_rows: List[Any], mode: ImportMode) -> N
             pr.message = "工时为空，按“追加”模式将补齐"
 
 
-@bp.get("/excel/part-operation-hours")
-def excel_part_op_hours_page():
-    _existing_internal, _meta_all, existing_list = _build_existing_internal()
+def _render_excel_part_op_hours_page(
+    *,
+    existing_list: List[Dict[str, Any]],
+    preview_rows: Any,
+    raw_rows_json: Optional[str],
+    preview_baseline: Optional[str],
+    mode_value: str,
+    filename: Optional[str],
+):
     return render_template(
         "process/excel_import_part_operation_hours.html",
         title="零件工序工时 - Excel 导入/导出",
         existing_list=existing_list,
-        preview_rows=None,
-        raw_rows_json=None,
-        mode=ImportMode.OVERWRITE.value,
-        filename=None,
+        preview_rows=preview_rows,
+        raw_rows_json=raw_rows_json,
+        preview_baseline=preview_baseline,
+        mode=mode_value,
+        filename=filename,
         preview_url=url_for("process.excel_part_op_hours_preview"),
         confirm_url=url_for("process.excel_part_op_hours_confirm"),
         template_download_url=url_for("process.excel_part_op_hours_template"),
         export_url=url_for("process.excel_part_op_hours_export"),
         mode_options=_part_op_hours_mode_options(),
+    )
+
+
+@bp.get("/excel/part-operation-hours")
+def excel_part_op_hours_page():
+    _existing_internal, _meta_all, existing_list = _build_existing_internal()
+    return _render_excel_part_op_hours_page(
+        existing_list=existing_list,
+        preview_rows=None,
+        raw_rows_json=None,
+        preview_baseline=None,
+        mode_value=ImportMode.OVERWRITE.value,
+        filename=None,
     )
 
 
@@ -228,6 +264,12 @@ def excel_part_op_hours_preview():
         mode=mode,
     )
     _rewrite_append_preview_rows(preview_rows, mode)
+    preview_baseline = build_preview_baseline_token(
+        existing_data=existing_for_preview,
+        mode=mode,
+        id_column="__row_id__",
+        extra_state=_build_part_op_hours_extra_state(meta_all),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -240,19 +282,13 @@ def excel_part_op_hours_preview():
         time_cost_ms=time_cost_ms,
     )
 
-    return render_template(
-        "process/excel_import_part_operation_hours.html",
-        title="零件工序工时 - Excel 导入/导出",
+    return _render_excel_part_op_hours_page(
         existing_list=existing_list,
         preview_rows=preview_rows,
         raw_rows_json=json.dumps(rows, ensure_ascii=False),
-        mode=mode.value,
+        preview_baseline=preview_baseline,
+        mode_value=mode.value,
         filename=file.filename,
-        preview_url=url_for("process.excel_part_op_hours_preview"),
-        confirm_url=url_for("process.excel_part_op_hours_confirm"),
-        template_download_url=url_for("process.excel_part_op_hours_template"),
-        export_url=url_for("process.excel_part_op_hours_export"),
-        mode_options=_part_op_hours_mode_options(),
     )
 
 
@@ -264,16 +300,8 @@ def excel_part_op_hours_confirm():
         raise ValidationError("该页面不支持“替换（清空后导入）”，请使用“覆盖”或“追加”。", field="mode")
 
     filename = request.form.get("filename") or "unknown.xlsx"
-    raw_rows_json = request.form.get("raw_rows_json")
-    if not raw_rows_json:
-        raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
-
-    try:
-        rows = json.loads(raw_rows_json)
-        if not isinstance(rows, list):
-            raise ValueError("rows not list")
-    except Exception:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。")
+    payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
+    rows = payload.rows
 
     _ensure_unique_ids(rows, id_column="__row_id__")
 
@@ -281,6 +309,22 @@ def excel_part_op_hours_confirm():
     validator = _build_validator(meta_all=meta_all)
     excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
     existing_for_preview = existing_internal if mode != ImportMode.APPEND else _build_existing_for_append(existing_internal)
+    if preview_baseline_is_stale(
+        payload.preview_baseline,
+        existing_data=existing_for_preview,
+        mode=mode,
+        id_column="__row_id__",
+        extra_state=_build_part_op_hours_extra_state(meta_all),
+    ):
+        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        return _render_excel_part_op_hours_page(
+            existing_list=existing_list,
+            preview_rows=None,
+            raw_rows_json=None,
+            preview_baseline=None,
+            mode_value=mode.value,
+            filename=filename,
+        )
     preview_rows = excel_svc.preview_import(
         rows=rows,
         id_column="__row_id__",
@@ -290,82 +334,25 @@ def excel_part_op_hours_confirm():
     )
     _rewrite_append_preview_rows(preview_rows, mode)
 
-    error_rows = [pr for pr in preview_rows if pr.status == RowStatus.ERROR]
+    error_rows = collect_error_rows(preview_rows)
     if error_rows:
-        sample = "；".join([f"第{pr.row_num}行：{pr.message}" for pr in error_rows[:5] if pr and pr.message])
-        flash(
-            f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。{('错误示例：' + sample) if sample else ''}",
-            "error",
-        )
-        return render_template(
-            "process/excel_import_part_operation_hours.html",
-            title="零件工序工时 - Excel 导入/导出",
+        flash(build_error_rows_message(error_rows), "error")
+        return _render_excel_part_op_hours_page(
             existing_list=existing_list,
             preview_rows=preview_rows,
             raw_rows_json=json.dumps(rows, ensure_ascii=False),
-            mode=mode.value,
+            preview_baseline=payload.preview_baseline,
+            mode_value=mode.value,
             filename=filename,
-            preview_url=url_for("process.excel_part_op_hours_preview"),
-            confirm_url=url_for("process.excel_part_op_hours_confirm"),
-            template_download_url=url_for("process.excel_part_op_hours_template"),
-            export_url=url_for("process.excel_part_op_hours_export"),
-            mode_options=_part_op_hours_mode_options(),
         )
 
-    tx = TransactionManager(g.db)
-    op_repo = PartOperationRepository(g.db)
-    new_count = update_count = skip_count = error_count = 0
-    errors_sample: List[Dict[str, Any]] = []
-
-    with tx.transaction():
-        for pr in preview_rows:
-            if pr.status == RowStatus.ERROR:
-                error_count += 1
-                if pr.message and len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": pr.message})
-                continue
-            if pr.status == RowStatus.SKIP:
-                skip_count += 1
-                continue
-            if pr.status == RowStatus.UNCHANGED:
-                continue
-
-            part_no = str(pr.data.get("图号") or "").strip()
-            seq = _parse_seq(pr.data.get("工序"))
-            if not part_no or seq is None:
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": "缺少图号/工序，无法写入。"})
-                continue
-
-            try:
-                sh_raw = parse_finite_float(pr.data.get("换型时间(h)"), field="换型时间(h)", allow_none=True)
-                uh_raw = parse_finite_float(pr.data.get("单件工时(h)"), field="单件工时(h)", allow_none=True)
-            except ValidationError as e:
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": e.message})
-                continue
-            sh = 0.0 if sh_raw is None else float(sh_raw)
-            uh = 0.0 if uh_raw is None else float(uh_raw)
-
-            op = op_repo.get(part_no, int(seq))
-            if not op:
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": f"工序不存在：图号={part_no} 工序={seq}"})
-                continue
-            if (op.source or "").strip().lower() != "internal":
-                error_count += 1
-                if len(errors_sample) < 10:
-                    errors_sample.append({"row": pr.row_num, "message": f"仅内部工序可导入工时：图号={part_no} 工序={seq}"})
-                continue
-
-            op_repo.update(part_no, int(seq), {"setup_hours": sh, "unit_hours": uh})
-            if pr.status == RowStatus.NEW:
-                new_count += 1
-            else:
-                update_count += 1
+    import_svc = PartOperationHoursExcelImportService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    )
+    stats = import_svc.apply_preview_rows(preview_rows)
+    new_count, update_count, skip_count, error_count = extract_import_stats(stats)
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_import(
@@ -374,18 +361,17 @@ def excel_part_op_hours_confirm():
         target_type="part_operation_hours",
         filename=filename,
         mode=mode,
-        preview_or_result={
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-        },
+        preview_or_result=stats,
         time_cost_ms=time_cost_ms,
     )
 
-    flash(f"导入完成：新增 {new_count}，更新 {update_count}，跳过 {skip_count}，错误 {error_count}。", "success")
+    flash_import_result(
+        new_count=new_count,
+        update_count=update_count,
+        skip_count=skip_count,
+        error_count=error_count,
+        errors_sample=list(stats.get("errors_sample") or []),
+    )
     return redirect(url_for("process.excel_part_op_hours_page"))
 
 
@@ -405,25 +391,15 @@ def excel_part_op_hours_template():
             time_range={},
             time_cost_ms=time_cost_ms,
         )
-        return send_file(
-            template_path,
-            as_attachment=True,
-            download_name="零件工序工时.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        return send_excel_template_file(template_path, download_name="零件工序工时.xlsx")
 
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["图号", "工序", "换型时间(h)", "单件工时(h)"])
-    ws.append(["A1234", 5, 1.0, 0.25])
-    ws.append(["A1234", 10, 0.5, 0.1])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    template_def = get_template_definition("零件工序工时.xlsx")
+    sample_rows = template_def.get("sample_rows") or []
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        sample_rows,
+        format_spec=template_def.get("format_spec"),
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(
@@ -432,7 +408,7 @@ def excel_part_op_hours_template():
         target_type="part_operation_hours",
         template_or_export_type="零件工序工时模板.xlsx",
         filters={},
-        row_count=2,
+        row_count=len(sample_rows),
         time_range={},
         time_cost_ms=time_cost_ms,
     )
@@ -448,27 +424,15 @@ def excel_part_op_hours_template():
 @bp.get("/excel/part-operation-hours/export")
 def excel_part_op_hours_export():
     start = time.time()
-    rows = g.db.execute(
-        """
-        SELECT part_no, seq, setup_hours, unit_hours
-        FROM PartOperations
-        WHERE status='active' AND source='internal'
-        ORDER BY part_no, seq
-        """
-    ).fetchall()
-
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.append(["图号", "工序", "换型时间(h)", "单件工时(h)"])
-    for r in rows:
-        ws.append([r["part_no"], int(r["seq"] or 0), float(r["setup_hours"] or 0.0), float(r["unit_hours"] or 0.0)])
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
+    q = PartOperationQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+    rows = q.list_internal_active_hours()
+    template_def = get_template_definition("零件工序工时.xlsx")
+    output = build_xlsx_bytes(
+        template_def["headers"],
+        [[r["part_no"], int(r["seq"] or 0), float(r["setup_hours"] or 0.0), float(r["unit_hours"] or 0.0)] for r in rows],
+        format_spec=template_def.get("format_spec"),
+        sanitize_formula=True,
+    )
 
     time_cost_ms = int((time.time() - start) * 1000)
     log_excel_export(

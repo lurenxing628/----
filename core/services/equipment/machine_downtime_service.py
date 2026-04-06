@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import MachineDowntime
+from core.models.enums import MachineDowntimeStatus, MachineStatus
+from core.services.common.normalize import normalize_text
 from data.repositories import MachineDowntimeRepository, MachineRepository
 
 
@@ -35,13 +37,7 @@ class MachineDowntimeService:
     # -------------------------
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     @staticmethod
     def _parse_datetime(value: Any, field: str) -> datetime:
@@ -82,8 +78,8 @@ class MachineDowntimeService:
     def get(self, downtime_id: Any) -> MachineDowntime:
         try:
             did = int(downtime_id)
-        except Exception:
-            raise ValidationError("停机记录 ID 不合法", field="downtime_id")
+        except Exception as e:
+            raise ValidationError("停机记录 ID 不合法", field="downtime_id") from e
         d = self.repo.get(did)
         if not d:
             raise BusinessError(ErrorCode.NOT_FOUND, f"停机记录（ID={did}）不存在")
@@ -132,7 +128,7 @@ class MachineDowntimeService:
                     "end_time": et_db,
                     "reason_code": rc,
                     "reason_detail": rd,
-                    "status": "active",
+                    "status": MachineDowntimeStatus.ACTIVE.value,
                 }
             )
         return d
@@ -173,7 +169,7 @@ class MachineDowntimeService:
 
         stype = (self._normalize_text(scope_type) or "").strip()
         if stype not in ("machine", "category", "all"):
-            raise ValidationError("scope_type 不合法（允许：machine / category / all）", field="scope_type")
+            raise ValidationError("停机范围不正确，请选择：指定设备 / 按类别 / 全部。", field="停机范围")
 
         sval = self._normalize_text(scope_value)
         target_machine_ids: List[str] = []
@@ -186,10 +182,10 @@ class MachineDowntimeService:
         elif stype == "category":
             if not sval:
                 raise ValidationError("scope_value 不能为空（category 模式）", field="scope_value")
-            ms = self.machine_repo.list(status="active" if only_active_machines else None, category=sval)
+            ms = self.machine_repo.list(status=MachineStatus.ACTIVE.value if only_active_machines else None, category=sval)
             target_machine_ids = [m.machine_id for m in ms]
         else:
-            ms = self.machine_repo.list(status="active" if only_active_machines else None)
+            ms = self.machine_repo.list(status=MachineStatus.ACTIVE.value if only_active_machines else None)
             target_machine_ids = [m.machine_id for m in ms]
             sval = sval or "*"
 
@@ -213,7 +209,7 @@ class MachineDowntimeService:
                         "end_time": et_db,
                         "reason_code": rc,
                         "reason_detail": rd,
-                        "status": "active",
+                        "status": MachineDowntimeStatus.ACTIVE.value,
                     }
                 )
                 if d.id is not None:
@@ -236,7 +232,7 @@ class MachineDowntimeService:
             if mc_id and d.machine_id != mc_id:
                 raise BusinessError(ErrorCode.PERMISSION_DENIED, "该停机记录不属于当前设备，不能操作。")
 
-        if (d.status or "").strip() != "active":
+        if (d.status or "").strip() != MachineDowntimeStatus.ACTIVE.value:
             # 幂等：已取消就不报错
             return
 

@@ -1,92 +1,85 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>批次管理</h2>
-    <p class="muted">
-      说明：本页用于新增批次、批量复制/删除/修改与进入批次详情编辑。
-      <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a> 请在主页面进行。
-    </p>
-    <div style="margin-top:8px;">
-      <strong>入口：</strong>
-      <a href="{{ url_for('scheduler.batches_page') }}">执行排产</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.config_page') }}">高级设置/模板</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='machine') }}">甘特图-设备</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.gantt_page', view='operator') }}">甘特图-人员</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.week_plan_page') }}">周计划</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.calendar_page') }}">工作日历配置</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('scheduler.excel_batches_page') }}">批次信息（Excel 导入/导出）</a>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">批次管理</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">
+      管理批次的新增、复制、删除和批量修改。
+    </p>
+    {{ ui.scheduler_nav('batches_manage') }}
   </div>
 
   <div class="card">
-    <h3>新增批次</h3>
+    <h3 class="section-title">新增批次</h3>
     <form method="post" action="{{ url_for('scheduler.create_batch') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>批次号</label><br/>
-          <input name="batch_id" required placeholder="如：B001">
+      <div class="form-row">
+        <div class="form-field">
+          <label for="batchManageBatchIdInput">批次号</label>
+          <input id="batchManageBatchIdInput" name="batch_id" required placeholder="如：B001">
         </div>
-        <div style="min-width:260px;">
-          <label>图号</label><br/>
-          <select name="part_no" required>
+        <div class="form-field min-w-260">
+          <label for="batchManagePartNoInput">图号</label>
+          <select id="batchManagePartNoInput" name="part_no" required>
             <option value="">（请选择）</option>
             {% for v, label in part_options %}
               <option value="{{ v }}">{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div>
-          <label>数量</label><br/>
-          <input name="quantity" required placeholder="如：50" style="width:120px;">
+        <div class="form-field">
+          <label for="batchManageQuantityInput">数量</label>
+          <input id="batchManageQuantityInput" name="quantity" required placeholder="如：50" class="w-120">
         </div>
-        <div>
-          <label>交期（可选）</label><br/>
-          <input name="due_date" placeholder="YYYY-MM-DD" style="width:160px;">
+        <div class="form-field">
+          <label for="batchManageDueDateInput">交期（可选）</label>
+          <input id="batchManageDueDateInput" type="date" name="due_date" class="w-160">
         </div>
-        <div>
-          <label>优先级</label><br/>
-          <select name="priority">
+        <div class="form-field">
+          <label for="batchManagePriorityInput">优先级</label>
+          <select id="batchManagePriorityInput" name="priority">
             <option value="normal">普通</option>
             <option value="urgent">急件</option>
             <option value="critical">特急</option>
           </select>
         </div>
-        <div>
-          <label>齐套</label><br/>
-          <select name="ready_status">
+        <div class="form-field">
+          <label for="batchManageReadyStatusInput">齐套</label>
+          <select id="batchManageReadyStatusInput" name="ready_status">
             <option value="yes" selected>齐套（默认）</option>
             <option value="partial">部分齐套</option>
             <option value="no">未齐套</option>
           </select>
         </div>
-        <div>
-          <label>齐套日期（可选）</label><br/>
-          <input name="ready_date" placeholder="YYYY-MM-DD" style="width:160px;">
+        <div class="form-field">
+          <label for="batchManageReadyDateInput">齐套日期（可选）</label>
+          <input id="batchManageReadyDateInput" type="date" name="ready_date" class="w-160">
         </div>
-        <div style="flex:1; min-width:220px;">
-          <label>备注</label><br/>
-          <input name="remark" placeholder="可选">
+        <div class="form-field flex-1 min-w-220">
+          <label for="batchManageRemarkInput">备注</label>
+          <input id="batchManageRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div>
-          <button type="submit">创建批次</button>
+        <div class="form-field min-w-280">
+          <label>
+            <input type="checkbox" name="strict_mode" value="yes">
+            严格校验工艺路线
+          </label>
+          <div class="muted text-xs">只在零件还没有工序模板、需要根据工艺路线自动生成模板时起作用：如果遇到系统不认识的工种、找不到供应商、或供应商默认周期无效，将直接报错并拒绝创建。</div>
         </div>
+        <div>{{ ui.button('创建批次', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
 
   <div class="card">
-    <h3>批次列表</h3>
-    <form method="get" action="{{ url_for('scheduler.batches_manage_page') }}" style="margin-bottom:8px;">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>状态</label><br/>
-          <select name="status">
+    <h3 class="section-title">批次列表</h3>
+    <form method="get" action="{{ url_for('scheduler.batches_manage_page') }}" class="mb-2">
+      <div class="form-row">
+        <div class="form-field">
+          <label for="batchManageStatusFilter">状态</label>
+          <select id="batchManageStatusFilter" name="status">
             <option value="pending" {% if status=='pending' %}selected{% endif %}>待排</option>
             <option value="scheduled" {% if status=='scheduled' %}selected{% endif %}>已排</option>
             <option value="processing" {% if status=='processing' %}selected{% endif %}>加工中</option>
@@ -95,35 +88,59 @@
             <option value="" {% if not status %}selected{% endif %}>（全部）</option>
           </select>
         </div>
-        <div>
-          <label>筛选：齐套</label><br/>
-          <select name="only_ready">
+        <div class="form-field">
+          <label for="batchManageReadyFilter">筛选：齐套</label>
+          <select id="batchManageReadyFilter" name="only_ready">
             <option value="" {% if not only_ready %}selected{% endif %}>（全部）</option>
             <option value="yes" {% if only_ready=='yes' %}selected{% endif %}>齐套</option>
             <option value="partial" {% if only_ready=='partial' %}selected{% endif %}>部分齐套</option>
             <option value="no" {% if only_ready=='no' %}selected{% endif %}>未齐套</option>
           </select>
         </div>
-        <div>
-          <button type="submit">查询</button>
-        </div>
+        <div>{{ ui.button('查询', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
 
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('scheduler.batches_manage_page', status=status, only_ready=only_ready, page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('scheduler.batches_manage_page', status=status, only_ready=only_ready, page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
+
     {% if batches and batches|length > 0 %}
+      {% for r in batches %}
+        <form id="batchManageDeleteForm_{{ loop.index0 }}" method="post" action="{{ url_for('scheduler.delete_batch', batch_id=r.batch_id) }}" class="d-none"
+              data-confirm="确定删除批次 {{ r.batch_id }} 吗？将级联删除批次工序与排程记录（若存在）。">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+        </form>
+      {% endfor %}
+      <div class="form-row mb-2">
+        <div class="form-field">
+          <label for="batchesManageSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索批次</label>
+          <input id="batchesManageSearchInput" data-table-search="batchesManageTable" placeholder="输入批次号、图号..." class="w-260">
+        </div>
+        <span class="muted text-xs">仅当前页排序</span>
+      </div>
       <form method="post" action="{{ url_for('scheduler.bulk_update_batches') }}">
-        <table>
+        <div class="overflow-x-auto">
+        <table id="batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1" data-col-resize="1">
           <thead>
             <tr>
-              <th style="width:60px;">选</th>
-              <th style="width:140px;">批次号</th>
-              <th style="width:180px;">图号</th>
-              <th style="width:100px;">数量</th>
-              <th style="width:140px;">交期</th>
-              <th style="width:120px;">优先级</th>
-              <th style="width:140px;">齐套</th>
-              <th style="width:120px;">状态</th>
-              <th style="width:120px;">操作</th>
+              <th class="w-60"><input type="checkbox" class="js-select-all" title="全选"></th>
+              <th class="w-140" data-sort="text">批次号</th>
+              <th class="w-150" data-sort="text">图号</th>
+              <th class="w-100 text-right" data-sort="number">数量</th>
+              <th class="w-140" data-sort="date">交期</th>
+              <th class="w-120" data-sort="text">优先级</th>
+              <th class="w-120" data-sort="text">齐套</th>
+              <th class="w-120" data-sort="text">状态</th>
+              <th class="w-160">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -134,69 +151,52 @@
                 </td>
                 <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}">{{ r.batch_id }}</a></td>
                 <td>{{ r.part_no }}</td>
-                <td>{{ r.quantity }}</td>
+                <td class="text-right">{{ r.quantity }}</td>
                 <td>{% if r.due_date %}{{ r.due_date }}{% else %}<span class="muted">-</span>{% endif %}</td>
                 <td>{{ r.priority_zh }}</td>
                 <td>{{ r.ready_status_zh }}</td>
                 <td>{{ r.status_zh }}</td>
-                <td><a href="{{ url_for('scheduler.batch_detail', batch_id=r.batch_id) }}">查看/编辑</a></td>
+                <td>
+                  <div class="table-actions">
+                    {{ ui.link_button('查看/编辑', url_for('scheduler.batch_detail', batch_id=r.batch_id), 'secondary', 'sm') }}
+                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit', form='batchManageDeleteForm_' ~ loop.index0) }}
+                  </div>
+                </td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
+        </div>
 
-        <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-          <button type="submit" formaction="{{ url_for('scheduler.bulk_copy_batches') }}"
-                  onclick="return confirm('将把所选批次逐个复制一份（批次号末尾数字自动 +1，其它尽量保持一致）。确定继续？');">
-            复制所选批次
-          </button>
-          <button type="submit" formaction="{{ url_for('scheduler.bulk_delete_batches') }}"
-                  onclick="return confirm('确定删除所选批次吗？将级联删除批次工序与排程记录（若存在）。');">
-            删除所选批次
-          </button>
-          <button type="submit"
-                  onclick="return confirm('确定批量修改所选批次吗？仅会修改你填写的字段。');">
-            批量修改
-          </button>
+        <div class="action-bar mt-3">
+          {{ ui.button('复制所选批次', 'secondary', 'md', type_attr='submit', formaction=url_for('scheduler.bulk_copy_batches'), confirm='将把所选批次逐个复制一份（批次号末尾数字自动 +1，其它尽量保持一致）。确定继续？') }}
+          {{ ui.button('删除所选批次', 'danger', 'md', type_attr='submit', formaction=url_for('scheduler.bulk_delete_batches'), confirm='确定删除所选批次吗？将级联删除批次工序与排程记录（若存在）。') }}
+          {{ ui.button('批量修改', 'primary', 'md', type_attr='submit', confirm='确定批量修改所选批次吗？仅会修改你填写的字段。') }}
           <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
         </div>
 
-        <div style="margin-top:10px; display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
-          <div>
-            <label class="muted">批量优先级（可选）</label><br/>
-            <select name="bulk_priority">
+        <div class="form-row mt-3">
+          <div class="form-field">
+            <label class="muted" for="batchManageBulkPriorityInput">批量优先级（可选）</label>
+            <select id="batchManageBulkPriorityInput" name="bulk_priority">
               <option value="">（不修改）</option>
               <option value="normal">普通</option>
               <option value="urgent">急件</option>
               <option value="critical">特急</option>
             </select>
           </div>
-          <div>
-            <label class="muted">批量交期（可选）</label><br/>
-            <input name="bulk_due_date" placeholder="YYYY-MM-DD" style="width:160px;">
+          <div class="form-field">
+            <label class="muted" for="batchManageBulkDueDateInput">批量交期（可选）</label>
+            <input id="batchManageBulkDueDateInput" type="date" name="bulk_due_date" class="w-160">
           </div>
-          <div style="flex:1; min-width:220px;">
-            <label class="muted">批量备注（可选）</label><br/>
-            <input name="bulk_remark" placeholder="填写则覆盖备注（留空则不修改）">
+          <div class="form-field flex-1 min-w-220">
+            <label class="muted" for="batchManageBulkRemarkInput">批量备注（可选）</label>
+            <input id="batchManageBulkRemarkInput" name="bulk_remark" placeholder="填写则覆盖备注（留空则不修改）">
           </div>
         </div>
       </form>
-
-      <script>
-        (function () {
-          function updateCount() {
-            const checks = Array.from(document.querySelectorAll(".js-batch-check"));
-            const cnt = checks.filter(x => x && x.checked).length;
-            const el = document.getElementById("jsSelectedCount");
-            if (el) el.textContent = String(cnt);
-          }
-          const checks = Array.from(document.querySelectorAll(".js-batch-check"));
-          for (const c of checks) c.addEventListener("change", updateCount);
-          updateCount();
-        })();
-      </script>
     {% else %}
-      <div class="muted">暂无数据（可先新增批次或通过 Excel 导入）。</div>
+      <div class="muted">暂无批次数据，可以在上方手动新增或通过 Excel 导入。</div>
     {% endif %}
   </div>
 {% endblock %}

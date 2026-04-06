@@ -31,8 +31,9 @@ def main():
     - 先生成上一版本排程（version=1）
       - B_OUT 的工序 start_time 在窗口起点之前
       - B_IN  的工序 start_time 手工调整到窗口内
+      - B_TERM 的工序也手工调整到窗口内，再把工序状态改成 completed
     - 再将 start_dt 向后移动并开启冻结窗口（version=2）
-      - 预期：只冻结 B_IN，不冻结 B_OUT
+      - 预期：只冻结 B_IN，不冻结 B_OUT，且 completed 的 B_TERM 不能经 seed 回流新版本
     """
 
     repo_root = find_repo_root()
@@ -69,7 +70,7 @@ def main():
         )
         conn.commit()
 
-        # 3) 两个批次（均 1 道内部工序）
+        # 3) 三个批次（均 1 道内部工序）
         batch_svc = BatchService(conn, logger=None, op_logger=None)
         batch_svc.create_batch_from_template(
             batch_id="B_OUT",
@@ -87,6 +88,14 @@ def main():
             priority="normal",
             ready_status="yes",
         )
+        batch_svc.create_batch_from_template(
+            batch_id="B_TERM",
+            part_no="P1",
+            quantity=1,
+            due_date="2026-02-10",
+            priority="normal",
+            ready_status="yes",
+        )
 
         # 4) 生成上一版本排程（version=1）
         cfg_svc = ConfigService(conn, logger=None, op_logger=None)
@@ -98,7 +107,7 @@ def main():
 
         sch_svc = ScheduleService(conn, logger=None, op_logger=None)
         r1 = sch_svc.run_schedule(
-            batch_ids=["B_OUT", "B_IN"],
+            batch_ids=["B_OUT", "B_IN", "B_TERM"],
             start_dt="2026-02-01 08:00:00",
             simulate=True,
             created_by="regression",
@@ -121,24 +130,33 @@ def main():
             """,
             (ver1,),
         ).fetchall()
-        assert len(rows_v1) == 2, f"预期 version=1 有 2 条 Schedule 记录，实际 {len(rows_v1)}"
+        assert len(rows_v1) == 3, f"预期 version=1 有 3 条 Schedule 记录，实际 {len(rows_v1)}"
 
         in_sid = None
+        term_sid = None
         for rr in rows_v1:
             if (rr["batch_id"] or "").strip() == "B_IN":
                 in_sid = int(rr["sid"])
+            if (rr["batch_id"] or "").strip() == "B_TERM":
+                term_sid = int(rr["sid"])
         assert in_sid is not None, "未找到 B_IN 的 Schedule 记录（version=1）"
+        assert term_sid is not None, "未找到 B_TERM 的 Schedule 记录（version=1）"
 
         in_st = datetime(2026, 2, 3, 10, 0, 0)
         in_et = in_st + timedelta(hours=1)
+        term_st = datetime(2026, 2, 3, 12, 0, 0)
+        term_et = term_st + timedelta(hours=1)
         assert start_dt <= in_st < freeze_end, "测试数据构造错误：B_IN.start_time 必须在冻结窗口内"
+        assert start_dt <= term_st < freeze_end, "测试数据构造错误：B_TERM.start_time 必须在冻结窗口内"
         conn.execute("UPDATE Schedule SET start_time=?, end_time=? WHERE id=?", (_fmt(in_st), _fmt(in_et), int(in_sid)))
+        conn.execute("UPDATE Schedule SET start_time=?, end_time=? WHERE id=?", (_fmt(term_st), _fmt(term_et), int(term_sid)))
+        conn.execute("UPDATE BatchOperations SET status='completed' WHERE batch_id='B_TERM'")
         conn.commit()
 
         # 6) 启用冻结窗口并将 start_dt 向后移动（version=2）
         cfg_svc.set_freeze_window("yes", freeze_days)
         r2 = sch_svc.run_schedule(
-            batch_ids=["B_OUT", "B_IN"],
+            batch_ids=["B_OUT", "B_IN", "B_TERM"],
             start_dt=_fmt(start_dt),
             simulate=True,
             created_by="regression",
@@ -163,6 +181,19 @@ def main():
         st_locked = _dt(locked[0]["start_time"])
         assert st_locked >= start_dt, f"冻结窗口下界错误：locked.start_time={st_locked} < start_dt={start_dt}"
         assert st_locked < freeze_end, f"冻结窗口上界错误：locked.start_time={st_locked} >= freeze_end={freeze_end}"
+
+        version2_rows = conn.execute(
+            """
+            SELECT bo.batch_id AS batch_id, s.lock_status AS lock_status
+            FROM Schedule s
+            JOIN BatchOperations bo ON bo.id = s.op_id
+            WHERE s.version=?
+            ORDER BY bo.batch_id, s.id
+            """,
+            (ver2,),
+        ).fetchall()
+        version2_batch_ids = [(rr["batch_id"] or "").strip() for rr in version2_rows]
+        assert "B_TERM" not in version2_batch_ids, f"completed 工序不应经 freeze seed 回流新版本：{version2_batch_ids}"
 
         print("OK")
     finally:

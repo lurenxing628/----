@@ -1,7 +1,9 @@
 import os
+import sys
 import tempfile
 import time
 import traceback
+from typing import Optional
 
 
 def find_repo_root():
@@ -25,10 +27,14 @@ def write_report(path, lines):
         f.write("\n".join(lines) + "\n")
 
 
-def validate_operator_row(row: dict) -> str:
-    if not row.get("工号") or str(row.get("工号")).strip() == "":
+def is_blank_value(value) -> bool:
+    return value is None or str(value).strip() == ""
+
+
+def validate_operator_row(row: dict) -> Optional[str]:
+    if is_blank_value(row.get("工号")):
         return "“工号”不能为空"
-    if not row.get("姓名") or str(row.get("姓名")).strip() == "":
+    if is_blank_value(row.get("姓名")):
         return "“姓名”不能为空"
     status = row.get("状态")
     if status is None or str(status).strip() == "":
@@ -45,7 +51,7 @@ def main():
     lines.append("# Phase3（人员管理模块）冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{os.sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0]}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")
@@ -58,7 +64,7 @@ def main():
     lines.append(f"- 临时目录：`{tmpdir}`")
     lines.append(f"- 测试 DB：`{test_db}`")
 
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.errors import AppError, ErrorCode
@@ -89,7 +95,7 @@ def main():
         if op.operator_id != "OP001":
             raise RuntimeError("OperatorService.create 校验失败：未创建 OP001")
 
-        op2 = op_svc.update(operator_id="OP001", remark="")  # 清空备注
+        op_svc.update(operator_id="OP001", remark="")  # 清空备注
         got = op_svc.get("OP001")
         lines.append(f"- 清空备注后 remark={got.remark!r}（期望 None）")
         if got.remark is not None:
@@ -135,6 +141,16 @@ def main():
         lines.append(f"- 导入统计：{stats}")
         if stats.get("new_count") != 1:
             raise RuntimeError("导入新增统计不正确（期望 1）")
+        if stats.get("skip_count") != 1:
+            raise RuntimeError("导入跳过统计不正确（期望 1：包含 UNCHANGED 行）")
+        if (
+            int(stats.get("new_count", 0))
+            + int(stats.get("update_count", 0))
+            + int(stats.get("skip_count", 0))
+            + int(stats.get("error_count", 0))
+            != int(stats.get("total_rows", 0))
+        ):
+            raise RuntimeError(f"导入统计口径不闭合：{stats!r}")
 
         lines.append("")
         lines.append("## 4. 人员 Excel 预览：NEW/UPDATE/ERROR")

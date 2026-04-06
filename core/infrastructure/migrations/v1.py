@@ -3,20 +3,32 @@ from __future__ import annotations
 import sqlite3
 from typing import Optional
 
-from .common import column_exists
+from .common import MigrationOutcome, add_column_if_missing, fallback_log, merge_outcomes
 
 
-def run(conn: sqlite3.Connection, logger=None) -> None:
+def run(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
     """
     v1 迁移：
     - 补齐 V1.1 关键字段（缺列补齐）
     - 一次性清洗 Batches 的日期字段（due_date / ready_date）
     """
-    _ensure_columns(conn, logger=logger)
-    _sanitize_batch_dates(conn, logger=logger)
+    return merge_outcomes(_ensure_columns(conn, logger=logger), _sanitize_batch_dates(conn, logger=logger))
 
 
-def _ensure_columns(conn: sqlite3.Connection, logger=None) -> None:
+def _run_fill_update(conn: sqlite3.Connection, sql: str, *, label: str, logger=None) -> MigrationOutcome:
+    try:
+        conn.execute(sql)
+    except sqlite3.OperationalError as e:
+        msg = str(e).lower()
+        if "no such table" in msg or "no such column" in msg:
+            if logger:
+                fallback_log(logger, "warning", f"数据库迁移 v1：{label} 默认值回填已跳过（{e}）。")
+            return MigrationOutcome.SKIPPED
+        raise
+    return MigrationOutcome.APPLIED
+
+
+def _ensure_columns(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
     """
     轻量迁移（幂等）：为存量表补齐新增字段。
 
@@ -25,65 +37,68 @@ def _ensure_columns(conn: sqlite3.Connection, logger=None) -> None:
     - 这里用 PRAGMA table_info + ALTER TABLE ADD COLUMN 做“缺列补齐”
     """
     # Batches.ready_date（齐套日期）
-    if not column_exists(conn, "Batches", "ready_date"):
-        conn.execute("ALTER TABLE Batches ADD COLUMN ready_date DATE")
-
-    # Machines.category（设备类别）
-    if not column_exists(conn, "Machines", "category"):
-        conn.execute("ALTER TABLE Machines ADD COLUMN category TEXT")
-
-    # MachineDowntimes.scope_type/scope_value（停机范围预留字段）
-    if not column_exists(conn, "MachineDowntimes", "scope_type"):
-        conn.execute("ALTER TABLE MachineDowntimes ADD COLUMN scope_type TEXT DEFAULT 'machine'")
-    if not column_exists(conn, "MachineDowntimes", "scope_value"):
-        conn.execute("ALTER TABLE MachineDowntimes ADD COLUMN scope_value TEXT")
-
-    # WorkCalendar.shift_start/shift_end（班次起止时间）
-    if not column_exists(conn, "WorkCalendar", "shift_start"):
-        conn.execute("ALTER TABLE WorkCalendar ADD COLUMN shift_start TEXT")
-    if not column_exists(conn, "WorkCalendar", "shift_end"):
-        conn.execute("ALTER TABLE WorkCalendar ADD COLUMN shift_end TEXT")
-
-    # OperatorMachine.skill_level/is_primary（人机关联：技能等级/主操设备）
-    if not column_exists(conn, "OperatorMachine", "skill_level"):
-        conn.execute("ALTER TABLE OperatorMachine ADD COLUMN skill_level TEXT DEFAULT 'normal'")
-    if not column_exists(conn, "OperatorMachine", "is_primary"):
-        conn.execute("ALTER TABLE OperatorMachine ADD COLUMN is_primary TEXT DEFAULT 'no'")
+    outcomes = [
+        add_column_if_missing(conn, "Batches", "ready_date", "ready_date DATE", migration_label="v1", logger=logger),
+        add_column_if_missing(conn, "Machines", "category", "category TEXT", migration_label="v1", logger=logger),
+        add_column_if_missing(
+            conn,
+            "MachineDowntimes",
+            "scope_type",
+            "scope_type TEXT DEFAULT 'machine'",
+            migration_label="v1",
+            logger=logger,
+        ),
+        add_column_if_missing(
+            conn,
+            "MachineDowntimes",
+            "scope_value",
+            "scope_value TEXT",
+            migration_label="v1",
+            logger=logger,
+        ),
+        add_column_if_missing(conn, "WorkCalendar", "shift_start", "shift_start TEXT", migration_label="v1", logger=logger),
+        add_column_if_missing(conn, "WorkCalendar", "shift_end", "shift_end TEXT", migration_label="v1", logger=logger),
+        add_column_if_missing(
+            conn,
+            "OperatorMachine",
+            "skill_level",
+            "skill_level TEXT DEFAULT 'normal'",
+            migration_label="v1",
+            logger=logger,
+        ),
+        add_column_if_missing(
+            conn,
+            "OperatorMachine",
+            "is_primary",
+            "is_primary TEXT DEFAULT 'no'",
+            migration_label="v1",
+            logger=logger,
+        ),
+    ]
 
     # 旧数据回填：将 NULL/空串统一为默认值（避免导出/排序出现空值）
-    try:
-        conn.execute(
+    outcomes.append(
+        _run_fill_update(
+            conn,
             "UPDATE OperatorMachine SET skill_level = 'normal' "
-            "WHERE skill_level IS NULL OR TRIM(CAST(skill_level AS TEXT)) = ''"
+            "WHERE skill_level IS NULL OR TRIM(CAST(skill_level AS TEXT)) = ''",
+            label="OperatorMachine.skill_level",
+            logger=logger,
         )
-    except sqlite3.OperationalError as e:
-        msg = str(e).lower()
-        if "no such table" in msg or "no such column" in msg:
-            if logger:
-                try:
-                    logger.warning(f"数据库迁移 v1：OperatorMachine.skill_level 默认值回填已跳过（{e}）。")
-                except Exception:
-                    pass
-        else:
-            raise
-    try:
-        conn.execute(
+    )
+    outcomes.append(
+        _run_fill_update(
+            conn,
             "UPDATE OperatorMachine SET is_primary = 'no' "
-            "WHERE is_primary IS NULL OR TRIM(CAST(is_primary AS TEXT)) = ''"
+            "WHERE is_primary IS NULL OR TRIM(CAST(is_primary AS TEXT)) = ''",
+            label="OperatorMachine.is_primary",
+            logger=logger,
         )
-    except sqlite3.OperationalError as e:
-        msg = str(e).lower()
-        if "no such table" in msg or "no such column" in msg:
-            if logger:
-                try:
-                    logger.warning(f"数据库迁移 v1：OperatorMachine.is_primary 默认值回填已跳过（{e}）。")
-                except Exception:
-                    pass
-        else:
-            raise
+    )
+    return merge_outcomes(*outcomes)
 
 
-def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
+def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
     """
     清洗 Batches 的 DATE 字段（due_date / ready_date）。
 
@@ -107,18 +122,15 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
         msg = str(e).lower()
         if "no such table" in msg or "no such column" in msg:
             if logger:
-                try:
-                    logger.warning(f"数据库迁移 v1：Batches 表/列不存在，已跳过日期清洗（{e}）。")
-                except Exception:
-                    pass
-            return
+                fallback_log(logger, "warning", f"数据库迁移 v1：Batches 表/列不存在，已跳过日期清洗（{e}）。")
+            return MigrationOutcome.SKIPPED
         raise
 
     if not rows:
-        return
+        return MigrationOutcome.APPLIED
 
-    from datetime import date
     import re
+    from datetime import date
 
     def norm(value) -> Optional[str]:
         if value is None:
@@ -148,6 +160,7 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
     changed_samples = []
     failed = 0
     failed_samples = []
+    had_partial_failure = False
     for r in rows:
         bid = r["batch_id"]
         old_due = r["due_date"]
@@ -174,24 +187,26 @@ def _sanitize_batch_dates(conn: sqlite3.Connection, logger=None) -> None:
             raise
         except sqlite3.Error:
             failed += 1
+            had_partial_failure = True
             if len(failed_samples) < 10:
                 failed_samples.append(str(bid))
             continue
 
     if changed and logger:
-        try:
-            sample_text = "，".join(changed_samples)
-            logger.warning(
-                f"已清洗 Batches 的日期字段（due_date/ready_date）：受影响批次数={changed}，样例批次号（最多10个）={sample_text}。"
-            )
-        except Exception:
-            pass
+        sample_text = "，".join(changed_samples)
+        fallback_log(
+            logger,
+            "warning",
+            f"已清洗 Batches 的日期字段（due_date/ready_date）：受影响批次数={changed}，样例批次号（最多10个）={sample_text}。",
+        )
 
     if failed and logger:
-        try:
-            sample_text = "，".join(failed_samples)
-            logger.warning(
-                f"Batches 日期字段清洗更新失败：失败批次数={failed}，样例批次号（最多10个）={sample_text}。"
-            )
-        except Exception:
-            pass
+        sample_text = "，".join(failed_samples)
+        fallback_log(
+            logger,
+            "warning",
+            f"Batches 日期字段清洗更新失败：失败批次数={failed}，样例批次号（最多10个）={sample_text}。",
+        )
+    if had_partial_failure:
+        return MigrationOutcome.PARTIAL
+    return MigrationOutcome.APPLIED

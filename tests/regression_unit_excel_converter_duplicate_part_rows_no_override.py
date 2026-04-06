@@ -18,6 +18,8 @@ def _build_source_xlsx(path: str, repeat_part_on_third_row: bool) -> None:
     wb = openpyxl.Workbook()
     try:
         ws = wb.active
+        assert ws is not None
+
         ws.title = "单元产品信息统计"
         ws.append(
             [

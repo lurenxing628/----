@@ -45,6 +45,60 @@ class OperatorMachineRepository(BaseRepository):
         """
         return self.fetchall("SELECT operator_id, machine_id, skill_level, is_primary FROM OperatorMachine", None)
 
+    def list_with_names_by_machine(self) -> List[Dict[str, Any]]:
+        """
+        Excel/页面展示用：返回 machine_name/operator_name（按 machine_id, operator_id 排序）。
+        """
+        return self.fetchall(
+            """
+            SELECT
+              om.machine_id, m.name AS machine_name,
+              om.operator_id, o.name AS operator_name,
+              om.skill_level, om.is_primary
+            FROM OperatorMachine om
+            LEFT JOIN Machines m ON m.machine_id = om.machine_id
+            LEFT JOIN Operators o ON o.operator_id = om.operator_id
+            ORDER BY om.machine_id, om.operator_id
+            """
+        )
+
+    def list_with_names_by_operator(self) -> List[Dict[str, Any]]:
+        """
+        Excel/页面展示用：返回 operator_name/machine_name（按 operator_id, machine_id 排序）。
+        """
+        return self.fetchall(
+            """
+            SELECT
+              om.operator_id, o.name AS operator_name,
+              om.machine_id, m.name AS machine_name,
+              om.skill_level, om.is_primary
+            FROM OperatorMachine om
+            LEFT JOIN Operators o ON o.operator_id = om.operator_id
+            LEFT JOIN Machines m ON m.machine_id = om.machine_id
+            ORDER BY om.operator_id, om.machine_id
+            """
+        )
+
+    def list_links_with_machine_names(self) -> List[Dict[str, Any]]:
+        return self.fetchall(
+            """
+            SELECT om.operator_id, om.machine_id, m.name AS machine_name
+            FROM OperatorMachine om
+            JOIN Machines m ON m.machine_id = om.machine_id
+            ORDER BY om.operator_id, om.machine_id
+            """
+        )
+
+    def list_links_with_operator_info(self) -> List[Dict[str, Any]]:
+        return self.fetchall(
+            """
+            SELECT om.machine_id, om.operator_id, o.name AS operator_name, o.status AS operator_status
+            FROM OperatorMachine om
+            LEFT JOIN Operators o ON o.operator_id = om.operator_id
+            ORDER BY om.machine_id, om.operator_id
+            """
+        )
+
     def list_simple_rows_for_machine_operator_sets(self, machine_ids: Sequence[str], operator_ids: Sequence[str]) -> List[Dict[str, Any]]:
         """
         给“批次详情页的人机联动”使用：限定 machine_id/operator_id 集合，返回 skill_level/is_primary 元信息。
@@ -87,6 +141,11 @@ class OperatorMachineRepository(BaseRepository):
             "DELETE FROM OperatorMachine WHERE operator_id = ? AND machine_id = ?",
             (operator_id, machine_id),
         )
+
+    def delete_all(self) -> int:
+        """清空全部关联（用于 Excel REPLACE 导入）。"""
+        cur = self.execute("DELETE FROM OperatorMachine", None)
+        return int(getattr(cur, "rowcount", 0) or 0)
 
     def delete(self, link_id: int) -> None:
         self.execute("DELETE FROM OperatorMachine WHERE id = ?", (link_id,))

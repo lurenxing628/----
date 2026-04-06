@@ -7,6 +7,8 @@ V1 MVP：
 - 停机影响统计
 """
 
+from __future__ import annotations
+
 from .report_engine import ReportEngine
 
 __all__ = ["ReportEngine"]

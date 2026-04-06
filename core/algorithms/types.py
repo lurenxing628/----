@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 
+from core.algorithms.value_domains import INTERNAL
+
 
 @dataclass
 class ScheduleResult:
@@ -17,7 +19,7 @@ class ScheduleResult:
     operator_id: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
-    source: str = "internal"  # internal/external
+    source: str = INTERNAL  # internal/external
     op_type_name: Optional[str] = None
 
 

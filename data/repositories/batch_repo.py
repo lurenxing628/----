@@ -123,3 +123,6 @@ class BatchRepository(BaseRepository):
     def delete_all(self) -> None:
         self.execute("DELETE FROM Batches")
 
+    def has_any(self) -> bool:
+        return self.fetchvalue("SELECT 1 FROM Batches LIMIT 1", default=None) is not None
+

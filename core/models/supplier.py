@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from ._helpers import RowLike, as_dict, get, parse_float
+from .enums import SupplierStatus
 
 
 @dataclass
@@ -12,12 +13,12 @@ class Supplier:
     name: str
     op_type_id: Optional[str] = None
     default_days: float = 1.0
-    status: str = "active"  # active/inactive
+    status: str = SupplierStatus.ACTIVE.value  # active/inactive
     remark: Optional[str] = None
     created_at: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: RowLike) -> "Supplier":
+    def from_row(cls, row: RowLike) -> Supplier:
         op_type_id = get(row, "op_type_id")
         default_days = parse_float(get(row, "default_days"), default=1.0)
         return cls(
@@ -25,7 +26,9 @@ class Supplier:
             name=str(get(row, "name") or ""),
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             default_days=default_days if default_days is not None else 1.0,
-            status=(str(get(row, "status") or "active").strip().lower() or "active"),
+            status=(
+                str(get(row, "status") or SupplierStatus.ACTIVE.value).strip().lower() or SupplierStatus.ACTIVE.value
+            ),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),
         )

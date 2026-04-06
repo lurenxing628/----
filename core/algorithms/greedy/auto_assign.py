@@ -4,6 +4,7 @@ import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from .algo_stats import increment_counter
 from .downtime import find_overlap_shift_end
 
 
@@ -22,6 +23,7 @@ def auto_assign_internal_resources(
     last_op_type_by_machine: Dict[str, str],
     machine_busy_hours: Dict[str, float],
     operator_busy_hours: Dict[str, float],
+    probe_only: bool = False,
 ) -> Optional[Tuple[str, str]]:
     """
     内部工序缺省资源时，自动选择 (machine_id, operator_id)。
@@ -32,6 +34,8 @@ def auto_assign_internal_resources(
     3) 负荷均衡（优先选择当前更空闲的人/机）
     4) 若存在主操/高技能标记（pair_rank 更小），作为微弱 tie-break
     """
+    _count = increment_counter if not probe_only else (lambda *_args, **_kwargs: None)
+
     bid = str(getattr(op, "batch_id", "") or "").strip()
     prev_end = batch_progress.get(bid, base_time)
     priority = getattr(batch, "priority", None)
@@ -43,6 +47,7 @@ def auto_assign_internal_resources(
 
     # 若未固定 machine 且缺少 op_type_id，则无法保证自动选机的工种匹配
     if not fixed_machine and not op_type_id:
+        _count(scheduler, "auto_assign_missing_op_type_id_count")
         return None
 
     machines_by_op_type = resource_pool.get("machines_by_op_type") if isinstance(resource_pool, dict) else {}
@@ -76,18 +81,21 @@ def auto_assign_internal_resources(
             machine_candidates = [str(x) for x in (machines_by_op_type.get(op_type_id) or []) if str(x).strip()]
         else:
             # 无 op_type_id 或映射缺失：无法保证工种匹配；宁可失败也不要“全设备兜底”排错机
+            _count(scheduler, "auto_assign_missing_machine_pool_count")
             return None
 
     # 若已知 op_type_id：强制候选设备与工种映射一致（尤其是 fixed_operator 场景）
     if op_type_id and isinstance(machines_by_op_type, dict) and op_type_id in machines_by_op_type:
         allowed = {str(x).strip() for x in (machines_by_op_type.get(op_type_id) or []) if str(x).strip()}
         if not allowed:
+            _count(scheduler, "auto_assign_missing_machine_pool_count")
             return None
         machine_candidates = [m for m in machine_candidates if m in allowed]
 
-    # 去重 + 稳定
-    machine_candidates = sorted(list({m for m in machine_candidates if m}), key=lambda x: x)
+    # 去重（后续会按更有利于早停的顺序重排）
+    machine_candidates = list(dict.fromkeys([m for m in machine_candidates if m]))
     if not machine_candidates:
+        _count(scheduler, "auto_assign_no_machine_candidate_count")
         return None
 
     # 工时
@@ -97,14 +105,25 @@ def auto_assign_internal_resources(
     try:
         total_hours_base = float(setup_hours) + float(unit_hours) * float(qty)
     except Exception:
+        _count(scheduler, "auto_assign_invalid_total_hours_count")
         return None
     if not math.isfinite(float(total_hours_base)) or total_hours_base < 0:
+        _count(scheduler, "auto_assign_invalid_total_hours_count")
         return None
 
     cur_type = (str(getattr(op, "op_type_name", None) or "") or "").strip()
+    machine_candidates = sorted(
+        machine_candidates,
+        key=lambda mid: (
+            0 if (cur_type and (str(last_op_type_by_machine.get(mid) or "").strip() == cur_type)) else 1,
+            float(machine_busy_hours.get(mid, 0.0) or 0.0),
+            mid,
+        ),
+    )
 
     best: Optional[Tuple[Any, ...]] = None
     best_pair: Optional[Tuple[str, str]] = None
+    seen_operator_candidate = False
 
     for mid in machine_candidates:
         # 候选人员集合
@@ -123,17 +142,28 @@ def auto_assign_internal_resources(
 
         if not op_candidates:
             continue
+        seen_operator_candidate = True
+        op_candidates = sorted(
+            op_candidates,
+            key=lambda oid: (
+                int((pair_rank or {}).get((oid, mid), 9999)) if isinstance(pair_rank, dict) else 9999,
+                float(operator_busy_hours.get(oid, 0.0) or 0.0),
+                oid,
+            ),
+        )
 
         # 逐 (machine, operator) 评估可行最早区间
         for oid in op_candidates:
             earliest = max(prev_end, base_time)
             earliest = scheduler.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=oid)
+            if best is not None and earliest > best[0]:
+                continue
 
             # 简化：效率取“开工时刻”的效率；若 earliest 因避让跨日/跨班次，则需重算
-            def _scaled_hours(start: datetime) -> float:
+            def _scaled_hours(start: datetime, _oid: str = oid) -> float:
                 eff = 1.0
                 try:
-                    raw_eff = scheduler.calendar.get_efficiency(start, operator_id=oid)
+                    raw_eff = scheduler.calendar.get_efficiency(start, operator_id=_oid)
                     eff = float(raw_eff) if raw_eff is not None else 1.0
                 except Exception:
                     eff = 1.0
@@ -167,10 +197,12 @@ def auto_assign_internal_resources(
                     break
                 earliest = max(earliest, shift_to)
                 earliest = scheduler.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=oid)
+                if best is not None and earliest > best[0]:
+                    break
                 total_hours = _scaled_hours(earliest)
                 end = scheduler.calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=oid)
 
-            if guard >= 200:
+            if guard >= 200 or (best is not None and earliest > best[0]):
                 continue
             if end_dt_exclusive is not None and end >= end_dt_exclusive:
                 continue
@@ -188,6 +220,12 @@ def auto_assign_internal_resources(
             if best is None or score < best:
                 best = score
                 best_pair = (mid, oid)
+
+    if best_pair is None:
+        if not seen_operator_candidate:
+            _count(scheduler, "auto_assign_no_operator_candidate_count")
+        else:
+            _count(scheduler, "auto_assign_no_feasible_pair_count")
 
     return best_pair
 

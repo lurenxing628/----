@@ -1,30 +1,38 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   <div class="card">
-    <h2>报表 - 超期清单</h2>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">报表 - 超期清单</h2>
+      </div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
     <p class="muted">
-      说明：按指定排产版本（Schedule.version）统计逾期批次：
+      查看哪些批次超过了交货日期：
       - 已排程逾期：完工时间晚于交期
       - 未排程逾期：截至当前时间仍未完工且已超过交期
     </p>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('reports.index') }}">← 返回报表中心</a>
-    </div>
+    {{ ui.reports_nav('overdue') }}
   </div>
 
   <div class="card">
     <h3>筛选</h3>
     <form method="get" action="{{ url_for('reports.overdue_page') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>排产版本</label><br/>
+      <div class="form-row">
+        <div class="form-field">
+          <label>排产版本</label>
           <select name="version" style="min-width:220px;">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
-                v{{ it.version }}（{{ it.schedule_time }} / {{ it.result_status or '-' }}）
+                v{{ it.version }}（{{ it.schedule_time }} / {{ status_zh.get(it.result_status, it.result_status or '-') }}）
               </option>
             {% endfor %}
           </select>
+          {% if not has_history %}
+            <div class="muted" style="margin-top:6px;">暂无排产历史，请先执行排产后再查看报表。</div>
+          {% endif %}
         </div>
         <div>
           <button type="submit">查询</button>
@@ -44,9 +52,16 @@
       {% if as_of_time %}；截至 {{ as_of_time }}{% endif %}）
     </h3>
     {% if not rows %}
-      <div class="muted">暂无超期批次。</div>
+      {% if empty_reason == "no_history" %}
+        <div class="muted">暂无排产历史，当前无法生成超期清单。</div>
+      {% elif empty_reason == "no_overdue" %}
+        <div class="muted">当前无超期批次。</div>
+      {% else %}
+        <div class="muted">当前无超期批次。</div>
+      {% endif %}
     {% else %}
-      <table>
+      <div class="overflow-x-auto">
+      <table id="overdueTable" class="table-sticky table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>
             <th style="width:120px;">类别</th>
@@ -76,6 +91,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% endif %}
   </div>
 {% endblock %}

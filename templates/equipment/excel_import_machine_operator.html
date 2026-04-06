@@ -1,15 +1,18 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>设备人员关联（Excel）</h2>
-    <p class="muted">
-      导入/导出字段：设备编号、工号；可选字段：技能等级（beginner/normal/expert）、主操设备（yes/no）。
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">设备人员关联（Excel）</h2></div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
+    <p class="page-subtitle text-meta">
+      导入/导出字段：设备编号、工号；可选字段：技能等级（可以填中文 初级/普通/熟练 或英文 beginner/normal/expert）、主操设备（可以填 是/否 或 yes/no）。
       导入前会校验设备/人员是否存在，并给出中文提示。
     </p>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('equipment.list_page') }}">← 返回设备管理</a>
-      <span class="muted">｜</span>
-      <a href="{{ export_url }}">导出当前数据（设备人员关联.xlsx）</a>
+    {{ ui.equipment_nav('excel_link') }}
+    <div class="mt-2">
+      {{ ui.link_button('导出当前数据（设备人员关联.xlsx）', export_url, 'secondary', 'md') }}
       <span class="muted">（导出会写入操作留痕）</span>
     </div>
   </div>
@@ -17,7 +20,7 @@
   {% include "components/excel_import.html" with context %}
 
   <div class="card">
-    <h3>当前关联数据（OperatorMachine）</h3>
+    <h3>当前关联数据</h3>
     {% if existing_list and existing_list|length > 0 %}
       <table>
         <thead>
@@ -48,6 +51,6 @@
     {% endif %}
   </div>
 
-  <script src="{{ url_for('static', filename='js/excel_handler.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/excel_handler.js') }}" defer></script>
 {% endblock %}
 

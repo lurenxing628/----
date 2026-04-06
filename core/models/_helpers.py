@@ -5,7 +5,6 @@ import sqlite3
 from decimal import Decimal
 from typing import Any, Dict, Optional, Union
 
-
 RowLike = Union[sqlite3.Row, Dict[str, Any]]
 
 

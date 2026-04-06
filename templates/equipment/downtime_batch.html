@@ -1,91 +1,81 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>批量停机计划</h2>
-    <p class="muted">
-      说明：支持按【单台设备 / 设备类别 / 全部设备】创建停机区间。
-      为兼容现有数据结构，系统会把范围展开为“按设备逐条写入 MachineDowntimes”。
-    </p>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('equipment.list_page') }}">← 返回设备列表</a>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">批量停机计划</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="page-subtitle text-meta">
+      为设备安排停机时间。可以按单台、按类别或全部设备设置。
+      系统会将停机范围按设备逐条展开保存，确保每台设备都有对应的停机记录。
+    </p>
+    {{ ui.equipment_nav('downtime_batch') }}
   </div>
 
   <div class="card">
     <h3>创建停机区间</h3>
     <form method="post" action="{{ url_for('equipment.downtime_batch_create') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div style="min-width:260px;">
-          <label>范围</label><br/>
-          <select name="scope_type" id="scopeType" onchange="window.__apsToggleScope && window.__apsToggleScope();">
+      <div class="form-row">
+        <div class="form-field min-w-260">
+          <label>范围</label>
+          <select name="scope_type" id="scopeType">
             <option value="machine">单台设备</option>
             <option value="category">设备类别</option>
             <option value="all">全部设备</option>
           </select>
         </div>
-        <div id="scopeMachine" style="min-width:320px;">
-          <label>选择设备</label><br/>
+        <div id="scopeMachine" class="form-field min-w-320">
+          <label>选择设备</label>
           <select name="scope_value" id="scopeValueMachine">
             {% for mid, label in machine_options %}
               <option value="{{ mid }}">{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div id="scopeCategory" style="display:none; min-width:220px;">
-          <label>选择类别</label><br/>
+        <div id="scopeCategory" class="form-field d-none min-w-220">
+          <label>选择类别</label>
           <select name="scope_value" id="scopeValueCategory">
             {% if categories and categories|length > 0 %}
               {% for c in categories %}
                 <option value="{{ c }}">{{ c }}</option>
               {% endfor %}
             {% else %}
-              <option value="">（暂无类别，请先在设备详情里维护“类别”）</option>
+              <option value="">（没有设备类别，需要先在设备详情中填写）</option>
             {% endif %}
           </select>
         </div>
-        <div>
-          <label>开始时间</label><br/>
-          <input name="start_time" required placeholder="如：2026-01-22 08:00" style="min-width:220px;">
+        <div class="form-field">
+          <label>开始时间</label>
+          <input name="start_time" required placeholder="如：2026-01-22 08:00" class="min-w-220">
         </div>
-        <div>
-          <label>结束时间</label><br/>
-          <input name="end_time" required placeholder="如：2026-01-22 12:00" style="min-width:220px;">
+        <div class="form-field">
+          <label>结束时间</label>
+          <input name="end_time" required placeholder="如：2026-01-22 12:00" class="min-w-220">
         </div>
-        <div>
-          <label>停机原因</label><br/>
+        <div class="form-field">
+          <label>停机原因</label>
           <select name="reason_code">
             {% for v, label in reason_options %}
               <option value="{{ v }}">{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
-          <label>原因备注（可选）</label><br/>
+        <div class="form-field flex-1 min-w-240">
+          <label>原因备注（可选）</label>
           <input name="reason_detail" placeholder="可选：更具体的停机原因说明">
         </div>
-        <div>
-          <button type="submit">创建</button>
-        </div>
+        <div>{{ ui.button('创建', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
 
-  <script>
-    window.__apsToggleScope = function () {
-      const t = document.getElementById("scopeType");
-      const v = t ? t.value : "machine";
-      const m = document.getElementById("scopeMachine");
-      const c = document.getElementById("scopeCategory");
-      if (m) m.style.display = (v === "machine") ? "block" : "none";
-      if (c) c.style.display = (v === "category") ? "block" : "none";
+  <div class="card">
+    <div class="muted">
+      提示：创建后可到对应设备的详情页查看和管理停机记录。如需查看停机对排产的影响，请到报表中心的“停机影响统计”。
+    </div>
+  </div>
 
-      // 注意：隐藏的控件仍会随表单提交；这里只提交当前范围对应的 scope_value
-      const mSel = document.getElementById("scopeValueMachine");
-      const cSel = document.getElementById("scopeValueCategory");
-      if (mSel) mSel.disabled = (v !== "machine");
-      if (cSel) cSel.disabled = (v !== "category");
-    };
-    window.__apsToggleScope();
-  </script>
+  <script src="{{ url_for('static', filename='js/downtime_batch.js') }}" defer></script>
 {% endblock %}
 

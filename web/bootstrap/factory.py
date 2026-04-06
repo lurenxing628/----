@@ -4,14 +4,20 @@ import atexit
 import json
 import os
 import sys
+import threading
+import time
 from pathlib import Path
+from typing import Any, Optional
 
-from flask import Flask, g, request
+from flask import Flask, current_app, g, request
+from werkzeug.serving import make_server
 
 from config import config as config_map
-from core.infrastructure.backup import BackupManager
+from core.infrastructure.backup import BackupManager, MaintenanceWindowError, is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger
+from core.infrastructure.migrations.common import fallback_log
+from core.models.enums import YesNo
 from core.services.common.excel_templates import ensure_excel_templates
 from web.error_handlers import register_error_handlers
 from web.routes.dashboard import bp as dashboard_bp
@@ -24,19 +30,155 @@ from web.routes.reports import bp as reports_bp
 from web.routes.scheduler import bp as scheduler_bp
 from web.routes.system import bp as system_bp
 from web.ui_mode import init_ui_mode
+from web.ui_mode import render_ui_template as render_template
 
+from .launcher import resolve_shared_data_root
 from .paths import runtime_base_dir
 from .plugins import bootstrap_plugins
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
+from .static_versioning import install_versioned_url_for
 
 # atexit 退出备份去重：避免 create_app_core() 在测试/脚本中被多次调用导致重复注册
 _EXIT_BACKUP_MANAGER = None
 _EXIT_BACKUP_REGISTERED = False
+_RUNTIME_SERVER: Any = None
+_RUNTIME_SERVER_LOCK = threading.Lock()
+_RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
+
+
+def _apply_runtime_config(app: Flask, *, base_dir: str) -> None:
+    app.config["BASE_DIR"] = base_dir
+    data_root = resolve_shared_data_root(base_dir)
+    app.config["DATABASE_PATH"] = (os.environ.get("APS_DB_PATH") or os.path.join(data_root, "db", "aps.db"))
+    app.config["LOG_DIR"] = (os.environ.get("APS_LOG_DIR") or os.path.join(data_root, "logs"))
+    app.config["BACKUP_DIR"] = (os.environ.get("APS_BACKUP_DIR") or os.path.join(data_root, "backups"))
+    app.config["EXCEL_TEMPLATE_DIR"] = (
+        os.environ.get("APS_EXCEL_TEMPLATE_DIR") or os.path.join(data_root, "templates_excel")
+    )
+
+
+def should_use_runtime_reloader(debug: bool, frozen: Optional[bool] = None) -> bool:
+    is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else bool(frozen)
+    return bool(debug) and not is_frozen
+
+
+def _should_register_exit_backup(*, debug: bool, frozen: Optional[bool] = None, run_main: Optional[str] = None) -> bool:
+    is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else bool(frozen)
+    if not should_use_runtime_reloader(debug=bool(debug), frozen=is_frozen):
+        return True
+    marker = os.environ.get("WERKZEUG_RUN_MAIN") if run_main is None else run_main
+    return str(marker or "").strip().lower() == "true"
+
+
+def should_own_runtime_resources(
+    debug: bool,
+    frozen: Optional[bool] = None,
+    run_main: Optional[str] = None,
+) -> bool:
+    return _should_register_exit_backup(debug=bool(debug), frozen=frozen, run_main=run_main)
+
+
+def _is_exit_backup_enabled(bm: BackupManager) -> Optional[bool]:
+    conn = None
+    try:
+        conn = get_connection(bm.db_path)
+        from core.services.system import SystemConfigService
+
+        cfg = SystemConfigService(conn, logger=bm.logger).get_snapshot_readonly(
+            backup_keep_days_default=int(getattr(bm, "keep_days", 7) or 7)
+        )
+        return cfg.auto_backup_enabled == YesNo.YES.value
+    except Exception as e:
+        fallback_log(bm.logger, "error", f"读取退出自动备份配置失败：{e}")
+        return None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _run_exit_backup(manager: Optional[BackupManager] = None) -> bool:
+    bm = manager or _EXIT_BACKUP_MANAGER
+    if bm is None:
+        return False
+    enabled = _is_exit_backup_enabled(bm)
+    if enabled is not True:
+        if enabled is None:
+            fallback_log(bm.logger, "warning", "退出自动备份已跳过：读取配置失败。")
+        else:
+            fallback_log(bm.logger, "info", "退出自动备份已跳过：auto_backup_enabled=no。")
+        return False
+    try:
+        bm.backup(suffix="exit")
+        return True
+    except MaintenanceWindowError as e:
+        fallback_log(bm.logger, "warning" if e.code == "busy" else "error", f"退出自动备份已跳过：{e.message}")
+        return False
+    except Exception as e:
+        fallback_log(bm.logger, "error", f"退出自动备份失败：{e}")
+        return False
+
+
+def _maintenance_gate_response():
+    message = "系统正在维护中，请稍后重试。"
+    try:
+        req_path = str(request.path or "")
+        accept_best = (request.accept_mimetypes.best or "").lower()
+        if req_path.startswith("/api/") or "json" in accept_best or bool(request.is_json):
+            return {"success": False, "error": {"code": "503", "message": message}}, 503
+    except Exception:
+        pass
+    return render_template("error.html", title="系统维护中", code="503", message=message), 503
 
 
 def _default_anchor_file() -> str:
     # 源码布局固定：web/bootstrap/factory.py 向上两级即仓库根目录
     return str(Path(__file__).resolve().parents[2] / "app.py")
+
+
+def should_register_runtime_lifecycle_handlers(debug: bool) -> bool:
+    return should_own_runtime_resources(debug=bool(debug))
+
+
+def serve_runtime_app(app: Flask, host: str, port: int) -> None:
+    global _RUNTIME_SERVER, _RUNTIME_SERVER_SHUTDOWN_REQUESTED
+    server = make_server(host, int(port), app, threaded=True)
+    with _RUNTIME_SERVER_LOCK:
+        _RUNTIME_SERVER = server
+        _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
+    try:
+        server.serve_forever()
+    finally:
+        with _RUNTIME_SERVER_LOCK:
+            _RUNTIME_SERVER = None
+            _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
+
+
+def request_runtime_server_shutdown(logger=None) -> bool:
+    global _RUNTIME_SERVER_SHUTDOWN_REQUESTED
+    with _RUNTIME_SERVER_LOCK:
+        server = _RUNTIME_SERVER
+        if server is None:
+            return False
+        if _RUNTIME_SERVER_SHUTDOWN_REQUESTED:
+            return True
+        _RUNTIME_SERVER_SHUTDOWN_REQUESTED = True
+
+    def _shutdown() -> None:
+        time.sleep(0.05)
+        try:
+            server.shutdown()
+        except Exception as e:
+            if logger is not None:
+                try:
+                    logger.warning(f"请求运行时 Server 关闭失败：{e}")
+                except Exception:
+                    pass
+
+    threading.Thread(target=_shutdown, daemon=True).start()
+    return True
 
 
 def create_app_core(
@@ -60,7 +202,11 @@ def create_app_core(
 
     app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)
     app.config.from_object(cfg_class)
+    _apply_runtime_config(app, base_dir=base_dir)
     app.config["APP_UI_MODE"] = ui_mode
+    # 静态资源长缓存（配合 url_for('static', ...) 版本参数）
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = int(app.config.get("SEND_FILE_MAX_AGE_DEFAULT") or 43200)
+    install_versioned_url_for(app, static_dir)
 
     def tojson_zh(value, indent: int = 2):
         return json.dumps(value, ensure_ascii=False, indent=indent)
@@ -116,13 +262,24 @@ def create_app_core(
     @app.before_request
     def _open_db():
         try:
-            if request.path and str(request.path).startswith("/static"):
+            g._aps_req_started = time.perf_counter()
+        except Exception:
+            g._aps_req_started = None
+        try:
+            req_path = str(request.path or "")
+            if req_path.startswith("/static") or req_path in {"/system/health", "/system/runtime/shutdown"}:
                 return
         except Exception:
             pass
+        try:
+            if is_maintenance_window_active(app.config["DATABASE_PATH"], logger=app.logger):
+                return _maintenance_gate_response()
+        except Exception as e:
+            app.logger.warning(f"维护窗口检测失败，将继续处理请求：{e}")
+        g.app_logger = current_app.logger
         if "db" not in g:
             g.db = get_connection(app.config["DATABASE_PATH"])
-            g.op_logger = OperationLogger(g.db, logger=app.logger)
+            g.op_logger = OperationLogger(g.db, logger=current_app.logger)
             try:
                 from core.services.system import SystemMaintenanceService
 
@@ -149,6 +306,34 @@ def create_app_core(
     if enable_security_headers:
         register_security_headers(app)
 
+    @app.after_request
+    def _perf_headers(resp):
+        # 慢请求可观测：帮助区分“前端卡”与“后端慢”
+        def _is_prefetch_req() -> bool:
+            try:
+                purpose = (request.headers.get("Purpose") or "").strip().lower()
+                sec_purpose = (request.headers.get("Sec-Purpose") or "").strip().lower()
+                x_moz = (request.headers.get("X-Moz") or "").strip().lower()
+                return (
+                    "prefetch" in purpose
+                    or "prefetch" in sec_purpose
+                    or x_moz == "prefetch"
+                )
+            except Exception:
+                return False
+
+        try:
+            started = getattr(g, "_aps_req_started", None)
+            if started is not None:
+                total_ms = int((time.perf_counter() - float(started)) * 1000)
+                resp.headers.setdefault("Server-Timing", f"app;dur={total_ms}")
+                req_path = str(getattr(request, "path", "") or "")
+                if total_ms >= 300 and not req_path.startswith("/static") and not _is_prefetch_req():
+                    app.logger.warning(f"慢请求: {request.method} {request.path} {total_ms}ms")
+        except Exception:
+            pass
+        return resp
+
     register_error_handlers(app)
 
     app.register_blueprint(dashboard_bp)
@@ -171,22 +356,11 @@ def create_app_core(
     global _EXIT_BACKUP_MANAGER, _EXIT_BACKUP_REGISTERED
     _EXIT_BACKUP_MANAGER = backup_manager
 
-    if not _EXIT_BACKUP_REGISTERED:
-
-        def _backup_on_exit():
-            bm = _EXIT_BACKUP_MANAGER
-            if bm is None:
-                return
-            try:
-                bm.backup(suffix="auto")
-            except Exception as e:
-                try:
-                    bm.logger.error(f"退出自动备份失败：{e}")
-                except Exception:
-                    pass
-
-        atexit.register(_backup_on_exit)
+    if not _EXIT_BACKUP_REGISTERED and _should_register_exit_backup(debug=bool(app.config.get("DEBUG", False))):
+        atexit.register(_run_exit_backup)
         _EXIT_BACKUP_REGISTERED = True
+    elif not _EXIT_BACKUP_REGISTERED:
+        app.logger.info("开发重载父进程跳过注册退出自动备份。")
 
     if str(ui_mode or "").strip().lower() == "new_ui":
         app.logger.info("应用启动完成 (UI Test Mode)。")

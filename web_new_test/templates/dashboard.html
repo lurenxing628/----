@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 
 {% block title %}首页{% endblock %}
 
@@ -18,6 +19,16 @@
                     <p class="text-muted">核心排产功能、甘特图、批次管理</p>
                 </div>
             </a>
+
+            {% set resource_dispatch_url = safe_url_for('scheduler.resource_dispatch_page') %}
+            {% if resource_dispatch_url %}
+            <a href="{{ resource_dispatch_url }}" class="card" style="text-decoration: none; color: inherit; transition: transform 0.2s; display: block;">
+                <div class="card-body">
+                    <h3 style="margin-bottom: 0.5rem; color: var(--text-main);">资源排班中心</h3>
+                    <p class="text-muted">单人/单机排班查询、甘特图、日历矩阵与导出</p>
+                </div>
+            </a>
+            {% endif %}
 
             <!-- Process -->
             <a href="{{ url_for('process.list_parts') }}" class="card" style="text-decoration: none; color: inherit; transition: transform 0.2s; display: block;">

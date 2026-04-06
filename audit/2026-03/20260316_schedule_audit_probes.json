@@ -1,0 +1,148 @@
+{
+  "generated_at": "2026-03-16 01:21:12",
+  "repo_root": "D:\\Github\\APS Test",
+  "probes": {
+    "overdue_boundary": {
+      "classification": "口径偏差",
+      "finish_time": "2026-01-01T23:59:59.500000",
+      "compute_metrics_overdue_count": 1,
+      "compute_metrics_total_tardiness_hours": 0.0001388888888888889,
+      "summary_overdue_items_count": 0,
+      "split_confirmed": true
+    },
+    "weighted_tardiness": {
+      "classification": "v2 目标态差异",
+      "candidate_a": {
+        "desc": "critical 批次超期 10h",
+        "current_score": [
+          10.0,
+          1.0,
+          25.99972222222222,
+          0.0
+        ],
+        "weighted_score": [
+          30.0,
+          1.0,
+          25.99972222222222,
+          0.0
+        ]
+      },
+      "candidate_b": {
+        "desc": "normal 批次超期 20h",
+        "current_score": [
+          20.0,
+          1.0,
+          35.999722222222225,
+          0.0
+        ],
+        "weighted_score": [
+          20.0,
+          1.0,
+          35.999722222222225,
+          0.0
+        ]
+      },
+      "current_choice": "A",
+      "weighted_choice": "B",
+      "behavior_diff_confirmed": true
+    },
+    "multistart_scope": {
+      "classification": "优化空间",
+      "batch_order_case": {
+        "dispatch_mode_input": "batch_order",
+        "unique_dispatch_modes": [
+          "batch_order"
+        ],
+        "unique_dispatch_rules": [
+          "slack"
+        ],
+        "call_count": 4
+      },
+      "sgs_case": {
+        "dispatch_mode_input": "sgs",
+        "unique_dispatch_modes": [
+          "sgs"
+        ],
+        "unique_dispatch_rules": [
+          "atc",
+          "cr",
+          "slack"
+        ],
+        "call_count": 12
+      },
+      "mode_lock_confirmed": true
+    },
+    "improve_reproducibility": {
+      "classification": "已确认可复现",
+      "run_a": {
+        "best_score": [
+          0.0,
+          0.0,
+          0.0,
+          6.0,
+          0.0
+        ],
+        "best_order": [
+          "B001",
+          "B002",
+          "B003"
+        ],
+        "results": [
+          {
+            "op_id": 1,
+            "batch_id": "B001",
+            "start_time": "2026-01-01T08:00:00",
+            "end_time": "2026-01-01T10:00:00"
+          },
+          {
+            "op_id": 2,
+            "batch_id": "B002",
+            "start_time": "2026-01-01T10:00:00",
+            "end_time": "2026-01-01T12:00:00"
+          },
+          {
+            "op_id": 3,
+            "batch_id": "B003",
+            "start_time": "2026-01-01T12:00:00",
+            "end_time": "2026-01-01T14:00:00"
+          }
+        ]
+      },
+      "run_b": {
+        "best_score": [
+          0.0,
+          0.0,
+          0.0,
+          6.0,
+          0.0
+        ],
+        "best_order": [
+          "B001",
+          "B002",
+          "B003"
+        ],
+        "results": [
+          {
+            "op_id": 1,
+            "batch_id": "B001",
+            "start_time": "2026-01-01T08:00:00",
+            "end_time": "2026-01-01T10:00:00"
+          },
+          {
+            "op_id": 2,
+            "batch_id": "B002",
+            "start_time": "2026-01-01T10:00:00",
+            "end_time": "2026-01-01T12:00:00"
+          },
+          {
+            "op_id": 3,
+            "batch_id": "B003",
+            "start_time": "2026-01-01T12:00:00",
+            "end_time": "2026-01-01T14:00:00"
+          }
+        ]
+      },
+      "bit_exact_same": true
+    }
+  }
+}

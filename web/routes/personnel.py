@@ -10,14 +10,17 @@
 - `personnel_excel_operator_calendar.py`：人员专属工作日历 Excel
 """
 
-from .personnel_bp import bp
+from __future__ import annotations
+
+from . import personnel_calendar_pages as _calendar_pages  # noqa: F401
+from . import personnel_excel_links as _excel_links  # noqa: F401
+from . import personnel_excel_operator_calendar as _excel_op_cal  # noqa: F401
+from . import personnel_excel_operators as _excel_ops  # noqa: F401
 
 # 导入子模块以注册路由（side-effect）
 from . import personnel_pages as _pages  # noqa: F401
-from . import personnel_calendar_pages as _calendar_pages  # noqa: F401
-from . import personnel_excel_operators as _excel_ops  # noqa: F401
-from . import personnel_excel_links as _excel_links  # noqa: F401
-from . import personnel_excel_operator_calendar as _excel_op_cal  # noqa: F401
+from . import personnel_teams as _teams
+from .personnel_bp import bp
 
+_ROUTE_IMPORTS = (_calendar_pages, _excel_links, _excel_op_cal, _excel_ops, _pages, _teams)
 __all__ = ["bp"]
-

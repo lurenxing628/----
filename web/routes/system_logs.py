@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.services.system import SystemConfigService
-from data.repositories import OperationLogRepository
+from core.services.system.operation_log_service import OperationLogService
+from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.system_logs_vm import build_operation_log_view_rows
 
+from .pagination import paginate_rows, parse_page_args
 from .system_bp import bp
 from .system_utils import _get_job_state_map, _get_system_cfg_snapshot, _normalize_time_range, _safe_int
 
@@ -21,12 +21,13 @@ def logs_page():
     module = (request.args.get("module") or "").strip() or None
     action = (request.args.get("action") or "").strip() or None
     log_level = (request.args.get("log_level") or "").strip() or None
-    limit = _safe_int(request.args.get("limit"), field="limit", default=50, min_v=1, max_v=500)
+    page, per_page = parse_page_args(request, default_per_page=50, max_per_page=500)
+    limit = _safe_int(request.args.get("limit"), field="limit", default=per_page, min_v=1, max_v=500)
 
     start_norm, end_norm = _normalize_time_range(start_time, end_time)
 
-    repo = OperationLogRepository(g.db)
-    items = repo.list_recent(
+    svc = OperationLogService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
+    items = svc.list_recent(
         limit=limit,
         module=module,
         action=action,
@@ -35,20 +36,12 @@ def logs_page():
         end_time=end_norm,
     )
 
-    view_rows = []
-    for it in items:
-        d = it.to_dict()
-        detail_raw = d.get("detail")
-        detail_obj: Optional[Dict[str, Any]] = None
-        if detail_raw:
-            try:
-                parsed = json.loads(detail_raw)
-                if isinstance(parsed, dict):
-                    detail_obj = parsed
-            except Exception:
-                detail_obj = None
-        d["detail_obj"] = detail_obj
-        view_rows.append(d)
+    view_rows = build_operation_log_view_rows(items)
+
+    # 语义约定：
+    # - limit：总查询上限（仅在最近 N 条记录内分页）
+    # - per_page：每页展示条数
+    view_rows, pager = paginate_rows(view_rows, page, per_page)
 
     from core.services.system import SystemMaintenanceService
 
@@ -70,6 +63,7 @@ def logs_page():
             "log_level": log_level or "",
             "limit": str(limit),
         },
+        pager=pager,
     )
 
 
@@ -100,20 +94,9 @@ def logs_delete():
         flash("log_id 不合法（期望正整数）。", "error")
         return redirect(url_for("system.logs_page"))
 
-    repo = OperationLogRepository(g.db)
-    from core.infrastructure.transaction import TransactionManager
-
-    tx = TransactionManager(g.db)
-    with tx.transaction():
-        deleted = repo.delete_by_id(int(log_id))
-        if deleted > 0 and getattr(g, "op_logger", None) is not None:
-            g.op_logger.info(
-                module="system",
-                action="logs_delete",
-                target_type="operation_log",
-                target_id=str(log_id),
-                detail={"mode": "manual", "deleted_ids": [int(log_id)], "deleted_count": 1},
-            )
+    deleted = OperationLogService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None)).delete_by_id(
+        int(log_id)
+    )
 
     if deleted <= 0:
         flash(f"未找到日志：ID={log_id}", "warning")
@@ -141,20 +124,7 @@ def logs_delete_batch():
         flash("选择的日志 ID 不合法。", "error")
         return redirect(url_for("system.logs_page"))
 
-    repo = OperationLogRepository(g.db)
-    from core.infrastructure.transaction import TransactionManager
-
-    tx = TransactionManager(g.db)
-    with tx.transaction():
-        deleted = repo.delete_by_ids(ids)
-        if getattr(g, "op_logger", None) is not None:
-            g.op_logger.info(
-                module="system",
-                action="logs_delete",
-                target_type="operation_log",
-                target_id=None,
-                detail={"mode": "batch", "deleted_count": int(deleted), "deleted_ids_sample": ids[:30]},
-            )
+    deleted = OperationLogService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None)).delete_by_ids(ids)
 
     flash(f"批量删除完成：成功 {deleted}。", "success" if deleted else "warning")
     return redirect(url_for("system.logs_page"))

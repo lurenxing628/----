@@ -1,33 +1,60 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>批次信息（Excel）</h2>
-    <p class="muted">
-      支持：下载模板 → 上传预览 → 确认导入 → 导出。
-      预览阶段会标注 NEW/UPDATE/ERROR 等状态，提示信息尽量中文，便于排查。
-    </p>
-    <div style="margin-top:8px;">
-      <a href="{{ export_url }}">导出当前数据（批次信息.xlsx）</a>
-      <span class="muted">（导出会写入操作留痕）</span>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">批次信息（Excel）</h2>
+      </div>
+      <div class="page-actions page-actions-context">
+        {{ ui.link_button('导出批次信息.xlsx', export_url, 'secondary', 'md') }}
+      </div>
     </div>
+    <p class="page-subtitle text-meta">
+      支持：下载模板 → 上传预览 → 确认导入 → 导出。
+      预览阶段会标注 新增/更新/错误 等状态，提示信息尽量中文，便于排查。
+    </p>
+    {{ ui.scheduler_nav('excel_batches') }}
+    <div class="field-help">导出会写入操作留痕。</div>
   </div>
 
   <div class="card">
-    <h3>导入选项</h3>
-    <p class="muted">
+    <h3 class="section-title">导入选项</h3>
+    <p class="text-meta">
       “自动生成/重建工序”会根据零件工序模板生成批次工序（会覆盖已补充的设备/人员/工时/外协周期等信息）。
     </p>
     {% set can_confirm = raw_rows_json and (raw_rows_json | trim) %}
-    <form action="{{ confirm_url }}" method="post" style="margin-top:8px;">
+    <form action="{{ confirm_url }}" method="post" class="mt-2">
       <input type="hidden" name="mode" value="{{ mode }}">
       <input type="hidden" name="filename" value="{{ filename }}">
-      <textarea name="raw_rows_json" style="display:none;">{{ raw_rows_json }}</textarea>
+      <input type="hidden" name="preview_baseline" value="{{ preview_baseline or '' }}">
+      <input type="hidden" name="auto_generate_ops" value="{{ '1' if auto_generate_ops else '' }}">
+      {% if strict_mode_supported %}
+        <input type="hidden" name="strict_mode" value="{{ 'yes' if strict_mode else 'no' }}">
+      {% endif %}
+      <textarea name="raw_rows_json" class="d-none">{{ raw_rows_json }}</textarea>
       <label>
-        <input type="checkbox" name="auto_generate_ops" value="1" checked>
-        导入后自动从模板生成/重建批次工序（推荐）
+        <input type="checkbox" value="1" {% if auto_generate_ops %}checked{% endif %} disabled>
+        {% if auto_generate_ops %}
+          确认导入时会自动从模板生成/重建批次工序
+        {% else %}
+          确认导入时不会自动从模板生成/重建批次工序
+        {% endif %}
       </label>
-      <div style="margin-top:8px;">
-        <button type="submit" {% if not can_confirm %}disabled title="请先上传并预览，生成预览数据后再确认导入。"{% endif %}>确认导入（写入数据库）</button>
+      {% if strict_mode_supported %}
+        <label class="d-block mt-2">
+          <input type="checkbox" value="yes" {% if strict_mode %}checked{% endif %} disabled>
+          {% if strict_mode %}
+            {{ strict_mode_label or '严格校验' }}：确认导入时，遇到数据问题会直接报错
+          {% else %}
+            {{ strict_mode_label or '严格校验' }}：确认导入时，遇到数据问题会自动跳过或使用默认值
+          {% endif %}
+        </label>
+        <div class="muted">{{ strict_mode_help or '开启后，遇到数据问题会直接报错提示，不会自动跳过或使用默认值替代。' }}</div>
+      {% endif %}
+      <div class="muted">如需切换上述选项，请重新上传并预览。</div>
+      <div class="mt-2">
+        {{ ui.button('确认导入（写入数据库）', 'primary', 'md', type_attr='submit', disabled=(not can_confirm)) }}
         <span class="muted">（请先“上传并预览”，再确认导入）</span>
       </div>
     </form>
@@ -35,12 +62,12 @@
 
   {# 复用通用导入组件：预览按钮仍走 preview_url；确认导入我们上面自定义了，以支持 auto_generate_ops #}
   <div class="card">
-    <h3>上传并预览</h3>
-    <div style="margin-bottom:12px;">
-      <a href="{{ template_download_url }}" target="_blank">下载模板</a>
+    <h3 class="section-title">上传并预览</h3>
+    <div class="mb-3">
+      {{ ui.link_button('下载模板', template_download_url, 'secondary', 'md', target='_blank') }}
     </div>
     <form action="{{ preview_url }}" method="post" enctype="multipart/form-data">
-      <div style="margin-bottom:12px;">
+      <div class="mb-3">
         <label>导入模式：</label>
         <select name="mode">
           <option value="overwrite" {% if mode=='overwrite' %}selected{% endif %}>覆盖（相同批次号更新）</option>
@@ -48,9 +75,21 @@
           <option value="replace" {% if mode=='replace' %}selected{% endif %}>替换（清空后导入）</option>
         </select>
       </div>
-      <div style="margin-bottom:12px;">
+      <div class="mb-3">
+        <label>
+          <input type="checkbox" name="auto_generate_ops" value="1" {% if auto_generate_ops %}checked{% endif %}>
+          预览和确认都按“自动从模板生成/重建批次工序”执行（推荐）
+        </label>
+      </div>
+      {% if strict_mode_supported %}
+        <div class="mb-3">
+          <label><input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}> {{ strict_mode_label or '严格校验' }}</label>
+          <div class="muted text-xs">{{ strict_mode_help or '开启后，遇到数据问题会直接报错提示，不会自动跳过或使用默认值替代。' }}</div>
+        </div>
+      {% endif %}
+      <div class="mb-3 inline-flex-wrap">
         <input type="file" name="file" accept=".xlsx" required>
-        <button type="submit">上传并预览</button>
+        {{ ui.button('上传并预览', 'primary', 'md', type_attr='submit') }}
       </div>
       <div class="muted">
         常见问题：如果提示“读取失败/被占用”，请先关闭 Excel 后重试。
@@ -60,14 +99,14 @@
 
   {% if preview_rows %}
     <div class="card">
-      <h3>导入预览</h3>
-      <p class="muted">提示：row_num 是 Excel 的真实行号（标题行+1）。</p>
+      <h3 class="section-title">导入预览</h3>
+      <p class="text-meta">提示：行号对应 Excel 中的真实行号（标题行+1）。</p>
       <table>
         <thead>
           <tr>
-            <th style="width:90px;">行号</th>
-            <th style="width:120px;">状态</th>
-            <th style="width:260px;">提示</th>
+            <th class="w-90">行号</th>
+            <th class="w-120">状态</th>
+            <th class="w-260">提示</th>
             <th>数据</th>
             <th>变更字段</th>
           </tr>
@@ -77,11 +116,11 @@
             <tr>
               <td>{{ r.row_num }}</td>
               <td>
-                {% if r.status.value == 'new' %}<span class="badge badge-new">NEW</span>{% endif %}
-                {% if r.status.value == 'update' %}<span class="badge badge-update">UPDATE</span>{% endif %}
-                {% if r.status.value == 'unchanged' %}<span class="badge badge-unchanged">UNCHANGED</span>{% endif %}
-                {% if r.status.value == 'skip' %}<span class="badge badge-skip">SKIP</span>{% endif %}
-                {% if r.status.value == 'error' %}<span class="badge badge-error">ERROR</span>{% endif %}
+                {% if r.status.value == 'new' %}<span class="badge badge-new">新增</span>{% endif %}
+                {% if r.status.value == 'update' %}<span class="badge badge-update">更新</span>{% endif %}
+                {% if r.status.value == 'unchanged' %}<span class="badge badge-unchanged">无变化</span>{% endif %}
+                {% if r.status.value == 'skip' %}<span class="badge badge-skip">跳过</span>{% endif %}
+                {% if r.status.value == 'error' %}<span class="badge badge-error">错误</span>{% endif %}
               </td>
               <td class="{{ 'error' if r.status.value == 'error' else '' }}">{{ r.message }}</td>
               <td><pre>{{ r.data | tojson_zh(2) }}</pre></td>
@@ -96,25 +135,25 @@
           {% endfor %}
         </tbody>
       </table>
-      <div class="muted" style="margin-top:8px;">
+      <div class="muted mt-2">
         预览完成后，请回到页面顶部“导入选项”处点击“确认导入”。
       </div>
     </div>
   {% endif %}
 
   <div class="card">
-    <h3>当前批次数据（Batches）</h3>
+    <h3 class="section-title">当前批次数据</h3>
     {% if existing_list and existing_list|length > 0 %}
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">批次号</th>
-            <th style="width:180px;">图号</th>
-            <th style="width:100px;">数量</th>
-            <th style="width:140px;">交期</th>
-            <th style="width:120px;">优先级</th>
-            <th style="width:140px;">齐套</th>
-            <th style="width:140px;">齐套日期</th>
+            <th class="w-140">批次号</th>
+            <th class="w-180">图号</th>
+            <th class="w-100">数量</th>
+            <th class="w-140">交期</th>
+            <th class="w-120">优先级</th>
+            <th class="w-140">齐套</th>
+            <th class="w-140">齐套日期</th>
             <th>备注</th>
           </tr>
         </thead>
@@ -138,6 +177,6 @@
     {% endif %}
   </div>
 
-  <script src="{{ url_for('static', filename='js/excel_handler.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/excel_handler.js') }}" defer></script>
 {% endblock %}
 

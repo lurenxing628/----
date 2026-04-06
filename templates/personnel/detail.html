@@ -1,33 +1,46 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>人员详情</h2>
-    <p class="muted">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">人员详情</h2></div>
+      <div class="page-actions page-actions-context"></div>
+    </div>
+    <p class="page-subtitle text-meta">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong>　班组：<strong>{{ operator_team_name or '未设置' }}</strong></p>
+    {{ ui.personnel_nav('list') }}
     {% set op_cal_url = safe_url_for('personnel.operator_calendar_page', operator_id=operator.operator_id) %}
     {% set global_cal_url = safe_url_for('scheduler.calendar_page') %}
-    <div style="margin-top:8px;">
+    <div class="info-line mt-2">
       {% if op_cal_url %}
-        <a href="{{ op_cal_url }}">个人工作日历</a>
+        {{ ui.link_button('个人工作日历', op_cal_url, 'secondary', 'sm') }}
       {% else %}
-        <span class="muted"
-              title="原因：后端接口未注册（endpoint：personnel.operator_calendar_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-          个人工作日历（不可用：后端接口缺失，可能旧版本/未重启/未重新打包）
-        </span>
+        <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
+        <details class="debug-details muted">
+          <summary>排查信息</summary>
+          后端接口未注册（endpoint：personnel.operator_calendar_page）。<br/>
+          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+          处理：重启服务或重新打包升级。<br/>
+          日志：logs/aps.log、logs/aps_error.log。
+        </details>
       {% endif %}
-      <span class="muted">｜</span>
+      <span class="info-sep">|</span>
       {% if global_cal_url %}
-        <a href="{{ global_cal_url }}">全局工作日历</a>
+        {{ ui.link_button('全局工作日历', global_cal_url, 'secondary', 'sm') }}
       {% else %}
-        <span class="muted"
-              title="原因：后端接口未注册（endpoint：scheduler.calendar_page）。常见原因：运行旧版本/修改后未重启/重新打包未包含最新代码，导致模板与后端版本不一致。处理：重启服务或重新打包升级；详见 logs/aps.log（warning）与 logs/aps_error.log。">
-          全局工作日历（不可用：后端接口缺失，可能旧版本/未重启/未重新打包）
-        </span>
+        <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
+        <details class="debug-details muted">
+          <summary>排查信息</summary>
+          后端接口未注册（endpoint：scheduler.calendar_page）。<br/>
+          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
+          处理：重启服务或重新打包升级。<br/>
+          日志：logs/aps.log、logs/aps_error.log。
+        </details>
       {% endif %}
     </div>
-    <div class="muted" style="margin-top:6px;">
-      说明：个人工作日历会覆盖全局日历，可用于请假/加班/轮班等差异。
+    <div class="muted mt-2">
+      为个别人员设置特殊的工作/休息日（如请假、加班）。
       {% if not op_cal_url %}
-        <span class="muted">（当前运行版本缺少该入口：可能旧版本/未重启/未重新打包）</span>
+        <span class="muted">（当前运行版本缺少该入口）</span>
       {% endif %}
     </div>
   </div>
@@ -35,30 +48,39 @@
   <div class="card">
     <h3>基本信息</h3>
     <form method="post" action="{{ url_for('personnel.update_operator', operator_id=operator.operator_id) }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>工号</label><br/>
+      <div class="form-row">
+        <div class="form-field">
+          <label>工号</label>
           <input value="{{ operator.operator_id }}" disabled>
         </div>
-        <div>
-          <label>姓名</label><br/>
+        <div class="form-field">
+          <label>姓名</label>
           <input name="name" required value="{{ operator.name }}">
         </div>
-        <div>
-          <label>状态</label><br/>
+        <div class="form-field">
+          <label>状态</label>
           <select name="status">
             {% for v, label in status_options %}
               <option value="{{ v }}" {% if operator.status == v %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>
-        <div style="flex:1; min-width:240px;">
-          <label>备注</label><br/>
+        <div class="form-field">
+          <label>班组</label>
+          <select name="team_id">
+            <option value="" {% if not operator.team_id %}selected{% endif %}>（未设置）</option>
+            {% for t in team_options %}
+              <option value="{{ t.team_id }}" {% if operator.team_id == t.team_id %}selected{% endif %}>{{ t.name }}（{{ t.team_id }}）</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-field flex-1 min-w-240">
+          <label>备注</label>
           <input name="remark" value="{{ operator.remark or '' }}">
         </div>
-        <div>
-          <button type="submit">保存</button>
-          <a style="margin-left:10px;" href="{{ url_for('personnel.list_page') }}">返回列表</a>
+        <div class="inline-flex-wrap">
+          {{ ui.button('保存', 'primary', 'md', type_attr='submit') }}
+          {{ ui.link_button('返回列表', url_for('personnel.list_page'), 'secondary', 'sm') }}
         </div>
       </div>
     </form>
@@ -67,23 +89,34 @@
   <div class="card">
     <h3>可操作设备</h3>
     <p class="muted">
-      说明：这里维护人员-设备关联（底层写入 OperatorMachine 表）。
-      可选字段：技能等级（beginner/normal/expert）与主操设备（同一人员仅允许 1 台主操设备）。
+      设置该人员可以操作哪些设备。
+      可选字段：技能等级（初级/普通/熟练）与主操设备（同一人员仅允许 1 台主操设备）。
     </p>
+    {% if link_dirty_summary and link_dirty_summary.row_count > 0 %}
+      <div class="warning mt-2">
+        以下 {{ link_dirty_summary.row_count }} 条记录中有部分字段的旧格式已被系统自动修正；涉及字段：{{ link_dirty_summary.fields | join('、') }}。
+      </div>
+      <ul class="list-tight muted mt-2">
+        {% for field, reason in (link_dirty_summary.reasons or {}).items() %}
+          <li><code>{{ field }}</code>：{{ reason }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    <!-- OperatorMachine -->
 
     {% if linked_machines and linked_machines|length > 0 %}
       {% for m in linked_machines %}
-        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_link', operator_id=operator.operator_id) }}" style="display:none;"></form>
+        <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_link', operator_id=operator.operator_id) }}" class="d-none"></form>
       {% endfor %}
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">设备编号</th>
+            <th class="w-140">设备编号</th>
             <th>设备名称</th>
-            <th style="width:120px;">设备状态</th>
-            <th style="width:140px;">技能等级</th>
-            <th style="width:120px;">主操</th>
-            <th style="width:220px;">操作</th>
+            <th class="w-120">设备状态</th>
+            <th class="w-140">技能等级</th>
+            <th class="w-120">主操</th>
+            <th class="w-220">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -100,6 +133,9 @@
                     <option value="{{ v }}" {% if cur == v %}selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
+                {% if m.dirty_fields and 'skill_level' in m.dirty_fields %}
+                  <div class="muted mt-1">旧格式已自动修正：{{ (m.dirty_reasons or {}).get('skill_level') }}</div>
+                {% endif %}
               </td>
               <td>
                 <label class="muted">
@@ -107,14 +143,19 @@
                          {{ 'checked' if (m.is_primary or 'no') == 'yes' else '' }}>
                   主操
                 </label>
+                {% if m.dirty_fields and 'is_primary' in m.dirty_fields %}
+                  <div class="muted mt-1">旧格式已自动修正：{{ (m.dirty_reasons or {}).get('is_primary') }}</div>
+                {% endif %}
               </td>
               <td>
-                <button type="submit" form="linkform_{{ loop.index0 }}">保存</button>
-                <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}" style="display:inline-block;margin-left:6px;"
-                      data-confirm="确认解除该关联？">
-                  <input type="hidden" name="machine_id" value="{{ m.machine_id }}">
-                  <button type="submit">解除关联</button>
-                </form>
+                <div class="table-actions">
+                  {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='linkform_' ~ loop.index0) }}
+                  <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}"
+                        data-confirm="确认解除该关联？">
+                    <input type="hidden" name="machine_id" value="{{ m.machine_id }}">
+                    {{ ui.button('解除关联', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}
@@ -128,18 +169,16 @@
     <h4>添加设备关联</h4>
     {% if available_machines and available_machines|length > 0 %}
       <form method="post" action="{{ url_for('personnel.add_link', operator_id=operator.operator_id) }}">
-        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-          <div>
-            <label>选择设备</label><br/>
+        <div class="form-row">
+          <div class="form-field">
+            <label>选择设备</label>
             <select name="machine_id" required>
               {% for m in available_machines %}
                 <option value="{{ m.machine_id }}">{{ m.machine_id }} - {{ m.machine_name }}（{{ m.status_zh }}）</option>
               {% endfor %}
             </select>
           </div>
-          <div>
-            <button type="submit">添加关联</button>
-          </div>
+          <div>{{ ui.button('添加关联', 'primary', 'md', type_attr='submit') }}</div>
         </div>
       </form>
     {% else %}
@@ -148,4 +187,3 @@
   </div>
 
 {% endblock %}
-

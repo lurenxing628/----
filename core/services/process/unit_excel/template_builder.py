@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+
+from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
+from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
+from core.services.common.excel_templates import get_template_definition
 
 from .parser import PartContext, StationMeta, StepRecord
 
@@ -17,30 +21,98 @@ class ConvertedTemplates:
     operator_machine_rows: List[Dict[str, Any]]
     op_types_rows: List[Dict[str, Any]]
     suppliers_rows: List[Dict[str, Any]]
+    diagnostics: Dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
     def output_specs() -> List[Tuple[str, List[str], str]]:
         return [
-            ("零件工艺路线.xlsx", ["图号", "名称", "工艺路线字符串"], "routes_rows"),
-            ("零件工序工时.xlsx", ["图号", "工序", "换型时间(h)", "单件工时(h)"], "part_operation_hours_rows"),
-            ("人员基本信息.xlsx", ["工号", "姓名", "状态", "备注"], "operators_rows"),
-            ("设备信息.xlsx", ["设备编号", "设备名称", "工种", "状态"], "machines_rows"),
-            ("人员设备关联.xlsx", ["工号", "设备编号"], "operator_machine_rows"),
-            ("工种配置.xlsx", ["工种ID", "工种名称", "归属"], "op_types_rows"),
-            ("供应商配置.xlsx", ["供应商ID", "名称", "对应工种", "默认周期"], "suppliers_rows"),
+            ("零件工艺路线.xlsx", list(get_template_definition("零件工艺路线.xlsx")["headers"]), "routes_rows"),
+            ("零件工序工时.xlsx", list(get_template_definition("零件工序工时.xlsx")["headers"]), "part_operation_hours_rows"),
+            ("人员基本信息.xlsx", list(get_template_definition("人员基本信息.xlsx")["headers"]), "operators_rows"),
+            ("设备信息.xlsx", list(get_template_definition("设备信息.xlsx")["headers"]), "machines_rows"),
+            ("人员设备关联.xlsx", list(get_template_definition("人员设备关联.xlsx")["headers"]), "operator_machine_rows"),
+            ("工种配置.xlsx", list(get_template_definition("工种配置.xlsx")["headers"]), "op_types_rows"),
+            ("供应商配置.xlsx", list(get_template_definition("供应商配置.xlsx")["headers"]), "suppliers_rows"),
         ]
-
-    def rows_by_filename(self) -> Dict[str, List[Dict[str, Any]]]:
-        result: Dict[str, List[Dict[str, Any]]] = {}
-        for filename, _headers, field_name in self.output_specs():
-            result[filename] = list(getattr(self, field_name))
-        return result
 
 
 class UnitTemplateBuilder:
     def build(self, parts: Dict[str, PartContext], stations: List[StationMeta]) -> ConvertedTemplates:
+        collector = DegradationCollector()
+        samples: Dict[str, List[Any]] = {}
         machine_label_map = {s.machine_id: s.machine_label for s in stations}
+        machine_op_hint = self._build_machine_op_hint(parts)
 
+        op_records, machine_internal_counter, operator_names, used_machine_ids, links = self._collect_op_records(
+            parts,
+            machine_op_hint,
+            collector=collector,
+            samples=samples,
+        )
+
+        conflict_names = self._conflict_names(op_records)
+        self._apply_final_names(op_records, conflict_names)
+
+        by_part = self._group_op_records_by_part(op_records)
+        route_rows = self._build_route_rows(by_part)
+        part_operation_hours_rows = self._build_part_operation_hours_rows(by_part)
+
+        operator_id_map, operators_rows = self._build_operator_rows(operator_names)
+        machines_rows = self._build_machines_rows(
+            used_machine_ids=used_machine_ids,
+            machine_label_map=machine_label_map,
+            machine_internal_counter=machine_internal_counter,
+        )
+        operator_machine_rows = self._build_operator_machine_rows(links, operator_id_map, collector=collector, samples=samples)
+
+        op_types_rows = self._build_op_types_rows(op_records)
+        suppliers_rows = self._build_suppliers_rows(op_records, op_types_rows, collector=collector, samples=samples)
+
+        diagnostics = {
+            "events": degradation_events_to_dicts(collector.to_list()),
+            "counters": collector.to_counters(),
+            "samples": {str(code): list(items or [])[:10] for code, items in samples.items()},
+        }
+
+        return ConvertedTemplates(
+            routes_rows=route_rows,
+            part_operation_hours_rows=part_operation_hours_rows,
+            operators_rows=operators_rows,
+            machines_rows=machines_rows,
+            operator_machine_rows=operator_machine_rows,
+            op_types_rows=op_types_rows,
+            suppliers_rows=suppliers_rows,
+            diagnostics=diagnostics,
+        )
+
+    @staticmethod
+    def _record_diagnostic(
+        collector: DegradationCollector,
+        samples: Dict[str, List[Any]],
+        *,
+        code: str,
+        scope: str,
+        field: str,
+        message: str,
+        sample: Any,
+    ) -> None:
+        collector.add(
+            code=code,
+            scope=scope,
+            field=field,
+            message=message,
+            sample=(str(sample)[:200] if sample is not None else None),
+        )
+        bucket = samples.setdefault(str(code), [])
+        if len(bucket) >= 10:
+            return
+        try:
+            bucket.append(sample)
+        except Exception:
+            bucket.append(str(sample))
+
+    @staticmethod
+    def _build_machine_op_hint(parts: Dict[str, PartContext]) -> Dict[str, Counter]:
         machine_op_hint: Dict[str, Counter] = defaultdict(Counter)
         for ctx in parts.values():
             for rec in ctx.step_records:
@@ -49,7 +121,52 @@ class UnitTemplateBuilder:
                 op_name = ctx.route_map.get(rec.seq)
                 if op_name:
                     machine_op_hint[rec.machine_id][op_name] += 1
+        return machine_op_hint
 
+    @staticmethod
+    def _build_seq_maps(ctx: PartContext) -> Tuple[Dict[int, List[StepRecord]], Set[int]]:
+        seq_to_records: Dict[int, List[StepRecord]] = defaultdict(list)
+        internal_seq_set: Set[int] = set()
+        for rec in ctx.step_records:
+            if rec.seq is None:
+                continue
+            seq = int(rec.seq)
+            seq_to_records[seq].append(rec)
+            if rec.has_step_code and rec.operators:
+                internal_seq_set.add(seq)
+        return seq_to_records, internal_seq_set
+
+    def _infer_missing_name_map(
+        self,
+        ctx: PartContext,
+        *,
+        internal_seq_set: Set[int],
+        seq_to_records: Dict[int, List[StepRecord]],
+        machine_op_hint: Dict[str, Counter],
+    ) -> Dict[int, str]:
+        inferred_missing_name: Dict[int, str] = {}
+        for seq in sorted(internal_seq_set):
+            if seq in ctx.route_map:
+                continue
+            inferred_missing_name[seq] = self._infer_op_name_for_missing_seq(
+                seq=seq,
+                records=seq_to_records.get(seq, []),
+                machine_op_hint=machine_op_hint,
+            )
+        return inferred_missing_name
+
+    @staticmethod
+    def _all_seqs(ctx: PartContext, internal_seq_set: Set[int]) -> List[int]:
+        return sorted(set(ctx.route_map.keys()) | set(internal_seq_set))
+
+    def _collect_op_records(
+        self,
+        parts: Dict[str, PartContext],
+        machine_op_hint: Dict[str, Counter],
+        *,
+        collector: DegradationCollector,
+        samples: Dict[str, List[Any]],
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Counter], Set[str], Set[str], Set[Tuple[str, str]]]:
         op_records: List[Dict[str, Any]] = []
         machine_internal_counter: Dict[str, Counter] = defaultdict(Counter)
         operator_names: Set[str] = set()
@@ -58,28 +175,46 @@ class UnitTemplateBuilder:
 
         for part_no in sorted(parts.keys()):
             ctx = parts[part_no]
-            seq_to_records: Dict[int, List[StepRecord]] = defaultdict(list)
-            internal_seq_set: Set[int] = set()
-
+            seq_to_records, internal_seq_set = self._build_seq_maps(ctx)
             for rec in ctx.step_records:
-                if rec.seq is None:
+                if not rec.step_text:
                     continue
-                seq_to_records[int(rec.seq)].append(rec)
                 if rec.has_step_code and rec.operators:
-                    internal_seq_set.add(int(rec.seq))
-
-            inferred_missing_name: Dict[int, str] = {}
-            for seq in sorted(internal_seq_set):
-                if seq in ctx.route_map:
                     continue
-                inferred_missing_name[seq] = self._infer_op_name_for_missing_seq(
-                    seq=seq,
-                    records=seq_to_records.get(seq, []),
-                    machine_op_hint=machine_op_hint,
+                self._record_diagnostic(
+                    collector,
+                    samples,
+                    code="compatible_row",
+                    scope="unit_excel.step_record",
+                    field="step_text",
+                    message="存在兼容行，已按读侧兼容规则继续转换。",
+                    sample={
+                        "part_no": ctx.part_no,
+                        "machine_id": rec.machine_id,
+                        "step_text": rec.step_text,
+                        "has_step_code": bool(rec.has_step_code),
+                        "operator_count": int(len(rec.operators or [])),
+                    },
                 )
 
-            all_seqs = sorted(set(ctx.route_map.keys()) | internal_seq_set)
-            for seq in all_seqs:
+            inferred_missing_name = self._infer_missing_name_map(
+                ctx,
+                internal_seq_set=internal_seq_set,
+                seq_to_records=seq_to_records,
+                machine_op_hint=machine_op_hint,
+            )
+            for seq, inferred_name in inferred_missing_name.items():
+                self._record_diagnostic(
+                    collector,
+                    samples,
+                    code="inferred_field",
+                    scope="unit_excel.route",
+                    field="工序名称",
+                    message="工艺路线缺少工序名称，已按上下文推断。",
+                    sample={"part_no": ctx.part_no, "seq": int(seq), "value": inferred_name},
+                )
+
+            for seq in self._all_seqs(ctx, internal_seq_set):
                 base_name = (ctx.route_map.get(seq) or inferred_missing_name.get(seq) or f"工序{seq}").strip()
                 source_internal = seq in internal_seq_set
 
@@ -101,46 +236,79 @@ class UnitTemplateBuilder:
                 )
 
                 if source_internal:
-                    for rec in seq_records:
-                        if not rec.has_step_code or not rec.operators:
-                            continue
-                        used_machine_ids.add(rec.machine_id)
-                        machine_internal_counter[rec.machine_id][base_name] += 1
-                        for name in rec.operators:
-                            operator_names.add(name)
-                            links.add((name, rec.machine_id))
+                    self._append_internal_links_and_counters(
+                        seq_records=seq_records,
+                        base_name=base_name,
+                        used_machine_ids=used_machine_ids,
+                        machine_internal_counter=machine_internal_counter,
+                        operator_names=operator_names,
+                        links=links,
+                    )
 
+        return op_records, machine_internal_counter, operator_names, used_machine_ids, links
+
+    @staticmethod
+    def _append_internal_links_and_counters(
+        *,
+        seq_records: Sequence[StepRecord],
+        base_name: str,
+        used_machine_ids: Set[str],
+        machine_internal_counter: Dict[str, Counter],
+        operator_names: Set[str],
+        links: Set[Tuple[str, str]],
+    ) -> None:
+        for rec in seq_records:
+            if not rec.has_step_code or not rec.operators:
+                continue
+            used_machine_ids.add(rec.machine_id)
+            machine_internal_counter[rec.machine_id][base_name] += 1
+            for name in rec.operators:
+                operator_names.add(name)
+                links.add((name, rec.machine_id))
+
+    @staticmethod
+    def _conflict_names(op_records: Sequence[Dict[str, Any]]) -> Set[str]:
         name_states: Dict[str, Set[str]] = defaultdict(set)
         for rec in op_records:
-            state = "internal" if rec["source_internal"] else "external"
-            name_states[str(rec["base_name"])].add(state)
-        conflict_names = {name for name, states in name_states.items() if len(states) > 1}
+            state = SourceType.INTERNAL.value if rec.get("source_internal") else SourceType.EXTERNAL.value
+            name_states[str(rec.get("base_name") or "")].add(state)
+        return {name for name, states in name_states.items() if len(states) > 1}
 
+    def _apply_final_names(self, op_records: List[Dict[str, Any]], conflict_names: Set[str]) -> None:
         for rec in op_records:
-            base_name = str(rec["base_name"])
-            if rec["source_internal"]:
+            base_name = str(rec.get("base_name") or "")
+            if rec.get("source_internal"):
                 final_name = base_name
             else:
                 final_name = self._external_alias(base_name) if base_name in conflict_names else base_name
             rec["final_name"] = final_name
 
-        route_rows: List[Dict[str, Any]] = []
+    @staticmethod
+    def _group_op_records_by_part(op_records: Iterable[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         by_part: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         for rec in op_records:
-            by_part[str(rec["part_no"])].append(rec)
+            by_part[str(rec.get("part_no") or "")].append(rec)
+        return by_part
+
+    @staticmethod
+    def _build_route_rows(by_part: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+        route_rows: List[Dict[str, Any]] = []
         for part_no in sorted(by_part.keys()):
             recs = sorted(by_part[part_no], key=lambda x: int(x["seq"]))
-            part_name = str(recs[0]["part_name"] or part_no)
-            route_string = "".join([f"{int(r['seq'])}{str(r['final_name'])}" for r in recs])
+            part_name = str(recs[0].get("part_name") or part_no)
+            route_string = "".join([f"{int(r['seq'])}{str(r.get('final_name') or '')}" for r in recs])
             route_rows.append({"图号": part_no, "名称": part_name, "工艺路线字符串": route_string})
+        return route_rows
 
-        part_operation_hours_rows: List[Dict[str, Any]] = []
+    @staticmethod
+    def _build_part_operation_hours_rows(by_part: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
         for part_no in sorted(by_part.keys()):
             recs = sorted(by_part[part_no], key=lambda x: int(x["seq"]))
             for rec in recs:
-                if not rec["source_internal"]:
+                if not rec.get("source_internal"):
                     continue
-                part_operation_hours_rows.append(
+                rows.append(
                     {
                         "图号": part_no,
                         "工序": int(rec["seq"]),
@@ -148,7 +316,10 @@ class UnitTemplateBuilder:
                         "单件工时(h)": float(rec.get("unit_hours") or 0.0),
                     }
                 )
+        return rows
 
+    @staticmethod
+    def _build_operator_rows(operator_names: Set[str]) -> Tuple[Dict[str, str], List[Dict[str, Any]]]:
         operator_id_map: Dict[str, str] = {}
         used_operator_ids: Set[str] = set()
         operators_rows: List[Dict[str, Any]] = []
@@ -160,8 +331,16 @@ class UnitTemplateBuilder:
             used_operator_ids.add(op_id)
             next_operator_no += 1
             operator_id_map[name] = op_id
-            operators_rows.append({"工号": op_id, "姓名": name, "状态": "active", "备注": None})
+            operators_rows.append({"工号": op_id, "姓名": name, "状态": OperatorStatus.ACTIVE.value, "班组": None, "备注": None})
+        return operator_id_map, operators_rows
 
+    def _build_machines_rows(
+        self,
+        *,
+        used_machine_ids: Set[str],
+        machine_label_map: Dict[str, str],
+        machine_internal_counter: Dict[str, Counter],
+    ) -> List[Dict[str, Any]]:
         machines_rows: List[Dict[str, Any]] = []
         for machine_id in sorted(used_machine_ids):
             display = machine_label_map.get(machine_id) or machine_id
@@ -172,61 +351,125 @@ class UnitTemplateBuilder:
                     "设备编号": machine_id,
                     "设备名称": machine_name,
                     "工种": op_name,
-                    "状态": "active",
+                    "班组": None,
+                    "状态": MachineStatus.ACTIVE.value,
                 }
             )
+        return machines_rows
 
-        operator_machine_rows: List[Dict[str, Any]] = []
+    @staticmethod
+    def _build_operator_machine_rows(
+        links: Set[Tuple[str, str]],
+        operator_id_map: Dict[str, str],
+        *,
+        collector: DegradationCollector,
+        samples: Dict[str, List[Any]],
+    ) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
         for operator_name, machine_id in sorted(links, key=lambda x: (operator_id_map.get(x[0], x[0]), x[1])):
             op_id = operator_id_map.get(operator_name)
             if not op_id:
                 continue
-            operator_machine_rows.append({"工号": op_id, "设备编号": machine_id})
+            UnitTemplateBuilder._record_diagnostic(
+                collector,
+                samples,
+                code="default_filled",
+                scope="unit_excel.operator_machine",
+                field="技能等级",
+                message="人员设备关联缺少技能等级，已默认补齐为 normal。",
+                sample={"工号": op_id, "设备编号": machine_id, "value": "normal"},
+            )
+            UnitTemplateBuilder._record_diagnostic(
+                collector,
+                samples,
+                code="default_filled",
+                scope="unit_excel.operator_machine",
+                field="主操设备",
+                message="人员设备关联缺少主操标记，已默认补齐为 no。",
+                sample={"工号": op_id, "设备编号": machine_id, "value": YesNo.NO.value},
+            )
+            rows.append({"工号": op_id, "设备编号": machine_id, "技能等级": "normal", "主操设备": YesNo.NO.value})
+        return rows
 
+    @staticmethod
+    def _build_op_types_rows(op_records: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
         op_type_states: Dict[str, Set[str]] = defaultdict(set)
         for rec in op_records:
-            nm = str(rec["final_name"])
-            op_type_states[nm].add("internal" if rec["source_internal"] else "external")
+            nm = str(rec.get("final_name") or "")
+            st = SourceType.INTERNAL.value if rec.get("source_internal") else SourceType.EXTERNAL.value
+            op_type_states[nm].add(st)
 
         op_types_rows: List[Dict[str, Any]] = []
         for idx, op_name in enumerate(sorted(op_type_states.keys()), start=1):
-            cat = "internal" if "internal" in op_type_states[op_name] else "external"
+            cat = SourceType.INTERNAL.value if SourceType.INTERNAL.value in op_type_states[op_name] else SourceType.EXTERNAL.value
             op_types_rows.append({"工种ID": f"OT{idx:03d}", "工种名称": op_name, "归属": cat})
+        return op_types_rows
 
+    @staticmethod
+    def _build_suppliers_rows(
+        op_records: Sequence[Dict[str, Any]],
+        op_types_rows: Sequence[Dict[str, Any]],
+        *,
+        collector: DegradationCollector,
+        samples: Dict[str, List[Any]],
+    ) -> List[Dict[str, Any]]:
         external_days_by_name: Dict[str, List[float]] = defaultdict(list)
         for rec in op_records:
-            if rec["source_internal"]:
+            if rec.get("source_internal"):
                 continue
-            name = str(rec["final_name"])
+            name = str(rec.get("final_name") or "")
             hint = rec.get("ext_days_hint")
             if isinstance(hint, (int, float)) and float(hint) > 0:
                 external_days_by_name[name].append(float(hint))
 
-        external_names = [r["工种名称"] for r in op_types_rows if str(r["归属"]).strip().lower() == "external"]
+        external_names = [
+            str(r.get("工种名称") or "")
+            for r in op_types_rows
+            if str(r.get("归属") or "").strip() == SourceType.EXTERNAL.value
+        ]
         suppliers_rows: List[Dict[str, Any]] = []
-        for idx, op_name in enumerate(sorted(external_names), start=1):
+        for idx, op_name in enumerate(sorted([n for n in external_names if n]), start=1):
             days_list = external_days_by_name.get(op_name) or []
             default_days = round(sum(days_list) / len(days_list), 4) if days_list else 1.0
-            if default_days <= 0:
-                default_days = 1.0
+            if not days_list:
+                UnitTemplateBuilder._record_diagnostic(
+                    collector,
+                    samples,
+                    code="default_filled",
+                    scope="unit_excel.suppliers",
+                    field="默认周期",
+                    message="外协供应商缺少周期样本，已默认补齐为 1.0 天。",
+                    sample={"对应工种": op_name, "value": 1.0},
+                )
+            UnitTemplateBuilder._record_diagnostic(
+                collector,
+                samples,
+                code="default_filled",
+                scope="unit_excel.suppliers",
+                field="状态",
+                message="外协供应商状态未提供，已默认补齐为 active。",
+                sample={"对应工种": op_name, "value": SupplierStatus.ACTIVE.value},
+            )
+            UnitTemplateBuilder._record_diagnostic(
+                collector,
+                samples,
+                code="default_filled",
+                scope="unit_excel.suppliers",
+                field="备注",
+                message="外协供应商备注未提供，已默认补齐为空。",
+                sample={"对应工种": op_name, "value": None},
+            )
             suppliers_rows.append(
                 {
                     "供应商ID": f"S{idx:03d}",
                     "名称": f"外协-{op_name}",
                     "对应工种": op_name,
                     "默认周期": default_days,
+                    "状态": SupplierStatus.ACTIVE.value,
+                    "备注": None,
                 }
             )
-
-        return ConvertedTemplates(
-            routes_rows=route_rows,
-            part_operation_hours_rows=part_operation_hours_rows,
-            operators_rows=operators_rows,
-            machines_rows=machines_rows,
-            operator_machine_rows=operator_machine_rows,
-            op_types_rows=op_types_rows,
-            suppliers_rows=suppliers_rows,
-        )
+        return suppliers_rows
 
     def _infer_op_name_for_missing_seq(
         self,

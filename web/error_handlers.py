@@ -3,10 +3,10 @@ from __future__ import annotations
 import traceback
 
 from flask import request
-
-from web.ui_mode import render_ui_template as render_template
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from core.infrastructure.errors import AppError, ErrorCode, error_response
+from web.ui_mode import render_ui_template as render_template
 
 
 def _wants_json() -> bool:
@@ -27,9 +27,13 @@ def register_error_handlers(app):
     @app.errorhandler(AppError)
     def handle_app_error(e: AppError):
         app.logger.warning(f"业务错误：{e}")
+        status_code = 413 if e.code == ErrorCode.FILE_TOO_LARGE else 400
         if _wants_json():
-            return e.to_dict(), 400
-        return render_template("error.html", title="发生错误", code=e.code.value, message=e.message, details=e.details), 400
+            return e.to_dict(), status_code
+        return (
+            render_template("error.html", title="发生错误", code=e.code.value, message=e.message, details=e.details),
+            status_code,
+        )
 
     @app.errorhandler(404)
     def handle_not_found(_e):
@@ -37,6 +41,18 @@ def register_error_handlers(app):
         if _wants_json():
             return payload, 404
         return render_template("error.html", title="页面不存在", code=ErrorCode.NOT_FOUND.value, message="页面不存在或已被删除"), 404
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_request_too_large(_e):
+        payload = error_response(ErrorCode.FILE_TOO_LARGE, "上传文件超过 16MB，请缩小文件后重试。")
+        if _wants_json():
+            return payload, 413
+        return render_template(
+            "error.html",
+            title="文件过大",
+            code=ErrorCode.FILE_TOO_LARGE.value,
+            message="上传文件超过 16MB，请缩小文件后重试。",
+        ), 413
 
     @app.errorhandler(500)
     def handle_internal_error(e):

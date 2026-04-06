@@ -1,109 +1,115 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/calendar_picker.css') }}">
 {% endblock %}
 {% block content %}
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h2>工作日历配置</h2>
-        <p class="muted">
-          说明：用于后续排产算法的“工作时间/效率/允许排产的优先级”约束。
-          未配置日期会按默认规则兜底（工作日 8 小时；周末/假期默认不排产）。可在此显式配置调休/加班（把某天设为“假期”或“工作日”）。
-        </p>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">工作日历配置</h2>
       </div>
-      <div>
-        <a href="{{ url_for('scheduler.excel_calendar_page') }}">工作日历（Excel 导入/导出）</a>
-        <span class="muted">｜</span>
-        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
+      <div class="page-actions page-actions-context">
+        {{ ui.link_button('导入/导出工作日历', url_for('scheduler.excel_calendar_page'), 'secondary', 'md') }}
       </div>
     </div>
+    <p class="page-subtitle text-meta">
+      设置排产时使用的工作时间、效率和可排产优先级。
+      未配置日期会按默认规则处理（工作日 8 小时；周末/假期默认不排产）。
+      也可以在这里配置调休或加班。
+    </p>
+    {{ ui.scheduler_nav('calendar') }}
   </div>
 
   <div class="card wc-card-allow-overflow">
-    <h3>新增 / 更新某一天</h3>
+    <h3 class="section-title">新增 / 更新某一天</h3>
+    {% if holiday_default_efficiency_degraded %}
+      <div class="flash-card flash-warning" role="alert" aria-live="polite">
+        {{ holiday_default_efficiency_warning }}
+      </div>
+    {% endif %}
     <form method="post" action="{{ url_for('scheduler.calendar_upsert') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div class="wc-date-wrap">
-          <label>日期</label><br/>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="wcDateInput" name="date" required placeholder="YYYY-MM-DD" style="width:160px;">
-            <button type="button" id="wcDatePickBtn">选择</button>
+      <div class="calendar-upsert-row">
+        <div class="form-field wc-date-wrap">
+          <label>日期</label>
+          <div class="inline-flex-wrap">
+            <input id="wcDateInput" name="date" required placeholder="如：2026-03-13" class="w-140">
+            {{ ui.button('选择', 'secondary', 'sm', type_attr='button', element_id='wcDatePickBtn') }}
           </div>
-          <div id="wcDateHint" class="muted" style="margin-top:6px;"></div>
-          <div id="wcCalendarPanel" class="wc-cal-panel" style="display:none;">
+          <div id="wcDateHint" class="muted mt-2"></div>
+          <div id="wcCalendarPanel" class="wc-cal-panel is-hidden">
             <div class="wc-cal-header">
-              <button type="button" class="wc-cal-nav" data-action="prev">‹</button>
+              <button type="button" class="wc-cal-nav" data-action="prev" aria-label="上个月">‹</button>
               <div class="wc-cal-title"></div>
-              <button type="button" class="wc-cal-nav" data-action="next">›</button>
+              <button type="button" class="wc-cal-nav" data-action="next" aria-label="下个月">›</button>
             </div>
             <div class="wc-cal-week"></div>
             <div class="wc-cal-grid"></div>
             <div class="wc-cal-foot muted">已配置日期会高亮；周末会单独标识。</div>
           </div>
         </div>
-        <div>
-          <label>类型</label><br/>
-          <select name="day_type">
+        <div class="form-field">
+          <label>类型</label>
+          <select name="day_type" class="w-100">
             <option value="workday">工作日</option>
             <option value="holiday">假期</option>
           </select>
         </div>
-        <div>
-          <label>班次开始</label><br/>
-          <input type="time" name="shift_start" value="08:00" style="width:140px;">
+        <div class="form-field">
+          <label>班次开始</label>
+          <input type="time" name="shift_start" value="08:00" class="w-120">
         </div>
-        <div>
-          <label>班次结束（可选）</label><br/>
-          <input type="time" name="shift_end" style="width:140px;">
+        <div class="form-field">
+          <label>班次结束（可选）</label>
+          <input type="time" name="shift_end" class="w-120">
         </div>
-        <div>
-          <label>可用工时（小时）</label><br/>
-          <input name="shift_hours" placeholder="如：8" style="width:140px;">
+        <div class="form-field">
+          <label>可用工时（小时）</label>
+          <input name="shift_hours" placeholder="如：8" class="w-100">
         </div>
-        <div>
-          <label>效率（>0）</label><br/>
-          <input name="efficiency" placeholder="如：1.0" style="width:140px;">
+        <div class="form-field">
+          <label>效率（>0）</label>
+          <input name="efficiency" placeholder="如：1.0" class="w-100">
         </div>
-        <div>
-          <label>允许普通件</label><br/>
-          <select name="allow_normal">
+        <div class="form-field">
+          <label>允许普通件</label>
+          <select name="allow_normal" class="w-100">
             <option value="yes">是</option>
             <option value="no">否</option>
           </select>
         </div>
-        <div>
-          <label>允许急件/特急</label><br/>
-          <select name="allow_urgent">
+        <div class="form-field">
+          <label>允许急件/特急</label>
+          <select name="allow_urgent" class="w-100">
             <option value="yes">是</option>
             <option value="no">否</option>
           </select>
         </div>
-        <div style="flex:1; min-width:220px;">
-          <label>说明</label><br/>
+        <div class="form-field calendar-upsert-remark">
+          <label>说明</label>
           <input name="remark" placeholder="可选">
         </div>
-        <div>
-          <button type="submit">保存</button>
+        <div class="calendar-upsert-submit">
+          {{ ui.button('保存', 'primary', 'sm', type_attr='submit') }}
         </div>
       </div>
     </form>
   </div>
 
   <div class="card">
-    <h3>已配置日历（WorkCalendar）</h3>
+    <h3 class="section-title">已配置日历</h3>
     {% if rows and rows|length > 0 %}
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">日期</th>
-            <th style="width:120px;">类型</th>
-            <th style="width:120px;">班次开始</th>
-            <th style="width:120px;">班次结束</th>
-            <th style="width:120px;">可用工时</th>
-            <th style="width:120px;">效率</th>
-            <th style="width:140px;">允许普通件</th>
-            <th style="width:140px;">允许急件</th>
+            <th class="w-140">日期</th>
+            <th class="w-120">类型</th>
+            <th class="w-120">班次开始</th>
+            <th class="w-120">班次结束</th>
+            <th class="w-120">可用工时</th>
+            <th class="w-120">效率</th>
+            <th class="w-140">允许普通件</th>
+            <th class="w-140">允许急件</th>
             <th>说明</th>
           </tr>
         </thead>
@@ -116,25 +122,35 @@
               <td>{% if r.shift_end %}{{ r.shift_end }}{% else %}<span class="muted">-</span>{% endif %}</td>
               <td>{{ r.shift_hours }}</td>
               <td>{{ r.efficiency }}</td>
-              <td>{{ '是' if r.allow_normal == 'yes' else '否' }}</td>
-              <td>{{ '是' if r.allow_urgent == 'yes' else '否' }}</td>
+              <td>{{ r.allow_normal_zh }}</td>
+              <td>{{ r.allow_urgent_zh }}</td>
               <td>{% if r.remark %}{{ r.remark }}{% else %}<span class="muted">-</span>{% endif %}</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     {% else %}
-      <div class="muted">暂无显式配置的日历记录（算法会使用默认规则兜底）。</div>
+      <div class="muted">暂无已配置的日历记录（排产时会自动按默认规则处理：工作日 8 小时，周末和假期不排产）。</div>
     {% endif %}
   </div>
 {% endblock %}
 
 {% block extra_scripts %}
-  <script>
-    window.__APS_WORKCALENDAR__ = {
-      rows: {{ rows|tojson }},
-      holidayDefaultEfficiency: {{ (holiday_default_efficiency if holiday_default_efficiency is defined else 0.8)|tojson }}
-    };
+  <script id="aps-workcalendar-data" type="application/json">
+    {{ {
+      'rows': rows,
+      'holidayDefaultEfficiency': (holiday_default_efficiency if holiday_default_efficiency is defined else 0.8)
+    } | tojson }}
   </script>
-  <script src="{{ url_for('static', filename='js/calendar_picker.js') }}"></script>
+  <script>
+    (function () {
+      var dataEl = document.getElementById("aps-workcalendar-data");
+      try {
+        window.__APS_WORKCALENDAR__ = JSON.parse((dataEl && dataEl.textContent) || "{}");
+      } catch (err) {
+        window.__APS_WORKCALENDAR__ = { rows: [], holidayDefaultEfficiency: 0.8 };
+      }
+    })();
+  </script>
+  <script src="{{ url_for('static', filename='js/calendar_picker.js') }}" defer></script>
 {% endblock %}

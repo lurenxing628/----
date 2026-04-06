@@ -1,20 +1,21 @@
 from __future__ import annotations
 
-import io
 import time
 from datetime import date
 from typing import Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.common.excel_audit import log_excel_export
+from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.scheduler import GanttService, ScheduleService
-from data.repositories import ScheduleHistoryRepository
+from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
+from web.ui_mode import render_ui_template as render_template
 
-from .scheduler_bp import bp
+from .excel_utils import strict_mode_enabled as _strict_mode_enabled
+from .normalizers import normalize_version_or_latest
+from .scheduler_bp import _surface_schedule_warnings, bp
 
 
 def _get_int_arg(name: str, default: int = 0) -> int:
@@ -23,8 +24,8 @@ def _get_int_arg(name: str, default: int = 0) -> int:
         return int(default)
     try:
         return int(str(raw).strip())
-    except Exception:
-        raise ValidationError(f"{name} 不合法（期望整数）", field=name)
+    except Exception as e:
+        raise ValidationError(f"{name} 不合法（期望整数）", field=name) from e
 
 
 def _parse_optional_checkbox_flag(name: str):
@@ -46,27 +47,35 @@ def week_plan_page():
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
-    version_raw = (request.args.get("version") or "").strip()
-    version: Optional[int] = None
-    if version_raw:
-        try:
-            version = int(version_raw)
-        except Exception:
-            raise ValidationError("version 不合法（期望整数）", field="version")
-
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    latest_version = svc.get_latest_version_or_1()
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
-    ver = version if version is not None else svc.get_latest_version_or_1()
+    ver = normalize_version_or_latest(request.args.get("version"), latest_version=latest_version)
 
-    versions = ScheduleHistoryRepository(g.db).list_versions(limit=30)
+    versions = ScheduleHistoryQueryService(
+        g.db,
+        logger=getattr(g, "app_logger", None),
+        op_logger=getattr(g, "op_logger", None),
+    ).list_versions(limit=30)
     data = svc.get_week_plan_rows(start_date=wr.week_start_date.isoformat(), end_date=wr.week_end_date.isoformat(), version=ver)
 
     rows = data.get("rows") or []
+    degradation_counters = data.get("degradation_counters") or {}
+    bad_time_skipped = int(degradation_counters.get("bad_time_row_skipped") or 0)
     preview_rows = rows[:50]
+    degradation_message = ""
+    if bad_time_skipped > 0:
+        degradation_message = f"已过滤 {bad_time_skipped} 条时间不合法的排程记录。"
+    empty_message = "暂无数据（该周/该版本没有排程记录）。"
+    if not rows and str(data.get("empty_reason") or "") == "all_rows_filtered_by_invalid_time":
+        empty_message = "当前区间存在时间非法的排程数据，已全部过滤，请检查排产结果。"
 
     return render_template(
         "scheduler/week_plan.html",
         title="周计划（导出）",
+        degraded=bool(data.get("degraded")),
+        degradation_message=degradation_message,
+        empty_message=empty_message,
         week_start=wr.week_start_date.isoformat(),
         week_end=wr.week_end_date.isoformat(),
         start_date=wr.week_start_date.isoformat(),
@@ -89,16 +98,10 @@ def week_plan_export():
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
-    version_raw = (request.args.get("version") or "").strip()
 
     svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     try:
-        version: Optional[int] = None
-        if version_raw:
-            try:
-                version = int(version_raw)
-            except Exception:
-                raise ValidationError("version 不合法（期望整数）", field="version")
+        version = normalize_version_or_latest(request.args.get("version"), latest_version=svc.get_latest_version_or_1())
 
         data = svc.get_week_plan_rows(
             week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date, version=version
@@ -108,19 +111,19 @@ def week_plan_export():
         ws = data.get("week_start")
         we = data.get("week_end")
 
-        import openpyxl
-
-        wb = openpyxl.Workbook()
-        sheet = wb.active
-        sheet.title = "周计划"
         headers = ["日期", "批次号", "图号", "工序", "设备", "人员", "时段"]
-        sheet.append(headers)
-        for r in rows:
-            sheet.append([r.get(h, "") for h in headers])
-
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
+        output = build_xlsx_bytes(
+            headers,
+            [[r.get(h, "") for h in headers] for r in rows],
+            format_spec={
+                "date_cols": [0],
+                "text_cols": [1, 2, 4, 5, 6],
+                "int_cols": [3],
+                "column_widths": {0: 12, 1: 14, 2: 14, 3: 10, 4: 14, 5: 14, 6: 18},
+            },
+            sheet_title="周计划",
+            sanitize_formula=True,
+        )
 
         time_cost_ms = int((time.time() - start) * 1000)
         log_excel_export(
@@ -162,6 +165,7 @@ def simulate_schedule():
     start_dt = request.form.get("start_dt") or None
     end_date = request.form.get("end_date") or None
     enforce_ready = _parse_optional_checkbox_flag("enforce_ready")
+    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     if not batch_ids:
         flash("请至少选择 1 个批次进行模拟排产。", "error")
         return redirect(url_for("scheduler.batches_page"))
@@ -175,22 +179,13 @@ def simulate_schedule():
             created_by="web",
             simulate=True,
             enforce_ready=enforce_ready,
+            strict_mode=strict_mode,
         )
         ver = int(result.get("version") or 1)
         flash(f"模拟排产完成：生成版本 {ver}（不影响批次状态）。", "success")
 
-        # 重要 warnings：冻结窗口/停机降级等（最多展示 8 条）
         summary = result.get("summary") or {}
-        warns = summary.get("warnings") or []
-        if warns:
-            shown = 0
-            for w in warns:
-                ws = str(w)
-                if ws.startswith("【冻结窗口】") or ws.startswith("【停机】"):
-                    flash(ws, "warning")
-                    shown += 1
-                    if shown >= 8:
-                        break
+        _surface_schedule_warnings(summary.get("warnings"))
 
         # 默认跳到“本周”甘特图（设备视图）
         today = date.today().isoformat()

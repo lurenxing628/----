@@ -22,20 +22,44 @@ if not %errorlevel%==0 (
 
 rem 2) Clean old artifacts (optional)
 if exist build rmdir /s /q build >nul 2>&1
+if exist build (
+  echo [build] 清理 build 目录失败。
+  popd >nul 2>&1
+  endlocal & exit /b 3
+)
 if exist dist rmdir /s /q dist >nul 2>&1
+if exist dist (
+  echo [build] 清理 dist 目录失败。
+  popd >nul 2>&1
+  endlocal & exit /b 4
+)
 
 rem 3) Build
 echo [build] Run PyInstaller (onedir)...
-python -m PyInstaller --noconfirm --clean --onedir --windowed ^
-  --add-data "templates;templates" ^
-  --add-data "static;static" ^
-  --add-data "web_new_test;web_new_test" ^
-  --add-data "templates_excel;templates_excel" ^
-  --add-data "plugins;plugins" ^
-  --add-data "vendor;vendor" ^
-  --add-data "schema.sql;." ^
-  --name "排产系统" ^
-  app.py
+if exist vendor (
+  echo [build] include vendor directory.
+  python -m PyInstaller --noconfirm --clean --onedir --windowed ^
+    --add-data "templates;templates" ^
+    --add-data "static;static" ^
+    --add-data "web_new_test;web_new_test" ^
+    --add-data "templates_excel;templates_excel" ^
+    --add-data "plugins;plugins" ^
+    --add-data "vendor;vendor" ^
+    --add-data "schema.sql;." ^
+    --name "排产系统" ^
+    app.py
+) else (
+  echo [build] vendor 目录不存在，跳过 vendor 数据目录。
+  python -m PyInstaller --noconfirm --clean --onedir --windowed ^
+    --add-data "templates;templates" ^
+    --add-data "static;static" ^
+    --add-data "web_new_test;web_new_test" ^
+    --add-data "templates_excel;templates_excel" ^
+    --add-data "plugins;plugins" ^
+    --add-data "schema.sql;." ^
+    --name "排产系统" ^
+    app.py
+)
 set "RC=%ERRORLEVEL%"
 
 echo.

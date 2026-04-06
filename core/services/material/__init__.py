@@ -7,8 +7,10 @@
 - 齐套判定并回写到 Batches.ready_status / ready_date
 """
 
-from .material_service import MaterialService
+from __future__ import annotations
+
 from .batch_material_service import BatchMaterialService
+from .material_service import MaterialService
 
 __all__ = ["MaterialService", "BatchMaterialService"]
 

@@ -24,9 +24,11 @@ import tempfile
 import time
 import traceback
 from dataclasses import dataclass
-from datetime import date, datetime, time as dt_time, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as dt_time
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from excel_preview_confirm_helpers import build_confirm_payload
 
 # 确保仓库根目录在 sys.path（允许直接 python tests/xxx.py 运行）
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -99,6 +101,8 @@ def _make_xlsx_bytes(headers: Sequence[str], rows: Sequence[Dict[str, Any]]) -> 
 
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.title = "Sheet1"
     ws.append(list(headers))
     for r in rows:
@@ -124,6 +128,15 @@ def _extract_raw_rows_json(html: str) -> str:
     return raw.strip()
 
 
+def _extract_preview_baseline(html: str) -> str:
+    m = re.search(r'<input[^>]+name="preview_baseline"[^>]+value="([^"]*)"', html, re.S)
+    if not m:
+        return ""
+    v = m.group(1)
+    v = v.replace("&quot;", '"').replace("&#34;", '"').replace("&amp;", "&")
+    return v.strip()
+
+
 def _post_excel_import(
     *,
     client,
@@ -133,7 +146,9 @@ def _post_excel_import(
     rows: Sequence[Dict[str, Any]],
     filename: str,
     mode: str = "overwrite",
+    preview_extra: Optional[Dict[str, Any]] = None,
     confirm_extra: Optional[Dict[str, Any]] = None,
+    confirm_hidden_fields: Optional[Sequence[str]] = None,
     save_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -145,9 +160,12 @@ def _post_excel_import(
     if save_path:
         _save_xlsx(save_path, headers=headers, rows=rows)
     buf = _make_xlsx_bytes(headers, rows)
+    preview_data = {"mode": mode, "file": (buf, filename)}
+    if preview_extra:
+        preview_data.update(preview_extra)
     resp = client.post(
         preview_url,
-        data={"mode": mode, "file": (buf, filename)},
+        data=preview_data,
         content_type="multipart/form-data",
     )
     if resp.status_code != 200:
@@ -170,11 +188,18 @@ def _post_excel_import(
             samples = []
         sample_text = ("；".join(samples)) if samples else ""
         raise RuntimeError(f"preview 存在 ERROR 行，导入会被拒绝：{preview_url}{('；示例：' + sample_text) if sample_text else ''}")
-    raw_rows_json = _extract_raw_rows_json(html)
-    data = {"mode": mode, "filename": filename, "raw_rows_json": raw_rows_json}
-    if confirm_extra:
-        data.update(confirm_extra)
-    resp2 = client.post(confirm_url, data=data, follow_redirects=True)
+    resp2 = client.post(
+        confirm_url,
+        data=build_confirm_payload(
+            html,
+            mode=mode,
+            filename=filename,
+            context=preview_url,
+            confirm_extra=confirm_extra,
+            confirm_hidden_fields=confirm_hidden_fields,
+        ),
+        follow_redirects=True,
+    )
     if resp2.status_code != 200:
         body = resp2.data.decode("utf-8", errors="ignore") if getattr(resp2, "data", None) else ""
         raise RuntimeError(f"confirm 失败：{confirm_url} code={resp2.status_code} body={body[:500]}")
@@ -197,23 +222,21 @@ def create_test_app(*, repo_root: str, db_path: str, log_dir: str, backup_dir: s
     - 保留：错误处理、UI overlay、蓝图路由、每请求 DB 连接、OperationLogs
     """
     from flask import Flask, g, request
-    from markupsafe import Markup
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.logging import OperationLogger
     from core.services.common.excel_templates import ensure_excel_templates
     from web.error_handlers import register_error_handlers
-    from web.ui_mode import init_ui_mode
-
     from web.routes.dashboard import bp as dashboard_bp
-    from web.routes.excel_demo import bp as excel_demo_bp
-    from web.routes.personnel import bp as personnel_bp
     from web.routes.equipment import bp as equipment_bp
+    from web.routes.excel_demo import bp as excel_demo_bp
+    from web.routes.material import bp as material_bp
+    from web.routes.personnel import bp as personnel_bp
     from web.routes.process import bp as process_bp
+    from web.routes.reports import bp as reports_bp
     from web.routes.scheduler import bp as scheduler_bp
     from web.routes.system import bp as system_bp
-    from web.routes.material import bp as material_bp
-    from web.routes.reports import bp as reports_bp
+    from web.ui_mode import init_ui_mode
 
     static_dir = os.path.join(repo_root, "static")
     templates_dir = os.path.join(repo_root, "templates")
@@ -231,7 +254,8 @@ def create_test_app(*, repo_root: str, db_path: str, log_dir: str, backup_dir: s
 
     # 与正式 app.create_app() 对齐：JSON 输出过滤器（确保中文可读）
     def tojson_zh(value, indent: int = 2):
-        return Markup(json.dumps(value, ensure_ascii=False, indent=indent, default=str))
+        # 返回普通字符串，让 Jinja autoescape 生效（避免 XSS 反模式：Markup(json.dumps(...))）
+        return json.dumps(value, ensure_ascii=False, indent=indent, default=str)
 
     app.jinja_env.filters["tojson_zh"] = tojson_zh
 
@@ -909,10 +933,9 @@ def _sanity_check(
     issues: List[str] = []
 
     # 1) 行数：应覆盖全部工序
-    total_ops = conn.execute(
-        "SELECT COUNT(1) AS c FROM BatchOperations WHERE batch_id IN (%s)" % ",".join(["?"] * len(selected_batch_ids)),
-        tuple(selected_batch_ids),
-    ).fetchone()["c"]
+    placeholders = ",".join(["?"] * len(selected_batch_ids))
+    sql = f"SELECT COUNT(1) AS c FROM BatchOperations WHERE batch_id IN ({placeholders})"
+    total_ops = conn.execute(sql, tuple(selected_batch_ids)).fetchone()["c"]
     sch_cnt = conn.execute("SELECT COUNT(1) AS c FROM Schedule WHERE version=?", (int(version),)).fetchone()["c"]
     if int(sch_cnt) != int(total_ops):
         issues.append(f"Schedule 行数不匹配：scheduled={sch_cnt} expected_ops={total_ops}")
@@ -1470,7 +1493,8 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
         headers=headers["batches"],
         rows=batches_rows,
         filename="批次信息.xlsx",
-        confirm_extra={"auto_generate_ops": "1"},
+        preview_extra={"auto_generate_ops": "1"},
+        confirm_hidden_fields=["auto_generate_ops"],
         save_path=os.path.join(input_dir, "批次信息.xlsx"),
     )
 
@@ -1557,7 +1581,8 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
                 headers=headers["batches"],
                 rows=insert_rows,
                 filename="插单批次.xlsx",
-                confirm_extra={"auto_generate_ops": "1"},
+                preview_extra={"auto_generate_ops": "1"},
+                confirm_hidden_fields=["auto_generate_ops"],
                 save_path=os.path.join(input_dir, "插单批次.xlsx"),
             )
 
@@ -1575,8 +1600,8 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
             issues_all.extend([f"[v2] {x}" for x in issues_v2])
 
             # 冻结一致性：窗口内被冻结 op 的时间应与 v1 一致
-            from core.services.scheduler.freeze_window import build_freeze_window_seed
             from core.services.scheduler.config_service import ConfigService
+            from core.services.scheduler.freeze_window import build_freeze_window_seed
             from core.services.scheduler.schedule_service import ScheduleService
 
             cfg = ConfigService(conn).get_snapshot()
@@ -1781,7 +1806,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 report_lines.append(f"- 输入：`{res.get('input_dir')}`")
                 report_lines.append(f"- 输出：`{res.get('output_dir')}`")
                 report_lines.append(f"- start_dt：`{res.get('start_dt')}`")
-                report_lines.append(f"- 结果文件：`{os.path.join(res.get('case_id'), f'run_{r+1:02d}', 'result.json')}`（相对 --out 目录）")
+                case_id_text = str(res.get("case_id") or case.case_id)
+                result_rel_path = os.path.join(case_id_text, f"run_{r+1:02d}", "result.json")
+                report_lines.append(f"- 结果文件：`{result_rel_path}`（相对 --out 目录）")
                 report_lines.append("")
                 for rr in res.get("runs") or []:
                     ver = rr.get("version")
@@ -1826,7 +1853,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     if len(issues) > 40:
                         report_lines.append(f"  - ...（剩余 {len(issues)-40} 条见 `result.json`）")
                 else:
-                    report_lines.append(f"- **sanity：通过**")
+                    report_lines.append("- **sanity：通过**")
                 report_lines.append("")
             except Exception as e:
                 failed = True

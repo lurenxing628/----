@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 import time
 import traceback
@@ -43,7 +44,7 @@ def main():
     lines.append("# Phase6（Scheduler：批次/工序/日历/配置）冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{os.sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0]}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")
@@ -55,7 +56,7 @@ def main():
     lines.append(f"- 临时目录：`{tmpdir}`")
     lines.append(f"- 测试 DB：`{test_db}`")
 
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.errors import AppError, ValidationError
@@ -119,7 +120,7 @@ def main():
             ("P_AUTO", "自动解析件", "5数铣10数铣", "no"),
         )
         conn.commit()
-        b_auto = batch_svc.create_batch_from_template(batch_id="B_AUTO", part_no="P_AUTO", quantity=1, priority="normal", ready_status="yes")
+        batch_svc.create_batch_from_template(batch_id="B_AUTO", part_no="P_AUTO", quantity=1, priority="normal", ready_status="yes")
         ops_auto = batch_svc.list_operations("B_AUTO")
         tmpl_cnt = conn.execute("SELECT COUNT(1) AS c FROM PartOperations WHERE part_no='P_AUTO'").fetchone()["c"]
         lines.append(f"- 自动解析：PartOperations={tmpl_cnt} BatchOperations={len(ops_auto)}（期望均 > 0）")
@@ -199,7 +200,7 @@ def main():
             lines.append(f"- 人机不匹配限制生效：{e.message}")
 
         # 清空（依赖 repo.update 支持 NULL）
-        cleared = sch_svc.update_internal_operation(op_internal.id, machine_id="", operator_id="", setup_hours=0, unit_hours=0)
+        sch_svc.update_internal_operation(op_internal.id, machine_id="", operator_id="", setup_hours=0, unit_hours=0)
         row = conn.execute("SELECT machine_id, operator_id FROM BatchOperations WHERE id=?", (op_internal.id,)).fetchone()
         lines.append(f"- 清空后：machine_id={row['machine_id']} operator_id={row['operator_id']}（期望均为 NULL）")
         if row["machine_id"] is not None or row["operator_id"] is not None:

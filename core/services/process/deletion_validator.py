@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional, Set, Tuple
+
+from core.models.enums import PartOperationStatus, SourceType
 
 
 class ValidationResult(Enum):
@@ -15,7 +17,7 @@ class ValidationResult(Enum):
 class Operation:
     seq: int
     source: str  # internal/external
-    status: str = "active"
+    status: str = PartOperationStatus.ACTIVE.value
 
 
 @dataclass
@@ -46,7 +48,7 @@ class DeletionValidator:
         - 未知值按 internal 处理（更保守，避免误删）
         """
         v = str(value or "").strip().lower()
-        return v if v in ("internal", "external") else "internal"
+        return SourceType.EXTERNAL.value if v == SourceType.EXTERNAL.value else SourceType.INTERNAL.value
 
     @staticmethod
     def _norm_status(value: str) -> str:
@@ -56,106 +58,118 @@ class DeletionValidator:
         - 未知值按 active 处理（更保守，避免误删）
         """
         v = str(value or "").strip().lower()
-        return "deleted" if v == "deleted" else "active"
+        return (
+            PartOperationStatus.DELETED.value
+            if v == PartOperationStatus.DELETED.value
+            else PartOperationStatus.ACTIVE.value
+        )
 
     def can_delete(self, operations: List[Operation], to_delete: List[int]) -> DeletionCheckResult:
         to_delete_set = set([int(x) for x in (to_delete or [])])
+        active_ops = self._filter_active_ops(operations)
+        op_map = self._build_op_map(active_ops)
 
-        # 过滤掉已删除的工序
-        active_ops = [op for op in (operations or []) if self._norm_status(op.status) == "active"]
+        invalid = self._validate_delete_targets(op_map, to_delete_set)
+        if invalid is not None:
+            return invalid
 
-        # 检查：要删除的必须都是外部工序
-        for seq in to_delete_set:
-            op = self._find_op(active_ops, seq)
-            if op is None:
-                return DeletionCheckResult(
-                    result=ValidationResult.DENIED,
-                    can_delete=False,
-                    message=f"工序 {seq} 不存在或已删除",
-                )
-            if self._norm_source(op.source) == "internal":
-                return DeletionCheckResult(
-                    result=ValidationResult.DENIED,
-                    can_delete=False,
-                    message=f"工序 {seq} 是内部工序，不能删除。只能删除外部工序。",
-                )
+        remaining = [op for op in active_ops if int(op.seq) not in to_delete_set]
+        early = self._check_remaining_sanity(remaining)
+        if early is not None:
+            return early
 
-        # 构建删除后的工序列表
-        remaining = [op for op in active_ops if op.seq not in to_delete_set]
-
-        # 如果删除后没有工序了
-        if not remaining:
-            return DeletionCheckResult(
-                result=ValidationResult.WARNING,
-                can_delete=True,
-                message="删除后将没有任何工序，确定继续？",
-            )
-
-        # 如果没有剩余内部工序，允许删除（但给出提醒）
-        internal_ops = [op for op in remaining if self._norm_source(op.source) == "internal"]
+        internal_ops = [op for op in remaining if self._norm_source(op.source) == SourceType.INTERNAL.value]
         if len(internal_ops) == 0:
             return DeletionCheckResult(
                 result=ValidationResult.WARNING,
                 can_delete=True,
                 message="删除后将没有内部工序，确定继续？",
             )
-
         if len(internal_ops) == 1:
+            return DeletionCheckResult(result=ValidationResult.ALLOWED, can_delete=True, message="可以删除")
+
+        internal_ops.sort(key=lambda x: int(x.seq))
+        gap = self._find_external_gap(remaining, internal_ops)
+        if gap is not None:
+            left_seq, right_seq, between_seqs = gap
             return DeletionCheckResult(
-                result=ValidationResult.ALLOWED,
-                can_delete=True,
-                message="可以删除",
+                result=ValidationResult.DENIED,
+                can_delete=False,
+                message=(
+                    f"无法删除：工序 {left_seq} 和 {right_seq} 之间存在未删除的外部工序 {between_seqs}，"
+                    f"删除后会导致工艺断档。如需删除，请一并删除这些工序。"
+                ),
+                affected_ops=between_seqs,
             )
-
-        # 检查内部工序之间是否有外部工序断档
-        internal_ops.sort(key=lambda x: x.seq)
-
-        for i in range(len(internal_ops) - 1):
-            current = internal_ops[i]
-            next_op = internal_ops[i + 1]
-
-            between_ops = [
-                op
-                for op in remaining
-                if current.seq < op.seq < next_op.seq and self._norm_source(op.source) == "external"
-            ]
-            if between_ops:
-                between_seqs = [op.seq for op in between_ops]
-                return DeletionCheckResult(
-                    result=ValidationResult.DENIED,
-                    can_delete=False,
-                    message=(
-                        f"无法删除：工序 {current.seq} 和 {next_op.seq} 之间存在未删除的外部工序 {between_seqs}，"
-                        f"删除后会导致工艺断档。如需删除，请一并删除这些工序。"
-                    ),
-                    affected_ops=between_seqs,
-                )
 
         return DeletionCheckResult(result=ValidationResult.ALLOWED, can_delete=True, message="可以删除")
 
-    def _find_op(self, operations: List[Operation], seq: int) -> Optional[Operation]:
-        for op in operations or []:
-            if int(op.seq) == int(seq):
-                return op
+    def _filter_active_ops(self, operations: List[Operation]) -> List[Operation]:
+        return [
+            op
+            for op in (operations or [])
+            if self._norm_status(getattr(op, "status", None)) == PartOperationStatus.ACTIVE.value
+        ]
+
+    @staticmethod
+    def _build_op_map(active_ops: List[Operation]) -> Dict[int, Operation]:
+        out: Dict[int, Operation] = {}
+        for op in active_ops:
+            try:
+                out[int(op.seq)] = op
+            except Exception:
+                continue
+        return out
+
+    def _validate_delete_targets(
+        self, op_map: Dict[int, Operation], to_delete_set: Set[int]
+    ) -> Optional[DeletionCheckResult]:
+        for seq in to_delete_set:
+            op = op_map.get(int(seq))
+            if op is None:
+                return DeletionCheckResult(
+                    result=ValidationResult.DENIED,
+                    can_delete=False,
+                    message=f"工序 {seq} 不存在或已删除",
+                )
+            if self._norm_source(op.source) == SourceType.INTERNAL.value:
+                return DeletionCheckResult(
+                    result=ValidationResult.DENIED,
+                    can_delete=False,
+                    message=f"工序 {seq} 是内部工序，不能删除。只能删除外部工序。",
+                )
         return None
 
-    def get_deletable_external_ops(self, operations: List[Operation]) -> List[int]:
-        """获取所有可删除的外部工序（逐个尝试判定）。"""
-        active_ops = [op for op in (operations or []) if self._norm_status(op.status) == "active"]
-        external_ops = [op for op in active_ops if self._norm_source(op.source) == "external"]
-        deletable: List[int] = []
-        for op in external_ops:
-            result = self.can_delete(operations, [op.seq])
-            if result.can_delete:
-                deletable.append(op.seq)
-        return deletable
+    @staticmethod
+    def _check_remaining_sanity(remaining: List[Operation]) -> Optional[DeletionCheckResult]:
+        if not remaining:
+            return DeletionCheckResult(
+                result=ValidationResult.WARNING,
+                can_delete=True,
+                message="删除后将没有任何工序，确定继续？",
+            )
+        return None
+
+    def _find_external_gap(
+        self, remaining: List[Operation], internal_ops: List[Operation]
+    ) -> Optional[Tuple[int, int, List[int]]]:
+        for cur, nxt in zip(internal_ops, internal_ops[1:]):
+            between_seqs = [
+                int(op.seq)
+                for op in remaining
+                if int(cur.seq) < int(op.seq) < int(nxt.seq)
+                and self._norm_source(op.source) == SourceType.EXTERNAL.value
+            ]
+            if between_seqs:
+                return int(cur.seq), int(nxt.seq), between_seqs
+        return None
 
     def get_deletion_groups(self, operations: List[Operation]) -> List[List[int]]:
         """
         获取可删除的外部工序组（首部连续外部组、尾部连续外部组）。
         """
         active_ops = sorted(
-            [op for op in (operations or []) if self._norm_status(op.status) == "active"],
+            [op for op in (operations or []) if self._norm_status(op.status) == PartOperationStatus.ACTIVE.value],
             key=lambda x: x.seq,
         )
         if not active_ops:
@@ -166,7 +180,7 @@ class DeletionValidator:
         # 首部连续外部组
         head_group: List[int] = []
         for op in active_ops:
-            if self._norm_source(op.source) == "external":
+            if self._norm_source(op.source) == SourceType.EXTERNAL.value:
                 head_group.append(op.seq)
             else:
                 break
@@ -176,7 +190,7 @@ class DeletionValidator:
         # 尾部连续外部组
         tail_group: List[int] = []
         for op in reversed(active_ops):
-            if self._norm_source(op.source) == "external":
+            if self._norm_source(op.source) == SourceType.EXTERNAL.value:
                 tail_group.insert(0, op.seq)
             else:
                 break

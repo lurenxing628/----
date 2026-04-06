@@ -4,6 +4,7 @@ import re
 import sqlite3
 from typing import List, Optional, Tuple
 
+from .common import MigrationOutcome, fallback_log, merge_outcomes
 
 _PK_IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 _PK_CAST = rf"CAST\({_PK_IDENT} AS TEXT\)"
@@ -40,14 +41,14 @@ def _sanitize_field(
     pk_expr: str,
     default: Optional[str],
     logger=None,
-) -> Tuple[int, List[str]]:
+) -> Tuple[MigrationOutcome, int, List[str]]:
     """
     把枚举/状态字段做一致性清洗：
     - 非空：LOWER(TRIM(x))
     - NULL/空串：写入 default（若提供）
 
     Returns:
-        (changed_rows, sample_pk_list)
+        (outcome, changed_rows, sample_pk_list)
     """
     sample: List[str] = []
     changed = 0
@@ -57,11 +58,8 @@ def _sanitize_field(
     f = str(field or "").strip()
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", t or "") or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", f or ""):
         if logger:
-            try:
-                logger.error(f"数据库迁移 v4：非法标识符，已跳过清洗（table={table!r} field={field!r}）")
-            except Exception:
-                pass
-        return 0, []
+            fallback_log(logger, "error", f"数据库迁移 v4：非法标识符，已跳过清洗（table={table!r} field={field!r}）")
+        return MigrationOutcome.PARTIAL, 0, []
 
     # 防御：pk_expr 也会被拼接进 SQL（无法参数化），禁止可疑字符，避免语法注入
     pk = str(pk_expr or "").strip()
@@ -75,11 +73,8 @@ def _sanitize_field(
         or not _SAFE_PK_EXPR_RE.fullmatch(pk)
     ):
         if logger:
-            try:
-                logger.error(f"数据库迁移 v4：非法 pk_expr，已跳过清洗（table={table!r} field={field!r} pk_expr={pk_expr!r}）")
-            except Exception:
-                pass
-        return 0, []
+            fallback_log(logger, "error", f"数据库迁移 v4：非法 pk_expr，已跳过清洗（table={table!r} field={field!r} pk_expr={pk_expr!r}）")
+        return MigrationOutcome.PARTIAL, 0, []
 
     # 1) 样例：找出需要被 lower/trim 的行（最多 10 条）
     try:
@@ -97,12 +92,9 @@ def _sanitize_field(
     except Exception as e:
         if _is_expected_missing_schema_error(e):
             if logger:
-                try:
-                    logger.warning(f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
-                except Exception:
-                    pass
-            return 0, []
-        sample = []
+                fallback_log(logger, "warning", f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
+            return MigrationOutcome.SKIPPED, 0, []
+        raise
 
     # 2) lower+trim（仅更新需要变更的行）
     try:
@@ -119,11 +111,8 @@ def _sanitize_field(
     except Exception as e:
         if _is_expected_missing_schema_error(e):
             if logger:
-                try:
-                    logger.warning(f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
-                except Exception:
-                    pass
-            return 0, []
+                fallback_log(logger, "warning", f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
+            return MigrationOutcome.SKIPPED, 0, []
         raise
 
     # 3) 空值兜底（可选）
@@ -142,28 +131,24 @@ def _sanitize_field(
         except Exception as e:
             if _is_expected_missing_schema_error(e):
                 if logger:
-                    try:
-                        logger.warning(f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
-                    except Exception:
-                        pass
-                return 0, []
+                    fallback_log(logger, "warning", f"数据库迁移 v4：{t}.{f} 清洗已跳过（{e}）。")
+                return MigrationOutcome.SKIPPED, 0, []
             raise
 
     if changed and logger:
-        try:
-            sample_text = "，".join(sample[:10])
-            logger.warning(
-                f"数据库迁移 v4：已清洗 {table}.{field}（影响行数={changed}）"
-                + (f"，样例（最多10个）={sample_text}" if sample_text else "")
-                + (f"，default={default}" if default is not None else "")
-            )
-        except Exception:
-            pass
+        sample_text = "，".join(sample[:10])
+        fallback_log(
+            logger,
+            "warning",
+            f"数据库迁移 v4：已清洗 {table}.{field}（影响行数={changed}）"
+            + (f"，样例（最多10个）={sample_text}" if sample_text else "")
+            + (f"，default={default}" if default is not None else ""),
+        )
 
-    return changed, sample
+    return MigrationOutcome.APPLIED, changed, sample
 
 
-def run(conn: sqlite3.Connection, logger=None) -> None:
+def run(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
     """
     v4 迁移：统一清洗“枚举/状态类文本字段”的大小写/空格（TRIM+LOWER），并对 NULL/空串写默认值。
 
@@ -220,6 +205,11 @@ def run(conn: sqlite3.Connection, logger=None) -> None:
         ("MachineDowntimes", "status", "CAST(id AS TEXT)", "active"),
     ]
 
+    outcomes = []
     for table, field, pk_expr, default in tasks:
-        _sanitize_field(conn, table=table, field=field, pk_expr=pk_expr, default=default, logger=logger)
+        outcome, _changed, _sample = _sanitize_field(
+            conn, table=table, field=field, pk_expr=pk_expr, default=default, logger=logger
+        )
+        outcomes.append(outcome)
+    return merge_outcomes(*outcomes)
 

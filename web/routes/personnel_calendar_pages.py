@@ -1,13 +1,30 @@
 from __future__ import annotations
 
-from flask import flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, request, url_for
 
-from web.ui_mode import render_ui_template as render_template
-
+from core.infrastructure.errors import ValidationError
 from core.services.personnel import OperatorService
 from core.services.scheduler import CalendarService, ConfigService
+from web.ui_mode import render_ui_template as render_template
 
-from .personnel_bp import bp, _day_type_zh
+from .normalizers import _normalize_operator_calendar_day_type, _normalize_yesno
+from .personnel_bp import _day_type_zh, bp
+
+
+def _resolve_page_holiday_default_efficiency(cfg_svc: ConfigService):
+    try:
+        return float(cfg_svc.get_holiday_default_efficiency()), False, None
+    except ValidationError as exc:
+        fallback = float(ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
+        current_app.logger.warning(
+            "个人工作日历页面读取 holiday_default_efficiency 非法，暂按默认值展示：%s",
+            exc.message,
+        )
+        return (
+            fallback,
+            True,
+            f"配置项 holiday_default_efficiency 当前非法，页面已临时按 {fallback:g} 展示默认值；请先到排产参数页修复配置，再继续依赖该默认值进行操作。",
+        )
 
 
 @bp.get("/<operator_id>/calendar")
@@ -22,17 +39,18 @@ def operator_calendar_page(operator_id: str):
     cal_svc = CalendarService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     rows = [c.to_dict() for c in cal_svc.list_operator_calendar(operator_id)]
     for r in rows:
-        r["day_type_zh"] = _day_type_zh(r.get("day_type") or "")
+        day_type = _normalize_operator_calendar_day_type(r.get("day_type"))
+        allow_normal = _normalize_yesno(r.get("allow_normal"))
+        allow_urgent = _normalize_yesno(r.get("allow_urgent"))
+        r["day_type"] = day_type
+        r["allow_normal"] = allow_normal
+        r["allow_urgent"] = allow_urgent
+        r["day_type_zh"] = _day_type_zh(day_type)
+        r["allow_normal_zh"] = "是" if allow_normal == "yes" else "否"
+        r["allow_urgent_zh"] = "是" if allow_urgent == "yes" else "否"
 
     cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    hde = 0.8
-    try:
-        raw = cfg_svc.get("holiday_default_efficiency", default=0.8)
-        hde = float(raw) if raw is not None else 0.8
-        if hde <= 0:
-            hde = 0.8
-    except Exception:
-        hde = 0.8
+    hde, hde_degraded, hde_warning = _resolve_page_holiday_default_efficiency(cfg_svc)
 
     return render_template(
         "personnel/calendar.html",
@@ -40,6 +58,8 @@ def operator_calendar_page(operator_id: str):
         operator=op.to_dict(),
         rows=rows,
         holiday_default_efficiency=hde,
+        holiday_default_efficiency_degraded=hde_degraded,
+        holiday_default_efficiency_warning=hde_warning,
     )
 
 
@@ -74,4 +94,3 @@ def operator_calendar_upsert(operator_id: str):
     )
     flash("个人日历配置已保存。", "success")
     return redirect(url_for("personnel.operator_calendar_page", operator_id=operator_id))
-

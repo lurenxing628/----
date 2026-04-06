@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Tuple
+
+from core.infrastructure.errors import ValidationError
+from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
+from core.services.common.field_parse import parse_field_float, parse_field_int
 
 from .number_utils import to_yes_no
 
@@ -26,6 +29,8 @@ class ScheduleConfigSnapshot:
     objective: str
     freeze_window_enabled: str
     freeze_window_days: int
+    degradation_events: Tuple[Dict[str, Any], ...] = field(default_factory=tuple, repr=False)
+    degradation_counters: Dict[str, int] = field(default_factory=dict, repr=False)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -58,74 +63,143 @@ def build_schedule_config_snapshot(
     valid_dispatch_rules: Tuple[str, ...],
     valid_algo_modes: Tuple[str, ...],
     valid_objectives: Tuple[str, ...],
+    strict_mode: bool = False,
 ) -> ScheduleConfigSnapshot:
-    strategy = repo.get_value("sort_strategy", default=defaults["sort_strategy"]) or defaults["sort_strategy"]
-    if strategy not in valid_strategies:
-        strategy = defaults["sort_strategy"]
+    collector = DegradationCollector()
+    raw_missing = object()
 
-    def _get_float(key: str, default: float) -> float:
+    def _read_repo_raw_value(key: str) -> Tuple[bool, Any]:
+        repo_get = getattr(repo, "get", None)
+        if callable(repo_get):
+            record = repo_get(key)
+            if record is None:
+                return True, None
+            if hasattr(record, "config_value"):
+                return False, record.config_value
+            return False, record
+        raw = repo.get_value(key, default=raw_missing)
+        if raw is raw_missing:
+            return True, None
+        return False, raw
+
+    def _choice(key: str, default: Any, valid: Tuple[str, ...], *, strict: bool = False) -> str:
+        valid_norm = tuple(str(item).strip().lower() for item in (valid or ()) if str(item).strip())
+        default_s = str(default or "").strip().lower()
+        if default_s not in valid_norm and valid_norm:
+            default_s = valid_norm[0]
+        missing, raw = _read_repo_raw_value(key)
+        if missing:
+            return default_s
+        text = "" if raw is None else str(raw).strip().lower()
+        if strict and text == "":
+            raise ValidationError(f"“{key}”不能为空", field=key)
+        if strict and text not in valid_norm:
+            allow_text = " / ".join(valid_norm) if valid_norm else "<empty>"
+            raise ValidationError(f"“{key}”取值不合法：{raw!r}（允许值：{allow_text}）", field=key)
+        return text if text in valid_norm else default_s
+
+    def _yes_no(key: str, default: str, *, strict: bool = False) -> str:
+        normalized_default = to_yes_no(default, default=default)
+        missing, raw = _read_repo_raw_value(key)
+        if missing:
+            return normalized_default
+        text = "" if raw is None else str(raw).strip().lower()
+        true_vals = {"yes", "y", "true", "1", "on"}
+        false_vals = {"no", "n", "false", "0", "off"}
+        if strict and text == "":
+            raise ValidationError(f"“{key}”不能为空", field=key)
+        if strict and text not in true_vals and text not in false_vals:
+            raise ValidationError(f"“{key}”取值不合法：{raw!r}（允许值：yes / no）", field=key)
+        return to_yes_no(raw, default=normalized_default)
+
+    def _get_float(
+        key: str,
+        default: float,
+        *,
+        min_value: float | None = None,
+        min_inclusive: bool = True,
+    ) -> float:
         raw = repo.get_value(key, default=str(default))
-        try:
-            if raw is None:
-                return float(default)
-            f = float(raw)
-            if not math.isfinite(f):
-                return float(default)
-            return float(f)
-        except Exception:
-            return float(default)
+        return parse_field_float(
+            raw,
+            field=key,
+            strict_mode=bool(strict_mode),
+            scope="scheduler.config_snapshot",
+            fallback=float(default),
+            collector=collector,
+            min_value=min_value,
+            min_inclusive=min_inclusive,
+        )
 
-    pw = _get_float("priority_weight", float(defaults["priority_weight"]))
-    dw = _get_float("due_weight", float(defaults["due_weight"]))
-    rw = _get_float("ready_weight", float(defaults["ready_weight"]))
-    hde = _get_float("holiday_default_efficiency", float(defaults["holiday_default_efficiency"]))
-    if hde <= 0:
-        hde = float(defaults["holiday_default_efficiency"])
-
-    raw_enforce = repo.get_value("enforce_ready_default", default=str(defaults["enforce_ready_default"]))
-    enforce_ready_default = to_yes_no(raw_enforce, default=str(defaults["enforce_ready_default"]))
-
-    raw_pref = repo.get_value("prefer_primary_skill", default="no")
-    pref = to_yes_no(raw_pref, default="no")
-
-    dm = (repo.get_value("dispatch_mode", default=defaults["dispatch_mode"]) or defaults["dispatch_mode"]).strip()
-    if dm not in valid_dispatch_modes:
-        dm = defaults["dispatch_mode"]
-    dr = (repo.get_value("dispatch_rule", default=defaults["dispatch_rule"]) or defaults["dispatch_rule"]).strip()
-    if dr not in valid_dispatch_rules:
-        dr = defaults["dispatch_rule"]
-
-    aa_raw = repo.get_value("auto_assign_enabled", default=defaults["auto_assign_enabled"])
-    aa = to_yes_no(aa_raw, default=defaults["auto_assign_enabled"])
-
-    ort_raw = repo.get_value("ortools_enabled", default=defaults["ortools_enabled"])
-    ort = to_yes_no(ort_raw, default=defaults["ortools_enabled"])
-
-    def _get_int(key: str, default: int) -> int:
+    def _get_int(
+        key: str,
+        default: int,
+        *,
+        min_value: int | None = None,
+        min_violation_fallback: int | None = None,
+    ) -> int:
         raw = repo.get_value(key, default=str(default))
-        try:
-            return int(float(raw)) if raw is not None else int(default)
-        except Exception:
-            return int(default)
+        return parse_field_int(
+            raw,
+            field=key,
+            strict_mode=bool(strict_mode),
+            scope="scheduler.config_snapshot",
+            fallback=int(default),
+            collector=collector,
+            min_value=min_value,
+            min_violation_fallback=int(default if min_violation_fallback is None else min_violation_fallback),
+        )
 
-    ort_limit = _get_int("ortools_time_limit_seconds", int(defaults["ortools_time_limit_seconds"]))
-    ort_limit = max(1, int(ort_limit))
+    strategy = _choice("sort_strategy", defaults["sort_strategy"], valid_strategies, strict=bool(strict_mode))
+    pw = _get_float("priority_weight", float(defaults["priority_weight"]), min_value=0.0)
+    dw = _get_float("due_weight", float(defaults["due_weight"]), min_value=0.0)
+    rw = _get_float("ready_weight", float(defaults["ready_weight"]), min_value=0.0)
+    hde = _get_float(
+        "holiday_default_efficiency",
+        float(defaults["holiday_default_efficiency"]),
+        min_value=0.0,
+        min_inclusive=False,
+    )
 
-    algo_mode = (repo.get_value("algo_mode", default=defaults["algo_mode"]) or defaults["algo_mode"]).strip()
-    if algo_mode not in valid_algo_modes:
-        algo_mode = defaults["algo_mode"]
+    enforce_ready_default = _yes_no(
+        "enforce_ready_default",
+        str(defaults.get("enforce_ready_default", "no")),
+        strict=bool(strict_mode),
+    )
+    pref = _yes_no(
+        "prefer_primary_skill",
+        str(defaults.get("prefer_primary_skill", "no")),
+        strict=bool(strict_mode),
+    )
 
-    obj = (repo.get_value("objective", default=defaults["objective"]) or defaults["objective"]).strip()
-    if obj not in valid_objectives:
-        obj = defaults["objective"]
+    dm = _choice("dispatch_mode", defaults["dispatch_mode"], valid_dispatch_modes, strict=bool(strict_mode))
+    dr = _choice("dispatch_rule", defaults["dispatch_rule"], valid_dispatch_rules, strict=bool(strict_mode))
 
-    time_budget = _get_int("time_budget_seconds", int(defaults["time_budget_seconds"]))
-    time_budget = max(1, int(time_budget))
+    aa = _yes_no("auto_assign_enabled", str(defaults["auto_assign_enabled"]), strict=bool(strict_mode))
+    ort = _yes_no("ortools_enabled", str(defaults["ortools_enabled"]), strict=bool(strict_mode))
+    ort_limit = _get_int(
+        "ortools_time_limit_seconds",
+        int(defaults["ortools_time_limit_seconds"]),
+        min_value=1,
+        min_violation_fallback=1,
+    )
 
-    fw_enabled_raw = repo.get_value("freeze_window_enabled", default=defaults["freeze_window_enabled"])
-    fw_enabled = to_yes_no(fw_enabled_raw, default=defaults["freeze_window_enabled"])
-    fw_days = _get_int("freeze_window_days", int(defaults["freeze_window_days"]))
-    fw_days = max(0, int(fw_days))
+    algo_mode = _choice("algo_mode", defaults["algo_mode"], valid_algo_modes, strict=bool(strict_mode))
+    obj = _choice("objective", defaults["objective"], valid_objectives, strict=bool(strict_mode))
+    time_budget = _get_int(
+        "time_budget_seconds",
+        int(defaults["time_budget_seconds"]),
+        min_value=1,
+        min_violation_fallback=1,
+    )
+
+    fw_enabled = _yes_no("freeze_window_enabled", str(defaults["freeze_window_enabled"]), strict=bool(strict_mode))
+    fw_days = _get_int(
+        "freeze_window_days",
+        int(defaults["freeze_window_days"]),
+        min_value=0,
+        min_violation_fallback=0,
+    )
 
     return ScheduleConfigSnapshot(
         sort_strategy=strategy,
@@ -145,5 +219,6 @@ def build_schedule_config_snapshot(
         objective=obj,
         freeze_window_enabled=fw_enabled,
         freeze_window_days=int(fw_days),
+        degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
+        degradation_counters=collector.to_counters(),
     )
-

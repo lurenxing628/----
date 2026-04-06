@@ -1,28 +1,34 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>工作日历（Excel）</h2>
-    <p class="muted">支持：下载模板 → 上传预览 → 确认导入 → 导出。提示信息尽量中文，便于排查。</p>
-    <div style="margin-top:8px;">
-      <a href="{{ export_url }}">导出当前数据（工作日历.xlsx）</a>
-      <span class="muted">（导出会写入操作留痕）</span>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">工作日历（Excel）</h2>
+      </div>
+      <div class="page-actions page-actions-context">
+        {{ ui.link_button('导出工作日历.xlsx', export_url, 'secondary', 'md') }}
+      </div>
     </div>
+    <p class="page-subtitle text-meta">支持：下载模板 → 上传预览 → 确认导入 → 导出。提示信息尽量中文，便于排查。</p>
+    {{ ui.scheduler_nav('excel_calendar') }}
+    <div class="field-help">导出会写入操作留痕。</div>
   </div>
 
   {% include "components/excel_import.html" with context %}
 
   <div class="card">
-    <h3>当前日历数据（WorkCalendar）</h3>
+    <h3 class="section-title">当前日历数据</h3>
     {% if existing_list and existing_list|length > 0 %}
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">日期</th>
-            <th style="width:120px;">类型</th>
-            <th style="width:120px;">可用工时</th>
-            <th style="width:120px;">效率</th>
-            <th style="width:140px;">允许普通件</th>
-            <th style="width:140px;">允许急件</th>
+            <th class="w-140">日期</th>
+            <th class="w-120">类型</th>
+            <th class="w-120">可用工时</th>
+            <th class="w-120">效率</th>
+            <th class="w-140">允许普通件</th>
+            <th class="w-140">允许急件</th>
             <th>说明</th>
           </tr>
         </thead>
@@ -41,10 +47,10 @@
         </tbody>
       </table>
     {% else %}
-      <div class="muted">暂无显式配置（算法会使用默认规则兜底）。</div>
+      <div class="muted">暂无已配置的日历记录（排产时会自动按默认规则处理）。</div>
     {% endif %}
   </div>
 
-  <script src="{{ url_for('static', filename='js/excel_handler.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/excel_handler.js') }}" defer></script>
 {% endblock %}
 

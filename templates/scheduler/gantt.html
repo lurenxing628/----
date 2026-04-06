@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 
 {% block extra_head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/frappe-gantt.css') }}">
@@ -6,158 +7,209 @@
 {% endblock %}
 
 {% block content %}
+  {% set strategy_zh = {
+      'priority_first': '优先级优先',
+      'due_date_first': '交期优先',
+      'weighted': '综合优先级和交期',
+      'fifo': '先进先出',
+      'improve': '优化排产',
+      'greedy': '快速排产',
+      'manual': '手动排产'
+    } %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {# 导航基准：必须使用“原始请求参数”，否则 week_start/offset 会被重复叠加导致跳周 #}
   {% set base_week_start = ((request.args.get('week_start') or '') | trim) or None %}
   {% set base_start_date = ((request.args.get('start_date') or '') | trim) or None %}
   {% set base_end_date = ((request.args.get('end_date') or '') | trim) or None %}
 
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h2>甘特图（{{ '设备视图' if view=='machine' else '人员视图' }}）</h2>
-        <div class="muted">
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">甘特图（{{ '设备视图' if view=='machine' else '人员视图' }}）</h2>
+        <div class="meta-inline text-meta">
           显示范围：<strong>{{ week_start }}</strong> ～ <strong>{{ week_end }}</strong>
-          <span class="muted">｜</span>
-          版本：<strong>{{ version }}</strong>
+          <span class="meta-sep">｜</span>
+          <strong>第 {{ version }} 版</strong>
         </div>
       </div>
-      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
-      </div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    {{ ui.scheduler_nav('gantt_' ~ view) }}
   </div>
 
   <div class="card">
-    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-      <div>
-        <label>视图</label><br/>
-        <a href="{{ url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date) }}">设备视图</a>
-        <span class="muted">｜</span>
-        <a href="{{ url_for('scheduler.gantt_page', view='operator', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date) }}">人员视图</a>
+    <div class="inline-flex-wrap">
+      <div class="form-field">
+        <label>视图</label>
+        <div class="inline-flex-wrap">
+          {% if view == 'machine' %}
+            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
+            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
+          {% else %}
+            {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
+            {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label>周切换</label>
+        <div class="inline-flex-wrap">
+          {{ ui.link_button('上周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset-1, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
+          {{ ui.link_button('回到本周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=0, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
+          {{ ui.link_button('下周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset+1, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
+        </div>
       </div>
 
       <div>
-        <label>周切换</label><br/>
-        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset-1, version=version, start_date=base_start_date, end_date=base_end_date) }}">← 上周</a>
-        <span class="muted">｜</span>
-        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=0, version=version, start_date=base_start_date, end_date=base_end_date) }}">回到本周</a>
-        <span class="muted">｜</span>
-        <a href="{{ url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset+1, version=version, start_date=base_start_date, end_date=base_end_date) }}">下周 →</a>
-      </div>
-
-      <div>
-        <form method="get" action="{{ url_for('scheduler.gantt_page') }}" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+        <form method="get" action="{{ url_for('scheduler.gantt_page') }}" class="inline-flex-wrap items-end">
           <input type="hidden" name="view" value="{{ view }}">
-          <div>
-            <label>排产区间（起）</label><br/>
-            <input type="date" name="start_date" value="{{ start_date }}" style="width:160px;">
+          <div class="form-field">
+            <label>排产区间（起）</label>
+            <input type="date" name="start_date" value="{{ start_date }}" class="w-160">
           </div>
-          <div>
-            <label>排产区间（止）</label><br/>
-            <input type="date" name="end_date" value="{{ end_date }}" style="width:160px;">
+          <div class="form-field">
+            <label>排产区间（止）</label>
+            <input type="date" name="end_date" value="{{ end_date }}" class="w-160">
           </div>
-          <div>
-            <label title="任意日期，系统会自动归到周一">指定周</label><br/>
-            <input name="week_start" value="{{ week_start }}" placeholder="YYYY-MM-DD" style="width:160px;">
+          <div class="form-field">
+            <label title="任意日期，系统会自动归到周一">指定周</label>
+            <input name="week_start" value="{{ week_start }}" placeholder="如：2026-03-13" class="w-160">
           </div>
-          <div>
-            <label>版本</label><br/>
+          <div class="form-field">
+            <label>版本</label>
             {% if versions and versions|length > 0 %}
-              <select name="version" style="width:240px;">
+              <select name="version" class="w-240">
                 {% for v in versions %}
                   <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
-                    v{{ v.version }}（{{ v.schedule_time }} / {{ v.strategy }} / {{ v.result_status or '-' }}）
+                    v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ status_zh.get(v.result_status, v.result_status or '-') }}）
                   </option>
                 {% endfor %}
               </select>
             {% else %}
-              <input name="version" value="{{ version }}" style="width:160px;">
+              <input name="version" value="{{ version }}" class="w-160">
             {% endif %}
           </div>
-          <div>
-            <button type="submit">加载</button>
-          </div>
+          <div>{{ ui.button('加载', 'primary', 'md', type_attr='submit') }}</div>
         </form>
         {% if not versions or versions|length == 0 %}
-          <div class="muted" style="margin-top:8px;">暂无排产历史（可先去“待排批次”执行一次排产/模拟）。</div>
+          <div class="muted mt-2">还没有排产记录，先去排产页面执行一次吧。</div>
         {% endif %}
       </div>
     </div>
-    <p class="muted" style="margin-top:10px;">
+    <p class="text-meta mt-3">
       提示：默认按“批次”配色，可在下方切换为按优先级/来源/状态；红色边框表示该批次在该版本中被判定为“超期”。
-      若看不到条形，请先在【排产调度】执行排产生成 Schedule 数据。
+      若看不到条形，请先在【排产调度】执行排产生成排程数据。
     </p>
+    <div id="ganttOverdueWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite">
+      超期标记可能不完整，请稍后重试或查看系统历史。
+    </div>
+    <div id="ganttDegradationWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite">
+      工作日历加载失败，当前不显示假期/停工背景标注。
+    </div>
 
-    <div style="margin-top:12px; border-top:1px dashed #e5e5e5; padding-top:12px;">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>配色</label><br/>
-          <select id="ganttColorMode" style="width:180px;">
+    <details class="details-panel">
+      <summary class="details-summary">筛选与配色</summary>
+      <div class="aps-gantt-filter-grid mt-2">
+        <div class="aps-gantt-filter-item">
+          <label for="ganttViewMode">时间粒度</label><br/>
+          <select id="ganttViewMode" class="w-180">
+            <option value="Day" selected>日视图</option>
+            <option value="Week">周视图</option>
+            <option value="Month">月视图</option>
+          </select>
+        </div>
+        <div class="aps-gantt-filter-item">
+          <label for="ganttColorMode">配色</label><br/>
+          <select id="ganttColorMode" class="w-180">
             <option value="batch" selected>按批次</option>
             <option value="priority">按优先级</option>
             <option value="source">按来源（内制/外协）</option>
             <option value="status">按工序状态</option>
           </select>
         </div>
-        <div>
-          <label>批次筛选</label><br/>
-          <input id="ganttFilterBatch" placeholder="如 B001" style="width:180px;">
+        <div class="aps-gantt-filter-item">
+          <label for="ganttFilterBatch">批次筛选</label><br/>
+          <select id="ganttFilterBatch" aria-label="批次筛选，输入批次号关键词" class="w-180">
+            <option value="">全部批次</option>
+          </select>
         </div>
-        <div>
-          <label>{{ '设备筛选' if view=='machine' else '人员筛选' }}</label><br/>
-          <input id="ganttFilterResource" placeholder="{{ '如 MC001' if view=='machine' else '如 OP001' }}" style="width:180px;">
+        <div class="aps-gantt-filter-item">
+          <label for="ganttFilterResource">{{ '设备筛选' if view=='machine' else '人员筛选' }}</label><br/>
+          <select id="ganttFilterResource" aria-label="{{ '设备筛选，选择设备编号或名称' if view=='machine' else '人员筛选，选择工号或姓名' }}" class="w-220">
+            <option value="">{{ '全部设备' if view=='machine' else '全部人员' }}</option>
+          </select>
         </div>
-        <div>
-          <label class="muted"><input type="checkbox" id="ganttOnlyOverdue"> 仅超期</label><br/>
-          <label class="muted"><input type="checkbox" id="ganttOnlyExternal"> 仅外协</label>
+        <div class="aps-gantt-filter-item aps-gantt-filter-checks">
+          <label>勾选项</label><br/>
+          <div class="aps-gantt-check-group" role="group" aria-label="筛选勾选项">
+            <label for="ganttOnlyOverdue"><input type="checkbox" id="ganttOnlyOverdue" aria-label="仅显示超期任务"> 仅超期</label>
+            <label for="ganttOnlyExternal"><input type="checkbox" id="ganttOnlyExternal" aria-label="仅显示外协任务"> 仅外协</label>
+            <label for="ganttHighlightCC"><input type="checkbox" id="ganttHighlightCC" checked aria-label="高亮关键链任务"> 高亮关键链</label>
+          </div>
         </div>
-        <div>
-          <label class="muted"><input type="checkbox" id="ganttShowProcessDeps"> 显示工艺依赖箭头</label><br/>
-          <label class="muted"><input type="checkbox" id="ganttHighlightCC" checked> 高亮关键链</label><br/>
-          <label class="muted"><input type="checkbox" id="ganttOnlyCCDeps" checked> 仅显示关键链箭头</label>
+        <div class="aps-gantt-filter-item">
+          <label for="ganttDepsMode">依赖箭头</label><br/>
+          <select id="ganttDepsMode" class="w-180">
+            <option value="critical" selected>仅关键链箭头</option>
+            <option value="process">完整工艺依赖箭头</option>
+            <option value="none">不显示箭头</option>
+          </select>
         </div>
-        <div>
-          <button type="button" id="ganttResetView">重置</button>
-        </div>
+        <div class="aps-gantt-filter-item aps-gantt-filter-action">{{ ui.button('重置', 'secondary', 'md', type_attr='button', class='gantt-reset-btn', element_id='ganttResetView') }}</div>
       </div>
-      <div id="ganttLegend" class="aps-gantt-legend" style="margin-top:10px;"></div>
-      <details id="ganttHelp" class="aps-gantt-help" style="margin-top:10px;" open>
+      <div id="ganttLegend" class="aps-gantt-legend mt-2"></div>
+      <details id="ganttHelp" class="aps-gantt-help mt-2">
         <summary>说明（怎么看 / 交互）</summary>
-        <div class="muted" style="margin-top:6px; line-height:1.7;">
-          <ul style="margin:6px 0 0 18px;">
+        <div class="muted gantt-help-text">
+          <ul class="list-tight">
             <li><strong>颜色</strong>：默认“按批次”，同批次同色；可切换按优先级/来源/状态（未开始/进行中/已完成）。</li>
             <li><strong>假期/停工</strong>：背景淡红色竖条标注（口径：全局工作日历；未配置则周末默认假期；周末可配置为 workday 作为补班）。</li>
             <li><strong>红边</strong>：该批次在该版本中被判定为<strong>超期</strong>。</li>
             <li><strong>关键链</strong>：任务条会出现<strong>外框高亮</strong>（影响全局完工时间）。</li>
             <li><strong>虚线边框</strong>：外协任务。</li>
-            <li><strong>箭头</strong>：默认仅显示关键链箭头（更清爽）；需要看完整工艺链可勾选“显示工艺依赖箭头”。</li>
+            <li><strong>箭头</strong>：可切换“仅关键链 / 完整工艺依赖 / 不显示”。</li>
             <li><strong>聚焦</strong>：点击任意任务条，可聚焦该批次（其它任务自动弱化）；再次点击取消。</li>
-            <li><strong>筛选</strong>：支持批次/设备/人员模糊过滤；可配合“仅超期/仅外协”快速定位问题。</li>
+            <li><strong>筛选</strong>：支持批次/设备/人员下拉筛选；可配合“仅超期/仅外协”快速定位问题。</li>
             <li><strong>关键链口径</strong>：关键链按<strong>全版本排程</strong>计算（不随周窗口截断）；图上高亮仅为<strong>当前显示范围内</strong>可见的关键链任务。综合工艺前驱与资源前驱（设备/人员）选取“控制前驱”回溯得到。</li>
           </ul>
         </div>
       </details>
-    </div>
+    </details>
   </div>
 
   <div class="card">
-    <div id="ganttEmpty" class="muted" style="display:none;">暂无排程数据（该周/该版本）。</div>
-    <div id="ganttError" class="error" style="display:none;"></div>
-    <div
-      id="gantt"
-      data-url="{{ data_url }}"
-      data-view="{{ view }}"
-      data-week-start="{{ week_start }}"
-      data-start-date="{{ start_date }}"
-      data-end-date="{{ end_date }}"
-      data-offset="{{ offset }}"
-      data-version="{{ version }}"
-    ></div>
+    {% if not has_history %}
+      <div class="error" role="alert" aria-live="assertive">
+        当前数据库暂无排产版本。请先在【排产调度】执行一次排产，然后再查看甘特图。
+      </div>
+    {% else %}
+      <div id="ganttEmpty" class="muted is-hidden">暂无排程数据（该周/该版本）。</div>
+      <div id="ganttError" class="error is-hidden" role="alert" aria-live="assertive"></div>
+      <div
+        id="gantt"
+        data-url="{{ data_url }}"
+        data-view="{{ view }}"
+        data-week-start="{{ week_start }}"
+        data-start-date="{{ start_date }}"
+        data-end-date="{{ end_date }}"
+        data-offset="{{ offset }}"
+        data-version="{{ version }}"
+        data-has-history="{{ '1' if has_history else '0' }}"
+        data-fetch-timeout-ms="12000"
+      ></div>
+    {% endif %}
   </div>
 {% endblock %}
 
 {% block extra_scripts %}
-  <script src="{{ url_for('static', filename='js/frappe-gantt.min.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/gantt.js') }}"></script>
+  {% if has_history %}
+    <script src="{{ url_for('static', filename='js/frappe-gantt.min.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt_color.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt_render.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt_ui.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt_boot.js') }}" defer></script>
+  {% endif %}
 {% endblock %}
 

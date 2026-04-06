@@ -22,6 +22,15 @@ CREATE TABLE IF NOT EXISTS SchemaVersion (
 
 INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0);
 
+CREATE TABLE IF NOT EXISTS ResourceTeams (
+    team_id         TEXT PRIMARY KEY,
+    name            TEXT NOT NULL UNIQUE,
+    status          TEXT NOT NULL DEFAULT 'active',
+    remark          TEXT,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ============================================================
 -- Personnel Module
 -- ============================================================
@@ -31,6 +40,7 @@ CREATE TABLE IF NOT EXISTS Operators (
     name            TEXT NOT NULL,
     status          TEXT DEFAULT 'active',
     remark          TEXT,
+    team_id         TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -56,6 +66,7 @@ CREATE TABLE IF NOT EXISTS Machines (
     category        TEXT,                       -- 设备类别（用于“按类别停机/筛选”等）
     status          TEXT DEFAULT 'active',
     remark          TEXT,
+    team_id         TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id)
@@ -110,6 +121,7 @@ CREATE TABLE IF NOT EXISTS OperatorSkill (
 );
 
 CREATE INDEX IF NOT EXISTS idx_operators_status ON Operators(status);
+CREATE INDEX IF NOT EXISTS idx_operators_team_id ON Operators(team_id);
 CREATE INDEX IF NOT EXISTS idx_operator_machine_operator ON OperatorMachine(operator_id);
 CREATE INDEX IF NOT EXISTS idx_operator_machine_machine ON OperatorMachine(machine_id);
 
@@ -174,6 +186,7 @@ CREATE INDEX IF NOT EXISTS idx_external_groups_part ON ExternalGroups(part_no);
 
 CREATE INDEX IF NOT EXISTS idx_machines_status ON Machines(status);
 CREATE INDEX IF NOT EXISTS idx_machines_op_type ON Machines(op_type_id);
+CREATE INDEX IF NOT EXISTS idx_machines_team_id ON Machines(team_id);
 
 -- ============================================================
 -- Scheduler Module

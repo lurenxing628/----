@@ -3,25 +3,21 @@ from __future__ import annotations
 import importlib.util
 import os
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
-from data.repositories import SystemConfigRepository
+from core.models.enums import YesNo
+from core.services.common.enum_normalizers import normalize_yes_no_wide
 
 from .registry import PluginRegistry
 from .runtime import bootstrap_vendor_paths
 
+PluginConfigReader = Callable[[str], Optional[Any]]
+
 
 def _normalize_yes_no(value: Any, default: str = "no") -> str:
-    if value is None:
-        return default
-    v = str(value).strip().lower()
-    if v in ("yes", "y", "true", "1", "on"):
-        return "yes"
-    if v in ("no", "n", "false", "0", "off", ""):
-        return "no"
-    return default
+    return normalize_yes_no_wide(value, default=default, unknown_policy="default")
 
 
 @dataclass
@@ -32,7 +28,9 @@ class PluginStatus:
     enabled: str  # yes/no
     loaded: str  # yes/no
     error: Optional[str] = None
-    capabilities: List[str] = None  # registered capability keys
+    enabled_source: Optional[str] = None
+    capabilities: List[str] = field(default_factory=list)  # registered capability keys
+    conflicted_capabilities: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -42,7 +40,9 @@ class PluginStatus:
             "enabled": self.enabled,
             "loaded": self.loaded,
             "error": self.error,
+            "enabled_source": self.enabled_source,
             "capabilities": self.capabilities or [],
+            "conflicted_capabilities": self.conflicted_capabilities or [],
         }
 
 
@@ -53,16 +53,22 @@ _STATE: Dict[str, Any] = {
     "plugins_dir": None,
     "statuses": [],
     "registry": PluginRegistry(),
+    "conflicted_capabilities": [],
+    "conflict_policy": PluginRegistry().conflict_policy,
 }
 
 
 def get_plugin_status() -> Dict[str, Any]:
+    registry = _STATE.get("registry") or PluginRegistry()
+    registry_dict = registry.to_dict() if hasattr(registry, "to_dict") else PluginRegistry().to_dict()
     return {
         "loaded_at": _STATE.get("loaded_at"),
         "vendor_paths": list(_STATE.get("vendor_paths") or []),
         "plugins_dir": _STATE.get("plugins_dir"),
         "statuses": [s.to_dict() if hasattr(s, "to_dict") else s for s in (_STATE.get("statuses") or [])],
-        "registry": (_STATE.get("registry") or PluginRegistry()).to_dict(),
+        "registry": registry_dict,
+        "conflicted_capabilities": list(_STATE.get("conflicted_capabilities") or registry_dict.get("conflicted_capabilities") or []),
+        "conflict_policy": _STATE.get("conflict_policy") or registry_dict.get("conflict_policy") or PluginRegistry().conflict_policy,
     }
 
 
@@ -85,10 +91,18 @@ class PluginManager:
     注意：
     - 插件文件应尽量避免在 import 顶层引入重依赖（pandas/ortools 等），建议在 register 内再 import，
       以便在“禁用/缺失依赖”时也能被管理器读取元信息并展示状态。
+    - conn 参数仅为兼容保留，管理器本身不再直接依赖仓储层读取配置。
     """
 
     @classmethod
-    def load_from_base_dir(cls, base_dir: str, *, conn=None, logger=None) -> Dict[str, Any]:
+    def load_from_base_dir(
+        cls,
+        base_dir: str,
+        *,
+        config_reader: Optional[PluginConfigReader] = None,
+        conn=None,
+        logger=None,
+    ) -> Dict[str, Any]:
         base = os.path.abspath(base_dir or ".")
         vendor_paths = bootstrap_vendor_paths(base)
 
@@ -97,8 +111,12 @@ class PluginManager:
         statuses: List[PluginStatus] = []
         registry = PluginRegistry()
 
-        # 读取/落库默认开关
-        cfg_repo = SystemConfigRepository(conn, logger=logger) if conn is not None else None
+        enabled_source_map = getattr(config_reader, "enabled_source_map", {}) if callable(config_reader) else {}
+        if not isinstance(enabled_source_map, dict):
+            enabled_source_map = {}
+        default_enabled_source = str(getattr(config_reader, "default_enabled_source", "default") or "default")
+        if not default_enabled_source:
+            default_enabled_source = "default"
 
         if not os.path.isdir(plugins_dir):
             _STATE.update(
@@ -108,17 +126,16 @@ class PluginManager:
                     "plugins_dir": plugins_dir,
                     "statuses": statuses,
                     "registry": registry,
+                    "conflicted_capabilities": list(registry.conflicted_capabilities),
+                    "conflict_policy": registry.conflict_policy,
                 }
             )
             return get_plugin_status()
 
         for fn in sorted(os.listdir(plugins_dir)):
-            if not fn.endswith(".py"):
-                continue
-            if fn.startswith("_"):
+            if not fn.endswith(".py") or fn.startswith("_"):
                 continue
             path0 = os.path.join(plugins_dir, fn)
-            # 防御：避免 symlink/路径逃逸导致加载到 plugins_dir 之外的代码
             try:
                 real = os.path.normcase(os.path.realpath(path0))
                 if not real.startswith(plugins_dir_real + os.sep):
@@ -133,8 +150,8 @@ class PluginManager:
                 path = real
             except Exception:
                 continue
-            module_name = f"aps_plugins.{os.path.splitext(fn)[0]}"
 
+            module_name = f"aps_plugins.{os.path.splitext(fn)[0]}"
             guessed_id = os.path.splitext(fn)[0]
             try:
                 spec = importlib.util.spec_from_file_location(module_name, path)
@@ -149,31 +166,42 @@ class PluginManager:
                 default_enabled = _normalize_yes_no(getattr(mod, "PLUGIN_DEFAULT_ENABLED", None), default="no")
 
                 enabled = default_enabled
-                if cfg_repo is not None:
-                    key = f"plugin.{plugin_id}.enabled"
-                    val = cfg_repo.get_value(key, default=None)
-                    if val is None:
-                        cfg_repo.set(key, default_enabled, description=f"插件开关：{plugin_name}（yes/no；修改后需重启生效）")
-                        try:
-                            conn.commit()
-                        except Exception:
-                            pass
-                        enabled = default_enabled
-                    else:
-                        enabled = _normalize_yes_no(val, default=default_enabled)
+                if callable(config_reader):
+                    try:
+                        raw_enabled = config_reader(plugin_id)
+                    except Exception as exc:
+                        raw_enabled = None
+                        if logger is not None:
+                            try:
+                                logger.error(f"读取插件配置失败：{plugin_id} err={exc}")
+                            except Exception:
+                                pass
+                    if raw_enabled is not None:
+                        enabled = _normalize_yes_no(raw_enabled, default=default_enabled)
 
                 loaded = "no"
                 err = None
                 cap_keys: List[str] = []
+                conflict_keys: List[str] = []
 
-                if enabled == "yes":
+                if enabled == YesNo.YES.value:
                     try:
-                        # 注册能力
                         if hasattr(mod, "register"):
                             before = set(registry.capabilities.keys())
-                            mod.register(registry)  # type: ignore[misc]
+                            before_conflicts = len(registry.conflicted_capabilities)
+                            registry.bind_plugin(plugin_id)
+                            try:
+                                mod.register(registry)  # type: ignore[misc]
+                            finally:
+                                registry.clear_bound_plugin()
                             after = set(registry.capabilities.keys())
                             cap_keys = sorted(list(after - before))
+                            new_conflicts = registry.conflicted_capabilities[before_conflicts:]
+                            conflict_keys = [
+                                str(item.get("capability") or "")
+                                for item in new_conflicts
+                                if str(item.get("rejected_plugin_id") or "") == plugin_id
+                            ]
                         loaded = "yes"
                     except Exception as e:
                         loaded = "no"
@@ -196,17 +224,21 @@ class PluginManager:
                         enabled=enabled,
                         loaded=loaded,
                         error=err,
+                        enabled_source=str(enabled_source_map.get(plugin_id) or default_enabled_source),
                         capabilities=cap_keys,
+                        conflicted_capabilities=conflict_keys,
                     )
                 )
             except Exception as e:
                 tb = traceback.format_exc(limit=5)
                 enabled = "no"
-                if cfg_repo is not None:
+                if callable(config_reader):
                     try:
-                        enabled = _normalize_yes_no(cfg_repo.get_value(f"plugin.{guessed_id}.enabled", default="no"), default="no")
+                        raw_enabled = config_reader(guessed_id)
                     except Exception:
-                        enabled = "no"
+                        raw_enabled = None
+                    if raw_enabled is not None:
+                        enabled = _normalize_yes_no(raw_enabled, default="no")
                 statuses.append(
                     PluginStatus(
                         plugin_id=guessed_id,
@@ -215,7 +247,9 @@ class PluginManager:
                         enabled=enabled,
                         loaded="no",
                         error=f"{e}\n{tb}",
+                        enabled_source=str(enabled_source_map.get(guessed_id) or default_enabled_source),
                         capabilities=[],
+                        conflicted_capabilities=[],
                     )
                 )
                 if logger:
@@ -234,8 +268,9 @@ class PluginManager:
                 "plugins_dir": plugins_dir,
                 "statuses": statuses,
                 "registry": registry,
+                "conflicted_capabilities": list(registry.conflicted_capabilities),
+                "conflict_policy": registry.conflict_policy,
             }
         )
 
         return get_plugin_status()
-

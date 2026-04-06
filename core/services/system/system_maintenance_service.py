@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
+from core.models.enums import YesNo
 from data.repositories import SystemJobStateRepository
 
 from .maintenance import (
@@ -15,19 +16,26 @@ from .maintenance import (
 from .system_config_service import SystemConfigService
 
 
-def _parse_db_dt(value: Optional[str]) -> Optional[datetime]:
-    if not value:
-        return None
-    v = str(value).strip().replace("：", ":")
+@dataclass(frozen=True)
+class ParsedJobTime:
+    value: Optional[datetime]
+    state: str
+    raw: Optional[str] = None
+
+
+def _parse_db_dt(value: Optional[str]) -> ParsedJobTime:
+    raw = None if value is None else str(value)
+    if raw is None:
+        return ParsedJobTime(value=None, state="missing", raw=None)
+    v = raw.strip().replace("：", ":")
     if not v:
-        return None
+        return ParsedJobTime(value=None, state="missing", raw=raw)
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(v, fmt)
+            return ParsedJobTime(value=datetime.strptime(v, fmt), state="valid", raw=v)
         except Exception:
             continue
-    # 兜底：解析失败就当作“从未运行”
-    return None
+    return ParsedJobTime(value=None, state="invalid", raw=raw)
 
 
 def _fmt_db_dt(dt: datetime) -> str:
@@ -91,7 +99,7 @@ class SystemMaintenanceService:
         # -------------------------
         # 1) 自动备份
         # -------------------------
-        if cfg.auto_backup_enabled == "yes":
+        if cfg.auto_backup_enabled == YesNo.YES.value:
             ran, d = maybe_run_auto_backup(
                 conn,
                 job_repo=job_repo,
@@ -112,7 +120,7 @@ class SystemMaintenanceService:
         # -------------------------
         # 2) 自动清理备份（保留策略）
         # -------------------------
-        if cfg.auto_backup_cleanup_enabled == "yes":
+        if cfg.auto_backup_cleanup_enabled == YesNo.YES.value:
             ran, d = maybe_run_auto_backup_cleanup(
                 conn,
                 job_repo=job_repo,
@@ -133,7 +141,7 @@ class SystemMaintenanceService:
         # -------------------------
         # 3) 自动清理操作日志（保留策略）
         # -------------------------
-        if cfg.auto_log_cleanup_enabled == "yes":
+        if cfg.auto_log_cleanup_enabled == YesNo.YES.value:
             ran, d = maybe_run_auto_log_cleanup(
                 conn,
                 job_repo=job_repo,
@@ -157,13 +165,13 @@ class SystemMaintenanceService:
     # Internal helpers
     # -------------------------
     @classmethod
-    def _is_due(cls, job_repo: SystemJobStateRepository, job_key: str, now: datetime, interval_minutes: int) -> Tuple[bool, Optional[str]]:
+    def _is_due(cls, job_repo: SystemJobStateRepository, job_key: str, now: datetime, interval_minutes: int) -> Tuple[bool, Optional[str], str, Optional[str]]:
         st = job_repo.get(job_key)
-        last = _parse_db_dt(st.last_run_time) if st else None
-        if last is None:
-            return True, None
-        delta = now - last
-        return delta >= timedelta(minutes=int(interval_minutes)), _fmt_db_dt(last)
+        parsed = _parse_db_dt(st.last_run_time if st else None)
+        if parsed.state != "valid" or parsed.value is None:
+            return True, None, parsed.state, parsed.raw
+        delta = now - parsed.value
+        return delta >= timedelta(minutes=int(interval_minutes)), _fmt_db_dt(parsed.value), parsed.state, parsed.raw
 
     @classmethod
     def reset_throttle_for_tests(cls) -> None:

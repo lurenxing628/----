@@ -1,78 +1,88 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <h2>工艺管理</h2>
-    <p class="muted">说明：这里维护零件工艺模板（工艺路线解析、内外部工序识别、外部组合并周期设置），以及工种/供应商配置。</p>
-    <div style="margin-top:8px;">
-      <strong>配置入口：</strong>
-      <a href="{{ url_for('process.op_types_page') }}">工种配置</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('process.suppliers_page') }}">供应商配置</a>
+    <div class="page-header">
+      <div class="page-title-group"><h2 class="page-title">工艺管理</h2></div>
+      <div class="page-actions page-actions-context"></div>
     </div>
-    <div style="margin-top:8px;">
-      <strong>Excel：</strong>
-      <a href="{{ url_for('process.excel_routes_page') }}">零件工艺路线（导入/导出）</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('process.excel_part_op_hours_page') }}">零件工序工时（导入/导出）</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('process.excel_part_ops_page') }}">零件工序模板（导出）</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('process.excel_op_type_page') }}">工种配置（导入/导出）</a>
-      <span class="muted">｜</span>
-      <a href="{{ url_for('process.excel_supplier_page') }}">供应商配置（导入/导出）</a>
-    </div>
+    <p class="page-subtitle text-meta">管理零件工艺路线、工序模板、工种和供应商配置。</p>
+    {{ ui.process_nav('parts') }}
   </div>
 
   <div class="card">
     <h3>新增零件</h3>
     <form method="post" action="{{ url_for('process.create_part') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>图号</label><br/>
-          <input name="part_no" required placeholder="如：A1234">
+      <div class="form-row">
+        <div class="form-field">
+          <label for="partNoInput">图号</label>
+          <input id="partNoInput" name="part_no" required placeholder="如：A1234">
         </div>
-        <div>
-          <label>名称</label><br/>
-          <input name="part_name" required placeholder="如：壳体-大">
+        <div class="form-field">
+          <label for="partNameInput">名称</label>
+          <input id="partNameInput" name="part_name" required placeholder="如：壳体-大">
         </div>
-        <div style="flex:1; min-width:320px;">
-          <label>工艺路线字符串（可选，填写后会尝试自动解析）</label><br/>
-          <input name="route_raw" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
+        <div class="form-field flex-1 min-w-320">
+          <label for="routeRawInput">工艺路线字符串（可选，填写后会尝试自动解析）</label>
+          <input id="routeRawInput" name="route_raw" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
         </div>
-        <div style="flex:1; min-width:200px;">
-          <label>备注</label><br/>
-          <input name="remark" placeholder="可选">
+        <div class="form-field flex-1 min-w-200">
+          <label for="partRemarkInput">备注</label>
+          <input id="partRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div>
-          <button type="submit">添加零件</button>
+        <div class="form-field min-w-260">
+          <label>
+            <input type="checkbox" name="strict_mode" value="yes">
+            严格校验
+          </label>
+          <div class="muted text-xs">开启后，如果工艺路线中有系统不认识的工种、找不到对应的供应商、或供应商的默认周期填写无效，将直接报错并拒绝创建，不会自动跳过。</div>
         </div>
+        <div>{{ ui.button('添加零件', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
 
   <div class="card">
     <h3>零件工艺模板</h3>
-    <div class="muted" style="margin-bottom:8px;">
-      批量操作：可批量删除零件。若零件已被批次引用，将禁止删除（避免排产数据断链）。
+    <div class="muted mb-2">
+      批量操作：可批量删除零件。若零件已被批次引用，将禁止删除（避免影响已有的排产数据）。
+    </div>
+    <div class="form-row mb-2">
+      <div class="form-field">
+        <label for="partsSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索</label>
+        <input id="partsSearchInput" data-table-search="partsTable" placeholder="输入图号、名称..." aria-label="搜索零件，输入图号或名称关键词" class="w-260">
+      </div>
     </div>
     <form id="bulkForm" method="post" action="{{ url_for('process.bulk_delete_parts') }}"></form>
+    {% if pager and pager.total_pages > 1 %}
+      <div class="info-line mb-2">
+        <span class="muted">第 {{ pager.page }} / {{ pager.total_pages }} 页（共 {{ pager.total }} 条）</span>
+        {% if pager.has_prev %}
+          <a href="{{ url_for('process.list_parts', page=pager.prev_page, per_page=pager.per_page) }}" class="table-action-link">上一页</a>
+        {% endif %}
+        {% if pager.has_next %}
+          <a href="{{ url_for('process.list_parts', page=pager.next_page, per_page=pager.per_page) }}" class="table-action-link">下一页</a>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if parts and parts|length > 0 %}
-      <table>
+      <div class="overflow-x-auto">
+      <table id="partsTable" class="table-sticky table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>
-            <th style="width:60px;">选</th>
-            <th style="width:140px;">图号</th>
-            <th style="width:220px;">名称</th>
+            <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选零件"></th>
+            <th class="w-140">图号</th>
+            <th class="w-220">名称</th>
             <th>工艺路线</th>
-            <th style="width:120px;">解析状态</th>
-            <th style="width:120px;">操作</th>
+            <th class="w-120">解析状态</th>
+            <th class="w-160">操作</th>
           </tr>
         </thead>
         <tbody>
           {% for r in parts %}
             <tr>
               <td>
-                <input type="checkbox" name="part_nos" value="{{ r.part_no }}" class="js-bulk-check" form="bulkForm">
+                <input type="checkbox" name="part_nos" value="{{ r.part_no }}" class="js-bulk-check" form="bulkForm" aria-label="选择零件 {{ r.part_no }}">
               </td>
               <td><a href="{{ url_for('process.part_detail', part_no=r.part_no) }}">{{ r.part_no }}</a></td>
               <td>{{ r.part_name }}</td>
@@ -85,41 +95,26 @@
               </td>
               <td>{{ r.route_parsed_zh }}</td>
               <td>
-                <a href="{{ url_for('process.part_detail', part_no=r.part_no) }}">查看/编辑</a>
-                <span class="muted">｜</span>
-                <form method="post" action="{{ url_for('process.delete_part', part_no=r.part_no) }}" style="display:inline;"
-                      data-confirm="确定删除零件 {{ r.part_no }} 吗？若已被批次引用将删除失败。">
-                  <button type="submit">删除</button>
-                </form>
+                <div class="table-actions">
+                  {{ ui.link_button('查看/编辑', url_for('process.part_detail', part_no=r.part_no), 'secondary', 'sm') }}
+                  <form method="post" action="{{ url_for('process.delete_part', part_no=r.part_no) }}"
+                        data-confirm="确定删除 {{ r.part_no }} 吗？如果已被批次引用会删除失败。">
+                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
-
-      <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-        <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个零件</span>
-        <button type="submit" form="bulkForm" formaction="{{ url_for('process.bulk_delete_parts') }}"
-                onclick="return confirm('确定批量删除所选零件吗？若存在批次引用将删除失败。');">
-          批量删除
-        </button>
       </div>
 
-      <script>
-        (function () {
-          function updateCount() {
-            const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
-            const cnt = checks.filter(x => x && x.checked).length;
-            const el = document.getElementById("jsSelectedCount");
-            if (el) el.textContent = String(cnt);
-          }
-          const checks = Array.from(document.querySelectorAll(".js-bulk-check"));
-          for (const c of checks) c.addEventListener("change", updateCount);
-          updateCount();
-        })();
-      </script>
+      <div class="action-bar mt-3">
+        <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个零件</span>
+        {{ ui.button('批量删除', 'danger', 'md', type_attr='submit', form='bulkForm', formaction=url_for('process.bulk_delete_parts'), confirm='确定批量删除所选零件吗？若存在批次引用将删除失败。') }}
+      </div>
     {% else %}
-      <div class="muted">暂无零件数据（可先新增或通过 Excel 导入）。</div>
+      <div class="muted">还没有零件数据，可以手动新增或用 Excel 导入。</div>
     {% endif %}
   </div>
 {% endblock %}

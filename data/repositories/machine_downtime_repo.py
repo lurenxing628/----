@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from core.models import MachineDowntime
 
@@ -78,6 +78,22 @@ class MachineDowntimeRepository(BaseRepository):
             params.append(int(exclude_id))
         sql += " LIMIT 1"
         return bool(self.fetchvalue(sql, tuple(params)))
+
+    def list_active_machine_ids_at(self, now_str: str) -> Set[str]:
+        rows = self.fetchall(
+            """
+            SELECT DISTINCT machine_id
+            FROM MachineDowntimes
+            WHERE status='active' AND start_time<=? AND end_time>?
+            """,
+            (now_str, now_str),
+        )
+        out: Set[str] = set()
+        for r in rows:
+            mid = str((r or {}).get("machine_id") or "").strip()
+            if mid:
+                out.add(mid)
+        return out
 
     def create(self, payload: Dict[str, Any]) -> MachineDowntime:
         d = payload if isinstance(payload, MachineDowntime) else MachineDowntime.from_row(payload)

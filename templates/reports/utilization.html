@@ -1,37 +1,42 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   <div class="card">
-    <h2>报表 - 资源负荷与利用率</h2>
-    <p class="muted">
-      说明：按版本与日期范围统计设备/人员的排程负荷（小时）与利用率。
-      可用工时来自工作日历（shift_hours * efficiency）的累加（简化：不区分设备/人员差异）。
-    </p>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('reports.index') }}">← 返回报表中心</a>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">报表 - 资源负荷与利用率</h2>
+      </div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="muted">查看设备和人员的工作负荷与利用率。</p>
+    {{ ui.reports_nav('utilization') }}
   </div>
 
   <div class="card">
     <h3>筛选</h3>
     <form method="get" action="{{ url_for('reports.utilization_page') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>排产版本</label><br/>
+      <div class="form-row">
+        <div class="form-field">
+          <label>排产版本</label>
           <select name="version" style="min-width:220px;">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
-                v{{ it.version }}（{{ it.schedule_time }} / {{ it.result_status or '-' }}）
+                v{{ it.version }}（{{ it.schedule_time }} / {{ status_zh.get(it.result_status, it.result_status or '-') }}）
               </option>
             {% endfor %}
           </select>
+          {% if not has_history %}
+            <div class="muted" style="margin-top:6px;">暂无排产历史，请先执行排产后再查看报表。</div>
+          {% endif %}
         </div>
-        <div>
-          <label>开始日期</label><br/>
-          <input name="start_date" value="{{ start_date }}" placeholder="YYYY-MM-DD" style="width:140px;">
+        <div class="form-field">
+          <label>开始日期</label>
+          <input type="date" name="start_date" value="{{ start_date }}" style="width:140px;">
         </div>
-        <div>
-          <label>结束日期</label><br/>
-          <input name="end_date" value="{{ end_date }}" placeholder="YYYY-MM-DD" style="width:140px;">
+        <div class="form-field">
+          <label>结束日期</label>
+          <input type="date" name="end_date" value="{{ end_date }}" style="width:140px;">
         </div>
         <div>
           <button type="submit">查询</button>
@@ -43,6 +48,15 @@
         </div>
       </div>
     </form>
+    <div class="muted" style="margin-top:6px;">
+      {% if date_source == "version_span" %}
+        已按所选版本的排程范围自动带入日期。
+      {% elif date_source == "default_7d" %}
+        未识别到该版本的排程范围，已自动显示最近 7 天。
+      {% elif date_source == "query" %}
+        已按你填写的日期范围查询。
+      {% endif %}
+    </div>
     <div class="muted" style="margin-top:8px;">
       单资源可用工时（本范围）：<strong>{{ capacity_hours }}</strong> 小时
     </div>
@@ -51,17 +65,28 @@
   <div class="card">
     <h3>设备负荷</h3>
     {% if not machine_rows %}
-      <div class="muted">暂无设备排程数据。</div>
+      {% if empty_reason == "no_history" %}
+        <div class="muted">暂无排产历史，当前无法统计设备负荷。</div>
+      {% elif empty_reason == "no_data_in_query_range" %}
+        <div class="muted">当前筛选日期范围内暂无设备排程数据，请调整日期或版本。</div>
+      {% elif empty_reason == "no_data_in_version_span" %}
+        <div class="muted">所选版本的排程范围内暂无设备排程数据，请切换版本或调整日期。</div>
+      {% elif empty_reason == "no_data_default_7d" %}
+        <div class="muted">最近 7 天内暂无设备排程数据，请调整日期范围。</div>
+      {% else %}
+        <div class="muted">当前范围内暂无设备排程数据。</div>
+      {% endif %}
     {% else %}
-      <table>
+      <div class="overflow-x-auto">
+      <table id="utilizationMachineTable" class="table-sticky table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>
             <th style="width:140px;">设备编号</th>
             <th>设备名称</th>
-            <th style="width:140px;">负荷(小时)</th>
-            <th style="width:120px;">任务数</th>
-            <th style="width:140px;">可用工时</th>
-            <th style="width:120px;">利用率</th>
+            <th style="width:140px;" class="text-right">负荷(小时)</th>
+            <th style="width:120px;" class="text-right">任务数</th>
+            <th style="width:140px;" class="text-right">可用工时</th>
+            <th style="width:120px;" class="text-right">利用率</th>
           </tr>
         </thead>
         <tbody>
@@ -69,31 +94,43 @@
             <tr>
               <td>{{ r.machine_id }}</td>
               <td>{{ r.machine_name or '-' }}</td>
-              <td>{{ r.hours }}</td>
-              <td>{{ r.task_count }}</td>
-              <td>{{ r.capacity_hours }}</td>
-              <td>{{ r.utilization if r.utilization is not none else '-' }}</td>
+              <td class="text-right">{{ r.hours }}</td>
+              <td class="text-right">{{ r.task_count }}</td>
+              <td class="text-right">{{ r.capacity_hours }}</td>
+              <td class="text-right">{{ r.utilization if r.utilization is not none else '-' }}</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% endif %}
   </div>
 
   <div class="card">
     <h3>人员负荷</h3>
     {% if not operator_rows %}
-      <div class="muted">暂无人员排程数据。</div>
+      {% if empty_reason == "no_history" %}
+        <div class="muted">暂无排产历史，当前无法统计人员负荷。</div>
+      {% elif empty_reason == "no_data_in_query_range" %}
+        <div class="muted">当前筛选日期范围内暂无人员排程数据，请调整日期或版本。</div>
+      {% elif empty_reason == "no_data_in_version_span" %}
+        <div class="muted">所选版本的排程范围内暂无人员排程数据，请切换版本或调整日期。</div>
+      {% elif empty_reason == "no_data_default_7d" %}
+        <div class="muted">最近 7 天内暂无人员排程数据，请调整日期范围。</div>
+      {% else %}
+        <div class="muted">当前范围内暂无人员排程数据。</div>
+      {% endif %}
     {% else %}
-      <table>
+      <div class="overflow-x-auto">
+      <table id="utilizationOperatorTable" class="table-sticky table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>
             <th style="width:140px;">工号</th>
             <th>姓名</th>
-            <th style="width:140px;">负荷(小时)</th>
-            <th style="width:120px;">任务数</th>
-            <th style="width:140px;">可用工时</th>
-            <th style="width:120px;">利用率</th>
+            <th style="width:140px;" class="text-right">负荷(小时)</th>
+            <th style="width:120px;" class="text-right">任务数</th>
+            <th style="width:140px;" class="text-right">可用工时</th>
+            <th style="width:120px;" class="text-right">利用率</th>
           </tr>
         </thead>
         <tbody>
@@ -101,14 +138,15 @@
             <tr>
               <td>{{ r.operator_id }}</td>
               <td>{{ r.operator_name or '-' }}</td>
-              <td>{{ r.hours }}</td>
-              <td>{{ r.task_count }}</td>
-              <td>{{ r.capacity_hours }}</td>
-              <td>{{ r.utilization if r.utilization is not none else '-' }}</td>
+              <td class="text-right">{{ r.hours }}</td>
+              <td class="text-right">{{ r.task_count }}</td>
+              <td class="text-right">{{ r.capacity_hours }}</td>
+              <td class="text-right">{{ r.utilization if r.utilization is not none else '-' }}</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% endif %}
   </div>
 {% endblock %}

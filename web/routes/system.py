@@ -11,14 +11,17 @@
 - `system_history.py`：排产历史查询
 """
 
-from .system_bp import bp
+from __future__ import annotations
+
+from . import system_backup as _backup  # noqa: F401
+from . import system_health as _health  # noqa: F401
+from . import system_history as _history  # noqa: F401
+from . import system_logs as _logs  # noqa: F401
+from . import system_plugins as _plugins  # noqa: F401
 
 # 导入子模块以注册路由（side-effect）
 from . import system_ui_mode as _ui_mode  # noqa: F401
-from . import system_backup as _backup  # noqa: F401
-from . import system_plugins as _plugins  # noqa: F401
-from . import system_logs as _logs  # noqa: F401
-from . import system_history as _history  # noqa: F401
+from .system_bp import bp
 
 __all__ = ["bp"]
 

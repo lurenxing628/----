@@ -1,9 +1,14 @@
+import html as html_module
 import io
 import json
 import os
+import re
+import sys
 import tempfile
 import time
 import traceback
+
+from excel_preview_confirm_helpers import require_preview_baseline
 
 
 def find_repo_root():
@@ -45,7 +50,7 @@ def main():
     lines.append("# Phase0+Phase1 冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{os.sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0]}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")
@@ -67,7 +72,7 @@ def main():
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
 
     # 确保可以 import 项目模块
-    os.sys.path.insert(0, repo_root)
+    sys.path.insert(0, repo_root)
 
     # 0) 依赖版本（用于留痕）
     import flask
@@ -107,7 +112,7 @@ def main():
     finally:
         conn.close()
 
-    # 1.1) 迁移机制验证（构造“旧库”缺列场景，确认：迁移前备份 + 缺列补齐 + SchemaVersion 升级）
+    # 1.1) 迁移机制验证（构造“旧库”缺列场景，确认：迁移前备份 + 缺列补齐 + partial 不误升版）
     lines.append("")
     lines.append("## 1.1 Schema 迁移机制（缺列补齐 + 迁移前备份）")
 
@@ -148,7 +153,7 @@ def main():
     finally:
         conn0.close()
 
-    # 对旧库执行 ensure_schema（应触发：SchemaVersion=0 -> 迁移到当前版本，并生成 before_migrate 备份）
+    # 对旧库执行 ensure_schema（应先补缺整表，再完成迁移，不再静默卡在 v0）
     ensure_schema(old_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"), backup_dir=migrate_backups)
 
     expected_suffix = f"before_migrate_v0_to_v{CURRENT_SCHEMA_VERSION}"
@@ -169,13 +174,13 @@ def main():
         v = int(row[0]) if row else 0
         lines.append(f"- 旧库迁移后 SchemaVersion.version：{v}")
         if v < CURRENT_SCHEMA_VERSION:
-            raise RuntimeError(f"旧库迁移后 SchemaVersion.version 异常：{v}（期望 >= {CURRENT_SCHEMA_VERSION}）")
+            raise RuntimeError(f"旧库迁移后 SchemaVersion.version 异常：{v}（预期 >= {CURRENT_SCHEMA_VERSION}）")
     finally:
         conn1.close()
 
     # 2) OpenpyxlBackend 读写 + ExcelService 预览
-    from core.services.common.openpyxl_backend import OpenpyxlBackend
     from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
+    from core.services.common.openpyxl_backend import OpenpyxlBackend
 
     backend = OpenpyxlBackend()
     svc = ExcelService(backend=backend)
@@ -224,7 +229,7 @@ def main():
 
     # 3) 留痕：OperationLogs 写入（import/export）
     from core.infrastructure.logging import OperationLogger
-    from core.services.common.excel_audit import log_excel_import, log_excel_export
+    from core.services.common.excel_audit import log_excel_export, log_excel_import
 
     conn = get_connection(test_db)
     try:
@@ -299,11 +304,11 @@ def main():
     # 端到端：上传 → 预览 → 确认导入（验证 Operators + OperationLogs）
     lines.append("")
     lines.append("### 4.1 端到端：上传→预览→确认导入")
-    import re
-    import html as html_module
 
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
+
     ws.title = "Sheet1"
     ws.append(["工号", "姓名", "状态", "备注"])
     ws.append(["OP100", "测试员A", "active", "e2e"])
@@ -332,6 +337,7 @@ def main():
     if not m:
         raise RuntimeError("未能从预览页面提取 raw_rows_json（确认导入需要该字段）")
     raw_rows_json = html_module.unescape(m.group(1)).strip()
+    preview_baseline = require_preview_baseline(html, "excel-demo")
 
     resp2 = client.post(
         "/excel-demo/confirm",
@@ -339,6 +345,7 @@ def main():
             "mode": "overwrite",
             "filename": "e2e.xlsx",
             "raw_rows_json": raw_rows_json,
+            "preview_baseline": preview_baseline,
         },
         follow_redirects=True,
     )

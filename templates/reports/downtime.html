@@ -1,36 +1,42 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
+  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   <div class="card">
-    <h2>报表 - 停机影响统计</h2>
-    <p class="muted">
-      说明：统计指定日期范围内各设备的停机时长/次数，并检查是否存在“停机区间与排程任务重叠”的风险（通常应为 0）。
-    </p>
-    <div style="margin-top:8px;">
-      <a href="{{ url_for('reports.index') }}">← 返回报表中心</a>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">报表 - 停机影响统计</h2>
+      </div>
+      <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="muted">查看各设备的停机时长、停机次数，以及是否和排产任务冲突。</p>
+    {{ ui.reports_nav('downtime') }}
   </div>
 
   <div class="card">
     <h3>筛选</h3>
     <form method="get" action="{{ url_for('reports.downtime_page') }}">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-        <div>
-          <label>排产版本</label><br/>
+      <div class="form-row">
+        <div class="form-field">
+          <label>排产版本</label>
           <select name="version" style="min-width:220px;">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
-                v{{ it.version }}（{{ it.schedule_time }} / {{ it.result_status or '-' }}）
+                v{{ it.version }}（{{ it.schedule_time }} / {{ status_zh.get(it.result_status, it.result_status or '-') }}）
               </option>
             {% endfor %}
           </select>
+          {% if not has_history %}
+            <div class="muted" style="margin-top:6px;">暂无排产历史，请先执行排产后再查看报表。</div>
+          {% endif %}
         </div>
-        <div>
-          <label>开始日期</label><br/>
-          <input name="start_date" value="{{ start_date }}" placeholder="YYYY-MM-DD" style="width:140px;">
+        <div class="form-field">
+          <label>开始日期</label>
+          <input type="date" name="start_date" value="{{ start_date }}" style="width:140px;">
         </div>
-        <div>
-          <label>结束日期</label><br/>
-          <input name="end_date" value="{{ end_date }}" placeholder="YYYY-MM-DD" style="width:140px;">
+        <div class="form-field">
+          <label>结束日期</label>
+          <input type="date" name="end_date" value="{{ end_date }}" style="width:140px;">
         </div>
         <div>
           <button type="submit">查询</button>
@@ -42,22 +48,42 @@
         </div>
       </div>
     </form>
+    <div class="muted" style="margin-top:6px;">
+      {% if date_source == "version_span" %}
+        已按所选版本的排程范围自动带入日期。
+      {% elif date_source == "default_7d" %}
+        未识别到该版本的排程范围，已自动显示最近 7 天。
+      {% elif date_source == "query" %}
+        已按你填写的日期范围查询。
+      {% endif %}
+    </div>
   </div>
 
   <div class="card">
     <h3>结果</h3>
     {% if not rows %}
-      <div class="muted">该范围内暂无停机计划。</div>
+      {% if empty_reason == "no_history" %}
+        <div class="muted">暂无排产历史，当前无法统计停机影响。</div>
+      {% elif empty_reason == "no_data_in_query_range" %}
+        <div class="muted">当前筛选日期范围内没有停机或排程重叠数据，请调整日期或版本。</div>
+      {% elif empty_reason == "no_data_in_version_span" %}
+        <div class="muted">所选版本的排程范围内没有停机或排程重叠数据，请切换版本或调整日期。</div>
+      {% elif empty_reason == "no_data_default_7d" %}
+        <div class="muted">最近 7 天内没有停机或排程重叠数据，请调整日期范围。</div>
+      {% else %}
+        <div class="muted">当前范围内没有停机或排程重叠数据。</div>
+      {% endif %}
     {% else %}
-      <table>
+      <div class="overflow-x-auto">
+      <table id="downtimeTable" class="table-sticky table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>
             <th style="width:140px;">设备编号</th>
             <th>设备名称</th>
-            <th style="width:140px;">停机(小时)</th>
-            <th style="width:120px;">停机次数</th>
-            <th style="width:160px;">与排程重叠(小时)</th>
-            <th style="width:120px;">重叠次数</th>
+            <th style="width:140px;" class="text-right">停机(小时)</th>
+            <th style="width:120px;" class="text-right">停机次数</th>
+            <th style="width:160px;" class="text-right">与排程重叠(小时)</th>
+            <th style="width:120px;" class="text-right">重叠次数</th>
           </tr>
         </thead>
         <tbody>
@@ -65,14 +91,15 @@
             <tr>
               <td>{{ r.machine_id }}</td>
               <td>{{ r.machine_name or '-' }}</td>
-              <td>{{ r.downtime_hours }}</td>
-              <td>{{ r.downtime_count }}</td>
-              <td>{{ r.schedule_overlap_hours }}</td>
-              <td>{{ r.schedule_overlap_count }}</td>
+              <td class="text-right">{{ r.downtime_hours }}</td>
+              <td class="text-right">{{ r.downtime_count }}</td>
+              <td class="text-right">{{ r.schedule_overlap_hours }}</td>
+              <td class="text-right">{{ r.schedule_overlap_count }}</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% endif %}
   </div>
 {% endblock %}

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Iterable as IterableABC
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict, Tuple, Any, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
-from .tabular_backend import TabularBackend
+
+from .tabular_backend import SOURCE_ROW_NUM_KEY, SOURCE_SHEET_NAME_KEY, TabularBackend
+
+SOURCE_METADATA_KEYS = frozenset((SOURCE_ROW_NUM_KEY, SOURCE_SHEET_NAME_KEY))
 
 
 class ImportMode(Enum):
@@ -26,13 +30,15 @@ class RowStatus(Enum):
 
 @dataclass
 class ImportPreviewRow:
-    """导入预览行（row_num 为 Excel 行号：标题行+1）。"""
+    """导入预览行（row_num 为兼容字段；source_row_num 为稳定源行号）。"""
 
     row_num: int
     status: RowStatus
     data: Dict[str, Any]
     message: str = ""
     changes: Dict[str, Tuple[Any, Any]] = field(default_factory=dict)  # {field: (old, new)}
+    source_row_num: Optional[int] = None
+    source_sheet_name: Optional[str] = None
 
 
 @dataclass
@@ -49,6 +55,34 @@ class ImportResult:
     warnings: List[str]
 
 
+def resolve_source_row_num(row: Dict[str, Any], *, fallback: int) -> int:
+    raw = None
+    if isinstance(row, dict):
+        raw = row.get(SOURCE_ROW_NUM_KEY)
+    if raw is None:
+        return int(fallback)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return int(fallback)
+    if value > 0:
+        return value
+    return int(fallback)
+
+
+def resolve_source_sheet_name(row: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(row, dict):
+        return None
+    text = str(row.get(SOURCE_SHEET_NAME_KEY) or "").strip()
+    return text or None
+
+
+def strip_source_metadata(row: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(row, dict):
+        return {}
+    return {key: value for key, value in row.items() if key not in SOURCE_METADATA_KEYS}
+
+
 class ExcelService:
     """通用 Excel 导入导出服务（V1：openpyxl-only + backend）。"""
 
@@ -58,35 +92,34 @@ class ExcelService:
         self.op_logger = op_logger
         self.template_dir = template_dir
 
-    def read_rows(self, file_path: str, sheet: Optional[str] = None) -> List[Dict[str, Any]]:
-        return self.backend.read(file_path, sheet=sheet)
-
-    def write_rows(self, rows: List[Dict[str, Any]], file_path: str, sheet: str = "Sheet1"):
-        return self.backend.write(rows, file_path, sheet=sheet)
-
     def preview_import(
         self,
         rows: List[Dict[str, Any]],
         id_column: str,
         existing_data: Dict[str, Any],
-        validators: List[Callable[[Dict[str, Any]], Optional[str]]] = None,
+        validators: Optional[List[Callable[[Dict[str, Any]], Optional[str]]]] = None,
         mode: ImportMode = ImportMode.OVERWRITE,
     ) -> List[ImportPreviewRow]:
         if not id_column or not str(id_column).strip():
             raise ValidationError("id_column 不能为空")
 
         preview: List[ImportPreviewRow] = []
+        validator_list = list(validators or [])
 
         for idx, row_dict in enumerate(rows):
-            row_num = idx + 2  # Excel 行号（标题行+1）
+            source_row_num = resolve_source_row_num(row_dict, fallback=idx + 2)
+            source_sheet_name = resolve_source_sheet_name(row_dict)
+            row_num = int(source_row_num)
             row_id = row_dict.get(id_column)
 
             if row_id is None or str(row_id).strip() == "":
                 preview.append(
                     ImportPreviewRow(
                         row_num=row_num,
+                        source_row_num=source_row_num,
+                        source_sheet_name=source_sheet_name,
                         status=RowStatus.ERROR,
-                        data=row_dict,
+                        data=strip_source_metadata(row_dict),
                         message=f"“{id_column}”不能为空",
                     )
                 )
@@ -96,20 +129,23 @@ class ExcelService:
             row_dict[id_column] = row_id
 
             # 执行验证（返回中文提示）
-            validation_error = None
-            if validators:
-                for validator in validators:
+            validation_error: Optional[str] = None
+            if validator_list:
+                for validator in validator_list:
                     err = validator(row_dict)
                     if err:
                         validation_error = err
                         break
 
+            clean_row_dict = strip_source_metadata(row_dict)
             if validation_error:
                 preview.append(
                     ImportPreviewRow(
                         row_num=row_num,
+                        source_row_num=source_row_num,
+                        source_sheet_name=source_sheet_name,
                         status=RowStatus.ERROR,
-                        data=row_dict,
+                        data=clean_row_dict,
                         message=validation_error,
                     )
                 )
@@ -120,20 +156,24 @@ class ExcelService:
                     preview.append(
                         ImportPreviewRow(
                             row_num=row_num,
+                            source_row_num=source_row_num,
+                            source_sheet_name=source_sheet_name,
                             status=RowStatus.SKIP,
-                            data=row_dict,
+                            data=clean_row_dict,
                             message="已存在，按“追加”模式将跳过",
                         )
                     )
                 else:
                     existing = existing_data[row_id]
-                    changes = self._calc_changes(existing, row_dict)
+                    changes = self._calc_changes(existing, clean_row_dict)
                     if changes:
                         preview.append(
                             ImportPreviewRow(
                                 row_num=row_num,
+                                source_row_num=source_row_num,
+                                source_sheet_name=source_sheet_name,
                                 status=RowStatus.UPDATE,
-                                data=row_dict,
+                                data=clean_row_dict,
                                 message="将更新现有记录",
                                 changes=changes,
                             )
@@ -142,8 +182,10 @@ class ExcelService:
                         preview.append(
                             ImportPreviewRow(
                                 row_num=row_num,
+                                source_row_num=source_row_num,
+                                source_sheet_name=source_sheet_name,
                                 status=RowStatus.UNCHANGED,
-                                data=row_dict,
+                                data=clean_row_dict,
                                 message="无变更",
                             )
                         )
@@ -151,8 +193,10 @@ class ExcelService:
                 preview.append(
                     ImportPreviewRow(
                         row_num=row_num,
+                        source_row_num=source_row_num,
+                        source_sheet_name=source_sheet_name,
                         status=RowStatus.NEW,
-                        data=row_dict,
+                        data=clean_row_dict,
                         message="新增记录",
                     )
                 )
@@ -202,8 +246,9 @@ class ExcelService:
             try:
                 keys = getattr(existing, "keys", None)
                 if callable(keys):
-                    ks = list(keys())
-                    existing_dict = {k: existing[k] for k in ks}
+                    key_items = keys()
+                    if isinstance(key_items, IterableABC):
+                        existing_dict = {k: existing[k] for k in key_items}
                 else:
                     existing_dict = {}
             except Exception:
@@ -221,4 +266,3 @@ class ExcelService:
                 if self._normalize_for_compare(old_val) != self._normalize_for_compare(new_val):
                     changes[key] = (old_val, new_val)
         return changes
-

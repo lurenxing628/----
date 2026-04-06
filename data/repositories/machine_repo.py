@@ -12,7 +12,7 @@ class MachineRepository(BaseRepository):
 
     def get(self, machine_id: str) -> Optional[Machine]:
         row = self.fetchone(
-            "SELECT machine_id, name, op_type_id, category, status, remark, created_at, updated_at FROM Machines WHERE machine_id = ?",
+            "SELECT machine_id, name, op_type_id, category, status, remark, team_id, created_at, updated_at FROM Machines WHERE machine_id = ?",
             (machine_id,),
         )
         return Machine.from_row(row) if row else None
@@ -22,8 +22,9 @@ class MachineRepository(BaseRepository):
         status: Optional[str] = None,
         op_type_id: Optional[str] = None,
         category: Optional[str] = None,
+        team_id: Optional[str] = None,
     ) -> List[Machine]:
-        sql = "SELECT machine_id, name, op_type_id, category, status, remark, created_at, updated_at FROM Machines"
+        sql = "SELECT machine_id, name, op_type_id, category, status, remark, team_id, created_at, updated_at FROM Machines"
         params: List[Any] = []
         where = []
         if status:
@@ -35,6 +36,9 @@ class MachineRepository(BaseRepository):
         if category:
             where.append("category = ?")
             params.append(category)
+        if team_id:
+            where.append("team_id = ?")
+            params.append(team_id)
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY machine_id"
@@ -47,8 +51,8 @@ class MachineRepository(BaseRepository):
     def create(self, machine: Union[Machine, Dict[str, Any]]) -> Machine:
         m = machine if isinstance(machine, Machine) else Machine.from_row(machine)
         self.execute(
-            "INSERT INTO Machines (machine_id, name, op_type_id, category, status, remark) VALUES (?, ?, ?, ?, ?, ?)",
-            (m.machine_id, m.name, m.op_type_id, m.category, m.status, m.remark),
+            "INSERT INTO Machines (machine_id, name, op_type_id, category, status, remark, team_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (m.machine_id, m.name, m.op_type_id, m.category, m.status, m.remark, m.team_id),
         )
         return m
 
@@ -63,11 +67,11 @@ class MachineRepository(BaseRepository):
         if not updates:
             return
 
-        allowed = {"name", "op_type_id", "category", "status", "remark"}
+        allowed = {"name", "op_type_id", "category", "status", "remark", "team_id"}
         set_parts: List[str] = []
         params: List[Any] = []
 
-        for key in ("name", "op_type_id", "category", "status", "remark"):
+        for key in ("name", "op_type_id", "category", "status", "remark", "team_id"):
             if key not in allowed:
                 continue
             if key in updates:
@@ -86,3 +90,60 @@ class MachineRepository(BaseRepository):
     def delete(self, machine_id: str) -> None:
         self.execute("DELETE FROM Machines WHERE machine_id = ?", (machine_id,))
 
+    def delete_all(self) -> None:
+        self.execute("DELETE FROM Machines")
+
+    def is_referenced_by_batch_operations(self, machine_id: str) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM BatchOperations WHERE machine_id = ? LIMIT 1",
+                (machine_id,),
+                default=None,
+            )
+            is not None
+        )
+
+    def is_referenced_by_schedule(self, machine_id: str) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM Schedule WHERE machine_id = ? LIMIT 1",
+                (machine_id,),
+                default=None,
+            )
+            is not None
+        )
+
+    def has_any_batch_operations_machine_reference(self) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM BatchOperations WHERE machine_id IS NOT NULL AND TRIM(machine_id) <> '' LIMIT 1",
+                default=None,
+            )
+            is not None
+        )
+
+    def has_any_schedule_machine_reference(self) -> bool:
+        return (
+            self.fetchvalue(
+                "SELECT 1 FROM Schedule WHERE machine_id IS NOT NULL AND TRIM(machine_id) <> '' LIMIT 1",
+                default=None,
+            )
+            is not None
+        )
+
+    def list_for_export(self) -> List[Dict[str, Any]]:
+        return self.fetchall(
+            """
+            SELECT
+                m.machine_id,
+                m.name,
+                m.status,
+                m.team_id,
+                ot.name AS op_type_name,
+                rt.name AS team_name
+            FROM Machines m
+            LEFT JOIN OpTypes ot ON ot.op_type_id = m.op_type_id
+            LEFT JOIN ResourceTeams rt ON rt.team_id = m.team_id
+            ORDER BY m.machine_id
+            """
+        )

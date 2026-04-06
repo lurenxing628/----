@@ -1,74 +1,75 @@
 {% extends "base.html" %}
+{% import "components/ui_macros.html" as ui %}
 {% block content %}
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h2>批次详情：{{ batch.batch_id }}</h2>
-        <div class="muted">
-          图号：<strong>{{ batch.part_no }}</strong>
-          {% if batch.part_name %}<span class="muted">（{{ batch.part_name }}）</span>{% endif %}
-          <span class="muted">｜</span>
-          数量：<strong>{{ batch.quantity }}</strong>
-          <span class="muted">｜</span>
-          交期：{% if batch.due_date %}<strong>{{ batch.due_date }}</strong>{% else %}<span class="muted">-</span>{% endif %}
-          <span class="muted">｜</span>
-          优先级：<strong>{{ priority_zh }}</strong>
-          <span class="muted">｜</span>
-          齐套：<strong>{{ ready_status_zh }}</strong>
-          {% if batch.ready_date %}
-            <span class="muted">（齐套日期：<strong>{{ batch.ready_date }}</strong>）</span>
-          {% endif %}
-          <span class="muted">｜</span>
-          状态：<strong>{{ batch_status_zh }}</strong>
-        </div>
+    <div class="page-header">
+      <div class="page-title-group">
+        <h2 class="page-title">批次详情：{{ batch.batch_id }}</h2>
       </div>
-      <div>
-        <a href="{{ url_for('scheduler.batches_page') }}">← 返回排产调度</a>
-        <span class="muted">｜</span>
-        <form method="post" action="{{ url_for('scheduler.delete_batch', batch_id=batch.batch_id) }}" style="display:inline;"
+      <div class="page-actions page-actions-context">
+        {{ ui.link_button('返回批次管理', url_for('scheduler.batches_manage_page'), 'secondary', 'md') }}
+        <form method="post" action="{{ url_for('scheduler.delete_batch', batch_id=batch.batch_id) }}" class="d-inline"
               data-confirm="确定删除批次 {{ batch.batch_id }} 吗？将级联删除批次工序与排程记录（若存在）。">
-          <button type="submit">删除批次</button>
+          {{ ui.button('删除批次', 'danger', 'md', type_attr='submit') }}
         </form>
       </div>
     </div>
+    <p class="meta-inline text-meta">
+      图号：<strong>{{ batch.part_no }}</strong>
+      {% if batch.part_name %}<span>（{{ batch.part_name }}）</span>{% endif %}
+      <span class="meta-sep">｜</span>
+      数量：<strong>{{ batch.quantity }}</strong>
+      <span class="meta-sep">｜</span>
+      交期：{% if batch.due_date %}<strong>{{ batch.due_date }}</strong>{% else %}<span>-</span>{% endif %}
+      <span class="meta-sep">｜</span>
+      优先级：<strong>{{ priority_zh }}</strong>
+      <span class="meta-sep">｜</span>
+      齐套：<strong>{{ ready_status_zh }}</strong>
+      {% if batch.ready_date %}
+        <span>（齐套日期：<strong>{{ batch.ready_date }}</strong>）</span>
+      {% endif %}
+      <span class="meta-sep">｜</span>
+      状态：<strong>{{ batch_status_zh }}</strong>
+    </p>
+    {{ ui.scheduler_nav('batches_manage') }}
   </div>
 
   <div class="card">
-    <h3>批次工序（可编辑补充）</h3>
-    <p class="muted">
+    <h3 class="section-title">批次工序（可编辑补充）</h3>
+    <p class="text-meta">
       提示：内部工序需补充“设备/人员/工时”；外部工序需补充“供应商/周期”。若外部工序属于“合并周期”外部组，将禁止逐道设置周期，并提示到工艺管理中配置。
       <br/>
-      约束：内部工序的“设备/人员”选择受【人员-设备关联（OperatorMachine）】限制（双向联动）。若下拉无可选项，请先到【人员管理】或【设备管理】维护“可操作关系”。
+      约束：内部工序的“设备/人员”选择受【人员-设备关联】限制（双向联动）。若下拉无可选项，请先到【人员管理】或【设备管理】维护“可操作关系”。
     </p>
-    <div style="margin-top:8px;">
+    <div class="mt-2">
       <form method="post" action="{{ url_for('scheduler.generate_ops', batch_id=batch.batch_id) }}"
             data-confirm="将根据当前零件工序模板重建该批次工序（会清空已填写的设备/人员/工时/周期等补充信息）。确定继续？">
-        <button type="submit">从零件模板重建工序（会覆盖补充信息）</button>
+        <label class="d-inline-block mr-3">
+          <input type="checkbox" name="strict_mode" value="yes">
+          严格校验工艺路线
+        </label>
+        {{ ui.button('从零件模板重建工序（会覆盖补充信息）', 'secondary', 'md', type_attr='submit') }}
         <span class="muted">用于模板变更后同步（会清空已填写的设备/人员/工时/周期等补充信息）</span>
+        <div class="muted text-xs mt-2">只在零件还没有工序模板、需要根据工艺路线自动生成模板时起作用：如果遇到系统不认识的工种、找不到供应商、或供应商默认周期无效，将直接报错并拒绝重建。</div>
       </form>
     </div>
 
     {% if operations and operations|length > 0 %}
-      {# 表格内 input/select 使用 form="opform_..."；为保证 HTML 合法，把空 form 节点移到 <tbody> 之外 #}
-      {% for op in operations %}
-        <form id="opform_{{ op.id }}" method="post" action="{{ url_for('scheduler.update_op', op_id=op.id) }}" style="display:none;"></form>
-      {% endfor %}
-
-      <div style="overflow-x:auto;">
-      <table style="margin-top:12px;">
+      <div class="overflow-x-auto">
+      <table id="batchOpsTable" class="mt-3 table-sticky-col table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>
-            <th style="width:140px;">工序编码</th>
-            <th style="width:80px;">工序</th>
-            <th style="width:160px;">工种</th>
-            <th style="width:100px;">归属</th>
-            <th style="width:200px;">设备</th>
-            <th style="width:200px;">人员</th>
-            <th style="width:120px;">换型(h)</th>
-            <th style="width:120px;">单件(h)</th>
-            <th style="width:220px;">供应商</th>
-            <th style="width:140px;">外协周期(天)</th>
-            <th style="width:120px;">操作</th>
+            <th class="w-140">工序编码</th>
+            <th class="w-80">工序</th>
+            <th class="w-160">工种</th>
+            <th class="w-100">归属</th>
+            <th class="w-200">设备</th>
+            <th class="w-200">人员</th>
+            <th class="w-120">换型(h)</th>
+            <th class="w-120">单件(h)</th>
+            <th class="w-220">供应商</th>
+            <th class="w-140">外协周期(天)</th>
+            <th class="w-120">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -149,21 +150,21 @@
                       {% endfor %}
                     </select>
                   {% endif %}
-                  <div class="muted js-linkage-hint" style="margin-top:4px; display:none;"></div>
+                  <div class="muted js-linkage-hint mt-2 is-hidden"></div>
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
               </td>
               <td>
                 {% if src == 'internal' %}
-                  <input name="setup_hours" form="opform_{{ op.id }}" value="{{ op.setup_hours }}" style="width:90px;">
+                  <input name="setup_hours" form="opform_{{ op.id }}" value="{{ op.setup_hours }}" class="w-90">
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
               </td>
               <td>
                 {% if src == 'internal' %}
-                  <input name="unit_hours" form="opform_{{ op.id }}" value="{{ op.unit_hours }}" style="width:90px;">
+                  <input name="unit_hours" form="opform_{{ op.id }}" value="{{ op.unit_hours }}" class="w-90">
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
@@ -181,7 +182,7 @@
                     {% endfor %}
                   </select>
                   {% if op.merge_hint and op.merge_hint.merge_mode == 'merged' %}
-                    <div class="muted" style="margin-top:4px;">
+                    <div class="muted mt-2">
                       合并周期组：{{ op.merge_hint.template_ext_group_id }}（组周期：{{ op.merge_hint.group_total_days or '未设置' }} 天）
                     </div>
                   {% endif %}
@@ -192,17 +193,17 @@
               <td>
                 {% if src == 'external' %}
                   {% if op.merge_hint and op.merge_hint.merge_mode == 'merged' %}
-                    <input name="ext_days" form="opform_{{ op.id }}" value="" style="width:110px;" disabled>
-                    <div class="muted" style="margin-top:4px;">该工序周期由“外部组合并周期”控制</div>
+                    <input name="ext_days" form="opform_{{ op.id }}" value="" class="w-110" disabled>
+                    <div class="muted mt-2">该工序的周期由所在外协工序组的“合计周期”统一控制</div>
                   {% else %}
-                    <input name="ext_days" form="opform_{{ op.id }}" value="{{ op.ext_days }}" style="width:110px;">
+                    <input name="ext_days" form="opform_{{ op.id }}" value="{{ op.ext_days }}" class="w-110">
                   {% endif %}
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
               </td>
               <td>
-                <button type="submit" form="opform_{{ op.id }}">保存</button>
+                {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='opform_' ~ op.id) }}
               </td>
             </tr>
           {% endfor %}
@@ -230,322 +231,86 @@
     {% endif %}
   </div>
 
+  <script id="batch-detail-linkage-data" type="application/x-aps-json">
+    {{ {
+      "machineOperators": machine_operators,
+      "operatorMachines": operator_machines,
+      "machineOperatorMeta": machine_operator_meta,
+      "preferPrimarySkill": prefer_primary_skill == 'yes',
+      "lazySelectEnabled": lazy_select_enabled,
+    } | tojson }}
+  </script>
+
   <script>
-    // 设备/人员双向联动：只允许选择 OperatorMachine 已维护的人机组合。
-    // 说明：
-    // - 前端仅做“减少误选”；最终以服务端校验为准（保存不匹配会报中文错误）。
-    // - 为避免过重，本页仅注入“本页涉及资源”的映射（后端已裁剪）。
-    const machineOperators = {{ machine_operators|tojson }};
-    const operatorMachines = {{ operator_machines|tojson }};
-    const machineOperatorMeta = {{ machine_operator_meta|tojson }};
-    const preferPrimarySkill = {{ 'true' if prefer_primary_skill=='yes' else 'false' }};
-    const lazySelectEnabled = {{ 'true' if lazy_select_enabled else 'false' }};
+    (function () {
+      // DOM 减重：按需创建 opform_*，避免大批次页面首屏渲染 N 个隐藏 form
+      var actionTpl = "{{ url_for('scheduler.update_op', op_id=0) }}";
 
-    function _ensureSelectOptionsLoaded(selectEl, tplId) {
-      if (!lazySelectEnabled) return;
-      if (!selectEl) return;
-      // 保护：仅处理标记了 data-lazy="1" 的下拉，避免误用到非懒加载 select
-      if (selectEl.dataset && selectEl.dataset.lazy !== "1") return;
-      if (selectEl.dataset && selectEl.dataset.optionsLoaded === "1") return;
-
-      const tpl = document.getElementById(tplId);
-      if (!tpl || !tpl.content) {
-        // 模板缺失时不阻断页面：保留原 options；标记失败便于排障
-        if (selectEl.dataset) selectEl.dataset.optionsLoadFailed = "1";
-        return;
-      }
-
-      const selected = (selectEl.value || "").toString();
-      const prevHTML = (() => {
-        try { return selectEl.innerHTML || ""; } catch (e) { return ""; }
-      })();
-      // 记录当前选中项文本 / 克隆已选项：用于在懒加载替换 options 后回显“缺失/已删除”的占位项
-      let selectedText = "";
-      let selectedOptClone = null;
-      try {
-        const idx = selectEl.selectedIndex;
-        if (idx >= 0 && selectEl.options && selectEl.options[idx]) {
-          const opt0 = selectEl.options[idx];
-          selectedText = opt0.text || "";
-          if (selected && (opt0.value || "") === selected) {
-            try { selectedOptClone = opt0.cloneNode(true); } catch (e) { selectedOptClone = null; }
-          }
+      function resolveAction(opId) {
+        var marker = "/0/update";
+        var idx = actionTpl.lastIndexOf(marker);
+        if (idx >= 0) {
+          return actionTpl.slice(0, idx) + "/" + String(opId) + "/update";
         }
-      } catch (e) {
-        // ignore
+        return actionTpl;
       }
-      let loadOk = false;
-      try {
-        selectEl.innerHTML = "";
-        selectEl.appendChild(tpl.content.cloneNode(true));
-        loadOk = true;
-      } catch (e) {
-        loadOk = false;
-      }
-      // 防御：避免替换失败导致 <select> 被洗空且不再重试
-      if (loadOk) {
-        try {
-          if (!selectEl.options || selectEl.options.length <= 0) loadOk = false;
-        } catch (e) {
-          loadOk = false;
+
+      function ensureOpForm(formId) {
+        if (!formId || String(formId).indexOf("opform_") !== 0) {
+          return null;
         }
-      }
-      if (!loadOk) {
-        try { selectEl.innerHTML = prevHTML; } catch (e) {}
-        if (selectEl.dataset) selectEl.dataset.optionsLoadFailed = "1";
-        return;
-      }
-
-      // 先尝试在新 options 中恢复已选值（优先 opt.selected=true，其次 select.value=...）
-      let restored = false;
-      if (selected) {
-        try {
-          const opts = selectEl.options || [];
-          for (let i = 0; i < opts.length; i++) {
-            if ((opts[i].value || "") === selected) {
-              opts[i].selected = true;
-              restored = true;
-              break;
-            }
-          }
-        } catch (e) {
-          // ignore
+        var existing = document.getElementById(formId);
+        if (existing) {
+          return existing;
         }
-        if (!restored) {
-          try { selectEl.value = selected; } catch (e) {}
-          if ((selectEl.value || "") === selected) restored = true;
+        var opId = String(formId).replace("opform_", "");
+        if (!/^\d+$/.test(opId)) {
+          return null;
         }
+        var f = document.createElement("form");
+        f.id = formId;
+        f.method = "post";
+        f.action = resolveAction(opId);
+        f.className = "d-none";
+        document.body.appendChild(f);
+        return f;
       }
 
-      // 若已选值不在模板 options 中：回插一个“已删除”占位项，并强制保持选中，避免首次交互时静默丢值
-      if (selected && !restored) {
-        try {
-          const orphanOpt = selectedOptClone ? selectedOptClone : document.createElement("option");
-          orphanOpt.value = selected;
-
-          let label = (selectedText || orphanOpt.text || "").toString().trim();
-          // 旧 HTML 的兜底项通常只显示 ID，这里补充“已删除”标注，便于用户察觉
-          if (!label || label === selected) label = selected + "（已删除）";
-          else if (label.indexOf("（") < 0) label = label + "（已删除）";
-          orphanOpt.textContent = label;
-
-          // 标记为“孤儿/已删除”项，便于后续排查/样式扩展
-          try { orphanOpt.dataset.orphan = "1"; } catch (e) { orphanOpt.setAttribute("data-orphan", "1"); }
-
-          // 禁用且永远保持 disabled（避免被联动过滤重新启用）
-          orphanOpt.disabled = true;
-          try { orphanOpt.dataset.staticDisabled = "1"; } catch (e) { orphanOpt.setAttribute("data-static-disabled", "1"); }
-
-          // 尽量插在空选项后面，避免被排序到最底部不易发现
-          try {
-            if (selectEl.options && selectEl.options.length > 0 && !(selectEl.options[0].value || "")) {
-              selectEl.insertBefore(orphanOpt, selectEl.options[1] || null);
-            } else {
-              selectEl.insertBefore(orphanOpt, selectEl.options[0] || null);
-            }
-          } catch (e) {
-            try { selectEl.appendChild(orphanOpt); } catch (e2) {}
-          }
-
-          // 强制选中：不依赖“仅设置 select.value”以避免部分浏览器对 disabled option 的差异行为
-          try { orphanOpt.selected = true; } catch (e) {}
-          try { selectEl.value = selected; } catch (e) {}
-        } catch (e) {
-          // ignore
+      document.addEventListener("focusin", function (e) {
+        var t = e.target;
+        if (!t || !t.getAttribute) {
+          return;
         }
-      }
-      if (selectEl.dataset) {
-        selectEl.dataset.optionsLoaded = "1";
-        try { delete selectEl.dataset.optionsLoadFailed; } catch (e) { try { selectEl.removeAttribute("data-options-load-failed"); } catch (e2) {} }
-      }
-    }
-
-    function _isSelectedOrphan(selectEl) {
-      if (!selectEl) return false;
-      try {
-        const idx = selectEl.selectedIndex;
-        const opt = (idx >= 0 && selectEl.options && selectEl.options[idx]) ? selectEl.options[idx] : null;
-        if (!opt) return false;
-        if (opt.dataset && opt.dataset.orphan === "1") return true;
-        const text = ((opt.textContent || opt.text || "") || "").toString();
-        return text.indexOf("（已删除）") >= 0;
-      } catch (e) {
-        return false;
-      }
-    }
-
-    function _skillScore(skillLevel) {
-      const v = (skillLevel || "").toString().toLowerCase();
-      if (v === "expert") return 2;
-      if (v === "normal") return 1;
-      if (v === "beginner") return 0;
-      return 0;
-    }
-
-    function _reorderOperatorOptionsByPreference(selectEl, machineId, allowedOps) {
-      if (!preferPrimarySkill) return;
-      if (!selectEl) return;
-      const mc = (machineId || "").trim();
-      if (!mc) return;
-
-      const metaMap = machineOperatorMeta && machineOperatorMeta[mc] ? machineOperatorMeta[mc] : {};
-      const selected = selectEl.value || "";
-      const opts = Array.from(selectEl.options || []);
-      if (opts.length <= 2) return;
-
-      const emptyOpts = opts.filter(o => !o.value);
-      const others = opts.filter(o => !!o.value);
-
-      function _rank(opt) {
-        const val = opt.value || "";
-        const staticDisabled = (opt.dataset && opt.dataset.staticDisabled === "1") ? 1 : 0;
-        const allowed = allowedOps ? (allowedOps.has(val) ? 0 : 1) : 0;
-        const meta = (metaMap && metaMap[val]) ? metaMap[val] : {};
-        const primary = (meta.is_primary === "yes") ? 0 : 1;
-        const skill = -_skillScore(meta.skill_level);
-        return [staticDisabled, allowed, primary, skill, val];
-      }
-
-      others.sort((a, b) => {
-        const ra = _rank(a);
-        const rb = _rank(b);
-        for (let i = 0; i < ra.length; i++) {
-          if (ra[i] < rb[i]) return -1;
-          if (ra[i] > rb[i]) return 1;
+        var formId = t.getAttribute("form");
+        if (formId && String(formId).indexOf("opform_") === 0) {
+          ensureOpForm(formId);
         }
-        return 0;
-      });
+      }, true);
 
-      const frag = document.createDocumentFragment();
-      for (const o of emptyOpts) frag.appendChild(o);
-      for (const o of others) frag.appendChild(o);
-      selectEl.appendChild(frag);
-
-      // 保持已选值
-      try { selectEl.value = selected; } catch (e) {}
-    }
-
-    function _setSelectOptionsByAllowed(selectEl, allowedSet) {
-      if (!selectEl) return;
-      const options = Array.from(selectEl.options || []);
-      for (const opt of options) {
-        // 空选项永远可用
-        if (!opt.value) {
-          opt.disabled = false;
-          continue;
+      document.addEventListener("click", function (e) {
+        var t = e.target;
+        if (!t || !t.closest) {
+          return;
         }
-        // 后端标记为“不可用”的选项（停用/维修等）永远保持 disabled
-        if (opt.dataset && opt.dataset.staticDisabled === "1") {
-          opt.disabled = true;
-          continue;
+        var submitter = t.closest("button[form], input[type='submit'][form]");
+        if (!submitter) {
+          return;
         }
-        // 未触发过滤：全部启用
-        if (!allowedSet) {
-          opt.disabled = false;
-          continue;
+        var formId = submitter.getAttribute("form");
+        if (formId && String(formId).indexOf("opform_") === 0) {
+          ensureOpForm(formId);
         }
-        opt.disabled = !allowedSet.has(opt.value);
-      }
-    }
+      }, true);
+    })();
 
-    function _applyLinkageForRow(rowEl) {
-      const mSel = rowEl.querySelector(".js-machine-select");
-      const oSel = rowEl.querySelector(".js-operator-select");
-      const hint = rowEl.querySelector(".js-linkage-hint");
-
-      if (!mSel || !oSel || !hint) return;
-
-      // 懒加载：首次交互时再填充完整 options（避免首屏/切页卡顿）
-      _ensureSelectOptionsLoaded(mSel, "tplMachineOptions");
-      _ensureSelectOptionsLoaded(oSel, "tplOperatorOptions");
-
-      const machineId = (mSel.value || "").trim();
-      const operatorId = (oSel.value || "").trim();
-
-      const machineOrphan = machineId ? _isSelectedOrphan(mSel) : false;
-      const operatorOrphan = operatorId ? _isSelectedOrphan(oSel) : false;
-
-      // “已删除/孤儿资源”不参与联动过滤：避免把另一侧下拉全部禁用，用户无法快速改正
-      const allowedOps = (!machineOrphan && machineId) ? new Set(machineOperators[machineId] || []) : null;
-      const allowedMcs = (!operatorOrphan && operatorId) ? new Set(operatorMachines[operatorId] || []) : null;
-
-      _setSelectOptionsByAllowed(oSel, allowedOps);
-      _setSelectOptionsByAllowed(mSel, allowedMcs);
-      _reorderOperatorOptionsByPreference(oSel, machineId, allowedOps);
-
-      let msg = "";
-      if (machineOrphan) msg = `设备“${machineId}”已删除：请改选或清空。`;
-      if (operatorOrphan) msg = (msg ? msg + " " : "") + `人员“${operatorId}”已删除：请改选或清空。`;
-
-      // 删除/孤儿提示优先级最高：存在删除时跳过“未配置关联/组合不匹配”等提示，避免误导
-      if (!msg) {
-        if (machineId && allowedOps && allowedOps.size === 0) {
-          msg = `设备“${machineId}”尚未配置可操作人员（请先在人员/设备管理维护关联）。`;
-        }
-        if (operatorId && allowedMcs && allowedMcs.size === 0) {
-          msg = `人员“${operatorId}”尚未配置可操作设备（请先在人员/设备管理维护关联）。`;
-        }
-        if (machineId && operatorId) {
-          const ok = Array.isArray(machineOperators[machineId]) && machineOperators[machineId].includes(operatorId);
-          if (!ok) {
-            const opCode = rowEl.dataset ? (rowEl.dataset.opCode || "") : "";
-            msg =
-              `当前设备/人员组合不匹配：${machineId} × ${operatorId}` +
-              (opCode ? `（工序 ${opCode}）` : "") +
-              "。保存时系统将提示错误，请改选匹配项或清空其中一个。";
-          }
-        }
-      }
-
-      if (msg) {
-        hint.textContent = msg;
-        hint.style.display = "block";
-      } else {
-        hint.textContent = "";
-        hint.style.display = "none";
-      }
-    }
-
-    function _initLinkage() {
-      const rows = document.querySelectorAll('tr[data-linkage-row=\"1\"]');
-      for (const row of rows) {
-        const mSel = row.querySelector(".js-machine-select");
-        const oSel = row.querySelector(".js-operator-select");
-        if (!mSel || !oSel) continue;
-
-        const apply = () => _applyLinkageForRow(row);
-        mSel.addEventListener("change", apply);
-        oSel.addEventListener("change", apply);
-
-        if (lazySelectEnabled) {
-          // 首次交互再执行（避免加载时对每行都填充大量 options）
-          const warmOnce = function () {
-            try { mSel.removeEventListener("mousedown", warmOnce, true); } catch (e) {}
-            try { oSel.removeEventListener("mousedown", warmOnce, true); } catch (e) {}
-            try { mSel.removeEventListener("focus", warmOnce); } catch (e) {}
-            try { oSel.removeEventListener("focus", warmOnce); } catch (e) {}
-            try { mSel.removeEventListener("keydown", warmOnce); } catch (e) {}
-            try { oSel.removeEventListener("keydown", warmOnce); } catch (e) {}
-            apply();
-          };
-          // mousedown capture：尽量在下拉弹出前完成 options 填充与禁用过滤
-          mSel.addEventListener("mousedown", warmOnce, true);
-          oSel.addEventListener("mousedown", warmOnce, true);
-          mSel.addEventListener("focus", warmOnce);
-          oSel.addEventListener("focus", warmOnce);
-          mSel.addEventListener("keydown", warmOnce);
-          oSel.addEventListener("keydown", warmOnce);
-        } else {
-          apply();
-        }
-      }
-    }
-
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", _initLinkage);
-    } else {
-      _initLinkage();
+    var linkageNode = document.getElementById("batch-detail-linkage-data");
+    var linkageText = linkageNode && linkageNode.textContent ? linkageNode.textContent : "{}";
+    try {
+      window.__APS_BATCH_DETAIL_LINKAGE__ = JSON.parse(linkageText);
+    } catch (_e) {
+      window.__APS_BATCH_DETAIL_LINKAGE__ = {};
     }
   </script>
+  <script src="{{ url_for('static', filename='js/batch_detail_linkage.js') }}" defer></script>
 {% endblock %}
 

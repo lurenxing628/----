@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from ._helpers import RowLike, as_dict, get, parse_int
+from .enums import LockStatus
 
 
 @dataclass
@@ -14,12 +15,12 @@ class Schedule:
     operator_id: Optional[str] = None
     start_time: str = ""
     end_time: str = ""
-    lock_status: str = "unlocked"  # V1 仅占位（不做资源锁）
+    lock_status: str = LockStatus.UNLOCKED.value  # V1 仅占位（不做资源锁）
     version: int = 1
     created_at: Optional[str] = None
 
     @classmethod
-    def from_row(cls, row: RowLike) -> "Schedule":
+    def from_row(cls, row: RowLike) -> Schedule:
         raw_id = get(row, "id")
         op_id = get(row, "op_id")
         version = get(row, "version")
@@ -32,7 +33,9 @@ class Schedule:
             operator_id=str(operator_id) if operator_id is not None and operator_id != "" else None,
             start_time=str(get(row, "start_time") or ""),
             end_time=str(get(row, "end_time") or ""),
-            lock_status=(str(get(row, "lock_status") or "unlocked").strip().lower() or "unlocked"),
+            lock_status=(
+                str(get(row, "lock_status") or LockStatus.UNLOCKED.value).strip().lower() or LockStatus.UNLOCKED.value
+            ),
             version=parse_int(version, default=1),
             created_at=get(row, "created_at"),
         )

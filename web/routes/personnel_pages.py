@@ -2,30 +2,41 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from flask import flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, request, url_for
 
+from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
+from core.models.enums import OperatorStatus, YesNo
+from core.services.common.normalization_matrix import skill_level_options
+from core.services.equipment import MachineService
+from core.services.personnel import OperatorMachineService, OperatorService
+from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 from web.ui_mode import render_ui_template as render_template
 
-from core.infrastructure.errors import AppError, ValidationError
-from core.services.personnel import OperatorMachineService, OperatorService
-from data.repositories import MachineRepository
-
-from .personnel_bp import bp, _machine_status_zh, _operator_status_zh
+from .pagination import paginate_rows, parse_page_args
+from .personnel_bp import _machine_status_zh, _operator_status_zh, bp
+from .team_view_helpers import build_team_name_map, load_team_options
 
 
 @bp.get("/")
 def list_page():
     op_svc = OperatorService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    m_repo = MachineRepository(g.db)
+    mc_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
+    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
+    selected_team_id = (request.args.get("team_id") or "").strip() or None
 
-    operators = op_svc.list()
-    # 预加载所有设备（用于展示名称）
-    machines = {m.machine_id: m for m in m_repo.list()}
+    team_options = load_team_options()
+    team_name_map = build_team_name_map(team_options)
+    try:
+        operators = op_svc.list(team_id=selected_team_id)
+    except BusinessError as e:
+        if e.code == ErrorCode.TEAM_NOT_FOUND:
+            flash(e.message, "warning")
+            return redirect(url_for("personnel.list_page"))
+        raise
+    machines = {m.machine_id: m for m in mc_svc.list()}
 
-    # 预加载关联并聚合到人员
-    link_rows = g.db.execute(
-        "SELECT operator_id, machine_id FROM OperatorMachine ORDER BY operator_id, machine_id"
-    ).fetchall()
+    link_rows = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None)).list_simple_rows()
+    link_rows.sort(key=lambda r: (str(r.get("operator_id") or ""), str(r.get("machine_id") or "")))
     links_by_operator: Dict[str, List[Dict[str, Any]]] = {}
     for r in link_rows:
         op_id = r["operator_id"]
@@ -49,6 +60,8 @@ def list_page():
             {
                 "operator_id": op.operator_id,
                 "name": op.name,
+                "team_id": op.team_id,
+                "team_name": team_name_map.get(op.team_id or ""),
                 "status": op.status,
                 "status_zh": _operator_status_zh(op.status),
                 "remark": op.remark,
@@ -57,11 +70,16 @@ def list_page():
             }
         )
 
+    view_rows, pager = paginate_rows(view_rows, page, per_page)
+
     return render_template(
         "personnel/list.html",
         title="人员管理",
         operators=view_rows,
-        status_options=[("active", "在岗"), ("inactive", "停用/休假")],
+        team_options=team_options,
+        selected_team_id=selected_team_id,
+        status_options=[(OperatorStatus.ACTIVE.value, "在岗"), (OperatorStatus.INACTIVE.value, "停用/休假")],
+        pager=pager,
     )
 
 
@@ -69,11 +87,12 @@ def list_page():
 def create_operator():
     op_id = request.form.get("operator_id")
     name = request.form.get("name")
-    status = request.form.get("status") or "active"
+    status = request.form.get("status") or OperatorStatus.ACTIVE.value
     remark = request.form.get("remark")
+    team_id = request.form.get("team_id") or None
 
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
-    op = svc.create(operator_id=op_id, name=name, status=status, remark=remark)
+    op = svc.create(operator_id=op_id, name=name, status=status, remark=remark, team_id=team_id)
     flash(f"已创建人员：{op.operator_id} {op.name}", "success")
     return redirect(url_for("personnel.detail_page", operator_id=op.operator_id))
 
@@ -81,28 +100,50 @@ def create_operator():
 @bp.get("/<operator_id>")
 def detail_page(operator_id: str):
     op_svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
-    link_svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
-    m_repo = MachineRepository(g.db)
+    link_q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+    mc_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
 
     op = op_svc.get(operator_id)
-    links = link_svc.list_by_operator(operator_id)
+    links = [
+        row for row in link_q.list_simple_rows() if str(row.get("operator_id") or "").strip() == str(operator_id or "").strip()
+    ]
+    team_options = load_team_options()
+    team_name_map = build_team_name_map(team_options)
 
-    machines = {m.machine_id: m for m in m_repo.list()}
-    linked_machine_ids = {l.machine_id for l in links}
+    machines = {m.machine_id: m for m in mc_svc.list()}
+    linked_machine_ids = {str(link.get("machine_id") or "").strip() for link in links}
 
     linked_machines: List[Dict[str, Any]] = []
-    for l in links:
-        m = machines.get(l.machine_id)
+    for link in links:
+        machine_id = str(link.get("machine_id") or "").strip()
+        m = machines.get(machine_id)
         linked_machines.append(
             {
-                "machine_id": l.machine_id,
+                "machine_id": machine_id,
                 "machine_name": (m.name if m else None),
                 "status": (m.status if m else None),
                 "status_zh": _machine_status_zh(m.status) if m else "-",
-                "skill_level": getattr(l, "skill_level", None),
-                "is_primary": getattr(l, "is_primary", None),
+                "skill_level": link.get("skill_level"),
+                "is_primary": link.get("is_primary"),
+                "dirty_fields": list(link.get("dirty_fields") or []),
+                "dirty_reasons": dict(link.get("dirty_reasons") or {}),
             }
         )
+
+    dirty_link_rows = [m for m in linked_machines if bool(m.get("dirty_fields"))]
+    dirty_link_fields = sorted(
+        {
+            str(field).strip()
+            for row in dirty_link_rows
+            for field in list(row.get("dirty_fields") or [])
+            if str(field).strip()
+        }
+    )
+    dirty_link_reasons: Dict[str, str] = {}
+    for row in dirty_link_rows:
+        for field, reason in dict(row.get("dirty_reasons") or {}).items():
+            if field not in dirty_link_reasons and str(reason or "").strip():
+                dirty_link_reasons[str(field)] = str(reason)
 
     available_machines: List[Dict[str, Any]] = []
     for m in machines.values():
@@ -122,11 +163,18 @@ def detail_page(operator_id: str):
         "personnel/detail.html",
         title=f"人员详情 - {op.operator_id} {op.name}",
         operator=op.to_dict(),
+        operator_team_name=team_name_map.get(op.team_id or ""),
+        team_options=team_options,
         operator_status_zh=_operator_status_zh(op.status),
-        status_options=[("active", "在岗"), ("inactive", "停用/休假")],
+        status_options=[(OperatorStatus.ACTIVE.value, "在岗"), (OperatorStatus.INACTIVE.value, "停用/休假")],
         linked_machines=linked_machines,
+        link_dirty_summary={
+            "row_count": int(len(dirty_link_rows)),
+            "fields": dirty_link_fields,
+            "reasons": dirty_link_reasons,
+        },
         available_machines=available_machines,
-        skill_level_options=[("beginner", "初级"), ("normal", "普通"), ("expert", "熟练")],
+        skill_level_options=list(skill_level_options()),
     )
 
 
@@ -135,9 +183,10 @@ def update_operator(operator_id: str):
     name = request.form.get("name")
     status = request.form.get("status")
     remark = request.form.get("remark")
+    team_id = request.form.get("team_id")
 
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
-    op = svc.update(operator_id=operator_id, name=name, status=status, remark=remark)
+    op = svc.update(operator_id=operator_id, name=name, status=status, remark=remark, team_id=team_id)
     flash("人员信息已保存。", "success")
     return redirect(url_for("personnel.detail_page", operator_id=op.operator_id))
 
@@ -149,7 +198,7 @@ def set_status(operator_id: str):
         raise ValidationError("缺少状态参数", field="status")
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     op = svc.set_status(operator_id=operator_id, status=status)
-    flash(f"已更新状态：{op.operator_id} → {_operator_status_zh(op.status)}", "success")
+    flash(f"已更新状态：{op.operator_id}  {_operator_status_zh(op.status)}", "success")
     return redirect(url_for("personnel.detail_page", operator_id=op.operator_id))
 
 
@@ -174,23 +223,30 @@ def bulk_set_status():
     if not operator_ids:
         flash("请至少选择 1 个人员。", "error")
         return redirect(url_for("personnel.list_page"))
-    if status not in ("active", "inactive"):
-        raise ValidationError("状态不合法（允许：active / inactive）", field="status")
+    if status not in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
+        raise ValidationError("状态不正确，请选择：在岗 / 停用或休假。", field="状态")
 
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     ok = 0
     failed: List[str] = []
+    failed_details: List[str] = []
     for oid in operator_ids:
         try:
             svc.set_status(oid, status=status)
             ok += 1
-        except Exception:
+        except AppError as e:
             failed.append(str(oid))
+            failed_details.append(f"{oid}: {e.message}")
+            continue
+        except Exception:
+            current_app.logger.exception("批量设置人员状态失败（operator_id=%s, status=%s）", oid, status)
+            failed.append(str(oid))
+            failed_details.append(f"{oid}: 内部错误，请查看日志")
             continue
 
     flash(f"批量状态更新完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:
-        sample = "，".join(failed[:10])
+        sample = "；".join(failed_details[:10])
         flash(f"失败人员（最多展示 10 个）：{sample}", "warning")
     return redirect(url_for("personnel.list_page"))
 
@@ -198,7 +254,7 @@ def bulk_set_status():
 @bp.post("/bulk/delete")
 def bulk_delete():
     """
-    批量删除人员（受引用保护；建议优先批量“停用”）。
+    批量删除人员（受引用保护；建议优先批量停用）。
     """
     operator_ids = request.form.getlist("operator_ids")
     if not operator_ids:
@@ -208,18 +264,25 @@ def bulk_delete():
     svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
     ok = 0
     failed: List[str] = []
+    failed_details: List[str] = []
     for oid in operator_ids:
         try:
             svc.delete(oid)
             ok += 1
-        except Exception:
+        except AppError as e:
             failed.append(str(oid))
+            failed_details.append(f"{oid}: {e.message}")
+            continue
+        except Exception:
+            current_app.logger.exception("批量删除人员失败（operator_id=%s）", oid)
+            failed.append(str(oid))
+            failed_details.append(f"{oid}: 内部错误，请查看日志")
             continue
 
     flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:
-        sample = "，".join(failed[:10])
-        flash(f"删除失败（最多展示 10 个）：{sample}。常见原因：被批次工序/排程引用，请改为“停用”。", "warning")
+        sample = "；".join(failed_details[:10])
+        flash(f"删除失败（最多展示 10 个）：{sample}", "warning")
     return redirect(url_for("personnel.list_page"))
 
 
@@ -237,9 +300,14 @@ def update_link(operator_id: str):
     machine_id = request.form.get("machine_id")
     skill_level = request.form.get("skill_level")
     # checkbox：未勾选时 form 中不存在该 key
-    is_primary = "yes" if request.form.get("is_primary") else "no"
+    is_primary = YesNo.YES.value if request.form.get("is_primary") else YesNo.NO.value
     svc = OperatorMachineService(g.db, op_logger=getattr(g, "op_logger", None))
-    svc.update_link_fields(operator_id=operator_id, machine_id=machine_id, skill_level=skill_level, is_primary=is_primary)
+    svc.update_link_fields(
+        operator_id=operator_id,
+        machine_id=machine_id,
+        skill_level=skill_level,
+        is_primary=is_primary,
+    )
     flash("已更新关联字段（技能等级/主操设备）。", "success")
     return redirect(url_for("personnel.detail_page", operator_id=operator_id))
 
@@ -251,4 +319,3 @@ def remove_link(operator_id: str):
     svc.remove_link(operator_id=operator_id, machine_id=machine_id)
     flash("已解除设备关联。", "success")
     return redirect(url_for("personnel.detail_page", operator_id=operator_id))
-

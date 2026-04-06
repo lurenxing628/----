@@ -1,0 +1,2301 @@
+{
+  "inventory_name": "core_silent_fallback_inventory",
+  "inventory_version": 1,
+  "generated_at": "2026-04-01T10:57:28",
+  "source_document": "audit/2026-03/20260331_core_静默回退审计.md",
+  "baseline": {
+    "audit_date": "2026-03-31",
+    "commit_sha": null,
+    "note": "原始审计报告未锁定 commit SHA；当前 inventory 以报告内容为准，后续建议补齐代码基线。"
+  },
+  "counts": {
+    "strict_method_count": 68,
+    "strict_implementation_count_total": 179,
+    "representative_implementation_sample_count": 25
+  },
+  "acceptance_readiness": {
+    "status": "draft",
+    "strengths": [
+      "已将严格口径方法主表转为结构化条目",
+      "已保留风险级别、典型回退行为、来源表格与优先级",
+      "已补充代表性实现点样本，便于后续逐条验收"
+    ],
+    "gaps": [
+      "缺少 commit SHA / 基线版本锚点",
+      "尚未补充 owner / target_release / 验收结论",
+      "当前仍以报告主表为源，未自动回连源码 AST/grep 结果"
+    ]
+  },
+  "method_entries": [
+    {
+      "inventory_id": "CFM-001",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/algorithms/priority_constants.py",
+      "function": "normalize_priority",
+      "line_range": {
+        "text": "18-31",
+        "start": 18,
+        "end": 31
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "空值/未知优先级回 default，非法 default 再回 normal",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-002",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/algorithms/priority_constants.py",
+      "function": "priority_weight_scaled",
+      "line_range": {
+        "text": "34-41",
+        "start": 34,
+        "end": 41
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "低",
+      "remediation_priority": "P3",
+      "typical_fallback_behavior": "scale 解析失败回 100",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-003",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/algorithms/sort_strategies.py",
+      "function": "parse_strategy",
+      "line_range": {
+        "text": "160-172",
+        "start": 160,
+        "end": 172
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "空值/非法策略统一回默认策略",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-004",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/algorithms/dispatch_rules.py",
+      "function": "parse_dispatch_rule",
+      "line_range": {
+        "text": "31-38",
+        "start": 31,
+        "end": 38
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "非法派工规则回默认规则",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-005",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/algorithms/greedy/config_adapter.py",
+      "function": "cfg_get",
+      "line_range": {
+        "text": "6-26",
+        "start": 6,
+        "end": 26
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "getattr/get 读取异常时继续探测并最终回 default",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-006",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/algorithms/greedy/date_parsers.py",
+      "function": "parse_date",
+      "line_range": {
+        "text": "7-21",
+        "start": 7,
+        "end": 21
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "低",
+      "remediation_priority": "P3",
+      "typical_fallback_behavior": "日期解析失败返回 None",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-007",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/algorithms/greedy/date_parsers.py",
+      "function": "parse_datetime",
+      "line_range": {
+        "text": "24-41",
+        "start": 24,
+        "end": 41
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "低",
+      "remediation_priority": "P3",
+      "typical_fallback_behavior": "多格式轮询失败后返回 None",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-008",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/models/_helpers.py",
+      "function": "get",
+      "line_range": {
+        "text": "19-27",
+        "start": 19,
+        "end": 27
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "sqlite3.Row 下标访问失败回 default",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-009",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/models/_helpers.py",
+      "function": "parse_int",
+      "line_range": {
+        "text": "30-71",
+        "start": 30,
+        "end": 71
+      },
+      "implementation_count": 4,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "float/str/Decimal 任一解析链路失败都回 default",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-010",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/models/_helpers.py",
+      "function": "parse_float",
+      "line_range": {
+        "text": "74-98",
+        "start": 74,
+        "end": 98
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "非法/非有限数回 default",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-011",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/models/calendar.py",
+      "function": "WorkCalendar.from_row",
+      "line_range": {
+        "text": "22-50",
+        "start": 22,
+        "end": 50
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "shift_hours/efficiency 非法时回默认并钳制",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-012",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/models/calendar.py",
+      "function": "OperatorCalendar.from_row",
+      "line_range": {
+        "text": "89-118",
+        "start": 89,
+        "end": 118
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "人员日历读侧同样自动修正非法工时/效率",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-013",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/common/enum_normalizers.py",
+      "function": "normalize_supplier_status",
+      "line_range": {
+        "text": "64-85",
+        "start": 64,
+        "end": 85
+      },
+      "implementation_count": 1,
+      "primary_visibility": "混合（空值默认/未知值透传）",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "空值默认 active；未知非空值原样透传给上层",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-014",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/common/enum_normalizers.py",
+      "function": "normalize_op_type_category",
+      "line_range": {
+        "text": "88-109",
+        "start": 88,
+        "end": 109
+      },
+      "implementation_count": 1,
+      "primary_visibility": "混合（空值默认/未知值透传）",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "空值默认 internal；未知非空值原样透传给上层",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-015",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/common/enum_normalizers.py",
+      "function": "normalize_yes_no_wide",
+      "line_range": {
+        "text": "116-136",
+        "start": 116,
+        "end": 136
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "None / 未知值按 no 或 default 保守回退",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-016",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/common/enum_normalizers.py",
+      "function": "normalize_yesno_narrow",
+      "line_range": {
+        "text": "139-160",
+        "start": 139,
+        "end": 160
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "空值回默认；未知值可透传给上层",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-017",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/common/enum_normalizers.py",
+      "function": "normalize_skill_level",
+      "line_range": {
+        "text": "163-188",
+        "start": 163,
+        "end": 188
+      },
+      "implementation_count": 2,
+      "primary_visibility": "混合（空值默认/非空非法抛错）",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "None/空串回默认等级或 None；未知非空值抛 ValueError",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-018",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/common/enum_normalizers.py",
+      "function": "skill_rank",
+      "line_range": {
+        "text": "191-211",
+        "start": 191,
+        "end": 211
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "低",
+      "remediation_priority": "P3",
+      "typical_fallback_behavior": "规范化失败统一排到最差 rank=9",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-019",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/common/excel_backend_factory.py",
+      "function": "get_excel_backend",
+      "line_range": {
+        "text": "11-34",
+        "start": 11,
+        "end": 34
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "pandas provider 异常时回 openpyxl",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-020",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/common/excel_service.py",
+      "function": "_normalize_for_compare",
+      "line_range": {
+        "text": "157-186",
+        "start": 157,
+        "end": 186
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "低",
+      "remediation_priority": "P3",
+      "typical_fallback_behavior": "Decimal/数值归一失败后保留原字符串或 float",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-021",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/common/excel_service.py",
+      "function": "_calc_changes",
+      "line_range": {
+        "text": "188-218",
+        "start": 188,
+        "end": 218
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "低",
+      "remediation_priority": "P3",
+      "typical_fallback_behavior": "Mapping/vars() 取值失败按空字典处理",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-022",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/scheduler/config_snapshot.py",
+      "function": "build_schedule_config_snapshot",
+      "line_range": {
+        "text": "52-148",
+        "start": 52,
+        "end": 148
+      },
+      "implementation_count": 3,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "choice/float/int 读取异常统一回默认配置",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-023",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/system/system_config_service.py",
+      "function": "SystemConfigService._read_snapshot",
+      "line_range": {
+        "text": "79-110",
+        "start": 79,
+        "end": 110
+      },
+      "implementation_count": 4,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "配置 int 解析失败回默认、越界自动 clamp",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-024",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/equipment/machine_service.py",
+      "function": "MachineService._validate_machine_fields",
+      "line_range": {
+        "text": "63-94",
+        "start": 63,
+        "end": 94
+      },
+      "implementation_count": 1,
+      "primary_visibility": "混合（空值默认/非法值显式报错）",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "create 场景未显式给状态则默认 active；非法非空状态仍显式报错",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-025",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/scheduler/calendar_admin.py",
+      "function": "CalendarAdmin._get_holiday_default_efficiency",
+      "line_range": {
+        "text": "36-52",
+        "start": 36,
+        "end": 52
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "配置异常或 <=0 时回默认效率",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-026",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/scheduler/calendar_engine.py",
+      "function": "CalendarEngine._parse_shift_start",
+      "line_range": {
+        "text": "131-139",
+        "start": 131,
+        "end": 139
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "班次开始时间非法回 08:00",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-027",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/scheduler/calendar_engine.py",
+      "function": "CalendarEngine._override_shift_hours_by_shift_end",
+      "line_range": {
+        "text": "142-158",
+        "start": 142,
+        "end": 158
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "shift_end 非法回既有 shift_hours",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-028",
+      "source_report_section": "4.1 输入 / 标准化族（28 个方法 / 47 个实现点）",
+      "family": "输入 / 标准化族",
+      "file": "core/services/scheduler/_sched_utils.py",
+      "function": "_safe_int",
+      "line_range": {
+        "text": "6-28",
+        "start": 6,
+        "end": 28
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "低",
+      "remediation_priority": "P3",
+      "typical_fallback_behavior": "非整数/异常回 default",
+      "scope": "read_side_or_parameter_normalization",
+      "intent": "compatibility_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-029",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/algorithms/dispatch_rules.py",
+      "function": "build_dispatch_key",
+      "line_range": {
+        "text": "58-112",
+        "start": 58,
+        "end": 112
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "proc_hours 不可用时改用 avg_proc_hours，再不行用 1h",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-030",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/algorithms/ortools_bottleneck.py",
+      "function": "try_solve_bottleneck_batch_order",
+      "line_range": {
+        "text": "45-215",
+        "start": 45,
+        "end": 215
+      },
+      "implementation_count": 6,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "缺依赖/求解异常/参数异常时降级为 None，主流程继续",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-031",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/algorithms/greedy/schedule_params.py",
+      "function": "resolve_schedule_params",
+      "line_range": {
+        "text": "26-163",
+        "start": 26,
+        "end": 163
+      },
+      "implementation_count": 12,
+      "primary_visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "非法 start_dt/end_date/strategy/dispatch/auto_assign 全部回默认，并通过 warnings 暴露",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-032",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/algorithms/greedy/seed.py",
+      "function": "normalize_seed_results",
+      "line_range": {
+        "text": "9-153",
+        "start": 9,
+        "end": 153
+      },
+      "implementation_count": 8,
+      "primary_visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "坏 seed 会回填 op_id、去重、丢弃坏记录而不阻断排产",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-033",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/algorithms/greedy/auto_assign.py",
+      "function": "auto_assign_internal_resources",
+      "line_range": {
+        "text": "10-212",
+        "start": 10,
+        "end": 212
+      },
+      "implementation_count": 4,
+      "primary_visibility": "完全静默",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "工时/效率/rank/候选异常时直接放弃候选或降成默认分数",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-034",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/algorithms/greedy/scheduler.py",
+      "function": "GreedyScheduler.schedule",
+      "line_range": {
+        "text": "53-373",
+        "start": 53,
+        "end": 373
+      },
+      "implementation_count": 8,
+      "primary_visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "脏 batch_id/seq/ready_date/seed 都走防御式回退，不让排产直接崩",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-035",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/algorithms/greedy/dispatch/sgs.py",
+      "function": "dispatch_sgs",
+      "line_range": {
+        "text": "32-442",
+        "start": 32,
+        "end": 442
+      },
+      "implementation_count": 15,
+      "primary_visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "评分、资源估算、工时、效率大量退化为“惩罚 key / 最差可比较 key”",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-036",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/services/scheduler/schedule_optimizer_steps.py",
+      "function": "_run_ortools_warmstart",
+      "line_range": {
+        "text": "20-138",
+        "start": 20,
+        "end": 138
+      },
+      "implementation_count": 1,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "OR-Tools 高质量起点失败只记 warning，不阻断优化流程",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-037",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/services/scheduler/schedule_optimizer.py",
+      "function": "optimize_schedule",
+      "line_range": {
+        "text": "225-539",
+        "start": 225,
+        "end": 539
+      },
+      "implementation_count": 5,
+      "primary_visibility": "弱可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "坏 seed_results 会被忽略；best=None 时回退单次 schedule()；float(...or 0.4/0.5) 会把 falsy 权重收敛为默认值",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-038",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/services/scheduler/schedule_service.py",
+      "function": "ScheduleService._run_schedule_impl",
+      "line_range": {
+        "text": "211-513",
+        "start": 211,
+        "end": 513
+      },
+      "implementation_count": 4,
+      "primary_visibility": "弱可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "warnings 合并失败时改用替代 merge 或直接忽略",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-039",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/services/scheduler/resource_pool_builder.py",
+      "function": "load_machine_downtimes",
+      "line_range": {
+        "text": "102-160",
+        "start": 102,
+        "end": 160
+      },
+      "implementation_count": 1,
+      "primary_visibility": "显式可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "停机区间加载失败直接忽略停机约束",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-040",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/services/scheduler/resource_pool_builder.py",
+      "function": "build_resource_pool",
+      "line_range": {
+        "text": "163-218",
+        "start": 163,
+        "end": 218
+      },
+      "implementation_count": 1,
+      "primary_visibility": "显式可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "资源池构建失败直接关闭 auto-assign",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-041",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/services/scheduler/resource_pool_builder.py",
+      "function": "extend_downtime_map_for_resource_pool",
+      "line_range": {
+        "text": "221-282",
+        "start": 221,
+        "end": 282
+      },
+      "implementation_count": 1,
+      "primary_visibility": "显式可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "候选设备停机扩展失败后，部分设备可能不再受停机约束",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-042",
+      "source_report_section": "4.2 算法调度族（14 个方法 / 70 个实现点）",
+      "family": "算法调度族",
+      "file": "core/services/scheduler/freeze_window.py",
+      "function": "_safe_load_schedule_map",
+      "line_range": {
+        "text": "27-56",
+        "start": 27,
+        "end": 56
+      },
+      "implementation_count": 2,
+      "primary_visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "冻结窗口读取失败直接降级为“不冻结”",
+      "scope": "algorithm_runtime",
+      "intent": "runtime_degradation_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-043",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/migrations/common.py",
+      "function": "fallback_log",
+      "line_range": {
+        "text": "92-105",
+        "start": 92,
+        "end": 105
+      },
+      "implementation_count": 2,
+      "primary_visibility": "显式可观测",
+      "risk_level": "低",
+      "remediation_priority": "P3",
+      "typical_fallback_behavior": "logger 写失败时退到 stderr，再失败才吞掉",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-044",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/migrations/common.py",
+      "function": "add_column_if_missing",
+      "line_range": {
+        "text": "70-89",
+        "start": 70,
+        "end": 89
+      },
+      "implementation_count": 1,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "缺表时跳过补列并返回 SKIPPED",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-045",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/migrations/v1.py",
+      "function": "_run_fill_update",
+      "line_range": {
+        "text": "18-28",
+        "start": 18,
+        "end": 28
+      },
+      "implementation_count": 1,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "缺表/缺列时跳过默认值回填",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-046",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/migrations/v1.py",
+      "function": "_sanitize_batch_dates",
+      "line_range": {
+        "text": "101-212",
+        "start": 101,
+        "end": 212
+      },
+      "implementation_count": 2,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "非法日期写 NULL；单行更新失败记为 PARTIAL",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-047",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/migrations/v3.py",
+      "function": "run",
+      "line_range": {
+        "text": "8-28",
+        "start": 8,
+        "end": 28
+      },
+      "implementation_count": 1,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "OperatorCalendar 不存在时跳过版本推进阻断",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-048",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/migrations/v4.py",
+      "function": "_sanitize_field",
+      "line_range": {
+        "text": "36-148",
+        "start": 36,
+        "end": 148
+      },
+      "implementation_count": 5,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "非法标识符/非法 pk_expr/缺表缺列时 PARTIAL 或 SKIPPED",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-049",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/migrations/v5.py",
+      "function": "_run_update",
+      "line_range": {
+        "text": "8-21",
+        "start": 8,
+        "end": 21
+      },
+      "implementation_count": 1,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "缺表/缺列时跳过 legacy 值归一化",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-050",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/migrations/v6.py",
+      "function": "_create_index_if_possible",
+      "line_range": {
+        "text": "8-18",
+        "start": 8,
+        "end": 18
+      },
+      "implementation_count": 2,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "缺表/缺列时不建索引",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-051",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/database.py",
+      "function": "_migrate_with_backup",
+      "line_range": {
+        "text": "493-604",
+        "start": 493,
+        "end": 604
+      },
+      "implementation_count": 4,
+      "primary_visibility": "显式可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "backup_dir 缺失用默认目录；迁移失败自动从备份回滚",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-052",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/backup.py",
+      "function": "read_maintenance_lock_state",
+      "line_range": {
+        "text": "85-122",
+        "start": 85,
+        "end": 122
+      },
+      "implementation_count": 4,
+      "primary_visibility": "完全静默",
+      "risk_level": "低",
+      "remediation_priority": "P3",
+      "typical_fallback_behavior": "锁文件读取/字段解析失败时返回“部分状态”对象",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-053",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/backup.py",
+      "function": "is_maintenance_window_active",
+      "line_range": {
+        "text": "140-161",
+        "start": 140,
+        "end": 161
+      },
+      "implementation_count": 2,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "陈旧锁清理失败时仍视为活跃；外层异常直接 False",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-054",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/backup.py",
+      "function": "BackupManager.backup",
+      "line_range": {
+        "text": "250-291",
+        "start": 250,
+        "end": 291
+      },
+      "implementation_count": 2,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "integrity_check 执行失败只告警不阻断备份产物生成",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-055",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/backup.py",
+      "function": "BackupManager.restore",
+      "line_range": {
+        "text": "293-374",
+        "start": 293,
+        "end": 374
+      },
+      "implementation_count": 4,
+      "primary_visibility": "显式可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "恢复失败时尽量自动回滚到恢复前备份，并返回失败结果而非继续抛穿",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-056",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/logging.py",
+      "function": "OperationLogger.log",
+      "line_range": {
+        "text": "124-190",
+        "start": 124,
+        "end": 190
+      },
+      "implementation_count": 4,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "操作日志写库失败返回 False，主业务继续",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-057",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/infrastructure/transaction.py",
+      "function": "TransactionManager.transaction",
+      "line_range": {
+        "text": "56-146",
+        "start": 56,
+        "end": 146
+      },
+      "implementation_count": 4,
+      "primary_visibility": "显式可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "savepoint/commit/rollback 出错时做 best-effort 清场",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-058",
+      "source_report_section": "4.3 基础设施 / 插件族（16 个方法 / 45 个实现点）",
+      "family": "基础设施 / 插件族",
+      "file": "core/plugins/manager.py",
+      "function": "PluginManager.load_from_base_dir",
+      "line_range": {
+        "text": "85-235",
+        "start": 85,
+        "end": 235
+      },
+      "implementation_count": 6,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "插件路径/加载/注册失败后将插件标记为不可用，但不阻断主程序",
+      "scope": "infra_runtime",
+      "intent": "resilience_or_availability_contract",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-059",
+      "source_report_section": "4.4 业务与展示非阻断族（10 个方法 / 17 个实现点）",
+      "family": "业务与展示非阻断族",
+      "file": "core/services/system/maintenance/backup_task.py",
+      "function": "maybe_run_auto_backup",
+      "line_range": {
+        "text": "55-149",
+        "start": 55,
+        "end": 149
+      },
+      "implementation_count": 2,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "备份大小统计失败写 None；自动备份失败返回 error payload",
+      "scope": "business_or_ui_runtime",
+      "intent": "business_semantics_or_ui_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-060",
+      "source_report_section": "4.4 业务与展示非阻断族（10 个方法 / 17 个实现点）",
+      "family": "业务与展示非阻断族",
+      "file": "core/services/system/maintenance/cleanup_task.py",
+      "function": "cleanup_backups_with_limit",
+      "line_range": {
+        "text": "54-89",
+        "start": 54,
+        "end": 89
+      },
+      "implementation_count": 2,
+      "primary_visibility": "弱可观测",
+      "risk_level": "低",
+      "remediation_priority": "P3",
+      "typical_fallback_behavior": "mtime 读取失败 / 删除失败时直接 continue",
+      "scope": "business_or_ui_runtime",
+      "intent": "business_semantics_or_ui_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-061",
+      "source_report_section": "4.4 业务与展示非阻断族（10 个方法 / 17 个实现点）",
+      "family": "业务与展示非阻断族",
+      "file": "core/services/system/maintenance/cleanup_task.py",
+      "function": "maybe_run_auto_backup_cleanup",
+      "line_range": {
+        "text": "132-223",
+        "start": 132,
+        "end": 223
+      },
+      "implementation_count": 1,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "自动清理备份失败返回 error payload，不抛异常",
+      "scope": "business_or_ui_runtime",
+      "intent": "business_semantics_or_ui_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-062",
+      "source_report_section": "4.4 业务与展示非阻断族（10 个方法 / 17 个实现点）",
+      "family": "业务与展示非阻断族",
+      "file": "core/services/system/maintenance/cleanup_task.py",
+      "function": "maybe_run_auto_log_cleanup",
+      "line_range": {
+        "text": "226-323",
+        "start": 226,
+        "end": 323
+      },
+      "implementation_count": 1,
+      "primary_visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "自动清理日志失败返回 error payload，不抛异常",
+      "scope": "business_or_ui_runtime",
+      "intent": "business_semantics_or_ui_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-063",
+      "source_report_section": "4.4 业务与展示非阻断族（10 个方法 / 17 个实现点）",
+      "family": "业务与展示非阻断族",
+      "file": "core/services/process/external_group_service.py",
+      "function": "ExternalGroupService._apply_separate_mode",
+      "line_range": {
+        "text": "103-132",
+        "start": 103,
+        "end": 132
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "per_op_days 缺失/非法/<=0 时强制默认 1.0 天",
+      "scope": "business_or_ui_runtime",
+      "intent": "business_semantics_or_ui_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-064",
+      "source_report_section": "4.4 业务与展示非阻断族（10 个方法 / 17 个实现点）",
+      "family": "业务与展示非阻断族",
+      "file": "core/services/process/part_service.py",
+      "function": "PartService.create",
+      "line_range": {
+        "text": "94-126",
+        "start": 94,
+        "end": 126
+      },
+      "implementation_count": 1,
+      "primary_visibility": "弱可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "自动 reparse_and_save 失败后仍保留零件创建成功",
+      "scope": "business_or_ui_runtime",
+      "intent": "business_semantics_or_ui_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-065",
+      "source_report_section": "4.4 业务与展示非阻断族（10 个方法 / 17 个实现点）",
+      "family": "业务与展示非阻断族",
+      "file": "core/services/process/route_parser.py",
+      "function": "RouteParser.parse",
+      "line_range": {
+        "text": "107-256",
+        "start": 107,
+        "end": 256
+      },
+      "implementation_count": 4,
+      "primary_visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "typical_fallback_behavior": "坏工序跳过、未知工种默认 external、无供应商默认 1 天",
+      "scope": "business_or_ui_runtime",
+      "intent": "business_semantics_or_ui_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-066",
+      "source_report_section": "4.4 业务与展示非阻断族（10 个方法 / 17 个实现点）",
+      "family": "业务与展示非阻断族",
+      "file": "core/services/scheduler/gantt_tasks.py",
+      "function": "build_calendar_days",
+      "line_range": {
+        "text": "65-108",
+        "start": 65,
+        "end": 108
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "shift_hours 解析失败置 0.0；任意异常返回空数组",
+      "scope": "business_or_ui_runtime",
+      "intent": "business_semantics_or_ui_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-067",
+      "source_report_section": "4.4 业务与展示非阻断族（10 个方法 / 17 个实现点）",
+      "family": "业务与展示非阻断族",
+      "file": "core/services/scheduler/gantt_service.py",
+      "function": "GanttService._overdue_batch_ids_from_history",
+      "line_range": {
+        "text": "52-69",
+        "start": 52,
+        "end": 69
+      },
+      "implementation_count": 1,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "result_summary JSON 坏掉时直接返回空超期集合",
+      "scope": "business_or_ui_runtime",
+      "intent": "business_semantics_or_ui_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    },
+    {
+      "inventory_id": "CFM-068",
+      "source_report_section": "4.4 业务与展示非阻断族（10 个方法 / 17 个实现点）",
+      "family": "业务与展示非阻断族",
+      "file": "core/services/process/route_parser.py",
+      "function": "RouteParser._build_supplier_map",
+      "line_range": {
+        "text": "277-296",
+        "start": 277,
+        "end": 296
+      },
+      "implementation_count": 2,
+      "primary_visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "typical_fallback_behavior": "供应商映射取工种失败时该条映射被静默跳过；falsy default_days（尤其 0.0）会被收敛为 1.0 天",
+      "scope": "business_or_ui_runtime",
+      "intent": "business_semantics_or_ui_risk",
+      "acceptance_status": "pending",
+      "owner": null,
+      "target_release": null,
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "strict_method_table"
+      }
+    }
+  ],
+  "representative_implementation_samples": [
+    {
+      "sample_id": "CFP-001",
+      "file": "schedule_params.py",
+      "line_range": {
+        "text": "46-47",
+        "start": 46,
+        "end": 47
+      },
+      "owner_function": "resolve_schedule_params",
+      "trigger": "start_dt 不是合法 datetime",
+      "fallback_action": "忽略原值并改用 datetime.now()",
+      "visibility": "弱可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-002",
+      "file": "schedule_params.py",
+      "line_range": {
+        "text": "53-54",
+        "start": 53,
+        "end": 54
+      },
+      "owner_function": "resolve_schedule_params",
+      "trigger": "end_date 无法解析",
+      "fallback_action": "关闭排产截止窗口",
+      "visibility": "弱可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-003",
+      "file": "schedule_params.py",
+      "line_range": {
+        "text": "69-70",
+        "start": 69,
+        "end": 70
+      },
+      "owner_function": "resolve_schedule_params",
+      "trigger": "sort_strategy 非法",
+      "fallback_action": "回退到 priority_first",
+      "visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-004",
+      "file": "schedule_params.py",
+      "line_range": {
+        "text": "115-117",
+        "start": 115,
+        "end": 117
+      },
+      "owner_function": "resolve_schedule_params",
+      "trigger": "dispatch_mode 非法",
+      "fallback_action": "回退到 batch_order",
+      "visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-005",
+      "file": "schedule_params.py",
+      "line_range": {
+        "text": "132-133",
+        "start": 132,
+        "end": 133
+      },
+      "owner_function": "resolve_schedule_params",
+      "trigger": "dispatch_rule 非法",
+      "fallback_action": "回退到 slack",
+      "visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-006",
+      "file": "dispatch_rules.py",
+      "line_range": {
+        "text": "85-90",
+        "start": 85,
+        "end": 90
+      },
+      "owner_function": "build_dispatch_key",
+      "trigger": "proc_hours<=0 或不可解析",
+      "fallback_action": "改用 avg_proc_hours，再不行用 1.0h",
+      "visibility": "完全静默",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-007",
+      "file": "sgs.py",
+      "line_range": {
+        "text": "149-156",
+        "start": 149,
+        "end": 156
+      },
+      "owner_function": "dispatch_sgs",
+      "trigger": "ext_group_total_days 无法转 float",
+      "fallback_action": "记 score_penalty=1，候选继续参与比较",
+      "visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-008",
+      "file": "sgs.py",
+      "line_range": {
+        "text": "163-175",
+        "start": 163,
+        "end": 175
+      },
+      "owner_function": "dispatch_sgs",
+      "trigger": "ext_days 无法解析 / <=0",
+      "fallback_action": "默认 1.0 或直接按惩罚候选处理",
+      "visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-009",
+      "file": "sgs.py",
+      "line_range": {
+        "text": "218-227",
+        "start": 218,
+        "end": 227
+      },
+      "owner_function": "dispatch_sgs",
+      "trigger": "缺 machine_id/operator_id 且自动分配没补全",
+      "fallback_action": "不报错，直接降为“不可估算候选”",
+      "visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-010",
+      "file": "sgs.py",
+      "line_range": {
+        "text": "239-257",
+        "start": 239,
+        "end": 257
+      },
+      "owner_function": "dispatch_sgs",
+      "trigger": "total_hours 无法解析",
+      "fallback_action": "置 0.0 并按惩罚 key 排序",
+      "visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-011",
+      "file": "sgs.py",
+      "line_range": {
+        "text": "302-347",
+        "start": 302,
+        "end": 347
+      },
+      "owner_function": "dispatch_sgs",
+      "trigger": "评分 key 构造抛异常",
+      "fallback_action": "生成“最差但可比较”的 key，避免候选被直接跳过",
+      "visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-012",
+      "file": "seed.py",
+      "line_range": {
+        "text": "99-123",
+        "start": 99,
+        "end": 123
+      },
+      "owner_function": "normalize_seed_results",
+      "trigger": "直接回写 sr.op_id 失败",
+      "fallback_action": "构造新的 ScheduleResult；再失败则丢弃记录",
+      "visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-013",
+      "file": "auto_assign.py",
+      "line_range": {
+        "text": "97-100",
+        "start": 97,
+        "end": 100
+      },
+      "owner_function": "auto_assign_internal_resources",
+      "trigger": "基础工时无法计算",
+      "fallback_action": "直接返回 None，放弃自动分配",
+      "visibility": "完全静默",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-014",
+      "file": "resource_pool_builder.py",
+      "line_range": {
+        "text": "142-159",
+        "start": 142,
+        "end": 159
+      },
+      "owner_function": "load_machine_downtimes",
+      "trigger": "读取停机区间异常",
+      "fallback_action": "返回空 downtime_map，等价于忽略停机约束",
+      "visibility": "显式可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-015",
+      "file": "resource_pool_builder.py",
+      "line_range": {
+        "text": "208-216",
+        "start": 208,
+        "end": 216
+      },
+      "owner_function": "build_resource_pool",
+      "trigger": "资源池构建异常",
+      "fallback_action": "返回 None，等价于关闭 auto-assign",
+      "visibility": "显式可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-016",
+      "file": "resource_pool_builder.py",
+      "line_range": {
+        "text": "264-280",
+        "start": 264,
+        "end": 280
+      },
+      "owner_function": "extend_downtime_map_for_resource_pool",
+      "trigger": "候选设备停机扩展异常",
+      "fallback_action": "保留旧 map，候选设备可能漏掉停机约束",
+      "visibility": "显式可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-017",
+      "file": "route_parser.py",
+      "line_range": {
+        "text": "191-195",
+        "start": 191,
+        "end": 195
+      },
+      "owner_function": "RouteParser.parse",
+      "trigger": "工种不在系统配置中",
+      "fallback_action": "默认标记为外部工序",
+      "visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-018",
+      "file": "route_parser.py",
+      "line_range": {
+        "text": "214-219",
+        "start": 214,
+        "end": 219
+      },
+      "owner_function": "RouteParser.parse",
+      "trigger": "找不到匹配供应商",
+      "fallback_action": "默认周期写 1.0 天",
+      "visibility": "弱可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-019",
+      "file": "external_group_service.py",
+      "line_range": {
+        "text": "127-132",
+        "start": 127,
+        "end": 132
+      },
+      "owner_function": "_apply_separate_mode",
+      "trigger": "per_op_days 缺失/非法/<=0",
+      "fallback_action": "默认 1.0 天",
+      "visibility": "完全静默",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-020",
+      "file": "part_service.py",
+      "line_range": {
+        "text": "118-124",
+        "start": 118,
+        "end": 124
+      },
+      "owner_function": "PartService.create",
+      "trigger": "自动解析工艺路线失败",
+      "fallback_action": "零件仍创建成功，错误只留在后续详情页",
+      "visibility": "弱可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-021",
+      "file": "database.py",
+      "line_range": {
+        "text": "517-520",
+        "start": 517,
+        "end": 520
+      },
+      "owner_function": "_migrate_with_backup",
+      "trigger": "未传 backup_dir",
+      "fallback_action": "自动使用 db/backups 同级目录",
+      "visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-022",
+      "file": "database.py",
+      "line_range": {
+        "text": "594-603",
+        "start": 594,
+        "end": 603
+      },
+      "owner_function": "_migrate_with_backup",
+      "trigger": "迁移异常",
+      "fallback_action": "尝试从迁移前备份恢复 db 文件",
+      "visibility": "显式可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-023",
+      "file": "backup.py",
+      "line_range": {
+        "text": "332-368",
+        "start": 332,
+        "end": 368
+      },
+      "owner_function": "BackupManager.restore",
+      "trigger": "恢复主流程异常",
+      "fallback_action": "自动回滚到恢复前备份；失败则返回失败结果",
+      "visibility": "显式可观测",
+      "risk_level": "高",
+      "remediation_priority": "P1",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-024",
+      "file": "manager.py",
+      "line_range": {
+        "text": "165-184",
+        "start": 165,
+        "end": 184
+      },
+      "owner_function": "PluginManager.load_from_base_dir",
+      "trigger": "register() 抛异常",
+      "fallback_action": "标记 loaded=no，主程序继续启动",
+      "visibility": "显式可观测",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    },
+    {
+      "sample_id": "CFP-025",
+      "file": "gantt_tasks.py",
+      "line_range": {
+        "text": "74-108",
+        "start": 74,
+        "end": 108
+      },
+      "owner_function": "build_calendar_days",
+      "trigger": "甘特图日历构建任意异常",
+      "fallback_action": "直接返回空数组，避免整页 500",
+      "visibility": "完全静默",
+      "risk_level": "中",
+      "remediation_priority": "P2",
+      "acceptance_status": "pending",
+      "evidence_source": {
+        "report_file": "audit/2026-03/20260331_core_静默回退审计.md",
+        "table": "representative_implementation_table"
+      }
+    }
+  ]
+}

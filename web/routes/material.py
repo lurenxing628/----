@@ -4,12 +4,13 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, current_app, flash, g, redirect, request, url_for
 
+from core.infrastructure.errors import AppError, ValidationError
+from core.models.enums import MaterialStatus
+from core.services.material import BatchMaterialService, MaterialService
+from core.services.scheduler import BatchService
 from web.ui_mode import render_ui_template as render_template
 
-from core.infrastructure.errors import AppError, ValidationError
-from core.services.material import BatchMaterialService, MaterialService
-from data.repositories import BatchRepository, MaterialRepository
-
+from .pagination import paginate_rows, parse_page_args
 
 bp = Blueprint("material", __name__)
 
@@ -21,13 +22,16 @@ def index():
 
 @bp.get("/materials")
 def materials_page():
+    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
     svc = MaterialService(g.db, op_logger=getattr(g, "op_logger", None))
     items = [m.to_dict() for m in svc.list()]
+    items, pager = paginate_rows(items, page, per_page)
     return render_template(
         "material/materials.html",
         title="物料管理 - 物料主数据",
         materials=items,
-        status_options=[("active", "可用"), ("inactive", "停用")],
+        status_options=[(MaterialStatus.ACTIVE.value, "可用"), (MaterialStatus.INACTIVE.value, "停用")],
+        pager=pager,
     )
 
 
@@ -41,7 +45,7 @@ def materials_create():
             spec=request.form.get("spec"),
             unit=request.form.get("unit"),
             stock_qty=request.form.get("stock_qty"),
-            status=request.form.get("status") or "active",
+            status=request.form.get("status") or MaterialStatus.ACTIVE.value,
             remark=request.form.get("remark"),
         )
         flash(f"已创建物料：{m.material_id} {m.name}", "success")
@@ -98,16 +102,25 @@ def materials_delete(material_id: str):
 def batch_materials_page():
     batch_id = (request.args.get("batch_id") or "").strip() or None
 
-    batches = BatchRepository(g.db).list()
+    batch_svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
+    batches = batch_svc.list()
     batch_options = [(b.batch_id, f"{b.batch_id}（{b.part_no} x {b.quantity}）") for b in batches]
+    ready_summary = {"yes": 0, "partial": 0, "no": 0, "unknown": 0}
+    for b in batches:
+        rs = (getattr(b, "ready_status", "") or "").strip().lower()
+        if rs in ready_summary:
+            ready_summary[rs] += 1
+        else:
+            ready_summary["unknown"] += 1
 
-    selected_batch = BatchRepository(g.db).get(batch_id) if batch_id else None
+    batch_map = {str(getattr(b, "batch_id", "") or ""): b for b in batches}
+    selected_batch = batch_map.get(batch_id) if batch_id else None
 
     req_rows: List[Dict[str, Any]] = []
     if batch_id:
         req_rows = BatchMaterialService(g.db, op_logger=getattr(g, "op_logger", None)).list_for_batch(batch_id)
 
-    mats = MaterialRepository(g.db).list(status="active")
+    mats = MaterialService(g.db, op_logger=getattr(g, "op_logger", None)).list(status=MaterialStatus.ACTIVE.value)
     mat_options = [(m.material_id, f"{m.material_id} {m.name}".strip()) for m in mats]
 
     return render_template(
@@ -118,6 +131,7 @@ def batch_materials_page():
         batch=(selected_batch.to_dict() if selected_batch else None),
         requirements=req_rows,
         material_options=mat_options,
+        ready_summary=ready_summary,
     )
 
 

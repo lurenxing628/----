@@ -1,0 +1,21 @@
+python -m pytest tests/test_architecture_fitness.py -v
+
+============================= test session starts =============================
+platform win32 -- Python 3.8.10, pytest-8.3.5, pluggy-1.5.0 -- D:\py3.8\python.exe
+cachedir: .pytest_cache
+rootdir: D:\Github\APS Test
+configfile: pyproject.toml
+collecting ... collected 9 items
+
+tests/test_architecture_fitness.py::test_routes_do_not_execute_sql_directly PASSED [ 11%]
+tests/test_architecture_fitness.py::test_services_do_not_import_flask_request PASSED [ 22%]
+tests/test_architecture_fitness.py::test_routes_do_not_import_repository PASSED [ 33%]
+tests/test_architecture_fitness.py::test_no_circular_service_dependencies PASSED [ 44%]
+tests/test_architecture_fitness.py::test_no_wildcard_imports PASSED      [ 55%]
+tests/test_architecture_fitness.py::test_no_silent_exception_swallow PASSED [ 66%]
+tests/test_architecture_fitness.py::test_file_size_limit PASSED          [ 77%]
+tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold PASSED [ 88%]
+tests/test_architecture_fitness.py::test_file_naming_snake_case PASSED   [100%]
+
+============================== 9 passed in 1.07s ==============================
+

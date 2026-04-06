@@ -6,7 +6,8 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Machine
 from core.models.enums import MachineStatus
-from data.repositories import MachineRepository, OpTypeRepository
+from core.services.common.normalize import normalize_text
+from data.repositories import MachineRepository, OpTypeRepository, ResourceTeamRepository
 
 
 class MachineService:
@@ -20,19 +21,14 @@ class MachineService:
 
         self.repo = MachineRepository(conn, logger=logger)
         self.op_type_repo = OpTypeRepository(conn, logger=logger)
+        self.team_repo = ResourceTeamRepository(conn, logger=logger)
 
     # -------------------------
     # 校验与工具方法
     # -------------------------
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     @staticmethod
     def _normalize_status(value: Any) -> Optional[str]:
@@ -55,13 +51,14 @@ class MachineService:
             return MachineStatus.INACTIVE.value
 
         # 英文/枚举
-        if v in (
+        v_lower = v.lower()
+        if v_lower in (
             MachineStatus.ACTIVE.value,
             MachineStatus.INACTIVE.value,
             MachineStatus.MAINTAIN.value,
         ):
-            return v
-        raise ValidationError("“状态”不合法（允许：active / inactive / maintain）", field="状态")
+            return v_lower
+        raise ValidationError("状态不正确，请选择：可用 / 维修 / 停用。", field="状态")
 
     def _validate_machine_fields(
         self,
@@ -69,18 +66,20 @@ class MachineService:
         name: Any,
         status: Any,
         op_type_id: Any = None,
+        team_id: Any = None,
         allow_partial: bool = False,
-    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
         mc_id = self._normalize_text(machine_id)
         mc_name = self._normalize_text(name)
         mc_status = self._normalize_status(status) if status is not None or not allow_partial else None
         mc_op_type_id = self._normalize_text(op_type_id)
+        mc_team_id = self._normalize_text(team_id)
 
         if not allow_partial:
             if not mc_id:
-                raise ValidationError("“设备编号”不能为空", field="设备编号")
+                raise ValidationError("设备编号不能为空", field="设备编号")
             if not mc_name:
-                raise ValidationError("“设备名称”不能为空", field="设备名称")
+                raise ValidationError("设备名称不能为空", field="设备名称")
             if not mc_status:
                 # status 允许省略时默认 active，但 UI/Excel 一般会显式传
                 mc_status = MachineStatus.ACTIVE.value
@@ -88,35 +87,63 @@ class MachineService:
         # 工种存在性校验（可为空）
         if mc_op_type_id:
             if not self.op_type_repo.get(mc_op_type_id):
-                raise BusinessError(ErrorCode.NOT_FOUND, f"工种“{mc_op_type_id}”不存在，请先维护工种配置。")
+                raise BusinessError(ErrorCode.NOT_FOUND, f"工种{mc_op_type_id}不存在，请先维护工种配置。")
+        if mc_team_id and not self.team_repo.get(mc_team_id):
+            raise BusinessError(ErrorCode.TEAM_NOT_FOUND, f"班组{mc_team_id}不存在，请先维护班组。")
 
-        return mc_id, mc_name, mc_status, mc_op_type_id
+        return mc_id, mc_name, mc_status, mc_op_type_id, mc_team_id
 
     def _get_or_raise(self, machine_id: str) -> Machine:
         m = self.repo.get(machine_id)
         if not m:
-            raise BusinessError(ErrorCode.MACHINE_NOT_FOUND, f"设备“{machine_id}”不存在")
+            raise BusinessError(ErrorCode.MACHINE_NOT_FOUND, f"设备{machine_id}不存在")
         return m
 
     # -------------------------
     # CRUD
     # -------------------------
-    def list(self, status: Optional[str] = None, op_type_id: Optional[str] = None) -> List[Machine]:
+    def list(
+        self,
+        status: Optional[str] = None,
+        op_type_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+    ) -> List[Machine]:
+        filter_status = None
+        filter_team_id = None
         if status:
-            # 校验一下 status（避免页面/接口传错）
-            self._validate_machine_fields(machine_id="DUMMY", name="DUMMY", status=status, allow_partial=True)
+            filter_status = self._normalize_status(status)
+            if filter_status is None:
+                raise ValidationError("缺少状态参数", field="状态")
         if op_type_id:
             # 校验一下工种存在（避免页面传错）
             ot = self.op_type_repo.get(op_type_id)
             if not ot:
-                raise BusinessError(ErrorCode.NOT_FOUND, f"工种“{op_type_id}”不存在")
-        return self.repo.list(status=status, op_type_id=op_type_id)
+                raise BusinessError(ErrorCode.NOT_FOUND, f"工种{op_type_id}不存在")
+        if team_id is not None:
+            _, _, _, _, filter_team_id = self._validate_machine_fields(
+                machine_id=None,
+                name=None,
+                status=None,
+                op_type_id=None,
+                team_id=team_id,
+                allow_partial=True,
+            )
+        return self.repo.list(status=filter_status, op_type_id=op_type_id, team_id=filter_team_id)
 
     def get(self, machine_id: str) -> Machine:
         mc_id = self._normalize_text(machine_id)
         if not mc_id:
-            raise ValidationError("“设备编号”不能为空", field="设备编号")
+            raise ValidationError("设备编号不能为空", field="设备编号")
         return self._get_or_raise(mc_id)
+
+    def get_optional(self, machine_id: Any) -> Optional[Machine]:
+        """
+        宽松查询：找不到返回 None（用于页面回显已删除/已停用资源）。
+        """
+        mc_id = self._normalize_text(machine_id)
+        if not mc_id:
+            return None
+        return self.repo.get(mc_id)
 
     def create(
         self,
@@ -124,17 +151,22 @@ class MachineService:
         name: Any,
         op_type_id: Any = None,
         category: Any = None,
-        status: Any = "active",
+        status: Any = MachineStatus.ACTIVE.value,
         remark: Any = None,
+        team_id: Any = None,
     ) -> Machine:
-        mc_id, mc_name, mc_status, mc_op_type_id = self._validate_machine_fields(
-            machine_id=machine_id, name=name, status=status, op_type_id=op_type_id
+        mc_id, mc_name, mc_status, mc_op_type_id, mc_team_id = self._validate_machine_fields(
+            machine_id=machine_id,
+            name=name,
+            status=status,
+            op_type_id=op_type_id,
+            team_id=team_id,
         )
         mc_remark = self._normalize_text(remark)
         mc_category = self._normalize_text(category)
 
         if self.repo.exists(mc_id):
-            raise BusinessError(ErrorCode.MACHINE_ALREADY_EXISTS, f"设备编号“{mc_id}”已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.MACHINE_ALREADY_EXISTS, f"设备编号{mc_id}已存在，不能重复添加。")
 
         with self.tx_manager.transaction():
             self.repo.create(
@@ -145,6 +177,7 @@ class MachineService:
                     "category": mc_category,
                     "status": mc_status or MachineStatus.ACTIVE.value,
                     "remark": mc_remark,
+                    "team_id": mc_team_id,
                 }
             )
         return self._get_or_raise(mc_id)
@@ -157,25 +190,26 @@ class MachineService:
         category: Any = None,
         status: Any = None,
         remark: Any = None,
+        team_id: Any = None,
     ) -> Machine:
         mc_id = self._normalize_text(machine_id)
         if not mc_id:
-            raise ValidationError("“设备编号”不能为空", field="设备编号")
+            raise ValidationError("设备编号不能为空", field="设备编号")
         self._get_or_raise(mc_id)
 
         updates: Dict[str, Any] = {}
         if name is not None:
             updates["name"] = self._normalize_text(name)
             if not updates["name"]:
-                raise ValidationError("“设备名称”不能为空", field="设备名称")
+                raise ValidationError("设备名称不能为空", field="设备名称")
         if status is not None:
             updates["status"] = self._normalize_status(status)
         if op_type_id is not None:
-            # 允许显式清空：传空串/None → 写 NULL
+            # 允许显式清空：传空串/None  写 NULL
             v = self._normalize_text(op_type_id)
             if v:
                 if not self.op_type_repo.get(v):
-                    raise BusinessError(ErrorCode.NOT_FOUND, f"工种“{v}”不存在，请先维护工种配置。")
+                    raise BusinessError(ErrorCode.NOT_FOUND, f"工种{v}不存在，请先维护工种配置。")
                 updates["op_type_id"] = v
             else:
                 updates["op_type_id"] = None
@@ -184,6 +218,16 @@ class MachineService:
         if category is not None:
             # 允许显式清空
             updates["category"] = self._normalize_text(category)
+        if team_id is not None:
+            _, _, _, _, mc_team_id = self._validate_machine_fields(
+                machine_id=machine_id,
+                name=None,
+                status=None,
+                op_type_id=None,
+                team_id=team_id,
+                allow_partial=True,
+            )
+            updates["team_id"] = mc_team_id
 
         with self.tx_manager.transaction():
             self.repo.update(mc_id, updates)
@@ -195,15 +239,14 @@ class MachineService:
     def delete(self, machine_id: Any) -> None:
         mc_id = self._normalize_text(machine_id)
         if not mc_id:
-            raise ValidationError("“设备编号”不能为空", field="设备编号")
+            raise ValidationError("设备编号不能为空", field="设备编号")
+        self._get_or_raise(mc_id)
 
         # 若被批次工序引用，则禁止删除（避免排产数据断链）
-        row = self.conn.execute(
-            "SELECT 1 FROM BatchOperations WHERE machine_id = ? LIMIT 1",
-            (mc_id,),
-        ).fetchone()
-        if row is not None:
-            raise BusinessError(ErrorCode.MACHINE_IN_USE, "该设备已被批次工序引用，不能删除。请先解除引用或改为“停用”。")
+        if self.repo.is_referenced_by_batch_operations(mc_id):
+            raise BusinessError(ErrorCode.MACHINE_IN_USE, "该设备已被批次工序引用，不能删除。请先解除引用或改为停用。")
+        if self.repo.is_referenced_by_schedule(mc_id):
+            raise BusinessError(ErrorCode.MACHINE_IN_USE, "该设备已被排程结果引用，不能删除。请改为停用。")
 
         with self.tx_manager.transaction():
             self.repo.delete(mc_id)
@@ -218,6 +261,7 @@ class MachineService:
         - value: 以 Excel 列名（中文）表示的 dict
         """
         op_types = {ot.op_type_id: ot for ot in self.op_type_repo.list()}
+        team_names = {team.team_id: team.name for team in self.team_repo.list(status=None)}
         existing: Dict[str, Dict[str, Any]] = {}
         for m in self.repo.list():
             ot = op_types.get(m.op_type_id or "")
@@ -226,20 +270,28 @@ class MachineService:
                 "设备名称": m.name,
                 "工种": (ot.name if ot else None),
                 "状态": m.status,
+                "班组": team_names.get(m.team_id or "") or None,
             }
         return existing
+
+    def list_for_export(self) -> List[Dict[str, Any]]:
+        """
+        导出用：返回带工种名称的扁平行（字段名与 Excel 导出路由一致）。
+        """
+        return self.repo.list_for_export()
 
     def ensure_replace_allowed(self) -> None:
         """
         REPLACE（清空后导入）保护：
-        如果设备已被批次工序引用（BatchOperations.machine_id），则禁止清空。
+        如果设备已被批次工序或排程结果引用，则禁止清空。
         """
-        row = self.conn.execute(
-            "SELECT 1 FROM BatchOperations WHERE machine_id IS NOT NULL AND TRIM(machine_id) <> '' LIMIT 1"
-        ).fetchone()
-        if row is not None:
+        if self.repo.has_any_batch_operations_machine_reference():
             raise BusinessError(
                 ErrorCode.MACHINE_IN_USE,
-                "已有批次工序引用了设备，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。",
+                "已有批次工序引用了设备，不能执行替换（清空后导入）。请先解除引用或改用覆盖/追加。",
             )
-
+        if self.repo.has_any_schedule_machine_reference():
+            raise BusinessError(
+                ErrorCode.MACHINE_IN_USE,
+                "已有排程结果引用了设备，不能执行替换（清空后导入）。请先解除引用或改用覆盖/追加。",
+            )

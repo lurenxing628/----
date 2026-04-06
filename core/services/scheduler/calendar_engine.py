@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import WorkCalendar
-from core.models.enums import BatchPriority, CalendarDayType, YesNo
+from core.models.enums import BATCH_PRIORITY_VALUES, BatchPriority, CalendarDayType, YesNo
+from core.services.common.normalize import normalize_text
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
 
@@ -29,11 +30,18 @@ class DayPolicy:
     allow_normal: str
     allow_urgent: str
     shift_start: time = time(8, 0, 0)
+    _window_start: Optional[datetime] = None
+    _window_end: Optional[datetime] = None
+
+    def __post_init__(self) -> None:
+        d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
+        self._window_start = datetime.combine(d, self.shift_start)
+        self._window_end = self._window_start + timedelta(hours=float(self.shift_hours or 0.0))
 
     def is_priority_allowed(self, priority: Optional[str]) -> bool:
         # 防御：priority 可能大小写不一致/非字符串/空值
         p = str(priority or BatchPriority.NORMAL.value).strip().lower()
-        if p not in (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value):
+        if p not in BATCH_PRIORITY_VALUES:
             p = BatchPriority.NORMAL.value
         if p == BatchPriority.NORMAL.value:
             return self.allow_normal == YesNo.YES.value
@@ -41,9 +49,14 @@ class DayPolicy:
         return self.allow_urgent == YesNo.YES.value
 
     def work_window(self) -> Tuple[datetime, datetime]:
-        d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
-        start = datetime.combine(d, self.shift_start)
-        end = start + timedelta(hours=float(self.shift_hours or 0.0))
+        start = self._window_start
+        end = self._window_end
+        if start is None or end is None:
+            d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
+            start = datetime.combine(d, self.shift_start)
+            end = start + timedelta(hours=float(self.shift_hours or 0.0))
+            self._window_start = start
+            self._window_end = end
         return start, end
 
 
@@ -62,16 +75,21 @@ class CalendarEngine:
         self.op_logger = op_logger
         self.repo = CalendarRepository(conn, logger=logger)
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
+        # 每次排产会对同一日期重复查询多次；按 (operator_id, date_str) 做轻量缓存可显著减少 DB 访问
+        self._policy_cache: Dict[Tuple[str, str], DayPolicy] = {}
+
+    def clear_policy_cache(self) -> None:
+        """
+        清空 DayPolicy 缓存。
+
+        说明：缓存用于排产过程加速，但当 WorkCalendar/OperatorCalendar 被修改后，
+        必须清空缓存以保证“立即生效”（回归用例依赖该语义）。
+        """
+        self._policy_cache.clear()
 
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            v = value.strip()
-            return v if v != "" else None
-        v = str(value).strip()
-        return v if v != "" else None
+        return normalize_text(value)
 
     def _default_for_date(self, date_str: str) -> WorkCalendar:
         d = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -96,53 +114,68 @@ class CalendarEngine:
             remark="默认工作日（未配置）",
         )
 
-    def _policy_for_date(self, date_str: str, operator_id: Optional[str] = None) -> DayPolicy:
-        """获取某个“日期键”的 DayPolicy（不做跨午夜归属判断）。"""
-        cal: Any = None
-        op_id = self._normalize_text(operator_id) if operator_id is not None else None
+    def _resolve_calendar_row(self, date_str: str, op_id: Optional[str]) -> Any:
         if op_id:
-            try:
-                row_op = self.operator_calendar_repo.get(op_id, date_str)
-                if row_op:
-                    cal = row_op
-            except Exception:
-                cal = None
-        if cal is None:
-            row = self.repo.get(date_str)
-            cal = row if row else self._default_for_date(date_str)
+            row_op = self.operator_calendar_repo.get(op_id, date_str)
+            if row_op:
+                return row_op
+        row = self.repo.get(date_str)
+        return row if row else self._default_for_date(date_str)
 
-        # 防御：异常值兜底
-        shift_hours = float(getattr(cal, "shift_hours", 0.0) or 0.0)
+    @staticmethod
+    def _normalize_efficiency(cal: Any) -> float:
         efficiency = float(getattr(cal, "efficiency", 1.0) or 1.0)
-        if efficiency <= 0:
-            efficiency = 1.0
+        return 1.0 if efficiency <= 0 else efficiency
 
-        # shift_start/shift_end：默认 08:00；若提供 shift_end 则优先用其推导 shift_hours
+    @staticmethod
+    def _parse_shift_start(cal: Any) -> time:
         ss = (cal.shift_start or "").strip() if getattr(cal, "shift_start", None) else ""
         if not ss:
             ss = "08:00"
         ss = ss.replace("：", ":")
         try:
-            ss_t = datetime.strptime(ss, "%H:%M").time()
+            return datetime.strptime(ss, "%H:%M").time()
         except Exception:
-            ss_t = time(8, 0, 0)
+            return time(8, 0, 0)
 
+    @staticmethod
+    def _override_shift_hours_by_shift_end(cal: Any, *, date_str: str, shift_start_t: time, shift_hours: float) -> float:
         se = (cal.shift_end or "").strip() if getattr(cal, "shift_end", None) else ""
-        if se:
-            se = se.replace("：", ":")
-            try:
-                se_t = datetime.strptime(se, "%H:%M").time()
-                base_d = date.fromisoformat(getattr(cal, "date", None) or date_str)
-                st_dt = datetime.combine(base_d, ss_t)
-                et_dt = datetime.combine(base_d, se_t)
-                # 跨午夜：shift_end <= shift_start 表示次日结束（含相等：24h）
-                if et_dt <= st_dt:
-                    et_dt = et_dt + timedelta(days=1)
-                shift_hours = (et_dt - st_dt).total_seconds() / 3600.0
-            except Exception:
-                pass
+        if not se:
+            return shift_hours
+        se = se.replace("：", ":")
+        try:
+            se_t = datetime.strptime(se, "%H:%M").time()
+            base_d = date.fromisoformat(getattr(cal, "date", None) or date_str)
+            st_dt = datetime.combine(base_d, shift_start_t)
+            et_dt = datetime.combine(base_d, se_t)
+            # 跨午夜：shift_end <= shift_start 表示次日结束（含相等：24h）
+            if et_dt <= st_dt:
+                et_dt = et_dt + timedelta(days=1)
+            return (et_dt - st_dt).total_seconds() / 3600.0
+        except (ValueError, TypeError):
+            # shift_end 非法：回退到 shift_hours（已从 cal.shift_hours 读取）
+            return shift_hours
 
-        return DayPolicy(
+    def _policy_for_date(self, date_str: str, operator_id: Optional[str] = None) -> DayPolicy:
+        """获取某个“日期键”的 DayPolicy（不做跨午夜归属判断）。"""
+        op_id = self._normalize_text(operator_id) if operator_id is not None else None
+        cache_key = ((op_id or ""), date_str)
+        cached = self._policy_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        cal = self._resolve_calendar_row(date_str, op_id)
+
+        # 防御：异常值兜底
+        shift_hours = float(getattr(cal, "shift_hours", 0.0) or 0.0)
+        efficiency = self._normalize_efficiency(cal)
+
+        # shift_start/shift_end：默认 08:00；若提供 shift_end 则优先用其推导 shift_hours
+        ss_t = self._parse_shift_start(cal)
+        shift_hours = self._override_shift_hours_by_shift_end(cal, date_str=date_str, shift_start_t=ss_t, shift_hours=shift_hours)
+
+        p = DayPolicy(
             date_str=getattr(cal, "date", None) or date_str,
             day_type=cal.day_type,
             shift_hours=shift_hours,
@@ -151,6 +184,8 @@ class CalendarEngine:
             allow_urgent=cal.allow_urgent,
             shift_start=ss_t,
         )
+        self._policy_cache[cache_key] = p
+        return p
 
     def _policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
         """
@@ -237,7 +272,7 @@ class CalendarEngine:
         try:
             total = float(hours)
         except Exception:
-            raise ValidationError("工时必须是数字", field="hours")
+            raise ValidationError("工时必须是数字", field="hours") from None
         if total < 0:
             raise ValidationError("工时不能为负数", field="hours")
         if total == 0:
@@ -293,7 +328,7 @@ class CalendarEngine:
         try:
             d = float(days)
         except Exception:
-            raise ValidationError("周期必须是数字", field="days")
+            raise ValidationError("周期必须是数字", field="days") from None
         if d < 0:
             raise ValidationError("周期不能为负数", field="days")
         return start + timedelta(days=d)

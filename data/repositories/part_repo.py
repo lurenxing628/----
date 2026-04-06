@@ -65,3 +65,9 @@ class PartRepository(BaseRepository):
     def delete(self, part_no: str) -> None:
         self.execute("DELETE FROM Parts WHERE part_no = ?", (part_no,))
 
+    def delete_all(self) -> None:
+        self.execute("DELETE FROM Parts")
+
+    def list_as_dicts(self) -> List[Dict[str, Any]]:
+        return self.fetchall("SELECT part_no, part_name, route_raw FROM Parts ORDER BY part_no")
+
