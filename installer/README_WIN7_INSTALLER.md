@@ -52,13 +52,18 @@ powershell -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/script
 4. 清理 `validate_dist_exe.py` 生成的运行时痕迹（`db` / `logs` / `backups` / runtime 契约）
 5. 生成 `APS_Main_Setup.exe`
 6. 生成 APS 专用裁剪运行时 payload（保留 `zh-CN` / `en-US`，裁掉 PWA / 通知 / 更新修复辅助程序）
-7. 生成 `APS_Chrome109_Runtime.exe`
+7. 对 `build\chrome109_runtime_payload\chrome.exe` 执行浏览器最小冒烟，验证 `--app=http://127.0.0.1:{port}/` 可拉起且短时存活
+8. 生成 `APS_Chrome109_Runtime.exe`
+
+正式双包交付请始终以 `package_win7.ps1` 为主入口；它同时串联主程序冷启动验收与浏览器运行时最小冒烟，任一失败都会阻断出包。
 
 内部应急回退：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1 -Legacy
 ```
+
+`-Legacy` 模式还会对 `dist\...\tools\chrome109\chrome.exe` 追加同口径浏览器最小冒烟，再生成 `APS_Legacy_Full_Setup.exe`。
 
 ### 找不到 ISCC.exe 怎么办
 
@@ -79,6 +84,8 @@ set INNO_HOME=C:\Program Files (x86)\Inno Setup 6
 build_win7_installer.bat
 python validate_dist_exe.py "dist\排产系统\排产系统.exe"
 ```
+
+> 说明：`build_win7_installer.bat` 只覆盖主程序包生成，不执行浏览器运行时最小冒烟，也不是正式双包交付的完整验收入口。
 
 产物：
 
@@ -199,16 +206,22 @@ ISCC.exe installer\aps_win7_legacy.iss
 - 若快捷方式只闪一下且未打开 Chrome，请先查看：**共享数据目录**下的 `logs\launcher.log`。
   - 默认安装时通常是：`C:\ProgramData\APS\shared-data\logs\launcher.log`
   - 如果安装时自定义了共享数据目录，应到该共享目录下查看 `logs\launcher.log`
+- 若后端刚启动就失败，还应查看同目录下的 `aps_launch_error.txt`
 - `launcher.log` 会记录：
+  - `contract_owner_normalized`
+  - `app_spawn_probe`
   - `env_APS_CHROME_DIR`
   - `reg_HKLM_ChromeDir`
   - `reg_HKCU_APS_CHROME_DIR`
   - `chrome_source`
   - `chrome_exe`
   - `chrome_run_dir`
+  - `chrome_profile_probe`
+  - `chrome_alive_probe`
   - `chrome_cmd`
 - 若提示“正在被其他账户使用”，说明共享数据目录里已有有效运行时锁。此时应让当前使用者先退出程序，再由下一位账户启动。
-- 若现场仍异常，可把 `launcher.log` 里的 `chrome_cmd` 整行复制到 `cmd` 中执行，用于区分“bat 启动方式问题”和“Chrome 本体问题”。
+- 启动器在拉起浏览器后，只会把当前 `CHROME_PROFILE_DIR` 对应的 APS 专用 `--user-data-dir` 进程视为成功；系统里普通 Chrome 共存不会被当成 APS 已拉起。
+- 若现场仍异常，可把 `launcher.log` 里的 `chrome_cmd` 整行复制到 `cmd` 中执行，用于区分“bat 启动方式问题”和“Chrome 本体问题”，并继续定位 profile 不可写、Chrome 瞬退或路径缺件中的具体一类。
 - 当前 launcher 会显式以 Chrome 安装目录作为 working directory 启动 Chrome，避免 Win7 下 `start` 默认工作目录不一致导致的异常。
 
 ## 直拷目录与安装包的关系
@@ -229,7 +242,8 @@ ISCC.exe installer\aps_win7_legacy.iss
   - 选择“否”：仅卸载程序文件，保留共享数据
 - 卸载 legacy 全量包时，会按同一套 helper 解析逻辑执行 `--runtime-stop ... --stop-aps-chrome`，同时关闭后端与 legacy 内置浏览器
 - 卸载主程序包 **不会** 顺带卸载 `APS Chrome109 运行时`；浏览器运行时仍需单独卸载
-- 卸载浏览器运行时包会先尝试关闭 APS 专用浏览器进程，再删除机器级 Chrome109 目录并清理 `HKLM\SOFTWARE\APS\ChromeDir`
+- 卸载浏览器运行时包会先尝试关闭**任意账户下使用 APS 标准 profile 目录的 APS Chrome 进程**，再删除机器级 Chrome109 目录并清理 `HKLM\SOFTWARE\APS\ChromeDir`
+- 如果 silent uninstall 无法确认这类 APS Chrome 进程已关闭，卸载会失败闭合，不会把“普通 Chrome 还活着”或“跨账户 APS Chrome 仍在运行”误判成关闭成功
 - 为避免管理员卸载时误删错误账户的用户目录，浏览器运行时卸载器**不会自动删除任何账户的** `%LOCALAPPDATA%\APS\Chrome109Profile`；如需清理，请登录对应账户手动删除
 
 ## 验收建议
@@ -240,10 +254,23 @@ ISCC.exe installer\aps_win7_legacy.iss
 2. 在目标机上以管理员身份安装 `APS_Chrome109_Runtime.exe` 与 `APS_Main_Setup.exe`
 3. 切换到域账户后，确认开始菜单或桌面可见 **“排产系统”**，点击后能打开系统首页
 4. 检查共享数据目录 `C:\ProgramData\APS\shared-data\` 下的 `db/ logs/ backups/ templates_excel/` 已建立并可写
-5. 检查 `launcher.log` 中的 `chrome_source` / `chrome_exe` / `chrome_cmd` 是否与实际命中路径一致
+5. 检查 `launcher.log` 中的 `contract_owner_normalized` / `app_spawn_probe` / `chrome_profile_probe` / `chrome_alive_probe` 是否完整
 6. 在已有一个账户运行时，再用第二个账户点击快捷方式，必须收到“正在被其他账户使用”的明确提示
-7. 检查关键页面：人员 / 设备 / 工艺 / 排产 / 系统管理
-8. 至少在一台实际 Win7 机器上完成一次端到端冒烟
+7. 若浏览器未打开，确认命令行不会静默消失，并能从 `launcher.log`、`aps_launch_error.txt` 与 `chrome_cmd` 复现定位具体原因
+8. 检查关键页面：人员 / 设备 / 工艺 / 排产 / 系统管理
+9. 验证 `app.py --runtime-stop <runtime_dir> --stop-aps-chrome` 在无 `wmic` 场景下不会再把浏览器清理误报为成功
+10. 至少在一台实际 Win7 机器上完成一次端到端冒烟
+
+## 残余问题收口验收
+
+- 普通 Chrome 共存场景：先手工打开一个普通 Chrome 窗口，再制造 APS 专用浏览器启动后立即退出的坏现场，随后点击 APS 快捷方式；预期脚本必须报告“未能确认 APS 专用浏览器已拉起”或等价错误，不能因为系统里已有普通 Chrome 就直接返回成功。
+- 双账户卸载场景：账户 A 先通过 APS 快捷方式打开 APS 专用浏览器窗口，不关闭账户 A 的 APS Chrome，切换到账户 B 或管理员账户后发起 `APS_Chrome109_Runtime.exe` 卸载；预期卸载器要么成功关闭账户 A 的 APS Chrome 后继续，要么明确失败闭合，不能出现目标进程仍在但卸载器声称已关闭的假成功。
+- 需要检查的日志键：`chrome_alive_probe`、`chrome_cmd`
+
+补充说明：
+
+- 浏览器运行时卸载只匹配命令行里带 APS 标准 `--user-data-dir` 的 APS Chrome，不会把普通 Chrome 当成卸载目标。
+- 卸载器仍不会自动删除任何账户的 `%LOCALAPPDATA%\APS\Chrome109Profile`。
 
 > 注意：`validate_dist_exe.py` 只覆盖主程序 `exe` 冷启动与 HTTP 页面可访问性，不覆盖快捷方式、批处理脚本、环境变量刷新时序或 Chrome 启动链路。
 

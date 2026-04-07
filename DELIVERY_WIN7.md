@@ -13,6 +13,11 @@
 
 补充说明：
 
+- 正式双包交付请以 `.limcode/skills/aps-package-win7/scripts/package_win7.ps1` 为完整入口
+- 该入口会同时执行：
+  - 主程序 `validate_dist_exe.py` 冷启动验收
+  - 浏览器运行时最小冒烟（`chrome.exe --app=http://127.0.0.1:{port}/`）
+- 任一验收失败都会直接阻断出包
 - `APS_Chrome109_Runtime.exe` 是 **APS 专用浏览器运行时**，目标是打开本机 APS 页面，不是完整桌面 Chrome 交付
 - 正式运行时包仅保留 `locales\zh-CN.pak` 与 `locales\en-US.pak`
 - 正式运行时包会移除 `chrome_proxy.exe`、`chrome_pwa_launcher.exe`、`notification_helper.exe`、`elevation_service.exe`
@@ -30,10 +35,13 @@
 - 若快捷方式只闪一下且未打开 Chrome，请先查看共享数据目录下的 `logs\launcher.log`
   - 默认安装时通常是：`C:\ProgramData\APS\shared-data\logs\launcher.log`
   - 如果共享数据目录被自定义，应到该共享目录下查看 `logs\launcher.log`
-- `launcher.log` 会记录 `env_APS_CHROME_DIR`、`reg_HKLM_ChromeDir`、`reg_HKCU_APS_CHROME_DIR`、`chrome_source`、`chrome_exe`、`chrome_run_dir` 与 `chrome_cmd`
-- 现场排障时，可把 `launcher.log` 里的 `chrome_cmd` 整行复制到 `cmd` 中执行，用于区分“bat 启动方式问题”和“Chrome 本体问题”
+- 若后端刚启动就失败，还应查看同目录下的 `aps_launch_error.txt`
+- `launcher.log` 会记录 `contract_owner_normalized`、`app_spawn_probe`、`env_APS_CHROME_DIR`、`reg_HKLM_ChromeDir`、`reg_HKCU_APS_CHROME_DIR`、`chrome_source`、`chrome_exe`、`chrome_run_dir`、`chrome_profile_probe`、`chrome_alive_probe` 与 `chrome_cmd`
+- 启动器在拉起浏览器后，只会把当前 `CHROME_PROFILE_DIR` 对应的 APS 专用 `--user-data-dir` 进程视为成功；系统里普通 Chrome 共存不会被当成 APS 已拉起
+- 现场排障时，可把 `launcher.log` 里的 `chrome_cmd` 整行复制到 `cmd` 中执行，用于继续区分 profile 不可写、Chrome 瞬退、路径缺件与纯 bat 拉起问题
 - 启动器的浏览器查找顺序是：`APS_CHROME_EXE` → 当前进程 `APS_CHROME_DIR` → 机器级注册表 `HKLM\SOFTWARE\APS\ChromeDir` → 兼容旧版注册表 `HKCU\Environment\APS_CHROME_DIR` → 默认 `C:\Program Files\APS\Chrome109` / `%LOCALAPPDATA%\APS\Chrome109` → legacy `tools\chrome109`
 - 若另一账户正在使用共享数据目录，启动器会直接阻止第二个账户进入，而不是复用已有实例
+- 卸载 `APS_Chrome109_Runtime.exe` 时，会尝试关闭任意账户下使用 APS 标准 profile 目录的 APS Chrome；如果无法确认已关闭，silent uninstall 会失败闭合，且仍不会自动删除任何账户的 `%LOCALAPPDATA%\APS\Chrome109Profile`
 
 ### B. 最小直拷交付（支持）
 
@@ -83,6 +91,8 @@ build_win7_onedir.bat
 ```bat
 python validate_dist_exe.py "dist\排产系统\排产系统.exe"
 ```
+
+正式双包交付时，还应使用 `package_win7.ps1` 追加浏览器运行时最小冒烟；`build_win7_installer.bat` 或单独执行 `validate_dist_exe.py` 都不能替代这一步。
 
 若失败，请优先查看：
 
@@ -149,6 +159,16 @@ copy /y "assets\启动_排产系统_Chrome.bat" "dist\排产系统\启动_排产
   - 冷启动验收
   - 内部直拷调试
   - 现场应急回退
+- `build_win7_installer.bat` 只负责主程序包构建，不是正式双包交付的完整验收入口
 - 不要再默认把“直拷目录”理解成“天然自带浏览器运行时的自包含安装包”
 - 不要把 `APS_Chrome109_Runtime.exe` 理解成完整 Chrome 安装器；它是为 APS 本地页面访问裁剪过的运行时
+
+## 8) 残余问题收口验收
+
+- 普通 Chrome 共存场景：先手工打开一个普通 Chrome 窗口，再制造 APS 专用浏览器启动后立即退出的坏现场，随后点击 APS 快捷方式；预期脚本必须报告“未能确认 APS 专用浏览器已拉起”或等价错误，不能因为系统里已有普通 Chrome 就直接返回成功。
+- 双账户卸载场景：账户 A 先通过 APS 快捷方式打开 APS 专用浏览器窗口，不关闭账户 A 的 APS Chrome，切换到账户 B 或管理员账户后发起 `APS_Chrome109_Runtime.exe` 卸载；预期卸载器要么成功关闭账户 A 的 APS Chrome 后继续，要么明确失败闭合，不能出现目标进程仍在但卸载器声称已关闭的假成功。
+- 需要检查的日志键：`chrome_alive_probe`、`chrome_cmd`
+
+- 浏览器运行时卸载只匹配命令行里带 APS 标准 `--user-data-dir` 的 APS Chrome，不会把普通 Chrome 当成卸载目标。
+- 卸载器仍不会自动删除任何账户的 `%LOCALAPPDATA%\APS\Chrome109Profile`。
 

@@ -48,16 +48,80 @@ begin
   Result := DeleteChromeProfile;
 end;
 
+function PowerShellExePath: String;
+begin
+  Result := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+end;
+
+function CurrentUserChromeProfilePath: String;
+begin
+  Result := ExpandConstant('{localappdata}\APS\Chrome109Profile');
+end;
+
+function ApsChromeProfileSuffixMarker: String;
+begin
+  Result := '\aps\chrome109profile';
+end;
+
+function BuildStopChromePowerShellParams(const ChromeProfilePath: String; const ChromeProfileSuffixMarker: String): String;
+var
+  ExactMarker: String;
+  SuffixMarker: String;
+begin
+  ExactMarker := Lowercase(ChromeProfilePath);
+  SuffixMarker := Lowercase(ChromeProfileSuffixMarker);
+  StringChangeEx(ExactMarker, '''', '''''', True);
+  StringChangeEx(SuffixMarker, '''', '''''', True);
+  Result :=
+    '-NoProfile -ExecutionPolicy Bypass -Command "' +
+    '$ErrorActionPreference=''Stop''; ' +
+    '$exactMarker=''' + ExactMarker + '''; ' +
+    '$suffixMarker=''' + SuffixMarker + '''; ' +
+    'function Test-ApsChromeCommandLine([string]$cmd) { ' +
+    '  if ([string]::IsNullOrWhiteSpace($cmd)) { return $false }; ' +
+    '  $cmdLower=$cmd.ToLowerInvariant(); ' +
+    '  if (-not $cmdLower.Contains(''--user-data-dir'')) { return $false }; ' +
+    '  if (-not [string]::IsNullOrWhiteSpace($suffixMarker) -and $cmdLower.Contains($suffixMarker)) { return $true }; ' +
+    '  if (-not [string]::IsNullOrWhiteSpace($exactMarker) -and $cmdLower.Contains($exactMarker)) { return $true }; ' +
+    '  return $false }; ' +
+    '$items=$null; ' +
+    'if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { try { $items=@(Get-CimInstance Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { $items=$null } }; ' +
+    'if ($null -eq $items) { if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) { exit 1 }; try { $items=@(Get-WmiObject Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { exit 1 } }; ' +
+    '$targets=@(); ' +
+    'foreach ($item in @($items)) { $cmd=[string]$item.CommandLine; if (Test-ApsChromeCommandLine $cmd) { $targets += [int]$item.ProcessId } }; ' +
+    'foreach ($procId in @($targets)) { try { Stop-Process -Id $procId -Force -ErrorAction Stop } catch { exit 1 } }; ' +
+    'Start-Sleep -Milliseconds 800; ' +
+    '$remainingItems=$null; ' +
+    'if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { try { $remainingItems=@(Get-CimInstance Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { $remainingItems=$null } }; ' +
+    'if ($null -eq $remainingItems) { if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) { exit 1 }; try { $remainingItems=@(Get-WmiObject Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { exit 1 } }; ' +
+    'foreach ($item in @($remainingItems)) { $cmd=[string]$item.CommandLine; if (Test-ApsChromeCommandLine $cmd) { exit 1 } }; ' +
+    'exit 0"';
+end;
+
 function TryStopApsChromeProcesses: Boolean;
 var
   ResultCode: Integer;
   Params: String;
+  PowerShellPath: String;
 begin
-  Params :=
-    'process where "Name=''chrome.exe'' and CommandLine like ''%Chrome109Profile%''" call terminate';
-  Result := Exec(ExpandConstant('{sys}\wbem\wmic.exe'), Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  PowerShellPath := PowerShellExePath;
+  if not FileExists(PowerShellPath) then
+  begin
+    Log('chrome uninstall: powershell.exe not found: ' + PowerShellPath);
+    Result := False;
+    Exit;
+  end;
+
+  Params := BuildStopChromePowerShellParams(CurrentUserChromeProfilePath(), ApsChromeProfileSuffixMarker());
+  Result := Exec(PowerShellPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   if Result then
+  begin
+    if ResultCode <> 0 then
+      Log('chrome uninstall: powershell stop failed rc=' + IntToStr(ResultCode));
     Result := ResultCode = 0;
+  end
+  else
+    Log('chrome uninstall: failed to launch powershell stop helper');
 end;
 
 function InitializeUninstall(): Boolean;

@@ -347,9 +347,10 @@ def read_runtime_lock(runtime_dir_or_state_dir: str) -> Optional[Dict[str, Any]]
     lock_path = _runtime_lock_path(state_dir)
     if not os.path.exists(lock_path):
         return None
-    payload = _read_key_value_file(lock_path)
-    if not payload:
+    payload_raw = _read_key_value_file(lock_path)
+    if not payload_raw:
         return None
+    payload: Dict[str, Any] = dict(payload_raw)
     try:
         payload["pid"] = int(payload.get("pid") or 0)
     except Exception:
@@ -739,6 +740,28 @@ def _probe_runtime_health(host: str, port: int, timeout_s: float = 1.5) -> bool:
     )
 
 
+def _run_powershell_text(script: str, timeout_s: float = 8.0) -> tuple[Optional[int], str]:
+    if os.name != "nt":
+        return None, ""
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", script],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            timeout=max(float(timeout_s), 0.5),
+            check=False,
+        )
+    except Exception:
+        return None, ""
+    output = (result.stdout or "").strip()
+    stderr_text = (result.stderr or "").strip()
+    if stderr_text:
+        output = output + ("\n" if output else "") + stderr_text
+    return int(result.returncode or 0), output
+
+
 def _query_process_executable_path(pid: int) -> Optional[str]:
     try:
         pid_i = int(pid)
@@ -747,24 +770,27 @@ def _query_process_executable_path(pid: int) -> Optional[str]:
     if pid_i <= 0:
         return None
     if os.name == "nt":
-        try:
-            result = subprocess.run(
-                ["wmic", "process", "where", f"processid={pid_i}", "get", "ExecutablePath", "/value"],
-                capture_output=True,
-                text=True,
-                timeout=8,
-                check=False,
-            )
-        except Exception:
+        script = (
+            "$ErrorActionPreference='Stop';"
+            f"$pid0={pid_i};"
+            "try {"
+            "$proc = Get-Process -Id $pid0 -ErrorAction Stop;"
+            "$path = [string]$proc.Path;"
+            "if ([string]::IsNullOrWhiteSpace($path)) { exit 2 };"
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;"
+            "Write-Output $path;"
+            "exit 0"
+            "} catch { exit 1 }"
+        )
+        rc, output = _run_powershell_text(script, timeout_s=8.0)
+        if rc == 2:
+            return ""
+        if rc is None or rc != 0:
             return None
-        text = (result.stdout or "") + "\n" + (result.stderr or "")
-        for line in text.splitlines():
-            key, sep, value = line.partition("=")
-            if sep and key.strip().lower() == "executablepath":
-                value_s = value.strip()
-                if value_s:
-                    return os.path.normcase(os.path.abspath(value_s))
-                return ""
+        for line in str(output or "").splitlines():
+            value_s = str(line or "").strip()
+            if value_s:
+                return os.path.normcase(os.path.abspath(value_s))
         return ""
     return None
 
@@ -803,35 +829,52 @@ def _kill_runtime_pid(pid: int) -> bool:
     return False
 
 
-def _list_aps_chrome_pids(profile_dir: str) -> list[int]:
-    marker = os.path.basename(str(profile_dir or "").rstrip("\\/")) or "Chrome109Profile"
+def _list_aps_chrome_pids(profile_dir: str) -> Optional[list[int]]:
+    # Python 停机链路按精确 profile 绝对路径收口；批处理启动器与安装器分别做
+    # 当前 profile 精确确认 / APS 标准 profile 后缀确认，但三者共同语义都是
+    # 只认 APS 专用 --user-data-dir 命令行。
+    target_profile = os.path.abspath(str(profile_dir or "").strip()) if str(profile_dir or "").strip() else ""
     if os.name != "nt":
         return []
-    try:
-        result = subprocess.run(
-            [
-                "wmic",
-                "process",
-                "where",
-                f"Name='chrome.exe' and CommandLine like '%{marker}%'",
-                "get",
-                "ProcessId",
-                "/value",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=8,
-            check=False,
-        )
-    except Exception:
+    if not target_profile:
         return []
+    marker = target_profile.replace("'", "''").lower()
+    script = (
+        "$ErrorActionPreference='Stop';"
+        f"$marker='{marker}';"
+        "$items = $null;"
+        "if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {"
+        "  try { $items = @(Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction Stop) }"
+        "  catch { $items = $null }"
+        "}"
+        "if ($null -eq $items -and (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) {"
+        "  try { $items = @(Get-WmiObject Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction Stop) }"
+        "  catch { exit 1 }"
+        "}"
+        "if ($null -eq $items) { exit 1 }"
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;"
+        "foreach ($item in $items) {"
+        "  $cmd = [string]$item.CommandLine;"
+        "  if (-not [string]::IsNullOrWhiteSpace($cmd)) {"
+        "  $cmdLower = $cmd.ToLowerInvariant(); if ($cmdLower.Contains('--user-data-dir') -and $cmdLower.Contains($marker)) {"
+        "    Write-Output ([string][int]$item.ProcessId)"
+        "  } }"
+        "}"
+        "exit 0"
+    )
+    rc, output = _run_powershell_text(script, timeout_s=8.0)
+    if rc is None or rc != 0:
+        return None
     pids: list[int] = []
-    text = (result.stdout or "") + "\n" + (result.stderr or "")
-    for line in text.splitlines():
-        key, sep, value = line.partition("=")
-        if sep and key.strip().lower() == "processid":
+    for line in str(output or "").splitlines():
+        value = str(line or "").strip()
+        if not value:
+            continue
+        if value.startswith("ProcessId="):
+            value = value.split("=", 1)[1].strip()
+        if value.isdigit():
             try:
-                pid_i = int(str(value).strip())
+                pid_i = int(value)
             except Exception:
                 continue
             if pid_i > 0 and pid_i not in pids:
@@ -844,6 +887,13 @@ def stop_aps_chrome_processes(profile_dir: str | None, logger: logging.Logger | 
     if not target_profile:
         return True
     pids = _list_aps_chrome_pids(target_profile)
+    if pids is None:
+        if logger is not None:
+            try:
+                logger.warning(f"无法确认 APS Chrome 进程列表：profile={target_profile}")
+            except Exception:
+                pass
+        return False
     ok = True
     for pid in pids:
         if not _kill_runtime_pid(pid):
@@ -854,6 +904,17 @@ def stop_aps_chrome_processes(profile_dir: str | None, logger: logging.Logger | 
                 except Exception:
                     pass
     return ok
+
+
+def _stop_aps_chrome_if_requested(
+    stop_aps_chrome: bool,
+    profile_dir: str | None,
+    *,
+    logger: logging.Logger | None = None,
+) -> bool:
+    if not stop_aps_chrome:
+        return True
+    return stop_aps_chrome_processes(profile_dir, logger=logger)
 
 
 def stop_runtime_from_dir(
@@ -880,8 +941,8 @@ def stop_runtime_from_dir(
             if host0 and port0 > 0 and _probe_runtime_health(host0, port0, timeout_s=1.0):
                 return 1
         delete_runtime_contract_files(state_dir)
-        if stop_aps_chrome:
-            stop_aps_chrome_processes(default_chrome_profile_dir(runtime_dir_abs), logger=logger)
+        if not _stop_aps_chrome_if_requested(stop_aps_chrome, default_chrome_profile_dir(runtime_dir_abs), logger=logger):
+            return 1
         return 0
 
     host = str(contract.get("host") or "").strip() or "127.0.0.1"
@@ -897,8 +958,8 @@ def stop_runtime_from_dir(
     while time.time() < grace_deadline:
         if port > 0 and not _probe_runtime_health(host, port, timeout_s=0.5):
             delete_runtime_contract_files(state_dir)
-            if stop_aps_chrome:
-                stop_aps_chrome_processes(contract.get("chrome_profile_dir"), logger=logger)
+            if not _stop_aps_chrome_if_requested(stop_aps_chrome, contract.get("chrome_profile_dir"), logger=logger):
+                return 1
             return 0
         time.sleep(0.25)
 
@@ -912,8 +973,8 @@ def stop_runtime_from_dir(
         while time.time() < kill_deadline:
             if port > 0 and not _probe_runtime_health(host, port, timeout_s=0.5):
                 delete_runtime_contract_files(state_dir)
-                if stop_aps_chrome:
-                    stop_aps_chrome_processes(contract.get("chrome_profile_dir"), logger=logger)
+                if not _stop_aps_chrome_if_requested(stop_aps_chrome, contract.get("chrome_profile_dir"), logger=logger):
+                    return 1
                 return 0
             time.sleep(0.25)
 

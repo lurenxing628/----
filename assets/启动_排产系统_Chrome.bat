@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul 2>&1
 REM Launcher: reuse healthy APS instance or start app, then open URL.
 REM Keep this script ASCII-friendly for Win7 cmd compatibility.
 
@@ -141,6 +142,13 @@ call :log chrome_source="%CHROME_SOURCE%"
 call :log chrome_exe="%CHROME_EXE%"
 call :log chrome_run_dir="%CHROME_RUN_DIR%"
 call :log chrome_profile_dir="%CHROME_PROFILE_DIR%"
+call :probe_chrome_profile_dir
+if not defined CHROME_PROFILE_READY (
+  echo [launcher] Chrome profile directory is not writable: %CHROME_PROFILE_DIR%
+  echo [launcher] Check shared logs: %LAUNCHER_LOG%
+  pause
+  exit /b 10
+)
 
 call :detect_powershell
 call :log powershell_available=%HAS_POWERSHELL%
@@ -157,26 +165,33 @@ del /f /q "%HOST_FILE%" >nul 2>&1
 del /f /q "%DB_FILE%" >nul 2>&1
 del /f /q "%LAUNCH_ERROR_FILE%" >nul 2>&1
 start "" "%APP_EXE%"
+set "APP_START_RC=%ERRORLEVEL%"
+call :log app_spawn_probe=start rc=%APP_START_RC%
+if not "%APP_START_RC%"=="0" (
+  echo [launcher] App launch command failed (rc=%APP_START_RC%).
+  echo [launcher] Check shared logs: %LAUNCHER_LOG%
+  pause
+  exit /b 6
+)
+timeout /t 2 /nobreak >nul
+call :read_launch_error
+if defined LAUNCH_ERROR (
+  call :log app_spawn_probe=launch_error
+  goto :APP_START_FAILED
+)
+call :log app_spawn_probe=wait_ready
 
 echo [launcher] Waiting for app readiness (up to %MAX_WAIT%s)...
 for /l %%i in (1,1,%MAX_WAIT%) do (
   if exist "%LAUNCH_ERROR_FILE%" (
     call :read_launch_error
-    if defined LAUNCH_ERROR (
-      call :log launch_error="%LAUNCH_ERROR%"
-      echo [launcher] !LAUNCH_ERROR!
-    ) else (
-      call :log launch_error=unknown
-      echo [launcher] App startup failed.
-    )
-    pause
-    exit /b 6
+    goto :APP_START_FAILED
   )
   call :read_host_file
   call :read_port_file
   if defined FILE_HOST if defined FILE_PORT (
-    set "HOST=%FILE_HOST%"
-    set "PORT=%FILE_PORT%"
+    set "HOST=!FILE_HOST!"
+    set "PORT=!FILE_PORT!"
     if defined HAS_POWERSHELL (
       call :probe_health
       if defined HEALTH_OK goto :OPEN_CHROME
@@ -194,6 +209,18 @@ echo [launcher] Check shared logs: %LAUNCHER_LOG%
 pause
 exit /b 3
 
+:APP_START_FAILED
+if defined LAUNCH_ERROR (
+  call :log launch_error="!LAUNCH_ERROR!"
+  echo [launcher] !LAUNCH_ERROR!
+) else (
+  call :log launch_error=unknown
+  echo [launcher] App startup failed.
+)
+echo [launcher] Check shared logs: %LAUNCHER_LOG%
+echo [launcher] Check launch error file: %LAUNCH_ERROR_FILE%
+pause
+exit /b 6
 :BLOCKED
 call :log blocked_by_other_owner="%LOCK_OWNER%"
 if defined LOCK_OWNER (
@@ -228,6 +255,16 @@ if not "%START_RC%"=="0" (
   echo [launcher] Check shared logs and run the logged chrome_cmd in cmd.
   pause
   exit /b 5
+)
+timeout /t 3 /nobreak >nul
+call :probe_aps_chrome_alive
+if not defined CHROME_ALIVE (
+  echo [launcher] 未能确认 APS 专用浏览器已拉起。
+  echo [launcher] Check shared logs: %LAUNCHER_LOG%
+  echo [launcher] Profile: %CHROME_PROFILE_DIR%
+  echo [launcher] Run chrome_cmd from launcher.log manually in cmd.
+  pause
+  exit /b 11
 )
 exit /b 0
 
@@ -478,6 +515,7 @@ for /f "tokens=1,* delims=:" %%A in ('findstr /R /C:"\"port\"" "%RUNTIME_CONTRAC
   set "RAW_VALUE=!RAW_VALUE:"=!"
   for /f "tokens=* delims= " %%V in ("!RAW_VALUE!") do if not defined CONTRACT_PORT set "CONTRACT_PORT=%%V"
 )
+call :normalize_contract_owner
 
 if defined CONTRACT_PID (
   echo !CONTRACT_PID! | findstr /R "^[0-9][0-9]*$" >nul
@@ -499,27 +537,45 @@ if defined CONTRACT_OWNER if defined CONTRACT_PID set "CONTRACT_VALID=1"
 if not defined CONTRACT_VALID set "CONTRACT_READ_ERROR=contract_missing_fields"
 exit /b 0
 
+:normalize_contract_owner
+if not defined CONTRACT_OWNER (
+  call :log contract_owner_normalized=
+  exit /b 0
+)
+set "CONTRACT_OWNER=!CONTRACT_OWNER:\=\!"
+call :log contract_owner_normalized="!CONTRACT_OWNER!"
+exit /b 0
+
 :lock_is_active
 set "LOCK_ACTIVE="
 set "LOCK_QUERY_TMP="
+set "LOCK_QUERY_ERROR="
 if not defined LOCK_PID exit /b 0
-where wmic >nul 2>&1
-if not %errorlevel%==0 (
+echo !LOCK_PID! | findstr /R "^[0-9][0-9]*$" >nul
+if not !errorlevel!==0 (
   set "LOCK_ACTIVE=UNKNOWN"
-  set "LOCK_QUERY_ERROR=wmic_missing"
+  set "LOCK_QUERY_ERROR=lock_pid_invalid"
   exit /b 0
 )
 set "LOCK_QUERY_TMP=%TEMP%\aps_lock_query_%RANDOM%_%RANDOM%.tmp"
-wmic process where "ProcessId=%LOCK_PID%" get ProcessId /value > "%LOCK_QUERY_TMP%" 2>nul
-set "LOCK_QUERY_RC=%ERRORLEVEL%"
-if not "%LOCK_QUERY_RC%"=="0" (
+tasklist /FI "PID eq !LOCK_PID!" /NH /FO CSV > "%LOCK_QUERY_TMP%" 2>nul
+set "LOCK_QUERY_RC=!ERRORLEVEL!"
+if not "!LOCK_QUERY_RC!"=="0" (
   del /f /q "%LOCK_QUERY_TMP%" >nul 2>&1
   set "LOCK_ACTIVE=UNKNOWN"
-  set "LOCK_QUERY_ERROR=wmic_failed"
+  set "LOCK_QUERY_ERROR=tasklist_failed"
   exit /b 0
 )
-for /f "usebackq tokens=2 delims==" %%A in (`findstr /I /C:"ProcessId=" "%LOCK_QUERY_TMP%"`) do (
-  if /I not "%%A"=="" set "LOCK_ACTIVE=1"
+set "LOCK_ACTIVE=0"
+for /f "usebackq delims=" %%L in ("%LOCK_QUERY_TMP%") do (
+  set "LOCK_QUERY_ROW=%%L"
+  if not "!LOCK_QUERY_ROW!"=="" (
+    echo !LOCK_QUERY_ROW! | findstr /R /C:"^\"" >nul
+    if !errorlevel!==0 (
+      echo !LOCK_QUERY_ROW! | findstr /C:",\"!LOCK_PID!\"," >nul
+      if !errorlevel!==0 set "LOCK_ACTIVE=1"
+    )
+  )
 )
 del /f /q "%LOCK_QUERY_TMP%" >nul 2>&1
 exit /b 0
@@ -528,7 +584,45 @@ exit /b 0
 set "LAUNCH_ERROR="
 if not exist "%LAUNCH_ERROR_FILE%" exit /b 0
 set /p LAUNCH_ERROR=<"%LAUNCH_ERROR_FILE%"
-del /f /q "%LAUNCH_ERROR_FILE%" >nul 2>&1
+exit /b 0
+
+:probe_chrome_profile_dir
+set "CHROME_PROFILE_READY="
+set "CHROME_PROFILE_PROBE_FILE=%CHROME_PROFILE_DIR%\aps_write_probe_%RANDOM%_%RANDOM%.tmp"
+if not exist "%CHROME_PROFILE_DIR%" mkdir "%CHROME_PROFILE_DIR%" >nul 2>&1
+if not exist "%CHROME_PROFILE_DIR%" (
+  call :log chrome_profile_probe=create_failed dir="%CHROME_PROFILE_DIR%"
+  exit /b 0
+)
+> "%CHROME_PROFILE_PROBE_FILE%" echo APS
+if not exist "%CHROME_PROFILE_PROBE_FILE%" (
+  call :log chrome_profile_probe=write_failed dir="%CHROME_PROFILE_DIR%"
+  exit /b 0
+)
+del /f /q "%CHROME_PROFILE_PROBE_FILE%" >nul 2>&1
+set "CHROME_PROFILE_READY=1"
+call :log chrome_profile_probe=ok dir="%CHROME_PROFILE_DIR%"
+exit /b 0
+
+:probe_aps_chrome_alive
+set "CHROME_ALIVE="
+if not defined HAS_POWERSHELL (
+  call :log chrome_alive_probe=no_powershell
+  exit /b 0
+)
+set "CHROME_PROFILE_MARKER=%CHROME_PROFILE_DIR:'=''%"
+powershell -NoProfile -Command "$marker='%CHROME_PROFILE_MARKER%'.ToLowerInvariant(); $items=$null; if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { try { $items=@(Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction Stop) } catch { $items=$null } }; if ($null -eq $items) { if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) { exit 1 }; try { $items=@(Get-WmiObject Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction Stop) } catch { exit 1 } }; foreach ($item in @($items)) { $cmd=[string]$item.CommandLine; if ([string]::IsNullOrWhiteSpace($cmd)) { continue }; $cmdLower=$cmd.ToLowerInvariant(); if ($cmdLower.Contains('--user-data-dir') -and $cmdLower.Contains($marker)) { exit 0 } }; exit 2" >nul 2>&1
+set "CHROME_QUERY_RC=%ERRORLEVEL%"
+if "!CHROME_QUERY_RC!"=="0" (
+  set "CHROME_ALIVE=1"
+  call :log chrome_alive_probe=detected
+) else (
+  if "!CHROME_QUERY_RC!"=="2" (
+    call :log chrome_alive_probe=missing
+  ) else (
+    call :log chrome_alive_probe=query_failed rc=!CHROME_QUERY_RC!
+  )
+)
 exit /b 0
 
 :try_chrome_dir

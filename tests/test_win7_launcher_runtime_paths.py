@@ -83,6 +83,14 @@ def test_current_runtime_owner_uses_computername_when_userdomain_missing(monkeyp
     assert launcher.current_runtime_owner() == r"LOCALBOX\alice"
 
 
+def test_default_chrome_profile_dir_prefers_localappdata_profile_name(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\alice\AppData\Local")
+    got = launcher.default_chrome_profile_dir(str(tmp_path))
+    assert got == os.path.abspath(r"C:\Users\alice\AppData\Local\APS\Chrome109Profile")
+
+
+
 def test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok(monkeypatch, tmp_path):
     launcher = _import_launcher()
     state_dir = tmp_path / "shared-data" / "logs"
@@ -129,8 +137,47 @@ def test_stop_runtime_from_log_dir_uses_state_dir_and_parent_runtime_dir(monkeyp
     assert calls["chrome"] == os.path.abspath(str(tmp_path / "shared-data" / "chrome109_profile"))
 
 
+def test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confirm(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "shared-data" / "logs"
+    state_dir.mkdir(parents=True)
+    (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+    calls = {}
+
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: False)
+    monkeypatch.setattr(launcher, "delete_runtime_contract_files", lambda path: calls.setdefault("delete", path))
+
+    def _fake_stop(profile_dir: str, logger=None) -> bool:
+        calls["chrome"] = profile_dir
+        return False
+
+    monkeypatch.setattr(launcher, "stop_aps_chrome_processes", _fake_stop)
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), stop_aps_chrome=True) == 1
+    assert calls["delete"] == os.path.abspath(str(state_dir))
+    assert calls["chrome"] == os.path.abspath(str(tmp_path / "shared-data" / "chrome109_profile"))
+
+
+def test_stop_aps_chrome_processes_fails_closed_when_pid_list_unavailable(monkeypatch):
+    launcher = _import_launcher()
+    monkeypatch.setattr(launcher, "_list_aps_chrome_pids", lambda profile_dir: None)
+    assert launcher.stop_aps_chrome_processes(r"C:\Users\alice\AppData\Local\APS\Chrome109Profile") is False
+
+
+def test_launcher_bat_chrome_alive_probe_scopes_to_profile_specific_process():
+    text = (Path(_repo_root()) / "assets" / "启动_排产系统_Chrome.bat").read_text(encoding="utf-8")
+    assert "--user-data-dir" in text
+    assert "CHROME_PROFILE_DIR" in text
+    assert "Get-CimInstance Win32_Process" in text or "Get-WmiObject Win32_Process" in text
+    assert 'tasklist /FI "IMAGENAME eq chrome.exe" /NH /FO CSV' not in text
+    assert 'findstr /I /C:"\\"chrome.exe\\""' not in text
+
+
 def test_launcher_bat_contains_json_health_probe_and_owner_fallback():
     text = (Path(_repo_root()) / "assets" / "启动_排产系统_Chrome.bat").read_text(encoding="utf-8")
+    assert "chcp 65001 >nul 2>&1" in text
     assert "ConvertFrom-Json" in text
     assert r"Contains('\"app\":\"aps\"')" not in text
     assert "%COMPUTERNAME%" in text
@@ -138,6 +185,43 @@ def test_launcher_bat_contains_json_health_probe_and_owner_fallback():
     assert "BLOCKED_BY_UNCERTAIN" in text
     assert "RUNTIME_CONTRACT_FILE" in text
     assert "port_file_invalid" in text
+    assert 'set "HOST=!FILE_HOST!"' in text
+    assert 'set "PORT=!FILE_PORT!"' in text
+    assert 'call :log launch_error="!LAUNCH_ERROR!"' in text
+    assert 'set "CONTRACT_OWNER=!CONTRACT_OWNER:\\=\\!"' in text
+    assert 'tasklist /FI "PID eq !LOCK_PID!" /NH /FO CSV' in text
+    assert "where wmic" not in text
+    assert "wmic process where" not in text
+    assert "contract_owner_normalized" in text
+    assert "app_spawn_probe" in text
+    assert "chrome_profile_probe" in text
+    assert "chrome_alive_probe" in text
+
+
+def test_launcher_python_runtime_stop_uses_powershell_and_fail_closed_cleanup():
+    text = (Path(_repo_root()) / "web" / "bootstrap" / "launcher.py").read_text(encoding="utf-8")
+    assert "_run_powershell_text" in text
+    assert "Get-Process -Id $pid0" in text
+    assert "Get-CimInstance Win32_Process" in text
+    assert "if pids is None:" in text
+    assert "_stop_aps_chrome_if_requested" in text
+    assert '["wmic"' not in text
+
+
+def test_package_script_contains_browser_smoke_for_runtime_and_legacy_paths():
+    text = (Path(_repo_root()) / ".limcode" / "skills" / "aps-package-win7" / "scripts" / "package_win7.ps1").read_text(encoding="utf-8")
+    assert "Invoke-ChromeRuntimeSmoke" in text
+    assert "BROWSER SMOKE OK" in text
+    assert "--app=$url" in text
+    assert 'Invoke-ChromeRuntimeSmoke (Join-Path $payloadDir "chrome.exe") "chrome runtime payload"' in text
+    assert 'Invoke-ChromeRuntimeSmoke (Join-Path $distDir "tools\\chrome109\\chrome.exe") "legacy dist chrome runtime"' in text
+
+
+def test_package_script_exposes_explicit_best_effort_cleanup_wrapper():
+    text = (Path(_repo_root()) / ".limcode" / "skills" / "aps-package-win7" / "scripts" / "package_win7.ps1").read_text(encoding="utf-8")
+    assert "function Stop-ProcessTreeByIdsBestEffort" in text
+    assert "Stop-ProcessTreeByIdsBestEffort $cleanupChromeIds" in text
+    assert "Stop-ProcessTreeByIds $cleanupChromeIds" not in text
 
 
 def test_installer_uninstall_stop_checks_multiple_runtime_roots():
@@ -182,6 +266,28 @@ def test_installers_fail_closed_on_silent_uninstall_and_retry_delete():
     assert "silent uninstall: failed to stop APS Chrome processes before uninstall" in chrome_text
     assert "Sleep(1000)" in main_text
     assert "Sleep(1000)" in legacy_text
+    assert "powershell.exe" in chrome_text
+    assert "Get-CimInstance Win32_Process" in chrome_text
+    assert "Get-WmiObject Win32_Process" in chrome_text
+    assert "Stop-Process -Id $procId -Force" in chrome_text
+    assert "wmic.exe" not in chrome_text
+    assert "process where \"Name=''chrome.exe''" not in chrome_text
+
+
+def test_chrome_installer_stop_helper_matches_profile_argument_not_current_user_only():
+    text = (Path(_repo_root()) / "installer" / "aps_win7_chrome.iss").read_text(encoding="utf-8")
+    assert "--user-data-dir" in text
+    assert "\\aps\\chrome109profile" in text.lower()
+    assert "$marker=''chrome109profile''" not in text
+
+
+def test_chrome_installer_stop_helper_uses_current_user_profile_path_marker():
+    text = (Path(_repo_root()) / "installer" / "aps_win7_chrome.iss").read_text(encoding="utf-8")
+    assert "CurrentUserChromeProfilePath" in text
+    assert "ExpandConstant('{localappdata}\\APS\\Chrome109Profile')" in text
+    assert "ApsChromeProfileSuffixMarker" in text
+    assert "手动删除当前账户的 APS 浏览器用户数据目录" in text
+    assert "BuildStopChromePowerShellParams(CurrentUserChromeProfilePath(), ApsChromeProfileSuffixMarker())" in text
 
 
 def test_build_scripts_guard_vendor_and_launcher_path():

@@ -45,12 +45,13 @@ def main() -> None:
     db_path.write_text("", encoding="utf-8")
     backup_dir = runtime_dir / "backups"
     excel_template_dir = runtime_dir / "templates_excel"
+    runtime_exe = sys.executable
 
     lock_payload = launcher.acquire_runtime_lock(
         str(runtime_dir),
         str(shared_log_dir),
         owner="DOMAIN\\userA",
-        exe_path=str(runtime_dir / "aps.exe"),
+        exe_path=runtime_exe,
     )
     _assert(bool(lock_payload), "首次获取共享运行时锁应成功")
     _assert((shared_log_dir / "aps_runtime.lock").exists(), "共享日志目录应存在运行时锁文件")
@@ -100,7 +101,7 @@ def main() -> None:
             str(runtime_dir),
             str(shared_log_dir),
             owner="DOMAIN\\userB",
-            exe_path=str(runtime_dir / "aps.exe"),
+            exe_path=runtime_exe,
         )
     except launcher.RuntimeLockError:
         blocked = True
@@ -116,7 +117,7 @@ def main() -> None:
         str(runtime_dir),
         str(shared_log_dir),
         owner="DOMAIN\\userB",
-        exe_path=str(runtime_dir / "aps.exe"),
+        exe_path=runtime_exe,
     )
     _assert(bool(reacquired), "清理后应允许重新获取运行时锁")
     launcher.release_runtime_lock(str(shared_log_dir))
