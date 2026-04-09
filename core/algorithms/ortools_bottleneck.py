@@ -13,33 +13,15 @@ from __future__ import annotations
 """
 
 import math
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.algorithms.greedy.date_parsers import due_exclusive, parse_date
 from core.algorithms.priority_constants import priority_weight_scaled
 from core.algorithms.value_domains import INTERNAL
 
-
-def _parse_due_date(value: Any) -> Optional[date]:
-    if value is None:
-        return None
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value
-    if isinstance(value, datetime):
-        return value.date()
-    s = str(value or "").strip().replace("/", "-")
-    if not s:
-        return None
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        return None
-
-
-def _due_exclusive(d: Optional[date]) -> datetime:
-    if not d:
-        return datetime.max
-    return datetime(d.year, d.month, d.day) + timedelta(days=1)
+_parse_due_date = parse_date
+_due_exclusive = due_exclusive
 
 
 def try_solve_bottleneck_batch_order(
@@ -109,10 +91,10 @@ def try_solve_bottleneck_batch_order(
             w = priority_weight_scaled(getattr(b, "priority", None))
             jobs.append((bid, dur_min, int(w)))
 
-            due_d = _parse_due_date(getattr(b, "due_date", None))
+            due_d = parse_date(getattr(b, "due_date", None))
             if due_d:
-                due_exclusive = _due_exclusive(due_d)
-                due_min = int((due_exclusive - start_dt).total_seconds() / 60.0)
+                due_dt_exclusive = due_exclusive(due_d)
+                due_min = int((due_dt_exclusive - start_dt).total_seconds() / 60.0)
                 # 允许 due_min 为负：用于保留“已逾期批次”的相对紧迫度（排序/截断窗口）
                 due_min_by_batch[bid] = int(due_min)
             else:
@@ -213,4 +195,3 @@ def try_solve_bottleneck_batch_order(
             except Exception:
                 pass
         return None
-

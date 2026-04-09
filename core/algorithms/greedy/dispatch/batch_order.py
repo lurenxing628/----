@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import EXTERNAL, INTERNAL
 
+from .runtime_state import accumulate_busy_hours, update_machine_last_state
+
 
 def dispatch_batch_order(
     scheduler: Any,
@@ -84,26 +86,26 @@ def dispatch_batch_order(
                 )
 
             if result and result.start_time and result.end_time:
+                if (result.source or "").strip().lower() == INTERNAL and result.machine_id:
+                    accumulate_busy_hours(
+                        machine_busy_hours=machine_busy_hours,
+                        operator_busy_hours=operator_busy_hours,
+                        machine_id=str(result.machine_id or "").strip(),
+                        operator_id=str(result.operator_id or "").strip(),
+                        start_time=result.start_time,
+                        end_time=result.end_time,
+                    )
+                    update_machine_last_state(
+                        last_end_by_machine=last_end_by_machine,
+                        last_op_type_by_machine=last_op_type_by_machine,
+                        machine_id=str(result.machine_id or "").strip(),
+                        end_time=result.end_time,
+                        op_type_name=result.op_type_name,
+                        seed_mode=False,
+                    )
                 results.append(result)
                 batch_progress[bid] = max(batch_progress.get(bid, base_time), result.end_time)
                 scheduled_count += 1
-                if (result.source or "").strip().lower() == INTERNAL and result.machine_id:
-                    try:
-                        mid0 = str(result.machine_id or "").strip()
-                        oid0 = str(result.operator_id or "").strip()
-                        h = (result.end_time - result.start_time).total_seconds() / 3600.0
-                        if mid0:
-                            machine_busy_hours[mid0] = machine_busy_hours.get(mid0, 0.0) + float(h)
-                            prev_end = last_end_by_machine.get(mid0)
-                            if prev_end is None or result.end_time > prev_end:
-                                last_end_by_machine[mid0] = result.end_time
-                        if oid0:
-                            operator_busy_hours[oid0] = operator_busy_hours.get(oid0, 0.0) + float(h)
-                    except Exception:
-                        pass
-                    ot = (result.op_type_name or "").strip()
-                    if ot:
-                        last_op_type_by_machine[str(result.machine_id).strip()] = ot
             else:
                 failed_count += 1
                 # batch_order 模式也保持“批次串行”约束：任一工序失败则阻断该批次后续工序
@@ -120,4 +122,3 @@ def dispatch_batch_order(
                 blocked_batches.add(bid)
 
     return scheduled_count, failed_count
-

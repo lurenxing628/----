@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 
@@ -26,6 +26,8 @@ def parse_datetime(value: Any) -> Optional[datetime]:
         return None
     if isinstance(value, datetime):
         return value
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day, 0, 0, 0)
     s = str(value).strip()
     if not s:
         return None
@@ -40,3 +42,8 @@ def parse_datetime(value: Any) -> Optional[datetime]:
     except Exception:
         return None
 
+
+def due_exclusive(d: Optional[date]) -> datetime:
+    if not d:
+        return datetime.max
+    return datetime(d.year, d.month, d.day, 0, 0, 0) + timedelta(days=1)

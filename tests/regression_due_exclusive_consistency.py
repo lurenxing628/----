@@ -33,10 +33,8 @@ def main() -> None:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from core.algorithms.dispatch_rules import _due_exclusive as dispatch_due_exclusive
-    from core.algorithms.evaluation import _due_exclusive as eval_due_exclusive
     from core.algorithms.evaluation import compute_metrics
-    from core.algorithms.ortools_bottleneck import _due_exclusive as ort_due_exclusive
+    from core.algorithms.greedy.date_parsers import due_exclusive
     from core.algorithms.types import ScheduleResult
     from core.services.report.calculations import compute_overdue_buckets
     from core.services.scheduler.schedule_summary import build_result_summary
@@ -46,9 +44,7 @@ def main() -> None:
     finish_dt = datetime(2026, 2, 2, 0, 0, 0)
     expected_due_exclusive = datetime(2026, 2, 2, 0, 0, 0)
 
-    assert eval_due_exclusive(due_d) == expected_due_exclusive, "evaluation due_exclusive 不一致"
-    assert dispatch_due_exclusive(due_d) == expected_due_exclusive, "dispatch_rules due_exclusive 不一致"
-    assert ort_due_exclusive(due_d) == expected_due_exclusive, "ortools due_exclusive 不一致"
+    assert due_exclusive(due_d) == expected_due_exclusive, "共享 due_exclusive 不一致"
 
     batch = SimpleNamespace(batch_id="B001", due_date="2026-02-01", priority="normal", quantity=1)
     result = ScheduleResult(

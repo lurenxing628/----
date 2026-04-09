@@ -3,10 +3,10 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, Optional, Tuple
 
+from .greedy.date_parsers import due_exclusive
 from .priority_constants import PRIORITY_RANK, PRIORITY_WEIGHT, normalize_priority
 
 
@@ -22,10 +22,7 @@ class DispatchRule(Enum):
     ATC = "atc"  # apparent tardiness cost（越大越紧急；这里用 -ATC 变成越小越好）
 
 
-def _due_exclusive(d: Optional[date]) -> datetime:
-    if not d:
-        return datetime.max
-    return datetime(d.year, d.month, d.day) + timedelta(days=1)
+_due_exclusive = due_exclusive
 
 
 def parse_dispatch_rule(value: Any, default: DispatchRule = DispatchRule.SLACK) -> DispatchRule:
@@ -42,9 +39,9 @@ def parse_dispatch_rule(value: Any, default: DispatchRule = DispatchRule.SLACK) 
 class DispatchInputs:
     rule: DispatchRule
     priority: str
-    due_date: Optional[date]
-    est_start: datetime
-    est_end: datetime
+    due_date: Optional[Any]
+    est_start: Any
+    est_end: Any
     proc_hours: float
     avg_proc_hours: float
     # tie-break
@@ -67,9 +64,9 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
     pr_rank = float(PRIORITY_RANK.get(pr, 99))
     w = float(PRIORITY_WEIGHT.get(pr, 1.0))
 
-    due_exclusive = _due_exclusive(inp.due_date)
-    slack_h = (due_exclusive - inp.est_end).total_seconds() / 3600.0
-    time_left_h = (due_exclusive - inp.est_start).total_seconds() / 3600.0
+    due_dt_exclusive = due_exclusive(inp.due_date)
+    slack_h = (due_dt_exclusive - inp.est_end).total_seconds() / 3600.0
+    time_left_h = (due_dt_exclusive - inp.est_start).total_seconds() / 3600.0
 
     # proc_hours <=0（或无法解析）时不能使用极小值兜底，否则 ATC 会出现极端值（错误地把不可估算候选排到最前）。
     # 同时过滤非有限值（NaN/Inf），避免出现 -0.0 / inf 传播导致的错误优先级。
@@ -133,4 +130,3 @@ def mean_positive(values: Dict[str, float]) -> float:
     if not vals:
         return 0.0
     return float(statistics.fmean(vals))
-

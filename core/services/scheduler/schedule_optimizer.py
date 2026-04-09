@@ -6,12 +6,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms import BatchForSort, GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
+from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import increment_counter, merge_algo_stats, snapshot_algo_stats
+from core.algorithms.greedy.scheduler import build_batch_sort_inputs, build_normalized_batches_map
 from core.algorithms.sort_strategies import parse_strategy
 from core.algorithms.value_domains import INTERNAL
-from core.services.common.strict_parse import parse_optional_date
 
 from .schedule_optimizer_steps import (
     _cfg_float,
@@ -100,6 +100,17 @@ def _compact_attempts(attempts: List[Dict[str, Any]], *, limit: int = 12) -> Lis
     return selected[:limit]
 
 
+def _init_seen_hashes(cur_order: List[str], best: Optional[Dict[str, Any]]) -> Optional[set]:
+    if len(cur_order) < 10:
+        return None
+    seen_hashes = {tuple(cur_order)}
+    if isinstance(best, dict):
+        best_order = tuple(best.get("order") or [])
+        if best_order:
+            seen_hashes.add(best_order)
+    return seen_hashes
+
+
 def _run_local_search(
     *,
     algo_mode: str,
@@ -124,7 +135,6 @@ def _run_local_search(
     t_begin: float,
     strict_mode: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    # 局部搜索（可选）：在 best batch_order 上做随机 swap/insert
     if algo_mode == "improve" and best is not None and len(best.get("order") or []) >= 2:
         rnd = random.Random(int(version))
         cur_order = list(best["order"])
@@ -136,6 +146,7 @@ def _run_local_search(
         it_limit = max(200, min(5000, int(time_budget_seconds) * 20))
         no_improve = 0
         restart_after = max(50, min(800, int(it_limit / 8) if it_limit > 0 else 200))
+        seen_hashes = _init_seen_hashes(cur_order, best)
         while time.time() <= deadline and it < it_limit:
             it += 1
             cand_order = list(cur_order)
@@ -156,7 +167,6 @@ def _run_local_search(
                 x = cand_order.pop(i)
                 cand_order.insert(j, x)
             else:
-                # block move：抽取一段连续区间移动到另一位置
                 if n >= 4:
                     i = rnd.randrange(n - 1)
                     max_len = min(6, n - i)
@@ -164,19 +174,24 @@ def _run_local_search(
                     block = cand_order[i : i + ln]
                     del cand_order[i : i + ln]
                     j = rnd.randrange(len(cand_order) + 1)
-                    for t in reversed(block):
-                        cand_order.insert(j, t)
+                    for item in reversed(block):
+                        cand_order.insert(j, item)
                 else:
-                    # n<4 时 block move 会退化为空操作；改用 swap，避免浪费一次迭代
                     i, j = rnd.sample(range(n), 2)
                     cand_order[i], cand_order[j] = cand_order[j], cand_order[i]
                     move = "swap_fallback"
 
-            # 兜底：避免空迭代（例如 insert 选到 i==j，或 block 回插原位）
             if cand_order == cur_order and n >= 2:
                 i, j = rnd.sample(range(n), 2)
                 cand_order[i], cand_order[j] = cand_order[j], cand_order[i]
                 move = "swap_fallback"
+
+            if seen_hashes is not None:
+                cand_hash = tuple(cand_order)
+                if cand_hash in seen_hashes:
+                    no_improve += 1
+                    continue
+                seen_hashes.add(cand_hash)
 
             res, summ, used_strat, used_params = _schedule_with_optional_strict_mode(
                 scheduler,
@@ -224,7 +239,6 @@ def _run_local_search(
                             "metrics": metrics.to_dict(),
                         }
                     )
-                # 记录少量轨迹，避免 result_summary 过大
                 if len(attempts) < 12:
                     attempts.append(
                         {
@@ -241,11 +255,9 @@ def _run_local_search(
             else:
                 no_improve += 1
 
-            # 多次重启（轻量 ILS）：长时间无改进则从 best 出发做随机 shake
             if no_improve >= restart_after and best is not None:
                 no_improve = 0
                 cur_order = list(best.get("order") or cur_order)
-                # small shake：有限次 swap/insert
                 shake = rnd.randint(3, 8)
                 for _ in range(shake):
                     if len(cur_order) < 2:
@@ -258,6 +270,7 @@ def _run_local_search(
                         j = rnd.randrange(len(cur_order))
                         x = cur_order.pop(i)
                         cur_order.insert(j, x)
+                seen_hashes = _init_seen_hashes(cur_order, best)
     return best
 
 
@@ -282,7 +295,6 @@ def optimize_schedule(
 
     说明：为保证兼容，本函数尽量保持与原 `ScheduleService.run_schedule()` 相同的口径与留痕结构。
     """
-    # 算法层只读取“纯配置快照”，不依赖 ConfigService 形态（仍兼容旧形态）
     cfg_snapshot = cfg.to_dict() if hasattr(cfg, "to_dict") else (cfg if isinstance(cfg, dict) else None)
     scheduler = GreedyScheduler(calendar_service=calendar_service, config_service=cfg_snapshot, logger=logger)
     from core.algorithms.greedy.config_adapter import cfg_get
@@ -296,7 +308,6 @@ def optimize_schedule(
         return text or str(default).strip().lower()
 
     optimizer_algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
-
     strategy_enum: SortStrategy = parse_strategy(_cfg_value("sort_strategy", None), default=SortStrategy.PRIORITY_FIRST)
 
     strategy_params: Optional[Dict[str, Any]] = None
@@ -332,46 +343,16 @@ def optimize_schedule(
         min_violation_fallback=1,
     )
 
-    def _parse_date(value: Any) -> Optional[Any]:
-        if strict_mode:
-            return parse_optional_date(value, field="due_date")
-        try:
-            return parse_optional_date(value, field="due_date")
-        except Exception:
-            return None
-
-    def _parse_datetime(value: Any) -> Optional[datetime]:
-        if value is None:
-            return None
-        if isinstance(value, datetime):
-            return value
-        s = str(value).strip()
-        if not s:
-            return None
-        s = s.replace("/", "-").replace("T", " ").replace("：", ":")
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-            try:
-                return datetime.strptime(s, fmt)
-            except Exception:
-                continue
-        return None
-
-    batch_for_sort: List[BatchForSort] = []
-    for b in batches.values():
-        batch_for_sort.append(
-            BatchForSort(
-                batch_id=str(getattr(b, "batch_id", "") or ""),
-                priority=str(getattr(b, "priority", "") or "normal"),
-                due_date=_parse_date(getattr(b, "due_date", None)),
-                ready_status=str(getattr(b, "ready_status", "") or "yes"),
-                ready_date=_parse_date(getattr(b, "ready_date", None)),
-                created_at=_parse_datetime(getattr(b, "created_at", None)),
-            )
-        )
+    normalized_batches_for_sort = build_normalized_batches_map(batches)
 
     def _build_order(strategy0: SortStrategy, params: Dict[str, Any]) -> List[str]:
+        batch_for_sort = build_batch_sort_inputs(
+            normalized_batches_for_sort,
+            strict_mode=bool(strict_mode),
+            strategy=strategy0,
+        )
         sorter0 = StrategyFactory.create(strategy0, **(params or {}))
-        return [x.batch_id for x in sorter0.sort(batch_for_sort, base_date=start_dt.date())]
+        return [item.batch_id for item in sorter0.sort(batch_for_sort, base_date=start_dt.date())]
 
     def _cfg_choices(name: str, default: Tuple[str, ...]) -> List[str]:
         raw = getattr(cfg_svc, name, default)
@@ -393,10 +374,9 @@ def optimize_schedule(
     valid_dispatch_modes = _cfg_choices("VALID_DISPATCH_MODES", ("batch_order", "sgs"))
     valid_dispatch_rules = _cfg_choices("VALID_DISPATCH_RULES", ("slack", "cr", "atc"))
 
-    # multi-start：策略集（先用当前策略，再补全其它策略）
     current_key = str(strategy_enum.value)
     if algo_mode == "improve":
-        keys = [current_key] + [k for k in valid_strategies if k != current_key]
+        keys = [current_key] + [item for item in valid_strategies if item != current_key]
     else:
         keys = [current_key]
 
@@ -407,50 +387,49 @@ def optimize_schedule(
     t_begin = time.time()
     deadline = (t_begin + float(time_budget_seconds)) if algo_mode == "improve" else float("inf")
 
-    # GreedyScheduler 需要 seed_results 为 ScheduleResult：这里转换一次
     seed_sr_list: List[ScheduleResult] = []
     if seed_results:
         invalid_seed_count = 0
         invalid_seed_samples: List[Dict[str, Any]] = []
         seed_attempted = 0
-        for idx, x in enumerate(seed_results):
+        for idx, item in enumerate(seed_results):
             seed_attempted += 1
             try:
-                if not isinstance(x, dict):
-                    raise TypeError(f"seed_results[{idx}] 不是 dict（实际={type(x).__name__}）")
+                if not isinstance(item, dict):
+                    raise TypeError(f"seed_results[{idx}] 不是 dict（实际={type(item).__name__}）")
                 seed_sr_list.append(
                     ScheduleResult(
-                        op_id=int(x.get("op_id") or 0),
-                        op_code=str(x.get("op_code") or ""),
-                        batch_id=str(x.get("batch_id") or ""),
-                        seq=int(x.get("seq") or 0),
-                        machine_id=(str(x.get("machine_id") or "") or None),
-                        operator_id=(str(x.get("operator_id") or "") or None),
-                        start_time=x.get("start_time"),
-                        end_time=x.get("end_time"),
-                        source=str(x.get("source") or INTERNAL),
-                        op_type_name=(str(x.get("op_type_name") or "") or None),
+                        op_id=int(item.get("op_id") or 0),
+                        op_code=str(item.get("op_code") or ""),
+                        batch_id=str(item.get("batch_id") or ""),
+                        seq=int(item.get("seq") or 0),
+                        machine_id=(str(item.get("machine_id") or "") or None),
+                        operator_id=(str(item.get("operator_id") or "") or None),
+                        start_time=item.get("start_time"),
+                        end_time=item.get("end_time"),
+                        source=str(item.get("source") or INTERNAL),
+                        op_type_name=(str(item.get("op_type_name") or "") or None),
                     )
                 )
-            except Exception as e:
+            except Exception as exc:
                 invalid_seed_count += 1
                 if len(invalid_seed_samples) < 5:
                     try:
                         sample = (
                             {
-                                "op_id": x.get("op_id"),
-                                "op_code": x.get("op_code"),
-                                "batch_id": x.get("batch_id"),
-                                "seq": x.get("seq"),
-                                "machine_id": x.get("machine_id"),
-                                "operator_id": x.get("operator_id"),
+                                "op_id": item.get("op_id"),
+                                "op_code": item.get("op_code"),
+                                "batch_id": item.get("batch_id"),
+                                "seq": item.get("seq"),
+                                "machine_id": item.get("machine_id"),
+                                "operator_id": item.get("operator_id"),
                             }
-                            if isinstance(x, dict)
-                            else {"type": type(x).__name__, "repr": repr(x)[:200]}
+                            if isinstance(item, dict)
+                            else {"type": type(item).__name__, "repr": repr(item)[:200]}
                         )
                     except Exception:
-                        sample = {"type": type(x).__name__}
-                    invalid_seed_samples.append({"index": int(idx), "error": str(e), "sample": sample})
+                        sample = {"type": type(item).__name__}
+                    invalid_seed_samples.append({"index": int(idx), "error": str(exc), "sample": sample})
                 continue
         increment_counter(optimizer_algo_stats, "optimizer_seed_result_invalid_count", invalid_seed_count)
         if invalid_seed_count > 0 and logger is not None:
@@ -461,15 +440,13 @@ def optimize_schedule(
             except Exception:
                 _ = None
 
-    # improve：dispatch_mode × strategy × dispatch_rule（仅 sgs 扩 dispatch_rule）
     dispatch_mode_cfg = _norm_text(_cfg_value("dispatch_mode", None), "batch_order")
     dispatch_rule_cfg = _norm_text(_cfg_value("dispatch_rule", None), "slack")
     if algo_mode == "improve":
-        dispatch_modes = [dispatch_mode_cfg] + [x for x in valid_dispatch_modes if x != dispatch_mode_cfg]
+        dispatch_modes = [dispatch_mode_cfg] + [item for item in valid_dispatch_modes if item != dispatch_mode_cfg]
     else:
         dispatch_modes = [dispatch_mode_cfg]
 
-    # 可选：OR-Tools 高质量起点（瓶颈子问题）
     best = _run_ortools_warmstart(
         algo_mode=algo_mode,
         cfg=cfg,
@@ -495,7 +472,6 @@ def optimize_schedule(
         strict_mode=bool(strict_mode),
     )
 
-    # 执行策略轮询（multi-start）
     best = _run_multi_start(
         keys=keys,
         dispatch_modes=dispatch_modes,
@@ -521,7 +497,6 @@ def optimize_schedule(
         strict_mode=bool(strict_mode),
     )
 
-    # 局部搜索（可选）：在 best batch_order 上做随机 swap/insert
     best = _run_local_search(
         algo_mode=algo_mode,
         best=best,
@@ -547,7 +522,6 @@ def optimize_schedule(
     )
 
     if best is None:
-        # 理论上不会发生；兜底为原始单次
         results, summary, used_strategy, used_params = _schedule_with_optional_strict_mode(
             scheduler,
             strict_mode=bool(strict_mode),
@@ -589,9 +563,7 @@ def optimize_schedule(
     best_score = best["score"]
     best_order = best["order"]
     best_algo_stats = best.get("algo_stats") if isinstance(best, dict) else None
-    algo_stats = (
-        merge_algo_stats(best_algo_stats) if isinstance(best_algo_stats, dict) else merge_algo_stats(optimizer_algo_stats)
-    )
+    algo_stats = merge_algo_stats(best_algo_stats) if isinstance(best_algo_stats, dict) else merge_algo_stats(optimizer_algo_stats)
 
     return OptimizationOutcome(
         results=results,
@@ -608,4 +580,3 @@ def optimize_schedule(
         time_budget_seconds=time_budget_seconds,
         algo_stats=algo_stats,
     )
-

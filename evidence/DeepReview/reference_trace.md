@@ -1,1538 +1,716 @@
 # 引用链追踪报告（深度 Review 辅助）
 
+## ⚠ 跨层边界风险
+
+- ⚠ auto_assign_internal_resources() 返回 Optional，但 core/algorithms/greedy/scheduler.py:567 的调用者未做 None 检查
+- ⚠ parse_date() 返回 Optional，但 core/algorithms/greedy/dispatch/sgs.py:25 的调用者未做 None 检查
+- ⚠ parse_datetime() 返回 Optional，但 core/algorithms/greedy/scheduler.py:80 的调用者未做 None 检查
+- ⚠ try_solve_bottleneck_batch_order() 返回 Optional，但 core/services/scheduler/schedule_optimizer_steps.py:169 的调用者未做 None 检查
+- ⚠ parse_optional_float() 返回 Optional，但 core/services/common/number_utils.py:26 的调用者未做 None 检查
+- ⚠ parse_optional_int() 返回 Optional，但 core/services/common/number_utils.py:43 的调用者未做 None 检查
+- ⚠ parse_optional_date() 返回 Optional，但 core/algorithms/greedy/dispatch/sgs.py:24 的调用者未做 None 检查
+- ⚠ parse_optional_datetime() 返回 Optional，但 core/algorithms/greedy/scheduler.py:79 的调用者未做 None 检查
+
 > 说明：本报告基于 AST 提取“定义”，并用文本搜索定位“调用点/被调用者”。
 > 由于 Python 动态特性与启发式匹配限制，可能存在漏报/误报，仅作为审查线索。
 > 建议：对每条调用关系回到源码上下文手工核对。
 
-## app.py（Other 层）
+## core/algorithms/dispatch_rules.py（Algorithm 层）
 
-### `create_app()` [公开]
-- 位置：第 29-30 行
-- 参数：无
-- 返回类型：Name(id='Flask', ctx=Load())
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（1 个）：`create_app_with_mode`
-
-### `_module_globals()` [私有]
-- 位置：第 33-54 行
-- 参数：无
-- 返回类型：无注解
-
-### `main()` [公开]
-- 位置：第 61-62 行
-- 参数：argv
-- 返回类型：Name(id='int', ctx=Load())
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（2 个）：`app_main`, `_module_globals`
-
-## app_new_ui.py（Other 层）
-
-### `create_app()` [公开]
-- 位置：第 29-30 行
-- 参数：无
-- 返回类型：Name(id='Flask', ctx=Load())
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（1 个）：`create_app_with_mode`
-
-### `_module_globals()` [私有]
-- 位置：第 33-54 行
-- 参数：无
-- 返回类型：无注解
-
-### `main()` [公开]
-- 位置：第 61-62 行
-- 参数：argv
-- 返回类型：Name(id='int', ctx=Load())
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（2 个）：`app_main`, `_module_globals`
-
-## core/services/scheduler/schedule_orchestrator.py（Service 层）
-
-### `_normalize_optimizer_outcome()` [私有]
-- 位置：第 53-68 行
-- 参数：optimizer_outcome
-- 返回类型：Name(id='_NormalizedOptimizerOutcome', ctx=Load())
-
-### `_merge_summary_warnings()` [私有]
-- 位置：第 71-100 行
-- 参数：summary, algo_warnings
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `orchestrate_schedule_run()` [公开]
-- 位置：第 103-208 行
-- 参数：svc
-- 返回类型：Name(id='ScheduleOrchestrationOutcome', ctx=Load())
+### `parse_dispatch_rule()` [公开]
+- 位置：第 28-35 行
+- 参数：value, default
+- 返回类型：Name(id='DispatchRule', ctx=Load())
 - **调用者**（1 处）：
-  - `core/services/scheduler/schedule_service.py:344` [Service] `orchestration = orchestrate_schedule_run(`
-- **被调用者**（14 个）：`_normalize_optimizer_outcome`, `bool`, `_merge_summary_warnings`, `SummaryBuildContext`, `build_result_summary_fn`, `ScheduleOrchestrationOutcome`, `optimize_schedule_fn`, `has_actionable_schedule_rows_fn`, `_raise_schedule_empty_result`, `list`, `transaction`, `int`, `allocate_next_version`, `set`
+  - `core/algorithms/greedy/schedule_params.py:203` [Algorithm] `dispatch_rule_enum = parse_dispatch_rule(dispatch_rule, default=DispatchRule.SLA`
+- **被调用者**（5 个）：`isinstance`, `DispatchRule`, `lower`, `strip`, `str`
 
-## core/services/scheduler/schedule_summary.py（Service 层）
+### `build_dispatch_key()` [公开]
+- 位置：第 55-109 行
+- 参数：inp
+- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+- **调用者**（1 处）：
+  - `core/algorithms/greedy/dispatch/sgs.py:78` [Algorithm] `base_key = build_dispatch_key(`
+- **被调用者**（10 个）：`normalize_priority`, `float`, `due_exclusive`, `_safe_positive`, `PRIORITY_RANK.get`, `PRIORITY_WEIGHT.get`, `total_seconds`, `math.isfinite`, `math.exp`, `max`
 
-### `serialize_end_date()` [公开]
-- 位置：第 75-88 行
-- 参数：end_date
-- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+### `mean_positive()` [公开]
+- 位置：第 112-132 行
+- 参数：values
+- 返回类型：Name(id='float', ctx=Load())
 - **调用者**（0 处）：
   - （无外部调用者）
-- **被调用者**（7 个）：`isinstance`, `strip`, `end_date.strip`, `getattr`, `callable`, `str`, `isoformat`
+- **被调用者**（5 个）：`values.values`, `float`, `statistics.fmean`, `math.isfinite`, `vals.append`
+
+## core/algorithms/evaluation.py（Algorithm 层）
+
+### `_due_text()` [私有]
+- 位置：第 15-22 行
+- 参数：value
+- 返回类型：Name(id='str', ctx=Load())
+
+### `_parse_due_date_state()` [私有]
+- 位置：第 25-36 行
+- 参数：value
+- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+
+### `ScheduleMetrics.to_dict()` [公开]
+- 位置：第 68-99 行
+- 参数：无
+- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
+- **调用者**（65 处）：
+  - `web/routes/equipment_pages.py:221` [Route] `machine=m.to_dict(),`
+  - `web/routes/equipment_pages.py:234` [Route] `downtime_rows=[d.to_dict() for d in downtimes],`
+  - `web/routes/material.py:27` [Route] `items = [m.to_dict() for m in svc.list()]`
+  - `web/routes/material.py:131` [Route] `batch=(selected_batch.to_dict() if selected_batch else None),`
+  - `web/routes/personnel_calendar_pages.py:40` [Route] `rows = [c.to_dict() for c in cal_svc.list_operator_calendar(operator_id)]`
+  - `web/routes/personnel_calendar_pages.py:58` [Route] `operator=op.to_dict(),`
+  - `web/routes/personnel_pages.py:165` [Route] `operator=op.to_dict(),`
+  - `web/routes/process_op_types.py:21` [Route] `rows = [x.to_dict() for x in svc.list()]`
+  - `web/routes/process_op_types.py:42` [Route] `return render_template("process/op_type_detail.html", title=f"工种详情 - {ot.op_type`
+  - `web/routes/process_parts.py:116` [Route] `part = detail["part"].to_dict()`
+  - `web/routes/process_parts.py:117` [Route] `ops = [o.to_dict() for o in detail["operations"]]`
+  - `web/routes/process_parts.py:118` [Route] `groups = [gr.to_dict() for gr in detail["groups"]]`
+  - `web/routes/process_parts.py:147` [Route] `suppliers_map={k: v.to_dict() for k, v in suppliers.items()},`
+  - `web/routes/process_suppliers.py:27` [Route] `rows = [x.to_dict() for x in svc.list()]`
+  - `web/routes/process_suppliers.py:86` [Route] `supplier=s.to_dict(),`
+  - `web/routes/scheduler_batches.py:49` [Route] `**b.to_dict(),`
+  - `web/routes/scheduler_batches.py:73` [Route] `latest_history = items[0].to_dict() if items else None`
+  - `web/routes/scheduler_batches.py:139` [Route] `**b.to_dict(),`
+  - `web/routes/scheduler_batch_detail.py:183` [Route] `d = op.to_dict()`
+  - `web/routes/scheduler_batch_detail.py:227` [Route] `batch=b.to_dict(),`
+  - `web/routes/scheduler_calendar_pages.py:34` [Route] `rows = [c.to_dict() for c in cal_svc.list_all()]`
+  - `web/routes/scheduler_excel_calendar.py:410` [Route] `result = stats.to_dict()`
+  - `web/routes/scheduler_resource_dispatch.py:51` [Route] `for key, value in request.args.to_dict(flat=True).items():`
+  - `web/routes/scheduler_resource_dispatch.py:188` [Route] `return redirect(url_for("scheduler.resource_dispatch_page", **request.args.to_di`
+  - `web/routes/system_backup.py:51` [Route] `settings=cfg.to_dict(),`
+  - `web/routes/system_history.py:49` [Route] `selected = item.to_dict()`
+  - `web/routes/system_history.py:57` [Route] `items = [x.to_dict() for x in q.list_recent(limit=limit)]`
+  - `web/routes/system_logs.py:52` [Route] `settings=_get_system_cfg_snapshot().to_dict(),`
+  - `web/routes/system_utils.py:146` [Route] `d = it.to_dict()`
+  - `core/services/common/pandas_backend.py:106` [Service] `raw_rows = df.to_dict(orient="records")`
+  - `core/services/equipment/machine_excel_import_service.py:106` [Service] `out = stats.to_dict()`
+  - `core/services/material/material_service.py:82` [Service] `self.op_logger.info(module="material", action="create", target_type="material", `
+  - `core/services/personnel/operator_excel_import_service.py:90` [Service] `out = stats.to_dict()`
+  - `core/services/personnel/resource_team_service.py:74` [Service] `return [team.to_dict() for team in self.list(status=status)]`
+  - `core/services/process/op_type_excel_import_service.py:79` [Service] `out = stats.to_dict()`
+  - `core/services/process/part_operation_hours_excel_import_service.py:70` [Service] `return stats.to_dict(total_rows=len(preview_rows))`
+  - `core/services/process/route_parser.py:59` [Service] `"operations": [x.to_dict() for x in self.operations],`
+  - `core/services/process/route_parser.py:79` [Service] `"operations": [x.to_dict() for x in self.operations],`
+  - `core/services/process/route_parser.py:80` [Service] `"external_groups": [g.to_dict() for g in self.external_groups],`
+  - `core/services/process/supplier_excel_import_service.py:108` [Service] `out = stats.to_dict()`
+  - `core/services/scheduler/batch_excel_import.py:104` [Service] `result = stats.to_dict()`
+  - `core/services/scheduler/batch_service.py:198` [Service] `self.batch_repo.create(batch.to_dict())`
+  - `core/services/scheduler/calendar_admin.py:310` [Service] `self.repo.upsert(cal.to_dict())`
+  - `core/services/scheduler/calendar_admin.py:321` [Service] `self.repo.upsert(c.to_dict())`
+  - `core/services/scheduler/calendar_admin.py:377` [Service] `self.operator_calendar_repo.upsert(cal.to_dict())`
+  - `core/services/scheduler/calendar_admin.py:382` [Service] `self.operator_calendar_repo.upsert(c.to_dict())`
+  - `core/services/scheduler/calendar_service.py:210` [Service] `result = stats.to_dict()`
+  - `core/services/scheduler/config_presets.py:20` [Service] `**base.to_dict(),`
+  - `core/services/scheduler/config_presets.py:29` [Service] `**base.to_dict(),`
+  - `core/services/scheduler/config_presets.py:37` [Service] `**base.to_dict(),`
+  - `core/services/scheduler/config_presets.py:81` [Service] `canonical = snap.to_dict()`
+  - `core/services/scheduler/config_presets.py:150` [Service] `json.dumps(snap.to_dict(), ensure_ascii=False, sort_keys=True),`
+  - `core/services/scheduler/config_presets.py:210` [Service] `payload = json.dumps(snap.to_dict(), ensure_ascii=False, sort_keys=True)`
+  - `core/services/scheduler/gantt_contract.py:98` [Service] `return dto.to_dict(include_history=bool(include_history))`
+  - `core/services/scheduler/gantt_service.py:189` [Service] `hist_dict = hist.to_dict() if hist else None`
+  - `core/services/scheduler/gantt_service.py:248` [Service] `"history": hist.to_dict() if hist else None,`
+  - `core/services/scheduler/schedule_optimizer.py:239` [Service] `"metrics": metrics.to_dict(),`
+  - `core/services/scheduler/schedule_optimizer.py:252` [Service] `"metrics": metrics.to_dict(),`
+  - `core/services/scheduler/schedule_optimizer.py:298` [Service] `cfg_snapshot = cfg.to_dict() if hasattr(cfg, "to_dict") else (cfg if isinstance(`
+  - `core/services/scheduler/schedule_optimizer_steps.py:226` [Service] `"metrics": metrics.to_dict(),`
+  - `core/services/scheduler/schedule_optimizer_steps.py:253` [Service] `"metrics": metrics.to_dict(),`
+  - `core/services/scheduler/schedule_optimizer_steps.py:455` [Service] `"metrics": metrics.to_dict(),`
+  - `core/services/scheduler/schedule_optimizer_steps.py:470` [Service] `"metrics": metrics.to_dict(),`
+  - `core/services/scheduler/schedule_summary_assembly.py:89` [Service] `obj = to_dict()`
+  - `core/services/scheduler/schedule_summary_assembly.py:292` [Service] `"metrics": ctx.best_metrics.to_dict() if ctx.best_metrics is not None else None,`
+- **被调用者**（8 个）：`float`, `int`, `_round_finite`, `bool`, `math.isfinite`, `round`, `str`, `list`
+
+### `compute_metrics()` [公开]
+- 位置：第 102-280 行
+- 参数：results, batches
+- 返回类型：Name(id='ScheduleMetrics', ctx=Load())
+- **调用者**（4 处）：
+  - `core/services/scheduler/schedule_optimizer.py:212` [Service] `metrics = compute_metrics(res, batches)`
+  - `core/services/scheduler/schedule_optimizer.py:538` [Service] `best_metrics = compute_metrics(results, batches)`
+  - `core/services/scheduler/schedule_optimizer_steps.py:215` [Service] `metrics = compute_metrics(res, batches)`
+  - `core/services/scheduler/schedule_optimizer_steps.py:352` [Service] `metrics = compute_metrics(res, batches)`
+- **被调用者**（35 个）：`batches.items`, `by_machine.items`, `_finite_non_negative`, `float`, `bool`, `ScheduleMetrics`, `strip`, `finish_by_batch.get`, `getattr`, `_parse_due_date_state`, `due_exclusive`, `append`, `lst.sort`, `max`, `statistics.fmean`
+
+### `objective_score()` [公开]
+- 位置：第 283-314 行
+- 参数：objective, metrics
+- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+- **调用者**（4 处）：
+  - `core/services/scheduler/schedule_optimizer.py:214` [Service] `score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)`
+  - `core/services/scheduler/schedule_optimizer.py:539` [Service] `best_score = (float(summary.failed_ops),) + objective_score(objective_name, best`
+  - `core/services/scheduler/schedule_optimizer_steps.py:216` [Service] `score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)`
+  - `core/services/scheduler/schedule_optimizer_steps.py:353` [Service] `score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)`
+- **被调用者**（4 个）：`lower`, `float`, `strip`, `str`
+
+## core/algorithms/greedy/auto_assign.py（Algorithm 层）
+
+### `auto_assign_internal_resources()` [公开]
+- 位置：第 10-177 行
+- 参数：scheduler
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+- **调用者**（1 处）：
+  - `core/algorithms/greedy/scheduler.py:567` [Algorithm] `return auto_assign_internal_resources(`
+- **被调用者**（27 个）：`strip`, `batch_progress.get`, `list`, `sorted`, `_count`, `isinstance`, `resource_pool.get`, `dict.fromkeys`, `validate_internal_hours`, `str`, `estimate_internal_slot`, `operators_by_machine.items`, `float`, `int`, `getattr`
+
+## core/algorithms/greedy/date_parsers.py（Algorithm 层）
+
+### `parse_date()` [公开]
+- 位置：第 7-21 行
+- 参数：value
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+- **调用者**（10 处）：
+  - `core/services/report/report_engine.py:185` [Service] `sd = calculations.parse_date(start_date, field="start_date")`
+  - `core/services/report/report_engine.py:186` [Service] `ed = calculations.parse_date(end_date, field="end_date")`
+  - `core/services/report/report_engine.py:234` [Service] `sd = calculations.parse_date(start_date, field="start_date")`
+  - `core/services/report/report_engine.py:235` [Service] `ed = calculations.parse_date(end_date, field="end_date")`
+  - `core/algorithms/evaluation.py:35` [Algorithm] `parsed = parse_date(s)`
+  - `core/algorithms/ortools_bottleneck.py:94` [Algorithm] `due_d = parse_date(getattr(b, "due_date", None))`
+  - `core/algorithms/greedy/scheduler.py:70` [Algorithm] `return parse_optional_date(value, field="due_date") if strict_mode else parse_da`
+  - `core/algorithms/greedy/scheduler.py:74` [Algorithm] `return parse_optional_date(value, field="ready_date") if strict_mode else parse_`
+  - `core/algorithms/greedy/schedule_params.py:68` [Algorithm] `end_d = parse_date(end_date)`
+  - `core/algorithms/greedy/dispatch/sgs.py:25` [Algorithm] `return parse_date(value)`
+- **被调用者**（7 个）：`isinstance`, `strip`, `s.replace`, `value.date`, `date`, `str`, `datetime.strptime`
+
+### `parse_datetime()` [公开]
+- 位置：第 24-43 行
+- 参数：value
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+- **调用者**（2 处）：
+  - `core/algorithms/greedy/scheduler.py:80` [Algorithm] `return parse_datetime(value)`
+  - `core/algorithms/greedy/schedule_params.py:58` [Algorithm] `parsed = parse_datetime(base_time)`
+- **被调用者**（7 个）：`isinstance`, `strip`, `replace`, `datetime`, `datetime.strptime`, `str`, `s.replace`
 
 ### `due_exclusive()` [公开]
-- 位置：第 91-94 行
-- 参数：due_date
+- 位置：第 46-49 行
+- 参数：d
 - 返回类型：Name(id='datetime', ctx=Load())
-- **调用者**（1 处）：
+- **调用者**（4 处）：
   - `core/services/report/calculations.py:98` [Service] `due_excl = due_exclusive(due_d)`
+  - `core/algorithms/dispatch_rules.py:67` [Algorithm] `due_dt_exclusive = due_exclusive(inp.due_date)`
+  - `core/algorithms/evaluation.py:151` [Algorithm] `batch_due_exclusive = due_exclusive(due_d)`
+  - `core/algorithms/ortools_bottleneck.py:96` [Algorithm] `due_dt_exclusive = due_exclusive(due_d)`
 - **被调用者**（2 个）：`datetime`, `timedelta`
 
-### `_warning_list()` [私有]
-- 位置：第 97-122 行
+## core/algorithms/greedy/dispatch/batch_order.py（Algorithm 层）
+
+### `dispatch_batch_order()` [公开]
+- 位置：第 12-124 行
+- 参数：scheduler
+- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+- **调用者**（1 处）：
+  - `core/algorithms/greedy/scheduler.py:382` [Algorithm] `scheduled_count, failed_count = dispatch_batch_order(`
+- **被调用者**（15 个）：`strip`, `errors.append`, `lower`, `scheduler._schedule_external`, `scheduler._schedule_internal`, `results.append`, `max`, `blocked_batches.add`, `str`, `accumulate_busy_hours`, `update_machine_last_state`, `batch_progress.get`, `getattr`, `exception`, `bool`
+
+## core/algorithms/greedy/dispatch/runtime_state.py（Algorithm 层）
+
+### `accumulate_busy_hours()` [公开]
+- 位置：第 7-23 行
+- 参数：无
+- 返回类型：Name(id='float', ctx=Load())
+- **调用者**（3 处）：
+  - `core/algorithms/greedy/scheduler.py:317` [Algorithm] `accumulate_busy_hours(`
+  - `core/algorithms/greedy/dispatch/batch_order.py:90` [Algorithm] `accumulate_busy_hours(`
+  - `core/algorithms/greedy/dispatch/sgs.py:610` [Algorithm] `accumulate_busy_hours(`
+- **被调用者**（6 个）：`float`, `TypeError`, `total_seconds`, `isinstance`, `machine_busy_hours.get`, `operator_busy_hours.get`
+
+### `update_machine_last_state()` [公开]
+- 位置：第 26-54 行
+- 参数：无
+- 返回类型：Constant(value=None, kind=None)
+- **调用者**（3 处）：
+  - `core/algorithms/greedy/scheduler.py:325` [Algorithm] `update_machine_last_state(`
+  - `core/algorithms/greedy/dispatch/batch_order.py:98` [Algorithm] `update_machine_last_state(`
+  - `core/algorithms/greedy/dispatch/sgs.py:618` [Algorithm] `update_machine_last_state(`
+- **被调用者**（5 个）：`strip`, `last_end_by_machine.get`, `isinstance`, `TypeError`, `str`
+
+## core/algorithms/greedy/dispatch/sgs.py（Algorithm 层）
+
+### `_parse_due_date()` [私有]
+- 位置：第 22-25 行
 - 参数：value
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
 
-### `_merge_warning_lists()` [私有]
-- 位置：第 125-133 行
-- 参数：primary, extra
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-
-### `_append_summary_warning()` [私有]
-- 位置：第 136-154 行
-- 参数：summary, message
-- 返回类型：Name(id='bool', ctx=Load())
-
-### `_counter_dict()` [私有]
-- 位置：第 157-168 行
+### `_safe_seq()` [私有]
+- 位置：第 28-35 行
 - 参数：value
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_summary_size_bytes()` [私有]
-- 位置：第 171-172 行
-- 参数：obj
 - 返回类型：Name(id='int', ctx=Load())
 
-### `apply_summary_size_guard()` [公开]
-- 位置：第 175-229 行
-- 参数：result_summary_obj
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（12 个）：`_summary_size_bytes`, `result_summary_obj.get`, `algo_dict.get`, `isinstance`, `overdue_batches.get`, `_trim_trace`, `_trim_warnings`, `_trim_attempts`, `int`, `_trim_best_batch_order`, `_trim_selected_batch_ids`, `_trim_overdue_items`
+### `_raise_strict_internal_hours_validation()` [私有]
+- 位置：第 38-59 行
+- 参数：op, batch, exc
+- 返回类型：Constant(value=None, kind=None)
 
-### `build_overdue_items()` [公开]
-- 位置：第 232-246 行
-- 参数：svc
+### `_dispatch_key()` [私有]
+- 位置：第 62-94 行
+- 参数：无
 - 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（1 个）：`_build_overdue_items_impl`
 
-### `_build_runtime_state()` [私有]
-- 位置：第 249-279 行
+### `_build_unscorable_dispatch_key()` [私有]
+- 位置：第 97-146 行
 - 参数：无
-- 返回类型：Name(id='RuntimeState', ctx=Load())
+- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
 
-### `_build_warning_state()` [私有]
-- 位置：第 282-311 行
+### `_collect_sgs_candidates()` [私有]
+- 位置：第 149-165 行
 - 参数：无
-- 返回类型：Name(id='WarningState', ctx=Load())
-
-### `_build_freeze_state()` [私有]
-- 位置：第 314-334 行
-- 参数：无
-- 返回类型：Name(id='FreezeState', ctx=Load())
-
-### `_build_fallback_state()` [私有]
-- 位置：第 337-347 行
-- 参数：algo_stats
-- 返回类型：Name(id='FallbackState', ctx=Load())
-
-### `_merge_fallback_warnings()` [私有]
-- 位置：第 350-357 行
-- 参数：all_warnings, fallback_state
 - 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
 
-### `build_result_summary()` [公开]
-- 位置：第 360-462 行
-- 参数：svc
+### `_record_external_compat_counters()` [私有]
+- 位置：第 168-172 行
+- 参数：scheduler, collector
+- 返回类型：Constant(value=None, kind=None)
+
+### `_score_external_candidate()` [私有]
+- 位置：第 175-322 行
+- 参数：无
 - 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+
+### `_score_internal_candidate()` [私有]
+- 位置：第 325-447 行
+- 参数：无
+- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+
+### `_pick_best_candidate()` [私有]
+- 位置：第 450-455 行
+- 参数：scored_candidates
+- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+
+### `dispatch_sgs()` [公开]
+- 位置：第 458-654 行
+- 参数：scheduler
+- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+- **调用者**（1 处）：
+  - `core/algorithms/greedy/scheduler.py:355` [Algorithm] `scheduled_count, failed_count = dispatch_sgs(`
+- **被调用者**（41 个）：`ops_by_batch.values`, `sorted`, `ops_by_batch.items`, `strip`, `append`, `operations.sort`, `list`, `batches.get`, `increment_counter`, `_collect_sgs_candidates`, `_pick_best_candidate`, `errors.append`, `ops_by_batch.keys`, `sum`, `float`
+
+## core/algorithms/greedy/downtime.py（Algorithm 层）
+
+### `get_resource_available()` [公开]
+- 位置：第 8-18 行
+- 参数：timeline, resource_id, base_time
+- 返回类型：Name(id='datetime', ctx=Load())
 - **调用者**（0 处）：
   - （无外部调用者）
-- **被调用者**（28 个）：`dict`, `_build_runtime_state`, `_compute_result_status`, `int`, `_frozen_batch_ids`, `_input_build_state`, `_build_warning_state`, `_build_freeze_state`, `_compute_downtime_degradation`, `_compute_resource_pool_degradation`, `_hard_constraints`, `_build_fallback_state`, `replace`, `_summary_degradation_state`, `AlgorithmSummaryState`
+- **被调用者**（2 个）：`max`, `timeline.get`
 
-## core/services/scheduler/schedule_summary_assembly.py（Service 层）
+### `occupy_resource()` [公开]
+- 位置：第 21-30 行
+- 参数：timeline, resource_id, start, end
+- 返回类型：Constant(value=None, kind=None)
+- **调用者**（4 处）：
+  - `core/algorithms/greedy/scheduler.py:306` [Algorithm] `occupy_resource(machine_timeline, machine_id, sr.start_time, sr.end_time)`
+  - `core/algorithms/greedy/scheduler.py:312` [Algorithm] `occupy_resource(operator_timeline, operator_id, sr.start_time, sr.end_time)`
+  - `core/algorithms/greedy/scheduler.py:529` [Algorithm] `occupy_resource(machine_timeline, machine_id, estimate.start_time, estimate.end_`
+  - `core/algorithms/greedy/scheduler.py:530` [Algorithm] `occupy_resource(operator_timeline, operator_id, estimate.start_time, estimate.en`
+- **被调用者**（2 个）：`timeline.setdefault`, `bisect.insort`
 
-### `_cfg_value()` [私有]
-- 位置：第 75-78 行
-- 参数：cfg, key, default
+### `find_earliest_available_start()` [公开]
+- 位置：第 33-59 行
+- 参数：segments, base_time, duration_hours
+- 返回类型：Name(id='datetime', ctx=Load())
+- **调用者**（3 处）：
+  - `core/algorithms/greedy/dispatch/sgs.py:123` [Algorithm] `estimate_start = find_earliest_available_start(machine_timeline or [], estimate_`
+  - `core/algorithms/greedy/dispatch/sgs.py:124` [Algorithm] `estimate_start = find_earliest_available_start(operator_timeline or [], estimate`
+  - `core/algorithms/greedy/dispatch/sgs.py:125` [Algorithm] `estimate_start = find_earliest_available_start(machine_downtimes or [], estimate`
+- **被调用者**（4 个）：`timedelta`, `float`, `find_overlap_shift_end`, `len`
+
+### `find_overlap_shift_end()` [公开]
+- 位置：第 62-80 行
+- 参数：segments, start, end
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+- **调用者**（3 处）：
+  - `core/algorithms/greedy/internal_slot.py:167` [Algorithm] `find_overlap_shift_end(machine_segments, earliest, end_time),`
+  - `core/algorithms/greedy/internal_slot.py:168` [Algorithm] `find_overlap_shift_end(operator_segments, earliest, end_time),`
+  - `core/algorithms/greedy/internal_slot.py:169` [Algorithm] `find_overlap_shift_end(downtime_segments, earliest, end_time),`
+
+## core/algorithms/greedy/internal_slot.py（Algorithm 层）
+
+### `_read_legacy_field()` [私有]
+- 位置：第 27-32 行
+- 参数：obj, field
 - 返回类型：Name(id='Any', ctx=Load())
 
-### `_config_snapshot_dict()` [私有]
-- 位置：第 81-101 行
-- 参数：cfg
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_comparison_metric()` [私有]
-- 位置：第 104-106 行
-- 参数：objective_name
-- 返回类型：Name(id='str', ctx=Load())
-
-### `_best_score_schema()` [私有]
-- 位置：第 109-112 行
-- 参数：objective_name
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-
-### `_finish_time_by_batch()` [私有]
-- 位置：第 115-127 行
-- 参数：results
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_record_invalid_due()` [私有]
-- 位置：第 130-140 行
-- 参数：无
-- 返回类型：Constant(value=None, kind=None)
-
-### `_build_overdue_items()` [私有]
-- 位置：第 143-200 行
-- 参数：svc
-- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
-
-### `_algo_downtime_dict()` [私有]
-- 位置：第 203-213 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_algo_input_contract_dict()` [私有]
-- 位置：第 216-222 行
-- 参数：input_state
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_algo_freeze_window_dict()` [私有]
-- 位置：第 225-245 行
-- 参数：state
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_algo_resource_pool_dict()` [私有]
-- 位置：第 248-261 行
-- 参数：cfg
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_algo_warning_pipeline_dict()` [私有]
-- 位置：第 264-276 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_algo_dict()` [私有]
-- 位置：第 279-320 行
-- 参数：state
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_build_result_summary_obj()` [私有]
-- 位置：第 323-363 行
-- 参数：svc
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-## core/services/scheduler/schedule_summary_types.py（Service 层）
-
-### `FreezeState.status()` [公开]
-- 位置：第 68-69 行
-- 参数：无
-- 返回类型：Name(id='str', ctx=Load())
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（2 个）：`str`, `get`
-
-## web/bootstrap/entrypoint.py（Other 层）
-
-### `create_app_with_mode()` [公开]
-- 位置：第 60-66 行
-- 参数：ui_mode
-- 返回类型：Name(id='Flask', ctx=Load())
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（1 个）：`create_app_core`
-
-### `_parse_cli_args()` [私有]
-- 位置：第 69-73 行
-- 参数：argv
-- 返回类型：无注解
-
-### `_default_deps()` [私有]
-- 位置：第 76-97 行
-- 参数：ui_mode
-- 返回类型：Name(id='EntryPointDeps', ctx=Load())
-
-### `deps_from_module_globals()` [公开]
-- 位置：第 100-133 行
-- 参数：module_globals, ui_mode
-- 返回类型：Name(id='EntryPointDeps', ctx=Load())
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（7 个）：`module_globals.get`, `callable`, `EntryPointDeps`, `cast`, `create_app_with_mode`, `getattr`, `__import__`
-
-### `configure_runtime_contract()` [公开]
-- 位置：第 136-173 行
-- 参数：app, runtime_dir, host, port, owner
-- 返回类型：Constant(value=None, kind=None)
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（6 个）：`secrets.token_urlsafe`, `deps.write_runtime_host_port_files`, `deps.write_runtime_contract_file`, `get`, `str`, `deps.default_chrome_profile_dir`
-
-### `app_main()` [公开]
-- 位置：第 176-289 行
-- 参数：ui_mode
-- 返回类型：Name(id='int', ctx=Load())
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（30 个）：`_parse_cli_args`, `strip`, `runtime_base_dir`, `deps.resolve_prelaunch_log_dir`, `deps.current_runtime_owner`, `bool`, `deps.should_use_runtime_reloader`, `deps.should_own_runtime_resources`, `get`, `deps.pick_bind_host`, `deps.pick_port`, `deps.serve_runtime_app`, `int`, `deps.clear_launch_error`, `deps.create_app`
-
-## web/routes/equipment_excel_links.py（Route 层）
-
-### `_build_existing_machine_link_page_data()` [私有]
-- 位置：第 36-60 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
-
-### `_operator_machine_reference_snapshot()` [私有]
-- 位置：第 63-69 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_render_excel_link_page()` [私有]
-- 位置：第 72-94 行
-- 参数：无
-- 返回类型：无注解
-
-### `excel_link_page()` [公开]
-- 位置：第 98-107 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（3 个）：`bp.get`, `_build_existing_machine_link_page_data`, `_render_excel_link_page`
-
-### `excel_link_preview()` [公开]
-- 位置：第 111-162 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（20 个）：`bp.post`, `time.time`, `_parse_mode`, `get`, `_read_uploaded_xlsx`, `OperatorMachineService`, `link_svc.preview_import_links`, `_build_existing_machine_link_page_data`, `build_preview_baseline_token`, `int`, `log_excel_import`, `_render_excel_link_page`, `ValidationError`, `dict`, `normalized_rows.append`
-
-### `excel_link_confirm()` [公开]
-- 位置：第 166-228 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（25 个）：`bp.post`, `time.time`, `_parse_mode`, `load_confirm_payload`, `_build_existing_machine_link_page_data`, `preview_baseline_is_stale`, `OperatorMachineService`, `link_svc.preview_import_links`, `collect_error_rows`, `link_svc.apply_import_links`, `extract_import_stats`, `int`, `log_excel_import`, `flash_import_result`, `redirect`
-
-### `excel_link_template()` [公开]
-- 位置：第 232-274 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `getattr`, `len`
-
-### `excel_link_export()` [公开]
-- 位置：第 278-308 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（15 个）：`bp.get`, `time.time`, `OperatorMachineQueryService`, `q.list_simple_rows`, `rows.sort`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `getattr`, `template_def.get`, `len`, `str`, `r.get`
-
-## web/routes/equipment_excel_machines.py（Route 层）
-
-### `_validate_machine_excel_row()` [私有]
-- 位置：第 42-56 行
-- 参数：row
-- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
-
-### `_normalize_machine_status_for_excel()` [私有]
-- 位置：第 59-66 行
-- 参数：value
-- 返回类型：Name(id='str', ctx=Load())
-
-### `_resolve_op_type()` [私有]
-- 位置：第 69-83 行
-- 参数：value, op_type_svc
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_machine_reference_snapshot()` [私有]
-- 位置：第 86-104 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_render_excel_machine_page()` [私有]
-- 位置：第 107-129 行
-- 参数：无
-- 返回类型：无注解
-
-### `excel_machine_page()` [公开]
-- 位置：第 133-143 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（5 个）：`bp.get`, `MachineService`, `svc.build_existing_for_excel`, `_render_excel_machine_page`, `getattr`
-
-### `excel_machine_preview()` [公开]
-- 位置：第 147-234 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（32 个）：`bp.post`, `time.time`, `_parse_mode`, `get`, `_read_uploaded_xlsx`, `_ensure_unique_ids`, `OpTypeService`, `ResourceTeamService`, `MachineService`, `m_svc.build_existing_for_excel`, `ExcelService`, `svc.preview_import`, `build_preview_baseline_token`, `int`, `log_excel_import`
-
-### `excel_machine_confirm()` [公开]
-- 位置：第 238-334 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（40 个）：`bp.post`, `time.time`, `_parse_mode`, `load_confirm_payload`, `_ensure_unique_ids`, `OpTypeService`, `ResourceTeamService`, `MachineService`, `m_svc.build_existing_for_excel`, `preview_baseline_is_stale`, `ExcelService`, `excel_svc.preview_import`, `collect_error_rows`, `MachineExcelImportService`, `import_svc.apply_preview_rows`
-
-### `excel_machine_template()` [公开]
-- 位置：第 338-379 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `getattr`, `len`
-
-### `excel_machine_export()` [公开]
-- 位置：第 383-412 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `MachineService`, `m_svc.list_for_export`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `getattr`, `template_def.get`, `len`, `r.get`
-
-## web/routes/excel_demo.py（Route 层）
-
-### `_fetch_existing_operators()` [私有]
-- 位置：第 39-41 行
-- 参数：conn
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_parse_mode()` [私有]
-- 位置：第 44-45 行
-- 参数：value
-- 返回类型：Name(id='ImportMode', ctx=Load())
-
-### `_render_demo_page()` [私有]
-- 位置：第 48-69 行
-- 参数：无
-- 返回类型：无注解
-
-### `_validate_operator_row()` [私有]
-- 位置：第 72-85 行
-- 参数：row
-- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
-
-### `index()` [公开]
-- 位置：第 89-98 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（3 个）：`bp.get`, `_fetch_existing_operators`, `_render_demo_page`
-
-### `preview()` [公开]
-- 位置：第 102-189 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（31 个）：`bp.post`, `time.time`, `_parse_mode`, `get`, `file.read`, `io.BytesIO`, `tmp.seek`, `OpenpyxlBackend`, `_fetch_existing_operators`, `ExcelService`, `svc.preview_import`, `build_preview_baseline_token`, `int`, `log_excel_import`, `_render_demo_page`
-
-### `confirm()` [公开]
-- 位置：第 193-260 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（28 个）：`bp.post`, `time.time`, `_parse_mode`, `load_confirm_payload`, `_fetch_existing_operators`, `preview_baseline_is_stale`, `OpenpyxlBackend`, `ExcelService`, `svc.preview_import`, `collect_error_rows`, `OperatorExcelImportService`, `import_svc.apply_preview_rows`, `extract_import_stats`, `int`, `log_excel_import`
-
-### `download_template()` [公开]
-- 位置：第 264-309 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（12 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `len`
-
-## web/routes/excel_utils.py（Route 层）
-
-### `parse_import_mode()` [公开]
-- 位置：第 22-30 行
-- 参数：value
-- 返回类型：Name(id='ImportMode', ctx=Load())
-- **调用者**（5 处）：
-  - `web/routes/equipment_bp.py:24` [Route] `return parse_import_mode(value)`
-  - `web/routes/excel_demo.py:45` [Route] `return parse_import_mode(value)`
-  - `web/routes/personnel_bp.py:29` [Route] `return parse_import_mode(value)`
-  - `web/routes/process_bp.py:41` [Route] `return parse_import_mode(value)`
-  - `web/routes/scheduler_utils.py:12` [Route] `return parse_import_mode(value)`
-- **被调用者**（2 个）：`ImportMode`, `ValidationError`
-
-### `build_preview_baseline_token()` [公开]
-- 位置：第 33-52 行
-- 参数：无
-- 返回类型：Name(id='str', ctx=Load())
-- **调用者**（12 处）：
-  - `web/routes/equipment_excel_links.py:137` [Route] `preview_baseline = build_preview_baseline_token(`
-  - `web/routes/equipment_excel_machines.py:209` [Route] `preview_baseline = build_preview_baseline_token(`
-  - `web/routes/excel_demo.py:169` [Route] `preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mod`
-  - `web/routes/personnel_excel_links.py:137` [Route] `preview_baseline = build_preview_baseline_token(`
-  - `web/routes/personnel_excel_operators.py:156` [Route] `preview_baseline = build_preview_baseline_token(`
-  - `web/routes/personnel_excel_operator_calendar.py:221` [Route] `preview_baseline = build_preview_baseline_token(`
-  - `web/routes/process_excel_op_types.py:158` [Route] `preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mod`
-  - `web/routes/process_excel_part_operation_hours.py:267` [Route] `preview_baseline = build_preview_baseline_token(`
-  - `web/routes/process_excel_routes.py:134` [Route] `preview_baseline = build_preview_baseline_token(existing_data=existing, mode=mod`
-  - `web/routes/process_excel_suppliers.py:169` [Route] `preview_baseline = build_preview_baseline_token(`
-  - `web/routes/scheduler_excel_batches.py:230` [Route] `preview_baseline = build_preview_baseline_token(`
-  - `web/routes/scheduler_excel_calendar.py:234` [Route] `preview_baseline = build_preview_baseline_token(`
-- **被调用者**（7 个）：`json.dumps`, `hexdigest`, `strip`, `hashlib.sha256`, `str`, `raw.encode`, `getattr`
-
-### `preview_baseline_matches()` [公开]
-- 位置：第 55-79 行
-- 参数：token
-- 返回类型：Name(id='bool', ctx=Load())
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（4 个）：`strip`, `build_preview_baseline_token`, `hmac.compare_digest`, `exception`
-
-### `parse_preview_rows_json()` [公开]
-- 位置：第 88-95 行
-- 参数：raw_rows_json
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（4 个）：`json.loads`, `isinstance`, `ValueError`, `ValidationError`
-
-### `extract_error_rows()` [公开]
-- 位置：第 98-99 行
-- 参数：preview_rows
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（1 个）：`getattr`
-
-### `format_error_sample()` [公开]
-- 位置：第 102-108 行
-- 参数：error_rows
-- 返回类型：Name(id='str', ctx=Load())
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（2 个）：`join`, `getattr`
-
-### `strict_mode_enabled()` [公开]
-- 位置：第 111-112 行
+### `_coerce_legacy_hours_value()` [私有]
+- 位置：第 35-50 行
 - 参数：raw_value
-- 返回类型：Name(id='bool', ctx=Load())
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（3 个）：`lower`, `strip`, `str`
-
-### `load_confirm_payload()` [公开]
-- 位置：第 115-124 行
-- 参数：raw_rows_json, preview_baseline
-- 返回类型：Name(id='ConfirmPayload', ctx=Load())
-- **调用者**（12 处）：
-  - `web/routes/equipment_excel_links.py:170` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-  - `web/routes/equipment_excel_machines.py:242` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-  - `web/routes/excel_demo.py:198` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-  - `web/routes/personnel_excel_links.py:171` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-  - `web/routes/personnel_excel_operators.py:190` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-  - `web/routes/personnel_excel_operator_calendar.py:257` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-  - `web/routes/process_excel_op_types.py:186` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-  - `web/routes/process_excel_part_operation_hours.py:303` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-  - `web/routes/process_excel_routes.py:164` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-  - `web/routes/process_excel_suppliers.py:202` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-  - `web/routes/scheduler_excel_batches.py:273` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-  - `web/routes/scheduler_excel_calendar.py:267` [Route] `payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.g`
-- **被调用者**（5 个）：`strip`, `ConfirmPayload`, `ValidationError`, `str`, `parse_preview_rows_json`
-
-### `preview_baseline_is_stale()` [公开]
-- 位置：第 127-141 行
-- 参数：preview_baseline
-- 返回类型：Name(id='bool', ctx=Load())
-- **调用者**（12 处）：
-  - `web/routes/equipment_excel_links.py:174` [Route] `if preview_baseline_is_stale(`
-  - `web/routes/equipment_excel_machines.py:251` [Route] `if preview_baseline_is_stale(`
-  - `web/routes/excel_demo.py:202` [Route] `if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, m`
-  - `web/routes/personnel_excel_links.py:175` [Route] `if preview_baseline_is_stale(`
-  - `web/routes/personnel_excel_operators.py:198` [Route] `if preview_baseline_is_stale(`
-  - `web/routes/personnel_excel_operator_calendar.py:276` [Route] `if preview_baseline_is_stale(`
-  - `web/routes/process_excel_op_types.py:193` [Route] `if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, m`
-  - `web/routes/process_excel_part_operation_hours.py:312` [Route] `if preview_baseline_is_stale(`
-  - `web/routes/process_excel_routes.py:171` [Route] `if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, m`
-  - `web/routes/process_excel_suppliers.py:210` [Route] `if preview_baseline_is_stale(`
-  - `web/routes/scheduler_excel_batches.py:281` [Route] `if preview_baseline_is_stale(`
-  - `web/routes/scheduler_excel_calendar.py:282` [Route] `if preview_baseline_is_stale(`
-- **被调用者**（1 个）：`preview_baseline_matches`
-
-### `collect_error_rows()` [公开]
-- 位置：第 144-145 行
-- 参数：preview_rows
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-- **调用者**（12 处）：
-  - `web/routes/equipment_excel_links.py:194` [Route] `error_rows = collect_error_rows(preview_rows)`
-  - `web/routes/equipment_excel_machines.py:296` [Route] `error_rows = collect_error_rows(preview_rows)`
-  - `web/routes/excel_demo.py:222` [Route] `error_rows = collect_error_rows(preview_rows)`
-  - `web/routes/personnel_excel_links.py:195` [Route] `error_rows = collect_error_rows(preview_rows)`
-  - `web/routes/personnel_excel_operators.py:236` [Route] `error_rows = collect_error_rows(preview_rows)`
-  - `web/routes/personnel_excel_operator_calendar.py:311` [Route] `error_rows = collect_error_rows(preview_rows)`
-  - `web/routes/process_excel_op_types.py:215` [Route] `error_rows = collect_error_rows(preview_rows)`
-  - `web/routes/process_excel_part_operation_hours.py:337` [Route] `error_rows = collect_error_rows(preview_rows)`
-  - `web/routes/process_excel_routes.py:194` [Route] `error_rows = collect_error_rows(preview_rows)`
-  - `web/routes/process_excel_suppliers.py:254` [Route] `error_rows = collect_error_rows(preview_rows)`
-  - `web/routes/scheduler_excel_batches.py:316` [Route] `error_rows = collect_error_rows(preview_rows)`
-  - `web/routes/scheduler_excel_calendar.py:362` [Route] `error_rows = collect_error_rows(preview_rows)`
-- **被调用者**（1 个）：`extract_error_rows`
-
-### `build_error_rows_message()` [公开]
-- 位置：第 148-153 行
-- 参数：error_rows
-- 返回类型：Name(id='str', ctx=Load())
-- **调用者**（12 处）：
-  - `web/routes/equipment_excel_links.py:196` [Route] `flash(build_error_rows_message(error_rows), "error")`
-  - `web/routes/equipment_excel_machines.py:298` [Route] `flash(build_error_rows_message(error_rows), "error")`
-  - `web/routes/excel_demo.py:224` [Route] `flash(build_error_rows_message(error_rows), "error")`
-  - `web/routes/personnel_excel_links.py:197` [Route] `flash(build_error_rows_message(error_rows), "error")`
-  - `web/routes/personnel_excel_operators.py:238` [Route] `flash(build_error_rows_message(error_rows), "error")`
-  - `web/routes/personnel_excel_operator_calendar.py:313` [Route] `flash(build_error_rows_message(error_rows), "error")`
-  - `web/routes/process_excel_op_types.py:217` [Route] `flash(build_error_rows_message(error_rows), "error")`
-  - `web/routes/process_excel_part_operation_hours.py:339` [Route] `flash(build_error_rows_message(error_rows), "error")`
-  - `web/routes/process_excel_routes.py:196` [Route] `flash(build_error_rows_message(error_rows), "error")`
-  - `web/routes/process_excel_suppliers.py:256` [Route] `flash(build_error_rows_message(error_rows), "error")`
-  - `web/routes/scheduler_excel_batches.py:318` [Route] `flash(build_error_rows_message(error_rows), "error")`
-  - `web/routes/scheduler_excel_calendar.py:364` [Route] `flash(build_error_rows_message(error_rows), "error")`
-- **被调用者**（2 个）：`format_error_sample`, `len`
-
-### `extract_import_stats()` [公开]
-- 位置：第 156-162 行
-- 参数：import_stats
-- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
-- **调用者**（12 处）：
-  - `web/routes/equipment_excel_links.py:208` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(stats)`
-  - `web/routes/equipment_excel_machines.py:314` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(import_s`
-  - `web/routes/excel_demo.py:240` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(import_s`
-  - `web/routes/personnel_excel_links.py:209` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(stats)`
-  - `web/routes/personnel_excel_operators.py:254` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(import_s`
-  - `web/routes/personnel_excel_operator_calendar.py:328` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(import_s`
-  - `web/routes/process_excel_op_types.py:233` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(import_s`
-  - `web/routes/process_excel_part_operation_hours.py:355` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(stats)`
-  - `web/routes/process_excel_routes.py:286` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(result)`
-  - `web/routes/process_excel_suppliers.py:272` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(import_s`
-  - `web/routes/scheduler_excel_batches.py:338` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(import_s`
-  - `web/routes/scheduler_excel_calendar.py:411` [Route] `new_count, update_count, skip_count, error_count = extract_import_stats(result)`
-- **被调用者**（2 个）：`int`, `import_stats.get`
-
-### `flash_import_result()` [公开]
-- 位置：第 171-199 行
-- 参数：无
-- 返回类型：Constant(value=None, kind=None)
-- **调用者**（12 处）：
-  - `web/routes/equipment_excel_links.py:221` [Route] `flash_import_result(`
-  - `web/routes/equipment_excel_machines.py:327` [Route] `flash_import_result(`
-  - `web/routes/excel_demo.py:253` [Route] `flash_import_result(`
-  - `web/routes/personnel_excel_links.py:222` [Route] `flash_import_result(`
-  - `web/routes/personnel_excel_operators.py:267` [Route] `flash_import_result(`
-  - `web/routes/personnel_excel_operator_calendar.py:341` [Route] `flash_import_result(`
-  - `web/routes/process_excel_op_types.py:247` [Route] `flash_import_result(`
-  - `web/routes/process_excel_part_operation_hours.py:368` [Route] `flash_import_result(`
-  - `web/routes/process_excel_routes.py:288` [Route] `flash_import_result(`
-  - `web/routes/process_excel_suppliers.py:285` [Route] `flash_import_result(`
-  - `web/routes/scheduler_excel_batches.py:351` [Route] `flash_import_result(`
-  - `web/routes/scheduler_excel_calendar.py:425` [Route] `flash_import_result(`
-- **被调用者**（5 个）：`flash`, `int`, `join`, `item.get`, `list`
-
-### `ensure_unique_ids()` [公开]
-- 位置：第 202-225 行
-- 参数：rows, id_column
-- 返回类型：Constant(value=None, kind=None)
-- **调用者**（4 处）：
-  - `web/routes/equipment_bp.py:32` [Route] `ensure_unique_ids(rows, id_column=id_column)`
-  - `web/routes/personnel_bp.py:37` [Route] `ensure_unique_ids(rows, id_column=id_column)`
-  - `web/routes/process_bp.py:45` [Route] `ensure_unique_ids(rows, id_column=id_column)`
-  - `web/routes/scheduler_utils.py:16` [Route] `ensure_unique_ids(rows, id_column=id_column)`
-- **被调用者**（13 个）：`set`, `r.get`, `seen.add`, `join`, `ValidationError`, `isinstance`, `v.is_integer`, `strip`, `dup.add`, `list`, `str`, `sorted`, `int`
-
-### `read_uploaded_xlsx()` [公开]
-- 位置：第 228-255 行
-- 参数：file_storage
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-- **调用者**（4 处）：
-  - `web/routes/equipment_bp.py:28` [Route] `return read_uploaded_xlsx(file_storage)`
-  - `web/routes/personnel_bp.py:33` [Route] `return read_uploaded_xlsx(file_storage)`
-  - `web/routes/process_bp.py:49` [Route] `return read_uploaded_xlsx(file_storage)`
-  - `web/routes/scheduler_utils.py:20` [Route] `return read_uploaded_xlsx(file_storage)`
-- **被调用者**（11 个）：`file_storage.read`, `int`, `tempfile.mkstemp`, `AppError`, `get_excel_backend`, `backend.read`, `get`, `len`, `os.fdopen`, `f.write`, `os.remove`
-
-### `send_excel_template_file()` [公开]
-- 位置：第 258-269 行
-- 参数：template_path
-- 返回类型：无注解
-- **调用者**（12 处）：
-  - `web/routes/equipment_excel_links.py:247` [Route] `return send_excel_template_file(template_path, download_name="设备人员关联.xlsx")`
-  - `web/routes/equipment_excel_machines.py:353` [Route] `return send_excel_template_file(template_path, download_name="设备信息.xlsx")`
-  - `web/routes/excel_demo.py:282` [Route] `return send_excel_template_file(template_path, download_name="人员基本信息.xlsx")`
-  - `web/routes/personnel_excel_links.py:248` [Route] `return send_excel_template_file(template_path, download_name="人员设备关联.xlsx")`
-  - `web/routes/personnel_excel_operators.py:294` [Route] `return send_excel_template_file(template_path, download_name="人员基本信息.xlsx")`
-  - `web/routes/personnel_excel_operator_calendar.py:367` [Route] `return send_excel_template_file(template_path, download_name="人员专属工作日历.xlsx")`
-  - `web/routes/process_excel_op_types.py:273` [Route] `return send_excel_template_file(template_path, download_name="工种配置.xlsx")`
-  - `web/routes/process_excel_part_operation_hours.py:394` [Route] `return send_excel_template_file(template_path, download_name="零件工序工时.xlsx")`
-  - `web/routes/process_excel_routes.py:314` [Route] `return send_excel_template_file(template_path, download_name="零件工艺路线.xlsx")`
-  - `web/routes/process_excel_suppliers.py:311` [Route] `return send_excel_template_file(template_path, download_name="供应商配置.xlsx")`
-  - `web/routes/scheduler_excel_batches.py:381` [Route] `return send_excel_template_file(template_path, download_name="批次信息.xlsx")`
-  - `web/routes/scheduler_excel_calendar.py:451` [Route] `return send_excel_template_file(template_path, download_name="工作日历.xlsx")`
-- **被调用者**（4 个）：`send_file`, `io.BytesIO`, `read_bytes`, `Path`
-
-## web/routes/personnel_excel_links.py（Route 层）
-
-### `_build_existing_operator_link_page_data()` [私有]
-- 位置：第 36-60 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
-
-### `_operator_machine_reference_snapshot()` [私有]
-- 位置：第 63-69 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_normalize_excel_link_rows()` [私有]
-- 位置：第 72-81 行
-- 参数：rows
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-
-### `_render_excel_link_page()` [私有]
-- 位置：第 84-106 行
-- 参数：无
-- 返回类型：无注解
-
-### `excel_link_page()` [公开]
-- 位置：第 110-120 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（3 个）：`bp.get`, `_build_existing_operator_link_page_data`, `_render_excel_link_page`
-
-### `excel_link_preview()` [公开]
-- 位置：第 124-162 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（17 个）：`bp.post`, `time.time`, `_parse_mode`, `get`, `_read_uploaded_xlsx`, `_normalize_excel_link_rows`, `OperatorMachineService`, `link_svc.preview_import_links`, `_build_existing_operator_link_page_data`, `build_preview_baseline_token`, `int`, `log_excel_import`, `_render_excel_link_page`, `ValidationError`, `getattr`
-
-### `excel_link_confirm()` [公开]
-- 位置：第 166-229 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（25 个）：`bp.post`, `time.time`, `_parse_mode`, `load_confirm_payload`, `_build_existing_operator_link_page_data`, `preview_baseline_is_stale`, `OperatorMachineService`, `link_svc.preview_import_links`, `collect_error_rows`, `link_svc.apply_import_links`, `extract_import_stats`, `int`, `log_excel_import`, `flash_import_result`, `redirect`
-
-### `excel_link_template()` [公开]
-- 位置：第 233-275 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `getattr`, `len`
-
-### `excel_link_export()` [公开]
-- 位置：第 279-309 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（15 个）：`bp.get`, `time.time`, `OperatorMachineQueryService`, `q.list_simple_rows`, `rows.sort`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `getattr`, `template_def.get`, `len`, `str`, `r.get`
-
-## web/routes/personnel_excel_operator_calendar.py（Route 层）
-
-### `_list_operator_ids()` [私有]
-- 位置：第 46-48 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-
-### `_operator_calendar_baseline_extra_state()` [私有]
-- 位置：第 51-55 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_fallback_calendar_date_text()` [私有]
-- 位置：第 58-65 行
-- 参数：raw_date
-- 返回类型：Name(id='str', ctx=Load())
-
-### `_require_holiday_default_efficiency()` [私有]
-- 位置：第 68-71 行
-- 参数：value
 - 返回类型：Name(id='float', ctx=Load())
 
-### `_build_existing_operator_calendar_preview_data()` [私有]
-- 位置：第 74-94 行
-- 参数：无
+### `validate_internal_hours()` [公开]
+- 位置：第 53-68 行
+- 参数：op, batch
+- 返回类型：Name(id='float', ctx=Load())
+- **调用者**（3 处）：
+  - `core/algorithms/greedy/auto_assign.py:89` [Algorithm] `total_hours_base = validate_internal_hours(op, batch)`
+  - `core/algorithms/greedy/dispatch/sgs.py:354` [Algorithm] `total_hours_base = validate_internal_hours(op, batch)`
+  - `core/algorithms/greedy/dispatch/sgs.py:515` [Algorithm] `proc_samples.append(validate_internal_hours(op, batch))`
+- **被调用者**（5 个）：`_read_legacy_field`, `_coerce_legacy_hours_value`, `float`, `ValueError`, `math.isfinite`
+
+### `_resolve_efficiency()` [私有]
+- 位置：第 71-83 行
+- 参数：calendar
 - 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
 
-### `_render_excel_operator_calendar_page()` [私有]
-- 位置：第 97-119 行
+### `_changeover_penalty()` [私有]
+- 位置：第 86-95 行
+- 参数：op, machine_id, last_op_type_by_machine
+- 返回类型：Name(id='int', ctx=Load())
+
+### `_abort_result()` [私有]
+- 位置：第 98-115 行
 - 参数：无
-- 返回类型：无注解
+- 返回类型：Name(id='InternalSlotEstimate', ctx=Load())
 
-### `_load_holiday_default_efficiency_for_excel()` [私有]
-- 位置：第 122-147 行
+### `estimate_internal_slot()` [公开]
+- 位置：第 118-204 行
 - 参数：无
-- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+- 返回类型：Name(id='InternalSlotEstimate', ctx=Load())
+- **调用者**（3 处）：
+  - `core/algorithms/greedy/auto_assign.py:134` [Algorithm] `estimate = estimate_internal_slot(`
+  - `core/algorithms/greedy/scheduler.py:500` [Algorithm] `estimate = estimate_internal_slot(`
+  - `core/algorithms/greedy/dispatch/sgs.py:414` [Algorithm] `estimate = estimate_internal_slot(`
+- **被调用者**（17 个）：`getattr`, `_changeover_penalty`, `list`, `max`, `calendar.adjust_to_working_time`, `InternalSlotEstimate`, `validate_internal_hours`, `float`, `ValueError`, `_abort_result`, `_resolve_efficiency`, `bool`, `calendar.add_working_hours`, `math.isfinite`, `find_overlap_shift_end`
 
-### `excel_operator_calendar_page()` [公开]
-- 位置：第 151-160 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（3 个）：`bp.get`, `_build_existing_operator_calendar_preview_data`, `_render_excel_operator_calendar_page`
+## core/algorithms/greedy/scheduler.py（Algorithm 层）
 
-### `excel_operator_calendar_preview()` [公开]
-- 位置：第 164-249 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（31 个）：`bp.post`, `time.time`, `_parse_mode`, `get`, `_build_existing_operator_calendar_preview_data`, `ConfigService`, `_load_holiday_default_efficiency_for_excel`, `_require_holiday_default_efficiency`, `_read_uploaded_xlsx`, `_ensure_unique_ids`, `get_operator_calendar_row_validate_and_normalize`, `ExcelService`, `excel_svc.preview_import`, `_list_operator_ids`, `build_preview_baseline_token`
-
-### `excel_operator_calendar_confirm()` [公开]
-- 位置：第 253-348 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（35 个）：`bp.post`, `time.time`, `_parse_mode`, `load_confirm_payload`, `_build_existing_operator_calendar_preview_data`, `ConfigService`, `_load_holiday_default_efficiency_for_excel`, `_require_holiday_default_efficiency`, `_ensure_unique_ids`, `CalendarService`, `_list_operator_ids`, `preview_baseline_is_stale`, `get_operator_calendar_row_validate_and_normalize`, `ExcelService`, `excel_svc.preview_import`
-
-### `excel_operator_calendar_template()` [公开]
-- 位置：第 352-393 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `getattr`, `len`
-
-### `excel_operator_calendar_export()` [公开]
-- 位置：第 397-440 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（14 个）：`bp.get`, `time.time`, `CalendarService`, `cal_svc.list_operator_calendar_all`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `getattr`, `template_def.get`, `len`, `_normalize_operator_calendar_day_type`, `_normalize_yesno`
-
-## web/routes/personnel_excel_operators.py（Route 层）
-
-### `_validate_operator_excel_row()` [私有]
-- 位置：第 35-47 行
-- 参数：row
-- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
-
-### `_render_excel_operator_page()` [私有]
-- 位置：第 55-77 行
-- 参数：无
-- 返回类型：无注解
-
-### `_operator_team_snapshot()` [私有]
-- 位置：第 80-90 行
-- 参数：team_svc
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `excel_operator_page()` [公开]
-- 位置：第 94-105 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（5 个）：`bp.get`, `OperatorService`, `op_svc.build_existing_for_excel`, `_render_excel_operator_page`, `getattr`
-
-### `excel_operator_preview()` [公开]
-- 位置：第 109-181 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（27 个）：`bp.post`, `time.time`, `_parse_mode`, `get`, `_read_uploaded_xlsx`, `_ensure_unique_ids`, `OperatorService`, `ResourceTeamService`, `op_svc.build_existing_for_excel`, `ExcelService`, `svc.preview_import`, `build_preview_baseline_token`, `int`, `log_excel_import`, `_render_excel_operator_page`
-
-### `excel_operator_confirm()` [公开]
-- 位置：第 185-274 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（35 个）：`bp.post`, `time.time`, `_parse_mode`, `load_confirm_payload`, `_ensure_unique_ids`, `OperatorService`, `ResourceTeamService`, `op_svc.build_existing_for_excel`, `preview_baseline_is_stale`, `ExcelService`, `excel_svc.preview_import`, `collect_error_rows`, `OperatorExcelImportService`, `import_svc.apply_preview_rows`, `extract_import_stats`
-
-### `excel_operator_template()` [公开]
-- 位置：第 278-321 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `getattr`, `len`
-
-### `excel_operator_export()` [公开]
-- 位置：第 325-355 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（15 个）：`bp.get`, `time.time`, `build_existing_for_excel`, `list`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `existing.values`, `OperatorService`, `template_def.get`, `getattr`, `len`, `r.get`
-
-## web/routes/process_excel_op_types.py（Route 层）
-
-### `_render_excel_op_type_page()` [私有]
-- 位置：第 39-61 行
-- 参数：无
-- 返回类型：无注解
-
-### `_normalize_op_type_category()` [私有]
-- 位置：第 64-65 行
+### `normalize_text_id()` [公开]
+- 位置：第 36-43 行
 - 参数：value
 - 返回类型：Name(id='str', ctx=Load())
+- **调用者**（0 处）：
+  - （无外部调用者）
+- **被调用者**（2 个）：`strip`, `str`
 
-### `_normalize_op_type_name()` [私有]
-- 位置：第 68-69 行
-- 参数：value
+### `resolve_batch_sort_batch_id()` [公开]
+- 位置：第 46-50 行
+- 参数：batch_key, batch
 - 返回类型：Name(id='str', ctx=Load())
-
-### `_build_op_type_row_validator()` [私有]
-- 位置：第 72-117 行
-- 参数：无
-- 返回类型：无注解
-
-### `excel_op_type_page()` [公开]
-- 位置：第 121-131 行
-- 参数：无
-- 返回类型：无注解
 - **调用者**（0 处）：
   - （无外部调用者）
-- **被调用者**（5 个）：`bp.get`, `OpTypeService`, `svc.build_existing_for_excel`, `_render_excel_op_type_page`, `getattr`
+- **被调用者**（2 个）：`normalize_text_id`, `getattr`
 
-### `excel_op_type_preview()` [公开]
-- 位置：第 135-178 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（19 个）：`bp.post`, `time.time`, `_parse_mode`, `get`, `_read_uploaded_xlsx`, `_ensure_unique_ids`, `OpTypeService`, `svc.build_existing_for_excel`, `_build_op_type_row_validator`, `ExcelService`, `excel_svc.preview_import`, `build_preview_baseline_token`, `int`, `log_excel_import`, `_render_excel_op_type_page`
-
-### `excel_op_type_confirm()` [公开]
-- 位置：第 182-254 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（31 个）：`bp.post`, `time.time`, `_parse_mode`, `load_confirm_payload`, `_ensure_unique_ids`, `OpTypeService`, `op_type_svc.build_existing_for_excel`, `preview_baseline_is_stale`, `_build_op_type_row_validator`, `ExcelService`, `excel_svc.preview_import`, `collect_error_rows`, `OpTypeExcelImportService`, `import_svc.apply_preview_rows`, `extract_import_stats`
-
-### `excel_op_type_template()` [公开]
-- 位置：第 258-300 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `getattr`, `len`
-
-### `excel_op_type_export()` [公开]
-- 位置：第 304-333 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（12 个）：`bp.get`, `time.time`, `OpTypeService`, `svc.list`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `getattr`, `template_def.get`, `len`
-
-## web/routes/process_excel_part_operation_hours.py（Route 层）
-
-### `_part_op_hours_mode_options()` [私有]
-- 位置：第 46-47 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-
-### `_parse_seq()` [私有]
-- 位置：第 50-72 行
-- 参数：value
-- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
-
-### `_build_existing_internal()` [私有]
-- 位置：第 75-107 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
-
-### `_normalize_rows()` [私有]
-- 位置：第 110-122 行
-- 参数：rows
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-
-### `_build_validator()` [私有]
-- 位置：第 125-157 行
-- 参数：meta_all
-- 返回类型：无注解
-
-### `_build_part_op_hours_extra_state()` [私有]
-- 位置：第 160-169 行
-- 参数：meta_all
+### `build_normalized_batches_map()` [公开]
+- 位置：第 53-66 行
+- 参数：batches
 - 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_build_existing_for_append()` [私有]
-- 位置：第 172-184 行
-- 参数：existing_internal
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_rewrite_append_preview_rows()` [私有]
-- 位置：第 187-197 行
-- 参数：preview_rows, mode
-- 返回类型：Constant(value=None, kind=None)
-
-### `_render_excel_part_op_hours_page()` [私有]
-- 位置：第 200-223 行
-- 参数：无
-- 返回类型：无注解
-
-### `excel_part_op_hours_page()` [公开]
-- 位置：第 227-236 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（3 个）：`bp.get`, `_build_existing_internal`, `_render_excel_part_op_hours_page`
-
-### `excel_part_op_hours_preview()` [公开]
-- 位置：第 240-292 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（22 个）：`bp.post`, `time.time`, `_parse_mode`, `get`, `_read_uploaded_xlsx`, `_normalize_rows`, `_ensure_unique_ids`, `_build_existing_internal`, `_build_validator`, `ExcelService`, `excel_svc.preview_import`, `_rewrite_append_preview_rows`, `build_preview_baseline_token`, `int`, `log_excel_import`
-
-### `excel_part_op_hours_confirm()` [公开]
-- 位置：第 296-375 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（32 个）：`bp.post`, `time.time`, `_parse_mode`, `load_confirm_payload`, `_ensure_unique_ids`, `_build_existing_internal`, `_build_validator`, `ExcelService`, `preview_baseline_is_stale`, `excel_svc.preview_import`, `_rewrite_append_preview_rows`, `collect_error_rows`, `PartOperationHoursExcelImportService`, `import_svc.apply_preview_rows`, `extract_import_stats`
-
-### `excel_part_op_hours_template()` [公开]
-- 位置：第 379-421 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `getattr`, `len`
-
-### `excel_part_op_hours_export()` [公开]
-- 位置：第 425-454 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `PartOperationQueryService`, `q.list_internal_active_hours`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `getattr`, `template_def.get`, `len`, `float`
-
-## web/routes/process_excel_routes.py（Route 层）
-
-### `_validate_route_row()` [私有]
-- 位置：第 41-61 行
-- 参数：part_svc, row
-- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
-
-### `_render_excel_routes_page()` [私有]
-- 位置：第 64-91 行
-- 参数：无
-- 返回类型：无注解
-
-### `excel_routes_page()` [公开]
-- 位置：第 95-106 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（5 个）：`bp.get`, `PartService`, `svc.build_existing_for_excel_routes`, `_render_excel_routes_page`, `getattr`
-
-### `excel_routes_preview()` [公开]
-- 位置：第 110-155 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（20 个）：`bp.post`, `time.time`, `_parse_mode`, `_strict_mode_enabled`, `get`, `_read_uploaded_xlsx`, `_ensure_unique_ids`, `PartService`, `part_svc.build_existing_for_excel_routes`, `ExcelService`, `excel_svc.preview_import`, `build_preview_baseline_token`, `int`, `log_excel_import`, `_render_excel_routes_page`
-
-### `excel_routes_confirm()` [公开]
-- 位置：第 159-295 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（37 个）：`bp.post`, `time.time`, `_parse_mode`, `_strict_mode_enabled`, `load_confirm_payload`, `_ensure_unique_ids`, `PartService`, `part_svc.build_existing_for_excel_routes`, `preview_baseline_is_stale`, `ExcelService`, `excel_svc.preview_import`, `collect_error_rows`, `TransactionManager`, `int`, `log_excel_import`
-
-### `excel_routes_template()` [公开]
-- 位置：第 299-341 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `getattr`, `len`
-
-### `excel_routes_export()` [公开]
-- 位置：第 345-375 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（12 个）：`bp.get`, `time.time`, `PartService`, `svc.list`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `getattr`, `template_def.get`, `len`
-
-## web/routes/process_excel_suppliers.py（Route 层）
-
-### `_render_excel_supplier_page()` [私有]
-- 位置：第 40-62 行
-- 参数：无
-- 返回类型：无注解
-
-### `_normalize_supplier_status()` [私有]
-- 位置：第 65-66 行
-- 参数：value
-- 返回类型：Name(id='str', ctx=Load())
-
-### `_resolve_op_type_name()` [私有]
-- 位置：第 69-78 行
-- 参数：value, op_type_svc
-- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
-
-### `_supplier_op_type_snapshot()` [私有]
-- 位置：第 81-91 行
-- 参数：op_type_svc
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_normalize_supplier_default_days()` [私有]
-- 位置：第 94-104 行
-- 参数：row
-- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
-
-### `excel_supplier_page()` [公开]
-- 位置：第 108-118 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（5 个）：`bp.get`, `SupplierService`, `svc.build_existing_for_excel`, `_render_excel_supplier_page`, `getattr`
-
-### `excel_supplier_preview()` [公开]
-- 位置：第 122-194 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（25 个）：`bp.post`, `time.time`, `_parse_mode`, `get`, `_read_uploaded_xlsx`, `_ensure_unique_ids`, `SupplierService`, `svc.build_existing_for_excel`, `OpTypeService`, `ExcelService`, `excel_svc.preview_import`, `build_preview_baseline_token`, `int`, `log_excel_import`, `_render_excel_supplier_page`
-
-### `excel_supplier_confirm()` [公开]
-- 位置：第 198-292 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（37 个）：`bp.post`, `time.time`, `_parse_mode`, `load_confirm_payload`, `_ensure_unique_ids`, `SupplierService`, `OpTypeService`, `supplier_svc.build_existing_for_excel`, `preview_baseline_is_stale`, `ExcelService`, `excel_svc.preview_import`, `collect_error_rows`, `SupplierExcelImportService`, `import_svc.apply_preview_rows`, `extract_import_stats`
-
-### `excel_supplier_template()` [公开]
-- 位置：第 296-338 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `getattr`, `len`
-
-### `excel_supplier_export()` [公开]
-- 位置：第 342-370 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（12 个）：`bp.get`, `time.time`, `list_for_export_rows`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `SupplierService`, `template_def.get`, `getattr`, `len`
-
-## web/routes/process_parts.py（Route 层）
-
-### `_summarize_active_ops()` [私有]
-- 位置：第 18-23 行
-- 参数：ops
-- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
-
-### `_surface_route_warnings()` [私有]
-- 位置：第 26-43 行
-- 参数：messages
-- 返回类型：Constant(value=None, kind=None)
-
-### `_build_ops_by_group()` [私有]
-- 位置：第 46-55 行
-- 参数：active_ops
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `list_parts()` [公开]
-- 位置：第 59-81 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（10 个）：`bp.get`, `PartService`, `parse_page_args`, `svc.list`, `paginate_rows`, `render_template`, `strip`, `view_rows.append`, `getattr`, `len`
-
-### `create_part()` [公开]
-- 位置：第 85-108 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（10 个）：`bp.post`, `get`, `_strict_mode_enabled`, `PartService`, `svc.create`, `flash`, `_surface_route_warnings`, `redirect`, `getattr`, `url_for`
-
-### `part_detail()` [公开]
-- 位置：第 112-151 行
-- 参数：part_no
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（17 个）：`bp.get`, `PartService`, `p_svc.get_template_detail`, `to_dict`, `_summarize_active_ops`, `set`, `_build_ops_by_group`, `render_template`, `o.to_dict`, `gr.to_dict`, `p_svc.calc_deletable_external_group_ids`, `getattr`, `list`, `v.to_dict`, `SupplierService`
-
-### `update_part()` [公开]
-- 位置：第 155-162 行
-- 参数：part_no
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（8 个）：`bp.post`, `get`, `PartService`, `svc.update`, `flash`, `redirect`, `url_for`, `getattr`
-
-### `delete_part()` [公开]
-- 位置：第 166-173 行
-- 参数：part_no
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（7 个）：`bp.post`, `PartService`, `redirect`, `svc.delete`, `flash`, `url_for`, `getattr`
-
-### `bulk_delete_parts()` [公开]
-- 位置：第 177-205 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（14 个）：`bp.post`, `getlist`, `PartService`, `flash`, `redirect`, `join`, `url_for`, `getattr`, `svc.delete`, `failed.append`, `failed_details.append`, `exception`, `len`, `str`
-
-### `reparse_part()` [公开]
-- 位置：第 209-228 行
-- 参数：part_no
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.post`, `get`, `_strict_mode_enabled`, `PartService`, `time.time`, `int`, `flash`, `_surface_route_warnings`, `redirect`, `svc.reparse_and_save`, `url_for`, `getattr`, `len`
-
-### `update_internal_hours()` [公开]
-- 位置：第 232-238 行
-- 参数：part_no, seq
-- 返回类型：无注解
 - **调用者**（1 处）：
-  - `core/services/process/part_operation_hours_excel_import_service.py:87` [Service] `self.part_svc.update_internal_hours(part_no=part_no, seq=seq, setup_hours=sh, un`
-- **被调用者**（8 个）：`bp.post`, `get`, `PartService`, `svc.update_internal_hours`, `flash`, `redirect`, `url_for`, `getattr`
+  - `core/services/scheduler/schedule_optimizer.py:346` [Service] `normalized_batches_for_sort = build_normalized_batches_map(batches)`
+- **被调用者**（5 个）：`items`, `resolve_batch_sort_batch_id`, `str`, `warnings.append`, `normalized.get`
 
-### `set_group_mode()` [公开]
-- 位置：第 242-272 行
-- 参数：part_no, group_id
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（15 个）：`bp.post`, `get`, `_strict_mode_enabled`, `items`, `ExternalGroupService`, `redirect`, `svc.set_merge_mode`, `flash`, `_surface_route_warnings`, `url_for`, `k.startswith`, `int`, `getattr`, `k.replace`, `_merge_mode_zh`
-
-### `delete_group()` [公开]
-- 位置：第 276-280 行
-- 参数：part_no, group_id
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（8 个）：`bp.post`, `PartService`, `svc.delete_external_group`, `flash`, `redirect`, `url_for`, `getattr`, `result.get`
-
-## web/routes/scheduler_batches.py（Route 层）
-
-### `batches_page()` [公开]
-- 位置：第 30-111 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（34 个）：`bp.get`, `BatchService`, `ConfigService`, `strip`, `parse_page_args`, `batch_svc.list`, `paginate_rows`, `cfg_svc.get_snapshot`, `cfg_svc.get_available_strategies`, `cfg_svc.list_presets`, `cfg_svc.get_active_preset`, `cfg_svc.get_active_preset_reason`, `ScheduleHistoryQueryService`, `_normalize_warning_texts`, `len`
-
-### `batches_manage_page()` [公开]
-- 位置：第 115-159 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（16 个）：`bp.get`, `BatchService`, `strip`, `parse_page_args`, `batch_svc.list`, `paginate_rows`, `PartService`, `p_svc.list`, `render_template`, `view_rows.append`, `getattr`, `get`, `b.to_dict`, `_priority_zh`, `_ready_zh`
-
-### `create_batch()` [公开]
-- 位置：第 163-194 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.post`, `get`, `_strict_mode_enabled`, `BatchService`, `batch_svc.create_batch_from_template`, `flash`, `_surface_schedule_warnings`, `redirect`, `getattr`, `batch_svc.consume_user_visible_warnings`, `url_for`, `len`, `batch_svc.list_operations`
-
-### `delete_batch()` [公开]
-- 位置：第 198-212 行
-- 参数：batch_id
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（10 个）：`bp.post`, `BatchService`, `strip`, `_safe_next_url`, `batch_svc.delete`, `flash`, `redirect`, `getattr`, `url_for`, `get`
-
-### `bulk_delete_batches()` [公开]
-- 位置：第 216-244 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（14 个）：`bp.post`, `getlist`, `BatchService`, `flash`, `redirect`, `join`, `url_for`, `getattr`, `batch_svc.delete`, `failed.append`, `failed_details.append`, `exception`, `len`, `str`
-
-### `_next_batch_id_like()` [私有]
-- 位置：第 247-267 行
-- 参数：src, exists_fn
-- 返回类型：Name(id='str', ctx=Load())
-
-### `_bulk_update_one_batch()` [私有]
-- 位置：第 270-292 行
-- 参数：batch_svc, bid
+### `_parse_due_date_for_sort()` [私有]
+- 位置：第 69-70 行
+- 参数：value
 - 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
 
-### `bulk_copy_batches()` [公开]
-- 位置：第 297-326 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（16 个）：`bp.post`, `getlist`, `BatchService`, `flash`, `redirect`, `url_for`, `getattr`, `_next_batch_id_like`, `batch_svc.copy_batch`, `mappings.append`, `str`, `failed.append`, `exception`, `len`, `join`
-
-### `bulk_update_batches()` [公开]
-- 位置：第 330-358 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（15 个）：`bp.post`, `getlist`, `get`, `BatchService`, `flash`, `redirect`, `strip`, `_bulk_update_one_batch`, `url_for`, `remark.strip`, `getattr`, `str`, `failed.append`, `len`, `join`
-
-### `generate_ops()` [公开]
-- 位置：第 362-384 行
-- 参数：batch_id
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（14 个）：`bp.post`, `BatchService`, `_strict_mode_enabled`, `batch_svc.get`, `redirect`, `get`, `batch_svc.create_batch_from_template`, `len`, `flash`, `_surface_schedule_warnings`, `url_for`, `getattr`, `batch_svc.list_operations`, `batch_svc.consume_user_visible_warnings`
-
-## web/routes/scheduler_excel_batches.py（Route 层）
-
-### `_sorted_existing_list()` [私有]
-- 位置：第 49-52 行
-- 参数：existing_preview_data
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-
-### `_parse_auto_generate_ops()` [私有]
-- 位置：第 55-56 行
-- 参数：value
-- 返回类型：Name(id='bool', ctx=Load())
-
-### `_build_existing_preview_data()` [私有]
-- 位置：第 59-74 行
-- 参数：batch_svc
-- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
-
-### `_build_parts_cache()` [私有]
-- 位置：第 77-79 行
-- 参数：conn
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_build_template_ops_snapshot()` [私有]
-- 位置：第 82-87 行
-- 参数：conn, rows
-- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
-
-### `_batch_baseline_extra_state()` [私有]
-- 位置：第 90-113 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
-
-### `_render_excel_batches_page()` [私有]
-- 位置：第 116-145 行
-- 参数：无
-- 返回类型：无注解
-
-### `excel_batches_page()` [公开]
-- 位置：第 149-173 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（7 个）：`bp.get`, `BatchService`, `_render_excel_batches_page`, `getattr`, `svc.list`, `list`, `existing.values`
-
-### `excel_batches_preview()` [公开]
-- 位置：第 177-263 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（31 个）：`bp.post`, `time.time`, `_parse_mode`, `_parse_auto_generate_ops`, `_strict_mode_enabled`, `get`, `_read_uploaded_xlsx`, `_ensure_unique_ids`, `BatchService`, `_build_parts_cache`, `get_batch_row_validate_and_normalize`, `ExcelService`, `excel_svc.preview_import`, `build_preview_baseline_token`, `int`
-
-### `excel_batches_confirm()` [公开]
-- 位置：第 267-362 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（37 个）：`bp.post`, `time.time`, `_parse_mode`, `_strict_mode_enabled`, `_parse_auto_generate_ops`, `load_confirm_payload`, `_ensure_unique_ids`, `BatchService`, `_build_existing_preview_data`, `_build_parts_cache`, `preview_baseline_is_stale`, `get_batch_row_validate_and_normalize`, `ExcelService`, `excel_svc.preview_import`, `collect_error_rows`
-
-### `excel_batches_template()` [公开]
-- 位置：第 366-407 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `getattr`, `len`
-
-### `excel_batches_export()` [公开]
-- 位置：第 411-443 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（12 个）：`bp.get`, `time.time`, `BatchService`, `svc.list`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `getattr`, `template_def.get`, `len`
-
-## web/routes/scheduler_excel_calendar.py（Route 层）
-
-### `_canonicalize_calendar_date()` [私有]
-- 位置：第 47-51 行
-- 参数：value
-- 返回类型：Name(id='str', ctx=Load())
-
-### `_build_existing_preview_data()` [私有]
-- 位置：第 54-70 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
-
-### `_calendar_baseline_extra_state()` [私有]
+### `_parse_ready_date_for_sort()` [私有]
 - 位置：第 73-74 行
-- 参数：无
-- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
+- 参数：value
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
 
-### `_require_holiday_default_efficiency()` [私有]
+### `_parse_created_at_for_sort()` [私有]
 - 位置：第 77-80 行
 - 参数：value
-- 返回类型：Name(id='float', ctx=Load())
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
 
-### `_render_excel_calendar_page()` [私有]
-- 位置：第 83-105 行
-- 参数：无
+### `build_batch_sort_inputs()` [公开]
+- 位置：第 83-106 行
+- 参数：batches
+- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
+- **调用者**（1 处）：
+  - `core/services/scheduler/schedule_optimizer.py:349` [Service] `batch_for_sort = build_batch_sort_inputs(`
+- **被调用者**（10 个）：`items`, `resolve_batch_sort_batch_id`, `batch_for_sort.append`, `BatchForSort`, `str`, `_parse_due_date_for_sort`, `_parse_ready_date_for_sort`, `_parse_created_at_for_sort`, `getattr`, `bool`
+
+### `GreedyScheduler.__init__()` [私有]
+- 位置：第 112-116 行
+- 参数：calendar_service, config_service, logger
 - 返回类型：无注解
 
-### `_load_holiday_default_efficiency_for_excel()` [私有]
-- 位置：第 108-130 行
-- 参数：无
+### `GreedyScheduler._cfg_get()` [私有]
+- 位置：第 118-127 行
+- 参数：key, default
+- 返回类型：Name(id='Any', ctx=Load())
+
+### `GreedyScheduler.schedule()` [公开]
+- 位置：第 129-420 行
+- 参数：operations, batches, strategy, strategy_params, start_dt, end_date, machine_downtimes, batch_order_override, seed_results, dispatch_mode, dispatch_rule, resource_pool, strict_mode
+- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+- **调用者**（4 处）：
+  - `core/services/scheduler/schedule_optimizer_steps.py:102` [Service] `return scheduler.schedule(**kwargs)`
+  - `core/services/scheduler/schedule_optimizer_steps.py:104` [Service] `return scheduler.schedule(**kwargs, strict_mode=bool(strict_mode))`
+  - `core/services/scheduler/schedule_optimizer_steps.py:107` [Service] `return scheduler.schedule(**kwargs, strict_mode=bool(strict_mode))`
+  - `core/services/scheduler/schedule_optimizer_steps.py:114` [Service] `return scheduler.schedule(**kwargs)`
+- **被调用者**（51 个）：`datetime.now`, `ensure_algo_stats`, `resolve_schedule_params`, `warnings.extend`, `build_normalized_batches_map`, `StrategyFactory.create`, `set`, `sorted`, `info`, `batches.items`, `total_seconds`, `int`, `ScheduleSummary`, `build_batch_sort_inputs`, `sorter.sort`
+
+### `GreedyScheduler._schedule_external()` [私有]
+- 位置：第 422-443 行
+- 参数：op, batch, batch_progress, external_group_cache, base_time, errors, end_dt_exclusive, strict_mode
 - 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
 
-### `excel_calendar_page()` [公开]
-- 位置：第 134-143 行
+### `GreedyScheduler._schedule_internal()` [私有]
+- 位置：第 445-548 行
+- 参数：op, batch, batch_progress, machine_timeline, operator_timeline, base_time, errors, end_dt_exclusive, machine_downtimes
+- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+
+### `GreedyScheduler._auto_assign_internal_resources()` [私有]
+- 位置：第 550-582 行
 - 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（3 个）：`bp.get`, `_build_existing_preview_data`, `_render_excel_calendar_page`
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
 
-### `excel_calendar_preview()` [公开]
-- 位置：第 147-259 行
+## core/algorithms/ortools_bottleneck.py（Algorithm 层）
+
+### `try_solve_bottleneck_batch_order()` [公开]
+- 位置：第 27-197 行
 - 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（33 个）：`bp.post`, `time.time`, `_parse_mode`, `get`, `_build_existing_preview_data`, `ConfigService`, `_load_holiday_default_efficiency_for_excel`, `_require_holiday_default_efficiency`, `_read_uploaded_xlsx`, `_ensure_unique_ids`, `ExcelService`, `excel_svc.preview_import`, `build_preview_baseline_token`, `int`, `log_excel_import`
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+- **调用者**（1 处）：
+  - `core/services/scheduler/schedule_optimizer_steps.py:169` [Service] `ort_order = try_solve_bottleneck_batch_order(`
+- **被调用者**（45 个）：`batches.items`, `int`, `cp_model.CpModel`, `enumerate`, `model.AddNoOverlap`, `model.Minimize`, `cp_model.CpSolver`, `float`, `solver.Solve`, `sorted`, `strip`, `batches.get`, `max`, `priority_weight_scaled`, `jobs.append`
 
-### `excel_calendar_confirm()` [公开]
-- 位置：第 263-432 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（48 个）：`bp.post`, `time.time`, `_parse_mode`, `load_confirm_payload`, `_build_existing_preview_data`, `ConfigService`, `_load_holiday_default_efficiency_for_excel`, `_require_holiday_default_efficiency`, `preview_baseline_is_stale`, `_ensure_unique_ids`, `ExcelService`, `excel_svc.preview_import`, `collect_error_rows`, `CalendarService`, `set`
+## core/services/common/strict_parse.py（Service 层）
 
-### `excel_calendar_template()` [公开]
-- 位置：第 436-477 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（13 个）：`bp.get`, `time.time`, `join`, `exists`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `send_excel_template_file`, `template_def.get`, `getattr`, `len`
+### `is_blank_input()` [公开]
+- 位置：第 13-14 行
+- 参数：value
+- 返回类型：Name(id='bool', ctx=Load())
+- **调用者**（1 处）：
+  - `core/services/common/compat_parse.py:48` [Service] `if is_blank_input(raw_value) and policy.blank_reason_code:`
+- **被调用者**（2 个）：`isinstance`, `value.strip`
 
-### `excel_calendar_export()` [公开]
-- 位置：第 481-521 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（0 处）：
-  - （无外部调用者）
-- **被调用者**（14 个）：`bp.get`, `time.time`, `CalendarService`, `cal_svc.list_all`, `get_template_definition`, `build_xlsx_bytes`, `int`, `log_excel_export`, `send_file`, `getattr`, `template_def.get`, `len`, `_normalize_day_type`, `_normalize_yesno`
+### `_raise_blank_required()` [私有]
+- 位置：第 17-18 行
+- 参数：field
+- 返回类型：Constant(value=None, kind=None)
 
-## web/routes/scheduler_run.py（Route 层）
+### `_ensure_min_float()` [私有]
+- 位置：第 21-26 行
+- 参数：value
+- 返回类型：Name(id='float', ctx=Load())
 
-### `_parse_optional_checkbox_flag()` [私有]
-- 位置：第 12-22 行
-- 参数：name
-- 返回类型：无注解
-
-### `run_schedule()` [公开]
-- 位置：第 26-74 行
-- 参数：无
-- 返回类型：无注解
-- **调用者**（2 处）：
-  - `web/routes/scheduler_week_plan.py:175` [Route] `result = sch_svc.run_schedule(`
-  - `core/services/scheduler/schedule_optimizer.py:283` [Service] `说明：为保证兼容，本函数尽量保持与原 `ScheduleService.run_schedule()` 相同的口径与留痕结构。`
-- **被调用者**（19 个）：`bp.post`, `getlist`, `_parse_optional_checkbox_flag`, `_strict_mode_enabled`, `ScheduleService`, `redirect`, `get`, `sch_svc.run_schedule`, `result.get`, `flash`, `_surface_schedule_warnings`, `url_for`, `getattr`, `join`, `summary.get`
-
-## web/routes/scheduler_week_plan.py（Route 层）
-
-### `_get_int_arg()` [私有]
-- 位置：第 21-28 行
-- 参数：name, default
+### `_ensure_min_int()` [私有]
+- 位置：第 29-32 行
+- 参数：value
 - 返回类型：Name(id='int', ctx=Load())
 
-### `_parse_optional_checkbox_flag()` [私有]
-- 位置：第 31-41 行
-- 参数：name
-- 返回类型：无注解
+### `_parse_finite_float()` [私有]
+- 位置：第 35-44 行
+- 参数：value
+- 返回类型：Name(id='float', ctx=Load())
 
-### `week_plan_page()` [公开]
-- 位置：第 45-91 行
-- 参数：无
-- 返回类型：无注解
+### `_parse_finite_int()` [私有]
+- 位置：第 47-59 行
+- 参数：value
+- 返回类型：Name(id='int', ctx=Load())
+
+### `_normalize_datetime_text()` [私有]
+- 位置：第 62-65 行
+- 参数：value
+- 返回类型：Name(id='str', ctx=Load())
+
+### `parse_required_float()` [公开]
+- 位置：第 68-73 行
+- 参数：value
+- 返回类型：Name(id='float', ctx=Load())
+- **调用者**（11 处）：
+  - `web/routes/process_excel_suppliers.py:99` [Route] `days = parse_required_float(raw_value, field="默认周期", min_value=0, min_inclusive=`
+  - `core/services/common/compat_parse.py:95` [Service] `parsed = parse_required_float(value, field=field, min_value=min_value, min_inclu`
+  - `core/services/common/field_parse.py:72` [Service] `parse_required_float(value, field=field, min_value=min_value, min_inclusive=min_`
+  - `core/services/common/field_parse.py:76` [Service] `parsed = float(parse_required_float(value, field=field))`
+  - `core/services/common/number_utils.py:27` [Service] `return parse_required_float(value, field=field)`
+  - `core/services/process/supplier_excel_import_service.py:73` [Service] `default_days = parse_required_float(data.get("默认周期"), field="默认周期")`
+  - `core/services/process/supplier_service.py:33` [Service] `parsed = parse_required_float(value, field="默认周期")`
+  - `core/services/scheduler/config_validator.py:72` [Service] `return float(parse_required_float(raw, field=key, min_value=min_value, min_inclu`
+  - `core/services/scheduler/config_validator.py:74` [Service] `parsed = float(parse_required_float(raw, field=key))`
+  - `core/services/scheduler/operation_edit_service.py:210` [Service] `dv = parse_required_float(ext_days, field="外协周期(天)")`
+  - `core/services/scheduler/schedule_input_builder.py:65` [Service] `parse_required_float(`
+- **被调用者**（4 个）：`is_blank_input`, `_ensure_min_float`, `_raise_blank_required`, `_parse_finite_float`
+
+### `parse_optional_float()` [公开]
+- 位置：第 76-79 行
+- 参数：value
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+- **调用者**（1 处）：
+  - `core/services/common/number_utils.py:26` [Service] `return parse_optional_float(value, field=field)`
+- **被调用者**（2 个）：`is_blank_input`, `parse_required_float`
+
+### `parse_required_int()` [公开]
+- 位置：第 82-85 行
+- 参数：value
+- 返回类型：Name(id='int', ctx=Load())
+- **调用者**（6 处）：
+  - `core/services/common/compat_parse.py:102` [Service] `parsed = parse_required_int(value, field=field, min_value=min_value)`
+  - `core/services/common/field_parse.py:120` [Service] `return int(parse_required_int(value, field=field, min_value=min_value))`
+  - `core/services/common/field_parse.py:123` [Service] `parsed = int(parse_required_int(value, field=field))`
+  - `core/services/common/number_utils.py:44` [Service] `return parse_required_int(value, field=field)`
+  - `core/services/scheduler/config_validator.py:94` [Service] `return int(parse_required_int(raw, field=key, min_value=min_v))`
+  - `core/services/scheduler/config_validator.py:96` [Service] `parsed = int(parse_required_int(raw, field=key))`
+- **被调用者**（4 个）：`is_blank_input`, `_ensure_min_int`, `_raise_blank_required`, `_parse_finite_int`
+
+### `parse_optional_int()` [公开]
+- 位置：第 88-91 行
+- 参数：value
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+- **调用者**（1 处）：
+  - `core/services/common/number_utils.py:43` [Service] `return parse_optional_int(value, field=field)`
+- **被调用者**（2 个）：`is_blank_input`, `parse_required_int`
+
+### `parse_required_date()` [公开]
+- 位置：第 94-105 行
+- 参数：value
+- 返回类型：Name(id='date', ctx=Load())
+- **调用者**（1 处）：
+  - `core/services/common/compat_parse.py:113` [Service] `return parse_required_date(value, field=field)`
+- **被调用者**（10 个）：`isinstance`, `is_blank_input`, `replace`, `value.date`, `_raise_blank_required`, `date`, `strip`, `ValidationError`, `datetime.strptime`, `str`
+
+### `parse_optional_date()` [公开]
+- 位置：第 108-111 行
+- 参数：value
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+- **调用者**（3 处）：
+  - `core/algorithms/greedy/scheduler.py:70` [Algorithm] `return parse_optional_date(value, field="due_date") if strict_mode else parse_da`
+  - `core/algorithms/greedy/scheduler.py:74` [Algorithm] `return parse_optional_date(value, field="ready_date") if strict_mode else parse_`
+  - `core/algorithms/greedy/dispatch/sgs.py:24` [Algorithm] `return parse_optional_date(value, field="due_date")`
+- **被调用者**（2 个）：`is_blank_input`, `parse_required_date`
+
+### `parse_required_datetime()` [公开]
+- 位置：第 114-125 行
+- 参数：value
+- 返回类型：Name(id='datetime', ctx=Load())
 - **调用者**（0 处）：
   - （无外部调用者）
-- **被调用者**（21 个）：`bp.get`, `_get_int_arg`, `GanttService`, `svc.get_latest_version_or_1`, `svc.resolve_week_range`, `normalize_version_or_latest`, `list_versions`, `svc.get_week_plan_rows`, `int`, `render_template`, `strip`, `get`, `data.get`, `getattr`, `ScheduleHistoryQueryService`
+- **被调用者**（5 个）：`isinstance`, `_normalize_datetime_text`, `ValidationError`, `datetime`, `datetime.strptime`
 
-### `week_plan_export()` [公开]
-- 位置：第 95-154 行
+### `parse_optional_datetime()` [公开]
+- 位置：第 128-131 行
+- 参数：value
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+- **调用者**（1 处）：
+  - `core/algorithms/greedy/scheduler.py:79` [Algorithm] `return parse_optional_datetime(value, field="created_at")`
+- **被调用者**（2 个）：`is_blank_input`, `parse_required_datetime`
+
+## core/services/scheduler/schedule_optimizer.py（Service 层）
+
+### `_score_tuple()` [私有]
+- 位置：第 42-51 行
+- 参数：score
+- 返回类型：Subscript(value=Name(id='Tuple', ctx=Load()), slice=Index(va
+
+### `_attempt_dispatch_mode()` [私有]
+- 位置：第 54-55 行
+- 参数：item
+- 返回类型：Name(id='str', ctx=Load())
+
+### `_attempt_tag()` [私有]
+- 位置：第 58-59 行
+- 参数：item
+- 返回类型：Name(id='str', ctx=Load())
+
+### `_sorted_attempts_by_score()` [私有]
+- 位置：第 62-63 行
+- 参数：attempts
+- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
+
+### `_best_attempts_by_dispatch_mode()` [私有]
+- 位置：第 66-73 行
+- 参数：attempts
+- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
+
+### `_append_unique_best_attempts()` [私有]
+- 位置：第 76-91 行
+- 参数：selected, attempts
+- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
+
+### `_compact_attempts()` [私有]
+- 位置：第 94-100 行
+- 参数：attempts
+- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
+
+### `_init_seen_hashes()` [私有]
+- 位置：第 103-111 行
+- 参数：cur_order, best
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+
+### `_run_local_search()` [私有]
+- 位置：第 114-274 行
 - 参数：无
-- 返回类型：无注解
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+
+### `optimize_schedule()` [公开]
+- 位置：第 277-582 行
+- 参数：无
+- 返回类型：Name(id='OptimizationOutcome', ctx=Load())
 - **调用者**（0 处）：
   - （无外部调用者）
-- **被调用者**（22 个）：`bp.get`, `time.time`, `_get_int_arg`, `GanttService`, `strip`, `normalize_version_or_latest`, `svc.get_week_plan_rows`, `int`, `data.get`, `build_xlsx_bytes`, `log_excel_export`, `send_file`, `getattr`, `get`, `flash`
+- **被调用者**（51 个）：`GreedyScheduler`, `parse_strategy`, `_norm_text`, `_cfg_int`, `build_normalized_batches_map`, `_cfg_choices`, `str`, `time.time`, `_run_ortools_warmstart`, `_run_multi_start`, `_run_local_search`, `OptimizationOutcome`, `hasattr`, `cfg.to_dict`, `cfg_get`
 
-### `simulate_schedule()` [公开]
-- 位置：第 158-199 行
+## core/services/scheduler/schedule_optimizer_steps.py（Service 层）
+
+### `SchedulerLike.schedule()` [公开]
+- 位置：第 21-22 行
 - 参数：无
-- 返回类型：无注解
+- 返回类型：Name(id='Any', ctx=Load())
 - **调用者**（0 处）：
   - （无外部调用者）
-- **被调用者**（18 个）：`bp.post`, `getlist`, `_parse_optional_checkbox_flag`, `_strict_mode_enabled`, `ScheduleService`, `get`, `flash`, `redirect`, `sch_svc.run_schedule`, `int`, `_surface_schedule_warnings`, `isoformat`, `url_for`, `getattr`, `result.get`
+
+### `_is_yes()` [私有]
+- 位置：第 25-26 行
+- 参数：value
+- 返回类型：Name(id='bool', ctx=Load())
+
+### `_cfg_float()` [私有]
+- 位置：第 29-55 行
+- 参数：_cfg_value, key, default
+- 返回类型：Name(id='float', ctx=Load())
+
+### `_cfg_int()` [私有]
+- 位置：第 58-82 行
+- 参数：_cfg_value, key, default
+- 返回类型：Name(id='int', ctx=Load())
+
+### `_scheduler_accepts_strict_mode()` [私有]
+- 位置：第 85-96 行
+- 参数：scheduler
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+
+### `_schedule_with_optional_strict_mode()` [私有]
+- 位置：第 99-115 行
+- 参数：scheduler
+- 返回类型：无注解
+
+### `_run_ortools_warmstart()` [私有]
+- 位置：第 118-266 行
+- 参数：无
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
+
+### `_dispatch_rules_for_mode()` [私有]
+- 位置：第 269-272 行
+- 参数：dispatch_mode, dispatch_rule_cfg, valid_dispatch_rules
+- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
+
+### `_resolve_multi_start_strategy_params()` [私有]
+- 位置：第 275-301 行
+- 参数：无
+- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
+
+### `_get_cached_multi_start_order()` [私有]
+- 位置：第 304-314 行
+- 参数：无
+- 返回类型：Subscript(value=Name(id='List', ctx=Load()), slice=Index(val
+
+### `_evaluate_multi_start_candidate()` [私有]
+- 位置：第 317-366 行
+- 参数：无
+- 返回类型：Subscript(value=Name(id='Dict', ctx=Load()), slice=Index(val
+
+### `_run_multi_start()` [私有]
+- 位置：第 369-473 行
+- 参数：无
+- 返回类型：Subscript(value=Name(id='Optional', ctx=Load()), slice=Index
 
 ---
-- 分析函数/方法数：209
-- 找到调用关系：114 处
-- 跨层边界风险：0 项
+- 分析函数/方法数：88
+- 找到调用关系：148 处
+- 跨层边界风险：8 项

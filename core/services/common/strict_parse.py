@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 from core.infrastructure.errors import ValidationError
 
+_DATETIME_FORMAT_HINT = "YYYY-MM-DD / YYYY-MM-DD HH:MM / YYYY-MM-DD HH:MM:SS"
+
 
 def is_blank_input(value: Any) -> bool:
     return value is None or (isinstance(value, str) and value.strip() == "")
@@ -56,6 +58,12 @@ def _parse_finite_int(value: Any, *, field: str) -> int:
     return int(integer_value)
 
 
+def _normalize_datetime_text(value: Any, *, field: str) -> str:
+    if is_blank_input(value):
+        _raise_blank_required(field)
+    return str(value).strip().replace("/", "-").replace("T", " ").replace("：", ":")
+
+
 def parse_required_float(
     value: Any, *, field: str, min_value: Optional[float] = None, min_inclusive: bool = True
 ) -> float:
@@ -100,3 +108,23 @@ def parse_optional_date(value: Any, *, field: str) -> Optional[date]:
     if is_blank_input(value):
         return None
     return parse_required_date(value, field=field)
+
+
+def parse_required_datetime(value: Any, *, field: str) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day, 0, 0, 0)
+    text = _normalize_datetime_text(value, field=field)
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except Exception:
+            continue
+    raise ValidationError(f"“{field}”格式不合法（期望：{_DATETIME_FORMAT_HINT}）", field=field)
+
+
+def parse_optional_datetime(value: Any, *, field: str) -> Optional[datetime]:
+    if is_blank_input(value):
+        return None
+    return parse_required_datetime(value, field=field)

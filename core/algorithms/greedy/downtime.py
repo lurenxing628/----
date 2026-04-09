@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import bisect
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -25,7 +26,8 @@ def occupy_resource(
 ) -> None:
     if not resource_id:
         return
-    timeline.setdefault(resource_id, []).append((start, end))
+    segments = timeline.setdefault(resource_id, [])
+    bisect.insort(segments, (start, end))
 
 
 def find_earliest_available_start(
@@ -41,17 +43,17 @@ def find_earliest_available_start(
         return base_time
 
     cur = base_time
-    ordered = sorted([(s, e) for s, e in (segments or []) if e > s], key=lambda x: (x[0], x[1]))
-    if not ordered:
+    valid_segments = [(s, e) for s, e in (segments or []) if e > s]
+    if not valid_segments:
         return cur
 
     duration = timedelta(hours=dur)
     guard = 0
     while True:
         guard += 1
-        if guard > (len(ordered) + 1):
+        if guard > (len(valid_segments) + 1):
             return cur
-        shift = find_overlap_shift_end(ordered, cur, cur + duration)
+        shift = find_overlap_shift_end(valid_segments, cur, cur + duration)
         if shift is None or shift <= cur:
             return cur
         cur = shift
@@ -67,12 +69,12 @@ def find_overlap_shift_end(
     """
     shift: Optional[datetime] = None
     for s, e in segments or []:
-        # 防御：非法区间（空/逆序）应被忽略，避免误判重叠导致不必要的后移
         if e <= s:
             continue
+        if s >= end:
+            break
         if end <= s or start >= e:
             continue
         if shift is None or e > shift:
             shift = e
     return shift
-

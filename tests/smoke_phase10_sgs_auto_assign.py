@@ -50,6 +50,7 @@ def main():
 
     sys.path.insert(0, repo_root)
     from core.infrastructure.database import ensure_schema, get_connection
+    from core.infrastructure.errors import ValidationError
     from core.infrastructure.logging import OperationLogger
     from core.services.scheduler import BatchService, ConfigService, ScheduleService
 
@@ -150,10 +151,14 @@ def main():
         cfg_svc.restore_default()
         cfg_svc.set_auto_assign_enabled("no")
         cfg_svc.set_dispatch("batch_order", "slack")
-        r0 = sch_svc.run_schedule(batch_ids=["B10_1", "B10_2"], start_dt=start_dt, simulate=True, created_by="smoke10")
-        lines.append(f"- result_status={r0['result_status']} failed_ops={r0['summary']['failed_ops']}")
-        if int(r0["summary"]["failed_ops"]) <= 0:
-            raise RuntimeError("auto-assign 关闭时，预期应出现 failed_ops>0（缺省资源）")
+        try:
+            r0 = sch_svc.run_schedule(batch_ids=["B10_1", "B10_2"], start_dt=start_dt, simulate=True, created_by="smoke10")
+        except ValidationError as exc:
+            lines.append(f"- auto-assign 关闭命中空结果契约：{exc}")
+        else:
+            lines.append(f"- result_status={r0['result_status']} failed_ops={r0['summary']['failed_ops']}")
+            if int(r0["summary"]["failed_ops"]) <= 0:
+                raise RuntimeError("auto-assign 关闭时，预期应出现 failed_ops>0（缺省资源）")
 
         # 6) auto-assign 开启：应成功排产（并回避停机）
         lines.append("")

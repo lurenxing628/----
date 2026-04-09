@@ -12,25 +12,98 @@ from __future__ import annotations
 """
 
 import logging
-import math
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.value_domains import INTERNAL
-from core.services.common.strict_parse import parse_optional_date
+from core.services.common.strict_parse import parse_optional_date, parse_optional_datetime
 
 from ..sort_strategies import BatchForSort, SortStrategy, StrategyFactory
 from ..types import ScheduleResult, ScheduleSummary
 from .algo_stats import ensure_algo_stats, increment_counter
 from .auto_assign import auto_assign_internal_resources
 from .config_adapter import cfg_get
+from .date_parsers import parse_date, parse_datetime
 from .dispatch import dispatch_batch_order, dispatch_sgs
-from .downtime import find_overlap_shift_end, occupy_resource
+from .dispatch.runtime_state import accumulate_busy_hours, update_machine_last_state
+from .downtime import occupy_resource
 from .external_groups import schedule_external
-from .schedule_params import parse_date as _parse_date
-from .schedule_params import parse_datetime as _parse_datetime
+from .internal_slot import estimate_internal_slot
 from .schedule_params import resolve_schedule_params
 from .seed import normalize_seed_results
+
+
+def normalize_text_id(value: Any) -> str:
+    try:
+        return str(value or "").strip()
+    except Exception:
+        try:
+            return str(value).strip()
+        except Exception:
+            return ""
+
+
+def resolve_batch_sort_batch_id(batch_key: Any, batch: Any) -> str:
+    normalized_key = normalize_text_id(batch_key)
+    if normalized_key:
+        return normalized_key
+    return normalize_text_id(getattr(batch, "batch_id", None))
+
+
+def build_normalized_batches_map(batches: Optional[Dict[str, Any]], *, warnings: Optional[List[str]] = None) -> Dict[str, Any]:
+    normalized: Dict[str, Any] = {}
+    for raw_key, batch in (batches or {}).items():
+        batch_id = resolve_batch_sort_batch_id(raw_key, batch)
+        if not batch_id:
+            batch_id = str(raw_key or "")
+            if warnings is not None:
+                warnings.append(f"检测到空 batch_id（key/字段均为空）：{raw_key!r}")
+        if batch_id in normalized and normalized.get(batch_id) is not batch:
+            if warnings is not None:
+                warnings.append(f"批次ID规范化冲突：{raw_key!r} -> {batch_id!r} 已存在；已保留首次出现。")
+            continue
+        normalized[batch_id] = batch
+    return normalized
+
+
+def _parse_due_date_for_sort(value: Any, *, strict_mode: bool) -> Optional[Any]:
+    return parse_optional_date(value, field="due_date") if strict_mode else parse_date(value)
+
+
+def _parse_ready_date_for_sort(value: Any, *, strict_mode: bool) -> Optional[Any]:
+    return parse_optional_date(value, field="ready_date") if strict_mode else parse_date(value)
+
+
+def _parse_created_at_for_sort(value: Any, *, strict_mode: bool, strategy: SortStrategy) -> Optional[datetime]:
+    if strict_mode and strategy == SortStrategy.FIFO:
+        return parse_optional_datetime(value, field="created_at")
+    return parse_datetime(value)
+
+
+def build_batch_sort_inputs(
+    batches: Dict[str, Any],
+    *,
+    strict_mode: bool,
+    strategy: SortStrategy,
+) -> List[BatchForSort]:
+    batch_for_sort: List[BatchForSort] = []
+    for batch_key, batch in (batches or {}).items():
+        batch_id = resolve_batch_sort_batch_id(batch_key, batch)
+        if not batch_id:
+            continue
+        batch_for_sort.append(
+            BatchForSort(
+                batch_id=batch_id,
+                priority=str(getattr(batch, "priority", "") or "normal"),
+                due_date=_parse_due_date_for_sort(getattr(batch, "due_date", None), strict_mode=bool(strict_mode)),
+                ready_status=str(getattr(batch, "ready_status", "") or "yes"),
+                ready_date=_parse_ready_date_for_sort(getattr(batch, "ready_date", None), strict_mode=bool(strict_mode)),
+                created_at=_parse_created_at_for_sort(
+                    getattr(batch, "created_at", None), strict_mode=bool(strict_mode), strategy=strategy
+                ),
+            )
+        )
+    return batch_for_sort
 
 
 class GreedyScheduler:
@@ -102,83 +175,57 @@ class GreedyScheduler:
         dispatch_rule_enum = params.dispatch_rule_enum
         auto_assign_enabled = params.auto_assign_enabled
 
-        # -------------------------
-        # 关键 ID 规范化（算法层统一 str(...).strip()）
-        # -------------------------
-        # 说明：可选 warm-start 已做 strip；此处把 greedy/dispatch 侧也统一，避免脏输入导致分叉。
-        def _norm_id(v: Any) -> str:
-            try:
-                return str(v or "").strip()
-            except Exception:
-                try:
-                    return str(v).strip()
-                except Exception:
-                    return ""
-
-        batches_norm: Dict[str, Any] = {}
-        for k, b in (batches or {}).items():
-            nk = _norm_id(k)
-            if not nk:
-                nk = _norm_id(getattr(b, "batch_id", None))
-            if not nk:
-                # 极端兜底：保留原 key（可能为空），避免直接丢批次
-                nk = str(k or "")
-                warnings.append(f"检测到空 batch_id（key/字段均为空）：{k!r}")
-            if nk in batches_norm and batches_norm.get(nk) is not b:
-                warnings.append(f"批次ID规范化冲突：{k!r} -> {nk!r} 已存在；已保留首次出现。")
-                continue
-            batches_norm[nk] = b
-        batches = batches_norm
-
-        # 排序批次（允许外部覆盖 batch order，用于 multi-start / 局部扰动）
+        batches = build_normalized_batches_map(batches, warnings=warnings)
         sorter = StrategyFactory.create(strategy, **used_params)
-        batch_list: List[BatchForSort] = []
-        for bid0, b in batches.items():
-            due_raw = getattr(b, "due_date", None)
-            due_date = parse_optional_date(due_raw, field="due_date") if strict_mode else _parse_date(due_raw)
-            batch_list.append(
-                BatchForSort(
-                    batch_id=str(bid0 or "").strip(),
-                    priority=str(getattr(b, "priority", "") or "normal"),
-                    due_date=due_date,
-                    ready_status=str(getattr(b, "ready_status", "") or "yes"),
-                    ready_date=_parse_date(getattr(b, "ready_date", None)),
-                    created_at=_parse_datetime(getattr(b, "created_at", None)),
-                )
-            )
-        sorted_batches = sorter.sort(batch_list, base_date=base_time.date())
-        if batch_order_override:
-            order_list = [str(x).strip() for x in batch_order_override if str(x).strip()]
-            # 过滤不存在的批次，并把漏掉的批次补到末尾（按 sorter 的默认顺序）
-            order_list = [bid for bid in order_list if bid in batches]
-            # 去重：batch_order_override 可能包含重复批次（dict 会被最后一次覆盖），这里保留首次出现顺序
-            order_list = list(dict.fromkeys(order_list))
-            existed = set(order_list)
-            for b in sorted_batches:
-                if b.batch_id not in existed:
-                    order_list.append(b.batch_id)
-                    existed.add(b.batch_id)
-            batch_order = {bid: i for i, bid in enumerate(order_list)}
-        else:
-            batch_order = {b.batch_id: i for i, b in enumerate(sorted_batches)}
 
-        # 按批次优先级和工序顺序排序工序（稳定）
-        def _safe_int(v: Any) -> int:
+        if machine_downtimes:
+            machine_downtimes = {
+                normalize_text_id(resource_id): sorted(list(segments or []), key=lambda segment: (segment[0], segment[1]))
+                for resource_id, segments in machine_downtimes.items()
+                if normalize_text_id(resource_id)
+            }
+
+        override_order: List[str] = []
+        if batch_order_override:
+            seen_override = set()
+            for item in batch_order_override:
+                batch_id = normalize_text_id(item)
+                if not batch_id or batch_id not in batches or batch_id in seen_override:
+                    continue
+                seen_override.add(batch_id)
+                override_order.append(batch_id)
+
+        if override_order and len(override_order) == len(batches):
+            batch_order = {batch_id: index for index, batch_id in enumerate(override_order)}
+        else:
+            batch_for_sort = build_batch_sort_inputs(batches, strict_mode=bool(strict_mode), strategy=strategy)
+            sorted_batches = sorter.sort(batch_for_sort, base_date=base_time.date())
+            if override_order:
+                existed = set(override_order)
+                for batch in sorted_batches:
+                    if batch.batch_id in existed:
+                        continue
+                    override_order.append(batch.batch_id)
+                    existed.add(batch.batch_id)
+                batch_order = {batch_id: index for index, batch_id in enumerate(override_order)}
+            else:
+                batch_order = {batch.batch_id: index for index, batch in enumerate(sorted_batches)}
+
+        def _safe_int(value: Any) -> int:
             try:
-                return int(v or 0)
+                return int(value or 0)
             except Exception:
                 try:
-                    return int(float(v))
+                    return int(float(value))
                 except Exception:
                     return 0
 
         def _op_key(op: Any):
-            bid = str(getattr(op, "batch_id", "") or "").strip()
+            batch_id = normalize_text_id(getattr(op, "batch_id", ""))
             seq = _safe_int(getattr(op, "seq", 0))
-            oid = _safe_int(getattr(op, "id", 0))
-            return (batch_order.get(bid, 999999), bid, seq, oid)
+            op_id = _safe_int(getattr(op, "id", 0))
+            return (batch_order.get(batch_id, 999999), batch_id, seq, op_id)
 
-        # seed_results：规范化 + 去重防御
         seed_op_ids = set()
         if seed_results:
             normalized_seed, seed_op_ids, seed_warnings = normalize_seed_results(seed_results=seed_results, operations=operations, algo_stats=self)
@@ -192,10 +239,10 @@ class GreedyScheduler:
             dropped = 0
             for op in operations:
                 try:
-                    oid = int(getattr(op, "id", 0) or 0)
+                    op_id = int(getattr(op, "id", 0) or 0)
                 except Exception:
-                    oid = 0
-                if oid and oid in seed_op_ids:
+                    op_id = 0
+                if op_id and op_id in seed_op_ids:
                     dropped += 1
                     continue
                 filtered.append(op)
@@ -211,43 +258,31 @@ class GreedyScheduler:
             extra = f" 派工=sgs({dispatch_rule_enum.value})"
         self.logger.info(f"排产开始：批次数={len(batches)} 工序数={len(sorted_ops)} 策略={sorter.get_name()}{extra}")
 
-        # 资源占用追踪（V1 简化：只追踪“最后占用结束时间”足以满足冲突错开示例）
         machine_timeline: Dict[str, List[Tuple[datetime, datetime]]] = {}
         operator_timeline: Dict[str, List[Tuple[datetime, datetime]]] = {}
-        batch_progress: Dict[str, datetime] = {}  # batch_id -> 最后完成时间（初始化会考虑 ready_date）
-        # 运行期统计/状态（用于自动分配与换型 tie-break）
+        batch_progress: Dict[str, datetime] = {}
         machine_busy_hours: Dict[str, float] = {}
         operator_busy_hours: Dict[str, float] = {}
         last_op_type_by_machine: Dict[str, str] = {}
         last_end_by_machine: Dict[str, datetime] = {}
 
-        # 批次“齐套日期（ready_date）”：作为批次最早可开工时间下限
-        # 约定：ready_date 为空 -> 视为已齐套；不为空 -> 最早从该日班次开始排产
-        for bid0, b in batches.items():
-            bid = str(bid0 or "").strip()
-            rd = getattr(b, "ready_date", None)
-            rd_d = _parse_date(rd)
-            if bid and rd_d:
-                dt0 = datetime(rd_d.year, rd_d.month, rd_d.day, 0, 0, 0)
-                try:
-                    p = getattr(b, "priority", None)
-                    dt_ready = self.calendar.adjust_to_working_time(dt0, priority=p)
-                except Exception:
-                    dt_ready = dt0
-                batch_progress[bid] = max(batch_progress.get(bid, base_time), dt_ready)
+        for batch_id, batch in batches.items():
+            ready_date = _parse_ready_date_for_sort(getattr(batch, "ready_date", None), strict_mode=bool(strict_mode))
+            if not batch_id or ready_date is None:
+                continue
+            ready_start = datetime(ready_date.year, ready_date.month, ready_date.day, 0, 0, 0)
+            priority = getattr(batch, "priority", None)
+            ready_dt = self.calendar.adjust_to_working_time(ready_start, priority=priority)
+            batch_progress[batch_id] = max(batch_progress.get(batch_id, base_time), ready_dt)
 
-        # 外部组合并周期缓存：同一 batch 的同一 ext_group_id 只推进一次
         external_group_cache: Dict[Tuple[str, str], Tuple[datetime, datetime]] = {}
-
         results: List[ScheduleResult] = []
         scheduled_count = 0
         failed_count = 0
         blocked_batches: set = set()
         seed_count = 0
 
-        # 预置（冻结窗口等场景）：把已存在的排程作为“固定结果”写入 results，并占用资源
         if seed_results:
-            # 统计 seed_results 内部工序缺失资源的情况（避免“计入排程但未冻结资源”导致重叠）
             missing_seed_machine = 0
             missing_seed_operator = 0
             missing_seed_machine_samples: List[str] = []
@@ -255,55 +290,52 @@ class GreedyScheduler:
             for sr in seed_results:
                 if not sr or not sr.start_time or not sr.end_time:
                     continue
-                # 仅对可定位到真实工序的 seed 计入统计/结果（防止 op_id<=0 造成重复排产与 total_ops 口径错误）
+                if not isinstance(sr.start_time, datetime) or not isinstance(sr.end_time, datetime):
+                    continue
                 try:
                     if int(getattr(sr, "op_id", 0) or 0) <= 0:
                         continue
                 except Exception:
                     continue
-                results.append(sr)
-                scheduled_count += 1
-                seed_count += 1
-                bid = str(sr.batch_id or "").strip()
-                if bid:
-                    batch_progress[bid] = max(batch_progress.get(bid, base_time), sr.end_time)
-                if (sr.source or "").strip().lower() == INTERNAL:
-                    mid = str(sr.machine_id or "").strip()
-                    oid = str(sr.operator_id or "").strip()
 
-                    # 资源占用：按可用字段分别占用（避免因缺一项而完全不占用导致重叠）
-                    if mid:
-                        occupy_resource(machine_timeline, mid, sr.start_time, sr.end_time)
+                bid = normalize_text_id(sr.batch_id)
+                if (sr.source or "").strip().lower() == INTERNAL:
+                    machine_id = normalize_text_id(sr.machine_id)
+                    operator_id = normalize_text_id(sr.operator_id)
+                    if machine_id:
+                        occupy_resource(machine_timeline, machine_id, sr.start_time, sr.end_time)
                     else:
                         missing_seed_machine += 1
                         if len(missing_seed_machine_samples) < 5:
-                            missing_seed_machine_samples.append(str(getattr(sr, "op_id", "") or "").strip() or "?")
-
-                    if oid:
-                        occupy_resource(operator_timeline, oid, sr.start_time, sr.end_time)
+                            missing_seed_machine_samples.append(normalize_text_id(getattr(sr, "op_id", "") or "?") or "?")
+                    if operator_id:
+                        occupy_resource(operator_timeline, operator_id, sr.start_time, sr.end_time)
                     else:
                         missing_seed_operator += 1
                         if len(missing_seed_operator_samples) < 5:
-                            missing_seed_operator_samples.append(str(getattr(sr, "op_id", "") or "").strip() or "?")
+                            missing_seed_operator_samples.append(normalize_text_id(getattr(sr, "op_id", "") or "?") or "?")
+                    accumulate_busy_hours(
+                        machine_busy_hours=machine_busy_hours,
+                        operator_busy_hours=operator_busy_hours,
+                        machine_id=machine_id,
+                        operator_id=operator_id,
+                        start_time=sr.start_time,
+                        end_time=sr.end_time,
+                    )
+                    update_machine_last_state(
+                        last_end_by_machine=last_end_by_machine,
+                        last_op_type_by_machine=last_op_type_by_machine,
+                        machine_id=machine_id,
+                        end_time=sr.end_time,
+                        op_type_name=sr.op_type_name,
+                        seed_mode=True,
+                    )
+                results.append(sr)
+                scheduled_count += 1
+                seed_count += 1
+                if bid:
+                    batch_progress[bid] = max(batch_progress.get(bid, base_time), sr.end_time)
 
-                    # 负荷统计：同样按可用字段分别累计
-                    try:
-                        h = (sr.end_time - sr.start_time).total_seconds() / 3600.0
-                        if mid:
-                            machine_busy_hours[mid] = machine_busy_hours.get(mid, 0.0) + float(h)
-                        if oid:
-                            operator_busy_hours[oid] = operator_busy_hours.get(oid, 0.0) + float(h)
-                    except Exception:
-                        pass
-
-                    ot = (sr.op_type_name or "").strip()
-                    if mid and ot and sr.end_time:
-                        prev_end = last_end_by_machine.get(mid)
-                        if prev_end is None or sr.end_time > prev_end:
-                            last_end_by_machine[mid] = sr.end_time
-                            last_op_type_by_machine[mid] = ot
-
-            # seed_results 内部工序缺失资源：给出汇总 warning（不阻断排产）
             if missing_seed_machine:
                 sample = ", ".join([x for x in missing_seed_machine_samples if x and x != "?"][:5])
                 warnings.append(
@@ -429,13 +461,10 @@ class GreedyScheduler:
         operator_busy_hours: Optional[Dict[str, float]] = None,
     ) -> Tuple[Optional[ScheduleResult], bool]:
         """排产内部工序：设备+人员双重资源约束 + 工作日历。"""
-        bid = str(getattr(op, "batch_id", "") or "").strip()
-
-        # 防御：字段可能不是 str（例如 int），避免直接 .strip() 崩溃
-        machine_id = str(getattr(op, "machine_id", None) or "").strip()
-        operator_id = str(getattr(op, "operator_id", None) or "").strip()
+        bid = normalize_text_id(getattr(op, "batch_id", ""))
+        machine_id = normalize_text_id(getattr(op, "machine_id", None))
+        operator_id = normalize_text_id(getattr(op, "operator_id", None))
         if not machine_id or not operator_id:
-            # resource_pool 可能是空 dict（调用方显式提供但无候选）；用 is not None 区分“未提供”(None)
             if auto_assign_enabled and resource_pool is not None:
                 increment_counter(self, "internal_auto_assign_attempt_count")
                 chosen = self._auto_assign_internal_resources(
@@ -467,83 +496,40 @@ class GreedyScheduler:
                 return None, False
 
         prev_end = batch_progress.get(bid, base_time)
-
-        # 先从“批次前序完工/起算时间”出发，再做资源避让（支持已有区间占用/冻结窗口）
-        earliest = max(prev_end, base_time)
-        priority = getattr(batch, "priority", None)
-        earliest = self.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=operator_id)
-
-        setup_hours = getattr(op, "setup_hours", 0) or 0
-        unit_hours = getattr(op, "unit_hours", 0) or 0
-        qty = getattr(batch, "quantity", 0) or 0
         try:
-            total_hours_base = float(setup_hours) + float(unit_hours) * float(qty)
-        except Exception:
-            errors.append(
-                f"工时不合法：工序 {getattr(op, 'op_code', '-') or '-'} setup={setup_hours!r} unit={unit_hours!r} qty={qty!r}"
+            estimate = estimate_internal_slot(
+                calendar=self.calendar,
+                op=op,
+                batch=batch,
+                machine_id=machine_id,
+                operator_id=operator_id,
+                base_time=base_time,
+                prev_end=prev_end,
+                machine_timeline=machine_timeline.get(machine_id) or [],
+                operator_timeline=operator_timeline.get(operator_id) or [],
+                end_dt_exclusive=end_dt_exclusive,
+                machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else [],
+                last_op_type_by_machine=last_op_type_by_machine,
+                abort_after=None,
             )
-            return None, False
-        if (not math.isfinite(float(total_hours_base))) or total_hours_base < 0:
-            errors.append(f"工时不能为负：工序 {getattr(op, 'op_code', '-') or '-'} total_hours={total_hours_base}")
-            return None, False
-
-        # 简化：效率取“开工时刻”的效率；若 earliest 因避让跨日/跨班次，则需重算
-        def _scaled_hours(start: datetime) -> float:
-            eff = 1.0
-            try:
-                eff = float(self.calendar.get_efficiency(start, operator_id=operator_id) or 1.0)
-            except Exception:
-                eff = 1.0
-            if (not math.isfinite(float(eff))) or float(eff) <= 0:
-                increment_counter(self, "internal_efficiency_fallback_count")
-                eff = 1.0
-            h = float(total_hours_base)
-            if eff and eff > 0 and eff != 1.0:
-                return h / eff
-            return h
-
-        # 资源/停机避让：若区间与“设备/人员/停机”任一已占用区间重叠，则把开始时间推到重叠区间结束后再重算
-        dt_list: List[Tuple[datetime, datetime]] = []
-        if machine_downtimes and machine_id:
-            dt_list = machine_downtimes.get(machine_id) or []
-
-        guard = 0
-        total_hours = _scaled_hours(earliest)
-        end = self.calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=operator_id)
-        while guard < 200:
-            guard += 1
-
-            shift_to: Optional[datetime] = None
-            m_shift = find_overlap_shift_end(machine_timeline.get(machine_id) or [], earliest, end)
-            o_shift = find_overlap_shift_end(operator_timeline.get(operator_id) or [], earliest, end)
-            d_shift = find_overlap_shift_end(dt_list, earliest, end)
-            for x in (m_shift, o_shift, d_shift):
-                if x is None:
-                    continue
-                if shift_to is None or x > shift_to:
-                    shift_to = x
-
-            if shift_to is None:
-                break
-
-            earliest = max(earliest, shift_to)
-            earliest = self.calendar.adjust_to_working_time(earliest, priority=priority, operator_id=operator_id)
-            total_hours = _scaled_hours(earliest)
-            end = self.calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=operator_id)
-
-        if guard >= 200:
-            errors.append(f"资源/停机避让迭代过多：工序 {getattr(op, 'op_code', '-') or '-'}（批次 {bid}）")
+        except ValueError as exc:
+            op_code = getattr(op, "op_code", "-") or "-"
+            errors.append(f"工时不合法：工序 {op_code} {exc}")
             return None, False
 
-        if end_dt_exclusive is not None and end >= end_dt_exclusive:
-            deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d")
+        if estimate.abort_after_hit:
+            raise RuntimeError("正式内部排产不应命中 abort_after 早停")
+        if estimate.blocked_by_window:
+            deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d") if end_dt_exclusive else "-"
             errors.append(
-                f"排产窗口截止到 {deadline}：内部工序 {getattr(op, 'op_code', '-') or '-'}（批次 {bid}）预计完工 {end.strftime('%Y-%m-%d %H:%M')} 超出窗口"
+                f"排产窗口截止到 {deadline}：内部工序 {getattr(op, 'op_code', '-') or '-'}（批次 {bid}）预计完工 {estimate.end_time.strftime('%Y-%m-%d %H:%M')} 超出窗口"
             )
             return None, True
 
-        occupy_resource(machine_timeline, machine_id, earliest, end)
-        occupy_resource(operator_timeline, operator_id, earliest, end)
+        occupy_resource(machine_timeline, machine_id, estimate.start_time, estimate.end_time)
+        occupy_resource(operator_timeline, operator_id, estimate.start_time, estimate.end_time)
+        if estimate.efficiency_fallback_used:
+            increment_counter(self, "internal_efficiency_fallback_count")
 
         return (
             ScheduleResult(
@@ -553,8 +539,8 @@ class GreedyScheduler:
                 seq=int(getattr(op, "seq", 0) or 0),
                 machine_id=machine_id,
                 operator_id=operator_id,
-                start_time=earliest,
-                end_time=end,
+                start_time=estimate.start_time,
+                end_time=estimate.end_time,
                 source=INTERNAL,
                 op_type_name=str(getattr(op, "op_type_name", None) or "") or None,
             ),

@@ -2,6 +2,9 @@
 name = "aps-test"
 requires-python = ">=3.8"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff]
 target-version = "py38"
 line-length = 120
@@ -22,8 +25,8 @@ select = [
     "F",   # pyflakes
     "W",   # pycodestyle warnings
     "I",   # isort
-    "UP",  # pyupgrade (仅报告，不强制升级语法)
-    "B",   # flake8-bugbear (常见 bug 模式)
+    "UP",  # pyupgrade（仅报告，不强制升级语法）
+    "B",   # flake8-bugbear（常见 bug 模式）
 ]
 ignore = [
     "E501",   # 行长度由 line-length 控制，允许适度超长
@@ -40,7 +43,8 @@ ignore = [
 "web/routes/personnel.py" = ["F401"]
 "web/routes/process.py" = ["F401"]
 "web/routes/material.py" = ["F401"]
-"tests/*" = ["E", "W", "B", "UP015"]  # 测试文件宽松
+"tests/*.py" = ["E", "W", "B", "UP015"]      # 根层测试文件宽松
+"tests/**/*.py" = ["E", "W", "B", "UP015"]   # 子目录测试文件宽松
 
 [tool.ruff.lint.isort]
 known-first-party = ["core", "data", "web"]

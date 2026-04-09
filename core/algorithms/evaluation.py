@@ -3,9 +3,10 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.algorithms.greedy.date_parsers import due_exclusive, parse_date
 from core.algorithms.priority_constants import PRIORITY_WEIGHT, normalize_priority
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import INTERNAL
@@ -31,31 +32,12 @@ def _parse_due_date_state(value: Any) -> Tuple[Optional[date], bool]:
     s = str(value or "").strip()
     if not s:
         return None, False
-    parsed = _parse_due_date(s)
+    parsed = parse_date(s)
     return parsed, parsed is None
 
 
-def _parse_due_date(value: Any) -> Optional[date]:
-    if value is None:
-        return None
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value
-    if isinstance(value, datetime):
-        return value.date()
-    s = str(value or "").strip()
-    if not s:
-        return None
-    s = s.replace("/", "-")
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        return None
-
-
-def _due_exclusive(d: Optional[date]) -> datetime:
-    if not d:
-        return datetime.max
-    return datetime(d.year, d.month, d.day) + timedelta(days=1)
+_parse_due_date = parse_date
+_due_exclusive = due_exclusive
 
 
 @dataclass
@@ -166,10 +148,10 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
             continue
         if not due_d:
             continue
-        due_exclusive = _due_exclusive(due_d)
-        if fin >= due_exclusive:
+        batch_due_exclusive = due_exclusive(due_d)
+        if fin >= batch_due_exclusive:
             overdue_count += 1
-            delta_h = (fin - due_exclusive).total_seconds() / 3600.0
+            delta_h = (fin - batch_due_exclusive).total_seconds() / 3600.0
             tardiness_hours += delta_h
             pr = normalize_priority(getattr(b, "priority", None), default="normal")
             w = float(PRIORITY_WEIGHT.get(pr, 1.0))
@@ -219,59 +201,59 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
             continue
         st = r.start_time
         et = r.end_time
-        if et <= st:
-            continue
         if min_int is None or st < min_int:
             min_int = st
         if max_int is None or et > max_int:
             max_int = et
+        dur_h = max((et - st).total_seconds() / 3600.0, 0.0)
         mid = str(getattr(r, "machine_id", None) or "").strip()
         if mid:
-            machine_busy[mid] = machine_busy.get(mid, 0.0) + (et - st).total_seconds() / 3600.0
+            machine_busy[mid] = machine_busy.get(mid, 0.0) + float(dur_h)
         oid = str(getattr(r, "operator_id", None) or "").strip()
         if oid:
-            operator_busy[oid] = operator_busy.get(oid, 0.0) + (et - st).total_seconds() / 3600.0
+            operator_busy[oid] = operator_busy.get(oid, 0.0) + float(dur_h)
 
     makespan_internal_hours = 0.0
     if min_int is not None and max_int is not None and max_int > min_int:
         makespan_internal_hours = (max_int - min_int).total_seconds() / 3600.0
 
     def _cv(vals: List[float]) -> float:
-        clean: List[float] = []
+        clean = []
         for v in vals:
             try:
                 fv = float(v)
             except Exception:
                 continue
-            if (not math.isfinite(fv)) or fv < 0:
-                continue
-            clean.append(fv)
+            if math.isfinite(fv) and fv >= 0:
+                clean.append(fv)
         if not clean:
             return 0.0
+        if len(clean) <= 1:
+            return 0.0
         m = statistics.fmean(clean)
-        if m <= 0:
+        if not math.isfinite(m) or m <= 0:
             return 0.0
-        if len(clean) < 2:
+        try:
+            return float(statistics.pstdev(clean) / m)
+        except Exception:
             return 0.0
-        return float(statistics.pstdev(clean) / m)
 
-    def _finite_non_negative(values: List[float]) -> List[float]:
+    def _finite_non_negative(values: Dict[str, float]) -> List[float]:
         out: List[float] = []
-        for v in values:
+        for v in values.values():
             try:
                 fv = float(v)
             except Exception:
                 continue
-            if (not math.isfinite(fv)) or fv < 0:
-                continue
-            out.append(fv)
+            if math.isfinite(fv) and fv >= 0:
+                out.append(fv)
         return out
 
-    machine_hours = _finite_non_negative(list(machine_busy.values()))
-    operator_hours = _finite_non_negative(list(operator_busy.values()))
-    horizon = makespan_internal_hours
-    machine_util_avg = float(statistics.fmean([h / horizon for h in machine_hours])) if horizon > 0 and machine_hours else 0.0
-    operator_util_avg = float(statistics.fmean([h / horizon for h in operator_hours])) if horizon > 0 and operator_hours else 0.0
+    machine_hours = _finite_non_negative(machine_busy)
+    operator_hours = _finite_non_negative(operator_busy)
+    horizon = float(makespan_internal_hours)
+    machine_util_avg = (sum(machine_hours) / (len(machine_hours) * horizon)) if machine_hours and horizon > 0 else 0.0
+    operator_util_avg = (sum(operator_hours) / (len(operator_hours) * horizon)) if operator_hours and horizon > 0 else 0.0
     util_defined = bool(horizon > 0)
 
     return ScheduleMetrics(
@@ -281,8 +263,8 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
         changeover_count=int(changeovers),
         weighted_tardiness_hours=float(weighted_tardiness_hours),
         makespan_internal_hours=float(makespan_internal_hours),
-        machine_used_count=int(len(machine_busy)),
-        operator_used_count=int(len(operator_busy)),
+        machine_used_count=int(len(machine_hours)),
+        operator_used_count=int(len(operator_hours)),
         machine_busy_hours_total=float(sum(machine_hours) if machine_hours else 0.0),
         operator_busy_hours_total=float(sum(operator_hours) if operator_hours else 0.0),
         machine_util_avg=float(machine_util_avg),
@@ -290,37 +272,43 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
         machine_load_cv=float(_cv(machine_hours)),
         operator_load_cv=float(_cv(operator_hours)),
         internal_horizon_hours=float(horizon),
-        util_defined=bool(util_defined),
+        util_defined=util_defined,
         invalid_due_count=int(invalid_due_count),
         unscheduled_batch_count=int(unscheduled_batch_count),
-        invalid_due_batch_ids_sample=list(invalid_due_batch_ids_sample),
-        unscheduled_batch_ids_sample=list(unscheduled_batch_ids_sample),
+        invalid_due_batch_ids_sample=invalid_due_batch_ids_sample,
+        unscheduled_batch_ids_sample=unscheduled_batch_ids_sample,
     )
 
 
 def objective_score(objective: str, metrics: ScheduleMetrics) -> Tuple[float, ...]:
-    """
-    目标函数（越小越好）。
-
-    objective 取值（V1.1+）：
-    - min_overdue: 优先最小化超期批次数，其次总拖期小时，再其次 makespan，再其次换型次数
-    - min_tardiness: 优先最小化总拖期小时，其次超期批次数，再其次 makespan，再其次换型次数
-    - min_weighted_tardiness: 优先最小化加权拖期小时，其次超期批次数，再其次总拖期小时，再其次 makespan，再其次换型次数
-    - min_changeover: 优先最小化换型次数，其次超期批次数，再其次总拖期小时，再其次 makespan
-    """
-    obj = (objective or "min_overdue").strip().lower()
-    if obj == "min_tardiness":
-        return (metrics.total_tardiness_hours, float(metrics.overdue_count), metrics.makespan_hours, float(metrics.changeover_count))
+    obj = str(objective or "min_overdue").strip().lower()
     if obj == "min_weighted_tardiness":
         return (
-            metrics.weighted_tardiness_hours,
-            float(metrics.overdue_count),
-            metrics.total_tardiness_hours,
-            metrics.makespan_hours,
+            float(metrics.weighted_tardiness_hours),
+            float(metrics.total_tardiness_hours),
+            float(metrics.makespan_hours),
             float(metrics.changeover_count),
         )
-    if obj == "min_changeover":
-        return (float(metrics.changeover_count), float(metrics.overdue_count), metrics.total_tardiness_hours, metrics.makespan_hours)
-    # default: min_overdue
-    return (float(metrics.overdue_count), metrics.total_tardiness_hours, metrics.makespan_hours, float(metrics.changeover_count))
-
+    if obj == "min_makespan":
+        return (
+            float(metrics.makespan_hours),
+            float(metrics.overdue_count),
+            float(metrics.total_tardiness_hours),
+            float(metrics.changeover_count),
+        )
+    if obj == "balance_load":
+        return (
+            float(metrics.machine_load_cv),
+            float(metrics.operator_load_cv),
+            float(metrics.overdue_count),
+            float(metrics.weighted_tardiness_hours),
+            float(metrics.makespan_hours),
+            float(metrics.changeover_count),
+        )
+    return (
+        float(metrics.overdue_count),
+        float(metrics.weighted_tardiness_hours),
+        float(metrics.total_tardiness_hours),
+        float(metrics.makespan_hours),
+        float(metrics.changeover_count),
+    )
