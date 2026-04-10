@@ -36,7 +36,26 @@ python -m pre_commit install
 
 ## 测试方式
 
-常用命令：
+### 统一质量门禁入口
+
+在仓库根目录执行：
+
+```powershell
+python scripts/run_quality_gate.py
+```
+
+统一门禁固定按以下顺序执行：
+
+- 仓库根活动 APS 实例前置检查
+- `python -m ruff --version` 与版本断言（`>=0.15,<0.16`）
+- `python -c "import radon"`
+- `python -m ruff check`
+- `python -m pytest -q tests/test_architecture_fitness.py`
+- `python scripts/sync_debt_ledger.py check`
+- 启动链专项回归统一 `pytest` 命令
+- `python tests/check_quickref_vs_routes.py`
+
+### 其他常用命令
 
 ```powershell
 python -m pytest --collect-only tests -q
@@ -44,7 +63,7 @@ python -m pytest tests/regression -q
 python -m pytest tests -q
 ```
 
-专项回归目录与命名契约的详细说明统一维护在 `./开发文档/README.md`。
+专项回归目录、命名契约、治理台账入口与台账写入口说明统一维护在 `./开发文档/README.md`。
 
 ## 关键目录
 
@@ -72,4 +91,4 @@ python -m pytest tests -q
 
 ## 后续子 plan 承接
 
-本入口只提供最小可链接基线。统一门禁、治理台账、专项回归扩展与审计留痕的详细承接说明统一维护在 `./开发文档/README.md`，由后续子 plan 继续补齐。
+根入口现已提供统一质量门禁命令；治理台账结构、台账写入口、专项回归扩展与交接说明统一维护在 `./开发文档/README.md`。

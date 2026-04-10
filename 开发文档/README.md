@@ -27,6 +27,33 @@ python -m pre_commit install
 - `ruff` 版本口径固定为 `>=0.15,<0.16`。
 - 若未先安装 `requirements-dev.txt`，`.pre-commit-config.yaml` 中的 `python -m ruff` 钩子不会生效。
 
+## 质量治理入口
+
+### 统一门禁入口
+
+```powershell
+python scripts/run_quality_gate.py
+```
+
+用途：统一串联 `ruff`、架构门禁、启动链专项回归与系统速查表一致性检查。本地与托管只认这一条入口。
+
+### 治理台账写入口
+
+```powershell
+python scripts/sync_debt_ledger.py check
+python scripts/sync_debt_ledger.py refresh --mode migrate-inline-facts
+python scripts/sync_debt_ledger.py refresh --mode scan-startup-baseline
+python scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields
+```
+
+说明：
+
+- 三类治理数据唯一事实源：`./技术债务治理台账.md` 的受控 `json` 结构块。
+- `scripts/run_quality_gate.py` 只读不写台账。
+- `scripts/sync_debt_ledger.py` 是唯一台账写入口；人工治理字段必须通过 `set-entry-fields` 更新，接受风险必须通过 `upsert-risk` / `delete-risk` 维护。
+- `set-entry-fields --status` 当前只接受 `open`、`in_progress`、`blocked`、`fixed`。
+- 静默回退门禁当前分两段运行：启动链按四类分类全量冻结；非启动链仅续管历史 `silent_swallow` 遗留项，不把其余分类扩展为全仓新增门禁。
+
 ## 测试目录与命名契约
 
 ### 可直接复用的测试落点
@@ -44,16 +71,18 @@ python -m pre_commit install
 
 ## 对 SP02 的承接边界
 
-以下内容已经准备好，可直接被后续子 plan 复用：
+以下内容已经准备好，并已由 `SP02` 实际接入：
 
 - 可稳定链接的根入口、开发文档入口与审计入口。
 - 本地开发与托管检查共用的开发依赖声明。
 - 可直接承接新增专项回归的 `tests/regression/` 目录。
 - 已明确写清的命名契约，以及它对当前 `tests/conftest.py` 收集适配前提的依赖。
+- 统一质量门禁入口 `python scripts/run_quality_gate.py`。
+- 唯一台账写入口 `python scripts/sync_debt_ledger.py`。
+- 三类治理数据唯一事实源 `./技术债务治理台账.md`。
 
-以下内容仍留给 `SP02` 继续处理，不在 `SP01` 预支实现：
+向 `SP03` 的直接交接点：
 
-- 统一门禁
-- 治理台账
-- 专项回归扩展
-- 审计留痕
+- 启动链基线已冻结到治理台账，后续优先做真实治理，不再重复搭基础设施。
+- `web/ui_mode.py` 已按 `startup_guard` / `render_bridge` 分 scope 落账；其中 `render_bridge` 条目继续留给 `SP09`。
+- 文档一致性检查已具备阻断语义，后续只需保持实现与速查表同步。
