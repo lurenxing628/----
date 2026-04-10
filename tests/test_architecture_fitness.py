@@ -13,13 +13,28 @@ import importlib.util
 import os
 import re
 import sys
-from collections import Counter
-from typing import Any, Dict, Iterable, List, Set, Tuple, cast
+from typing import Any, Dict, List, Set, Tuple
+
+from tools.quality_gate_support import (
+    COMPLEXITY_THRESHOLD,
+    CORE_DIRS,
+    FILE_SIZE_LIMIT,
+    architecture_complexity_allowlist_map,
+    architecture_complexity_scan_map,
+    architecture_oversize_allowlist_map,
+    architecture_oversize_scan_map,
+    architecture_silent_allowlist_map,
+    architecture_silent_scan_entries,
+    load_ledger,
+    validate_startup_samples,
+)
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-CORE_DIRS = ["web/routes", "core/services", "data/repositories", "core/models", "core/infrastructure", "web/viewmodels"]
-NO_WILDCARD_DIRS = CORE_DIRS
+LEDGER_CORE_DIRS = CORE_DIRS
+
+CORE_DIRS = list(LEDGER_CORE_DIRS)
+NO_WILDCARD_DIRS = list(LEDGER_CORE_DIRS)
 
 
 def _collect_py_files(*rel_dirs: str) -> List[str]:
@@ -39,20 +54,6 @@ def _collect_py_files(*rel_dirs: str) -> List[str]:
 def _read(rel_path: str) -> str:
     with open(os.path.join(REPO_ROOT, rel_path), "r", encoding="utf-8", errors="replace") as f:
         return f.read()
-
-
-def _known_oversize_files() -> Set[str]:
-    return {
-        # Phase 5 采用“显式登记技术债”路径：这些历史大文件本轮不继续做高风险拆分，
-        # 仅在 strict_mode / silent fallback 收口完成后单独拆批处理。
-        "web/routes/scheduler_excel_calendar.py",
-        "core/services/process/part_service.py",
-        "core/services/process/unit_excel/template_builder.py",
-        "core/services/scheduler/config_service.py",
-        "core/services/scheduler/schedule_optimizer.py",
-        "core/services/personnel/operator_machine_service.py",
-        "core/infrastructure/database.py",
-    }
 
 
 LOCAL_PARSE_HELPER_NAMES = {"_safe_float", "_safe_int", "_cfg_float", "_cfg_int", "_get_float", "_get_int"}
@@ -389,250 +390,117 @@ def test_services_do_not_use_assert_for_runtime_guards():
     assert not violations, "Service 使用 assert（禁止）:\n" + "\n".join(violations)
 
 
-def _find_enclosing_name(node: ast.AST) -> str:
-    """上溯 AST，返回最近的函数/类名；若不存在则返回 <module>。"""
-    cur = node
-    while hasattr(cur, "_ast_parent"):
-        cur = cur._ast_parent  # type: ignore[attr-defined]
-        if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            return cur.name
-        if isinstance(cur, ast.ClassDef):
-            return cur.name
-    return "<module>"
-
-
 def test_no_silent_exception_swallow():
-    """禁止 except Exception: pass / ...（静默吞异常）。新增违反必须修复。"""
+    """静默回退治理必须与台账逐条对齐，且启动链新增命中必须先登记。"""
 
-    # 白名单采用 file:enclosing_func 指纹，并保留同一函数内的命中次数。
-    known_violations = Counter(
-        {
-            # core/infrastructure/*
-            "core/infrastructure/backup.py:maintenance_window": 3,
-            "core/infrastructure/backup.py:backup": 2,
-            "core/infrastructure/backup.py:_copy_db_file": 1,
-            "core/infrastructure/database.py:_is_windows_lock_error": 1,
-            "core/infrastructure/database.py:_restore_db_file_from_backup": 3,
-            "core/infrastructure/database.py:_bootstrap_missing_tables_from_schema": 1,
-            "core/infrastructure/database.py:_cleanup_probe_db": 1,
-            "core/infrastructure/database.py:_preflight_migration_contract": 3,
-            "core/infrastructure/database.py:ensure_schema": 2,
-            "core/infrastructure/database.py:_migrate_with_backup": 2,
-            "core/infrastructure/errors.py:__post_init__": 2,
-            "core/infrastructure/migrations/common.py:fallback_log": 2,
-            "core/infrastructure/transaction.py:transaction": 2,
-            # core/models/*
-            "core/models/_helpers.py:parse_int": 1,
-            # core/services/common/*
-            "core/services/common/openpyxl_backend.py:read": 1,
-            "core/services/common/openpyxl_backend.py:write": 1,
-            # core/services/process/*
-            "core/services/process/unit_excel/parser.py:parse": 1,
-            # core/services/report/*
-            "core/services/report/exporters/xlsx.py:export_overdue_xlsx": 1,
-            "core/services/report/exporters/xlsx.py:export_utilization_xlsx": 1,
-            "core/services/report/exporters/xlsx.py:export_downtime_impact_xlsx": 1,
-            # core/services/scheduler/*
-            "core/services/scheduler/gantt_service.py:_critical_chain_cache_key": 1,
-            "core/services/scheduler/gantt_service.py:_get_critical_chain": 2,
-            "core/services/scheduler/schedule_summary.py:serialize_end_date": 1,
-            # core/services/system/*
-            "core/services/system/maintenance/backup_task.py:_safe_logger_emit": 1,
-            "core/services/system/maintenance/cleanup_task.py:_safe_logger_emit": 1,
-            # data/repositories/*
-            "data/repositories/base_repo.py:_log_db_error": 1,
-            "data/repositories/external_group_repo.py:update": 1,
-            "data/repositories/schedule_history_repo.py:allocate_next_version": 1,
-            # web/routes/*
-            "web/routes/excel_utils.py:read_uploaded_xlsx": 1,
-            "web/routes/scheduler_config.py:_load_manual_text_and_mtime": 1,
-            "web/routes/system_backup.py:backup_restore": 2,
-        }
-    )
+    ledger = load_ledger(required=True)
+    allowlist = architecture_silent_allowlist_map(ledger)
+    scanned_entries = architecture_silent_scan_entries()
+    scanned_map = {str(entry.get("id")): entry for entry in scanned_entries}
 
-    def _scan_file(fp: str) -> List[str]:
-        try:
-            source = _read(fp)
-            tree = ast.parse(source, filename=fp)
-        except SyntaxError:
-            return []
-        for node in ast.walk(tree):
-            for child in ast.iter_child_nodes(node):
-                child._ast_parent = node  # type: ignore[attr-defined]
-        out: List[str] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Try):
-                continue
-            for h in node.handlers:
-                if not (isinstance(h.type, ast.Name) and h.type.id == "Exception"):
-                    continue
-                body = list(h.body or [])
-                hit = False
-                if len(body) == 1 and isinstance(body[0], ast.Pass):
-                    hit = True
-                elif len(body) == 1:
-                    expr_stmt = body[0]
-                    if isinstance(expr_stmt, ast.Expr) and isinstance(expr_stmt.value, ast.Constant):
-                        if expr_stmt.value.value is Ellipsis:
-                            hit = True
-                if not hit:
-                    continue
-                out.append(f"{fp}:{_find_enclosing_name(h)}")
-        return out
+    new_entries = []
+    mismatched_entries = []
+    for entry_id, entry in sorted(scanned_map.items()):
+        ledger_entry = allowlist.get(entry_id)
+        if ledger_entry is None:
+            new_entries.append(
+                f"{entry.get('path')}:{entry.get('symbol')}:{entry.get('fallback_kind')}（id={entry_id}）"
+            )
+            continue
+        if str(ledger_entry.get("fallback_kind")) != str(entry.get("fallback_kind")):
+            mismatched_entries.append(
+                f"{entry_id} fallback_kind 不一致：台账={ledger_entry.get('fallback_kind')} 实扫={entry.get('fallback_kind')}"
+            )
+        if str(entry.get("path")) == "web/ui_mode.py" and str(ledger_entry.get("scope_tag")) != str(entry.get("scope_tag")):
+            mismatched_entries.append(
+                f"{entry_id} scope_tag 不一致：台账={ledger_entry.get('scope_tag')} 实扫={entry.get('scope_tag')}"
+            )
 
-    current_violations: Counter = Counter()
-    for fp in _collect_py_files(*CORE_DIRS):
-        current_violations.update(_scan_file(fp))
+    stale_entries = []
+    for entry_id, entry in sorted(allowlist.items()):
+        if entry_id not in scanned_map:
+            stale_entries.append(f"{entry_id}（{entry.get('path')}:{entry.get('symbol')}）")
 
-    new_violations: List[str] = []
-    for hit, count in sorted(current_violations.items()):
-        allowed = int(known_violations.get(hit, 0))
-        if count > allowed:
-            new_violations.append(f"{hit}（当前 {count}，白名单 {allowed}）")
+    messages = []
+    if new_entries:
+        messages.append("未登记的新静默回退：\n" + "\n".join(new_entries))
+    if mismatched_entries:
+        messages.append("静默回退台账与当前扫描不一致：\n" + "\n".join(mismatched_entries))
+    if stale_entries:
+        messages.append("静默回退台账存在陈旧登记：\n" + "\n".join(stale_entries))
+    assert not messages, "\n\n".join(messages)
 
-    assert not new_violations, (
-        "新增静默吞异常（except Exception: pass / ...）违反：\n"
-        + "\n".join(new_violations)
-        + "\n\n如有合理理由，请添加到 known_violations 白名单并说明原因。"
-    )
+
+def test_startup_silent_fallback_samples():
+    """启动链样本点必须持续命中既定分类与 scope。"""
+
+    validate_startup_samples()
 
 # ─── Fitness 4: 文件/函数规模 ─────────────────────────────────
 
 def test_file_size_limit():
-    """核心目录单文件不超过 500 行。"""
+    """三类规则专属范围内，未登记文件不得超过 500 行。"""
+
+    ledger = load_ledger(required=True)
+    allowlist = architecture_oversize_allowlist_map(ledger)
+    scanned = architecture_oversize_scan_map()
     violations = []
-    for fp in _collect_py_files(*CORE_DIRS):
-        if fp in _known_oversize_files():
+    for path, item in sorted(scanned.items()):
+        if path in allowlist:
             continue
-        line_count = len(_read(fp).splitlines())
-        if line_count > 500:
-            violations.append(f"{fp}: {line_count} lines")
+        violations.append(f"{path}: {item.get('current_value')} lines")
     assert not violations, "文件超 500 行（新增）:\n" + "\n".join(violations)
 
 
 def test_known_oversize_entries_still_exceed_limit():
     """超长文件白名单中的条目必须仍然真实超限。"""
+    ledger = load_ledger(required=True)
+    allowlist = architecture_oversize_allowlist_map(ledger)
+    scanned = architecture_oversize_scan_map()
     stale_entries = []
-    for fp in sorted(_known_oversize_files()):
-        line_count = len(_read(fp).splitlines())
-        if line_count <= 500:
-            stale_entries.append(f"{fp}: {line_count} lines")
+    for path, entry in sorted(allowlist.items()):
+        if path not in scanned:
+            stale_entries.append(f"{path}: <= {FILE_SIZE_LIMIT} lines")
     assert not stale_entries, "超长文件白名单存在已失效登记:\n" + "\n".join(stale_entries)
 
 
 # ─── Fitness 5: 圈复杂度门禁 ──────────────────────────────────
 
 def test_cyclomatic_complexity_threshold():
-    """核心目录单函数圈复杂度不超过 C 级（≤15）。
+    """三类规则专属范围内，未登记函数不得超过复杂度阈值。"""
 
-    注意：当前存在历史遗留的高复杂度函数，此测试用 known_violations
-    白名单豁免它们。新增代码不可超标。
-    """
-    import pytest
-
-    if importlib.util.find_spec("radon") is None:
-        pytest.skip("radon not installed")
-
-    try:
-        radon_complexity = importlib.import_module("radon.complexity")
-        cc_visit = getattr(radon_complexity, "cc_visit", None)
-    except ImportError:
-        pytest.skip("radon not installed")
-    if not callable(cc_visit):
-        pytest.skip("radon cc_visit unavailable")
-
-    THRESHOLD = 15
-
-    known_violations = {
-        # --- Route 层（Excel confirm 路由普遍复杂） ---
-        "web/routes/excel_demo.py:preview",
-        "web/routes/excel_demo.py:confirm",
-        "web/routes/personnel_excel_operators.py:excel_operator_confirm",
-        "web/routes/personnel_excel_operator_calendar.py:excel_operator_calendar_confirm",
-        "web/routes/process_excel_op_types.py:excel_op_type_confirm",
-        "web/routes/process_excel_part_operation_hours.py:excel_part_op_hours_confirm",
-        "web/routes/process_excel_routes.py:excel_routes_confirm",
-        "web/routes/process_excel_suppliers.py:excel_supplier_confirm",
-        "web/routes/scheduler_excel_calendar.py:excel_calendar_confirm",
-        # --- ViewModel 层 ---
-        "web/viewmodels/scheduler_analysis_vm.py:build_selected_details",
-        # --- Service 层 ---
-        "core/services/equipment/machine_downtime_service.py:create_by_scope",
-        "core/services/personnel/operator_machine_service.py:apply_import_links",
-        "core/services/process/part_service.py:delete_external_group",
-        "core/services/process/part_service.py:calc_deletable_external_group_ids",
-        "core/services/process/route_parser.py:parse",
-        "core/services/report/calculations.py:compute_downtime_impact",
-        "core/services/report/calculations.py:compute_utilization",
-        "core/services/scheduler/config_service.py:ensure_defaults",
-        "core/services/scheduler/config_validator.py:normalize_preset_snapshot",
-        "core/services/scheduler/freeze_window.py:build_freeze_window_seed",
-        "core/services/scheduler/gantt_range.py:resolve_week_range",
-        "core/services/scheduler/operation_edit_service.py:update_external_operation",
-        "core/services/scheduler/resource_pool_builder.py:load_machine_downtimes",
-        "core/services/scheduler/resource_pool_builder.py:extend_downtime_map_for_resource_pool",
-        "core/services/scheduler/schedule_optimizer.py:optimize_schedule",
-        "core/services/scheduler/schedule_optimizer.py:_run_local_search",
-        # --- Model 层（from_row 解析） ---
-        "core/models/batch_operation.py:from_row",
-        "core/models/calendar.py:from_row",
-        "core/models/part_operation.py:from_row",
-        # --- Infrastructure 层 ---
-        "core/infrastructure/database.py:ensure_schema",
-        "core/infrastructure/database.py:_migrate_with_backup",
-        # --- Infrastructure / Route 历史热点（本轮显式登记技术债，不在 strict_mode 收口批次内继续大拆） ---
-        "web/routes/equipment_excel_links.py:excel_link_confirm",
-        "web/routes/personnel_excel_links.py:excel_link_confirm",
-        "web/routes/system_backup.py:backup_restore",
-        "core/infrastructure/backup.py:read_maintenance_lock_state",
-        "core/infrastructure/backup.py:maintenance_window",
-        # --- Existing known violations ---
-        "core/infrastructure/transaction.py:transaction",
-        "core/infrastructure/migrations/v1.py:_sanitize_batch_dates",
-        "core/infrastructure/migrations/v4.py:_sanitize_field",
-        # --- 阶段 04 最终验收：显式登记既有结构债，避免误判为本轮新增 ---
-        "web/routes/personnel_pages.py:detail_page",
-        "web/routes/scheduler_batches.py:batches_page",
-        "web/viewmodels/scheduler_analysis_vm.py:build_freeze_display",
-        "core/services/personnel/operator_machine_query_service.py:_normalize_row",
-        "core/services/process/unit_excel/template_builder.py:_build_suppliers_rows",
-        "core/services/scheduler/gantt_week_plan.py:build_week_plan_rows",
-        "core/services/scheduler/resource_dispatch_excel.py:_summary_pairs",
-        "core/services/scheduler/resource_dispatch_support.py:extract_overdue_batch_ids_with_meta",
-        "core/services/scheduler/schedule_input_builder.py:_build_algo_operations_outcome",
-        "core/services/scheduler/schedule_template_lookup.py:lookup_template_group_context_for_op",
-    }
-
+    ledger = load_ledger(required=True)
+    allowlist = architecture_complexity_allowlist_map(ledger)
+    scanned = architecture_complexity_scan_map()
     new_violations = []
-    scan_errors = []
-    for fp in _collect_py_files(*CORE_DIRS):
-        try:
-            source = _read(fp)
-            blocks = cast(Iterable[Any], cc_visit(source))
-            for block in blocks:
-                complexity = int(getattr(block, "complexity", 0) or 0)
-                if complexity > THRESHOLD:
-                    name = str(getattr(block, "name", ""))
-                    lineno = int(getattr(block, "lineno", 0) or 0)
-                    letter = str(getattr(block, "letter", "?"))
-                    key = f"{fp}:{name}"
-                    if key not in known_violations:
-                        new_violations.append(
-                            f"{fp}:{lineno} {name} "
-                            f"complexity={complexity} (rank {letter})"
-                        )
-        except SyntaxError as exc:
-            scan_errors.append(f"{fp}: SyntaxError: {exc}")
-        except Exception as exc:
-            scan_errors.append(f"{fp}: {type(exc).__name__}: {exc}")
-
-    assert not scan_errors, "复杂度扫描失败:\n" + "\n".join(scan_errors)
-
+    for key, item in sorted(scanned.items()):
+        if key in allowlist:
+            continue
+        new_violations.append(
+            f"{item.get('path')}:{item.get('line')} {item.get('symbol')} "
+            f"complexity={item.get('current_value')} (rank {item.get('rank')})"
+        )
     assert not new_violations, (
-        f"新增的高复杂度函数（超过 C 级/{THRESHOLD}）:\n"
+        f"新增的高复杂度函数（超过 C 级/{COMPLEXITY_THRESHOLD}）:\n"
         + "\n".join(new_violations)
-        + "\n\n请拆分函数或添加到 known_violations 白名单（需说明原因）。"
+        + "\n\n请拆分函数或先登记治理台账。"
     )
+
+
+def test_known_complexity_entries_still_exceed_threshold():
+    """高复杂度白名单中的条目必须仍然真实超限。"""
+
+    ledger = load_ledger(required=True)
+    allowlist = architecture_complexity_allowlist_map(ledger)
+    scanned = architecture_complexity_scan_map()
+    stale_entries = []
+    for key, entry in sorted(allowlist.items()):
+        if key not in scanned:
+            stale_entries.append(
+                f"{entry.get('path')}:{entry.get('symbol')} 未再出现在超阈值扫描结果中"
+                f"（可能已回落到 <= {COMPLEXITY_THRESHOLD}，或已改名/迁移）"
+            )
+    assert not stale_entries, "高复杂度白名单存在已失效登记:\n" + "\n".join(stale_entries)
 
 
 # ─── Fitness 6: 命名规范 ──────────────────────────────────────
