@@ -90,6 +90,23 @@ def test_default_chrome_profile_dir_prefers_localappdata_profile_name(monkeypatc
     assert got == os.path.abspath(r"C:\Users\alice\AppData\Local\APS\Chrome109Profile")
 
 
+def test_resolve_runtime_state_paths_returns_runtime_dir_for_runtime_and_log_dir(tmp_path):
+    launcher = _import_launcher()
+    runtime_dir = tmp_path / "runtime-root"
+    state_dir = runtime_dir / "logs"
+    state_dir.mkdir(parents=True)
+
+    runtime_paths = launcher.resolve_runtime_state_paths(str(runtime_dir))
+    log_paths = launcher.resolve_runtime_state_paths(str(state_dir))
+
+    assert runtime_paths["runtime_dir"] == os.path.abspath(str(runtime_dir))
+    assert log_paths["runtime_dir"] == os.path.abspath(str(runtime_dir))
+    assert runtime_paths["state_dir"] == os.path.abspath(str(state_dir))
+    assert log_paths["state_dir"] == os.path.abspath(str(state_dir))
+    assert runtime_paths["contract_path"].endswith(os.path.join("logs", "aps_runtime.json"))
+    assert log_paths["lock_path"].endswith(os.path.join("logs", "aps_runtime.lock"))
+
+
 
 def test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok(monkeypatch, tmp_path):
     launcher = _import_launcher()

@@ -256,6 +256,28 @@ def _launch_error_path(state_dir: str) -> str:
     return os.path.join(state_dir, _RUNTIME_ERROR_FILE)
 
 
+def resolve_runtime_state_paths(runtime_dir_or_state_dir: str) -> Dict[str, str]:
+    """返回运行态状态文件的规范路径集合。
+
+    该函数供只读探测、诊断提示和清理提示复用，避免各调用方重复硬编码
+    `logs/aps_runtime.json`、`logs/aps_runtime.lock` 等路径约定。
+    """
+
+    state_dir = _resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir)
+    runtime_dir = _runtime_dir_from_state_dir(state_dir)
+    host_path, port_path, db_path, contract_path = _state_contract_paths(state_dir)
+    return {
+        "runtime_dir": runtime_dir,
+        "state_dir": state_dir,
+        "host_path": host_path,
+        "port_path": port_path,
+        "db_path": db_path,
+        "contract_path": contract_path,
+        "lock_path": _runtime_lock_path(state_dir),
+        "error_path": _launch_error_path(state_dir),
+    }
+
+
 def _write_runtime_state_triplet(state_dir: str, host: str, port: int, db_for_runtime: str) -> None:
     host_file, port_file, db_file, _contract_file = _state_contract_paths(state_dir)
     with open(port_file, "w", encoding="utf-8") as f:
@@ -330,6 +352,27 @@ def _pid_exists(pid: int) -> bool:
         return True
     except Exception:
         return False
+
+
+def runtime_pid_exists(pid: int) -> bool:
+    """公开只读探针：判断给定 pid 当前是否存在。"""
+
+    return _pid_exists(pid)
+
+
+def runtime_pid_matches_executable(pid: int, expected_exe_path: str) -> Optional[bool]:
+    """公开只读探针：判断 pid 是否匹配期望可执行文件路径。
+
+    返回 `True` 表示匹配，`False` 表示明确不匹配，`None` 表示当前环境下无法确认。
+    """
+
+    return _pid_matches_contract(pid, expected_exe_path)
+
+
+def probe_runtime_health(host: str, port: int, timeout_s: float = 1.5) -> bool:
+    """公开只读探针：按运行时健康接口口径探测目标实例是否健康。"""
+
+    return _probe_runtime_health(host, port, timeout_s=timeout_s)
 
 
 class RuntimeLockError(RuntimeError):
