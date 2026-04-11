@@ -28,6 +28,28 @@ def _import_factory():
     return importlib.import_module("web.bootstrap.factory")
 
 
+def _import_paths():
+    repo_root = _repo_root()
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    sys.modules.pop("web.bootstrap.paths", None)
+    return importlib.import_module("web.bootstrap.paths")
+
+
+def test_runtime_base_dir_fallback_logs_to_stderr(monkeypatch, capsys):
+    paths_mod = _import_paths()
+    original_resolve = paths_mod.Path.resolve
+
+    def _boom_resolve(self):
+        raise RuntimeError("resolve boom")
+
+    monkeypatch.setattr(paths_mod.Path, "resolve", _boom_resolve)
+    got = paths_mod.runtime_base_dir(anchor_file=str(Path("C:/demo/app.py")))
+    assert got.endswith(os.path.join("demo"))
+    assert "运行根目录解析失败" in capsys.readouterr().err
+    monkeypatch.setattr(paths_mod.Path, "resolve", original_resolve)
+
+
 def test_resolve_shared_data_root_prefers_explicit_env(monkeypatch, tmp_path):
     launcher = _import_launcher()
     shared_root = tmp_path / "shared-data"

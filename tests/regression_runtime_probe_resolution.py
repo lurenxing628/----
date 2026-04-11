@@ -10,7 +10,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib
+import io
 import json
 import os
 import sys
@@ -141,6 +143,18 @@ def main() -> None:
         _assert(bool(runtime_only), "resolve_healthy_endpoint 未识别 runtime_files 实例")
         _assert(runtime_only["source"] == "runtime_files", "runtime_files source 不正确")
 
+        invalid_preferred_stderr = io.StringIO()
+        with contextlib.redirect_stderr(invalid_preferred_stderr):
+            invalid_preferred = runtime_probe.resolve_healthy_endpoint(
+                tmpdir,
+                preferred_host="127.0.0.1",
+                preferred_port="not-a-port",
+                timeout=2.0,
+            )
+        _assert(bool(invalid_preferred), "非法 preferred 参数时应继续回退到 runtime_files")
+        _assert(invalid_preferred["source"] == "runtime_files", "非法 preferred 参数后应回退到 runtime_files")
+        _assert("preferred 端点参数非法" in invalid_preferred_stderr.getvalue(), "非法 preferred 参数未输出告警")
+
         waited = runtime_probe.wait_for_healthy_runtime_endpoint(tmpdir, timeout_s=2, interval_s=0.1)
         _assert(int(waited["port"]) == server.port, "wait_for_healthy_runtime_endpoint 返回的端口不正确")
 
@@ -155,6 +169,29 @@ def main() -> None:
 
     missing_tmpdir = tempfile.mkdtemp(prefix="aps_runtime_probe_missing_")
     _assert(runtime_probe.read_runtime_host_port(missing_tmpdir) is None, "缺失运行时文件时应返回 None")
+
+    delete_fail_tmpdir = tempfile.mkdtemp(prefix="aps_runtime_probe_delete_fail_")
+    _write_runtime_files(delete_fail_tmpdir, "127.0.0.1", 5000)
+    original_remove = runtime_probe.os.remove
+
+    def _remove_with_failure(path: str) -> None:
+        if path.endswith("aps_port.txt"):
+            raise PermissionError("locked")
+        original_remove(path)
+
+    runtime_probe.os.remove = _remove_with_failure
+    delete_fail_stderr = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(delete_fail_stderr):
+            runtime_probe.delete_stale_runtime_files(delete_fail_tmpdir)
+    finally:
+        runtime_probe.os.remove = original_remove
+
+    fail_log_dir = os.path.join(delete_fail_tmpdir, "logs")
+    _assert("删除运行时残留文件失败" in delete_fail_stderr.getvalue(), "删除残留文件失败时未输出告警")
+    _assert(not os.path.exists(os.path.join(fail_log_dir, "aps_host.txt")), "删除残留文件失败测试中 host 文件应已删除")
+    _assert(os.path.exists(os.path.join(fail_log_dir, "aps_port.txt")), "删除残留文件失败测试中 port 文件应保留")
+    _assert(not os.path.exists(os.path.join(fail_log_dir, "aps_db_path.txt")), "删除残留文件失败测试中 db_path 文件应已删除")
 
     with _HealthServer({"app": "other", "status": "ok"}) as non_aps_server:
         non_aps = runtime_probe.probe_health(f"http://127.0.0.1:{non_aps_server.port}", timeout=2.0)

@@ -68,3 +68,26 @@ def test_plugin_bootstrap_config_read_failure_visible(tmp_path: Path) -> None:
     assert row.get("enabled_source") == "default_due_to_config_read_failed", row
     assert row.get("enabled") == "yes", row
     assert row.get("loaded") == "yes", row
+
+
+def test_plugin_bootstrap_status_snapshot_failure_visible(tmp_path: Path) -> None:
+    db_path = tmp_path / "aps.db"
+    _write_demo_plugin(tmp_path)
+
+    with mock.patch(
+        "web.bootstrap.plugins.PluginManager.load_from_base_dir",
+        side_effect=RuntimeError("load boom"),
+    ), mock.patch(
+        "web.bootstrap.plugins.get_plugin_status",
+        side_effect=RuntimeError("status boom"),
+    ):
+        plugin_status = bootstrap_plugins(base_dir=str(tmp_path), database_path=str(db_path), logger=None)
+
+    assert isinstance(plugin_status, dict), plugin_status
+    assert plugin_status.get("degraded") is True, plugin_status
+
+    counters = dict(plugin_status.get("degradation_counters") or {})
+    assert int(counters.get("plugin_bootstrap_status_snapshot_failed") or 0) == 1, counters
+    assert list(plugin_status.get("statuses") or []) == [], plugin_status
+    events = list(plugin_status.get("degradation_events") or [])
+    assert any(str(evt.get("code") or "") == "plugin_bootstrap_status_snapshot_failed" for evt in events), events
