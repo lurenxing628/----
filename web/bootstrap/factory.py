@@ -15,7 +15,7 @@ from werkzeug.serving import make_server
 from config import config as config_map
 from core.infrastructure.backup import BackupManager, MaintenanceWindowError, is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.logging import AppLogger, OperationLogger
+from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
 from core.infrastructure.migrations.common import fallback_log
 from core.models.enums import YesNo
 from core.services.common.excel_templates import ensure_excel_templates
@@ -44,6 +44,21 @@ _EXIT_BACKUP_REGISTERED = False
 _RUNTIME_SERVER: Any = None
 _RUNTIME_SERVER_LOCK = threading.Lock()
 _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
+_FACTORY_ONCE_FLAGS_KEY = "aps.factory.once_flags"
+
+
+def _app_log_once(app: Flask, key: str, level: str, message: str, *args: Any) -> None:
+    flags = app.extensions.get(_FACTORY_ONCE_FLAGS_KEY)
+    if not isinstance(flags, set):
+        flags = set()
+        app.extensions[_FACTORY_ONCE_FLAGS_KEY] = flags
+    if key in flags:
+        return
+    flags.add(key)
+    safe_log(getattr(app, "logger", None), level, message, *args)
+
+
+
 
 
 def _apply_runtime_config(app: Flask, *, base_dir: str) -> None:
@@ -128,8 +143,8 @@ def _maintenance_gate_response():
         accept_best = (request.accept_mimetypes.best or "").lower()
         if req_path.startswith("/api/") or "json" in accept_best or bool(request.is_json):
             return {"success": False, "error": {"code": "503", "message": message}}, 503
-    except Exception:
-        pass
+    except Exception as exc:
+        _app_log_once(current_app, "maintenance_gate_response_request_classify_failed", "warning", "维护窗口响应分类失败，已回退 HTML 503：%s", exc)
     return render_template("error.html", title="系统维护中", code="503", message=message), 503
 
 
@@ -171,11 +186,7 @@ def request_runtime_server_shutdown(logger=None) -> bool:
         try:
             server.shutdown()
         except Exception as e:
-            if logger is not None:
-                try:
-                    logger.warning(f"请求运行时 Server 关闭失败：{e}")
-                except Exception:
-                    pass
+            safe_log(logger, "warning", "请求运行时 Server 关闭失败：%s", e)
 
     threading.Thread(target=_shutdown, daemon=True).start()
     return True
@@ -263,14 +274,17 @@ def create_app_core(
     def _open_db():
         try:
             g._aps_req_started = time.perf_counter()
-        except Exception:
+        except Exception as exc:
             g._aps_req_started = None
+            _app_log_once(app, "request_started_unavailable", "warning", "请求耗时起点记录失败，当前请求将跳过性能头：%s", exc)
         try:
             req_path = str(request.path or "")
             if req_path.startswith("/static") or req_path in {"/system/health", "/system/runtime/shutdown"}:
                 return
-        except Exception:
-            pass
+        except Exception as exc:
+            _app_log_once(
+                app, "request_whitelist_path_unavailable", "warning", "请求白名单判定失败，将继续主路径：%s", exc
+            )
         try:
             if is_maintenance_window_active(app.config["DATABASE_PATH"], logger=app.logger):
                 return _maintenance_gate_response()
@@ -300,8 +314,8 @@ def create_app_core(
         if db is not None:
             try:
                 db.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                _app_log_once(app, "close_db_failed", "warning", "数据库连接关闭失败，已按清理型尽力而为继续：%s", exc)
 
     if enable_security_headers:
         register_security_headers(app)
@@ -319,7 +333,10 @@ def create_app_core(
                     or "prefetch" in sec_purpose
                     or x_moz == "prefetch"
                 )
-            except Exception:
+            except Exception as exc:
+                _app_log_once(
+                    app, "prefetch_detect_failed", "warning", "预取请求判定失败，已按普通请求继续：%s", exc
+                )
                 return False
 
         try:
@@ -330,8 +347,8 @@ def create_app_core(
                 req_path = str(getattr(request, "path", "") or "")
                 if total_ms >= 300 and not req_path.startswith("/static") and not _is_prefetch_req():
                     app.logger.warning(f"慢请求: {request.method} {request.path} {total_ms}ms")
-        except Exception:
-            pass
+        except Exception as exc:
+            _app_log_once(app, "perf_headers_failed", "warning", "性能头写入失败，已跳过附加观测：%s", exc)
         return resp
 
     register_error_handlers(app)

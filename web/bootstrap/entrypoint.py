@@ -9,6 +9,8 @@ from typing import Any, Callable, Optional
 
 from flask import Flask
 
+from core.infrastructure.logging import safe_log
+
 from .factory import (
     create_app_core,
     serve_runtime_app,
@@ -97,6 +99,21 @@ def _default_deps(ui_mode: str) -> EntryPointDeps:
     )
 
 
+def _write_launch_error_with_observability(
+    deps: EntryPointDeps,
+    runtime_dir: str,
+    message: str,
+    log_dir: str | None,
+    *,
+    logger,
+    context: str,
+) -> None:
+    try:
+        deps.write_launch_error(runtime_dir, message, log_dir)
+    except Exception as exc:
+        safe_log(logger, "error", "%s，但写入启动错误文件失败：%s", context, exc)
+
+
 def configure_runtime_contract(
     app: Flask,
     runtime_dir: str,
@@ -161,16 +178,15 @@ def app_main(
     runtime_owner = deps.current_runtime_owner()
     try:
         deps.clear_launch_error(prelaunch_log_dir)
-    except Exception:
-        pass
+    except Exception as exc:
+        safe_log(None, "warning", "清理历史启动错误文件失败，已继续启动：%s", exc)
 
     try:
         app = deps.create_app()
     except Exception as e:
-        try:
-            deps.write_launch_error(runtime_dir, f"应用启动失败：{e}", prelaunch_log_dir)
-        except Exception:
-            pass
+        _write_launch_error_with_observability(
+            deps, runtime_dir, f"应用启动失败：{e}", prelaunch_log_dir, logger=None, context=f"应用启动失败：{e}"
+        )
         return 14
     debug = bool(app.config.get("DEBUG", False))
     use_reloader = deps.should_use_runtime_reloader(debug)
@@ -184,22 +200,20 @@ def app_main(
     if raw_port is not None and str(raw_port).strip() != "":
         try:
             preferred_port = int(str(raw_port).strip())
-        except Exception:
+        except Exception as exc:
             preferred_port = 5000
+            safe_log(app.logger, "warning", "APS_PORT=%r 非法，已回退到默认候选端口 5000：%s", raw_port, exc)
 
     requested_host = host
     host, port = deps.pick_port(host, preferred_port, logger=app.logger)
     if host != requested_host:
-        try:
-            app.logger.warning(f"APS_HOST={requested_host} 不可绑定，已回退到 {host}（port={port}）")
-        except Exception:
-            pass
+        safe_log(app.logger, "warning", "APS_HOST=%s 不可绑定，已回退到 %s（port=%s）", requested_host, host, port)
 
     try:
         os.environ["APS_HOST"] = str(host)
         os.environ["APS_PORT"] = str(int(port))
-    except Exception:
-        pass
+    except Exception as exc:
+        safe_log(app.logger, "warning", "回写 APS_HOST/APS_PORT 环境变量失败，开发重载子进程可能拿不到固定监听地址：%s", exc)
 
     if owns_runtime_resources:
         try:
@@ -210,10 +224,9 @@ def app_main(
                 exe_path=sys.executable,
             )
         except Exception as e:
-            try:
-                deps.write_launch_error(runtime_dir, str(e), prelaunch_log_dir)
-            except Exception:
-                pass
+            _write_launch_error_with_observability(
+                deps, runtime_dir, str(e), prelaunch_log_dir, logger=app.logger, context=f"获取运行时锁失败：{e}"
+            )
             return 13
         deps.atexit_register(deps.release_runtime_lock, prelaunch_log_dir, os.getpid())
 
@@ -228,22 +241,15 @@ def app_main(
                 deps=deps,
             )
         except Exception as e:
-            try:
-                app.logger.error(f"写入运行时契约失败：{e}")
-            except Exception:
-                pass
-            try:
-                deps.write_launch_error(runtime_dir, f"写入运行时契约失败：{e}", app.config.get("LOG_DIR"))
-            except Exception:
-                pass
+            safe_log(app.logger, "error", "写入运行时契约失败：%s", e)
+            _write_launch_error_with_observability(
+                deps, runtime_dir, f"写入运行时契约失败：{e}", app.config.get("LOG_DIR"), logger=app.logger, context=f"写入运行时契约失败：{e}"
+            )
             return 15
         if deps.should_register_runtime_lifecycle_handlers(debug):
             deps.atexit_register(deps.delete_runtime_contract_files, app.config.get("LOG_DIR") or runtime_dir)
     else:
-        try:
-            app.logger.info("开发重载父进程跳过获取运行时锁与运行时契约。")
-        except Exception:
-            pass
+        safe_log(app.logger, "info", "开发重载父进程跳过获取运行时锁与运行时契约。")
 
     if use_reloader:
         app.run(host=host, port=port, debug=debug, use_reloader=True)

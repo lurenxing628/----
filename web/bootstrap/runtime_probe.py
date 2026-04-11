@@ -6,6 +6,8 @@ import time
 import urllib.request
 from typing import Any, Dict, Optional, Tuple
 
+from core.infrastructure.logging import safe_log
+
 _EXPECTED_CONTRACT_VERSION = 1
 
 
@@ -76,8 +78,8 @@ def delete_stale_runtime_files(runtime_dir: str) -> None:
             os.remove(path)
         except FileNotFoundError:
             pass
-        except Exception:
-            pass
+        except Exception as exc:
+            safe_log(None, "warning", "删除运行时残留文件失败，已继续：path=%s error=%s", path, exc)
 
 
 def probe_health(base_url: str, timeout: float = 2.0) -> Optional[Dict[str, Any]]:
@@ -121,7 +123,8 @@ def resolve_healthy_endpoint(
         try:
             host = str(preferred_host).strip() or "127.0.0.1"
             port = int(preferred_port)
-        except Exception:
+        except Exception as exc:
+            safe_log(None, "warning", "preferred 端点参数非法，已跳过 preferred 探测：host=%r port=%r error=%s", preferred_host, preferred_port, exc)
             host = ""
             port = 0
         if host and port > 0:

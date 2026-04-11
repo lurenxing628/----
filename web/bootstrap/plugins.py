@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from core.infrastructure.database import get_connection
-from core.infrastructure.logging import OperationLogger
+from core.infrastructure.logging import OperationLogger, safe_log
 from core.plugins import PluginManager, get_plugin_status
 from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
 from data.repositories import SystemConfigRepository
@@ -113,11 +113,7 @@ def _build_plugin_config_reader(
             message="插件配置读取器初始化失败，当前按默认开关运行。",
             sample=exc.__class__.__name__,
         )
-        if logger is not None:
-            try:
-                logger.warning("插件配置读取器初始化失败，当前按默认开关运行：%s", exc)
-            except Exception:
-                pass
+        safe_log(logger, "warning", "插件配置读取器初始化失败，当前按默认开关运行：%s", exc)
         return None
 
     enabled_source_map: Dict[str, str] = {}
@@ -136,11 +132,7 @@ def _build_plugin_config_reader(
                 message=f"读取插件配置失败，插件 {plugin_key or '-'} 当前按默认开关运行。",
                 sample=exc.__class__.__name__,
             )
-            if logger is not None:
-                try:
-                    logger.warning("读取插件配置失败，当前按默认开关运行：key=%s err=%s", key, exc)
-                except Exception:
-                    pass
+            safe_log(logger, "warning", "读取插件配置失败，当前按默认开关运行：key=%s err=%s", key, exc)
             return None
 
         enabled_source_map[plugin_key] = "config" if value is not None else "default"
@@ -173,11 +165,7 @@ def bootstrap_plugins(base_dir: str, database_path: str, *, logger: logging.Logg
             message="插件启动无法连接系统配置库，当前按默认开关运行。",
             sample=exc.__class__.__name__,
         )
-        if logger is not None:
-            try:
-                logger.warning("打开数据库连接失败，插件加载将按默认开关运行：%s", exc)
-            except Exception:
-                pass
+        safe_log(logger, "warning", "打开数据库连接失败，插件加载将按默认开关运行：%s", exc)
 
     config_reader = _build_plugin_config_reader(conn0, logger=logger, collector=collector)
     if config_reader is None and default_enabled_source == "default":
@@ -191,15 +179,19 @@ def bootstrap_plugins(base_dir: str, database_path: str, *, logger: logging.Logg
     try:
         plugin_status = PluginManager.load_from_base_dir(base_dir, config_reader=config_reader, logger=logger)
     except Exception as exc:
-        if logger is not None:
-            try:
-                logger.error("插件加载失败（已忽略，启动继续）：%s", exc)
-            except Exception:
-                pass
+        safe_log(logger, "error", "插件加载失败（已忽略，启动继续）：%s", exc)
         try:
             plugin_status = get_plugin_status()
-        except Exception:
-            plugin_status = None
+        except Exception as status_exc:
+            plugin_status = {}
+            collector.add(
+                code="plugin_bootstrap_status_snapshot_failed",
+                scope="plugins.bootstrap",
+                field="plugin_status",
+                message="插件加载失败后读取插件状态快照异常，当前返回空状态。",
+                sample=status_exc.__class__.__name__,
+            )
+            safe_log(logger, "error", "插件状态快照读取失败，当前返回空状态：%s", status_exc)
 
     plugin_status = _apply_enabled_sources(
         plugin_status,

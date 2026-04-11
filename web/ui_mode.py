@@ -9,6 +9,7 @@ from flask import Blueprint, current_app, g, has_request_context, request, url_f
 from jinja2 import ChoiceLoader, FileSystemLoader
 from werkzeug.routing.exceptions import BuildError
 
+from core.infrastructure.logging import safe_log
 from core.services.system import SystemConfigService
 from web.bootstrap.static_versioning import EXT_KEY_TEMPLATE_URL_FOR
 from web.viewmodels.page_manuals import build_manual_for_endpoint, resolve_manual_id
@@ -47,6 +48,10 @@ def _log_warning(message: str, *args: Any) -> None:
         current_app.logger.warning(message, *args)
     except Exception:
         pass
+
+
+def _log_startup_warning(app, message: str, *args: Any) -> None:
+    safe_log(getattr(app, "logger", None), "warning", message, *args)
 
 
 def _warn_invalid_db_ui_mode_once(raw_value: Any) -> None:
@@ -162,10 +167,7 @@ def init_ui_mode(app, base_dir: str) -> None:
         )
         app.register_blueprint(bp_static)
         if not os.path.isdir(v2_static_dir):
-            try:
-                app.logger.warning(f"V2 静态目录不存在：{v2_static_dir}（/static-v2 将返回 404；请检查打包 add-data）")
-            except Exception:
-                pass
+            _log_startup_warning(app, "V2 静态目录不存在：%s（/static-v2 将返回 404；请检查打包 add-data）", v2_static_dir)
 
     # ---- V2 jinja overlay ----
     v2_templates_dir = os.path.join(str(base_dir), "web_new_test", "templates")
@@ -178,10 +180,7 @@ def init_ui_mode(app, base_dir: str) -> None:
         app.extensions[_EXT_KEY_V2_ENV] = v2_env
     except Exception as e:
         # 不阻断启动：V2 env 创建失败则回退到 V1
-        try:
-            app.logger.warning(f"初始化 V2 Jinja 环境失败（将回退 V1）：{e}")
-        except Exception:
-            pass
+        _log_startup_warning(app, "初始化 V2 Jinja 环境失败（将回退 V1）：%s", e)
         app.extensions[_EXT_KEY_V2_ENV] = None
     app.extensions.setdefault(_EXT_KEY_V2_RENDER_FALLBACK_WARNED, False)
 
@@ -192,8 +191,10 @@ def init_ui_mode(app, base_dir: str) -> None:
         app.jinja_env.globals["get_help_card"] = get_help_card
         app.jinja_env.globals["get_manual_url"] = get_manual_url
         app.jinja_env.globals["get_full_manual_section_url"] = get_full_manual_section_url
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_startup_warning(
+            app, "初始化主模板环境全局函数注入失败：%s；不带 with context 的模板宏将依赖后续渲染期二次注入。", exc
+        )
     try:
         v2_env = app.extensions.get(_EXT_KEY_V2_ENV)
         if v2_env is not None:
@@ -201,8 +202,8 @@ def init_ui_mode(app, base_dir: str) -> None:
             v2_env.globals["get_help_card"] = get_help_card
             v2_env.globals["get_manual_url"] = get_manual_url
             v2_env.globals["get_full_manual_section_url"] = get_full_manual_section_url
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_startup_warning(app, "初始化 V2 模板环境全局函数注入失败：%s；V2 overlay 将依赖后续渲染期桥接继续工作。", exc)
 
 
 def _read_ui_mode_from_db() -> _UiModeDbReadResult:
