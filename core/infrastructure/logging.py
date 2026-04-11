@@ -4,6 +4,7 @@ import json
 import logging
 import logging.handlers
 import os
+import sys
 from typing import Any, Callable, Dict, Optional
 
 from core.infrastructure.transaction import in_transaction_context
@@ -15,6 +16,23 @@ def _invoke_safely(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> bool:
         return True
     except Exception:
         return False
+
+
+def _format_log_message(message: Any, *args: Any) -> str:
+    text = str(message)
+    if not args:
+        return text
+    try:
+        return text % args
+    except Exception:
+        return f"{text} | args={args!r}"
+
+
+def safe_log(logger: Optional[Any], level: str, message: Any, *args: Any) -> None:
+    method = getattr(logger, str(level or "").strip(), None) if logger is not None else None
+    if callable(method) and _invoke_safely(method, message, *args):
+        return
+    _invoke_safely(print, _format_log_message(message, *args), file=sys.stderr)
 
 
 class AppLogger:

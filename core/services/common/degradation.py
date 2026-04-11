@@ -21,6 +21,7 @@ STABLE_DEGRADATION_CODES = (
     "plugin_bootstrap_db_unavailable",
     "plugin_bootstrap_config_reader_failed",
     "plugin_bootstrap_config_read_failed",
+    "plugin_bootstrap_status_snapshot_failed",
     "plugin_bootstrap_telemetry_failed",
 )
 
