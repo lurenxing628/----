@@ -95,6 +95,19 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
         - 静默回退登记：__FALLBACK_COUNT__
         - 接受风险：__RISK_COUNT__
 
+        ## SP04 人工补充记录
+
+        - 已核实 `web/routes/scheduler_batches.py` 现状确实直接使用 `ScheduleHistoryQueryService`，该消费面已在 SP04 子 plan 列入。
+        - 当前同一直接装配搜索口径还命中 `web/routes/scheduler_analysis.py`、`web/routes/system_history.py`；若 SP04 本批不切容器，阶段 5 必须继续入账并交后续批次清零。
+        - `web/ui_mode.py:_read_ui_mode_from_db()` 中 `repo = getattr(svc, "repo", None)` / `repo_get = getattr(repo, "get", None)` 防御链属于遗留读取方式，不是 SP04 新增问题；SP04 只要求容器化时保留行为并补注释标记为后续可清理债务。
+        - `web/routes/scheduler_excel_batches.py` 中两处 `get_batch_row_validate_and_normalize(g.db, parts_cache=parts, inplace=True)` 不属于原先 `Service/Repository` 搜索模式；当前已明确按遗留 `g.db` 位置参数调用处理，在阶段 5 单列入账，并注明“`parts_cache` 非空时 `conn` 当前不活跃、签名改动跨层暂缓”。
+        - `scheduler_batch_detail.py` 的 `OperatorMachineQueryService` 与 `scheduler_excel_batches.py` 的 `ExcelService` 在切容器后会从 `logger=None` 变为 `g.app_logger`；结合当前实现，这应仅增加可观测性，不得改变查询结果、分页、预览结果或导入结果。
+        - `RequestServices` 已明确采用 `functools.cached_property` 做惰性构造与单请求缓存；构造成功才缓存，构造异常不写缓存属性，后续访问允许重试。
+        - 每个目标文件内的所有路由函数必须在所属批次内一次切换完成，禁止同一文件同时存在容器取用与直接装配两套方式。
+        - `system_backup.py`、`system_ui_mode.py`、`system_plugins.py`、`system_logs.py`、`system_utils.py` 中 5 处 `SystemConfigService` 直接装配不在 SP04 两批目标内，但阶段 5 必须列账。
+        - `tests/regression_request_services_lazy_construction.py`、`tests/regression_request_services_failure_propagation.py` 属于 SP04 本批新建回归，执行验证命令时需与已有守卫区分。
+        - 本节是人工治理说明，不改变当前静默回退门禁分类口径。
+
         ## 受控结构块
         """
     ).strip()

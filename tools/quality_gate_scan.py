@@ -111,8 +111,12 @@ def _literal_kind(node: Optional[ast.AST]) -> str:
 def _categorize_call(node: ast.Call) -> str:
     target = _call_target_name(node.func)
     tail = target.split(".")[-1]
-    if target in {"_log_warning", "fallback_log"}:
+    if target in {"_log_warning", "fallback_log", "safe_log"}:
         return "log:warning"
+    if tail in {"_app_log_once", "_log_startup_warning", "safe_log"}:
+        return "log:warning"
+    if tail == "_write_launch_error_with_observability":
+        return "log:error"
     if tail in _LOG_METHODS and ("logger" in target or target.endswith(tuple(_LOG_METHODS))):
         return f"log:{tail}"
     if tail == "add" and (
