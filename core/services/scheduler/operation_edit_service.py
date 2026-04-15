@@ -24,11 +24,10 @@ def get_operation(svc, op_id: Any) -> BatchOperation:
     return svc._get_op_or_raise(oid)
 
 
-def get_external_merge_hint(svc, op_id: Any) -> Dict[str, Any]:
+def get_external_merge_hint_for_op(svc, op: Any) -> Dict[str, Any]:
     """
     返回外部工序“合并周期”提示信息（供页面展示）。
     """
-    op = get_operation(svc, op_id)
     if (op.source or "").strip().lower() != SourceType.EXTERNAL.value:
         return {"is_external": False}
 
@@ -41,6 +40,11 @@ def get_external_merge_hint(svc, op_id: Any) -> Dict[str, Any]:
         "merge_mode": grp.merge_mode,
         "group_total_days": grp.total_days,
     }
+
+
+def get_external_merge_hint(svc, op_id: Any) -> Dict[str, Any]:
+    op = get_operation(svc, op_id)
+    return get_external_merge_hint_for_op(svc, op)
 
 
 def _normalize_batch_op_status(svc, value: Any) -> Optional[str]:

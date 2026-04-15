@@ -11,6 +11,9 @@ from core.models.enums import BatchStatus, ReadyStatus, SourceType, YesNo
 from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.number_utils import to_yes_no
 
+from .schedule_input_contracts import _build_algo_operations_outcome
+from .schedule_input_runtime_support import _build_runtime_support_inputs
+
 _FAIL_FAST_BATCH_STATUSES = frozenset((BatchStatus.COMPLETED.value, BatchStatus.CANCELLED.value))
 
 
@@ -46,8 +49,7 @@ class ScheduleRunInput:
 
 
 def _normalized_status_text(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    return text
+    return str(value or "").strip().lower()
 
 
 def _raise_schedule_empty_result(message: str, *, reason: str) -> None:
@@ -140,7 +142,11 @@ def _build_reschedulable_state(
             reason="no_reschedulable_operations",
         )
 
-    reschedulable_op_ids = _collect_reschedulable_op_ids(reschedulable_operations)
+    reschedulable_op_ids = {
+        int(getattr(op, "id", 0) or 0)
+        for op in reschedulable_operations
+        if op and getattr(op, "id", None) and int(getattr(op, "id", 0) or 0) > 0
+    }
     missing_internal_resource_op_ids = {
         int(getattr(op, "id", 0) or 0)
         for op in reschedulable_operations
@@ -149,22 +155,11 @@ def _build_reschedulable_state(
     return reschedulable_operations, reschedulable_op_ids, missing_internal_resource_op_ids
 
 
-def _collect_reschedulable_op_ids(reschedulable_operations: List[BatchOperation]) -> Set[int]:
-    return {
-        int(getattr(op, "id", 0) or 0)
-        for op in reschedulable_operations
-        if op and getattr(op, "id", None) and int(getattr(op, "id", 0) or 0) > 0
-    }
-
-
 def _is_missing_internal_resource(op: BatchOperation) -> bool:
     if not op or not getattr(op, "id", None):
         return False
-
-    source = str(getattr(op, "source", "") or "").strip().lower()
-    if source != SourceType.INTERNAL.value:
+    if str(getattr(op, "source", "") or "").strip().lower() != SourceType.INTERNAL.value:
         return False
-
     machine_id = str(getattr(op, "machine_id", "") or "").strip()
     operator_id = str(getattr(op, "operator_id", "") or "").strip()
     return (machine_id == "") or (operator_id == "")
@@ -181,169 +176,6 @@ def _ensure_ready_batches(svc: Any, batches: Dict[str, Batch]) -> None:
         raise ValidationError(f"以下批次未齐套（ready_status!=yes），禁止排产：{sample}", field="齐套")
 
 
-def _build_algo_operations_with_optional_outcome(
-    build_algo_operations_fn: Any,
-    svc: Any,
-    operations: List[Any],
-    *,
-    strict_mode: bool,
-) -> BuildOutcome[List[Any]]:
-    try:
-        outcome = build_algo_operations_fn(svc, operations, strict_mode=bool(strict_mode), return_outcome=True)
-    except TypeError as exc:
-        message = str(exc)
-        if (
-            ("strict_mode" in message or "return_outcome" in message)
-            and ("unexpected keyword argument" in message or "got an unexpected keyword argument" in message)
-        ):
-            try:
-                outcome = build_algo_operations_fn(svc, operations, strict_mode=bool(strict_mode))
-            except TypeError as exc2:
-                message2 = str(exc2)
-                if "strict_mode" in message2 and (
-                    "unexpected keyword argument" in message2 or "got an unexpected keyword argument" in message2
-                ):
-                    outcome = build_algo_operations_fn(svc, operations)
-                else:
-                    raise
-        else:
-            raise
-    if isinstance(outcome, BuildOutcome):
-        return outcome
-    return BuildOutcome(value=list(outcome or []))
-
-
-def _build_freeze_window_seed_with_optional_meta(
-    build_freeze_window_seed_fn: Any,
-    svc: Any,
-    *,
-    cfg: Any,
-    prev_version: int,
-    start_dt: datetime,
-    operations: List[Any],
-    reschedulable_operations: Optional[List[Any]],
-    strict_mode: bool,
-) -> tuple[Set[int], List[Dict[str, Any]], List[str], Dict[str, Any]]:
-    freeze_meta: Dict[str, Any] = {}
-    try:
-        result = build_freeze_window_seed_fn(
-            svc,
-            cfg=cfg,
-            prev_version=prev_version,
-            start_dt=start_dt,
-            operations=operations,
-            reschedulable_operations=reschedulable_operations,
-            strict_mode=bool(strict_mode),
-            meta=freeze_meta,
-        )
-    except TypeError as exc:
-        message = str(exc)
-        if ("strict_mode" in message or "meta" in message) and (
-            "unexpected keyword argument" in message or "got an unexpected keyword argument" in message
-        ):
-            result = build_freeze_window_seed_fn(
-                svc,
-                cfg=cfg,
-                prev_version=prev_version,
-                start_dt=start_dt,
-                operations=operations,
-                reschedulable_operations=reschedulable_operations,
-            )
-        else:
-            raise
-    frozen_op_ids, seed_results, algo_warnings = result
-    return set(frozen_op_ids or set()), list(seed_results or []), list(algo_warnings or []), freeze_meta
-
-
-def _build_runtime_support_inputs(
-    svc: Any,
-    *,
-    cfg: Any,
-    prev_version: int,
-    start_dt_norm: datetime,
-    run_label: str,
-    operations: List[BatchOperation],
-    reschedulable_operations: List[BatchOperation],
-    algo_ops: List[Any],
-    strict_mode: bool,
-    build_freeze_window_seed_fn: Any,
-    load_machine_downtimes_fn: Any,
-    build_resource_pool_fn: Any,
-    extend_downtime_map_for_resource_pool_fn: Any,
-) -> tuple[
-    Set[int],
-    List[Dict[str, Any]],
-    List[str],
-    Dict[str, Any],
-    List[Any],
-    Dict[str, Any],
-    Dict[str, Any],
-    Dict[str, Any],
-    Any,
-    int,
-]:
-    frozen_op_ids, seed_results, algo_warnings, freeze_meta = _build_freeze_window_seed_with_optional_meta(
-        build_freeze_window_seed_fn,
-        svc,
-        cfg=cfg,
-        prev_version=prev_version,
-        start_dt=start_dt_norm,
-        operations=operations,
-        reschedulable_operations=reschedulable_operations,
-        strict_mode=bool(strict_mode),
-    )
-
-    algo_ops_to_schedule = [op for op in algo_ops if int(getattr(op, "id", 0) or 0) not in frozen_op_ids]
-    if not algo_ops_to_schedule:
-        _raise_schedule_empty_result(
-            f"冻结窗口内无可调整工序，本次未执行{run_label}。",
-            reason="all_operations_frozen",
-        )
-
-    downtime_meta: Dict[str, Any] = {}
-    resource_pool_meta: Dict[str, Any] = {}
-    downtime_map = load_machine_downtimes_fn(
-        svc,
-        algo_ops=algo_ops,
-        start_dt=start_dt_norm,
-        warnings=algo_warnings,
-        meta=downtime_meta,
-    )
-
-    resource_pool, pool_warnings = build_resource_pool_fn(
-        svc,
-        cfg=cfg,
-        algo_ops=algo_ops,
-        meta=resource_pool_meta,
-    )
-    if pool_warnings:
-        algo_warnings.extend(list(pool_warnings or []))
-
-    downtime_map = extend_downtime_map_for_resource_pool_fn(
-        svc,
-        cfg=cfg,
-        resource_pool=resource_pool,
-        downtime_map=downtime_map,
-        start_dt=start_dt_norm,
-        warnings=algo_warnings,
-        meta=downtime_meta,
-    )
-    optimizer_seed_version = max(int(prev_version) + 1, 1)
-
-    return (
-        set(frozen_op_ids),
-        list(seed_results or []),
-        list(algo_warnings or []),
-        freeze_meta,
-        algo_ops_to_schedule,
-        downtime_meta,
-        resource_pool_meta,
-        downtime_map,
-        resource_pool,
-        optimizer_seed_version,
-    )
-
-
 def collect_schedule_run_input(
     svc: Any,
     *,
@@ -356,7 +188,7 @@ def collect_schedule_run_input(
     strict_mode: bool = False,
     calendar_service_cls: Any,
     config_service_cls: Any,
-    get_snapshot_with_optional_strict_mode: Any,
+    get_snapshot_with_strict_mode: Any,
     build_algo_operations_fn: Any,
     build_freeze_window_seed_fn: Any,
     load_machine_downtimes_fn: Any,
@@ -372,7 +204,7 @@ def collect_schedule_run_input(
 
     cal_svc = calendar_service_cls(svc.conn, logger=svc.logger, op_logger=svc.op_logger)
     cfg_svc = config_service_cls(svc.conn, logger=svc.logger, op_logger=svc.op_logger)
-    cfg = get_snapshot_with_optional_strict_mode(cfg_svc, strict_mode=bool(strict_mode))
+    cfg = get_snapshot_with_strict_mode(cfg_svc, strict_mode=bool(strict_mode))
     enforce_ready_effective = _resolve_enforce_ready_effective(cfg, enforce_ready)
 
     batches, operations = _load_batches_and_operations(svc, normalized)
@@ -384,13 +216,19 @@ def collect_schedule_run_input(
     if enforce_ready_effective:
         _ensure_ready_batches(svc, batches)
 
-    algo_input_outcome = _build_algo_operations_with_optional_outcome(
+    algo_input_outcome = _build_algo_operations_outcome(
         build_algo_operations_fn,
         svc,
         reschedulable_operations,
         strict_mode=bool(strict_mode),
     )
     algo_ops = list(algo_input_outcome.value or [])
+    if not algo_ops:
+        _raise_schedule_empty_result(
+            f"所选批次未生成可用于排产的工序输入，本次未执行{run_label}。",
+            reason=str(getattr(algo_input_outcome, "empty_reason", "") or "").strip() or "no_algo_operations_built",
+        )
+
     prev_version = int(svc.history_repo.get_latest_version() or 0)
 
     (
@@ -418,6 +256,7 @@ def collect_schedule_run_input(
         load_machine_downtimes_fn=load_machine_downtimes_fn,
         build_resource_pool_fn=build_resource_pool_fn,
         extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool_fn,
+        raise_schedule_empty_result_fn=_raise_schedule_empty_result,
     )
 
     return ScheduleRunInput(

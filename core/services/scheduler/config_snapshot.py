@@ -54,6 +54,139 @@ class ScheduleConfigSnapshot:
         }
 
 
+def _normalize_valid_texts(values: Tuple[str, ...]) -> Tuple[str, ...]:
+    out = []
+    seen = set()
+    for item in values or ():
+        text = str(item).strip().lower()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return tuple(out)
+
+
+def _format_choice_allow_text(valid_values: Tuple[str, ...]) -> str:
+    return " / ".join(valid_values) if valid_values else "<empty>"
+
+
+def _record_blank_choice_degradation(
+    collector: DegradationCollector,
+    *,
+    scope: str,
+    field: str,
+    raw_value: Any,
+    fallback: str,
+) -> None:
+    collector.add(
+        code="blank_required",
+        scope=scope,
+        field=field,
+        message=f"字段“{field}”为空，已按兼容读取回退为 {fallback}。",
+        sample=repr(raw_value),
+    )
+
+
+def _record_invalid_choice_degradation(
+    collector: DegradationCollector,
+    *,
+    scope: str,
+    field: str,
+    raw_value: Any,
+    fallback: str,
+    valid_values: Tuple[str, ...],
+) -> None:
+    collector.add(
+        code="invalid_choice",
+        scope=scope,
+        field=field,
+        message=(
+            f"字段“{field}”取值不合法（当前值：{raw_value!r}，允许值：{_format_choice_allow_text(valid_values)}），"
+            f"已按兼容读取回退为 {fallback}。"
+        ),
+        sample=repr(raw_value),
+    )
+
+
+def _choice_with_degradation(
+    raw_value: Any,
+    *,
+    field: str,
+    fallback: str,
+    valid_values: Tuple[str, ...],
+    strict_mode: bool,
+    collector: DegradationCollector,
+    scope: str,
+    missing: bool = False,
+) -> str:
+    normalized_valid = _normalize_valid_texts(valid_values)
+    fallback_text = str(fallback or "").strip().lower()
+    if normalized_valid and fallback_text not in normalized_valid:
+        fallback_text = normalized_valid[0]
+    if missing:
+        return fallback_text
+
+    text = "" if raw_value is None else str(raw_value).strip().lower()
+    if strict_mode and text == "":
+        raise ValidationError(f"“{field}”不能为空", field=field)
+    if text == "":
+        _record_blank_choice_degradation(collector, scope=scope, field=field, raw_value=raw_value, fallback=fallback_text)
+        return fallback_text
+    if normalized_valid and text not in normalized_valid:
+        if strict_mode:
+            raise ValidationError(
+                f"“{field}”取值不合法：{raw_value!r}（允许值：{_format_choice_allow_text(normalized_valid)}）",
+                field=field,
+            )
+        _record_invalid_choice_degradation(
+            collector,
+            scope=scope,
+            field=field,
+            raw_value=raw_value,
+            fallback=fallback_text,
+            valid_values=normalized_valid,
+        )
+        return fallback_text
+    return text if normalized_valid else fallback_text
+
+
+def _yes_no_with_degradation(
+    raw_value: Any,
+    *,
+    field: str,
+    fallback: str,
+    strict_mode: bool,
+    collector: DegradationCollector,
+    scope: str,
+    missing: bool = False,
+) -> str:
+    normalized_default = to_yes_no(fallback, default=fallback)
+    if missing:
+        return normalized_default
+
+    text = "" if raw_value is None else str(raw_value).strip().lower()
+    true_vals = {"yes", "y", "true", "1", "on"}
+    false_vals = {"no", "n", "false", "0", "off"}
+    if strict_mode and text == "":
+        raise ValidationError(f"“{field}”不能为空", field=field)
+    if text == "":
+        _record_blank_choice_degradation(collector, scope=scope, field=field, raw_value=raw_value, fallback=normalized_default)
+        return normalized_default
+    if text not in true_vals and text not in false_vals:
+        if strict_mode:
+            raise ValidationError(f"“{field}”取值不合法：{raw_value!r}（允许值：yes / no）", field=field)
+        _record_invalid_choice_degradation(
+            collector,
+            scope=scope,
+            field=field,
+            raw_value=raw_value,
+            fallback=normalized_default,
+            valid_values=("yes", "no"),
+        )
+        return normalized_default
+    return to_yes_no(raw_value, default=normalized_default)
+
+
 def build_schedule_config_snapshot(
     repo,
     *,
@@ -68,49 +201,61 @@ def build_schedule_config_snapshot(
     collector = DegradationCollector()
     raw_missing = object()
 
+    def _raise_repo_get_contract_error(key: str, record: Any) -> None:
+        raise TypeError(
+            f"repo.get({key}) 返回值必须为包含 config_value 的 dict，或具备 config_value 属性的记录对象"
+            f"（实际={type(record).__name__}）。"
+        )
+
     def _read_repo_raw_value(key: str) -> Tuple[bool, Any]:
         repo_get = getattr(repo, "get", None)
         if callable(repo_get):
             record = repo_get(key)
             if record is None:
                 return True, None
-            if hasattr(record, "config_value"):
-                return False, record.config_value
-            return False, record
+            if isinstance(record, dict):
+                if "config_value" in record:
+                    return False, record.get("config_value")
+                _raise_repo_get_contract_error(key, record)
+            config_value = getattr(record, "config_value", raw_missing)
+            if config_value is not raw_missing:
+                return False, config_value
+            _raise_repo_get_contract_error(key, record)
         raw = repo.get_value(key, default=raw_missing)
         if raw is raw_missing:
             return True, None
         return False, raw
 
-    def _choice(key: str, default: Any, valid: Tuple[str, ...], *, strict: bool = False) -> str:
-        valid_norm = tuple(str(item).strip().lower() for item in (valid or ()) if str(item).strip())
-        default_s = str(default or "").strip().lower()
-        if default_s not in valid_norm and valid_norm:
-            default_s = valid_norm[0]
+    def _read_repo_text_value(key: str, default_text: str) -> str:
         missing, raw = _read_repo_raw_value(key)
         if missing:
-            return default_s
-        text = "" if raw is None else str(raw).strip().lower()
-        if strict and text == "":
-            raise ValidationError(f"“{key}”不能为空", field=key)
-        if strict and text not in valid_norm:
-            allow_text = " / ".join(valid_norm) if valid_norm else "<empty>"
-            raise ValidationError(f"“{key}”取值不合法：{raw!r}（允许值：{allow_text}）", field=key)
-        return text if text in valid_norm else default_s
+            return str(default_text)
+        return "" if raw is None else str(raw)
+
+    def _choice(key: str, default: Any, valid: Tuple[str, ...], *, strict: bool = False) -> str:
+        missing, raw = _read_repo_raw_value(key)
+        return _choice_with_degradation(
+            raw,
+            field=key,
+            fallback=str(default or "").strip().lower(),
+            valid_values=valid,
+            strict_mode=bool(strict),
+            collector=collector,
+            scope="scheduler.config_snapshot",
+            missing=missing,
+        )
 
     def _yes_no(key: str, default: str, *, strict: bool = False) -> str:
-        normalized_default = to_yes_no(default, default=default)
         missing, raw = _read_repo_raw_value(key)
-        if missing:
-            return normalized_default
-        text = "" if raw is None else str(raw).strip().lower()
-        true_vals = {"yes", "y", "true", "1", "on"}
-        false_vals = {"no", "n", "false", "0", "off"}
-        if strict and text == "":
-            raise ValidationError(f"“{key}”不能为空", field=key)
-        if strict and text not in true_vals and text not in false_vals:
-            raise ValidationError(f"“{key}”取值不合法：{raw!r}（允许值：yes / no）", field=key)
-        return to_yes_no(raw, default=normalized_default)
+        return _yes_no_with_degradation(
+            raw,
+            field=key,
+            fallback=str(default or "").strip().lower(),
+            strict_mode=bool(strict),
+            collector=collector,
+            scope="scheduler.config_snapshot",
+            missing=missing,
+        )
 
     def _get_float(
         key: str,
@@ -119,7 +264,7 @@ def build_schedule_config_snapshot(
         min_value: float | None = None,
         min_inclusive: bool = True,
     ) -> float:
-        raw = repo.get_value(key, default=str(default))
+        raw = _read_repo_text_value(key, str(default))
         return parse_field_float(
             raw,
             field=key,
@@ -138,7 +283,7 @@ def build_schedule_config_snapshot(
         min_value: int | None = None,
         min_violation_fallback: int | None = None,
     ) -> int:
-        raw = repo.get_value(key, default=str(default))
+        raw = _read_repo_text_value(key, str(default))
         return parse_field_int(
             raw,
             field=key,

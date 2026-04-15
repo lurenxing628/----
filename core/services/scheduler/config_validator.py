@@ -6,8 +6,12 @@ from core.infrastructure.errors import ValidationError
 from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
 from core.services.common.strict_parse import parse_required_float, parse_required_int
 
-from .config_snapshot import ScheduleConfigSnapshot
-from .number_utils import to_yes_no
+from .config_snapshot import (
+    ScheduleConfigSnapshot,
+    _choice_with_degradation,
+    _normalize_valid_texts,
+    _yes_no_with_degradation,
+)
 
 
 def normalize_preset_snapshot(
@@ -21,17 +25,6 @@ def normalize_preset_snapshot(
     valid_objectives: Tuple[str, ...],
     strict_mode: bool = False,
 ) -> ScheduleConfigSnapshot:
-    def _valid_norm(values: Tuple[str, ...]) -> Tuple[str, ...]:
-        out = []
-        seen = set()
-        for item in values or ():
-            text = str(item).strip().lower()
-            if not text or text in seen:
-                continue
-            seen.add(text)
-            out.append(text)
-        return tuple(out)
-
     def _is_blank(value: Any) -> bool:
         return value is None or (isinstance(value, str) and value.strip() == "")
 
@@ -100,24 +93,25 @@ def normalize_preset_snapshot(
             return fallback_value
         return int(parsed)
 
-    valid_strategies_norm = _valid_norm(valid_strategies)
-    valid_dispatch_modes_norm = _valid_norm(valid_dispatch_modes)
-    valid_dispatch_rules_norm = _valid_norm(valid_dispatch_rules)
-    valid_algo_modes_norm = _valid_norm(valid_algo_modes)
-    valid_objectives_norm = _valid_norm(valid_objectives)
+    valid_strategies_norm = _normalize_valid_texts(valid_strategies)
+    valid_dispatch_modes_norm = _normalize_valid_texts(valid_dispatch_modes)
+    valid_dispatch_rules_norm = _normalize_valid_texts(valid_dispatch_rules)
+    valid_algo_modes_norm = _normalize_valid_texts(valid_algo_modes)
+    valid_objectives_norm = _normalize_valid_texts(valid_objectives)
 
     raw_sort_strategy = data.get("sort_strategy")
     sort_strategy_present = "sort_strategy" in data
     base_strategy = str(base.sort_strategy).strip().lower()
-    st = base_strategy if not sort_strategy_present else str("" if raw_sort_strategy is None else raw_sort_strategy).strip().lower()
-    if sort_strategy_present and st == "":
-        if strict_mode:
-            raise ValidationError("“sort_strategy”不能为空", field="sort_strategy")
-        st = base_strategy
-    if st not in valid_strategies_norm:
-        if strict_mode and not _is_blank(raw_sort_strategy):
-            raise ValidationError(f"“sort_strategy”取值不合法：{raw_sort_strategy!r}", field="sort_strategy")
-        st = base_strategy
+    st = _choice_with_degradation(
+        raw_sort_strategy,
+        field="sort_strategy",
+        fallback=base_strategy,
+        valid_values=valid_strategies_norm,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        scope="config_validator.preset",
+        missing=not sort_strategy_present,
+    )
 
     pw = _get_float("priority_weight", float(base.priority_weight), min_value=0.0)
     dw = _get_float("due_weight", float(base.due_weight), min_value=0.0)
@@ -146,16 +140,15 @@ def normalize_preset_snapshot(
     )
 
     def _yesno(v: Any, key: str, default: str = "no", *, strict: bool = False, missing: bool = False) -> str:
-        if missing:
-            return to_yes_no(default, default=default)
-        text = "" if v is None else str(v).strip().lower()
-        true_vals = {"yes", "y", "true", "1", "on"}
-        false_vals = {"no", "n", "false", "0", "off"}
-        if strict and text == "":
-            raise ValidationError(f"“{key}”不能为空", field=key)
-        if strict and text not in true_vals and text not in false_vals:
-            raise ValidationError(f"“{key}”取值不合法：{v!r}（允许值：yes / no）", field=key)
-        return to_yes_no(v, default=default)
+        return _yes_no_with_degradation(
+            v,
+            field=key,
+            fallback=default,
+            strict_mode=bool(strict),
+            collector=collector,
+            scope="config_validator.preset",
+            missing=missing,
+        )
 
     enforce_ready_default = _yesno(
         data.get("enforce_ready_default"),
@@ -196,54 +189,58 @@ def normalize_preset_snapshot(
     raw_dispatch_mode = data.get("dispatch_mode")
     dispatch_mode_present = "dispatch_mode" in data
     base_dispatch_mode = str(base.dispatch_mode).strip().lower()
-    dm = base_dispatch_mode if not dispatch_mode_present else str("" if raw_dispatch_mode is None else raw_dispatch_mode).strip().lower()
-    if dispatch_mode_present and dm == "":
-        if strict_mode:
-            raise ValidationError("“dispatch_mode”不能为空", field="dispatch_mode")
-        dm = base_dispatch_mode
-    if dm not in valid_dispatch_modes_norm:
-        if strict_mode and not _is_blank(raw_dispatch_mode):
-            raise ValidationError(f"“dispatch_mode”取值不合法：{raw_dispatch_mode!r}", field="dispatch_mode")
-        dm = base_dispatch_mode
+    dm = _choice_with_degradation(
+        raw_dispatch_mode,
+        field="dispatch_mode",
+        fallback=base_dispatch_mode,
+        valid_values=valid_dispatch_modes_norm,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        scope="config_validator.preset",
+        missing=not dispatch_mode_present,
+    )
 
     raw_dispatch_rule = data.get("dispatch_rule")
     dispatch_rule_present = "dispatch_rule" in data
     base_dispatch_rule = str(base.dispatch_rule).strip().lower()
-    dr = base_dispatch_rule if not dispatch_rule_present else str("" if raw_dispatch_rule is None else raw_dispatch_rule).strip().lower()
-    if dispatch_rule_present and dr == "":
-        if strict_mode:
-            raise ValidationError("“dispatch_rule”不能为空", field="dispatch_rule")
-        dr = base_dispatch_rule
-    if dr not in valid_dispatch_rules_norm:
-        if strict_mode and not _is_blank(raw_dispatch_rule):
-            raise ValidationError(f"“dispatch_rule”取值不合法：{raw_dispatch_rule!r}", field="dispatch_rule")
-        dr = base_dispatch_rule
+    dr = _choice_with_degradation(
+        raw_dispatch_rule,
+        field="dispatch_rule",
+        fallback=base_dispatch_rule,
+        valid_values=valid_dispatch_rules_norm,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        scope="config_validator.preset",
+        missing=not dispatch_rule_present,
+    )
 
     raw_algo_mode = data.get("algo_mode")
     algo_mode_present = "algo_mode" in data
     base_algo_mode = str(base.algo_mode).strip().lower()
-    algo_mode = base_algo_mode if not algo_mode_present else str("" if raw_algo_mode is None else raw_algo_mode).strip().lower()
-    if algo_mode_present and algo_mode == "":
-        if strict_mode:
-            raise ValidationError("“algo_mode”不能为空", field="algo_mode")
-        algo_mode = base_algo_mode
-    if algo_mode not in valid_algo_modes_norm:
-        if strict_mode and not _is_blank(raw_algo_mode):
-            raise ValidationError(f"“algo_mode”取值不合法：{raw_algo_mode!r}", field="algo_mode")
-        algo_mode = base_algo_mode
+    algo_mode = _choice_with_degradation(
+        raw_algo_mode,
+        field="algo_mode",
+        fallback=base_algo_mode,
+        valid_values=valid_algo_modes_norm,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        scope="config_validator.preset",
+        missing=not algo_mode_present,
+    )
 
     raw_objective = data.get("objective")
     objective_present = "objective" in data
     base_objective = str(base.objective).strip().lower()
-    objective = base_objective if not objective_present else str("" if raw_objective is None else raw_objective).strip().lower()
-    if objective_present and objective == "":
-        if strict_mode:
-            raise ValidationError("“objective”不能为空", field="objective")
-        objective = base_objective
-    if objective not in valid_objectives_norm:
-        if strict_mode and not _is_blank(raw_objective):
-            raise ValidationError(f"“objective”取值不合法：{raw_objective!r}", field="objective")
-        objective = base_objective
+    objective = _choice_with_degradation(
+        raw_objective,
+        field="objective",
+        fallback=base_objective,
+        valid_values=valid_objectives_norm,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        scope="config_validator.preset",
+        missing=not objective_present,
+    )
 
     ort_limit = _get_int("ortools_time_limit_seconds", int(base.ortools_time_limit_seconds), min_v=1)
     time_budget = _get_int("time_budget_seconds", int(base.time_budget_seconds), min_v=1)

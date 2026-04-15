@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+import json
+from typing import Any, Dict, Optional
+
+from flask import current_app
 
 from core.models.enums import BatchPriority, CalendarDayType, ReadyStatus, YesNo
 from core.services.common.normalization_matrix import (
@@ -87,3 +90,40 @@ def normalize_version_or_latest(value: Any, *, latest_version: int) -> int:
     except Exception:
         return latest
     return version if version > 0 else latest
+
+
+def _log_result_summary_warning(*, log_label: str, version: Any, source: Optional[str], issue: str, detail: str) -> None:
+    if source is not None:
+        current_app.logger.warning("%s result_summary %s（version=%s, source=%s, %s）", log_label, issue, version, source, detail)
+        return
+    current_app.logger.warning("%s result_summary %s（version=%s, %s）", log_label, issue, version, detail)
+
+
+def _parse_result_summary_payload(
+    raw_summary: Any, *, version: Any, log_label: str, source: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    if raw_summary is None or raw_summary == "":
+        return None
+    if isinstance(raw_summary, dict):
+        return raw_summary
+    if isinstance(raw_summary, list):
+        _log_result_summary_warning(log_label=log_label, version=version, source=source, issue="结构不合法", detail="type=list")
+        return None
+    if not isinstance(raw_summary, str):
+        _log_result_summary_warning(
+            log_label=log_label,
+            version=version,
+            source=source,
+            issue="结构不合法",
+            detail=f"type={type(raw_summary).__name__}",
+        )
+        return None
+    try:
+        parsed = json.loads(str(raw_summary))
+    except Exception as exc:
+        _log_result_summary_warning(log_label=log_label, version=version, source=source, issue="解析失败", detail=f"error={exc.__class__.__name__}")
+        return None
+    if not isinstance(parsed, dict):
+        _log_result_summary_warning(log_label=log_label, version=version, source=source, issue="结构不合法", detail=f"type={type(parsed).__name__}")
+        return None
+    return parsed
