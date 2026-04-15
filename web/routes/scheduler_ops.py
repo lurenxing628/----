@@ -3,14 +3,13 @@ from __future__ import annotations
 from flask import flash, g, redirect, request, url_for
 
 from core.models.enums import SourceType
-from core.services.scheduler import ScheduleService
 
 from .scheduler_bp import bp
 
 
 @bp.post("/ops/<int:op_id>/update")
 def update_op(op_id: int):
-    sch_svc = ScheduleService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    sch_svc = g.services.schedule_service
     op = sch_svc.get_operation(op_id)
 
     src = (getattr(op, "source", "") or "").strip().lower()

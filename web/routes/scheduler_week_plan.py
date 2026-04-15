@@ -9,8 +9,6 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 from core.infrastructure.errors import AppError, ValidationError
 from core.services.common.excel_audit import log_excel_export
 from core.services.common.excel_templates import build_xlsx_bytes
-from core.services.scheduler import GanttService, ScheduleService
-from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 from web.ui_mode import render_ui_template as render_template
 
 from .excel_utils import strict_mode_enabled as _strict_mode_enabled
@@ -46,17 +44,14 @@ def week_plan_page():
     week_start = (request.args.get("week_start") or "").strip() or None
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
+    services = g.services
     offset = _get_int_arg("offset", 0)
-    svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    svc = services.gantt_service
     latest_version = svc.get_latest_version_or_1()
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
     ver = normalize_version_or_latest(request.args.get("version"), latest_version=latest_version)
 
-    versions = ScheduleHistoryQueryService(
-        g.db,
-        logger=getattr(g, "app_logger", None),
-        op_logger=getattr(g, "op_logger", None),
-    ).list_versions(limit=30)
+    versions = services.schedule_history_query_service.list_versions(limit=30)
     data = svc.get_week_plan_rows(start_date=wr.week_start_date.isoformat(), end_date=wr.week_end_date.isoformat(), version=ver)
 
     rows = data.get("rows") or []
@@ -99,7 +94,7 @@ def week_plan_export():
     end_date = (request.args.get("end_date") or "").strip() or None
     offset = _get_int_arg("offset", 0)
 
-    svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    svc = g.services.gantt_service
     try:
         version = normalize_version_or_latest(request.args.get("version"), latest_version=svc.get_latest_version_or_1())
 
@@ -170,7 +165,7 @@ def simulate_schedule():
         flash("请至少选择 1 个批次进行模拟排产。", "error")
         return redirect(url_for("scheduler.batches_page"))
 
-    sch_svc = ScheduleService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    sch_svc = g.services.schedule_service
     try:
         result = sch_svc.run_schedule(
             batch_ids=batch_ids,

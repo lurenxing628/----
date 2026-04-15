@@ -2,16 +2,21 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from flask import current_app, flash, g, redirect, request, url_for
+from flask import flash, redirect, request, url_for
 
-from core.services.system import SystemConfigService
-from core.services.system.operation_log_service import OperationLogService
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.system_logs_vm import build_operation_log_view_rows
 
 from .pagination import paginate_rows, parse_page_args
 from .system_bp import bp
-from .system_utils import _get_job_state_map, _get_system_cfg_snapshot, _normalize_time_range, _safe_int
+from .system_utils import (
+    _get_job_state_map,
+    _get_operation_log_service,
+    _get_system_cfg_snapshot,
+    _get_system_config_service,
+    _normalize_time_range,
+    _safe_int,
+)
 
 
 @bp.get("/logs")
@@ -26,7 +31,7 @@ def logs_page():
 
     start_norm, end_norm = _normalize_time_range(start_time, end_time)
 
-    svc = OperationLogService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
+    svc = _get_operation_log_service()
     items = svc.list_recent(
         limit=limit,
         module=module,
@@ -69,7 +74,7 @@ def logs_page():
 
 @bp.post("/logs/settings")
 def logs_settings():
-    svc = SystemConfigService(g.db, logger=current_app.logger)
+    svc = _get_system_config_service()
     svc.update_logs_settings(
         auto_log_cleanup_enabled=request.form.get("auto_log_cleanup_enabled"),
         auto_log_cleanup_keep_days=request.form.get("auto_log_cleanup_keep_days"),
@@ -94,9 +99,8 @@ def logs_delete():
         flash("log_id 不合法（期望正整数）。", "error")
         return redirect(url_for("system.logs_page"))
 
-    deleted = OperationLogService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None)).delete_by_id(
-        int(log_id)
-    )
+    svc = _get_operation_log_service()
+    deleted = svc.delete_by_id(int(log_id))
 
     if deleted <= 0:
         flash(f"未找到日志：ID={log_id}", "warning")
@@ -124,7 +128,8 @@ def logs_delete_batch():
         flash("选择的日志 ID 不合法。", "error")
         return redirect(url_for("system.logs_page"))
 
-    deleted = OperationLogService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None)).delete_by_ids(ids)
+    svc = _get_operation_log_service()
+    deleted = svc.delete_by_ids(ids)
 
     flash(f"批量删除完成：成功 {deleted}。", "success" if deleted else "warning")
     return redirect(url_for("system.logs_page"))

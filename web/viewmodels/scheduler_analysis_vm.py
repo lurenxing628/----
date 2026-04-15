@@ -222,6 +222,8 @@ def score_key(score: Any) -> Tuple[float, ...]:
 
 
 def _safe_load_json(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
     if value is None:
         return {}
     s = str(value).strip()

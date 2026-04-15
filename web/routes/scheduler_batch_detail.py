@@ -1,18 +1,25 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Protocol, Set, Tuple
 
 from flask import g, request
 
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
-from core.services.equipment import MachineService
-from core.services.personnel import OperatorService
-from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
-from core.services.process import SupplierService
-from core.services.scheduler import BatchService, ConfigService, ScheduleService
 from web.ui_mode import render_ui_template as render_template
 
 from .scheduler_bp import _batch_status_zh, _priority_zh, _ready_zh, bp
+
+if TYPE_CHECKING:
+    from core.services.equipment import MachineService
+    from core.services.personnel import OperatorService
+    from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
+    from core.services.process import SupplierService
+
+
+class _MergeHintService(Protocol):
+    def get_external_merge_hint(self, op_id: Any) -> Dict[str, Any]:
+        ...
+
 
 
 def _count_internal_ops(ops: List[Any]) -> int:
@@ -177,20 +184,33 @@ def _build_machine_operator_maps(
     return machine_operators, machine_operator_meta
 
 
-def _build_view_ops(ops: List[Any], sch_svc: ScheduleService) -> List[Dict[str, Any]]:
+def _build_view_ops(ops: List[Any], sch_svc: _MergeHintService) -> List[Dict[str, Any]]:
     view_ops: List[Dict[str, Any]] = []
+    # 快速路径是可选能力：
+    # - 新实现优先提供 get_external_merge_hint_for_op(op)
+    # - 旧实现只要求满足 fallback 契约 get_external_merge_hint(op_id)
+    # 因此这里用动态探测，而不是把快速路径硬塞进基础协议，避免把 fallback-only 调用方判为类型不兼容。
+    merge_hint_getter = getattr(sch_svc, "get_external_merge_hint_for_op", None)
+    merge_hint_fallback = sch_svc.get_external_merge_hint
     for op in ops or []:
         d = op.to_dict()
-        d["source"] = (d.get("source") or "").strip().lower()
-        d["merge_hint"] = sch_svc.get_external_merge_hint(op.id)
+        source = (d.get("source") or "").strip().lower()
+        d["source"] = source
+        if source != SourceType.EXTERNAL.value:
+            d["merge_hint"] = {"is_external": False}
+        elif callable(merge_hint_getter):
+            d["merge_hint"] = merge_hint_getter(op)
+        else:
+            d["merge_hint"] = merge_hint_fallback(op.id)
         view_ops.append(d)
     return view_ops
 
 
 @bp.get("/batches/<batch_id>")
 def batch_detail(batch_id: str):
-    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    sch_svc = ScheduleService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    services = g.services
+    batch_svc = services.batch_service
+    sch_svc = services.schedule_service
 
     b = batch_svc.get(batch_id)
     ops = sch_svc.list_batch_operations(batch_id=b.batch_id)
@@ -198,18 +218,18 @@ def batch_detail(batch_id: str):
     internal_op_count = _count_internal_ops(ops)
     selected_machine_ids, selected_operator_ids, selected_supplier_ids = _collect_selected_resource_ids(ops)
 
-    m_svc = MachineService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    o_svc = OperatorService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    s_svc = SupplierService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    machine_svc = services.machine_service
+    operator_svc = services.operator_service
+    supplier_svc = services.supplier_service
 
-    machine_options = _build_machine_options(m_svc, selected_machine_ids)
-    operator_options = _build_operator_options(o_svc, selected_operator_ids)
-    supplier_options = _build_supplier_options(s_svc, selected_supplier_ids)
+    machine_options = _build_machine_options(machine_svc, selected_machine_ids)
+    operator_options = _build_operator_options(operator_svc, selected_operator_ids)
+    supplier_options = _build_supplier_options(supplier_svc, selected_supplier_ids)
 
     lazy_select_enabled = _resolve_lazy_select_enabled(internal_op_count, machine_options, operator_options)
 
-    prefer_primary_skill = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None)).get_snapshot().prefer_primary_skill
-    om_q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
+    prefer_primary_skill = services.config_service.get_snapshot().prefer_primary_skill
+    om_q = services.operator_machine_query_service
     machine_operators, machine_operator_meta = _build_machine_operator_maps(
         machine_options=machine_options,
         operator_options=operator_options,

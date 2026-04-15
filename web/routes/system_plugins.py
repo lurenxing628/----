@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import re
 
-from flask import current_app, flash, g, redirect, request, url_for
-
-from core.services.system import SystemConfigService
+from flask import flash, g, redirect, request, url_for
 
 from .system_bp import bp
+from .system_utils import _get_system_config_service
 
 
 @bp.post("/plugins/toggle")
@@ -27,7 +26,8 @@ def plugin_toggle():
 
     enabled = "yes" if (request.form.get("enabled") or "").strip().lower() in ("on", "yes", "true", "1") else "no"
     key = f"plugin.{plugin_id}.enabled"
-    SystemConfigService(g.db, logger=current_app.logger).set_value(key, enabled, description=None)
+    svc = _get_system_config_service()
+    svc.set_value(key, enabled, description=None)
 
     if getattr(g, "op_logger", None) is not None:
         g.op_logger.info(

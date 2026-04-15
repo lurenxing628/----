@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from flask import current_app, flash, g, redirect, request
+from flask import current_app, flash, redirect, request
 
-from core.services.system import SystemConfigService
 from web.ui_mode import UI_MODE_CONFIG_KEY, UI_MODE_COOKIE_KEY, normalize_ui_mode
 
 from .system_bp import bp
-from .system_utils import _safe_next_url
+from .system_utils import _get_system_config_service, _safe_next_url
 
 
 @bp.post("/ui-mode")
@@ -22,9 +21,11 @@ def ui_mode_set():
         flash("UI 模式不合法（仅允许 v1/v2）。", "error")
         return redirect(next_url)
 
+    svc = _get_system_config_service()
+
     # 1) DB 持久化（失败不阻断，仍可通过 cookie 生效）
     try:
-        SystemConfigService(g.db, logger=current_app.logger).set_value(
+        svc.set_value(
             UI_MODE_CONFIG_KEY,
             mode,
             description="UI 模式：v1/v2（v2=新UI）",

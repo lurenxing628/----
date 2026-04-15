@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-import json
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
-from core.services.process import PartService
-from core.services.scheduler import BatchService, ConfigService
-from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 from web.ui_mode import render_ui_template as render_template
 
 from .excel_utils import strict_mode_enabled as _strict_mode_enabled
+from .normalizers import _parse_result_summary_payload
 from .pagination import paginate_rows, parse_page_args
 from .scheduler_bp import (
     _batch_status_zh,
@@ -25,11 +22,15 @@ from .scheduler_bp import (
 )
 from .system_utils import _safe_next_url
 
+if TYPE_CHECKING:
+    from core.services.scheduler import BatchService
+
 
 @bp.get("/")
 def batches_page():
-    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    services = g.services
+    batch_svc = services.batch_service
+    cfg_svc = services.config_service
 
     # 兼容：允许 ?status= 表示“全部状态”；未提供 status 参数时默认 pending
     if "status" in request.args:
@@ -63,11 +64,7 @@ def batches_page():
     # 最近一次排产（用于用户确认“留痕已写入”）
     latest_history = None
     latest_summary = None
-    hist_q = ScheduleHistoryQueryService(
-        g.db,
-        logger=getattr(g, "app_logger", None),
-        op_logger=getattr(g, "op_logger", None),
-    )
+    hist_q = services.schedule_history_query_service
     try:
         items = hist_q.list_recent(limit=1)
         latest_history = items[0].to_dict() if items else None
@@ -76,15 +73,7 @@ def batches_page():
         latest_history = None
         latest_summary = None
     if latest_history and latest_history.get("result_summary"):
-        try:
-            latest_summary = json.loads(latest_history.get("result_summary") or "{}")
-        except Exception as exc:
-            current_app.logger.warning(
-                "排产页 result_summary 解析失败（version=%s, error=%s）",
-                latest_history.get("version"),
-                exc.__class__.__name__,
-            )
-            latest_summary = None
+        latest_summary = _parse_result_summary_payload(latest_history.get("result_summary"), version=latest_history.get("version"), log_label="排产页")
     latest_warning_messages = _normalize_warning_texts((latest_summary or {}).get("warnings") if isinstance(latest_summary, dict) else None)
     latest_warning_preview = latest_warning_messages[:3]
     latest_warning_total = len(latest_warning_messages)
@@ -119,7 +108,8 @@ def batches_manage_page():
     - 批量复制/删除/修改
     - 查看/编辑批次详情入口
     """
-    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    services = g.services
+    batch_svc = services.batch_service
 
     # 兼容：允许 ?status= 表示“全部状态”；未提供 status 参数时默认 pending
     if "status" in request.args:
@@ -144,8 +134,8 @@ def batches_manage_page():
         )
 
     view_rows, pager = paginate_rows(view_rows, page, per_page)
-    p_svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
-    parts = p_svc.list()
+    part_svc = services.part_service
+    parts = part_svc.list()
     part_options = [(p.part_no, f"{p.part_no} {p.part_name}") for p in parts]
 
     return render_template(
@@ -171,7 +161,7 @@ def create_batch():
     strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     remark = request.form.get("remark") or None
 
-    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    batch_svc = g.services.batch_service
     try:
         # 创建批次默认强制生成工序（从零件模板；缺模板时会尝试自动解析 route_raw）
         b = batch_svc.create_batch_from_template(
@@ -196,7 +186,7 @@ def create_batch():
 
 @bp.post("/batches/<batch_id>/delete")
 def delete_batch(batch_id: str):
-    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    batch_svc = g.services.batch_service
     next_raw = (request.form.get("next") or "").strip()
     next_url = _safe_next_url(next_raw) if next_raw else None
     try:
@@ -219,7 +209,7 @@ def bulk_delete_batches():
         flash("请至少选择 1 个批次。", "error")
         return redirect(url_for("scheduler.batches_manage_page"))
 
-    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    batch_svc = g.services.batch_service
     ok = 0
     failed: List[str] = []
     failed_details: List[str] = []
@@ -300,7 +290,7 @@ def bulk_copy_batches():
         flash("请至少选择 1 个批次。", "error")
         return redirect(url_for("scheduler.batches_manage_page"))
 
-    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    batch_svc = g.services.batch_service
     ok = 0
     failed: List[str] = []
     mappings: List[str] = []
@@ -342,7 +332,7 @@ def bulk_update_batches():
         flash("未填写任何要批量修改的字段（优先级/交期/备注）。", "error")
         return redirect(url_for("scheduler.batches_manage_page"))
 
-    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    batch_svc = g.services.batch_service
     ok = 0
     failed: List[str] = []
     for bid in batch_ids:
@@ -360,7 +350,7 @@ def bulk_update_batches():
 
 @bp.post("/batches/<batch_id>/generate-ops")
 def generate_ops(batch_id: str):
-    batch_svc = BatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    batch_svc = g.services.batch_service
     strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     b = batch_svc.get(batch_id)
 

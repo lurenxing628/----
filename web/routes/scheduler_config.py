@@ -146,8 +146,9 @@ def _build_related_manual_links(related_manuals: List[Dict[str, Any]], link_src:
         enriched["entry_endpoint"] = entry_endpoint
         enriched["url"] = get_manual_url(endpoint=entry_endpoint, src=link_src) if entry_endpoint else None
         enriched["full_manual_section_url"] = (
-            get_full_manual_section_url(endpoint=entry_endpoint, src=link_src) if entry_endpoint else None
+            get_full_manual_section_url(endpoint=entry_endpoint, src=link_src) if entry_endpoint else ""
         )
+        enriched["full_manual_section_url"] = enriched["full_manual_section_url"] or ""
         out.append(enriched)
     return out
 
@@ -174,7 +175,7 @@ def _build_manual_page_view_state(
         "current_manual": None,
         "related_manuals": [],
         "fallback_text": manual_text,
-        "full_manual_section_url": None,
+        "full_manual_section_url": "",
         "page_title": "系统使用说明",
         "download_button_label": "下载说明书原文",
         "back_button_label": "返回刚才页面",
@@ -191,7 +192,7 @@ def _build_manual_page_view_state(
         "current_manual": current_manual,
         "related_manuals": _build_related_manual_links(bundle["related_manuals"], link_src),
         "fallback_text": build_page_fallback_text(raw_page, bundle=bundle) or manual_text,
-        "full_manual_section_url": get_full_manual_section_url(endpoint=raw_page, src=link_src),
+        "full_manual_section_url": get_full_manual_section_url(endpoint=raw_page, src=link_src) or "",
         "page_title": f"本页说明 - {current_manual['title']}",
         "download_button_label": "下载整本说明书",
         "back_button_label": back_button_label,
@@ -278,7 +279,7 @@ def config_page():
     - 解释说明更充分
     - 后续承载“配置模板/方案”
     """
-    cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    cfg_svc = g.services.config_service
     cfg = cfg_svc.get_snapshot()
     strategies = cfg_svc.get_available_strategies()
 
@@ -311,7 +312,7 @@ def preset_apply():
     - 可从主页面/高级设置页触发
     - 支持 next 回跳
     """
-    cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    cfg_svc = g.services.config_service
     name = request.form.get("preset_name") or request.form.get("name")
     next_url = _safe_next_url(request.form.get("next") or url_for("scheduler.config_page"))
     try:
@@ -336,7 +337,7 @@ def preset_save():
     """
     将当前配置保存为新模板（不允许覆盖内置模板）。
     """
-    cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    cfg_svc = g.services.config_service
     name = request.form.get("preset_name") or request.form.get("name")
     try:
         saved = cfg_svc.save_preset(name)
@@ -351,7 +352,7 @@ def preset_save():
 
 @bp.post("/config/preset/delete")
 def preset_delete():
-    cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    cfg_svc = g.services.config_service
     name = request.form.get("preset_name") or request.form.get("name")
     try:
         cfg_svc.delete_preset(name)
@@ -407,7 +408,7 @@ def _apply_weight_settings_if_present(cfg_svc: ConfigService, form) -> None:
 
 @bp.post("/config")
 def update_config():
-    cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    cfg_svc = g.services.config_service
     try:
         form = request.form
         _apply_basic_scheduler_config(cfg_svc, form)
@@ -423,7 +424,7 @@ def update_config():
 
 @bp.post("/config/default")
 def restore_config_default():
-    cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    cfg_svc = g.services.config_service
     cfg_svc.restore_default()
     flash("已恢复默认设置。", "success")
     return redirect(url_for("scheduler.config_page"))

@@ -5,8 +5,6 @@ from typing import Any, Dict, Optional
 from flask import current_app, g, jsonify, request, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
-from core.services.scheduler import GanttService
-from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 from web.ui_mode import render_ui_template as render_template
 
 from .normalizers import normalize_version_or_latest
@@ -44,17 +42,14 @@ def gantt_page():
     week_start = (request.args.get("week_start") or "").strip() or None
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
+    services = g.services
     offset = _get_int_arg("offset", 0)
-    svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    svc = services.gantt_service
     latest_version = svc.get_latest_version_or_1()
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
     ver = normalize_version_or_latest(request.args.get("version"), latest_version=latest_version)
 
-    versions = ScheduleHistoryQueryService(
-        g.db,
-        logger=getattr(g, "app_logger", None),
-        op_logger=getattr(g, "op_logger", None),
-    ).list_versions(limit=30)
+    versions = services.schedule_history_query_service.list_versions(limit=30)
     return render_template(
         "scheduler/gantt.html",
         title="甘特图（排程可视化）",
@@ -80,7 +75,7 @@ def gantt_data():
     week_start = (request.args.get("week_start") or "").strip() or None
     start_date = (request.args.get("start_date") or "").strip() or None
     end_date = (request.args.get("end_date") or "").strip() or None
-    svc = GanttService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    svc = g.services.gantt_service
     try:
         offset = _get_int_arg("offset", 0)
         # 当显式给出区间时，以 start/end 为准，避免客户端重复叠加 offset 造成“跳两周”。

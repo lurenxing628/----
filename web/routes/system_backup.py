@@ -11,7 +11,6 @@ from core.infrastructure.backup import MaintenanceWindowError, maintenance_windo
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.logging import OperationLogger
-from core.services.system import SystemConfigService
 from web.ui_mode import render_ui_template as render_template
 
 from .system_bp import bp
@@ -19,6 +18,7 @@ from .system_utils import (
     _get_backup_manager,
     _get_job_state_map,
     _get_system_cfg_snapshot,
+    _get_system_config_service,
     _validate_backup_filename,
 )
 
@@ -102,7 +102,7 @@ def backup_settings():
     - 正常退出时的退出备份：与 auto_backup_enabled 共用同一开关
     - 自动清理备份：按请求触发
     """
-    svc = SystemConfigService(g.db, logger=current_app.logger)
+    svc = _get_system_config_service()
     svc.update_backup_settings(
         auto_backup_enabled=request.form.get("auto_backup_enabled"),
         auto_backup_interval_minutes=request.form.get("auto_backup_interval_minutes"),

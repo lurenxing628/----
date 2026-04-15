@@ -3,7 +3,6 @@ from __future__ import annotations
 from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
-from core.services.scheduler import ScheduleService
 
 from .excel_utils import strict_mode_enabled as _strict_mode_enabled
 from .scheduler_bp import _surface_schedule_warnings, bp
@@ -32,7 +31,7 @@ def run_schedule():
     end_date = request.form.get("end_date") or None
     enforce_ready = _parse_optional_checkbox_flag("enforce_ready")
     strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
-    sch_svc = ScheduleService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+    sch_svc = g.services.schedule_service
     try:
         result = sch_svc.run_schedule(
             batch_ids=batch_ids,

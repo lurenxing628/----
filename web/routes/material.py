@@ -6,8 +6,6 @@ from flask import Blueprint, current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
 from core.models.enums import MaterialStatus
-from core.services.material import BatchMaterialService, MaterialService
-from core.services.scheduler import BatchService
 from web.ui_mode import render_ui_template as render_template
 
 from .pagination import paginate_rows, parse_page_args
@@ -22,9 +20,10 @@ def index():
 
 @bp.get("/materials")
 def materials_page():
+    services = g.services
     page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
-    svc = MaterialService(g.db, op_logger=getattr(g, "op_logger", None))
-    items = [m.to_dict() for m in svc.list()]
+    material_svc = services.material_service
+    items = [m.to_dict() for m in material_svc.list()]
     items, pager = paginate_rows(items, page, per_page)
     return render_template(
         "material/materials.html",
@@ -37,9 +36,9 @@ def materials_page():
 
 @bp.post("/materials/create")
 def materials_create():
+    material_svc = g.services.material_service
     try:
-        svc = MaterialService(g.db, op_logger=getattr(g, "op_logger", None))
-        m = svc.create(
+        m = material_svc.create(
             material_id=request.form.get("material_id"),
             name=request.form.get("name"),
             spec=request.form.get("spec"),
@@ -59,9 +58,9 @@ def materials_create():
 
 @bp.post("/materials/<material_id>/update")
 def materials_update(material_id: str):
+    material_svc = g.services.material_service
     try:
-        svc = MaterialService(g.db, op_logger=getattr(g, "op_logger", None))
-        svc.update(
+        material_svc.update(
             material_id,
             name=request.form.get("name"),
             spec=request.form.get("spec"),
@@ -81,9 +80,9 @@ def materials_update(material_id: str):
 
 @bp.post("/materials/<material_id>/delete")
 def materials_delete(material_id: str):
+    material_svc = g.services.material_service
     try:
-        svc = MaterialService(g.db, op_logger=getattr(g, "op_logger", None))
-        svc.delete(material_id)
+        material_svc.delete(material_id)
         flash("物料已删除。", "success")
     except AppError as e:
         flash(e.message, "error")
@@ -101,8 +100,9 @@ def materials_delete(material_id: str):
 @bp.get("/batches")
 def batch_materials_page():
     batch_id = (request.args.get("batch_id") or "").strip() or None
+    services = g.services
 
-    batch_svc = BatchService(g.db, op_logger=getattr(g, "op_logger", None))
+    batch_svc = services.batch_service
     batches = batch_svc.list()
     batch_options = [(b.batch_id, f"{b.batch_id}（{b.part_no} x {b.quantity}）") for b in batches]
     ready_summary = {"yes": 0, "partial": 0, "no": 0, "unknown": 0}
@@ -118,10 +118,10 @@ def batch_materials_page():
 
     req_rows: List[Dict[str, Any]] = []
     if batch_id:
-        req_rows = BatchMaterialService(g.db, op_logger=getattr(g, "op_logger", None)).list_for_batch(batch_id)
+        req_rows = services.batch_material_service.list_for_batch(batch_id)
 
-    mats = MaterialService(g.db, op_logger=getattr(g, "op_logger", None)).list(status=MaterialStatus.ACTIVE.value)
-    mat_options = [(m.material_id, f"{m.material_id} {m.name}".strip()) for m in mats]
+    materials = services.material_service.list(status=MaterialStatus.ACTIVE.value)
+    mat_options = [(m.material_id, f"{m.material_id} {m.name}".strip()) for m in materials]
 
     return render_template(
         "material/batch_materials.html",
@@ -137,9 +137,9 @@ def batch_materials_page():
 
 @bp.post("/batches/<batch_id>/requirements/add")
 def batch_material_add(batch_id: str):
+    batch_material_svc = g.services.batch_material_service
     try:
-        svc = BatchMaterialService(g.db, op_logger=getattr(g, "op_logger", None))
-        svc.add_requirement(
+        batch_material_svc.add_requirement(
             batch_id=batch_id,
             material_id=request.form.get("material_id"),
             required_qty=request.form.get("required_qty"),
@@ -159,9 +159,9 @@ def batch_material_update(bm_id: int):
     batch_id = (request.form.get("batch_id") or "").strip()
     if not batch_id:
         raise ValidationError("缺少批次号", field="batch_id")
+    batch_material_svc = g.services.batch_material_service
     try:
-        svc = BatchMaterialService(g.db, op_logger=getattr(g, "op_logger", None))
-        svc.update_requirement(
+        batch_material_svc.update_requirement(
             bm_id,
             required_qty=request.form.get("required_qty"),
             available_qty=request.form.get("available_qty"),
@@ -180,9 +180,9 @@ def batch_material_delete(bm_id: int):
     batch_id = (request.form.get("batch_id") or "").strip()
     if not batch_id:
         raise ValidationError("缺少批次号", field="batch_id")
+    batch_material_svc = g.services.batch_material_service
     try:
-        svc = BatchMaterialService(g.db, op_logger=getattr(g, "op_logger", None))
-        svc.delete_requirement(bm_id)
+        batch_material_svc.delete_requirement(bm_id)
         flash("已删除批次物料需求，并已同步齐套状态。", "success")
     except AppError as e:
         flash(e.message, "error")
