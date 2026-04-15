@@ -109,3 +109,9 @@ tools/ungoogled-chromium_*.zip
 
 # 临时架构债务扫描文件（由审计脚本生成，不纳入版本控制）
 backups/_tmp_arch_debt_scan.txt
+
+# LimCode 工作区中间产物（diff/快照/文件清单等）
+.limcode_*
+
+# 审计临时 diff 片段（代码审查过程中产出，不纳入版本控制）
+audit/**/_tmp_review/
