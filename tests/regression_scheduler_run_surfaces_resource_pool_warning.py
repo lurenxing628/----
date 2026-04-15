@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from flask import Flask, g, get_flashed_messages
 
@@ -16,9 +17,6 @@ def test_scheduler_run_surfaces_resource_pool_warning() -> None:
     import web.routes.scheduler_run as route_mod
 
     class _StubScheduleService:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
         def run_schedule(self, **_kwargs):
             return {
                 "version": 7,
@@ -39,15 +37,13 @@ def test_scheduler_run_surfaces_resource_pool_warning() -> None:
                 },
             }
 
-    old_service = route_mod.ScheduleService
     old_url_for = route_mod.url_for
-    route_mod.ScheduleService = _StubScheduleService
     route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
     try:
         app = Flask(__name__)
         app.secret_key = "aps-test-secret"
         with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
-            g.db = object()
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.run_schedule()
@@ -62,7 +58,6 @@ def test_scheduler_run_surfaces_resource_pool_warning() -> None:
         assert any(cat == "warning" and "另有 1 条告警，请到系统历史查看。" in msg for cat, msg in flashes), flashes
         assert not any(cat == "warning" and msg == "第 6 条告警" for cat, msg in flashes), flashes
     finally:
-        route_mod.ScheduleService = old_service
         route_mod.url_for = old_url_for
 
 
@@ -74,9 +69,6 @@ def test_scheduler_simulate_surfaces_schedule_warnings() -> None:
     import web.routes.scheduler_week_plan as route_mod
 
     class _StubScheduleService:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
         def run_schedule(self, **_kwargs):
             return {
                 "version": 8,
@@ -92,15 +84,13 @@ def test_scheduler_simulate_surfaces_schedule_warnings() -> None:
                 },
             }
 
-    old_service = route_mod.ScheduleService
     old_url_for = route_mod.url_for
-    route_mod.ScheduleService = _StubScheduleService
     route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
     try:
         app = Flask(__name__)
         app.secret_key = "aps-test-secret"
         with app.test_request_context("/scheduler/simulate", method="POST", data={"batch_ids": ["B001"]}):
-            g.db = object()
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
             g.app_logger = app.logger
             g.op_logger = None
             resp = route_mod.simulate_schedule()
@@ -115,5 +105,4 @@ def test_scheduler_simulate_surfaces_schedule_warnings() -> None:
         assert any(cat == "warning" and "另有 1 条告警，请到系统历史查看。" in msg for cat, msg in flashes), flashes
         assert not any(cat == "warning" and msg == "第 6 条告警" for cat, msg in flashes), flashes
     finally:
-        route_mod.ScheduleService = old_service
         route_mod.url_for = old_url_for

@@ -42,6 +42,7 @@ def _build_app(tmp_path, monkeypatch):
 def test_request_scope_app_logger_binding(tmp_path, monkeypatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
 
+    import web.bootstrap.request_services as request_services_mod
     import web.routes.scheduler_batches as route_mod
 
     captured = {}
@@ -72,16 +73,21 @@ def test_request_scope_app_logger_binding(tmp_path, monkeypatch) -> None:
         def get_active_preset(self):
             return None
 
+        def get_active_preset_reason(self):
+            return "当前以手动设置为准。"
+
     class _StubHistoryService:
-        def __init__(self, *_args, **_kwargs):
-            pass
+        def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):
+            captured["history_logger"] = logger
+            captured["history_op_logger"] = op_logger
 
         def list_recent(self, limit=1):
+            captured["history_limit"] = limit
             return []
 
-    monkeypatch.setattr(route_mod, "BatchService", _StubBatchService)
-    monkeypatch.setattr(route_mod, "ConfigService", _StubConfigService)
-    monkeypatch.setattr(route_mod, "ScheduleHistoryQueryService", _StubHistoryService)
+    monkeypatch.setattr(request_services_mod, "BatchService", _StubBatchService)
+    monkeypatch.setattr(request_services_mod, "ConfigService", _StubConfigService)
+    monkeypatch.setattr(request_services_mod, "ScheduleHistoryQueryService", _StubHistoryService)
     monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
 
     with app.test_request_context("/scheduler/"):
@@ -90,10 +96,14 @@ def test_request_scope_app_logger_binding(tmp_path, monkeypatch) -> None:
         assert g.app_logger is current_app.logger
         assert getattr(g, "db", None) is not None
         assert getattr(g, "op_logger", None) is not None
+        assert getattr(g, "services", None) is not None
 
         route_mod.batches_page()
 
         assert captured.get("logger") is current_app.logger
         assert captured.get("config_logger") is current_app.logger
+        assert captured.get("history_logger") is current_app.logger
         assert captured.get("op_logger") is g.op_logger
         assert captured.get("config_op_logger") is g.op_logger
+        assert captured.get("history_op_logger") is g.op_logger
+        assert captured.get("history_limit") == 1

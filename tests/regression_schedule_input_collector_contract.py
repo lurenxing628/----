@@ -40,13 +40,14 @@ def main() -> None:
             self.logger = logger
             self.op_logger = op_logger
 
-    def _get_snapshot_with_optional_strict_mode(_cfg_svc, *, strict_mode: bool):
+    def _get_snapshot_with_strict_mode(_cfg_svc, *, strict_mode: bool):
         captured["strict_mode_to_snapshot"] = strict_mode
         return SimpleNamespace(enforce_ready_default="no")
 
-    def _build_algo_operations(_svc, ops: List[Any], *, strict_mode: bool):
+    def _build_algo_operations(_svc, ops: List[Any], *, strict_mode: bool, return_outcome: bool):
         captured["algo_input_ids"] = [int(op.id) for op in ops]
         captured["algo_input_strict_mode"] = strict_mode
+        captured["algo_return_outcome"] = return_outcome
         return BuildOutcome(
             value=[
                 SimpleNamespace(id=1, op_code="B001_10", batch_id="B001", seq=10, source="internal"),
@@ -194,7 +195,7 @@ def main() -> None:
             strict_mode=True,
             calendar_service_cls=_FakeCalendarService,
             config_service_cls=_FakeConfigService,
-            get_snapshot_with_optional_strict_mode=_get_snapshot_with_optional_strict_mode,
+            get_snapshot_with_strict_mode=_get_snapshot_with_strict_mode,
             build_algo_operations_fn=_build_algo_operations,
             build_freeze_window_seed_fn=_build_freeze_window_seed,
             load_machine_downtimes_fn=_load_machine_downtimes,
@@ -225,6 +226,7 @@ def main() -> None:
     assert captured.get("strict_mode_to_snapshot") is True, captured
     assert captured.get("algo_input_ids") == [1, 2], captured
     assert captured.get("freeze_reschedulable_ids") == [1, 2], captured
+    assert captured.get("algo_return_outcome") is True, captured
     assert captured.get("downtime_warnings_before") == ["freeze warning"], captured
     assert captured.get("extend_warnings_before") == ["freeze warning", "pool warning"], captured
 

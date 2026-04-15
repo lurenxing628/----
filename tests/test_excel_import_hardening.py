@@ -102,6 +102,28 @@ def test_batch_quantity_float_is_rejected_without_truncation(tmp_path) -> None:
         conn.close()
 
 
+def test_batch_validator_accepts_parts_cache_without_conn() -> None:
+    validator = get_batch_row_validate_and_normalize(
+        parts_cache={"P001": object()},
+        inplace=True,
+    )
+    row = {
+        "批次号": "B001",
+        "图号": "P001",
+        "数量": "2",
+        "优先级": "normal",
+        "齐套": "yes",
+    }
+
+    assert validator(row) is None
+    assert row["数量"] == 2
+
+
+def test_batch_validator_requires_conn_when_parts_cache_missing() -> None:
+    with pytest.raises(ValueError, match="缺少 conn 或 parts_cache"):
+        get_batch_row_validate_and_normalize(inplace=True)
+
+
 def test_blank_helper_does_not_treat_zero_as_blank() -> None:
     assert is_blank_value(0) is False
     assert is_blank_value("0") is False
@@ -140,6 +162,9 @@ def test_ensure_unique_ids_detects_integer_like_float_duplicates() -> None:
 
 
 def test_operator_calendar_preview_fallback_trims_time_suffix(tmp_path, monkeypatch) -> None:
+    from core.services.common.excel_backend_factory import get_excel_backend
+    from web.bootstrap.request_services import RequestServices
+
     app, db_path = _build_app(tmp_path, monkeypatch)
     conn = get_connection(db_path)
     conn.execute("INSERT INTO Operators (operator_id, name, status) VALUES (?, ?, ?)", ("OP001", "张三", "active"))
@@ -168,8 +193,15 @@ def test_operator_calendar_preview_fallback_trims_time_suffix(tmp_path, monkeypa
     ):
         req_conn = get_connection(db_path)
         try:
+            g.app_logger = app.logger
             g.db = req_conn
             g.op_logger = None
+            g.services = RequestServices(
+                db=req_conn,
+                app_logger=app.logger,
+                op_logger=None,
+                get_excel_backend=get_excel_backend,
+            )
             route_mod.excel_operator_calendar_preview()
         finally:
             req_conn.close()

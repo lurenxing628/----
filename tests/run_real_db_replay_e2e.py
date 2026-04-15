@@ -163,12 +163,17 @@ def _as_dict(x: Any) -> Dict[str, Any]:
 
 
 def _create_test_app(*, repo_root: Path, db_path: Path, log_dir: Path, backup_dir: Path, template_dir: Path):
-    """最小副作用 Flask app：每请求 get_connection、ensure_excel_templates、ensure_schema。"""
+    """
+    最小副作用 Flask app：每请求 get_connection、ensure_excel_templates、ensure_schema。
+    不模拟正式 create_app_core() 的维护窗口短路，仅对齐请求级 g.services 挂载与目标白名单行为。
+    """
     from flask import Flask, g, request
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.logging import OperationLogger
+    from core.services.common.excel_backend_factory import get_excel_backend
     from core.services.common.excel_templates import ensure_excel_templates
+    from web.bootstrap.request_services import RequestServices
     from web.error_handlers import register_error_handlers
     from web.routes.dashboard import bp as dashboard_bp
     from web.routes.equipment import bp as equipment_bp
@@ -221,13 +226,38 @@ def _create_test_app(*, repo_root: Path, db_path: Path, log_dir: Path, backup_di
     @app.before_request
     def _open_db():
         try:
-            if request.path and str(request.path).startswith("/static"):
+            req_path = str(request.path or "")
+            # 与正式工厂一致：白名单短路路径不挂载 g.app_logger / g.db / g.op_logger / g.services，
+            # 保持“纯静态/健康检查请求不进入业务主路径”的边界，避免测试工厂与正式行为漂移。
+            # 若未来测试需要这些请求级对象，应改走业务路径而不是扩展白名单短路语义。
+            if req_path.startswith("/static") or req_path in {"/system/health", "/system/runtime/shutdown"}:
                 return
-        except Exception:
-            pass
+        except Exception as exc:
+            app.logger.warning("请求白名单判定失败，将继续主路径：%s", exc)
+        g.app_logger = app.logger
+        if "db" in g and "services" not in g:
+            raise RuntimeError("请求上下文已有 g.db，但缺少 g.services。")
         if "db" not in g:
-            g.db = get_connection(app.config["DATABASE_PATH"])
-            g.op_logger = OperationLogger(g.db, logger=getattr(app, "logger", None))
+            conn = None
+            try:
+                conn = get_connection(app.config["DATABASE_PATH"])
+                op_logger = OperationLogger(conn, logger=getattr(app, "logger", None))
+                services = RequestServices(
+                    db=conn,
+                    app_logger=g.app_logger,
+                    op_logger=op_logger,
+                    get_excel_backend=get_excel_backend,
+                )
+            except Exception:
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception as close_exc:
+                        app.logger.warning("测试应用请求级容器装配失败后的数据库关闭失败：%s", close_exc)
+                raise
+            g.db = conn
+            g.op_logger = op_logger
+            g.services = services
 
     @app.teardown_appcontext
     def _close_db(_exc):
@@ -365,11 +395,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             schedule_info["algo_metrics"] = metrics
             schedule_info["time_cost_ms"] = time_cost_ms
 
+            raw_version = hist.get("version")
             try:
-                ver = int(hist.get("version"))
+                if raw_version is None:
+                    raise TypeError("version is None")
+                ver = int(raw_version)
             except Exception:
                 ver = None
-                issues.append(f"ScheduleHistory.version 非整数：{hist.get('version')}")
+                issues.append(f"ScheduleHistory.version 非整数：{raw_version}")
 
             if ver is not None:
                 week_start = _min_start_date(conn, version=ver) or start_dt.date().isoformat()

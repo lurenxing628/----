@@ -117,10 +117,10 @@ def test_scheduler_excel_batch_confirm_surfaces_warnings_with_limit(tmp_path, mo
     app, conn = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
-    route_mod = importlib.import_module("web.routes.scheduler_excel_batches")
+    request_services_mod = importlib.import_module("web.bootstrap.request_services")
 
     monkeypatch.setattr(
-        route_mod.BatchService,
+        request_services_mod.BatchService,
         "consume_user_visible_warnings",
         lambda _self: [
             "第 1 条告警",
@@ -128,6 +128,7 @@ def test_scheduler_excel_batch_confirm_surfaces_warnings_with_limit(tmp_path, mo
             "",
             "第 2 条告警",
             "第 3 条告警",
+
             "第 4 条告警",
             "第 5 条告警",
         ],

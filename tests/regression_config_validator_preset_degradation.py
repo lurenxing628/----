@@ -180,3 +180,45 @@ def test_config_validator_preset_still_rejects_malformed_numeric() -> None:
         )
 
     assert exc_info.value.field == "priority_weight"
+
+
+def test_config_validator_preset_relaxed_invalid_choice_and_yesno_are_observable() -> None:
+    snap = normalize_preset_snapshot(
+        {
+            "sort_strategy": "bad_strategy",
+            "dispatch_mode": "bad_mode",
+            "auto_assign_enabled": "maybe",
+        },
+        base=_base_snapshot(),
+        valid_strategies=VALID_STRATEGIES,
+        valid_dispatch_modes=VALID_DISPATCH_MODES,
+        valid_dispatch_rules=VALID_DISPATCH_RULES,
+        valid_algo_modes=VALID_ALGO_MODES,
+        valid_objectives=VALID_OBJECTIVES,
+    )
+
+    assert snap.sort_strategy == "priority_first"
+    assert snap.dispatch_mode == "batch_order"
+    assert snap.auto_assign_enabled == "no"
+    counters = snap.degradation_counters or {}
+    assert int(counters.get("invalid_choice") or 0) == 3, counters
+
+
+def test_config_validator_preset_relaxed_blank_choice_and_yesno_emit_blank_required() -> None:
+    snap = normalize_preset_snapshot(
+        {
+            "dispatch_rule": "   ",
+            "freeze_window_enabled": None,
+        },
+        base=_base_snapshot(),
+        valid_strategies=VALID_STRATEGIES,
+        valid_dispatch_modes=VALID_DISPATCH_MODES,
+        valid_dispatch_rules=VALID_DISPATCH_RULES,
+        valid_algo_modes=VALID_ALGO_MODES,
+        valid_objectives=VALID_OBJECTIVES,
+    )
+
+    assert snap.dispatch_rule == "slack"
+    assert snap.freeze_window_enabled == "no"
+    counters = snap.degradation_counters or {}
+    assert int(counters.get("blank_required") or 0) == 2, counters

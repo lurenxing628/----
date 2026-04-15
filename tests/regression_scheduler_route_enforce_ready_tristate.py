@@ -1,5 +1,6 @@
 import os
 import sys
+from types import SimpleNamespace
 from typing import Any, Dict
 
 from flask import Flask, g
@@ -19,9 +20,6 @@ def _invoke_scheduler_run(form_data: Dict[str, Any]):
     captured: Dict[str, Any] = {}
 
     class _StubScheduleService:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
         def run_schedule(self, **kwargs):
             captured["enforce_ready"] = kwargs.get("enforce_ready")
             captured["strict_mode"] = kwargs.get("strict_mode")
@@ -30,22 +28,19 @@ def _invoke_scheduler_run(form_data: Dict[str, Any]):
                 "summary": {"scheduled_ops": 1, "total_ops": 1, "failed_ops": 0, "warnings": [], "errors": []},
             }
 
-    old_svc = route_mod.ScheduleService
     old_url_for = route_mod.url_for
-    route_mod.ScheduleService = _StubScheduleService
     route_mod.url_for = lambda endpoint, **kwargs: f"/{endpoint}"
     try:
         app = Flask(__name__)
         app.secret_key = "aps-test-secret"
         with app.test_request_context("/scheduler/run", method="POST", data=form_data):
-            g.db = object()
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
             g.app_logger = None
             g.op_logger = None
             resp = route_mod.run_schedule()
         assert getattr(resp, "status_code", 0) in (301, 302), "run_schedule 应返回 redirect"
         return dict(captured)
     finally:
-        route_mod.ScheduleService = old_svc
         route_mod.url_for = old_url_for
 
 
@@ -55,30 +50,24 @@ def _invoke_scheduler_simulate(form_data: Dict[str, Any]):
     captured: Dict[str, Any] = {}
 
     class _StubScheduleService:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
         def run_schedule(self, **kwargs):
             captured["enforce_ready"] = kwargs.get("enforce_ready")
             captured["strict_mode"] = kwargs.get("strict_mode")
             return {"version": 1, "summary": {"warnings": []}}
 
-    old_svc = route_mod.ScheduleService
     old_url_for = route_mod.url_for
-    route_mod.ScheduleService = _StubScheduleService
     route_mod.url_for = lambda endpoint, **kwargs: f"/{endpoint}"
     try:
         app = Flask(__name__)
         app.secret_key = "aps-test-secret"
         with app.test_request_context("/scheduler/simulate", method="POST", data=form_data):
-            g.db = object()
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
             g.app_logger = None
             g.op_logger = None
             resp = route_mod.simulate_schedule()
         assert getattr(resp, "status_code", 0) in (301, 302), "simulate_schedule 应返回 redirect"
         return dict(captured)
     finally:
-        route_mod.ScheduleService = old_svc
         route_mod.url_for = old_url_for
 
 
@@ -117,7 +106,7 @@ def main() -> None:
     with open(tpl_path, "r", encoding="utf-8") as f:
         tpl = f.read()
     assert 'name="strict_mode"' in tpl, "batches.html 缺少 strict_mode 入口"
-    assert "严格调度参数校验" in tpl, "batches.html 缺少 strict_mode 文案"
+    assert "严格校验排产参数" in tpl, "batches.html 缺少 strict_mode 文案"
 
     print("OK")
 

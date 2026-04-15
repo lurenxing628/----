@@ -23,6 +23,8 @@ from tools.quality_gate_support import (
     architecture_complexity_scan_map,
     architecture_oversize_allowlist_map,
     architecture_oversize_scan_map,
+    architecture_repository_bundle_drift_entries,
+    architecture_request_service_direct_assembly_entries,
     architecture_silent_allowlist_map,
     architecture_silent_scan_entries,
     load_ledger,
@@ -435,6 +437,32 @@ def test_startup_silent_fallback_samples():
     """启动链样本点必须持续命中既定分类与 scope。"""
 
     validate_startup_samples()
+
+
+def test_request_service_target_files_no_direct_assembly():
+    """请求级容器已接管的目标文件不得再出现直接装配。"""
+
+    entries = architecture_request_service_direct_assembly_entries()
+    assert not entries, (
+        "请求级容器目标文件仍存在直接装配:\n"
+        + "\n".join(
+            f"{entry.get('path')}:{entry.get('line')} {entry.get('rule')} {entry.get('target')}"
+            for entry in entries
+        )
+    )
+
+
+def test_repository_bundle_consumption_does_not_drift():
+    """除 ScheduleService.__init__ 代理赋值外，不得扩散 _repos / repos 新消费面。"""
+
+    entries = architecture_repository_bundle_drift_entries()
+    assert not entries, (
+        "检测到新的仓储束消费面:\n"
+        + "\n".join(
+            f"{entry.get('path')}:{entry.get('line')} {entry.get('chain')}"
+            for entry in entries
+        )
+    )
 
 # ─── Fitness 4: 文件/函数规模 ─────────────────────────────────
 

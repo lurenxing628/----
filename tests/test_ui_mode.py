@@ -3,9 +3,11 @@ from __future__ import annotations
 import sqlite3
 from types import SimpleNamespace
 
+import pytest
 from flask import Flask, g
 from jinja2 import DictLoader
 
+from core.services.system import SystemConfigService
 from web import ui_mode as ui_mode_mod
 from web.ui_mode import UI_MODE_COOKIE_KEY, get_ui_mode
 
@@ -31,7 +33,7 @@ def _create_system_config(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _set_ui_mode(conn: sqlite3.Connection, value: str) -> None:
+def _set_ui_mode(conn: sqlite3.Connection, value) -> None:
     conn.execute(
         """
         INSERT INTO SystemConfig (config_key, config_value, description)
@@ -60,6 +62,13 @@ def _template_app() -> Flask:
     return app
 
 
+def _attach_system_config_service(app: Flask, conn: sqlite3.Connection, *, service=None) -> None:
+    g.db = conn
+    g.services = SimpleNamespace(
+        system_config_service=service or SystemConfigService(conn, logger=app.logger),
+    )
+
+
 def test_get_ui_mode_prefers_cookie_over_db() -> None:
     conn = _mem_conn()
     try:
@@ -67,7 +76,7 @@ def test_get_ui_mode_prefers_cookie_over_db() -> None:
         _set_ui_mode(conn, "v1")
         app = _app()
         with app.test_request_context("/", headers={"Cookie": f"{UI_MODE_COOKIE_KEY}=v2"}):
-            g.db = conn
+            _attach_system_config_service(app, conn)
             assert get_ui_mode(default="v1") == "v2"
     finally:
         conn.close()
@@ -80,7 +89,7 @@ def test_get_ui_mode_reads_db_when_cookie_missing() -> None:
         _set_ui_mode(conn, "v1")
         app = _app()
         with app.test_request_context("/"):
-            g.db = conn
+            _attach_system_config_service(app, conn)
             assert get_ui_mode(default="v2") == "v1"
     finally:
         conn.close()
@@ -99,9 +108,29 @@ def test_get_ui_mode_falls_back_to_default_for_invalid_db_value(monkeypatch) -> 
 
         monkeypatch.setattr(app.logger, "warning", _fake_warning)
         with app.test_request_context("/"):
-            g.db = conn
+            _attach_system_config_service(app, conn)
             assert get_ui_mode(default="v1") == "v1"
         assert any("UI 模式数据库配置非法" in msg and "invalid_mode" in msg for msg in warnings), warnings
+    finally:
+        conn.close()
+
+
+def test_get_ui_mode_treats_null_db_value_as_invalid_and_logs_warning(monkeypatch) -> None:
+    conn = _mem_conn()
+    try:
+        _create_system_config(conn)
+        _set_ui_mode(conn, None)
+        app = _app()
+        warnings = []
+
+        def _fake_warning(message, *args, **kwargs):
+            warnings.append(message % args if args else str(message))
+
+        monkeypatch.setattr(app.logger, "warning", _fake_warning)
+        with app.test_request_context("/"):
+            _attach_system_config_service(app, conn)
+            assert get_ui_mode(default="v1") == "v1"
+        assert any("UI 模式数据库配置非法" in msg for msg in warnings), warnings
     finally:
         conn.close()
 
@@ -120,7 +149,7 @@ def test_get_ui_mode_logs_invalid_db_value_once_per_request(monkeypatch) -> None
         monkeypatch.setattr(app.logger, "warning", _fake_warning)
 
         with app.test_request_context("/"):
-            g.db = conn
+            _attach_system_config_service(app, conn)
             assert get_ui_mode(default="v1") == "v1"
             assert get_ui_mode(default="v1") == "v1"
 
@@ -149,10 +178,75 @@ def test_get_ui_mode_logs_warning_when_cookie_read_fails(monkeypatch) -> None:
         monkeypatch.setattr(ui_mode_mod, "request", SimpleNamespace(cookies=_RaisingCookies()))
 
         with app.test_request_context("/"):
-            g.db = conn
+            _attach_system_config_service(app, conn)
             assert get_ui_mode(default="v2") == "v1"
 
         assert any("读取 UI 模式 cookie 失败" in msg for msg in warnings), warnings
+    finally:
+        conn.close()
+
+
+def test_read_ui_mode_missing_without_request_context() -> None:
+    result = ui_mode_mod._read_ui_mode_from_db()
+    assert result.missing is True
+    assert result.mode is None
+
+
+def test_read_ui_mode_missing_when_main_path_has_no_db_and_does_not_touch_services() -> None:
+    app = _app()
+
+    class _ExplodingServices:
+        @property
+        def system_config_service(self):
+            raise AssertionError("无 g.db 的短路路径不应访问容器")
+
+    with app.test_request_context("/"):
+        g.services = _ExplodingServices()
+        result = ui_mode_mod._read_ui_mode_from_db()
+
+    assert result.missing is True
+    assert result.mode is None
+
+
+def test_read_ui_mode_raises_when_db_exists_but_services_missing() -> None:
+    conn = _mem_conn()
+    try:
+        _create_system_config(conn)
+        app = _app()
+        with app.test_request_context("/"):
+            g.db = conn
+            with pytest.raises(RuntimeError, match=r"g\.services"):
+                ui_mode_mod._read_ui_mode_from_db()
+    finally:
+        conn.close()
+
+
+def test_read_ui_mode_raises_when_system_config_service_missing() -> None:
+    app = _app()
+    with app.test_request_context("/"):
+        g.db = object()
+        g.services = SimpleNamespace()
+        with pytest.raises(RuntimeError, match=r"system_config_service"):
+            ui_mode_mod._read_ui_mode_from_db()
+
+
+def test_get_ui_mode_raises_when_system_config_service_access_fails() -> None:
+    conn = _mem_conn()
+    try:
+        _create_system_config(conn)
+        app = _app()
+
+        class _ExplodingServices:
+            @property
+            def system_config_service(self):
+                raise RuntimeError("construct exploded")
+
+        with app.test_request_context("/"):
+            g.db = conn
+            g.services = _ExplodingServices()
+            with pytest.raises(RuntimeError, match=r"system_config_service 构造失败"):
+                get_ui_mode(default="v2")
+
     finally:
         conn.close()
 
@@ -167,24 +261,45 @@ def test_get_ui_mode_logs_warning_when_db_read_fails(monkeypatch) -> None:
         def _fake_warning(message, *args, **kwargs):
             warnings.append(message % args if args else str(message))
 
-        class _ExplodingSystemConfigService:
-            def __init__(self, conn, logger=None):
-                self.conn = conn
-                self.logger = logger
-
-            def get_value(self, key, default=None):
+        class _ReadExplodedSystemConfigService:
+            def get_value_with_presence(self, key):
                 raise RuntimeError(f"db exploded: {key}")
 
         monkeypatch.setattr(app.logger, "warning", _fake_warning)
-        monkeypatch.setattr(ui_mode_mod, "SystemConfigService", _ExplodingSystemConfigService)
 
         with app.test_request_context("/"):
-            g.db = conn
+            _attach_system_config_service(app, conn, service=_ReadExplodedSystemConfigService())
             assert get_ui_mode(default="v2") == "v2"
 
         assert any("读取 UI 模式数据库配置失败" in msg for msg in warnings), warnings
     finally:
         conn.close()
+
+
+def test_read_ui_mode_raises_when_system_config_service_missing_single_query_interface() -> None:
+    app = _app()
+    with app.test_request_context("/"):
+        g.db = object()
+        g.services = SimpleNamespace(system_config_service=SimpleNamespace())
+        with pytest.raises(RuntimeError, match=r"get_value_with_presence"):
+            ui_mode_mod._read_ui_mode_from_db()
+
+
+def test_read_ui_mode_accepts_single_query_service_without_legacy_interfaces() -> None:
+    app = _app()
+
+    class _SingleQueryService:
+        def get_value_with_presence(self, key):
+            assert key == ui_mode_mod.UI_MODE_CONFIG_KEY
+            return True, "v1"
+
+    with app.test_request_context("/"):
+        g.db = object()
+        g.services = SimpleNamespace(system_config_service=_SingleQueryService())
+        result = ui_mode_mod._read_ui_mode_from_db()
+
+    assert result.mode == "v1"
+    assert result.missing is False
 
 
 def test_safe_url_for_logs_warning_on_non_build_error(monkeypatch) -> None:
@@ -239,3 +354,43 @@ def test_render_ui_template_sets_degraded_context_when_v2_env_missing() -> None:
         assert g.ui_template_env_degraded is True
 
     assert rendered == "v2|v1_fallback|1"
+
+
+def test_render_ui_template_logs_warning_when_env_globals_bridge_injection_fails(monkeypatch) -> None:
+    app = _app()
+    warnings = []
+
+    class _ExplodingGlobals(dict):
+        def setdefault(self, key, default=None):
+            raise RuntimeError("globals bridge exploded")
+
+        def __setitem__(self, key, value) -> None:
+            raise RuntimeError("globals bridge exploded")
+
+    class _TemplateStub:
+        def render(self, context):
+            return "rendered"
+
+    class _EnvStub:
+        def __init__(self) -> None:
+            self.globals = _ExplodingGlobals()
+
+        def get_or_select_template(self, template_name_or_list):
+            assert template_name_or_list == "demo.html"
+            return _TemplateStub()
+
+    def _fake_warning(message, *args, **kwargs):
+        warnings.append(message % args if args else str(message))
+
+    monkeypatch.setattr(app.logger, "warning", _fake_warning)
+    monkeypatch.setattr(ui_mode_mod, "get_ui_mode", lambda default=None: "v2")
+    monkeypatch.setattr(ui_mode_mod, "_get_v2_env", lambda current_app: _EnvStub())
+
+    with app.test_request_context("/bridge"):
+        rendered = ui_mode_mod.render_ui_template("demo.html")
+
+    assert rendered == "rendered"
+    assert len(warnings) == 1, warnings
+    assert "模板环境全局函数注入失败" in warnings[0]
+    assert "template=demo.html" in warnings[0]
+    assert "path=/bridge" in warnings[0]
