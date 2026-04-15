@@ -11,9 +11,24 @@ from flask import current_app, g, request, url_for
 
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.errors import ValidationError
-from core.services.system import SystemConfigService
-from core.services.system.system_job_state_query_service import SystemJobStateQueryService
+from core.infrastructure.logging import safe_log
 from core.services.system.system_maintenance_service import _parse_db_dt
+
+
+def _warn_invalid_next_url_once(*, raw: Optional[str], reason: str) -> None:
+    warned = bool(getattr(g, "_aps_invalid_next_url_warned", False))
+    if warned:
+        return
+    g._aps_invalid_next_url_warned = True
+    path = str(request.path or "")
+    safe_log(
+        current_app.logger,
+        "warning",
+        "检测到非法 next 跳转参数，已回退到首页：reason=%s raw=%r path=%s",
+        str(reason or "unknown"),
+        raw,
+        path,
+    )
 
 
 def _safe_next_url(raw: Optional[str]) -> str:
@@ -21,20 +36,26 @@ def _safe_next_url(raw: Optional[str]) -> str:
     安全重定向：
     - 仅允许站内相对路径（禁止 http(s):// 或 //host 形式）
     - 兼容 request.full_path 末尾的 '?'（无查询时）
-    - 空值、非法值统一回退到 dashboard 首页
+    - 空值统一回退到 dashboard 首页；非空非法值会记录 warning 后回退
     """
     s = (raw or "").strip()
     if not s:
         return url_for("dashboard.index")
     if s.endswith("?"):
         s = s[:-1]
+    if s.startswith("//"):
+        _warn_invalid_next_url_once(raw=raw, reason="protocol_relative")
+        return url_for("dashboard.index")
     if any(ch in s for ch in ("\r", "\n", "\x00", "\\")):
+        _warn_invalid_next_url_once(raw=raw, reason="control_or_backslash")
         return url_for("dashboard.index")
     try:
         p = urlparse(s)
         if p.scheme or p.netloc:
+            _warn_invalid_next_url_once(raw=raw, reason="absolute_url")
             return url_for("dashboard.index")
     except Exception:
+        _warn_invalid_next_url_once(raw=raw, reason="parse_failed")
         return url_for("dashboard.index")
     if not s.startswith("/"):
         s = "/" + s
@@ -122,6 +143,54 @@ def _safe_int(value: Optional[str], field: str, default: int, min_v: int, max_v:
     return v
 
 
+_MISSING = object()
+
+
+def _get_request_service(service_attr: str) -> Any:
+    services = getattr(g, "services", None)
+    if services is None:
+        raise RuntimeError("请求上下文缺少 g.services。")
+    attr_name = str(service_attr or "").strip()
+    if not attr_name:
+        raise RuntimeError("请求级服务名不能为空。")
+    class_attr = getattr(type(services), attr_name, _MISSING)
+    instance_attrs = getattr(services, "__dict__", {}) or {}
+    if class_attr is _MISSING and attr_name not in instance_attrs:
+        raise RuntimeError(f"g.services 缺少 {attr_name}。")
+    try:
+        svc = getattr(services, attr_name)
+    except AttributeError as exc:
+        raise RuntimeError(f"g.services 缺少 {attr_name}。") from exc
+    if svc is None:
+        raise RuntimeError(f"g.services 缺少 {attr_name}。")
+    return svc
+
+
+def _get_system_config_service():
+    return _get_request_service("system_config_service")
+
+
+def _get_schedule_history_query_service():
+    return _get_request_service("schedule_history_query_service")
+
+
+def _get_system_job_state_query_service():
+    return _get_request_service("system_job_state_query_service")
+
+
+def _get_operation_log_service():
+    return _get_request_service("operation_log_service")
+
+
+__all__ = [
+    "_get_operation_log_service",
+    "_get_request_service",
+    "_get_schedule_history_query_service",
+    "_get_system_config_service",
+    "_get_system_job_state_query_service",
+]
+
+
 def _get_backup_manager(keep_days: Optional[int] = None) -> BackupManager:
     return BackupManager(
         db_path=current_app.config["DATABASE_PATH"],
@@ -132,12 +201,12 @@ def _get_backup_manager(keep_days: Optional[int] = None) -> BackupManager:
 
 
 def _get_system_cfg_snapshot():
-    svc = SystemConfigService(g.db, logger=current_app.logger)
+    svc = _get_system_config_service()
     return svc.get_snapshot(backup_keep_days_default=int(current_app.config.get("BACKUP_KEEP_DAYS", 7)))
 
 
 def _get_job_state_map() -> Dict[str, Any]:
-    q = SystemJobStateQueryService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
+    q = _get_system_job_state_query_service()
 
     def _get(key: str) -> Optional[Dict[str, Any]]:
         it = q.get(key)

@@ -10,22 +10,11 @@ from core.infrastructure.transaction import TransactionManager
 from core.models import Batch, BatchOperation, ExternalGroup, PartOperation
 from core.models.enums import BatchOperationStatus, BatchStatus, ReadyStatus, SourceType, YesNo
 from core.services.common.normalize import normalize_text
-from data.repositories import (
-    BatchOperationRepository,
-    BatchRepository,
-    ExternalGroupRepository,
-    MachineRepository,
-    OperatorMachineRepository,
-    OperatorRepository,
-    PartOperationRepository,
-    ScheduleHistoryRepository,
-    ScheduleRepository,
-    SupplierRepository,
-)
 
 from . import operation_edit_service as op_edit
 from .freeze_window import build_freeze_window_seed
 from .number_utils import parse_finite_float, to_yes_no
+from .repository_bundle import build_schedule_repository_bundle
 from .resource_pool_builder import build_resource_pool, extend_downtime_map_for_resource_pool, load_machine_downtimes
 from .schedule_input_builder import build_algo_operations
 from .schedule_input_collector import collect_schedule_run_input
@@ -46,17 +35,8 @@ def _normalized_status_text(value: Any) -> str:
     return (normalize_text(value) or "").strip().lower()
 
 
-def _get_snapshot_with_optional_strict_mode(cfg_svc: Any, *, strict_mode: bool) -> Any:
-    try:
-        return cfg_svc.get_snapshot(strict_mode=bool(strict_mode))
-    except TypeError as exc:
-        message = str(exc)
-        if (
-            "strict_mode" in message
-            and ("unexpected keyword argument" in message or "got an unexpected keyword argument" in message)
-        ):
-            return cfg_svc.get_snapshot()
-        raise
+def _get_snapshot_with_strict_mode(cfg_svc: Any, *, strict_mode: bool) -> Any:
+    return cfg_svc.get_snapshot(strict_mode=bool(strict_mode))
 
 
 def _raise_schedule_empty_result(message: str, *, reason: str) -> None:
@@ -81,19 +61,17 @@ class ScheduleService:
         self.op_logger = op_logger
         self.tx_manager = TransactionManager(conn)
 
-        self.batch_repo = BatchRepository(conn, logger=logger)
-        self.op_repo = BatchOperationRepository(conn, logger=logger)
-
-        self.part_op_repo = PartOperationRepository(conn, logger=logger)
-        self.group_repo = ExternalGroupRepository(conn, logger=logger)
-
-        self.machine_repo = MachineRepository(conn, logger=logger)
-        self.operator_repo = OperatorRepository(conn, logger=logger)
-        self.operator_machine_repo = OperatorMachineRepository(conn, logger=logger)
-        self.supplier_repo = SupplierRepository(conn, logger=logger)
-
-        self.schedule_repo = ScheduleRepository(conn, logger=logger)
-        self.history_repo = ScheduleHistoryRepository(conn, logger=logger)
+        self._repos = build_schedule_repository_bundle(conn, logger=logger)
+        self.batch_repo = self._repos.batch_repo
+        self.op_repo = self._repos.op_repo
+        self.part_op_repo = self._repos.part_op_repo
+        self.group_repo = self._repos.group_repo
+        self.machine_repo = self._repos.machine_repo
+        self.operator_repo = self._repos.operator_repo
+        self.operator_machine_repo = self._repos.operator_machine_repo
+        self.supplier_repo = self._repos.supplier_repo
+        self.schedule_repo = self._repos.schedule_repo
+        self.history_repo = self._repos.history_repo
 
     # -------------------------
     # 工具方法
@@ -155,6 +133,12 @@ class ScheduleService:
 
     def get_operation(self, op_id: Any) -> BatchOperation:
         return op_edit.get_operation(self, op_id)
+
+    def get_external_merge_hint_for_op(self, op: BatchOperation) -> Dict[str, Any]:
+        """
+        基于已加载工序对象返回外部工序“合并周期”提示信息，避免列表页逐行重复回库读取同一工序。
+        """
+        return op_edit.get_external_merge_hint_for_op(self, op)
 
     def get_external_merge_hint(self, op_id: Any) -> Dict[str, Any]:
         """
@@ -270,7 +254,7 @@ class ScheduleService:
             strict_mode=bool(strict_mode),
             calendar_service_cls=CalendarService,
             config_service_cls=ConfigService,
-            get_snapshot_with_optional_strict_mode=_get_snapshot_with_optional_strict_mode,
+            get_snapshot_with_strict_mode=_get_snapshot_with_strict_mode,
             build_algo_operations_fn=build_algo_operations,
             build_freeze_window_seed_fn=build_freeze_window_seed,
             load_machine_downtimes_fn=load_machine_downtimes,

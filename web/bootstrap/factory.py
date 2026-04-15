@@ -18,6 +18,7 @@ from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
 from core.infrastructure.migrations.common import fallback_log
 from core.models.enums import YesNo
+from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_templates import ensure_excel_templates
 from web.error_handlers import register_error_handlers
 from web.routes.dashboard import bp as dashboard_bp
@@ -35,6 +36,7 @@ from web.ui_mode import render_ui_template as render_template
 from .launcher import resolve_shared_data_root
 from .paths import runtime_base_dir
 from .plugins import bootstrap_plugins
+from .request_services import RequestServices
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
 from .static_versioning import install_versioned_url_for
 
@@ -279,6 +281,9 @@ def create_app_core(
             _app_log_once(app, "request_started_unavailable", "warning", "请求耗时起点记录失败，当前请求将跳过性能头：%s", exc)
         try:
             req_path = str(request.path or "")
+            # 白名单短路路径只允许走“无业务依赖”的轻量请求：
+            # 不挂载 g.app_logger / g.db / g.op_logger / g.services，避免把静态资源与健康检查误带入请求级容器生命周期。
+            # 若未来某个中间件需要这些请求级对象，则不应复用该白名单短路路径。
             if req_path.startswith("/static") or req_path in {"/system/health", "/system/runtime/shutdown"}:
                 return
         except Exception as exc:
@@ -291,22 +296,51 @@ def create_app_core(
         except Exception as e:
             app.logger.warning(f"维护窗口检测失败，将继续处理请求：{e}")
         g.app_logger = current_app.logger
-        if "db" not in g:
-            g.db = get_connection(app.config["DATABASE_PATH"])
-            g.op_logger = OperationLogger(g.db, logger=current_app.logger)
-            try:
-                from core.services.system import SystemMaintenanceService
 
-                _ = SystemMaintenanceService.run_if_due(
-                    g.db,
-                    db_path=app.config["DATABASE_PATH"],
-                    backup_dir=app.config["BACKUP_DIR"],
-                    backup_keep_days_default=int(app.config.get("BACKUP_KEEP_DAYS", 7)),
-                    logger=app.logger,
-                    op_logger=getattr(g, "op_logger", None),
+        if "db" in g and "services" not in g:
+            raise RuntimeError("请求上下文已有 g.db，但缺少 g.services。")
+        if "db" not in g:
+            conn = None
+            try:
+                conn = get_connection(app.config["DATABASE_PATH"])
+                op_logger = OperationLogger(conn, logger=current_app.logger)
+                try:
+                    from core.services.system import SystemMaintenanceService
+
+                    _ = SystemMaintenanceService.run_if_due(
+                        conn,
+                        db_path=app.config["DATABASE_PATH"],
+                        backup_dir=app.config["BACKUP_DIR"],
+                        backup_keep_days_default=int(app.config.get("BACKUP_KEEP_DAYS", 7)),
+                        logger=app.logger,
+                        op_logger=op_logger,
+                    )
+                except Exception as e:
+                    app.logger.error("系统维护任务执行失败（已忽略）：%s", e)
+
+                services = RequestServices(
+                    db=conn,
+                    app_logger=g.app_logger,
+                    op_logger=op_logger,
+                    get_excel_backend=get_excel_backend,
                 )
-            except Exception as e:
-                app.logger.error(f"系统维护任务执行失败（已忽略）：{e}")
+            except Exception:
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception as close_exc:
+                        _app_log_once(
+                            app,
+                            "request_scope_mount_close_failed",
+                            "warning",
+                            "请求级容器装配失败后的数据库关闭失败，已按清理型尽力而为继续：%s",
+                            close_exc,
+                        )
+                raise
+
+            g.db = conn
+            g.op_logger = op_logger
+            g.services = services
 
     @app.teardown_appcontext
     def _close_db(_exc):
