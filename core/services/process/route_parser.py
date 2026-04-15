@@ -338,10 +338,32 @@ class RouteParser:
             return 1.0, [f"供应商“{supplier_id}”默认周期无效（{raw_default_days!r}），工种“{op_type_name}”已按 1.0 天处理"]
         return float(parsed_default_days), []
 
+    @staticmethod
+    def _effective_supplier_order_key(supplier_id: str) -> Tuple[str]:
+        return (str(supplier_id or "").strip(),)
+
+    @classmethod
+    def _candidate_supplier_should_replace_current(
+        cls,
+        current_supplier_id: Optional[str],
+        candidate_supplier_id: str,
+    ) -> bool:
+        """
+        当前冻结规则：
+        - 同一工种出现多个候选供应商时，按 supplier_id 字典序取最大者作为“有效供应商”；
+        - 该规则是为了让路线解析、预览基线与确认导入保持同口径；
+        - 它表达的是当前兼容排序规则，不等价于更广义的业务优先级。
+        """
+        if current_supplier_id is None:
+            return True
+        return cls._effective_supplier_order_key(candidate_supplier_id) > cls._effective_supplier_order_key(current_supplier_id)
+
     def _build_supplier_map(self) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]]]:
         """
         构建 工种名 -> (supplier_id, default_days) 映射。
-        规则：仅使用 Suppliers.op_type_id 有值且能映射到 OpTypes 的记录。
+        规则：仅使用 Suppliers.op_type_id 有值且能映射到 OpTypes 的记录；
+        若同一工种存在多条供应商记录，则按 supplier_id 字典序取最后一条
+        （即 supplier_id 最大者）作为有效供应商，与预览基线保持一致。
         """
         supplier_map: Dict[str, Tuple[str, float]] = {}
         issues: Dict[str, List[str]] = {}
@@ -358,9 +380,17 @@ class RouteParser:
                 op_type_name=op_type_name,
                 has_default_days=hasattr(supplier, "default_days"),
             )
+            current = supplier_map.get(op_type_name)
+            current_supplier_id = None if current is None else str(current[0] or "").strip()
+            if not self._candidate_supplier_should_replace_current(current_supplier_id, supplier_id):
+                continue
             supplier_map[op_type_name] = (supplier_id, float(default_days))
             if issue_messages:
-                issues[op_type_name] = issue_messages
+                issues[op_type_name] = list(issue_messages)
+            else:
+                # 同一工种按 supplier_id 取“有效供应商”时，必须同步清掉旧候选供应商遗留的错误信息；
+                # 否则 strict_mode 可能因为已被淘汰的低优先级供应商而误报/误拒绝。
+                issues.pop(op_type_name, None)
 
         return supplier_map, issues
 

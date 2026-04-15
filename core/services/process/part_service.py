@@ -123,6 +123,81 @@ class PartService:
             raise ValidationError("工艺路线解析状态不正确，请选择：是 / 否。", field="工艺路线解析状态")
         return self.part_repo.list(route_parsed=route_parsed)
 
+    def _build_route_parse_operation_snapshot(self, op: Any) -> Optional[Dict[str, Any]]:
+        op_type_name = self._normalize_text(getattr(op, "op_type_name", None))
+        if not op_type_name:
+            return None
+        source = (self._normalize_text(getattr(op, "source", None)) or "").strip().lower() or None
+        return {
+            "name": op_type_name,
+            "matched_op_type_id": self._normalize_text(getattr(op, "op_type_id", None)),
+            "source": source,
+        }
+
+    def _build_route_parse_supplier_snapshot(self, op: Any, *, source: Optional[str], op_type_name: str) -> Optional[Dict[str, Any]]:
+        supplier_id = self._normalize_text(getattr(op, "supplier_id", None))
+        if source != SourceType.EXTERNAL.value or not supplier_id:
+            return None
+        return {
+            "supplier_id": supplier_id,
+            "op_type_id": self._normalize_text(getattr(op, "op_type_id", None)),
+            "op_type_name": op_type_name,
+            "default_days": getattr(op, "default_days", None),
+        }
+
+    def _build_route_parse_baseline_entry(self, *, part_no: str, route_raw: Any) -> Dict[str, Any]:
+        parse_result = self.parse(route_raw, part_no=part_no, strict_mode=False)
+        route_op_types: List[Dict[str, Any]] = []
+        suppliers: List[Dict[str, Any]] = []
+        seen_op_type_names = set()
+        seen_supplier_names = set()
+        for op in list(getattr(parse_result, "operations", None) or []):
+            operation_snapshot = self._build_route_parse_operation_snapshot(op)
+            if operation_snapshot is None:
+                continue
+            op_type_name = str(operation_snapshot["name"])
+            if op_type_name not in seen_op_type_names:
+                seen_op_type_names.add(op_type_name)
+                route_op_types.append(operation_snapshot)
+            supplier_snapshot = self._build_route_parse_supplier_snapshot(
+                op,
+                source=operation_snapshot.get("source"),
+                op_type_name=op_type_name,
+            )
+            if supplier_snapshot is None or op_type_name in seen_supplier_names:
+                continue
+            seen_supplier_names.add(op_type_name)
+            suppliers.append(supplier_snapshot)
+        return {"part_no": part_no, "route_op_types": route_op_types, "suppliers": suppliers}
+
+    def build_route_parse_baseline_snapshot(
+        self,
+        *,
+        part_nos: List[str],
+        parts_cache: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        为批次 Excel 预览基线生成“自动补建工序”快照。
+
+        设计约束：
+        - 不在 Route 层复制 RouteParser 的工种/供应商判定规则；
+        - 基线只保留会影响自动补建结果的解析事实；
+        - route_raw 自身的变化由调用方单独快照，避免这里重复携带原始输入。
+        """
+        if not part_nos:
+            return []
+
+        cache = parts_cache if isinstance(parts_cache, dict) else {p.part_no: p for p in self.list()}
+        snapshot: List[Dict[str, Any]] = []
+        for raw_part_no in part_nos:
+            part_no = self._normalize_text(raw_part_no)
+            if not part_no:
+                continue
+            part = cache.get(part_no)
+            route_raw = getattr(part, "route_raw", None) if part is not None else None
+            snapshot.append(self._build_route_parse_baseline_entry(part_no=part_no, route_raw=route_raw))
+        return snapshot
+
     def get(self, part_no: str) -> Part:
         pn = self._normalize_text(part_no)
         if not pn:

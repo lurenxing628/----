@@ -10,7 +10,6 @@ from jinja2 import ChoiceLoader, FileSystemLoader
 from werkzeug.routing.exceptions import BuildError
 
 from core.infrastructure.logging import safe_log
-from core.services.system import SystemConfigService
 from web.bootstrap.static_versioning import EXT_KEY_TEMPLATE_URL_FOR
 from web.viewmodels.page_manuals import build_manual_for_endpoint, resolve_manual_id
 
@@ -114,17 +113,17 @@ def get_manual_url(endpoint: Any = None, src: Any = None) -> Optional[str]:
     return safe_url_for("scheduler.config_manual_page", page=current_endpoint, src=safe_src)
 
 
-def get_full_manual_section_url(endpoint: Any = None, src: Any = None) -> Optional[str]:
+def get_full_manual_section_url(endpoint: Any = None, src: Any = None) -> str:
     current_endpoint = _resolve_manual_endpoint(endpoint)
     if not current_endpoint:
-        return None
+        return ""
     manual = build_manual_for_endpoint(current_endpoint, include_sections=False)
     if not manual:
-        return None
+        return ""
     safe_src = normalize_manual_src(_resolve_manual_src(src))
     base_url = safe_url_for("scheduler.config_manual_page", src=safe_src)
     if not base_url:
-        return None
+        return ""
     anchor = str(manual.get("full_manual_anchor") or "").strip()
     return base_url + anchor if anchor else base_url
 
@@ -209,31 +208,41 @@ def init_ui_mode(app, base_dir: str) -> None:
 def _read_ui_mode_from_db() -> _UiModeDbReadResult:
     """
     从 SystemConfig 读取 ui_mode（v1/v2）。
-    - 无请求上下文 / 无 DB / 无配置值：返回缺失态
-    - 非法值：返回非法态，由调用方决定如何告警并回退
-    - 读取异常：记录 warning，再回退默认值
+    - 无请求上下文 / 无 DB / 无配置记录：返回缺失态
+    - 非法值（包括空值）：返回非法态，由调用方决定如何告警并回退
+    - 请求上下文结构损坏（已有 g.db，但缺少 g.services / system_config_service / 必需接口）：显式抛错
+    - system_config_service 构造异常：显式抛错，避免把请求级容器损坏伪装成“配置缺失”
+    - 配置读取异常：记录 warning，再回退默认值
     """
     if not has_request_context():
         return _UiModeDbReadResult(missing=True)
     conn = getattr(g, "db", None)
     if conn is None:
         return _UiModeDbReadResult(missing=True)
+    services = getattr(g, "services", None)
+    if services is None:
+        raise RuntimeError("请求上下文已有 g.db，但缺少 g.services。")
+
     try:
-        svc = SystemConfigService(conn, logger=getattr(current_app, "logger", None))
-        repo = getattr(svc, "repo", None)
-        repo_get = getattr(repo, "get", None)
-        if callable(repo_get):
-            config_row = repo_get(UI_MODE_CONFIG_KEY)
-            if config_row is None:
-                return _UiModeDbReadResult(missing=True)
-            raw_value = getattr(config_row, "config_value", None)
-        else:
-            raw_value = svc.get_value(UI_MODE_CONFIG_KEY, default=None)
-            if raw_value is None:
-                return _UiModeDbReadResult(missing=True)
+        svc = services.system_config_service
+    except AttributeError as exc:
+        raise RuntimeError("g.services 缺少 system_config_service。") from exc
+    except Exception as exc:
+        raise RuntimeError("g.services.system_config_service 构造失败。") from exc
+
+    if not callable(getattr(svc, "get_value_with_presence", None)):
+        raise RuntimeError("g.services.system_config_service 缺少 get_value_with_presence 接口。")
+
+    try:
+        exists, raw_value = svc.get_value_with_presence(UI_MODE_CONFIG_KEY)
+        if not exists:
+            return _UiModeDbReadResult(missing=True)
     except Exception as exc:
         _log_warning("读取 UI 模式数据库配置失败，已回退默认值：%s", exc)
         return _UiModeDbReadResult(missing=True)
+    if raw_value is None:
+        return _UiModeDbReadResult(missing=False, invalid_raw_value=raw_value)
+
     mode = normalize_ui_mode(raw_value)
     if mode is None:
         return _UiModeDbReadResult(missing=False, invalid_raw_value=raw_value)
@@ -415,8 +424,15 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
         env.globals["get_help_card"] = get_help_card
         env.globals["get_manual_url"] = get_manual_url
         env.globals["get_full_manual_section_url"] = get_full_manual_section_url
-    except Exception:
-        pass
+    except Exception as exc:
+        path = str(getattr(request, "path", "") or "") if has_request_context() else ""
+        _log_warning(
+            "模板环境全局函数注入失败：template=%s，path=%s，ui_template_env=%s，error=%s",
+            _describe_template_name(template_name_or_list),
+            path,
+            str(ui_template_env or ""),
+            exc,
+        )
 
     template = env.get_or_select_template(template_name_or_list)
     return template.render(context)

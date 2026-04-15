@@ -178,6 +178,9 @@ class SystemConfigService:
     def get_value(self, config_key: str, default: Optional[str] = None) -> Optional[str]:
         return self.repo.get_value(config_key, default=default)
 
+    def get_value_with_presence(self, config_key: str) -> Tuple[bool, Optional[str]]:
+        return self.repo.get_value_with_presence(config_key)
+
     def set_value(self, config_key: str, value: Any, description: Optional[str] = None) -> None:
         key = (str(config_key) if config_key is not None else "").strip()
         if not key:

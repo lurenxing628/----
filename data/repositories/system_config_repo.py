@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from core.models import SystemConfig
 
@@ -24,6 +24,16 @@ class SystemConfigRepository(BaseRepository):
             default=default,
         )
         return str(val) if val is not None else default
+
+    def get_value_with_presence(self, config_key: str) -> Tuple[bool, Optional[str]]:
+        row = self.fetchone(
+            "SELECT config_value FROM SystemConfig WHERE config_key = ?",
+            (str(config_key),),
+        )
+        if row is None:
+            return False, None
+        raw = row.get("config_value")
+        return True, (None if raw is None else str(raw))
 
     def list_all(self) -> List[SystemConfig]:
         rows = self.fetchall("SELECT id, config_key, config_value, description, updated_at FROM SystemConfig ORDER BY config_key")

@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 STABLE_DEGRADATION_CODES = (
     "blank_required",
+    "invalid_choice",
     "invalid_number",
     "number_below_minimum",
     "invalid_due_date",

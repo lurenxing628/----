@@ -85,12 +85,25 @@ def _normalize_batch_date_cell(value: Any, field_label: str) -> Dict[str, Any]:
 
 
 def get_batch_row_validate_and_normalize(
-    conn,
+    conn=None,
     *,
     parts_cache: dict | None = None,
     inplace: bool = True,
 ) -> Callable[[dict], str | None]:
-    parts = parts_cache if isinstance(parts_cache, dict) else {p.part_no: p for p in PartRepository(conn).list()}
+    """
+    构建“批次信息”Excel 导入行校验器。
+
+    兼容约定：
+    - 允许沿用旧调用方式：首参位置继续传 conn。
+    - 当 parts_cache 已是 dict 时，conn 可省略。
+    - 若两者都不可用，则显式抛出 ValueError，避免把装配错误伪装成空数据。
+    """
+    if isinstance(parts_cache, dict):
+        parts = parts_cache
+    else:
+        if conn is None:
+            raise ValueError("get_batch_row_validate_and_normalize 缺少 conn 或 parts_cache")
+        parts = {p.part_no: p for p in PartRepository(conn).list()}
 
     def _validate_and_normalize(row: dict) -> str | None:
         target = row if inplace else dict(row)
