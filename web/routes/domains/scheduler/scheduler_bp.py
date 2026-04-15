@@ -4,7 +4,7 @@ from typing import List
 
 from flask import Blueprint, flash
 
-from .enum_display import batch_status_zh, day_type_zh, priority_zh, ready_zh
+from ...enum_display import batch_status_zh, day_type_zh, priority_zh, ready_zh
 
 # 统一蓝图对象：其它拆分文件通过 import bp 来注册路由
 bp = Blueprint("scheduler", __name__)
@@ -50,4 +50,3 @@ def _surface_schedule_warnings(messages: object, *, limit: int = 5) -> None:
     remaining = len(warnings) - len(shown)
     if remaining > 0:
         flash(f"另有 {remaining} 条告警，请到系统历史查看。", "warning")
-

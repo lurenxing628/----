@@ -4,8 +4,9 @@ from flask import current_app, flash, redirect, request
 
 from web.ui_mode import UI_MODE_CONFIG_KEY, UI_MODE_COOKIE_KEY, normalize_ui_mode
 
+from .navigation_utils import _safe_next_url
 from .system_bp import bp
-from .system_utils import _get_system_config_service, _safe_next_url
+from .system_utils import _get_system_config_service
 
 
 @bp.post("/ui-mode")
@@ -52,4 +53,3 @@ def ui_mode_set():
     mode_zh = "现代" if mode == "v2" else "经典"
     flash(f"已切换界面：{mode_zh}。", "success")
     return resp
-

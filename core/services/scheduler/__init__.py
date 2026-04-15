@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from .batch_service import BatchService
 from .calendar_service import CalendarService
-from .config_service import ConfigService
+from .config.config_service import ConfigService
 from .gantt_service import GanttService
 from .resource_dispatch_service import ResourceDispatchService
 from .schedule_service import ScheduleService
@@ -28,4 +28,3 @@ __all__ = [
     "ResourceDispatchService",
     "ScheduleService",
 ]
-

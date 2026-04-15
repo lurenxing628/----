@@ -13,7 +13,7 @@ import importlib.util
 import os
 import re
 import sys
-from typing import Any, Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
 from tools.quality_gate_support import (
     COMPLEXITY_THRESHOLD,
@@ -63,12 +63,12 @@ LOCAL_PARSE_HELPER_ALLOWLIST = {
     "core/algorithms/greedy/scheduler.py:_safe_int",
     "core/services/scheduler/_sched_utils.py:_safe_int",
     "core/services/scheduler/batch_service.py:_safe_float",
-    "core/services/scheduler/config_snapshot.py:_get_float",
-    "core/services/scheduler/config_snapshot.py:_get_int",
-    "core/services/scheduler/config_validator.py:_get_float",
-    "core/services/scheduler/config_validator.py:_get_int",
-    "core/services/scheduler/schedule_optimizer_steps.py:_cfg_float",
-    "core/services/scheduler/schedule_optimizer_steps.py:_cfg_int",
+    "core/services/scheduler/config/config_snapshot.py:_get_float",
+    "core/services/scheduler/config/config_snapshot.py:_get_int",
+    "core/services/scheduler/config/config_validator.py:_get_float",
+    "core/services/scheduler/config/config_validator.py:_get_int",
+    "core/services/scheduler/run/schedule_optimizer_steps.py:_cfg_float",
+    "core/services/scheduler/run/schedule_optimizer_steps.py:_cfg_int",
     "core/services/system/system_config_service.py:_get_int",
 }
 

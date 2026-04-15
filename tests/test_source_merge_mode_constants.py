@@ -91,8 +91,8 @@ def test_target_files_have_no_source_merge_mode_quoted_literals() -> None:
     """
     repo_root = Path(__file__).resolve().parents[1]
     targets = [
-        repo_root / "core/services/scheduler/schedule_optimizer.py",
-        repo_root / "core/services/scheduler/freeze_window.py",
+        repo_root / "core/services/scheduler/run/schedule_optimizer.py",
+        repo_root / "core/services/scheduler/run/freeze_window.py",
         repo_root / "core/services/report/calculations.py",
         repo_root / "web/routes/process_parts.py",
         repo_root / "web/routes/process_excel_op_types.py",
@@ -104,4 +104,3 @@ def test_target_files_have_no_source_merge_mode_quoted_literals() -> None:
         for t in tokens:
             assert f"'{t}'" not in text, f"{p.as_posix()} 存在裸字符串 {t!r}"
             assert f'"{t}"' not in text, f"{p.as_posix()} 存在裸字符串 {t!r}"
-

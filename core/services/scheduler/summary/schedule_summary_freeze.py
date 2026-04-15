@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.models.enums import YesNo
 
-from .number_utils import to_yes_no
+from ..number_utils import to_yes_no
 
 
 def _cfg_freeze_window_state(cfg: Any) -> Tuple[bool, int]:

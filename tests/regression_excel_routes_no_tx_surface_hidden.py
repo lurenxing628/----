@@ -25,7 +25,7 @@ def _assert_no_tx_hidden(path: Path) -> None:
 def main() -> None:
     repo_root = Path(find_repo_root())
     targets = [
-        repo_root / "web" / "routes" / "scheduler_excel_batches.py",
+        repo_root / "web" / "routes" / "domains" / "scheduler" / "scheduler_excel_batches.py",
         repo_root / "web" / "routes" / "personnel_excel_operator_calendar.py",
     ]
     for p in targets:
@@ -35,4 +35,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

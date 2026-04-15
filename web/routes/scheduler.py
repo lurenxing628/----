@@ -1,23 +1,9 @@
-"""
-排产调度路由入口文件（保持对外 bp/URL 不变）。
-
-说明：为了降低单文件复杂度，把原 `web/routes/scheduler.py` 按职责拆分：
-- `scheduler_bp.py`：bp + 通用中文显示
-- `scheduler_pages.py`：页面与非 Excel 路由
-- `scheduler_excel_calendar.py`：工作日历 Excel
-- `scheduler_excel_batches.py`：批次 Excel
-"""
+"""Scheduler route entrypoint with stable public ``bp`` export."""
 
 from __future__ import annotations
 
-from . import scheduler_excel_batches as _excel_batches  # noqa: F401
-from . import scheduler_excel_calendar as _excel_calendar  # noqa: F401
-from . import scheduler_gantt as _gantt  # noqa: F401
-
-# 导入子模块以注册路由（side-effect）
-from . import scheduler_pages as _pages  # noqa: F401
-from . import scheduler_week_plan as _week_plan  # noqa: F401
-from .scheduler_bp import bp
+# Import the domain aggregator for route registration side effects.
+from .domains.scheduler import scheduler_pages as _pages  # noqa: F401
+from .domains.scheduler.scheduler_bp import bp
 
 __all__ = ["bp"]
-

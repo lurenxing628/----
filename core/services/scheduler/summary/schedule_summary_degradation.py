@@ -6,7 +6,7 @@ from core.models.enums import YesNo
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
 
-from .number_utils import to_yes_no
+from ..number_utils import to_yes_no
 
 _FREEZE_WINDOW_STATE_ACTIVE = "active"
 

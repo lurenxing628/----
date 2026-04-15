@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from flask import current_app, g, jsonify, request, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
 from web.ui_mode import render_ui_template as render_template
 
-from .normalizers import normalize_version_or_latest
+from ...normalizers import normalize_version_or_latest
 from .scheduler_bp import bp
 
 
@@ -100,4 +100,3 @@ def gantt_data():
         return jsonify(
             {"success": False, "error": {"code": "UNKNOWN", "message": "甘特图数据生成失败，请稍后重试。"}}
         ), 500
-

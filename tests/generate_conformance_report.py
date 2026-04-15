@@ -5,7 +5,7 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 
 def find_repo_root():
@@ -208,7 +208,7 @@ def _check_backup_on_exit(repo_root: str) -> CheckResult:
 
 
 def _check_scheduler_config_defaults(repo_root: str) -> CheckResult:
-    path = os.path.join(repo_root, "core", "services", "scheduler", "config_service.py")
+    path = os.path.join(repo_root, "core", "services", "scheduler", "config", "config_service.py")
     txt = _read_text(path)
     ok = (
         "DEFAULT_SORT_STRATEGY = \"priority_first\"" in txt
@@ -216,7 +216,7 @@ def _check_scheduler_config_defaults(repo_root: str) -> CheckResult:
         and "DEFAULT_DUE_WEIGHT = 0.5" in txt
         and "DEFAULT_READY_WEIGHT = 0.1" in txt
     )
-    evidence = ["`core/services/scheduler/config_service.py` 默认值片段："]
+    evidence = ["`core/services/scheduler/config/config_service.py` 默认值片段："]
     # 抽取 DEFAULT_* 区域
     lines = txt.splitlines()
     start = None
@@ -255,9 +255,9 @@ def _check_scheduler_schedule_logging(repo_root: str) -> CheckResult:
     # 排产落库+留痕逻辑在 scheduler 内部已按职责拆分：
     # - 原子落库（Schedule + 状态更新 + ScheduleHistory）
     # - 操作日志（OperationLogs[action=schedule/simulate]）
-    path = os.path.join(repo_root, "core", "services", "scheduler", "schedule_persistence.py")
+    path = os.path.join(repo_root, "core", "services", "scheduler", "run", "schedule_persistence.py")
     txt = _read_text(path)
-    evidence = ["`core/services/scheduler/schedule_persistence.py`（AST）排产留痕检查："]
+    evidence = ["`core/services/scheduler/run/schedule_persistence.py`（AST）排产留痕检查："]
 
     try:
         tree = ast.parse(txt, filename=path)
@@ -424,25 +424,26 @@ def _check_architecture_layers(repo_root: str) -> CheckResult:
 
     route_dir = os.path.join(repo_root, "web", "routes")
     if os.path.isdir(route_dir):
-        for fname in os.listdir(route_dir):
-            if not fname.endswith(".py") or fname.startswith("__"):
-                continue
-            fpath = os.path.join(route_dir, fname)
-            try:
-                txt = _read_text(fpath)
-            except Exception:
-                continue
-            for i, line in enumerate(txt.splitlines(), 1):
-                stripped = line.strip()
-                if stripped.startswith("#"):
+        for dirpath, _, filenames in os.walk(route_dir):
+            for fname in filenames:
+                if not fname.endswith(".py") or fname.startswith("__"):
                     continue
-                if re.search(r"\bcursor\.execute\b", stripped):
-                    violations.append(f"web/routes/{fname}:{i} - route 层直接执行 cursor.execute")
-                if re.search(r"\bfetchone\b", stripped) and "BaseRepository" not in txt:
-                    violations.append(f"web/routes/{fname}:{i} - route 层直接调用 fetchone")
-                if re.search(r"\bconn\.execute\b", stripped):
-                    violations.append(f"web/routes/{fname}:{i} - route 层直接执行 conn.execute")
-
+                fpath = os.path.join(dirpath, fname)
+                try:
+                    txt = _read_text(fpath)
+                except Exception:
+                    continue
+                rel = os.path.relpath(fpath, repo_root).replace("\\", "/")
+                for i, line in enumerate(txt.splitlines(), 1):
+                    stripped = line.strip()
+                    if stripped.startswith("#"):
+                        continue
+                    if re.search(r"\bcursor\.execute\b", stripped):
+                        violations.append(f"{rel}:{i} - route 层直接执行 cursor.execute")
+                    if re.search(r"\bfetchone\b", stripped) and "BaseRepository" not in txt:
+                        violations.append(f"{rel}:{i} - route 层直接调用 fetchone")
+                    if re.search(r"\bconn\.execute\b", stripped):
+                        violations.append(f"{rel}:{i} - route 层直接执行 conn.execute")
     svc_base = os.path.join(repo_root, "core", "services")
     if os.path.isdir(svc_base):
         for dirpath, _, filenames in os.walk(svc_base):
@@ -731,4 +732,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

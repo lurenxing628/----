@@ -1,7 +1,7 @@
 # 实现一致性对标报告（实现 vs 开发文档规划 + 架构合规）
 
-- 生成时间：2026-03-16 15:43:08
-- 仓库根目录：`D:\Github\APS Test`
+- 生成时间：2026-04-15 22:11:55
+- 仓库根目录：`C:\Users\lurenxing\.limcode\worktrees\APS-Test\sp05-path-topology`
 
 ## 总结
 - 检查项总数：13
@@ -83,7 +83,7 @@
 - **结果**：通过
 - **严重性**：INFO
 - **证据**：
-  - `core/services/scheduler/config_service.py` 默认值片段：
+  - `core/services/scheduler/config/config_service.py` 默认值片段：
 ```
   -     DEFAULT_SORT_STRATEGY = "priority_first"
   -     DEFAULT_PRIORITY_WEIGHT = 0.4
@@ -110,11 +110,11 @@
 - **结果**：通过
 - **严重性**：INFO
 - **证据**：
-  - `core/services/scheduler/schedule_persistence.py`（AST）排产留痕检查：
-  - - persist_schedule(): line=187
-  - - with *.transaction(): line=215
-  - - history_repo.create(...): line=132 inside_tx=True
-  - - op_logger.info(...): line=178 action_ifexp_ok=True
+  - `core/services/scheduler/run/schedule_persistence.py`（AST）排产留痕检查：
+  - - persist_schedule(): line=244
+  - - with *.transaction(): line=284
+  - - history_repo.create(...): line=189 inside_tx=True
+  - - op_logger.info(...): line=235 action_ifexp_ok=True
 
 ### 分层架构合规（route 不直接操作 DB，service 不导入 Flask request）
 - **结果**：通过
@@ -134,8 +134,14 @@
 - **严重性**：MINOR
 - **说明**：建议按职责拆分超大文件（参考 scheduler.py 拆分先例）。
 - **证据**：
-  - 超过 500 行的文件数：1
-  - core/services/scheduler/schedule_optimizer.py（540 行）
+  - 超过 500 行的文件数：7
+  - web/routes/domains/scheduler/scheduler_excel_calendar.py（521 行）
+  - core/services/personnel/operator_machine_service.py（505 行）
+  - core/services/process/part_service.py（599 行）
+  - core/services/process/unit_excel/template_builder.py（569 行）
+  - core/services/scheduler/config/config_service.py（568 行）
+  - core/services/scheduler/run/schedule_optimizer.py（582 行）
+  - core/infrastructure/database.py（611 行）
 
 ### 模板目录完整性（templates/ 子目录与模块对齐）
 - **结果**：通过
@@ -148,7 +154,7 @@
 - **结果**：通过
 - **严重性**：INFO
 - **证据**：
-  - url_map 路由总数：176
+  - url_map 路由总数：178
   - 关键路由缺失：无
 
 ## 差异项清单（便于验收沟通/修复排期）
