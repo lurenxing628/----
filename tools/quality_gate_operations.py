@@ -22,13 +22,21 @@ from .quality_gate_scan import (
     complexity_scan_map,
     scan_complexity_entries,
     scan_oversize_entries,
+    scan_repository_bundle_drift_entries,
+    scan_request_service_direct_assembly_entries,
     scan_silent_fallback_entries,
     validate_startup_samples,
 )
 from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
+    REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS,
+    REQUEST_SERVICE_SCAN_SCOPE_PATTERNS,
+    REQUEST_SERVICE_TARGET_ALLOWED_HELPERS,
+    REQUEST_SERVICE_TARGET_FILES,
+    REQUEST_SERVICE_TARGET_SYMBOLS,
     STARTUP_SCOPE_PATTERNS,
     QualityGateError,
+    collect_globbed_files,
     collect_quality_rule_files,
     collect_startup_scope_files,
     is_startup_scope_path,
@@ -373,3 +381,43 @@ def architecture_oversize_scan_map() -> Dict[str, Dict[str, Any]]:
 
 def architecture_complexity_scan_map() -> Dict[str, Dict[str, Any]]:
     return complexity_scan_map(collect_quality_rule_files())
+
+
+def _matches_allowed_request_service_helper(entry: Dict[str, Any], helper: Dict[str, Any]) -> bool:
+    return (
+        str(entry.get("path") or "") == str(helper.get("path") or "")
+        and str(entry.get("symbol") or "") == str(helper.get("symbol") or "")
+        and int(entry.get("line") or 0) == int(helper.get("line") or 0)
+        and str(entry.get("rule") or "") == str(helper.get("rule") or "")
+        and str(entry.get("target") or "") == str(helper.get("target") or "")
+    )
+
+
+def architecture_request_service_direct_assembly_entries() -> List[Dict[str, Any]]:
+    target_files = set(REQUEST_SERVICE_TARGET_FILES)
+    target_symbols = {
+        str(path): set(str(symbol) for symbol in symbols)
+        for path, symbols in REQUEST_SERVICE_TARGET_SYMBOLS.items()
+    }
+    allowed_helpers = [dict(item) for item in REQUEST_SERVICE_TARGET_ALLOWED_HELPERS]
+    entries = scan_request_service_direct_assembly_entries(collect_globbed_files(REQUEST_SERVICE_SCAN_SCOPE_PATTERNS))
+    return [
+        entry
+        for entry in entries
+        if (
+            str(entry.get("path")) in target_files
+            or str(entry.get("symbol")) in target_symbols.get(str(entry.get("path")), set())
+        )
+        and not (
+            str(entry.get("rule")) == "g_db_first_arg_helper"
+            and any(_matches_allowed_request_service_helper(entry, helper) for helper in allowed_helpers)
+        )
+        and not (
+            str(entry.get("path")) in target_symbols
+            and str(entry.get("symbol")) not in target_symbols.get(str(entry.get("path")), set())
+        )
+    ]
+
+
+def architecture_repository_bundle_drift_entries() -> List[Dict[str, Any]]:
+    return scan_repository_bundle_drift_entries(collect_globbed_files(REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS))

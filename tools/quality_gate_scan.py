@@ -5,8 +5,9 @@ import hashlib
 import importlib
 import importlib.util
 import json
+import re
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
 from .quality_gate_ledger import entry_sort_key
 from .quality_gate_shared import (
@@ -16,10 +17,13 @@ from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
     FALLBACK_KIND_VALUES,
     FILE_SIZE_LIMIT,
+    REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS,
+    REQUEST_SERVICE_SCAN_SCOPE_PATTERNS,
     STARTUP_SAMPLE_EXPECTATIONS,
     UI_MODE_SCOPE_TAG_VALUES,
     UI_MODE_STARTUP_GUARD_SYMBOLS,
     QualityGateError,
+    collect_globbed_files,
     collect_startup_scope_files,
     read_text_file,
     slugify,
@@ -438,6 +442,294 @@ def validate_startup_samples(entries: Optional[Sequence[Dict[str, Any]]] = None)
     }
 
 
+def _is_name(node: Optional[ast.AST], name: str) -> bool:
+    return isinstance(node, ast.Name) and str(node.id) == str(name)
+
+
+def _scope_key(node: ast.AST) -> str:
+    parts = []
+    current = node
+    while hasattr(current, "_ast_parent"):
+        current = current._ast_parent  # type: ignore[attr-defined]
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            parts.append("{}@{}".format(current.name, int(getattr(current, "lineno", 0) or 0)))
+    if not parts:
+        return "<module>"
+    parts.reverse()
+    return "::".join(parts)
+
+
+def _is_g_db_expr(node: Optional[ast.AST]) -> bool:
+    return isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and str(node.value.id) == "g" and str(node.attr) == "db"
+
+
+def _resolve_request_conn_alias(value: Any, aliases: Dict[str, str]) -> Optional[str]:
+    if _is_g_db_expr(value):
+        return "g.db"
+    if isinstance(value, ast.Name):
+        alias_target = aliases.get(str(value.id))
+        if alias_target:
+            return alias_target
+        if str(value.id) == "conn":
+            return "conn"
+    return None
+
+
+def _keyword_arg_value(node: ast.Call, names: Set[str]) -> Optional[ast.AST]:
+    for keyword in node.keywords:
+        if str(keyword.arg or "") in names:
+            return keyword.value
+    return None
+
+
+def _collect_name_bindings(body: Sequence[ast.stmt]) -> List[Tuple[str, Any]]:
+    bindings = []
+    for stmt in body:
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+            target = stmt.targets[0]
+            if isinstance(target, ast.Name):
+                bindings.append((str(target.id), stmt.value))
+            continue
+        if isinstance(stmt, ast.ImportFrom):
+            module_prefix = ("." * int(getattr(stmt, "level", 0) or 0)) + str(getattr(stmt, "module", "") or "")
+            for alias in stmt.names:
+                if str(alias.name or "") == "*":
+                    continue
+                alias_name = str(alias.asname or alias.name.split(".")[-1])
+                qualified_name = f"{module_prefix}.{alias.name}" if module_prefix else str(alias.name)
+                bindings.append((alias_name, qualified_name))
+            continue
+        if isinstance(stmt, ast.Import):
+            for alias in stmt.names:
+                alias_name = str(alias.asname or alias.name.split(".")[-1])
+                bindings.append((alias_name, str(alias.name)))
+    return bindings
+
+
+def _resolve_alias_map(
+    assignments: Sequence[Tuple[str, Any]],
+    resolver: Callable[[Any, Dict[str, str]], Optional[str]],
+    *,
+    base_aliases: Optional[Dict[str, str]] = None,
+) -> Dict[str, str]:
+    aliases = dict(base_aliases or {})
+    changed = True
+    while changed:
+        changed = False
+        for alias_name, value in assignments:
+            resolved = resolver(value, aliases)
+            if not resolved or aliases.get(alias_name) == resolved:
+                continue
+            aliases[alias_name] = resolved
+            changed = True
+    return aliases
+
+
+def _collect_scoped_aliases(
+    tree: ast.AST,
+    resolver: Callable[[Any, Dict[str, str]], Optional[str]],
+) -> Dict[str, Dict[str, str]]:
+    module_assignments = _collect_name_bindings(list(getattr(tree, "body", []))) if isinstance(tree, ast.Module) else []
+    module_aliases = _resolve_alias_map(module_assignments, resolver)
+    scoped_aliases: Dict[str, Dict[str, str]] = {"<module>": dict(module_aliases)}
+    assignments_by_scope: Dict[str, List[Tuple[str, Any]]] = defaultdict(list)
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.Import, ast.ImportFrom)):
+            continue
+        scope = _scope_key(node)
+        if scope == "<module>":
+            continue
+        if isinstance(node, ast.Assign):
+            assignments_by_scope[scope].extend(_collect_name_bindings([node]))
+            continue
+        assignments_by_scope[scope].extend(_collect_name_bindings([node]))
+    for scope, assignments in assignments_by_scope.items():
+        scoped_aliases[scope] = _resolve_alias_map(assignments, resolver, base_aliases=module_aliases)
+    return scoped_aliases
+
+
+def _resolve_request_service_alias(value: Any, aliases: Dict[str, str]) -> Optional[str]:
+    if isinstance(value, str):
+        target = value
+    elif isinstance(value, ast.Name):
+        alias_target = aliases.get(str(value.id))
+        if alias_target:
+            return alias_target
+        target = _call_target_name(value)
+    else:
+        target = _call_target_name(value)
+    tail = target.split(".")[-1]
+    if tail.endswith(("Service", "Repository")) or tail in {"ExcelService", "get_excel_backend"}:
+        return target
+    return None
+
+
+def scan_request_service_direct_assembly_entries(paths: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
+    if paths is None:
+        paths = collect_globbed_files(REQUEST_SERVICE_SCAN_SCOPE_PATTERNS)
+    entries = []
+    for rel_path in sorted(set([str(path).replace("\\", "/") for path in paths])):
+        tree = _ast_tree_for_file(rel_path)
+        source_lines = read_text_file(rel_path).splitlines()
+        scoped_aliases = _collect_scoped_aliases(tree, _resolve_request_service_alias)
+        scoped_conn_aliases = _collect_scoped_aliases(tree, _resolve_request_conn_alias)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            aliases = scoped_aliases.get(_scope_key(node), scoped_aliases.get("<module>", {}))
+            if isinstance(node.func, ast.Name) and str(node.func.id) in aliases:
+                target = aliases[str(node.func.id)]
+            else:
+                target = _call_target_name(node.func)
+            tail = target.split(".")[-1]
+            first_arg = node.args[0] if node.args else _keyword_arg_value(node, {"conn", "db"})
+            conn_aliases = scoped_conn_aliases.get(_scope_key(node), scoped_conn_aliases.get("<module>", {}))
+            first_arg_source = _resolve_request_conn_alias(first_arg, conn_aliases)
+            conn_keyword_arg = _keyword_arg_value(node, {"conn", "db"})
+            conn_keyword_source = _resolve_request_conn_alias(conn_keyword_arg, conn_aliases)
+            rule = None
+            if tail.endswith(("Service", "Repository")) and (
+                first_arg_source == "g.db" or conn_keyword_source == "g.db"
+            ):
+                rule = "service_or_repository_g_db"
+            elif tail.endswith(("Service", "Repository")) and (first_arg_source == "conn" or conn_keyword_source == "conn"):
+                rule = "service_or_repository_conn"
+            elif tail == "ExcelService":
+                rule = "excel_service"
+            elif tail == "get_excel_backend":
+                rule = "get_excel_backend"
+            elif (
+                (first_arg_source == "g.db" or conn_keyword_source == "g.db")
+                and not tail.endswith(("Service", "Repository"))
+                and (tail[:1].islower() or tail.startswith("_"))
+            ):
+                rule = "g_db_first_arg_helper"
+            if rule is None:
+                continue
+            line_no = int(getattr(node, "lineno", 0) or 0)
+            excerpt = source_lines[line_no - 1].strip() if 0 < line_no <= len(source_lines) else ""
+            entries.append(
+                {
+                    "path": rel_path,
+                    "line": line_no,
+                    "symbol": _find_enclosing_symbol(node),
+                    "rule": rule,
+                    "target": tail,
+                    "excerpt": excerpt,
+                }
+            )
+    return sorted(entries, key=entry_sort_key)
+
+
+def _is_repository_bundle_root_chain(chain: str) -> bool:
+    return chain.endswith("._repos") or chain.endswith(".repos")
+
+
+def _is_repository_bundle_chain(chain: str) -> bool:
+    return _is_repository_bundle_root_chain(chain) or "._repos." in chain or ".repos." in chain
+
+
+def _outermost_attribute(node: ast.Attribute) -> ast.Attribute:
+    current = node
+    while True:
+        parent = getattr(current, "_ast_parent", None)
+        if not isinstance(parent, ast.Attribute) or parent.value is not current:
+            return current
+        current = parent
+
+
+def _is_allowed_schedule_service_repo_proxy(rel_path: str, node: ast.Attribute, chain: str) -> bool:
+    if rel_path != "core/services/scheduler/schedule_service.py":
+        return False
+    if _find_enclosing_symbol(node) != "__init__":
+        return False
+    outer = _outermost_attribute(node)
+    outer_chain = _call_target_name(outer)
+    if chain == "self._repos":
+        parent = getattr(node, "_ast_parent", None)
+        if (
+            isinstance(parent, ast.Assign)
+            and len(parent.targets) == 1
+            and parent.targets[0] is node
+            and _call_target_name(parent.value) == "build_schedule_repository_bundle"
+        ):
+            return True
+    if not outer_chain.startswith("self._repos."):
+        return False
+    parent = getattr(outer, "_ast_parent", None)
+    if not isinstance(parent, ast.Assign) or parent.value is not outer or len(parent.targets) != 1:
+        return False
+    lhs = parent.targets[0]
+    if not isinstance(lhs, ast.Attribute):
+        return False
+    lhs_chain = _call_target_name(lhs)
+    return lhs_chain.startswith("self.") and lhs_chain.split(".")[-1] == outer_chain.split(".")[-1]
+
+
+def _resolve_repository_bundle_alias(value: Any, aliases: Dict[str, str]) -> Optional[str]:
+    if isinstance(value, str):
+        chain = value
+    elif isinstance(value, ast.Name):
+        return aliases.get(str(value.id))
+    else:
+        chain = _call_target_name(value)
+    if _is_repository_bundle_root_chain(chain):
+        return chain
+    return None
+
+
+def _alias_resolved_chain(node: ast.Attribute, aliases: Dict[str, str]) -> Optional[str]:
+    chain = _call_target_name(node)
+    root, dot, remainder = chain.partition(".")
+    if not dot:
+        return None
+    source = aliases.get(root)
+    if not source:
+        return None
+    return source + "." + remainder
+
+
+def scan_repository_bundle_drift_entries(paths: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
+    if paths is None:
+        paths = collect_globbed_files(REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS)
+    entries = []
+    for rel_path in sorted(set([str(path).replace("\\", "/") for path in paths])):
+        tree = _ast_tree_for_file(rel_path)
+        source_lines = read_text_file(rel_path).splitlines()
+        scoped_aliases = _collect_scoped_aliases(tree, _resolve_repository_bundle_alias)
+        for node in ast.walk(tree):
+            scope_aliases = scoped_aliases.get(_scope_key(node), scoped_aliases.get("<module>", {}))
+            if isinstance(node, ast.Attribute):
+                chain = _call_target_name(node)
+                resolved_chain = _alias_resolved_chain(node, scope_aliases)
+                if not _is_repository_bundle_chain(chain) and not (resolved_chain and _is_repository_bundle_chain(resolved_chain)):
+                    continue
+                if _is_repository_bundle_chain(chain) and _is_allowed_schedule_service_repo_proxy(rel_path, node, chain):
+                    continue
+            elif isinstance(node, ast.Return):
+                if isinstance(node.value, ast.Attribute) and _is_repository_bundle_chain(_call_target_name(node.value)):
+                    continue
+                resolved_chain = _resolve_repository_bundle_alias(cast(ast.AST, node.value), scope_aliases) if node.value is not None else None
+                if not resolved_chain:
+                    continue
+                chain = resolved_chain
+            else:
+                continue
+            line_no = int(getattr(node, "lineno", 0) or 0)
+            excerpt = source_lines[line_no - 1].strip() if 0 < line_no <= len(source_lines) else ""
+            entries.append(
+                {
+                    "path": rel_path,
+                    "line": line_no,
+                    "symbol": _find_enclosing_symbol(node),
+                    "chain": chain,
+                    "resolved_chain": resolved_chain if isinstance(node, ast.Attribute) else resolved_chain,
+                    "excerpt": excerpt,
+                }
+            )
+    return sorted(entries, key=entry_sort_key)
+
+
 def complexity_scan_map(paths: Sequence[str], include_all: bool = False) -> Dict[str, Dict[str, Any]]:
     if importlib.util.find_spec("radon") is None:
         raise QualityGateError("缺少 radon，无法执行复杂度扫描")
@@ -492,6 +784,8 @@ __all__ = [
     "scan_complexity_entries",
     "scan_oversize_entries",
     "scan_silent_fallback_entries",
+    "scan_request_service_direct_assembly_entries",
+    "scan_repository_bundle_drift_entries",
     "ui_mode_scope_tag",
     "validate_startup_samples",
     "complexity_scan_map",

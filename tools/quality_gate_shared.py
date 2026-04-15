@@ -33,6 +33,40 @@ CORE_DIRS = [
 STARTUP_SCOPE_PATTERNS = ["web/bootstrap/**/*.py", "web/ui_mode.py"]
 UI_MODE_STARTUP_GUARD_SYMBOLS = {"init_ui_mode", "_read_ui_mode_from_db", "get_ui_mode"}
 
+REQUEST_SERVICE_SCAN_SCOPE_PATTERNS = [
+    "web/routes/**/*.py",
+    "web/ui_mode.py",
+    "tests/run_real_db_replay_e2e.py",
+    "tests/run_complex_excel_cases_e2e.py",
+]
+REQUEST_SERVICE_TARGET_FILES = [
+    "web/routes/scheduler_run.py",
+    "web/routes/dashboard.py",
+    "web/routes/scheduler_analysis.py",
+    "web/routes/material.py",
+    "web/routes/scheduler_batches.py",
+    "web/routes/scheduler_batch_detail.py",
+    "web/routes/scheduler_ops.py",
+    "web/routes/scheduler_gantt.py",
+    "web/routes/scheduler_week_plan.py",
+    "web/routes/scheduler_config.py",
+    "web/routes/scheduler_excel_batches.py",
+    "web/routes/system_backup.py",
+    "web/routes/system_history.py",
+    "web/routes/system_logs.py",
+    "web/routes/system_plugins.py",
+    "web/routes/system_ui_mode.py",
+    "web/routes/system_utils.py",
+    "web/ui_mode.py",
+]
+REQUEST_SERVICE_TARGET_SYMBOLS = {
+    "tests/run_real_db_replay_e2e.py": ["_create_test_app", "_open_db"],
+    "tests/run_complex_excel_cases_e2e.py": ["create_test_app", "_open_db"],
+}
+# 当前目标文件已无批准保留的 helper 直连；如后续需要新增例外，必须以精确坐标登记。
+REQUEST_SERVICE_TARGET_ALLOWED_HELPERS = []
+REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS = ["core/services/scheduler/**/*.py", "tests/**/*.py", "tools/**/*.py", "web/routes/**/*.py"]
+
 FALLBACK_KIND_VALUES = {
     "silent_swallow",
     "silent_default_fallback",
@@ -121,8 +155,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/factory.py",
         symbol="_close_db",
-        line_start=317,
-        line_end=318,
+        line_start=351,
+        line_end=352,
         fallback_kind="cleanup_best_effort",
     ),
     SilentFallbackSample(
@@ -135,16 +169,16 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/ui_mode.py",
         symbol="_read_ui_mode_from_db",
-        line_start=234,
-        line_end=236,
+        line_start=242,
+        line_end=244,
         fallback_kind="observable_degrade",
         scope_tag="startup_guard",
     ),
     SilentFallbackSample(
         path="web/ui_mode.py",
         symbol="safe_url_for",
-        line_start=339,
-        line_end=346,
+        line_start=348,
+        line_end=355,
         fallback_kind="observable_degrade",
         scope_tag="render_bridge",
     ),

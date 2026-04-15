@@ -97,10 +97,9 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
 
         ## SP04 人工补充记录
 
-        - 已核实 `web/routes/scheduler_batches.py` 现状确实直接使用 `ScheduleHistoryQueryService`，该消费面已在 SP04 子 plan 列入。
-        - 当前同一直接装配搜索口径还命中 `web/routes/scheduler_analysis.py`、`web/routes/system_history.py`；若 SP04 本批不切容器，阶段 5 必须继续入账并交后续批次清零。
-        - `web/ui_mode.py:_read_ui_mode_from_db()` 中 `repo = getattr(svc, "repo", None)` / `repo_get = getattr(repo, "get", None)` 防御链属于遗留读取方式，不是 SP04 新增问题；SP04 只要求容器化时保留行为并补注释标记为后续可清理债务。
-        - `web/routes/scheduler_excel_batches.py` 中两处 `get_batch_row_validate_and_normalize(g.db, parts_cache=parts, inplace=True)` 不属于原先 `Service/Repository` 搜索模式；当前已明确按遗留 `g.db` 位置参数调用处理，在阶段 5 单列入账，并注明“`parts_cache` 非空时 `conn` 当前不活跃、签名改动跨层暂缓”。
+        - 已核实 `web/routes/scheduler_batches.py`、`web/routes/scheduler_analysis.py`、`web/routes/system_history.py` 当前已统一改为通过 `g.services` 取查询服务，不再保留 SP04 初期的直接装配形态。
+        - `web/ui_mode.py:_read_ui_mode_from_db()` 当前已收口到 `g.services.system_config_service.get_value_with_presence(...)` 单接口读取；请求上下文若出现 `g.db` 已挂但 `g.services` 缺失，会显式抛错，不再把容器损坏伪装成“配置缺失”。
+        - `web/routes/scheduler_excel_batches.py` 中两处 `get_batch_row_validate_and_normalize(...)` 已完成去 `g.db` 首参改造；对应 helper 特批白名单已清空，不再作为阶段性残余保留。
         - `scheduler_batch_detail.py` 的 `OperatorMachineQueryService` 与 `scheduler_excel_batches.py` 的 `ExcelService` 在切容器后会从 `logger=None` 变为 `g.app_logger`；结合当前实现，这应仅增加可观测性，不得改变查询结果、分页、预览结果或导入结果。
         - `RequestServices` 已明确采用 `functools.cached_property` 做惰性构造与单请求缓存；构造成功才缓存，构造异常不写缓存属性，后续访问允许重试。
         - 每个目标文件内的所有路由函数必须在所属批次内一次切换完成，禁止同一文件同时存在容器取用与直接装配两套方式。
