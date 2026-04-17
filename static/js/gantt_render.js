@@ -19,6 +19,7 @@
   var statusKeyForTask = ns.statusKeyForTask;
   var colorForStatusKey = ns.colorForStatusKey;
   var getColor = ns.getColor;
+  var outlineApi = window.__APS_GANTT_OUTLINE__ || ns.outline;
 
   if (typeof $ !== "function") return;
   if (typeof show !== "function") return;
@@ -26,7 +27,20 @@
   if (typeof escapeHtml !== "function") return;
   if (typeof norm !== "function") return;
   if (typeof includesI !== "function") return;
+  if (!outlineApi) return;
   if (!state || !_perfState) return;
+
+  var ensureCriticalOutlineNodes = outlineApi.ensureCriticalOutlineNodes;
+  var syncCriticalOutlineGeometry = outlineApi.syncCriticalOutlineGeometry;
+  var removeCriticalOutlineNodes = outlineApi.removeCriticalOutlineNodes;
+  var installCriticalOutlineSyncAdapter = outlineApi.installCriticalOutlineSyncAdapter;
+  var syncAllCriticalOutlines = outlineApi.syncAllCriticalOutlines;
+
+  if (typeof ensureCriticalOutlineNodes !== "function") return;
+  if (typeof syncCriticalOutlineGeometry !== "function") return;
+  if (typeof removeCriticalOutlineNodes !== "function") return;
+  if (typeof installCriticalOutlineSyncAdapter !== "function") return;
+  if (typeof syncAllCriticalOutlines !== "function") return;
 
   // ---- render/decorate cache (Win7 友好：减少不必要的全量重渲染) ----
   let _renderToken = 0; // 每次全量 render() + new Gantt() 递增
@@ -261,84 +275,12 @@
 
   function upsertCriticalOutlines(wrapper, enabled) {
     if (!wrapper) return;
-    try {
-      wrapper.querySelectorAll(".aps-cc-outline-outer, .aps-cc-outline-inner").forEach((n) => {
-        try {
-          n.remove();
-        } catch (_) {
-          // ignore
-        }
-      });
-    } catch (_) {
-      // ignore
+    if (!enabled) {
+      removeCriticalOutlineNodes(wrapper);
+      return;
     }
-
-    if (!enabled) return;
-
-    const bar = wrapper.querySelector(".bar");
-    if (!bar) return;
-
-    // 关键链强调：把“双层边框”画在 bar 外侧，避免被超期红边遮挡
-    const NS = "http://www.w3.org/2000/svg";
-    let x = Number(bar.getAttribute("x") || 0);
-    let y = Number(bar.getAttribute("y") || 0);
-    let w = Number(bar.getAttribute("width") || 0);
-    let h = Number(bar.getAttribute("height") || 0);
-    if (!(w > 0 && h > 0)) return;
-
-    // bar 圆角
-    let rx0 = Number(bar.getAttribute("rx") || 4);
-    let ry0 = Number(bar.getAttribute("ry") || rx0);
-    if (!(rx0 >= 0)) rx0 = 4;
-    if (!(ry0 >= 0)) ry0 = rx0;
-    try {
-      bar.setAttribute("rx", String(rx0));
-      bar.setAttribute("ry", String(ry0));
-    } catch (_) {
-      // ignore
-    }
-
-    const outerPad = 2;
-    const innerPad = 1;
-
-    const outer = document.createElementNS(NS, "rect");
-    outer.setAttribute("class", "aps-cc-outline-outer");
-    outer.setAttribute("x", String(x - outerPad));
-    outer.setAttribute("y", String(y - outerPad));
-    outer.setAttribute("width", String(w + outerPad * 2));
-    outer.setAttribute("height", String(h + outerPad * 2));
-    outer.setAttribute("rx", String(rx0 + outerPad));
-    outer.setAttribute("ry", String(ry0 + outerPad));
-    outer.setAttribute("vector-effect", "non-scaling-stroke");
-    outer.setAttribute("pointer-events", "none");
-
-    const inner = document.createElementNS(NS, "rect");
-    inner.setAttribute("class", "aps-cc-outline-inner");
-    inner.setAttribute("x", String(x - innerPad));
-    inner.setAttribute("y", String(y - innerPad));
-    inner.setAttribute("width", String(w + innerPad * 2));
-    inner.setAttribute("height", String(h + innerPad * 2));
-    inner.setAttribute("rx", String(rx0 + innerPad));
-    inner.setAttribute("ry", String(ry0 + innerPad));
-    inner.setAttribute("vector-effect", "non-scaling-stroke");
-    inner.setAttribute("pointer-events", "none");
-
-    try {
-      // 注意：Frappe Gantt 里 bar 往往不在 wrapper 的直接子级（可能在内部 g 分组里）。
-      // 因此必须对 bar 的真实父节点执行 insertBefore，否则会触发 NotFoundError。
-      const parent = (bar && bar.parentNode) ? bar.parentNode : wrapper;
-      parent.insertBefore(outer, bar);
-      parent.insertBefore(inner, bar);
-    } catch (_) {
-      // 兜底：尽量插入（即使顺序不完美也要可见）
-      try {
-        const parent = (bar && bar.parentNode) ? bar.parentNode : wrapper;
-        parent.appendChild(outer);
-        parent.appendChild(inner);
-      } catch (_) {
-        // ignore
-      }
-    }
+    ensureCriticalOutlineNodes(wrapper);
+    syncCriticalOutlineGeometry(wrapper);
   }
 
   // 关键链徽标（CC）已弃用：仅保留清理逻辑，避免旧 DOM 残留
@@ -671,15 +613,9 @@
     if (ids.length > 0 && _perfState.wrappersById && _perfState.wrappersById.size > 0) {
       for (let i = 0; i < ids.length; i++) {
         const w = _perfState.wrappersById.get(ids[i]);
-        if (!w || !w.querySelectorAll) continue;
+        if (!w) continue;
         try {
-          w.querySelectorAll(".aps-cc-outline-outer, .aps-cc-outline-inner").forEach((n) => {
-            try {
-              n.remove();
-            } catch (_) {
-              // ignore
-            }
-          });
+          removeCriticalOutlineNodes(w);
         } catch (_) {
           // ignore
         }
@@ -688,12 +624,28 @@
     }
 
     try {
-      document.querySelectorAll("#gantt .aps-cc-outline-outer, #gantt .aps-cc-outline-inner").forEach((n) => {
+      document.querySelectorAll("#gantt .bar-wrapper").forEach((w) => {
         try {
-          n.remove();
+          removeCriticalOutlineNodes(w);
         } catch (_) {
           // ignore
         }
+      });
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  function _syncCriticalOutlinesAfterGeometryChange() {
+    const wrappers =
+      _perfState.wrappersById && _perfState.wrappersById.size > 0
+        ? Array.from(_perfState.wrappersById.values())
+        : document.querySelectorAll("#gantt .bar-wrapper");
+    try {
+      syncAllCriticalOutlines(wrappers, {
+        isCriticalWrapper: function (wrapper) {
+          return !!(wrapper && wrapper.classList && wrapper.classList.contains("aps-critical"));
+        },
       });
     } catch (_) {
       // ignore
@@ -935,6 +887,12 @@
       view_mode: (state.ui && state.ui.viewMode) ? state.ui.viewMode : "Day",
       language: "zh",
       popup_trigger: "click",
+      on_date_change: function () {
+        _syncCriticalOutlinesAfterGeometryChange();
+      },
+      on_progress_change: function () {
+        _syncCriticalOutlinesAfterGeometryChange();
+      },
       on_click: function (task) {
         const meta = task && task.meta ? task.meta : {};
         const bid = norm(meta.batch_id);
@@ -997,6 +955,11 @@
     });
 
     state.gantt = gantt;
+    installCriticalOutlineSyncAdapter(gantt, {
+      isCriticalWrapper: function (wrapper) {
+        return !!(wrapper && wrapper.classList && wrapper.classList.contains("aps-critical"));
+      },
+    });
     scrollToAnchor(gantt);
     // new Gantt()：全量渲染 + 静态装饰 + 动态装饰（一次）
     _renderToken += 1;
@@ -1013,4 +976,3 @@
   ns.renderHolidayColumns = renderHolidayColumns;
   ns.updateLegend = updateLegend;
 })();
-

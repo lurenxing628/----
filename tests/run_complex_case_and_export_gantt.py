@@ -70,14 +70,24 @@ def _write_html(
   <div class="hint">提示：这是“复杂案例”生成的 tasks，样式来自仓库内置 Frappe Gantt 0.6.1 资源。</div>
 
   <script src="../../static/js/frappe-gantt.min.js"></script>
+  <script src="../../static/js/gantt_outline.js"></script>
   <script>
     const tasks = {tasks_json};
     const calendarDays = {cal_json};
     const criticalChain = {cc_json};
+    const outlineApi = window.__APS_GANTT_OUTLINE__;
+    if (!outlineApi || typeof outlineApi.setCriticalOutlineEnabled !== "function") {{
+      throw new Error("APS critical outline helper missing");
+    }}
     const gantt = new Gantt("#gantt", tasks, {{
       view_mode: "Day",
       language: "zh",
       popup_trigger: "click"
+    }});
+    outlineApi.installCriticalOutlineSyncAdapter(gantt, {{
+      isCriticalWrapper(wrapper) {{
+        return !!(wrapper && wrapper.classList && wrapper.classList.contains("aps-critical"));
+      }}
     }});
 
     function norm(v) {{
@@ -184,70 +194,6 @@ def _write_html(
       }});
       const ccSet = new Set(((criticalChain && criticalChain.ids) || []).map((x) => norm(x)).filter((x) => !!x));
 
-      function upsertCriticalOutlines(wrapper, enabled) {{
-        if (!wrapper) return;
-        try {{
-          wrapper.querySelectorAll(".aps-cc-outline-outer, .aps-cc-outline-inner").forEach((n) => {{
-            try {{ n.remove(); }} catch (_) {{}}
-          }});
-        }} catch (_) {{}}
-        if (!enabled) return;
-        const bar = wrapper.querySelector(".bar");
-        if (!bar) return;
-        const x = Number(bar.getAttribute("x") || 0);
-        const y = Number(bar.getAttribute("y") || 0);
-        const w = Number(bar.getAttribute("width") || 0);
-        const h = Number(bar.getAttribute("height") || 0);
-        if (!(w > 0 && h > 0)) return;
-
-        let rx0 = Number(bar.getAttribute("rx") || 4);
-        let ry0 = Number(bar.getAttribute("ry") || rx0);
-        if (!(rx0 >= 0)) rx0 = 4;
-        if (!(ry0 >= 0)) ry0 = rx0;
-        try {{ bar.setAttribute("rx", String(rx0)); bar.setAttribute("ry", String(ry0)); }} catch (_) {{}}
-
-        const outerPad = 2;
-        const innerPad = 1;
-        const NS = "http://www.w3.org/2000/svg";
-
-        const outer = document.createElementNS(NS, "rect");
-        outer.setAttribute("class", "aps-cc-outline-outer");
-        outer.setAttribute("x", String(x - outerPad));
-        outer.setAttribute("y", String(y - outerPad));
-        outer.setAttribute("width", String(w + outerPad * 2));
-        outer.setAttribute("height", String(h + outerPad * 2));
-        outer.setAttribute("rx", String(rx0 + outerPad));
-        outer.setAttribute("ry", String(ry0 + outerPad));
-        outer.setAttribute("vector-effect", "non-scaling-stroke");
-        outer.setAttribute("pointer-events", "none");
-
-        const inner = document.createElementNS(NS, "rect");
-        inner.setAttribute("class", "aps-cc-outline-inner");
-        inner.setAttribute("x", String(x - innerPad));
-        inner.setAttribute("y", String(y - innerPad));
-        inner.setAttribute("width", String(w + innerPad * 2));
-        inner.setAttribute("height", String(h + innerPad * 2));
-        inner.setAttribute("rx", String(rx0 + innerPad));
-        inner.setAttribute("ry", String(ry0 + innerPad));
-        inner.setAttribute("vector-effect", "non-scaling-stroke");
-        inner.setAttribute("pointer-events", "none");
-
-        try {{
-          // 注意：Frappe Gantt 里 bar 往往不在 wrapper 的直接子级（可能在内部 g 分组里）。
-          // 因此必须对 bar 的真实父节点执行 insertBefore，否则会触发 NotFoundError。
-          const parent = (bar && bar.parentNode) ? bar.parentNode : wrapper;
-          parent.insertBefore(outer, bar);
-          parent.insertBefore(inner, bar);
-        }} catch (_) {{
-          // 兜底：尽量插入（即使顺序不完美也要可见）
-          try {{
-            const parent = (bar && bar.parentNode) ? bar.parentNode : wrapper;
-            parent.appendChild(outer);
-            parent.appendChild(inner);
-          }} catch (_) {{}}
-        }}
-      }}
-
       function upsertCriticalBadge(wrapper, enabled) {{
         if (!wrapper) return;
         try {{
@@ -268,7 +214,7 @@ def _write_html(
         w.style.setProperty("--aps-bar-color", colorForBatch(bid));
         if (norm(meta.source) === "external") w.classList.add("aps-external");
         if (ccSet.has(tid)) w.classList.add("aps-critical");
-        upsertCriticalOutlines(w, ccSet.has(tid));
+        outlineApi.setCriticalOutlineEnabled(w, ccSet.has(tid));
         // CC 徽标已弃用：这里仅做清理
         upsertCriticalBadge(w, false);
       }});
@@ -665,4 +611,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
