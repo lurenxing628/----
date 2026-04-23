@@ -231,7 +231,7 @@ def main() -> None:
         warnings=[],
         improvement_trace=[],
     )
-    assert result_summary_obj.get("summary_schema_version") == "1.1", "summary_schema_version 未升到 1.1"
+    assert result_summary_obj.get("summary_schema_version") == "1.2", "summary_schema_version 未升到 1.2"
 
     algo = result_summary_obj.get("algo") or {}
     assert algo.get("comparison_metric") == "weighted_tardiness_hours", f"comparison_metric 错误：{algo.get('comparison_metric')!r}"
@@ -239,7 +239,7 @@ def main() -> None:
     assert schema_keys[:3] == [
         "failed_ops",
         "weighted_tardiness_hours",
-        "overdue_count",
+        "total_tardiness_hours",
     ], f"best_score_schema 错误：{schema_keys}"
     config_snapshot = algo.get("config_snapshot") or {}
     assert config_snapshot.get("objective") == "min_weighted_tardiness", f"config_snapshot 未落盘 objective：{config_snapshot}"
@@ -285,6 +285,10 @@ def main() -> None:
     _assert_downtime_partial_fail_contract()
 
     print("OK")
+
+
+def test_schedule_summary_v11_contract() -> None:
+    main()
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 STABLE_DEGRADATION_CODES = (
+    "missing_required",
     "blank_required",
     "invalid_choice",
     "invalid_number",
@@ -11,11 +12,13 @@ STABLE_DEGRADATION_CODES = (
     "invalid_due_date",
     "bad_time_row_skipped",
     "calendar_load_failed",
+    "critical_chain_unavailable",
     "legacy_external_days_defaulted",
     "freeze_seed_unavailable",
     "freeze_window_degraded",
     "downtime_avoid_degraded",
     "resource_pool_degraded",
+    "input_fallback",
     "template_missing",
     "external_group_missing",
     "ortools_warmstart_failed",

@@ -101,6 +101,8 @@ def main() -> None:
             "makespan_end": None,
             "edge_type_stats": {"process": 0, "machine": 0, "operator": 0, "unknown": 0},
             "edge_count": 0,
+            "available": True,
+            "reason": "",
         }
 
     old_cache = GanttService._CRITICAL_CHAIN_CACHE
@@ -126,7 +128,7 @@ def main() -> None:
                     cc = svc._get_critical_chain(version)
                     if not isinstance(cc, dict):
                         raise RuntimeError("critical_chain 返回类型异常")
-                    if "ids" not in cc or "cache_hit" not in cc:
+                    if "ids" not in cc or "available" not in cc or "reason" not in cc or "cache_hit" not in cc:
                         raise RuntimeError(f"critical_chain 缺少字段：{cc}")
             except Exception as exc:
                 errors.append(exc)

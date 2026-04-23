@@ -6,6 +6,8 @@ import os
 import sys
 from pathlib import Path
 
+from core.infrastructure.errors import BusinessError, ErrorCode
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
@@ -62,3 +64,43 @@ def test_gantt_page_version_default_latest(tmp_path, monkeypatch) -> None:
     payload = json.loads(data_resp.get_data(as_text=True) or "{}")
     assert payload.get("success") is True, payload
     assert int((payload.get("data") or {}).get("version") or 0) == 7
+
+
+def test_gantt_data_uses_app_error_http_mapping(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    from core.services.scheduler.gantt_service import GanttService
+
+    def _raise_not_found(self, **_kwargs):
+        raise BusinessError(ErrorCode.NOT_FOUND, "甘特图版本不存在")
+
+    monkeypatch.setattr(GanttService, "get_gantt_tasks", _raise_not_found)
+
+    response = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&version=7")
+
+    payload = response.get_json()
+    assert response.status_code == 404
+    assert payload["success"] is False
+    assert payload["error"]["code"] == ErrorCode.NOT_FOUND.value
+    assert payload["error"]["message"] == "甘特图版本不存在"
+
+
+def test_gantt_data_unexpected_error_uses_unified_unknown_error_contract(tmp_path, monkeypatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    from core.services.scheduler.gantt_service import GanttService
+
+    def _raise_bug(self, **_kwargs):
+        raise RuntimeError("gantt exploded")
+
+    monkeypatch.setattr(GanttService, "get_gantt_tasks", _raise_bug)
+
+    response = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&version=7")
+
+    payload = response.get_json()
+    assert response.status_code == 500
+    assert payload["success"] is False
+    assert payload["error"]["code"] == ErrorCode.UNKNOWN_ERROR.value
+    assert payload["error"]["message"] == "甘特图数据生成失败，请稍后重试。"

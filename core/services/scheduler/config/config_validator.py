@@ -1,120 +1,118 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from core.infrastructure.errors import ValidationError
 from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
-from core.services.common.strict_parse import parse_required_float, parse_required_int
 
-from .config_snapshot import (
-    ScheduleConfigSnapshot,
-    _choice_with_degradation,
-    _normalize_valid_texts,
-    _yes_no_with_degradation,
-)
+from .config_field_spec import MISSING_POLICY_INHERIT_LEGACY_OMISSION, coerce_config_field
+from .config_snapshot import ScheduleConfigSnapshot
+
+
+def _emit_number_below_minimum(
+    collector: DegradationCollector,
+    *,
+    key: str,
+    raw_value: Any,
+    fallback: Any,
+) -> None:
+    collector.add(
+        code="number_below_minimum",
+        scope="config_validator.preset",
+        field=key,
+        message=f"字段“{key}”数值低于最小值约束，已按兼容读取回退为 {fallback}。",
+        sample=repr(raw_value),
+    )
+
+
+def _preset_float(
+    key: str,
+    raw_value: Any,
+    *,
+    missing: bool,
+    fallback: float,
+    strict_mode: bool,
+    collector: DegradationCollector,
+) -> float:
+    return float(
+        coerce_config_field(
+            key,
+            raw_value,
+            strict_mode=bool(strict_mode),
+            source="config_validator.preset",
+            collector=collector,
+            missing=missing,
+            fallback=float(fallback),
+            missing_policy=MISSING_POLICY_INHERIT_LEGACY_OMISSION,
+        )
+    )
+
+
+def _preset_int(
+    key: str,
+    raw_value: Any,
+    *,
+    missing: bool,
+    fallback: int,
+    strict_mode: bool,
+    collector: DegradationCollector,
+) -> int:
+    return int(
+        coerce_config_field(
+            key,
+            raw_value,
+            strict_mode=bool(strict_mode),
+            source="config_validator.preset",
+            collector=collector,
+            missing=missing,
+            fallback=int(fallback),
+            missing_policy=MISSING_POLICY_INHERIT_LEGACY_OMISSION,
+        )
+    )
 
 
 def normalize_preset_snapshot(
     data: Dict[str, Any],
     *,
     base: ScheduleConfigSnapshot,
-    valid_strategies: Tuple[str, ...],
-    valid_dispatch_modes: Tuple[str, ...],
-    valid_dispatch_rules: Tuple[str, ...],
-    valid_algo_modes: Tuple[str, ...],
-    valid_objectives: Tuple[str, ...],
     strict_mode: bool = False,
 ) -> ScheduleConfigSnapshot:
-    def _is_blank(value: Any) -> bool:
-        return value is None or (isinstance(value, str) and value.strip() == "")
-
-    def _format_fallback_value(value: Any) -> str:
-        return "空值" if value is None else str(value)
-
-    def _record_min_violation(
-        *,
-        key: str,
-        raw: Any,
-        fallback: Any,
-        min_value: Any,
-        min_inclusive: bool = True,
-    ) -> None:
-        compare_text = "大于等于" if bool(min_inclusive) else "大于"
-        collector.add(
-            code="number_below_minimum",
-            scope="config_validator.preset",
-            field=key,
-            message=f"字段“{key}”数值低于最小值约束（要求{compare_text} {min_value}），已按兼容读取回退为 {_format_fallback_value(fallback)}。",
-            sample=repr(raw),
-        )
-
+    payload = dict(data or {})
     collector = DegradationCollector()
 
-    def _get_float(
-        key: str,
-        default: float,
-        *,
-        min_value: float | None = None,
-        min_inclusive: bool = True,
-    ) -> float:
-        raw = data.get(key)
-        if _is_blank(raw):
-            return float(default)
+    def _read(key: str) -> tuple[bool, Any]:
+        return (key not in payload), payload.get(key)
 
-        if strict_mode:
-            return float(parse_required_float(raw, field=key, min_value=min_value, min_inclusive=min_inclusive))
-
-        parsed = float(parse_required_float(raw, field=key))
-        if min_value is not None:
-            is_valid = parsed >= float(min_value) if bool(min_inclusive) else parsed > float(min_value)
-            if not is_valid:
-                fallback_value = float(default)
-                _record_min_violation(
-                    key=key,
-                    raw=raw,
-                    fallback=fallback_value,
-                    min_value=min_value,
-                    min_inclusive=min_inclusive,
-                )
-                return fallback_value
-        return float(parsed)
-
-    def _get_int(key: str, default: int, *, min_v: int) -> int:
-        raw = data.get(key)
-        if _is_blank(raw):
-            return int(default)
-        if strict_mode:
-            return int(parse_required_int(raw, field=key, min_value=min_v))
-
-        parsed = int(parse_required_int(raw, field=key))
-        if parsed < int(min_v):
-            fallback_value = int(min_v)
-            _record_min_violation(key=key, raw=raw, fallback=fallback_value, min_value=min_v)
-            return fallback_value
-        return int(parsed)
-
-    valid_strategies_norm = _normalize_valid_texts(valid_strategies)
-    valid_dispatch_modes_norm = _normalize_valid_texts(valid_dispatch_modes)
-    valid_dispatch_rules_norm = _normalize_valid_texts(valid_dispatch_rules)
-    valid_algo_modes_norm = _normalize_valid_texts(valid_algo_modes)
-    valid_objectives_norm = _normalize_valid_texts(valid_objectives)
-
-    raw_sort_strategy = data.get("sort_strategy")
-    sort_strategy_present = "sort_strategy" in data
-    base_strategy = str(base.sort_strategy).strip().lower()
-    st = _choice_with_degradation(
-        raw_sort_strategy,
-        field="sort_strategy",
-        fallback=base_strategy,
-        valid_values=valid_strategies_norm,
+    st_missing, st_raw = _read("sort_strategy")
+    st = coerce_config_field(
+        "sort_strategy",
+        st_raw,
         strict_mode=bool(strict_mode),
+        source="config_validator.preset",
         collector=collector,
-        scope="config_validator.preset",
-        missing=not sort_strategy_present,
+        missing=st_missing,
+        fallback=base.sort_strategy,
+        missing_policy=MISSING_POLICY_INHERIT_LEGACY_OMISSION,
     )
 
-    pw = _get_float("priority_weight", float(base.priority_weight), min_value=0.0)
-    dw = _get_float("due_weight", float(base.due_weight), min_value=0.0)
+    pw_missing, pw_raw = _read("priority_weight")
+    dw_missing, dw_raw = _read("due_weight")
+    pw = _preset_float(
+        "priority_weight",
+        pw_raw,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        missing=pw_missing,
+        fallback=float(base.priority_weight),
+    )
+    dw = _preset_float(
+        "due_weight",
+        dw_raw,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        missing=dw_missing,
+        fallback=float(base.due_weight),
+    )
     if pw < 0 or dw < 0:
         raise ValidationError("权重不能为负数", field="权重")
     percent_mode = (pw > 1.0) or (dw > 1.0)
@@ -132,119 +130,85 @@ def normalize_preset_snapshot(
         raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
     rw = max(0.0, float(rw))
 
-    hde = _get_float(
+    hde_missing, hde_raw = _read("holiday_default_efficiency")
+    hde = _preset_float(
         "holiday_default_efficiency",
-        float(base.holiday_default_efficiency),
-        min_value=0.0,
-        min_inclusive=False,
+        hde_raw,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        missing=hde_missing,
+        fallback=float(base.holiday_default_efficiency),
     )
 
-    def _yesno(v: Any, key: str, default: str = "no", *, strict: bool = False, missing: bool = False) -> str:
-        return _yes_no_with_degradation(
-            v,
-            field=key,
-            fallback=default,
-            strict_mode=bool(strict),
-            collector=collector,
-            scope="config_validator.preset",
-            missing=missing,
+    def _yes_no(key: str, fallback: str) -> str:
+        missing, raw = _read(key)
+        return str(
+            coerce_config_field(
+                key,
+                raw,
+                strict_mode=bool(strict_mode),
+                source="config_validator.preset",
+                collector=collector,
+                missing=missing,
+                fallback=fallback,
+                missing_policy=MISSING_POLICY_INHERIT_LEGACY_OMISSION,
+            )
         )
 
-    enforce_ready_default = _yesno(
-        data.get("enforce_ready_default"),
-        "enforce_ready_default",
-        default=str(base.enforce_ready_default),
-        strict=bool(strict_mode),
-        missing="enforce_ready_default" not in data,
-    )
-    prefer_primary_skill = _yesno(
-        data.get("prefer_primary_skill"),
-        "prefer_primary_skill",
-        default=str(base.prefer_primary_skill),
-        strict=bool(strict_mode),
-        missing="prefer_primary_skill" not in data,
-    )
-    auto_assign_enabled = _yesno(
-        data.get("auto_assign_enabled"),
-        "auto_assign_enabled",
-        default=str(base.auto_assign_enabled),
-        strict=bool(strict_mode),
-        missing="auto_assign_enabled" not in data,
-    )
-    ortools_enabled = _yesno(
-        data.get("ortools_enabled"),
-        "ortools_enabled",
-        default=str(base.ortools_enabled),
-        strict=bool(strict_mode),
-        missing="ortools_enabled" not in data,
-    )
-    freeze_window_enabled = _yesno(
-        data.get("freeze_window_enabled"),
-        "freeze_window_enabled",
-        default=str(base.freeze_window_enabled),
-        strict=bool(strict_mode),
-        missing="freeze_window_enabled" not in data,
-    )
+    enforce_ready_default = _yes_no("enforce_ready_default", str(base.enforce_ready_default))
+    prefer_primary_skill = _yes_no("prefer_primary_skill", str(base.prefer_primary_skill))
+    auto_assign_enabled = _yes_no("auto_assign_enabled", str(base.auto_assign_enabled))
+    auto_assign_persist = _yes_no("auto_assign_persist", str(base.auto_assign_persist))
+    ortools_enabled = _yes_no("ortools_enabled", str(base.ortools_enabled))
+    freeze_window_enabled = _yes_no("freeze_window_enabled", str(base.freeze_window_enabled))
 
-    raw_dispatch_mode = data.get("dispatch_mode")
-    dispatch_mode_present = "dispatch_mode" in data
-    base_dispatch_mode = str(base.dispatch_mode).strip().lower()
-    dm = _choice_with_degradation(
-        raw_dispatch_mode,
-        field="dispatch_mode",
-        fallback=base_dispatch_mode,
-        valid_values=valid_dispatch_modes_norm,
+    def _choice(key: str, fallback: str) -> str:
+        missing, raw = _read(key)
+        return str(
+            coerce_config_field(
+                key,
+                raw,
+                strict_mode=bool(strict_mode),
+                source="config_validator.preset",
+                collector=collector,
+                missing=missing,
+                fallback=fallback,
+                missing_policy=MISSING_POLICY_INHERIT_LEGACY_OMISSION,
+            )
+        )
+
+    dm = _choice("dispatch_mode", str(base.dispatch_mode))
+    dr = _choice("dispatch_rule", str(base.dispatch_rule))
+    algo_mode = _choice("algo_mode", str(base.algo_mode))
+    objective = _choice("objective", str(base.objective))
+
+    ort_missing, ort_raw = _read("ortools_time_limit_seconds")
+    ort_limit = _preset_int(
+        "ortools_time_limit_seconds",
+        ort_raw,
         strict_mode=bool(strict_mode),
         collector=collector,
-        scope="config_validator.preset",
-        missing=not dispatch_mode_present,
+        missing=ort_missing,
+        fallback=int(base.ortools_time_limit_seconds),
     )
-
-    raw_dispatch_rule = data.get("dispatch_rule")
-    dispatch_rule_present = "dispatch_rule" in data
-    base_dispatch_rule = str(base.dispatch_rule).strip().lower()
-    dr = _choice_with_degradation(
-        raw_dispatch_rule,
-        field="dispatch_rule",
-        fallback=base_dispatch_rule,
-        valid_values=valid_dispatch_rules_norm,
+    budget_missing, budget_raw = _read("time_budget_seconds")
+    time_budget = _preset_int(
+        "time_budget_seconds",
+        budget_raw,
         strict_mode=bool(strict_mode),
         collector=collector,
-        scope="config_validator.preset",
-        missing=not dispatch_rule_present,
+        missing=budget_missing,
+        fallback=int(base.time_budget_seconds),
     )
-
-    raw_algo_mode = data.get("algo_mode")
-    algo_mode_present = "algo_mode" in data
-    base_algo_mode = str(base.algo_mode).strip().lower()
-    algo_mode = _choice_with_degradation(
-        raw_algo_mode,
-        field="algo_mode",
-        fallback=base_algo_mode,
-        valid_values=valid_algo_modes_norm,
+    fw_missing, fw_raw = _read("freeze_window_days")
+    fw_days = _preset_int(
+        "freeze_window_days",
+        fw_raw,
         strict_mode=bool(strict_mode),
         collector=collector,
-        scope="config_validator.preset",
-        missing=not algo_mode_present,
+        missing=fw_missing,
+        fallback=int(base.freeze_window_days),
     )
-
-    raw_objective = data.get("objective")
-    objective_present = "objective" in data
-    base_objective = str(base.objective).strip().lower()
-    objective = _choice_with_degradation(
-        raw_objective,
-        field="objective",
-        fallback=base_objective,
-        valid_values=valid_objectives_norm,
-        strict_mode=bool(strict_mode),
-        collector=collector,
-        scope="config_validator.preset",
-        missing=not objective_present,
-    )
-
-    ort_limit = _get_int("ortools_time_limit_seconds", int(base.ortools_time_limit_seconds), min_v=1)
-    time_budget = _get_int("time_budget_seconds", int(base.time_budget_seconds), min_v=1)
-    fw_days = _get_int("freeze_window_days", int(base.freeze_window_days), min_v=0)
 
     return ScheduleConfigSnapshot(
         sort_strategy=st,
@@ -257,6 +221,7 @@ def normalize_preset_snapshot(
         dispatch_mode=dm,
         dispatch_rule=dr,
         auto_assign_enabled=auto_assign_enabled,
+        auto_assign_persist=auto_assign_persist,
         ortools_enabled=ortools_enabled,
         ortools_time_limit_seconds=int(ort_limit),
         algo_mode=algo_mode,

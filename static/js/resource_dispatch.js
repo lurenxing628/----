@@ -338,6 +338,38 @@
     show(el, !!textMessage);
   }
 
+  function setDegradationSummary(summary) {
+    const card = $("rdDegradationSummary");
+    const listEl = $("rdDegradationList");
+    if (!card || !listEl) return;
+    const events = (summary && Array.isArray(summary.degradation_events)) ? summary.degradation_events : [];
+    if (!events.length) {
+      listEl.innerHTML = "";
+      show(card, false);
+      return;
+    }
+    const items = [];
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i] || {};
+      const code = trim(event.code);
+      const message = trim(event.message);
+      const count = Number(event.count || 0);
+      const parts = [];
+      if (message) {
+        parts.push(escapeHtml(message));
+      } else if (code) {
+        parts.push(escapeHtml(code));
+      }
+      if (count > 1) {
+        parts.push("×" + escapeHtml(count));
+      }
+      if (!parts.length) continue;
+      items.push("<li>" + parts.join(" ") + "</li>");
+    }
+    listEl.innerHTML = items.join("");
+    show(card, items.length > 0);
+  }
+
   function currentQueryString() {
     const qs = trim(window.location.search || "");
     if (qs) return qs;
@@ -364,6 +396,7 @@
     setError("");
     setEmpty("");
     setOverdueWarning("");
+    setDegradationSummary(null);
     try {
       const resp = await fetch(state.cfg.dataUrl + currentQueryString(), { headers: { Accept: "application/json" } });
       const payload = await resp.json();
@@ -376,6 +409,7 @@
       renderDetailRows(state.data.detail_rows || []);
       renderTeamTables(state.data || {});
       renderCalendar(state.data.calendar_headers || [], state.data.calendar_rows || []);
+      setDegradationSummary(state.data.summary || {});
       activateTab(state.activeTab || "detail");
       setEmpty(state.data.empty_message || "");
       const hasOverdueWarning = state.data.overdue_markers_degraded === true || state.data.overdue_markers_partial === true;
@@ -395,6 +429,7 @@
       renderTeamTables({});
       renderCalendar([], []);
       setOverdueWarning("");
+      setDegradationSummary(null);
     }
   }
 

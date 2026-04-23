@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import sys
 from types import SimpleNamespace
 
 from flask import Flask, g
@@ -34,7 +36,16 @@ class _HistoryServiceStub:
         return [_HistoryItem(3, self.summary)]
 
 
+class _MissingSelectedHistoryService(_HistoryServiceStub):
+    def get_by_version(self, version):
+        self.version_queries.append(int(version))
+        return None
+
+
 def _build_app(monkeypatch, history_service: _HistoryServiceStub) -> Flask:
+    for name in list(sys.modules):
+        if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
+            sys.modules.pop(name, None)
     import web.routes.scheduler as _scheduler_routes  # noqa: F401
     import web.routes.scheduler_analysis as route_mod
 
@@ -54,7 +65,7 @@ def _build_app(monkeypatch, history_service: _HistoryServiceStub) -> Flask:
 
 
 def test_scheduler_analysis_route_uses_request_services(monkeypatch) -> None:
-    summary = {"algo": {"metrics": {"overdue_count": 1}}}
+    summary = {"warnings": ["冻结窗口存在跳批风险"], "algo": {"metrics": {"overdue_count": 1}}}
     history_service = _HistoryServiceStub(summary)
     app = _build_app(monkeypatch, history_service)
     client = app.test_client()
@@ -67,6 +78,45 @@ def test_scheduler_analysis_route_uses_request_services(monkeypatch) -> None:
     assert payload["selected"]["version"] == 3
     assert payload["selected_summary"] == summary
     assert payload["trend_rows"][0]["version"] == 3
+    assert payload["selected_summary_display"]["summary_parse_state"]["parse_failed"] is False
+    assert payload["selected_summary_display"]["warning_total"] == 1
+    assert payload["selected_summary_display"]["warnings_preview"] == ["冻结窗口存在跳批风险"]
+    assert payload["trend_summary_state"] == {"incomplete": False, "parse_failed_count": 0}
+    assert "objective_label_for" not in payload
+    json.dumps(payload, ensure_ascii=False)
     assert history_service.version_limits == [50]
     assert history_service.version_queries == [3]
     assert history_service.recent_limits == [400]
+
+
+def test_scheduler_analysis_route_marks_parse_failure_and_incomplete_trend(monkeypatch) -> None:
+    history_service = _HistoryServiceStub("{broken json")
+    app = _build_app(monkeypatch, history_service)
+    client = app.test_client()
+
+    response = client.get("/scheduler/analysis?version=3")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["selected_summary"] == {}
+    assert payload["selected_summary_display"]["summary_parse_state"]["parse_failed"] is True
+    assert payload["trend_summary_state"] == {"incomplete": True, "parse_failed_count": 1}
+
+
+def test_scheduler_analysis_route_surfaces_missing_requested_history(monkeypatch) -> None:
+    summary = {"algo": {"metrics": {"overdue_count": 1}}}
+    history_service = _MissingSelectedHistoryService(summary)
+    app = _build_app(monkeypatch, history_service)
+    client = app.test_client()
+
+    response = client.get("/scheduler/analysis?version=9")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["selected"]["version"] == 9
+    assert payload["selected_summary"] is None
+    assert payload["selected_history_resolution"]["requested_version"] == 9
+    assert payload["selected_history_resolution"]["history_missing"] is True
+    assert "9" in str(payload["selected_history_resolution"]["message"] or "")
+    assert payload["trend_rows"][0]["version"] == 3
+    assert history_service.version_queries == [9]

@@ -7,6 +7,7 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.greedy.date_parsers import due_exclusive, parse_date
+from core.algorithms.objective_specs import objective_metric_keys
 from core.algorithms.priority_constants import PRIORITY_WEIGHT, normalize_priority
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import INTERNAL
@@ -281,34 +282,4 @@ def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> S
 
 
 def objective_score(objective: str, metrics: ScheduleMetrics) -> Tuple[float, ...]:
-    obj = str(objective or "min_overdue").strip().lower()
-    if obj == "min_weighted_tardiness":
-        return (
-            float(metrics.weighted_tardiness_hours),
-            float(metrics.total_tardiness_hours),
-            float(metrics.makespan_hours),
-            float(metrics.changeover_count),
-        )
-    if obj == "min_makespan":
-        return (
-            float(metrics.makespan_hours),
-            float(metrics.overdue_count),
-            float(metrics.total_tardiness_hours),
-            float(metrics.changeover_count),
-        )
-    if obj == "balance_load":
-        return (
-            float(metrics.machine_load_cv),
-            float(metrics.operator_load_cv),
-            float(metrics.overdue_count),
-            float(metrics.weighted_tardiness_hours),
-            float(metrics.makespan_hours),
-            float(metrics.changeover_count),
-        )
-    return (
-        float(metrics.overdue_count),
-        float(metrics.weighted_tardiness_hours),
-        float(metrics.total_tardiness_hours),
-        float(metrics.makespan_hours),
-        float(metrics.changeover_count),
-    )
+    return tuple(float(getattr(metrics, key)) for key in objective_metric_keys(objective))

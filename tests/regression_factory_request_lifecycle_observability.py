@@ -8,6 +8,7 @@ import pytest
 from flask import Flask, Response, g, request
 
 import web.bootstrap.factory as factory_mod
+import web.error_boundary as error_boundary_mod
 from web.bootstrap.entrypoint import create_app_with_mode
 
 _BeforeHook = Callable[[], Any]
@@ -134,6 +135,16 @@ def _capture_warnings(monkeypatch: pytest.MonkeyPatch, app: Flask) -> list[str]:
     return warnings
 
 
+def _capture_errors(monkeypatch: pytest.MonkeyPatch, app: Flask) -> list[str]:
+    errors: list[str] = []
+
+    def _error(message: str, *args: Any, **kwargs: Any) -> None:
+        errors.append(message % args if args else str(message))
+
+    monkeypatch.setattr(app.logger, "error", _error)
+    return errors
+
+
 def _patch_request_services_probe(monkeypatch: pytest.MonkeyPatch):
     captured: dict[str, Any] = {"count": 0}
     backend_calls: list[str] = []
@@ -201,6 +212,7 @@ def test_open_db_logs_maintenance_gate_response_classification_failure(tmp_path:
     warnings = _capture_warnings(monkeypatch, app)
 
     monkeypatch.setattr(factory_mod, "request", _PathExplodingRequest(request))
+    monkeypatch.setattr(error_boundary_mod, "request", _PathExplodingRequest(request))
     monkeypatch.setattr(factory_mod, "is_maintenance_window_active", lambda *args, **kwargs: True)
 
     with app.test_request_context("/probe"):
@@ -289,23 +301,55 @@ def test_open_db_does_not_mount_request_services_for_maintenance_short_circuit(
     assert backend_calls == []
 
 
-def test_open_db_mounts_request_services_when_maintenance_detection_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_open_db_returns_500_when_maintenance_detection_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     app = _build_app(tmp_path, monkeypatch)
     open_db = _get_before_hook(app, "_open_db")
-    close_db = _get_teardown_hook(app, "_close_db")
+    errors = _capture_errors(monkeypatch, app)
     captured, backend_calls = _patch_request_services_probe(monkeypatch)
 
     monkeypatch.setattr(factory_mod, "is_maintenance_window_active", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
 
     with app.test_request_context("/scheduler/"):
         result = open_db()
-        assert result is None
-        assert getattr(g, "db", None) is not None
-        assert getattr(g, "services", None) is not None
-        close_db(None)
+        assert isinstance(result, tuple)
+        assert result[1] == 500
+        assert getattr(g, "db", None) is None
+        assert getattr(g, "services", None) is None
 
-    assert captured["count"] == 1
+    assert captured["count"] == 0
     assert backend_calls == []
+    assert any("系统状态检测失败，已中止请求" in message for message in errors), errors
+
+
+def test_open_db_returns_503_when_maintenance_response_construction_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    open_db = _get_before_hook(app, "_open_db")
+    warnings = _capture_warnings(monkeypatch, app)
+    errors = _capture_errors(monkeypatch, app)
+    captured, backend_calls = _patch_request_services_probe(monkeypatch)
+
+    monkeypatch.setattr(factory_mod, "is_maintenance_window_active", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        factory_mod,
+        "_maintenance_gate_response",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("render boom")),
+    )
+
+    with app.test_request_context("/scheduler/"):
+        response = open_db()
+        assert getattr(g, "db", None) is None
+        assert getattr(g, "services", None) is None
+
+    assert isinstance(response, tuple)
+    assert response[1] == 503
+    assert "系统正在维护中" in str(response[0])
+    assert captured["count"] == 0
+    assert backend_calls == []
+    assert not any("维护窗口检测失败" in message for message in warnings), warnings
+    assert any("维护窗口响应构造失败" in message for message in errors), errors
 
 
 def test_open_db_mounts_request_services_when_maintenance_task_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

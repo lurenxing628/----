@@ -108,6 +108,12 @@ def make_new_summary() -> Dict[str, Any]:
         "original_size_bytes": 600000,
         "invalid_due_count": 2,
         "unscheduled_batch_count": 3,
+        "warnings": [
+            "冻结窗口存在跳批风险",
+            "停机区间加载失败，已按默认能力继续",
+            "存在 1 个批次未命中首选技能",
+            "另有告警需要在系统历史查看",
+        ],
         "algo": {
             "mode": "improve",
             "objective": "min_overdue",
@@ -222,6 +228,8 @@ def build_case_inputs(*, version: int, summary_obj: Dict[str, Any]) -> Tuple[Dic
 
 
 def render_analysis_html(app, render_template, *, version: int, selected: Dict[str, Any], ctx: Dict[str, Any]) -> str:
+    from web.viewmodels.scheduler_summary_display import build_summary_display_state
+
     with app.test_request_context(f"/scheduler/analysis?version={version}"):
         return render_template(
             "scheduler/analysis.html",
@@ -235,6 +243,12 @@ def render_analysis_html(app, render_template, *, version: int, selected: Dict[s
                     "result_status": selected["result_status"],
                 }
             ],
+            selected_summary_display=build_summary_display_state(
+                ctx.get("selected_summary"),
+                result_status=(ctx.get("selected") or {}).get("result_status"),
+                parse_state=(ctx.get("selected") or {}).get("result_summary_parse_state"),
+            ),
+            trend_summary_state={"incomplete": False, "parse_failed_count": 0},
             **ctx,
         )
 
@@ -313,6 +327,12 @@ def main() -> None:
     new_html = render_analysis_html(app, render_template, version=2, selected=new_selected, ctx=new_ctx)
     assert "当前展示为裁剪后摘要" in new_html, "未展示 summary_truncated 提示"
     assert "600000" in new_html, "未展示 original_size_bytes"
+    assert "告警：4 条" in new_html, "未展示 warning_total"
+    assert "冻结窗口存在跳批风险" in new_html, "未展示 warnings_preview"
+    assert "停机区间加载失败，已按默认能力继续" in new_html, "未展示第二条 warnings_preview"
+    assert "存在 1 个批次未命中首选技能" in new_html, "未展示第三条 warnings_preview"
+    assert "另有 1 条告警，请到系统历史查看。" in new_html, "未展示 warning_hidden_count"
+    assert "另有告警需要在系统历史查看" not in new_html, "第 4 条 warning 不应出现在 preview 中"
     assert "停机避让约束已降级" in new_html, "未展示停机降级提示"
     assert "停机区间加载失败" in new_html, "未展示停机降级原因"
     assert "冻结窗口约束已降级" in new_html, "未展示冻结窗口降级提示"

@@ -9,10 +9,9 @@ from typing import Any, Dict, List, Optional, Protocol, Tuple
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import increment_counter, merge_algo_stats, snapshot_algo_stats
-from core.algorithms.sort_strategies import parse_strategy
 from core.models.enums import YesNo
-from core.services.common.degradation import DegradationCollector
-from core.services.common.field_parse import parse_field_float, parse_field_int
+from core.services.common.strict_parse import parse_required_float, parse_required_int
+from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 
 from ..number_utils import to_yes_no
 
@@ -26,93 +25,71 @@ def _is_yes(value: Any, *, default: str = YesNo.NO.value) -> bool:
     return to_yes_no(value, default=default) == YesNo.YES.value
 
 
-def _cfg_float(
-    _cfg_value,
+def _snapshot_float(
+    cfg: Any,
     key: str,
-    default: float,
     *,
-    strict_mode: bool = False,
-    algo_stats: Any = None,
-    counter_key: Optional[str] = None,
     min_value: Optional[float] = None,
     min_inclusive: bool = True,
-    min_violation_fallback: Any = None,
-) -> float:
-    collector = DegradationCollector()
-    parsed = parse_field_float(
-        _cfg_value(key, default),
-        field=key,
-        strict_mode=bool(strict_mode),
-        scope="schedule_optimizer.runtime",
-        fallback=float(default),
-        collector=collector,
-        min_value=min_value,
-        min_inclusive=min_inclusive,
-        min_violation_fallback=(default if min_violation_fallback is None else min_violation_fallback),
-    )
-    if collector:
-        increment_counter(algo_stats, counter_key or f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
-    return float(parsed)
-
-
-def _cfg_int(
-    _cfg_value,
-    key: str,
-    default: int,
-    *,
     strict_mode: bool = False,
-    algo_stats: Any = None,
-    counter_key: Optional[str] = None,
-    min_value: Optional[int] = None,
-    min_violation_fallback: Any = None,
-) -> int:
-    collector = DegradationCollector()
-    parsed = parse_field_int(
-        _cfg_value(key, default),
-        field=key,
+) -> float:
+    snapshot = ensure_schedule_config_snapshot(
+        cfg,
         strict_mode=bool(strict_mode),
-        scope="schedule_optimizer.runtime",
-        fallback=int(default),
-        collector=collector,
-        min_value=min_value,
-        min_violation_fallback=(default if min_violation_fallback is None else min_violation_fallback),
+        source="scheduler.optimize_schedule_steps.float",
     )
-    if collector:
-        increment_counter(algo_stats, counter_key or f"optimizer_{key}_defaulted_count", bucket="param_fallbacks")
-    return int(parsed)
+    return float(
+        parse_required_float(
+            getattr(snapshot, key),
+            field=key,
+            min_value=min_value,
+            min_inclusive=min_inclusive,
+        )
+    )
 
 
-def _scheduler_accepts_strict_mode(scheduler: SchedulerLike) -> Optional[bool]:
+def _snapshot_int(cfg: Any, key: str, *, min_value: Optional[int] = None, strict_mode: bool = False) -> int:
+    snapshot = ensure_schedule_config_snapshot(
+        cfg,
+        strict_mode=bool(strict_mode),
+        source="scheduler.optimize_schedule_steps.int",
+    )
+    return int(parse_required_int(getattr(snapshot, key), field=key, min_value=min_value))
+
+
+def _schedule_supports_strict_mode(scheduler: SchedulerLike) -> Optional[bool]:
     schedule_fn = getattr(scheduler, "schedule", None)
     if not callable(schedule_fn):
         return False
     try:
-        sig = inspect.signature(schedule_fn)
-    except Exception:
+        signature = inspect.signature(schedule_fn)
+    except (TypeError, ValueError):
         return None
-    for param in sig.parameters.values():
-        if param.kind == inspect.Parameter.VAR_KEYWORD or param.name == "strict_mode":
+
+    for parameter in signature.parameters.values():
+        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
             return True
-    return False
+    return "strict_mode" in signature.parameters
+
+
+def _is_unexpected_strict_mode_type_error(exc: TypeError) -> bool:
+    message = str(exc or "")
+    return "strict_mode" in message and "unexpected keyword argument" in message
 
 
 def _schedule_with_optional_strict_mode(scheduler: SchedulerLike, *, strict_mode: bool = False, **kwargs):
-    supports_strict_mode = _scheduler_accepts_strict_mode(scheduler)
-    if supports_strict_mode is False:
-        return scheduler.schedule(**kwargs)
+    supports_strict_mode = _schedule_supports_strict_mode(scheduler)
     if supports_strict_mode is True:
         return scheduler.schedule(**kwargs, strict_mode=bool(strict_mode))
+    if supports_strict_mode is False:
+        return scheduler.schedule(**kwargs)
 
     try:
         return scheduler.schedule(**kwargs, strict_mode=bool(strict_mode))
     except TypeError as exc:
-        message = str(exc)
-        if (
-            "strict_mode" in message
-            and ("unexpected keyword argument" in message or "got an unexpected keyword argument" in message)
-        ):
-            return scheduler.schedule(**kwargs)
-        raise
+        if not _is_unexpected_strict_mode_type_error(exc):
+            raise
+    return scheduler.schedule(**kwargs)
 
 
 def _run_ortools_warmstart(
@@ -141,12 +118,13 @@ def _run_ortools_warmstart(
     strict_mode: bool = False,
 ) -> Optional[Dict[str, Any]]:
     # 可选：OR-Tools 高质量起点（瓶颈子问题）
-    from core.algorithms.greedy.config_adapter import cfg_get
+    snapshot = ensure_schedule_config_snapshot(
+        cfg,
+        strict_mode=bool(strict_mode),
+        source="scheduler.optimize_schedule_steps.ortools",
+    )
 
-    def _cfg_value(key: str, default: Any = None) -> Any:
-        return cfg_get(cfg, key, default)
-
-    if algo_mode == "improve" and _is_yes(_cfg_value("ortools_enabled", None), default=YesNo.NO.value):
+    if algo_mode == "improve" and _is_yes(snapshot.ortools_enabled, default=YesNo.NO.value):
         try:
             from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
 
@@ -156,15 +134,7 @@ def _run_ortools_warmstart(
             # - remaining<1：避免 int(remaining)=0 被 tl=max(1,...) 拉回 1s 导致超时
             ort_order = None
             if remaining >= 1.0:
-                tl_cfg = _cfg_int(
-                    _cfg_value,
-                    "ortools_time_limit_seconds",
-                    5,
-                    strict_mode=bool(strict_mode),
-                    algo_stats=optimizer_algo_stats,
-                    min_value=1,
-                    min_violation_fallback=1,
-                )
+                tl_cfg = _snapshot_int(snapshot, "ortools_time_limit_seconds", min_value=1, strict_mode=bool(strict_mode))
                 tl = max(1, min(int(tl_cfg), int(remaining)))
                 ort_order = try_solve_bottleneck_batch_order(
                     operations=algo_ops_to_schedule,
@@ -179,22 +149,8 @@ def _run_ortools_warmstart(
                 ort_params: Dict[str, Any] = {}
                 if ort_strat == SortStrategy.WEIGHTED:
                     ort_params = {
-                        "priority_weight": _cfg_float(
-                            _cfg_value,
-                            "priority_weight",
-                            0.4,
-                            strict_mode=bool(strict_mode),
-                            algo_stats=optimizer_algo_stats,
-                            min_value=0.0,
-                        ),
-                        "due_weight": _cfg_float(
-                            _cfg_value,
-                            "due_weight",
-                            0.5,
-                            strict_mode=bool(strict_mode),
-                            algo_stats=optimizer_algo_stats,
-                            min_value=0.0,
-                        ),
+                        "priority_weight": _snapshot_float(snapshot, "priority_weight", min_value=0.0, strict_mode=bool(strict_mode)),
+                        "due_weight": _snapshot_float(snapshot, "due_weight", min_value=0.0, strict_mode=bool(strict_mode)),
                     }
                 res, summ, used_strat, used_params = _schedule_with_optional_strict_mode(
                     scheduler,
@@ -221,6 +177,7 @@ def _run_ortools_warmstart(
                         "strategy": used_strat.value,
                         "dispatch_mode": dispatch_mode_cfg,
                         "dispatch_rule": dispatch_rule_cfg,
+                        "used_params": dict(used_params or {}),
                         "score": list(score),
                         "failed_ops": int(summ.failed_ops),
                         "metrics": metrics.to_dict(),
@@ -275,29 +232,15 @@ def _dispatch_rules_for_mode(dispatch_mode: str, dispatch_rule_cfg: str, valid_d
 def _resolve_multi_start_strategy_params(
     *,
     strategy: SortStrategy,
-    _cfg_value,
+    cfg: Any,
     strict_mode: bool,
     optimizer_algo_stats: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
     if strategy != SortStrategy.WEIGHTED:
         return {}
     return {
-        "priority_weight": _cfg_float(
-            _cfg_value,
-            "priority_weight",
-            0.4,
-            strict_mode=bool(strict_mode),
-            algo_stats=optimizer_algo_stats,
-            min_value=0.0,
-        ),
-        "due_weight": _cfg_float(
-            _cfg_value,
-            "due_weight",
-            0.5,
-            strict_mode=bool(strict_mode),
-            algo_stats=optimizer_algo_stats,
-            min_value=0.0,
-        ),
+        "priority_weight": _snapshot_float(cfg, "priority_weight", min_value=0.0, strict_mode=bool(strict_mode)),
+        "due_weight": _snapshot_float(cfg, "due_weight", min_value=0.0, strict_mode=bool(strict_mode)),
     }
 
 
@@ -391,12 +334,12 @@ def _run_multi_start(
     optimizer_algo_stats: Optional[Dict[str, Any]] = None,
     strict_mode: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    from core.algorithms.greedy.config_adapter import cfg_get
-
     order_cache: Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]] = {}
-
-    def _cfg_value(key: str, default: Any = None) -> Any:
-        return cfg_get(cfg, key, default)
+    snapshot = ensure_schedule_config_snapshot(
+        cfg,
+        strict_mode=bool(strict_mode),
+        source="scheduler.optimize_schedule_steps.multi_start",
+    )
 
     # 执行策略轮询（multi-start）
     for dm in dispatch_modes:
@@ -406,10 +349,10 @@ def _run_multi_start(
         for k in keys:
             if time.time() > deadline:
                 break
-            strat = parse_strategy(k, default=SortStrategy.PRIORITY_FIRST)
+            strat = SortStrategy(k)
             params0 = _resolve_multi_start_strategy_params(
                 strategy=strat,
-                _cfg_value=_cfg_value,
+                cfg=snapshot,
                 strict_mode=bool(strict_mode),
                 optimizer_algo_stats=optimizer_algo_stats,
             )
@@ -450,6 +393,7 @@ def _run_multi_start(
                         "strategy": cand["strategy"].value,
                         "dispatch_mode": dm,
                         "dispatch_rule": dr,
+                        "used_params": dict(cand["params"] or {}),
                         "score": list(score),
                         "failed_ops": int(cand["summary"].failed_ops),
                         "metrics": metrics.to_dict(),

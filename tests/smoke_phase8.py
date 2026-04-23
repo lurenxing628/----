@@ -264,9 +264,13 @@ def main():
                 raise RuntimeError(f"甘特图任务 meta 缺少字段：{f} meta={meta}")
 
         cc = data.get("critical_chain") or {}
-        for f in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "cache_hit"):
+        for f in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "available", "reason", "cache_hit"):
             if f not in cc:
                 raise RuntimeError(f"critical_chain 缺少字段：{f}")
+        if cc.get("available") is not True:
+            raise RuntimeError(f"关键链成功场景不应标记 unavailable：critical_chain={cc}")
+        if cc.get("reason") not in (None, ""):
+            raise RuntimeError(f"关键链成功场景 reason 应为空：critical_chain={cc}")
         edges = cc.get("edges") or []
         if edges:
             for f in ("from", "to", "edge_type", "reason", "gap_minutes"):

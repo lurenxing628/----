@@ -32,6 +32,7 @@ def _default_snapshot_kwargs():
         "dispatch_mode": "batch_order",
         "dispatch_rule": "slack",
         "auto_assign_enabled": "no",
+        "auto_assign_persist": "yes",
         "ortools_enabled": "no",
         "ortools_time_limit_seconds": 5,
         "algo_mode": "greedy",
@@ -61,17 +62,9 @@ def main() -> None:
     from core.services.scheduler.config_snapshot import build_schedule_config_snapshot
 
     defaults = _default_snapshot_kwargs()
-    build_kwargs = {
-        "defaults": defaults,
-        "valid_strategies": ("priority_first", "due_date_first", "weighted", "fifo"),
-        "valid_dispatch_modes": ("batch_order", "sgs"),
-        "valid_dispatch_rules": ("slack", "cr", "atc"),
-        "valid_algo_modes": ("greedy", "improve"),
-        "valid_objectives": ("min_overdue", "min_tardiness", "min_weighted_tardiness", "min_changeover"),
-    }
 
     def _build(values, *, strict_mode: bool):
-        return build_schedule_config_snapshot(_StubRepo(values), strict_mode=strict_mode, **build_kwargs)
+        return build_schedule_config_snapshot(_StubRepo(values), defaults=defaults, strict_mode=strict_mode)
 
     relaxed = _build(
         {
@@ -89,37 +82,60 @@ def main() -> None:
     assert relaxed.time_budget_seconds == 1, "非 strict 下 time budget 应保持最小值钳制"
     assert relaxed.freeze_window_days == 0, "非 strict 下 freeze_window_days 应保持最小值钳制"
 
-    strict_default = _build({}, strict_mode=True)
-    assert strict_default.to_dict() == defaults, "strict_mode=True 且未提供坏值时不应破坏默认快照"
+    _expect_validation(
+        "strict.sort_strategy.missing",
+        lambda: _build({}, strict_mode=True),
+        "sort_strategy",
+    )
 
-    _expect_validation("strict.priority_weight", lambda: _build({"priority_weight": "abc"}, strict_mode=True), "priority_weight")
-    _expect_validation("strict.due_weight", lambda: _build({"due_weight": "NaN"}, strict_mode=True), "due_weight")
+    _expect_validation(
+        "strict.priority_weight",
+        lambda: _build({**defaults, "priority_weight": "abc"}, strict_mode=True),
+        "priority_weight",
+    )
+    _expect_validation(
+        "strict.due_weight",
+        lambda: _build({**defaults, "due_weight": "NaN"}, strict_mode=True),
+        "due_weight",
+    )
     _expect_validation(
         "strict.holiday_default_efficiency",
-        lambda: _build({"holiday_default_efficiency": "0"}, strict_mode=True),
+        lambda: _build({**defaults, "holiday_default_efficiency": "0"}, strict_mode=True),
         "holiday_default_efficiency",
     )
     _expect_validation(
         "strict.ortools_time_limit_seconds",
-        lambda: _build({"ortools_time_limit_seconds": "1.5"}, strict_mode=True),
+        lambda: _build({**defaults, "ortools_time_limit_seconds": "1.5"}, strict_mode=True),
         "ortools_time_limit_seconds",
     )
     _expect_validation(
         "strict.time_budget_seconds",
-        lambda: _build({"time_budget_seconds": "0"}, strict_mode=True),
+        lambda: _build({**defaults, "time_budget_seconds": "0"}, strict_mode=True),
         "time_budget_seconds",
     )
     _expect_validation(
         "strict.freeze_window_days",
-        lambda: _build({"freeze_window_days": "-1"}, strict_mode=True),
+        lambda: _build({**defaults, "freeze_window_days": "-1"}, strict_mode=True),
         "freeze_window_days",
     )
-    _expect_validation("strict.sort_strategy.blank", lambda: _build({"sort_strategy": "   "}, strict_mode=True), "sort_strategy")
-    _expect_validation("strict.dispatch_mode.blank", lambda: _build({"dispatch_mode": "   "}, strict_mode=True), "dispatch_mode")
-    _expect_validation("strict.dispatch_rule.blank", lambda: _build({"dispatch_rule": "   "}, strict_mode=True), "dispatch_rule")
+    _expect_validation(
+        "strict.sort_strategy.blank",
+        lambda: _build({**defaults, "sort_strategy": "   "}, strict_mode=True),
+        "sort_strategy",
+    )
+    _expect_validation(
+        "strict.dispatch_mode.blank",
+        lambda: _build({**defaults, "dispatch_mode": "   "}, strict_mode=True),
+        "dispatch_mode",
+    )
+    _expect_validation(
+        "strict.dispatch_rule.blank",
+        lambda: _build({**defaults, "dispatch_rule": "   "}, strict_mode=True),
+        "dispatch_rule",
+    )
     _expect_validation(
         "strict.auto_assign_enabled.blank",
-        lambda: _build({"auto_assign_enabled": "   "}, strict_mode=True),
+        lambda: _build({**defaults, "auto_assign_enabled": "   "}, strict_mode=True),
         "auto_assign_enabled",
     )
 

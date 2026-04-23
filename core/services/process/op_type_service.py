@@ -96,6 +96,10 @@ class OpTypeService:
 
     def create(self, op_type_id: Any, name: Any, category: Any = SourceType.INTERNAL.value, remark: Any = None) -> OpType:
         ot_id, ot_name, ot_category = self._validate_fields(op_type_id, name, category)
+        if ot_id is None:
+            raise ValidationError("鈥滃伐绉岻D鈥濅笉鑳戒负绌?", field="宸ョID")
+        if ot_name is None:
+            raise ValidationError("鈥滃伐绉嶅悕绉扳€濅笉鑳戒负绌?", field="宸ョ鍚嶇О")
         ot_remark = self._normalize_text(remark)
 
         if self.repo.get(ot_id):

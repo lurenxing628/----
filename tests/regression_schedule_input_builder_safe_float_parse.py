@@ -13,11 +13,18 @@ def find_repo_root() -> str:
 
 class _StubSvc:
     def __init__(self):
-        self.called = False
+        self.template_lookup_keys = []
+        self.part_op_repo = self
+        self.group_repo = self
 
-    def _get_template_and_group_for_op(self, op):
-        self.called = True
-        return None, None
+    def _get_batch_or_raise(self, batch_id):
+        return SimpleNamespace(batch_id=batch_id, part_no="P001")
+
+    def get(self, *args):
+        if len(args) == 2:
+            self.template_lookup_keys.append(args)
+            return SimpleNamespace(ext_group_id=None)
+        return None
 
 
 def main() -> None:
@@ -63,7 +70,7 @@ def main() -> None:
     outcome = build_algo_operations(svc, [internal, external], return_outcome=True)
     out = outcome.value
     assert len(out) == 2, f"build_algo_operations 输出数量异常：{len(out)}"
-    assert svc.called is True, "external 工序应触发 _get_template_and_group_for_op（source 大小写需容错）"
+    assert svc.template_lookup_keys == [("P001", 2)], "external 工序应触发真实模板查找（source 大小写需容错）"
     assert outcome.has_events is True, "兼容读取坏值后应保留结构化退化事件"
 
     op0 = out[0]

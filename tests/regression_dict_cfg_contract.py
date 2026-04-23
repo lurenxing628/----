@@ -224,6 +224,11 @@ def _run_summary_case(cfg: Any) -> Dict[str, Any]:
         "downtime_extend_ok": False,
         "downtime_extend_error": "mock-fail",
     }
+    resource_pool_meta = {
+        "resource_pool_attempted": True,
+        "resource_pool_build_ok": False,
+        "resource_pool_build_error": "mock-resource-pool",
+    }
     summary_ctx = SummaryBuildContext(
         cfg=cfg,
         version=1,
@@ -246,6 +251,7 @@ def _run_summary_case(cfg: Any) -> Dict[str, Any]:
         improvement_trace=[],
         frozen_op_ids=set(),
         downtime_meta=downtime_meta,
+        resource_pool_meta=resource_pool_meta,
         simulate=False,
         t0=time.time(),
     )
@@ -326,7 +332,6 @@ def main() -> None:
         "precedence",
         "calendar",
         "resource_machine_operator",
-        "freeze_window",
     ], f"dict cfg hard_constraints 错误：{dict_algo.get('hard_constraints')!r}"
     assert dict_algo.get("freeze_window") == {
         "enabled": "yes",
@@ -350,6 +355,12 @@ def main() -> None:
     assert dict_algo.get("config_snapshot", {}).get("freeze_window_enabled") == "yes", "config_snapshot 未保留 dict cfg freeze_window_enabled"
     assert dict_algo.get("config_snapshot", {}).get("freeze_window_days") == 3, "config_snapshot 未保留 dict cfg freeze_window_days"
     assert dict_algo.get("config_snapshot", {}).get("auto_assign_enabled") == "yes", "config_snapshot 未保留 dict cfg auto_assign_enabled"
+    assert dict_algo.get("resource_pool") == {
+        "enabled": "yes",
+        "attempted": True,
+        "degraded": True,
+        "degradation_reason": "mock-resource-pool",
+    }, f"dict cfg resource_pool 摘要错误：{dict_algo.get('resource_pool')!r}"
     assert dict_algo == object_algo, "dict cfg 与 object cfg 的 summary 摘要不一致"
 
     print("OK")

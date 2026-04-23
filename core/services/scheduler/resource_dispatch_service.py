@@ -42,13 +42,13 @@ class ResourceDispatchService:
     def _normalize_scope_type(self, value: Any) -> str:
         scope_type = str(value or "operator").strip().lower() or "operator"
         if scope_type not in {"operator", "machine", "team"}:
-            raise ValidationError("视角类型不正确，请选择：人员 / 设备 / 班组。", field="视角类型")
+            raise ValidationError("视角类型不正确，请选择：人员 / 设备 / 班组。", field="scope_type")
         return scope_type
 
     def _normalize_team_axis(self, value: Any) -> str:
         team_axis = str(value or "operator").strip().lower() or "operator"
         if team_axis not in {"operator", "machine"}:
-            raise ValidationError("班组轴类型不正确，请选择：人员轴 / 设备轴。", field="班组轴类型")
+            raise ValidationError("班组轴类型不正确，请选择：人员轴 / 设备轴。", field="team_axis")
         return team_axis
 
     def _resolve_scope_id(
@@ -84,7 +84,7 @@ class ResourceDispatchService:
     def _list_versions(self, limit: int = 30) -> List[Dict[str, Any]]:
         return list(self.history_service.list_versions(limit=limit) or [])
 
-    def _normalize_version(self, value: Any, *, latest_version: int) -> int:
+    def _normalize_strict_positive_version(self, value: Any, *, latest_version: int) -> int:
         if value in (None, ""):
             return int(latest_version or 1)
         try:
@@ -218,7 +218,7 @@ class ResourceDispatchService:
         )
         selected_scope_name = self._scope_name(normalized_scope_type, selected_scope_id) if selected_scope_id else ""
         operator_options, machine_options, team_options = self._build_scope_options()
-        selected_version = self._normalize_version(version, latest_version=latest_version)
+        selected_version = self._normalize_strict_positive_version(version, latest_version=latest_version)
         return {
             "filters": {
                 "scope_type": normalized_scope_type,
@@ -264,7 +264,7 @@ class ResourceDispatchService:
         normalized_scope_type = self._normalize_scope_type(scope_type)
         normalized_team_axis = self._normalize_team_axis(team_axis)
         latest_version = self._latest_version()
-        selected_version = self._normalize_version(version, latest_version=latest_version)
+        selected_version = self._normalize_strict_positive_version(version, latest_version=latest_version)
         if latest_version <= 0:
             return empty_dispatch_payload(
                 scope_type=normalized_scope_type,

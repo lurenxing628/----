@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from flask import Flask
 
 import web.routes.scheduler_config as route_mod
 import web.ui_mode as ui_mode_mod
@@ -45,3 +46,47 @@ def test_build_related_manual_links_normalizes_missing_full_manual_section_url(
     )
 
     assert related[0]["full_manual_section_url"] == ""
+
+
+def test_normalize_scheduler_manual_args_accepts_same_origin_absolute_src_and_flags_invalid_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        route_mod,
+        "build_page_manual_bundle",
+        lambda raw_page: None if raw_page == "bad.page" else {"current_manual": {}, "related_manuals": []},
+    )
+
+    app = Flask(__name__)
+    with app.test_request_context("/scheduler/config/manual", base_url="http://localhost/"):
+        safe_src, safe_page, bundle, warning = route_mod._normalize_scheduler_manual_args(
+            "http://localhost/scheduler/gantt?view=machine",
+            "bad.page",
+        )
+
+    assert safe_src == "/scheduler/gantt?view=machine"
+    assert safe_page is None
+    assert bundle is None
+    assert "bad.page" in str(warning or "")
+
+
+def test_normalize_scheduler_manual_args_preserves_trailing_question_mark_for_same_origin_absolute_src(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        route_mod,
+        "build_page_manual_bundle",
+        lambda raw_page: {"current_manual": {}, "related_manuals": []},
+    )
+
+    app = Flask(__name__)
+    with app.test_request_context("/scheduler/config/manual", base_url="http://localhost/"):
+        safe_src, safe_page, bundle, warning = route_mod._normalize_scheduler_manual_args(
+            "http://localhost/scheduler/config?",
+            "scheduler.config_page",
+        )
+
+    assert safe_src == "/scheduler/config?"
+    assert safe_page == "scheduler.config_page"
+    assert bundle is not None
+    assert warning is None

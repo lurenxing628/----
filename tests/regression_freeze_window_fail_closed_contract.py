@@ -14,6 +14,26 @@ class _ExplodingScheduleRepo:
         raise RuntimeError("boom")
 
 
+class _MalformedScheduleRepo:
+    def list_version_rows_by_op_ids_start_range(self, **kwargs):
+        return [
+            {"op_id": "bad", "start_time": "2026-04-01 08:00:00", "end_time": "2026-04-01 10:00:00"},
+        ]
+
+
+class _EmptyScheduleRepo:
+    def list_version_rows_by_op_ids_start_range(self, **kwargs):
+        return []
+
+
+class _PartiallyInvalidScheduleRepo:
+    def list_version_rows_by_op_ids_start_range(self, **kwargs):
+        return [
+            {"op_id": 1, "start_time": "2026-04-01 08:00:00", "end_time": "2026-04-01 10:00:00"},
+            {"op_id": 2, "start_time": "2026-04-01 11:00:00", "end_time": "2026-04-01 10:00:00"},
+        ]
+
+
 class _StubSvc:
     schedule_repo = _ExplodingScheduleRepo()
 
@@ -36,7 +56,14 @@ def _cfg():
 
 
 def _ops():
-    return [SimpleNamespace(id=1, op_code="B001_10", batch_id="B001", seq=10, source="internal", op_type_name="工序A")]
+    return [SimpleNamespace(id=1, op_code="B001_10", batch_id="B001", seq=10, source="internal", op_type_name="A")]
+
+
+def _mixed_ops():
+    return [
+        SimpleNamespace(id=1, op_code="B001_10", batch_id="B001", seq=10, source="internal", op_type_name="A"),
+        SimpleNamespace(id=2, op_code="B002_10", batch_id="B002", seq=10, source="internal", op_type_name="A"),
+    ]
 
 
 def test_freeze_window_strict_mode_fail_closed() -> None:
@@ -53,7 +80,7 @@ def test_freeze_window_strict_mode_fail_closed() -> None:
             meta=meta,
         )
 
-    assert exc_info.value.field == "freeze_window", f"冻结窗口 strict_mode 未失败关闭：{exc_info.value.field!r}"
+    assert exc_info.value.field == "freeze_window", exc_info.value.field
 
 
 def test_freeze_window_relaxed_mode_surfaces_degraded_state() -> None:
@@ -69,9 +96,97 @@ def test_freeze_window_relaxed_mode_surfaces_degraded_state() -> None:
         meta=meta,
     )
 
-    assert frozen_op_ids == set(), f"降级后不应保留冻结工序：{frozen_op_ids!r}"
-    assert seed_results == [], f"降级后不应保留 seed 结果：{seed_results!r}"
-    assert meta.get("freeze_state") == "degraded", f"freeze_state 未标记 degraded：{meta!r}"
-    assert meta.get("freeze_applied") is False, f"freeze_applied 异常：{meta!r}"
-    assert meta.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], f"冻结退化原因码异常：{meta!r}"
-    assert warnings and "读取上一版本排程失败" in warnings[0], f"冻结降级 warning 异常：{warnings!r}"
+    assert frozen_op_ids == set(), frozen_op_ids
+    assert seed_results == [], seed_results
+    assert meta.get("freeze_state") == "degraded", meta
+    assert meta.get("freeze_applied") is False, meta
+    assert meta.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], meta
+    assert warnings, warnings
+
+
+def test_freeze_window_invalid_previous_rows_strict_mode_fail_closed() -> None:
+    meta = {}
+    svc = _StubSvc()
+    svc.schedule_repo = _MalformedScheduleRepo()
+    with pytest.raises(ValidationError) as exc_info:
+        build_freeze_window_seed(
+            svc,
+            cfg=_cfg(),
+            prev_version=1,
+            start_dt=datetime(2026, 4, 1, 8, 0, 0),
+            operations=_ops(),
+            reschedulable_operations=_ops(),
+            strict_mode=True,
+            meta=meta,
+        )
+
+    assert exc_info.value.field == "freeze_window", exc_info.value.field
+
+
+def test_freeze_window_invalid_previous_rows_relaxed_mode_surfaces_degradation() -> None:
+    meta = {}
+    svc = _StubSvc()
+    svc.schedule_repo = _MalformedScheduleRepo()
+    frozen_op_ids, seed_results, warnings = build_freeze_window_seed(
+        svc,
+        cfg=_cfg(),
+        prev_version=1,
+        start_dt=datetime(2026, 4, 1, 8, 0, 0),
+        operations=_ops(),
+        reschedulable_operations=_ops(),
+        strict_mode=False,
+        meta=meta,
+    )
+
+    assert frozen_op_ids == set(), frozen_op_ids
+    assert seed_results == [], seed_results
+    assert meta.get("freeze_state") == "degraded", meta
+    assert meta.get("freeze_applied") is False, meta
+    assert meta.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], meta
+    assert warnings, warnings
+
+
+def test_freeze_window_no_previous_rows_is_not_degraded() -> None:
+    meta = {}
+    svc = _StubSvc()
+    svc.schedule_repo = _EmptyScheduleRepo()
+    frozen_op_ids, seed_results, warnings = build_freeze_window_seed(
+        svc,
+        cfg=_cfg(),
+        prev_version=1,
+        start_dt=datetime(2026, 4, 1, 8, 0, 0),
+        operations=_ops(),
+        reschedulable_operations=_ops(),
+        strict_mode=False,
+        meta=meta,
+    )
+
+    assert frozen_op_ids == set(), frozen_op_ids
+    assert seed_results == [], seed_results
+    assert warnings == [], warnings
+    assert meta.get("freeze_state") == "disabled", meta
+    assert meta.get("freeze_applied") is False, meta
+    assert meta.get("freeze_degradation_codes") == [], meta
+
+
+def test_freeze_window_relaxed_mode_preserves_applied_bit_under_partial_degradation() -> None:
+    meta = {}
+    svc = _StubSvc()
+    svc.schedule_repo = _PartiallyInvalidScheduleRepo()
+    frozen_op_ids, seed_results, warnings = build_freeze_window_seed(
+        svc,
+        cfg=_cfg(),
+        prev_version=1,
+        start_dt=datetime(2026, 4, 1, 8, 0, 0),
+        operations=_mixed_ops(),
+        reschedulable_operations=_mixed_ops(),
+        strict_mode=False,
+        meta=meta,
+    )
+
+    assert frozen_op_ids == {1}, frozen_op_ids
+    assert [item.get("op_id") for item in seed_results] == [1], seed_results
+    assert meta.get("freeze_state") == "degraded", meta
+    assert meta.get("freeze_applied") is True, meta
+    assert meta.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], meta
+    assert warnings, warnings

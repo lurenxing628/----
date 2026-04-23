@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from core.algorithms.objective_specs import best_score_schema, comparison_metric_key
 from core.models.enums import YesNo
+from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 
 from .schedule_summary_types import (
     AlgorithmSummaryState,
@@ -13,103 +15,27 @@ from .schedule_summary_types import (
     SummaryBuildContext,
 )
 
-_CONFIG_SNAPSHOT_KEYS = (
-    "sort_strategy",
-    "priority_weight",
-    "due_weight",
-    "ready_weight",
-    "holiday_default_efficiency",
-    "enforce_ready_default",
-    "prefer_primary_skill",
-    "dispatch_mode",
-    "dispatch_rule",
-    "auto_assign_enabled",
-    "ortools_enabled",
-    "ortools_time_limit_seconds",
-    "algo_mode",
-    "time_budget_seconds",
-    "objective",
-    "freeze_window_enabled",
-    "freeze_window_days",
-)
-
-_COMPARISON_METRICS = {
-    "min_tardiness": "total_tardiness_hours",
-    "min_weighted_tardiness": "weighted_tardiness_hours",
-    "min_changeover": "changeover_count",
+_SUMMARY_MERGE_ERROR_CODES = {
+    "summary_missing",
+    "summary_warnings_assignment_failed",
+    "summary_warnings_unavailable",
 }
-
-_BEST_SCORE_SCHEMA_PARTS: Dict[str, List[Tuple[str, str]]] = {
-    "min_tardiness": [
-        ("failed_ops", "失败工序数"),
-        ("total_tardiness_hours", "总拖期小时"),
-        ("overdue_count", "超期批次数"),
-        ("makespan_hours", "总工期小时"),
-        ("changeover_count", "换型次数"),
-    ],
-    "min_weighted_tardiness": [
-        ("failed_ops", "失败工序数"),
-        ("weighted_tardiness_hours", "加权拖期小时"),
-        ("overdue_count", "超期批次数"),
-        ("total_tardiness_hours", "总拖期小时"),
-        ("makespan_hours", "总工期小时"),
-        ("changeover_count", "换型次数"),
-    ],
-    "min_changeover": [
-        ("failed_ops", "失败工序数"),
-        ("changeover_count", "换型次数"),
-        ("overdue_count", "超期批次数"),
-        ("total_tardiness_hours", "总拖期小时"),
-        ("makespan_hours", "总工期小时"),
-    ],
-    "min_overdue": [
-        ("failed_ops", "失败工序数"),
-        ("overdue_count", "超期批次数"),
-        ("total_tardiness_hours", "总拖期小时"),
-        ("makespan_hours", "总工期小时"),
-        ("changeover_count", "换型次数"),
-    ],
-}
-
-
-def _cfg_value(cfg: Any, key: str, default: Any = None) -> Any:
-    from core.algorithms.greedy.config_adapter import cfg_get
-
-    return cfg_get(cfg, key, default)
 
 
 def _config_snapshot_dict(cfg: Any) -> Dict[str, Any]:
-    if cfg is None:
-        return {}
-    if isinstance(cfg, dict):
-        return dict(cfg)
-
-    to_dict = getattr(cfg, "to_dict", None)
-    if callable(to_dict):
-        obj = to_dict()
-        if isinstance(obj, dict):
-            return dict(obj)
-
-    out: Dict[str, Any] = {}
-    for key in _CONFIG_SNAPSHOT_KEYS:
-        if not hasattr(cfg, key):
-            continue
-        value = getattr(cfg, key)
-        if value is None:
-            continue
-        out[key] = value if isinstance(value, (str, int, float, bool)) else str(value)
-    return out
+    return ensure_schedule_config_snapshot(
+        cfg,
+        strict_mode=False,
+        source="scheduler.summary.config_snapshot",
+    ).to_dict()
 
 
 def _comparison_metric(objective_name: str) -> str:
-    obj = str(objective_name or "min_overdue").strip().lower()
-    return _COMPARISON_METRICS.get(obj, "overdue_count")
+    return comparison_metric_key(objective_name)
 
 
 def _best_score_schema(objective_name: str) -> List[Dict[str, Any]]:
-    obj = str(objective_name or "min_overdue").strip().lower()
-    parts = _BEST_SCORE_SCHEMA_PARTS.get(obj, _BEST_SCORE_SCHEMA_PARTS["min_overdue"])
-    return [{"index": int(idx), "key": key, "label": label} for idx, (key, label) in enumerate(parts)]
+    return best_score_schema(objective_name)
 
 
 def _finish_time_by_batch(results: List[Any]) -> Dict[str, datetime]:
@@ -246,7 +172,6 @@ def _algo_freeze_window_dict(
 
 
 def _algo_resource_pool_dict(
-    cfg: Any,
     *,
     resource_pool_attempted: bool,
     resource_pool_degraded: bool,
@@ -254,7 +179,7 @@ def _algo_resource_pool_dict(
     resource_pool_enabled: bool,
 ) -> Dict[str, Any]:
     return {
-        "enabled": _cfg_value(cfg, "auto_assign_enabled", "no"),
+        "enabled": YesNo.YES.value if bool(resource_pool_enabled) else YesNo.NO.value,
         "attempted": bool(resource_pool_attempted) if resource_pool_enabled else False,
         "degraded": bool(resource_pool_degraded),
         "degradation_reason": resource_pool_degradation_reason,
@@ -267,12 +192,15 @@ def _algo_warning_pipeline_dict(
     algo_warning_list: List[str],
     warning_pipeline: Dict[str, Any],
 ) -> Dict[str, Any]:
+    summary_merge_error = str(warning_pipeline.get("summary_merge_error") or "").strip()
+    if summary_merge_error and summary_merge_error not in _SUMMARY_MERGE_ERROR_CODES:
+        summary_merge_error = "summary_warnings_assignment_failed"
     return {
         "algo_warning_count": int(len(algo_warning_list)),
         "summary_warning_count": int(len(summary_warnings)),
         "summary_merge_attempted": bool(warning_pipeline.get("summary_merge_attempted") or False),
         "summary_merge_failed": bool(warning_pipeline.get("summary_merge_failed") or False),
-        "summary_merge_error": warning_pipeline.get("summary_merge_error"),
+        "summary_merge_error": summary_merge_error or None,
     }
 
 
@@ -301,7 +229,6 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
     }
     if state.resource_pool_enabled or (isinstance(state.resource_pool_meta, dict) and bool(state.resource_pool_meta)):
         algo["resource_pool"] = _algo_resource_pool_dict(
-            ctx.cfg,
             resource_pool_attempted=state.resource_pool_attempted,
             resource_pool_degraded=state.resource_pool_degraded,
             resource_pool_degradation_reason=state.resource_pool_degradation_reason,
@@ -315,6 +242,8 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
         )
     if state.fallback_state.fallback_counts:
         algo["fallback_counts"] = dict(state.fallback_state.fallback_counts)
+    if state.fallback_state.fallback_samples:
+        algo["fallback_samples"] = dict(state.fallback_state.fallback_samples)
     if state.fallback_state.param_fallbacks:
         algo["param_fallbacks"] = dict(state.fallback_state.param_fallbacks)
     return algo
@@ -329,11 +258,14 @@ def _build_result_summary_obj(
     fallback_state: FallbackState,
     algorithm_state: AlgorithmSummaryState,
     summary_degradation: Dict[str, Any],
+    degraded_success: bool,
+    degraded_causes: List[str],
     time_cost_ms: int,
     serialize_end_date_fn: Callable[[Optional[Any]], Optional[str]],
 ) -> Dict[str, Any]:
+    summary_errors = list(getattr(ctx.summary, "errors", None) or [])
     return {
-        "summary_schema_version": "1.1",
+        "summary_schema_version": "1.2",
         "is_simulation": bool(ctx.simulate),
         "version": int(ctx.version),
         "strategy": ctx.used_strategy.value,
@@ -349,6 +281,8 @@ def _build_result_summary_obj(
         "legacy_external_days_defaulted_count": int(fallback_state.legacy_external_days_defaulted_count),
         "degradation_events": list(summary_degradation.get("events") or []),
         "degradation_counters": dict(summary_degradation.get("counters") or {}),
+        "degraded_success": bool(degraded_success),
+        "degraded_causes": list(degraded_causes or []),
         "counts": {
             "batch_count": len(ctx.batches),
             "op_count": int(getattr(ctx.summary, "total_ops", 0)),
@@ -357,7 +291,8 @@ def _build_result_summary_obj(
             "unscheduled_batch_count": int(runtime_state.unscheduled_batch_count),
         },
         "overdue_batches": {"count": len(runtime_state.overdue_items), "items": runtime_state.overdue_items},
-        "errors_sample": (getattr(ctx.summary, "errors", None) or [])[:10],
+        "error_count": len(summary_errors),
+        "errors_sample": summary_errors[:10],
         "warnings": list(freeze_state.all_warnings),
         "time_cost_ms": int(time_cost_ms),
     }

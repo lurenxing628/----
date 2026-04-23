@@ -1,15 +1,49 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import BatchOperationStatus, BatchStatus, SourceType, YesNo
 
-from ..number_utils import to_yes_no
-
 _TERMINAL_OPERATION_STATUSES = frozenset(
     (BatchOperationStatus.COMPLETED.value, BatchOperationStatus.SKIPPED.value)
 )
+
+
+@dataclass(frozen=True)
+class ValidatedScheduleRow:
+    op_id: int
+    machine_id: Any
+    operator_id: Any
+    start_time: Any
+    end_time: Any
+    source: str
+
+
+@dataclass(frozen=True)
+class ValidatedSchedulePayload:
+    schedule_rows: List[ValidatedScheduleRow]
+    scheduled_op_ids: Set[int]
+    assigned_by_op_id: Dict[int, Dict[str, Any]]
+    out_of_scope_op_ids: List[int] = field(default_factory=list)
+    validation_errors: List[str] = field(default_factory=list)
+
+    def to_repo_rows(self, svc: Any, *, version: int, frozen_op_ids: Set[int]) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        for row in self.schedule_rows:
+            rows.append(
+                {
+                    "op_id": int(row.op_id),
+                    "machine_id": row.machine_id,
+                    "operator_id": row.operator_id,
+                    "start_time": svc._format_dt(row.start_time),
+                    "end_time": svc._format_dt(row.end_time),
+                    "lock_status": "locked" if int(row.op_id) in frozen_op_ids else "unlocked",
+                    "version": int(version),
+                }
+            )
+        return rows
 
 
 def _normalized_status_text(value: Any, *, default: str) -> str:
@@ -54,48 +88,124 @@ def has_actionable_schedule_rows(results: List[Any], *, allowed_op_ids: Optional
     return count_actionable_schedule_rows(results, allowed_op_ids=allowed_op_ids) > 0
 
 
-def _raise_no_actionable_schedule_error() -> None:
-    exc = ValidationError("优化结果未生成有效可落库排程行，禁止写入排产历史。", field="排产")
+def _raise_no_actionable_schedule_error(validation_errors: Optional[List[str]] = None) -> None:
+    exc = ValidationError("优化结果未生成有效可落库排程行", field="schedule")
     exc.details = dict(exc.details or {})
     exc.details["reason"] = "no_actionable_schedule_rows"
+    if validation_errors:
+        exc.details["validation_errors"] = list(validation_errors)
     raise exc
 
 
-def _build_schedule_rows(
-    svc,
-    *,
-    version: int,
-    results: List[Any],
-    frozen_op_ids: Set[int],
-    allowed_op_ids: Optional[Set[int]] = None,
-) -> List[Dict[str, Any]]:
-    schedule_rows: List[Dict[str, Any]] = []
-    for op_id, result in _iter_actionable_results(results, allowed_op_ids=allowed_op_ids):
-        schedule_rows.append(
-            {
-                "op_id": int(op_id),
-                "machine_id": result.machine_id,
-                "operator_id": result.operator_id,
-                "start_time": svc._format_dt(result.start_time),
-                "end_time": svc._format_dt(result.end_time),
-                "lock_status": "locked" if int(op_id) in frozen_op_ids else "unlocked",
-                "version": int(version),
-            }
-        )
-    return schedule_rows
+def _raise_invalid_schedule_rows_error(validation_errors: List[str]) -> None:
+    exc = ValidationError("optimizer returned invalid in-scope schedule rows", field="schedule_results")
+    exc.details = dict(exc.details or {})
+    exc.details["reason"] = "invalid_schedule_rows"
+    exc.details["validation_errors"] = list(validation_errors)
+    exc.details["invalid_schedule_row_count"] = int(len(validation_errors))
+    raise exc
 
 
-def _scheduled_op_ids(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> Set[int]:
-    return {op_id for op_id, _result in _iter_actionable_results(results, allowed_op_ids=allowed_op_ids)}
+def _raise_out_of_scope_schedule_rows_error(out_of_scope_op_ids: List[int]) -> None:
+    normalized_ids = sorted({int(op_id) for op_id in list(out_of_scope_op_ids or []) if int(op_id) > 0})
+    exc = ValidationError("优化结果包含超出本次可重排范围的工序，已拒绝写入", field="schedule_results")
+    exc.details = dict(exc.details or {})
+    exc.details["reason"] = "out_of_scope_schedule_rows"
+    exc.details["count"] = int(len(normalized_ids))
+    exc.details["sample_op_ids"] = normalized_ids[:10]
+    exc.details["allowed_scope_kind"] = "reschedulable_op_ids"
+    raise exc
 
 
-def _assigned_by_op_id(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> Dict[int, Dict[str, Any]]:
-    assigned: Dict[int, Dict[str, Any]] = {}
-    for op_id, result in _iter_actionable_results(results, allowed_op_ids=allowed_op_ids):
-        if str(getattr(result, "source", "") or "").strip().lower() != SourceType.INTERNAL.value:
+def _result_identity(result: Any, *, index: int) -> str:
+    if result is None:
+        return f"results[{index}]"
+    parts: List[str] = [f"index={index}"]
+    for field_name in ("op_id", "op_code", "batch_id", "seq"):
+        try:
+            value = getattr(result, field_name, None)
+        except Exception:
+            value = None
+        if value in (None, ""):
             continue
-        assigned[int(op_id)] = {"machine_id": result.machine_id, "operator_id": result.operator_id}
-    return assigned
+        parts.append(f"{field_name}={value}")
+    return ",".join(parts)
+
+
+def build_validated_schedule_payload(
+    results: List[Any],
+    *,
+    allowed_op_ids: Optional[Set[int]] = None,
+) -> ValidatedSchedulePayload:
+    schedule_rows: List[ValidatedScheduleRow] = []
+    scheduled_op_ids: Set[int] = set()
+    assigned_by_op_id: Dict[int, Dict[str, Any]] = {}
+    out_of_scope_op_ids: List[int] = []
+    validation_errors: List[str] = []
+
+    for index, result in enumerate(list(results or [])):
+        identity = _result_identity(result, index=index)
+        if result is None:
+            validation_errors.append(f"{identity}: result is None")
+            continue
+        try:
+            op_id = int(getattr(result, "op_id", 0) or 0)
+        except Exception:
+            validation_errors.append(f"{identity}: invalid op_id")
+            continue
+        if op_id <= 0:
+            validation_errors.append(f"{identity}: op_id must be positive")
+            continue
+        if allowed_op_ids is not None and op_id not in allowed_op_ids:
+            out_of_scope_op_ids.append(int(op_id))
+            continue
+
+        start_time = getattr(result, "start_time", None)
+        end_time = getattr(result, "end_time", None)
+        if start_time is None or end_time is None:
+            validation_errors.append(f"{identity}: missing start_time/end_time")
+            continue
+        try:
+            valid_time_range = start_time < end_time
+        except Exception:
+            validation_errors.append(f"{identity}: start_time/end_time are not comparable")
+            continue
+        if not valid_time_range:
+            validation_errors.append(f"{identity}: start_time must be earlier than end_time")
+            continue
+
+        source = str(getattr(result, "source", "") or "").strip().lower()
+        schedule_rows.append(
+            ValidatedScheduleRow(
+                op_id=int(op_id),
+                machine_id=getattr(result, "machine_id", None),
+                operator_id=getattr(result, "operator_id", None),
+                start_time=start_time,
+                end_time=end_time,
+                source=source,
+            )
+        )
+        scheduled_op_ids.add(int(op_id))
+        if source == SourceType.INTERNAL.value:
+            assigned_by_op_id[int(op_id)] = {
+                "machine_id": getattr(result, "machine_id", None),
+                "operator_id": getattr(result, "operator_id", None),
+            }
+
+    if out_of_scope_op_ids:
+        _raise_out_of_scope_schedule_rows_error(out_of_scope_op_ids)
+    if validation_errors and schedule_rows:
+        _raise_invalid_schedule_rows_error(validation_errors)
+    if not schedule_rows:
+        _raise_no_actionable_schedule_error(validation_errors)
+
+    return ValidatedSchedulePayload(
+        schedule_rows=schedule_rows,
+        scheduled_op_ids=scheduled_op_ids,
+        assigned_by_op_id=assigned_by_op_id,
+        out_of_scope_op_ids=out_of_scope_op_ids,
+        validation_errors=validation_errors,
+    )
 
 
 def _maybe_persist_auto_assign_resources(
@@ -113,7 +223,6 @@ def _maybe_persist_auto_assign_resources(
     mc = (assign.get("machine_id") or "").strip()
     oid = (assign.get("operator_id") or "").strip()
     updates: Dict[str, Any] = {}
-    # 允许“部分补全”：算法可能只补齐其中一个资源；且避免覆盖人工已选
     if mc and not (str(getattr(op, "machine_id", "") or "").strip()):
         updates["machine_id"] = mc
     if oid and not (str(getattr(op, "operator_id", "") or "").strip()):
@@ -246,17 +355,14 @@ def persist_schedule(
     *,
     cfg: Any,
     version: int,
-    results: List[Any],
+    validated_schedule_payload: ValidatedSchedulePayload,
     summary: Any,
     used_strategy: Any,
     used_params: Dict[str, Any],
     batches: Dict[str, Any],
-    operations: List[Any],
     reschedulable_operations: List[Any],
-    reschedulable_op_ids: Set[int],
     normalized_batch_ids: List[str],
     created_by: str,
-    has_actionable_schedule: bool,
     simulate: bool,
     frozen_op_ids: Set[int],
     result_status: str,
@@ -266,19 +372,13 @@ def persist_schedule(
     overdue_items: List[Dict[str, Any]],
     time_cost_ms: int,
 ) -> None:
-    """
-    原子落库：Schedule + 状态更新 + ScheduleHistory
-    事务后：OperationLogs（避免 logger 内部 commit 干扰原子性）
-    """
-    if not has_actionable_schedule:
-        _raise_no_actionable_schedule_error()
+    if not validated_schedule_payload.schedule_rows:
+        _raise_no_actionable_schedule_error(validated_schedule_payload.validation_errors)
 
-    schedule_rows = _build_schedule_rows(
+    schedule_rows = validated_schedule_payload.to_repo_rows(
         svc,
         version=int(version),
-        results=results,
         frozen_op_ids=frozen_op_ids,
-        allowed_op_ids=set(reschedulable_op_ids),
     )
 
     with svc.tx_manager.transaction():
@@ -286,13 +386,10 @@ def persist_schedule(
             svc.schedule_repo.bulk_create(schedule_rows)
 
         if not simulate:
-            auto_assign_persist = (
-                to_yes_no(getattr(cfg, "auto_assign_persist", YesNo.YES.value), default=YesNo.YES.value) == YesNo.YES.value
-            )
-            scheduled_op_ids = _scheduled_op_ids(results, allowed_op_ids=set(reschedulable_op_ids))
-            assigned_by_op_id = _assigned_by_op_id(results, allowed_op_ids=set(reschedulable_op_ids))
+            auto_assign_persist = str(cfg.auto_assign_persist or "").strip().lower() == YesNo.YES.value
+            scheduled_op_ids = set(validated_schedule_payload.scheduled_op_ids)
+            assigned_by_op_id = dict(validated_schedule_payload.assigned_by_op_id)
 
-            # 批次工序：成功排到的置 scheduled；失败的保持原状态（便于继续补全）
             _persist_operation_statuses(
                 svc,
                 reschedulable_operations=reschedulable_operations,
@@ -302,7 +399,6 @@ def persist_schedule(
                 assigned_by_op_id=assigned_by_op_id,
             )
 
-            # 批次：若本批次所有工序都排到 -> scheduled，否则保持 pending
             _persist_batch_statuses(
                 svc,
                 batches=batches,
@@ -310,7 +406,6 @@ def persist_schedule(
                 scheduled_op_ids=scheduled_op_ids,
             )
 
-        # 排产历史留痕（DB）
         _persist_schedule_history(
             svc,
             version=int(version),
@@ -322,7 +417,6 @@ def persist_schedule(
             created_by=created_by,
         )
 
-    # 操作日志留痕（OperationLogs）：放到事务后（避免内部 commit 干扰原子性）
     _log_schedule_operation(
         svc,
         version=int(version),

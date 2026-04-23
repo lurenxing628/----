@@ -12,18 +12,7 @@
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {% set mode_zh = {'improve': '优化模式', 'greedy': '快速模式', 'single': '单次排产'} %}
-  {% set objective_zh = {
-      'weighted_tardiness': '加权拖期最小',
-      'tardiness': '拖期最小',
-      'makespan': '总工期最短',
-      'changeover': '换型最少',
-      'min_overdue': '最少超期',
-      'min_tardiness': '最少拖期小时',
-      'min_weighted_tardiness': '最少加权拖期小时',
-      'min_changeover': '最少换型次数'
-    } %}
-
-  <div class="card">
+<div class="card">
     <div class="page-header">
       <div class="page-title-group">
         <h2 class="page-title">排产调度</h2>
@@ -75,7 +64,65 @@
   </div>
 
   <div class="card">
-    <h3 class="section-title">最近一次排产</h3>
+    <h3 class="section-title">当前配置状态</h3>
+    <div class="scheduler-current-config-summary">
+      <div class="muted">
+        已选方案（基线）：
+        <strong>{{ current_config_state.baseline_label if current_config_state else ('自定义' if not active_preset or active_preset == 'custom' else active_preset) }}</strong>
+      </div>
+      {% if current_config_state %}
+        <div class="muted mt-1">
+          当前运行配置：
+          <strong>{{ current_config_state.status_label }}</strong>
+          <span class="meta-sep">｜</span>
+          {{ current_config_state.label }}
+        </div>
+        {% if current_config_state.repair_notices %}
+          <ul class="muted mt-2 list-tight">
+            {% for notice in current_config_state.repair_notices %}
+              <li>
+                {{ notice.message or current_config_state.label }}
+                {% if notice.fields %}
+                  <span class="meta-sep">|</span>
+                  涉及字段：{{ notice.fields|join('、') }}
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endif %}
+      {% if current_auto_assign_persist_state %}
+        <div class="muted mt-1">
+          自动回写资源：<strong>{{ current_auto_assign_persist_state.label }}</strong>
+          <span class="meta-sep">|</span>
+          {{ current_auto_assign_persist_state.description }}
+        </div>
+      {% endif %}
+      {% if config_degraded_field_labels %}
+        <div class="flash-card flash-warning mt-2 scheduler-config-degraded-summary">
+          <div>当前配置存在可见兼容修补：</div>
+          <ul class="list-tight mt-1">
+            {% for item in config_degraded_field_labels %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+      {% if config_hidden_warnings %}
+        <div class="flash-card flash-warning mt-2 scheduler-config-degraded-summary">
+          <div>当前还有内部配置项存在兼容修补：</div>
+          <ul class="list-tight mt-1">
+            {% for item in config_hidden_warnings %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="section-title">最近一次排产快照</h3>
     {% if latest_history %}
       <div class="info-line">
         <span>时间：<strong>{{ latest_history.schedule_time }}</strong></span>
@@ -89,6 +136,43 @@
       {% if latest_summary and latest_summary.overdue_batches %}
         <div class="muted mt-2">
           超期：{{ latest_summary.overdue_batches.count or 0 }} 个
+        </div>
+      {% endif %}
+      {% if latest_summary_display.primary_degradation %}
+        <div class="flash-card flash-warning mt-2 scheduler-run-degraded-summary">
+          <div>{{ latest_summary_display.primary_degradation.message }}</div>
+          {% if latest_summary_display.primary_degradation.details %}
+            <ul class="list-tight mt-1">
+              {% for item in latest_summary_display.primary_degradation.details %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if latest_summary_display.summary_parse_state.parse_failed %}
+        <div class="flash-card flash-warning mt-2">
+          {{ latest_summary_display.summary_parse_state.user_message }}
+        </div>
+      {% endif %}
+      {% if latest_other_degradation_messages %}
+        <div class="flash-card flash-warning mt-2 scheduler-run-other-degradation-summary">
+          <div>其他结构化降级事件：</div>
+          <ul class="list-tight mt-1">
+            {% for item in latest_other_degradation_messages %}
+              <li>
+                <strong>{{ item.label }}</strong>
+                {% if item.message %}：{{ item.message }}{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+      {% if latest_auto_assign_persist_state %}
+        <div class="muted mt-2">
+          自动回写资源：<strong>{{ latest_auto_assign_persist_state.label }}</strong>
+          <span class="info-sep">|</span>
+          {{ latest_auto_assign_persist_state.description }}
         </div>
       {% endif %}
       {% if latest_warning_total %}
@@ -115,7 +199,20 @@
           <span class="info-sep">|</span>
           设备利用率 {{ ((m.machine_util_avg or 0) * 100) | round(2) }}%
           <span class="info-sep">|</span>
-          模式：{{ mode_zh.get(algo.mode, algo.mode or '-') }}，目标：{{ objective_zh.get(algo.objective, algo.objective or '-') }}
+          模式：{{ mode_zh.get(algo.mode, algo.mode or '-') }}，目标：{{ latest_objective_label }}
+        </div>
+      {% endif %}
+      {% if latest_summary_display.error_total %}
+        <div class="flash-card flash-warning mt-2">
+          <div>错误摘要：{{ latest_summary_display.error_total }} 条</div>
+          <ul class="list-tight mt-1">
+            {% for item in latest_summary_display.errors_preview %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% if latest_summary_display.error_hidden_count > 0 %}
+            <div class="muted text-xs">另有 {{ latest_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
+          {% endif %}
         </div>
       {% endif %}
     {% else %}
@@ -227,6 +324,11 @@
                 <input type="checkbox" name="enforce_ready" {{ 'checked' if cfg.enforce_ready_default=='yes' else '' }}>
                 启用齐套约束（未齐套禁止排产）
               </label>
+              {% if config_field_warnings.get('enforce_ready_default') %}
+                <div class="muted text-xs mt-1 scheduler-config-field-warning">
+                  {{ config_field_warnings.get('enforce_ready_default') }}
+                </div>
+              {% endif %}
             </div>
             <div class="form-field min-w-320">
               <label class="muted">

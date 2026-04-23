@@ -53,9 +53,9 @@ def resolve_dispatch_range(
 ) -> DispatchRange:
     preset = str(period_preset or "week").strip().lower() or "week"
     if preset not in {"week", "month", "custom"}:
-        raise ValidationError("时间范围类型不正确，请选择：按周 / 按月 / 自定义。", field="时间范围类型")
+        raise ValidationError("时间范围类型不正确，请选择：按周 / 按月 / 自定义。", field="period_preset")
 
-    anchor = _parse_date(query_date, field="查询日期")
+    anchor = _parse_date(query_date, field="query_date")
     if anchor is None:
         anchor = (datetime.now() + timedelta(days=1)).date()
 
@@ -66,19 +66,19 @@ def resolve_dispatch_range(
         start = anchor.replace(day=1)
         end = anchor.replace(day=calendar.monthrange(anchor.year, anchor.month)[1])
     else:
-        start = _parse_date(start_date, field="开始日期")
-        end = _parse_date(end_date, field="结束日期")
+        start = _parse_date(start_date, field="start_date")
+        end = _parse_date(end_date, field="end_date")
         if start is None or end is None:
-            raise ValidationError("自定义区间必须同时提供开始日期和结束日期", field="日期范围")
+            raise ValidationError("自定义区间必须同时提供开始日期和结束日期", field="date_range")
         if end < start:
-            raise ValidationError("结束日期不能早于开始日期", field="结束日期")
+            raise ValidationError("结束日期不能早于开始日期", field="end_date")
         anchor = start
 
     day_count = (end - start).days + 1
     if day_count <= 0:
-        raise ValidationError("日期范围不合法", field="日期范围")
+        raise ValidationError("日期范围不合法", field="date_range")
     if day_count > int(max_day_count):
-        raise ValidationError(f"日期范围不能超过 {int(max_day_count)} 天", field="日期范围")
+        raise ValidationError(f"日期范围不能超过 {int(max_day_count)} 天", field="date_range")
 
     start_dt = datetime(start.year, start.month, start.day)
     end_dt_exclusive = datetime(end.year, end.month, end.day) + timedelta(days=1)

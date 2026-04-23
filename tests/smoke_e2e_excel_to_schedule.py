@@ -105,6 +105,23 @@ def _assert_xlsx(lines, name: str, resp):
         raise RuntimeError(f"{name} content-type 异常：{ct}")
 
 
+def _json_payload(resp) -> dict:
+    try:
+        return json.loads(resp.data.decode("utf-8", errors="ignore") or "{}")
+    except Exception as e:
+        raise RuntimeError(f"接口返回不是有效 JSON：{e}")
+
+
+def _require_success_payload_version(payload: dict, *, expect_version: int, context: str) -> dict:
+    if payload.get("success") is not True:
+        raise RuntimeError(f"{context} 期望 success=true：{payload}")
+    data = payload.get("data") or {}
+    actual_version = int(data.get("version") or 0)
+    if actual_version != int(expect_version):
+        raise RuntimeError(f"{context} 未回退/落在期望版本 {expect_version}：{payload}")
+    return data
+
+
 def _parse_detail_json(detail: str) -> dict:
     try:
         return json.loads(detail) if detail else {}
@@ -549,34 +566,32 @@ def main():
         lines.append("")
         lines.append("## 9. 甘特图与周计划（/scheduler/gantt/data + /scheduler/week-plan/export）")
         week_start = schedule_week_start
-        # 防御：非法 version 参数不应导致 500
+        # 非法 version 参数应回退到最新版本，且不应导致 500
         resp = client.get(f"/scheduler/gantt?view=machine&week_start={week_start}&version=abc")
-        _assert_status(lines, "GET /scheduler/gantt?version=abc", resp, 400)
+        _assert_status(lines, "GET /scheduler/gantt?version=abc", resp, 200)
         resp = client.get(f"/scheduler/gantt/data?view=machine&week_start={week_start}&version=abc")
-        _assert_status(lines, "GET /scheduler/gantt/data?version=abc", resp, 400)
-        payload_bad = json.loads(resp.data.decode("utf-8", errors="ignore") or "{}")
-        if payload_bad.get("success") is not False:
-            raise RuntimeError(f"甘特图数据接口（非法 version）期望 success=false：{payload_bad}")
-        err_bad = payload_bad.get("error") or {}
-        if str(err_bad.get("code") or "") != "1001":
-            raise RuntimeError(f"甘特图数据接口（非法 version）期望 error.code=1001：{payload_bad}")
+        _assert_status(lines, "GET /scheduler/gantt/data?version=abc", resp, 200)
+        payload_bad = _json_payload(resp)
+        _require_success_payload_version(
+            payload_bad,
+            expect_version=int(version),
+            context="甘特图数据接口（非法 version）",
+        )
         resp = client.get(f"/scheduler/week-plan?week_start={week_start}&version=abc")
-        _assert_status(lines, "GET /scheduler/week-plan?version=abc", resp, 400)
+        _assert_status(lines, "GET /scheduler/week-plan?version=abc", resp, 200)
         resp = client.get(f"/scheduler/week-plan/export?week_start={week_start}&version=abc")
-        _assert_status(lines, "GET /scheduler/week-plan/export?version=abc", resp, 302)
-        loc = resp.headers.get("Location", "") or ""
-        lines.append(f"- week-plan/export invalid version redirect：{loc}")
-        if "/scheduler/week-plan" not in loc:
-            raise RuntimeError(f"周计划导出（非法 version）重定向异常：Location={loc!r}")
+        _assert_xlsx(lines, "GET /scheduler/week-plan/export?version=abc", resp)
 
         resp = client.get(f"/scheduler/gantt?view=machine&week_start={week_start}&version={version}")
         _assert_status(lines, "GET /scheduler/gantt", resp, 200)
         resp = client.get(f"/scheduler/gantt/data?view=machine&week_start={week_start}&version={version}")
         _assert_status(lines, "GET /scheduler/gantt/data", resp, 200)
-        payload = json.loads(resp.data.decode("utf-8", errors="ignore") or "{}")
-        if not payload.get("success"):
-            raise RuntimeError(f"甘特图数据接口返回失败：{payload}")
-        data = payload.get("data") or {}
+        payload = _json_payload(resp)
+        data = _require_success_payload_version(
+            payload,
+            expect_version=int(version),
+            context="甘特图数据接口",
+        )
         tasks = data.get("tasks") or []
         if not isinstance(tasks, list) or not tasks:
             raise RuntimeError("甘特图 tasks 为空（期望至少 1 条）")

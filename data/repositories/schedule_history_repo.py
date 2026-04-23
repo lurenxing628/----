@@ -75,7 +75,8 @@ class ScheduleHistoryRepository(BaseRepository):
                 )
 
             cur = conn.execute("INSERT INTO ScheduleVersionSeq DEFAULT VALUES")
-            v = int(cur.lastrowid) if getattr(cur, "lastrowid", None) is not None else 0
+            lastrowid = getattr(cur, "lastrowid", None)
+            v = int(lastrowid) if lastrowid is not None else 0
             if v <= 0:
                 # 兜底：极端情况下 lastrowid 不可用时再查一次
                 row = conn.execute("SELECT COALESCE(MAX(version), 0) FROM ScheduleVersionSeq").fetchone()

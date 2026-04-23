@@ -206,7 +206,7 @@ def build_resource_pool(
         meta["resource_pool_build_ok"] = None
         meta["resource_pool_build_error"] = None
 
-    auto_assign_enabled = to_yes_no(getattr(cfg, "auto_assign_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
+    auto_assign_enabled = to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) == YesNo.YES.value
     if not auto_assign_enabled:
         return None, warnings
 
@@ -266,7 +266,7 @@ def extend_downtime_map_for_resource_pool(
     """
     auto-assign 启用时：停机区间需要覆盖“候选设备”，否则算法可能误排到停机段内。
     """
-    auto_assign_enabled = to_yes_no(getattr(cfg, "auto_assign_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
+    auto_assign_enabled = to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) == YesNo.YES.value
     if not auto_assign_enabled or not resource_pool or not isinstance(resource_pool.get("operators_by_machine"), dict):
         return downtime_map
 

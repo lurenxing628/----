@@ -84,11 +84,14 @@ def main() -> None:
     _assert_status(resp, "GET /personnel/OP200")
     html = resp.data.decode("utf-8", errors="ignore")
 
-    assert "当前展示包含 2 条历史兼容归一结果" in html, html
-    assert "历史技能等级 &#39;skilled&#39; 已兼容归一为 expert。" in html, html
-    assert "历史主操标记 &#39;off&#39; 已兼容归一为 no。" in html, html
-    assert "历史技能等级为空，已兼容归一为 normal。" in html, html
-    assert "历史主操标记为空，已兼容归一为 no。" in html, html
+    assert "以下 2 条记录中有部分字段的旧格式已被系统自动修正" in html, html
+    assert "涉及字段：" in html, html
+    assert "skill_level" in html, html
+    assert "is_primary" in html, html
+    assert "旧格式已自动修正：历史技能等级 &#39;skilled&#39; 已兼容归一为 expert。" in html, html
+    assert "旧格式已自动修正：历史主操标记 &#39;off&#39; 已兼容归一为 no。" in html, html
+    assert "旧格式已自动修正：历史技能等级为空，已兼容归一为 normal。" in html, html
+    assert "旧格式已自动修正：历史主操标记为空，已兼容归一为 no。" in html, html
 
     print("OK")
 

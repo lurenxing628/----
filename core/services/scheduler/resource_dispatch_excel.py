@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Sequence, cast
 from openpyxl import Workbook
 from openpyxl.cell.cell import Cell
 from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from core.services.common.excel_templates import _sanitize_export_cell
@@ -17,7 +18,11 @@ def _auto_width(ws: Worksheet) -> None:
         column_letter = None
         for cell in column:
             if column_letter is None:
-                column_letter = cell.column_letter
+                column_index = cell.column
+                if isinstance(column_index, int):
+                    column_letter = get_column_letter(column_index)
+                elif isinstance(column_index, str) and column_index:
+                    column_letter = column_index
             text = "" if cell.value is None else str(cell.value)
             if len(text) > max_length:
                 max_length = len(text)

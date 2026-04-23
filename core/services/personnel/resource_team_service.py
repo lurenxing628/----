@@ -126,6 +126,10 @@ class ResourceTeamService:
         remark: Any = None,
     ) -> ResourceTeam:
         tid, tname, tstatus = self._validate_fields(team_id, name, status)
+        if tid is None:
+            raise ValidationError("鐝粍ID涓嶈兘涓虹┖", field="鐝粍ID")
+        if tname is None:
+            raise ValidationError("鐝粍鍚嶇О涓嶈兘涓虹┖", field="鐝粍鍚嶇О")
         tremark = self._normalize_text(remark)
 
         if self.repo.exists(tid):

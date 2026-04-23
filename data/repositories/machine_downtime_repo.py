@@ -114,7 +114,8 @@ class MachineDowntimeRepository(BaseRepository):
                 d.status or "active",
             ),
         )
-        d.id = int(cur.lastrowid) if getattr(cur, "lastrowid", None) is not None else None
+        lastrowid = getattr(cur, "lastrowid", None)
+        d.id = int(lastrowid) if lastrowid is not None else None
         return d
 
     def update(self, downtime_id: int, updates: Dict[str, Any]) -> None:

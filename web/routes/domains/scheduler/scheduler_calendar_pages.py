@@ -10,27 +10,14 @@ from .scheduler_bp import _day_type_zh, bp
 from .scheduler_utils import _normalize_day_type, _normalize_yesno
 
 
-def _resolve_page_holiday_default_efficiency(cfg_svc: ConfigService):
-    try:
-        return float(cfg_svc.get_holiday_default_efficiency()), False, None
-    except ValidationError as exc:
-        fallback = float(ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
-        current_app.logger.warning(
-            "工作日历页面读取 holiday_default_efficiency 非法，暂按默认值展示：%s",
-            exc.message,
-        )
-        return (
-            fallback,
-            True,
-            f"配置项 holiday_default_efficiency 当前非法，页面已临时按 {fallback:g} 展示默认值；请先到排产参数页修复配置，再继续依赖该默认值进行操作。",
-        )
-
-
 @bp.get("/calendar")
 def calendar_page():
     cal_svc = CalendarService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
     cfg_svc = ConfigService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    hde, hde_degraded, hde_warning = _resolve_page_holiday_default_efficiency(cfg_svc)
+    hde, hde_degraded, hde_warning = cfg_svc.get_holiday_default_efficiency_display_state(
+        consumer="工作日历页面",
+        logger=current_app.logger,
+    )
     rows = [c.to_dict() for c in cal_svc.list_all()]
     for r in rows:
         day_type = _normalize_day_type(r.get("day_type"))
@@ -65,16 +52,23 @@ def calendar_upsert():
     remark = request.form.get("remark")
 
     cal_svc = CalendarService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
-    cal_svc.upsert(
-        date_value=date_value,
-        day_type=day_type,
-        shift_hours=shift_hours,
-        shift_start=shift_start,
-        shift_end=shift_end,
-        efficiency=efficiency,
-        allow_normal=allow_normal,
-        allow_urgent=allow_urgent,
-        remark=remark,
-    )
+    try:
+        cal_svc.upsert(
+            date_value=date_value,
+            day_type=day_type,
+            shift_hours=shift_hours,
+            shift_start=shift_start,
+            shift_end=shift_end,
+            efficiency=efficiency,
+            allow_normal=allow_normal,
+            allow_urgent=allow_urgent,
+            remark=remark,
+        )
+    except ValidationError as exc:
+        if str(exc.field or "").strip() == "holiday_default_efficiency":
+            flash(f"系统配置项 holiday_default_efficiency 非法，无法保存日历，请先在排产参数中修复。{exc.message}", "error")
+        else:
+            flash(exc.message, "error")
+        return redirect(url_for("scheduler.calendar_page"))
     flash("日历配置已保存。", "success")
     return redirect(url_for("scheduler.calendar_page"))

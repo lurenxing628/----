@@ -12,22 +12,7 @@
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {% set mode_zh = {'improve': '优化模式', 'greedy': '快速模式', 'single': '单次排产'} %}
-  {% set objective_zh = {
-      'weighted_tardiness': '加权拖期最小',
-      'weighted_tardiness_hours': '加权拖期（小时）',
-      'tardiness': '拖期最小',
-      'makespan': '总工期最短',
-      'changeover': '换型最少',
-      'min_overdue': '最少超期',
-      'min_tardiness': '最少拖期小时',
-      'min_weighted_tardiness': '最少加权拖期小时',
-      'min_changeover': '最少换型次数',
-      'overdue_count': '超期批次数',
-      'total_tardiness_hours': '总拖期（小时）',
-      'changeover_count': '换型次数'
-    } %}
-
-  <div class="card">
+<div class="card">
     <div class="page-header">
       <div class="page-title-group">
         <h2 class="page-title">排产优化分析</h2>
@@ -66,6 +51,12 @@
     </form>
   </div>
 
+  {% if selected_history_resolution and selected_history_resolution.message %}
+    <div class="flash-card flash-warning mt-2">
+      {{ selected_history_resolution.message }}
+    </div>
+  {% endif %}
+
   {% if selected %}
     <div class="card">
       <h3 class="section-title">版本概览：v{{ selected.version }}</h3>
@@ -83,18 +74,26 @@
       <div class="meta-inline text-meta mt-2">
         模式：<strong>{{ mode_zh.get(algo.mode, algo.mode or '-') }}</strong>
         <span class="meta-sep">｜</span>
-        优化目标：<strong>{{ objective_zh.get(algo.objective, algo.objective or '-') }}</strong>
+        优化目标：<strong>{{ algo_objective_label }}</strong>
         <span class="meta-sep">｜</span>
         计算时间上限：<strong>{{ algo.time_budget_seconds or '-' }}</strong> 秒
         <span class="meta-sep">｜</span>
         实际用时：<strong>{{ selected_summary.time_cost_ms if selected_summary else '-' }}</strong> 毫秒
       </div>
-      {% if algo and algo.best_score_schema %}
+      {% if best_score_schema_display %}
         <div class="muted mt-2">
           评分顺序：
-          {% for item in algo.best_score_schema %}
-            {{ objective_zh.get(item.get('key'), item.get('label') or item.get('key') or '-') }}{% if not loop.last %} → {% endif %}
+          {% for item in best_score_schema_display %}
+            {{ item.get('display_label') or item.get('label') or item.get('key') }}{% if not loop.last %} → {% endif %}
           {% endfor %}
+        </div>
+      {% endif %}
+      {% if compat_fallback and compat_fallback.used %}
+        <div class="flash-card flash-warning mt-2">
+          {{ compat_fallback.message }}
+          {% if compat_fallback.missing_fields %}
+            缺失字段：{{ compat_fallback.missing_fields | join('、') }}。
+          {% endif %}
         </div>
       {% endif %}
       {% if algo and algo.config_snapshot %}
@@ -105,20 +104,63 @@
             <span class="meta-sep">｜</span>
             派工：{{ algo.config_snapshot.get('dispatch_mode', '-') }}{% if algo.config_snapshot.get('dispatch_rule') %}/{{ algo.config_snapshot.get('dispatch_rule') }}{% endif %}
             <span class="meta-sep">｜</span>
-            目标：{{ objective_zh.get(algo.config_snapshot.get('objective'), algo.config_snapshot.get('objective') or '-') }}
+            目标：{{ algo_config_snapshot_objective_label }}
             <span class="meta-sep">｜</span>
             时间预算：{{ algo.config_snapshot.get('time_budget_seconds', '-') }} 秒
           </div>
         </details>
       {% endif %}
-      {% if summary_degradation_messages %}
+      {% if selected_summary_display.display_secondary_degradation_messages %}
         <div class="flash-card flash-warning mt-2">
-          {% for item in summary_degradation_messages %}
+          {% for item in selected_summary_display.display_secondary_degradation_messages %}
             <div>
-              <strong>{{ item.label }}</strong>{% if item.count and item.count > 1 %}（{{ item.count }}）{% endif %}
+              <strong>{{ item.label }}</strong>
               {% if item.message %}：{{ item.message }}{% endif %}
             </div>
           {% endfor %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.summary_parse_state.parse_failed %}
+        <div class="flash-card flash-warning mt-2">
+          {{ selected_summary_display.summary_parse_state.user_message }}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.primary_degradation %}
+        <div class="flash-card flash-warning mt-2">
+          <div>{{ selected_summary_display.primary_degradation.message }}</div>
+          {% if selected_summary_display.primary_degradation.details %}
+            <ul class="list-tight mt-1">
+              {% for item in selected_summary_display.primary_degradation.details %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.warning_total %}
+        <div class="flash-card flash-warning mt-2">
+          <div>告警：{{ selected_summary_display.warning_total }} 条</div>
+          <ul class="list-tight mt-1">
+            {% for item in selected_summary_display.warnings_preview %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% if selected_summary_display.warning_hidden_count > 0 %}
+            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条告警，请到系统历史查看。</div>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.error_total %}
+        <div class="flash-card flash-warning mt-2">
+          <div>错误摘要：{{ selected_summary_display.error_total }} 条</div>
+          <ul class="list-tight mt-1">
+            {% for item in selected_summary_display.errors_preview %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% if selected_summary_display.error_hidden_count > 0 %}
+            <div class="muted text-xs">另有 {{ selected_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
+          {% endif %}
         </div>
       {% endif %}
       {% if freeze_display %}
@@ -143,9 +185,6 @@
           <div class="muted mt-2">
             示例批次：{{ freeze_display.sample_batches|join('、') }}{% if freeze_display.sample_more_count > 0 %} 及其他 {{ freeze_display.sample_more_count }} 个…{% endif %}
           </div>
-        {% endif %}
-        {% if freeze_display.degradation_reason %}
-          <div class="muted mt-2">异常原因：{{ freeze_display.degradation_reason }}</div>
         {% endif %}
       {% endif %}
 
@@ -212,7 +251,7 @@
           </div>
         </div>
         <div class="muted mt-2">
-          下方按「{{ objective_zh.get(objective_key, objective_key) }}」展示各方案对比（越小越好）。
+          下方按「{{ objective_key_label }}」展示各方案对比（越小越好）。
         </div>
       {% else %}
         <div class="muted mt-2">该版本未记录排产指标（可能是旧版本）。</div>
@@ -260,7 +299,7 @@
               <th>排序策略</th>
               <th>派工</th>
               <th>失败工序数</th>
-              <th data-col-key="objective">{{ objective_zh.get(objective_key, objective_key) }}</th>
+              <th data-col-key="objective">{{ objective_key_label }}</th>
               <th>条形</th>
               <th>综合评分</th>
             </tr>
@@ -305,6 +344,11 @@
 
     <div class="card">
       <h3 class="section-title">版本趋势（最近 {{ trend_rows|length }} 个有指标的版本）</h3>
+      {% if trend_summary_state.incomplete %}
+        <div class="flash-card flash-warning mb-2">
+          趋势摘要不完整：最近 {{ trend_summary_state.parse_failed_count }} 个版本的摘要解析失败，趋势图仅基于可解析版本生成。
+        </div>
+      {% endif %}
       {% if trend_rows and trend_rows|length > 1 %}
         <div class="muted">范围：v{{ trend_rows[0].version }} ～ v{{ trend_rows[-1].version }}</div>
 

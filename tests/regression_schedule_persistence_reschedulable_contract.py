@@ -10,7 +10,7 @@ def find_repo_root() -> str:
     repo_root = os.path.abspath(os.path.join(here, ".."))
     if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
         return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+    raise RuntimeError("repo root not found")
 
 
 def load_schema(conn: sqlite3.Connection, repo_root: str) -> None:
@@ -29,6 +29,8 @@ def main() -> None:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
+    from core.infrastructure.errors import ValidationError
+    from core.services.scheduler.run.schedule_persistence import build_validated_schedule_payload
     from core.services.scheduler.schedule_persistence import persist_schedule
     from core.services.scheduler.schedule_service import ScheduleService
 
@@ -38,20 +40,20 @@ def main() -> None:
     load_schema(conn, repo_root)
 
     try:
-        conn.execute("INSERT INTO Parts (part_no, part_name, route_parsed) VALUES (?, ?, ?)", ("P001", "测试零件", "yes"))
+        conn.execute("INSERT INTO Parts (part_no, part_name, route_parsed) VALUES (?, ?, ?)", ("P001", "part", "yes"))
         conn.execute(
             """
             INSERT INTO Batches (batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("B_MIX", "P001", "混合状态批次", 1, "2026-01-10", "normal", "yes", "pending"),
+            ("B_MIX", "P001", "mix", 1, "2026-01-10", "normal", "yes", "pending"),
         )
         conn.execute(
             """
             INSERT INTO Batches (batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("B_ZERO", "P001", "零可重排批次", 1, "2026-01-10", "normal", "yes", "scheduled"),
+            ("B_ZERO", "P001", "zero", 1, "2026-01-10", "normal", "yes", "scheduled"),
         )
         conn.executemany(
             """
@@ -60,9 +62,9 @@ def main() -> None:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                (1, "B_MIX_10", "B_MIX", None, 10, "OT_A", "工序A", "internal", None, None, None, 1.0, 0.0, None, "completed"),
-                (2, "B_MIX_20", "B_MIX", None, 20, "OT_B", "工序B", "internal", None, None, None, 1.0, 0.0, None, "pending"),
-                (3, "B_ZERO_10", "B_ZERO", None, 10, "OT_C", "工序C", "internal", None, None, None, 1.0, 0.0, None, "skipped"),
+                (1, "B_MIX_10", "B_MIX", None, 10, "OT_A", "A", "internal", None, None, None, 1.0, 0.0, None, "completed"),
+                (2, "B_MIX_20", "B_MIX", None, 20, "OT_B", "B", "internal", None, None, None, 1.0, 0.0, None, "pending"),
+                (3, "B_ZERO_10", "B_ZERO", None, 10, "OT_C", "C", "internal", None, None, None, 1.0, 0.0, None, "skipped"),
             ],
         )
         conn.commit()
@@ -72,11 +74,6 @@ def main() -> None:
             "B_MIX": svc.batch_repo.get("B_MIX"),
             "B_ZERO": svc.batch_repo.get("B_ZERO"),
         }
-        operations = [
-            svc.op_repo.get(1),
-            svc.op_repo.get(2),
-            svc.op_repo.get(3),
-        ]
         reschedulable_operations = [svc.op_repo.get(2)]
 
         results = [
@@ -90,7 +87,7 @@ def main() -> None:
                 start_time=_make_dt(0),
                 end_time=_make_dt(1),
                 source="internal",
-                op_type_name="工序A",
+                op_type_name="A",
             ),
             SimpleNamespace(
                 op_id=2,
@@ -102,7 +99,7 @@ def main() -> None:
                 start_time=_make_dt(1),
                 end_time=_make_dt(2),
                 source="internal",
-                op_type_name="工序B",
+                op_type_name="B",
             ),
             SimpleNamespace(
                 op_id=3,
@@ -114,7 +111,7 @@ def main() -> None:
                 start_time=_make_dt(2),
                 end_time=_make_dt(3),
                 source="internal",
-                op_type_name="工序C",
+                op_type_name="C",
             ),
         ]
         summary = SimpleNamespace(
@@ -126,22 +123,31 @@ def main() -> None:
             errors=[],
             duration_seconds=0.0,
         )
+        rejected_out_of_scope = False
+        try:
+            build_validated_schedule_payload(results, allowed_op_ids={2})
+        except ValidationError as exc:
+            details = dict(getattr(exc, "details", {}) or {})
+            rejected_out_of_scope = details.get("reason") == "out_of_scope_schedule_rows"
+            assert details.get("count") == 2, details
+            assert details.get("sample_op_ids") == [1, 3], details
+            assert details.get("allowed_scope_kind") == "reschedulable_op_ids", details
+        assert rejected_out_of_scope, "mixed scope results must be rejected instead of silent drop"
+
+        validated_schedule_payload = build_validated_schedule_payload([results[1]], allowed_op_ids={2})
 
         persist_schedule(
             svc,
             cfg=SimpleNamespace(auto_assign_persist="no"),
             version=7,
-            results=results,
+            validated_schedule_payload=validated_schedule_payload,
             summary=summary,
             used_strategy=SimpleNamespace(value="priority_first"),
             used_params={},
             batches=batches,
-            operations=operations,
             reschedulable_operations=reschedulable_operations,
-            reschedulable_op_ids={2},
             normalized_batch_ids=["B_MIX", "B_ZERO"],
             created_by="regression",
-            has_actionable_schedule=True,
             simulate=False,
             frozen_op_ids=set(),
             result_status="success",
@@ -153,25 +159,25 @@ def main() -> None:
         )
 
         schedule_rows = conn.execute("SELECT op_id FROM Schedule WHERE version=? ORDER BY op_id", (7,)).fetchall()
-        assert [int(r["op_id"]) for r in schedule_rows] == [2], f"Schedule 只应写入可重排工序：{[dict(r) for r in schedule_rows]}"
+        assert [int(r["op_id"]) for r in schedule_rows] == [2], [dict(r) for r in schedule_rows]
 
         op_status = {
             int(r["id"]): str(r["status"] or "").strip().lower()
             for r in conn.execute("SELECT id, status FROM BatchOperations ORDER BY id").fetchall()
         }
-        assert op_status[1] == "completed", f"completed 工序不应被覆写：{op_status!r}"
-        assert op_status[2] == "scheduled", f"可重排工序应更新为 scheduled：{op_status!r}"
-        assert op_status[3] == "skipped", f"skipped 工序不应被覆写：{op_status!r}"
+        assert op_status[1] == "completed", op_status
+        assert op_status[2] == "scheduled", op_status
+        assert op_status[3] == "skipped", op_status
 
         batch_status = {
             str(r["batch_id"]): str(r["status"] or "").strip().lower()
             for r in conn.execute("SELECT batch_id, status FROM Batches ORDER BY batch_id").fetchall()
         }
-        assert batch_status["B_MIX"] == "scheduled", f"混合状态批次不应因 terminal 分母被打回 pending：{batch_status!r}"
-        assert batch_status["B_ZERO"] == "scheduled", f"0 个可重排工序的批次应保留原状态：{batch_status!r}"
+        assert batch_status["B_MIX"] == "scheduled", batch_status
+        assert batch_status["B_ZERO"] == "scheduled", batch_status
 
         hist = conn.execute("SELECT version, result_status FROM ScheduleHistory WHERE version=?", (7,)).fetchone()
-        assert hist is not None and int(hist["version"]) == 7 and str(hist["result_status"]) == "success", "ScheduleHistory 留痕异常"
+        assert hist is not None and int(hist["version"]) == 7 and str(hist["result_status"]) == "success"
     finally:
         try:
             conn.close()

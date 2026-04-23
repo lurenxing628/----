@@ -9,7 +9,7 @@ from jinja2 import DictLoader
 
 from core.services.system import SystemConfigService
 from web import ui_mode as ui_mode_mod
-from web.ui_mode import UI_MODE_COOKIE_KEY, get_ui_mode
+from web.ui_mode import UI_MODE_COOKIE_KEY, get_ui_mode, normalize_manual_src
 
 
 def _mem_conn() -> sqlite3.Connection:
@@ -80,6 +80,13 @@ def test_get_ui_mode_prefers_cookie_over_db() -> None:
             assert get_ui_mode(default="v1") == "v2"
     finally:
         conn.close()
+
+
+def test_normalize_manual_src_accepts_same_origin_absolute_url_and_preserves_trailing_question_mark() -> None:
+    app = _app()
+
+    with app.test_request_context("/scheduler/config/manual", base_url="http://localhost/"):
+        assert normalize_manual_src("http://localhost/scheduler/config?") == "/scheduler/config?"
 
 
 def test_get_ui_mode_reads_db_when_cookie_missing() -> None:
@@ -352,8 +359,42 @@ def test_render_ui_template_sets_degraded_context_when_v2_env_missing() -> None:
         assert g.ui_mode == "v2"
         assert g.ui_template_env == "v1_fallback"
         assert g.ui_template_env_degraded is True
+        assert g.ui_template_source == "base_fallback"
 
     assert rendered == "v2|v1_fallback|1"
+
+
+def test_render_ui_template_marks_base_loader_resolution_as_degraded(tmp_path, monkeypatch) -> None:
+    base_templates = tmp_path / "templates"
+    base_templates.mkdir(parents=True)
+    (base_templates / "demo.html").write_text(
+        "{{ ui_mode }}|{{ ui_template_env }}|{{ ui_template_source }}|{{ 1 if ui_template_env_degraded else 0 }}",
+        encoding="utf-8",
+    )
+    (tmp_path / "web_new_test" / "templates").mkdir(parents=True)
+    (tmp_path / "web_new_test" / "static").mkdir(parents=True)
+
+    app = Flask(__name__, template_folder=str(base_templates))
+    warnings = []
+
+    def _fake_warning(message, *args, **kwargs):
+        warnings.append(message % args if args else str(message))
+
+    monkeypatch.setattr(app.logger, "warning", _fake_warning)
+    ui_mode_mod.init_ui_mode(app, str(tmp_path))
+    monkeypatch.setattr(ui_mode_mod, "get_ui_mode", lambda default=None: "v2")
+
+    with app.test_request_context("/demo"):
+        rendered = ui_mode_mod.render_ui_template("demo.html")
+        assert g.ui_template_env == "v2"
+        assert g.ui_template_source == "base_fallback"
+        assert g.ui_template_env_degraded is True
+
+    assert rendered == "v2|v2|base_fallback|1"
+    assert len(warnings) == 1, warnings
+    assert "mode=v2 but template resolved via base loader" in warnings[0]
+    assert "template=demo.html" in warnings[0]
+    assert "path=/demo" in warnings[0]
 
 
 def test_render_ui_template_logs_warning_when_env_globals_bridge_injection_fails(monkeypatch) -> None:

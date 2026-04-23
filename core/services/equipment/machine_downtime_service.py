@@ -236,6 +236,9 @@ class MachineDowntimeService:
             # 幂等：已取消就不报错
             return
 
+        if d.id is None:
+            raise BusinessError(ErrorCode.NOT_FOUND, "鍋滄満璁板綍 ID 缂哄け锛屾棤娉曟墽琛屽彇娑堛€?")
+
         with self.tx_manager.transaction():
             self.repo.cancel(int(d.id))
 

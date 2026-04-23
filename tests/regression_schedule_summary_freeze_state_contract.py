@@ -12,7 +12,7 @@ def find_repo_root() -> str:
     repo_root = os.path.abspath(os.path.join(here, ".."))
     if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
         return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+    raise RuntimeError("repo root not found")
 
 
 REPO_ROOT = find_repo_root()
@@ -88,9 +88,29 @@ def test_schedule_summary_freeze_state_controls_hard_constraints() -> None:
     _overdue, _status, active_summary, _json_text, _ms = build_result_summary(**kwargs_active)
     active_algo = active_summary.get("algo") or {}
     active_freeze = active_algo.get("freeze_window") or {}
-    assert active_freeze.get("freeze_state") == "active", f"freeze_state=active 未透传：{active_freeze!r}"
-    assert active_freeze.get("freeze_applied") is True, f"freeze_applied 未透传：{active_freeze!r}"
-    assert "freeze_window" in (active_algo.get("hard_constraints") or []), f"active 冻结窗口未进入 hard_constraints：{active_algo!r}"
+    assert active_freeze.get("freeze_state") == "active", active_freeze
+    assert active_freeze.get("freeze_applied") is True, active_freeze
+    assert "freeze_window" in (active_algo.get("hard_constraints") or []), active_algo
+
+    kwargs_mixed = _base_kwargs()
+    kwargs_mixed.update(
+        {
+            "frozen_op_ids": {1},
+            "freeze_meta": {
+                "freeze_state": "degraded",
+                "freeze_applied": True,
+                "freeze_degradation_codes": ["freeze_seed_unavailable"],
+                "freeze_degradation_reason": "partial freeze window seed unavailable",
+            },
+        }
+    )
+    _overdue, _status, mixed_summary, _json_text, _ms = build_result_summary(**kwargs_mixed)
+    mixed_algo = mixed_summary.get("algo") or {}
+    mixed_freeze = mixed_algo.get("freeze_window") or {}
+    assert mixed_freeze.get("freeze_state") == "degraded", mixed_freeze
+    assert mixed_freeze.get("freeze_applied") is True, mixed_freeze
+    assert mixed_freeze.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], mixed_freeze
+    assert "freeze_window" in (mixed_algo.get("hard_constraints") or []), mixed_algo
 
     kwargs_degraded = _base_kwargs()
     kwargs_degraded.update(
@@ -100,22 +120,81 @@ def test_schedule_summary_freeze_state_controls_hard_constraints() -> None:
                 "freeze_state": "degraded",
                 "freeze_applied": False,
                 "freeze_degradation_codes": ["freeze_seed_unavailable"],
-                "freeze_degradation_reason": "读取上一版本排程失败",
+                "freeze_degradation_reason": "failed to read previous schedule",
             },
         }
     )
     _overdue, _status, degraded_summary, _json_text, _ms = build_result_summary(**kwargs_degraded)
     degraded_algo = degraded_summary.get("algo") or {}
     degraded_freeze = degraded_algo.get("freeze_window") or {}
-    assert degraded_freeze.get("freeze_state") == "degraded", f"freeze_state=degraded 未透传：{degraded_freeze!r}"
-    assert degraded_freeze.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], (
-        f"冻结退化原因码异常：{degraded_freeze!r}"
-    )
-    assert "freeze_window" not in (degraded_algo.get("hard_constraints") or []), (
-        f"degraded 冻结窗口不应进入 hard_constraints：{degraded_algo!r}"
-    )
+    assert degraded_freeze.get("freeze_state") == "degraded", degraded_freeze
+    assert degraded_freeze.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], degraded_freeze
+    assert "freeze_window" not in (degraded_algo.get("hard_constraints") or []), degraded_algo
     warnings = degraded_summary.get("warnings") or []
-    assert any("冻结窗口" in str(item) and "未生效" in str(item) for item in warnings), f"冻结窗口退化 warning 未外显：{warnings!r}"
+    assert not any("freeze_window" in str(item) for item in warnings), warnings
+    assert any(
+        str(item.get("code") or "") == "freeze_window_degraded"
+        for item in (degraded_summary.get("degradation_events") or [])
+        if isinstance(item, dict)
+    ), degraded_summary.get("degradation_events")
+
+    kwargs_not_applied = _base_kwargs()
+    kwargs_not_applied.update(
+        {
+            "frozen_op_ids": set(),
+            "freeze_meta": {
+                "freeze_state": "active",
+                "freeze_applied": False,
+                "freeze_degradation_codes": [],
+            },
+        }
+    )
+    _overdue, _status, not_applied_summary, _json_text, _ms = build_result_summary(**kwargs_not_applied)
+    not_applied_algo = not_applied_summary.get("algo") or {}
+    not_applied_freeze = not_applied_algo.get("freeze_window") or {}
+    assert not_applied_freeze.get("freeze_state") in (None, "disabled"), not_applied_freeze
+    assert not_applied_freeze.get("freeze_applied") in (None, False), not_applied_freeze
+    assert "freeze_window" not in (not_applied_algo.get("hard_constraints") or []), not_applied_algo
+
+
+def test_schedule_summary_freeze_degradation_prefers_structured_event_over_warning_text() -> None:
+    kwargs = _base_kwargs()
+    kwargs["summary"].warnings = ["[freeze_window] previous schedule unavailable"]
+    kwargs.update(
+        {
+            "frozen_op_ids": set(),
+            "freeze_meta": {
+                "freeze_state": "degraded",
+                "freeze_applied": False,
+                "freeze_degradation_codes": ["freeze_seed_unavailable"],
+                "freeze_degradation_reason": "previous schedule unavailable",
+            },
+        }
+    )
+
+    _overdue, _status, degraded_summary, _json_text, _ms = build_result_summary(**kwargs)
+    warnings = degraded_summary.get("warnings") or []
+    degradation_events = degraded_summary.get("degradation_events") or []
+
+    assert not any("freeze_window" in str(item) for item in warnings), warnings
+    assert not any("冻结窗口" in str(item) for item in warnings), warnings
+    assert any(str(item.get("code") or "") == "freeze_window_degraded" for item in degradation_events), degradation_events
+
+
+def test_schedule_summary_freeze_warning_fallback_survives_without_freeze_meta() -> None:
+    kwargs = _base_kwargs()
+    kwargs["summary"].warnings = ["[freeze_window] previous schedule unavailable"]
+    kwargs.update(
+        {
+            "frozen_op_ids": set(),
+            "freeze_meta": None,
+        }
+    )
+
+    _overdue, _status, degraded_summary, _json_text, _ms = build_result_summary(**kwargs)
+    warnings = degraded_summary.get("warnings") or []
+
+    assert any("freeze_window" in str(item) for item in warnings), warnings
 
 
 def main() -> None:

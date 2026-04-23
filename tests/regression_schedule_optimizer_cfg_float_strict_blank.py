@@ -6,11 +6,37 @@ from types import SimpleNamespace
 import pytest
 
 from core.infrastructure.errors import ValidationError
+from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.schedule_optimizer import optimize_schedule
 
 
 class _StubCalendar:
     pass
+
+
+def _build_snapshot(**overrides) -> ScheduleConfigSnapshot:
+    data = {
+        "sort_strategy": "priority_first",
+        "priority_weight": 0.4,
+        "due_weight": 0.5,
+        "ready_weight": 0.1,
+        "holiday_default_efficiency": 0.8,
+        "enforce_ready_default": "no",
+        "prefer_primary_skill": "no",
+        "dispatch_mode": "batch_order",
+        "dispatch_rule": "slack",
+        "auto_assign_enabled": "no",
+        "auto_assign_persist": "yes",
+        "ortools_enabled": "no",
+        "ortools_time_limit_seconds": 5,
+        "algo_mode": "greedy",
+        "time_budget_seconds": 20,
+        "objective": "min_overdue",
+        "freeze_window_enabled": "no",
+        "freeze_window_days": 0,
+    }
+    data.update(overrides)
+    return ScheduleConfigSnapshot(**data)
 
 
 @pytest.mark.parametrize(
@@ -20,6 +46,20 @@ class _StubCalendar:
             "priority_weight",
             {
                 "sort_strategy": "weighted",
+                "priority_weight": "   ",
+                "due_weight": 0.5,
+                "algo_mode": "greedy",
+                "objective": "min_overdue",
+                "time_budget_seconds": 20,
+                "dispatch_mode": "batch_order",
+                "dispatch_rule": "slack",
+                "ortools_enabled": "no",
+            },
+        ),
+        (
+            "priority_weight",
+            {
+                "sort_strategy": "priority_first",
                 "priority_weight": "   ",
                 "due_weight": 0.5,
                 "algo_mode": "greedy",
@@ -47,7 +87,7 @@ class _StubCalendar:
     ],
 )
 def test_schedule_optimizer_strict_blank_numeric_rejected(field_name: str, cfg_kwargs) -> None:
-    cfg = SimpleNamespace(**cfg_kwargs)
+    cfg = _build_snapshot(**cfg_kwargs)
     cfg_svc = SimpleNamespace(
         VALID_STRATEGIES=("priority_first", "weighted"),
         VALID_DISPATCH_MODES=("batch_order", "sgs"),

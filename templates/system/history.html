@@ -57,12 +57,86 @@
         状态：{{ status_zh.get(selected.result_status, selected.result_status or '-') }}；
         创建人：{{ selected.created_by or '-' }}
       </p>
+      {% if selected_summary_display.summary_parse_state.parse_failed %}
+        <div class="flash-card flash-warning mt-2">
+          {{ selected_summary_display.summary_parse_state.user_message }}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.primary_degradation %}
+        <div class="flash-card flash-warning mt-2">
+          <div>{{ selected_summary_display.primary_degradation.message }}</div>
+          {% if selected_summary_display.primary_degradation.details %}
+            <ul class="list-tight mt-1">
+              {% for item in selected_summary_display.primary_degradation.details %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.display_secondary_degradation_messages %}
+        <div class="flash-card flash-warning mt-2">
+          <div>详细降级原因</div>
+          <ul class="list-tight mt-1">
+            {% for item in selected_summary_display.display_secondary_degradation_messages %}
+              <li>
+                <strong>{{ item.label or item.code or '降级' }}</strong>
+                {% if item.message %}：{{ item.message }}{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+      {% if selected_summary_display.warning_pipeline_display %}
+        <div class="flash-card flash-warning mt-2">
+          <div>摘要告警合并状态：{{ '已降级' if selected_summary_display.warning_pipeline_display.summary_merge_failed else '已记录' }}</div>
+          {% if selected_summary_display.warning_pipeline_display.algo_warning_count is not none %}
+            <div class="muted text-xs mt-1">算法告警：{{ selected_summary_display.warning_pipeline_display.algo_warning_count }} 条</div>
+          {% endif %}
+          {% if selected_summary_display.warning_pipeline_display.summary_warning_count is not none %}
+            <div class="muted text-xs">摘要告警：{{ selected_summary_display.warning_pipeline_display.summary_warning_count }} 条</div>
+          {% endif %}
+          {% if selected_summary_display.warning_pipeline_display.note %}
+            <div class="muted text-xs">{{ selected_summary_display.warning_pipeline_display.note }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.warning_total %}
+        <div class="flash-card flash-warning mt-2">
+          <div>告警：{{ selected_summary_display.warning_total }} 条</div>
+          <ul class="list-tight mt-1">
+            {% for item in selected_summary_display.warnings_preview %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% if selected_summary_display.warning_hidden_count > 0 %}
+            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条告警，请到系统历史查看。</div>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.error_total %}
+        <div class="flash-card flash-warning mt-2">
+          <div>错误摘要：{{ selected_summary_display.error_total }} 条</div>
+          <ul class="list-tight mt-1">
+            {% for item in selected_summary_display.errors_preview %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% if selected_summary_display.error_hidden_count > 0 %}
+            <div class="muted text-xs">另有 {{ selected_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
+          {% endif %}
+        </div>
+      {% endif %}
       {% if selected_summary %}
-        <h4>排产摘要</h4>
-        <pre>{{ selected_summary | tojson_zh(2) }}</pre>
+        <details class="mt-2">
+          <summary>调试详情：原始摘要</summary>
+          <pre>{{ selected_summary | tojson_zh(2) }}</pre>
+        </details>
       {% elif selected.result_summary %}
-        <h4>排产摘要</h4>
-        <pre>{{ selected.result_summary }}</pre>
+        <details class="mt-2">
+          <summary>调试详情：原始摘要</summary>
+          <pre>{{ selected.result_summary }}</pre>
+        </details>
       {% else %}
         <p class="muted">该记录没有摘要信息。</p>
       {% endif %}
@@ -108,25 +182,53 @@
               <td>{{ r.batch_count }} / {{ r.op_count }}</td>
               <td>{{ status_zh.get(r.result_status, r.result_status or '-') }}</td>
               <td>
+                {% if r.result_summary_display.summary_parse_state.parse_failed %}
+                  <div class="muted">{{ r.result_summary_display.summary_parse_state.user_message }}</div>
+                {% endif %}
+                {% if r.result_summary_display.primary_degradation %}
+                  <div>{{ r.result_summary_display.primary_degradation.message }}</div>
+                {% endif %}
+                {% if r.result_summary_display.display_secondary_degradation_messages %}
+                  <ul class="list-tight mt-1">
+                    {% for item in r.result_summary_display.display_secondary_degradation_messages %}
+                      <li>
+                        <strong>{{ item.label or item.code or '降级' }}</strong>
+                        {% if item.message %}：{{ item.message }}{% endif %}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+                {% if r.result_summary_display.warning_total %}
+                  <div class="muted">告警 {{ r.result_summary_display.warning_total }} 条</div>
+                {% endif %}
+                {% if r.result_summary_display.error_total %}
+                  <div class="muted">错误 {{ r.result_summary_display.error_total }} 条</div>
+                {% endif %}
                 {% if r.result_summary_obj %}
-                  {% set txt = (r.result_summary_obj | tojson_zh(0)) %}
-                  {% set short = txt[:260] %}
-                  {# 尽量避免截断在转义序列中间（例如结尾出现 "\\u4e2" 或单个反斜杠） #}
-                  {% if short.endswith('\\') %}
-                    {% set short = short[:-1] %}
-                  {% endif %}
-                  {% set bs = short.rfind('\\') %}
-                  {% if bs != -1 %}
-                    {% set tail = short[bs:] %}
-                    {% if tail.startswith('\\u') and (tail|length < 6) %}
-                      {% set short = short[:bs] %}
-                    {% elif tail.startswith('\\x') and (tail|length < 4) %}
-                      {% set short = short[:bs] %}
+                  <details class="mt-1">
+                    <summary>调试详情：原始摘要</summary>
+                    {% set txt = (r.result_summary_obj | tojson_zh(0)) %}
+                    {% set short = txt[:260] %}
+                    {# 尽量避免截断在转义序列中间（例如结尾出现 "\\u4e2" 或单个反斜杠） #}
+                    {% if short.endswith('\\') %}
+                      {% set short = short[:-1] %}
                     {% endif %}
-                  {% endif %}
-                  <pre>{{ short }}{% if txt|length > 260 %}...{% endif %}</pre>
+                    {% set bs = short.rfind('\\') %}
+                    {% if bs != -1 %}
+                      {% set tail = short[bs:] %}
+                      {% if tail.startswith('\\u') and (tail|length < 6) %}
+                        {% set short = short[:bs] %}
+                      {% elif tail.startswith('\\x') and (tail|length < 4) %}
+                        {% set short = short[:bs] %}
+                      {% endif %}
+                    {% endif %}
+                    <pre>{{ short }}{% if txt|length > 260 %}...{% endif %}</pre>
+                  </details>
                 {% elif r.result_summary %}
-                  <pre>{{ r.result_summary[:260] }}{% if r.result_summary|length > 260 %}...{% endif %}</pre>
+                  <details class="mt-1">
+                    <summary>调试详情：原始摘要</summary>
+                    <pre>{{ r.result_summary[:260] }}{% if r.result_summary|length > 260 %}...{% endif %}</pre>
+                  </details>
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}

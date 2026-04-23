@@ -7,6 +7,7 @@
 
   var $ = ns.$;
   var show = ns.show;
+  var reportClientError = ns.reportClientError;
   var str = ns.str;
   var norm = ns.norm;
   var parsePositiveInt = ns.parsePositiveInt;
@@ -20,27 +21,21 @@
   var readUi = ns.readUi;
   var persistUiToUrl = ns.persistUiToUrl;
   var render = ns.render;
+  var outline = ns.outline;
 
   function _reportMissingDeps(missing) {
     var msg = "甘特图脚本加载不完整，请刷新页面后重试。缺失：" + String((missing || []).join(", "));
-    var errEl = document.getElementById("ganttError");
-    if (errEl) {
-      errEl.textContent = msg;
-      if (errEl.classList) {
-        errEl.classList.remove("is-hidden");
-      }
-      errEl.style.display = "block";
+    if (typeof reportClientError === "function") {
+      reportClientError(msg);
+      return;
     }
-    try {
-      console.error(msg);
-    } catch (_) {
-      // ignore
-    }
+    try { console.error(msg); } catch (_) {}
   }
 
   var missingDeps = [];
   if (typeof $ !== "function") missingDeps.push("$");
   if (typeof show !== "function") missingDeps.push("show");
+  if (typeof reportClientError !== "function") missingDeps.push("reportClientError");
   if (typeof str !== "function") missingDeps.push("str");
   if (typeof norm !== "function") missingDeps.push("norm");
   if (typeof parsePositiveInt !== "function") missingDeps.push("parsePositiveInt");
@@ -53,21 +48,35 @@
   if (typeof readUi !== "function") missingDeps.push("readUi");
   if (typeof persistUiToUrl !== "function") missingDeps.push("persistUiToUrl");
   if (typeof render !== "function") missingDeps.push("render");
+  if (!outline || typeof outline.setCriticalOutlineEnabled !== "function") {
+    missingDeps.push("outline.setCriticalOutlineEnabled");
+  }
+  if (!outline || typeof outline.installCriticalOutlineSyncAdapter !== "function") {
+    missingDeps.push("outline.installCriticalOutlineSyncAdapter");
+  }
   if (missingDeps.length > 0) {
     _reportMissingDeps(missingDeps);
     return;
   }
 
   function initCriticalChain(critical) {
-    const cc = critical || {};
+    const raw = critical || {};
+    const cc = {
+      ids: Array.isArray(raw.ids) ? raw.ids : [],
+      edges: Array.isArray(raw.edges) ? raw.edges : [],
+      makespan_end: raw.makespan_end || null,
+      available: raw.available !== false,
+      reason: norm(raw.reason),
+      cache_hit: raw.cache_hit === true,
+    };
     state.critical = cc;
 
-    const ids = Array.isArray(cc.ids) ? cc.ids : [];
+    const ids = cc.ids;
     state.ccIdSet = new Set(ids.map((x) => norm(x)).filter((x) => !!x));
 
     const m = new Map();
     const metaMap = new Map();
-    const edges = Array.isArray(cc.edges) ? cc.edges : [];
+    const edges = cc.edges;
     for (let i = 0; i < edges.length; i++) {
       const e = edges[i] || {};
       const from = norm(e.from);
@@ -133,6 +142,8 @@
     const calendarEvent = _findDegradationEvent("calendar_load_failed");
     const calendarFailed = _degradationCount("calendar_load_failed") > 0 || emptyReason === "calendar_load_failed";
     const badTimeSkipped = _degradationCount("bad_time_row_skipped");
+    const criticalChainEvent = _findDegradationEvent("critical_chain_unavailable");
+    const criticalChainUnavailable = _degradationCount("critical_chain_unavailable") > 0 || (state.critical && state.critical.available === false);
     const allFiltered = emptyReason === "all_rows_filtered_by_invalid_time";
 
     if (calendarFailed) {
@@ -150,6 +161,14 @@
       messages.push("当前区间存在时间非法的排程数据，已全部过滤，请检查排产结果。");
     } else if (badTimeSkipped > 0) {
       messages.push("已过滤 " + badTimeSkipped + " 条时间不合法的排程记录。");
+    }
+
+    if (criticalChainUnavailable) {
+      let criticalChainMessage = "关键链暂不可用，当前仅展示普通甘特任务与资源排程。";
+      if (criticalChainEvent && str(criticalChainEvent.message || "").trim()) {
+        criticalChainMessage = str(criticalChainEvent.message || "").trim();
+      }
+      messages.push(criticalChainMessage);
     }
 
     return messages;

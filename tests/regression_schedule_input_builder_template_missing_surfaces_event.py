@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
+from core.infrastructure.errors import ValidationError
 from core.services.scheduler.schedule_input_builder import build_algo_operations
 
 
@@ -21,15 +24,14 @@ class _StubSvc:
         return SimpleNamespace(part_no="P001")
 
 
-def test_schedule_input_builder_template_missing_surfaces_event() -> None:
-    svc = _StubSvc()
-    external = SimpleNamespace(
+def _external_op() -> SimpleNamespace:
+    return SimpleNamespace(
         id=2,
         op_code="OP_EXT_01",
         batch_id="B001",
         seq=20,
         op_type_id="OT_EXT",
-        op_type_name="外协",
+        op_type_name="external",
         source="external",
         machine_id=None,
         operator_id=None,
@@ -39,13 +41,24 @@ def test_schedule_input_builder_template_missing_surfaces_event() -> None:
         ext_days=2.0,
     )
 
-    outcome = build_algo_operations(svc, [external], strict_mode=False, return_outcome=True)
-    assert outcome.has_events is True, "模板缺失应产出结构化退化事件"
+
+def test_schedule_input_builder_template_missing_surfaces_event() -> None:
+    svc = _StubSvc()
+    outcome = build_algo_operations(svc, [_external_op()], strict_mode=False, return_outcome=True)
+    assert outcome.has_events is True
     codes = [event.code for event in outcome.events]
-    assert "template_missing" in codes, f"模板缺失事件未透出：{codes!r}"
+    assert "template_missing" in codes, codes
 
     algo_op = outcome.value[0]
-    assert algo_op.merge_context_degraded is True, f"组合并语义退化标记缺失：{algo_op!r}"
+    assert algo_op.merge_context_degraded is True, algo_op
     merge_codes = [str(event.get("code") or "") for event in algo_op.merge_context_events]
-    assert "template_missing" in merge_codes, f"merge_context_events 未保留 template_missing：{algo_op.merge_context_events!r}"
-    assert float(algo_op.ext_days or 0.0) == 2.0, f"模板缺失时仍应按逐道外协周期继续：{algo_op.ext_days!r}"
+    assert "template_missing" in merge_codes, algo_op.merge_context_events
+    assert float(algo_op.ext_days or 0.0) == 2.0, algo_op.ext_days
+
+
+def test_schedule_input_builder_template_missing_strict_mode_fail_fast() -> None:
+    svc = _StubSvc()
+    with pytest.raises(ValidationError) as exc_info:
+        build_algo_operations(svc, [_external_op()], strict_mode=True, return_outcome=True)
+
+    assert exc_info.value.field == "template", exc_info.value.field

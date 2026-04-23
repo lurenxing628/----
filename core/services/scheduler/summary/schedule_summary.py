@@ -6,6 +6,8 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+
 from .schedule_summary_assembly import (
     _best_score_schema as best_score_schema,
 )
@@ -14,9 +16,6 @@ from .schedule_summary_assembly import (
 )
 from .schedule_summary_assembly import (
     _build_result_summary_obj,
-)
-from .schedule_summary_assembly import (
-    _cfg_value as cfg_value,
 )
 from .schedule_summary_assembly import (
     _comparison_metric as comparison_metric,
@@ -67,6 +66,20 @@ __all__ = [
 ]
 
 SUMMARY_SIZE_LIMIT_BYTES = 512 * 1024
+
+
+def cfg_value(cfg: Any, key: str, default: Any = None) -> Any:
+    value = _config_snapshot_value(cfg, key)
+    return default if value is None else value
+
+
+def _config_snapshot_value(cfg: Any, key: str) -> Any:
+    snapshot = ensure_schedule_config_snapshot(
+        cfg,
+        strict_mode=False,
+        source="scheduler.summary.cfg_value",
+    )
+    return snapshot.to_dict().get(str(key or "").strip())
 
 
 
@@ -131,6 +144,18 @@ def _merge_warning_lists(primary: Any, extra: Any) -> List[str]:
     return merged
 
 
+def _dedupe_text_list(values: Any) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for item in values or []:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
 def _append_summary_warning(summary: Any, message: str) -> bool:
     if isinstance(summary, dict):
         warnings = _warning_list(summary.get("warnings"))
@@ -163,6 +188,22 @@ def _counter_dict(value: Any) -> Dict[str, int]:
             continue
         if count != 0:
             out[str(key)] = int(count)
+    return out
+
+
+def _fallback_samples_dict(value: Any) -> Dict[str, List[Dict[str, Any]]]:
+    if not isinstance(value, dict):
+        return {}
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for key, raw in value.items():
+        if not isinstance(raw, list):
+            continue
+        samples: List[Dict[str, Any]] = []
+        for item in raw:
+            if isinstance(item, dict):
+                samples.append(dict(item))
+        if samples:
+            out[str(key)] = samples
     return out
 
 
@@ -289,11 +330,6 @@ def _build_warning_state(
     all_warnings = _merge_warning_lists(summary_warnings, algo_warning_list)
     merge_context_degraded = bool(input_state.get("merge_context_degraded"))
     merge_context_events = list(input_state.get("merge_context_events") or [])
-    if merge_context_degraded:
-        all_warnings = _merge_warning_lists(
-            all_warnings,
-            ["组合并语义已退化：部分外协工序缺少模板或外部组，已按逐道外协语义继续排产。"],
-        )
     if int(runtime_state.unscheduled_batch_count) > 0:
         sample_text = "、".join(list(runtime_state.unscheduled_batch_ids_sample or [])[:10])
         all_warnings = _merge_warning_lists(
@@ -324,8 +360,13 @@ def _build_freeze_state(
         freeze_warnings=freeze_warnings,
     )
     merged_warnings = list(all_warnings)
-    if str(freeze_data.get("freeze_state") or "") == "degraded" and freeze_data.get("degradation_reason"):
-        merged_warnings = _merge_warning_lists(merged_warnings, [f"【冻结窗口】未生效：{freeze_data.get('degradation_reason')}"])
+    if (
+        freeze_warnings
+        and str(freeze_data.get("freeze_state") or "") == "degraded"
+        and not bool(freeze_data.get("degradation_from_warning_fallback"))
+    ):
+        freeze_warning_set = {str(item) for item in freeze_warnings}
+        merged_warnings = [item for item in merged_warnings if str(item) not in freeze_warning_set]
     return FreezeState(
         data=freeze_data,
         all_warnings=merged_warnings,
@@ -335,10 +376,12 @@ def _build_freeze_state(
 def _build_fallback_state(algo_stats: Optional[Dict[str, Any]]) -> FallbackState:
     algo_stats_dict = algo_stats if isinstance(algo_stats, dict) else {}
     fallback_counts = _counter_dict(algo_stats_dict.get("fallback_counts"))
+    fallback_samples = _fallback_samples_dict(algo_stats_dict.get("fallback_samples"))
     param_fallbacks = _counter_dict(algo_stats_dict.get("param_fallbacks"))
     return FallbackState(
         raw_stats=algo_stats_dict,
         fallback_counts=fallback_counts,
+        fallback_samples=fallback_samples,
         param_fallbacks=param_fallbacks,
         legacy_external_days_defaulted_count=int(fallback_counts.get("legacy_external_days_defaulted_count") or 0),
         ortools_warmstart_failed_count=int(fallback_counts.get("ortools_warmstart_failed_count") or 0),
@@ -353,6 +396,40 @@ def _merge_fallback_warnings(all_warnings: List[str], fallback_state: FallbackSt
     if warmstart_count > 0:
         all_warnings = _merge_warning_lists(all_warnings, ["OR-Tools 预热失败，已回退到常规求解路径。"])
     return all_warnings
+
+
+def _degraded_cause_codes(
+    *,
+    summary_degradation: Dict[str, Any],
+) -> List[str]:
+    causes: List[str] = []
+    summary_events = summary_degradation.get("events") if isinstance(summary_degradation, dict) else None
+    for raw_event in summary_events or ():
+        if not isinstance(raw_event, dict):
+            continue
+        code = str(raw_event.get("code") or "").strip()
+        if code in {
+            "config_fallback",
+            "input_fallback",
+            "freeze_window_degraded",
+            "downtime_avoid_degraded",
+            "resource_pool_degraded",
+            "merge_context_degraded",
+            "summary_merge_failed",
+        }:
+            causes.append(code)
+    return _dedupe_text_list(causes)
+
+
+def _degraded_success_state(
+    *,
+    summary_degradation: Dict[str, Any],
+    result_status: str,
+) -> Tuple[bool, List[str]]:
+    deduped = _degraded_cause_codes(
+        summary_degradation=summary_degradation,
+    )
+    return result_status == "success" and bool(deduped), deduped
 
 
 def build_result_summary(
@@ -373,6 +450,14 @@ def build_result_summary(
             ctx = replace(ctx, **ctx_kwargs)
     if svc is None:
         raise TypeError("build_result_summary() 缺少必需参数：svc")
+    ctx = replace(
+        ctx,
+        cfg=ensure_schedule_config_snapshot(
+            ctx.cfg,
+            strict_mode=False,
+            source="scheduler.summary",
+        ),
+    )
 
     runtime_state = _build_runtime_state(
         svc=svc,
@@ -404,7 +489,7 @@ def build_result_summary(
     hard_constraints = _hard_constraints(
         ctx.cfg,
         downtime_degraded=bool(downtime_state.get("downtime_degraded")),
-        freeze_state=freeze_state.status or "disabled",
+        freeze_applied=bool(freeze_state.data.get("freeze_applied")),
     )
     fallback_state = _build_fallback_state(ctx.algo_stats)
     freeze_state = replace(
@@ -413,6 +498,7 @@ def build_result_summary(
     )
     warning_pipeline = ctx.warning_merge_status if isinstance(ctx.warning_merge_status, dict) else {}
     summary_degradation = _summary_degradation_state(
+        cfg=ctx.cfg,
         input_state=input_state,
         invalid_due_count=runtime_state.invalid_due_count,
         invalid_due_batch_ids_sample=runtime_state.invalid_due_batch_ids_sample,
@@ -423,6 +509,12 @@ def build_result_summary(
         resource_pool_degraded=resource_pool_degraded,
         resource_pool_degradation_reason=resource_pool_degradation_reason,
         ortools_warmstart_failed_count=fallback_state.ortools_warmstart_failed_count,
+        merge_context_degraded=warning_state.merge_context_degraded,
+        warning_merge_status=warning_pipeline,
+    )
+    degraded_success, degraded_causes = _degraded_success_state(
+        summary_degradation=summary_degradation,
+        result_status=result_status,
     )
     algorithm_state = AlgorithmSummaryState(
         ctx=ctx,
@@ -448,6 +540,8 @@ def build_result_summary(
         fallback_state=fallback_state,
         algorithm_state=algorithm_state,
         summary_degradation=summary_degradation,
+        degraded_success=degraded_success,
+        degraded_causes=degraded_causes,
         time_cost_ms=time_cost_ms,
         serialize_end_date_fn=serialize_end_date,
     )

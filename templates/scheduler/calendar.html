@@ -139,7 +139,7 @@
   <script id="aps-workcalendar-data" type="application/json">
     {{ {
       'rows': rows,
-      'holidayDefaultEfficiency': (holiday_default_efficiency if holiday_default_efficiency is defined else 0.8)
+      'holidayDefaultEfficiency': (none if holiday_default_efficiency_degraded else holiday_default_efficiency)
     } | tojson }}
   </script>
   <script>
@@ -148,7 +148,7 @@
       try {
         window.__APS_WORKCALENDAR__ = JSON.parse((dataEl && dataEl.textContent) || "{}");
       } catch (err) {
-        window.__APS_WORKCALENDAR__ = { rows: [], holidayDefaultEfficiency: 0.8 };
+        window.__APS_WORKCALENDAR__ = { rows: [], holidayDefaultEfficiency: null };
       }
     })();
   </script>

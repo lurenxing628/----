@@ -106,9 +106,13 @@
         </div>
         <div class="calendar-upsert-submit">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      {% if holiday_default_efficiency_degraded %}
+        <div class="muted mt-2">提示：当前 `holiday_default_efficiency` 配置已降级，页面不会自动补全假期效率；请先到排产参数页修复后再继续保存个人日历。</div>
+      {% else %}
       <div class="muted mt-2">
-        提示：假期默认不排产（可用工时为 0）。若假期需要上班，请把可用工时设置为 大于 0；效率留空时会按“假期默认效率”自动补充（当前：{{ holiday_default_efficiency if holiday_default_efficiency is defined else 0.8 }}）。
+        提示：假期默认不排产（可用工时为 0）。若假期需要上班，请把可用工时设置为 大于 0；效率留空时会按“假期默认效率”自动补充（当前：{{ holiday_default_efficiency }}）。
       </div>
+      {% endif %}
     </form>
   </div>
 
@@ -155,7 +159,7 @@
   <script id="aps-workcalendar-data" type="application/json">
     {{ {
       'rows': rows,
-      'holidayDefaultEfficiency': (holiday_default_efficiency if holiday_default_efficiency is defined else 0.8)
+      'holidayDefaultEfficiency': (none if holiday_default_efficiency_degraded else holiday_default_efficiency)
     } | tojson }}
   </script>
   <script>
@@ -164,7 +168,7 @@
       try {
         window.__APS_WORKCALENDAR__ = JSON.parse((dataEl && dataEl.textContent) || "{}");
       } catch (err) {
-        window.__APS_WORKCALENDAR__ = { rows: [], holidayDefaultEfficiency: 0.8 };
+        window.__APS_WORKCALENDAR__ = { rows: [], holidayDefaultEfficiency: null };
       }
     })();
   </script>

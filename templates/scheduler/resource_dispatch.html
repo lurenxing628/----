@@ -178,6 +178,11 @@
     超期统计和标记可能不完整，请稍后重试或查看系统历史。
   </div>
 
+  <div id="rdDegradationSummary" class="card flash-card flash-warning is-hidden" role="alert" aria-live="polite">
+    <div>当前结果包含结构化降级信息：</div>
+    <ul id="rdDegradationList" class="list-tight mt-1"></ul>
+  </div>
+
   <div id="rdResultCard" class="card {% if not has_history or not can_query %}is-hidden{% endif %}">
     <div class="inline-flex-wrap items-end">
       <div class="inline-flex-wrap" id="rdTabBar">

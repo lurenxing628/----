@@ -22,6 +22,27 @@
     el.style.display = visible ? "block" : "none";
   }
 
+  function reportClientError(message, error) {
+    var text = message === null || typeof message === "undefined" ? "" : String(message);
+    var errEl = document.getElementById("ganttError");
+    if (errEl) {
+      errEl.textContent = text;
+      if (errEl.classList) {
+        errEl.classList.remove("is-hidden");
+      }
+      errEl.style.display = "block";
+    }
+    try {
+      if (error) {
+        console.error(text, error);
+      } else {
+        console.error(text);
+      }
+    } catch (_) {
+      // ignore
+    }
+  }
+
   function str(v) {
     return v === null || typeof v === "undefined" ? "" : String(v);
   }
@@ -196,7 +217,7 @@
     currentTasks: [],
     gantt: null,
     focusBatch: "",
-    critical: { ids: [], edges: [], makespan_end: null },
+    critical: { ids: [], edges: [], makespan_end: null, available: true, reason: "", cache_hit: false },
     ccIdSet: new Set(),
     ccPrevByTo: new Map(),
     ccEdgeMetaByTo: new Map(),
@@ -237,6 +258,7 @@
   ns.$ = $;
   ns.on = on;
   ns.show = show;
+  ns.reportClientError = reportClientError;
   ns.str = str;
   ns.escapeHtml = escapeHtml;
   ns.norm = norm;

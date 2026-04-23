@@ -121,6 +121,10 @@ class OperatorService:
             status=status,
             team_id=team_id,
         )
+        if op_id is None:
+            raise ValidationError("宸ュ彿涓嶈兘涓虹┖", field="宸ュ彿")
+        if op_name is None:
+            raise ValidationError("濮撳悕涓嶈兘涓虹┖", field="濮撳悕")
         op_remark = self._normalize_text(remark)
 
         if self.repo.exists(op_id):

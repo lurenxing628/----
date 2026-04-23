@@ -55,8 +55,6 @@ def main() -> None:
     scheduler_config = importlib.import_module("web.routes.scheduler_config")
 
     with app.test_request_context("/scheduler/config"):
-        dashboard_url = url_for("dashboard.index")
-
         valid_next_cases = [
             ("/scheduler/config", "/scheduler/config", "keep absolute internal path"),
             ("/scheduler/config?", "/scheduler/config", "trim trailing question mark"),
@@ -82,7 +80,7 @@ def main() -> None:
             ("/line\x00break", "reject null byte"),
         ]
         for raw, message in invalid_next_cases:
-            _assert_equal(system_utils._safe_next_url(raw), dashboard_url, message)
+            _assert_is_none(system_utils._safe_next_url(raw), message)
 
         valid_src_cases = [
             ("/scheduler/config", "/scheduler/config", "keep manual src path"),

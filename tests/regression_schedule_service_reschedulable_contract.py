@@ -29,10 +29,12 @@ def _make_conn(repo_root: str) -> sqlite3.Connection:
 
 
 def _patch_schedule_module(schedule_service_mod, captured):
-    def _stub_build_algo_operations(_svc, ops):
+    from core.services.common.build_outcome import BuildOutcome
+
+    def _stub_build_algo_operations(_svc, ops, *, strict_mode=False, return_outcome=False):
         captured["algo_input_ids"] = [int(op.id) for op in ops]
         captured["algo_input_statuses"] = [(int(op.id), str(getattr(op, "status", "") or "").strip().lower()) for op in ops]
-        return [
+        algo_ops = [
             SimpleNamespace(
                 id=int(op.id),
                 op_code=op.op_code,
@@ -46,6 +48,9 @@ def _patch_schedule_module(schedule_service_mod, captured):
             )
             for op in ops
         ]
+        if return_outcome:
+            return BuildOutcome(algo_ops)
+        return algo_ops
 
     def _stub_build_freeze_window_seed(_svc, **kwargs):
         captured["freeze_all_ids"] = [int(op.id) for op in kwargs.get("operations") or [] if getattr(op, "id", None)]
@@ -65,25 +70,29 @@ def _patch_schedule_module(schedule_service_mod, captured):
 
     def _stub_optimize_schedule(*, algo_ops_to_schedule, **_kwargs):
         captured["algo_ops_to_schedule_ids"] = [int(op.id) for op in algo_ops_to_schedule]
-        base_dt = datetime(2026, 1, 1, 8, 0, 0)
-        results = []
-        for idx, op in enumerate(algo_ops_to_schedule):
-            st = base_dt + timedelta(hours=idx)
-            et = st + timedelta(hours=1)
-            results.append(
-                SimpleNamespace(
-                    op_id=int(op.id),
-                    op_code=op.op_code,
-                    batch_id=op.batch_id,
-                    seq=int(op.seq or 0),
-                    machine_id="MC001",
-                    operator_id="OP001",
-                    start_time=st,
-                    end_time=et,
-                    source=op.source,
-                    op_type_name=getattr(op, "op_type_name", None),
+        override_results = captured.get("optimizer_results_override")
+        if override_results is not None:
+            results = list(override_results)
+        else:
+            base_dt = datetime(2026, 1, 1, 8, 0, 0)
+            results = []
+            for idx, op in enumerate(algo_ops_to_schedule):
+                st = base_dt + timedelta(hours=idx)
+                et = st + timedelta(hours=1)
+                results.append(
+                    SimpleNamespace(
+                        op_id=int(op.id),
+                        op_code=op.op_code,
+                        batch_id=op.batch_id,
+                        seq=int(op.seq or 0),
+                        machine_id="MC001",
+                        operator_id="OP001",
+                        start_time=st,
+                        end_time=et,
+                        source=op.source,
+                        op_type_name=getattr(op, "op_type_name", None),
+                    )
                 )
-            )
         summary = SimpleNamespace(
             success=True,
             total_ops=len(algo_ops_to_schedule),
@@ -112,13 +121,16 @@ def _patch_schedule_module(schedule_service_mod, captured):
         return [], "success", {"algo": {}}, "{}", 0
 
     def _stub_persist_schedule(_svc, **kwargs):
-        captured["persist_reschedulable_op_ids"] = set(kwargs.get("reschedulable_op_ids") or set())
+        payload = kwargs.get("validated_schedule_payload")
+        captured["persist_scheduled_op_ids"] = set(getattr(payload, "scheduled_op_ids", set()) or set())
         captured["persist_reschedulable_statuses"] = [
             (int(op.id), str(getattr(op, "status", "") or "").strip().lower())
             for op in kwargs.get("reschedulable_operations") or []
             if getattr(op, "id", None)
         ]
-        captured["persist_results_op_ids"] = [int(r.op_id) for r in kwargs.get("results") or [] if getattr(r, "op_id", None)]
+        captured["persist_results_op_ids"] = [
+            int(row.op_id) for row in getattr(payload, "schedule_rows", []) if getattr(row, "op_id", None)
+        ]
         return None
 
     schedule_service_mod.build_algo_operations = _stub_build_algo_operations
@@ -231,11 +243,63 @@ def main() -> None:
         ret = svc1.run_schedule(batch_ids=["B001"], start_dt="2026-01-01 08:00:00", simulate=True, enforce_ready=True)
         assert captured.get("algo_input_ids") == [1, 2], f"算法输入不应包含 completed/skipped：{captured!r}"
         assert captured.get("freeze_reschedulable_ids") == [1, 2], f"freeze seed 应与可重排集合一致：{captured!r}"
-        assert captured.get("persist_reschedulable_op_ids") == {1, 2}, f"persist 契约收口异常：{captured!r}"
+        assert captured.get("persist_scheduled_op_ids") == {1, 2}, f"persist 契约收口异常：{captured!r}"
         assert captured.get("persist_results_op_ids") == [1, 2], f"结果集不应包含 terminal op：{captured!r}"
         assert int((ret.get("summary") or {}).get("total_ops") or 0) == 2, f"total_ops 应只统计可重排工序：{ret!r}"
 
         # 场景 2：completed/cancelled 批次服务层 fail-fast
+        captured["optimizer_results_override"] = [
+            SimpleNamespace(
+                op_id=1,
+                op_code="B001_10",
+                batch_id="B001",
+                seq=10,
+                machine_id="MC001",
+                operator_id="OP001",
+                start_time=datetime(2026, 1, 2, 8, 0, 0),
+                end_time=datetime(2026, 1, 2, 9, 0, 0),
+                source="internal",
+                op_type_name="宸ュ簭A",
+            ),
+            SimpleNamespace(
+                op_id=2,
+                op_code="B001_20",
+                batch_id="B001",
+                seq=20,
+                machine_id="MC001",
+                operator_id="OP001",
+                start_time=datetime(2026, 1, 2, 9, 0, 0),
+                end_time=datetime(2026, 1, 2, 10, 0, 0),
+                source="internal",
+                op_type_name="宸ュ簭B",
+            ),
+            SimpleNamespace(
+                op_id=999,
+                op_code="B999_10",
+                batch_id="B999",
+                seq=10,
+                machine_id="MC999",
+                operator_id="OP999",
+                start_time=datetime(2026, 1, 2, 10, 0, 0),
+                end_time=datetime(2026, 1, 2, 11, 0, 0),
+                source="internal",
+                op_type_name="Rogue",
+            ),
+        ]
+        captured.pop("persist_results_op_ids", None)
+        rejected_out_of_scope = False
+        try:
+            svc1.run_schedule(batch_ids=["B001"], start_dt="2026-01-01 08:00:00", simulate=True, enforce_ready=True)
+        except ValidationError as e:
+            details = dict(getattr(e, "details", {}) or {})
+            rejected_out_of_scope = details.get("reason") == "out_of_scope_schedule_rows"
+            assert details.get("count") == 1, details
+            assert details.get("sample_op_ids") == [999], details
+            assert details.get("allowed_scope_kind") == "reschedulable_op_ids", details
+        assert rejected_out_of_scope, "service layer must reject optimizer results that escape reschedulable scope"
+        assert "persist_results_op_ids" not in captured, captured
+        captured.pop("optimizer_results_override", None)
+
         svc2 = ScheduleService(conn1)
         svc2._get_batch_or_raise = lambda bid: _batch_stub(bid, "completed")  # type: ignore[assignment]
         svc2.op_repo = SimpleNamespace(list_by_batch=lambda _bid: (_ for _ in ()).throw(AssertionError("completed 批次不应继续读取工序")))  # type: ignore[assignment]

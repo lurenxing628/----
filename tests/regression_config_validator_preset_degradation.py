@@ -6,12 +6,6 @@ from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.config_validator import normalize_preset_snapshot
 
-VALID_STRATEGIES = ("priority_first", "due_date_first", "weighted", "fifo")
-VALID_DISPATCH_MODES = ("batch_order", "sgs")
-VALID_DISPATCH_RULES = ("slack", "cr", "atc")
-VALID_ALGO_MODES = ("greedy", "improve")
-VALID_OBJECTIVES = ("min_overdue", "min_tardiness", "min_weighted_tardiness", "min_changeover")
-
 
 def _base_snapshot() -> ScheduleConfigSnapshot:
     return ScheduleConfigSnapshot(
@@ -25,6 +19,7 @@ def _base_snapshot() -> ScheduleConfigSnapshot:
         dispatch_mode="batch_order",
         dispatch_rule="slack",
         auto_assign_enabled="no",
+        auto_assign_persist="yes",
         ortools_enabled="no",
         ortools_time_limit_seconds=5,
         algo_mode="greedy",
@@ -45,11 +40,6 @@ def test_config_validator_preset_degradation_and_min_clamp() -> None:
             "freeze_window_days": "-3",
         },
         base=_base_snapshot(),
-        valid_strategies=VALID_STRATEGIES,
-        valid_dispatch_modes=VALID_DISPATCH_MODES,
-        valid_dispatch_rules=VALID_DISPATCH_RULES,
-        valid_algo_modes=VALID_ALGO_MODES,
-        valid_objectives=VALID_OBJECTIVES,
     )
 
     assert snap.priority_weight == 0.4
@@ -77,11 +67,6 @@ def test_config_validator_preset_strict_blank_rejected_but_missing_allowed() -> 
     snap = normalize_preset_snapshot(
         {},
         base=base,
-        valid_strategies=VALID_STRATEGIES,
-        valid_dispatch_modes=VALID_DISPATCH_MODES,
-        valid_dispatch_rules=VALID_DISPATCH_RULES,
-        valid_algo_modes=VALID_ALGO_MODES,
-        valid_objectives=VALID_OBJECTIVES,
         strict_mode=True,
     )
     assert snap.dispatch_mode == base.dispatch_mode
@@ -92,11 +77,6 @@ def test_config_validator_preset_strict_blank_rejected_but_missing_allowed() -> 
         normalize_preset_snapshot(
             {"sort_strategy": "   "},
             base=base,
-            valid_strategies=VALID_STRATEGIES,
-            valid_dispatch_modes=VALID_DISPATCH_MODES,
-            valid_dispatch_rules=VALID_DISPATCH_RULES,
-            valid_algo_modes=VALID_ALGO_MODES,
-            valid_objectives=VALID_OBJECTIVES,
             strict_mode=True,
         )
     assert exc_info.value.field == "sort_strategy"
@@ -105,11 +85,6 @@ def test_config_validator_preset_strict_blank_rejected_but_missing_allowed() -> 
         normalize_preset_snapshot(
             {"dispatch_mode": "   "},
             base=base,
-            valid_strategies=VALID_STRATEGIES,
-            valid_dispatch_modes=VALID_DISPATCH_MODES,
-            valid_dispatch_rules=VALID_DISPATCH_RULES,
-            valid_algo_modes=VALID_ALGO_MODES,
-            valid_objectives=VALID_OBJECTIVES,
             strict_mode=True,
         )
     assert exc_info.value.field == "dispatch_mode"
@@ -118,11 +93,6 @@ def test_config_validator_preset_strict_blank_rejected_but_missing_allowed() -> 
         normalize_preset_snapshot(
             {"dispatch_rule": "   "},
             base=base,
-            valid_strategies=VALID_STRATEGIES,
-            valid_dispatch_modes=VALID_DISPATCH_MODES,
-            valid_dispatch_rules=VALID_DISPATCH_RULES,
-            valid_algo_modes=VALID_ALGO_MODES,
-            valid_objectives=VALID_OBJECTIVES,
             strict_mode=True,
         )
     assert exc_info.value.field == "dispatch_rule"
@@ -131,11 +101,6 @@ def test_config_validator_preset_strict_blank_rejected_but_missing_allowed() -> 
         normalize_preset_snapshot(
             {"auto_assign_enabled": "   "},
             base=base,
-            valid_strategies=VALID_STRATEGIES,
-            valid_dispatch_modes=VALID_DISPATCH_MODES,
-            valid_dispatch_rules=VALID_DISPATCH_RULES,
-            valid_algo_modes=VALID_ALGO_MODES,
-            valid_objectives=VALID_OBJECTIVES,
             strict_mode=True,
         )
     assert exc_info.value.field == "auto_assign_enabled"
@@ -144,11 +109,6 @@ def test_config_validator_preset_strict_blank_rejected_but_missing_allowed() -> 
         normalize_preset_snapshot(
             {"algo_mode": "   "},
             base=base,
-            valid_strategies=VALID_STRATEGIES,
-            valid_dispatch_modes=VALID_DISPATCH_MODES,
-            valid_dispatch_rules=VALID_DISPATCH_RULES,
-            valid_algo_modes=VALID_ALGO_MODES,
-            valid_objectives=VALID_OBJECTIVES,
             strict_mode=True,
         )
     assert exc_info.value.field == "algo_mode"
@@ -157,26 +117,28 @@ def test_config_validator_preset_strict_blank_rejected_but_missing_allowed() -> 
         normalize_preset_snapshot(
             {"objective": "   "},
             base=base,
-            valid_strategies=VALID_STRATEGIES,
-            valid_dispatch_modes=VALID_DISPATCH_MODES,
-            valid_dispatch_rules=VALID_DISPATCH_RULES,
-            valid_algo_modes=VALID_ALGO_MODES,
-            valid_objectives=VALID_OBJECTIVES,
             strict_mode=True,
         )
     assert exc_info.value.field == "objective"
 
 
-def test_config_validator_preset_still_rejects_malformed_numeric() -> None:
+def test_config_validator_preset_relaxed_invalid_numeric_falls_back_with_degradation() -> None:
+    snap = normalize_preset_snapshot(
+        {"priority_weight": "abc"},
+        base=_base_snapshot(),
+    )
+
+    assert snap.priority_weight == 0.4
+    counters = snap.degradation_counters or {}
+    assert int(counters.get("invalid_number") or 0) == 1, counters
+
+
+def test_config_validator_preset_strict_invalid_numeric_still_rejected() -> None:
     with pytest.raises(ValidationError) as exc_info:
         normalize_preset_snapshot(
             {"priority_weight": "abc"},
             base=_base_snapshot(),
-            valid_strategies=VALID_STRATEGIES,
-            valid_dispatch_modes=VALID_DISPATCH_MODES,
-            valid_dispatch_rules=VALID_DISPATCH_RULES,
-            valid_algo_modes=VALID_ALGO_MODES,
-            valid_objectives=VALID_OBJECTIVES,
+            strict_mode=True,
         )
 
     assert exc_info.value.field == "priority_weight"
@@ -190,11 +152,6 @@ def test_config_validator_preset_relaxed_invalid_choice_and_yesno_are_observable
             "auto_assign_enabled": "maybe",
         },
         base=_base_snapshot(),
-        valid_strategies=VALID_STRATEGIES,
-        valid_dispatch_modes=VALID_DISPATCH_MODES,
-        valid_dispatch_rules=VALID_DISPATCH_RULES,
-        valid_algo_modes=VALID_ALGO_MODES,
-        valid_objectives=VALID_OBJECTIVES,
     )
 
     assert snap.sort_strategy == "priority_first"
@@ -211,11 +168,6 @@ def test_config_validator_preset_relaxed_blank_choice_and_yesno_emit_blank_requi
             "freeze_window_enabled": None,
         },
         base=_base_snapshot(),
-        valid_strategies=VALID_STRATEGIES,
-        valid_dispatch_modes=VALID_DISPATCH_MODES,
-        valid_dispatch_rules=VALID_DISPATCH_RULES,
-        valid_algo_modes=VALID_ALGO_MODES,
-        valid_objectives=VALID_OBJECTIVES,
     )
 
     assert snap.dispatch_rule == "slack"

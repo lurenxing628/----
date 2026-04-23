@@ -134,6 +134,7 @@ def main() -> None:
 
     import core.services.scheduler.schedule_service as schedule_service_mod
     from core.infrastructure.errors import ValidationError
+    from core.services.common.build_outcome import BuildOutcome
     from core.services.scheduler.schedule_service import ScheduleService
 
     captured = {}
@@ -145,9 +146,9 @@ def main() -> None:
     original_optimize_schedule = schedule_service_mod.optimize_schedule
     original_persist_schedule = schedule_service_mod.persist_schedule
 
-    def _stub_build_algo_operations(_svc, ops):
+    def _stub_build_algo_operations(_svc, ops, *, strict_mode=False, return_outcome=False):
         captured["build_algo_operations_calls"] = captured.get("build_algo_operations_calls", 0) + 1
-        return [
+        algo_ops = [
             SimpleNamespace(
                 id=int(op.id),
                 op_code=op.op_code,
@@ -162,6 +163,9 @@ def main() -> None:
             )
             for op in ops
         ]
+        if return_outcome:
+            return BuildOutcome(algo_ops)
+        return algo_ops
 
     def _stub_build_freeze_window_seed(_svc, **kwargs):
         captured["build_freeze_window_seed_calls"] = captured.get("build_freeze_window_seed_calls", 0) + 1

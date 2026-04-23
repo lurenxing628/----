@@ -71,6 +71,95 @@
     </p>
   </div>
 
+  {% if selected_history_resolution and selected_history_resolution.message %}
+    <div class="flash-card flash-warning mt-2">
+      {{ selected_history_resolution.message }}
+    </div>
+  {% endif %}
+
+  {% if selected_history %}
+    <div class="card">
+      <h3 class="section-title">所选版本摘要：v{{ selected_history.version }}</h3>
+      <div class="meta-inline text-meta">
+        时间：<strong>{{ selected_history.schedule_time or '-' }}</strong>
+        <span class="meta-sep">｜</span>
+        方式：<strong>{{ strategy_zh.get(selected_history.strategy, selected_history.strategy or '-') }}</strong>
+        <span class="meta-sep">｜</span>
+        结果：<strong>{{ status_zh.get(selected_history.result_status, selected_history.result_status or '-') }}</strong>
+      </div>
+      {% if selected_summary_display.summary_parse_state.parse_failed %}
+        <div class="flash-card flash-warning mt-2">
+          {{ selected_summary_display.summary_parse_state.user_message }}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.primary_degradation %}
+        <div class="flash-card flash-warning mt-2">
+          <div>{{ selected_summary_display.primary_degradation.message }}</div>
+          {% if selected_summary_display.primary_degradation.details %}
+            <ul class="list-tight mt-1">
+              {% for item in selected_summary_display.primary_degradation.details %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.display_secondary_degradation_messages %}
+        <div class="flash-card flash-warning mt-2">
+          <div>详细降级原因</div>
+          <ul class="list-tight mt-1">
+            {% for item in selected_summary_display.display_secondary_degradation_messages %}
+              <li>
+                <strong>{{ item.label or item.code or '降级' }}</strong>
+                {% if item.message %}：{{ item.message }}{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+      {% if selected_summary_display.warning_pipeline_display %}
+        <div class="flash-card flash-warning mt-2">
+          <div>摘要告警合并状态：{{ '已降级' if selected_summary_display.warning_pipeline_display.summary_merge_failed else '已记录' }}</div>
+          {% if selected_summary_display.warning_pipeline_display.algo_warning_count is not none %}
+            <div class="muted text-xs mt-1">算法告警：{{ selected_summary_display.warning_pipeline_display.algo_warning_count }} 条</div>
+          {% endif %}
+          {% if selected_summary_display.warning_pipeline_display.summary_warning_count is not none %}
+            <div class="muted text-xs">摘要告警：{{ selected_summary_display.warning_pipeline_display.summary_warning_count }} 条</div>
+          {% endif %}
+          {% if selected_summary_display.warning_pipeline_display.note %}
+            <div class="muted text-xs">{{ selected_summary_display.warning_pipeline_display.note }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.warning_total %}
+        <div class="flash-card flash-warning mt-2">
+          <div>告警：{{ selected_summary_display.warning_total }} 条</div>
+          <ul class="list-tight mt-1">
+            {% for item in selected_summary_display.warnings_preview %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% if selected_summary_display.warning_hidden_count > 0 %}
+            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条告警，请到系统历史查看。</div>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if selected_summary_display.error_total %}
+        <div class="flash-card flash-warning mt-2">
+          <div>错误摘要：{{ selected_summary_display.error_total }} 条</div>
+          <ul class="list-tight mt-1">
+            {% for item in selected_summary_display.errors_preview %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% if selected_summary_display.error_hidden_count > 0 %}
+            <div class="muted text-xs">另有 {{ selected_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
   <div class="card">
     <h3 class="section-title">预览（前 50 行 / 共 {{ total_rows }} 行）</h3>
     {% if degradation_message %}

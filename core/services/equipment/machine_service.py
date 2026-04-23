@@ -162,6 +162,10 @@ class MachineService:
             op_type_id=op_type_id,
             team_id=team_id,
         )
+        if mc_id is None:
+            raise ValidationError("璁惧缂栧彿涓嶈兘涓虹┖", field="璁惧缂栧彿")
+        if mc_name is None:
+            raise ValidationError("璁惧鍚嶇О涓嶈兘涓虹┖", field="璁惧鍚嶇О")
         mc_remark = self._normalize_text(remark)
         mc_category = self._normalize_text(category)
 

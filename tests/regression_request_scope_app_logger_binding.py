@@ -76,6 +76,24 @@ def test_request_scope_app_logger_binding(tmp_path, monkeypatch) -> None:
         def get_active_preset_reason(self):
             return "当前以手动设置为准。"
 
+        def get_preset_display_state(self, readonly=True, current_snapshot=None):
+            return {
+                "presets": [],
+                "active_preset": None,
+                "active_preset_reason": "当前以手动设置为准。",
+                "active_preset_missing": True,
+                "active_preset_reason_missing": False,
+                "current_config_state": {
+                    "state": "custom",
+                    "degraded": False,
+                    "provenance_missing": False,
+                    "baseline_key": None,
+                    "baseline_label": "自定义",
+                    "baseline_source": "custom",
+                },
+                "readonly": bool(readonly),
+            }
+
     class _StubHistoryService:
         def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):
             captured["history_logger"] = logger

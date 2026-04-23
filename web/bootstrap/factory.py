@@ -20,6 +20,11 @@ from core.infrastructure.migrations.common import fallback_log
 from core.models.enums import YesNo
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_templates import ensure_excel_templates
+from web.error_boundary import (
+    render_error_template,
+    render_minimal_error_page,
+    wants_json_error_response_or_default,
+)
 from web.error_handlers import register_error_handlers
 from web.routes.dashboard import bp as dashboard_bp
 from web.routes.equipment import bp as equipment_bp
@@ -31,7 +36,6 @@ from web.routes.reports import bp as reports_bp
 from web.routes.scheduler import bp as scheduler_bp
 from web.routes.system import bp as system_bp
 from web.ui_mode import init_ui_mode
-from web.ui_mode import render_ui_template as render_template
 
 from .launcher import resolve_shared_data_root
 from .paths import runtime_base_dir
@@ -140,14 +144,22 @@ def _run_exit_backup(manager: Optional[BackupManager] = None) -> bool:
 
 def _maintenance_gate_response():
     message = "系统正在维护中，请稍后重试。"
-    try:
-        req_path = str(request.path or "")
-        accept_best = (request.accept_mimetypes.best or "").lower()
-        if req_path.startswith("/api/") or "json" in accept_best or bool(request.is_json):
-            return {"success": False, "error": {"code": "503", "message": message}}, 503
-    except Exception as exc:
-        _app_log_once(current_app, "maintenance_gate_response_request_classify_failed", "warning", "维护窗口响应分类失败，已回退 HTML 503：%s", exc)
-    return render_template("error.html", title="系统维护中", code="503", message=message), 503
+    if wants_json_error_response_or_default(
+        default=False,
+        log_message="维护窗口响应分类失败，已回退 HTML 503：%s",
+    ):
+        return {"success": False, "error": {"code": "503", "message": message}}, 503
+    return render_error_template(title="系统维护中", code="503", message=message), 503
+
+
+def _maintenance_detection_failure_response():
+    message = "系统状态检测失败，请稍后重试。"
+    if wants_json_error_response_or_default(
+        default=False,
+        log_message="系统状态检测错误响应分类失败，已回退 HTML 500：%s",
+    ):
+        return {"success": False, "error": {"code": "500", "message": message}}, 500
+    return render_error_template(title="系统状态检测失败", code="500", message=message), 500
 
 
 def _default_anchor_file() -> str:
@@ -290,11 +302,39 @@ def create_app_core(
             _app_log_once(
                 app, "request_whitelist_path_unavailable", "warning", "请求白名单判定失败，将继续主路径：%s", exc
             )
+        maintenance_active = False
+        maintenance_detection_error = None
         try:
-            if is_maintenance_window_active(app.config["DATABASE_PATH"], logger=app.logger):
-                return _maintenance_gate_response()
+            maintenance_active = bool(is_maintenance_window_active(app.config["DATABASE_PATH"], logger=app.logger))
         except Exception as e:
-            app.logger.warning(f"维护窗口检测失败，将继续处理请求：{e}")
+            maintenance_detection_error = e
+        if maintenance_detection_error is not None:
+            app.logger.error("系统状态检测失败，已中止请求：%s", maintenance_detection_error)
+            try:
+                return _maintenance_detection_failure_response()
+            except Exception as exc:
+                app.logger.error("系统状态检测失败响应构造失败，已回退最小 500：%s", exc)
+                return (
+                    render_minimal_error_page(
+                        title="系统状态检测失败",
+                        code="500",
+                        message="系统状态检测失败，请稍后重试。",
+                    ),
+                    500,
+                )
+        if maintenance_active:
+            try:
+                return _maintenance_gate_response()
+            except Exception as exc:
+                app.logger.error("维护窗口响应构造失败，已回退最小 503：%s", exc)
+                return (
+                    render_minimal_error_page(
+                        title="系统维护中",
+                        code="503",
+                        message="系统正在维护中，请稍后重试。",
+                    ),
+                    503,
+                )
         g.app_logger = current_app.logger
 
         if "db" in g and "services" not in g:
@@ -316,7 +356,11 @@ def create_app_core(
                         op_logger=op_logger,
                     )
                 except Exception as e:
-                    app.logger.error("系统维护任务执行失败（已忽略）：%s", e)
+                    app.logger.error(
+                        "系统维护任务以非阻塞方式失败（task=run_if_due type=%s error=%s）",
+                        type(e).__name__,
+                        e,
+                    )
 
                 services = RequestServices(
                     db=conn,

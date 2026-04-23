@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, cast
@@ -26,6 +27,12 @@ def _build_app(tmp_path, monkeypatch):
     monkeypatch.setenv("APS_LOG_DIR", str(test_logs))
     monkeypatch.setenv("APS_BACKUP_DIR", str(test_backups))
     monkeypatch.setenv("APS_EXCEL_TEMPLATE_DIR", str(test_templates))
+
+    for name in list(sys.modules):
+        if name == "app" or name.startswith("web.bootstrap.entrypoint") or name.startswith("web.bootstrap.factory"):
+            sys.modules.pop(name, None)
+        if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
+            sys.modules.pop(name, None)
 
     ensure_schema(str(test_db), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
     app_mod = importlib.import_module("app")
@@ -192,6 +199,24 @@ def test_scheduler_batches_accepts_preparsed_result_summary_dict(tmp_path, monke
         def get_active_preset_reason(self):
             return "当前以手动设置为准。"
 
+        def get_preset_display_state(self, readonly=True, current_snapshot=None):
+            return {
+                "presets": [],
+                "active_preset": None,
+                "active_preset_reason": "当前以手动设置为准。",
+                "active_preset_missing": True,
+                "active_preset_reason_missing": False,
+                "current_config_state": {
+                    "state": "custom",
+                    "degraded": False,
+                    "provenance_missing": False,
+                    "baseline_key": None,
+                    "baseline_label": "自定义",
+                    "baseline_source": "custom",
+                },
+                "readonly": bool(readonly),
+            }
+
     class _StubHistoryItem:
         def to_dict(self):
             return {"version": 2, "result_summary": summary}
@@ -217,6 +242,126 @@ def test_scheduler_batches_accepts_preparsed_result_summary_dict(tmp_path, monke
     assert ctx["latest_warning_preview"] == ["告警一", "告警二"]
     assert ctx["latest_warning_total"] == 2
     assert ctx["latest_warning_hidden_count"] == 0
+
+
+def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_messages(tmp_path, monkeypatch) -> None:
+    app, _db_path = _build_app(tmp_path, monkeypatch)
+
+    import web.bootstrap.request_services as request_services_mod
+    import web.routes.scheduler_batches as route_mod
+
+    summary = {
+        "warnings": ["告警一"],
+        "degraded_success": True,
+        "degraded_causes": ["merge_context_degraded"],
+        "degradation_events": [
+            {"code": "merge_context_degraded", "message": "组合并上下文缺失，已降级。", "count": 1},
+            {"code": "invalid_due_date", "message": "发现 2 个批次交期非法，已按空交期处理。", "count": 2},
+            {"code": "ortools_warmstart_failed", "message": "OR-Tools 预热失败，已回退常规求解。", "count": 1},
+        ],
+        "algo": {
+            "objective": "min_overdue",
+            "config_snapshot": {"objective": "min_overdue"},
+        },
+    }
+
+    class _StubBatchService:
+        def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):
+            self.logger = logger
+            self.op_logger = op_logger
+
+        def list(self, status=None):
+            return []
+
+    class _StubConfigService:
+        def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):
+            self.logger = logger
+            self.op_logger = op_logger
+
+        def get_snapshot(self):
+            return SimpleNamespace(
+                enforce_ready_default="yes",
+                auto_assign_persist="yes",
+                degradation_events=(
+                    {
+                        "code": "invalid_choice",
+                        "scope": "scheduler.config_snapshot",
+                        "field": "enforce_ready_default",
+                        "message": "enforce_ready_default defaulted to yes",
+                    },
+                    {
+                        "code": "invalid_choice",
+                        "scope": "scheduler.config_snapshot",
+                        "field": "auto_assign_persist",
+                        "message": "auto_assign_persist defaulted to yes",
+                    },
+                ),
+            )
+
+        def get_available_strategies(self):
+            return []
+
+        def list_presets(self):
+            return []
+
+        def get_active_preset(self):
+            return "默认-稳定"
+
+        def get_active_preset_reason(self):
+            return None
+
+        def get_preset_display_state(self, readonly=True, current_snapshot=None):
+            return {
+                "presets": [],
+                "active_preset": "默认-稳定",
+                "active_preset_reason": None,
+                "active_preset_missing": False,
+                "active_preset_reason_missing": False,
+                "current_config_state": {
+                    "state": "degraded",
+                    "degraded": True,
+                    "provenance_missing": False,
+                    "baseline_key": "默认-稳定",
+                    "baseline_label": "默认-稳定",
+                    "baseline_source": "builtin",
+                },
+                "readonly": bool(readonly),
+            }
+
+    class _StubHistoryItem:
+        def to_dict(self):
+            return {"version": 2, "result_summary": summary}
+
+    class _StubHistoryService:
+        def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):
+            self.logger = logger
+            self.op_logger = op_logger
+
+        def list_recent(self, limit=1):
+            return [_StubHistoryItem()]
+
+    monkeypatch.setattr(request_services_mod, "BatchService", _StubBatchService)
+    monkeypatch.setattr(request_services_mod, "ConfigService", _StubConfigService)
+    monkeypatch.setattr(request_services_mod, "ScheduleHistoryQueryService", _StubHistoryService)
+    monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
+
+    with app.test_request_context("/scheduler/"):
+        app.preprocess_request()
+        ctx = cast(Dict[str, Any], route_mod.batches_page())
+
+    assert ctx["current_config_state"]["state"] == "degraded"
+    assert ctx["current_config_state"]["degraded"] is True
+    assert ctx["config_degraded_fields"] == ["enforce_ready_default"]
+    assert ctx["config_hidden_warnings"]
+    assert ctx["latest_auto_assign_persist_state"]["value"] == "unknown"
+    assert ctx["latest_auto_assign_persist_state"]["enabled"] is None
+    assert ctx["latest_summary_display"]["primary_degradation"]["details"] == [
+        "组合并语义已降级",
+        "交期数据已降级（2）",
+        "预热已降级",
+    ]
+    other_codes = [item["code"] for item in ctx["latest_other_degradation_messages"]]
+    assert other_codes == ["merge_context_degraded", "invalid_due_date", "ortools_warmstart_failed"]
 
 
 def test_system_history_accepts_preparsed_result_summary_dict(tmp_path, monkeypatch) -> None:

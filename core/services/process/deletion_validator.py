@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.models.enums import PartOperationStatus, SourceType
 
@@ -51,7 +51,7 @@ class DeletionValidator:
         return SourceType.EXTERNAL.value if v == SourceType.EXTERNAL.value else SourceType.INTERNAL.value
 
     @staticmethod
-    def _norm_status(value: str) -> str:
+    def _norm_status(value: Any) -> str:
         """
         将 status 规范化为 active/deleted。
         - 大小写/空格容错

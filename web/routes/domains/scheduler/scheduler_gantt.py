@@ -4,10 +4,11 @@ from typing import Any, Dict
 
 from flask import current_app, g, jsonify, request, url_for
 
-from core.infrastructure.errors import AppError, ValidationError
+from core.infrastructure.errors import AppError, ErrorCode, ValidationError, error_response
+from web.error_boundary import json_error_response
 from web.ui_mode import render_ui_template as render_template
 
-from ...normalizers import normalize_version_or_latest
+from ...normalizers import normalize_version_or_latest_fallback
 from .scheduler_bp import bp
 
 
@@ -47,7 +48,7 @@ def gantt_page():
     svc = services.gantt_service
     latest_version = svc.get_latest_version_or_1()
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
-    ver = normalize_version_or_latest(request.args.get("version"), latest_version=latest_version)
+    ver = normalize_version_or_latest_fallback(request.args.get("version"), latest_version=latest_version)
 
     versions = services.schedule_history_query_service.list_versions(limit=30)
     return render_template(
@@ -81,7 +82,7 @@ def gantt_data():
         # 当显式给出区间时，以 start/end 为准，避免客户端重复叠加 offset 造成“跳两周”。
         effective_offset = 0 if (start_date or end_date) else offset
         include_history = _get_bool_arg("include_history", False)
-        version = normalize_version_or_latest(request.args.get("version"), latest_version=svc.get_latest_version_or_1())
+        version = normalize_version_or_latest_fallback(request.args.get("version"), latest_version=svc.get_latest_version_or_1())
 
         data: Dict[str, Any] = svc.get_gantt_tasks(
             view=view,
@@ -93,10 +94,8 @@ def gantt_data():
             include_history=include_history,
         )
         return jsonify({"success": True, "data": data})
-    except AppError as e:
-        return jsonify({"success": False, "error": {"code": e.code.value, "message": e.message}}), 400
+    except AppError as exc:
+        return json_error_response(exc)
     except Exception:
         current_app.logger.exception("甘特图数据生成失败")
-        return jsonify(
-            {"success": False, "error": {"code": "UNKNOWN", "message": "甘特图数据生成失败，请稍后重试。"}}
-        ), 500
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "甘特图数据生成失败，请稍后重试。")), 500

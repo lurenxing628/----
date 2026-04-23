@@ -282,7 +282,8 @@ def _preflight_migration_contract(
                     _set_schema_version(conn, v)
         finally:
             try:
-                conn.close()
+                if conn is not None:
+                    conn.close()
             except Exception:
                 pass
     finally:

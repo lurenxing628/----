@@ -22,7 +22,6 @@ from ..sort_strategies import BatchForSort, SortStrategy, StrategyFactory
 from ..types import ScheduleResult, ScheduleSummary
 from .algo_stats import ensure_algo_stats, increment_counter
 from .auto_assign import auto_assign_internal_resources
-from .config_adapter import cfg_get
 from .date_parsers import parse_date, parse_datetime
 from .dispatch import dispatch_batch_order, dispatch_sgs
 from .dispatch.runtime_state import accumulate_busy_hours, update_machine_last_state
@@ -114,17 +113,6 @@ class GreedyScheduler:
         self.config = config_service
         self.logger = logger or logging.getLogger(__name__)
         self._last_algo_stats = {"fallback_counts": {}, "param_fallbacks": {}}
-
-    def _cfg_get(self, key: str, default: Any = None) -> Any:
-        """
-        读取配置值（算法层只依赖“纯配置快照”）。
-
-        兼容形态：
-        - dict：{key: value}
-        - dataclass/namespace：通过属性访问（如 cfg.sort_strategy）
-        - 旧形态：带 `.get(key, default)` 的对象（兼容历史调用方）
-        """
-        return cfg_get(self.config, key, default)
 
     def schedule(
         self,

@@ -3,19 +3,17 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.models.enums import YesNo
+from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 
-from ..number_utils import to_yes_no
 
-
-def _cfg_freeze_window_state(cfg: Any) -> Tuple[bool, int]:
-    from core.algorithms.greedy.config_adapter import cfg_get
-
-    enabled = to_yes_no(cfg_get(cfg, "freeze_window_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
-    try:
-        days = int(cfg_get(cfg, "freeze_window_days", 0) or 0)
-    except Exception:
-        days = 0
-    return bool(enabled), int(days)
+def _freeze_window_config_state(cfg: Any) -> Tuple[bool, int]:
+    snapshot = ensure_schedule_config_snapshot(
+        cfg,
+        strict_mode=False,
+        source="scheduler.summary.freeze_window",
+    )
+    enabled = str(snapshot.freeze_window_enabled).strip().lower() == YesNo.YES.value
+    return bool(enabled), int(snapshot.freeze_window_days)
 
 
 def _freeze_degradation_codes(meta: Dict[str, Any]) -> List[str]:
@@ -31,7 +29,7 @@ def _freeze_applied(meta: Dict[str, Any], *, frozen_op_ids: Set[int]) -> bool:
 def _freeze_state_name(*, enabled: bool, days: int, applied: bool, degraded: bool) -> str:
     if degraded:
         return "degraded"
-    if enabled and days > 0:
+    if enabled and days > 0 and applied:
         return "active"
     return "disabled"
 
@@ -63,6 +61,9 @@ def _extract_freeze_warnings(all_warnings: Any) -> List[str]:
     freeze_warnings: List[str] = []
     for warning in warnings_list:
         text = str(warning)
+        if text.startswith("[freeze_window]") or text.startswith("【冻结窗口】"):
+            freeze_warnings.append(text)
+            continue
         if text.startswith("【冻结窗口】"):
             freeze_warnings.append(text)
     return freeze_warnings
@@ -76,10 +77,11 @@ def _freeze_meta_dict(
     freeze_warnings: List[str],
 ) -> Dict[str, Any]:
     meta = freeze_meta if isinstance(freeze_meta, dict) else {}
-    enabled, days = _cfg_freeze_window_state(cfg)
+    enabled, days = _freeze_window_config_state(cfg)
     raw_state = str(meta.get("freeze_state") or "").strip().lower()
     degradation_codes = _freeze_degradation_codes(meta)
-    degraded = raw_state == "degraded" or bool(freeze_warnings) or bool(degradation_codes)
+    has_freeze_meta = bool(meta)
+    degraded = raw_state == "degraded" or bool(degradation_codes) or (not has_freeze_meta and bool(freeze_warnings))
     applied = _freeze_applied(meta, frozen_op_ids=frozen_op_ids)
     freeze_state = _freeze_state_name(enabled=enabled, days=days, applied=applied, degraded=degraded)
     return {
@@ -88,5 +90,6 @@ def _freeze_meta_dict(
         "freeze_state": freeze_state,
         "freeze_applied": bool(applied),
         "freeze_degradation_codes": degradation_codes,
-        "degradation_reason": meta.get("freeze_degradation_reason") or (freeze_warnings[0] if freeze_warnings else None),
+        "degradation_from_warning_fallback": bool(not has_freeze_meta and bool(freeze_warnings)),
+        "degradation_reason": meta.get("freeze_degradation_reason") or (freeze_warnings[0] if (not has_freeze_meta and freeze_warnings) else None),
     }

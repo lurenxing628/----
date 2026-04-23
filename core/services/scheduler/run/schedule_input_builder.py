@@ -83,26 +83,7 @@ def _merged_total_days(
 
 
 def _lookup_template_group_context(svc, op: Any, *, strict_mode: bool, scope: str) -> TemplateGroupLookupOutcome:
-    try:
-        return lookup_template_group_context_for_op(svc, op, strict_mode=bool(strict_mode), scope=scope)
-    except AttributeError:
-        legacy_getter = getattr(svc, "_get_template_and_group_for_op", None)
-        if not callable(legacy_getter):
-            raise
-        legacy_result = legacy_getter(op)
-        tmpl = None
-        grp = None
-        if isinstance(legacy_result, tuple):
-            if len(legacy_result) >= 1:
-                tmpl = legacy_result[0]
-            if len(legacy_result) >= 2:
-                grp = legacy_result[1]
-        return TemplateGroupLookupOutcome(
-            template=tmpl,
-            group=grp,
-            merge_context_degraded=False,
-            events=[],
-        )
+    return lookup_template_group_context_for_op(svc, op, strict_mode=bool(strict_mode), scope=scope)
 
 
 def _build_algo_operations_outcome(

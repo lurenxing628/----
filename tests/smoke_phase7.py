@@ -272,16 +272,32 @@ def main():
             raise RuntimeError("result_summary 缺少 algo 留痕（metrics/best_batch_order）")
         lines.append(f"- result_summary.algo 留痕：mode={rs2['algo'].get('mode')} objective={rs2['algo'].get('objective')} metrics={rs2['algo'].get('metrics')}")
 
-        # 6.2b 冻结窗口：复用上一版本窗口内排程（V1.1）
+        # 6.2b 冻结窗口：仅复用上一版本窗口内排程，仍保留新增可排工序（避免“全冻结”短路）
+        b_fz = batch_svc.create_batch_from_template(
+            batch_id="B_FZ",
+            part_no="P_CON",
+            quantity=1,
+            due_date="2026-02-07",
+            priority="normal",
+            ready_status="yes",
+        )
+        _set_internal("B_FZ", "MC002")
+        lines.append(f"- 冻结窗口预备：新增批次 {b_fz.batch_id}，用于验证部分冻结时仍可继续排产")
         cfg_svc.set_freeze_window("yes", 1)
-        r2b = sch_svc.run_schedule(batch_ids=["B001", "B002", "B_EXT"], start_dt="2026-02-02 08:00:00", created_by="smoke")
+        r2b = sch_svc.run_schedule(batch_ids=["B001", "B002", "B_EXT", "B_FZ"], start_dt="2026-02-02 08:00:00", created_by="smoke")
         locked_cnt = conn.execute("SELECT COUNT(1) AS c FROM Schedule WHERE version=? AND lock_status='locked'", (r2b["version"],)).fetchone()["c"]
+        unlocked_cnt = conn.execute("SELECT COUNT(1) AS c FROM Schedule WHERE version=? AND lock_status='unlocked'", (r2b["version"],)).fetchone()["c"]
         if int(locked_cnt or 0) <= 0:
             raise RuntimeError("冻结窗口未写入 locked 排程记录（期望 lock_status=locked）")
+        if int(unlocked_cnt or 0) <= 0:
+            raise RuntimeError("冻结窗口部分复用场景未保留 unlocked 新排程记录（期望仍存在可重排工序）")
         rs2b = _json.loads(conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (r2b["version"],)).fetchone()["result_summary"] or "{}")
         if not rs2b.get("algo") or not rs2b["algo"].get("freeze_window") or int(rs2b["algo"]["freeze_window"].get("frozen_op_count") or 0) <= 0:
             raise RuntimeError("冻结窗口未写入 result_summary.algo.freeze_window 留痕（frozen_op_count）")
-        lines.append(f"- 冻结窗口校验：version={r2b['version']} locked_cnt={locked_cnt} frozen_op_count={rs2b['algo']['freeze_window'].get('frozen_op_count')}")
+        lines.append(
+            f"- 冻结窗口校验：version={r2b['version']} locked_cnt={locked_cnt} "
+            f"unlocked_cnt={unlocked_cnt} frozen_op_count={rs2b['algo']['freeze_window'].get('frozen_op_count')}"
+        )
         # 关闭冻结窗口，避免影响后续策略切换
         cfg_svc.set_freeze_window("no", 0)
         cfg_svc.set_algo_mode("greedy")

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlencode
 
 from flask import current_app, flash, g, jsonify, redirect, request, send_file, url_for
 
-from core.infrastructure.errors import AppError
+from core.infrastructure.errors import AppError, ErrorCode, error_response
 from core.services.common.excel_audit import log_excel_export
 from core.services.scheduler import ResourceDispatchService
+from web.error_boundary import json_error_response
 from web.ui_mode import render_ui_template as render_template
 
 from .scheduler_bp import bp
@@ -15,7 +17,33 @@ from .scheduler_bp import bp
 _EXCEL_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _DATE_ARG_KEYS = ("period_preset", "query_date", "start_date", "end_date")
 _SCOPE_ARG_KEYS = ("scope_id", "operator_id", "machine_id", "team_id")
-_DATE_ERROR_FIELDS = {"period_preset", "查询日期", "开始日期", "结束日期", "日期范围"}
+_EXPORT_ARG_KEYS = (
+    "scope_type",
+    "scope_id",
+    "operator_id",
+    "machine_id",
+    "team_id",
+    "team_axis",
+    "period_preset",
+    "query_date",
+    "start_date",
+    "end_date",
+    "version",
+)
+_FIELD_QUERY_KEY_DROPS = {
+    "scope_type": ("scope_type", *_SCOPE_ARG_KEYS),
+    "scope_id": _SCOPE_ARG_KEYS,
+    "operator_id": _SCOPE_ARG_KEYS,
+    "machine_id": _SCOPE_ARG_KEYS,
+    "team_id": _SCOPE_ARG_KEYS,
+    "team_axis": ("team_axis",),
+    "period_preset": _DATE_ARG_KEYS,
+    "query_date": _DATE_ARG_KEYS,
+    "start_date": _DATE_ARG_KEYS,
+    "end_date": _DATE_ARG_KEYS,
+    "date_range": _DATE_ARG_KEYS,
+    "version": ("version",),
+}
 
 
 def _svc() -> ResourceDispatchService:
@@ -48,11 +76,34 @@ def _request_kwargs() -> Dict[str, Any]:
 
 def _current_request_args() -> Dict[str, str]:
     current: Dict[str, str] = {}
-    for key, value in request.args.to_dict(flat=True).items():
+    for key in request.args.keys():
+        value = request.args.get(key)
         text = str(value or "").strip()
         if text:
             current[key] = text
     return current
+
+
+def _url_with_query(endpoint: str, query: Optional[Dict[str, str]] = None) -> str:
+    base_url = url_for(endpoint)
+    if not query:
+        return base_url
+    encoded = urlencode(query)
+    return f"{base_url}?{encoded}" if encoded else base_url
+
+
+def _page_url(query: Optional[Dict[str, str]] = None) -> str:
+    return _url_with_query("scheduler.resource_dispatch_page", query)
+
+
+def _export_url(filters: Dict[str, Any]) -> str:
+    query: Dict[str, str] = {}
+    for key in _EXPORT_ARG_KEYS:
+        value = filters.get(key)
+        text = str(value or "").strip()
+        if text:
+            query[key] = text
+    return _url_with_query("scheduler.resource_dispatch_export", query)
 
 
 def _drop_keys(values: Dict[str, str], *keys: str) -> Dict[str, str]:
@@ -74,17 +125,29 @@ def _sanitize_dispatch_args_from_error(exc: AppError) -> Dict[str, str]:
     if not current:
         return {}
     field = _error_field(exc)
-    if field in _DATE_ERROR_FIELDS:
-        return _drop_keys(current, *_DATE_ARG_KEYS)
-    if field == "scope_type":
-        return _drop_keys(current, "scope_type", *_SCOPE_ARG_KEYS)
-    if field == "scope_id":
-        return _drop_keys(current, *_SCOPE_ARG_KEYS)
-    if field == "team_axis":
-        return _drop_keys(current, "team_axis")
-    if field == "version":
-        return _drop_keys(current, "version")
-    return {}
+    drop_keys = _FIELD_QUERY_KEY_DROPS.get(field)
+    if not drop_keys:
+        return dict(current)
+    return _drop_keys(current, *drop_keys)
+
+
+def _invalid_query_keys_from_error(exc: AppError) -> List[str]:
+    field = _error_field(exc)
+    return list(_FIELD_QUERY_KEY_DROPS.get(field, ()))
+
+
+def _error_payload_with_invalid_query_keys(exc: AppError) -> Dict[str, Any]:
+    payload = exc.to_dict()
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(error, dict):
+        return payload
+    details = dict(error.get("details") or {})
+    invalid_query_keys = _invalid_query_keys_from_error(exc)
+    if invalid_query_keys:
+        details["invalid_query_keys"] = invalid_query_keys
+    if details:
+        error["details"] = details
+    return payload
 
 
 @bp.get("/resource-dispatch")
@@ -98,7 +161,7 @@ def resource_dispatch_page():
             safe_args = _sanitize_dispatch_args_from_error(exc)
             if safe_args != current_args:
                 flash(exc.message, "error")
-                return redirect(url_for("scheduler.resource_dispatch_page", **safe_args))
+                return redirect(_page_url(safe_args))
         flash(exc.message, "error")
         context = svc.build_page_context()
     except Exception:
@@ -112,20 +175,7 @@ def resource_dispatch_page():
     filters = context.get("filters") or {}
     export_url = None
     if context.get("has_history") and context.get("can_query"):
-        export_url = url_for(
-            "scheduler.resource_dispatch_export",
-            scope_type=filters.get("scope_type"),
-            scope_id=filters.get("scope_id"),
-            operator_id=filters.get("operator_id"),
-            machine_id=filters.get("machine_id"),
-            team_id=filters.get("team_id"),
-            team_axis=filters.get("team_axis"),
-            period_preset=filters.get("period_preset"),
-            query_date=filters.get("query_date"),
-            start_date=filters.get("start_date"),
-            end_date=filters.get("end_date"),
-            version=filters.get("version"),
-        )
+        export_url = _export_url(filters)
 
     return render_template(
         "scheduler/resource_dispatch.html",
@@ -142,12 +192,10 @@ def resource_dispatch_data():
         payload = _svc().get_dispatch_payload(**_request_kwargs())
         return jsonify({"success": True, "data": payload})
     except AppError as exc:
-        return jsonify({"success": False, "error": {"code": exc.code.value, "message": exc.message}}), 400
+        return json_error_response(exc, payload=_error_payload_with_invalid_query_keys(exc))
     except Exception:
         current_app.logger.exception("资源排班数据生成失败")
-        return jsonify(
-            {"success": False, "error": {"code": "UNKNOWN", "message": "资源排班数据生成失败，请稍后重试。"}}
-        ), 500
+        return jsonify(error_response(ErrorCode.UNKNOWN_ERROR, "资源排班数据生成失败，请稍后重试。")), 500
 
 
 @bp.get("/resource-dispatch/export")
@@ -182,7 +230,8 @@ def resource_dispatch_export():
         return send_file(buf, as_attachment=True, download_name=filename, mimetype=_EXCEL_MIMETYPE)
     except AppError as exc:
         flash(exc.message, "error")
+        return redirect(_page_url(_sanitize_dispatch_args_from_error(exc)))
     except Exception:
         current_app.logger.exception("导出资源排班失败")
         flash("导出资源排班失败，请稍后重试。", "error")
-    return redirect(url_for("scheduler.resource_dispatch_page", **request.args.to_dict(flat=True)))
+    return redirect(_page_url(_current_request_args()))

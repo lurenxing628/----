@@ -48,6 +48,19 @@ def test_week_plan_filename_uses_normalized_version(tmp_path, monkeypatch) -> No
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
+    page_invalid = client.get("/scheduler/week-plan?week_start=2026-03-02&version=abc")
+    assert page_invalid.status_code == 200
+    assert "版本：<strong>7</strong>" in page_invalid.get_data(as_text=True)
+
+    page_zero = client.get("/scheduler/week-plan?week_start=2026-03-02&version=0")
+    assert page_zero.status_code == 200
+    assert "版本：<strong>7</strong>" in page_zero.get_data(as_text=True)
+
+    resp_invalid = client.get("/scheduler/week-plan/export?week_start=2026-03-02&version=abc")
+    assert resp_invalid.status_code == 200
+    disposition_invalid = resp_invalid.headers.get("Content-Disposition", "")
+    assert "v7_2026-03-02_to_2026-03-08.xlsx" in disposition_invalid, disposition_invalid
+
     resp = client.get("/scheduler/week-plan/export?week_start=2026-03-02&version=0")
     assert resp.status_code == 200
     disposition = resp.headers.get("Content-Disposition", "")

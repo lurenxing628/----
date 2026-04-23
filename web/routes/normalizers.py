@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 from flask import current_app
 
+from core.infrastructure.errors import ValidationError
 from core.models.enums import BatchPriority, CalendarDayType, ReadyStatus, YesNo
 from core.services.common.normalization_matrix import (
     normalize_batch_priority_value,
@@ -75,9 +76,9 @@ def _normalize_yesno(value: Any) -> str:
     )
 
 
-def normalize_version_or_latest(value: Any, *, latest_version: int) -> int:
+def normalize_version_or_latest_fallback(value: Any, *, latest_version: int) -> int:
     """
-    版本号入口统一口径：空值、非整数、0、负数统一回退到最新版本。
+    latest-fallback 合同：空值、非整数、0、负数统一回退到最新版本。
     """
     latest = int(latest_version or 0)
     if value is None:
@@ -92,6 +93,26 @@ def normalize_version_or_latest(value: Any, *, latest_version: int) -> int:
     return version if version > 0 else latest
 
 
+def normalize_version_or_latest(value: Any, *, latest_version: int) -> int:
+    return normalize_version_or_latest_fallback(value, latest_version=latest_version)
+
+
+def parse_optional_version_int(value: Any, *, field: str = "version") -> Optional[int]:
+    """
+    strict-int 合同：空值视为未提供；一旦提供，必须是整数。
+    该入口不做 latest fallback，也不做正数约束。
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except Exception as exc:
+        raise ValidationError(f"{field} 不合法（期望整数）", field=field) from exc
+
+
 def _log_result_summary_warning(*, log_label: str, version: Any, source: Optional[str], issue: str, detail: str) -> None:
     if source is not None:
         current_app.logger.warning("%s result_summary %s（version=%s, source=%s, %s）", log_label, issue, version, source, detail)
@@ -99,16 +120,28 @@ def _log_result_summary_warning(*, log_label: str, version: Any, source: Optiona
     current_app.logger.warning("%s result_summary %s（version=%s, %s）", log_label, issue, version, detail)
 
 
-def _parse_result_summary_payload(
+def _parse_result_summary_payload_with_meta(
     raw_summary: Any, *, version: Any, log_label: str, source: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+) -> Dict[str, Any]:
+    state: Dict[str, Any] = {
+        "payload": None,
+        "parse_failed": False,
+        "user_message": None,
+        "reason": None,
+    }
     if raw_summary is None or raw_summary == "":
-        return None
+        state["reason"] = "missing"
+        return state
     if isinstance(raw_summary, dict):
-        return raw_summary
+        state["payload"] = raw_summary
+        state["reason"] = "dict"
+        return state
     if isinstance(raw_summary, list):
         _log_result_summary_warning(log_label=log_label, version=version, source=source, issue="结构不合法", detail="type=list")
-        return None
+        state["parse_failed"] = True
+        state["reason"] = "invalid_structure"
+        state["user_message"] = "当前版本的排产摘要结构异常，页面仅展示基础历史信息。"
+        return state
     if not isinstance(raw_summary, str):
         _log_result_summary_warning(
             log_label=log_label,
@@ -117,13 +150,35 @@ def _parse_result_summary_payload(
             issue="结构不合法",
             detail=f"type={type(raw_summary).__name__}",
         )
-        return None
+        state["parse_failed"] = True
+        state["reason"] = "invalid_structure"
+        state["user_message"] = "当前版本的排产摘要结构异常，页面仅展示基础历史信息。"
+        return state
     try:
         parsed = json.loads(str(raw_summary))
     except Exception as exc:
         _log_result_summary_warning(log_label=log_label, version=version, source=source, issue="解析失败", detail=f"error={exc.__class__.__name__}")
-        return None
+        state["parse_failed"] = True
+        state["reason"] = "json_decode_error"
+        state["user_message"] = "当前版本的排产摘要解析失败，页面仅展示基础历史信息。"
+        return state
     if not isinstance(parsed, dict):
         _log_result_summary_warning(log_label=log_label, version=version, source=source, issue="结构不合法", detail=f"type={type(parsed).__name__}")
-        return None
-    return parsed
+        state["parse_failed"] = True
+        state["reason"] = "invalid_structure"
+        state["user_message"] = "当前版本的排产摘要结构异常，页面仅展示基础历史信息。"
+        return state
+    state["payload"] = parsed
+    state["reason"] = "json"
+    return state
+
+
+def _parse_result_summary_payload(
+    raw_summary: Any, *, version: Any, log_label: str, source: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    return _parse_result_summary_payload_with_meta(
+        raw_summary,
+        version=version,
+        log_label=log_label,
+        source=source,
+    ).get("payload")

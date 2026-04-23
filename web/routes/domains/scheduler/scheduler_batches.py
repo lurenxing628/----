@@ -7,11 +7,14 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
+from core.services.scheduler import ConfigService
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_analysis_labels import objective_label_for
+from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
 from ...navigation_utils import _safe_next_url
-from ...normalizers import _parse_result_summary_payload
+from ...normalizers import _parse_result_summary_payload_with_meta
 from ...pagination import paginate_rows, parse_page_args
 from .scheduler_bp import (
     _batch_status_zh,
@@ -20,6 +23,11 @@ from .scheduler_bp import (
     _ready_zh,
     _surface_schedule_warnings,
     bp,
+)
+from .scheduler_config_display_state import (
+    build_auto_assign_persist_display_state,
+    build_config_degraded_display_state,
+    get_scheduler_visible_config_field_metadata,
 )
 
 if TYPE_CHECKING:
@@ -57,13 +65,31 @@ def batches_page():
     view_rows, pager = paginate_rows(view_rows, page, per_page)
     cfg = cfg_svc.get_snapshot()
     strategies = cfg_svc.get_available_strategies()
-    presets = cfg_svc.list_presets()
-    active_preset = cfg_svc.get_active_preset()
-    active_preset_reason = cfg_svc.get_active_preset_reason()
+    config_field_metadata = get_scheduler_visible_config_field_metadata()
+    config_field_warnings, config_degraded_fields, config_hidden_warnings = build_config_degraded_display_state(
+        cfg,
+        config_field_metadata=config_field_metadata,
+    )
+    config_degraded_field_labels = [
+        str(getattr(config_field_metadata.get(field), "label", "") or field)
+        for field in config_degraded_fields
+    ]
+    preset_display_state = cfg_svc.get_preset_display_state(readonly=True, current_snapshot=cfg)
+    presets = list(preset_display_state.get("presets") or [])
+    active_preset = preset_display_state.get("active_preset")
+    builtin_presets = [
+        ConfigService.BUILTIN_PRESET_DEFAULT,
+        ConfigService.BUILTIN_PRESET_DUE_FIRST,
+        ConfigService.BUILTIN_PRESET_MIN_CHANGEOVER,
+        ConfigService.BUILTIN_PRESET_IMPROVE_SLOW,
+    ]
+    current_config_state = dict(preset_display_state.get("current_config_state") or {})
+    current_auto_assign_persist_state = build_auto_assign_persist_display_state(getattr(cfg, "auto_assign_persist", None))
 
     # 最近一次排产（用于用户确认“留痕已写入”）
     latest_history = None
     latest_summary = None
+    latest_summary_parse_state = {"payload": None, "parse_failed": False, "user_message": None, "reason": None}
     hist_q = services.schedule_history_query_service
     try:
         items = hist_q.list_recent(limit=1)
@@ -73,11 +99,34 @@ def batches_page():
         latest_history = None
         latest_summary = None
     if latest_history and latest_history.get("result_summary"):
-        latest_summary = _parse_result_summary_payload(latest_history.get("result_summary"), version=latest_history.get("version"), log_label="排产页")
+        latest_summary_parse_state = _parse_result_summary_payload_with_meta(
+            latest_history.get("result_summary"),
+            version=latest_history.get("version"),
+            log_label="排产页",
+        )
+        latest_summary = latest_summary_parse_state.get("payload")
+    latest_summary_display = build_summary_display_state(
+        latest_summary if isinstance(latest_summary, dict) else None,
+        result_status=(latest_history or {}).get("result_status"),
+        parse_state=latest_summary_parse_state,
+    )
     latest_warning_messages = _normalize_warning_texts((latest_summary or {}).get("warnings") if isinstance(latest_summary, dict) else None)
-    latest_warning_preview = latest_warning_messages[:3]
-    latest_warning_total = len(latest_warning_messages)
-    latest_warning_hidden_count = max(0, latest_warning_total - len(latest_warning_preview))
+    latest_warning_preview = list(latest_summary_display.get("warnings_preview") or latest_warning_messages[:3])
+    latest_warning_total = int(latest_summary_display.get("warning_total") or len(latest_warning_messages))
+    latest_warning_hidden_count = int(
+        latest_summary_display.get("warning_hidden_count") or max(0, latest_warning_total - len(latest_warning_preview))
+    )
+    latest_objective_label = "-"
+    latest_algo = latest_summary.get("algo") if isinstance(latest_summary, dict) else None
+    latest_other_degradation_messages = list(latest_summary_display.get("display_secondary_degradation_messages") or [])
+    latest_auto_assign_persist_state = None
+    if isinstance(latest_algo, dict):
+        latest_objective_label = objective_label_for(latest_algo.get("objective"), algo=latest_algo)
+        config_snapshot = latest_algo.get("config_snapshot")
+        if isinstance(config_snapshot, dict):
+            latest_auto_assign_persist_state = build_auto_assign_persist_display_state(
+                config_snapshot.get("auto_assign_persist")
+            )
 
     return render_template(
         "scheduler/batches.html",
@@ -87,11 +136,22 @@ def batches_page():
         only_ready=only_ready,
         cfg=cfg,
         strategies=strategies,
+        config_field_metadata=config_field_metadata,
+        config_field_warnings=config_field_warnings,
+        config_degraded_fields=config_degraded_fields,
+        config_degraded_field_labels=config_degraded_field_labels,
+        config_hidden_warnings=config_hidden_warnings,
         presets=presets,
         active_preset=active_preset,
-        active_preset_reason=active_preset_reason,
+        builtin_presets=builtin_presets,
+        current_config_state=current_config_state,
+        current_auto_assign_persist_state=current_auto_assign_persist_state,
         latest_history=latest_history,
         latest_summary=latest_summary,
+        latest_summary_display=latest_summary_display,
+        latest_objective_label=latest_objective_label,
+        latest_auto_assign_persist_state=latest_auto_assign_persist_state,
+        latest_other_degradation_messages=latest_other_degradation_messages,
         latest_warning_preview=latest_warning_preview,
         latest_warning_total=latest_warning_total,
         latest_warning_hidden_count=latest_warning_hidden_count,

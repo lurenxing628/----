@@ -27,6 +27,11 @@ def _fmt_dt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _node_dt(node: Dict[str, Any], key: str) -> Optional[datetime]:
+    value = node.get(key)
+    return value if isinstance(value, datetime) else None
+
+
 def _minutes_between(a: Optional[datetime], b: Optional[datetime]) -> Optional[int]:
     if not a or not b:
         return None
@@ -43,14 +48,20 @@ def _empty_result() -> Dict[str, Any]:
         "makespan_end": None,
         "edge_type_stats": {"process": 0, "machine": 0, "operator": 0, "unknown": 0},
         "edge_count": 0,
+        "available": True,
+        "reason": "",
     }
 
 
 def _load_rows(schedule_repo, version: int) -> List[Dict[str, Any]]:
-    try:
-        return schedule_repo.list_by_version_with_details(int(version))
-    except Exception:
-        return []
+    return schedule_repo.list_by_version_with_details(int(version))
+
+
+def _unavailable_result(reason: str) -> Dict[str, Any]:
+    result = _empty_result()
+    result["available"] = False
+    result["reason"] = str(reason or "").strip() or "unknown"
+    return result
 
 
 def _build_nodes(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -120,7 +131,13 @@ def _build_prev_by_resource(nodes: Dict[str, Dict[str, Any]], *, resource_key: s
 def _eligible_process_edge(pn: Dict[str, Any], n: Dict[str, Any]) -> bool:
     # 工艺前驱：允许“merged 外协组”导致的同起止时间（pn.start==n.start 且 pn.end==n.end）
     try:
-        return (pn.get("end") <= n.get("start")) or (pn.get("start") == n.get("start") and pn.get("end") == n.get("end"))
+        pn_end = _node_dt(pn, "end")
+        n_start = _node_dt(n, "start")
+        if pn_end is None or n_start is None:
+            return False
+        pn_start = _node_dt(pn, "start")
+        n_end = _node_dt(n, "end")
+        return (pn_end <= n_start) or (pn_start is not None and n_end is not None and pn_start == n_start and pn_end == n_end)
     except Exception:
         return False
 
@@ -128,7 +145,11 @@ def _eligible_process_edge(pn: Dict[str, Any], n: Dict[str, Any]) -> bool:
 def _eligible_resource_edge(pn: Dict[str, Any], n: Dict[str, Any]) -> bool:
     # 资源前驱：必须满足 pn.end <= n.start（不允许重叠）
     try:
-        return pn.get("end") <= n.get("start")
+        pn_end = _node_dt(pn, "end")
+        n_start = _node_dt(n, "start")
+        if pn_end is None or n_start is None:
+            return False
+        return pn_end <= n_start
     except Exception:
         return False
 
@@ -281,7 +302,10 @@ def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
     - 控制前驱：从候选前驱里选“end_time 最晚且 <= 当前 start_time”的那个
     - 从 makespan 结束的任务回溯控制前驱，得到关键链
     """
-    rows = _load_rows(schedule_repo, version=int(version))
+    try:
+        rows = _load_rows(schedule_repo, version=int(version))
+    except Exception:
+        return _unavailable_result("repo_exception")
     nodes = _build_nodes(rows)
     if not nodes:
         return _empty_result()
@@ -294,7 +318,8 @@ def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
     sink_id = _sink_id(nodes)
 
     chain, edges = _backtrace_chain(sink_id, ctrl_prev=ctrl_prev, ctrl_prev_edge=ctrl_prev_edge, nodes=nodes)
-    makespan_end = _fmt_dt(nodes[sink_id].get("end")) if sink_id in nodes and nodes[sink_id].get("end") else None
+    sink_end = _node_dt(nodes[sink_id], "end") if sink_id in nodes else None
+    makespan_end = _fmt_dt(sink_end) if sink_end is not None else None
 
     return {
         "ids": chain,

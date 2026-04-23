@@ -36,7 +36,7 @@ class Schedule:
             lock_status=(
                 str(get(row, "lock_status") or LockStatus.UNLOCKED.value).strip().lower() or LockStatus.UNLOCKED.value
             ),
-            version=parse_int(version, default=1),
+            version=parse_int(version, default=1) or 1,
             created_at=get(row, "created_at"),
         )
 

@@ -19,7 +19,7 @@ from .run.schedule_input_builder import build_algo_operations
 from .run.schedule_input_collector import collect_schedule_run_input
 from .run.schedule_optimizer import optimize_schedule
 from .run.schedule_orchestrator import orchestrate_schedule_run
-from .run.schedule_persistence import has_actionable_schedule_rows, persist_schedule
+from .run.schedule_persistence import persist_schedule
 from .run.schedule_template_lookup import get_template_and_group_for_op
 from .summary.schedule_summary import build_result_summary
 
@@ -267,7 +267,6 @@ class ScheduleService:
             simulate=simulate,
             strict_mode=bool(strict_mode),
             optimize_schedule_fn=optimize_schedule,
-            has_actionable_schedule_rows_fn=has_actionable_schedule_rows,
             build_result_summary_fn=build_result_summary,
         )
 
@@ -275,17 +274,14 @@ class ScheduleService:
             self,
             cfg=schedule_input.cfg,
             version=orchestration.version,
-            results=orchestration.results,
+            validated_schedule_payload=orchestration.validated_schedule_payload,
             summary=orchestration.summary,
             used_strategy=orchestration.used_strategy,
             used_params=orchestration.used_params,
             batches=schedule_input.batches,
-            operations=schedule_input.operations,
             reschedulable_operations=schedule_input.reschedulable_operations,
-            reschedulable_op_ids=set(schedule_input.reschedulable_op_ids),
             normalized_batch_ids=schedule_input.normalized_batch_ids,
             created_by=schedule_input.created_by_text,
-            has_actionable_schedule=orchestration.has_actionable_schedule,
             simulate=simulate,
             frozen_op_ids=set(schedule_input.frozen_op_ids),
             result_status=orchestration.result_status,
@@ -302,15 +298,7 @@ class ScheduleService:
             "strategy": orchestration.used_strategy.value,
             "strategy_params": orchestration.used_params or {},
             "result_status": orchestration.result_status,
-            "summary": {
-                "success": getattr(orchestration.summary, "success", False),
-                "total_ops": int(getattr(orchestration.summary, "total_ops", 0)),
-                "scheduled_ops": int(getattr(orchestration.summary, "scheduled_ops", 0)),
-                "failed_ops": int(getattr(orchestration.summary, "failed_ops", 0)),
-                "warnings": getattr(orchestration.summary, "warnings", None),
-                "errors": getattr(orchestration.summary, "errors", None),
-                "duration_seconds": getattr(orchestration.summary, "duration_seconds", 0.0),
-            },
+            "summary": orchestration.summary_contract.to_dict(),
             "overdue_batches": orchestration.overdue_items,
             "time_cost_ms": int(orchestration.time_cost_ms),
         }

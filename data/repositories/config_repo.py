@@ -31,6 +31,13 @@ class ConfigRepository(BaseRepository):
         )
         return [ScheduleConfig.from_row(r) for r in rows]
 
+    def count_all(self) -> int:
+        value = self.fetchvalue("SELECT COUNT(1) FROM ScheduleConfig", (), default=0)
+        try:
+            return int(value or 0)
+        except Exception:
+            return 0
+
     def set(self, config_key: str, config_value: str, description: Optional[str] = None) -> None:
         self.execute(
             """

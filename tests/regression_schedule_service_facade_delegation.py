@@ -10,7 +10,15 @@ def find_repo_root() -> str:
     repo_root = os.path.abspath(os.path.join(here, ".."))
     if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
         return repo_root
-    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
+    raise RuntimeError("repo root not found")
+
+
+class _SummaryContract:
+    def __init__(self, payload):
+        self._payload = dict(payload)
+
+    def to_dict(self):
+        return dict(self._payload)
 
 
 def main() -> None:
@@ -36,18 +44,59 @@ def main() -> None:
         missing_internal_resource_op_ids={1},
         frozen_op_ids={2},
     )
+    validated_schedule_payload = SimpleNamespace(
+        schedule_rows=[SimpleNamespace(op_id=1)],
+        scheduled_op_ids={1},
+        assigned_by_op_id={1: {"machine_id": "MC001", "operator_id": "OP001"}},
+    )
     orchestrated = SimpleNamespace(
         version=7,
         results=[SimpleNamespace(op_id=1)],
         summary=SimpleNamespace(
-            success=True,
-            total_ops=1,
-            scheduled_ops=1,
-            failed_ops=0,
-            warnings=["w1"],
-            errors=[],
-            duration_seconds=0.0,
+            success=False,
+            total_ops=999,
+            scheduled_ops=998,
+            failed_ops=997,
+            warnings=["do not use raw summary shape"],
+            errors=["do not use raw summary shape"],
+            duration_seconds=999.0,
         ),
+        summary_contract=_SummaryContract(
+            {
+                "success": True,
+                "total_ops": 1,
+                "scheduled_ops": 1,
+                "failed_ops": 0,
+                "warnings": ["w1"],
+                "errors": [],
+                "duration_seconds": 0.0,
+                "degradation_events": [],
+                "degradation_counters": {},
+                "degraded_success": False,
+                "degraded_causes": [],
+                "error_count": 0,
+                "errors_sample": [],
+                "summary_schema_version": "1.2",
+                "algo": {
+                    "comparison_metric": "weighted_tardiness_hours",
+                    "best_score_schema": [
+                        {"key": "failed_ops"},
+                        {"key": "weighted_tardiness_hours"},
+                    ],
+                    "config_snapshot": {
+                        "objective": "min_weighted_tardiness",
+                        "auto_assign_enabled": "yes",
+                    },
+                },
+                "counts": {
+                    "op_count": 1,
+                    "total_ops": 1,
+                    "scheduled_ops": 1,
+                    "failed_ops": 0,
+                },
+            }
+        ),
+        validated_schedule_payload=validated_schedule_payload,
         used_strategy=SimpleNamespace(value="priority_first"),
         used_params={"dispatch": "fifo"},
         result_status="simulated",
@@ -55,7 +104,6 @@ def main() -> None:
         result_summary_obj={"algo": {}},
         overdue_items=[{"batch_id": "B001"}],
         time_cost_ms=12,
-        has_actionable_schedule=True,
     )
 
     original_collect = getattr(schedule_service_mod, "collect_schedule_run_input", None)
@@ -106,12 +154,12 @@ def main() -> None:
         schedule_service_mod.persist_schedule = original_persist
         conn.close()
 
-    assert captured.get("collect_svc") is svc, f"_run_schedule_impl 未委托输入收集层：{captured!r}"
+    assert captured.get("collect_svc") is svc, captured
     assert captured.get("collect_kwargs", {}).get("batch_ids") == ["B001"], captured
     assert captured.get("collect_kwargs", {}).get("simulate") is True, captured
     assert captured.get("collect_kwargs", {}).get("strict_mode") is True, captured
 
-    assert captured.get("orchestrate_svc") is svc, f"_run_schedule_impl 未委托编排层：{captured!r}"
+    assert captured.get("orchestrate_svc") is svc, captured
     assert captured.get("orchestrate_schedule_input") is collected, captured
     assert captured.get("orchestrate_simulate") is True, captured
     assert captured.get("orchestrate_strict_mode") is True, captured
@@ -123,6 +171,8 @@ def main() -> None:
     assert persist_kwargs.get("frozen_op_ids") == {2}, persist_kwargs
     assert persist_kwargs.get("result_status") == "simulated", persist_kwargs
     assert persist_kwargs.get("time_cost_ms") == 12, persist_kwargs
+    assert persist_kwargs.get("validated_schedule_payload") is validated_schedule_payload, persist_kwargs
+    assert "has_actionable_schedule" not in persist_kwargs, persist_kwargs
 
     assert result == {
         "is_simulation": True,
@@ -138,6 +188,30 @@ def main() -> None:
             "warnings": ["w1"],
             "errors": [],
             "duration_seconds": 0.0,
+            "degradation_events": [],
+            "degradation_counters": {},
+            "degraded_success": False,
+            "degraded_causes": [],
+            "error_count": 0,
+            "errors_sample": [],
+            "summary_schema_version": "1.2",
+            "algo": {
+                "comparison_metric": "weighted_tardiness_hours",
+                "best_score_schema": [
+                    {"key": "failed_ops"},
+                    {"key": "weighted_tardiness_hours"},
+                ],
+                "config_snapshot": {
+                    "objective": "min_weighted_tardiness",
+                    "auto_assign_enabled": "yes",
+                },
+            },
+            "counts": {
+                "op_count": 1,
+                "total_ops": 1,
+                "scheduled_ops": 1,
+                "failed_ops": 0,
+            },
         },
         "overdue_batches": [{"batch_id": "B001"}],
         "time_cost_ms": 12,

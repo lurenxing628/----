@@ -123,6 +123,50 @@ class BusinessError(AppError):
     pass
 
 
+_HTTP_403_ERROR_CODES = {
+    ErrorCode.PERMISSION_DENIED,
+}
+
+_HTTP_404_ERROR_CODES = {
+    ErrorCode.NOT_FOUND,
+    ErrorCode.OPERATOR_NOT_FOUND,
+    ErrorCode.TEAM_NOT_FOUND,
+    ErrorCode.MACHINE_NOT_FOUND,
+    ErrorCode.PART_NOT_FOUND,
+    ErrorCode.BATCH_NOT_FOUND,
+}
+
+_HTTP_409_ERROR_CODES = {
+    ErrorCode.DUPLICATE_ENTRY,
+    ErrorCode.DB_INTEGRITY_ERROR,
+    ErrorCode.OPERATOR_ALREADY_EXISTS,
+    ErrorCode.OPERATOR_IN_USE,
+    ErrorCode.TEAM_ALREADY_EXISTS,
+    ErrorCode.TEAM_IN_USE,
+    ErrorCode.MACHINE_ALREADY_EXISTS,
+    ErrorCode.MACHINE_IN_USE,
+    ErrorCode.MACHINE_NOT_AVAILABLE,
+    ErrorCode.PART_ALREADY_EXISTS,
+    ErrorCode.OPERATION_DELETE_DENIED,
+    ErrorCode.BATCH_ALREADY_EXISTS,
+    ErrorCode.SCHEDULE_CONFLICT,
+    ErrorCode.SCHEDULE_LOCKED,
+    ErrorCode.RESOURCE_NOT_AVAILABLE,
+}
+
+
+def app_error_http_status(code: ErrorCode) -> int:
+    if code == ErrorCode.FILE_TOO_LARGE:
+        return 413
+    if code in _HTTP_403_ERROR_CODES:
+        return 403
+    if code in _HTTP_404_ERROR_CODES:
+        return 404
+    if code in _HTTP_409_ERROR_CODES:
+        return 409
+    return 400
+
+
 def success_response(data=None, meta=None) -> dict:
     result = {"success": True}
     if data is not None:

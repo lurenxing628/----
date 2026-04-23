@@ -35,12 +35,14 @@ def main() -> None:
         sys.path.insert(0, repo_root)
 
     import core.services.scheduler.schedule_service as schedule_service_mod
+    from core.services.common.build_outcome import BuildOutcome
+    from core.services.scheduler.config_service import ConfigService
     from core.services.scheduler.schedule_service import ScheduleService
 
     captured = {}
 
-    def _stub_build_algo_operations(_svc, ops):
-        return [
+    def _stub_build_algo_operations(_svc, ops, *, strict_mode=False, return_outcome=False):
+        algo_ops = [
             SimpleNamespace(
                 id=int(op.id),
                 op_code=op.op_code,
@@ -54,6 +56,9 @@ def main() -> None:
             )
             for op in ops
         ]
+        if return_outcome:
+            return BuildOutcome(algo_ops)
+        return algo_ops
 
     def _stub_build_freeze_window_seed(_svc, **_kwargs):
         return set(), [], []
@@ -136,6 +141,7 @@ def main() -> None:
 
     conn = _make_conn(repo_root)
     try:
+        ConfigService(conn, logger=None, op_logger=None).restore_default()
         svc = ScheduleService(conn)
         batch_repo = cast(Any, svc.batch_repo)
         batch_repo.get = lambda batch_id: SimpleNamespace(

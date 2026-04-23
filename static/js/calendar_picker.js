@@ -5,7 +5,7 @@
   const holidayDefaultEfficiency =
     Number.isFinite(Number(holidayDefaultEfficiencyRaw)) && Number(holidayDefaultEfficiencyRaw) > 0
       ? Number(holidayDefaultEfficiencyRaw)
-      : 0.8;
+      : null;
 
   /** @type {Map<string, any>} */
   const rowMap = new Map();
@@ -110,7 +110,7 @@
     if (elShiftStart) elShiftStart.value = "08:00";
     if (elShiftEnd) elShiftEnd.value = "";
     if (elShiftHours) elShiftHours.value = t === "workday" ? "8" : "0";
-    if (elEff) elEff.value = t === "workday" ? "1.0" : String(holidayDefaultEfficiency);
+    if (elEff) elEff.value = t === "workday" ? "1.0" : (holidayDefaultEfficiency === null ? "" : String(holidayDefaultEfficiency));
     if (elAllowNormal) elAllowNormal.value = "yes";
     if (elAllowUrgent) elAllowUrgent.value = "yes";
     if (elRemark) elRemark.value = "";
@@ -123,16 +123,23 @@
 
     // 规则：
     // - 默认假期不工作：从 workday 切到 holiday 时，若工时仍是默认 8，则自动置 0
-    // - 默认效率：workday=1.0；holiday=holidayDefaultEfficiency（仅在空值或“看起来还是默认值”时替换）
+    // - 默认效率：workday=1.0；holiday 仅在后端已提供合法展示值时才带入
     if (t === "holiday") {
       if (elShiftHours && (shVal === "" || numClose(shVal, 8))) elShiftHours.value = "0";
-      if (elEff && (effVal === "" || numClose(effVal, 1))) elEff.value = String(holidayDefaultEfficiency);
+      if (holidayDefaultEfficiency !== null && elEff && (effVal === "" || numClose(effVal, 1))) {
+        elEff.value = String(holidayDefaultEfficiency);
+      }
       return;
     }
 
     // workday
     if (elShiftHours && (shVal === "" || numClose(shVal, 0))) elShiftHours.value = "8";
-    if (elEff && (effVal === "" || numClose(effVal, holidayDefaultEfficiency))) elEff.value = "1.0";
+    if (
+      elEff
+      && (effVal === "" || (holidayDefaultEfficiency !== null && numClose(effVal, holidayDefaultEfficiency)))
+    ) {
+      elEff.value = "1.0";
+    }
   }
 
   function fillFormFromRow(r) {

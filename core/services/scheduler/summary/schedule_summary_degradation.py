@@ -5,41 +5,112 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.models.enums import YesNo
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
+from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 
-from ..number_utils import to_yes_no
-
-_FREEZE_WINDOW_STATE_ACTIVE = "active"
+_LEGACY_MERGE_CONTEXT_CODES = {"template_missing", "external_group_missing"}
 
 
-def _cfg_yes_no_flag(cfg: Any, key: str, *, default: str = YesNo.NO.value) -> bool:
-    from core.algorithms.greedy.config_adapter import cfg_get
+def _event_identity(event: Dict[str, Any]) -> Tuple[str, str, str, str, str, int]:
+    return (
+        str(event.get("code") or "").strip(),
+        str(event.get("scope") or "").strip(),
+        str(event.get("field") or "").strip(),
+        str(event.get("message") or "").strip(),
+        str(event.get("sample") or "").strip(),
+        _event_count(event),
+    )
 
-    return to_yes_no(cfg_get(cfg, key, default), default=default) == YesNo.YES.value
+
+def _dedupe_event_dicts(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        identity = _event_identity(event)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        out.append(dict(event))
+    return out
+
+
+def _iter_build_outcome_values(value: Any) -> List[Any]:
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    try:
+        return list(value)
+    except Exception:
+        return [value]
+
+
+def _value_flag(item: Any, key: str) -> Any:
+    if isinstance(item, dict):
+        return item.get(key)
+    return getattr(item, key, None)
+
+
+def _builder_merge_context_state(value: Any) -> Tuple[bool, List[Dict[str, Any]]]:
+    degraded = False
+    merge_context_events: List[Dict[str, Any]] = []
+    for item in _iter_build_outcome_values(value):
+        degraded = degraded or bool(_value_flag(item, "merge_context_degraded"))
+        raw_events = _value_flag(item, "merge_context_events")
+        if not isinstance(raw_events, (list, tuple)):
+            continue
+        for raw_event in raw_events:
+            if isinstance(raw_event, dict):
+                merge_context_events.append(dict(raw_event))
+    return bool(degraded), _dedupe_event_dicts(merge_context_events)
+
+
+def _legacy_merge_context_events(event_dicts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        dict(event)
+        for event in event_dicts
+        if str(event.get("code") or "").strip() in _LEGACY_MERGE_CONTEXT_CODES
+    ]
 
 
 def _input_build_state(input_build_outcome: Optional[BuildOutcome[Any]]) -> Dict[str, Any]:
-    if isinstance(input_build_outcome, BuildOutcome):
-        event_dicts = degradation_events_to_dicts(input_build_outcome.events)
-        merge_context_events = [
-            event
-            for event in event_dicts
-            if str(event.get("code") or "") in {"template_missing", "external_group_missing"}
-        ]
+    if not isinstance(input_build_outcome, BuildOutcome):
         return {
-            "degraded": bool(input_build_outcome.has_events),
-            "degradation_events": event_dicts,
-            "degradation_counters": dict(input_build_outcome.counters or {}),
-            "empty_reason": input_build_outcome.empty_reason,
-            "merge_context_degraded": bool(merge_context_events),
-            "merge_context_events": merge_context_events,
+            "degraded": False,
+            "degradation_events": [],
+            "degradation_counters": {},
+            "empty_reason": None,
+            "merge_context_degraded": False,
+            "merge_context_events": [],
+            "input_fallback": False,
         }
+
+    event_dicts = degradation_events_to_dicts(input_build_outcome.events)
+    builder_merge_context_degraded, builder_merge_context_events = _builder_merge_context_state(input_build_outcome.value)
+    merge_context_events = (
+        list(builder_merge_context_events)
+        if builder_merge_context_degraded or builder_merge_context_events
+        else _legacy_merge_context_events(event_dicts)
+    )
+    merge_context_degraded = bool(builder_merge_context_degraded or merge_context_events)
+    merge_context_event_ids = {_event_identity(event) for event in merge_context_events}
+    input_fallback_events = [
+        event
+        for event in event_dicts
+        if _event_identity(event) not in merge_context_event_ids
+    ]
+    degradation_counters = dict(input_build_outcome.counters or {})
     return {
-        "degraded": False,
-        "degradation_events": [],
-        "degradation_counters": {},
-        "empty_reason": None,
-        "merge_context_degraded": False,
-        "merge_context_events": [],
+        "degraded": bool(input_build_outcome.has_events or merge_context_degraded),
+        "degradation_events": event_dicts,
+        "degradation_counters": degradation_counters,
+        "empty_reason": input_build_outcome.empty_reason,
+        "merge_context_degraded": merge_context_degraded,
+        "merge_context_events": merge_context_events,
+        "input_fallback": bool(input_fallback_events),
     }
 
 
@@ -128,6 +199,24 @@ def _add_input_events(collector: DegradationCollector, input_state: Dict[str, An
         )
 
 
+def _add_existing_degradation_events(collector: DegradationCollector, raw_events: Any) -> None:
+    for event in raw_events or ():
+        if not isinstance(event, dict):
+            continue
+        code = _optional_text(event.get("code"))
+        message = _optional_text(event.get("message"))
+        if not code or not message:
+            continue
+        collector.add(
+            code=code,
+            scope=_optional_text(event.get("scope")) or "scheduler.config_snapshot",
+            field=_optional_text(event.get("field")),
+            message=message,
+            count=_event_count(event),
+            sample=_optional_text(event.get("sample")),
+        )
+
+
 def _add_counted_event(
     collector: DegradationCollector,
     *,
@@ -160,6 +249,7 @@ def _add_state_event(
 
 def _summary_degradation_state(
     *,
+    cfg: Any,
     input_state: Dict[str, Any],
     invalid_due_count: int,
     invalid_due_batch_ids_sample: List[str],
@@ -170,9 +260,30 @@ def _summary_degradation_state(
     resource_pool_degraded: bool,
     resource_pool_degradation_reason: Optional[str],
     ortools_warmstart_failed_count: int,
+    merge_context_degraded: bool,
+    warning_merge_status: Dict[str, Any],
 ) -> Dict[str, Any]:
     collector = DegradationCollector()
+    _add_existing_degradation_events(collector, getattr(cfg, "degradation_events", None))
+    _add_state_event(
+        collector,
+        enabled=bool(tuple(getattr(cfg, "degradation_events", ()) or ())),
+        code="config_fallback",
+        scope="schedule.summary.config_snapshot",
+        field="config_snapshot",
+        message=None,
+        default_message="配置快照存在兼容回退，摘要已按标准化配置生成。",
+    )
     _add_input_events(collector, input_state)
+    _add_state_event(
+        collector,
+        enabled=bool(input_state.get("input_fallback")),
+        code="input_fallback",
+        scope="schedule.summary.input_contract",
+        field="input_contract",
+        message=None,
+        default_message="输入构建存在兼容回退，摘要已按兼容结果继续生成。",
+    )
     _add_counted_event(
         collector,
         count=int(invalid_due_count),
@@ -225,6 +336,24 @@ def _summary_degradation_state(
         message=resource_pool_degradation_reason,
         default_message="自动分配资源池构建已降级。",
     )
+    _add_state_event(
+        collector,
+        enabled=bool(merge_context_degraded),
+        code="merge_context_degraded",
+        scope="schedule.summary.merge_context",
+        field="warnings",
+        message=None,
+        default_message="组合并语义已退化，摘要已按兼容路径继续生成。",
+    )
+    _add_state_event(
+        collector,
+        enabled=bool(warning_merge_status.get("summary_merge_failed")),
+        code="summary_merge_failed",
+        scope="schedule.summary.warning_pipeline",
+        field="warnings",
+        message=None,
+        default_message="排产摘要告警合并失败，已保留降级标记。",
+    )
     return {"events": degradation_events_to_dicts(collector.to_list()), "counters": collector.to_counters()}
 
 
@@ -265,7 +394,12 @@ def _downtime_reason(
 
 
 def _compute_downtime_degradation(cfg: Any, *, downtime_meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    auto_assign_enabled = _cfg_yes_no_flag(cfg, "auto_assign_enabled")
+    snapshot = ensure_schedule_config_snapshot(
+        cfg,
+        strict_mode=False,
+        source="scheduler.summary.downtime_degradation",
+    )
+    auto_assign_enabled = str(snapshot.auto_assign_enabled).strip().lower() == YesNo.YES.value
     meta = downtime_meta if isinstance(downtime_meta, dict) else {}
 
     downtime_load_ok = True if "downtime_load_ok" not in meta else bool(meta.get("downtime_load_ok"))
@@ -302,7 +436,12 @@ def _compute_downtime_degradation(cfg: Any, *, downtime_meta: Optional[Dict[str,
 
 
 def _compute_resource_pool_degradation(cfg: Any, *, resource_pool_meta: Optional[Dict[str, Any]]) -> Tuple[bool, bool, Optional[str], bool]:
-    auto_assign_enabled = _cfg_yes_no_flag(cfg, "auto_assign_enabled")
+    snapshot = ensure_schedule_config_snapshot(
+        cfg,
+        strict_mode=False,
+        source="scheduler.summary.resource_pool_degradation",
+    )
+    auto_assign_enabled = str(snapshot.auto_assign_enabled).strip().lower() == YesNo.YES.value
     meta = resource_pool_meta if isinstance(resource_pool_meta, dict) else {}
     attempted = bool(meta.get("resource_pool_attempted") or False)
     build_ok_raw = meta.get("resource_pool_build_ok")
@@ -312,10 +451,10 @@ def _compute_resource_pool_degradation(cfg: Any, *, resource_pool_meta: Optional
     return bool(auto_assign_enabled), bool(degraded), reason, bool(attempted)
 
 
-def _hard_constraints(cfg: Any, *, downtime_degraded: bool, freeze_state: str) -> List[str]:
+def _hard_constraints(cfg: Any, *, downtime_degraded: bool, freeze_applied: bool) -> List[str]:
     hard_constraints: List[str] = ["precedence", "calendar", "resource_machine_operator"]
     if not downtime_degraded:
         hard_constraints.append("downtime_avoid")
-    if str(freeze_state or "").strip().lower() == _FREEZE_WINDOW_STATE_ACTIVE:
+    if bool(freeze_applied):
         hard_constraints.append("freeze_window")
     return hard_constraints

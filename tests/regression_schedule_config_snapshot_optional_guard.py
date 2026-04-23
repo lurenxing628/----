@@ -59,11 +59,6 @@ def _build_snapshot(values, *, strict_mode: bool):
     return build_schedule_config_snapshot(
         _RepoStub(values),
         defaults=defaults,
-        valid_strategies=("priority_first", "due_date_first", "weighted", "fifo"),
-        valid_dispatch_modes=("batch_order", "sgs"),
-        valid_dispatch_rules=("slack", "cr", "atc"),
-        valid_algo_modes=("greedy", "improve"),
-        valid_objectives=("min_overdue", "min_tardiness", "min_weighted_tardiness", "min_changeover"),
         strict_mode=strict_mode,
     )
 
@@ -138,10 +133,5 @@ def test_build_schedule_config_snapshot_rejects_repo_records_without_config_valu
         build_schedule_config_snapshot(
             _InvalidRepoStub(),
             defaults=defaults,
-            valid_strategies=("priority_first", "due_date_first", "weighted", "fifo"),
-            valid_dispatch_modes=("batch_order", "sgs"),
-            valid_dispatch_rules=("slack", "cr", "atc"),
-            valid_algo_modes=("greedy", "improve"),
-            valid_objectives=("min_overdue", "min_tardiness", "min_weighted_tardiness", "min_changeover"),
             strict_mode=strict_mode,
         )

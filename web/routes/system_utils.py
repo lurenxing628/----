@@ -15,7 +15,7 @@ from core.services.system.system_maintenance_service import _parse_db_dt
 from . import navigation_utils as _navigation_utils
 
 
-def _safe_next_url(raw: Optional[str]) -> str:
+def _safe_next_url(raw: Optional[str]) -> Optional[str]:
     return _navigation_utils._safe_next_url_core(raw, url_for_fn=url_for)
 
 

@@ -1,12 +1,39 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.services.common.safe_logging import safe_warning
 
+from ..number_utils import parse_finite_float, parse_finite_int
+from .config_field_spec import get_field_spec, list_config_fields
 from .config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
 from .config_validator import normalize_preset_snapshot as normalize_preset_snapshot_dict
+
+
+def _preset_result(
+    *,
+    requested_preset: str,
+    effective_active_preset: str,
+    status: str,
+    adjusted_fields: Optional[List[str]] = None,
+    reason: Optional[str] = None,
+    error_field: Optional[str] = None,
+    error_fields: Optional[List[str]] = None,
+    error_message: Optional[str] = None,
+) -> Dict[str, Any]:
+    return {
+        "requested_preset": str(requested_preset or "").strip(),
+        "effective_active_preset": str(effective_active_preset or "").strip(),
+        "status": str(status or "").strip(),
+        "adjusted_fields": list(adjusted_fields or []),
+        "reason": reason,
+        "error_field": error_field,
+        "error_fields": list(error_fields or []),
+        "error_message": error_message,
+    }
 
 
 def builtin_presets(svc: Any) -> List[Tuple[str, ScheduleConfigSnapshot, str]]:
@@ -49,87 +76,85 @@ def builtin_presets(svc: Any) -> List[Tuple[str, ScheduleConfigSnapshot, str]]:
 
 
 def snapshot_close(a: ScheduleConfigSnapshot, b: ScheduleConfigSnapshot) -> bool:
-    def _eq_float(x: float, y: float) -> bool:
-        try:
-            return abs(float(x) - float(y)) <= 1e-9
-        except Exception:
-            return False
-
-    checks = [
-        a.sort_strategy == b.sort_strategy,
-        _eq_float(a.priority_weight, b.priority_weight),
-        _eq_float(a.due_weight, b.due_weight),
-        _eq_float(a.ready_weight, b.ready_weight),
-        _eq_float(a.holiday_default_efficiency, b.holiday_default_efficiency),
-        a.enforce_ready_default == b.enforce_ready_default,
-        a.prefer_primary_skill == b.prefer_primary_skill,
-        a.dispatch_mode == b.dispatch_mode,
-        a.dispatch_rule == b.dispatch_rule,
-        a.auto_assign_enabled == b.auto_assign_enabled,
-        a.ortools_enabled == b.ortools_enabled,
-        int(a.ortools_time_limit_seconds) == int(b.ortools_time_limit_seconds),
-        a.algo_mode == b.algo_mode,
-        int(a.time_budget_seconds) == int(b.time_budget_seconds),
-        a.objective == b.objective,
-        a.freeze_window_enabled == b.freeze_window_enabled,
-        int(a.freeze_window_days) == int(b.freeze_window_days),
-    ]
-    return all(checks)
+    return not snapshot_diff_fields(a, b)
 
 
-def snapshot_payload_matches(data: Dict[str, Any], snap: ScheduleConfigSnapshot) -> Tuple[bool, List[str]]:
-    canonical = snap.to_dict()
-    if not isinstance(data, dict):
-        return False, sorted(canonical.keys())
+def _values_close(left: Any, right: Any) -> bool:
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return math.isclose(float(left), float(right), rel_tol=0.0, abs_tol=1e-9)
+    return left == right
 
+
+def snapshot_diff_fields(a: ScheduleConfigSnapshot, b: ScheduleConfigSnapshot) -> List[str]:
+    left = a.to_dict()
+    right = b.to_dict()
     diff_fields: List[str] = []
-    for key, expected in canonical.items():
-        if key not in data or data.get(key) != expected:
+    for key, expected in left.items():
+        if key not in right or not _values_close(expected, right.get(key)):
             diff_fields.append(str(key))
-    for key in data.keys():
-        if key not in canonical:
+    for key in right.keys():
+        if key not in left:
             diff_fields.append(str(key))
-    ordered = list(dict.fromkeys(diff_fields))
-    return not ordered, ordered
+    return list(dict.fromkeys(diff_fields))
 
 
-def _preset_adjust_reason(svc: Any, fields: List[str]) -> str:
+def _preset_mismatch_reason(svc: Any, fields: List[str]) -> str:
+    sample = "、".join([str(field) for field in (fields or [])[:5]])
+    return svc.ACTIVE_PRESET_REASON_PRESET_MISMATCH if not sample else f"{svc.ACTIVE_PRESET_REASON_PRESET_MISMATCH} 涉及字段：{sample}。"
+
+
+def _preset_adjusted_reason(svc: Any, fields: List[str]) -> str:
     sample = "、".join([str(field) for field in (fields or [])[:5]])
     return svc.ACTIVE_PRESET_REASON_PRESET_ADJUSTED if not sample else f"{svc.ACTIVE_PRESET_REASON_PRESET_ADJUSTED} 涉及字段：{sample}。"
 
 
+def _registered_preset_keys() -> Tuple[str, ...]:
+    return tuple(spec.key for spec in list_config_fields())
+
+
+def _missing_required_preset_fields(data: Dict[str, Any]) -> List[str]:
+    payload = dict(data or {})
+    return [key for key in _registered_preset_keys() if key not in payload]
+
+
+def _raw_value_matches_canonical(key: str, raw_value: Any, canonical_value: Any) -> bool:
+    spec = get_field_spec(key)
+    if spec.field_type in ("enum", "yes_no"):
+        return isinstance(raw_value, str) and raw_value == str(canonical_value)
+
+    try:
+        if spec.field_type == "float":
+            return _values_close(parse_finite_float(raw_value, field=key, allow_none=False), canonical_value)
+        if spec.field_type == "int":
+            return _values_close(parse_finite_int(raw_value, field=key, allow_none=False), canonical_value)
+    except Exception:
+        return False
+
+    return raw_value == canonical_value
+
+
+def snapshot_payload_projection_diff_fields(data: Dict[str, Any], snapshot: ScheduleConfigSnapshot) -> List[str]:
+    payload = dict(data or {})
+    canonical = snapshot.to_dict()
+    diff_fields: List[str] = []
+    registered_keys = set(_registered_preset_keys())
+    for key in _registered_preset_keys():
+        if key not in canonical:
+            continue
+        if key not in payload:
+            diff_fields.append(key)
+            continue
+        if not _raw_value_matches_canonical(key, payload.get(key), canonical[key]):
+            diff_fields.append(key)
+    for key in payload.keys():
+        if key not in registered_keys:
+            diff_fields.append(str(key))
+    return list(dict.fromkeys(diff_fields))
+
+
 def get_snapshot_from_repo(svc: Any, *, strict_mode: bool = False) -> ScheduleConfigSnapshot:
-    """
-    从 repo 读取 snapshot（不调用 ensure_defaults；避免递归）。
-    - 缺键时使用默认值
-    - 适用于 ensure_defaults 内部调用
-    """
-    defaults = {
-        "sort_strategy": svc.DEFAULT_SORT_STRATEGY,
-        "priority_weight": float(svc.DEFAULT_PRIORITY_WEIGHT),
-        "due_weight": float(svc.DEFAULT_DUE_WEIGHT),
-        "ready_weight": float(svc.DEFAULT_READY_WEIGHT),
-        "holiday_default_efficiency": float(svc.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY),
-        "enforce_ready_default": str(svc.DEFAULT_ENFORCE_READY_DEFAULT),
-        "dispatch_mode": svc.DEFAULT_DISPATCH_MODE,
-        "dispatch_rule": svc.DEFAULT_DISPATCH_RULE,
-        "auto_assign_enabled": svc.DEFAULT_AUTO_ASSIGN_ENABLED,
-        "ortools_enabled": svc.DEFAULT_ORTOOLS_ENABLED,
-        "ortools_time_limit_seconds": int(svc.DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS),
-        "algo_mode": svc.DEFAULT_ALGO_MODE,
-        "time_budget_seconds": int(svc.DEFAULT_TIME_BUDGET_SECONDS),
-        "objective": svc.DEFAULT_OBJECTIVE,
-        "freeze_window_enabled": svc.DEFAULT_FREEZE_WINDOW_ENABLED,
-        "freeze_window_days": int(svc.DEFAULT_FREEZE_WINDOW_DAYS),
-    }
     return build_schedule_config_snapshot(
         svc.repo,
-        defaults=defaults,
-        valid_strategies=svc.VALID_STRATEGIES,
-        valid_dispatch_modes=svc.VALID_DISPATCH_MODES,
-        valid_dispatch_rules=svc.VALID_DISPATCH_RULES,
-        valid_algo_modes=svc.VALID_ALGO_MODES,
-        valid_objectives=svc.VALID_OBJECTIVES,
         strict_mode=bool(strict_mode),
     )
 
@@ -152,52 +177,83 @@ def ensure_builtin_presets(svc: Any, *, existing_keys: Optional[set] = None) -> 
             )
         )
 
-    # active_preset：老库升级时可能缺失；尽量不误导
-    need_active = svc.ACTIVE_PRESET_KEY not in keys
-    active_value = None
-    if need_active:
-        try:
-            cur = get_snapshot_from_repo(svc)
-            default_snap = svc._default_snapshot()
-            if getattr(cur, "degradation_counters", None):
-                active_value = svc.ACTIVE_PRESET_CUSTOM
-                active_reason = svc.ACTIVE_PRESET_REASON_BASELINE_DEGRADED
-            elif snapshot_close(cur, default_snap):
-                active_value = svc.BUILTIN_PRESET_DEFAULT
-                active_reason = None
-            else:
-                active_value = svc.ACTIVE_PRESET_CUSTOM
-                active_reason = svc.ACTIVE_PRESET_REASON_BASELINE_MISMATCH
-        except Exception:
-            active_value = svc.ACTIVE_PRESET_CUSTOM
-            active_reason = svc.ACTIVE_PRESET_REASON_BASELINE_DEGRADED
-
-    if not presets_to_create and not need_active:
+    if not presets_to_create:
         return
 
     with svc.tx_manager.transaction():
         for k, v, d in presets_to_create:
             svc.repo.set(k, v, description=d)
-        if need_active:
-            svc.repo.set_batch(svc._active_preset_updates(active_value, reason=active_reason))
+
+
+def bootstrap_active_provenance_if_pristine(svc: Any) -> None:
+    if bool((svc.get_preset_display_state(readonly=True) or {}).get("can_preserve_baseline")):
+        return
+
+    active_value = None
+    active_reason = None
+    try:
+        cur = get_snapshot_from_repo(svc)
+        default_snap = svc._default_snapshot()
+        if getattr(cur, "degradation_counters", None):
+            active_value = svc.ACTIVE_PRESET_CUSTOM
+            active_reason = svc.ACTIVE_PRESET_REASON_BASELINE_DEGRADED
+        elif snapshot_close(cur, default_snap):
+            active_value = svc.BUILTIN_PRESET_DEFAULT
+            active_reason = None
+        else:
+            active_value = svc.ACTIVE_PRESET_CUSTOM
+            active_reason = svc.ACTIVE_PRESET_REASON_BASELINE_MISMATCH
+    except Exception as exc:
+        active_value = svc.ACTIVE_PRESET_CUSTOM
+        active_reason = f"{svc.ACTIVE_PRESET_REASON_BASELINE_DEGRADED} 原因：{type(exc).__name__}"
+        safe_warning(getattr(svc, "logger", None), f"初始化 active_preset 基线探测失败，已标记为 degraded：{exc}")
+
+    with svc.tx_manager.transaction():
+        svc.repo.set_batch(svc._active_preset_updates(active_value, reason=active_reason))
 
 
 def list_presets(svc: Any) -> List[Dict[str, Any]]:
-    svc.ensure_defaults()
-    items = svc.repo.list_all()
-    out: List[Dict[str, Any]] = []
-    for c in items:
-        if not (c.config_key or "").startswith(svc.PRESET_PREFIX):
-            continue
-        name = str(c.config_key)[len(svc.PRESET_PREFIX) :]
-        if not name:
-            continue
-        out.append({"name": name, "updated_at": c.updated_at, "config_key": c.config_key, "description": c.description})
-    out.sort(key=lambda x: x.get("name") or "")
-    return out
+    state = svc.get_preset_display_state(readonly=True)
+    return list(state.get("presets") or [])
 
 
-def save_preset(svc: Any, name: Any) -> str:
+def _readonly_active_preset_state(svc: Any) -> Dict[str, Any]:
+    state = svc.get_preset_display_state(readonly=True)
+    active_preset = str(state.get("active_preset") or "").strip()
+    can_preserve_baseline = bool(state.get("can_preserve_baseline"))
+    return {
+        "effective_active_preset": active_preset if can_preserve_baseline and active_preset else svc.ACTIVE_PRESET_CUSTOM,
+        "reason": state.get("active_preset_reason") if can_preserve_baseline else None,
+    }
+
+
+def _builtin_preset_payload(svc: Any, name: str) -> Optional[Dict[str, Any]]:
+    for preset_name, snapshot, _description in builtin_presets(svc):
+        if str(preset_name or "").strip() != str(name or "").strip():
+            continue
+        return dict(snapshot.to_dict())
+    return None
+
+
+def _load_preset_payload(svc: Any, name: str) -> Dict[str, Any]:
+    builtin_payload = _builtin_preset_payload(svc, name)
+    if builtin_payload is not None:
+        return builtin_payload
+
+    raw = svc.repo.get_value(svc._preset_key(name), default=None)
+    if raw is None or str(raw).strip() == "":
+        raise BusinessError(ErrorCode.NOT_FOUND, f"未找到方案：{name}")
+
+    try:
+        data = json.loads(str(raw))
+        if not isinstance(data, dict):
+            raise ValueError("preset json is not dict")
+        return dict(data)
+    except Exception as exc:
+        raise ValidationError("方案数据已损坏，暂时无法读取。", field="方案数据") from exc
+
+
+def save_preset(svc: Any, name: Any) -> Dict[str, Any]:
     n = svc._normalize_text(name)
     if not n:
         raise ValidationError("方案名称不能为空", field="方案名称")
@@ -206,12 +262,31 @@ def save_preset(svc: Any, name: Any) -> str:
     if svc._is_builtin_preset(n):
         raise ValidationError("系统自带方案不能覆盖，请换个名字另存。", field="方案名称")
 
-    snap = svc.get_snapshot()
+    try:
+        snap = svc.get_snapshot(strict_mode=True)
+    except ValidationError as exc:
+        readonly_state = _readonly_active_preset_state(svc)
+        return _preset_result(
+            requested_preset=n,
+            effective_active_preset=str(readonly_state["effective_active_preset"]),
+            status="rejected",
+            adjusted_fields=[],
+            reason=readonly_state["reason"],
+            error_field=str(getattr(exc, "field", "") or ""),
+            error_fields=[str(getattr(exc, "field", "") or "").strip()] if str(getattr(exc, "field", "") or "").strip() else [],
+            error_message=str(exc.message),
+        )
     payload = json.dumps(snap.to_dict(), ensure_ascii=False, sort_keys=True)
     with svc.tx_manager.transaction():
         svc.repo.set(svc._preset_key(n), payload, description="排产配置模板（用户自定义）")
         svc.repo.set_batch(svc._active_preset_updates(n))
-    return n
+    return _preset_result(
+        requested_preset=n,
+        effective_active_preset=n,
+        status="saved",
+        adjusted_fields=[],
+        reason=None,
+    )
 
 
 def delete_preset(svc: Any, name: Any) -> None:
@@ -238,71 +313,73 @@ def normalize_preset_snapshot(svc: Any, data: Dict[str, Any]) -> ScheduleConfigS
         data,
         base=base,
         strict_mode=True,
-        valid_strategies=svc.VALID_STRATEGIES,
-        valid_dispatch_modes=svc.VALID_DISPATCH_MODES,
-        valid_dispatch_rules=svc.VALID_DISPATCH_RULES,
-        valid_algo_modes=svc.VALID_ALGO_MODES,
-        valid_objectives=svc.VALID_OBJECTIVES,
     )
 
 
-def apply_preset(svc: Any, name: Any) -> str:
+def apply_preset(svc: Any, name: Any) -> Dict[str, Any]:
     n = svc._normalize_text(name)
     if not n:
         raise ValidationError("方案名称不能为空", field="方案名称")
 
-    svc.ensure_defaults()
-    raw = svc.repo.get_value(svc._preset_key(n), default=None)
-    if raw is None or str(raw).strip() == "":
-        raise BusinessError(ErrorCode.NOT_FOUND, f"未找到方案：{n}")
+    data = _load_preset_payload(svc, n)
 
-    try:
-        data = json.loads(str(raw))
-        if not isinstance(data, dict):
-            raise ValueError("preset json is not dict")
-    except Exception as e:
-        raise ValidationError("方案数据已损坏，暂时无法读取。", field="方案数据") from e
+    missing_fields = _missing_required_preset_fields(data)
+    if missing_fields:
+        readonly_state = _readonly_active_preset_state(svc)
+        sample = "、".join(str(field) for field in missing_fields)
+        return _preset_result(
+            requested_preset=n,
+            effective_active_preset=str(readonly_state["effective_active_preset"]),
+            status="rejected",
+            adjusted_fields=[],
+            reason=readonly_state["reason"],
+            error_field=str(missing_fields[0]),
+            error_fields=list(missing_fields),
+            error_message=f"方案缺少必填字段：{sample}。",
+        )
 
     snap = normalize_preset_snapshot(svc, data)
-    payload_matches, diff_fields = snapshot_payload_matches(data, snap)
-
-    config_updates = [
-        ("sort_strategy", snap.sort_strategy, None),
-        ("priority_weight", str(float(snap.priority_weight)), None),
-        ("due_weight", str(float(snap.due_weight)), None),
-        ("ready_weight", str(float(snap.ready_weight)), None),
-        ("holiday_default_efficiency", str(float(snap.holiday_default_efficiency)), None),
-        ("enforce_ready_default", str(snap.enforce_ready_default), None),
-        ("prefer_primary_skill", str(snap.prefer_primary_skill), None),
-        ("dispatch_mode", str(snap.dispatch_mode), None),
-        ("dispatch_rule", str(snap.dispatch_rule), None),
-        ("auto_assign_enabled", str(snap.auto_assign_enabled), None),
-        ("ortools_enabled", str(snap.ortools_enabled), None),
-        ("ortools_time_limit_seconds", str(int(snap.ortools_time_limit_seconds)), None),
-        ("algo_mode", str(snap.algo_mode), None),
-        ("time_budget_seconds", str(int(snap.time_budget_seconds)), None),
-        ("objective", str(snap.objective), None),
-        ("freeze_window_enabled", str(snap.freeze_window_enabled), None),
-        ("freeze_window_days", str(int(snap.freeze_window_days)), None),
-    ]
+    payload_diff_fields = snapshot_payload_projection_diff_fields(data, snap)
+    config_updates = [(key, str(value), None) for key, value in snap.to_dict().items()]
 
     with svc.tx_manager.transaction():
         svc.repo.set_batch(config_updates)
         final_snap = get_snapshot_from_repo(svc, strict_mode=True)
-        if payload_matches and snapshot_close(snap, final_snap):
-            svc.repo.set_batch(svc._active_preset_updates(n))
-        else:
-            reason = (
-                _preset_adjust_reason(svc, diff_fields)
-                if not payload_matches
-                else svc.ACTIVE_PRESET_REASON_PRESET_MISMATCH
-            )
+        diff_fields = snapshot_diff_fields(snap, final_snap)
+        if diff_fields:
+            combined_fields = list(dict.fromkeys(list(payload_diff_fields) + list(diff_fields)))
+            reason = _preset_mismatch_reason(svc, combined_fields)
             svc.repo.set_batch(
                 svc._active_preset_updates(
-                    svc.ACTIVE_PRESET_CUSTOM,
+                    n,
                     reason=reason,
                 )
             )
+            effective_active_preset = n
+            adjusted_fields = combined_fields
+            status = "adjusted"
+        elif payload_diff_fields:
+            reason = _preset_adjusted_reason(svc, payload_diff_fields)
+            svc.repo.set_batch(
+                svc._active_preset_updates(
+                    n,
+                    reason=reason,
+                )
+            )
+            effective_active_preset = n
+            adjusted_fields = list(payload_diff_fields)
+            status = "adjusted"
+        else:
+            svc.repo.set_batch(svc._active_preset_updates(n))
+            reason = None
+            effective_active_preset = n
+            adjusted_fields = []
+            status = "applied"
 
-    return n
-
+    return _preset_result(
+        requested_preset=n,
+        effective_active_preset=effective_active_preset,
+        status=status,
+        adjusted_fields=adjusted_fields,
+        reason=reason,
+    )

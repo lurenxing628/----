@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -10,6 +11,13 @@ from core.models.enums import YesNo
 from ..number_utils import to_yes_no
 
 _FREEZE_DEGRADATION_CODE = "freeze_seed_unavailable"
+
+
+@dataclass(frozen=True)
+class _LoadedScheduleMapOutcome:
+    schedule_map: Dict[int, Dict[str, Any]]
+    invalid_row_count: int
+    invalid_row_samples: List[str]
 
 
 def _init_freeze_meta(meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -24,9 +32,7 @@ def _init_freeze_meta(meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _freeze_window_days(cfg: Any, prev_version: int, *, strict_mode: bool, meta: Dict[str, Any], warnings: List[str]) -> int:
-    enabled = (
-        to_yes_no(getattr(cfg, "freeze_window_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
-    )
+    enabled = to_yes_no(cfg.freeze_window_enabled, default=YesNo.NO.value) == YesNo.YES.value
     meta["freeze_enabled"] = bool(enabled)
     if not enabled:
         meta["freeze_state"] = "disabled"
@@ -39,14 +45,14 @@ def _freeze_window_days(cfg: Any, prev_version: int, *, strict_mode: bool, meta:
         for event in cfg_events
         if isinstance(event, dict)
     )
-    days = int(getattr(cfg, "freeze_window_days", 0) or 0)
+    days = int(cfg.freeze_window_days or 0)
     meta["freeze_days"] = int(days)
 
     if cfg_degraded:
         _record_freeze_degradation(
             meta,
             warnings,
-            "冻结窗口配置存在历史坏值，已降级为不冻结。",
+            "freeze window config degraded; treating as disabled",
             strict_mode=strict_mode,
         )
         return 0
@@ -73,8 +79,22 @@ def _record_freeze_degradation(
     meta["freeze_degradation_codes"] = codes
     meta["freeze_degradation_reason"] = str(message)
     if strict_mode:
-        raise ValidationError(f"【冻结窗口】{message}", field="freeze_window")
-    warnings.append(f"【冻结窗口】{message}")
+        raise ValidationError(f"freeze window degraded: {message}", field="freeze_window")
+    warnings.append(f"[freeze_window] {message}")
+
+
+def _invalid_schedule_row_sample(row: Any) -> str:
+    try:
+        row_dict = dict(row)
+    except Exception:
+        row_dict = {"repr": repr(row)[:160]}
+    parts: List[str] = []
+    for key in ("op_id", "start_time", "end_time"):
+        value = row_dict.get(key)
+        if value in (None, ""):
+            continue
+        parts.append(f"{key}={value}")
+    return ",".join(parts) or repr(row_dict)[:160]
 
 
 def _load_schedule_map(
@@ -84,8 +104,10 @@ def _load_schedule_map(
     op_ids: List[int],
     start_str: str,
     freeze_end_str: str,
-) -> Dict[int, Dict[str, Any]]:
+) -> _LoadedScheduleMapOutcome:
     schedule_map: Dict[int, Dict[str, Any]] = {}
+    invalid_row_count = 0
+    invalid_row_samples: List[str] = []
     rows = svc.schedule_repo.list_version_rows_by_op_ids_start_range(
         version=int(prev_version),
         op_ids=op_ids,
@@ -94,13 +116,20 @@ def _load_schedule_map(
     )
     for row in rows:
         try:
-            oid = int(row.get("op_id") or 0)
+            row_dict = dict(row)
+            oid = int(row_dict.get("op_id") or 0)
             if oid <= 0:
-                continue
-            schedule_map[int(oid)] = dict(row)
+                raise ValueError("op_id must be positive")
+            schedule_map[int(oid)] = row_dict
         except Exception:
-            continue
-    return schedule_map
+            invalid_row_count += 1
+            if len(invalid_row_samples) < 5:
+                invalid_row_samples.append(_invalid_schedule_row_sample(row))
+    return _LoadedScheduleMapOutcome(
+        schedule_map=schedule_map,
+        invalid_row_count=int(invalid_row_count),
+        invalid_row_samples=invalid_row_samples,
+    )
 
 
 def _max_seq_by_batch(schedule_map: Dict[int, Dict[str, Any]], op_by_id: Dict[int, Any]) -> Dict[str, int]:
@@ -188,15 +217,6 @@ def build_freeze_window_seed(
     strict_mode: bool = False,
     meta: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
-    """
-    冻结窗口（硬约束；默认关闭）：
-    - 复用上一版本在窗口内的排程结果，不再重排
-    - 为保证批次前后约束：按批次 seq 前缀冻结（冻结到窗口内出现的最大 seq）
-    - 若调用方已传入 `reschedulable_operations`，seed 路径与主排产链共享同一套可重排工序集合
-
-    Returns:
-        (frozen_op_ids, seed_results, warnings)
-    """
     frozen_op_ids: Set[int] = set()
     seed_results: List[Dict[str, Any]] = []
     warnings: List[str] = []
@@ -225,7 +245,7 @@ def build_freeze_window_seed(
         return frozen_op_ids, seed_results, warnings
 
     try:
-        schedule_map = _load_schedule_map(
+        load_outcome = _load_schedule_map(
             svc,
             prev_version=int(prev_version),
             op_ids=op_ids_all,
@@ -236,12 +256,26 @@ def build_freeze_window_seed(
         _record_freeze_degradation(
             freeze_meta,
             warnings,
-            f"启用但读取上一版本排程失败，已降级为不冻结：{exc}",
+            f"failed to load previous schedule rows: {exc}",
             strict_mode=bool(strict_mode),
         )
         freeze_meta["freeze_applied"] = False
         return frozen_op_ids, seed_results, warnings
 
+    if load_outcome.invalid_row_count > 0:
+        sample_text = ", ".join(load_outcome.invalid_row_samples[:5])
+        _record_freeze_degradation(
+            freeze_meta,
+            warnings,
+            f"previous schedule rows contained {load_outcome.invalid_row_count} invalid entries"
+            + (f" ({sample_text})" if sample_text else ""),
+            strict_mode=bool(strict_mode),
+        )
+        if not load_outcome.schedule_map:
+            freeze_meta["freeze_applied"] = False
+            return frozen_op_ids, seed_results, warnings
+
+    schedule_map = load_outcome.schedule_map
     if not schedule_map:
         freeze_meta["freeze_applied"] = False
         return frozen_op_ids, seed_results, warnings
@@ -259,7 +293,7 @@ def build_freeze_window_seed(
             _record_freeze_degradation(
                 freeze_meta,
                 warnings,
-                f"跳过批次 {bid}：上一版本缺少前缀工序排程（示例 op_id={sample}）",
+                f"missing prefix rows for batch {bid}: {sample}",
                 strict_mode=bool(strict_mode),
             )
             continue
@@ -269,7 +303,7 @@ def build_freeze_window_seed(
             _record_freeze_degradation(
                 freeze_meta,
                 warnings,
-                f"跳过批次 {bid}：上一版本工序时间无效（op_id={invalid_oid}）",
+                f"invalid previous schedule time range for op_id={invalid_oid}",
                 strict_mode=bool(strict_mode),
             )
             _discard_seed_cache(prefix, seed_tmp)

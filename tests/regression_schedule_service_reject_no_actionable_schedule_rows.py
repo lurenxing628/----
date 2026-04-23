@@ -8,6 +8,7 @@ import pytest
 
 import core.services.scheduler.schedule_service as schedule_service_mod
 from core.infrastructure.errors import ValidationError
+from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.schedule_service import ScheduleService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -45,7 +46,7 @@ def test_schedule_service_rejects_no_actionable_schedule_rows(monkeypatch) -> No
         op_id = int(cur.lastrowid)
         conn.commit()
 
-        def _stub_build_algo_operations(_svc, ops):
+        def _stub_build_algo_operations(_svc, ops, *, strict_mode=False, return_outcome=False):
             items = []
             for op in ops:
                 assert op.id is not None
@@ -63,6 +64,8 @@ def test_schedule_service_rejects_no_actionable_schedule_rows(monkeypatch) -> No
                         op_type_name=getattr(op, "op_type_name", None),
                     )
                 )
+            if return_outcome:
+                return BuildOutcome(items)
             return items
 
         monkeypatch.setattr(schedule_service_mod, "build_algo_operations", _stub_build_algo_operations)

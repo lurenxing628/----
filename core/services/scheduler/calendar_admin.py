@@ -13,10 +13,9 @@ from core.services.common.normalization_matrix import (
     normalize_yes_no_narrow_value,
 )
 from core.services.common.normalize import normalize_text
-from core.services.common.safe_logging import safe_warning
-from core.services.scheduler.config_service import ConfigService
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
+from .config.config_service import ConfigService
 from .number_utils import parse_finite_float
 
 
@@ -41,18 +40,15 @@ class CalendarAdmin:
         """
         获取“假期默认效率”（>0）。
         - 来自 ScheduleConfig.holiday_default_efficiency
-        - 配置值非法时回退到 ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY，并记录 warning
+        - 写入链必须严格依赖合法配置，不允许在该层静默回退默认值
         """
-        try:
-            cfg_svc = ConfigService(self.conn, logger=self.logger, op_logger=self.op_logger)
-            return float(cfg_svc.get_holiday_default_efficiency())
-        except ValidationError as exc:
-            safe_warning(self.logger, f"读取 holiday_default_efficiency 非法，已回退默认值：{exc.message}")
-            return float(ConfigService.DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY)
+        cfg_svc = ConfigService(self.conn, logger=self.logger, op_logger=self.op_logger)
+        return float(cfg_svc.get_holiday_default_efficiency(strict_mode=True))
 
     # -------------------------
     # 规范化与校验
     # -------------------------
+
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
         return normalize_text(value)

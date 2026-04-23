@@ -7,6 +7,13 @@ from core.models import Schedule
 from .base_repo import BaseRepository
 
 
+def _require_schedule_op_id(schedule: Schedule) -> int:
+    op_id = schedule.op_id
+    if op_id is None:
+        raise ValueError("schedule.op_id is required")
+    return int(op_id)
+
+
 class ScheduleRepository(BaseRepository):
     """排程结果仓库（Schedule）。"""
 
@@ -281,12 +288,13 @@ class ScheduleRepository(BaseRepository):
 
     def create(self, schedule: Union[Schedule, Dict[str, Any]]) -> Schedule:
         s = schedule if isinstance(schedule, Schedule) else Schedule.from_row(schedule)
+        op_id = _require_schedule_op_id(s)
         cur = self.execute(
             """
             INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (int(s.op_id), s.machine_id, s.operator_id, s.start_time, s.end_time, s.lock_status, int(s.version)),
+            (op_id, s.machine_id, s.operator_id, s.start_time, s.end_time, s.lock_status, int(s.version)),
         )
         s.id = int(cur.lastrowid) if cur.lastrowid is not None else s.id
         return s
@@ -295,7 +303,17 @@ class ScheduleRepository(BaseRepository):
         params = []
         for item in schedules:
             s = item if isinstance(item, Schedule) else Schedule.from_row(item)
-            params.append((int(s.op_id), s.machine_id, s.operator_id, s.start_time, s.end_time, s.lock_status, int(s.version)))
+            params.append(
+                (
+                    _require_schedule_op_id(s),
+                    s.machine_id,
+                    s.operator_id,
+                    s.start_time,
+                    s.end_time,
+                    s.lock_status,
+                    int(s.version),
+                )
+            )
         cur = self.executemany(
             "INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
             params,

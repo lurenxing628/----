@@ -62,7 +62,17 @@ def main() -> None:
         p2 = dict(base)
         p2["due_weight"] = "NaN"
         _save_preset_raw(cfg_svc, "bad_nan", p2)
+        conn.execute(
+            "DELETE FROM ScheduleConfig WHERE config_key IN (?, ?)",
+            (cfg_svc.ACTIVE_PRESET_KEY, cfg_svc.ACTIVE_PRESET_REASON_KEY),
+        )
+        conn.commit()
         _expect_validation_error(lambda: cfg_svc.apply_preset("bad_nan"), "due_weight=NaN")
+        remaining = conn.execute(
+            "SELECT COUNT(1) FROM ScheduleConfig WHERE config_key IN (?, ?)",
+            (cfg_svc.ACTIVE_PRESET_KEY, cfg_svc.ACTIVE_PRESET_REASON_KEY),
+        ).fetchone()[0]
+        assert int(remaining or 0) == 0
 
         p3 = dict(base)
         p3["holiday_default_efficiency"] = "Inf"
@@ -103,14 +113,26 @@ def main() -> None:
         _save_preset_raw(cfg_svc, "blank_objective", p9)
         _expect_validation_error(lambda: cfg_svc.apply_preset("blank_objective"), "objective=blank", "objective")
 
-        # 5) 缺省字段仍允许回退默认（应通过）
+        # 5) 缺省字段不再按默认基线静默回退（应拒绝）
         p10 = dict(base)
         p10.pop("priority_weight", None)
         p10.pop("due_weight", None)
         p10.pop("holiday_default_efficiency", None)
         _save_preset_raw(cfg_svc, "missing_numeric_allowed", p10)
         applied = cfg_svc.apply_preset("missing_numeric_allowed")
-        assert applied == "missing_numeric_allowed", f"缺省字段回退默认应可应用，实际={applied!r}"
+        remaining = conn.execute(
+            "SELECT COUNT(1) FROM ScheduleConfig WHERE config_key IN (?, ?)",
+            (cfg_svc.ACTIVE_PRESET_KEY, cfg_svc.ACTIVE_PRESET_REASON_KEY),
+        ).fetchone()[0]
+        assert applied["requested_preset"] == "missing_numeric_allowed"
+        assert applied["effective_active_preset"] in {"", cfg_svc.ACTIVE_PRESET_CUSTOM}
+        assert applied["status"] == "rejected"
+        assert applied["adjusted_fields"] == []
+        assert int(remaining or 0) == 0
+        error_message = str(applied["error_message"] or "")
+        assert "priority_weight" in error_message
+        assert "due_weight" in error_message
+        assert "holiday_default_efficiency" in error_message
 
         print("OK")
     finally:

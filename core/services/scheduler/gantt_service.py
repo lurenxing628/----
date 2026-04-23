@@ -5,7 +5,7 @@ from collections import OrderedDict
 from typing import Any, Dict, Optional, Sequence
 
 from core.infrastructure.errors import ValidationError
-from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
+from core.services.common.degradation import DegradationCollector, DegradationEvent, degradation_events_to_dicts
 from data.repositories import ScheduleHistoryRepository, ScheduleRepository
 
 from .gantt_contract import build_gantt_contract
@@ -113,6 +113,34 @@ class GanttService:
             pass
         return (scope, int(version))
 
+    @staticmethod
+    def _normalize_critical_chain_result(raw: Any) -> Dict[str, Any]:
+        if not isinstance(raw, dict):
+            raw = {}
+        available = raw.get("available")
+        if isinstance(available, bool):
+            is_available = available
+        else:
+            is_available = True
+        reason_text = str(raw.get("reason") or "").strip()
+        if is_available:
+            reason_text = ""
+        return {
+            "ids": list(raw.get("ids") or []),
+            "edges": list(raw.get("edges") or []),
+            "makespan_end": raw.get("makespan_end"),
+            "edge_type_stats": dict(
+                raw.get("edge_type_stats") or {"process": 0, "machine": 0, "operator": 0, "unknown": 0}
+            ),
+            "edge_count": int(raw.get("edge_count") or 0),
+            "available": is_available,
+            "reason": reason_text,
+        }
+
+    @staticmethod
+    def _critical_chain_cacheable(result: Dict[str, Any]) -> bool:
+        return bool(result.get("available", True))
+
     def _get_critical_chain(self, version: int) -> Dict[str, Any]:
         key = self._critical_chain_cache_key(version)
         with self._CRITICAL_CHAIN_CACHE_LOCK:
@@ -126,16 +154,11 @@ class GanttService:
                 out["cache_hit"] = True
                 return out
 
-        computed = compute_critical_chain(self.schedule_repo, int(version))
-        if not isinstance(computed, dict):
-            computed = {
-                "ids": [],
-                "edges": [],
-                "makespan_end": None,
-                "edge_type_stats": {"process": 0, "machine": 0, "operator": 0, "unknown": 0},
-                "edge_count": 0,
-            }
+        computed = self._normalize_critical_chain_result(compute_critical_chain(self.schedule_repo, int(version)))
         computed["cache_hit"] = False
+
+        if not self._critical_chain_cacheable(computed):
+            return dict(computed)
 
         with self._CRITICAL_CHAIN_CACHE_LOCK:
             cached = self._CRITICAL_CHAIN_CACHE.get(key)
@@ -195,6 +218,16 @@ class GanttService:
         empty_reason = tasks_outcome.empty_reason or calendar_days_outcome.empty_reason
 
         critical_chain = self._get_critical_chain(ver)
+        if critical_chain.get("available") is False:
+            reason = str(critical_chain.get("reason") or "").strip() or "unknown"
+            degradation_collector.add(
+                DegradationEvent(
+                    code="critical_chain_unavailable",
+                    scope="scheduler.gantt",
+                    field="critical_chain",
+                    message=f"关键链不可用（reason={reason}）。",
+                )
+            )
 
         return build_gantt_contract(
             contract_version=self.CONTRACT_VERSION,

@@ -1,1 +1,5 @@
-from __future__ import annotations
+"""Scheduler domain package.
+
+Route registration side effects belong to ``scheduler_pages.py`` so package
+imports stay passive.
+"""

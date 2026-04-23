@@ -14,7 +14,7 @@ def _load_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def test_apply_preset_adjusted_marks_custom() -> None:
+def test_apply_preset_missing_required_fields_is_rejected_without_writing_snapshot() -> None:
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     try:
         conn.row_factory = sqlite3.Row
@@ -34,14 +34,21 @@ def test_apply_preset_adjusted_marks_custom() -> None:
                 description="regression preset",
             )
 
-        applied = cfg_svc.apply_preset("缺省字段方案")
-        assert applied == "缺省字段方案"
-        assert cfg_svc.get_active_preset() == cfg_svc.ACTIVE_PRESET_CUSTOM
-        reason = cfg_svc.get_active_preset_reason() or ""
-        assert ("规范化" in reason) or ("修补" in reason), f"preset 调整后 reason 异常：{reason!r}"
+        before = cfg_svc.get_snapshot(strict_mode=True).to_dict()
 
-        snap = cfg_svc.get_snapshot()
-        assert abs(float(snap.priority_weight) - float(base["priority_weight"])) < 1e-9
-        assert abs(float(snap.due_weight) - float(base["due_weight"])) < 1e-9
+        applied = cfg_svc.apply_preset("缺省字段方案")
+        assert applied["status"] == "rejected"
+        assert applied["requested_preset"] == "缺省字段方案"
+        assert applied["effective_active_preset"] == cfg_svc.BUILTIN_PRESET_DEFAULT
+        assert applied["adjusted_fields"] == []
+        assert cfg_svc.get_active_preset() == cfg_svc.BUILTIN_PRESET_DEFAULT
+        assert cfg_svc.get_active_preset_reason() is None
+        assert applied["error_fields"] == ["priority_weight", "due_weight"]
+        error_message = str(applied["error_message"] or "")
+        assert "priority_weight" in error_message
+        assert "due_weight" in error_message
+
+        snap = cfg_svc.get_snapshot(strict_mode=True).to_dict()
+        assert snap == before
     finally:
         conn.close()

@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import ast
 import importlib
 import json
 import os
 import sys
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+import pytest
+
+from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.services.scheduler.resource_dispatch_range import resolve_dispatch_range
+from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -118,11 +125,77 @@ def test_resource_dispatch_invalid_scope_redirects_to_clean_url(tmp_path, monkey
     assert "scope_id" not in params
 
 
+def test_resource_dispatch_invalid_scope_type_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    resp = client.get(
+        "/scheduler/resource-dispatch?scope_type=bad&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1"
+    )
+
+    assert resp.status_code == 302
+    params = _query_dict(resp.headers["Location"])
+    assert params.get("period_preset") == ["week"]
+    assert params.get("query_date") == ["2026-03-02"]
+    assert params.get("version") == ["1"]
+    assert "scope_type" not in params
+    assert "operator_id" not in params
+    assert "scope_id" not in params
+
+
+def test_resource_dispatch_invalid_team_axis_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    resp = client.get(
+        "/scheduler/resource-dispatch?scope_type=team&team_id=TEAM-01&team_axis=bad&period_preset=week&query_date=2026-03-02&version=1"
+    )
+
+    assert resp.status_code == 302
+    params = _query_dict(resp.headers["Location"])
+    assert params.get("scope_type") == ["team"]
+    assert params.get("team_id") == ["TEAM-01"]
+    assert params.get("period_preset") == ["week"]
+    assert params.get("query_date") == ["2026-03-02"]
+    assert params.get("version") == ["1"]
+    assert "team_axis" not in params
+
+
+def test_resource_dispatch_invalid_period_preset_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    resp = client.get(
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&period_preset=bad&query_date=2026-03-02&version=1"
+    )
+
+    assert resp.status_code == 302
+    params = _query_dict(resp.headers["Location"])
+    assert params.get("scope_type") == ["operator"]
+    assert params.get("operator_id") == ["OP001"]
+    assert params.get("version") == ["1"]
+    assert "period_preset" not in params
+    assert "query_date" not in params
+
+
 def test_resource_dispatch_invalid_version_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
     client = _build_client(tmp_path, monkeypatch)
 
     resp = client.get(
         "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=bad"
+    )
+
+    assert resp.status_code == 302
+    params = _query_dict(resp.headers["Location"])
+    assert params.get("scope_type") == ["operator"]
+    assert params.get("operator_id") == ["OP001"]
+    assert params.get("period_preset") == ["week"]
+    assert params.get("query_date") == ["2026-03-02"]
+    assert "version" not in params
+
+
+def test_resource_dispatch_zero_version_redirects_to_clean_url(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    resp = client.get(
+        "/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=0"
     )
 
     assert resp.status_code == 302
@@ -146,3 +219,199 @@ def test_resource_dispatch_mixed_invalid_filters_settle_without_500(tmp_path, mo
     html = resp.data.decode("utf-8", errors="ignore")
     assert "资源排班中心" in html
     assert "id=\"rdPage\"" in html
+
+
+def test_resource_dispatch_data_returns_machine_field_and_invalid_query_keys(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    resp = client.get(
+        "/scheduler/resource-dispatch/data?scope_type=bad&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1"
+    )
+
+    payload = resp.get_json()
+    assert resp.status_code == 400
+    assert payload["success"] is False
+    assert payload["error"]["details"]["field"] == "scope_type"
+    assert payload["error"]["details"]["invalid_query_keys"] == ["scope_type", "scope_id", "operator_id", "machine_id", "team_id"]
+
+
+def test_resource_dispatch_data_uses_app_error_http_mapping(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    def _raise_not_found(self, **_kwargs):
+        raise BusinessError(ErrorCode.NOT_FOUND, "资源排班版本不存在")
+
+    monkeypatch.setattr(ResourceDispatchService, "get_dispatch_payload", _raise_not_found)
+
+    resp = client.get(
+        "/scheduler/resource-dispatch/data?scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1"
+    )
+
+    payload = resp.get_json()
+    assert resp.status_code == 404
+    assert payload["success"] is False
+    assert payload["error"]["code"] == ErrorCode.NOT_FOUND.value
+    assert payload["error"]["message"] == "资源排班版本不存在"
+
+
+def test_resource_dispatch_data_unexpected_error_uses_unified_unknown_error_contract(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    def _raise_bug(self, **_kwargs):
+        raise RuntimeError("dispatch exploded")
+
+    monkeypatch.setattr(ResourceDispatchService, "get_dispatch_payload", _raise_bug)
+
+    resp = client.get(
+        "/scheduler/resource-dispatch/data?scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1"
+    )
+
+    payload = resp.get_json()
+    assert resp.status_code == 500
+    assert payload["success"] is False
+    assert payload["error"]["code"] == ErrorCode.UNKNOWN_ERROR.value
+    assert payload["error"]["message"] == "资源排班数据生成失败，请稍后重试。"
+
+
+def test_resource_dispatch_export_redirects_to_sanitized_page_url(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    resp = client.get(
+        "/scheduler/resource-dispatch/export?scope_type=operator&operator_id=OP001&period_preset=bad&query_date=2026-03-02&version=1"
+    )
+
+    assert resp.status_code == 302
+    params = _query_dict(resp.headers["Location"])
+    assert params.get("scope_type") == ["operator"]
+    assert params.get("operator_id") == ["OP001"]
+    assert params.get("version") == ["1"]
+    assert "period_preset" not in params
+    assert "query_date" not in params
+
+
+def test_resource_dispatch_service_validation_errors_use_machine_field_keys() -> None:
+    svc = object.__new__(ResourceDispatchService)
+
+    with pytest.raises(ValidationError) as scope_exc:
+        svc._normalize_scope_type("bad")
+    with pytest.raises(ValidationError) as axis_exc:
+        svc._normalize_team_axis("bad")
+
+    assert scope_exc.value.field == "scope_type"
+    assert axis_exc.value.field == "team_axis"
+
+
+def test_resource_dispatch_range_validation_errors_use_machine_field_keys() -> None:
+    with pytest.raises(ValidationError) as preset_exc:
+        resolve_dispatch_range(period_preset="bad")
+    with pytest.raises(ValidationError) as custom_exc:
+        resolve_dispatch_range(period_preset="custom", start_date=None, end_date=None)
+
+    assert preset_exc.value.field == "period_preset"
+    assert custom_exc.value.field == "date_range"
+
+
+def _decorator_route_path(decorator: ast.AST) -> str:
+    if not isinstance(decorator, ast.Call) or not decorator.args:
+        return ""
+    first_arg = decorator.args[0]
+    if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+        return str(first_arg.value)
+    return ""
+
+
+def _is_data_like_route(path: str) -> bool:
+    normalized = str(path or "").strip().lower()
+    return bool(normalized) and any(token in normalized for token in ("/data", "/json", "/api"))
+
+
+def _is_app_error_handler(handler: ast.ExceptHandler) -> bool:
+    return any(name == "AppError" for name in _exception_type_names(handler.type))
+
+
+def _is_generic_exception_handler(handler: ast.ExceptHandler) -> bool:
+    target = handler.type
+    if target is None:
+        return True
+    return any(name == "Exception" for name in _exception_type_names(target))
+
+
+def _exception_type_names(target: ast.AST) -> list[str]:
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, ast.Attribute):
+        return [target.attr]
+    if isinstance(target, ast.Tuple):
+        names = []
+        for item in target.elts:
+            names.extend(_exception_type_names(item))
+        return names
+    return []
+
+
+def _handler_int_constants(handler: ast.ExceptHandler) -> dict[str, int]:
+    values = {}
+    for node in ast.walk(handler):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        value = node.value
+        if not isinstance(target, ast.Name):
+            continue
+        if not isinstance(value, ast.Constant) or not isinstance(value.value, int):
+            continue
+        values[target.id] = int(value.value)
+    return values
+
+
+def _handler_returns_fixed_status(handler: ast.ExceptHandler, status_code: int) -> bool:
+    int_constants = _handler_int_constants(handler)
+    for node in ast.walk(handler):
+        if not isinstance(node, ast.Return):
+            continue
+        value = node.value
+        if not isinstance(value, ast.Tuple) or len(value.elts) < 2:
+            continue
+        status = value.elts[1]
+        if isinstance(status, ast.Constant) and status.value == status_code:
+            return True
+        if isinstance(status, ast.Name) and int_constants.get(status.id) == status_code:
+            return True
+    return False
+
+
+def _handler_contains_constant(handler: ast.ExceptHandler, expected: str) -> bool:
+    for node in ast.walk(handler):
+        if isinstance(node, ast.Constant) and node.value == expected:
+            return True
+    return False
+
+
+def test_scheduler_data_routes_do_not_regress_to_private_unknown_or_fixed_app_error_400() -> None:
+    findings = []
+    discovered_routes = []
+
+    for path in (REPO_ROOT / "web" / "routes").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(path))
+        rel_path = path.relative_to(REPO_ROOT).as_posix()
+
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            route_paths = [_decorator_route_path(decorator) for decorator in node.decorator_list]
+            data_like_paths = [route_path for route_path in route_paths if _is_data_like_route(route_path)]
+            if not data_like_paths:
+                continue
+            discovered_routes.extend((rel_path, node.name, route_path) for route_path in data_like_paths)
+
+            for handler in [item for item in ast.walk(node) if isinstance(item, ast.ExceptHandler)]:
+                if _is_app_error_handler(handler) and _handler_returns_fixed_status(handler, 400):
+                    findings.append(f"{rel_path}:{node.name}:AppError handler returns fixed 400")
+                if _is_generic_exception_handler(handler) and _handler_contains_constant(handler, "UNKNOWN"):
+                    findings.append(f"{rel_path}:{node.name}:generic exception uses private UNKNOWN code")
+
+    assert discovered_routes, "未扫描到任何 data/json/api 风格路由，错误契约哨兵失效。"
+    assert any(route_path == "/gantt/data" for _path, _name, route_path in discovered_routes), discovered_routes
+    assert any(route_path == "/resource-dispatch/data" for _path, _name, route_path in discovered_routes), discovered_routes
+    assert findings == [], findings

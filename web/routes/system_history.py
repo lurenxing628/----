@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from flask import request
 
-from core.infrastructure.errors import ValidationError
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
-from .normalizers import _parse_result_summary_payload
+from .normalizers import _parse_result_summary_payload_with_meta, parse_optional_version_int
 from .pagination import paginate_rows, parse_page_args
 from .system_bp import bp
 from .system_utils import _get_schedule_history_query_service, _safe_int
@@ -22,31 +22,41 @@ def history_page():
 
     selected = None
     selected_summary = None
-    if version_raw:
-        try:
-            ver = int(version_raw)
-        except Exception as e:
-            raise ValidationError("version 不合法（期望整数）", field="version") from e
+    selected_summary_display = build_summary_display_state(None, result_status=None)
+    ver = parse_optional_version_int(request.args.get("version"), field="version")
+    if ver is not None:
         item = q.get_by_version(ver)
         if item:
             selected = item.to_dict()
-            if selected.get("result_summary"):
-                selected_summary = _parse_result_summary_payload(
-                    selected.get("result_summary"),
-                    version=ver,
-                    source="selected",
-                    log_label="排产历史页",
-                )
+            parse_state = _parse_result_summary_payload_with_meta(
+                selected.get("result_summary"),
+                version=ver,
+                source="selected",
+                log_label="排产历史页",
+            )
+            selected_summary = parse_state.get("payload")
+            selected_summary_display = build_summary_display_state(
+                selected_summary if isinstance(selected_summary, dict) else None,
+                result_status=selected.get("result_status"),
+                parse_state=parse_state,
+            )
 
     items = [x.to_dict() for x in q.list_recent(limit=limit)]
     for it in items:
-        if it.get("result_summary"):
-            it["result_summary_obj"] = _parse_result_summary_payload(
-                it.get("result_summary"),
-                version=it.get("version"),
-                source="list",
-                log_label="排产历史页",
-            )
+        parse_state = _parse_result_summary_payload_with_meta(
+            it.get("result_summary"),
+            version=it.get("version"),
+            source="list",
+            log_label="排产历史页",
+        )
+        summary_payload = parse_state.get("payload")
+        if summary_payload is not None:
+            it["result_summary_obj"] = summary_payload
+        it["result_summary_display"] = build_summary_display_state(
+            summary_payload if isinstance(summary_payload, dict) else None,
+            result_status=it.get("result_status"),
+            parse_state=parse_state,
+        )
     # 语义约定：
     # - limit：总查询上限（仅在最近 N 条记录内分页）
     # - per_page：每页展示条数
@@ -58,6 +68,7 @@ def history_page():
         versions=versions,
         selected=selected,
         selected_summary=selected_summary,
+        selected_summary_display=selected_summary_display,
         items=items,
         filters={"version": version_raw, "limit": str(limit)},
         pager=pager,

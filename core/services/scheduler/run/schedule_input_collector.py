@@ -103,7 +103,7 @@ def _normalize_schedule_window(svc: Any, *, start_dt: Any, end_date: Any) -> tup
 
 def _resolve_enforce_ready_effective(cfg: Any, enforce_ready: Optional[bool]) -> bool:
     if enforce_ready is None:
-        return to_yes_no(getattr(cfg, "enforce_ready_default", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
+        return to_yes_no(cfg.enforce_ready_default, default=YesNo.NO.value) == YesNo.YES.value
     if isinstance(enforce_ready, str):
         return to_yes_no(enforce_ready, default=YesNo.NO.value) == YesNo.YES.value
     return bool(enforce_ready)

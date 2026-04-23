@@ -135,9 +135,13 @@ def main() -> None:
             raise RuntimeError(f"task.meta 缺少字段：{k}")
 
     cc = data.get("critical_chain") or {}
-    for k in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "cache_hit"):
+    for k in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "available", "reason", "cache_hit"):
         if k not in cc:
             raise RuntimeError(f"critical_chain 缺少字段：{k}")
+    if cc.get("available") is not True:
+        raise RuntimeError(f"critical_chain.available 应为 true：{cc}")
+    if cc.get("reason") not in (None, ""):
+        raise RuntimeError(f"critical_chain.reason 应为空成功语义：{cc}")
     edges = cc.get("edges") or []
     if edges:
         for k in ("from", "to", "edge_type", "reason", "gap_minutes"):
@@ -163,9 +167,13 @@ def main() -> None:
     if int(data_empty.get("task_count") or 0) != 0 or (data_empty.get("tasks") or []):
         raise RuntimeError(f"空数据版本 tasks 应为空：task_count={data_empty.get('task_count')} tasks={data_empty.get('tasks')}")
     cc_empty = data_empty.get("critical_chain") or {}
-    for k in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "cache_hit"):
+    for k in ("ids", "edges", "makespan_end", "edge_type_stats", "edge_count", "available", "reason", "cache_hit"):
         if k not in cc_empty:
             raise RuntimeError(f"空数据版本 critical_chain 缺少字段：{k}")
+    if cc_empty.get("available") is not True:
+        raise RuntimeError(f"空数据版本应保留合法空链 success 语义：{cc_empty}")
+    if cc_empty.get("reason") not in (None, ""):
+        raise RuntimeError(f"空数据版本 critical_chain.reason 应为空：{cc_empty}")
     raw_edge_count = cc_empty.get("edge_count")
     if raw_edge_count is None:
         raise RuntimeError("空数据版本 edge_count 缺失")

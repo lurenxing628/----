@@ -10,16 +10,30 @@ from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy, Strat
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import increment_counter, merge_algo_stats, snapshot_algo_stats
 from core.algorithms.greedy.scheduler import build_batch_sort_inputs, build_normalized_batches_map
-from core.algorithms.sort_strategies import parse_strategy
 from core.algorithms.value_domains import INTERNAL
+from core.infrastructure.errors import ValidationError
+from core.services.common.strict_parse import parse_required_float, parse_required_int
+from core.services.scheduler.config.config_field_spec import choices_for
+from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 
 from .schedule_optimizer_steps import (
-    _cfg_float,
-    _cfg_int,
     _run_multi_start,
     _run_ortools_warmstart,
     _schedule_with_optional_strict_mode,
 )
+
+_FIELD_LABELS = {
+    "sort_strategy": "排序策略",
+    "dispatch_mode": "派工方式",
+    "dispatch_rule": "派工规则",
+    "objective": "优化目标",
+    "algo_mode": "计算模式",
+    "seed_results": "种子排产结果",
+}
+
+
+def _field_label(field: str) -> str:
+    return _FIELD_LABELS.get(str(field).strip(), str(field).strip() or "配置项")
 
 
 @dataclass
@@ -100,6 +114,64 @@ def _compact_attempts(attempts: List[Dict[str, Any]], *, limit: int = 12) -> Lis
     return selected[:limit]
 
 
+def _require_choice(value: Any, *, field: str, valid_values: Tuple[str, ...]) -> str:
+    label = _field_label(field)
+    text = str(value or "").strip().lower()
+    if text not in set(valid_values):
+        raise ValidationError(f"“{label}”配置无效，请返回排产参数页重新选择。", field=field)
+    return text
+
+
+def _require_float(value: Any, *, field: str, min_value: float) -> float:
+    return float(parse_required_float(value, field=field, min_value=min_value))
+
+
+def _require_int(value: Any, *, field: str, min_value: int) -> int:
+    return int(parse_required_int(value, field=field, min_value=min_value))
+
+
+def _normalized_choice_values(values: Any) -> Tuple[str, ...]:
+    if not isinstance(values, (list, tuple)):
+        return ()
+    out: List[str] = []
+    seen = set()
+    for item in values:
+        text = str(item or "").strip().lower()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return tuple(out)
+
+
+def _effective_choice_values(field: str, *, cfg_svc: Any, allowlist_attr: Optional[str] = None) -> Tuple[str, ...]:
+    registry_values = tuple(str(item).strip().lower() for item in choices_for(field))
+    if not allowlist_attr:
+        return registry_values
+    narrowed = _normalized_choice_values(getattr(cfg_svc, allowlist_attr, ()))
+    if not narrowed:
+        return registry_values
+    narrowed_set = set(narrowed)
+    return tuple(item for item in registry_values if item in narrowed_set)
+
+
+def _record_optimizer_cfg_degradations(
+    snapshot: Any,
+    optimizer_algo_stats: Dict[str, Any],
+    *,
+    mapping: Dict[str, str],
+) -> None:
+    degradation_events = getattr(snapshot, "degradation_events", ()) or ()
+    degraded_fields = {
+        str((event or {}).get("field") or "").strip()
+        for event in degradation_events
+        if isinstance(event, dict)
+    }
+    for config_field, counter_key in mapping.items():
+        if config_field in degraded_fields:
+            increment_counter(optimizer_algo_stats, counter_key, bucket="param_fallbacks")
+
+
 def _init_seen_hashes(cur_order: List[str], best: Optional[Dict[str, Any]]) -> Optional[set]:
     if len(cur_order) < 10:
         return None
@@ -109,6 +181,15 @@ def _init_seen_hashes(cur_order: List[str], best: Optional[Dict[str, Any]]) -> O
         if best_order:
             seen_hashes.add(best_order)
     return seen_hashes
+
+
+def _raise_invalid_seed_results_error(*, invalid_seed_count: int, invalid_seed_samples: List[Dict[str, Any]]) -> None:
+    exc = ValidationError("种子排产结果中包含无效记录。", field="seed_results")
+    exc.details = dict(exc.details or {})
+    exc.details["reason"] = "invalid_seed_results"
+    exc.details["invalid_seed_count"] = int(invalid_seed_count)
+    exc.details["invalid_seed_samples"] = list(invalid_seed_samples)
+    raise exc
 
 
 def _run_local_search(
@@ -246,6 +327,7 @@ def _run_local_search(
                             "strategy": used_strat.value,
                             "dispatch_mode": cur_dispatch_mode,
                             "dispatch_rule": cur_dispatch_rule,
+                            "used_params": dict(used_params or {}),
                             "score": list(score),
                             "failed_ops": int(summ.failed_ops),
                             "algo_stats": algo_stats,
@@ -295,53 +377,41 @@ def optimize_schedule(
 
     说明：为保证兼容，本函数尽量保持与原 `ScheduleService.run_schedule()` 相同的口径与留痕结构。
     """
-    cfg_snapshot = cfg.to_dict() if hasattr(cfg, "to_dict") else (cfg if isinstance(cfg, dict) else None)
-    scheduler = GreedyScheduler(calendar_service=calendar_service, config_service=cfg_snapshot, logger=logger)
-    from core.algorithms.greedy.config_adapter import cfg_get
-
-    def _cfg_value(key: str, default: Any = None) -> Any:
-        source = cfg_snapshot if cfg_snapshot is not None else cfg
-        return cfg_get(source, key, default)
-
-    def _norm_text(value: Any, default: str) -> str:
-        text = str(value if value is not None else default).strip().lower()
-        return text or str(default).strip().lower()
+    cfg = ensure_schedule_config_snapshot(
+        cfg,
+        strict_mode=bool(strict_mode),
+        source="scheduler.optimize_schedule",
+    )
+    scheduler = GreedyScheduler(calendar_service=calendar_service, config_service=cfg, logger=logger)
 
     optimizer_algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
-    strategy_enum: SortStrategy = parse_strategy(_cfg_value("sort_strategy", None), default=SortStrategy.PRIORITY_FIRST)
+    valid_strategies = _effective_choice_values("sort_strategy", cfg_svc=cfg_svc, allowlist_attr="VALID_STRATEGIES")
+    valid_dispatch_modes = _effective_choice_values("dispatch_mode", cfg_svc=cfg_svc, allowlist_attr="VALID_DISPATCH_MODES")
+    valid_dispatch_rules = _effective_choice_values("dispatch_rule", cfg_svc=cfg_svc, allowlist_attr="VALID_DISPATCH_RULES")
+    valid_objectives = _effective_choice_values("objective", cfg_svc=cfg_svc, allowlist_attr="VALID_OBJECTIVES")
+    valid_algo_modes = _effective_choice_values("algo_mode", cfg_svc=cfg_svc, allowlist_attr="VALID_ALGO_MODES")
+
+    strategy_enum = SortStrategy(_require_choice(cfg.sort_strategy, field="sort_strategy", valid_values=valid_strategies))
+    if strategy_enum == SortStrategy.WEIGHTED:
+        _record_optimizer_cfg_degradations(
+            cfg,
+            optimizer_algo_stats,
+            mapping={
+                "priority_weight": "optimizer_priority_weight_defaulted_count",
+                "due_weight": "optimizer_due_weight_defaulted_count",
+            },
+        )
 
     strategy_params: Optional[Dict[str, Any]] = None
     if strategy_enum == SortStrategy.WEIGHTED:
         strategy_params = {
-            "priority_weight": _cfg_float(
-                _cfg_value,
-                "priority_weight",
-                0.4,
-                strict_mode=bool(strict_mode),
-                algo_stats=optimizer_algo_stats,
-                min_value=0.0,
-            ),
-            "due_weight": _cfg_float(
-                _cfg_value,
-                "due_weight",
-                0.5,
-                strict_mode=bool(strict_mode),
-                algo_stats=optimizer_algo_stats,
-                min_value=0.0,
-            ),
+            "priority_weight": _require_float(cfg.priority_weight, field="priority_weight", min_value=0.0),
+            "due_weight": _require_float(cfg.due_weight, field="due_weight", min_value=0.0),
         }
 
-    algo_mode = _norm_text(_cfg_value("algo_mode", "greedy"), "greedy")
-    objective_name = _norm_text(_cfg_value("objective", "min_overdue"), "min_overdue")
-    time_budget_seconds = _cfg_int(
-        _cfg_value,
-        "time_budget_seconds",
-        20,
-        strict_mode=bool(strict_mode),
-        algo_stats=optimizer_algo_stats,
-        min_value=1,
-        min_violation_fallback=1,
-    )
+    algo_mode = _require_choice(cfg.algo_mode, field="algo_mode", valid_values=valid_algo_modes)
+    objective_name = _require_choice(cfg.objective, field="objective", valid_values=valid_objectives)
+    time_budget_seconds = _require_int(cfg.time_budget_seconds, field="time_budget_seconds", min_value=1)
 
     normalized_batches_for_sort = build_normalized_batches_map(batches)
 
@@ -353,26 +423,6 @@ def optimize_schedule(
         )
         sorter0 = StrategyFactory.create(strategy0, **(params or {}))
         return [item.batch_id for item in sorter0.sort(batch_for_sort, base_date=start_dt.date())]
-
-    def _cfg_choices(name: str, default: Tuple[str, ...]) -> List[str]:
-        raw = getattr(cfg_svc, name, default)
-        if not isinstance(raw, (list, tuple)):
-            raw = [raw]
-        out: List[str] = []
-        seen = set()
-        for item in raw:
-            text = str(item or "").strip().lower()
-            if not text or text in seen:
-                continue
-            seen.add(text)
-            out.append(text)
-        if out:
-            return out
-        return [str(item).strip().lower() for item in default]
-
-    valid_strategies = _cfg_choices("VALID_STRATEGIES", ("priority_first", "due_date_first", "weighted", "fifo"))
-    valid_dispatch_modes = _cfg_choices("VALID_DISPATCH_MODES", ("batch_order", "sgs"))
-    valid_dispatch_rules = _cfg_choices("VALID_DISPATCH_RULES", ("slack", "cr", "atc"))
 
     current_key = str(strategy_enum.value)
     if algo_mode == "improve":
@@ -395,8 +445,20 @@ def optimize_schedule(
         for idx, item in enumerate(seed_results):
             seed_attempted += 1
             try:
+                start_time = None
+                end_time = None
                 if not isinstance(item, dict):
-                    raise TypeError(f"seed_results[{idx}] 不是 dict（实际={type(item).__name__}）")
+                    raise TypeError(f"第 {idx + 1} 条种子排产结果不是字典（实际类型：{type(item).__name__}）。")
+                start_time = item.get("start_time")
+                end_time = item.get("end_time")
+                if start_time is None or end_time is None:
+                    raise TypeError(f"第 {idx + 1} 条种子排产结果缺少开始时间或结束时间。")
+                try:
+                    valid_time_range = start_time < end_time
+                except Exception as exc:
+                    raise TypeError(f"第 {idx + 1} 条种子排产结果的时间区间无效：{exc}") from exc
+                if not valid_time_range:
+                    raise TypeError(f"第 {idx + 1} 条种子排产结果的开始时间必须早于结束时间。")
                 seed_sr_list.append(
                     ScheduleResult(
                         op_id=int(item.get("op_id") or 0),
@@ -405,8 +467,8 @@ def optimize_schedule(
                         seq=int(item.get("seq") or 0),
                         machine_id=(str(item.get("machine_id") or "") or None),
                         operator_id=(str(item.get("operator_id") or "") or None),
-                        start_time=item.get("start_time"),
-                        end_time=item.get("end_time"),
+                        start_time=start_time,
+                        end_time=end_time,
                         source=str(item.get("source") or INTERNAL),
                         op_type_name=(str(item.get("op_type_name") or "") or None),
                     )
@@ -432,16 +494,17 @@ def optimize_schedule(
                     invalid_seed_samples.append({"index": int(idx), "error": str(exc), "sample": sample})
                 continue
         increment_counter(optimizer_algo_stats, "optimizer_seed_result_invalid_count", invalid_seed_count)
-        if invalid_seed_count > 0 and logger is not None:
-            try:
-                logger.warning(
-                    f"seed_results 转换失败已忽略 {invalid_seed_count} 条（尝试 {seed_attempted}，成功 {len(seed_sr_list)}）。样例：{invalid_seed_samples}"
-                )
-            except Exception:
-                _ = None
+        if invalid_seed_count > 0:
+            optimizer_algo_stats.setdefault("fallback_samples", {})
+            optimizer_algo_stats["fallback_samples"]["optimizer_seed_result_invalid_samples"] = list(invalid_seed_samples)
+        if invalid_seed_count > 0:
+            _raise_invalid_seed_results_error(
+                invalid_seed_count=invalid_seed_count,
+                invalid_seed_samples=invalid_seed_samples,
+            )
 
-    dispatch_mode_cfg = _norm_text(_cfg_value("dispatch_mode", None), "batch_order")
-    dispatch_rule_cfg = _norm_text(_cfg_value("dispatch_rule", None), "slack")
+    dispatch_mode_cfg = _require_choice(cfg.dispatch_mode, field="dispatch_mode", valid_values=valid_dispatch_modes)
+    dispatch_rule_cfg = _require_choice(cfg.dispatch_rule, field="dispatch_rule", valid_values=valid_dispatch_rules)
     if algo_mode == "improve":
         dispatch_modes = [dispatch_mode_cfg] + [item for item in valid_dispatch_modes if item != dispatch_mode_cfg]
     else:

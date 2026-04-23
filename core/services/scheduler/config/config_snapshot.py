@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
-from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
-from core.services.common.field_parse import parse_field_float, parse_field_int
+from core.services.common.degradation import (
+    DegradationCollector,
+    DegradationEvent,
+    degradation_events_to_dicts,
+)
 
-from ..number_utils import to_yes_no
+from .config_field_spec import (
+    MISSING_POLICY_ERROR,
+    MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
+    coerce_config_field,
+    default_snapshot_values,
+    list_config_fields,
+)
 
 
 @dataclass
@@ -29,21 +38,23 @@ class ScheduleConfigSnapshot:
     objective: str
     freeze_window_enabled: str
     freeze_window_days: int
+    auto_assign_persist: str = "yes"
     degradation_events: Tuple[Dict[str, Any], ...] = field(default_factory=tuple, repr=False)
     degradation_counters: Dict[str, int] = field(default_factory=dict, repr=False)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "sort_strategy": self.sort_strategy,
-            "priority_weight": self.priority_weight,
-            "due_weight": self.due_weight,
-            "ready_weight": self.ready_weight,
+            "priority_weight": float(self.priority_weight),
+            "due_weight": float(self.due_weight),
+            "ready_weight": float(self.ready_weight),
             "holiday_default_efficiency": float(self.holiday_default_efficiency),
             "enforce_ready_default": self.enforce_ready_default,
             "prefer_primary_skill": self.prefer_primary_skill,
             "dispatch_mode": self.dispatch_mode,
             "dispatch_rule": self.dispatch_rule,
             "auto_assign_enabled": self.auto_assign_enabled,
+            "auto_assign_persist": self.auto_assign_persist,
             "ortools_enabled": self.ortools_enabled,
             "ortools_time_limit_seconds": int(self.ortools_time_limit_seconds),
             "algo_mode": self.algo_mode,
@@ -54,152 +65,251 @@ class ScheduleConfigSnapshot:
         }
 
 
-def _normalize_valid_texts(values: Tuple[str, ...]) -> Tuple[str, ...]:
-    out = []
-    seen = set()
-    for item in values or ():
-        text = str(item).strip().lower()
-        if not text or text in seen:
+def _read_runtime_cfg_raw_value(cfg: Any, key: str) -> Tuple[bool, Any]:
+    if cfg is None:
+        return True, None
+    if isinstance(cfg, dict):
+        if key in cfg:
+            return False, cfg.get(key)
+        return True, None
+
+    raw_missing = object()
+    try:
+        value = getattr(cfg, key, raw_missing)
+    except ValidationError:
+        raise
+    except Exception as exc:
+        raise _runtime_cfg_read_error(key, exc) from exc
+    if value is raw_missing:
+        missing, value = _read_runtime_cfg_mapping_like_value(cfg, key, raw_missing)
+        if not missing:
+            return False, value
+        return True, None
+    return False, value
+
+
+def _runtime_cfg_read_error(key: str, exc: Exception) -> ValidationError:
+    return ValidationError(f"读取运行期配置字段“{key}”失败：{exc}", field=key)
+
+
+def _read_runtime_cfg_mapping_like_value(cfg: Any, key: str, raw_missing: object) -> Tuple[bool, Any]:
+    getter = getattr(cfg, "get", None)
+    if not callable(getter):
+        return True, None
+    try:
+        value = getter(key, raw_missing)
+    except TypeError:
+        value = _read_runtime_cfg_mapping_like_value_without_default(getter, key, raw_missing)
+    except KeyError:
+        value = raw_missing
+    except ValidationError:
+        raise
+    except Exception as exc:
+        raise _runtime_cfg_read_error(key, exc) from exc
+    if value is raw_missing:
+        return True, None
+    return False, value
+
+
+def _read_runtime_cfg_mapping_like_value_without_default(getter: Any, key: str, raw_missing: object) -> Any:
+    try:
+        return getter(key)
+    except KeyError:
+        return raw_missing
+    except ValidationError:
+        raise
+    except Exception as exc:
+        raise _runtime_cfg_read_error(key, exc) from exc
+
+
+def _coerce_degradation_event(raw: Any) -> Optional[DegradationEvent]:
+    if isinstance(raw, DegradationEvent):
+        return raw
+    if not isinstance(raw, dict):
+        return None
+
+    code = str(raw.get("code") or "").strip()
+    scope = str(raw.get("scope") or "").strip()
+    message = str(raw.get("message") or "").strip()
+    if not code or not scope or not message:
+        return None
+
+    field_value = raw.get("field")
+    field_text = str(field_value).strip() if field_value is not None else ""
+    sample_value = raw.get("sample")
+    try:
+        count = max(1, int(raw.get("count") or 1))
+    except Exception:
+        count = 1
+    return DegradationEvent(
+        code=code,
+        scope=scope,
+        field=field_text or None,
+        message=message,
+        count=count,
+        sample=None if sample_value is None else str(sample_value),
+    )
+
+
+def _seed_snapshot_degradation_collector(snapshot: ScheduleConfigSnapshot) -> DegradationCollector:
+    collector = DegradationCollector()
+    for raw in getattr(snapshot, "degradation_events", ()) or ():
+        event = _coerce_degradation_event(raw)
+        if event is not None:
+            collector.add(event)
+    return collector
+
+
+def _merge_degradation_counters(*counter_maps: Any) -> Dict[str, int]:
+    merged: Dict[str, int] = {}
+    for counter_map in counter_maps:
+        if not isinstance(counter_map, dict):
             continue
-        seen.add(text)
-        out.append(text)
-    return tuple(out)
+        for key, raw_value in counter_map.items():
+            text = str(key or "").strip()
+            if not text:
+                continue
+            try:
+                count = int(raw_value)
+            except Exception:
+                continue
+            if count <= 0:
+                continue
+            merged[text] = max(int(merged.get(text) or 0), count)
+    return merged
 
 
-def _format_choice_allow_text(valid_values: Tuple[str, ...]) -> str:
-    return " / ".join(valid_values) if valid_values else "<empty>"
-
-
-def _record_blank_choice_degradation(
-    collector: DegradationCollector,
+def _validate_present_runtime_cfg_fields(
+    cfg: Any,
     *,
-    scope: str,
-    field: str,
-    raw_value: Any,
-    fallback: str,
+    source: str,
 ) -> None:
-    collector.add(
-        code="blank_required",
-        scope=scope,
-        field=field,
-        message=f"字段“{field}”为空，已按兼容读取回退为 {fallback}。",
-        sample=repr(raw_value),
+    default_map = default_snapshot_values()
+    for spec in list_config_fields():
+        missing, raw = _read_runtime_cfg_raw_value(cfg, spec.key)
+        if missing:
+            continue
+        coerce_config_field(
+            spec.key,
+            raw,
+            strict_mode=True,
+            source=source,
+            collector=DegradationCollector(),
+            missing=False,
+            fallback=default_map[spec.key],
+            missing_policy=MISSING_POLICY_ERROR,
+        )
+
+
+def _build_schedule_config_snapshot_from_runtime_cfg(
+    cfg: Any,
+    *,
+    strict_mode: bool,
+    source: str,
+) -> ScheduleConfigSnapshot:
+    if bool(strict_mode):
+        # Strict mode should surface invalid explicit inputs before unrelated
+        # missing defaults on raw dict/plain-object configs.
+        _validate_present_runtime_cfg_fields(
+            cfg,
+            source=source,
+        )
+    collector = (
+        _seed_snapshot_degradation_collector(cfg)
+        if isinstance(cfg, ScheduleConfigSnapshot)
+        else DegradationCollector()
     )
+    default_map = default_snapshot_values()
+    values: Dict[str, Any] = {}
 
+    for spec in list_config_fields():
+        missing, raw = _read_runtime_cfg_raw_value(cfg, spec.key)
+        values[spec.key] = coerce_config_field(
+            spec.key,
+            raw,
+            strict_mode=bool(strict_mode),
+            source=source,
+            collector=collector,
+            missing=missing,
+            fallback=default_map[spec.key],
+            missing_policy=(MISSING_POLICY_ERROR if bool(strict_mode) else MISSING_POLICY_FALLBACK_WITH_DEGRADATION),
+        )
 
-def _record_invalid_choice_degradation(
-    collector: DegradationCollector,
-    *,
-    scope: str,
-    field: str,
-    raw_value: Any,
-    fallback: str,
-    valid_values: Tuple[str, ...],
-) -> None:
-    collector.add(
-        code="invalid_choice",
-        scope=scope,
-        field=field,
-        message=(
-            f"字段“{field}”取值不合法（当前值：{raw_value!r}，允许值：{_format_choice_allow_text(valid_values)}），"
-            f"已按兼容读取回退为 {fallback}。"
+    return ScheduleConfigSnapshot(
+        sort_strategy=str(values["sort_strategy"]),
+        priority_weight=float(values["priority_weight"]),
+        due_weight=float(values["due_weight"]),
+        ready_weight=float(values["ready_weight"]),
+        holiday_default_efficiency=float(values["holiday_default_efficiency"]),
+        enforce_ready_default=str(values["enforce_ready_default"]),
+        prefer_primary_skill=str(values["prefer_primary_skill"]),
+        dispatch_mode=str(values["dispatch_mode"]),
+        dispatch_rule=str(values["dispatch_rule"]),
+        auto_assign_enabled=str(values["auto_assign_enabled"]),
+        auto_assign_persist=str(values["auto_assign_persist"]),
+        ortools_enabled=str(values["ortools_enabled"]),
+        ortools_time_limit_seconds=int(values["ortools_time_limit_seconds"]),
+        algo_mode=str(values["algo_mode"]),
+        time_budget_seconds=int(values["time_budget_seconds"]),
+        objective=str(values["objective"]),
+        freeze_window_enabled=str(values["freeze_window_enabled"]),
+        freeze_window_days=int(values["freeze_window_days"]),
+        degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
+        degradation_counters=_merge_degradation_counters(
+            getattr(cfg, "degradation_counters", None),
+            collector.to_counters(),
         ),
-        sample=repr(raw_value),
     )
 
 
-def _choice_with_degradation(
-    raw_value: Any,
+def coerce_runtime_config_field(
+    cfg: Any,
+    key: str,
     *,
-    field: str,
-    fallback: str,
-    valid_values: Tuple[str, ...],
     strict_mode: bool,
-    collector: DegradationCollector,
-    scope: str,
-    missing: bool = False,
-) -> str:
-    normalized_valid = _normalize_valid_texts(valid_values)
-    fallback_text = str(fallback or "").strip().lower()
-    if normalized_valid and fallback_text not in normalized_valid:
-        fallback_text = normalized_valid[0]
-    if missing:
-        return fallback_text
-
-    text = "" if raw_value is None else str(raw_value).strip().lower()
-    if strict_mode and text == "":
-        raise ValidationError(f"“{field}”不能为空", field=field)
-    if text == "":
-        _record_blank_choice_degradation(collector, scope=scope, field=field, raw_value=raw_value, fallback=fallback_text)
-        return fallback_text
-    if normalized_valid and text not in normalized_valid:
-        if strict_mode:
-            raise ValidationError(
-                f"“{field}”取值不合法：{raw_value!r}（允许值：{_format_choice_allow_text(normalized_valid)}）",
-                field=field,
-            )
-        _record_invalid_choice_degradation(
-            collector,
-            scope=scope,
-            field=field,
-            raw_value=raw_value,
-            fallback=fallback_text,
-            valid_values=normalized_valid,
-        )
-        return fallback_text
-    return text if normalized_valid else fallback_text
+    source: str,
+    collector: Optional[DegradationCollector] = None,
+    missing_policy: str = MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
+) -> Any:
+    default_map = default_snapshot_values()
+    missing, raw = _read_runtime_cfg_raw_value(cfg, key)
+    active_collector = collector if collector is not None else DegradationCollector()
+    return coerce_config_field(
+        key,
+        raw,
+        strict_mode=bool(strict_mode),
+        source=source,
+        collector=active_collector,
+        missing=missing,
+        fallback=default_map[key],
+        missing_policy=missing_policy,
+    )
 
 
-def _yes_no_with_degradation(
-    raw_value: Any,
+def ensure_schedule_config_snapshot(
+    cfg: Any,
     *,
-    field: str,
-    fallback: str,
-    strict_mode: bool,
-    collector: DegradationCollector,
-    scope: str,
-    missing: bool = False,
-) -> str:
-    normalized_default = to_yes_no(fallback, default=fallback)
-    if missing:
-        return normalized_default
-
-    text = "" if raw_value is None else str(raw_value).strip().lower()
-    true_vals = {"yes", "y", "true", "1", "on"}
-    false_vals = {"no", "n", "false", "0", "off"}
-    if strict_mode and text == "":
-        raise ValidationError(f"“{field}”不能为空", field=field)
-    if text == "":
-        _record_blank_choice_degradation(collector, scope=scope, field=field, raw_value=raw_value, fallback=normalized_default)
-        return normalized_default
-    if text not in true_vals and text not in false_vals:
-        if strict_mode:
-            raise ValidationError(f"“{field}”取值不合法：{raw_value!r}（允许值：yes / no）", field=field)
-        _record_invalid_choice_degradation(
-            collector,
-            scope=scope,
-            field=field,
-            raw_value=raw_value,
-            fallback=normalized_default,
-            valid_values=("yes", "no"),
-        )
-        return normalized_default
-    return to_yes_no(raw_value, default=normalized_default)
+    strict_mode: bool = False,
+    source: str = "scheduler.runtime_config",
+) -> ScheduleConfigSnapshot:
+    return _build_schedule_config_snapshot_from_runtime_cfg(
+        cfg,
+        strict_mode=bool(strict_mode),
+        source=source,
+    )
 
 
 def build_schedule_config_snapshot(
     repo,
     *,
-    defaults: Dict[str, Any],
-    valid_strategies: Tuple[str, ...],
-    valid_dispatch_modes: Tuple[str, ...],
-    valid_dispatch_rules: Tuple[str, ...],
-    valid_algo_modes: Tuple[str, ...],
-    valid_objectives: Tuple[str, ...],
+    defaults: Optional[Dict[str, Any]] = None,
     strict_mode: bool = False,
 ) -> ScheduleConfigSnapshot:
     collector = DegradationCollector()
     raw_missing = object()
+    default_map = default_snapshot_values()
+    if isinstance(defaults, dict):
+        default_map.update(defaults)
 
     def _raise_repo_get_contract_error(key: str, record: Any) -> None:
         raise TypeError(
@@ -221,149 +331,61 @@ def build_schedule_config_snapshot(
             if config_value is not raw_missing:
                 return False, config_value
             _raise_repo_get_contract_error(key, record)
+
         raw = repo.get_value(key, default=raw_missing)
         if raw is raw_missing:
             return True, None
         return False, raw
 
-    def _read_repo_text_value(key: str, default_text: str) -> str:
-        missing, raw = _read_repo_raw_value(key)
-        if missing:
-            return str(default_text)
-        return "" if raw is None else str(raw)
+    if bool(strict_mode):
+        for spec in list_config_fields():
+            missing, raw = _read_repo_raw_value(spec.key)
+            if missing:
+                continue
+            coerce_config_field(
+                spec.key,
+                raw,
+                strict_mode=True,
+                source="scheduler.config_snapshot",
+                collector=DegradationCollector(),
+                missing=False,
+                fallback=default_map[spec.key],
+                missing_policy=MISSING_POLICY_ERROR,
+            )
 
-    def _choice(key: str, default: Any, valid: Tuple[str, ...], *, strict: bool = False) -> str:
-        missing, raw = _read_repo_raw_value(key)
-        return _choice_with_degradation(
+    values: Dict[str, Any] = {}
+    for spec in list_config_fields():
+        missing, raw = _read_repo_raw_value(spec.key)
+        values[spec.key] = coerce_config_field(
+            spec.key,
             raw,
-            field=key,
-            fallback=str(default or "").strip().lower(),
-            valid_values=valid,
-            strict_mode=bool(strict),
-            collector=collector,
-            scope="scheduler.config_snapshot",
-            missing=missing,
-        )
-
-    def _yes_no(key: str, default: str, *, strict: bool = False) -> str:
-        missing, raw = _read_repo_raw_value(key)
-        return _yes_no_with_degradation(
-            raw,
-            field=key,
-            fallback=str(default or "").strip().lower(),
-            strict_mode=bool(strict),
-            collector=collector,
-            scope="scheduler.config_snapshot",
-            missing=missing,
-        )
-
-    def _get_float(
-        key: str,
-        default: float,
-        *,
-        min_value: float | None = None,
-        min_inclusive: bool = True,
-    ) -> float:
-        raw = _read_repo_text_value(key, str(default))
-        return parse_field_float(
-            raw,
-            field=key,
             strict_mode=bool(strict_mode),
-            scope="scheduler.config_snapshot",
-            fallback=float(default),
+            source="scheduler.config_snapshot",
             collector=collector,
-            min_value=min_value,
-            min_inclusive=min_inclusive,
+            missing=missing,
+            fallback=default_map[spec.key],
+            missing_policy=(MISSING_POLICY_ERROR if bool(strict_mode) else MISSING_POLICY_FALLBACK_WITH_DEGRADATION),
         )
-
-    def _get_int(
-        key: str,
-        default: int,
-        *,
-        min_value: int | None = None,
-        min_violation_fallback: int | None = None,
-    ) -> int:
-        raw = _read_repo_text_value(key, str(default))
-        return parse_field_int(
-            raw,
-            field=key,
-            strict_mode=bool(strict_mode),
-            scope="scheduler.config_snapshot",
-            fallback=int(default),
-            collector=collector,
-            min_value=min_value,
-            min_violation_fallback=int(default if min_violation_fallback is None else min_violation_fallback),
-        )
-
-    strategy = _choice("sort_strategy", defaults["sort_strategy"], valid_strategies, strict=bool(strict_mode))
-    pw = _get_float("priority_weight", float(defaults["priority_weight"]), min_value=0.0)
-    dw = _get_float("due_weight", float(defaults["due_weight"]), min_value=0.0)
-    rw = _get_float("ready_weight", float(defaults["ready_weight"]), min_value=0.0)
-    hde = _get_float(
-        "holiday_default_efficiency",
-        float(defaults["holiday_default_efficiency"]),
-        min_value=0.0,
-        min_inclusive=False,
-    )
-
-    enforce_ready_default = _yes_no(
-        "enforce_ready_default",
-        str(defaults.get("enforce_ready_default", "no")),
-        strict=bool(strict_mode),
-    )
-    pref = _yes_no(
-        "prefer_primary_skill",
-        str(defaults.get("prefer_primary_skill", "no")),
-        strict=bool(strict_mode),
-    )
-
-    dm = _choice("dispatch_mode", defaults["dispatch_mode"], valid_dispatch_modes, strict=bool(strict_mode))
-    dr = _choice("dispatch_rule", defaults["dispatch_rule"], valid_dispatch_rules, strict=bool(strict_mode))
-
-    aa = _yes_no("auto_assign_enabled", str(defaults["auto_assign_enabled"]), strict=bool(strict_mode))
-    ort = _yes_no("ortools_enabled", str(defaults["ortools_enabled"]), strict=bool(strict_mode))
-    ort_limit = _get_int(
-        "ortools_time_limit_seconds",
-        int(defaults["ortools_time_limit_seconds"]),
-        min_value=1,
-        min_violation_fallback=1,
-    )
-
-    algo_mode = _choice("algo_mode", defaults["algo_mode"], valid_algo_modes, strict=bool(strict_mode))
-    obj = _choice("objective", defaults["objective"], valid_objectives, strict=bool(strict_mode))
-    time_budget = _get_int(
-        "time_budget_seconds",
-        int(defaults["time_budget_seconds"]),
-        min_value=1,
-        min_violation_fallback=1,
-    )
-
-    fw_enabled = _yes_no("freeze_window_enabled", str(defaults["freeze_window_enabled"]), strict=bool(strict_mode))
-    fw_days = _get_int(
-        "freeze_window_days",
-        int(defaults["freeze_window_days"]),
-        min_value=0,
-        min_violation_fallback=0,
-    )
 
     return ScheduleConfigSnapshot(
-        sort_strategy=strategy,
-        priority_weight=pw,
-        due_weight=dw,
-        ready_weight=rw,
-        holiday_default_efficiency=float(hde),
-        enforce_ready_default=enforce_ready_default,
-        prefer_primary_skill=pref,
-        dispatch_mode=dm,
-        dispatch_rule=dr,
-        auto_assign_enabled=aa,
-        ortools_enabled=ort,
-        ortools_time_limit_seconds=int(ort_limit),
-        algo_mode=algo_mode,
-        time_budget_seconds=int(time_budget),
-        objective=obj,
-        freeze_window_enabled=fw_enabled,
-        freeze_window_days=int(fw_days),
+        sort_strategy=str(values["sort_strategy"]),
+        priority_weight=float(values["priority_weight"]),
+        due_weight=float(values["due_weight"]),
+        ready_weight=float(values["ready_weight"]),
+        holiday_default_efficiency=float(values["holiday_default_efficiency"]),
+        enforce_ready_default=str(values["enforce_ready_default"]),
+        prefer_primary_skill=str(values["prefer_primary_skill"]),
+        dispatch_mode=str(values["dispatch_mode"]),
+        dispatch_rule=str(values["dispatch_rule"]),
+        auto_assign_enabled=str(values["auto_assign_enabled"]),
+        auto_assign_persist=str(values["auto_assign_persist"]),
+        ortools_enabled=str(values["ortools_enabled"]),
+        ortools_time_limit_seconds=int(values["ortools_time_limit_seconds"]),
+        algo_mode=str(values["algo_mode"]),
+        time_budget_seconds=int(values["time_budget_seconds"]),
+        objective=str(values["objective"]),
+        freeze_window_enabled=str(values["freeze_window_enabled"]),
+        freeze_window_days=int(values["freeze_window_days"]),
         degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
         degradation_counters=collector.to_counters(),
     )

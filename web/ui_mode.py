@@ -24,6 +24,7 @@ DEFAULT_UI_MODE = "v2"
 VALID_UI_MODES = ("v1", "v2")
 
 _EXT_KEY_V2_ENV = "ui_mode.v2_env"
+_EXT_KEY_V2_TEMPLATE_DIR = "ui_mode.v2_templates_dir"
 _EXT_KEY_V2_RENDER_FALLBACK_WARNED = "ui_mode.v2_render_fallback_warned"
 _BP_NAME_V2_STATIC = "ui_v2_static"
 
@@ -73,8 +74,7 @@ def _resolve_manual_endpoint(endpoint: Any = None) -> str:
         return ""
 
 
-def normalize_manual_src(raw: Any = None) -> Optional[str]:
-    text = ("" if raw is None else str(raw)).strip()
+def _normalize_relative_manual_src(text: str) -> Optional[str]:
     if not text or not text.startswith("/") or text.startswith("//"):
         return None
     if any(ch in text for ch in ("\r", "\n", "\x00", "\\")):
@@ -86,6 +86,37 @@ def normalize_manual_src(raw: Any = None) -> Optional[str]:
     if parts.scheme or parts.netloc or not parts.path.startswith("/"):
         return None
     return text
+
+
+def _same_origin_absolute_manual_src(raw: Any = None) -> Optional[str]:
+    if not has_request_context():
+        return None
+    text = ("" if raw is None else str(raw)).strip()
+    if not text or any(ch in text for ch in ("\r", "\n", "\x00", "\\")):
+        return None
+    try:
+        parsed = urlsplit(text)
+        current = urlsplit(str(request.host_url or ""))
+    except Exception:
+        return None
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    if parsed.scheme != current.scheme or parsed.netloc != current.netloc:
+        return None
+
+    candidate = parsed.path or "/"
+    if parsed.query:
+        candidate = f"{candidate}?{parsed.query}"
+    elif text.endswith("?"):
+        candidate = f"{candidate}?"
+    if parsed.fragment:
+        candidate = f"{candidate}#{parsed.fragment}"
+    return _normalize_relative_manual_src(candidate)
+
+
+def normalize_manual_src(raw: Any = None) -> Optional[str]:
+    text = ("" if raw is None else str(raw)).strip()
+    return _normalize_relative_manual_src(text) or _same_origin_absolute_manual_src(text)
 
 
 def _resolve_manual_src(src: Any = None) -> str:
@@ -170,6 +201,7 @@ def init_ui_mode(app, base_dir: str) -> None:
 
     # ---- V2 jinja overlay ----
     v2_templates_dir = os.path.join(str(base_dir), "web_new_test", "templates")
+    app.extensions[_EXT_KEY_V2_TEMPLATE_DIR] = os.path.normcase(os.path.abspath(v2_templates_dir))
     try:
         base_loader = app.jinja_loader
         v2_loader = FileSystemLoader(v2_templates_dir)
@@ -292,7 +324,7 @@ def _describe_template_name(template_name_or_list: Any) -> str:
         return str(template_name_or_list)
 
 
-def _warn_v2_render_fallback_once(app, *, template_name_or_list: Any) -> None:
+def _warn_v2_render_fallback_once(app, *, template_name_or_list: Any, reason: str) -> None:
     warned = bool(app.extensions.get(_EXT_KEY_V2_RENDER_FALLBACK_WARNED))
     if warned:
         return
@@ -303,13 +335,35 @@ def _warn_v2_render_fallback_once(app, *, template_name_or_list: Any) -> None:
         path = ""
     try:
         app.logger.warning(
-            "检测到 V2 模板运行期回退：mode=v2 but v2_env missing（template=%s, path=%s）。"
-            "可能原因：未重新打包 / overlay 创建失败 / 运行旧版本。",
+            "检测到 V2 模板运行期回退：%s（template=%s, path=%s）。"
+            "可能原因：未重新打包 / overlay 创建失败 / V2 单页模板缺失 / 运行旧版本。",
+            str(reason or "").strip() or "mode=v2 but v2 fallback triggered",
             _describe_template_name(template_name_or_list),
             path,
         )
     except Exception:
         pass
+
+
+def _resolve_template_source(app, *, mode: str, template: Any, v2_env_missing: bool) -> str:
+    if str(mode or "").strip().lower() != "v2":
+        return "base"
+    if v2_env_missing:
+        return "base_fallback"
+
+    filename = str(getattr(template, "filename", "") or "").strip()
+    if not filename:
+        return "v2"
+
+    try:
+        normalized_filename = os.path.normcase(os.path.abspath(filename))
+    except Exception:
+        return "v2"
+
+    v2_root = str(app.extensions.get(_EXT_KEY_V2_TEMPLATE_DIR) or "").strip()
+    if v2_root and (normalized_filename == v2_root or normalized_filename.startswith(v2_root + os.sep)):
+        return "v2"
+    return "base_fallback"
 
 
 def safe_url_for(endpoint: str, **values: Any) -> Optional[str]:
@@ -399,23 +453,17 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
             env = app.jinja_env
             ui_template_env = "v1_fallback"
             ui_template_env_degraded = True
-            _warn_v2_render_fallback_once(app, template_name_or_list=template_name_or_list)
+            v2_env_missing = True
         else:
             env = v2_env
             ui_template_env = "v2"
             ui_template_env_degraded = False
+            v2_env_missing = False
     else:
         env = app.jinja_env
         ui_template_env = "v1"
         ui_template_env_degraded = False
-
-    context.setdefault("ui_template_env", ui_template_env)
-    context.setdefault("ui_template_env_degraded", ui_template_env_degraded)
-    try:
-        g.ui_template_env = ui_template_env
-        g.ui_template_env_degraded = ui_template_env_degraded
-    except Exception:
-        pass
+        v2_env_missing = False
 
     # 同时写入 env.globals：避免某些模板渲染路径不走 context 注入
     try:
@@ -435,5 +483,29 @@ def render_ui_template(template_name_or_list, **context: Any) -> str:
         )
 
     template = env.get_or_select_template(template_name_or_list)
+    ui_template_source = _resolve_template_source(
+        app,
+        mode=mode,
+        template=template,
+        v2_env_missing=bool(v2_env_missing),
+    )
+    if mode == "v2" and ui_template_source == "base_fallback":
+        ui_template_env_degraded = True
+        fallback_reason = "mode=v2 but v2_env missing" if v2_env_missing else "mode=v2 but template resolved via base loader"
+        _warn_v2_render_fallback_once(
+            app,
+            template_name_or_list=template_name_or_list,
+            reason=fallback_reason,
+        )
+
+    context.setdefault("ui_template_env", ui_template_env)
+    context.setdefault("ui_template_env_degraded", ui_template_env_degraded)
+    context.setdefault("ui_template_source", ui_template_source)
+    try:
+        g.ui_template_env = context.get("ui_template_env")
+        g.ui_template_env_degraded = bool(context.get("ui_template_env_degraded"))
+        g.ui_template_source = context.get("ui_template_source")
+    except Exception:
+        pass
     return template.render(context)
 

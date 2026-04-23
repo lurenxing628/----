@@ -38,6 +38,7 @@ def _default_snapshot_kwargs():
         "dispatch_mode": "batch_order",
         "dispatch_rule": "slack",
         "auto_assign_enabled": "no",
+        "auto_assign_persist": "yes",
         "ortools_enabled": "no",
         "ortools_time_limit_seconds": 10,
         "algo_mode": "greedy",
@@ -72,22 +73,17 @@ def main() -> None:
     from core.services.scheduler.config_validator import normalize_preset_snapshot
 
     defaults = _default_snapshot_kwargs()
-    valid_strategies = ("priority_first", "due_first", "weighted")
-    valid_dispatch_modes = ("batch_order", "sgs")
-    valid_dispatch_rules = ("slack", "cr", "atc")
-    valid_algo_modes = ("greedy", "improve")
-    valid_objectives = ("min_overdue", "balanced")
+
+    def _config_snapshot(**overrides):
+        data = dict(defaults)
+        data.update(overrides)
+        return ScheduleConfigSnapshot(**data)
 
     _expect_validation(
         "config_snapshot.dispatch_mode",
         lambda: build_schedule_config_snapshot(
             _StubRepo({"dispatch_mode": "bad_mode"}),
             defaults=defaults,
-            valid_strategies=valid_strategies,
-            valid_dispatch_modes=valid_dispatch_modes,
-            valid_dispatch_rules=valid_dispatch_rules,
-            valid_algo_modes=valid_algo_modes,
-            valid_objectives=valid_objectives,
             strict_mode=True,
         ),
         "dispatch_mode",
@@ -99,11 +95,6 @@ def main() -> None:
         lambda: normalize_preset_snapshot(
             {"dispatch_rule": "bad_rule"},
             base=base,
-            valid_strategies=valid_strategies,
-            valid_dispatch_modes=valid_dispatch_modes,
-            valid_dispatch_rules=valid_dispatch_rules,
-            valid_algo_modes=valid_algo_modes,
-            valid_objectives=valid_objectives,
             strict_mode=True,
         ),
         "dispatch_rule",
@@ -112,12 +103,12 @@ def main() -> None:
     _expect_validation(
         "resolve_schedule_params.sort_strategy.blank",
         lambda: resolve_schedule_params(
-            config={
-                "sort_strategy": "   ",
-                "dispatch_mode": "sgs",
-                "dispatch_rule": "slack",
-                "auto_assign_enabled": "no",
-            },
+            config=_config_snapshot(
+                sort_strategy="   ",
+                dispatch_mode="sgs",
+                dispatch_rule="slack",
+                auto_assign_enabled="no",
+            ),
             strategy=None,
             strategy_params=None,
             start_dt=None,
@@ -132,12 +123,12 @@ def main() -> None:
     _expect_validation(
         "resolve_schedule_params.dispatch_mode.blank",
         lambda: resolve_schedule_params(
-            config={
-                "sort_strategy": "priority_first",
-                "dispatch_mode": "   ",
-                "dispatch_rule": "slack",
-                "auto_assign_enabled": "no",
-            },
+            config=_config_snapshot(
+                sort_strategy="priority_first",
+                dispatch_mode="   ",
+                dispatch_rule="slack",
+                auto_assign_enabled="no",
+            ),
             strategy=None,
             strategy_params=None,
             start_dt=None,
@@ -152,12 +143,12 @@ def main() -> None:
     _expect_validation(
         "resolve_schedule_params.dispatch_rule.blank",
         lambda: resolve_schedule_params(
-            config={
-                "sort_strategy": "priority_first",
-                "dispatch_mode": "sgs",
-                "dispatch_rule": "   ",
-                "auto_assign_enabled": "no",
-            },
+            config=_config_snapshot(
+                sort_strategy="priority_first",
+                dispatch_mode="sgs",
+                dispatch_rule="   ",
+                auto_assign_enabled="no",
+            ),
             strategy=None,
             strategy_params=None,
             start_dt=None,
@@ -172,12 +163,12 @@ def main() -> None:
     _expect_validation(
         "resolve_schedule_params.auto_assign_enabled.blank",
         lambda: resolve_schedule_params(
-            config={
-                "sort_strategy": "priority_first",
-                "dispatch_mode": "sgs",
-                "dispatch_rule": "slack",
-                "auto_assign_enabled": "   ",
-            },
+            config=_config_snapshot(
+                sort_strategy="priority_first",
+                dispatch_mode="sgs",
+                dispatch_rule="slack",
+                auto_assign_enabled="   ",
+            ),
             strategy=None,
             strategy_params=None,
             start_dt=None,
@@ -193,12 +184,12 @@ def main() -> None:
     _expect_validation(
         "resolve_schedule_params.auto_assign_enabled",
         lambda: resolve_schedule_params(
-            config={
-                "sort_strategy": "priority_first",
-                "dispatch_mode": "sgs",
-                "dispatch_rule": "slack",
-                "auto_assign_enabled": "maybe",
-            },
+            config=_config_snapshot(
+                sort_strategy="priority_first",
+                dispatch_mode="sgs",
+                dispatch_rule="slack",
+                auto_assign_enabled="maybe",
+            ),
             strategy=None,
             strategy_params=None,
             start_dt=None,

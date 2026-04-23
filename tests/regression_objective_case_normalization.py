@@ -79,6 +79,7 @@ def main() -> None:
         dispatch_mode="batch_order",
         dispatch_rule="slack",
         auto_assign_enabled="yes",
+        auto_assign_persist="yes",
         ortools_enabled="no",
         ortools_time_limit_seconds=5,
         algo_mode="greedy",
@@ -96,11 +97,6 @@ def main() -> None:
             "objective": " MIN_CHANGEOVER ",
         },
         base=base,
-        valid_strategies=VALID_STRATEGIES,
-        valid_dispatch_modes=VALID_DISPATCH_MODES,
-        valid_dispatch_rules=VALID_DISPATCH_RULES,
-        valid_algo_modes=VALID_ALGO_MODES,
-        valid_objectives=VALID_OBJECTIVES,
     )
     assert normalized.sort_strategy == "weighted", f"preset sort_strategy 未归一化：{normalized.sort_strategy!r}"
     assert normalized.dispatch_mode == "sgs", f"preset dispatch_mode 未归一化：{normalized.dispatch_mode!r}"
@@ -117,11 +113,6 @@ def main() -> None:
             "objective": " MIN_CHANGEOVER ",
         },
         base=base,
-        valid_strategies=VALID_STRATEGIES_MIXED,
-        valid_dispatch_modes=VALID_DISPATCH_MODES_MIXED,
-        valid_dispatch_rules=VALID_DISPATCH_RULES_MIXED,
-        valid_algo_modes=VALID_ALGO_MODES_MIXED,
-        valid_objectives=VALID_OBJECTIVES_MIXED,
     )
     assert normalized_mixed_valid.sort_strategy == "weighted", (
         f"mixed valid preset sort_strategy 未归一化：{normalized_mixed_valid.sort_strategy!r}"
@@ -150,6 +141,7 @@ def main() -> None:
         "dispatch_mode": "batch_order",
         "dispatch_rule": "slack",
         "auto_assign_enabled": "yes",
+        "auto_assign_persist": "yes",
         "ortools_enabled": "no",
         "ortools_time_limit_seconds": 5,
         "algo_mode": "greedy",
@@ -170,11 +162,6 @@ def main() -> None:
     dirty_snap = build_schedule_config_snapshot(
         dirty_repo,
         defaults=defaults,
-        valid_strategies=VALID_STRATEGIES,
-        valid_dispatch_modes=VALID_DISPATCH_MODES,
-        valid_dispatch_rules=VALID_DISPATCH_RULES,
-        valid_algo_modes=VALID_ALGO_MODES,
-        valid_objectives=VALID_OBJECTIVES,
     )
     assert dirty_snap.sort_strategy == "weighted", f"脏 DB sort_strategy 未归一化：{dirty_snap.sort_strategy!r}"
     assert dirty_snap.dispatch_mode == "sgs", f"脏 DB dispatch_mode 未归一化：{dirty_snap.dispatch_mode!r}"
@@ -185,11 +172,6 @@ def main() -> None:
     dirty_snap_mixed_valid = build_schedule_config_snapshot(
         dirty_repo,
         defaults=defaults,
-        valid_strategies=VALID_STRATEGIES_MIXED,
-        valid_dispatch_modes=VALID_DISPATCH_MODES_MIXED,
-        valid_dispatch_rules=VALID_DISPATCH_RULES_MIXED,
-        valid_algo_modes=VALID_ALGO_MODES_MIXED,
-        valid_objectives=VALID_OBJECTIVES_MIXED,
     )
     assert dirty_snap_mixed_valid.sort_strategy == "weighted", (
         f"mixed valid 脏 DB sort_strategy 未归一化：{dirty_snap_mixed_valid.sort_strategy!r}"

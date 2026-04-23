@@ -8,7 +8,7 @@ from core.infrastructure.errors import ValidationError
 from core.services.report import ReportEngine
 from web.ui_mode import render_ui_template as render_template
 
-from .normalizers import normalize_version_or_latest
+from .normalizers import normalize_version_or_latest_fallback
 
 bp = Blueprint("reports", __name__)
 
@@ -39,12 +39,12 @@ def _export_version_or_latest(engine: ReportEngine) -> int:
     - 若无排产历史，latest_version() 可能为 0（保持现状）
     """
     latest = int(engine.latest_version() or 0)
-    return normalize_version_or_latest(request.args.get("version"), latest_version=latest)
+    return normalize_version_or_latest_fallback(request.args.get("version"), latest_version=latest)
 
 
 def _page_version_or_latest(engine: ReportEngine) -> int:
     latest = int(engine.latest_version() or 0)
-    return normalize_version_or_latest(request.args.get("version"), latest_version=latest)
+    return normalize_version_or_latest_fallback(request.args.get("version"), latest_version=latest)
 
 
 def _page_date_range_or_version_span(engine: ReportEngine, version: int, start_raw: str, end_raw: str):

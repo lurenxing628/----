@@ -7,6 +7,7 @@
 
   var $ = ns.$;
   var show = ns.show;
+  var reportClientError = ns.reportClientError;
   var str = ns.str;
   var escapeHtml = ns.escapeHtml;
   var norm = ns.norm;
@@ -19,10 +20,11 @@
   var statusKeyForTask = ns.statusKeyForTask;
   var colorForStatusKey = ns.colorForStatusKey;
   var getColor = ns.getColor;
-  var outlineApi = window.__APS_GANTT_OUTLINE__ || ns.outline;
+  var outlineApi = ns.outline;
 
   if (typeof $ !== "function") return;
   if (typeof show !== "function") return;
+  if (typeof reportClientError !== "function") return;
   if (typeof str !== "function") return;
   if (typeof escapeHtml !== "function") return;
   if (typeof norm !== "function") return;
@@ -30,17 +32,11 @@
   if (!outlineApi) return;
   if (!state || !_perfState) return;
 
-  var ensureCriticalOutlineNodes = outlineApi.ensureCriticalOutlineNodes;
-  var syncCriticalOutlineGeometry = outlineApi.syncCriticalOutlineGeometry;
-  var removeCriticalOutlineNodes = outlineApi.removeCriticalOutlineNodes;
+  var setCriticalOutlineEnabled = outlineApi.setCriticalOutlineEnabled;
   var installCriticalOutlineSyncAdapter = outlineApi.installCriticalOutlineSyncAdapter;
-  var syncAllCriticalOutlines = outlineApi.syncAllCriticalOutlines;
 
-  if (typeof ensureCriticalOutlineNodes !== "function") return;
-  if (typeof syncCriticalOutlineGeometry !== "function") return;
-  if (typeof removeCriticalOutlineNodes !== "function") return;
+  if (typeof setCriticalOutlineEnabled !== "function") return;
   if (typeof installCriticalOutlineSyncAdapter !== "function") return;
-  if (typeof syncAllCriticalOutlines !== "function") return;
 
   // ---- render/decorate cache (Win7 友好：减少不必要的全量重渲染) ----
   let _renderToken = 0; // 每次全量 render() + new Gantt() 递增
@@ -205,7 +201,10 @@
     const ccTotal = state.ccIdSet ? state.ccIdSet.size : 0;
     const ccVisible = Number(_perfState.ccVisibleCount || 0);
     const makespanEnd = norm(state.critical && state.critical.makespan_end) || "-";
-    const ccCacheText = (state.critical && state.critical.cache_hit === true) ? "命中" : "未命中";
+    const ccUnavailable = !!(state.critical && state.critical.available === false);
+    const ccCacheText = ccUnavailable
+      ? "不可用"
+      : ((state.critical && state.critical.cache_hit === true) ? "命中" : "未命中");
     const batchSamples = state.ui.colorMode === "batch" ? sampleBatchIds(3) : [];
 
     // 图例在纯视觉交互时会高频触发；digest 未变化则跳过 DOM 重建
@@ -294,7 +293,7 @@
           // ignore
         }
       });
-    } catch (_) {
+    } catch (err) {
       // ignore
     }
 
@@ -749,11 +748,7 @@
     const needFocus = forceAll || tokenChanged || _decorCache.focusBatch !== state.focusBatch;
     const needCC = forceAll || tokenChanged || _decorCache.highlightCC !== ui.highlightCC;
 
-    let ccWrappers = null;
-    if (needCC) {
-      _clearAllCriticalOutlines();
-      ccWrappers = [];
-    }
+    const renderedIds = [];
 
     for (let i = 0; i < wrapperList.length; i++) {
       const item = wrapperList[i];
@@ -776,11 +771,13 @@
       if (needCC) {
         const isCC = !!(ui.highlightCC && state.ccIdSet && state.ccIdSet.has(tid));
         w.classList.toggle("aps-critical", isCC);
-        if (ui.highlightCC && isCC && ccWrappers) ccWrappers.push(w);
+        setCriticalOutlineEnabled(w, isCC);
+        upsertCriticalBadge(w, false);
+        if (ui.highlightCC && isCC) renderedIds.push(tid);
       }
     }
 
-    if (needCC && ui.highlightCC && Array.isArray(ccWrappers) && ccWrappers.length > 0) {
+    if (false) {
       const renderedIds = [];
       for (let i = 0; i < ccWrappers.length; i++) {
         const w = ccWrappers[i];
@@ -792,9 +789,10 @@
         if (tid) renderedIds.push(tid);
       }
       _perfState.decorateRenderedIds = renderedIds;
-    } else if (needCC) {
+    } else if (false) {
       _perfState.decorateRenderedIds = [];
     }
+    _perfState.decorateRenderedIds = needCC ? renderedIds : [];
     if (needCC && !ui.highlightCC) {
       // 高亮关闭时：确保 class 也被移除（上面 toggle 已处理大部分；此处做一次兜底）
       try {
@@ -819,7 +817,6 @@
     if (updateLegendFlag) updateLegend();
   }
 
-  let _safeDecorateFallbacking = false;
   function safeDecorateDynamic(opts) {
     try {
       decorateDynamic(opts);
@@ -836,6 +833,15 @@
       } finally {
         _safeDecorateFallbacking = false;
       }
+    }
+  }
+
+  function safeDecorateDynamic(opts) {
+    try {
+      decorateDynamic(opts);
+    } catch (err) {
+      reportClientError("Gantt decorate failed", err);
+      throw err;
     }
   }
 
@@ -887,12 +893,6 @@
       view_mode: (state.ui && state.ui.viewMode) ? state.ui.viewMode : "Day",
       language: "zh",
       popup_trigger: "click",
-      on_date_change: function () {
-        _syncCriticalOutlinesAfterGeometryChange();
-      },
-      on_progress_change: function () {
-        _syncCriticalOutlinesAfterGeometryChange();
-      },
       on_click: function (task) {
         const meta = task && task.meta ? task.meta : {};
         const bid = norm(meta.batch_id);
@@ -955,11 +955,7 @@
     });
 
     state.gantt = gantt;
-    installCriticalOutlineSyncAdapter(gantt, {
-      isCriticalWrapper: function (wrapper) {
-        return !!(wrapper && wrapper.classList && wrapper.classList.contains("aps-critical"));
-      },
-    });
+    installCriticalOutlineSyncAdapter(gantt);
     scrollToAnchor(gantt);
     // new Gantt()：全量渲染 + 静态装饰 + 动态装饰（一次）
     _renderToken += 1;

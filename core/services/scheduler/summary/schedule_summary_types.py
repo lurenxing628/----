@@ -73,6 +73,7 @@ class FreezeState:
 class FallbackState:
     raw_stats: Dict[str, Any]
     fallback_counts: Dict[str, int]
+    fallback_samples: Dict[str, List[Dict[str, Any]]]
     param_fallbacks: Dict[str, int]
     legacy_external_days_defaulted_count: int
     ortools_warmstart_failed_count: int
