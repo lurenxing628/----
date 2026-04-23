@@ -1,12 +1,12 @@
 # Phase6（Scheduler：批次/工序/日历/配置）冒烟测试报告
 
-- 测试时间：2026-04-02 16:54:40
+- 测试时间：2026-04-19 01:21:51
 - Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
 - 项目根目录（自动识别）：`D:\Github\APS Test`
 
 ## 0. 测试环境
-- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_j8z915dv`
-- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_j8z915dv\aps_phase6_test.db`
+- 临时目录：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_zkwrc0tx`
+- 测试 DB：`C:\Users\LURENX~1\AppData\Local\Temp\aps_smoke_phase6_zkwrc0tx\aps_phase6_test.db`
 
 ## 1. 准备基础数据（工艺模板/资源）
 
@@ -33,8 +33,8 @@
 - merged 限制生效：该外部工序属于“合并周期”外部组，不能逐道设置周期。请在工艺管理中设置该组的合并周期（当前：3.0 天）。
 
 ## 6. 排产配置：默认值/更新/校验
-- 默认：{'sort_strategy': 'priority_first', 'priority_weight': 0.4, 'due_weight': 0.5, 'ready_weight': 0.1, 'holiday_default_efficiency': 0.8, 'enforce_ready_default': 'no', 'prefer_primary_skill': 'no', 'dispatch_mode': 'batch_order', 'dispatch_rule': 'slack', 'auto_assign_enabled': 'no', 'ortools_enabled': 'no', 'ortools_time_limit_seconds': 5, 'algo_mode': 'greedy', 'time_budget_seconds': 20, 'objective': 'min_overdue', 'freeze_window_enabled': 'no', 'freeze_window_days': 0}
-- 更新后：{'sort_strategy': 'weighted', 'priority_weight': 0.4, 'due_weight': 0.5, 'ready_weight': 0.1, 'holiday_default_efficiency': 0.8, 'enforce_ready_default': 'no', 'prefer_primary_skill': 'no', 'dispatch_mode': 'batch_order', 'dispatch_rule': 'slack', 'auto_assign_enabled': 'no', 'ortools_enabled': 'no', 'ortools_time_limit_seconds': 5, 'algo_mode': 'greedy', 'time_budget_seconds': 20, 'objective': 'min_overdue', 'freeze_window_enabled': 'no', 'freeze_window_days': 0}
+- 默认：{'sort_strategy': 'priority_first', 'priority_weight': 0.4, 'due_weight': 0.5, 'ready_weight': 0.1, 'holiday_default_efficiency': 0.8, 'enforce_ready_default': 'no', 'prefer_primary_skill': 'no', 'dispatch_mode': 'batch_order', 'dispatch_rule': 'slack', 'auto_assign_enabled': 'no', 'auto_assign_persist': 'yes', 'ortools_enabled': 'no', 'ortools_time_limit_seconds': 5, 'algo_mode': 'greedy', 'time_budget_seconds': 20, 'objective': 'min_overdue', 'freeze_window_enabled': 'no', 'freeze_window_days': 0}
+- 更新后：{'sort_strategy': 'weighted', 'priority_weight': 0.4, 'due_weight': 0.5, 'ready_weight': 0.1, 'holiday_default_efficiency': 0.8, 'enforce_ready_default': 'no', 'prefer_primary_skill': 'no', 'dispatch_mode': 'batch_order', 'dispatch_rule': 'slack', 'auto_assign_enabled': 'no', 'auto_assign_persist': 'yes', 'ortools_enabled': 'no', 'ortools_time_limit_seconds': 5, 'algo_mode': 'greedy', 'time_budget_seconds': 20, 'objective': 'min_overdue', 'freeze_window_enabled': 'no', 'freeze_window_days': 0}
 - 权重总和校验：权重总和应为 1（或 100%）
 
 ## 7. 工作日历：upsert + 工作时间计算
@@ -42,4 +42,4 @@
 
 ## 结论
 - 通过：Phase6（Scheduler 基础能力）冒烟测试通过（事务/工序补充/日历/配置）。
-- 总耗时：1168 ms
+- 总耗时：1301 ms

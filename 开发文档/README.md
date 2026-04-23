@@ -86,3 +86,16 @@ python scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields
 - 启动链基线已冻结到治理台账，后续优先做真实治理，不再重复搭基础设施。
 - `web/ui_mode.py` 已按 `startup_guard` / `render_bridge` 分 scope 落账；其中 `render_bridge` 条目继续留给 `SP09`。
 - 文档一致性检查已具备阻断语义，后续只需保持实现与速查表同步。
+## Pyright 闂ㄧ琛ュ厖
+
+```powershell
+python -m pyright --version
+python -m pyright -p pyrightconfig.gate.json
+python -m pyright -p pyrightconfig.json
+```
+
+- `pyright` 鐗堟湰鍙ｅ緞鍥哄畾涓?`==1.1.406`銆?
+- `.pre-commit-config.yaml` 褰撳墠浠嶅彧鎵ц `ruff`锛?`pyright` 鐢?`scripts/run_quality_gate.py` 鍜?CI 闃绘柇銆?
+- `scripts/run_quality_gate.py` 鍥哄畾椤哄簭宸叉墿灞曚负锛氳繍琛屾椂鍓嶇疆妫€鏌?-> `python -m ruff --version` -> `python -m pyright --version` -> `python -c "import radon"` -> `python -m ruff check` -> `python -m pyright -p pyrightconfig.gate.json` -> `python -m pytest -q tests/test_architecture_fitness.py` -> 鍚庣画鏃㈡湁鍥炲綊涓庨€熸煡琛ㄦ牳瀵广€?
+- `pyrightconfig.gate.json` 鍙鐩?`app.py`銆?`app_new_ui.py`銆?`config.py`銆?`core/`銆?`data/`銆?`web/` 涓绘摙閾撅紝鏄富閾?gate 鐨勫敮涓€绫诲瀷妫€鏌ュ彛寰勩€?
+- `pyrightconfig.json` 淇濈暀涓哄叏浠撶被鍨嬪€哄姟鐩樼偣鍏ュ彛锛屽寘鍚?`tests/` 鍜屽叾浠栬竟缂樿剼鏈潰锛屼笉鐩存帴浣滀负鏈疆纭棬绂併€?
