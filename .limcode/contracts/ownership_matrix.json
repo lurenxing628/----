@@ -1,0 +1,74 @@
+{
+  "sharedReadonlyFiles": [
+    "core/models/enums.py",
+    "schema.sql"
+  ],
+  "mainOnlyFiles": [
+    "core/models/enums.py",
+    "schema.sql",
+    ".gitignore"
+  ],
+  "workers": [
+    {
+      "name": "worker_tx",
+      "allowedFiles": [
+        "core/infrastructure/transaction.py",
+        "tests/regression_transaction_savepoint_nested.py"
+      ],
+      "forbiddenFiles": [
+        "core/algorithms/",
+        "core/models/",
+        "core/services/",
+        "core/infrastructure/migrations/"
+      ]
+    },
+    {
+      "name": "worker_algo",
+      "allowedFiles": [
+        "core/algorithms/dispatch_rules.py",
+        "core/algorithms/greedy/dispatch/sgs.py",
+        "tests/regression_sgs_atc_penalize_missing_resources.py",
+        "tests/regression_dispatch_rule_case_insensitive.py"
+      ],
+      "forbiddenFiles": [
+        "core/infrastructure/",
+        "core/models/",
+        "core/services/",
+        "core/infrastructure/migrations/"
+      ]
+    },
+    {
+      "name": "worker_models_route",
+      "allowedFiles": [
+        "core/models/op_type.py",
+        "core/models/part.py",
+        "core/models/operator_machine.py",
+        "core/services/process/route_parser.py",
+        "tests/regression_route_parser_op_type_category_case_insensitive.py"
+      ],
+      "forbiddenFiles": [
+        "core/infrastructure/",
+        "core/algorithms/",
+        "core/infrastructure/migrations/",
+        "core/services/scheduler/"
+      ]
+    },
+    {
+      "name": "worker_migrate_services",
+      "allowedFiles": [
+        "core/infrastructure/migrations/v4.py",
+        "tests/regression_migrate_v4_sanitize_enum_text_fields.py",
+        "core/services/scheduler/schedule_persistence.py",
+        "core/services/scheduler/operation_edit_service.py"
+      ],
+      "forbiddenFiles": [
+        "core/infrastructure/transaction.py",
+        "core/algorithms/",
+        "core/models/",
+        "core/services/process/",
+        "tests/"
+      ]
+    }
+  ]
+}
+

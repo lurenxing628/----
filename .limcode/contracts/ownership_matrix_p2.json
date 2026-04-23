@@ -1,0 +1,71 @@
+{
+  "sharedReadonlyFiles": [
+    "core/models/enums.py",
+    "schema.sql"
+  ],
+  "mainOnlyFiles": [
+    "core/models/enums.py",
+    "schema.sql",
+    ".gitignore"
+  ],
+  "workers": [
+    {
+      "name": "worker_parse",
+      "allowedFiles": [
+        "core/algorithms/sort_strategies.py",
+        "core/services/scheduler/schedule_optimizer.py",
+        "tests/regression_sort_strategy_case_insensitive.py"
+      ],
+      "forbiddenFiles": [
+        "core/algorithms/dispatch_rules.py",
+        "core/algorithms/evaluation.py",
+        "core/plugins/",
+        "core/infrastructure/",
+        "schema.sql"
+      ]
+    },
+    {
+      "name": "worker_priority",
+      "allowedFiles": [
+        "core/algorithms/priority_constants.py",
+        "core/algorithms/dispatch_rules.py",
+        "core/algorithms/evaluation.py",
+        "core/algorithms/sort_strategies.py"
+      ],
+      "forbiddenFiles": [
+        "core/plugins/",
+        "core/infrastructure/",
+        "schema.sql",
+        "core/services/"
+      ]
+    },
+    {
+      "name": "worker_metrics",
+      "allowedFiles": [
+        "core/algorithms/evaluation.py",
+        "tests/regression_metrics_horizon_semantics.py"
+      ],
+      "forbiddenFiles": [
+        "core/services/",
+        "core/plugins/",
+        "core/infrastructure/",
+        "schema.sql"
+      ]
+    },
+    {
+      "name": "worker_obs",
+      "allowedFiles": [
+        "core/services/scheduler/schedule_optimizer.py",
+        "core/plugins/manager.py",
+        "tests/regression_optimizer_ortools_logging_exc_info_safe.py",
+        "tests/regression_plugin_manager_error_trace_visible.py"
+      ],
+      "forbiddenFiles": [
+        "core/algorithms/",
+        "core/infrastructure/",
+        "schema.sql"
+      ]
+    }
+  ]
+}
+

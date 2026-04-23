@@ -1,0 +1,129 @@
+{
+  // 将本片段合并到工作区 `.vscode/settings.json`，或写入全局 VS Code 设置里的
+  // `limcode.toolsConfig.subagents`。
+  //
+  // 重要说明：
+  // 1. 每个原生子代理都必须绑定真实 `channel.channelId`
+  // 2. 模板默认 `enabled: false`，请在填好渠道后再启用
+  // 3. `.limcode/agents/*.md` 是更完整的角色正文源文件；这里给的是可直接落到 LimCode 设置里的精简版
+  "limcode.toolsConfig": {
+    "subagents": {
+      // 建议先保持 1，避免同一分支上的多个实现型子代理并发写文件。
+      "maxConcurrentAgents": 1,
+      "agents": [
+        {
+          // fuller source: .limcode/agents/plan-implementer.md
+          "type": "aps-plan-implementer",
+          "name": "APS 实施子代理",
+          "description": "按单任务边界做最小实现、验证与自查。",
+          "systemPrompt": "你是 APS 实施子代理。你只负责主代理交给你的一个任务。只在给定文件范围内做最小实现，不得接管整份 plan，不得静默扩大范围，不得再启动其他子代理。改代码前先写或确认失败用例，完成后必须运行任务要求的验证，并按固定结构返回：状态、改动文件、关键变更、已运行验证、自查、需要主代理处理的事项。",
+          "channel": {
+            "channelId": "__YOUR_CHANNEL_ID__"
+            // "modelId": "__OPTIONAL_MODEL_ID__"
+          },
+          "tools": {
+            "mode": "whitelist",
+            "list": [
+              "read_file",
+              "list_files",
+              "find_files",
+              "search_in_files",
+              "get_symbols",
+              "goto_definition",
+              "find_references",
+              "write_file",
+              "apply_diff",
+              "insert_code",
+              "delete_code",
+              "execute_command"
+            ]
+          },
+          "maxIterations": 12,
+          "maxRuntime": 600,
+          "enabled": false
+        },
+        {
+          // fuller source: .limcode/agents/spec-reviewer.md
+          "type": "aps-spec-reviewer",
+          "name": "APS 符合性审查子代理",
+          "description": "只判断实现是否符合 design / plan / 用户要求。",
+          "systemPrompt": "你是 APS 符合性审查子代理。你的唯一任务是判断实现是否按 design、plan 和用户要求做对。只检查漏需求、做多、与要求冲突、静默扩范围，不做风格偏好审查。结论只能是 PASS 或 FAIL，并给出逐条证据、问题汇总和建议。",
+          "channel": {
+            "channelId": "__YOUR_CHANNEL_ID__"
+            // "modelId": "__OPTIONAL_MODEL_ID__"
+          },
+          "tools": {
+            "mode": "whitelist",
+            "list": [
+              "read_file",
+              "list_files",
+              "find_files",
+              "search_in_files",
+              "get_symbols",
+              "goto_definition",
+              "find_references",
+              "history_search"
+            ]
+          },
+          "maxIterations": 8,
+          "maxRuntime": 300,
+          "enabled": false
+        },
+        {
+          // fuller source: .limcode/agents/code-quality-reviewer.md
+          "type": "aps-code-quality-reviewer",
+          "name": "APS 质量审查子代理",
+          "description": "在符合性通过后检查分层、测试、边界、复杂度与维护性。",
+          "systemPrompt": "你是 APS 质量审查子代理。你的前提是需求符合性已经通过。现在你只检查实现是否稳定、可维护、能安全进入下一步。重点看分层边界、测试质量、命名、复杂度、错误处理和联动完整性。结论只能是 PASS 或 FAIL，并按问题表输出严重度、位置、原因和建议。",
+          "channel": {
+            "channelId": "__YOUR_CHANNEL_ID__"
+            // "modelId": "__OPTIONAL_MODEL_ID__"
+          },
+          "tools": {
+            "mode": "whitelist",
+            "list": [
+              "read_file",
+              "list_files",
+              "find_files",
+              "search_in_files",
+              "get_symbols",
+              "goto_definition",
+              "find_references",
+              "history_search"
+            ]
+          },
+          "maxIterations": 10,
+          "maxRuntime": 300,
+          "enabled": false
+        },
+        {
+          // fuller source: .limcode/agents/code-reviewer.md
+          "type": "aps-code-reviewer",
+          "name": "APS 整体验收子代理",
+          "description": "对阶段性完成实现做独立整体验收。",
+          "systemPrompt": "你是 APS 整体验收子代理。你的任务不是改代码，而是对阶段性完成的实现做独立验收。必须先核对需求符合性，再核对代码质量，最后核对联动完整性。你是只读角色，只能基于证据给出 Ready、Needs changes 或 Escalate 结论，不得代替实现者修代码。",
+          "channel": {
+            "channelId": "__YOUR_CHANNEL_ID__"
+            // "modelId": "__OPTIONAL_MODEL_ID__"
+          },
+          "tools": {
+            "mode": "whitelist",
+            "list": [
+              "read_file",
+              "list_files",
+              "find_files",
+              "search_in_files",
+              "get_symbols",
+              "goto_definition",
+              "find_references",
+              "history_search"
+            ]
+          },
+          "maxIterations": 12,
+          "maxRuntime": 420,
+          "enabled": false
+        }
+      ]
+    }
+  }
+}

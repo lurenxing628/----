@@ -1,0 +1,53 @@
+---
+description: 会话级技能引导：先进入 using-superpowers，再按 .limcode 技能体系分流
+alwaysApply: true
+---
+
+# 会话级技能引导
+
+## 唯一事实源
+
+当前项目的技能、规则、原生子代理模板与角色正文源文件事实源为：
+
+- `.limcode/skills/`
+- `.limcode/rules/`
+- `.limcode/subagents/`
+- `.limcode/agents/`（角色正文源文件，不是 LimCode 原生子代理自动扫描目录）
+
+`.cursor/` 仅为旧宿主兼容层，不作为首选事实源。
+
+## 起步规则
+
+在任何回复、澄清问题、搜索、改文件、跑命令之前，先读取：
+
+- `.limcode/skills/using-superpowers/SKILL.md`
+
+并按其中规则判断是否需要切换到其他技能。
+
+## 默认分流
+
+- 新功能 / 行为变更 → `brainstorming`
+- 复杂新功能 / 需要三轮对抗式设计 → `feature-design`
+- BUG / 失败用例 / 异常行为 → `systematic-debugging`
+- 复杂排查 / 独立验证 → `deep-investigate`
+- design 已批准 → `writing-plans`
+- plan 执行 → `subagent-driven-development` 或 `executing-plans`
+- 实现时 → `test-driven-development`
+- 任务完成后 → `requesting-code-review`
+- 深度审查 → `aps-deep-review`
+- 改后快检 → `aps-post-change-check`
+- 文档联动 → `aps-dev-doc-backfill`
+- 收尾 → `finishing-a-development-branch`
+
+## 落盘约定
+
+- design：`.limcode/design/`
+- plan：`.limcode/plans/`
+- review：`.limcode/review/`
+- 审计取舍报告：`audit/YYYY-MM/`
+
+## 子代理兼容
+
+涉及子代理兼容与继承规则时，统一遵循：
+
+- `.limcode/skills/_shared/subagent-compat.md`
