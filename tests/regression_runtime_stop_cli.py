@@ -19,6 +19,8 @@ import urllib.request
 from pathlib import Path
 from typing import Dict, Tuple
 
+from tests.runtime_cleanup_helper import assert_repo_runtime_stopped
+
 
 def find_repo_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
@@ -28,12 +30,14 @@ def find_repo_root() -> str:
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
-def _contract_paths(log_dir: str) -> Tuple[str, str, str, str]:
+def _contract_paths(log_dir: str) -> Tuple[str, str, str, str, str, str]:
     return (
         os.path.join(log_dir, "aps_host.txt"),
         os.path.join(log_dir, "aps_port.txt"),
         os.path.join(log_dir, "aps_db_path.txt"),
         os.path.join(log_dir, "aps_runtime.json"),
+        os.path.join(log_dir, "aps_runtime.lock"),
+        os.path.join(log_dir, "aps_launch_error.txt"),
     )
 
 
@@ -52,7 +56,7 @@ def _probe_health(host: str, port: int, timeout: float = 1.5) -> bool:
 
 
 def _assert_repo_not_running(log_dir: str) -> None:
-    host_file, port_file, _db_file, _runtime_file = _contract_paths(log_dir)
+    host_file, port_file, _db_file, _runtime_file, _lock_file, _error_file = _contract_paths(log_dir)
     if not (os.path.exists(host_file) and os.path.exists(port_file)):
         return
     try:
@@ -74,8 +78,12 @@ def _clear_stale_contract(log_dir: str) -> None:
             pass
 
 
+def _read_runtime_contract(path: str) -> dict:
+    return dict(json.loads(Path(path).read_text(encoding="utf-8", errors="ignore") or "{}"))
+
+
 def _wait_for_runtime_contract(log_dir: str, p: subprocess.Popen, timeout_s: float = 20.0) -> Tuple[str, int, str]:
-    host_file, port_file, db_file, runtime_file = _contract_paths(log_dir)
+    host_file, port_file, db_file, runtime_file, _lock_file, _error_file = _contract_paths(log_dir)
     t0 = time.time()
     while time.time() - t0 < timeout_s:
         if p.poll() is not None:
@@ -85,10 +93,11 @@ def _wait_for_runtime_contract(log_dir: str, p: subprocess.Popen, timeout_s: flo
                 host = (Path(host_file).read_text(encoding="utf-8", errors="ignore") or "").strip() or "127.0.0.1"
                 port = int((Path(port_file).read_text(encoding="utf-8", errors="ignore") or "").strip())
                 db_path = (Path(db_file).read_text(encoding="utf-8", errors="ignore") or "").strip()
+                contract = _read_runtime_contract(runtime_file)
             except Exception:
                 time.sleep(0.2)
                 continue
-            if host and port > 0 and db_path:
+            if host and port > 0 and db_path and int(contract.get("pid") or 0) == int(p.pid):
                 return host, port, db_path
         time.sleep(0.2)
     raise TimeoutError("超时：未生成完整运行时契约")
@@ -112,7 +121,7 @@ def _assert_contract_removed(log_dir: str) -> None:
 def main() -> None:
     repo_root = find_repo_root()
     log_dir = os.path.join(repo_root, "logs")
-    _assert_repo_not_running(log_dir)
+    assert_repo_runtime_stopped(repo_root)
     _clear_stale_contract(log_dir)
 
     tmpdir = tempfile.mkdtemp(prefix="aps_regression_runtime_stop_")
@@ -158,6 +167,7 @@ def main() -> None:
 
         _wait_for_process_exit(p, timeout_s=20.0)
         _assert_contract_removed(log_dir)
+        _assert_contract_removed(env["APS_LOG_DIR"])
 
         stop_proc_again = subprocess.run(
             [sys.executable, os.path.join(repo_root, "app.py"), "--runtime-stop", repo_root],
@@ -174,6 +184,7 @@ def main() -> None:
                 f"rc={stop_proc_again.returncode} stdout={stop_proc_again.stdout!r} stderr={stop_proc_again.stderr!r}"
             )
         _assert_contract_removed(log_dir)
+        _assert_contract_removed(env["APS_LOG_DIR"])
         print("OK")
     finally:
         try:

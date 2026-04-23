@@ -32,6 +32,10 @@ python -m pip install -r requirements-dev.txt
 python -m pre_commit install
 ```
 
+`pyrightconfig.gate.json` 鍙敤浜庝富閾?gate 锛岃鐩?`app.py`銆?`app_new_ui.py`銆?`config.py`銆?`core/`銆?`data/`銆?`web/`锛?`pyrightconfig.json` 淇濈暀涓哄叏浠撶被鍨嬪€哄姟鐩樼偣鍏ュ彛锛屼笉鐩存帴浣滀负鏈疆纭棬绂併€?
+
+`requirements-dev.txt` 鍚屾椂绮剧‘閿佸畾 `pyright==1.1.406`銆?`.pre-commit-config.yaml` 褰撳墠浠嶅彧鎵ц `ruff` 锛?`pyright` 鐢?`scripts/run_quality_gate.py` 鍜?CI 浣滀负纭棬绂佽繍琛屻€?
+
 若未先安装 `requirements-dev.txt`，本地 `python -m ruff` 钩子不会生效。
 
 ## 测试方式
@@ -48,8 +52,10 @@ python scripts/run_quality_gate.py
 
 - 仓库根活动 APS 实例前置检查
 - `python -m ruff --version` 与版本断言（`>=0.15,<0.16`）
+- `python -m pyright --version` 涓庣増鏈柇瑷€锛?`==1.1.406`
 - `python -c "import radon"`
 - `python -m ruff check`
+- `python -m pyright -p pyrightconfig.gate.json`
 - `python -m pytest -q tests/test_architecture_fitness.py`
 - `python scripts/sync_debt_ledger.py check`
 - 启动链专项回归统一 `pytest` 命令
@@ -61,6 +67,9 @@ python scripts/run_quality_gate.py
 python -m pytest --collect-only tests -q
 python -m pytest tests/regression -q
 python -m pytest tests -q
+python -m pyright --version
+python -m pyright -p pyrightconfig.gate.json
+python -m pyright -p pyrightconfig.json
 ```
 
 专项回归目录、命名契约、治理台账入口与台账写入口说明统一维护在 `./开发文档/README.md`。
@@ -92,3 +101,10 @@ python -m pytest tests -q
 ## 后续子 plan 承接
 
 根入口现已提供统一质量门禁命令；治理台账结构、台账写入口、专项回归扩展与交接说明统一维护在 `./开发文档/README.md`。
+## Pyright 闂ㄧ琛ュ厖
+
+- `requirements-dev.txt` 宸茬簿纭綉瀹?`pyright==1.1.406`銆?
+- `.pre-commit-config.yaml` 褰撳墠浠嶅彧淇濈暀 `ruff` 蹇€熷弽棣堬紱`pyright` 鐢?`scripts/run_quality_gate.py` 鍜?CI 浣滀负纭棬绂佽繍琛屻€?
+- 涓绘摙闂ㄧ鍛戒护锛?`python -m pyright -p pyrightconfig.gate.json`
+- 鍏ㄤ粨鐩樼偣鍛戒护锛?`python -m pyright -p pyrightconfig.json`
+- `pyrightconfig.gate.json` 鍙鐩?`app.py`銆?`app_new_ui.py`銆?`config.py`銆?`core/`銆?`data/`銆?`web/`锛?`pyrightconfig.json` 淇濈暀涓哄叏浠撶被鍨嬪€哄姟鐩樼偣鍏ュ彛锛屼笉鐩存帴浣滀负鏈疆纭棬绂併€?

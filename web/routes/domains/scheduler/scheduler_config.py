@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from core.infrastructure.errors import AppError, ValidationError
+from core.infrastructure.errors import AppError
 from core.services.scheduler import ConfigService
 from web.ui_mode import (
     get_full_manual_section_url,
@@ -20,11 +20,29 @@ from web.viewmodels.page_manuals import (
     MANUAL_ENTRY_ENDPOINTS,
     build_page_fallback_text,
     build_page_manual_bundle,
-    resolve_manual_id,
 )
 
 from ...navigation_utils import _safe_next_url
 from .scheduler_bp import bp
+from .scheduler_config_display_state import (
+    build_auto_assign_persist_display_state,
+    build_config_degraded_display_state,
+    get_scheduler_visible_config_field_metadata,
+)
+from .scheduler_config_feedback import (
+    _flash_config_save_outcome,
+    _flash_preset_apply_feedback,
+    _format_preset_error_flash,
+)
+
+
+def _warn_scheduler_config_degraded_once(fields: List[str], *, hidden_warnings: Optional[List[str]] = None) -> None:
+    normalized = [str(field).strip() for field in fields if str(field).strip()]
+    normalized.extend(str(item).strip() for item in (hidden_warnings or []) if str(item).strip())
+    if not normalized or getattr(g, "_aps_scheduler_config_degraded_warned", False):
+        return
+    g._aps_scheduler_config_degraded_warned = True
+    current_app.logger.warning("scheduler config page rendering degraded snapshot fields=%s", normalized)
 
 
 def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
@@ -33,44 +51,24 @@ def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
 
     说明：
     - 事实源固定为仓库根目录下的 static/docs/scheduler_manual.md
-    - current_app.static_folder 仅作为同路径兼容兜底，不再读取 v2 镜像副本
-    - 返回：(命中的路径 or None, 所有候选路径)
+    - 只允许 BASE_DIR 推导出的唯一路径，不再在 static_folder 等位置做首个命中式猜测
+    - 返回：(命中的路径 or None, 唯一路径候选)
     """
-    candidates: List[str] = []
     base_dir = None
     try:
         base_dir = current_app.config.get("BASE_DIR")
     except Exception:
         base_dir = None
 
-    if base_dir:
-        candidates.append(os.path.join(str(base_dir), "static", "docs", "scheduler_manual.md"))
+    base_dir = str(base_dir).strip() if base_dir is not None else ""
+    if not base_dir:
+        return None, []
 
-    static_folder = getattr(current_app, "static_folder", None)
-    if static_folder:
-        candidates.append(os.path.join(str(static_folder), "docs", "scheduler_manual.md"))
+    candidate = os.path.join(base_dir, "static", "docs", "scheduler_manual.md")
+    normalized = [os.path.abspath(candidate)]
 
-    # 去重 + 绝对化
-    normalized: List[str] = []
-    seen = set()
-    for p in candidates:
-        if not p:
-            continue
-        try:
-            ap = os.path.abspath(p)
-        except Exception:
-            ap = p
-        if ap in seen:
-            continue
-        seen.add(ap)
-        normalized.append(ap)
-
-    for p in normalized:
-        try:
-            if os.path.isfile(p):
-                return p, normalized
-        except Exception:
-            continue
+    if os.path.isfile(normalized[0]):
+        return normalized[0], normalized
 
     return None, normalized
 
@@ -95,6 +93,16 @@ def _build_manual_page_url(raw_src: Optional[str], raw_page: Optional[str]) -> s
     return url_for("scheduler.config_manual_page", **values)
 
 
+def _normalize_scheduler_manual_args(raw_src: Optional[str], raw_page: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]], Optional[str]]:
+    safe_src = normalize_manual_src(raw_src)
+    bundle = build_page_manual_bundle(raw_page) if raw_page else None
+    safe_page = raw_page if bundle else None
+    page_warning = None
+    if raw_page and safe_page is None:
+        page_warning = f"未找到页面说明：{raw_page}，已回退到整本说明。"
+    return safe_src, safe_page, bundle, page_warning
+
+
 def _resolve_manual_entry_endpoint(manual_id: Optional[str]) -> Optional[str]:
     target = str(manual_id or "").strip()
     if not target:
@@ -111,10 +119,20 @@ def _format_manual_mtime(manual_path: str) -> Optional[str]:
 
 def _load_manual_text_and_mtime(manual_path: Optional[str], candidates: List[str]) -> Tuple[str, Optional[str]]:
     if not manual_path:
+        if not candidates:
+            try:
+                current_app.logger.warning("scheduler manual path resolution failed: BASE_DIR missing or empty")
+            except Exception:
+                g._aps_scheduler_manual_warning_status = "log_warning_failed"
+            return (
+                "运行配置缺失：BASE_DIR 未配置，无法定位 scheduler_manual.md。请联系管理员。",
+                None,
+            )
+
         try:
             current_app.logger.warning("系统使用说明文件不存在（candidates=%s）", candidates)
         except Exception:
-            pass
+            g._aps_scheduler_manual_warning_status = "log_warning_failed"
         return "说明书文件缺失（可能是安装包未包含或文件被误删）。请联系管理员。", None
 
     try:
@@ -210,9 +228,9 @@ def config_manual_page():
     """
     raw_src = (request.args.get("src") or "").strip()
     raw_page = (request.args.get("page") or "").strip()
-    safe_src = normalize_manual_src(raw_src)
-    bundle = build_page_manual_bundle(raw_page) if raw_page else None
-    safe_page = raw_page if bundle else None
+    safe_src, safe_page, bundle, page_warning = _normalize_scheduler_manual_args(raw_src, raw_page)
+    if page_warning:
+        flash(page_warning, "warning")
     link_src = safe_src or ""
     back_url = _resolve_manual_back_url(safe_src)
     show_scheduler_nav = not back_url or back_url.startswith("/scheduler")
@@ -253,10 +271,12 @@ def config_manual_download():
     """
     raw_src = (request.args.get("src") or "").strip()
     raw_page = (request.args.get("page") or "").strip()
-    safe_src = normalize_manual_src(raw_src)
-    safe_page = raw_page if raw_page and resolve_manual_id(raw_page) is not None else None
-    manual_path, _candidates = _resolve_scheduler_manual_md_path()
+    safe_src, safe_page, _bundle, _page_warning = _normalize_scheduler_manual_args(raw_src, raw_page)
+    manual_path, candidates = _resolve_scheduler_manual_md_path()
     if not manual_path:
+        if not candidates:
+            flash("运行配置缺失：BASE_DIR 未配置，无法定位 scheduler_manual.md。", "error")
+            return redirect(_build_manual_page_url(safe_src, safe_page))
         flash("说明书文件不存在，无法下载。", "error")
         return redirect(_build_manual_page_url(safe_src, safe_page))
     try:
@@ -270,8 +290,6 @@ def config_manual_download():
         current_app.logger.exception("下载系统使用说明失败")
         flash("下载说明书失败，请稍后重试。", "error")
         return redirect(_build_manual_page_url(safe_src, safe_page))
-
-
 @bp.get("/config")
 def config_page():
     """
@@ -280,28 +298,47 @@ def config_page():
     - 后续承载“配置模板/方案”
     """
     cfg_svc = g.services.config_service
-    cfg = cfg_svc.get_snapshot()
+    cfg = cfg_svc.get_snapshot(strict_mode=False)
     strategies = cfg_svc.get_available_strategies()
+    config_field_metadata = get_scheduler_visible_config_field_metadata()
+    config_field_warnings, config_degraded_fields, config_hidden_warnings = build_config_degraded_display_state(
+        cfg,
+        config_field_metadata=config_field_metadata,
+    )
+    _warn_scheduler_config_degraded_once(config_degraded_fields, hidden_warnings=config_hidden_warnings)
+    holiday_default_efficiency_display_value = float(cfg.holiday_default_efficiency)
+    holiday_default_efficiency_degraded = "holiday_default_efficiency" in config_field_warnings
+    holiday_default_efficiency_warning = config_field_warnings.get("holiday_default_efficiency")
 
-    presets = cfg_svc.list_presets()
-    active_preset = cfg_svc.get_active_preset()
-    active_preset_reason = cfg_svc.get_active_preset_reason()
+    preset_display_state = cfg_svc.get_preset_display_state(readonly=True, current_snapshot=cfg)
+    presets = list(preset_display_state.get("presets") or [])
+    active_preset = preset_display_state.get("active_preset")
     builtin_presets = [
         ConfigService.BUILTIN_PRESET_DEFAULT,
         ConfigService.BUILTIN_PRESET_DUE_FIRST,
         ConfigService.BUILTIN_PRESET_MIN_CHANGEOVER,
         ConfigService.BUILTIN_PRESET_IMPROVE_SLOW,
     ]
+    current_config_state = dict(preset_display_state.get("current_config_state") or {})
+    auto_assign_persist_state = build_auto_assign_persist_display_state(getattr(cfg, "auto_assign_persist", None))
 
     return render_template(
         "scheduler/config.html",
         title="排产高级设置",
         cfg=cfg,
         strategies=strategies,
+        config_field_metadata=config_field_metadata,
+        config_field_warnings=config_field_warnings,
+        config_degraded_fields=config_degraded_fields,
+        config_hidden_warnings=config_hidden_warnings,
+        holiday_default_efficiency_display_value=holiday_default_efficiency_display_value,
+        holiday_default_efficiency_degraded=holiday_default_efficiency_degraded,
+        holiday_default_efficiency_warning=holiday_default_efficiency_warning,
         presets=presets,
         active_preset=active_preset,
-        active_preset_reason=active_preset_reason,
         builtin_presets=builtin_presets,
+        current_config_state=current_config_state,
+        auto_assign_persist_state=auto_assign_persist_state,
     )
 
 
@@ -314,16 +351,16 @@ def preset_apply():
     """
     cfg_svc = g.services.config_service
     name = request.form.get("preset_name") or request.form.get("name")
-    next_url = _safe_next_url(request.form.get("next") or url_for("scheduler.config_page"))
+    next_url = _safe_next_url(request.form.get("next")) or url_for("scheduler.config_page")
     try:
         # 允许显式切回“自定义”（不改变任何参数，仅更新 active_preset）
-        name_text = ("" if name is None else str(name)).strip()
-        if name_text == "" or name_text.lower() == str(ConfigService.ACTIVE_PRESET_CUSTOM).lower():
+        name_text = _normalize_requested_preset_name(name)
+        if _is_custom_preset_name(name_text):
             cfg_svc.mark_active_preset_custom()
             flash("已切换为：当前手动设置。", "success")
             return redirect(next_url)
         applied = cfg_svc.apply_preset(name)
-        flash(f"已应用方案：{applied}", "success")
+        _flash_preset_apply_feedback(applied)
     except AppError as e:
         flash(e.message, "error")
     except Exception:
@@ -341,7 +378,19 @@ def preset_save():
     name = request.form.get("preset_name") or request.form.get("name")
     try:
         saved = cfg_svc.save_preset(name)
-        flash(f"已保存为方案：{saved}", "success")
+        if str(saved.get("status") or "").strip() == "rejected":
+            error_field = str(saved.get("error_field") or "").strip()
+            error_fields = list(saved.get("error_fields") or [])
+            error_message = str(saved.get("error_message") or "当前配置未保存为方案。").strip()
+            flash(
+                _format_preset_error_flash(error_field=error_field, error_fields=error_fields, error_message=error_message),
+                "error",
+            )
+        else:
+            flash(
+                f"已保存为方案：{saved.get('effective_active_preset') or saved.get('requested_preset')}",
+                "success",
+            )
     except AppError as e:
         flash(e.message, "error")
     except Exception:
@@ -365,63 +414,53 @@ def preset_delete():
     return redirect(url_for("scheduler.config_page"))
 
 
-def _apply_basic_scheduler_config(cfg_svc: ConfigService, form) -> None:
-    cfg_svc.set_strategy(form.get("sort_strategy"))
-    cfg_svc.set_holiday_default_efficiency(form.get("holiday_default_efficiency"))
-    cfg_svc.set_prefer_primary_skill(form.get("prefer_primary_skill"))
-    cfg_svc.set_enforce_ready_default(form.get("enforce_ready_default"))
-    cfg_svc.set_dispatch(form.get("dispatch_mode"), form.get("dispatch_rule"))
-    cfg_svc.set_auto_assign_enabled(form.get("auto_assign_enabled"))
-    cfg_svc.set_ortools(form.get("ortools_enabled"), form.get("ortools_time_limit_seconds"))
+def _collect_scheduler_config_form_payload(form) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    for key in (
+        "sort_strategy",
+        "priority_weight",
+        "due_weight",
+        "holiday_default_efficiency",
+        "prefer_primary_skill",
+        "enforce_ready_default",
+        "dispatch_mode",
+        "dispatch_rule",
+        "auto_assign_enabled",
+        "ortools_enabled",
+        "ortools_time_limit_seconds",
+        "algo_mode",
+        "objective",
+        "time_budget_seconds",
+        "freeze_window_enabled",
+        "freeze_window_days",
+    ):
+        if key not in form:
+            continue
+        payload[key] = form.get(key)
+    return payload
 
-    algo_mode = form.get("algo_mode")
-    if algo_mode is not None:
-        cfg_svc.set_algo_mode(algo_mode)
 
-    objective = form.get("objective")
-    if objective is not None:
-        cfg_svc.set_objective(objective)
-
-    tb = form.get("time_budget_seconds")
-    if tb is not None and str(tb).strip():
-        cfg_svc.set_time_budget_seconds(tb)
-
-    cfg_svc.set_freeze_window(form.get("freeze_window_enabled"), form.get("freeze_window_days"))
+def _normalize_requested_preset_name(name: Optional[str]) -> str:
+    return ("" if name is None else str(name)).strip()
 
 
-def _apply_weight_settings_if_present(cfg_svc: ConfigService, form) -> None:
-    pw = form.get("priority_weight")
-    dw = form.get("due_weight")
-    if not ((pw is not None and str(pw).strip()) or (dw is not None and str(dw).strip())):
-        return
-
-    cur = cfg_svc.get_snapshot()
-    pw_v = str(pw).strip() if pw is not None and str(pw).strip() else str(cur.priority_weight)
-    dw_v = str(dw).strip() if dw is not None and str(dw).strip() else str(cur.due_weight)
-    pw_f = cfg_svc.normalize_weight(pw_v, field="优先级权重")
-    dw_f = cfg_svc.normalize_weight(dw_v, field="交期权重")
-    rw_f = 1.0 - pw_f - dw_f
-    if rw_f < -1e-9:
-        raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
-    cfg_svc.set_weights(pw_f, dw_f, max(0.0, float(rw_f)), require_sum_1=True)
+def _is_custom_preset_name(name_text: str) -> bool:
+    return name_text == "" or name_text.lower() == str(ConfigService.ACTIVE_PRESET_CUSTOM).lower()
 
 
 @bp.post("/config")
 def update_config():
     cfg_svc = g.services.config_service
     try:
-        form = request.form
-        _apply_basic_scheduler_config(cfg_svc, form)
-        _apply_weight_settings_if_present(cfg_svc, form)
-        flash("排产策略配置已保存。", "success")
+        payload = _collect_scheduler_config_form_payload(request.form)
+        outcome = cfg_svc.save_page_config(payload)
+        _flash_config_save_outcome(outcome)
     except AppError as e:
         flash(e.message, "error")
     except Exception:
         current_app.logger.exception("保存排产配置失败")
         flash("保存排产配置失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
-
-
 @bp.post("/config/default")
 def restore_config_default():
     cfg_svc = g.services.config_service

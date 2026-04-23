@@ -175,6 +175,11 @@ def app_main(
 
     runtime_dir = runtime_base_dir(anchor_file=anchor_file)
     prelaunch_log_dir = deps.resolve_prelaunch_log_dir(runtime_dir)
+    is_frozen = bool(getattr(sys, "frozen", False))
+    # 源码运行时，对外 contract 固定发布到 runtime_dir/logs；lock 也要收敛到同一命名空间，
+    # 否则不同 APS_LOG_DIR 的实例会并发覆盖同一份 repo-root runtime contract。
+    lock_scope_target = prelaunch_log_dir if is_frozen else runtime_dir
+    lock_scope_log_dir = prelaunch_log_dir if is_frozen else None
     runtime_owner = deps.current_runtime_owner()
     try:
         deps.clear_launch_error(prelaunch_log_dir)
@@ -218,8 +223,8 @@ def app_main(
     if owns_runtime_resources:
         try:
             deps.acquire_runtime_lock(
-                runtime_dir,
-                prelaunch_log_dir,
+                lock_scope_target,
+                lock_scope_log_dir,
                 owner=runtime_owner,
                 exe_path=sys.executable,
             )
@@ -228,7 +233,7 @@ def app_main(
                 deps, runtime_dir, str(e), prelaunch_log_dir, logger=app.logger, context=f"获取运行时锁失败：{e}"
             )
             return 13
-        deps.atexit_register(deps.release_runtime_lock, prelaunch_log_dir, os.getpid())
+        deps.atexit_register(deps.release_runtime_lock, lock_scope_target, os.getpid())
 
         try:
             configure_runtime_contract(

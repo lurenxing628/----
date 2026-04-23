@@ -183,6 +183,31 @@ def _silent_scan_index(entries: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str
     return index
 
 
+def _resolve_silent_refresh_entry(
+    entry: Dict[str, Any],
+    silent_scan: Dict[Tuple[str, str, str, int], Dict[str, Any]],
+) -> Dict[str, Any]:
+    key = (
+        str(entry.get("path") or ""),
+        str(entry.get("symbol") or ""),
+        str(entry.get("handler_fingerprint") or ""),
+        int(entry.get("except_ordinal") or 0),
+    )
+    matched = silent_scan.get(key)
+    if matched is not None:
+        return matched
+
+    fallback_candidates = [
+        dict(candidate)
+        for scan_key, candidate in silent_scan.items()
+        if scan_key[:3] == key[:3]
+    ]
+    if len(fallback_candidates) == 1:
+        return fallback_candidates[0]
+
+    raise QualityGateError("静默回退条目已无法通过当前扫描对齐：{}".format(entry.get("id")))
+
+
 def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if ledger is None:
         ledger = load_ledger(required=True)
@@ -212,16 +237,9 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
     silent_scan = _silent_scan_index(scan_silent_fallback_entries(silent_paths))
     refreshed_silent = []
     for entry in silent_entries:
-        key = (
-            str(entry.get("path") or ""),
-            str(entry.get("symbol") or ""),
-            str(entry.get("handler_fingerprint") or ""),
-            int(entry.get("except_ordinal") or 0),
-        )
-        if key not in silent_scan:
-            raise QualityGateError("静默回退条目已无法通过当前扫描对齐：{}".format(entry.get("id")))
+        matched_entry = _resolve_silent_refresh_entry(entry, silent_scan)
         refreshed_silent.append(
-            build_silent_entry(silent_scan[key], source=str(entry.get("source") or "baseline_scan"), existing=entry)
+            build_silent_entry(matched_entry, source=str(entry.get("source") or "baseline_scan"), existing=entry)
         )
 
     ledger["oversize_allowlist"] = refreshed_oversize

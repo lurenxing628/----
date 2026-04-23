@@ -254,6 +254,9 @@ def _assert_child_case(module_name: str, ui_mode: str) -> None:
         raise RuntimeError(f"{module_name} debug 子进程返回非 0：{rc}")
     if len(state["acquire_runtime_lock"]) != 1:
         raise RuntimeError(f"{module_name} debug 子进程应获取一次运行时锁：{state['acquire_runtime_lock']!r}")
+    lock_call = state["acquire_runtime_lock"][0]
+    if lock_call["args"][:2] != (str(REPO_ROOT), None):
+        raise RuntimeError(f"{module_name} debug 子进程 runtime lock 应收口到 repo-root contract 命名空间：{lock_call!r}")
     if len(state["write_runtime_host_port_files"]) != 1 or len(state["write_runtime_contract_file"]) != 1:
         raise RuntimeError(f"{module_name} debug 子进程应写完整运行时契约")
     if state["serve_runtime_app"]:
@@ -263,6 +266,8 @@ def _assert_child_case(module_name: str, ui_mode: str) -> None:
     registered = [item["name"] for item in state["atexit"]]
     if registered != ["_fake_release_runtime_lock", "_fake_delete_runtime_contract_files"]:
         raise RuntimeError(f"{module_name} debug 子进程注册的清理函数不符合预期：{registered!r}")
+    if state["atexit"][0]["args"][0] != str(REPO_ROOT):
+        raise RuntimeError(f"{module_name} debug 子进程应释放 repo-root lock：{state['atexit']!r}")
     if not str(fake_app.config.get("APS_RUNTIME_SHUTDOWN_TOKEN") or "").strip():
         raise RuntimeError(f"{module_name} debug 子进程应生成 shutdown token")
     if fake_app.config.get("APS_RUNTIME_OWNER") != "DOMAIN\\user":
@@ -283,6 +288,9 @@ def _assert_production_case(module_name: str, ui_mode: str) -> None:
         raise RuntimeError(f"{module_name} 非 debug 启动返回非 0：{rc}")
     if len(state["acquire_runtime_lock"]) != 1:
         raise RuntimeError(f"{module_name} 非 debug 启动应获取运行时锁：{state['acquire_runtime_lock']!r}")
+    lock_call = state["acquire_runtime_lock"][0]
+    if lock_call["args"][:2] != (str(REPO_ROOT), None):
+        raise RuntimeError(f"{module_name} 非 debug 启动应收口到 repo-root contract 命名空间：{lock_call!r}")
     if len(state["write_runtime_host_port_files"]) != 1 or len(state["write_runtime_contract_file"]) != 1:
         raise RuntimeError(f"{module_name} 非 debug 启动应写完整运行时契约")
     if state["app_run"]:
@@ -292,6 +300,8 @@ def _assert_production_case(module_name: str, ui_mode: str) -> None:
     registered = [item["name"] for item in state["atexit"]]
     if registered != ["_fake_release_runtime_lock", "_fake_delete_runtime_contract_files"]:
         raise RuntimeError(f"{module_name} 非 debug 启动注册的清理函数不符合预期：{registered!r}")
+    if state["atexit"][0]["args"][0] != str(REPO_ROOT):
+        raise RuntimeError(f"{module_name} 非 debug 启动应释放 repo-root lock：{state['atexit']!r}")
     if not str(fake_app.config.get("APS_RUNTIME_SHUTDOWN_TOKEN") or "").strip():
         raise RuntimeError(f"{module_name} 非 debug 启动应生成 shutdown token")
     if state["write_launch_error"]:

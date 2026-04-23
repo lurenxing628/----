@@ -63,14 +63,53 @@ LOCAL_PARSE_HELPER_ALLOWLIST = {
     "core/algorithms/greedy/scheduler.py:_safe_int",
     "core/services/scheduler/_sched_utils.py:_safe_int",
     "core/services/scheduler/batch_service.py:_safe_float",
-    "core/services/scheduler/config/config_snapshot.py:_get_float",
-    "core/services/scheduler/config/config_snapshot.py:_get_int",
-    "core/services/scheduler/config/config_validator.py:_get_float",
-    "core/services/scheduler/config/config_validator.py:_get_int",
-    "core/services/scheduler/run/schedule_optimizer_steps.py:_cfg_float",
-    "core/services/scheduler/run/schedule_optimizer_steps.py:_cfg_int",
     "core/services/system/system_config_service.py:_get_int",
 }
+
+
+def _import_module_function_aliases(module_ast: ast.Module) -> Set[str]:
+    aliases: Set[str] = set()
+    for node in module_ast.body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.level != 0 or node.module != "importlib":
+            continue
+        for alias in node.names:
+            if alias.name == "import_module":
+                aliases.add(alias.asname or alias.name)
+    return aliases
+
+
+def _importlib_module_aliases(module_ast: ast.Module) -> Set[str]:
+    aliases: Set[str] = set()
+    for node in module_ast.body:
+        if not isinstance(node, ast.Import):
+            continue
+        for alias in node.names:
+            if alias.name == "importlib":
+                aliases.add(alias.asname or alias.name)
+    return aliases
+
+
+def _dynamic_import_target(
+    node: ast.AST,
+    *,
+    import_module_aliases: Set[str],
+    importlib_aliases: Set[str],
+) -> str | None:
+    if not isinstance(node, ast.Call) or not node.args:
+        return None
+    first_arg = node.args[0]
+    if not isinstance(first_arg, ast.Constant) or not isinstance(first_arg.value, str):
+        return None
+    if isinstance(node.func, ast.Name):
+        if node.func.id == "__import__" or node.func.id in import_module_aliases:
+            return first_arg.value
+        return None
+    if isinstance(node.func, ast.Attribute) and node.func.attr == "import_module":
+        if isinstance(node.func.value, ast.Name) and node.func.value.id in importlib_aliases:
+            return first_arg.value
+    return None
 
 
 # ─── Fitness 1: 分层依赖方向 ───────────────────────────────────
@@ -216,6 +255,9 @@ def test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes():
             violations.append(f"{fp}:{getattr(e, 'lineno', 0) or 0}: SyntaxError: {e}")
             continue
 
+        import_module_aliases = _import_module_function_aliases(tree)
+        importlib_aliases = _importlib_module_aliases(tree)
+
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -234,6 +276,14 @@ def test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes():
                 mod = str(node.module or "")
                 if mod and not _is_allowed_viewmodel_import(mod):
                     violations.append(f"{fp}:{node.lineno}: from {mod} import ...")
+            else:
+                mod = _dynamic_import_target(
+                    node,
+                    import_module_aliases=import_module_aliases,
+                    importlib_aliases=importlib_aliases,
+                )
+                if mod and not _is_allowed_viewmodel_import(mod):
+                    violations.append(f"{fp}:{getattr(node, 'lineno', 0) or 0}: dynamic import {mod}")
 
     assert not violations, "ViewModel 导入越界:\n" + "\n".join(violations)
 

@@ -243,9 +243,18 @@ def test_request_service_target_files_cover_history_and_system_routes() -> None:
         "web/routes/system_plugins.py",
         "web/routes/system_ui_mode.py",
         "web/routes/system_utils.py",
+        "web/error_handlers.py",
+        "web/error_boundary.py",
     }
 
     assert expected_targets.issubset(set(shared_mod.REQUEST_SERVICE_TARGET_FILES))
+
+
+def test_request_service_scan_scope_covers_error_path_files() -> None:
+    scanned = set(shared_mod.collect_globbed_files(shared_mod.REQUEST_SERVICE_SCAN_SCOPE_PATTERNS))
+
+    assert "web/error_handlers.py" in scanned
+    assert "web/error_boundary.py" in scanned
 
 
 def test_request_service_target_files_keep_system_route_gate_coverage() -> None:

@@ -19,6 +19,14 @@ def _import_sync_debt_ledger():
     return importlib.import_module("scripts.sync_debt_ledger")
 
 
+def _import_quality_gate_support():
+    repo_root = _repo_root()
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    sys.modules.pop("tools.quality_gate_support", None)
+    return importlib.import_module("tools.quality_gate_support")
+
+
 def test_check_command_validates_current_ledger(monkeypatch, capsys):
     module = _import_sync_debt_ledger()
     calls = {}
@@ -46,21 +54,26 @@ def test_check_command_validates_current_ledger(monkeypatch, capsys):
 
 
 @pytest.mark.parametrize(
-    ("mode", "handler_name"),
+    ("mode", "handler_name", "expected_required"),
     [
-        ("migrate-inline-facts", "refresh_migrate_inline_facts"),
-        ("scan-startup-baseline", "refresh_scan_startup_baseline"),
-        ("refresh-auto-fields", "refresh_auto_fields"),
+        ("migrate-inline-facts", "refresh_migrate_inline_facts", False),
+        ("scan-startup-baseline", "refresh_scan_startup_baseline", False),
+        ("refresh-auto-fields", "refresh_auto_fields", True),
     ],
 )
-def test_refresh_command_dispatches_expected_mode(monkeypatch, capsys, mode: str, handler_name: str):
+def test_refresh_command_dispatches_expected_mode(
+    monkeypatch, capsys, mode: str, handler_name: str, expected_required: bool
+):
     module = _import_sync_debt_ledger()
     calls = {}
     current_ledger = {"kind": "current"}
     next_ledger = {"updated_at": "2026-04-10T01:02:03+08:00"}
 
-    monkeypatch.setattr(module, "load_ledger", lambda required=False: current_ledger)
-    monkeypatch.setattr(module, "_load_current_ledger_for_write", lambda: current_ledger)
+    def fake_load_ledger(required: bool = False):
+        calls["load_required"] = required
+        return current_ledger
+
+    monkeypatch.setattr(module, "load_ledger", fake_load_ledger)
     monkeypatch.setattr(module, "now_shanghai_iso", lambda: "2026-04-10T01:02:03+08:00")
 
     def _unexpected(_ledger):
@@ -83,10 +96,108 @@ def test_refresh_command_dispatches_expected_mode(monkeypatch, capsys, mode: str
     assert rc == 0
     assert calls["handler_name"] == handler_name
     assert calls["handler_ledger"] is current_ledger
+    assert calls["load_required"] is expected_required
     assert calls["saved_ledger"] is next_ledger
     stdout = capsys.readouterr().out
     assert "治理台账已刷新" in stdout
     assert f'"mode": "{mode}"' in stdout
+
+
+def test_refresh_auto_fields_skips_prevalidation_and_loads_required_ledger(monkeypatch, capsys):
+    module = _import_sync_debt_ledger()
+    calls = {}
+    current_ledger = {"kind": "current"}
+    next_ledger = {"updated_at": "2026-04-10T01:02:03+08:00"}
+
+    def fake_load_ledger(required: bool = False):
+        calls["load_required"] = required
+        return current_ledger
+
+    def fake_refresh_auto_fields(ledger):
+        calls["refreshed_ledger"] = ledger
+        return next_ledger
+
+    monkeypatch.setattr(module, "load_ledger", fake_load_ledger)
+    monkeypatch.setattr(
+        module,
+        "validate_ledger_against_current_scan",
+        lambda _ledger: (_ for _ in ()).throw(AssertionError("refresh-auto-fields 不应先做当前扫描校验")),
+    )
+    monkeypatch.setattr(module, "refresh_auto_fields", fake_refresh_auto_fields)
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
+
+    rc = module.main(["refresh", "--mode", "refresh-auto-fields"])
+
+    assert rc == 0
+    assert calls["load_required"] is True
+    assert calls["refreshed_ledger"] is current_ledger
+    assert calls["saved_ledger"] is next_ledger
+    stdout = capsys.readouterr().out
+    assert "治理台账已刷新" in stdout
+    assert '"mode": "refresh-auto-fields"' in stdout
+
+
+def test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drifted(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:web-bootstrap-factory-_open_db-42cf3c7f221e",
+                    "path": "web/bootstrap/factory.py",
+                    "symbol": "_open_db",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "startup baseline",
+                    "handler_fingerprint": "sha1:42cf3c7f221e2bcafa3ca2f57a514825d0645f89",
+                    "except_ordinal": 7,
+                    "line_start": 346,
+                    "line_end": 353,
+                    "fallback_kind": "cleanup_best_effort",
+                    "scope_tag": "startup_guard",
+                    "source": "baseline_scan",
+                }
+            ],
+        },
+    }
+    scan_entry = {
+        "id": "fallback:web-bootstrap-factory-_open_db-42cf3c7f221e",
+        "path": "web/bootstrap/factory.py",
+        "symbol": "_open_db",
+        "handler_fingerprint": "sha1:42cf3c7f221e2bcafa3ca2f57a514825d0645f89",
+        "except_ordinal": 8,
+        "line_start": 375,
+        "line_end": 382,
+        "fallback_kind": "cleanup_best_effort",
+        "scope_tag": "startup_guard",
+    }
+
+    monkeypatch.setattr(module, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    monkeypatch.setattr(
+        module,
+        "build_silent_entry",
+        lambda scan_item, source, existing=None: {
+            **dict(existing or {}),
+            **dict(scan_item),
+            "source": source,
+        },
+    )
+    monkeypatch.setattr(module, "finalize_ledger_update", lambda current: current)
+
+    refreshed = module.refresh_auto_fields(ledger)
+    entry = refreshed["silent_fallback"]["entries"][0]
+
+    assert entry["id"] == "fallback:web-bootstrap-factory-_open_db-42cf3c7f221e"
+    assert entry["except_ordinal"] == 8
+    assert entry["line_start"] == 375
+    assert entry["line_end"] == 382
+    assert entry["owner"] == "SP03"
 
 
 def test_set_entry_fields_command_updates_manual_fields(monkeypatch, capsys):

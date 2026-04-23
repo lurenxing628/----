@@ -9,10 +9,17 @@ from core.infrastructure.errors import AppError, ValidationError
 from core.services.common.excel_audit import log_excel_export
 from core.services.common.excel_templates import build_xlsx_bytes
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
-from ...normalizers import normalize_version_or_latest
-from .scheduler_bp import _surface_schedule_warnings, bp
+from ...normalizers import _parse_result_summary_payload_with_meta, normalize_version_or_latest_fallback
+from .scheduler_bp import (
+    _surface_schedule_errors,
+    _surface_schedule_warnings,
+    _surface_secondary_degradation_messages,
+    bp,
+)
+from .scheduler_history_resolution import build_requested_history_resolution
 
 
 def _get_int_arg(name: str, default: int = 0) -> int:
@@ -38,6 +45,77 @@ def _parse_optional_checkbox_flag(name: str):
     return str(raw or "").strip().lower() in ("yes", "y", "true", "1", "on")
 
 
+def _load_selected_week_plan_summary(services, version: int):
+    selected_history_item = services.schedule_history_query_service.get_by_version(version)
+    selected_history = selected_history_item.to_dict() if hasattr(selected_history_item, "to_dict") else None
+    parse_state = {"payload": None, "parse_failed": False, "user_message": None, "reason": None}
+    selected_summary = None
+    if selected_history and selected_history.get("result_summary"):
+        parse_state = _parse_result_summary_payload_with_meta(
+            selected_history.get("result_summary"),
+            version=selected_history.get("version"),
+            log_label="周计划页",
+            source="selected",
+        )
+        selected_summary = parse_state.get("payload")
+    summary_display = build_summary_display_state(
+        selected_summary if isinstance(selected_summary, dict) else None,
+        result_status=(selected_history or {}).get("result_status"),
+        parse_state=parse_state,
+    )
+    return selected_history, selected_summary, summary_display
+
+
+def _build_week_plan_preview_state(data):
+    rows = data.get("rows") or []
+    degradation_counters = data.get("degradation_counters") or {}
+    bad_time_skipped = int(degradation_counters.get("bad_time_row_skipped") or 0)
+    degradation_message = ""
+    if bad_time_skipped > 0:
+        degradation_message = f"已过滤 {bad_time_skipped} 条时间不合法的排程记录。"
+    empty_message = "暂无数据（该周/该版本没有排程记录）。"
+    if not rows and str(data.get("empty_reason") or "") == "all_rows_filtered_by_invalid_time":
+        empty_message = "当前区间存在时间非法的排程数据，已全部过滤，请检查排产结果。"
+    return {
+        "rows": rows,
+        "preview_rows": rows[:50],
+        "degradation_message": degradation_message,
+        "empty_message": empty_message,
+    }
+
+
+def _flash_summary_primary_degradation(summary_display):
+    primary_degradation = summary_display.get("primary_degradation")
+    if not isinstance(primary_degradation, dict):
+        return
+    details = "、".join(list(primary_degradation.get("details") or []))
+    detail = f" 原因：{details}" if details else ""
+    flash(f"{primary_degradation.get('message')}{detail}", "warning")
+
+
+def _flash_simulate_completion(*, version: int, completion_status: str) -> None:
+    if completion_status == "failed":
+        flash(f"模拟排产失败：生成版本 {version}（不影响批次状态）。", "error")
+        return
+    if completion_status == "partial":
+        flash(f"模拟排产部分完成：生成版本 {version}（不影响批次状态）。", "warning")
+        return
+    flash(f"模拟排产完成：生成版本 {version}（不影响批次状态）。", "success")
+
+
+def _flash_simulate_summary(summary, summary_display) -> None:
+    _flash_summary_primary_degradation(summary_display)
+    _surface_secondary_degradation_messages(
+        summary_display.get("display_secondary_degradation_messages"),
+        suppress_messages=summary.get("warnings"),
+    )
+    _surface_schedule_warnings(summary.get("warnings"))
+    _surface_schedule_errors(
+        summary_display.get("errors_preview"),
+        total=int(summary_display.get("error_total") or 0),
+    )
+
+
 @bp.get("/week-plan")
 def week_plan_page():
     week_start = (request.args.get("week_start") or "").strip() or None
@@ -48,28 +126,24 @@ def week_plan_page():
     svc = services.gantt_service
     latest_version = svc.get_latest_version_or_1()
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
-    ver = normalize_version_or_latest(request.args.get("version"), latest_version=latest_version)
+    ver = normalize_version_or_latest_fallback(request.args.get("version"), latest_version=latest_version)
 
     versions = services.schedule_history_query_service.list_versions(limit=30)
     data = svc.get_week_plan_rows(start_date=wr.week_start_date.isoformat(), end_date=wr.week_end_date.isoformat(), version=ver)
-
-    rows = data.get("rows") or []
-    degradation_counters = data.get("degradation_counters") or {}
-    bad_time_skipped = int(degradation_counters.get("bad_time_row_skipped") or 0)
-    preview_rows = rows[:50]
-    degradation_message = ""
-    if bad_time_skipped > 0:
-        degradation_message = f"已过滤 {bad_time_skipped} 条时间不合法的排程记录。"
-    empty_message = "暂无数据（该周/该版本没有排程记录）。"
-    if not rows and str(data.get("empty_reason") or "") == "all_rows_filtered_by_invalid_time":
-        empty_message = "当前区间存在时间非法的排程数据，已全部过滤，请检查排产结果。"
+    selected_history, selected_summary, selected_summary_display = _load_selected_week_plan_summary(services, ver)
+    selected_history_resolution = build_requested_history_resolution(
+        requested_version=ver,
+        selected_history=selected_history,
+        missing_message=f"v{ver} 无对应排产历史，当前仅展示排程明细，历史摘要不可用。",
+    )
+    preview_state = _build_week_plan_preview_state(data)
 
     return render_template(
         "scheduler/week_plan.html",
         title="周计划（导出）",
         degraded=bool(data.get("degraded")),
-        degradation_message=degradation_message,
-        empty_message=empty_message,
+        degradation_message=preview_state["degradation_message"],
+        empty_message=preview_state["empty_message"],
         week_start=wr.week_start_date.isoformat(),
         week_end=wr.week_end_date.isoformat(),
         start_date=wr.week_start_date.isoformat(),
@@ -77,8 +151,12 @@ def week_plan_page():
         offset=offset,
         version=ver,
         versions=versions,
-        preview_rows=preview_rows,
-        total_rows=len(rows),
+        selected_history=selected_history,
+        selected_history_resolution=selected_history_resolution,
+        selected_summary=selected_summary,
+        selected_summary_display=selected_summary_display,
+        preview_rows=preview_state["preview_rows"],
+        total_rows=len(preview_state["rows"]),
         export_url=url_for(
             "scheduler.week_plan_export", start_date=wr.week_start_date.isoformat(), end_date=wr.week_end_date.isoformat(), version=ver
         ),
@@ -95,7 +173,7 @@ def week_plan_export():
 
     svc = g.services.gantt_service
     try:
-        version = normalize_version_or_latest(request.args.get("version"), latest_version=svc.get_latest_version_or_1())
+        version = normalize_version_or_latest_fallback(request.args.get("version"), latest_version=svc.get_latest_version_or_1())
 
         data = svc.get_week_plan_rows(
             week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date, version=version
@@ -176,10 +254,14 @@ def simulate_schedule():
             strict_mode=strict_mode,
         )
         ver = int(result.get("version") or 1)
-        flash(f"模拟排产完成：生成版本 {ver}（不影响批次状态）。", "success")
-
         summary = result.get("summary") or {}
-        _surface_schedule_warnings(summary.get("warnings"))
+        summary_display = build_summary_display_state(
+            summary if isinstance(summary, dict) else None,
+            result_status=result.get("result_status"),
+        )
+        completion_status = str(summary_display.get("completion_status") or "success")
+        _flash_simulate_completion(version=ver, completion_status=completion_status)
+        _flash_simulate_summary(summary, summary_display)
 
         # 默认跳到“本周”甘特图（设备视图）
         today = date.today().isoformat()

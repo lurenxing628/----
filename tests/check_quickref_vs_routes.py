@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, Optional, Set, Tuple, cast
+from typing import Dict, Iterable, Optional, Set, Tuple, cast
 
 from flask import Flask
 
@@ -100,6 +100,45 @@ def _close_temp_log_handlers(root: str) -> None:
                 pass
 
 
+def _render_report(
+    *,
+    doc_display_path: str,
+    doc_count: int,
+    rule_count: int,
+    missing_in_code: Iterable[Tuple[str, str]],
+    undocumented_in_doc: Iterable[Tuple[str, str]],
+) -> str:
+    missing_items = list(missing_in_code)
+    undocumented_items = list(undocumented_in_doc)
+    out = []
+    out.append("# 系统速查表接口对比（文档 vs 实现）")
+    out.append("")
+    out.append("- 生成方式：稳定快照（不含运行时间与绝对路径）")
+    out.append(f"- 文档：`{doc_display_path}`")
+    out.append(f"- 文档接口条目（GET/POST）：{doc_count}")
+    out.append(f"- 实现接口条目（GET/POST，排除 /static）：{rule_count}")
+    out.append("")
+    out.append("## 结论")
+    out.append(f"- 文档列出但实现缺失：{len(missing_items)}")
+    out.append(f"- 实现存在但文档未列出：{len(undocumented_items)}")
+    out.append("")
+    out.append("## 文档列出但实现缺失（如有）")
+    if not missing_items:
+        out.append("- 无")
+    else:
+        for method, path in missing_items[:200]:
+            out.append(f"- `{method} {path}`")
+    out.append("")
+    out.append("## 实现存在但文档未列出（抽样前 80 条）")
+    if not undocumented_items:
+        out.append("- 无")
+    else:
+        for method, path in undocumented_items[:80]:
+            out.append(f"- `{method} {path}`")
+    out.append("")
+    return "\n".join(out) + "\n"
+
+
 def main() -> int:
     repo_root = find_repo_root()
     doc_path = Path(repo_root) / "开发文档" / "系统速查表.md"
@@ -143,39 +182,18 @@ def main() -> int:
     missing_in_code = sorted([ep for ep in doc_set if ep not in rule_set])
     # 当前约定为：除 /static 外，其余 GET/POST 路由都应进入系统速查表。
     undocumented_in_doc = sorted([ep for ep in rule_set if ep not in doc_set])
-
-    out = []
-    out.append("# 系统速查表接口对比（文档 vs 实现）")
-    out.append("")
-    out.append(f"- 生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    out.append(f"- 文档：`{doc_path}`")
-    out.append(f"- 文档接口条目（GET/POST）：{len(doc_eps)}")
-    out.append(f"- 实现接口条目（GET/POST，排除 /static）：{len(rule_set)}")
-    out.append("")
-    out.append("## 结论")
-    out.append(f"- 文档列出但实现缺失：{len(missing_in_code)}")
-    out.append(f"- 实现存在但文档未列出：{len(undocumented_in_doc)}")
-    out.append("")
-
-    out.append("## 文档列出但实现缺失（如有）")
-    if not missing_in_code:
-        out.append("- 无")
-    else:
-        for m, p in missing_in_code[:200]:
-            out.append(f"- `{m} {p}`")
-    out.append("")
-
-    out.append("## 实现存在但文档未列出（抽样前 80 条）")
-    if not undocumented_in_doc:
-        out.append("- 无")
-    else:
-        for m, p in undocumented_in_doc[:80]:
-            out.append(f"- `{m} {p}`")
-    out.append("")
+    doc_display_path = doc_path.relative_to(repo_root).as_posix()
+    report = _render_report(
+        doc_display_path=doc_display_path,
+        doc_count=len(doc_eps),
+        rule_count=len(rule_set),
+        missing_in_code=missing_in_code,
+        undocumented_in_doc=undocumented_in_doc,
+    )
 
     out_path = Path(repo_root) / "evidence" / "Conformance" / "quickref_vs_routes.md"
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    out_path.write_text(report, encoding="utf-8")
     print(str(out_path))
     if missing_in_code or undocumented_in_doc:
         print("ERROR: 系统速查表与实现存在差异，请先同步文档与路由。")

@@ -199,6 +199,57 @@ def test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confi
     assert calls["chrome"] == os.path.abspath(str(tmp_path / "shared-data" / "chrome109_profile"))
 
 
+def test_stop_runtime_from_dir_waits_for_pid_exit_before_success(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "shared-data" / "logs"
+    state_dir.mkdir(parents=True)
+    contract_path = state_dir / "aps_runtime.json"
+    runtime_dir_json = str(tmp_path / "shared-data").replace("\\", "/")
+    contract_path.write_text(
+        (
+            "{\n"
+            '  "contract_version": 1,\n'
+            '  "pid": 43210,\n'
+            '  "host": "127.0.0.1",\n'
+            '  "port": 5000,\n'
+            '  "exe_path": "D:/py3.8/python.exe",\n'
+            '  "chrome_profile_dir": "C:/Temp/chrome-profile",\n'
+            '  "shutdown_token": "runtime-stop-token",\n'
+            f'  "runtime_dir": "{runtime_dir_json}",\n'
+            '  "data_dirs": {"log_dir": "C:/Temp/runtime-logs"}\n'
+            "}\n"
+        ),
+        encoding="utf-8",
+    )
+    calls = {"pid_checks": 0}
+
+    monkeypatch.setattr(launcher, "_request_runtime_shutdown", lambda contract, timeout_s=3.0: True)
+    monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=0.5: False)
+
+    pid_states = iter([True, True, False])
+
+    def _fake_pid_exists(pid: int) -> bool:
+        calls["pid_checks"] += 1
+        return next(pid_states)
+
+    monkeypatch.setattr(launcher, "_pid_exists", _fake_pid_exists)
+    monkeypatch.setattr(launcher, "_pid_matches_contract", lambda pid, expected_exe_path: True)
+    monkeypatch.setattr(launcher, "_kill_runtime_pid", lambda pid: calls.setdefault("kill", pid) or False)
+    monkeypatch.setattr(launcher.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(launcher, "delete_runtime_contract_files", lambda path: calls.setdefault("delete", path))
+    monkeypatch.setattr(
+        launcher,
+        "stop_aps_chrome_processes",
+        lambda profile_dir, logger=None: calls.setdefault("chrome", profile_dir) or True,
+    )
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), stop_aps_chrome=True) == 0
+    assert calls["pid_checks"] >= 3
+    assert calls["delete"] == os.path.abspath(str(state_dir))
+    assert calls["chrome"] == "C:/Temp/chrome-profile"
+    assert "kill" not in calls
+
+
 def test_stop_aps_chrome_processes_fails_closed_when_pid_list_unavailable(monkeypatch):
     launcher = _import_launcher()
     monkeypatch.setattr(launcher, "_list_aps_chrome_pids", lambda profile_dir: None)

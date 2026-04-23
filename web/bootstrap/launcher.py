@@ -960,6 +960,173 @@ def _stop_aps_chrome_if_requested(
     return stop_aps_chrome_processes(profile_dir, logger=logger)
 
 
+def _read_runtime_endpoint_files(state_dir: str) -> Dict[str, Any]:
+    host_path, port_path, _db_path, _contract_path = _state_contract_paths(state_dir)
+    host_exists = os.path.exists(host_path)
+    port_exists = os.path.exists(port_path)
+    host = ""
+    port = 0
+    if host_exists:
+        try:
+            with open(host_path, encoding="utf-8") as f:
+                host = (f.read() or "").strip()
+        except Exception:
+            host = ""
+    if port_exists:
+        try:
+            with open(port_path, encoding="utf-8") as f:
+                port = int((f.read() or "").strip())
+        except Exception:
+            port = 0
+    return {
+        "host": host,
+        "port": port,
+        "host_exists": host_exists,
+        "port_exists": port_exists,
+    }
+
+
+def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
+    runtime_dir_abs, state_dir = _resolve_runtime_stop_context(runtime_dir_or_state_dir)
+    paths = resolve_runtime_state_paths(state_dir)
+    endpoint_files = _read_runtime_endpoint_files(state_dir)
+    contract = read_runtime_contract(state_dir)
+    lock_payload = read_runtime_lock(state_dir)
+
+    contract_host = str((contract or {}).get("host") or "").strip()
+    try:
+        contract_port = int((contract or {}).get("port") or 0)
+    except Exception:
+        contract_port = 0
+    try:
+        contract_pid = int((contract or {}).get("pid") or 0)
+    except Exception:
+        contract_pid = 0
+    try:
+        lock_pid = int((lock_payload or {}).get("pid") or 0)
+    except Exception:
+        lock_pid = 0
+
+    host = contract_host or str(endpoint_files.get("host") or "").strip() or "127.0.0.1"
+    port = contract_port if contract_port > 0 else int(endpoint_files.get("port") or 0)
+    endpoint_up = bool(host and int(port or 0) > 0 and _probe_runtime_health(host, int(port), timeout_s=0.75))
+
+    expected_exe_path = str((contract or {}).get("exe_path") or (lock_payload or {}).get("exe_path") or "").strip()
+    pid = contract_pid if contract_pid > 0 else lock_pid
+    pid_exists = bool(pid > 0 and _pid_exists(pid))
+    pid_match = None
+    if contract_pid > 0 and expected_exe_path:
+        pid_match = _pid_matches_contract(contract_pid, expected_exe_path)
+    elif lock_pid > 0 and expected_exe_path:
+        pid_match = _pid_matches_contract(lock_pid, expected_exe_path)
+
+    lock_active = bool(lock_payload and _is_runtime_lock_active(lock_payload, expected_exe_path=expected_exe_path))
+    artifact_paths = (
+        paths["host_path"],
+        paths["port_path"],
+        paths["db_path"],
+        paths["contract_path"],
+        paths["lock_path"],
+        paths["error_path"],
+    )
+    has_artifacts = any(os.path.exists(path) for path in artifact_paths)
+
+    contract_indicates_mismatch = contract is not None and contract_pid > 0 and (pid_exists is False or pid_match is False)
+    if endpoint_up:
+        state = "mixed" if contract_indicates_mismatch else "active"
+    elif contract_pid > 0 and pid_exists and pid_match is not False:
+        state = "mixed"
+    elif lock_active:
+        state = "mixed"
+    elif has_artifacts:
+        state = "stale"
+    else:
+        state = "absent"
+
+    return {
+        "runtime_dir": runtime_dir_abs,
+        "state_dir": state_dir,
+        "paths": paths,
+        "contract": contract,
+        "lock": lock_payload,
+        "host": host,
+        "port": int(port or 0),
+        "endpoint_up": endpoint_up,
+        "pid": int(pid or 0),
+        "pid_exists": pid_exists,
+        "pid_match": pid_match,
+        "lock_active": lock_active,
+        "expected_exe_path": expected_exe_path,
+        "chrome_profile_dir": str((contract or {}).get("chrome_profile_dir") or "").strip(),
+        "has_artifacts": has_artifacts,
+        "state": state,
+    }
+
+
+def _runtime_stop_is_complete(status: Dict[str, Any]) -> bool:
+    state = str(status.get("state") or "").strip()
+    if state == "absent":
+        return True
+    return state == "stale" and not bool(status.get("endpoint_up"))
+
+
+def _can_force_kill_runtime(status: Dict[str, Any]) -> bool:
+    contract = status.get("contract")
+    if not isinstance(contract, dict):
+        return False
+    if str(status.get("state") or "") != "active":
+        return False
+    if not bool(status.get("endpoint_up")):
+        return False
+    try:
+        pid = int(status.get("pid") or 0)
+    except Exception:
+        pid = 0
+    if pid <= 0:
+        return False
+    pid_match = status.get("pid_match")
+    if pid_match is True:
+        return True
+    if pid_match is False:
+        return False
+    expected_exe_path = str(status.get("expected_exe_path") or "").strip()
+    helper_exe_path = os.path.normcase(os.path.abspath(str(sys.executable or "").strip()))
+    expected_exe_norm = os.path.normcase(os.path.abspath(expected_exe_path)) if expected_exe_path else ""
+    return bool(expected_exe_norm and expected_exe_norm == helper_exe_path)
+
+
+def _runtime_stop_failure_reason(status: Dict[str, Any], *, shutdown_requested: bool) -> str:
+    if status.get("pid_match") is False:
+        return "pid_mismatch"
+    if str(status.get("state") or "") == "mixed":
+        return "mixed_state"
+    if bool(status.get("endpoint_up")):
+        if not shutdown_requested and isinstance(status.get("contract"), dict):
+            return "shutdown_request_failed"
+        return "health_still_up"
+    return "mixed_state"
+
+
+def _runtime_process_inactive(pid: int, pid_match_hint: Optional[bool] = None) -> bool:
+    pid_text = str(pid or "").strip()
+    if not pid_text:
+        return True
+    if pid_text.startswith("-"):
+        pid_digits = pid_text[1:]
+    else:
+        pid_digits = pid_text
+    if not pid_digits.isdigit():
+        return True
+    pid_i = int(pid_text)
+    if pid_i <= 0:
+        return True
+    if pid_match_hint is False:
+        return True
+    if not _pid_exists(pid_i):
+        return True
+    return False
+
+
 def stop_runtime_from_dir(
     runtime_dir: str,
     *,
@@ -968,68 +1135,59 @@ def stop_runtime_from_dir(
     logger: logging.Logger | None = None,
 ) -> int:
     runtime_dir_abs, state_dir = _resolve_runtime_stop_context(runtime_dir)
-    contract = read_runtime_contract(state_dir)
-    if contract is None:
-        host_file = os.path.join(state_dir, "aps_host.txt")
-        port_file = os.path.join(state_dir, "aps_port.txt")
-        if os.path.exists(host_file) and os.path.exists(port_file):
-            try:
-                with open(host_file, encoding="utf-8") as f:
-                    host0 = (f.read() or "").strip() or "127.0.0.1"
-                with open(port_file, encoding="utf-8") as f:
-                    port0 = int((f.read() or "").strip())
-            except Exception:
-                host0 = ""
-                port0 = 0
-            if host0 and port0 > 0 and _probe_runtime_health(host0, port0, timeout_s=1.0):
-                return 1
+    status = _classify_runtime_state(state_dir)
+    if _runtime_stop_is_complete(status):
         delete_runtime_contract_files(state_dir)
-        if not _stop_aps_chrome_if_requested(stop_aps_chrome, default_chrome_profile_dir(runtime_dir_abs), logger=logger):
+        profile_dir = str(status.get("chrome_profile_dir") or "").strip() or default_chrome_profile_dir(runtime_dir_abs)
+        if not _stop_aps_chrome_if_requested(stop_aps_chrome, profile_dir, logger=logger):
             return 1
         return 0
 
-    host = str(contract.get("host") or "").strip() or "127.0.0.1"
-    try:
-        port = int(contract.get("port") or 0)
-    except Exception:
-        port = 0
-    pid = int(contract.get("pid") or 0)
-    expected_exe_path = str(contract.get("exe_path") or "").strip()
     grace_deadline = time.time() + max(min(float(timeout_s), 12.0), 2.0)
-    shutdown_requested = _request_runtime_shutdown(contract, timeout_s=3.0)
+    shutdown_requested = False
+    if isinstance(status.get("contract"), dict):
+        shutdown_requested = _request_runtime_shutdown(status["contract"], timeout_s=3.0)
 
     while time.time() < grace_deadline:
-        if port > 0 and not _probe_runtime_health(host, port, timeout_s=0.5):
+        status = _classify_runtime_state(state_dir)
+        if _runtime_stop_is_complete(status):
             delete_runtime_contract_files(state_dir)
-            if not _stop_aps_chrome_if_requested(stop_aps_chrome, contract.get("chrome_profile_dir"), logger=logger):
+            profile_dir = str(status.get("chrome_profile_dir") or "").strip() or default_chrome_profile_dir(runtime_dir_abs)
+            if not _stop_aps_chrome_if_requested(stop_aps_chrome, profile_dir, logger=logger):
                 return 1
             return 0
         time.sleep(0.25)
 
-    pid_match = _pid_matches_contract(pid, expected_exe_path)
-    helper_exe_path = os.path.normcase(os.path.abspath(str(sys.executable or "").strip()))
-    expected_exe_norm = os.path.normcase(os.path.abspath(expected_exe_path)) if expected_exe_path else ""
-    can_kill_by_pid = pid_match is True or (pid_match is None and expected_exe_norm and expected_exe_norm == helper_exe_path)
-    if pid > 0 and can_kill_by_pid:
-        _ = _kill_runtime_pid(pid)
+    status = _classify_runtime_state(state_dir)
+    if _can_force_kill_runtime(status):
+        _ = _kill_runtime_pid(int(status.get("pid") or 0))
         kill_deadline = time.time() + 6.0
         while time.time() < kill_deadline:
-            if port > 0 and not _probe_runtime_health(host, port, timeout_s=0.5):
+            status = _classify_runtime_state(state_dir)
+            if _runtime_stop_is_complete(status):
                 delete_runtime_contract_files(state_dir)
-                if not _stop_aps_chrome_if_requested(stop_aps_chrome, contract.get("chrome_profile_dir"), logger=logger):
+                profile_dir = str(status.get("chrome_profile_dir") or "").strip() or default_chrome_profile_dir(runtime_dir_abs)
+                if not _stop_aps_chrome_if_requested(stop_aps_chrome, profile_dir, logger=logger):
                     return 1
                 return 0
             time.sleep(0.25)
+        status = _classify_runtime_state(state_dir)
 
+    reason = _runtime_stop_failure_reason(status, shutdown_requested=shutdown_requested)
     if logger is not None:
         try:
             logger.warning(
-                "运行时停止失败：shutdown_requested=%s pid=%s pid_match=%s host=%s port=%s",
+                "运行时停止失败：reason=%s state=%s shutdown_requested=%s pid=%s pid_exists=%s pid_match=%s host=%s port=%s endpoint_up=%s lock_active=%s",
+                reason,
+                status.get("state"),
                 shutdown_requested,
-                pid,
-                pid_match,
-                host,
-                port,
+                status.get("pid"),
+                status.get("pid_exists"),
+                status.get("pid_match"),
+                status.get("host"),
+                status.get("port"),
+                status.get("endpoint_up"),
+                status.get("lock_active"),
             )
         except Exception:
             pass

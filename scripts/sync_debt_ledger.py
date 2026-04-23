@@ -67,12 +67,6 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load_current_ledger_for_write() -> Dict[str, object]:
-    ledger = load_ledger(required=True)
-    validate_ledger_against_current_scan(ledger)
-    return ledger
-
-
 def _print_summary(title: str, payload: Dict[str, object]) -> None:
     print(title)
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
@@ -102,7 +96,7 @@ def _handle_refresh(args: argparse.Namespace) -> int:
     elif mode == "scan-startup-baseline":
         next_ledger = refresh_scan_startup_baseline(current)
     elif mode == "refresh-auto-fields":
-        current = _load_current_ledger_for_write()
+        current = load_ledger(required=True)
         next_ledger = refresh_auto_fields(current)
     else:  # pragma: no cover
         raise QualityGateError(f"未知 refresh 模式：{mode}")

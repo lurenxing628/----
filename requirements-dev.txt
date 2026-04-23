@@ -1,8 +1,8 @@
-# 开发与测试依赖。
-# 运行时打包不要使用此文件。
-# 本地开发与托管检查共用这一组版本口径。
+# Shared dev and hosted quality-gate dependencies.
+# Do not use this file for runtime packaging.
 pytest
 pytest-cov
 radon
 pre-commit
 ruff>=0.15,<0.16
+pyright==1.1.406
