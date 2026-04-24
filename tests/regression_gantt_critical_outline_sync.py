@@ -3,10 +3,42 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_gantt_contract_clears_unavailable_critical_chain_payload() -> None:
+    from core.services.scheduler.gantt_contract import build_gantt_contract
+
+    payload = build_gantt_contract(
+        contract_version=1,
+        tasks=[],
+        calendar_days=[],
+        view="machine",
+        version=7,
+        week_start="2026-04-13",
+        week_end="2026-04-19",
+        critical_chain={
+            "available": False,
+            "reason": "repo_exception",
+            "reason_code": "repo_exception",
+            "ids": ["RAW-1"],
+            "edges": [{"from": "RAW-1", "to": "RAW-2"}],
+            "edge_count": 1,
+            "cache_hit": False,
+        },
+    )
+
+    critical_chain = payload["critical_chain"]
+    assert critical_chain["available"] is False
+    assert critical_chain["ids"] == []
+    assert critical_chain["edges"] == []
+    assert critical_chain["edge_count"] == 0
+    assert critical_chain["reason_code"] == "repo_exception"
+    assert critical_chain["reason"] == "关键链计算异常"
 
 
 DOM_SHIM_JS = r"""
@@ -712,8 +744,57 @@ def _gantt_render_js() -> str:
     return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_render.js"))
 
 
+def _gantt_contract_js() -> str:
+    return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_contract.js"))
+
+
 def _gantt_boot_js() -> str:
     return json.dumps(str(REPO_ROOT / "static" / "js" / "gantt_boot.js"))
+
+
+def _load_preview_module():
+    module_path = REPO_ROOT / "tests" / "run_complex_case_and_export_gantt.py"
+    spec = importlib.util.spec_from_file_location("run_complex_case_and_export_gantt", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load preview helper from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _template_static_scripts(template_path: Path) -> list[str]:
+    text = template_path.read_text(encoding="utf-8")
+    return re.findall(r"url_for\('static',\s*filename='([^']+)'\)", text)
+
+
+def test_gantt_contract_asset_is_tracked_and_loaded_before_render_in_all_templates() -> None:
+    expected_order = [
+        "js/frappe-gantt.min.js",
+        "js/gantt.js",
+        "js/gantt_color.js",
+        "js/gantt_outline.js",
+        "js/gantt_contract.js",
+        "js/gantt_render.js",
+        "js/gantt_ui.js",
+        "js/gantt_boot.js",
+    ]
+    for template_rel in ("templates/scheduler/gantt.html", "web_new_test/templates/scheduler/gantt.html"):
+        scripts = [
+            item
+            for item in _template_static_scripts(REPO_ROOT / template_rel)
+            if item.startswith("js/gantt") or item == "js/frappe-gantt.min.js"
+        ]
+        assert scripts == expected_order, template_rel
+
+    contract_path = REPO_ROOT / "static" / "js" / "gantt_contract.js"
+    assert contract_path.is_file()
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "static/js/gantt_contract.js"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert tracked.returncode == 0, tracked.stderr
 
 
 def test_outline_helper_contract_and_adapter_binding() -> None:
@@ -887,6 +968,7 @@ global.Gantt = CapturingGantt;
 loadScript({_gantt_js()});
 loadScript({_gantt_color_js()});
 loadScript({_outline_js()});
+loadScript({_gantt_contract_js()});
 loadScript({_gantt_render_js()});
 
 const ns = window.__APS_GANTT__;
@@ -1025,6 +1107,7 @@ createHost("gantt");
 createHost("legend");
 loadScript({_vendor_js()});
 loadScript({_outline_js()});
+loadScript({_gantt_contract_js()});
 
 const tasks = {json.dumps(tasks)};
 const calendarDays = {json.dumps(calendar_days)};
@@ -1129,3 +1212,659 @@ process.stdout.write(JSON.stringify({{
 
     assert "outline.setCriticalOutlineEnabled" in result["message"]
     assert "outline.installCriticalOutlineSyncAdapter" in result["message"]
+
+
+def test_formal_page_and_preview_share_critical_edge_tooltip_and_help_semantics() -> None:
+    tasks = [
+        {
+            "id": "T1",
+            "name": "Upstream Critical",
+            "start": "2026-01-26",
+            "end": "2026-01-27",
+            "progress": 0,
+            "dependencies": "",
+            "meta": {
+                "batch_id": "B001",
+                "source": "internal",
+                "priority": "critical",
+                "status": "pending",
+                "machine_id": "MC001",
+                "machine": "CNC-01",
+                "operator_id": "OP001",
+                "operator": "Alice",
+                "piece_id": "B001-1",
+                "part_no": "P_A",
+                "seq": 10,
+                "due_date": "2026-01-27",
+            },
+        },
+        {
+            "id": "T2",
+            "name": "Controlled Critical",
+            "start": "2026-01-27",
+            "end": "2026-01-28",
+            "progress": 0,
+            "dependencies": "P999",
+            "meta": {
+                "batch_id": "B001",
+                "source": "internal",
+                "priority": "critical",
+                "status": "pending",
+                "machine_id": "MC002",
+                "machine": "CNC-02",
+                "operator_id": "OP002",
+                "operator": "Bob",
+                "piece_id": "B001-2",
+                "part_no": "P_A",
+                "seq": 20,
+                "due_date": "2026-01-28",
+            },
+        },
+    ]
+    critical_chain = {
+        "ids": ["T1", "T2"],
+        "edges": [
+            {
+                "from": "T1",
+                "to": "T2",
+                "edge_type": "machine",
+                "reason": "控制前驱",
+                "gap_minutes": 30,
+            }
+        ],
+        "makespan_end": "2026-01-28",
+        "available": True,
+    }
+    bootstrap_js = _preview_bootstrap()
+
+    formal_node = f"""
+{DOM_SHIM_JS}
+createHost("gantt");
+createHost("ganttEmpty");
+createHost("ganttError");
+createHost("ganttLegend");
+createHost("ganttDegradationWarning");
+createHost("ganttOverdueWarning");
+const helpList = document.createElement("ul");
+helpList.setAttribute("id", "ganttHelpList");
+document.body.appendChild(helpList);
+document.readyState = "loading";
+
+loadScript({_vendor_js()});
+const RealGantt = Gantt;
+function CapturingGantt(selector, list, options) {{
+  return new RealGantt(selector, list, options);
+}}
+CapturingGantt.prototype = RealGantt.prototype;
+window.Gantt = CapturingGantt;
+global.Gantt = CapturingGantt;
+
+loadScript({_gantt_js()});
+loadScript({_gantt_color_js()});
+loadScript({_outline_js()});
+loadScript({_gantt_contract_js()});
+loadScript({_gantt_render_js()});
+const ns = window.__APS_GANTT__;
+ns.applyUiFromUrl = function () {{}};
+ns.bindUi = function () {{}};
+ns.readUi = function () {{}};
+ns.persistUiToUrl = function () {{}};
+const host = document.getElementById("gantt");
+host.setAttribute("data-url", "/api/mock-gantt");
+host.setAttribute("data-view", "machine");
+host.setAttribute("data-week-start", "2026-01-26");
+host.setAttribute("data-start-date", "2026-01-26");
+host.setAttribute("data-end-date", "2026-02-02");
+host.setAttribute("data-version", "7");
+host.setAttribute("data-has-history", "1");
+
+global.fetch = function () {{
+  return Promise.resolve({{
+    ok: true,
+    json() {{
+      return Promise.resolve({{
+        success: true,
+        data: {{
+          tasks: {json.dumps(tasks)},
+          calendar_days: [],
+          critical_chain: {json.dumps(critical_chain)},
+          degradation_events: [],
+          degradation_counters: {{}},
+        }},
+      }});
+    }},
+  }});
+}};
+
+loadScript({_gantt_boot_js()});
+(async function () {{
+  await ns.loadAndRender();
+  const task = ns.state.currentTasks.find((item) => item.id === "T2");
+  const popup = ns.state.gantt && ns.state.gantt.options && typeof ns.state.gantt.options.custom_popup_html === "function"
+    ? ns.state.gantt.options.custom_popup_html(task)
+    : "";
+  process.stdout.write(JSON.stringify({{
+    dependency: task ? String(task.dependencies || "") : "",
+    popup: popup,
+    legend: document.getElementById("ganttLegend").textContent || "",
+    help: document.getElementById("ganttHelpList").textContent || "",
+  }}));
+}})().catch((error) => {{
+  console.error(error && error.stack ? error.stack : error);
+  process.exit(1);
+}});
+"""
+    preview_node = f"""
+{DOM_SHIM_JS}
+createHost("gantt");
+createHost("legend");
+createHost("ganttDegradationWarning");
+const helpList = document.createElement("ul");
+helpList.setAttribute("id", "ganttHelpList");
+document.body.appendChild(helpList);
+
+loadScript({_vendor_js()});
+loadScript({_outline_js()});
+loadScript({_gantt_contract_js()});
+
+const tasks = {json.dumps(tasks)};
+const calendarDays = [];
+const criticalChain = {json.dumps(critical_chain)};
+vm.runInThisContext({json.dumps(bootstrap_js)}, {{ filename: "preview_bootstrap.js" }});
+
+const preview = window.__APS_GANTT_PREVIEW__;
+const task = preview.gantt.get_task("T2");
+const popup = preview.gantt.options && typeof preview.gantt.options.custom_popup_html === "function"
+  ? preview.gantt.options.custom_popup_html(task)
+  : "";
+const deps = Array.isArray(task && task.dependencies) ? task.dependencies.join(",") : String((task && task.dependencies) || "");
+process.stdout.write(JSON.stringify({{
+  dependency: deps,
+  popup: popup,
+  legend: document.getElementById("legend").textContent || "",
+  help: document.getElementById("ganttHelpList").textContent || "",
+}}));
+"""
+
+    formal = _run_node_json(formal_node)
+    preview = _run_node_json(preview_node)
+
+    assert formal["dependency"] == "T1"
+    assert preview["dependency"] == "T1"
+    assert "关键链（全版本/本窗口可见）2/2" in formal["legend"]
+    assert "关键链 2" in preview["legend"]
+
+    for result in (formal, preview):
+      assert "关键链前驱：T1" in result["popup"]
+      assert "设备前驱" in result["popup"]
+      assert "控制前驱" in result["popup"]
+      assert "关键链控制前驱" in result["legend"]
+      assert "控制前驱" in result["help"]
+      assert "工艺依赖，后一工序依赖前一工序" not in result["help"]
+
+
+def test_critical_chain_unavailable_semantics_match_formal_preview_and_export_html(tmp_path: Path) -> None:
+    tasks = [
+        {
+            "id": "T1",
+            "name": "Unavailable Raw Critical",
+            "start": "2026-01-26",
+            "end": "2026-01-27",
+            "progress": 0,
+            "dependencies": "",
+            "meta": {"batch_id": "B001", "source": "internal"},
+        },
+        {
+            "id": "T2",
+            "name": "Unavailable Controlled Task",
+            "start": "2026-01-27",
+            "end": "2026-01-28",
+            "progress": 0,
+            "dependencies": "P999",
+            "meta": {"batch_id": "B001", "source": "internal"},
+        },
+    ]
+    critical_chain = {
+        "ids": ["T1", "T2"],
+        "edges": [{"from": "T1", "to": "T2", "edge_type": "machine", "reason": "控制前驱"}],
+        "makespan_end": None,
+        "available": False,
+        "reason": "缓存缺失",
+    }
+    bootstrap_js = _preview_bootstrap()
+
+    formal_node = f"""
+{DOM_SHIM_JS}
+createHost("gantt");
+createHost("ganttEmpty");
+createHost("ganttError");
+createHost("ganttLegend");
+createHost("ganttDegradationWarning");
+createHost("ganttOverdueWarning");
+const helpList = document.createElement("ul");
+helpList.setAttribute("id", "ganttHelpList");
+document.body.appendChild(helpList);
+document.readyState = "loading";
+
+loadScript({_vendor_js()});
+loadScript({_gantt_js()});
+loadScript({_gantt_color_js()});
+loadScript({_outline_js()});
+loadScript({_gantt_contract_js()});
+loadScript({_gantt_render_js()});
+const ns = window.__APS_GANTT__;
+ns.applyUiFromUrl = function () {{}};
+ns.bindUi = function () {{}};
+ns.readUi = function () {{}};
+ns.persistUiToUrl = function () {{}};
+const host = document.getElementById("gantt");
+host.setAttribute("data-url", "/api/mock-gantt");
+host.setAttribute("data-view", "machine");
+host.setAttribute("data-week-start", "2026-01-26");
+host.setAttribute("data-start-date", "2026-01-26");
+host.setAttribute("data-end-date", "2026-02-02");
+host.setAttribute("data-version", "8");
+host.setAttribute("data-has-history", "1");
+
+global.fetch = function () {{
+  return Promise.resolve({{
+    ok: true,
+    json() {{
+      return Promise.resolve({{
+        success: true,
+        data: {{
+          tasks: {json.dumps(tasks)},
+          calendar_days: [],
+          critical_chain: {json.dumps(critical_chain)},
+          degradation_events: [],
+          degradation_counters: {{}},
+        }},
+      }});
+    }},
+  }});
+}};
+
+loadScript({_gantt_boot_js()});
+(async function () {{
+  await ns.loadAndRender();
+  const task = ns.state.currentTasks.find((item) => item.id === "T2");
+  const popup = ns.state.gantt && ns.state.gantt.options && typeof ns.state.gantt.options.custom_popup_html === "function"
+    ? ns.state.gantt.options.custom_popup_html(task)
+    : "";
+  const t1 = findWrapperById("T1");
+  const t2 = findWrapperById("T2");
+  process.stdout.write(JSON.stringify({{
+    dependency: task ? String(task.dependencies || "") : "",
+    popup: popup,
+    t1Critical: !!(t1 && t1.classList.contains("aps-critical")),
+    t2Critical: !!(t2 && t2.classList.contains("aps-critical")),
+    t1Outline: readOutlineState(t1).count,
+    t2Outline: readOutlineState(t2).count,
+    warning: document.getElementById("ganttDegradationWarning").textContent || "",
+    legend: document.getElementById("ganttLegend").textContent || "",
+    help: document.getElementById("ganttHelpList").textContent || "",
+  }}));
+}})().catch((error) => {{
+  console.error(error && error.stack ? error.stack : error);
+  process.exit(1);
+}});
+"""
+    preview_node = f"""
+{DOM_SHIM_JS}
+createHost("gantt");
+createHost("legend");
+createHost("ganttDegradationWarning");
+const helpList = document.createElement("ul");
+helpList.setAttribute("id", "ganttHelpList");
+document.body.appendChild(helpList);
+
+loadScript({_vendor_js()});
+loadScript({_outline_js()});
+loadScript({_gantt_contract_js()});
+
+const tasks = {json.dumps(tasks)};
+const calendarDays = [];
+const criticalChain = {json.dumps(critical_chain)};
+vm.runInThisContext({json.dumps(bootstrap_js)}, {{ filename: "preview_bootstrap.js" }});
+
+const preview = window.__APS_GANTT_PREVIEW__;
+const task = preview.gantt.get_task("T2");
+const deps = Array.isArray(task && task.dependencies) ? task.dependencies.join(",") : String((task && task.dependencies) || "");
+const popup = preview.gantt.options && typeof preview.gantt.options.custom_popup_html === "function"
+  ? preview.gantt.options.custom_popup_html(task)
+  : "";
+const t1 = findWrapperById("T1");
+const t2 = findWrapperById("T2");
+process.stdout.write(JSON.stringify({{
+  dependency: deps,
+  popup: popup,
+  t1Critical: !!(t1 && t1.classList.contains("aps-critical")),
+  t2Critical: !!(t2 && t2.classList.contains("aps-critical")),
+  t1Outline: readOutlineState(t1).count,
+  t2Outline: readOutlineState(t2).count,
+  warning: document.getElementById("ganttDegradationWarning").textContent || "",
+  legend: document.getElementById("legend").textContent || "",
+  help: document.getElementById("ganttHelpList").textContent || "",
+}}));
+"""
+
+    formal = _run_node_json(formal_node)
+    preview = _run_node_json(preview_node)
+
+    assert formal["dependency"] == preview["dependency"] == ""
+    assert formal["warning"] == preview["warning"]
+    assert "关键链（全版本/本窗口可见）0/0" in formal["legend"]
+    assert "关键链 0" in preview["legend"]
+    assert "关键链 2" not in preview["legend"]
+    assert "关键链(停用)" in preview["legend"]
+    for result in (formal, preview):
+      assert result["t1Critical"] is False
+      assert result["t2Critical"] is False
+      assert result["t1Outline"] == 0
+      assert result["t2Outline"] == 0
+      assert "关键链前驱：T1" not in result["popup"]
+      assert "关键链暂不可用" in result["warning"]
+      assert "缓存缺失" in result["warning"]
+      assert "仅展示普通甘特任务与资源排程" in result["warning"]
+      assert "关键链暂不可用" in result["legend"]
+      assert "关键链(停用)" in result["legend"] or "关键链 0" in result["legend"]
+      assert "缓存缺失" in result["help"]
+      assert "任务条外框高亮，表示该任务仍在当前版本关键链上" not in result["help"]
+      assert "默认展示关键链控制前驱" not in result["help"]
+
+    preview_module = _load_preview_module()
+    html_path = preview_module._write_html(
+        str(tmp_path),
+        "preview_unavailable.html",
+        "preview unavailable",
+        {"view": "machine"},
+        tasks,
+        calendar_days=[],
+        critical_chain=critical_chain,
+    )
+    html = Path(html_path).read_text(encoding="utf-8")
+    assert "../../static/js/gantt_contract.js" in html
+    assert 'id="ganttDegradationWarning"' in html
+    assert "工艺依赖，后一工序依赖前一工序" not in html
+
+
+def test_gantt_templates_use_contract_rendered_help_list() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    for rel_path in ("templates/scheduler/gantt.html", "web_new_test/templates/scheduler/gantt.html"):
+        html = (repo_root / rel_path).read_text(encoding="utf-8")
+        assert 'id="ganttHelpList"' in html
+        assert "任务条会出现<strong>外框高亮</strong>" not in html
+
+
+def test_gantt_contract_sanitizes_render_task_names_and_preserves_raw_name() -> None:
+    node_code = f"""
+{DOM_SHIM_JS}
+loadScript({_gantt_contract_js()});
+const api = window.__APS_GANTT__.contract;
+const tasks = [
+  {{
+    id: "T1",
+    name: "<img src=x onerror=alert(1)>",
+    start: "2026-01-26",
+    end: "2026-01-27",
+    dependencies: "",
+    meta: {{ batch_id: "B001" }},
+  }},
+];
+const rendered = api.buildRenderTasks(tasks, "none", {{ ids: [], edges: [], available: true }});
+process.stdout.write(JSON.stringify({{
+  name: rendered[0].name,
+  rawName: rendered[0].meta._raw_name,
+  sourceName: tasks[0].name,
+}}));
+"""
+    result = _run_node_json(node_code)
+
+    assert result["name"] == "&lt;img src=x onerror=alert(1)&gt;"
+    assert result["rawName"] == "<img src=x onerror=alert(1)>"
+    assert result["sourceName"] == "<img src=x onerror=alert(1)>"
+
+
+def test_gantt_contract_disables_calendar_fallback_when_calendar_load_failed() -> None:
+    node_code = f"""
+{DOM_SHIM_JS}
+loadScript({_gantt_contract_js()});
+const api = window.__APS_GANTT__.contract;
+process.stdout.write(JSON.stringify({{
+  normal: api.shouldUseFallbackCalendarDays({{ degradation_counters: {{}}, empty_reason: "" }}),
+  counterFailed: api.shouldUseFallbackCalendarDays({{ degradation_counters: {{ calendar_load_failed: 1 }} }}),
+  eventFailed: api.shouldUseFallbackCalendarDays({{ degradation_events: [{{ code: "calendar_load_failed" }}] }}),
+  emptyFailed: api.shouldUseFallbackCalendarDays({{ empty_reason: "calendar_load_failed" }}),
+}}));
+"""
+    result = _run_node_json(node_code)
+
+    assert result == {
+        "normal": True,
+        "counterFailed": False,
+        "eventFailed": False,
+        "emptyFailed": False,
+    }
+
+
+def test_gantt_contract_calendar_load_failed_message_does_not_echo_raw_event() -> None:
+    node_code = f"""
+{DOM_SHIM_JS}
+loadScript({_gantt_contract_js()});
+const api = window.__APS_GANTT__.contract;
+const messages = api.buildDegradationMessages({{
+  degradation_events: [
+    {{ code: "calendar_load_failed", message: "sqlite OperationalError: /tmp/private.db locked" }},
+  ],
+  degradation_counters: {{ calendar_load_failed: 1 }},
+}}, {{ ids: [], edges: [], available: true }});
+process.stdout.write(JSON.stringify({{ messages }}));
+"""
+    result = _run_node_json(node_code)
+
+    assert result["messages"] == ["工作日历加载失败，当前不显示假期/停工背景标注。"]
+    assert "sqlite" not in str(result)
+    assert "/tmp/private.db" not in str(result)
+
+
+def test_gantt_contract_critical_unavailable_message_maps_reason_code() -> None:
+    node_code = f"""
+{DOM_SHIM_JS}
+loadScript({_gantt_contract_js()});
+const api = window.__APS_GANTT__.contract;
+const critical = {{ ids: ["T1"], edges: [], available: false, reason: "repo_exception" }};
+const messages = api.buildDegradationMessages({{
+  degradation_counters: {{ critical_chain_unavailable: 1 }},
+}}, critical);
+const help = api.getHelpItems(critical).join(" ");
+process.stdout.write(JSON.stringify({{ messages, help }}));
+"""
+    result = _run_node_json(node_code)
+
+    assert "关键链计算异常" in str(result)
+    assert "repo_exception" not in str(result)
+
+
+def test_gantt_contract_public_history_and_critical_reason_do_not_echo_raw_values() -> None:
+    from core.services.scheduler.gantt_contract import build_gantt_contract
+
+    data = build_gantt_contract(
+        contract_version=2,
+        view="machine",
+        version=9,
+        week_start="2026-01-26",
+        week_end="2026-02-01",
+        tasks=[],
+        calendar_days=[],
+        critical_chain={"ids": [], "edges": [], "available": False, "reason": "repo_exception"},
+        degraded=True,
+        degradation_events=[],
+        degradation_counters={"critical_chain_unavailable": 1},
+        include_history=True,
+        history={
+            "version": 9,
+            "result_status": "success",
+            "result_summary": '{"degradation_events":[{"message":"sqlite SECRET /tmp/private.db"}]}',
+        },
+    )
+
+    assert data["critical_chain"]["reason"] == "关键链计算异常"
+    assert data["critical_chain"]["reason_code"] == "repo_exception"
+    assert data["history"]["version"] == 9
+    assert "result_summary" not in data["history"]
+    assert "sqlite" not in str(data)
+    assert "SECRET" not in str(data)
+    assert "/tmp/private.db" not in str(data)
+
+
+def test_formal_preview_and_export_html_share_degradation_and_overdue_warnings(tmp_path: Path) -> None:
+    tasks = [
+        {
+            "id": "T1",
+            "name": "Task A",
+            "start": "2026-01-26",
+            "end": "2026-01-27",
+            "progress": 0,
+            "dependencies": "",
+            "meta": {"batch_id": "B001", "source": "internal"},
+        }
+    ]
+    critical_chain = {"ids": ["T1"], "edges": [], "available": True, "reason": ""}
+    degradation_events = [{"code": "calendar_load_failed", "message": "工作日历加载失败，当前不显示假期/停工背景标注。"}]
+    degradation_counters = {"calendar_load_failed": 1, "bad_time_row_skipped": 2}
+    overdue_message = "部分超期标记可能不完整，当前仍按已识别条目标记。"
+    bootstrap_js = _preview_bootstrap()
+
+    formal_node = f"""
+{DOM_SHIM_JS}
+createHost("gantt");
+createHost("ganttEmpty");
+createHost("ganttError");
+createHost("ganttLegend");
+createHost("ganttDegradationWarning");
+createHost("ganttOverdueWarning");
+const helpList = document.createElement("ul");
+helpList.setAttribute("id", "ganttHelpList");
+document.body.appendChild(helpList);
+document.readyState = "loading";
+
+loadScript({_vendor_js()});
+loadScript({_gantt_js()});
+loadScript({_gantt_color_js()});
+loadScript({_outline_js()});
+loadScript({_gantt_contract_js()});
+loadScript({_gantt_render_js()});
+const ns = window.__APS_GANTT__;
+ns.applyUiFromUrl = function () {{}};
+ns.bindUi = function () {{}};
+ns.readUi = function () {{}};
+ns.persistUiToUrl = function () {{}};
+const host = document.getElementById("gantt");
+host.setAttribute("data-url", "/api/mock-gantt");
+host.setAttribute("data-view", "machine");
+host.setAttribute("data-week-start", "2026-01-26");
+host.setAttribute("data-start-date", "2026-01-26");
+host.setAttribute("data-end-date", "2026-02-02");
+host.setAttribute("data-version", "8");
+host.setAttribute("data-has-history", "1");
+
+global.fetch = function () {{
+  return Promise.resolve({{
+    ok: true,
+    json() {{
+      return Promise.resolve({{
+        success: true,
+        data: {{
+          tasks: {json.dumps(tasks)},
+          calendar_days: [],
+          critical_chain: {json.dumps(critical_chain)},
+          degradation_events: {json.dumps(degradation_events)},
+          degradation_counters: {json.dumps(degradation_counters)},
+          overdue_markers_degraded: false,
+          overdue_markers_partial: true,
+          overdue_markers_message: {json.dumps(overdue_message)},
+        }},
+      }});
+    }},
+  }});
+}};
+
+loadScript({_gantt_boot_js()});
+(async function () {{
+      await ns.loadAndRender();
+      process.stdout.write(JSON.stringify({{
+        degradation: document.getElementById("ganttDegradationWarning").textContent || "",
+        overdue: document.getElementById("ganttOverdueWarning").textContent || "",
+        legend: document.getElementById("ganttLegend").textContent || "",
+        help: document.getElementById("ganttHelpList").textContent || "",
+      }}));
+}})().catch((error) => {{
+  console.error(error && error.stack ? error.stack : error);
+  process.exit(1);
+}});
+"""
+    preview_node = f"""
+{DOM_SHIM_JS}
+createHost("gantt");
+createHost("legend");
+createHost("ganttDegradationWarning");
+createHost("ganttOverdueWarning");
+const helpList = document.createElement("ul");
+helpList.setAttribute("id", "ganttHelpList");
+document.body.appendChild(helpList);
+
+loadScript({_vendor_js()});
+loadScript({_outline_js()});
+loadScript({_gantt_contract_js()});
+
+const tasks = {json.dumps(tasks)};
+const calendarDays = [];
+const criticalChain = {json.dumps(critical_chain)};
+const degradationEvents = {json.dumps(degradation_events)};
+const degradationCounters = {json.dumps(degradation_counters)};
+const emptyReason = "";
+const overdueMarkersDegraded = false;
+const overdueMarkersPartial = true;
+const overdueMarkersMessage = {json.dumps(overdue_message)};
+vm.runInThisContext({json.dumps(bootstrap_js)}, {{ filename: "preview_bootstrap.js" }});
+
+process.stdout.write(JSON.stringify({{
+  degradation: document.getElementById("ganttDegradationWarning").textContent || "",
+  overdue: document.getElementById("ganttOverdueWarning").textContent || "",
+  legend: document.getElementById("legend").textContent || "",
+  help: document.getElementById("ganttHelpList").textContent || "",
+}}));
+"""
+
+    formal = _run_node_json(formal_node)
+    preview = _run_node_json(preview_node)
+
+    assert formal["degradation"] == preview["degradation"]
+    assert formal["overdue"] == preview["overdue"]
+    assert "工作日历加载失败" in formal["degradation"]
+    assert "已过滤 2 条时间不合法的排程记录。" in formal["degradation"]
+    assert overdue_message in formal["overdue"]
+    for result in (formal, preview):
+        assert "假期/停工(停用)" in result["legend"]
+        assert "假期/停工(背景)" not in result["legend"]
+        assert "工作日历加载失败" in result["help"]
+        assert "周末默认视为假期" not in result["help"]
+
+    preview_module = _load_preview_module()
+    html_path = preview_module._write_html(
+        str(tmp_path),
+        "preview_degraded.html",
+        "preview degraded",
+        {"view": "machine"},
+        tasks,
+        calendar_days=[],
+        critical_chain=critical_chain,
+        degradation_events=degradation_events,
+        degradation_counters=degradation_counters,
+        overdue_markers_partial=True,
+        overdue_markers_message=overdue_message,
+    )
+    html = Path(html_path).read_text(encoding="utf-8")
+    assert 'id="ganttOverdueWarning"' in html
+    assert "calendar_load_failed" in html
+    assert "overdueMarkersPartial" in html

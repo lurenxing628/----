@@ -167,6 +167,10 @@ def _algo_freeze_window_dict(
     if expose_state:
         freeze_window["freeze_state"] = freeze_state.get("freeze_state")
         freeze_window["freeze_applied"] = bool(freeze_state.get("freeze_applied"))
+        if freeze_state.get("freeze_application_status") is not None:
+            freeze_window["freeze_application_status"] = freeze_state.get("freeze_application_status")
+        if freeze_state.get("freeze_degradation_public_code") is not None:
+            freeze_window["freeze_degradation_public_code"] = freeze_state.get("freeze_degradation_public_code")
         freeze_window["freeze_degradation_codes"] = list(freeze_state.get("freeze_degradation_codes") or [])
     return freeze_window
 
@@ -260,6 +264,7 @@ def _build_result_summary_obj(
     summary_degradation: Dict[str, Any],
     degraded_success: bool,
     degraded_causes: List[str],
+    completion_status: str,
     time_cost_ms: int,
     serialize_end_date_fn: Callable[[Optional[Any]], Optional[str]],
 ) -> Dict[str, Any]:
@@ -267,6 +272,7 @@ def _build_result_summary_obj(
     return {
         "summary_schema_version": "1.2",
         "is_simulation": bool(ctx.simulate),
+        "completion_status": str(completion_status or ""),
         "version": int(ctx.version),
         "strategy": ctx.used_strategy.value,
         "strategy_params": ctx.used_params or {},

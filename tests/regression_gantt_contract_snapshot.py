@@ -78,6 +78,12 @@ def main() -> None:
         sch_svc.update_internal_operation(op.id, machine_id="MC001", operator_id="OP001", setup_hours=0.0, unit_hours=1.0)
         run_ret = sch_svc.run_schedule(batch_ids=["B_GANTT"], start_dt="2026-03-02 08:00:00", created_by="reg")
         version = int(run_ret["version"])
+        empty_version = int(version) + 1
+        conn.execute(
+            "INSERT INTO ScheduleHistory (version, strategy, batch_count, op_count, result_status, result_summary, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (empty_version, "greedy", 0, 0, "success", "{}", "reg"),
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -155,9 +161,11 @@ def main() -> None:
     data_hist = (payload_hist.get("data") or {}) if payload_hist.get("success") else {}
     if "history" not in data_hist:
         raise RuntimeError("include_history=1 时未返回 history")
+    history_payload = data_hist.get("history") or {}
+    if isinstance(history_payload, dict) and "result_summary" in history_payload:
+        raise RuntimeError("include_history=1 不应下发原始 result_summary")
 
-    # 3) 空数据版本也应返回完整 critical_chain；include_history=1 且无历史时应返回 history=null
-    empty_version = int(version) + 99999
+    # 3) 有历史但无 Schedule 行的版本也应返回完整 critical_chain；include_history=1 下发脱敏历史
     resp_empty = client.get(f"/scheduler/gantt/data?view=machine&week_start=2026-03-02&version={empty_version}")
     _assert_status(resp_empty, "GET /scheduler/gantt/data?empty_version")
     payload_empty = json.loads(resp_empty.data.decode("utf-8", errors="ignore") or "{}")
@@ -196,12 +204,14 @@ def main() -> None:
     data_empty_hist = payload_empty_hist.get("data") or {}
     if "history" not in data_empty_hist:
         raise RuntimeError("空数据版本 include_history=1 时未返回 history")
-    if data_empty_hist.get("history", "__MISSING__") is not None:
-        raise RuntimeError(f"空数据版本无历史时 history 应为 null：{data_empty_hist.get('history')!r}")
+    history_payload = data_empty_hist.get("history") or {}
+    if not isinstance(history_payload, dict) or int(history_payload.get("version") or 0) != int(empty_version):
+        raise RuntimeError(f"空数据版本 include_history=1 应返回对应历史元数据：{history_payload!r}")
+    if "result_summary" in history_payload:
+        raise RuntimeError("空数据版本 include_history=1 不应下发原始 result_summary")
 
     print("OK")
 
 
 if __name__ == "__main__":
     main()
-

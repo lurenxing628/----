@@ -109,6 +109,8 @@ def test_schedule_summary_freeze_state_controls_hard_constraints() -> None:
     mixed_freeze = mixed_algo.get("freeze_window") or {}
     assert mixed_freeze.get("freeze_state") == "degraded", mixed_freeze
     assert mixed_freeze.get("freeze_applied") is True, mixed_freeze
+    assert mixed_freeze.get("freeze_application_status") == "partially_applied", mixed_freeze
+    assert "未应用冻结窗口种子" not in str(mixed_freeze.get("degradation_reason") or ""), mixed_freeze
     assert mixed_freeze.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], mixed_freeze
     assert "freeze_window" in (mixed_algo.get("hard_constraints") or []), mixed_algo
 
@@ -128,6 +130,8 @@ def test_schedule_summary_freeze_state_controls_hard_constraints() -> None:
     degraded_algo = degraded_summary.get("algo") or {}
     degraded_freeze = degraded_algo.get("freeze_window") or {}
     assert degraded_freeze.get("freeze_state") == "degraded", degraded_freeze
+    assert degraded_freeze.get("freeze_application_status") == "unapplied", degraded_freeze
+    assert "未应用冻结窗口种子" in str(degraded_freeze.get("degradation_reason") or ""), degraded_freeze
     assert degraded_freeze.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], degraded_freeze
     assert "freeze_window" not in (degraded_algo.get("hard_constraints") or []), degraded_algo
     warnings = degraded_summary.get("warnings") or []

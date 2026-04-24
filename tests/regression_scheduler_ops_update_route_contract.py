@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 from flask import Flask, g
 
 from core.infrastructure.errors import ValidationError
+from core.models import BatchOperation
+from core.services.scheduler.operation_edit_service import _validate_operator_machine_match
+from web.error_boundary import user_visible_app_error_message
 from web.error_handlers import register_error_handlers
 
 
@@ -35,7 +39,7 @@ def _build_app(monkeypatch, schedule_service) -> Flask:
     app = Flask(__name__)
     app.secret_key = "aps-scheduler-ops-route"
     register_error_handlers(app)
-    app.register_blueprint(route_mod.bp, url_prefix="/scheduler")
+    app.register_blueprint(cast(Any, route_mod).bp, url_prefix="/scheduler")
 
     @app.before_request
     def _inject_services() -> None:
@@ -79,3 +83,24 @@ def test_scheduler_ops_update_route_rejects_machine_operator_mismatch(monkeypatc
     payload = response.get_json()
     assert response.status_code == 400
     assert payload["error"]["message"] == "设备与人员不匹配"
+
+
+def test_operator_machine_mismatch_message_keeps_user_ids_without_internal_names() -> None:
+    svc = SimpleNamespace(operator_machine_repo=SimpleNamespace(exists=lambda operator_id, machine_id: False))
+    op = BatchOperation(id=123, op_code="B001_05", batch_id="B001")
+
+    try:
+        _validate_operator_machine_match(svc, mc_id="MC003", operator_id_text="OP001", op=op)
+    except ValidationError as exc:
+        error = exc
+        message = exc.message
+    else:
+        raise AssertionError("期望人机不匹配时报错")
+
+    assert "未被配置为可操作设备" in message
+    assert "OP001" in message
+    assert "MC003" in message
+    assert "OperatorMachine" not in message
+    assert "ID=" not in message
+    assert "B001_05" not in message
+    assert user_visible_app_error_message(error) == message

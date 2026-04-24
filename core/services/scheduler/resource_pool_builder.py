@@ -8,6 +8,11 @@ from core.services.common.enum_normalizers import skill_rank as _skill_rank_comm
 from core.services.common.safe_logging import safe_warning
 from data.repositories import MachineDowntimeRepository
 
+from .degradation_messages import (
+    DOWNTIME_EXTEND_FAILED_MESSAGE,
+    DOWNTIME_LOAD_FAILED_MESSAGE,
+    RESOURCE_POOL_BUILD_FAILED_MESSAGE,
+)
 from .number_utils import to_yes_no
 
 
@@ -143,8 +148,8 @@ def load_machine_downtimes(
         downtime_map = {}
         if meta is not None:
             meta["downtime_load_ok"] = False
-            meta["downtime_load_error"] = str(e)
-        _append_warning(warnings, f"【停机】停机区间加载失败，已降级为忽略停机约束：{e}")
+            meta["downtime_load_error"] = DOWNTIME_LOAD_FAILED_MESSAGE
+        _append_warning(warnings, f"【停机】{DOWNTIME_LOAD_FAILED_MESSAGE}")
         _warn_service_logger(svc, f"停机区间加载失败，已降级为忽略停机约束：{e}", exc_info=True)
         return downtime_map
 
@@ -245,7 +250,7 @@ def build_resource_pool(
         resource_pool = None
         if meta is not None:
             meta["resource_pool_build_ok"] = False
-            meta["resource_pool_build_error"] = str(e)
+            meta["resource_pool_build_error"] = RESOURCE_POOL_BUILD_FAILED_MESSAGE
         # 不阻断排产：自动分配降级为关闭，但要让用户/日志可观测
         warnings.append("自动分配资源池构建失败，已降级为不自动分配（请查看日志）。")
         _warn_service_logger(svc, f"自动分配资源池构建失败，已降级为不自动分配：{e}")
@@ -290,8 +295,8 @@ def extend_downtime_map_for_resource_pool(
     except Exception as e:
         if meta is not None:
             meta["downtime_extend_ok"] = False
-            meta["downtime_extend_error"] = str(e)
-        _append_warning(warnings, f"【停机】停机区间扩展加载失败，候选设备可能未覆盖停机约束：{e}")
+            meta["downtime_extend_error"] = DOWNTIME_EXTEND_FAILED_MESSAGE
+        _append_warning(warnings, f"【停机】{DOWNTIME_EXTEND_FAILED_MESSAGE}")
         _warn_service_logger(svc, f"停机区间扩展加载失败，候选设备可能未覆盖停机约束：{e}", exc_info=True)
         return downtime_map
 
@@ -327,4 +332,3 @@ def extend_downtime_map_for_resource_pool(
         _append_warning(warnings, f"【停机】{msg}")
 
     return downtime_map
-

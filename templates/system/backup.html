@@ -216,7 +216,7 @@
         <div class="warning mt-2">插件启动时出现了问题，请先检查下列异常记录。</div>
         <ul class="list-tight muted mt-2">
           {% for event in plugin_status.degradation_events or [] %}
-            <li><code>{{ event.code }}</code>：{{ event.message }}{% if event.sample %}（样本：{{ event.sample }}）{% endif %}</li>
+            <li><code>{{ event.code }}</code>：{{ event.message }}</li>
           {% endfor %}
         </ul>
       {% endif %}
@@ -268,9 +268,7 @@
                 <td>{{ s.loaded }}</td>
                 <td>
                   {% if s.error %}
-                    <div class="muted max-w-520">
-                      <pre class="pre-scroll-md">{{ s.error }}</pre>
-                    </div>
+                    <div class="muted max-w-520">{{ s.error }}</div>
                   {% else %}
                     <span class="muted">已注册能力：</span>
                     {{ s.capabilities | join(', ') if s.capabilities else '-' }}
@@ -301,4 +299,3 @@
     })();
   </script>
 {% endblock %}
-

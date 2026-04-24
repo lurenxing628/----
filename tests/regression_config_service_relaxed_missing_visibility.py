@@ -187,9 +187,9 @@ def test_save_page_config_bootstraps_pristine_store_without_marking_custom() -> 
         cfg_svc = ConfigService(conn, logger=None, op_logger=None)
         saved = cfg_svc.save_page_config(_default_page_payload())
 
-        assert tuple(saved.degradation_events or ()) == ()
-        assert dict(saved.degradation_counters or {}) == {}
-        assert saved.objective == cfg_svc.DEFAULT_OBJECTIVE
+        assert tuple(saved.effective_snapshot.degradation_events or ()) == ()
+        assert dict(saved.effective_snapshot.degradation_counters or {}) == {}
+        assert saved.effective_snapshot.objective == cfg_svc.DEFAULT_OBJECTIVE
         assert cfg_svc.get_active_preset() == cfg_svc.BUILTIN_PRESET_DEFAULT
         assert cfg_svc.get_active_preset_reason() is None
     finally:

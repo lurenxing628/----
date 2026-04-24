@@ -36,6 +36,7 @@ from .schedule_summary_degradation import (
     _summary_degradation_state,
 )
 from .schedule_summary_freeze import (
+    _compute_completion_status,
     _compute_result_status,
     _extract_freeze_warnings,
     _freeze_meta_dict,
@@ -467,6 +468,7 @@ def build_result_summary(
         best_metrics=ctx.best_metrics,
     )
     result_status = _compute_result_status(ctx.summary, simulate=ctx.simulate)
+    completion_status = _compute_completion_status(ctx.summary)
     time_cost_ms = int((time.time() - float(ctx.t0)) * 1000)
     frozen_batch_ids = _frozen_batch_ids(ctx.operations, frozen_op_ids=ctx.frozen_op_ids)
     input_state = _input_build_state(ctx.input_build_outcome)
@@ -542,6 +544,7 @@ def build_result_summary(
         summary_degradation=summary_degradation,
         degraded_success=degraded_success,
         degraded_causes=degraded_causes,
+        completion_status=completion_status,
         time_cost_ms=time_cost_ms,
         serialize_end_date_fn=serialize_end_date,
     )

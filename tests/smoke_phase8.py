@@ -73,7 +73,7 @@ def main():
     lines.append("# Phase8（甘特图与周计划 / M4）冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0].strip()}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")

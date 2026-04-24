@@ -22,7 +22,7 @@
           <select name="version" style="min-width:220px;">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
-                v{{ it.version }}（{{ it.schedule_time }} / {{ status_zh.get(it.result_status, it.result_status or '-') }}）
+                v{{ it.version }}（{{ it.schedule_time }} / {{ it.result_status_label or status_zh.get(it.result_status, it.result_status or '-') }}）
               </option>
             {% endfor %}
           </select>
@@ -103,4 +103,3 @@
     {% endif %}
   </div>
 {% endblock %}
-

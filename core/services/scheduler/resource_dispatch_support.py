@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional, Sequence, Set
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import (
     DegradationCollector,
-    degradation_events_to_dicts,
 )
+from core.services.scheduler.degradation_messages import public_degradation_events
 
 from ._sched_display_utils import BAD_TIME_EMPTY_REASON as _BAD_TIME_EMPTY_REASON
 from .resource_dispatch_range import DispatchRange
@@ -152,7 +152,7 @@ def build_dispatch_summary(
         "external_count": external_count,
         "cross_team_count": cross_team_count,
         "degraded": bool(collector),
-        "degradation_events": degradation_events_to_dicts(collector.to_list()),
+        "degradation_events": public_degradation_events(collector.to_list()),
         "degradation_counters": collector.to_counters(),
         "empty_reason": summary_empty_reason,
     }
@@ -267,7 +267,7 @@ def empty_dispatch_payload(
     scope_type_label: str,
     team_axis: str,
     team_axis_label: str,
-    version: int,
+    version: Optional[int],
 ) -> Dict[str, Any]:
     return {
         "filters": {

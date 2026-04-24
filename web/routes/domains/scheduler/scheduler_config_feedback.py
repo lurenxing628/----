@@ -6,6 +6,8 @@ from flask import flash
 
 from core.services.scheduler.config.config_field_spec import field_label_for
 
+from .scheduler_config_display_state import public_hidden_repair_notice, public_meta_parse_warning
+
 
 def _normalized_error_fields(*, error_field: Optional[str], error_fields: Optional[List[str]]) -> List[str]:
     normalized = [str(item or "").strip() for item in list(error_fields or []) if str(item or "").strip()]
@@ -99,9 +101,12 @@ def _iter_config_save_notice_messages(outcome: Any) -> List[str]:
         kind = str(notice.get("kind") or "").strip().lower()
         if kind not in {"hidden", "blocked_hidden"}:
             continue
-        message = str(notice.get("message") or "").strip()
-        if message:
-            messages.append(message)
+        fields = [str(item or "").strip() for item in list(notice.get("fields") or []) if str(item or "").strip()]
+        messages.append(public_hidden_repair_notice(fields, blocked=kind == "blocked_hidden"))
+    for warning in list(getattr(outcome, "meta_parse_warnings", []) or []):
+        if not isinstance(warning, dict):
+            continue
+        messages.append(public_meta_parse_warning())
     return messages
 
 

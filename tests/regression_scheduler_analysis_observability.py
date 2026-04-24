@@ -336,7 +336,7 @@ def main() -> None:
     assert "停机避让约束已降级" in new_html, "未展示停机降级提示"
     assert "停机区间加载失败" in new_html, "未展示停机降级原因"
     assert "冻结窗口约束已降级" in new_html, "未展示冻结窗口降级提示"
-    assert "【冻结窗口】跳过批次 B001" in new_html, "未展示冻结窗口降级原因"
+    assert "【冻结窗口】跳过批次 B001" not in new_html, "不应展示冻结窗口内部降级明细"
     assert 'stat-card-label">数据异常批次数</div>' in new_html, "未展示数据异常卡片"
     assert 'stat-card-label">未排批次数</div>' in new_html, "未展示未排批次卡片"
     assert "对比上一版：-3" in new_html, "未展示数据异常对比差值"

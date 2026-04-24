@@ -47,6 +47,16 @@ python .limcode/skills/aps-deep-review/scripts/reference_tracer.py --file core/s
 - **深审主结果** → `.limcode/review/`
 - **取舍型审阅报告** → `audit/`
 
+## 子代理模型约束
+
+涉及子代理协作式深度审查时，统一遵循 `.limcode/skills/_shared/subagent-compat.md`，并执行本技能的更强约束：
+
+- 主代理只做 leader / coordinator，尽量把可并行的审查任务拆给子代理，自己负责汇总、去重、交叉验证和最终判断。
+- 所有深度审查、独立审核、对抗审核子代理必须使用 `gpt-5.5`，reasoning effort 必须使用 `xhigh`。
+- 如果宿主通用子代理工具支持显式模型字段，调度时必须传入 `model: "gpt-5.5"` 与 `reasoning_effort: "xhigh"`。
+- 如果当前宿主只能使用 LimCode 原生子代理，则必须确认对应 `limcode.toolsConfig.subagents` 渠道已经绑定等价 GPT-5.5 / xhigh 能力；不能确认时，在审查结论中标注“模型能力证据不足”。
+- 如果当前宿主无法提供 GPT-5.5 / xhigh，禁止静默降级；必须明确说明实际限制，并把该限制纳入审查可信度评估。
+
 ## 五阶段深度审查方法论
 
 ### Phase 1: 变更影响图谱（自动化 + Agent）

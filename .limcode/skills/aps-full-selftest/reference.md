@@ -13,7 +13,7 @@
 - `evidence/Phase*/`：各阶段 smoke 报告（脚本内写入）
 - `evidence/FullE2E/excel_to_schedule_report.md`：FullE2E 报告
 - `evidence/ComplexExcelCases/complex_cases_report.md`：复杂 Excel 用例报告（仓库 `.gitignore` 仅保留 report/summary，忽略每次运行的大量产物）
-- `evidence/FullSelfTest/full_selftest_report.md`：本技能 runner 生成的汇总报告（新增）
+- `evidence/FullSelfTest/logs/full_selftest_report.md`：本技能 runner 生成的汇总报告（ignored artifact，不参与 clean proof 的 tracked 状态）
 
 ## 已知注意点
 

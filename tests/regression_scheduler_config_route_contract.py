@@ -129,6 +129,7 @@ class _ConfigServiceStub:
             hidden_repaired_fields=[],
             blocked_hidden_repairs=[],
             notices=[],
+            meta_parse_warnings=[],
             active_preset_after="custom",
             active_preset_reason_after="manual",
         )
@@ -320,8 +321,43 @@ def test_scheduler_config_post_surfaces_hidden_repair_notice(monkeypatch) -> Non
     assert response.status_code in (301, 302)
     with client.session_transaction() as session:
         flashes = list(session.get("_flashes") or [])
-    assert any(category == "warning" and "auto_assign_persist" in str(message) for category, message in flashes), flashes
+    warning_messages = [str(message) for category, message in flashes if category == "warning"]
+    assert any("自动分配结果回写" in message for message in warning_messages), flashes
+    assert not any("auto_assign_persist" in message for message in warning_messages), flashes
     assert not any(category == "success" and "\u5df2\u4fdd\u5b58" in str(message) for category, message in flashes), flashes
+
+
+def test_scheduler_config_visible_degradation_warning_hides_raw_event_message() -> None:
+    from web.routes.domains.scheduler.scheduler_config_display_state import (
+        build_config_degraded_display_state,
+        get_scheduler_visible_config_field_metadata,
+    )
+
+    cfg = SimpleNamespace(
+        sort_strategy="priority_first",
+        degradation_events=(
+            {
+                "code": "invalid_choice",
+                "field": "sort_strategy",
+                "message": "sort_strategy 取值不合法（当前值：'SECRET_BAD_MODE'，允许值：priority_first），已按兼容读取回退。",
+                "sample": "SECRET_BAD_MODE",
+            },
+        ),
+    )
+
+    warnings, degraded_fields, hidden_warnings = build_config_degraded_display_state(
+        cfg,
+        config_field_metadata=get_scheduler_visible_config_field_metadata(),
+    )
+
+    rendered = str(warnings.get("sort_strategy") or "")
+    assert degraded_fields == ["sort_strategy"]
+    assert hidden_warnings == []
+    assert "排产策略" in rendered
+    assert "当前配置无效" in rendered
+    assert "priority_first" not in rendered
+    assert "SECRET_BAD_MODE" not in rendered
+    assert "sort_strategy" not in rendered
 
 
 def test_scheduler_config_post_surfaces_blocked_hidden_repair_notice(monkeypatch) -> None:
@@ -350,7 +386,37 @@ def test_scheduler_config_post_surfaces_blocked_hidden_repair_notice(monkeypatch
     with client.session_transaction() as session:
         flashes = list(session.get("_flashes") or [])
     assert any(category == "warning" and "\u6765\u6e90\u7f3a\u5931" in str(message) for category, message in flashes), flashes
+    assert not any(category == "warning" and "auto_assign_persist" in str(message) for category, message in flashes), flashes
     assert not any(category == "success" and "\u5df2\u4fdd\u5b58" in str(message) for category, message in flashes), flashes
+
+
+def test_scheduler_config_post_surfaces_active_preset_meta_parse_warning(monkeypatch) -> None:
+    config_service = _ConfigServiceStub()
+    config_service.save_outcome = SimpleNamespace(
+        visible_changed_fields=[],
+        visible_repaired_fields=[],
+        hidden_repaired_fields=[],
+        blocked_hidden_repairs=[],
+        notices=[],
+        meta_parse_warnings=[
+            {
+                "field": "active_preset_meta",
+                "message": "active_preset_meta 不是有效 JSON，已按历史来源信息继续显示。",
+            }
+        ],
+        active_preset_after="custom",
+        active_preset_reason_after="manual",
+    )
+    app = _build_app(monkeypatch, config_service)
+    client = app.test_client()
+
+    response = client.post("/scheduler/config", data={"sort_strategy": "priority_first"})
+
+    assert response.status_code in (301, 302)
+    with client.session_transaction() as session:
+        flashes = list(session.get("_flashes") or [])
+    assert any(category == "warning" and "方案来源记录" in str(message) for category, message in flashes), flashes
+    assert not any(category == "warning" and "active_preset_meta" in str(message) for category, message in flashes), flashes
 
 
 def test_scheduler_config_post_visible_repair_marks_custom_provenance(monkeypatch) -> None:
@@ -651,7 +717,10 @@ def test_scheduler_config_page_exposes_hidden_degraded_warning_summary(monkeypat
 
     assert response.status_code == 200
     assert payload["config_hidden_warnings"]
-    assert any("auto_assign_persist" in item for item in payload["config_hidden_warnings"])
+    hidden_text = "\n".join(str(item) for item in payload["config_hidden_warnings"])
+    assert "自动分配结果回写" in hidden_text
+    assert "auto_assign_persist" not in hidden_text
+    assert "yes" not in hidden_text
 
 
 def test_scheduler_config_get_keeps_missing_objective_and_provenance_readonly(monkeypatch) -> None:
@@ -783,7 +852,8 @@ def test_scheduler_config_page_renders_provenance_and_hidden_degraded_html(tmp_p
     assert "当前配置中有" in body
     assert "使用了兼容显示值，请保存后修复。" in body
     assert "当前还有内部配置项存在兼容修补：" in body
-    assert "auto_assign_persist" in body
+    assert "自动分配结果回写" in body
+    assert "auto_assign_persist" not in body
 
 
 def test_scheduler_config_legacy_wrapper_uses_domain_registrar_source_of_truth() -> None:

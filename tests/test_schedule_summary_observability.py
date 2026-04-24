@@ -239,9 +239,9 @@ def test_scheduler_batches_accepts_preparsed_result_summary_dict(tmp_path, monke
         ctx = cast(Dict[str, Any], route_mod.batches_page())
 
     assert ctx["latest_summary"] == summary
-    assert ctx["latest_warning_preview"] == ["告警一", "告警二"]
+    assert ctx["latest_warning_preview"] == []
     assert ctx["latest_warning_total"] == 2
-    assert ctx["latest_warning_hidden_count"] == 0
+    assert ctx["latest_warning_hidden_count"] == 2
 
 
 def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_messages(tmp_path, monkeypatch) -> None:
@@ -360,8 +360,7 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
         "交期数据已降级（2）",
         "预热已降级",
     ]
-    other_codes = [item["code"] for item in ctx["latest_other_degradation_messages"]]
-    assert other_codes == ["merge_context_degraded", "invalid_due_date", "ortools_warmstart_failed"]
+    assert ctx["latest_other_degradation_messages"] == []
 
 
 def test_system_history_accepts_preparsed_result_summary_dict(tmp_path, monkeypatch) -> None:

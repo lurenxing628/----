@@ -14,6 +14,7 @@ LEGACY_SCHEDULER_WRAPPERS = (
     "web.routes.scheduler_batch_detail",
     "web.routes.scheduler_batches",
     "web.routes.scheduler_config",
+    "web.routes.scheduler_excel_batches",
     "web.routes.scheduler_excel_calendar",
     "web.routes.scheduler_ops",
     "web.routes.scheduler_run",
@@ -30,6 +31,15 @@ import sys
 from flask import Flask
 
 target = sys.argv[1]
+scheduler_root = importlib.import_module("web.routes.scheduler")
+calls = []
+original_register = scheduler_root.register_scheduler_routes
+
+def _wrapped_register():
+    calls.append("called")
+    return original_register()
+
+scheduler_root.register_scheduler_routes = _wrapped_register
 route_mod = importlib.import_module(target)
 app = Flask(__name__)
 app.register_blueprint(route_mod.bp, url_prefix="/scheduler")
@@ -37,6 +47,7 @@ app_mod = importlib.import_module("app")
 created = app_mod.create_app()
 print(json.dumps({
     "module": route_mod.__name__,
+    "register_calls": len(calls),
     "registered_blueprints": sorted(created.blueprints),
 }, sort_keys=True))
 """
@@ -50,5 +61,50 @@ print(json.dumps({
     )
     assert completed.returncode == 0, (module_name, completed.stdout, completed.stderr)
     payload = json.loads(completed.stdout.strip().splitlines()[-1])
-    assert payload["module"].startswith("web.routes.domains.scheduler.scheduler_")
+    if module_name == "web.routes.scheduler_excel_batches":
+        assert payload["module"] == module_name
+    else:
+        assert payload["module"].startswith("web.routes.domains.scheduler.scheduler_")
+    assert payload["register_calls"] >= 1
     assert "scheduler" in payload["registered_blueprints"]
+
+
+def test_scheduler_root_bp_direct_registration_exposes_full_route_graph() -> None:
+    probe = """
+import importlib
+import json
+from flask import Flask
+
+scheduler_root = importlib.import_module("web.routes.scheduler")
+app = Flask(__name__)
+app.register_blueprint(scheduler_root.bp, url_prefix="/scheduler")
+routes_before_wrapper = sorted(str(rule) for rule in app.url_map.iter_rules() if str(rule).startswith("/scheduler"))
+importlib.import_module("web.routes.scheduler_run")
+routes_after_wrapper = sorted(str(rule) for rule in app.url_map.iter_rules() if str(rule).startswith("/scheduler"))
+scheduler_root.register_scheduler_routes()
+routes_after_second_register = sorted(str(rule) for rule in app.url_map.iter_rules() if str(rule).startswith("/scheduler"))
+print(json.dumps({
+    "route_count": len(routes_before_wrapper),
+    "has_root": "/scheduler/" in routes_before_wrapper,
+    "has_run": "/scheduler/run" in routes_before_wrapper,
+    "has_config": "/scheduler/config" in routes_before_wrapper,
+    "stable_after_wrapper": routes_after_wrapper == routes_before_wrapper,
+    "stable_after_second_register": routes_after_second_register == routes_before_wrapper,
+}, sort_keys=True))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+    payload = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert payload["route_count"] >= 40
+    assert payload["has_root"] is True
+    assert payload["has_run"] is True
+    assert payload["has_config"] is True
+    assert payload["stable_after_wrapper"] is True
+    assert payload["stable_after_second_register"] is True

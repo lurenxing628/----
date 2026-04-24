@@ -5,14 +5,16 @@ from datetime import date
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
-from core.infrastructure.errors import AppError, ValidationError
+from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.services.common.excel_audit import log_excel_export
 from core.services.common.excel_templates import build_xlsx_bytes
+from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
+from web.error_boundary import user_visible_app_error_message
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
-from ...normalizers import _parse_result_summary_payload_with_meta, normalize_version_or_latest_fallback
+from ...normalizers import _parse_result_summary_payload_with_meta, decorate_history_version_options
 from .scheduler_bp import (
     _surface_schedule_errors,
     _surface_schedule_warnings,
@@ -94,10 +96,10 @@ def _flash_summary_primary_degradation(summary_display):
 
 
 def _flash_simulate_completion(*, version: int, completion_status: str) -> None:
-    if completion_status == "failed":
+    if completion_status == ScheduleResultStatus.FAILED.value:
         flash(f"模拟排产失败：生成版本 {version}（不影响批次状态）。", "error")
         return
-    if completion_status == "partial":
+    if completion_status == ScheduleResultStatus.PARTIAL.value:
         flash(f"模拟排产部分完成：生成版本 {version}（不影响批次状态）。", "warning")
         return
     flash(f"模拟排产完成：生成版本 {version}（不影响批次状态）。", "success")
@@ -124,15 +126,25 @@ def week_plan_page():
     services = g.services
     offset = _get_int_arg("offset", 0)
     svc = services.gantt_service
-    latest_version = svc.get_latest_version_or_1()
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
-    ver = normalize_version_or_latest_fallback(request.args.get("version"), latest_version=latest_version)
 
-    versions = services.schedule_history_query_service.list_versions(limit=30)
-    data = svc.get_week_plan_rows(start_date=wr.week_start_date.isoformat(), end_date=wr.week_end_date.isoformat(), version=ver)
-    selected_history, selected_summary, selected_summary_display = _load_selected_week_plan_summary(services, ver)
+    versions = decorate_history_version_options(
+        services.schedule_history_query_service.list_versions(limit=30),
+        log_label="周计划页",
+    )
+    data = svc.get_week_plan_rows(
+        start_date=wr.week_start_date.isoformat(),
+        end_date=wr.week_end_date.isoformat(),
+        version=request.args.get("version"),
+    )
+    ver = data.get("version")
+    selected_history, selected_summary, selected_summary_display = (
+        _load_selected_week_plan_summary(services, int(ver))
+        if ver is not None
+        else (None, None, build_summary_display_state(None, result_status=None))
+    )
     selected_history_resolution = build_requested_history_resolution(
-        requested_version=ver,
+        requested_version=data.get("requested_version") or ver,
         selected_history=selected_history,
         missing_message=f"v{ver} 无对应排产历史，当前仅展示排程明细，历史摘要不可用。",
     )
@@ -150,6 +162,7 @@ def week_plan_page():
         end_date=wr.week_end_date.isoformat(),
         offset=offset,
         version=ver,
+        has_history=bool(data.get("has_history")),
         versions=versions,
         selected_history=selected_history,
         selected_history_resolution=selected_history_resolution,
@@ -157,8 +170,15 @@ def week_plan_page():
         selected_summary_display=selected_summary_display,
         preview_rows=preview_state["preview_rows"],
         total_rows=len(preview_state["rows"]),
-        export_url=url_for(
-            "scheduler.week_plan_export", start_date=wr.week_start_date.isoformat(), end_date=wr.week_end_date.isoformat(), version=ver
+        export_url=(
+            url_for(
+                "scheduler.week_plan_export",
+                start_date=wr.week_start_date.isoformat(),
+                end_date=wr.week_end_date.isoformat(),
+                version=ver,
+            )
+            if ver is not None
+            else None
         ),
     )
 
@@ -173,13 +193,13 @@ def week_plan_export():
 
     svc = g.services.gantt_service
     try:
-        version = normalize_version_or_latest_fallback(request.args.get("version"), latest_version=svc.get_latest_version_or_1())
-
         data = svc.get_week_plan_rows(
-            week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date, version=version
+            week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date, version=request.args.get("version")
         )
+        if data.get("status") == "no_history":
+            raise BusinessError(ErrorCode.NOT_FOUND, "暂无排产历史，无法导出周计划。", details={"field": "version", "status": "no_history"})
         rows = data.get("rows") or []
-        ver = int(data.get("version") or 1)
+        ver = int(data.get("version") or 0)
         ws = data.get("week_start")
         we = data.get("week_end")
 
@@ -218,7 +238,9 @@ def week_plan_export():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
     except AppError as e:
-        flash(e.message, "error")
+        if e.code == ErrorCode.NOT_FOUND:
+            return user_visible_app_error_message(e), 404
+        flash(user_visible_app_error_message(e), "error")
         return redirect(url_for("scheduler.week_plan_page"))
     except Exception:
         current_app.logger.exception("导出周计划失败")
@@ -267,7 +289,7 @@ def simulate_schedule():
         today = date.today().isoformat()
         return redirect(url_for("scheduler.gantt_page", view="machine", week_start=today, offset=0, version=ver))
     except AppError as e:
-        flash(e.message, "error")
+        flash(user_visible_app_error_message(e), "error")
         return redirect(url_for("scheduler.batches_page"))
     except Exception:
         current_app.logger.exception("模拟排产失败")

@@ -8,8 +8,13 @@ from flask import current_app, flash, g, jsonify, redirect, request, send_file, 
 
 from core.infrastructure.errors import AppError, ErrorCode, error_response
 from core.services.common.excel_audit import log_excel_export
-from core.services.scheduler import ResourceDispatchService
-from web.error_boundary import json_error_response
+from web.error_boundary import (
+    build_user_visible_app_error_payload,
+    get_user_visible_field_label,
+    json_error_response,
+    user_visible_app_error_message,
+)
+from web.routes.normalizers import decorate_history_version_options
 from web.ui_mode import render_ui_template as render_template
 
 from .scheduler_bp import bp
@@ -46,8 +51,8 @@ _FIELD_QUERY_KEY_DROPS = {
 }
 
 
-def _svc() -> ResourceDispatchService:
-    return ResourceDispatchService(g.db, logger=getattr(g, "app_logger", None), op_logger=getattr(g, "op_logger", None))
+def _svc() -> Any:
+    return g.services.resource_dispatch_service
 
 
 def _arg_text(name: str, *, default: Optional[str] = None) -> Optional[str]:
@@ -120,10 +125,19 @@ def _error_field(exc: AppError) -> str:
     return ""
 
 
+def _is_missing_history_version_error(exc: AppError) -> bool:
+    details = getattr(exc, "details", None)
+    if not isinstance(details, dict):
+        return False
+    return str(details.get("field") or "").strip() == "version" and str(details.get("status") or "").strip() == "missing_history"
+
+
 def _sanitize_dispatch_args_from_error(exc: AppError) -> Dict[str, str]:
     current = _current_request_args()
     if not current:
         return {}
+    if _is_missing_history_version_error(exc):
+        return dict(current)
     field = _error_field(exc)
     drop_keys = _FIELD_QUERY_KEY_DROPS.get(field)
     if not drop_keys:
@@ -131,20 +145,31 @@ def _sanitize_dispatch_args_from_error(exc: AppError) -> Dict[str, str]:
     return _drop_keys(current, *drop_keys)
 
 
-def _invalid_query_keys_from_error(exc: AppError) -> List[str]:
+def _cleanup_query_keys_from_error(exc: AppError) -> List[str]:
+    if _is_missing_history_version_error(exc):
+        return []
     field = _error_field(exc)
     return list(_FIELD_QUERY_KEY_DROPS.get(field, ()))
 
 
 def _error_payload_with_invalid_query_keys(exc: AppError) -> Dict[str, Any]:
-    payload = exc.to_dict()
+    payload = build_user_visible_app_error_payload(exc)
     error = payload.get("error") if isinstance(payload, dict) else None
     if not isinstance(error, dict):
         return payload
     details = dict(error.get("details") or {})
-    invalid_query_keys = _invalid_query_keys_from_error(exc)
-    if invalid_query_keys:
-        details["invalid_query_keys"] = invalid_query_keys
+    cleanup_query_keys = _cleanup_query_keys_from_error(exc)
+    if cleanup_query_keys:
+        raw_keys = [str(key).strip() for key in cleanup_query_keys if str(key).strip()]
+        labels = [get_user_visible_field_label(key) or str(key).strip() for key in cleanup_query_keys if str(key).strip()]
+        details["invalid_query_keys"] = raw_keys
+        details["invalid_query_labels"] = labels
+        details["cleanup_query_keys"] = raw_keys
+        diagnostics = dict(error.get("diagnostics") or {})
+        diagnostics["invalid_query_keys"] = raw_keys
+        diagnostics["invalid_query_labels"] = labels
+        diagnostics["cleanup_query_keys"] = raw_keys
+        error["diagnostics"] = diagnostics
     if details:
         error["details"] = details
     return payload
@@ -156,13 +181,15 @@ def resource_dispatch_page():
     try:
         context = svc.build_page_context(**_request_kwargs())
     except AppError as exc:
+        if _is_missing_history_version_error(exc):
+            raise
         current_args = _current_request_args()
         if current_args:
             safe_args = _sanitize_dispatch_args_from_error(exc)
             if safe_args != current_args:
-                flash(exc.message, "error")
+                flash(user_visible_app_error_message(exc), "error")
                 return redirect(_page_url(safe_args))
-        flash(exc.message, "error")
+        flash(user_visible_app_error_message(exc), "error")
         context = svc.build_page_context()
     except Exception:
         current_app.logger.exception("加载资源排班中心页面失败")
@@ -173,6 +200,11 @@ def resource_dispatch_page():
         context = svc.build_page_context()
 
     filters = context.get("filters") or {}
+    context = dict(context)
+    context["versions"] = decorate_history_version_options(
+        context.get("versions") or [],
+        log_label="资源排班页",
+    )
     export_url = None
     if context.get("has_history") and context.get("can_query"):
         export_url = _export_url(filters)
@@ -229,7 +261,9 @@ def resource_dispatch_export():
         )
         return send_file(buf, as_attachment=True, download_name=filename, mimetype=_EXCEL_MIMETYPE)
     except AppError as exc:
-        flash(exc.message, "error")
+        if exc.code == ErrorCode.NOT_FOUND:
+            return user_visible_app_error_message(exc), 404
+        flash(user_visible_app_error_message(exc), "error")
         return redirect(_page_url(_sanitize_dispatch_args_from_error(exc)))
     except Exception:
         current_app.logger.exception("导出资源排班失败")

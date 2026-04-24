@@ -62,6 +62,11 @@ def test_resource_dispatch_bad_time_rows_surface_degraded() -> None:
         assert summary.get("degraded") is True
         counters = summary.get("degradation_counters") or {}
         assert int(counters.get("bad_time_row_skipped") or 0) == 1
+        events = list(summary.get("degradation_events") or [])
+        assert events
+        assert all("sample" not in event for event in events), events
+        assert "99:00:00" not in str(events), events
+        assert any("时间不合法" in str(event.get("message") or "") for event in events), events
         assert summary.get("empty_reason") == "all_rows_filtered_by_invalid_time"
         assert payload.get("detail_rows") == []
         assert payload.get("tasks") == []

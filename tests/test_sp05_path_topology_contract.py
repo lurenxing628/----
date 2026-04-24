@@ -73,6 +73,7 @@ SERVICE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS = {
         "FallbackState",
         "FreezeState",
         "RuntimeState",
+        "ScheduleResultStatus",
         "SummaryBuildContext",
         "TruncationTier",
         "WarningState",
@@ -438,6 +439,15 @@ def test_sp05_route_topology_and_compatibility_matrix() -> None:
         if isinstance(node, ast.ImportFrom) and node.level == 1
     }
     assert root_import_modules == {"domains.scheduler", "domains.scheduler.scheduler_bp"}
+    root_top_level_register_calls = [
+        node
+        for node in root_entrypoint.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "register_scheduler_routes"
+    ]
+    assert len(root_top_level_register_calls) == 1
 
     scheduler_pages = ast.parse(
         (REPO_ROOT / "web/routes/domains/scheduler/scheduler_pages.py").read_text(encoding="utf-8")
@@ -451,17 +461,37 @@ def test_sp05_route_topology_and_compatibility_matrix() -> None:
         (None, ("scheduler_route_registrar",)),
         ("scheduler_bp", ("bp",)),
     }
+    page_top_level_register_calls = [
+        node
+        for node in scheduler_pages.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "register_scheduler_routes"
+    ]
+    assert page_top_level_register_calls == []
 
     scheduler_registrar = ast.parse(
         (REPO_ROOT / "web/routes/domains/scheduler/scheduler_route_registrar.py").read_text(encoding="utf-8")
     )
-    registrar_side_effect_imports = {
+    registrar_side_effect_imports = [
         alias.name
         for node in scheduler_registrar.body
         if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module is None
         for alias in node.names
+    ]
+    assert registrar_side_effect_imports == []
+
+    registrar_assignments = {
+        target.id: node.value
+        for node in scheduler_registrar.body
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name)
     }
-    assert registrar_side_effect_imports == {
+    route_module_tuple = registrar_assignments.get("_ROUTE_MODULES")
+    assert isinstance(route_module_tuple, ast.Tuple)
+    assert {elt.value for elt in route_module_tuple.elts if isinstance(elt, ast.Constant)} == {
         "scheduler_analysis",
         "scheduler_batch_detail",
         "scheduler_batches",
@@ -475,6 +505,16 @@ def test_sp05_route_topology_and_compatibility_matrix() -> None:
         "scheduler_run",
         "scheduler_week_plan",
     }
+    registered_flag = registrar_assignments.get("_REGISTERED")
+    assert isinstance(registered_flag, ast.Constant)
+    assert registered_flag.value is False
+
+    registrar_functions = {
+        node.name: node
+        for node in scheduler_registrar.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    assert "register_scheduler_routes" in registrar_functions
 
 
 def test_sp05_route_wrapper_imports_force_fully_registered_scheduler_entrypoint() -> None:

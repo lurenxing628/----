@@ -37,6 +37,11 @@ def test_gantt_payload_surfaces_critical_chain_unavailable(monkeypatch) -> None:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
         _load_schema(conn)
+        conn.execute(
+            "INSERT INTO ScheduleHistory (version, strategy, batch_count, op_count, result_status, result_summary, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (1, "priority_first", 0, 0, "success", "{}", "pytest"),
+        )
+        conn.commit()
 
         svc = GanttService(conn, logger=None, op_logger=None)
 
@@ -55,9 +60,11 @@ def test_gantt_payload_surfaces_critical_chain_unavailable(monkeypatch) -> None:
         critical_chain = data.get("critical_chain") or {}
 
         assert critical_chain.get("available") is False
-        assert critical_chain.get("reason") == "repo_exception"
+        assert critical_chain.get("reason") == "关键链计算异常"
+        assert critical_chain.get("reason_code") == "repo_exception"
         assert critical_chain.get("ids") == []
         assert critical_chain.get("cache_hit") is False
+        assert "repo boom" not in str(data)
         assert data.get("degraded") is True
         events = list(data.get("degradation_events") or ())
         assert any(str(event.get("code") or "").strip() == "critical_chain_unavailable" for event in events), events

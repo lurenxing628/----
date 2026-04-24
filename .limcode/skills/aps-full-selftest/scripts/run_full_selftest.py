@@ -15,7 +15,11 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.quality_gate_shared import QUALITY_GATE_MANIFEST_REL, iter_non_regression_guard_tests
+from tools.quality_gate_shared import (
+    QUALITY_GATE_MANIFEST_REL,
+    iter_quality_gate_required_tests,
+    verify_quality_gate_manifest,
+)
 
 TIMEOUT_EXIT_CODE = 124  # 与常见 CI 约定一致：超时 = 124
 
@@ -34,7 +38,7 @@ class StepResult:
 
 
 def _explicit_guard_tests() -> List[str]:
-    return list(iter_non_regression_guard_tests())
+    return list(iter_quality_gate_required_tests())
 
 
 def _find_repo_root() -> Path:
@@ -160,39 +164,23 @@ def _quality_gate_binding_status(
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except Exception as exc:
         return False, f"UNBOUND: quality gate manifest 读取失败：{exc}", manifest_rel
-    if not isinstance(manifest, dict):
-        return False, "UNBOUND: quality gate manifest 非法", manifest_rel
-    manifest_checkout_root = os.path.realpath(str(manifest.get("checkout_root_realpath") or "").strip())
-    manifest_git_common_dir = os.path.realpath(str(manifest.get("git_common_dir_realpath") or "").strip())
-    if not manifest_checkout_root or not manifest_git_common_dir:
-        return False, "UNBOUND: quality gate checkout identity missing", manifest_rel
-    current_checkout_root, current_git_common_dir = _repo_identity(repo_root)
-    if manifest_checkout_root != current_checkout_root:
-        return False, "UNBOUND: quality gate checkout root mismatch", manifest_rel
-    if manifest_git_common_dir != current_git_common_dir:
-        return False, "UNBOUND: quality gate git common dir mismatch", manifest_rel
-    if str(manifest.get("status") or "").strip().lower() != "passed":
-        return False, f"UNBOUND: quality gate status={manifest.get('status') or 'unknown'}", manifest_rel
-    if str(manifest.get("head_sha") or "").strip() != str(head_sha or "").strip():
-        return False, "UNBOUND: quality gate head_sha 不匹配", manifest_rel
-    if "git_status_short_before" not in manifest or "git_status_short_after" not in manifest:
-        return False, "UNBOUND: quality gate worktree proof missing", manifest_rel
-    manifest_git_status_before = [
-        str(line).rstrip() for line in list(manifest.get("git_status_short_before") or []) if str(line).strip()
-    ]
-    manifest_git_status_after = [
-        str(line).rstrip() for line in list(manifest.get("git_status_short_after") or []) if str(line).strip()
-    ]
-    current_git_status = [str(line).rstrip() for line in list(git_status_lines or []) if str(line).strip()]
-    if bool(manifest.get("is_dirty_before")) or manifest_git_status_before:
-        return False, "UNBOUND: quality gate started dirty", manifest_rel
-    if bool(manifest.get("tracked_drift_detected")):
-        return False, "UNBOUND: quality gate tracked drift detected", manifest_rel
-    if bool(manifest.get("is_dirty_after")) or manifest_git_status_after:
-        return False, "UNBOUND: quality gate finished dirty", manifest_rel
-    if manifest_git_status_after != current_git_status:
-        return False, "UNBOUND: quality gate git status --short 不匹配", manifest_rel
-    return True, "BOUND", manifest_rel
+    ok, note = verify_quality_gate_manifest(
+        repo_root=repo_root,
+        manifest=manifest,
+        head_sha=head_sha,
+        git_status_lines=git_status_lines,
+    )
+    if not ok:
+        failure_details = []
+        failure_kind = str(manifest.get("failure_kind") or "").strip()
+        failure_message = str(manifest.get("failure_message") or "").strip()
+        if failure_kind:
+            failure_details.append(f"failure_kind={failure_kind}")
+        if failure_message:
+            failure_details.append(f"failure_message={failure_message}")
+        if failure_details:
+            note = f"{note}; " + "; ".join(failure_details)
+    return ok, note, manifest_rel
 
 
 def _report_header_lines(
@@ -210,7 +198,7 @@ def _report_header_lines(
     lines.append("# APS 全量自测汇总报告（不打包）")
     lines.append("")
     lines.append(f"- 生成时间：{now}")
-    lines.append(f"- Python：{sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0].strip()}")
     lines.append(f"- Python 可执行：`{(sys.executable or '').strip()}`")
     lines.append(f"- 仓库根目录：`{repo_root.as_posix()}`")
     lines.append(f"- fail_fast：{str(bool(fail_fast)).lower()}")
@@ -378,14 +366,17 @@ def _build_steps(repo_root: Path, *, complex_repeat: int) -> List[tuple[str, Lis
 
     # regressions（自动发现 + 按文件名排序）
     reg_files = _tracked_regression_files(repo_root)
+    scheduled_pytests = set()
     for p in reg_files:
+        scheduled_pytests.add(f"tests/{p.name}")
         steps.append((p.name, [pytest_py, "-m", "pytest", f"tests/{p.name}", "-q", "--tb=short"], []))
 
-    # 显式守卫：不依赖 regression_* 命名，避免关键契约测试脱离 runner。
+    # 统一 required-tests registry：即使文件命名或收集方式变化，也必须显式补齐。
     for rel_path in _explicit_guard_tests():
         guard_path = repo_root / rel_path
-        if not guard_path.is_file():
+        if not guard_path.is_file() or rel_path in scheduled_pytests:
             continue
+        scheduled_pytests.add(rel_path)
         steps.append((guard_path.name, [pytest_py, "-m", "pytest", rel_path, "-q", "--tb=short"], []))
 
     # complex excel cases
@@ -481,7 +472,7 @@ def run_full_selftest(
         lines.append("- 本 runner **不会**执行 PyInstaller / dist / validate_dist_exe 等打包流程。")
         lines.append("- 复杂 Excel 用例的重产物目录默认会被 `.gitignore` 忽略，仅保留报告与 summary JSON。")
         lines.append("")
-        report_path = out_dir / "full_selftest_report.md"
+        report_path = logs_dir / "full_selftest_report.md"
         _write_text(report_path, "\n".join(lines) + "\n")
         return overall_pass, results, str(report_path.relative_to(repo_root).as_posix())
 
@@ -572,7 +563,7 @@ def run_full_selftest(
     lines.append("- 复杂 Excel 用例的重产物目录默认会被 `.gitignore` 忽略，仅保留报告与 summary JSON。")
     lines.append("")
 
-    report_path = out_dir / "full_selftest_report.md"
+    report_path = logs_dir / "full_selftest_report.md"
     _write_text(report_path, "\n".join(lines) + "\n")
 
     return overall_pass, results, str(report_path.relative_to(repo_root).as_posix())

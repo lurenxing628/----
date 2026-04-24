@@ -29,7 +29,7 @@
             {% for v in versions %}
               {% set vv = v.version %}
               <option value="{{ vv }}" {{ 'selected' if filters.version and (filters.version ~ '') == (vv ~ '') else '' }}>
-                v{{ vv }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ status_zh.get(v.result_status, v.result_status or '-') }}）
+                v{{ vv }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ v.result_status_label or status_zh.get(v.result_status, v.result_status or '-') }}）
               </option>
             {% endfor %}
           </select>
@@ -54,7 +54,7 @@
         方式：{{ strategy_zh.get(selected.strategy, selected.strategy or '-') }}；
         批次：{{ selected.batch_count }}；
         工序：{{ selected.op_count }}；
-        状态：{{ status_zh.get(selected.result_status, selected.result_status or '-') }}；
+        状态：{{ selected_summary_display.result_status_label or status_zh.get(selected.result_status, selected.result_status or '-') }}；
         创建人：{{ selected.created_by or '-' }}
       </p>
       {% if selected_summary_display.summary_parse_state.parse_failed %}
@@ -127,16 +127,8 @@
           {% endif %}
         </div>
       {% endif %}
-      {% if selected_summary %}
-        <details class="mt-2">
-          <summary>调试详情：原始摘要</summary>
-          <pre>{{ selected_summary | tojson_zh(2) }}</pre>
-        </details>
-      {% elif selected.result_summary %}
-        <details class="mt-2">
-          <summary>调试详情：原始摘要</summary>
-          <pre>{{ selected.result_summary }}</pre>
-        </details>
+      {% if selected_summary or selected.result_summary %}
+        <p class="muted mt-2">摘要已加载；页面仅展示公开摘要、告警和降级提示。</p>
       {% else %}
         <p class="muted">该记录没有摘要信息。</p>
       {% endif %}
@@ -180,7 +172,7 @@
               <td>v{{ r.version }}</td>
               <td>{{ strategy_zh.get(r.strategy, r.strategy or '-') }}</td>
               <td>{{ r.batch_count }} / {{ r.op_count }}</td>
-              <td>{{ status_zh.get(r.result_status, r.result_status or '-') }}</td>
+              <td>{{ r.result_summary_display.result_status_label if r.result_summary_display else status_zh.get(r.result_status, r.result_status or '-') }}</td>
               <td>
                 {% if r.result_summary_display.summary_parse_state.parse_failed %}
                   <div class="muted">{{ r.result_summary_display.summary_parse_state.user_message }}</div>
@@ -204,31 +196,8 @@
                 {% if r.result_summary_display.error_total %}
                   <div class="muted">错误 {{ r.result_summary_display.error_total }} 条</div>
                 {% endif %}
-                {% if r.result_summary_obj %}
-                  <details class="mt-1">
-                    <summary>调试详情：原始摘要</summary>
-                    {% set txt = (r.result_summary_obj | tojson_zh(0)) %}
-                    {% set short = txt[:260] %}
-                    {# 尽量避免截断在转义序列中间（例如结尾出现 "\\u4e2" 或单个反斜杠） #}
-                    {% if short.endswith('\\') %}
-                      {% set short = short[:-1] %}
-                    {% endif %}
-                    {% set bs = short.rfind('\\') %}
-                    {% if bs != -1 %}
-                      {% set tail = short[bs:] %}
-                      {% if tail.startswith('\\u') and (tail|length < 6) %}
-                        {% set short = short[:bs] %}
-                      {% elif tail.startswith('\\x') and (tail|length < 4) %}
-                        {% set short = short[:bs] %}
-                      {% endif %}
-                    {% endif %}
-                    <pre>{{ short }}{% if txt|length > 260 %}...{% endif %}</pre>
-                  </details>
-                {% elif r.result_summary %}
-                  <details class="mt-1">
-                    <summary>调试详情：原始摘要</summary>
-                    <pre>{{ r.result_summary[:260] }}{% if r.result_summary|length > 260 %}...{% endif %}</pre>
-                  </details>
+                {% if r.result_summary_obj or r.result_summary %}
+                  <span class="muted">摘要已记录</span>
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
@@ -240,4 +209,3 @@
     {% endif %}
   </div>
 {% endblock %}
-

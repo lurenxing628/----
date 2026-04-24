@@ -92,10 +92,14 @@ def main() -> None:
         assert int(counters.get("calendar_load_failed") or 0) == 1, counters
         events = list(data.get("degradation_events") or [])
         assert any(str(evt.get("code") or "") == "calendar_load_failed" for evt in events), events
+        assert "RuntimeError" not in str(events)
+        assert all("sample" not in evt for evt in events if isinstance(evt, dict)), events
 
     gantt_boot_js = open(os.path.join(repo_root, "static", "js", "gantt_boot.js"), "r", encoding="utf-8").read()
+    gantt_contract_js = open(os.path.join(repo_root, "static", "js", "gantt_contract.js"), "r", encoding="utf-8").read()
     assert "ganttDegradationWarning" in gantt_boot_js, "gantt_boot.js 未接入页面退化提示节点"
-    assert "calendar_load_failed" in gantt_boot_js, "gantt_boot.js 未识别 calendar_load_failed"
+    assert "buildDegradationMessages" in gantt_boot_js, "gantt_boot.js 未接入共享退化提示构造器"
+    assert "calendar_load_failed" in gantt_contract_js, "gantt_contract.js 未识别 calendar_load_failed"
 
     print("OK")
 

@@ -22,6 +22,19 @@ def _write_demo_plugin(base_dir: Path) -> None:
     )
 
 
+def _write_failing_plugin(base_dir: Path) -> None:
+    plugins_dir = base_dir / "plugins"
+    plugins_dir.mkdir(parents=True, exist_ok=True)
+    (plugins_dir / "failing_plugin.py").write_text(
+        "PLUGIN_ID = 'failing_plugin'\n"
+        "PLUGIN_NAME = '失败插件'\n"
+        "PLUGIN_DEFAULT_ENABLED = 'yes'\n"
+        "def register(registry):\n"
+        "    raise RuntimeError('PLUGIN_INTERNAL_SECRET')\n",
+        encoding="utf-8",
+    )
+
+
 def test_plugin_bootstrap_db_failure_visible(tmp_path: Path) -> None:
     db_path = tmp_path / "aps.db"
     _write_demo_plugin(tmp_path)
@@ -62,12 +75,30 @@ def test_plugin_bootstrap_config_read_failure_visible(tmp_path: Path) -> None:
 
     events = list(plugin_status.get("degradation_events") or [])
     assert any(str(evt.get("code") or "") == "plugin_bootstrap_config_read_failed" for evt in events), events
+    assert all("sample" not in evt for evt in events), events
+    assert "RuntimeError" not in str(events), events
 
     statuses = list(plugin_status.get("statuses") or [])
     row = next(item for item in statuses if str(item.get("plugin_id") or "") == "demo_plugin")
     assert row.get("enabled_source") == "default_due_to_config_read_failed", row
     assert row.get("enabled") == "yes", row
     assert row.get("loaded") == "yes", row
+
+
+def test_plugin_bootstrap_status_error_is_public_message(tmp_path: Path) -> None:
+    db_path = tmp_path / "aps.db"
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    ensure_schema(str(db_path), logger=None, schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=str(backup_dir))
+    _write_failing_plugin(tmp_path)
+
+    plugin_status = bootstrap_plugins(base_dir=str(tmp_path), database_path=str(db_path), logger=None)
+
+    statuses = list(plugin_status.get("statuses") or [])
+    row = next(item for item in statuses if str(item.get("plugin_id") or "") == "failing_plugin")
+    assert row.get("loaded") == "no", row
+    assert row.get("error") == "插件加载失败，请查看系统日志。", row
+    assert "PLUGIN_INTERNAL_SECRET" not in str(plugin_status), plugin_status
 
 
 def test_plugin_bootstrap_status_snapshot_failure_visible(tmp_path: Path) -> None:
@@ -91,3 +122,5 @@ def test_plugin_bootstrap_status_snapshot_failure_visible(tmp_path: Path) -> Non
     assert list(plugin_status.get("statuses") or []) == [], plugin_status
     events = list(plugin_status.get("degradation_events") or [])
     assert any(str(evt.get("code") or "") == "plugin_bootstrap_status_snapshot_failed" for evt in events), events
+    assert all("sample" not in evt for evt in events), events
+    assert "status boom" not in str(events), events

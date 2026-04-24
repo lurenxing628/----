@@ -29,10 +29,10 @@ jobs:
       - name: 执行统一质量门禁
         run: python scripts/run_quality_gate.py --require-clean-worktree
 
-      - name: 上传 quality gate manifest
+      - name: 上传 quality gate evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: quality-gate-manifest
-          path: evidence/QualityGate/quality_gate_manifest.json
+          name: quality-gate-evidence
+          path: evidence/QualityGate/
           if-no-files-found: warn

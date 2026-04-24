@@ -13,12 +13,25 @@ Phase 6 范围：
 
 from __future__ import annotations
 
-from .batch_service import BatchService
-from .calendar_service import CalendarService
-from .config.config_service import ConfigService
-from .gantt_service import GanttService
-from .resource_dispatch_service import ResourceDispatchService
-from .schedule_service import ScheduleService
+from importlib import import_module
+
+_EXPORTS = {
+    "BatchService": ".batch_service",
+    "CalendarService": ".calendar_service",
+    "ConfigService": ".config.config_service",
+    "GanttService": ".gantt_service",
+    "ResourceDispatchService": ".resource_dispatch_service",
+    "ScheduleService": ".schedule_service",
+}
+
+
+def __getattr__(name: str):
+    module_name = _EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(module_name, __name__), name)
+    globals()[name] = value
+    return value
 
 __all__ = [
     "BatchService",

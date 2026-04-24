@@ -127,12 +127,12 @@
           <select name="version" class="w-280">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if v.version == filters.version %}selected{% endif %}>
-                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ status_zh.get(v.result_status, v.result_status or '-') }}）
+                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ v.result_status_label or status_zh.get(v.result_status, v.result_status or '-') }}）
               </option>
             {% endfor %}
           </select>
         {% else %}
-          <input name="version" value="{{ filters.version }}" class="w-160">
+          <input name="version" value="{{ filters.version or '' }}" class="w-160">
         {% endif %}
       </div>
       <div class="inline-flex-wrap">

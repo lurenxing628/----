@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.models.scheduler_degradation_messages import (
+    is_public_freeze_degradation_message,
+    public_degradation_event_message,
+)
+
 _SUMMARY_DEGRADATION_LABELS = {
     "config_fallback": "\u914d\u7f6e\u5feb\u7167\u5df2\u6309\u517c\u5bb9\u8def\u5f84\u6807\u51c6\u5316",
     "input_fallback": "\u8f93\u5165\u6784\u5efa\u5df2\u6309\u517c\u5bb9\u8def\u5f84\u7ee7\u7eed\u751f\u6210",
@@ -29,9 +34,14 @@ def _degradation_label_for(*, code: str, message: str) -> str:
     label = _SUMMARY_DEGRADATION_LABELS.get(code)
     if label:
         return label
-    if message:
-        return message
     return "\u6392\u4ea7\u6458\u8981\u5b58\u5728\u53ef\u89c1\u9000\u5316"
+
+
+def _public_message_for_event(*, code: str, message: str) -> str:
+    normalized_message = str(message or "").strip()
+    if code == "freeze_window_degraded" and is_public_freeze_degradation_message(normalized_message):
+        return normalized_message
+    return public_degradation_event_message(code) if code else ""
 
 
 def format_degradation_detail(label: Any, count: Any) -> str:
@@ -69,7 +79,7 @@ def _normalize_result_state(
         raw_status = str(result_state.get("raw_status") or "").strip().lower()
         outcome_status = str(result_state.get("outcome_status") or outcome_status).strip().lower()
         is_simulated = bool(result_state.get("is_simulated")) or raw_status == "simulated"
-    if outcome_status not in {"success", "partial", "failed"}:
+    if outcome_status not in {"success", "partial", "failed", "unknown"}:
         outcome_status = "success"
     return {
         "raw_status": raw_status,
@@ -85,11 +95,13 @@ def _primary_degradation_message(*, result_state: Dict[str, Any]) -> str:
             "success": "本次模拟排产已完成，但存在内部降级/兼容修补。",
             "partial": "本次模拟排产部分完成，且存在内部降级/兼容修补。",
             "failed": "本次模拟排产失败，且存在内部降级/兼容修补。",
+            "unknown": "本次模拟排产完成状态未记录，且存在内部降级/兼容修补。",
         }[status]
     return {
         "success": "本次排产已成功，但存在内部降级/兼容修补。",
         "partial": "本次排产部分完成，且存在内部降级/兼容修补。",
         "failed": "本次排产失败，且存在内部降级/兼容修补。",
+        "unknown": "本次排产完成状态未记录，且存在内部降级/兼容修补。",
     }[status]
 
 
@@ -110,7 +122,8 @@ def _normalize_summary_degradation_events(selected_summary: Optional[Dict[str, A
         if not isinstance(event, dict):
             continue
         code = str(event.get("code") or "").strip()
-        message = str(event.get("message") or "").strip()
+        raw_message = str(event.get("message") or "").strip()
+        message = _public_message_for_event(code=code, message=raw_message)
         if not code and not message:
             continue
         dedupe_key = (code, message)

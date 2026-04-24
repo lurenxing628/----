@@ -18,8 +18,8 @@
   <h2>甘特图预览（复杂案例 / 设备视图）</h2>
   <div class="meta"><b>meta</b>
 {
-  "tmpdir": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_gantt_complex_tqvx8bh1",
-  "db": "C:\\Users\\LURENX~1\\AppData\\Local\\Temp\\aps_gantt_complex_tqvx8bh1\\aps_complex.db",
+  "tmpdir": "/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps_gantt_complex_k30hql5d",
+  "db": "/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps_gantt_complex_k30hql5d/aps_complex.db",
   "version": 1,
   "week_start": "2026-01-26",
   "batch_ids": [
@@ -34,17 +34,12 @@
   "note": "contains resource conflicts, external merged span, short shift, holiday, and mixed priorities"
 }</div>
   <div class="wrap">
+    <div id="ganttOverdueWarning" class="aps-gantt-help" style="display:none; margin-bottom:10px;"></div>
+    <div id="ganttDegradationWarning" class="aps-gantt-help" style="display:none; margin-bottom:10px;"></div>
     <div id="legend" class="aps-gantt-legend"></div>
     <details class="aps-gantt-help" style="margin-top:10px;" open>
       <summary>说明（怎么看）</summary>
-      <div class="meta" style="color:#64748b; margin:6px 0 0; line-height:1.7;">
-        - 颜色：默认按批次，同批次同色<br/>
-        - 红边：该批次在该版本中被判定为超期<br/>
-        - 关键链：任务条外框高亮，表示影响全局完工时间<br/>
-        - 虚线边框：外协任务<br/>
-        - 淡红背景：假期/停工，来源于工作日历<br/>
-        - 箭头：工艺依赖，后一工序依赖前一工序
-      </div>
+      <ul id="ganttHelpList" class="meta" style="color:#64748b; margin:6px 0 0; line-height:1.7;"></ul>
     </details>
     <div id="gantt" style="margin-top:10px;"></div>
   </div>
@@ -52,23 +47,77 @@
 
   <script src="../../static/js/frappe-gantt.min.js"></script>
   <script src="../../static/js/gantt_outline.js"></script>
+  <script src="../../static/js/gantt_contract.js"></script>
   <script>
     const tasks = [{"id": "B001_05", "schedule_id": 1, "name": "B001_05 MC001 CNC-01 OP001 Alice", "start": "2026-01-26 08:00:00", "end": "2026-01-26 13:18:00", "duration_minutes": 318, "progress": 0, "lock_status": "unlocked", "dependencies": "", "edge_type": "", "custom_class": "priority-critical overdue", "meta": {"schedule_id": 1, "op_id": 1, "batch_id": "B001", "piece_id": null, "part_no": "P_A", "seq": 5, "op_type_name": "Machining", "source": "internal", "status": "scheduled", "machine_id": "MC001", "operator_id": "OP001", "machine": "MC001 CNC-01", "operator": "OP001 Alice", "group_key": "MC001", "priority": "critical", "lock_status": "unlocked", "duration_minutes": 318, "due_date": "2026-01-27", "is_overdue": true}}, {"id": "B002_05", "schedule_id": 8, "name": "B002_05 MC001 CNC-01 OP001 Alice", "start": "2026-01-26 13:18:00", "end": "2026-01-26 15:24:00", "duration_minutes": 126, "progress": 0, "lock_status": "unlocked", "dependencies": "", "edge_type": "", "custom_class": "priority-urgent overdue", "meta": {"schedule_id": 8, "op_id": 6, "batch_id": "B002", "piece_id": null, "part_no": "P_A", "seq": 5, "op_type_name": "Machining", "source": "internal", "status": "scheduled", "machine_id": "MC001", "operator_id": "OP001", "machine": "MC001 CNC-01", "operator": "OP001 Alice", "group_key": "MC001", "priority": "urgent", "lock_status": "unlocked", "duration_minutes": 126, "due_date": "2026-01-29", "is_overdue": true}}, {"id": "B003_05", "schedule_id": 15, "name": "B003_05 MC001 CNC-01 OP001 Alice", "start": "2026-01-30 15:24:00", "end": "2026-02-02 00:00:00", "duration_minutes": 3396, "progress": 0, "lock_status": "unlocked", "dependencies": "", "edge_type": "", "custom_class": "priority-normal", "meta": {"schedule_id": 15, "op_id": 11, "batch_id": "B003", "piece_id": null, "part_no": "P_A", "seq": 5, "op_type_name": "Machining", "source": "internal", "status": "scheduled", "machine_id": "MC001", "operator_id": "OP001", "machine": "MC001 CNC-01", "operator": "OP001 Alice", "group_key": "MC001", "priority": "normal", "lock_status": "unlocked", "duration_minutes": 3396, "due_date": "2026-02-05", "is_overdue": false}}, {"id": "B001_20", "schedule_id": 3, "name": "B001_20 MC002 CNC-02 OP001 Alice", "start": "2026-01-26 15:24:00", "end": "2026-01-29 10:42:00", "duration_minutes": 4038, "progress": 0, "lock_status": "unlocked", "dependencies": "B001_10", "edge_type": "process", "custom_class": "priority-critical overdue", "meta": {"schedule_id": 3, "op_id": 3, "batch_id": "B001", "piece_id": null, "part_no": "P_A", "seq": 20, "op_type_name": "Machining", "source": "internal", "status": "scheduled", "machine_id": "MC002", "operator_id": "OP001", "machine": "MC002 CNC-02", "operator": "OP001 Alice", "group_key": "MC002", "priority": "critical", "lock_status": "unlocked", "duration_minutes": 4038, "due_date": "2026-01-27", "is_overdue": true, "edge_type": "process", "dependency_from": "B001_10"}}, {"id": "B101_10", "schedule_id": 7, "name": "B101_10 MC002 CNC-02 OP001 Alice", "start": "2026-01-29 10:42:00", "end": "2026-01-30 10:24:00", "duration_minutes": 1422, "progress": 0, "lock_status": "unlocked", "dependencies": "B101_05", "edge_type": "process", "custom_class": "priority-urgent overdue", "meta": {"schedule_id": 7, "op_id": 17, "batch_id": "B101", "piece_id": null, "part_no": "P_B", "seq": 10, "op_type_name": "Machining", "source": "internal", "status": "scheduled", "machine_id": "MC002", "operator_id": "OP001", "machine": "MC002 CNC-02", "operator": "OP001 Alice", "group_key": "MC002", "priority": "urgent", "lock_status": "unlocked", "duration_minutes": 1422, "due_date": "2026-01-27", "is_overdue": true, "edge_type": "process", "dependency_from": "B101_05"}}, {"id": "B002_20", "schedule_id": 10, "name": "B002_20 MC002 CNC-02 OP001 Alice", "start": "2026-01-30 10:24:00", "end": "2026-01-30 12:30:00", "duration_minutes": 126, "progress": 0, "lock_status": "unlocked", "dependencies": "B002_10", "edge_type": "process", "custom_class": "priority-urgent overdue", "meta": {"schedule_id": 10, "op_id": 8, "batch_id": "B002", "piece_id": null, "part_no": "P_A", "seq": 20, "op_type_name": "Machining", "source": "internal", "status": "scheduled", "machine_id": "MC002", "operator_id": "OP001", "machine": "MC002 CNC-02", "operator": "OP001 Alice", "group_key": "MC002", "priority": "urgent", "lock_status": "unlocked", "duration_minutes": 126, "due_date": "2026-01-29", "is_overdue": true, "edge_type": "process", "dependency_from": "B002_10"}}, {"id": "B102_10", "schedule_id": 14, "name": "B102_10 MC002 CNC-02 OP001 Alice", "start": "2026-01-30 12:30:00", "end": "2026-01-30 15:24:00", "duration_minutes": 174, "progress": 0, "lock_status": "unlocked", "dependencies": "B102_05", "edge_type": "process", "custom_class": "priority-normal", "meta": {"schedule_id": 14, "op_id": 19, "batch_id": "B102", "piece_id": null, "part_no": "P_B", "seq": 10, "op_type_name": "Machining", "source": "internal", "status": "scheduled", "machine_id": "MC002", "operator_id": "OP001", "machine": "MC002 CNC-02", "operator": "OP001 Alice", "group_key": "MC002", "priority": "normal", "lock_status": "unlocked", "duration_minutes": 174, "due_date": "2026-01-30", "is_overdue": false, "edge_type": "process", "dependency_from": "B102_05"}}, {"id": "B101_05", "schedule_id": 6, "name": "B101_05 MC003 GRD-01 OP002 Bob", "start": "2026-01-26 08:00:00", "end": "2026-01-26 12:06:00", "duration_minutes": 246, "progress": 0, "lock_status": "unlocked", "dependencies": "", "edge_type": "", "custom_class": "priority-urgent overdue", "meta": {"schedule_id": 6, "op_id": 16, "batch_id": "B101", "piece_id": null, "part_no": "P_B", "seq": 5, "op_type_name": "Grinding", "source": "internal", "status": "scheduled", "machine_id": "MC003", "operator_id": "OP002", "machine": "MC003 GRD-01", "operator": "OP002 Bob", "group_key": "MC003", "priority": "urgent", "lock_status": "unlocked", "duration_minutes": 246, "due_date": "2026-01-27", "is_overdue": true}}, {"id": "B001_10", "schedule_id": 2, "name": "B001_10 MC003 GRD-01 OP003 Carol", "start": "2026-01-26 13:18:00", "end": "2026-01-26 15:24:00", "duration_minutes": 126, "progress": 0, "lock_status": "unlocked", "dependencies": "B001_05", "edge_type": "process", "custom_class": "priority-critical overdue", "meta": {"schedule_id": 2, "op_id": 2, "batch_id": "B001", "piece_id": null, "part_no": "P_A", "seq": 10, "op_type_name": "Grinding", "source": "internal", "status": "scheduled", "machine_id": "MC003", "operator_id": "OP003", "machine": "MC003 GRD-01", "operator": "OP003 Carol", "group_key": "MC003", "priority": "critical", "lock_status": "unlocked", "duration_minutes": 126, "due_date": "2026-01-27", "is_overdue": true, "edge_type": "process", "dependency_from": "B001_05"}}, {"id": "B002_10", "schedule_id": 9, "name": "B002_10 MC003 GRD-01 OP003 Carol", "start": "2026-01-26 15:24:00", "end": "2026-01-27 08:42:00", "duration_minutes": 1038, "progress": 0, "lock_status": "unlocked", "dependencies": "B002_05", "edge_type": "process", "custom_class": "priority-urgent overdue", "meta": {"schedule_id": 9, "op_id": 7, "batch_id": "B002", "piece_id": null, "part_no": "P_A", "seq": 10, "op_type_name": "Grinding", "source": "internal", "status": "scheduled", "machine_id": "MC003", "operator_id": "OP003", "machine": "MC003 GRD-01", "operator": "OP003 Carol", "group_key": "MC003", "priority": "urgent", "lock_status": "unlocked", "duration_minutes": 1038, "due_date": "2026-01-29", "is_overdue": true, "edge_type": "process", "dependency_from": "B002_05"}}, {"id": "B102_05", "schedule_id": 13, "name": "B102_05 MC003 GRD-01 OP002 Bob", "start": "2026-01-27 08:42:00", "end": "2026-01-29 09:00:00", "duration_minutes": 2898, "progress": 0, "lock_status": "unlocked", "dependencies": "", "edge_type": "", "custom_class": "priority-normal", "meta": {"schedule_id": 13, "op_id": 18, "batch_id": "B102", "piece_id": null, "part_no": "P_B", "seq": 5, "op_type_name": "Grinding", "source": "internal", "status": "scheduled", "machine_id": "MC003", "operator_id": "OP002", "machine": "MC003 GRD-01", "operator": "OP002 Bob", "group_key": "MC003", "priority": "normal", "lock_status": "unlocked", "duration_minutes": 2898, "due_date": "2026-01-30", "is_overdue": false}}, {"id": "B001_35", "schedule_id": 4, "name": "B001_35 外协 Vendor-Coating 外协/未分配", "start": "2026-01-29 10:42:00", "end": "2026-02-01 10:42:00", "duration_minutes": 4320, "progress": 0, "lock_status": "unlocked", "dependencies": "B001_20", "edge_type": "process", "custom_class": "priority-critical overdue", "meta": {"schedule_id": 4, "op_id": 4, "batch_id": "B001", "piece_id": null, "part_no": "P_A", "seq": 35, "op_type_name": "Coating", "source": "external", "status": "scheduled", "machine_id": null, "operator_id": null, "machine": "外协 Vendor-Coating", "operator": "外协/未分配", "group_key": "外协/未分配", "priority": "critical", "lock_status": "unlocked", "duration_minutes": 4320, "due_date": "2026-01-27", "is_overdue": true, "edge_type": "process", "dependency_from": "B001_20"}}, {"id": "B001_40", "schedule_id": 5, "name": "B001_40 外协 Vendor-Inspect 外协/未分配", "start": "2026-01-29 10:42:00", "end": "2026-02-01 10:42:00", "duration_minutes": 4320, "progress": 0, "lock_status": "unlocked", "dependencies": "B001_35", "edge_type": "process", "custom_class": "priority-critical overdue", "meta": {"schedule_id": 5, "op_id": 5, "batch_id": "B001", "piece_id": null, "part_no": "P_A", "seq": 40, "op_type_name": "FinalInspect", "source": "external", "status": "scheduled", "machine_id": null, "operator_id": null, "machine": "外协 Vendor-Inspect", "operator": "外协/未分配", "group_key": "外协/未分配", "priority": "critical", "lock_status": "unlocked", "duration_minutes": 4320, "due_date": "2026-01-27", "is_overdue": true, "edge_type": "process", "dependency_from": "B001_35"}}, {"id": "B002_35", "schedule_id": 11, "name": "B002_35 外协 Vendor-Coating 外协/未分配", "start": "2026-01-30 12:30:00", "end": "2026-02-02 00:00:00", "duration_minutes": 3570, "progress": 0, "lock_status": "unlocked", "dependencies": "B002_20", "edge_type": "process", "custom_class": "priority-urgent overdue", "meta": {"schedule_id": 11, "op_id": 9, "batch_id": "B002", "piece_id": null, "part_no": "P_A", "seq": 35, "op_type_name": "Coating", "source": "external", "status": "scheduled", "machine_id": null, "operator_id": null, "machine": "外协 Vendor-Coating", "operator": "外协/未分配", "group_key": "外协/未分配", "priority": "urgent", "lock_status": "unlocked", "duration_minutes": 3570, "due_date": "2026-01-29", "is_overdue": true, "edge_type": "process", "dependency_from": "B002_20"}}, {"id": "B002_40", "schedule_id": 12, "name": "B002_40 外协 Vendor-Inspect 外协/未分配", "start": "2026-01-30 12:30:00", "end": "2026-02-02 00:00:00", "duration_minutes": 3570, "progress": 0, "lock_status": "unlocked", "dependencies": "B002_35", "edge_type": "process", "custom_class": "priority-urgent overdue", "meta": {"schedule_id": 12, "op_id": 10, "batch_id": "B002", "piece_id": null, "part_no": "P_A", "seq": 40, "op_type_name": "FinalInspect", "source": "external", "status": "scheduled", "machine_id": null, "operator_id": null, "machine": "外协 Vendor-Inspect", "operator": "外协/未分配", "group_key": "外协/未分配", "priority": "urgent", "lock_status": "unlocked", "duration_minutes": 3570, "due_date": "2026-01-29", "is_overdue": true, "edge_type": "process", "dependency_from": "B002_35"}}];
     const calendarDays = [{"date": "2026-01-26", "day_type": "workday", "shift_hours": 8.0, "allow_normal": "yes", "allow_urgent": "yes", "remark": "normal", "is_holiday": false, "is_nonworking": false}, {"date": "2026-01-27", "day_type": "workday", "shift_hours": 2.0, "allow_normal": "yes", "allow_urgent": "yes", "remark": "short shift", "is_holiday": false, "is_nonworking": false}, {"date": "2026-01-28", "day_type": "holiday", "shift_hours": 0.0, "allow_normal": "no", "allow_urgent": "no", "remark": "shutdown", "is_holiday": true, "is_nonworking": true}, {"date": "2026-01-29", "day_type": "workday", "shift_hours": 8.0, "allow_normal": "yes", "allow_urgent": "yes", "remark": "默认工作日（未配置）", "is_holiday": false, "is_nonworking": false}, {"date": "2026-01-30", "day_type": "workday", "shift_hours": 8.0, "allow_normal": "yes", "allow_urgent": "yes", "remark": "默认工作日（未配置）", "is_holiday": false, "is_nonworking": false}, {"date": "2026-01-31", "day_type": "weekend", "shift_hours": 0.0, "allow_normal": "no", "allow_urgent": "no", "remark": "默认周末（未配置）", "is_holiday": true, "is_nonworking": true}, {"date": "2026-02-01", "day_type": "weekend", "shift_hours": 0.0, "allow_normal": "no", "allow_urgent": "no", "remark": "默认周末（未配置）", "is_holiday": true, "is_nonworking": true}];
     const criticalChain = {"ids": ["B001_05", "B002_05", "B001_20", "B101_10", "B002_20", "B102_10", "B003_05", "B003_10", "B003_20", "B003_35", "B003_40"], "edges": [{"from": "B001_05", "to": "B002_05", "edge_type": "operator", "reason": "资源前驱（人员）", "gap_minutes": 0}, {"from": "B002_05", "to": "B001_20", "edge_type": "operator", "reason": "资源前驱（人员）", "gap_minutes": 0}, {"from": "B001_20", "to": "B101_10", "edge_type": "operator", "reason": "资源前驱（人员）", "gap_minutes": 0}, {"from": "B101_10", "to": "B002_20", "edge_type": "operator", "reason": "资源前驱（人员）", "gap_minutes": 0}, {"from": "B002_20", "to": "B102_10", "edge_type": "operator", "reason": "资源前驱（人员）", "gap_minutes": 0}, {"from": "B102_10", "to": "B003_05", "edge_type": "operator", "reason": "资源前驱（人员）", "gap_minutes": 0}, {"from": "B003_05", "to": "B003_10", "edge_type": "process", "reason": "工艺前驱", "gap_minutes": 0}, {"from": "B003_10", "to": "B003_20", "edge_type": "process", "reason": "工艺前驱", "gap_minutes": 0}, {"from": "B003_20", "to": "B003_35", "edge_type": "process", "reason": "工艺前驱", "gap_minutes": 0}, {"from": "B003_35", "to": "B003_40", "edge_type": "process", "reason": "工艺前驱", "gap_minutes": -4320}], "makespan_end": "2026-02-05 10:54:00", "edge_type_stats": {"process": 4, "machine": 0, "operator": 6, "unknown": 0}, "edge_count": 10, "available": true, "reason": "", "cache_hit": false};
+    const degradationEvents = [];
+    const degradationCounters = {};
+    const emptyReason = "";
+    const overdueMarkersDegraded = false;
+    const overdueMarkersPartial = false;
+    const overdueMarkersMessage = "";
     (function () {
   const taskList = tasks;
   const dayList = calendarDays;
   const chainData = criticalChain;
-  const outlineApi = window.__APS_GANTT__ && window.__APS_GANTT__.outline;
+  const previewDegradationEvents = degradationEvents;
+  const previewDegradationCounters = degradationCounters;
+  const previewEmptyReason = emptyReason;
+  const previewOverdueMarkersDegraded = overdueMarkersDegraded;
+  const previewOverdueMarkersPartial = overdueMarkersPartial;
+  const previewOverdueMarkersMessage = overdueMarkersMessage;
+  const ganttNs = window.__APS_GANTT__ || {};
+  const outlineApi = ganttNs.outline;
+  const contractApi = ganttNs.contract;
   if (!outlineApi || typeof outlineApi.setCriticalOutlineEnabled !== "function" || typeof outlineApi.installCriticalOutlineSyncAdapter !== "function") {
     throw new Error("APS critical outline helper missing");
   }
+  if (!contractApi || typeof contractApi.normalizeCriticalChain !== "function" || typeof contractApi.buildRenderTasks !== "function") {
+    throw new Error("APS gantt contract helper missing");
+  }
 
-  const gantt = new Gantt("#gantt", taskList, {
+  const critical = contractApi.normalizeCriticalChain(chainData);
+  const renderTasks = contractApi.buildRenderTasks(taskList, "critical", critical);
+
+  const gantt = new Gantt("#gantt", renderTasks, {
     view_mode: "Day",
     language: "zh",
-    popup_trigger: "click"
+    popup_trigger: "click",
+    custom_popup_html(task) {
+      const meta = task && task.meta ? task.meta : {};
+      const criticalInfo = contractApi.getCriticalTooltip(task, critical);
+      function escapeHtml(value) {
+        const text = value === null || typeof value === "undefined" ? "" : String(value);
+        if (!/[&<>"']/.test(text)) return text;
+        return text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      const lines = [
+        `<div class="title">${escapeHtml(meta._raw_name || task.name || "")}</div>`,
+        `<div class="subtitle">时间：${escapeHtml(task.start || "-")} ～ ${escapeHtml(task.end || "-")}</div>`,
+        `<div class="subtitle">批次：${escapeHtml(meta.batch_id || "-")}</div>`,
+        `<div class="subtitle">件：${escapeHtml(meta.piece_id || "-")}</div>`,
+        `<div class="subtitle">图号：${escapeHtml(meta.part_no || "-")}</div>`,
+        `<div class="subtitle">工序：${escapeHtml(meta.seq || "-")}（${escapeHtml(meta.op_type_name || "-")}）</div>`,
+        `<div class="subtitle">设备：${escapeHtml(meta.machine || "-")}</div>`,
+        `<div class="subtitle">人员：${escapeHtml(meta.operator || "-")}</div>`,
+        `<div class="subtitle">来源：${escapeHtml(meta.source || "-")}</div>`,
+        `<div class="subtitle">关键链：${escapeHtml(criticalInfo.statusLabel)}｜超期：${meta.is_overdue ? "是" : "否"}</div>`,
+        `<div class="subtitle">关键链前驱：${escapeHtml(criticalInfo.predecessorText)}｜类型：${escapeHtml(criticalInfo.edgeTypeText)}｜间隔(分)：${escapeHtml(criticalInfo.gapText)}</div>`,
+        `<div class="subtitle">关键链依据：${escapeHtml(criticalInfo.reasonText)}</div>`,
+      ];
+      if (criticalInfo.unavailableMessage) {
+        lines.push(`<div class="subtitle">关键链降级：${escapeHtml(criticalInfo.unavailableMessage)}</div>`);
+      }
+      return lines.join("");
+    }
   });
   outlineApi.installCriticalOutlineSyncAdapter(gantt);
 
@@ -173,13 +222,37 @@
     }
   }
 
-  function applyDecorations(taskList, chain) {
+  function applyDegradationWarning(chain) {
+    const warning = document.getElementById("ganttDegradationWarning");
+    if (!warning) return;
+    const message = contractApi.buildDegradationMessages({
+      degradationEvents: previewDegradationEvents,
+      degradationCounters: previewDegradationCounters,
+      emptyReason: previewEmptyReason
+    }, chain).join(" ");
+    warning.textContent = message;
+    warning.style.display = message ? "block" : "none";
+  }
+
+  function applyOverdueWarning() {
+    const warning = document.getElementById("ganttOverdueWarning");
+    if (!warning) return;
+    const message = contractApi.getOverdueWarningMessage({
+      overdueMarkersDegraded: previewOverdueMarkersDegraded,
+      overdueMarkersPartial: previewOverdueMarkersPartial,
+      overdueMarkersMessage: previewOverdueMarkersMessage
+    });
+    warning.textContent = message;
+    warning.style.display = message ? "block" : "none";
+  }
+
+  function applyDecorations(renderList, chain) {
     const byId = new Map();
-    (Array.isArray(taskList) ? taskList : []).forEach((task) => {
+    (Array.isArray(renderList) ? renderList : []).forEach((task) => {
       const id = norm(task && task.id);
       if (id) byId.set(id, task);
     });
-    const ccSet = new Set(((chain && chain.ids) || []).map((value) => norm(value)).filter(Boolean));
+    const ccSet = chain && chain.idSet ? chain.idSet : new Set();
 
     document.querySelectorAll("#gantt .bar-wrapper").forEach((wrapper) => {
       const taskId = norm(wrapper.getAttribute("data-id"));
@@ -210,7 +283,7 @@
     });
   }
 
-  function renderLegend(taskList, days, chain) {
+  function renderLegend(renderList, days, chain) {
     const legend = document.getElementById("legend");
     if (!legend) return;
     while (legend.firstChild) {
@@ -255,14 +328,23 @@
 
     const summaryRow = row();
     const summary = document.createElement("span");
-    summary.textContent = `任务 ${(taskList || []).length} · 关键链 ${ccCount} · 完工 ${makespanEnd} · 假期/停工 ${holidayCount}`;
+    summary.textContent = `任务 ${(renderList || []).length} · 关键链 ${ccCount} · 完工 ${makespanEnd} · 假期/停工 ${holidayCount} · 箭头 ${contractApi.getArrowModeLabel("critical", chain)} · ${contractApi.getCriticalStatusLabel(chain)}`;
     summaryRow.appendChild(summary);
     legend.appendChild(summaryRow);
+
+    const warningText = contractApi.getCriticalChainUnavailableMessage(chain);
+    if (warningText) {
+      const warnRow = row();
+      const warn = document.createElement("span");
+      warn.textContent = warningText;
+      warnRow.appendChild(warn);
+      legend.appendChild(warnRow);
+    }
 
     const colorRow = row();
     colorRow.appendChild(title("配色"));
     const seen = new Set();
-    (Array.isArray(taskList) ? taskList : []).forEach((task) => {
+    (Array.isArray(renderList) ? renderList : []).forEach((task) => {
       const batchId = norm(task && task.meta && task.meta.batch_id);
       if (!batchId || seen.has(batchId) || seen.size >= 6) return;
       seen.add(batchId);
@@ -279,7 +361,7 @@
     legend.appendChild(markRow);
   }
 
-  const originalChangeViewMode = typeof gantt.change_view_mode === "function"
+    const originalChangeViewMode = typeof gantt.change_view_mode === "function"
     ? gantt.change_view_mode
     : null;
   if (originalChangeViewMode) {
@@ -287,17 +369,25 @@
       const result = originalChangeViewMode.call(this, mode);
       outlineApi.installCriticalOutlineSyncAdapter(this);
       renderHolidayColumns(this, dayList);
-      applyDecorations(taskList, chainData);
-      renderLegend(taskList, dayList, chainData);
+      applyDecorations(renderTasks, critical);
+      renderLegend(renderTasks, dayList, critical);
+      applyDegradationWarning(critical);
+      applyOverdueWarning();
+      contractApi.renderHelpList(document.getElementById("ganttHelpList"), critical);
       return result;
     };
   }
 
   renderHolidayColumns(gantt, dayList);
-  applyDecorations(taskList, chainData);
-  renderLegend(taskList, dayList, chainData);
+  applyDecorations(renderTasks, critical);
+  renderLegend(renderTasks, dayList, critical);
+  applyDegradationWarning(critical);
+  applyOverdueWarning();
+  contractApi.renderHelpList(document.getElementById("ganttHelpList"), critical);
   window.__APS_GANTT_PREVIEW__ = {
     gantt: gantt,
+    critical: critical,
+    renderTasks: renderTasks,
     renderHolidayColumns: renderHolidayColumns,
     applyDecorations: applyDecorations,
     renderLegend: renderLegend

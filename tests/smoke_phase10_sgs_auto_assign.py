@@ -38,7 +38,7 @@ def main():
     lines.append("# Phase10（SGS/自动分配/OR-Tools/冻结窗口）冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0].strip()}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录：`{repo_root}`")

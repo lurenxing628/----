@@ -18,13 +18,15 @@
         <h2 class="page-title">周计划（导出）</h2>
       </div>
       <div class="page-actions page-actions-context">
-        {{ ui.link_button('导出周计划表.xlsx', export_url, 'secondary', 'md') }}
+        {% if export_url %}
+          {{ ui.link_button('导出周计划表.xlsx', export_url, 'secondary', 'md') }}
+        {% endif %}
       </div>
     </div>
     <p class="meta-inline text-meta">
       周范围：<strong>{{ week_start }}</strong> ～ <strong>{{ week_end }}</strong>
       <span class="meta-sep">｜</span>
-      版本：<strong>{{ version }}</strong>
+      版本：<strong>{{ version if version is not none else '暂无版本' }}</strong>
     </p>
     {{ ui.scheduler_nav('week_plan') }}
   </div>
@@ -49,12 +51,12 @@
           <select name="version" class="w-260">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
-                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ status_zh.get(v.result_status, v.result_status or '-') }}）
+                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ v.result_status_label or status_zh.get(v.result_status, v.result_status or '-') }}）
               </option>
             {% endfor %}
           </select>
         {% else %}
-          <input name="version" value="{{ version }}" class="w-160">
+          <input name="version" value="{{ version or '' }}" class="w-160">
         {% endif %}
       </div>
       <div>
@@ -85,7 +87,7 @@
         <span class="meta-sep">｜</span>
         方式：<strong>{{ strategy_zh.get(selected_history.strategy, selected_history.strategy or '-') }}</strong>
         <span class="meta-sep">｜</span>
-        结果：<strong>{{ status_zh.get(selected_history.result_status, selected_history.result_status or '-') }}</strong>
+        结果：<strong>{{ selected_summary_display.result_status_label or status_zh.get(selected_history.result_status, selected_history.result_status or '-') }}</strong>
       </div>
       {% if selected_summary_display.summary_parse_state.parse_failed %}
         <div class="flash-card flash-warning mt-2">
@@ -197,4 +199,3 @@
     {% endif %}
   </div>
 {% endblock %}
-

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 import tempfile
 from urllib.parse import parse_qs, urlparse
@@ -41,6 +42,15 @@ def main() -> None:
     from core.infrastructure.database import ensure_schema
 
     ensure_schema(os.environ["APS_DB_PATH"], logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
+    with sqlite3.connect(os.environ["APS_DB_PATH"]) as conn:
+        conn.execute(
+            """
+            INSERT INTO ScheduleHistory (version, strategy, batch_count, op_count, result_status, result_summary, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (1, "regression", 0, 0, "success", "{}", "regression"),
+        )
+        conn.commit()
 
     from app import create_app
 
@@ -91,4 +101,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

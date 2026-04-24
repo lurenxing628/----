@@ -178,9 +178,10 @@ def test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drif
         "scope_tag": "startup_guard",
     }
 
-    monkeypatch.setattr(module, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
-    monkeypatch.setattr(
-        module,
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    monkeypatch.setitem(
+        refresh_globals,
         "build_silent_entry",
         lambda scan_item, source, existing=None: {
             **dict(existing or {}),
@@ -188,7 +189,7 @@ def test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drif
             "source": source,
         },
     )
-    monkeypatch.setattr(module, "finalize_ledger_update", lambda current: current)
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
     refreshed = module.refresh_auto_fields(ledger)
     entry = refreshed["silent_fallback"]["entries"][0]
@@ -198,6 +199,51 @@ def test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drif
     assert entry["line_start"] == 375
     assert entry["line_end"] == 382
     assert entry["owner"] == "SP03"
+
+
+def test_refresh_auto_fields_prunes_resolved_complexity_entry(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [
+            {
+                "id": "complexity:web-bootstrap-plugins-_status_degradation_collector",
+                "path": "web/bootstrap/plugins.py",
+                "symbol": "_status_degradation_collector",
+                "status": "open",
+                "owner": "SP03",
+                "batch": "SP03",
+                "exit_condition": "复杂度回落到 15 及以下后移出白名单",
+                "last_verified_at": "2026-04-09T23:35:44+08:00",
+                "notes": "旧登记",
+                "current_value": 16,
+                "threshold": 15,
+            }
+        ],
+        "silent_fallback": {"scope": ["web/bootstrap/**/*.py"], "entries": []},
+        "accepted_risks": [],
+    }
+
+    def fake_complexity_scan_map(_paths, include_all=False):
+        if include_all:
+            return {
+                "web/bootstrap/plugins.py:_status_degradation_collector": {
+                    "path": "web/bootstrap/plugins.py",
+                    "symbol": "_status_degradation_collector",
+                    "current_value": 12,
+                    "threshold": 15,
+                }
+            }
+        return {}
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "complexity_scan_map", fake_complexity_scan_map)
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    refreshed = module.refresh_auto_fields(ledger)
+
+    assert refreshed["complexity_allowlist"] == []
 
 
 def test_set_entry_fields_command_updates_manual_fields(monkeypatch, capsys):

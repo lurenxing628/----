@@ -8,6 +8,8 @@ from core.algorithms.value_domains import EXTERNAL, INTERNAL
 
 from .runtime_state import accumulate_busy_hours, update_machine_last_state
 
+_SCHEDULE_OPERATION_FAILED_MESSAGE = "排产异常，请查看系统日志。"
+
 
 def dispatch_batch_order(
     scheduler: Any,
@@ -110,10 +112,10 @@ def dispatch_batch_order(
                 failed_count += 1
                 # batch_order 模式也保持“批次串行”约束：任一工序失败则阻断该批次后续工序
                 blocked_batches.add(bid)
-        except Exception as e:
+        except Exception:
             failed_count += 1
             op_code = getattr(op, "op_code", "-") or "-"
-            errors.append(f"工序 {op_code} 排产异常：{str(e)}")
+            errors.append(f"工序 {op_code} {_SCHEDULE_OPERATION_FAILED_MESSAGE}")
             try:
                 scheduler.logger.exception(f"工序 {op_code} 排产异常")  # type: ignore[attr-defined]
             except Exception:

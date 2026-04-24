@@ -76,7 +76,7 @@ def _build_app(monkeypatch, history_service: _HistoryServiceStub) -> Flask:
     return app
 
 
-def _build_real_app(tmp_path, monkeypatch, *, summary_obj) -> Flask:
+def _build_real_app(tmp_path, monkeypatch, *, summary_obj, result_status: str = "partial") -> Flask:
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
@@ -101,7 +101,7 @@ def _build_real_app(tmp_path, monkeypatch, *, summary_obj) -> Flask:
     conn = get_connection(str(test_db))
     conn.execute(
         "INSERT INTO ScheduleHistory (version, strategy, batch_count, op_count, result_status, result_summary, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (3, "priority_first", 1, 1, "partial", json.dumps(summary_obj, ensure_ascii=False), "pytest"),
+        (3, "priority_first", 1, 1, result_status, json.dumps(summary_obj, ensure_ascii=False), "pytest"),
     )
     conn.commit()
     conn.close()
@@ -160,8 +160,10 @@ def test_system_history_route_exposes_warning_pipeline_display(monkeypatch) -> N
                 "summary_merge_attempted": True,
                 "summary_merge_failed": True,
                 "summary_merge_error": "summary_warnings_assignment_failed",
+                "raw_secret": "INTERNAL_RESULT_SUMMARY_SECRET",
             }
         },
+        "errors_sample": ["INTERNAL_RESULT_SUMMARY_SECRET"],
     }
     history_service = _HistoryServiceStub(summary)
     app = _build_app(monkeypatch, history_service)
@@ -246,4 +248,24 @@ def test_system_history_page_renders_warning_pipeline_guard_html(tmp_path, monke
     assert "摘要告警未能完整合并到历史摘要。" in html
     assert html.count("算法告警：2 条") == 1
     assert "告警 1 条" in html
-    assert "调试详情：原始摘要" in html
+    assert "摘要已加载；页面仅展示公开摘要、告警和降级提示。" in html
+    assert "调试详情：原始摘要" not in html
+    assert "summary_warnings_assignment_failed" not in html
+    assert "INTERNAL_RESULT_SUMMARY_SECRET" not in html
+
+
+def test_system_history_version_dropdown_uses_completion_status_label(tmp_path, monkeypatch) -> None:
+    summary = {
+        "completion_status": "partial",
+        "warnings": [],
+        "errors": [],
+        "counts": {"op_count": 3, "scheduled_ops": 2, "failed_ops": 1},
+    }
+    app = _build_real_app(tmp_path, monkeypatch, summary_obj=summary, result_status="simulated")
+    client = app.test_client()
+
+    response = client.get("/system/history?version=3")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert html.count("模拟排产 / 部分成功") >= 3

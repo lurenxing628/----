@@ -190,7 +190,7 @@ def test_repository_bundle_scan_allows_schedule_service_proxy_assignment(monkeyp
     assert entries == []
 
 
-def test_request_service_architecture_filter_only_allows_exact_helper_coordinates(monkeypatch) -> None:
+def test_request_service_architecture_filter_does_not_hide_registered_helper_debt(monkeypatch) -> None:
     rel_path = "tmp/request_gate_architecture_sample.py"
     monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_FILES", [rel_path])
     monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_SYMBOLS", {})
@@ -213,6 +213,7 @@ def test_request_service_architecture_filter_only_allows_exact_helper_coordinate
                 "target": "helper_builder",
             },
         ],
+        raising=False,
     )
     monkeypatch.setattr(ops_mod, "collect_globbed_files", lambda _patterns: [rel_path])
     monkeypatch.setattr(
@@ -229,6 +230,8 @@ def test_request_service_architecture_filter_only_allows_exact_helper_coordinate
     entries = ops_mod.architecture_request_service_direct_assembly_entries()
 
     assert [(entry["symbol"], entry["line"], entry["rule"], entry["target"]) for entry in entries] == [
+        ("preview", 10, "g_db_first_arg_helper", "helper_builder"),
+        ("confirm", 20, "g_db_first_arg_helper", "helper_builder"),
         ("confirm", 21, "g_db_first_arg_helper", "helper_builder"),
         ("confirm", 30, "service_or_repository_g_db", "BatchService"),
     ]
@@ -248,6 +251,18 @@ def test_request_service_target_files_cover_history_and_system_routes() -> None:
     }
 
     assert expected_targets.issubset(set(shared_mod.REQUEST_SERVICE_TARGET_FILES))
+
+
+def test_request_service_target_files_cover_scheduler_calendar_and_resource_residuals() -> None:
+    expected_targets = {
+        "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
+        "web/routes/domains/scheduler/scheduler_calendar_pages.py",
+        "web/routes/domains/scheduler/scheduler_excel_calendar.py",
+    }
+
+    assert expected_targets.issubset(set(shared_mod.REQUEST_SERVICE_TARGET_FILES))
+    assert ops_mod.architecture_request_service_direct_assembly_entries() == []
+    assert shared_mod.REQUEST_SERVICE_TARGET_ALLOWED_HELPERS == []
 
 
 def test_request_service_scan_scope_covers_error_path_files() -> None:
@@ -278,7 +293,7 @@ def test_request_service_architecture_filter_tracks_nested_open_db_in_custom_tes
     rel_path = "tests/run_real_db_replay_e2e.py"
     monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_FILES", [])
     monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_SYMBOLS", {rel_path: ["_create_test_app", "_open_db"]})
-    monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_ALLOWED_HELPERS", [])
+    monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_ALLOWED_HELPERS", [], raising=False)
     monkeypatch.setattr(ops_mod, "collect_globbed_files", lambda _patterns: [rel_path])
     monkeypatch.setattr(
         ops_mod,

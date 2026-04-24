@@ -1,16 +1,32 @@
 from __future__ import annotations
 
-from . import scheduler_analysis as _analysis  # noqa: F401
-from . import scheduler_batch_detail as _batch_detail  # noqa: F401
-from . import scheduler_batches as _batches  # noqa: F401
-from . import scheduler_calendar_pages as _calendar_pages  # noqa: F401
-from . import scheduler_config as _config  # noqa: F401
-from . import scheduler_excel_batches as _excel_batches  # noqa: F401
-from . import scheduler_excel_calendar as _excel_calendar  # noqa: F401
-from . import scheduler_gantt as _gantt  # noqa: F401
-from . import scheduler_ops as _ops  # noqa: F401
-from . import scheduler_resource_dispatch as _resource_dispatch  # noqa: F401
-from . import scheduler_run as _run  # noqa: F401
-from . import scheduler_week_plan as _week_plan  # noqa: F401
+import importlib
 
-__all__ = []
+_ROUTE_MODULES = (
+    "scheduler_analysis",
+    "scheduler_batch_detail",
+    "scheduler_batches",
+    "scheduler_calendar_pages",
+    "scheduler_config",
+    "scheduler_excel_batches",
+    "scheduler_excel_calendar",
+    "scheduler_gantt",
+    "scheduler_ops",
+    "scheduler_resource_dispatch",
+    "scheduler_run",
+    "scheduler_week_plan",
+)
+
+_REGISTERED = False
+
+
+def register_scheduler_routes() -> None:
+    global _REGISTERED
+    if _REGISTERED:
+        return
+    for module_name in _ROUTE_MODULES:
+        importlib.import_module(f".{module_name}", __package__)
+    _REGISTERED = True
+
+
+__all__ = ["register_scheduler_routes"]

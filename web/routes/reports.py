@@ -4,11 +4,15 @@ from datetime import date, datetime, timedelta
 
 from flask import Blueprint, g, request, send_file
 
-from core.infrastructure.errors import ValidationError
+from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.services.report import ReportEngine
+from core.services.scheduler.version_resolution import (
+    VersionResolution,
+    require_selected_version,
+    resolve_version_or_latest,
+)
+from web.routes.normalizers import decorate_history_version_options
 from web.ui_mode import render_ui_template as render_template
-
-from .normalizers import normalize_version_or_latest_fallback
 
 bp = Blueprint("reports", __name__)
 
@@ -35,16 +39,34 @@ def _validate_ymd_date(raw: str, field: str) -> str:
 def _export_version_or_latest(engine: ReportEngine) -> int:
     """
     导出接口的 version 解析规则：
-    - version 缺失/空字符串/无法转 int/<=0：回落到最新版本（与页面默认口径一致）
+    - version 缺失/空字符串/latest：回落到最新版本（与页面默认口径一致）
+    - 显式非法 version（无法转 int/<=0）：按页面统一合同抛出校验错误
     - 若无排产历史，latest_version() 可能为 0（保持现状）
     """
-    latest = int(engine.latest_version() or 0)
-    return normalize_version_or_latest_fallback(request.args.get("version"), latest_version=latest)
+    resolution = _resolve_report_version(engine, request.args.get("version"))
+    if resolution.status == "missing_history":
+        return require_selected_version(resolution)
+    return require_selected_version(resolution, message="暂无排产历史，无法导出报表。")
 
 
-def _page_version_or_latest(engine: ReportEngine) -> int:
+def _resolve_report_version(engine: ReportEngine, raw_version) -> VersionResolution:
     latest = int(engine.latest_version() or 0)
-    return normalize_version_or_latest_fallback(request.args.get("version"), latest_version=latest)
+    return resolve_version_or_latest(
+        raw_version,
+        latest_version=latest,
+        version_exists=lambda version: engine.history_repo.get_by_version(int(version)) is not None,
+    )
+
+
+def _page_version_or_latest(engine: ReportEngine) -> VersionResolution:
+    resolution = _resolve_report_version(engine, request.args.get("version"))
+    if resolution.status == "missing_history":
+        raise BusinessError(
+            ErrorCode.NOT_FOUND,
+            "排产版本不存在，请先选择已有版本。",
+            details={"field": "version", "requested_version": resolution.requested_version, "status": resolution.status},
+        )
+    return resolution
 
 
 def _page_date_range_or_version_span(engine: ReportEngine, version: int, start_raw: str, end_raw: str):
@@ -101,9 +123,14 @@ def index():
 @bp.get("/overdue")
 def overdue_page():
     engine = ReportEngine(g.db)
-    versions = engine.list_versions(limit=30)
-    version = _page_version_or_latest(engine)
-    rep = engine.overdue_batches(version)
+    versions = decorate_history_version_options(engine.list_versions(limit=30), log_label="超期报表页")
+    resolution = _page_version_or_latest(engine)
+    version = resolution.selected_version
+    rep = (
+        engine.overdue_batches(int(version))
+        if version is not None
+        else {"version": None, "items": [], "count": 0, "scheduled_count": 0, "unscheduled_count": 0, "as_of_time": None}
+    )
     has_history = bool(versions)
     empty_reason = None
     if int(rep.get("count") or 0) <= 0:
@@ -112,7 +139,7 @@ def overdue_page():
         "reports/overdue.html",
         title="报表 - 超期清单",
         versions=versions,
-        version=int(rep["version"]),
+        version=rep.get("version"),
         rows=rep["items"],
         count=int(rep["count"]),
         scheduled_count=int(rep.get("scheduled_count") or 0),
@@ -134,16 +161,21 @@ def overdue_export():
 @bp.get("/utilization")
 def utilization_page():
     engine = ReportEngine(g.db)
-    versions = engine.list_versions(limit=30)
-    version = _page_version_or_latest(engine)
+    versions = decorate_history_version_options(engine.list_versions(limit=30), log_label="负荷报表页")
+    resolution = _page_version_or_latest(engine)
+    version = resolution.selected_version
     start_date, end_date, date_source, _span = _page_date_range_or_version_span(
         engine,
-        version,
+        int(version or 0),
         request.args.get("start_date") or "",
         request.args.get("end_date") or "",
     )
 
-    rep = engine.utilization(version, start_date, end_date)
+    rep = (
+        engine.utilization(int(version), start_date, end_date)
+        if version is not None
+        else {"version": None, "start_date": start_date, "end_date": end_date, "capacity_hours_per_resource": 0, "machines": [], "operators": []}
+    )
     has_history = bool(versions)
     empty_reason = None
     if not rep.get("machines") and not rep.get("operators"):
@@ -159,7 +191,7 @@ def utilization_page():
         "reports/utilization.html",
         title="报表 - 资源负荷与利用率",
         versions=versions,
-        version=int(rep["version"]),
+        version=rep.get("version"),
         start_date=rep["start_date"],
         end_date=rep["end_date"],
         capacity_hours=rep["capacity_hours_per_resource"],
@@ -189,16 +221,21 @@ def utilization_export():
 @bp.get("/downtime")
 def downtime_page():
     engine = ReportEngine(g.db)
-    versions = engine.list_versions(limit=30)
-    version = _page_version_or_latest(engine)
+    versions = decorate_history_version_options(engine.list_versions(limit=30), log_label="停机报表页")
+    resolution = _page_version_or_latest(engine)
+    version = resolution.selected_version
     start_date, end_date, date_source, _span = _page_date_range_or_version_span(
         engine,
-        version,
+        int(version or 0),
         request.args.get("start_date") or "",
         request.args.get("end_date") or "",
     )
 
-    rep = engine.downtime_impact(version, start_date, end_date)
+    rep = (
+        engine.downtime_impact(int(version), start_date, end_date)
+        if version is not None
+        else {"version": None, "start_date": start_date, "end_date": end_date, "machines": []}
+    )
     has_history = bool(versions)
     empty_reason = None
     if not rep.get("machines"):
@@ -214,7 +251,7 @@ def downtime_page():
         "reports/downtime.html",
         title="报表 - 停机影响统计",
         versions=versions,
-        version=int(rep["version"]),
+        version=rep.get("version"),
         start_date=rep["start_date"],
         end_date=rep["end_date"],
         rows=rep["machines"],
