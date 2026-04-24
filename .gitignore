@@ -77,6 +77,8 @@ logs/aps_secret_key.txt
 # Full self-test runner logs (keep report file)
 evidence/FullSelfTest/logs/
 evidence/QualityGate/quality_gate_manifest.json
+evidence/QualityGate/receipts/
+tmp_binding_probe/
 
 # Raw test/benchmark console output (binary encoding, only keep formatted reports)
 evidence/FullSelfTest/pytest_tests_output.txt

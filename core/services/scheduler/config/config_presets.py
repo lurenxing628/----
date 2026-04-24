@@ -186,12 +186,12 @@ def ensure_builtin_presets(svc: Any, *, existing_keys: Optional[set] = None) -> 
 
 
 def bootstrap_active_provenance_if_pristine(svc: Any) -> None:
-    if bool((svc.get_preset_display_state(readonly=True) or {}).get("can_preserve_baseline")):
-        return
-
     active_value = None
     active_reason = None
     try:
+        if bool((svc.get_preset_display_state(readonly=True) or {}).get("can_preserve_baseline")):
+            return
+
         cur = get_snapshot_from_repo(svc)
         default_snap = svc._default_snapshot()
         if getattr(cur, "degradation_counters", None):
@@ -220,10 +220,10 @@ def list_presets(svc: Any) -> List[Dict[str, Any]]:
 def _readonly_active_preset_state(svc: Any) -> Dict[str, Any]:
     state = svc.get_preset_display_state(readonly=True)
     active_preset = str(state.get("active_preset") or "").strip()
-    can_preserve_baseline = bool(state.get("can_preserve_baseline"))
+    provenance_missing = bool(state.get("provenance_missing"))
     return {
-        "effective_active_preset": active_preset if can_preserve_baseline and active_preset else svc.ACTIVE_PRESET_CUSTOM,
-        "reason": state.get("active_preset_reason") if can_preserve_baseline else None,
+        "effective_active_preset": active_preset if active_preset and not provenance_missing else svc.ACTIVE_PRESET_CUSTOM,
+        "reason": state.get("active_preset_reason") if active_preset and not provenance_missing else None,
     }
 
 
@@ -251,6 +251,24 @@ def _load_preset_payload(svc: Any, name: str) -> Dict[str, Any]:
         return dict(data)
     except Exception as exc:
         raise ValidationError("方案数据已损坏，暂时无法读取。", field="方案数据") from exc
+
+
+def try_load_preset_snapshot_for_baseline(svc: Any, name: str) -> Tuple[Optional[ScheduleConfigSnapshot], bool]:
+    preset_name = str(name or "").strip()
+    if not preset_name or preset_name.lower() == str(svc.ACTIVE_PRESET_CUSTOM).strip().lower():
+        return None, False
+    try:
+        # baseline probe must use the same canonical preset source as apply_preset:
+        # builtin presets prefer code-bundled payloads, named presets prefer repo rows.
+        data = _load_preset_payload(svc, preset_name)
+    except (BusinessError, ValidationError, TypeError, ValueError, json.JSONDecodeError):
+        return None, True
+    if _missing_required_preset_fields(data):
+        return None, True
+    try:
+        return normalize_preset_snapshot(svc, data), False
+    except ValidationError:
+        return None, True
 
 
 def save_preset(svc: Any, name: Any) -> Dict[str, Any]:

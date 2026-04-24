@@ -8,6 +8,7 @@ from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
 from core.services.scheduler import ConfigService
+from web.error_boundary import user_visible_app_error_message
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_analysis_labels import objective_label_for
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
@@ -111,7 +112,9 @@ def batches_page():
         parse_state=latest_summary_parse_state,
     )
     latest_warning_messages = _normalize_warning_texts((latest_summary or {}).get("warnings") if isinstance(latest_summary, dict) else None)
-    latest_warning_preview = list(latest_summary_display.get("warnings_preview") or latest_warning_messages[:3])
+    latest_warning_preview = list(latest_summary_display.get("warnings_preview") or [])
+    if not latest_warning_preview and not latest_summary_display.get("warning_total"):
+        latest_warning_preview = latest_warning_messages[:3]
     latest_warning_total = int(latest_summary_display.get("warning_total") or len(latest_warning_messages))
     latest_warning_hidden_count = int(
         latest_summary_display.get("warning_hidden_count") or max(0, latest_warning_total - len(latest_warning_preview))
@@ -240,7 +243,7 @@ def create_batch():
         _surface_schedule_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
         return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))
     except AppError as e:
-        flash(e.message, "error")
+        flash(user_visible_app_error_message(e), "error")
         return redirect(url_for("scheduler.batches_manage_page"))
 
 
@@ -256,7 +259,7 @@ def delete_batch(batch_id: str):
             return redirect(next_url)
         return redirect(url_for("scheduler.batches_manage_page"))
     except AppError as e:
-        flash(e.message, "error")
+        flash(user_visible_app_error_message(e), "error")
         if next_url:
             return redirect(next_url)
         return redirect(url_for("scheduler.batch_detail", batch_id=batch_id))
@@ -279,7 +282,7 @@ def bulk_delete_batches():
             ok += 1
         except AppError as e:
             failed.append(str(bid))
-            failed_details.append(f"{bid}: {e.message}")
+            failed_details.append(f"{bid}: {user_visible_app_error_message(e)}")
             continue
         except Exception:
             current_app.logger.exception("批量删除批次失败（batch_id=%s）", bid)
@@ -336,7 +339,7 @@ def _bulk_update_one_batch(
         batch_svc.update(**kwargs)
         return None
     except AppError as e:
-        return f"{bid}（{e.message}）"
+        return f"{bid}（{user_visible_app_error_message(e)}）"
     except Exception:
         current_app.logger.exception("批量修改批次失败（batch_id=%s）", bid)
         return f"{bid}（系统错误）"
@@ -361,7 +364,7 @@ def bulk_copy_batches():
             ok += 1
             mappings.append(f"{bid}→{b2.batch_id}")
         except AppError as e:
-            failed.append(f"{bid}（{e.message}）")
+            failed.append(f"{bid}（{user_visible_app_error_message(e)}）")
             continue
         except Exception:
             current_app.logger.exception("批量复制批次失败（batch_id=%s）", bid)
@@ -430,5 +433,5 @@ def generate_ops(batch_id: str):
         flash(f"已重建批次工序：共 {cnt} 道工序。", "success")
         _surface_schedule_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
     except AppError as e:
-        flash(e.message, "error")
+        flash(user_visible_app_error_message(e), "error")
     return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))

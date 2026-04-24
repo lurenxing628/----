@@ -96,10 +96,9 @@ def _validate_operator_machine_match(svc, *, mc_id: Optional[str], operator_id_t
         return
     if svc.operator_machine_repo.exists(operator_id_text, mc_id):
         return
-    op_code = op.op_code or "-"
     raise ValidationError(
-        f"人员“{operator_id_text}”未被配置为可操作设备“{mc_id}”（工序 {op_code} / ID={op.id}）。"
-        f"请先在【人员管理】或【设备管理】中维护人机关联（OperatorMachine）后再排产。",
+        f"人员“{operator_id_text}”未被配置为可操作设备“{mc_id}”。"
+        "请先在【人员管理】或【设备管理】中维护人机关联后再排产。",
         field="设备/人员",
     )
 
@@ -234,4 +233,3 @@ def update_external_operation(
         svc.op_repo.update(op_id_int, updates)
 
     return svc._get_op_or_raise(op_id_int)
-

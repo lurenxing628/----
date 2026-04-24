@@ -72,8 +72,15 @@ def _build_client(tmp_path, monkeypatch):
                 "greedy",
                 1,
                 1,
-                "success",
-                json.dumps({"overdue_batches": {"count": 1, "items": [{"batch_id": "B001"}]}}, ensure_ascii=False),
+                "simulated",
+                json.dumps(
+                    {
+                        "is_simulation": True,
+                        "completion_status": "partial",
+                        "overdue_batches": {"count": 1, "items": [{"batch_id": "B001"}]},
+                    },
+                    ensure_ascii=False,
+                ),
                 "test",
             ),
         )
@@ -207,6 +214,40 @@ def test_resource_dispatch_zero_version_redirects_to_clean_url(tmp_path, monkeyp
     assert "version" not in params
 
 
+def test_resource_dispatch_missing_history_version_fails_closed_without_query_cleanup(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+    query = "scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=999"
+
+    page_resp = client.get(f"/scheduler/resource-dispatch?{query}")
+    page_html = page_resp.get_data(as_text=True)
+    assert page_resp.status_code == 404
+    assert "排产版本不存在，请先选择已有版本。" in page_html
+    assert page_resp.headers.get("Location") is None
+
+    data_resp = client.get(f"/scheduler/resource-dispatch/data?{query}")
+    payload = data_resp.get_json()
+    assert data_resp.status_code == 404
+    assert payload["success"] is False
+    assert payload["error"]["message"] == "排产版本不存在，请先选择已有版本。"
+    assert "cleanup_query_keys" not in (payload["error"].get("details") or {})
+    assert "cleanup_query_keys" not in (payload["error"].get("diagnostics") or {})
+
+    export_resp = client.get(f"/scheduler/resource-dispatch/export?{query}")
+    assert export_resp.status_code == 404
+    assert "排产版本不存在，请先选择已有版本。" in export_resp.get_data(as_text=True)
+
+
+def test_resource_dispatch_version_dropdown_uses_composed_result_status_label(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    resp = client.get("/scheduler/resource-dispatch?scope_type=operator&operator_id=OP001&version=1")
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "模拟排产 / 部分成功" in html
+    assert "模拟排产）" not in html
+
+
 def test_resource_dispatch_mixed_invalid_filters_settle_without_500(tmp_path, monkeypatch) -> None:
     client = _build_client(tmp_path, monkeypatch)
 
@@ -219,6 +260,8 @@ def test_resource_dispatch_mixed_invalid_filters_settle_without_500(tmp_path, mo
     html = resp.data.decode("utf-8", errors="ignore")
     assert "资源排班中心" in html
     assert "id=\"rdPage\"" in html
+    assert "query_date格式不正确" not in html
+    assert "查询日期填写不正确，请检查后重试。" in html
 
 
 def test_resource_dispatch_data_returns_machine_field_and_invalid_query_keys(tmp_path, monkeypatch) -> None:
@@ -231,8 +274,43 @@ def test_resource_dispatch_data_returns_machine_field_and_invalid_query_keys(tmp
     payload = resp.get_json()
     assert resp.status_code == 400
     assert payload["success"] is False
-    assert payload["error"]["details"]["field"] == "scope_type"
-    assert payload["error"]["details"]["invalid_query_keys"] == ["scope_type", "scope_id", "operator_id", "machine_id", "team_id"]
+    assert payload["error"]["details"]["field"] == "范围类型"
+    assert payload["error"]["details"]["invalid_query_keys"] == [
+        "scope_type",
+        "scope_id",
+        "operator_id",
+        "machine_id",
+        "team_id",
+    ]
+    assert payload["error"]["details"]["invalid_query_labels"] == ["范围类型", "范围对象", "人员", "设备", "班组"]
+    assert payload["error"]["details"]["cleanup_query_keys"] == [
+        "scope_type",
+        "scope_id",
+        "operator_id",
+        "machine_id",
+        "team_id",
+    ]
+    assert payload["error"]["diagnostics"]["invalid_query_keys"] == [
+        "scope_type",
+        "scope_id",
+        "operator_id",
+        "machine_id",
+        "team_id",
+    ]
+    assert payload["error"]["diagnostics"]["invalid_query_labels"] == [
+        "范围类型",
+        "范围对象",
+        "人员",
+        "设备",
+        "班组",
+    ]
+    assert payload["error"]["diagnostics"]["cleanup_query_keys"] == [
+        "scope_type",
+        "scope_id",
+        "operator_id",
+        "machine_id",
+        "team_id",
+    ]
 
 
 def test_resource_dispatch_data_uses_app_error_http_mapping(tmp_path, monkeypatch) -> None:
@@ -299,6 +377,36 @@ def test_resource_dispatch_service_validation_errors_use_machine_field_keys() ->
 
     assert scope_exc.value.field == "scope_type"
     assert axis_exc.value.field == "team_axis"
+
+
+def test_resource_dispatch_service_version_latest_contract_matches_scheduler_routes() -> None:
+    svc = object.__new__(ResourceDispatchService)
+
+    assert svc._normalize_strict_positive_version(None, latest_version=7) == 7
+    assert svc._normalize_strict_positive_version("", latest_version=7) == 7
+    assert svc._normalize_strict_positive_version("latest", latest_version=7) == 7
+    assert svc._normalize_strict_positive_version("LATEST", latest_version=7) == 7
+    assert svc._normalize_strict_positive_version("9", latest_version=7) == 9
+    assert svc._normalize_strict_positive_version("latest", latest_version=0) is None
+
+    for raw in ("abc", "0", "-1"):
+        with pytest.raises(ValidationError):
+            svc._normalize_strict_positive_version(raw, latest_version=7)
+
+
+def test_resource_dispatch_service_no_history_latest_returns_empty_zero_version() -> None:
+    svc = object.__new__(ResourceDispatchService)
+    svc._latest_version = lambda: 0  # type: ignore[method-assign]
+
+    latest_payload = svc.get_dispatch_payload(scope_type="operator", version="latest")
+    default_payload = svc.get_dispatch_payload(scope_type="operator", version=None)
+
+    for payload in (latest_payload, default_payload):
+        assert payload["has_history"] is False
+        assert payload["status"] == "no_history"
+        assert payload["filters"]["version"] is None
+        assert payload["tasks"] == []
+        assert payload["empty_message"] == "暂无排产历史，请先执行排产。"
 
 
 def test_resource_dispatch_range_validation_errors_use_machine_field_keys() -> None:

@@ -10,7 +10,7 @@
     {% endif %}
 
     {% if details %}
-      {% if details is mapping and details.get("field") and details|length == 1 %}
+      {% if details is mapping and details.get("field") and details|length == 1 and not field_label %}
         <p class="muted"><strong>相关字段：</strong>{{ field_label or details.get("field") }}</p>
       {% elif details is string %}
         <h3>详细信息</h3>

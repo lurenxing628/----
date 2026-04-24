@@ -255,7 +255,7 @@ def test_scheduler_run_flashes_secondary_degradation_messages_without_warning_du
         assert getattr(resp, "status_code", 0) in (301, 302)
         warning_messages = [msg for cat, msg in flashes if cat == "warning"]
         assert sum(1 for msg in warning_messages if duplicate_message in msg) == 1, warning_messages
-        assert any(distinct_message in msg for msg in warning_messages), warning_messages
+        assert not any(distinct_message in msg for msg in warning_messages), warning_messages
     finally:
         route_mod.url_for = old_url_for
 
@@ -354,9 +354,10 @@ def test_scheduler_simulate_surfaces_canonical_summary_errors() -> None:
 
         assert getattr(resp, "status_code", 0) in (301, 302)
         assert any(cat == "warning" and "部分完成" in msg for cat, msg in flashes), flashes
-        assert any(cat == "warning" and "输入窗口冲突" in msg for cat, msg in flashes), flashes
-        assert any(cat == "warning" and "资源池为空" in msg for cat, msg in flashes), flashes
-        assert any(cat == "warning" and "另有 2 条错误" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "排程执行出现异常，请查看系统日志。" in msg for cat, msg in flashes), flashes
+        assert not any(cat == "warning" and "输入窗口冲突" in msg for cat, msg in flashes), flashes
+        assert not any(cat == "warning" and "资源池为空" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "另有 3 条错误" in msg for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for
 
@@ -411,9 +412,10 @@ def test_scheduler_run_surfaces_summary_display_errors_preview() -> None:
 
         assert getattr(resp, "status_code", 0) in (301, 302)
         assert any(cat == "warning" and "部分" in msg for cat, msg in flashes), flashes
-        assert any(cat == "warning" and "输入窗口冲突" in msg for cat, msg in flashes), flashes
-        assert any(cat == "warning" and "资源池为空" in msg for cat, msg in flashes), flashes
-        assert any(cat == "warning" and "另有 2 条错误" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "排程执行出现异常，请查看系统日志。" in msg for cat, msg in flashes), flashes
+        assert not any(cat == "warning" and "输入窗口冲突" in msg for cat, msg in flashes), flashes
+        assert not any(cat == "warning" and "资源池为空" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "另有 3 条错误" in msg for cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for
 

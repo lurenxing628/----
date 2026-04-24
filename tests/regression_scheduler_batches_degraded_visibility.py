@@ -145,6 +145,8 @@ def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> N
     assert "latest_other_degradation_messages" in template_source
     assert "最近一次排产快照" in template_source
     assert "latest_objective_label" in template_source
+    assert "latest_summary_display.result_status_label" in template_source
+    assert "status_zh.get(latest_history.result_status" not in template_source
     assert "scheduler-config-degraded-summary" in v2_template_source
     assert "scheduler-current-config-summary" in v2_template_source
     assert "current_config_state.status_label" in v2_template_source
@@ -158,6 +160,8 @@ def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> N
     assert "latest_other_degradation_messages" in v2_template_source
     assert "最近一次排产快照" in v2_template_source
     assert "latest_objective_label" in v2_template_source
+    assert "latest_summary_display.result_status_label" in v2_template_source
+    assert "status_zh.get(latest_history.result_status" not in v2_template_source
 
 
 def test_build_summary_display_state_exposes_filtered_display_secondary_messages() -> None:
@@ -292,4 +296,5 @@ def test_scheduler_batches_page_renders_provenance_and_hidden_degraded_html(tmp_
     assert "当前运行配置缺少基线记录，无法确认与任何方案的一致性；请显式保存或重新应用方案。" in body
     assert "当前配置存在可见兼容修补：" in body
     assert "当前还有内部配置项存在兼容修补：" in body
-    assert "auto_assign_persist" in body
+    assert "自动分配结果回写" in body
+    assert "auto_assign_persist" not in body

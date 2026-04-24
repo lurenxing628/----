@@ -20,10 +20,13 @@ def test_calendar_pages_use_shared_holiday_default_efficiency_helper() -> None:
 
 
 def test_error_handlers_prefer_config_service_field_labels() -> None:
+    from web.error_handlers import _resolve_field_label
+
     source = _read("web/error_handlers.py")
 
     assert "config_field_spec import field_label_for" not in source
-    assert "get_field_label(" in source
+    assert "get_user_visible_field_label(" in source
+    assert _resolve_field_label({"field": "time_budget_seconds"}) == "计算时间上限"
 
 
 def test_scheduler_config_page_requests_and_uses_visible_field_metadata() -> None:

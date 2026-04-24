@@ -6,6 +6,12 @@ from core.models.enums import YesNo
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.services.scheduler.degradation_messages import (
+    DOWNTIME_EXTEND_FAILED_MESSAGE,
+    DOWNTIME_LOAD_FAILED_MESSAGE,
+    RESOURCE_POOL_BUILD_FAILED_MESSAGE,
+    public_degradation_event_message,
+)
 
 _LEGACY_MERGE_CONTEXT_CODES = {"template_missing", "external_group_missing"}
 
@@ -193,9 +199,9 @@ def _add_input_events(collector: DegradationCollector, input_state: Dict[str, An
             code=code,
             scope=_optional_text(event.get("scope")) or "schedule.input_contract",
             field=_optional_text(event.get("field")),
-            message=_optional_text(event.get("message")) or code,
+            message=public_degradation_event_message(code),
             count=_event_count(event),
-            sample=_optional_text(event.get("sample")),
+            sample=None,
         )
 
 
@@ -211,9 +217,9 @@ def _add_existing_degradation_events(collector: DegradationCollector, raw_events
             code=code,
             scope=_optional_text(event.get("scope")) or "scheduler.config_snapshot",
             field=_optional_text(event.get("field")),
-            message=message,
+            message=public_degradation_event_message(code),
             count=_event_count(event),
-            sample=_optional_text(event.get("sample")),
+            sample=None,
         )
 
 
@@ -383,13 +389,13 @@ def _downtime_reason(
             "部分设备停机区间加载失败", load_partial_fail_count, load_partial_fail_machines_sample, "这些设备已降级为忽略停机约束"
         )
     if load_failed:
-        return str(downtime_load_error or "停机区间加载失败")
+        return DOWNTIME_LOAD_FAILED_MESSAGE
     if auto_assign_enabled and downtime_extend_attempted and extend_partial_fail_count > 0:
         return _partial_fail_reason(
             "部分候选设备停机区间扩展加载失败", extend_partial_fail_count, extend_partial_fail_machines_sample, "这些候选设备可能未覆盖停机约束"
         )
     if extend_failed:
-        return str(downtime_extend_error or "停机区间扩展加载失败")
+        return DOWNTIME_EXTEND_FAILED_MESSAGE
     return None
 
 
@@ -447,7 +453,7 @@ def _compute_resource_pool_degradation(cfg: Any, *, resource_pool_meta: Optional
     build_ok_raw = meta.get("resource_pool_build_ok")
     build_ok = True if build_ok_raw is None else bool(build_ok_raw)
     degraded = bool(auto_assign_enabled and attempted and (not build_ok))
-    reason = str(meta.get("resource_pool_build_error") or "自动分配资源池构建失败") if degraded else None
+    reason = RESOURCE_POOL_BUILD_FAILED_MESSAGE if degraded else None
     return bool(auto_assign_enabled), bool(degraded), reason, bool(attempted)
 
 

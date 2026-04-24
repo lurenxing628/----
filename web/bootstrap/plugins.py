@@ -6,7 +6,8 @@ from typing import Any, Dict, Optional
 from core.infrastructure.database import get_connection
 from core.infrastructure.logging import OperationLogger, safe_log
 from core.plugins import PluginManager, get_plugin_status
-from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
+from core.services.common.degradation import DegradationCollector
+from core.services.scheduler.degradation_messages import public_degradation_events
 from data.repositories import SystemConfigRepository
 
 
@@ -24,15 +25,13 @@ def _status_degradation_collector(status: Optional[Dict[str, Any]]) -> Degradati
             count = max(1, int(event.get("count") or 1))
         except Exception:
             count = 1
-        field = event.get("field")
-        sample = event.get("sample")
         collector.add(
             code=code,
-            scope=str(event.get("scope") or "plugins.bootstrap").strip() or "plugins.bootstrap",
-            field=None if field is None else str(field),
+            scope="plugins.bootstrap",
+            field=None,
             message=message,
             count=count,
-            sample=None if sample is None else str(sample),
+            sample=None,
         )
     return collector
 
@@ -42,7 +41,7 @@ def _merge_plugin_degradation(status: Optional[Dict[str, Any]], collector: Degra
     merged = _status_degradation_collector(base)
     merged.extend(collector.to_list())
     base["degraded"] = bool(merged)
-    base["degradation_events"] = degradation_events_to_dicts(merged.to_list())
+    base["degradation_events"] = public_degradation_events(merged.to_list())
     base["degradation_counters"] = merged.to_counters()
     return base
 
@@ -72,6 +71,8 @@ def _apply_enabled_sources(
         else:
             source = str(default_source or row_source or "default")
         row["enabled_source"] = source
+        if str(row.get("error") or "").strip():
+            row["error"] = "插件加载失败，请查看系统日志。"
 
         if source == "config":
             saw_config = True

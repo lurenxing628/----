@@ -63,7 +63,7 @@ def main() -> None:
     app = create_app()
     client = app.test_client()
 
-    resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-03&offset=1&version=1")
+    resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-03&offset=1")
     _assert_true(resp.status_code == 200, f"GET /scheduler/gantt 返回 {resp.status_code}")
     html = resp.data.decode("utf-8", errors="ignore")
 
@@ -80,8 +80,9 @@ def main() -> None:
         "view": attrs["view"] or "machine",
         "week_start": attrs["week_start"] or "2026-03-03",
         "offset": attrs["offset"] or "1",
-        "version": attrs["version"] or "1",
     }
+    if attrs["version"]:
+        base_query["version"] = attrs["version"]
     base_data = _call_data(client, data_url, base_query)
 
     expected_start = attrs["start_date"] or str(base_data.get("week_start") or "")

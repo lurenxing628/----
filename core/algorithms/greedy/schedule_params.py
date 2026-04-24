@@ -8,6 +8,7 @@ from core.infrastructure.errors import ValidationError
 from core.services.common.degradation import DegradationCollector
 from core.services.common.field_parse import parse_field_float
 from core.services.common.strict_parse import parse_required_float
+from core.services.scheduler.degradation_messages import public_degradation_event_message
 
 from ..dispatch_rules import DispatchRule
 from ..sort_strategies import SortStrategy
@@ -30,6 +31,16 @@ _FIELD_LABELS = {
 
 def _field_label(field: str) -> str:
     return _FIELD_LABELS.get(str(field).strip(), str(field).strip() or "配置项")
+
+
+def _public_field_degradation_message(*, code: str, field: str) -> str:
+    message = public_degradation_event_message(code)
+    if not message:
+        return ""
+    field_key = str(field or "").strip()
+    if not field_key:
+        return message
+    return f"{field_key}（{_field_label(field_key)}）：{message}"
 
 
 @dataclass
@@ -126,7 +137,8 @@ def _weighted_override_value(
         min_value=0.0,
     )
     for event in collector.to_list():
-        message = str(event.message or "").strip()
+        code = str(event.code or "").strip()
+        message = _public_field_degradation_message(code=code, field=key)
         if message:
             warnings.append(message)
         increment_counter(
@@ -213,15 +225,15 @@ def resolve_schedule_params(
                 continue
             if str(event.get("field") or "").strip() != field:
                 continue
+            code = str(event.get("code") or "").strip()
             marker = (
-                str(event.get("code") or "").strip(),
+                code,
                 field,
-                str(event.get("message") or "").strip(),
             )
             if marker in snapshot_degradation_seen:
                 continue
             snapshot_degradation_seen.add(marker)
-            message = str(event.get("message") or "").strip()
+            message = _public_field_degradation_message(code=code, field=field)
             if message:
                 warnings.append(message)
             increment_counter(

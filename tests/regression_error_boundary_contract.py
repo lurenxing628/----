@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -96,7 +98,31 @@ def test_error_handler_maps_business_error_codes_to_http_status_for_html(
     body = response.get_data(as_text=True)
     assert response.status_code == expected_status
     assert expected_code in body
-    assert f"error:{name}" in body
+    assert f"error:{name}" not in body
+    assert "发生错误" in body
+
+
+def test_json_error_payload_hides_non_validation_internal_message() -> None:
+    app = _build_app()
+
+    @app.get("/non-validation-internal-error")
+    def _non_validation_internal_error():
+        raise BusinessError(
+            ErrorCode.DB_QUERY_ERROR,
+            "sqlite OperationalError at /tmp/private.db: secret_token could not be loaded",
+        )
+
+    with app.test_client() as client:
+        response = client.get("/non-validation-internal-error", headers={"Accept": "application/json"})
+
+    payload = response.get_json()
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert response.status_code == 400
+    assert payload["error"]["code"] == ErrorCode.DB_QUERY_ERROR.value
+    assert payload["error"]["message"] == "数据访问失败，请稍后重试。"
+    assert "sqlite" not in serialized
+    assert "/tmp/private.db" not in serialized
+    assert "secret_token" not in serialized
 
 
 def test_error_handler_500_page_does_not_depend_on_main_site_routes() -> None:
@@ -134,6 +160,153 @@ def test_error_handler_request_entity_too_large_keeps_unified_file_too_large_con
     assert payload["success"] is False
     assert payload["error"]["code"] == ErrorCode.FILE_TOO_LARGE.value
     assert "16MB" in payload["error"]["message"]
+
+
+def test_error_boundary_import_does_not_load_scheduler_service_aggregate() -> None:
+    script = """
+import sys
+import web.error_boundary
+print("core.services.scheduler" in sys.modules)
+print("core.services.scheduler.schedule_service" in sys.modules)
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.stdout.splitlines() == ["False", "False"]
+
+
+def test_error_boundary_field_label_lookup_does_not_load_scheduler_service_aggregate() -> None:
+    script = """
+import sys
+import web.error_boundary
+print(web.error_boundary.get_user_visible_field_label("objective"))
+print("core.services.scheduler.schedule_service" in sys.modules)
+print("core.services.scheduler.resource_dispatch_service" in sys.modules)
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    lines = completed.stdout.splitlines()
+    assert lines[0] == "优化目标"
+    assert lines[1:] == ["False", "False"]
+
+
+def test_json_error_payload_keeps_internal_details_out_of_public_response() -> None:
+    app = _build_app()
+
+    @app.get("/diagnostic-error")
+    def _diagnostic_error():
+        raise BusinessError(
+            ErrorCode.VALIDATION_ERROR,
+            "query_date格式不正确，应为 YYYY-MM-DD",
+            details={
+                "field": "query_date",
+                "reason": "invalid_query_date",
+                "file_path": "/tmp/private.xlsx",
+                "sheet": "Sheet1",
+            },
+        )
+
+    with app.test_client() as client:
+        response = client.get("/diagnostic-error", headers={"Accept": "application/json"})
+
+    payload = response.get_json()
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert response.status_code == 400
+    assert payload["error"]["message"] == "查询日期填写不正确，请检查后重试。"
+    assert payload["error"]["details"] == {"field": "查询日期"}
+    assert payload["error"]["diagnostics"] == {"reason": "invalid_query_date"}
+    assert "file_path" not in serialized
+    assert "/tmp/private.xlsx" not in serialized
+    assert "Sheet1" not in serialized
+
+
+def test_json_error_payload_does_not_expose_unknown_machine_field_or_unlisted_reason() -> None:
+    app = _build_app()
+
+    @app.get("/unknown-field-error")
+    def _unknown_field_error():
+        raise BusinessError(
+            ErrorCode.VALIDATION_ERROR,
+            "include_history 不合法（期望布尔值）",
+            details={
+                "field": "include_history",
+                "reason": "private/sql/path",
+            },
+        )
+
+    with app.test_client() as client:
+        response = client.get("/unknown-field-error", headers={"Accept": "application/json"})
+
+    payload = response.get_json()
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert response.status_code == 400
+    assert payload["error"]["message"] == "参数填写不正确，请检查后重试。"
+    assert "details" not in payload["error"]
+    assert "diagnostics" not in payload["error"]
+    assert "include_history" not in serialized
+    assert "private/sql/path" not in serialized
+
+
+def test_json_error_payload_keeps_invalid_query_keys_machine_readable() -> None:
+    app = _build_app()
+
+    @app.get("/invalid-query-keys-error")
+    def _invalid_query_keys_error():
+        raise BusinessError(
+            ErrorCode.VALIDATION_ERROR,
+            "scope_type 不合法",
+            details={
+                "field": "scope_type",
+                "invalid_query_keys": ["scope_type", "secret_token", "operator_id"],
+            },
+        )
+
+    with app.test_client() as client:
+        response = client.get("/invalid-query-keys-error", headers={"Accept": "application/json"})
+
+    payload = response.get_json()
+    assert response.status_code == 400
+    assert payload["error"]["details"]["invalid_query_keys"] == ["scope_type", "operator_id"]
+    assert payload["error"]["details"]["invalid_query_labels"] == ["范围类型", "人员"]
+    assert "secret_token" not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_html_error_payload_renders_invalid_query_labels_without_machine_keys() -> None:
+    app = _build_app()
+
+    @app.get("/invalid-query-keys-html")
+    def _invalid_query_keys_html():
+        raise BusinessError(
+            ErrorCode.VALIDATION_ERROR,
+            "scope_type 不合法",
+            details={
+                "field": "scope_type",
+                "invalid_query_keys": ["scope_type", "secret_token", "operator_id"],
+            },
+        )
+
+    with app.test_client() as client:
+        response = client.get("/invalid-query-keys-html")
+
+    body = response.get_data(as_text=True)
+    assert response.status_code == 400
+    assert "范围类型" in body
+    assert "人员" in body
+    assert "scope_type" not in body
+    assert "operator_id" not in body
+    assert "secret_token" not in body
+    assert "invalid_query_keys" not in body
 
 
 def test_render_error_template_renders_rich_error_template_path() -> None:

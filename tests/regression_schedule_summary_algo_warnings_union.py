@@ -100,9 +100,10 @@ def test_schedule_summary_prefers_freeze_meta_as_primary_fact_source() -> None:
     warning_pipeline = algo.get("warning_pipeline") or {}
 
     assert bool(freeze_window.get("degraded")), freeze_window
-    assert freeze_window.get("degradation_reason") == "freeze meta degraded", freeze_window
+    assert freeze_window.get("degradation_reason") == "冻结窗口约束已降级，本次排产未应用冻结窗口种子。"
     assert bool(resource_pool.get("degraded")), resource_pool
-    assert "pool boom" in str(resource_pool.get("degradation_reason") or ""), resource_pool
+    assert resource_pool.get("degradation_reason") == "自动分配资源池构建失败，本次排产已降级为不自动分配资源。"
+    assert "pool boom" not in str(result_summary_obj), result_summary_obj
     assert bool(warning_pipeline.get("summary_merge_failed")), warning_pipeline
     assert warning_pipeline.get("summary_merge_error") == "summary_warnings_assignment_failed", warning_pipeline
     assert int(warning_pipeline.get("algo_warning_count") or 0) == 2, warning_pipeline
@@ -129,4 +130,4 @@ def test_schedule_summary_keeps_narrow_freeze_warning_compat_when_meta_missing()
 
     freeze_window = ((result_summary_obj.get("algo") or {}).get("freeze_window") or {})
     assert bool(freeze_window.get("degraded")), freeze_window
-    assert "[freeze_window] fallback warning path" in str(freeze_window.get("degradation_reason") or ""), freeze_window
+    assert freeze_window.get("degradation_reason") == "冻结窗口约束已降级，本次排产未应用冻结窗口种子。"

@@ -34,6 +34,7 @@ from web.routes.personnel import bp as personnel_bp
 from web.routes.process import bp as process_bp
 from web.routes.reports import bp as reports_bp
 from web.routes.scheduler import bp as scheduler_bp
+from web.routes.scheduler import register_scheduler_routes as register_scheduler_routes
 from web.routes.system import bp as system_bp
 from web.ui_mode import init_ui_mode
 
@@ -436,6 +437,7 @@ def create_app_core(
     app.register_blueprint(personnel_bp, url_prefix="/personnel")
     app.register_blueprint(equipment_bp, url_prefix="/equipment")
     app.register_blueprint(process_bp, url_prefix="/process")
+    register_scheduler_routes()
     app.register_blueprint(scheduler_bp, url_prefix="/scheduler")
     app.register_blueprint(material_bp, url_prefix="/material")
     app.register_blueprint(reports_bp, url_prefix="/reports")
@@ -462,4 +464,3 @@ def create_app_core(
     else:
         app.logger.info("应用启动完成。")
     return app
-

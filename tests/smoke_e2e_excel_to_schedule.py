@@ -141,7 +141,7 @@ def main():
     lines.append("# Full E2E（从 Excel 导入开始→排产→甘特/周计划→系统管理）验收报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0].strip()}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")
@@ -566,21 +566,15 @@ def main():
         lines.append("")
         lines.append("## 9. 甘特图与周计划（/scheduler/gantt/data + /scheduler/week-plan/export）")
         week_start = schedule_week_start
-        # 非法 version 参数应回退到最新版本，且不应导致 500
+        # 显式非法 version 参数应按统一合同报错；只有缺省/latest 才能指向最新版本。
         resp = client.get(f"/scheduler/gantt?view=machine&week_start={week_start}&version=abc")
-        _assert_status(lines, "GET /scheduler/gantt?version=abc", resp, 200)
+        _assert_status(lines, "GET /scheduler/gantt?version=abc", resp, 400)
         resp = client.get(f"/scheduler/gantt/data?view=machine&week_start={week_start}&version=abc")
-        _assert_status(lines, "GET /scheduler/gantt/data?version=abc", resp, 200)
-        payload_bad = _json_payload(resp)
-        _require_success_payload_version(
-            payload_bad,
-            expect_version=int(version),
-            context="甘特图数据接口（非法 version）",
-        )
+        _assert_status(lines, "GET /scheduler/gantt/data?version=abc", resp, 400)
         resp = client.get(f"/scheduler/week-plan?week_start={week_start}&version=abc")
-        _assert_status(lines, "GET /scheduler/week-plan?version=abc", resp, 200)
+        _assert_status(lines, "GET /scheduler/week-plan?version=abc", resp, 400)
         resp = client.get(f"/scheduler/week-plan/export?week_start={week_start}&version=abc")
-        _assert_xlsx(lines, "GET /scheduler/week-plan/export?version=abc", resp)
+        _assert_status(lines, "GET /scheduler/week-plan/export?version=abc", resp, 302)
 
         resp = client.get(f"/scheduler/gantt?view=machine&week_start={week_start}&version={version}")
         _assert_status(lines, "GET /scheduler/gantt", resp, 200)
@@ -775,4 +769,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

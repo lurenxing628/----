@@ -7,6 +7,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from core.algorithms.value_domains import INTERNAL
 from core.infrastructure.errors import ValidationError
 from core.models.enums import YesNo
+from core.services.scheduler.degradation_messages import (
+    FREEZE_WINDOW_DEGRADED_MESSAGE,
+    FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE,
+)
 
 from ..number_utils import to_yes_no
 
@@ -24,10 +28,12 @@ def _init_freeze_meta(meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     out = meta if isinstance(meta, dict) else {}
     out.setdefault("freeze_state", "disabled")
     out.setdefault("freeze_applied", False)
+    out.setdefault("freeze_application_status", None)
     out.setdefault("freeze_degradation_codes", [])
     out.setdefault("freeze_enabled", False)
     out.setdefault("freeze_days", 0)
     out.setdefault("freeze_degradation_reason", None)
+    out.setdefault("freeze_degradation_count", 0)
     return out
 
 
@@ -77,10 +83,30 @@ def _record_freeze_degradation(
     if _FREEZE_DEGRADATION_CODE not in codes:
         codes.append(_FREEZE_DEGRADATION_CODE)
     meta["freeze_degradation_codes"] = codes
-    meta["freeze_degradation_reason"] = str(message)
+    meta["freeze_degradation_reason"] = FREEZE_WINDOW_DEGRADED_MESSAGE
+    meta["freeze_degradation_count"] = int(meta.get("freeze_degradation_count") or 0) + 1
     if strict_mode:
-        raise ValidationError(f"freeze window degraded: {message}", field="freeze_window")
-    warnings.append(f"[freeze_window] {message}")
+        raise ValidationError(FREEZE_WINDOW_DEGRADED_MESSAGE, field="freeze_window")
+    warnings.append(f"[freeze_window] {FREEZE_WINDOW_DEGRADED_MESSAGE}")
+
+
+def _finalize_freeze_application_status(meta: Dict[str, Any]) -> None:
+    if str(meta.get("freeze_state") or "").strip().lower() != "degraded":
+        if bool(meta.get("freeze_applied")):
+            meta["freeze_application_status"] = "applied"
+        else:
+            meta["freeze_application_status"] = None
+        return
+
+    if bool(meta.get("freeze_applied")):
+        meta["freeze_application_status"] = "partially_applied"
+        meta["freeze_degradation_public_code"] = "freeze_window_partially_applied"
+        meta["freeze_degradation_reason"] = FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE
+        return
+
+    meta["freeze_application_status"] = "unapplied"
+    meta["freeze_degradation_public_code"] = "freeze_window_unapplied"
+    meta["freeze_degradation_reason"] = FREEZE_WINDOW_DEGRADED_MESSAGE
 
 
 def _invalid_schedule_row_sample(row: Any) -> str:
@@ -231,6 +257,7 @@ def build_freeze_window_seed(
     )
     if freeze_days <= 0:
         freeze_meta["freeze_applied"] = False
+        _finalize_freeze_application_status(freeze_meta)
         return frozen_op_ids, seed_results, warnings
 
     freeze_end = start_dt + timedelta(days=freeze_days)
@@ -242,6 +269,7 @@ def build_freeze_window_seed(
     op_ids_all = sorted(list(op_by_id.keys()))
     if not op_ids_all:
         freeze_meta["freeze_applied"] = False
+        _finalize_freeze_application_status(freeze_meta)
         return frozen_op_ids, seed_results, warnings
 
     try:
@@ -252,14 +280,18 @@ def build_freeze_window_seed(
             start_str=start_str,
             freeze_end_str=freeze_end_str,
         )
-    except Exception as exc:
+    except Exception:
+        logger = getattr(svc, "logger", None)
+        if logger is not None:
+            logger.exception("冻结窗口加载上一版本排程失败")
         _record_freeze_degradation(
             freeze_meta,
             warnings,
-            f"failed to load previous schedule rows: {exc}",
+            FREEZE_WINDOW_DEGRADED_MESSAGE,
             strict_mode=bool(strict_mode),
         )
         freeze_meta["freeze_applied"] = False
+        _finalize_freeze_application_status(freeze_meta)
         return frozen_op_ids, seed_results, warnings
 
     if load_outcome.invalid_row_count > 0:
@@ -273,11 +305,13 @@ def build_freeze_window_seed(
         )
         if not load_outcome.schedule_map:
             freeze_meta["freeze_applied"] = False
+            _finalize_freeze_application_status(freeze_meta)
             return frozen_op_ids, seed_results, warnings
 
     schedule_map = load_outcome.schedule_map
     if not schedule_map:
         freeze_meta["freeze_applied"] = False
+        _finalize_freeze_application_status(freeze_meta)
         return frozen_op_ids, seed_results, warnings
 
     seed_tmp: Dict[int, Dict[str, Any]] = {}
@@ -318,4 +352,5 @@ def build_freeze_window_seed(
     freeze_meta["freeze_applied"] = bool(frozen_op_ids)
     if str(freeze_meta.get("freeze_state") or "").strip().lower() != "degraded":
         freeze_meta["freeze_state"] = "active" if frozen_op_ids else "disabled"
+    _finalize_freeze_application_status(freeze_meta)
     return frozen_op_ids, seed_results, warnings

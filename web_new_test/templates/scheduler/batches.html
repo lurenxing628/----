@@ -131,7 +131,7 @@
         <span class="info-sep">|</span>
         <span>方式：<strong>{{ strategy_zh.get(latest_history.strategy, latest_history.strategy or '-') }}</strong></span>
         <span class="info-sep">|</span>
-        <span>结果：<strong>{{ status_zh.get(latest_history.result_status, latest_history.result_status or '-') }}</strong></span>
+        <span>结果：<strong>{{ latest_summary_display.result_status_label or '-' }}</strong></span>
       </div>
       {% if latest_summary and latest_summary.overdue_batches %}
         <div class="muted mt-2">

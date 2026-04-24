@@ -29,9 +29,9 @@ from .quality_gate_scan import (
 )
 from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
+    FILE_SIZE_LIMIT,
     REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS,
     REQUEST_SERVICE_SCAN_SCOPE_PATTERNS,
-    REQUEST_SERVICE_TARGET_ALLOWED_HELPERS,
     REQUEST_SERVICE_TARGET_FILES,
     REQUEST_SERVICE_TARGET_SYMBOLS,
     STARTUP_SCOPE_PATTERNS,
@@ -214,19 +214,34 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
     oversize_entries = cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])
     complexity_entries = cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])
     silent_entries = cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
+    accepted_entry_ids = {
+        str(entry_id)
+        for risk in cast(List[Dict[str, Any]], ledger.get("accepted_risks") or [])
+        for entry_id in list(risk.get("entry_ids") or [])
+    }
 
     refreshed_oversize = []
     for entry in oversize_entries:
         path = str(entry.get("path"))
         current_value = len(read_text_file(path).splitlines())
+        if current_value <= FILE_SIZE_LIMIT:
+            if str(entry.get("id")) in accepted_entry_ids:
+                raise QualityGateError(f"超长文件条目已达成退出条件但仍被 accepted_risks 引用：{entry.get('id')}")
+            continue
         refreshed_oversize.append(build_oversize_entry(path, current_value, existing=entry))
 
     complexity_paths = sorted({str(entry.get("path")) for entry in complexity_entries})
     complexity_scan = complexity_scan_map(complexity_paths)
+    complexity_scan_all = complexity_scan_map(complexity_paths, include_all=True)
     refreshed_complexity = []
     for entry in complexity_entries:
         key = "{}:{}".format(entry.get("path"), entry.get("symbol"))
         if key not in complexity_scan:
+            resolved_item = complexity_scan_all.get(key)
+            if resolved_item is not None and int(resolved_item.get("current_value") or 0) <= COMPLEXITY_THRESHOLD:
+                if str(entry.get("id")) in accepted_entry_ids:
+                    raise QualityGateError(f"复杂度条目已达成退出条件但仍被 accepted_risks 引用：{entry.get('id')}")
+                continue
             raise QualityGateError(f"复杂度条目已无法通过当前扫描对齐：{key}")
         item = complexity_scan[key]
         refreshed_complexity.append(
@@ -401,23 +416,12 @@ def architecture_complexity_scan_map() -> Dict[str, Dict[str, Any]]:
     return complexity_scan_map(collect_quality_rule_files())
 
 
-def _matches_allowed_request_service_helper(entry: Dict[str, Any], helper: Dict[str, Any]) -> bool:
-    return (
-        str(entry.get("path") or "") == str(helper.get("path") or "")
-        and str(entry.get("symbol") or "") == str(helper.get("symbol") or "")
-        and int(entry.get("line") or 0) == int(helper.get("line") or 0)
-        and str(entry.get("rule") or "") == str(helper.get("rule") or "")
-        and str(entry.get("target") or "") == str(helper.get("target") or "")
-    )
-
-
 def architecture_request_service_direct_assembly_entries() -> List[Dict[str, Any]]:
     target_files = set(REQUEST_SERVICE_TARGET_FILES)
     target_symbols = {
         str(path): set(str(symbol) for symbol in symbols)
         for path, symbols in REQUEST_SERVICE_TARGET_SYMBOLS.items()
     }
-    allowed_helpers = [dict(item) for item in REQUEST_SERVICE_TARGET_ALLOWED_HELPERS]
     entries = scan_request_service_direct_assembly_entries(collect_globbed_files(REQUEST_SERVICE_SCAN_SCOPE_PATTERNS))
     return [
         entry
@@ -425,10 +429,6 @@ def architecture_request_service_direct_assembly_entries() -> List[Dict[str, Any
         if (
             str(entry.get("path")) in target_files
             or str(entry.get("symbol")) in target_symbols.get(str(entry.get("path")), set())
-        )
-        and not (
-            str(entry.get("rule")) == "g_db_first_arg_helper"
-            and any(_matches_allowed_request_service_helper(entry, helper) for helper in allowed_helpers)
         )
         and not (
             str(entry.get("path")) in target_symbols

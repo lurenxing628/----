@@ -8,6 +8,7 @@ from core.infrastructure.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.services.common.normalize import normalize_text
 from core.services.common.safe_logging import safe_warning
+from core.services.scheduler.degradation_messages import public_degradation_events
 from data.repositories import ConfigRepository
 
 from ..number_utils import parse_finite_float
@@ -26,6 +27,72 @@ from .config_field_spec import (
 )
 from .config_snapshot import ScheduleConfigSnapshot, ensure_schedule_config_snapshot
 
+_PUBLIC_OUTCOME_HIDDEN_SNAPSHOT_FIELDS = {"auto_assign_persist"}
+
+
+def _public_config_field_label(field: str) -> str:
+    normalized = str(field or "").strip()
+    if not normalized:
+        return "隐藏配置"
+    label = str(field_label_for(normalized) or "").strip()
+    if label and label != normalized:
+        return label
+    return "隐藏配置" if "_" in normalized else (label or normalized)
+
+
+def _public_config_field_labels(fields: Sequence[str]) -> List[str]:
+    labels: List[str] = []
+    for field_name in list(fields or []):
+        label = _public_config_field_label(str(field_name or "").strip())
+        if label and label not in labels:
+            labels.append(label)
+    return labels
+
+
+def _public_config_snapshot_dict(snapshot: Optional[ScheduleConfigSnapshot]) -> Optional[Dict[str, Any]]:
+    if snapshot is None:
+        return None
+    data = snapshot.to_dict()
+    for field_name in _PUBLIC_OUTCOME_HIDDEN_SNAPSHOT_FIELDS:
+        data.pop(field_name, None)
+    return data
+
+
+def _public_config_notice(notice: Dict[str, Any]) -> Dict[str, Any]:
+    kind = str(notice.get("kind") or "").strip()
+    labels = _public_config_field_labels([str(field) for field in list(notice.get("fields") or [])])
+    if kind == "blocked_hidden":
+        label_text = "、".join(labels or ["隐藏配置"])
+        message = f"检测到后台设置“{label_text}”需要保存修复，但因来源缺失未自动修复。"
+    elif kind == "hidden":
+        label_text = "、".join(labels or ["隐藏配置"])
+        message = f"后台设置“{label_text}”已按当前表单保存为自定义配置。"
+    elif kind == "visible":
+        message = "页面展示的兼容回退值已被显式保存，当前运行配置已转为自定义。"
+    elif kind == "none":
+        message = None
+    else:
+        message = "配置来源状态已更新。" if kind else None
+    out: Dict[str, Any] = {"kind": kind, "message": message}
+    if labels:
+        out["field_labels"] = labels
+    return out
+
+
+def _public_config_notices(notices: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [_public_config_notice(dict(notice or {})) for notice in list(notices or []) if isinstance(notice, dict)]
+
+
+def _public_active_preset_reason(value: Any) -> Optional[str]:
+    reason = str(value or "").strip()
+    if not reason:
+        return None
+    if "兼容修补已回写隐藏配置项" in reason:
+        return "后台设置已按当前表单保存为自定义配置。"
+    if "_" in reason:
+        return "配置来源状态已更新。"
+    return reason
+
 
 @dataclass
 class ConfigPageSaveOutcome:
@@ -37,12 +104,82 @@ class ConfigPageSaveOutcome:
     notices: List[Dict[str, Any]] = field(default_factory=list)
     active_preset_after: Optional[str] = None
     active_preset_reason_after: Optional[str] = None
+    status: str = "saved"
+    normalized_snapshot: Optional[ScheduleConfigSnapshot] = None
+    raw_persisted_values: Dict[str, Any] = field(default_factory=dict)
+    raw_missing_fields: List[str] = field(default_factory=list)
+    meta_parse_warnings: List[Dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def effective_snapshot(self) -> ScheduleConfigSnapshot:
+        return self.snapshot
 
     def __getattr__(self, item: str) -> Any:
         return getattr(self.snapshot, item)
 
     def to_dict(self) -> Dict[str, Any]:
+        return self.to_effective_snapshot_dict()
+
+    def to_snapshot_dict(self) -> Dict[str, Any]:
+        return self.to_effective_snapshot_dict()
+
+    def to_effective_snapshot_dict(self) -> Dict[str, Any]:
         return self.snapshot.to_dict()
+
+    def raw_effective_mismatches(self) -> List[Dict[str, Any]]:
+        effective = self.snapshot.to_dict()
+        mismatches: List[Dict[str, Any]] = []
+        for field_name, raw_value in sorted(dict(self.raw_persisted_values).items()):
+            if field_name not in effective:
+                continue
+            effective_value = effective.get(field_name)
+            if str(raw_value) == str(effective_value):
+                continue
+            mismatches.append(
+                {
+                    "field": field_name,
+                    "effective_value": effective_value,
+                    "raw_value": raw_value,
+                }
+            )
+        return mismatches
+
+    def to_outcome_dict(self) -> Dict[str, Any]:
+        """内部诊断载荷；包含 raw persisted values，不作为 Web/API 公共 DTO。"""
+        return {
+            "status": self.status,
+            "effective_snapshot": self.snapshot.to_dict(),
+            "normalized_snapshot": self.normalized_snapshot.to_dict() if self.normalized_snapshot else None,
+            "raw_persisted_values": dict(self.raw_persisted_values),
+            "raw_effective_mismatches": self.raw_effective_mismatches(),
+            "raw_missing_fields": list(self.raw_missing_fields),
+            "degradation_events": list(getattr(self.snapshot, "degradation_events", ()) or ()),
+            "degradation_counters": dict(getattr(self.snapshot, "degradation_counters", {}) or {}),
+            "visible_changed_fields": list(self.visible_changed_fields),
+            "visible_repaired_fields": list(self.visible_repaired_fields),
+            "hidden_repaired_fields": list(self.hidden_repaired_fields),
+            "blocked_hidden_repairs": list(self.blocked_hidden_repairs),
+            "notices": list(self.notices),
+            "meta_parse_warnings": list(self.meta_parse_warnings),
+            "active_preset_after": self.active_preset_after,
+            "active_preset_reason_after": self.active_preset_reason_after,
+        }
+
+    def to_public_outcome_dict(self) -> Dict[str, Any]:
+        return {
+            "status": self.status,
+            "effective_snapshot": _public_config_snapshot_dict(self.snapshot),
+            "normalized_snapshot": _public_config_snapshot_dict(self.normalized_snapshot),
+            "degradation_events": public_degradation_events(getattr(self.snapshot, "degradation_events", ()) or ()),
+            "degradation_counters": dict(getattr(self.snapshot, "degradation_counters", {}) or {}),
+            "visible_changed_field_labels": _public_config_field_labels(self.visible_changed_fields),
+            "visible_repaired_field_labels": _public_config_field_labels(self.visible_repaired_fields),
+            "hidden_repaired_field_labels": _public_config_field_labels(self.hidden_repaired_fields),
+            "blocked_hidden_repair_labels": _public_config_field_labels(self.blocked_hidden_repairs),
+            "notices": _public_config_notices(self.notices),
+            "active_preset_after": self.active_preset_after,
+            "active_preset_reason_after": _public_active_preset_reason(self.active_preset_reason_after),
+        }
 
 
 @dataclass
@@ -328,7 +465,16 @@ class ConfigService:
         if marker not in reason:
             return []
         suffix = str(reason.split(marker, 1)[1] or "").strip().rstrip("。")
-        return [field.strip() for field in suffix.split("、") if field.strip()]
+        fields: List[str] = []
+        for raw_field in suffix.split("、"):
+            field = raw_field.strip()
+            if "（" in field:
+                field = field.split("（", 1)[0].strip()
+            if "(" in field:
+                field = field.split("(", 1)[0].strip()
+            if field:
+                fields.append(field)
+        return fields
 
     @classmethod
     def _repair_notice_from_reason(cls, reason: str) -> Dict[str, Any]:
@@ -443,6 +589,22 @@ class ConfigService:
         return meta
 
     @classmethod
+    def _active_preset_meta_parse_warning(cls, value: Any) -> Optional[Dict[str, Any]]:
+        if not isinstance(value, str):
+            return None
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            json.loads(text)
+        except Exception:
+            return {
+                "field": cls.ACTIVE_PRESET_META_KEY,
+                "message": "active_preset_meta 不是有效 JSON，已按历史来源信息继续显示。",
+            }
+        return None
+
+    @classmethod
     def _serialize_active_preset_meta(cls, meta: Optional[Dict[str, Any]]) -> str:
         payload = cls._active_preset_meta_payload(
             reason_code=(meta or {}).get("reason_code"),
@@ -493,19 +655,7 @@ class ConfigService:
         return left == right
 
     def _try_load_preset_baseline_snapshot(self, active_text: str) -> Tuple[Optional[ScheduleConfigSnapshot], bool]:
-        preset_name = str(active_text or "").strip()
-        if not preset_name or preset_name.lower() == self.ACTIVE_PRESET_CUSTOM:
-            return None, False
-        try:
-            raw = self.repo.get_value(self._preset_key(preset_name), default=None)
-            if raw is None or str(raw).strip() == "":
-                return None, True
-            data = json.loads(str(raw))
-            if not isinstance(data, dict):
-                return None, True
-            return preset_ops.normalize_preset_snapshot(self, dict(data)), False
-        except (TypeError, ValueError, ValidationError):
-            return None, True
+        return preset_ops.try_load_preset_snapshot_for_baseline(self, active_text)
 
     def _active_preset_baseline_probe_state(
         self,
@@ -539,7 +689,14 @@ class ConfigService:
     ) -> Dict[str, Any]:
         is_custom = active_text.lower() == self.ACTIVE_PRESET_CUSTOM if active_text else False
         baseline_key = active_text or None
-        if provenance_missing and not active_text:
+        if provenance_missing:
+            if active_text and not is_custom:
+                return {
+                    "baseline_key": baseline_key,
+                    "baseline_label": active_text,
+                    "baseline_source": "builtin" if active_text in builtin_names else "named",
+                    "is_custom": False,
+                }
             return {
                 "baseline_key": baseline_key,
                 "baseline_label": "基线未记录",
@@ -560,6 +717,32 @@ class ConfigService:
             "is_custom": False,
         }
 
+    @staticmethod
+    def _current_config_missing_provenance_descriptor(baseline_label: str) -> Tuple[str, str, str]:
+        if baseline_label and baseline_label != "基线未记录":
+            return (
+                "degraded",
+                "基线记录不完整",
+                f"当前运行配置已知基线“{baseline_label}”，但缺少 provenance 记录；无法确认是否完全一致。",
+            )
+        return (
+            "degraded",
+            "基线未记录",
+            "当前运行配置缺少基线记录，无法确认与任何方案的一致性；请显式保存或重新应用方案。",
+        )
+
+    @classmethod
+    def _current_config_manual_reason(cls, reason: str) -> bool:
+        return cls._reason_in(
+            reason,
+            cls.ACTIVE_PRESET_REASON_MANUAL,
+            cls.ACTIVE_PRESET_REASON_CUSTOM_SELECTED,
+            cls.ACTIVE_PRESET_REASON_PRESET_DELETED,
+            cls.ACTIVE_PRESET_REASON_BASELINE_MISMATCH,
+            cls.ACTIVE_PRESET_REASON_BASELINE_DEGRADED,
+            cls.ACTIVE_PRESET_REASON_VISIBLE_REPAIR,
+        )
+
     def _resolve_current_config_descriptor(
         self,
         *,
@@ -573,29 +756,7 @@ class ConfigService:
         repair_notice: Dict[str, Any],
     ) -> Tuple[str, str, str]:
         if provenance_missing:
-            if baseline_label and baseline_label != "基线未记录":
-                return (
-                    "degraded",
-                    "基线记录不完整",
-                    f"当前运行配置已知基线“{baseline_label}”，但缺少 provenance 记录；无法确认是否完全一致。",
-                )
-            return (
-                "degraded",
-                "基线未记录",
-                "当前运行配置缺少基线记录，无法确认与任何方案的一致性；请显式保存或重新应用方案。",
-            )
-        if degraded:
-            if is_custom:
-                return (
-                    "degraded",
-                    "存在兼容修补",
-                    "当前运行配置存在兼容修补，但仍以手动设置为准；请保存后修复。",
-                )
-            return (
-                "degraded",
-                "存在兼容修补",
-                f"当前运行配置存在兼容修补，不能视为与“{baseline_label}”完全一致；请保存后修复。",
-            )
+            return self._current_config_missing_provenance_descriptor(baseline_label)
         if baseline_probe_failed:
             return (
                 "adjusted",
@@ -614,23 +775,28 @@ class ConfigService:
                 "与方案有差异",
                 reason or f"当前运行配置与“{baseline_label}”存在差异。",
             )
-        if is_custom or self._reason_in(
-            reason,
-            self.ACTIVE_PRESET_REASON_MANUAL,
-            self.ACTIVE_PRESET_REASON_CUSTOM_SELECTED,
-            self.ACTIVE_PRESET_REASON_PRESET_DELETED,
-            self.ACTIVE_PRESET_REASON_BASELINE_MISMATCH,
-            self.ACTIVE_PRESET_REASON_BASELINE_DEGRADED,
-            self.ACTIVE_PRESET_REASON_VISIBLE_REPAIR,
-        ):
+        if degraded:
+            if is_custom:
+                return (
+                    "degraded",
+                    "存在兼容修补",
+                    "当前运行配置存在兼容修补，但仍以手动设置为准；请保存后修复。",
+                )
+            return (
+                "degraded",
+                "存在兼容修补",
+                f"当前运行配置存在兼容修补，不能视为与“{baseline_label}”完全一致；请保存后修复。",
+            )
+        if is_custom or self._current_config_manual_reason(reason):
             return (
                 "custom",
                 "手动设置",
                 reason or "当前运行配置以手动设置为准。",
             )
         label = f"当前运行配置与“{baseline_label}”一致。"
-        if repair_notice.get("kind") == "hidden" and reason:
-            label = f"{label} {reason}".strip()
+        repair_message = str(repair_notice.get("message") or "").strip()
+        if repair_notice.get("kind") == "hidden" and repair_message:
+            label = f"{label} {repair_message}".strip()
         return "exact", "与方案一致", label
 
     def _collect_preset_rows(self, rows: List[Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -701,7 +867,15 @@ class ConfigService:
         active_text = str(active_preset or "").strip() or None
         reason_text = str(active_preset_reason or "").strip() or None
         meta = cls._active_preset_meta_from_value(active_preset_meta, reason_fallback=reason_text)
-        provenance_missing = bool(active_preset_missing or active_preset_reason_missing or not active_text)
+        custom_reason_missing = bool(
+            active_text and active_text.lower() == cls.ACTIVE_PRESET_CUSTOM and not reason_text
+        )
+        provenance_missing = bool(
+            active_preset_missing
+            or active_preset_reason_missing
+            or not active_text
+            or custom_reason_missing
+        )
         return {
             "active_preset": active_text,
             "active_preset_reason": reason_text,
@@ -738,8 +912,10 @@ class ConfigService:
         baseline_drifted = bool(resolved_baseline_diff_fields) and not bool(baseline.get("is_custom"))
         degraded = bool(tuple(getattr(current_snapshot, "degradation_events", ()) or ())) or bool(provenance_missing)
         meta = self._active_preset_meta_from_value(active_preset_meta, reason_fallback=reason)
-        repair_notices = list(meta.get("repair_notices") or [])
-        repair_notice = self._compat_repair_notice(repair_notices, reason_fallback=reason)
+        raw_repair_notices = list(meta.get("repair_notices") or [])
+        raw_repair_notice = self._compat_repair_notice(raw_repair_notices, reason_fallback=reason)
+        repair_notices = _public_config_notices(raw_repair_notices)
+        repair_notice = _public_config_notice(raw_repair_notice)
         state, status_label, label = self._resolve_current_config_descriptor(
             provenance_missing=bool(provenance_missing),
             degraded=degraded,
@@ -764,7 +940,7 @@ class ConfigService:
             "provenance_missing": bool(provenance_missing),
             "active_preset_missing": bool(active_preset_missing),
             "active_preset_reason_missing": bool(active_preset_reason_missing),
-            "reason": reason or None,
+            "reason": _public_active_preset_reason(reason),
             "baseline_probe_failed": resolved_baseline_probe_failed,
             "baseline_diff_fields": resolved_baseline_diff_fields,
             "repair_notices": repair_notices,
@@ -807,20 +983,30 @@ class ConfigService:
                 **preset_state,
                 "can_preserve_baseline": False,
             }
+        active_preset_reason = str(preset_state.get("active_preset_reason") or "").strip()
+        can_preserve_named_provenance_for_write = bool(
+            preset_state.get("active_preset")
+        ) and not bool(preset_state.get("provenance_missing")) and not baseline_probe_failed and not baseline_diff_fields and not self._reason_in(
+            active_preset_reason,
+            self.ACTIVE_PRESET_REASON_PRESET_ADJUSTED,
+            self.ACTIVE_PRESET_REASON_PRESET_MISMATCH,
+        )
+        current_config_state = self._build_current_config_state(
+            current_snapshot=snapshot,
+            active_preset=preset_state["active_preset"],
+            active_preset_reason=active_preset_reason,
+            active_preset_meta=preset_state.get("active_preset_meta"),
+            active_preset_missing=bool(preset_state["active_preset_missing"]),
+            active_preset_reason_missing=bool(preset_state["active_preset_reason_missing"]),
+            provenance_missing=bool(preset_state["provenance_missing"]),
+            baseline_diff_fields=baseline_diff_fields,
+            baseline_probe_failed=baseline_probe_failed,
+        )
         return {
             "presets": self._build_preset_entries(preset_rows),
             **preset_state,
-            "current_config_state": self._build_current_config_state(
-                current_snapshot=snapshot,
-                active_preset=preset_state["active_preset"],
-                active_preset_reason=preset_state["active_preset_reason"],
-                active_preset_meta=preset_state.get("active_preset_meta"),
-                active_preset_missing=bool(preset_state["active_preset_missing"]),
-                active_preset_reason_missing=bool(preset_state["active_preset_reason_missing"]),
-                provenance_missing=bool(preset_state["provenance_missing"]),
-                baseline_diff_fields=baseline_diff_fields,
-                baseline_probe_failed=baseline_probe_failed,
-            ),
+            "current_config_state": current_config_state,
+            "can_preserve_named_provenance_for_write": can_preserve_named_provenance_for_write,
             "readonly": bool(readonly),
         }
 
@@ -1165,7 +1351,17 @@ class ConfigService:
 
     @classmethod
     def _config_page_hidden_repair_reason(cls, hidden_repaired_fields: List[str]) -> str:
-        field_list = "、".join(str(field).strip() for field in hidden_repaired_fields if str(field).strip())
+        field_items: List[str] = []
+        for field_name in hidden_repaired_fields:
+            field_key = str(field_name).strip()
+            if not field_key:
+                continue
+            field_label = field_label_for(field_key)
+            if field_label and field_label != field_key:
+                field_items.append(f"{field_key}（{field_label}）")
+            else:
+                field_items.append(field_key)
+        field_list = "、".join(field_items)
         if field_list:
             return f"{cls.ACTIVE_PRESET_REASON_HIDDEN_REPAIR} 已回写：{field_list}。"
         return cls.ACTIVE_PRESET_REASON_HIDDEN_REPAIR
@@ -1189,7 +1385,7 @@ class ConfigService:
     @classmethod
     def _config_page_blocked_hidden_repair_notice(cls, blocked_hidden_fields: List[str]) -> Dict[str, Any]:
         fields = [str(field).strip() for field in blocked_hidden_fields if str(field).strip()]
-        field_list = "\u3001".join(fields)
+        field_list = "\u3001".join(field_label_for(field) for field in fields)
         if field_list:
             message = f"\u68c0\u6d4b\u5230\u9690\u85cf\u914d\u7f6e\u9000\u5316\uff0c\u4f46\u56e0\u6765\u6e90\u7f3a\u5931\u672a\u81ea\u52a8\u4fee\u590d\uff1a{field_list}\u3002"
         else:
@@ -1211,6 +1407,9 @@ class ConfigService:
             "active_preset_reason": preset_display_state.get("active_preset_reason"),
             "active_preset_meta": preset_display_state.get("active_preset_meta"),
             "can_preserve_baseline": bool(preset_display_state.get("can_preserve_baseline")),
+            "can_preserve_named_provenance_for_write": bool(
+                preset_display_state.get("can_preserve_named_provenance_for_write")
+            ),
         }
 
     @staticmethod
@@ -1294,12 +1493,14 @@ class ConfigService:
         hidden_repair_reason: Optional[str],
         hidden_repair_notice: Optional[Dict[str, Any]],
     ) -> None:
+        current_reason = str(current_active_preset_reason or "").strip()
         preserved_named_reason = self._reason_in(
-            str(current_active_preset_reason or "").strip(),
+            current_reason,
             self.ACTIVE_PRESET_REASON_PRESET_ADJUSTED,
             self.ACTIVE_PRESET_REASON_PRESET_MISMATCH,
         )
-        if preserved_named_reason:
+        preserved_custom_reason = current_active_preset == self.ACTIVE_PRESET_CUSTOM and bool(current_reason)
+        if preserved_named_reason or preserved_custom_reason:
             current_meta = self._active_preset_meta_from_value(
                 current_active_preset_meta,
                 reason_fallback=current_active_preset_reason,
@@ -1307,7 +1508,7 @@ class ConfigService:
             repair_notices = list(current_meta.get("repair_notices") or [])
             if hidden_repair_notice is not None:
                 repair_notices.append(hidden_repair_notice)
-            reason_after = str(current_active_preset_reason or "").strip() or None
+            reason_after = current_reason or None
             hidden_meta = self._active_preset_meta_payload(
                 reason_code=current_meta.get("reason_code"),
                 repair_notices=repair_notices,
@@ -1360,14 +1561,29 @@ class ConfigService:
         current_active_preset: Optional[str],
         current_active_preset_reason: Optional[str],
         current_active_preset_meta: Optional[Dict[str, Any]],
-        can_preserve_baseline: bool,
+        can_preserve_named_provenance_for_write: bool,
     ) -> _ConfigPageWritePlan:
+        blocked_hidden_repairs: List[str] = []
+        blocked_hidden_notice: Optional[Dict[str, Any]] = None
+        if hidden_repaired_fields and not (
+            current_active_preset and can_preserve_named_provenance_for_write
+        ):
+            blocked_hidden_repairs = list(hidden_repaired_fields)
+            blocked_hidden_notice = self._config_page_blocked_hidden_repair_notice(blocked_hidden_repairs)
+            write_values = dict(write_values)
+            for key in blocked_hidden_repairs:
+                write_values.pop(key, None)
+            hidden_repaired_fields = []
+
         plan, hidden_repair_notice, hidden_repair_reason = self._config_page_initial_write_plan(
             write_values=write_values,
             current_active_preset=current_active_preset,
             current_active_preset_reason=current_active_preset_reason,
             hidden_repaired_fields=hidden_repaired_fields,
         )
+        if blocked_hidden_repairs:
+            plan.blocked_hidden_repairs = list(blocked_hidden_repairs)
+            plan.notices = self._config_page_notices(*plan.notices, blocked_hidden_notice)
         if visible_changed_fields:
             self._config_page_apply_visible_change_plan(
                 plan=plan,
@@ -1382,7 +1598,7 @@ class ConfigService:
             return plan
         if not hidden_repaired_fields:
             return plan
-        if current_active_preset and can_preserve_baseline:
+        if current_active_preset and can_preserve_named_provenance_for_write:
             self._config_page_apply_hidden_repair_plan(
                 plan=plan,
                 current_active_preset=current_active_preset,
@@ -1399,8 +1615,41 @@ class ConfigService:
             hidden_repaired_fields=hidden_repaired_fields,
         )
 
+    @staticmethod
+    def _config_page_save_status(plan: _ConfigPageWritePlan) -> str:
+        if plan.blocked_hidden_repairs:
+            return "blocked_hidden_repair"
+        if plan.hidden_repaired_fields:
+            return "repaired_hidden"
+        if plan.updates:
+            return "saved"
+        return "unchanged"
+
+    def _config_page_raw_persisted_state(self) -> Tuple[Dict[str, Any], List[str]]:
+        rows = self.repo.list_all()
+        by_key = {str(getattr(row, "config_key", "") or ""): row for row in rows}
+        keys = [spec.key for spec in list_config_fields()]
+        keys.extend([self.ACTIVE_PRESET_KEY, self.ACTIVE_PRESET_REASON_KEY, self.ACTIVE_PRESET_META_KEY])
+        raw_values: Dict[str, Any] = {}
+        missing: List[str] = []
+        seen = set()
+        for key in keys:
+            if key in seen:
+                continue
+            seen.add(key)
+            row = by_key.get(key)
+            if row is None:
+                missing.append(key)
+                continue
+            raw_values[key] = getattr(row, "config_value", None)
+        return raw_values, missing
+
     def save_page_config(self, form_values: Any) -> ConfigPageSaveOutcome:
         self._ensure_defaults_if_pristine()
+        active_meta_raw = self.repo.get_value(self.ACTIVE_PRESET_META_KEY, default=None)
+        meta_parse_warning = self._active_preset_meta_parse_warning(active_meta_raw)
+        if meta_parse_warning:
+            safe_warning(self.logger, str(meta_parse_warning["message"]))
         current_snapshot = self.get_snapshot(strict_mode=False)
         provenance_state = self._config_page_current_provenance_state(
             current_snapshot=current_snapshot,
@@ -1441,13 +1690,22 @@ class ConfigService:
             current_active_preset=current_active_preset,
             current_active_preset_reason=current_active_preset_reason,
             current_active_preset_meta=current_active_preset_meta,
-            can_preserve_baseline=bool(provenance_state.get("can_preserve_baseline")),
+            can_preserve_named_provenance_for_write=bool(
+                provenance_state.get("can_preserve_named_provenance_for_write")
+            ),
         )
         if plan.updates:
             with self.tx_manager.transaction():
                 self.repo.set_batch(plan.updates)
+        post_save_snapshot = self.get_snapshot(strict_mode=False)
+        raw_persisted_values, raw_missing_fields = self._config_page_raw_persisted_state()
         return ConfigPageSaveOutcome(
-            snapshot=normalized_snapshot,
+            snapshot=post_save_snapshot,
+            status=self._config_page_save_status(plan),
+            normalized_snapshot=normalized_snapshot,
+            raw_persisted_values=raw_persisted_values,
+            raw_missing_fields=raw_missing_fields,
+            meta_parse_warnings=[meta_parse_warning] if meta_parse_warning else [],
             visible_changed_fields=list(visible_changed_fields),
             visible_repaired_fields=list(visible_repaired_fields),
             hidden_repaired_fields=list(plan.hidden_repaired_fields),

@@ -17,6 +17,27 @@ def _load_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def test_config_page_save_outcome_keeps_legacy_positional_constructor_order() -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        snapshot = cfg_svc.get_snapshot()
+
+        outcome_cls = type(cfg_svc.save_page_config(snapshot.to_dict()))
+        outcome = outcome_cls(snapshot, ["sort_strategy"])
+
+        assert outcome.visible_changed_fields == ["sort_strategy"]
+        assert outcome.status == "saved"
+        assert outcome.normalized_snapshot is None
+    finally:
+        conn.close()
+
+
 def test_config_service_manual_set_marks_active_preset_custom() -> None:
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     try:
@@ -412,7 +433,12 @@ def test_config_service_page_save_hidden_repair_keeps_named_preset_provenance() 
         assert current_config_state["baseline_source"] == "named"
         assert current_config_state["is_custom"] is False
         assert current_config_state["repair_notice"]["kind"] == "hidden"
-        assert "auto_assign_persist" in list(current_config_state["repair_notice"]["fields"] or [])
+        assert "自动分配结果回写" in list(current_config_state["repair_notice"]["field_labels"] or [])
+        assert "auto_assign_persist" not in str(current_config_state)
+        assert "自动分配结果回写" in str(current_config_state)
+        public_outcome = outcome.to_public_outcome_dict()
+        assert "auto_assign_persist" not in str(public_outcome)
+        assert "自动分配结果回写" in str(public_outcome)
     finally:
         conn.close()
 
@@ -482,7 +508,7 @@ def test_get_preset_display_state_missing_named_baseline_is_not_exact() -> None:
         conn.close()
 
 
-def test_get_preset_display_state_builtin_baseline_drift_is_not_exact() -> None:
+def test_get_preset_display_state_builtin_baseline_drift_stays_exact_after_reapply() -> None:
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     try:
         conn.row_factory = sqlite3.Row
@@ -501,20 +527,85 @@ def test_get_preset_display_state_builtin_baseline_drift_is_not_exact() -> None:
                 description="drifted builtin preset payload",
             )
 
+        applied = cfg_svc.apply_preset(cfg_svc.BUILTIN_PRESET_DEFAULT)
         display_state = cfg_svc.get_preset_display_state(readonly=True)
 
+        assert applied["status"] == "applied"
         assert display_state["active_preset"] == cfg_svc.BUILTIN_PRESET_DEFAULT
         assert display_state["provenance_missing"] is False
-        assert display_state["can_preserve_baseline"] is False
+        assert display_state["can_preserve_baseline"] is True
         current_config_state = dict(display_state.get("current_config_state") or {})
-        assert current_config_state["state"] == "adjusted"
+        assert current_config_state["state"] == "exact"
         assert current_config_state["baseline_source"] == "builtin"
         assert current_config_state["baseline_probe_failed"] is False
     finally:
         conn.close()
 
 
-def test_config_service_page_save_hidden_repair_preserves_adjusted_named_provenance() -> None:
+def test_get_preset_display_state_builtin_baseline_without_repo_row_stays_exact_and_apply_matches() -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+
+        with cfg_svc.tx_manager.transaction():
+            cfg_svc.repo.delete(cfg_svc._preset_key(cfg_svc.BUILTIN_PRESET_DEFAULT))
+
+        applied = cfg_svc.apply_preset(cfg_svc.BUILTIN_PRESET_DEFAULT)
+        display_state = cfg_svc.get_preset_display_state(readonly=True)
+        current_config_state = dict(display_state.get("current_config_state") or {})
+
+        assert applied["status"] == "applied"
+        assert applied["requested_preset"] == cfg_svc.BUILTIN_PRESET_DEFAULT
+        assert applied["effective_active_preset"] == cfg_svc.BUILTIN_PRESET_DEFAULT
+        assert display_state["active_preset"] == cfg_svc.BUILTIN_PRESET_DEFAULT
+        assert display_state["can_preserve_baseline"] is True
+        assert current_config_state["state"] == "exact"
+        assert current_config_state["baseline_source"] == "builtin"
+        assert current_config_state["baseline_probe_failed"] is False
+    finally:
+        conn.close()
+
+
+def test_get_preset_display_state_named_baseline_missing_registered_field_is_not_exact() -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        saved = cfg_svc.save_preset("legacy-missing-field")
+        assert saved["effective_active_preset"] == "legacy-missing-field"
+
+        payload = json.loads(cfg_svc.repo.get_value(cfg_svc._preset_key("legacy-missing-field"), default="{}"))
+        payload.pop("auto_assign_persist", None)
+        with cfg_svc.tx_manager.transaction():
+            cfg_svc.repo.set(
+                cfg_svc._preset_key("legacy-missing-field"),
+                json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                description="legacy missing field preset",
+            )
+
+        display_state = cfg_svc.get_preset_display_state(readonly=True)
+        current_config_state = dict(display_state.get("current_config_state") or {})
+
+        assert display_state["active_preset"] == "legacy-missing-field"
+        assert display_state["can_preserve_baseline"] is False
+        assert current_config_state["state"] == "adjusted"
+        assert current_config_state["status_label"] == "基线不可验证"
+        assert current_config_state["baseline_source"] == "named"
+        assert current_config_state["baseline_probe_failed"] is True
+    finally:
+        conn.close()
+
+
+def test_config_service_page_save_hidden_repair_blocks_adjusted_named_provenance() -> None:
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     try:
         conn.row_factory = sqlite3.Row
@@ -579,16 +670,226 @@ def test_config_service_page_save_hidden_repair_preserves_adjusted_named_provena
         current_config_state = dict(display_state.get("current_config_state") or {})
         reason = str(cfg_svc.get_active_preset_reason() or "")
 
-        assert saved.hidden_repaired_fields == ["auto_assign_persist"]
-        assert saved.blocked_hidden_repairs == []
-        assert cfg_svc.get("auto_assign_persist") == "yes"
+        assert saved.hidden_repaired_fields == []
+        assert saved.blocked_hidden_repairs == ["auto_assign_persist"]
+        assert saved.status == "blocked_hidden_repair"
+        assert saved.normalized_snapshot.auto_assign_persist == "yes"
+        assert saved.auto_assign_persist == "yes"
+        assert saved.to_dict()["auto_assign_persist"] == "yes"
+        assert saved.to_snapshot_dict()["auto_assign_persist"] == "yes"
+        outcome = saved.to_outcome_dict()
+        assert outcome["effective_snapshot"]["auto_assign_persist"] == "yes"
+        assert "snapshot" not in outcome
+        assert outcome["raw_persisted_values"]["auto_assign_persist"] == "MAYBE"
+        assert outcome["raw_effective_mismatches"] == [
+            {"field": "auto_assign_persist", "effective_value": "yes", "raw_value": "MAYBE"}
+        ]
+        assert outcome["raw_missing_fields"] == []
+        public_outcome = saved.to_public_outcome_dict()
+        assert public_outcome["status"] == "blocked_hidden_repair"
+        assert "auto_assign_persist" not in public_outcome["effective_snapshot"]
+        assert "raw_persisted_values" not in public_outcome
+        assert "raw_effective_mismatches" not in public_outcome
+        assert "MAYBE" not in str(public_outcome)
+        assert "auto_assign_persist" not in str(public_outcome)
+        assert "自动分配结果回写" in str(public_outcome)
+        assert any(event.get("field") == "auto_assign_persist" for event in saved.effective_snapshot.degradation_events)
+        assert cfg_svc.get("auto_assign_persist") == "MAYBE"
         assert cfg_svc.get_active_preset() == "legacy-shape"
         assert cfg_svc.ACTIVE_PRESET_REASON_PRESET_ADJUSTED in reason
         assert cfg_svc.ACTIVE_PRESET_REASON_HIDDEN_REPAIR not in reason
         assert current_config_state["state"] == "adjusted"
         assert current_config_state["baseline_source"] == "named"
-        assert current_config_state["repair_notice"]["kind"] == "hidden"
-        assert "auto_assign_persist" in list(current_config_state["repair_notice"]["fields"] or [])
+        assert current_config_state["repair_notice"]["kind"] == "none"
+    finally:
+        conn.close()
+
+
+def test_config_service_page_save_hidden_repair_preserves_custom_reason() -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        with cfg_svc.tx_manager.transaction():
+            cfg_svc.repo.set(cfg_svc.ACTIVE_PRESET_KEY, cfg_svc.ACTIVE_PRESET_CUSTOM, description="active preset")
+            cfg_svc.repo.set(
+                cfg_svc.ACTIVE_PRESET_REASON_KEY,
+                cfg_svc.ACTIVE_PRESET_REASON_MANUAL,
+                description="active reason",
+            )
+            cfg_svc.repo.set(
+                "auto_assign_persist",
+                "MAYBE",
+                description=cfg_svc._field_description("auto_assign_persist"),
+            )
+
+        saved = cfg_svc.save_page_config(
+            {
+                "sort_strategy": "weighted",
+                "priority_weight": "0.4",
+                "due_weight": "0.5",
+                "holiday_default_efficiency": "0.8",
+                "prefer_primary_skill": "no",
+                "enforce_ready_default": "no",
+                "dispatch_mode": "sgs",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "no",
+                "ortools_enabled": "no",
+                "ortools_time_limit_seconds": "5",
+                "algo_mode": "greedy",
+                "objective": "min_changeover",
+                "time_budget_seconds": "20",
+                "freeze_window_enabled": "no",
+                "freeze_window_days": "0",
+            }
+        )
+        display_state = cfg_svc.get_preset_display_state(readonly=True)
+        current_config_state = dict(display_state.get("current_config_state") or {})
+        repair_notices = list(current_config_state.get("repair_notices") or [])
+
+        assert saved.status == "repaired_hidden"
+        assert saved.hidden_repaired_fields == ["auto_assign_persist"]
+        assert saved.blocked_hidden_repairs == []
+        assert cfg_svc.get_active_preset() == cfg_svc.ACTIVE_PRESET_CUSTOM
+        assert cfg_svc.get_active_preset_reason() == cfg_svc.ACTIVE_PRESET_REASON_MANUAL
+        assert any(notice.get("kind") == "hidden" for notice in repair_notices)
+    finally:
+        conn.close()
+
+
+def test_config_service_page_save_hidden_repair_with_custom_empty_reason_stays_blocked() -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        with cfg_svc.tx_manager.transaction():
+            cfg_svc.repo.set(cfg_svc.ACTIVE_PRESET_KEY, cfg_svc.ACTIVE_PRESET_CUSTOM, description="active preset")
+            cfg_svc.repo.set(cfg_svc.ACTIVE_PRESET_REASON_KEY, "", description="active reason")
+            cfg_svc.repo.set(
+                "auto_assign_persist",
+                "MAYBE",
+                description=cfg_svc._field_description("auto_assign_persist"),
+            )
+
+        saved = cfg_svc.save_page_config(
+            {
+                "sort_strategy": "priority_first",
+                "priority_weight": "0.4",
+                "due_weight": "0.5",
+                "holiday_default_efficiency": "0.8",
+                "prefer_primary_skill": "no",
+                "enforce_ready_default": "no",
+                "dispatch_mode": "batch_order",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "no",
+                "ortools_enabled": "no",
+                "ortools_time_limit_seconds": "5",
+                "algo_mode": "greedy",
+                "objective": "min_overdue",
+                "time_budget_seconds": "20",
+                "freeze_window_enabled": "no",
+                "freeze_window_days": "0",
+            }
+        )
+        display_state = cfg_svc.get_preset_display_state(readonly=True)
+        current_config_state = dict(display_state.get("current_config_state") or {})
+
+        assert saved.status == "blocked_hidden_repair"
+        assert saved.hidden_repaired_fields == []
+        assert saved.blocked_hidden_repairs == ["auto_assign_persist"]
+        assert cfg_svc.get("auto_assign_persist") == "MAYBE"
+        assert cfg_svc.get_active_preset() == cfg_svc.ACTIVE_PRESET_CUSTOM
+        assert cfg_svc.get_active_preset_reason() is None
+        assert display_state["active_preset_reason_missing"] is False
+        assert current_config_state["provenance_missing"] is True
+        assert current_config_state["baseline_source"] == "unknown"
+    finally:
+        conn.close()
+
+
+def test_config_service_visible_change_does_not_smuggle_hidden_repair_without_provenance() -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        with cfg_svc.tx_manager.transaction():
+            cfg_svc.repo.set(cfg_svc.ACTIVE_PRESET_KEY, cfg_svc.ACTIVE_PRESET_CUSTOM, description="active preset")
+            cfg_svc.repo.set(cfg_svc.ACTIVE_PRESET_REASON_KEY, "", description="active reason")
+            cfg_svc.repo.set(
+                "auto_assign_persist",
+                "MAYBE",
+                description=cfg_svc._field_description("auto_assign_persist"),
+            )
+
+        saved = cfg_svc.save_page_config(
+            {
+                "sort_strategy": "weighted",
+                "priority_weight": "0.4",
+                "due_weight": "0.5",
+                "holiday_default_efficiency": "0.8",
+                "prefer_primary_skill": "no",
+                "enforce_ready_default": "no",
+                "dispatch_mode": "batch_order",
+                "dispatch_rule": "slack",
+                "auto_assign_enabled": "no",
+                "ortools_enabled": "no",
+                "ortools_time_limit_seconds": "5",
+                "algo_mode": "greedy",
+                "objective": "min_overdue",
+                "time_budget_seconds": "20",
+                "freeze_window_enabled": "no",
+                "freeze_window_days": "0",
+            }
+        )
+
+        assert saved.status == "blocked_hidden_repair"
+        assert saved.hidden_repaired_fields == []
+        assert saved.blocked_hidden_repairs == ["auto_assign_persist"]
+        assert cfg_svc.get("sort_strategy") == "weighted"
+        assert cfg_svc.get("auto_assign_persist") == "MAYBE"
+        assert cfg_svc.get_active_preset() == cfg_svc.ACTIVE_PRESET_CUSTOM
+        assert cfg_svc.get_active_preset_reason() == cfg_svc.ACTIVE_PRESET_REASON_MANUAL
+    finally:
+        conn.close()
+
+
+def test_config_service_page_save_reports_bad_active_preset_meta_without_marking_runtime_degraded() -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        with cfg_svc.tx_manager.transaction():
+            cfg_svc.repo.set(cfg_svc.ACTIVE_PRESET_KEY, "custom", description="active preset")
+            cfg_svc.repo.set(cfg_svc.ACTIVE_PRESET_REASON_KEY, "manual", description="active reason")
+            cfg_svc.repo.set(cfg_svc.ACTIVE_PRESET_META_KEY, "{bad json", description="bad meta")
+
+        saved = cfg_svc.save_page_config(cfg_svc.get_snapshot().to_dict())
+        outcome = saved.to_outcome_dict()
+
+        assert saved.status in {"saved", "unchanged"}
+        assert outcome["meta_parse_warnings"] == [
+            {
+                "field": cfg_svc.ACTIVE_PRESET_META_KEY,
+                "message": "active_preset_meta 不是有效 JSON，已按历史来源信息继续显示。",
+            }
+        ]
+        assert outcome["degradation_events"] == []
     finally:
         conn.close()
 
@@ -633,7 +934,7 @@ def test_config_service_page_save_visible_repair_marks_custom_with_visible_repai
             }
         )
 
-        assert repaired.holiday_default_efficiency == 0.8
+        assert repaired.effective_snapshot.holiday_default_efficiency == 0.8
         assert repaired.visible_repaired_fields == ["holiday_default_efficiency"]
         assert repaired.hidden_repaired_fields == []
         assert cfg_svc.get("holiday_default_efficiency") == "0.8"
@@ -734,7 +1035,7 @@ def test_config_service_page_save_omitted_visible_degraded_field_does_not_persis
         display_state = cfg_svc.get_preset_display_state(readonly=True)
         current_config_state = dict(display_state.get("current_config_state") or {})
 
-        assert repaired.holiday_default_efficiency == 0.8
+        assert repaired.effective_snapshot.holiday_default_efficiency == 0.8
         assert cfg_svc.get("holiday_default_efficiency") == "NaN"
         assert cfg_svc.get_active_preset() == "legacy-demo"
         assert cfg_svc.get_active_preset_reason() != cfg_svc.ACTIVE_PRESET_REASON_VISIBLE_REPAIR
@@ -950,6 +1251,9 @@ def test_config_service_page_save_hidden_repair_without_provenance_stays_blocked
         assert cfg_svc.ACTIVE_PRESET_REASON_KEY not in remaining
         assert saved.hidden_repaired_fields == []
         assert saved.blocked_hidden_repairs == ["auto_assign_persist"]
+        assert saved.status == "blocked_hidden_repair"
+        assert saved.normalized_snapshot.auto_assign_persist == "yes"
+        assert any(event.get("field") == "auto_assign_persist" for event in saved.effective_snapshot.degradation_events)
         assert cfg_svc.get("auto_assign_persist") == "MAYBE"
         display_state = cfg_svc.get_preset_display_state(readonly=True)
         current_config_state = dict(display_state.get("current_config_state") or {})
@@ -1011,6 +1315,9 @@ def test_config_service_page_save_hidden_repair_with_missing_reason_stays_blocke
 
         assert saved.hidden_repaired_fields == []
         assert saved.blocked_hidden_repairs == ["auto_assign_persist"]
+        assert saved.status == "blocked_hidden_repair"
+        assert saved.normalized_snapshot.auto_assign_persist == "yes"
+        assert any(event.get("field") == "auto_assign_persist" for event in saved.effective_snapshot.degradation_events)
         assert cfg_svc.get("auto_assign_persist") == "MAYBE"
         assert display_state["active_preset"] == cfg_svc.BUILTIN_PRESET_DEFAULT
         assert display_state["active_preset_reason"] is None

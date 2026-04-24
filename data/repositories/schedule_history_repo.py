@@ -100,7 +100,7 @@ class ScheduleHistoryRepository(BaseRepository):
         # 注意：strategy/result_status 不能用 MAX(text)（会变成字典序），需要取“最新一条记录”的值。
         rows = self.fetchall(
             """
-            SELECT h.version, h.schedule_time, h.strategy, h.result_status
+            SELECT h.version, h.schedule_time, h.strategy, h.result_status, h.result_summary
             FROM ScheduleHistory h
             WHERE h.id = (
                 SELECT h2.id
@@ -133,4 +133,3 @@ class ScheduleHistoryRepository(BaseRepository):
                 payload.get("created_by"),
             ),
         )
-

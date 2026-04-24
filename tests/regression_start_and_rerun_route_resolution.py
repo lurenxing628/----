@@ -6,7 +6,7 @@
 2) `start-only` / `rerun` 输出的 `host` / `port` / `url` 来自实际 endpoint。
 3) fresh-start 会把统一目标 DB 传给子服务环境。
 4) DB 错配或 runtime endpoint 身份不可证实时必须拒绝复用。
-5) `.cursor` 现行 runner 行为保持契约一致。
+5) `.limcode` 现行 runner 行为保持契约一致；如果旧 `.cursor` 兼容目录存在，也一起覆盖。
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 
 def find_repo_root() -> str:
@@ -33,7 +34,7 @@ def _assert(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
-def _load_module(path: str, module_name: str):
+def _load_module(path: str, module_name: str) -> Any:
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"无法加载模块：{path}")
@@ -56,9 +57,13 @@ def _normalize_path(path: str) -> str:
 
 def _runner_paths(repo_root: str) -> list[Path]:
     base = Path(repo_root)
-    return [
+    candidates = [
+        base / ".limcode" / "skills" / "aps-start-and-rerun-route" / "scripts" / "run_start_and_rerun_route.py",
         base / ".cursor" / "skills" / "aps-start-and-rerun-route" / "scripts" / "run_start_and_rerun_route.py",
     ]
+    existing = [path for path in candidates if path.exists()]
+    _assert(bool(existing), "未找到 aps-start-and-rerun-route runner")
+    return existing
 
 
 def _exercise_runner(runner_path: Path, label: str) -> None:

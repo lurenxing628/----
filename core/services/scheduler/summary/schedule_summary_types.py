@@ -2,9 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.services.common.build_outcome import BuildOutcome
+
+
+class ScheduleResultStatus(str, Enum):
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    SIMULATED = "simulated"
 
 
 @dataclass(frozen=True)

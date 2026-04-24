@@ -18,6 +18,8 @@ from ..downtime import find_earliest_available_start
 from ..internal_slot import estimate_internal_slot, validate_internal_hours
 from .runtime_state import accumulate_busy_hours, update_machine_last_state
 
+_SCHEDULE_OPERATION_FAILED_MESSAGE = "排产异常，请查看系统日志。"
+
 
 def _parse_due_date(value: Any, *, strict_mode: bool = False) -> Optional[date]:
     if strict_mode:
@@ -634,10 +636,10 @@ def dispatch_sgs(
                 operations = ops_by_batch.get(batch_id) or []
                 rest = max(int(len(operations)) - (idx0 + 1), 0)
                 failed_count += int(rest)
-        except Exception as exc:
+        except Exception:
             failed_count += 1
             op_code = getattr(op, "op_code", "-") or "-"
-            errors.append(f"工序 {op_code} 排产异常：{str(exc)}")
+            errors.append(f"工序 {op_code} {_SCHEDULE_OPERATION_FAILED_MESSAGE}")
             try:
                 scheduler.logger.exception(f"工序 {op_code} 排产异常")  # type: ignore[attr-defined]
             except Exception:

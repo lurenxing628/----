@@ -10,13 +10,11 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 from core.infrastructure.errors import ValidationError
 from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, YESNO_VALUES, CalendarDayType
 from core.services.common.excel_audit import log_excel_export, log_excel_import
-from core.services.common.excel_backend_factory import get_excel_backend
-from core.services.common.excel_import_executor import execute_preview_rows_transactional
-from core.services.common.excel_service import ExcelService, ImportMode
+from core.services.common.excel_service import ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.normalize import is_blank_value
 from core.services.common.number_utils import parse_finite_float
-from core.services.scheduler import CalendarService, ConfigService
+from core.services.scheduler import CalendarService
 from web.ui_mode import render_ui_template as render_template
 
 from ...excel_utils import (
@@ -52,7 +50,7 @@ def _canonicalize_calendar_date(value: Any) -> str:
 
 
 def _build_existing_preview_data() -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
-    cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
+    cal_svc = g.services.calendar_service
     existing: Dict[str, Dict[str, Any]] = {}
     existing_list: List[Dict[str, Any]] = []
     for c in cal_svc.list_all():
@@ -78,6 +76,10 @@ def _require_holiday_default_efficiency(value: Optional[float]) -> float:
     if value is None:
         raise ValidationError("holiday_default_efficiency 缺失，无法继续工作日历 Excel 导入。")
     return float(value)
+
+
+def execute_preview_rows_transactional(services: Any, **kwargs: Any) -> Any:
+    return services.execute_preview_rows_transactional(**kwargs)
 
 
 def _render_excel_calendar_page(
@@ -107,7 +109,7 @@ def _render_excel_calendar_page(
 
 def _load_holiday_default_efficiency_for_excel(
     *,
-    cfg_svc: ConfigService,
+    cfg_svc: Any,
     existing_list: List[Dict[str, Any]],
     mode_value: str,
     filename: Optional[str],
@@ -152,7 +154,7 @@ def excel_calendar_preview():
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
 
     existing, existing_list = _build_existing_preview_data()
-    cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
+    cfg_svc = g.services.config_service
     hde, error_response = _load_holiday_default_efficiency_for_excel(
         cfg_svc=cfg_svc,
         existing_list=existing_list,
@@ -223,7 +225,7 @@ def excel_calendar_preview():
 
         return None
 
-    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = g.services.excel_service
     preview_rows = excel_svc.preview_import(
         rows=normalized_rows,
         id_column="日期",
@@ -268,7 +270,7 @@ def excel_calendar_confirm():
     rows = payload.rows
 
     existing, existing_list = _build_existing_preview_data()
-    cfg_svc = ConfigService(g.db, op_logger=getattr(g, "op_logger", None))
+    cfg_svc = g.services.config_service
     hde, error_response = _load_holiday_default_efficiency_for_excel(
         cfg_svc=cfg_svc,
         existing_list=existing_list,
@@ -350,7 +352,7 @@ def excel_calendar_confirm():
             return "“允许急件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
         return None
 
-    excel_svc = ExcelService(backend=get_excel_backend(), logger=None, op_logger=getattr(g, "op_logger", None))
+    excel_svc = g.services.excel_service
     preview_rows = excel_svc.preview_import(
         rows=normalized_rows,
         id_column="日期",
@@ -371,7 +373,7 @@ def excel_calendar_confirm():
             filename=filename,
         )
 
-    cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
+    cal_svc = g.services.calendar_service
     existing_row_ids = set(existing.keys())
 
     def _replace_existing_no_tx() -> None:
@@ -396,7 +398,7 @@ def excel_calendar_confirm():
         )
 
     stats = execute_preview_rows_transactional(
-        g.db,
+        g.services,
         mode=mode,
         preview_rows=preview_rows,
         existing_row_ids=existing_row_ids,
@@ -480,7 +482,7 @@ def excel_calendar_template():
 @bp.get("/excel/calendar/export")
 def excel_calendar_export():
     start = time.time()
-    cal_svc = CalendarService(g.db, op_logger=getattr(g, "op_logger", None))
+    cal_svc = g.services.calendar_service
     rows = cal_svc.list_all()
     template_def = get_template_definition("工作日历.xlsx")
     output = build_xlsx_bytes(

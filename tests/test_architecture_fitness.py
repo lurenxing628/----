@@ -415,6 +415,17 @@ def test_stable_degradation_codes_cover_actual_usages():
                 code = _string_constant(keywords.get("code"))
                 if code:
                     used_codes.add(code)
+                continue
+
+            if func_name in {"_add_state_event", "_add_counted_event"} and "code" in keywords:
+                code = _string_constant(keywords.get("code"))
+                if code:
+                    used_codes.add(code)
+
+            if func_name == "public_degradation_event_message" and node.args:
+                code = _string_constant(node.args[0])
+                if code:
+                    used_codes.add(code)
 
     missing = sorted(code for code in used_codes if code not in set(STABLE_DEGRADATION_CODES))
     assert not missing, "存在未纳入 STABLE_DEGRADATION_CODES 的退化原因码:\n" + "\n".join(missing)

@@ -9,7 +9,7 @@ description: 运行 APS 仓库的全量自测（smoke、web smoke、FullE2E、re
 
 - 运行：`python .limcode/skills/aps-full-selftest/scripts/run_full_selftest.py`
 - 可选：`python .limcode/skills/aps-full-selftest/scripts/run_full_selftest.py --fail-fast --step-timeout 900`（每步超时秒数；<=0 表示不设超时）
-- 汇总报告：`evidence/FullSelfTest/full_selftest_report.md`
+- 汇总报告：`evidence/FullSelfTest/logs/full_selftest_report.md`（ignored artifact，不作为 clean proof 的 tracked 证据）
 
 ## 适用场景（触发词）
 
@@ -58,7 +58,7 @@ description: 运行 APS 仓库的全量自测（smoke、web smoke、FullE2E、re
 ## 全量自测结论
 
 - 总结：PASS/FAIL
-- 汇总报告：evidence/FullSelfTest/full_selftest_report.md
+- 汇总报告：evidence/FullSelfTest/logs/full_selftest_report.md
 
 ## 失败项（若有）
 
@@ -81,7 +81,7 @@ description: 运行 APS 仓库的全量自测（smoke、web smoke、FullE2E、re
 - **目录**：`audit/YYYY-MM/`
 - **文件命名**：`YYYYMMDD_HHMM_full_selftest_review.md`
 - **建议证据清单**：
-  - `evidence/FullSelfTest/full_selftest_report.md`
+  - `evidence/FullSelfTest/logs/full_selftest_report.md`
   - `evidence/FullSelfTest/logs/*.log.txt`（仅引用失败项/首个失败项）
   - 相关 `evidence/...` 报告（Phase 报告、FullE2E 报告、ComplexExcelCases 报告等）
 
@@ -98,7 +98,7 @@ description: 运行 APS 仓库的全量自测（smoke、web smoke、FullE2E、re
 
 - 时间：YYYY-MM-DD HH:MM
 - 证据：
-  - evidence/FullSelfTest/full_selftest_report.md
+  - evidence/FullSelfTest/logs/full_selftest_report.md
   - evidence/FullSelfTest/logs/xx.log.txt
 
 ## 事实摘要（来自证据）

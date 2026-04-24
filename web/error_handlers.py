@@ -6,15 +6,39 @@ from typing import Any, Optional
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from core.infrastructure.errors import AppError, ErrorCode, app_error_http_status, error_response
-from core.services.scheduler import ConfigService
-from web.error_boundary import render_error_template, wants_json_error_response_or_default
+from web.error_boundary import (
+    build_user_visible_app_error_payload,
+    get_user_visible_field_label,
+    render_error_template,
+    user_visible_app_error_details,
+    user_visible_app_error_message,
+    wants_json_error_response_or_default,
+)
 
 
 def _resolve_field_label(details: Any) -> Optional[str]:
     if not isinstance(details, dict):
         return None
     field = str(details.get("field") or "").strip()
-    return ConfigService.get_field_label(field) if field else None
+    if not field:
+        return None
+    return get_user_visible_field_label(field) or field
+
+
+def _html_error_details(details: Any) -> tuple[Any, Optional[str]]:
+    if not isinstance(details, dict):
+        return details, None
+    labels: list[str] = []
+    field_label = _resolve_field_label(details)
+    if field_label:
+        labels.append(field_label)
+    for item in details.get("invalid_query_labels") or []:
+        text = str(item or "").strip()
+        if text and text not in labels:
+            labels.append(text)
+    if labels:
+        return None, "、".join(labels)
+    return details, field_label
 
 
 def register_error_handlers(app):
@@ -24,15 +48,18 @@ def register_error_handlers(app):
     def handle_app_error(e: AppError):
         app.logger.warning(f"业务错误：{e}")
         status_code = app_error_http_status(e.code)
+        user_message = user_visible_app_error_message(e)
+        user_details = user_visible_app_error_details(e)
         if wants_json_error_response_or_default(log_message="业务错误响应分类失败，已回退 HTML 400：%s"):
-            return e.to_dict(), status_code
+            return build_user_visible_app_error_payload(e), status_code
+        html_details, field_label = _html_error_details(user_details)
         return (
             render_error_template(
                 title="发生错误",
                 code=e.code.value,
-                message=e.message,
-                details=e.details,
-                field_label=_resolve_field_label(e.details),
+                message=user_message,
+                details=html_details,
+                field_label=field_label,
             ),
             status_code,
         )

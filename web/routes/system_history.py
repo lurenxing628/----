@@ -5,7 +5,11 @@ from flask import request
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
-from .normalizers import _parse_result_summary_payload_with_meta, parse_optional_version_int
+from .normalizers import (
+    _parse_result_summary_payload_with_meta,
+    decorate_history_version_options,
+    parse_optional_version_int,
+)
 from .pagination import paginate_rows, parse_page_args
 from .system_bp import bp
 from .system_utils import _get_schedule_history_query_service, _safe_int
@@ -18,7 +22,7 @@ def history_page():
     limit = _safe_int(request.args.get("limit"), field="limit", default=per_page, min_v=1, max_v=200)
 
     q = _get_schedule_history_query_service()
-    versions = q.list_versions(limit=30)
+    versions = decorate_history_version_options(q.list_versions(limit=30), log_label="排产历史页")
 
     selected = None
     selected_summary = None

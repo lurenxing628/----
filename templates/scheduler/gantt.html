@@ -29,7 +29,11 @@
         <div class="meta-inline text-meta">
           显示范围：<strong>{{ week_start }}</strong> ～ <strong>{{ week_end }}</strong>
           <span class="meta-sep">｜</span>
-          <strong>第 {{ version }} 版</strong>
+          {% if version is not none %}
+            <strong>第 {{ version }} 版</strong>
+          {% else %}
+            <strong>暂无排产版本</strong>
+          {% endif %}
         </div>
       </div>
       <div class="page-actions page-actions-context"></div>
@@ -82,12 +86,13 @@
               <select name="version" class="w-240">
                 {% for v in versions %}
                   <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
-                    v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ status_zh.get(v.result_status, v.result_status or '-') }}）
+                    {% set option_status_label = v.result_status_label or (selected_result_status_label if v.version == version and selected_result_status_label else status_zh.get(v.result_status, v.result_status or '-')) %}
+                    v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ option_status_label }}）
                   </option>
                 {% endfor %}
               </select>
             {% else %}
-              <input name="version" value="{{ version }}" class="w-160">
+              <input name="version" value="{{ version or '' }}" class="w-160">
             {% endif %}
           </div>
           <div>{{ ui.button('加载', 'primary', 'md', type_attr='submit') }}</div>
@@ -162,17 +167,7 @@
       <details id="ganttHelp" class="aps-gantt-help mt-2">
         <summary>说明（怎么看 / 交互）</summary>
         <div class="muted gantt-help-text">
-          <ul class="list-tight">
-            <li><strong>颜色</strong>：默认“按批次”，同批次同色；可切换按优先级/来源/状态（未开始/进行中/已完成）。</li>
-            <li><strong>假期/停工</strong>：背景淡红色竖条标注（口径：全局工作日历；未配置则周末默认假期；周末可配置为 workday 作为补班）。</li>
-            <li><strong>红边</strong>：该批次在该版本中被判定为<strong>超期</strong>。</li>
-            <li><strong>关键链</strong>：任务条会出现<strong>外框高亮</strong>（影响全局完工时间）。</li>
-            <li><strong>虚线边框</strong>：外协任务。</li>
-            <li><strong>箭头</strong>：可切换“仅关键链 / 完整工艺依赖 / 不显示”。</li>
-            <li><strong>聚焦</strong>：点击任意任务条，可聚焦该批次（其它任务自动弱化）；再次点击取消。</li>
-            <li><strong>筛选</strong>：支持批次/设备/人员下拉筛选；可配合“仅超期/仅外协”快速定位问题。</li>
-            <li><strong>关键链口径</strong>：关键链按<strong>全版本排程</strong>计算（不随周窗口截断）；图上高亮仅为<strong>当前显示范围内</strong>可见的关键链任务。综合工艺前驱与资源前驱（设备/人员）选取“控制前驱”回溯得到。</li>
-          </ul>
+          <ul id="ganttHelpList" class="list-tight"></ul>
         </div>
       </details>
     </details>
@@ -194,7 +189,7 @@
         data-start-date="{{ start_date }}"
         data-end-date="{{ end_date }}"
         data-offset="{{ offset }}"
-        data-version="{{ version }}"
+        data-version="{{ version or '' }}"
         data-has-history="{{ '1' if has_history else '0' }}"
         data-fetch-timeout-ms="12000"
       ></div>
@@ -208,9 +203,9 @@
     <script src="{{ url_for('static', filename='js/gantt.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_color.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_outline.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/gantt_contract.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_render.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_ui.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/gantt_boot.js') }}" defer></script>
   {% endif %}
 {% endblock %}
-

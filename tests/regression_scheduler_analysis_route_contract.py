@@ -17,15 +17,22 @@ class _HistoryItem:
 
 
 class _HistoryServiceStub:
-    def __init__(self, summary):
+    def __init__(self, summary, *, versions=None, latest_version=3):
         self.summary = summary
+        self.versions = list(versions) if versions is not None else [{"version": 3}]
+        self.latest_version = int(latest_version)
         self.version_limits = []
         self.version_queries = []
+        self.latest_version_calls = 0
         self.recent_limits = []
 
     def list_versions(self, limit=50):
         self.version_limits.append(limit)
-        return [{"version": 3}]
+        return list(self.versions)
+
+    def get_latest_version(self):
+        self.latest_version_calls += 1
+        return self.latest_version
 
     def get_by_version(self, version):
         self.version_queries.append(int(version))
@@ -113,10 +120,56 @@ def test_scheduler_analysis_route_surfaces_missing_requested_history(monkeypatch
     payload = response.get_json()
 
     assert response.status_code == 200
-    assert payload["selected"]["version"] == 9
+    assert payload["selected"] is None
     assert payload["selected_summary"] is None
     assert payload["selected_history_resolution"]["requested_version"] == 9
     assert payload["selected_history_resolution"]["history_missing"] is True
     assert "9" in str(payload["selected_history_resolution"]["message"] or "")
+    assert payload["version_resolution"]["status"] == "missing_history"
+    assert payload["version_resolution"]["requested_version"] == 9
+    assert payload["version_resolution"]["selected_version"] is None
     assert payload["trend_rows"][0]["version"] == 3
+    assert all(int(item["version"]) != 9 for item in payload["versions"])
     assert history_service.version_queries == [9]
+
+
+def test_scheduler_analysis_default_latest_does_not_synthesize_missing_selected(monkeypatch) -> None:
+    history_service = _MissingSelectedHistoryService(
+        {"algo": {"metrics": {"overdue_count": 1}}},
+        versions=[{"version": 7}],
+        latest_version=7,
+    )
+    app = _build_app(monkeypatch, history_service)
+    client = app.test_client()
+
+    response = client.get("/scheduler/analysis")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["selected"] is None
+    assert payload["selected_summary"] is None
+    assert payload["selected_history_resolution"]["history_missing"] is True
+    assert payload["selected_history_resolution"]["requested_version"] == 7
+    assert payload["version_resolution"]["selected_version"] == 7
+    assert history_service.version_queries == [7]
+
+
+def test_scheduler_analysis_explicit_old_version_uses_history_lookup_not_recent_dropdown(monkeypatch) -> None:
+    summary = {"algo": {"metrics": {"overdue_count": 0}}, "warnings": []}
+    recent_versions = [{"version": version} for version in range(60, 10, -1)]
+    history_service = _HistoryServiceStub(summary, versions=recent_versions, latest_version=60)
+    app = _build_app(monkeypatch, history_service)
+    client = app.test_client()
+
+    response = client.get("/scheduler/analysis?version=1")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["version_resolution"]["status"] == "ok"
+    assert payload["version_resolution"]["selected_version"] == 1
+    assert payload["selected"]["version"] == 1
+    assert payload["selected_summary"] == summary
+    assert any(int(item["version"]) == 1 for item in payload["versions"])
+    assert history_service.version_limits == [50]
+    assert history_service.version_queries == [1]
+    assert history_service.latest_version_calls == 0

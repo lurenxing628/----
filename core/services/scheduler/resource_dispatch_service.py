@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel import ResourceTeamService
 from core.services.personnel.operator_service import OperatorService
@@ -19,6 +19,9 @@ from .resource_dispatch_support import (
     extract_overdue_batch_ids_with_meta,
 )
 from .schedule_history_query_service import ScheduleHistoryQueryService
+from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
+
+_VERSION_ERROR_MESSAGE = "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。"
 
 
 class ResourceDispatchService:
@@ -84,16 +87,29 @@ class ResourceDispatchService:
     def _list_versions(self, limit: int = 30) -> List[Dict[str, Any]]:
         return list(self.history_service.list_versions(limit=limit) or [])
 
-    def _normalize_strict_positive_version(self, value: Any, *, latest_version: int) -> int:
-        if value in (None, ""):
-            return int(latest_version or 1)
+    def _normalize_strict_positive_version(self, value: Any, *, latest_version: int) -> Optional[int]:
+        if value is None:
+            latest = int(latest_version or 0)
+            return latest if latest > 0 else None
+        text = str(value).strip()
+        if not text or text.lower() == "latest":
+            latest = int(latest_version or 0)
+            return latest if latest > 0 else None
         try:
-            version = int(value)
+            version = int(text)
         except Exception as exc:
-            raise ValidationError("排产版本必须是整数", field="version") from exc
+            raise ValidationError(_VERSION_ERROR_MESSAGE, field="version") from exc
         if version <= 0:
-            raise ValidationError("排产版本必须大于 0", field="version")
+            raise ValidationError(_VERSION_ERROR_MESSAGE, field="version")
         return version
+
+    def _resolve_version(self, value: Any, *, latest_version: Optional[int] = None) -> VersionResolution:
+        latest = self._latest_version() if latest_version is None else int(latest_version or 0)
+        return resolve_version_or_latest(
+            value,
+            latest_version=latest,
+            version_exists=lambda version: self.history_service.get_by_version(int(version)) is not None,
+        )
 
     def _scope_record(self, scope_type: str, scope_id: str):
         if scope_type == "operator":
@@ -218,7 +234,10 @@ class ResourceDispatchService:
         )
         selected_scope_name = self._scope_name(normalized_scope_type, selected_scope_id) if selected_scope_id else ""
         operator_options, machine_options, team_options = self._build_scope_options()
-        selected_version = self._normalize_strict_positive_version(version, latest_version=latest_version)
+        version_resolution = self._resolve_version(version, latest_version=latest_version)
+        if version_resolution.status == "missing_history":
+            require_selected_version(version_resolution)
+        selected_version = version_resolution.selected_version
         return {
             "filters": {
                 "scope_type": normalized_scope_type,
@@ -264,15 +283,19 @@ class ResourceDispatchService:
         normalized_scope_type = self._normalize_scope_type(scope_type)
         normalized_team_axis = self._normalize_team_axis(team_axis)
         latest_version = self._latest_version()
-        selected_version = self._normalize_strict_positive_version(version, latest_version=latest_version)
-        if latest_version <= 0:
-            return empty_dispatch_payload(
+        version_resolution = self._resolve_version(version, latest_version=latest_version)
+        if version_resolution.status == "no_history":
+            payload = empty_dispatch_payload(
                 scope_type=normalized_scope_type,
                 scope_type_label=self._scope_type_label(normalized_scope_type),
                 team_axis=normalized_team_axis,
                 team_axis_label=self._team_axis_label(normalized_team_axis),
-                version=selected_version,
+                version=None,
             )
+            payload["status"] = "no_history"
+            payload["requested_version"] = version_resolution.requested_version
+            return payload
+        selected_version = require_selected_version(version_resolution)
 
         selected_scope_id = self._resolve_scope_id(
             scope_type=normalized_scope_type,
@@ -329,6 +352,8 @@ class ResourceDispatchService:
             selected_version=selected_version,
         )
         payload["has_history"] = True
+        payload["status"] = "ok"
+        payload["requested_version"] = version_resolution.requested_version
         payload["overdue_markers_degraded"] = bool(overdue_meta.get("degraded"))
         payload["overdue_markers_partial"] = bool(overdue_meta.get("partial"))
         payload["overdue_markers_message"] = str(overdue_meta.get("message") or "")
@@ -344,6 +369,8 @@ class ResourceDispatchService:
 
     def build_export(self, **kwargs) -> Tuple[Any, str, Dict[str, Any]]:
         payload = self.get_dispatch_payload(**kwargs)
+        if not payload.get("has_history"):
+            raise BusinessError(ErrorCode.NOT_FOUND, "暂无排产历史，无法导出资源排班。", details={"field": "version", "status": "no_history"})
         buf = build_resource_dispatch_workbook(payload)
         filters = payload.get("filters") or {}
         filename = "资源排班"

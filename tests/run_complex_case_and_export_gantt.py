@@ -18,6 +18,12 @@ def build_preview_client_bootstrap(
     tasks_expr: str = "tasks",
     calendar_days_expr: str = "calendarDays",
     critical_chain_expr: str = "criticalChain",
+    degradation_events_expr: str = '(typeof degradationEvents === "undefined" ? [] : degradationEvents)',
+    degradation_counters_expr: str = '(typeof degradationCounters === "undefined" ? {} : degradationCounters)',
+    empty_reason_expr: str = '(typeof emptyReason === "undefined" ? "" : emptyReason)',
+    overdue_markers_degraded_expr: str = '(typeof overdueMarkersDegraded === "undefined" ? false : overdueMarkersDegraded)',
+    overdue_markers_partial_expr: str = '(typeof overdueMarkersPartial === "undefined" ? false : overdueMarkersPartial)',
+    overdue_markers_message_expr: str = '(typeof overdueMarkersMessage === "undefined" ? "" : overdueMarkersMessage)',
 ) -> str:
     return textwrap.dedent(
         f"""
@@ -25,15 +31,67 @@ def build_preview_client_bootstrap(
           const taskList = {tasks_expr};
           const dayList = {calendar_days_expr};
           const chainData = {critical_chain_expr};
-          const outlineApi = window.__APS_GANTT__ && window.__APS_GANTT__.outline;
+          const previewDegradationEvents = {degradation_events_expr};
+          const previewDegradationCounters = {degradation_counters_expr};
+          const previewEmptyReason = {empty_reason_expr};
+          const previewOverdueMarkersDegraded = {overdue_markers_degraded_expr};
+          const previewOverdueMarkersPartial = {overdue_markers_partial_expr};
+          const previewOverdueMarkersMessage = {overdue_markers_message_expr};
+          const previewCalendarPayload = {{
+            degradationEvents: previewDegradationEvents,
+            degradationCounters: previewDegradationCounters,
+            emptyReason: previewEmptyReason
+          }};
+          const ganttNs = window.__APS_GANTT__ || {{}};
+          const outlineApi = ganttNs.outline;
+          const contractApi = ganttNs.contract;
           if (!outlineApi || typeof outlineApi.setCriticalOutlineEnabled !== "function" || typeof outlineApi.installCriticalOutlineSyncAdapter !== "function") {{
             throw new Error("APS critical outline helper missing");
           }}
+          if (!contractApi || typeof contractApi.normalizeCriticalChain !== "function" || typeof contractApi.buildRenderTasks !== "function") {{
+            throw new Error("APS gantt contract helper missing");
+          }}
 
-          const gantt = new Gantt("#gantt", taskList, {{
+          const critical = contractApi.normalizeCriticalChain(chainData);
+          const renderTasks = contractApi.buildRenderTasks(taskList, "critical", critical);
+
+          const gantt = new Gantt("#gantt", renderTasks, {{
             view_mode: "Day",
             language: "zh",
-            popup_trigger: "click"
+            popup_trigger: "click",
+            custom_popup_html(task) {{
+              const meta = task && task.meta ? task.meta : {{}};
+              const criticalInfo = contractApi.getCriticalTooltip(task, critical);
+              function escapeHtml(value) {{
+                const text = value === null || typeof value === "undefined" ? "" : String(value);
+                if (!/[&<>"']/.test(text)) return text;
+                return text
+                  .replace(/&/g, "&amp;")
+                  .replace(/</g, "&lt;")
+                  .replace(/>/g, "&gt;")
+                  .replace(/"/g, "&quot;")
+                  .replace(/'/g, "&#39;");
+              }}
+
+              const lines = [
+                `<div class="title">${{escapeHtml(meta._raw_name || task.name || "")}}</div>`,
+                `<div class="subtitle">时间：${{escapeHtml(task.start || "-")}} ～ ${{escapeHtml(task.end || "-")}}</div>`,
+                `<div class="subtitle">批次：${{escapeHtml(meta.batch_id || "-")}}</div>`,
+                `<div class="subtitle">件：${{escapeHtml(meta.piece_id || "-")}}</div>`,
+                `<div class="subtitle">图号：${{escapeHtml(meta.part_no || "-")}}</div>`,
+                `<div class="subtitle">工序：${{escapeHtml(meta.seq || "-")}}（${{escapeHtml(meta.op_type_name || "-")}}）</div>`,
+                `<div class="subtitle">设备：${{escapeHtml(meta.machine || "-")}}</div>`,
+                `<div class="subtitle">人员：${{escapeHtml(meta.operator || "-")}}</div>`,
+                `<div class="subtitle">来源：${{escapeHtml(meta.source || "-")}}</div>`,
+                `<div class="subtitle">关键链：${{escapeHtml(criticalInfo.statusLabel)}}｜超期：${{meta.is_overdue ? "是" : "否"}}</div>`,
+                `<div class="subtitle">关键链前驱：${{escapeHtml(criticalInfo.predecessorText)}}｜类型：${{escapeHtml(criticalInfo.edgeTypeText)}}｜间隔(分)：${{escapeHtml(criticalInfo.gapText)}}</div>`,
+                `<div class="subtitle">关键链依据：${{escapeHtml(criticalInfo.reasonText)}}</div>`,
+              ];
+              if (criticalInfo.unavailableMessage) {{
+                lines.push(`<div class="subtitle">关键链降级：${{escapeHtml(criticalInfo.unavailableMessage)}}</div>`);
+              }}
+              return lines.join("");
+            }}
           }});
           outlineApi.installCriticalOutlineSyncAdapter(gantt);
 
@@ -138,13 +196,37 @@ def build_preview_client_bootstrap(
             }}
           }}
 
-          function applyDecorations(taskList, chain) {{
+          function applyDegradationWarning(chain) {{
+            const warning = document.getElementById("ganttDegradationWarning");
+            if (!warning) return;
+            const message = contractApi.buildDegradationMessages({{
+              degradationEvents: previewDegradationEvents,
+              degradationCounters: previewDegradationCounters,
+              emptyReason: previewEmptyReason
+            }}, chain).join(" ");
+            warning.textContent = message;
+            warning.style.display = message ? "block" : "none";
+          }}
+
+          function applyOverdueWarning() {{
+            const warning = document.getElementById("ganttOverdueWarning");
+            if (!warning) return;
+            const message = contractApi.getOverdueWarningMessage({{
+              overdueMarkersDegraded: previewOverdueMarkersDegraded,
+              overdueMarkersPartial: previewOverdueMarkersPartial,
+              overdueMarkersMessage: previewOverdueMarkersMessage
+            }});
+            warning.textContent = message;
+            warning.style.display = message ? "block" : "none";
+          }}
+
+          function applyDecorations(renderList, chain) {{
             const byId = new Map();
-            (Array.isArray(taskList) ? taskList : []).forEach((task) => {{
+            (Array.isArray(renderList) ? renderList : []).forEach((task) => {{
               const id = norm(task && task.id);
               if (id) byId.set(id, task);
             }});
-            const ccSet = new Set(((chain && chain.ids) || []).map((value) => norm(value)).filter(Boolean));
+            const ccSet = chain && chain.idSet ? chain.idSet : new Set();
 
             document.querySelectorAll("#gantt .bar-wrapper").forEach((wrapper) => {{
               const taskId = norm(wrapper.getAttribute("data-id"));
@@ -175,7 +257,7 @@ def build_preview_client_bootstrap(
             }});
           }}
 
-          function renderLegend(taskList, days, chain) {{
+          function renderLegend(renderList, days, chain) {{
             const legend = document.getElementById("legend");
             if (!legend) return;
             while (legend.firstChild) {{
@@ -214,20 +296,33 @@ def build_preview_client_bootstrap(
               return itemNode;
             }}
 
-            const ccCount = ((chain && chain.ids) || []).length;
+            const normalizedChain = contractApi.normalizeCriticalChain(chain);
+            const ccCount = normalizedChain && normalizedChain.idSet ? normalizedChain.idSet.size : 0;
             const makespanEnd = norm(chain && chain.makespan_end) || "-";
-            const holidayCount = (Array.isArray(days) ? days : []).filter((day) => day && (day.is_holiday || day.is_nonworking)).length;
+            const calendarDayList = Array.isArray(days) ? days : [];
+            const holidayCount = calendarDayList.filter((day) => day && (day.is_holiday || day.is_nonworking)).length;
+            const calendarBackgroundDisabled = calendarDayList.length === 0
+              && !contractApi.shouldUseFallbackCalendarDays(previewCalendarPayload);
 
             const summaryRow = row();
             const summary = document.createElement("span");
-            summary.textContent = `任务 ${{(taskList || []).length}} · 关键链 ${{ccCount}} · 完工 ${{makespanEnd}} · 假期/停工 ${{holidayCount}}`;
+            summary.textContent = `任务 ${{(renderList || []).length}} · 关键链 ${{ccCount}} · 完工 ${{makespanEnd}} · 假期/停工 ${{holidayCount}} · 箭头 ${{contractApi.getArrowModeLabel("critical", chain)}} · ${{contractApi.getCriticalStatusLabel(chain)}}`;
             summaryRow.appendChild(summary);
             legend.appendChild(summaryRow);
+
+            const warningText = contractApi.getCriticalChainUnavailableMessage(chain);
+            if (warningText) {{
+              const warnRow = row();
+              const warn = document.createElement("span");
+              warn.textContent = warningText;
+              warnRow.appendChild(warn);
+              legend.appendChild(warnRow);
+            }}
 
             const colorRow = row();
             colorRow.appendChild(title("配色"));
             const seen = new Set();
-            (Array.isArray(taskList) ? taskList : []).forEach((task) => {{
+            (Array.isArray(renderList) ? renderList : []).forEach((task) => {{
               const batchId = norm(task && task.meta && task.meta.batch_id);
               if (!batchId || seen.has(batchId) || seen.size >= 6) return;
               seen.add(batchId);
@@ -237,14 +332,20 @@ def build_preview_client_bootstrap(
 
             const markRow = row();
             markRow.appendChild(title("标记"));
-            markRow.appendChild(item("假期/停工", {{ background: "#fee2e2" }}));
+            markRow.appendChild(calendarBackgroundDisabled
+              ? item("假期/停工(停用)", {{ background: "#ffffff", borderColor: "#94a3b8", borderWidth: 1.5 }})
+              : item("假期/停工(背景)", {{ background: "#fee2e2" }}));
             markRow.appendChild(item("超期", {{ background: "#ffffff", borderColor: "#ef4444", borderWidth: 2.5 }}));
-            markRow.appendChild(item("关键链", {{ background: "#ffffff", borderColor: "#38bdf8", borderWidth: 2.5 }}));
+            const criticalMarkerDisabled = normalizedChain && normalizedChain.available === false;
+            markRow.appendChild(item(
+              criticalMarkerDisabled ? "关键链(停用)" : "关键链",
+              {{ background: "#ffffff", borderColor: criticalMarkerDisabled ? "#94a3b8" : "#38bdf8", borderWidth: 2.5 }}
+            ));
             markRow.appendChild(item("外协", {{ background: "#ffffff", borderColor: "#334155", borderWidth: 1.5, borderStyle: "dashed" }}));
             legend.appendChild(markRow);
           }}
 
-          const originalChangeViewMode = typeof gantt.change_view_mode === "function"
+            const originalChangeViewMode = typeof gantt.change_view_mode === "function"
             ? gantt.change_view_mode
             : null;
           if (originalChangeViewMode) {{
@@ -252,17 +353,25 @@ def build_preview_client_bootstrap(
               const result = originalChangeViewMode.call(this, mode);
               outlineApi.installCriticalOutlineSyncAdapter(this);
               renderHolidayColumns(this, dayList);
-              applyDecorations(taskList, chainData);
-              renderLegend(taskList, dayList, chainData);
+              applyDecorations(renderTasks, critical);
+              renderLegend(renderTasks, dayList, critical);
+              applyDegradationWarning(critical);
+              applyOverdueWarning();
+              contractApi.renderHelpList(document.getElementById("ganttHelpList"), critical, previewCalendarPayload);
               return result;
             }};
           }}
 
           renderHolidayColumns(gantt, dayList);
-          applyDecorations(taskList, chainData);
-          renderLegend(taskList, dayList, chainData);
+          applyDecorations(renderTasks, critical);
+          renderLegend(renderTasks, dayList, critical);
+          applyDegradationWarning(critical);
+          applyOverdueWarning();
+          contractApi.renderHelpList(document.getElementById("ganttHelpList"), critical, previewCalendarPayload);
           window.__APS_GANTT_PREVIEW__ = {{
             gantt: gantt,
+            critical: critical,
+            renderTasks: renderTasks,
             renderHolidayColumns: renderHolidayColumns,
             applyDecorations: applyDecorations,
             renderLegend: renderLegend
@@ -280,6 +389,12 @@ def _write_html(
     tasks: List[Dict[str, Any]],
     calendar_days: Optional[List[Dict[str, Any]]] = None,
     critical_chain: Optional[Dict[str, Any]] = None,
+    degradation_events: Optional[List[Dict[str, Any]]] = None,
+    degradation_counters: Optional[Dict[str, Any]] = None,
+    empty_reason: str = "",
+    overdue_markers_degraded: bool = False,
+    overdue_markers_partial: bool = False,
+    overdue_markers_message: str = "",
 ) -> str:
     out_path = os.path.join(repo_root, rel_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -288,7 +403,23 @@ def _write_html(
     tasks_json = json.dumps(tasks, ensure_ascii=False, default=str)
     cal_json = json.dumps(calendar_days or [], ensure_ascii=False, default=str)
     cc_json = json.dumps(critical_chain or {}, ensure_ascii=False, default=str)
-    bootstrap_js = build_preview_client_bootstrap("tasks", "calendarDays", "criticalChain")
+    degradation_events_json = json.dumps(degradation_events or [], ensure_ascii=False, default=str)
+    degradation_counters_json = json.dumps(degradation_counters or {}, ensure_ascii=False, default=str)
+    empty_reason_json = json.dumps(empty_reason or "", ensure_ascii=False)
+    overdue_markers_message_json = json.dumps(overdue_markers_message or "", ensure_ascii=False)
+    overdue_markers_degraded_json = "true" if overdue_markers_degraded else "false"
+    overdue_markers_partial_json = "true" if overdue_markers_partial else "false"
+    bootstrap_js = build_preview_client_bootstrap(
+        "tasks",
+        "calendarDays",
+        "criticalChain",
+        "degradationEvents",
+        "degradationCounters",
+        "emptyReason",
+        "overdueMarkersDegraded",
+        "overdueMarkersPartial",
+        "overdueMarkersMessage",
+    )
 
     html = f"""<!doctype html>
 <html lang="zh-CN">
@@ -310,17 +441,12 @@ def _write_html(
   <h2>{title}</h2>
   <div class="meta"><b>meta</b>\n{meta_json}</div>
   <div class="wrap">
+    <div id="ganttOverdueWarning" class="aps-gantt-help" style="display:none; margin-bottom:10px;"></div>
+    <div id="ganttDegradationWarning" class="aps-gantt-help" style="display:none; margin-bottom:10px;"></div>
     <div id="legend" class="aps-gantt-legend"></div>
     <details class="aps-gantt-help" style="margin-top:10px;" open>
       <summary>说明（怎么看）</summary>
-      <div class="meta" style="color:#64748b; margin:6px 0 0; line-height:1.7;">
-        - 颜色：默认按批次，同批次同色<br/>
-        - 红边：该批次在该版本中被判定为超期<br/>
-        - 关键链：任务条外框高亮，表示影响全局完工时间<br/>
-        - 虚线边框：外协任务<br/>
-        - 淡红背景：假期/停工，来源于工作日历<br/>
-        - 箭头：工艺依赖，后一工序依赖前一工序
-      </div>
+      <ul id="ganttHelpList" class="meta" style="color:#64748b; margin:6px 0 0; line-height:1.7;"></ul>
     </details>
     <div id="gantt" style="margin-top:10px;"></div>
   </div>
@@ -328,10 +454,17 @@ def _write_html(
 
   <script src="../../static/js/frappe-gantt.min.js"></script>
   <script src="../../static/js/gantt_outline.js"></script>
+  <script src="../../static/js/gantt_contract.js"></script>
   <script>
     const tasks = {tasks_json};
     const calendarDays = {cal_json};
     const criticalChain = {cc_json};
+    const degradationEvents = {degradation_events_json};
+    const degradationCounters = {degradation_counters_json};
+    const emptyReason = {empty_reason_json};
+    const overdueMarkersDegraded = {overdue_markers_degraded_json};
+    const overdueMarkersPartial = {overdue_markers_partial_json};
+    const overdueMarkersMessage = {overdue_markers_message_json};
     {bootstrap_js}
   </script>
 </body>
@@ -588,6 +721,12 @@ def main() -> None:
         tasks_machine,
         calendar_days=(data_machine.get("calendar_days") or []),
         critical_chain=(data_machine.get("critical_chain") or {}),
+        degradation_events=(data_machine.get("degradation_events") or []),
+        degradation_counters=(data_machine.get("degradation_counters") or {}),
+        empty_reason=str(data_machine.get("empty_reason") or ""),
+        overdue_markers_degraded=bool(data_machine.get("overdue_markers_degraded")),
+        overdue_markers_partial=bool(data_machine.get("overdue_markers_partial")),
+        overdue_markers_message=str(data_machine.get("overdue_markers_message") or ""),
     )
     operator_html = _write_html(
         repo_root,
@@ -597,6 +736,12 @@ def main() -> None:
         tasks_operator,
         calendar_days=(data_operator.get("calendar_days") or []),
         critical_chain=(data_operator.get("critical_chain") or {}),
+        degradation_events=(data_operator.get("degradation_events") or []),
+        degradation_counters=(data_operator.get("degradation_counters") or {}),
+        empty_reason=str(data_operator.get("empty_reason") or ""),
+        overdue_markers_degraded=bool(data_operator.get("overdue_markers_degraded")),
+        overdue_markers_partial=bool(data_operator.get("overdue_markers_partial")),
+        overdue_markers_message=str(data_operator.get("overdue_markers_message") or ""),
     )
 
     print("OK")

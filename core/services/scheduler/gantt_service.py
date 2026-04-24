@@ -14,6 +14,7 @@ from .gantt_range import WeekRange, resolve_week_range
 from .gantt_tasks import build_calendar_days, build_tasks
 from .gantt_week_plan import build_week_plan_rows
 from .resource_dispatch_support import extract_overdue_batch_ids_with_meta
+from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
 
 
 class GanttService:
@@ -39,7 +40,54 @@ class GanttService:
 
     def get_latest_version_or_1(self) -> int:
         v = int(self.history_repo.get_latest_version() or 0)
-        return v if v > 0 else 1
+        return v if v > 0 else 0
+
+    def resolve_version(self, value: Any) -> VersionResolution:
+        latest = int(self.history_repo.get_latest_version() or 0)
+        return resolve_version_or_latest(
+            value,
+            latest_version=latest,
+            version_exists=lambda version: self.history_repo.get_by_version(int(version)) is not None,
+        )
+
+    def _empty_gantt_contract(
+        self,
+        *,
+        view: str,
+        week_start: Optional[str],
+        offset_weeks: int,
+        start_date: Optional[str],
+        end_date: Optional[str],
+        include_history: bool,
+        resolution: VersionResolution,
+    ) -> Dict[str, Any]:
+        wr = self.resolve_week_range(
+            week_start=week_start,
+            offset_weeks=offset_weeks,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        calendar_days_outcome = build_calendar_days(self.conn, wr=wr, logger=self.logger, op_logger=self.op_logger)
+        out = build_gantt_contract(
+            contract_version=self.CONTRACT_VERSION,
+            view=view,
+            version=None,
+            week_start=wr.week_start_date.isoformat(),
+            week_end=wr.week_end_date.isoformat(),
+            tasks=[],
+            calendar_days=calendar_days_outcome.value,
+            critical_chain={"available": False, "reason": "no_history"},
+            degraded=bool(calendar_days_outcome.has_events),
+            degradation_events=degradation_events_to_dicts(calendar_days_outcome.events),
+            degradation_counters=calendar_days_outcome.counters,
+            empty_reason="no_history",
+            include_history=include_history,
+            history=None,
+        )
+        out["has_history"] = False
+        out["status"] = resolution.status
+        out["requested_version"] = resolution.requested_version
+        return out
 
     def resolve_week_range(
         self,
@@ -199,7 +247,18 @@ class GanttService:
             raise ValidationError("视图不正确，请选择：设备 / 人员。", field="视图")
 
         wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
-        ver = int(version) if version is not None and str(version).strip() != "" else self.get_latest_version_or_1()
+        resolution = self.resolve_version(version)
+        if resolution.status == "no_history":
+            return self._empty_gantt_contract(
+                view=view,
+                week_start=week_start,
+                offset_weeks=offset_weeks,
+                start_date=start_date,
+                end_date=end_date,
+                include_history=include_history,
+                resolution=resolution,
+            )
+        ver = require_selected_version(resolution)
 
         calendar_days_outcome = build_calendar_days(self.conn, wr=wr, logger=self.logger, op_logger=self.op_logger)
         rows = self.schedule_repo.list_overlapping_with_details(wr.start_str, wr.end_exclusive_str, ver)
@@ -229,7 +288,7 @@ class GanttService:
                 )
             )
 
-        return build_gantt_contract(
+        data = build_gantt_contract(
             contract_version=self.CONTRACT_VERSION,
             view=view,
             version=ver,
@@ -248,6 +307,10 @@ class GanttService:
             include_history=include_history,
             history=hist_dict if include_history else None,
         )
+        data["has_history"] = True
+        data["status"] = "ok"
+        data["requested_version"] = resolution.requested_version
+        return data
 
     def get_week_plan_rows(
         self,
@@ -263,7 +326,23 @@ class GanttService:
         字段：日期/批次号/图号/工序/设备/人员/时段
         """
         wr = self.resolve_week_range(week_start=week_start, offset_weeks=offset_weeks, start_date=start_date, end_date=end_date)
-        ver = int(version) if version is not None and str(version).strip() != "" else self.get_latest_version_or_1()
+        resolution = self.resolve_version(version)
+        if resolution.status == "no_history":
+            return {
+                "version": None,
+                "requested_version": resolution.requested_version,
+                "status": "no_history",
+                "has_history": False,
+                "week_start": wr.week_start_date.isoformat(),
+                "week_end": wr.week_end_date.isoformat(),
+                "rows": [],
+                "degraded": False,
+                "degradation_events": [],
+                "degradation_counters": {},
+                "empty_reason": "no_history",
+                "history": None,
+            }
+        ver = require_selected_version(resolution)
 
         rows = self.schedule_repo.list_overlapping_with_details(wr.start_str, wr.end_exclusive_str, ver)
         outcome = build_week_plan_rows(rows=rows, wr=wr)
@@ -271,6 +350,9 @@ class GanttService:
         hist = self.history_repo.get_by_version(ver)
         return {
             "version": ver,
+            "requested_version": resolution.requested_version,
+            "status": "ok",
+            "has_history": True,
             "week_start": wr.week_start_date.isoformat(),
             "week_end": wr.week_end_date.isoformat(),
             "rows": outcome.value,
@@ -280,4 +362,3 @@ class GanttService:
             "empty_reason": outcome.empty_reason,
             "history": hist.to_dict() if hist else None,
         }
-

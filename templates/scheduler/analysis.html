@@ -31,7 +31,7 @@
           <select name="version" class="min-w-260">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if selected and (selected.version|int)==(v.version|int) %}selected{% endif %}>
-                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ status_zh.get(v.result_status, v.result_status or '-') }}）
+                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ v.result_status_label or status_zh.get(v.result_status, v.result_status or '-') }}）
               </option>
             {% endfor %}
           </select>
@@ -65,7 +65,7 @@
         <span class="meta-sep">｜</span>
         方式：<strong>{{ strategy_zh.get(selected.strategy, selected.strategy or '-') }}</strong>
         <span class="meta-sep">｜</span>
-        状态：<strong>{{ status_zh.get(selected.result_status, selected.result_status or '-') }}</strong>
+        状态：<strong>{{ selected_summary_display.result_status_label or status_zh.get(selected.result_status, selected.result_status or '-') }}</strong>
         <span class="meta-sep">｜</span>
         创建人：{{ selected.created_by or '-' }}
       </div>
@@ -341,15 +341,16 @@
         <div class="muted">该版本未记录优化过程（可能是快速模式或旧版本）。</div>
       {% endif %}
     </div>
+  {% endif %}
 
-    <div class="card">
-      <h3 class="section-title">版本趋势（最近 {{ trend_rows|length }} 个有指标的版本）</h3>
-      {% if trend_summary_state.incomplete %}
-        <div class="flash-card flash-warning mb-2">
-          趋势摘要不完整：最近 {{ trend_summary_state.parse_failed_count }} 个版本的摘要解析失败，趋势图仅基于可解析版本生成。
-        </div>
-      {% endif %}
-      {% if trend_rows and trend_rows|length > 1 %}
+  <div class="card">
+    <h3 class="section-title">版本趋势（最近 {{ trend_rows|length }} 个有指标的版本）</h3>
+    {% if trend_summary_state.incomplete %}
+      <div class="flash-card flash-warning mb-2">
+        趋势摘要不完整：最近 {{ trend_summary_state.parse_failed_count }} 个版本的摘要解析失败，趋势图仅基于可解析版本生成。
+      </div>
+    {% endif %}
+    {% if trend_rows and trend_rows|length > 1 %}
         <div class="muted">范围：v{{ trend_rows[0].version }} ～ v{{ trend_rows[-1].version }}</div>
 
         {% if trend_charts.overdue %}
@@ -439,10 +440,8 @@
           </div>
           <div class="muted">最小 {{ trend_charts.operator_util.y_min|round(6) }} / 最大 {{ trend_charts.operator_util.y_max|round(6) }}</div>
         {% endif %}
-      {% else %}
-        <div class="muted">暂无趋势数据（需要至少 2 个包含排产指标的版本）。</div>
-      {% endif %}
-    </div>
-  {% endif %}
+    {% else %}
+      <div class="muted">暂无趋势数据（需要至少 2 个包含排产指标的版本）。</div>
+    {% endif %}
+  </div>
 {% endblock %}
-

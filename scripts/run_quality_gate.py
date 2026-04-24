@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -14,48 +17,62 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools.quality_gate_support import (  # noqa: E402
-    QUALITY_GATE_GUARD_TESTS,
     QUALITY_GATE_MANIFEST_REL,
+    QUALITY_GATE_PYRIGHT_GATE_CONFIG,
+    QUALITY_GATE_RECEIPTS_DIR_REL,
     QUALITY_GATE_SELFTEST_PATH,
+    QUALITY_GATE_STARTUP_REGRESSION_ARGS,
+    QUALITY_GATE_TOOL_PATHS,
     QualityGateError,
+    apply_quality_gate_manifest_proof_fields,
+    build_quality_gate_collection_proof,
+    build_quality_gate_command_plan,
+    build_quality_gate_command_receipt,
+    build_quality_gate_receipt_rel_path,
+    iter_quality_gate_required_tests,
+    parse_pytest_collect_nodeids,
 )
 from web.bootstrap import launcher  # noqa: E402
 
-STARTUP_REGRESSION_ARGS = [
-    "tests/regression_runtime_probe_resolution.py",
-    "tests/test_win7_launcher_runtime_paths.py",
-    "tests/regression_runtime_contract_launcher.py",
-    "tests/regression_runtime_lock_reloader_parent_skip.py",
-    "tests/regression_startup_host_portfile.py",
-    "tests/regression_startup_host_portfile_new_ui.py",
-    "tests/regression_plugin_bootstrap_config_failure_visible.py",
-    "tests/regression_plugin_bootstrap_injects_config_reader.py",
-    "tests/regression_plugin_bootstrap_telemetry_failure_visible.py",
-    "tests/regression_app_new_ui_secret_key_runtime_ensure.py",
-    "tests/regression_app_new_ui_session_contract.py",
-    "tests/regression_app_new_ui_security_hardening_enabled.py",
-    "tests/test_app_factory_runtime_env_refresh.py",
-    "tests/regression_runtime_stop_cli.py",
-]
-
-GUARD_TEST_ARGS = list(QUALITY_GATE_GUARD_TESTS)
+STARTUP_REGRESSION_ARGS = list(QUALITY_GATE_STARTUP_REGRESSION_ARGS)
+REQUIRED_TEST_ARGS = list(iter_quality_gate_required_tests())
+GUARD_TEST_ARGS = list(REQUIRED_TEST_ARGS)
 
 PYRIGHT_REQUIRED_VERSION = (1, 1, 406)
-PYRIGHT_GATE_CONFIG = "pyrightconfig.gate.json"
-QUALITY_GATE_TOOL_PATHS = [
-    "scripts/run_quality_gate.py",
-    "tools/quality_gate_shared.py",
-]
+PYRIGHT_GATE_CONFIG = QUALITY_GATE_PYRIGHT_GATE_CONFIG
 QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
+GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
+    QUALITY_GATE_MANIFEST_REL.replace("\\", "/"),
+    QUALITY_GATE_RECEIPTS_DIR_REL.replace("\\", "/") + "/",
+]
+HIGH_RISK_UNTRACKED_SOURCE_PREFIXES = ("core/", "web/", "data/", "tools/", "scripts/")
+HIGH_RISK_UNTRACKED_SOURCE_SUFFIXES = (".py", ".js", ".ts", ".html", ".css", ".sql")
 
 
-def _run_command(display: str, args: Sequence[str], capture_output: bool = False) -> str:
+class RuntimeProbeState(str, Enum):
+    ABSENT = "absent"
+    ACTIVE = "active"
+    STALE = "stale"
+    UNKNOWN = "unknown"
+
+
+def _coerce_runtime_probe_state(value: Any) -> RuntimeProbeState:
+    if isinstance(value, RuntimeProbeState):
+        return value
+    normalized = str(value or "").strip().lower()
+    for state in RuntimeProbeState:
+        if state.value == normalized:
+            return state
+    raise QualityGateError(f"未知运行时探针状态：{value}")
+
+
+def _run_command(display: str, args: Sequence[str], capture_output: bool = False) -> Dict[str, Any]:
     print(f"==> {display}")
     completed = subprocess.run(
         list(args),
         cwd=REPO_ROOT,
         text=True,
-        capture_output=capture_output,
+        capture_output=True,
         encoding="utf-8",
         errors="replace",
     )
@@ -64,9 +81,72 @@ def _run_command(display: str, args: Sequence[str], capture_output: bool = False
             print(completed.stdout.rstrip())
         if completed.stderr:
             print(completed.stderr.rstrip(), file=sys.stderr)
-    if completed.returncode != 0:
+    elif completed.returncode != 0:
+        if completed.stdout:
+            print(completed.stdout.rstrip())
+        if completed.stderr:
+            print(completed.stderr.rstrip(), file=sys.stderr)
+    return {
+        "stdout": str(completed.stdout or ""),
+        "stderr": str(completed.stderr or ""),
+        "returncode": int(completed.returncode),
+    }
+
+
+def _coerce_command_result(result: Any) -> Dict[str, Any]:
+    if isinstance(result, dict):
+        return {
+            "stdout": str(result.get("stdout") or ""),
+            "stderr": str(result.get("stderr") or ""),
+            "returncode": int(result.get("returncode") or 0),
+        }
+    return {
+        "stdout": str(result or ""),
+        "stderr": "",
+        "returncode": 0,
+    }
+
+
+def _assert_command_succeeded(display: str, result: Dict[str, Any]) -> None:
+    if int(result.get("returncode") or 0) != 0:
         raise QualityGateError(f"命令失败：{display}")
-    return (completed.stdout or "").strip() if capture_output else ""
+
+
+def _sha256_file(abs_path: str) -> str:
+    hasher = hashlib.sha256()
+    with open(abs_path, "rb") as handle:
+        while True:
+            chunk = handle.read(65536)
+            if not chunk:
+                break
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, result: Dict[str, Any]) -> Dict[str, str]:
+    receipt_rel = build_quality_gate_receipt_rel_path(index, str(command.get("display") or ""))
+    receipt_abs = os.path.join(REPO_ROOT, receipt_rel.replace("/", os.sep))
+    os.makedirs(os.path.dirname(receipt_abs), exist_ok=True)
+    receipt_payload = build_quality_gate_command_receipt(
+        command,
+        run_id=run_id,
+        command_index=index,
+        returncode=int(result.get("returncode") or 0),
+        stdout=str(result.get("stdout") or ""),
+        stderr=str(result.get("stderr") or ""),
+    )
+    with open(receipt_abs, "w", encoding="utf-8") as handle:
+        json.dump(receipt_payload, handle, ensure_ascii=False, indent=2)
+    return {
+        "path": receipt_rel,
+        "sha256": _sha256_file(receipt_abs),
+    }
+
+
+def _clear_quality_gate_receipts() -> None:
+    receipts_abs = os.path.join(REPO_ROOT, QUALITY_GATE_RECEIPTS_DIR_REL)
+    if os.path.isdir(receipts_abs):
+        shutil.rmtree(receipts_abs)
 
 
 def _guard_test_abs_path(rel_path: str) -> str:
@@ -115,8 +195,8 @@ def _repo_identity() -> Dict[str, str]:
 
 
 def _assert_guard_tests_ready() -> None:
-    missing = [path for path in GUARD_TEST_ARGS if not _guard_test_exists(path)]
-    untracked = [path for path in GUARD_TEST_ARGS if path not in missing and not _guard_test_tracked(path)]
+    missing = [path for path in REQUIRED_TEST_ARGS if not _guard_test_exists(path)]
+    untracked = [path for path in REQUIRED_TEST_ARGS if path not in missing and not _guard_test_tracked(path)]
     if not missing and not untracked:
         return
 
@@ -138,12 +218,14 @@ def _parse_ruff_version(text: str) -> Tuple[int, int, int]:
     return major, minor, patch
 
 
-def _assert_ruff_version() -> str:
-    output = _run_command("python -m ruff --version", [sys.executable, "-m", "ruff", "--version"], capture_output=True)
-    version = _parse_ruff_version(output)
+def _assert_ruff_version(output: Dict[str, Any]) -> str:
+    output = _coerce_command_result(output)
+    _assert_command_succeeded("python -m ruff --version", output)
+    text = str(output.get("stdout") or "").strip()
+    version = _parse_ruff_version(text)
     if version < (0, 15, 0) or version >= (0, 16, 0):
-        raise QualityGateError(f"ruff 版本超出允许范围 >=0.15,<0.16：{output}")
-    return output
+        raise QualityGateError(f"ruff 版本超出允许范围 >=0.15,<0.16：{text}")
+    return text
 
 
 def _parse_pyright_version(text: str) -> Tuple[int, int, int]:
@@ -153,13 +235,15 @@ def _parse_pyright_version(text: str) -> Tuple[int, int, int]:
     return int(match.group(1)), int(match.group(2)), int(match.group(3))
 
 
-def _assert_pyright_version() -> str:
-    output = _run_command("python -m pyright --version", [sys.executable, "-m", "pyright", "--version"], capture_output=True)
-    version = _parse_pyright_version(output)
+def _assert_pyright_version(output: Dict[str, Any]) -> str:
+    output = _coerce_command_result(output)
+    _assert_command_succeeded("python -m pyright --version", output)
+    text = str(output.get("stdout") or "").strip()
+    version = _parse_pyright_version(text)
     if version != PYRIGHT_REQUIRED_VERSION:
         expected = ".".join(str(part) for part in PYRIGHT_REQUIRED_VERSION)
-        raise QualityGateError(f"pyright version must be {expected}, got: {output}")
-    return output
+        raise QualityGateError(f"pyright version must be {expected}, got: {text}")
+    return text
 
 
 def _state_paths() -> Dict[str, str]:
@@ -199,53 +283,53 @@ def _describe_cleanup_hint(paths: Dict[str, str]) -> str:
 
 
 def _describe_uncertain_reason(
-    pid_state: str, health_state: str, exe_path: str, port: Optional[int]
+    pid_state: RuntimeProbeState, health_state: RuntimeProbeState, exe_path: str, port: Optional[int]
 ) -> str:
     reasons = []
-    if pid_state == "unknown":
+    if pid_state == RuntimeProbeState.UNKNOWN:
         reasons.append("缺少 exe_path 或无法确认 PID 对应可执行文件路径" if not exe_path else "无法确认 PID 对应可执行文件路径")
-    if health_state == "absent":
+    if health_state == RuntimeProbeState.ABSENT:
         reasons.append("缺少运行时契约，无法做健康探测")
-    if health_state == "unknown":
+    if health_state == RuntimeProbeState.UNKNOWN:
         reasons.append("缺少合法 port" if port is None or int(port) <= 0 else "健康探测前置条件不完整")
     return "；".join(reasons)
 
 
-def _pid_signal(payload: Optional[Dict[str, object]]) -> Tuple[str, Optional[int], Optional[bool], str]:
+def _pid_signal(payload: Optional[Dict[str, object]]) -> Tuple[RuntimeProbeState, Optional[int], Optional[bool], str]:
     if not payload:
-        return "absent", None, None, ""
+        return RuntimeProbeState.ABSENT, None, None, ""
     try:
         pid = _coerce_int(payload.get("pid"))
     except Exception as exc:
         raise QualityGateError(f"运行时 pid 非法：{exc}") from exc
     exe_path = str(payload.get("exe_path") or "").strip()
     if pid <= 0:
-        return "stale", pid, False, exe_path
+        return RuntimeProbeState.STALE, pid, False, exe_path
     pid_exists = bool(launcher.runtime_pid_exists(pid))
     if not pid_exists:
-        return "stale", pid, False, exe_path
+        return RuntimeProbeState.STALE, pid, False, exe_path
     if not exe_path:
-        return "unknown", pid, None, exe_path
+        return RuntimeProbeState.UNKNOWN, pid, None, exe_path
     pid_match = launcher.runtime_pid_matches_executable(pid, exe_path)
     if pid_match is False:
-        return "stale", pid, False, exe_path
+        return RuntimeProbeState.STALE, pid, False, exe_path
     if pid_match is True:
-        return "active", pid, True, exe_path
-    return "unknown", pid, None, exe_path
+        return RuntimeProbeState.ACTIVE, pid, True, exe_path
+    return RuntimeProbeState.UNKNOWN, pid, None, exe_path
 
 
-def _health_signal(contract: Optional[Dict[str, object]]) -> Tuple[str, Optional[str], Optional[int]]:
+def _health_signal(contract: Optional[Dict[str, object]]) -> Tuple[RuntimeProbeState, Optional[str], Optional[int]]:
     if not contract:
-        return "absent", None, None
+        return RuntimeProbeState.ABSENT, None, None
     host = str(contract.get("host") or "").strip() or "127.0.0.1"
     try:
         port = _coerce_int(contract.get("port"))
     except Exception as exc:
         raise QualityGateError(f"运行时契约 port 非法：{exc}") from exc
     if port <= 0:
-        return "unknown", host, port
+        return RuntimeProbeState.UNKNOWN, host, port
     healthy = bool(launcher.probe_runtime_health(host, port, timeout_s=1.0))
-    return ("active" if healthy else "stale"), host, port
+    return (RuntimeProbeState.ACTIVE if healthy else RuntimeProbeState.STALE), host, port
 
 
 def _runtime_state_snapshot() -> Dict[str, Any]:
@@ -253,13 +337,15 @@ def _runtime_state_snapshot() -> Dict[str, Any]:
     pid_payload = contract if contract is not None else lock
     pid_state, pid, pid_match, exe_path = _pid_signal(pid_payload)
     health_state, host, port = _health_signal(contract)
+    pid_state = _coerce_runtime_probe_state(pid_state)
+    health_state = _coerce_runtime_probe_state(health_state)
     return {
         "contract_present": contract is not None,
         "lock_present": lock is not None,
-        "pid_state": pid_state,
+        "pid_state": pid_state.value,
         "pid": pid,
         "pid_matches_executable": pid_match,
-        "health_state": health_state,
+        "health_state": health_state.value,
         "host": host,
         "port": port,
         "exe_path": exe_path,
@@ -275,24 +361,34 @@ def _assert_no_active_runtime() -> None:
     pid_payload = contract if contract is not None else lock
     pid_state, pid, _pid_match, exe_path = _pid_signal(pid_payload)
     health_state, host, port = _health_signal(contract)
+    pid_state = _coerce_runtime_probe_state(pid_state)
+    health_state = _coerce_runtime_probe_state(health_state)
     endpoint_text = _describe_runtime_endpoint(host, port)
     cleanup_hint = _describe_cleanup_hint(paths)
 
-    if (pid_state == "active" and health_state == "stale") or (pid_state == "stale" and health_state == "active"):
+    if (
+        pid_state == RuntimeProbeState.ACTIVE and health_state == RuntimeProbeState.STALE
+    ) or (
+        pid_state == RuntimeProbeState.STALE and health_state == RuntimeProbeState.ACTIVE
+    ):
         raise QualityGateError(
             "活动实例判定出现矛盾："
-            f"pid_state={pid_state} health_state={health_state} pid={pid} {endpoint_text} exe_path={exe_path}。{cleanup_hint}"
+            f"pid_state={pid_state.value} health_state={health_state.value} pid={pid} {endpoint_text} exe_path={exe_path}。{cleanup_hint}"
         )
-    if (pid_state == "unknown" and health_state != "active") or (health_state == "unknown" and pid_state != "active"):
+    if (
+        pid_state == RuntimeProbeState.UNKNOWN and health_state != RuntimeProbeState.ACTIVE
+    ) or (
+        health_state == RuntimeProbeState.UNKNOWN and pid_state != RuntimeProbeState.ACTIVE
+    ):
         reason_text = _describe_uncertain_reason(pid_state, health_state, exe_path, port)
         raise QualityGateError(
             "活动实例判定不确定："
-            f"pid_state={pid_state} health_state={health_state} pid={pid} {endpoint_text} exe_path={exe_path}"
+            f"pid_state={pid_state.value} health_state={health_state.value} pid={pid} {endpoint_text} exe_path={exe_path}"
             + (f"；原因：{reason_text}" if reason_text else "")
             + f"。{cleanup_hint}"
         )
 
-    if pid_state == "active" or health_state == "active":
+    if pid_state == RuntimeProbeState.ACTIVE or health_state == RuntimeProbeState.ACTIVE:
         raise QualityGateError(
             f"检测到仓库根存在活动 APS 实例，请先退出后再执行门禁：pid={pid} {endpoint_text} exe_path={exe_path}"
         )
@@ -335,41 +431,52 @@ def _tracked_status_lines(lines: Sequence[str]) -> List[str]:
     return [line for line in normalized if not line.startswith("?? ")]
 
 
+def _status_untracked_path(line: str) -> str:
+    text = str(line or "").rstrip()
+    if not text.startswith("?? "):
+        return ""
+    return text[3:].strip().replace("\\", "/")
+
+
+def _high_risk_untracked_source_paths(lines: Sequence[str]) -> List[str]:
+    findings = []
+    for line in list(lines or []):
+        path = _status_untracked_path(str(line))
+        if not path:
+            continue
+        if not path.startswith(HIGH_RISK_UNTRACKED_SOURCE_PREFIXES):
+            continue
+        if not path.endswith(HIGH_RISK_UNTRACKED_SOURCE_SUFFIXES):
+            continue
+        findings.append(path)
+    return sorted(dict.fromkeys(findings))
+
+
+def _dirty_worktree_message(lines: Sequence[str]) -> str:
+    message = "dirty worktree: clean proof requires an empty worktree before the gate runs"
+    high_risk_untracked = _high_risk_untracked_source_paths(lines)
+    if high_risk_untracked:
+        message += "; untracked source files: " + ", ".join(high_risk_untracked)
+    return message
+
+
 def _parse_collect_nodeids(output: str) -> List[str]:
-    nodeids: List[str] = []
-    seen = set()
-    for raw_line in str(output or "").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("="):
-            continue
-        if "collected " in line:
-            continue
-        token = line.split()[0]
-        if not token.startswith("tests/"):
-            continue
-        if token in seen:
-            continue
-        seen.add(token)
-        nodeids.append(token)
-    return nodeids
+    return parse_pytest_collect_nodeids(output)
 
 
 def _build_collection_proof(default_collect_nodeids: Sequence[str]) -> Dict[str, Any]:
-    collected = [str(item).strip() for item in default_collect_nodeids if str(item).strip()]
-    key_tests = [QUALITY_GATE_SELFTEST] + list(GUARD_TEST_ARGS)
-    key_test_rows: List[Dict[str, Any]] = []
-    for path in key_tests:
-        in_default_collect = any(nodeid == path or nodeid.startswith(f"{path}::") for nodeid in collected)
-        key_test_rows.append(
-            {
-                "path": path,
-                "execution_mode": "default_collect" if in_default_collect else "explicit_run",
-            }
-        )
-    return {
-        "default_collect_nodeids": collected,
-        "key_tests": key_test_rows,
-    }
+    return build_quality_gate_collection_proof(default_collect_nodeids, required_tests=REQUIRED_TEST_ARGS)
+
+
+def _resolve_command_args(command: Dict[str, Any]) -> List[str]:
+    args: List[str] = []
+    for idx, raw_arg in enumerate(list(command.get("args") or [])):
+        arg = str(raw_arg)
+        if idx == 0 and arg == "python":
+            args.append(sys.executable)
+            continue
+        args.append(arg)
+    return args
 
 
 def _write_quality_gate_manifest(manifest: Dict[str, Any]) -> None:
@@ -412,6 +519,7 @@ def _base_quality_gate_manifest(
     manifest = {
         "status": str(status or "").strip() or "running",
         "head_sha": head_sha,
+        "run_id": f"{head_sha}:{started_at}",
         **_repo_identity(),
         "runtime_snapshot": runtime_snapshot,
         "python_version": sys.version.splitlines()[0],
@@ -421,11 +529,15 @@ def _base_quality_gate_manifest(
         "started_at": started_at,
         "finished_at": None,
         "collection_proof": None,
+        "required_tests": list(REQUIRED_TEST_ARGS),
         "commands": [],
+        "gate_sources": [],
+        "clean_worktree_excluded_paths": list(GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS),
         "failure_kind": None,
         "failure_message": None,
     }
     _apply_worktree_proof(manifest, git_status_short_before=git_status_short_before, git_status_short_after=None)
+    apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
     return manifest
 
 
@@ -447,11 +559,16 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
+    command_plan = build_quality_gate_command_plan()
+    command_lookup = {str(command["display"]): dict(command) for command in command_plan}
     started_at = datetime.now().isoformat(timespec="seconds")
+    _clear_quality_gate_receipts()
     head_sha = _git_head_sha()
+    run_id = f"{head_sha}:{started_at}"
     git_status_short_before = _git_status_lines()
     runtime_snapshot = _runtime_state_snapshot()
     commands: List[Dict[str, Any]] = []
+    command_receipts: List[Dict[str, str]] = []
     collection_proof: Optional[Dict[str, Any]] = None
     ruff_version_output: Optional[str] = None
     pyright_version_output: Optional[str] = None
@@ -469,7 +586,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     try:
         if require_clean_worktree and git_status_short_before:
-            raise QualityGateError("dirty worktree: clean proof requires an empty worktree before the gate runs")
+            failure_kind = "dirty_before_gate"
+            raise QualityGateError(_dirty_worktree_message(git_status_short_before))
 
         try:
             _assert_no_active_runtime()
@@ -479,76 +597,42 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         _assert_guard_tests_ready()
 
         collect_display = "python -m pytest --collect-only -q tests"
-        collect_args = [sys.executable, "-m", "pytest", "--collect-only", "-q", "tests"]
-        collect_output = _run_command(collect_display, collect_args, capture_output=True)
-        commands.append({"display": collect_display, "args": collect_args, "capture_output": True})
+        collect_command = command_lookup[collect_display]
+        collect_args = _resolve_command_args(collect_command)
+        collect_result = _coerce_command_result(_run_command(collect_display, collect_args, capture_output=True))
+        commands.append(collect_command)
+        command_receipts.append(_write_command_receipt(collect_command, run_id=run_id, index=len(command_receipts) + 1, result=collect_result))
+        _assert_command_succeeded(collect_display, collect_result)
+        collect_output = str(collect_result.get("stdout") or "").strip()
         collection_proof = _build_collection_proof(_parse_collect_nodeids(collect_output))
 
-        ruff_version_output = _assert_ruff_version()
-        commands.append(
-            {
-                "display": "python -m ruff --version",
-                "args": [sys.executable, "-m", "ruff", "--version"],
-                "capture_output": True,
-            }
+        ruff_command = command_lookup["python -m ruff --version"]
+        ruff_result = _coerce_command_result(
+            _run_command("python -m ruff --version", [sys.executable, "-m", "ruff", "--version"], capture_output=True)
         )
-        pyright_version_output = _assert_pyright_version()
-        commands.append(
-            {
-                "display": "python -m pyright --version",
-                "args": [sys.executable, "-m", "pyright", "--version"],
-                "capture_output": True,
-            }
+        commands.append(ruff_command)
+        command_receipts.append(_write_command_receipt(ruff_command, run_id=run_id, index=len(command_receipts) + 1, result=ruff_result))
+        ruff_version_output = _assert_ruff_version(ruff_result)
+
+        pyright_command = command_lookup["python -m pyright --version"]
+        pyright_result = _coerce_command_result(
+            _run_command("python -m pyright --version", [sys.executable, "-m", "pyright", "--version"], capture_output=True)
         )
+        commands.append(pyright_command)
+        command_receipts.append(
+            _write_command_receipt(pyright_command, run_id=run_id, index=len(command_receipts) + 1, result=pyright_result)
+        )
+        pyright_version_output = _assert_pyright_version(pyright_result)
 
-        run_steps = [
-            ('python -c "import radon"', [sys.executable, "-c", "import radon"], False),
-            ("python -m ruff check", [sys.executable, "-m", "ruff", "check"], False),
-            (
-                f"python -m pyright -p {PYRIGHT_GATE_CONFIG}",
-                [sys.executable, "-m", "pyright", "-p", PYRIGHT_GATE_CONFIG],
-                False,
-            ),
-            (
-                "python -m pyright " + " ".join(QUALITY_GATE_TOOL_PATHS),
-                [sys.executable, "-m", "pyright"] + QUALITY_GATE_TOOL_PATHS,
-                False,
-            ),
-            (
-                "python -m pytest -q tests/test_architecture_fitness.py",
-                [sys.executable, "-m", "pytest", "-q", "tests/test_architecture_fitness.py"],
-                False,
-            ),
-            (
-                "python -m pytest -q " + " ".join(GUARD_TEST_ARGS),
-                [sys.executable, "-m", "pytest", "-q"] + GUARD_TEST_ARGS,
-                False,
-            ),
-            (
-                f"python -m pytest -q {QUALITY_GATE_SELFTEST}",
-                [sys.executable, "-m", "pytest", "-q", QUALITY_GATE_SELFTEST],
-                False,
-            ),
-            (
-                "python scripts/sync_debt_ledger.py check",
-                [sys.executable, "scripts/sync_debt_ledger.py", "check"],
-                False,
-            ),
-            (
-                "python -m pytest -q " + " ".join(STARTUP_REGRESSION_ARGS),
-                [sys.executable, "-m", "pytest", "-q"] + STARTUP_REGRESSION_ARGS,
-                False,
-            ),
-            (
-                "python tests/check_quickref_vs_routes.py",
-                [sys.executable, "tests/check_quickref_vs_routes.py"],
-                False,
-            ),
-        ]
-
-        for display, cmd, capture_output in run_steps:
-            _run_command(display, cmd, capture_output=capture_output)
-            commands.append({"display": display, "args": cmd, "capture_output": bool(capture_output)})
+        run_displays = [str(command["display"]) for command in command_plan[3:]]
+        for display in run_displays:
+            command = command_lookup[display]
+            result = _coerce_command_result(
+                _run_command(display, _resolve_command_args(command), capture_output=bool(command.get("capture_output")))
+            )
+            commands.append(command)
+            command_receipts.append(_write_command_receipt(command, run_id=run_id, index=len(command_receipts) + 1, result=result))
+            _assert_command_succeeded(display, result)
 
         git_status_short_after = _git_status_lines()
         _apply_worktree_proof(
@@ -568,13 +652,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "status": "passed" if require_clean_worktree else "passed_but_unbound",
                 "finished_at": datetime.now().isoformat(timespec="seconds"),
                 "collection_proof": collection_proof,
+                "required_tests": list(REQUIRED_TEST_ARGS),
                 "commands": commands,
+                "command_receipts": command_receipts,
                 "ruff_version": ruff_version_output,
                 "pyright_version": pyright_version_output,
                 "failure_kind": None,
                 "failure_message": None,
             }
         )
+        apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
         _write_quality_gate_manifest(manifest)
         print("质量门禁通过")
         return 0
@@ -594,13 +681,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "status": "failed",
                 "finished_at": datetime.now().isoformat(timespec="seconds"),
                 "collection_proof": collection_proof,
+                "required_tests": list(REQUIRED_TEST_ARGS),
                 "commands": commands,
+                "command_receipts": command_receipts,
                 "ruff_version": ruff_version_output,
                 "pyright_version": pyright_version_output,
                 "failure_kind": failure_kind or "quality_gate_failed",
                 "failure_message": str(exc),
             }
         )
+        apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
         _write_quality_gate_manifest(manifest)
         raise
 

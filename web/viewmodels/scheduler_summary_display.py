@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.models.scheduler_degradation_messages import (
+    is_public_freeze_degradation_message,
+    public_degradation_event_message,
+    public_summary_merge_error_code,
+    public_summary_warning_messages,
+)
+
 from .scheduler_degradation_presenter import (
     build_primary_degradation,
     build_summary_degradation_messages,
@@ -9,6 +16,15 @@ from .scheduler_degradation_presenter import (
     degradation_reason_key,
     format_degradation_detail,
 )
+
+_RESULT_STATUS_LABELS = {
+    "success": "成功",
+    "partial": "部分成功",
+    "failed": "失败",
+    "simulated": "模拟排产",
+    "unknown": "完成状态未知",
+}
+_COMPLETION_STATUS_VALUES = {"success", "partial", "failed"}
 
 
 def _normalize_text_list(value: Any) -> List[str]:
@@ -32,6 +48,18 @@ def _normalize_text_list(value: Any) -> List[str]:
     return out
 
 
+def _public_error_messages(value: Any) -> List[str]:
+    raw_errors = _normalize_text_list(value)
+    if not raw_errors:
+        return []
+    out: List[str] = []
+    for _item in raw_errors:
+        message = "排程执行出现异常，请查看系统日志。"
+        if message not in out:
+            out.append(message)
+    return out
+
+
 def _secondary_display_label(item: Dict[str, Any]) -> str:
     return format_degradation_detail(item.get("label"), item.get("count"))
 
@@ -47,6 +75,16 @@ def _primary_detail_keys(primary_degradation: Optional[Dict[str, Any]]) -> Set[T
         code, label, count = item
         normalized.add((str(code or "").strip(), str(label or "").strip(), int(count or 0)))
     return normalized
+
+
+def _safe_freeze_secondary_message(item: Dict[str, Any], message: str) -> bool:
+    if str(item.get("code") or "").strip() != "freeze_window_degraded":
+        return False
+    if not is_public_freeze_degradation_message(message):
+        return False
+    if message == public_degradation_event_message(item.get("code")):
+        return False
+    return True
 
 
 def _normalize_secondary_display_item(
@@ -69,8 +107,11 @@ def _normalize_secondary_display_item(
         message=message,
     )
 
-    if reason_key in primary_detail_keys or display_label in detail_texts or label in detail_texts:
+    hidden_by_primary = bool(reason_key in primary_detail_keys or display_label in detail_texts or label in detail_texts)
+    if hidden_by_primary:
         display_label = ""
+        if not _safe_freeze_secondary_message(item, message):
+            message = ""
     if message in detail_texts or (not display_label and message == label):
         message = ""
     if not display_label and message:
@@ -169,7 +210,7 @@ def _build_warning_pipeline_display(summary: Dict[str, Any]) -> Optional[Dict[st
             "message": "摘要告警合并已降级。",
             "note": "摘要告警未能完整合并到历史摘要。",
             "summary_merge_failed": True,
-            "summary_merge_error": str(warning_pipeline.get("summary_merge_error") or "").strip() or None,
+            "summary_merge_error": public_summary_merge_error_code(warning_pipeline.get("summary_merge_error")),
             "algo_warning_count": _safe_int_or_none(warning_pipeline.get("algo_warning_count")),
             "summary_warning_count": _safe_int_or_none(warning_pipeline.get("summary_warning_count")),
         }
@@ -188,24 +229,52 @@ def _build_warning_pipeline_display(summary: Dict[str, Any]) -> Optional[Dict[st
     }
 
 
-def derive_completion_status(*, result_status: Any, summary: Optional[Dict[str, Any]]) -> str:
-    status = str(result_status or "").strip().lower()
-    if status in {"success", "partial", "failed"}:
-        return status
+def _known_completion_status(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in _COMPLETION_STATUS_VALUES:
+        return text
+    return ""
 
-    summary_dict = summary if isinstance(summary, dict) else {}
-    counts = _counts_from_summary(summary_dict)
-    scheduled_ops = int(counts.get("scheduled_ops") or 0)
-    failed_ops = int(counts.get("failed_ops") or 0)
-    total_ops = int(counts.get("total_ops") or 0)
 
+def _completion_status_from_counts(*, status: str, scheduled_ops: int, failed_ops: int, total_ops: int) -> str:
+    if status == "simulated" and scheduled_ops <= 0 and failed_ops <= 0 and total_ops <= 0:
+        return "unknown"
     if failed_ops > 0 and scheduled_ops > 0:
         return "partial"
-    if failed_ops > 0 and scheduled_ops <= 0:
+    if failed_ops > 0:
         return "failed"
     if total_ops > 0 and scheduled_ops < total_ops:
         return "partial"
     return "success"
+
+def derive_completion_status(*, result_status: Any, summary: Optional[Dict[str, Any]]) -> str:
+    summary_dict = summary if isinstance(summary, dict) else {}
+    summary_status = _known_completion_status(summary_dict.get("completion_status"))
+    if summary_status:
+        return summary_status
+
+    status = str(result_status or "").strip().lower()
+    known_status = _known_completion_status(status)
+    if known_status:
+        return known_status
+
+    counts = _counts_from_summary(summary_dict)
+    return _completion_status_from_counts(
+        status=status,
+        scheduled_ops=int(counts.get("scheduled_ops") or 0),
+        failed_ops=int(counts.get("failed_ops") or 0),
+        total_ops=int(counts.get("total_ops") or 0),
+    )
+
+
+def result_status_display_label(*, raw_status: Any, outcome_status: Any) -> str:
+    raw = str(raw_status or "").strip().lower()
+    outcome = str(outcome_status or "").strip().lower()
+    raw_label = _RESULT_STATUS_LABELS.get(raw, raw or "")
+    outcome_label = _RESULT_STATUS_LABELS.get(outcome, outcome or "")
+    if raw == "simulated" and outcome_label:
+        return f"{raw_label} / {outcome_label}"
+    return outcome_label or raw_label or "-"
 
 
 def build_result_state(*, result_status: Any, summary: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -215,6 +284,7 @@ def build_result_state(*, result_status: Any, summary: Optional[Dict[str, Any]])
         "raw_status": raw_status,
         "outcome_status": outcome_status,
         "is_simulated": raw_status == "simulated",
+        "display_label": result_status_display_label(raw_status=raw_status, outcome_status=outcome_status),
     }
 
 
@@ -226,7 +296,9 @@ def build_summary_display_state(
 ) -> Dict[str, Any]:
     summary_dict = summary if isinstance(summary, dict) else {}
     result_state = build_result_state(result_status=result_status, summary=summary_dict)
-    completion_status = str(result_state.get("outcome_status") or "success")
+    completion_status = str(result_state.get("outcome_status") or "")
+    if not completion_status:
+        completion_status = "success"
     primary_degradation = build_primary_degradation(summary_dict, result_state=result_state, completion_status=completion_status)
     secondary_degradation_messages = build_summary_degradation_messages(summary_dict)
     display_secondary_degradation_messages = build_display_secondary_degradation_messages(
@@ -236,7 +308,9 @@ def build_summary_display_state(
     warning_pipeline_display = _build_warning_pipeline_display(summary_dict)
 
     warning_messages = _normalize_text_list(summary_dict.get("warnings"))
-    errors_preview = _normalize_text_list(summary_dict.get("errors_sample") or summary_dict.get("errors"))
+    public_warning_messages = public_summary_warning_messages(summary_dict.get("warnings"))
+    warnings_preview = public_warning_messages[:3]
+    errors_preview = _public_error_messages(summary_dict.get("errors_sample") or summary_dict.get("errors"))
     try:
         error_total = int(summary_dict.get("error_count") or len(errors_preview))
     except Exception:
@@ -255,13 +329,14 @@ def build_summary_display_state(
     return {
         "result_state": result_state,
         "completion_status": completion_status,
+        "result_status_label": str(result_state.get("display_label") or "-"),
         "primary_degradation": primary_degradation,
         "secondary_degradation_messages": secondary_degradation_messages,
         "display_secondary_degradation_messages": display_secondary_degradation_messages,
         "warning_pipeline_display": warning_pipeline_display,
-        "warnings_preview": warning_messages[:3],
+        "warnings_preview": warnings_preview,
         "warning_total": len(warning_messages),
-        "warning_hidden_count": max(0, len(warning_messages) - 3),
+        "warning_hidden_count": max(0, len(warning_messages) - len(warnings_preview)),
         "errors_preview": errors_preview[:3],
         "error_total": error_total,
         "error_hidden_count": max(0, error_total - error_preview_visible),
@@ -274,4 +349,5 @@ __all__ = [
     "build_result_state",
     "build_summary_display_state",
     "derive_completion_status",
+    "result_status_display_label",
 ]

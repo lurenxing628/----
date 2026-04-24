@@ -8,6 +8,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import AppError
 from core.services.scheduler import ConfigService
+from web.error_boundary import user_visible_app_error_message
 from web.ui_mode import (
     get_full_manual_section_url,
     get_manual_url,
@@ -362,7 +363,7 @@ def preset_apply():
         applied = cfg_svc.apply_preset(name)
         _flash_preset_apply_feedback(applied)
     except AppError as e:
-        flash(e.message, "error")
+        flash(user_visible_app_error_message(e), "error")
     except Exception:
         current_app.logger.exception("应用排产模板失败")
         flash("应用方案失败，请稍后重试。", "error")
@@ -392,7 +393,7 @@ def preset_save():
                 "success",
             )
     except AppError as e:
-        flash(e.message, "error")
+        flash(user_visible_app_error_message(e), "error")
     except Exception:
         current_app.logger.exception("保存排产模板失败")
         flash("保存方案失败，请稍后重试。", "error")
@@ -407,7 +408,7 @@ def preset_delete():
         cfg_svc.delete_preset(name)
         flash(f"已删除方案：{name}", "success")
     except AppError as e:
-        flash(e.message, "error")
+        flash(user_visible_app_error_message(e), "error")
     except Exception:
         current_app.logger.exception("删除排产模板失败")
         flash("删除方案失败，请稍后重试。", "error")
@@ -456,7 +457,7 @@ def update_config():
         outcome = cfg_svc.save_page_config(payload)
         _flash_config_save_outcome(outcome)
     except AppError as e:
-        flash(e.message, "error")
+        flash(user_visible_app_error_message(e), "error")
     except Exception:
         current_app.logger.exception("保存排产配置失败")
         flash("保存排产配置失败，请稍后重试。", "error")

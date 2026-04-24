@@ -119,7 +119,8 @@ def main():
     assert len(results) == 0, f"不应产出排程结果，实际 results={len(results)}"
 
     assert summary.errors, "应记录异常到 summary.errors"
-    assert any(("OP_ERR" in e and "boom" in e) for e in summary.errors), f"errors 未包含原异常：{summary.errors!r}"
+    assert any(("OP_ERR" in e and "请查看系统日志" in e) for e in summary.errors), f"errors 未包含公开异常文案：{summary.errors!r}"
+    assert not any("boom" in e for e in summary.errors), f"errors 不应暴露原异常：{summary.errors!r}"
     assert not any("UnboundLocalError" in e for e in summary.errors), f"不应出现 UnboundLocalError：{summary.errors!r}"
 
     print("OK")
@@ -127,4 +128,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

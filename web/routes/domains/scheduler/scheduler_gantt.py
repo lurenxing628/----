@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from flask import current_app, g, jsonify, request, url_for
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError, error_response
+from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError, error_response
 from web.error_boundary import json_error_response
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
-from ...normalizers import normalize_version_or_latest_fallback
+from ...normalizers import _parse_result_summary_payload_with_meta, decorate_history_version_options
 from .scheduler_bp import bp
 
 
@@ -34,6 +35,27 @@ def _get_bool_arg(name: str, default: bool = False) -> bool:
     raise ValidationError(f"{name} 不合法（期望布尔值）", field=name)
 
 
+def _selected_version_result_status_label(services, version: Optional[int]) -> str:
+    if version is None:
+        return ""
+    item = services.schedule_history_query_service.get_by_version(int(version))
+    selected = item.to_dict() if item and hasattr(item, "to_dict") else None
+    if not selected:
+        return ""
+    parse_state = _parse_result_summary_payload_with_meta(
+        selected.get("result_summary"),
+        version=version,
+        source="selected",
+        log_label="甘特图页",
+    )
+    display = build_summary_display_state(
+        parse_state.get("payload") if isinstance(parse_state.get("payload"), dict) else None,
+        result_status=selected.get("result_status"),
+        parse_state=parse_state,
+    )
+    return str(display.get("result_status_label") or "")
+
+
 @bp.get("/gantt")
 def gantt_page():
     """
@@ -46,11 +68,25 @@ def gantt_page():
     services = g.services
     offset = _get_int_arg("offset", 0)
     svc = services.gantt_service
-    latest_version = svc.get_latest_version_or_1()
+    version_resolution = svc.resolve_version(request.args.get("version"))
+    if version_resolution.status == "missing_history":
+        raise BusinessError(
+            ErrorCode.NOT_FOUND,
+            "排产版本不存在，请先选择已有版本。",
+            details={
+                "field": "version",
+                "requested_version": version_resolution.requested_version,
+                "status": version_resolution.status,
+            },
+        )
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
-    ver = normalize_version_or_latest_fallback(request.args.get("version"), latest_version=latest_version)
+    ver = version_resolution.selected_version
 
-    versions = services.schedule_history_query_service.list_versions(limit=30)
+    versions = decorate_history_version_options(
+        services.schedule_history_query_service.list_versions(limit=30),
+        log_label="甘特图页",
+    )
+    selected_result_status_label = _selected_version_result_status_label(services, ver)
     return render_template(
         "scheduler/gantt.html",
         title="甘特图（排程可视化）",
@@ -61,7 +97,9 @@ def gantt_page():
         end_date=wr.week_end_date.isoformat(),
         offset=offset,
         version=ver,
+        version_resolution=version_resolution.to_dict(),
         versions=versions,
+        selected_result_status_label=selected_result_status_label,
         has_history=bool(versions),
         data_url=url_for("scheduler.gantt_data"),
     )
@@ -82,15 +120,13 @@ def gantt_data():
         # 当显式给出区间时，以 start/end 为准，避免客户端重复叠加 offset 造成“跳两周”。
         effective_offset = 0 if (start_date or end_date) else offset
         include_history = _get_bool_arg("include_history", False)
-        version = normalize_version_or_latest_fallback(request.args.get("version"), latest_version=svc.get_latest_version_or_1())
-
         data: Dict[str, Any] = svc.get_gantt_tasks(
             view=view,
             week_start=week_start,
             offset_weeks=effective_offset,
             start_date=start_date,
             end_date=end_date,
-            version=version,
+            version=request.args.get("version"),
             include_history=include_history,
         )
         return jsonify({"success": True, "data": data})

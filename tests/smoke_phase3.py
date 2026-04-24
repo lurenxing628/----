@@ -8,17 +8,25 @@ from typing import Optional
 
 def find_repo_root():
     """
-    约定：项目在 D:\\Github 下，且根目录包含 app.py 与 schema.sql。
-    （保持与 Phase0/Phase1/Phase2 冒烟测试一致，便于在用户机器上复用。）
+    约定：优先使用当前 tests/ 的上一级目录；旧 Windows 机器仍兼容 D:\\Github\\<项目>。
     """
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(here, ".."))
+    if os.path.exists(os.path.join(repo_root, "app.py")) and os.path.exists(os.path.join(repo_root, "schema.sql")):
+        return repo_root
+
     base = r"D:\Github"
-    for d in os.listdir(base):
-        p = os.path.join(base, d)
-        if not os.path.isdir(p):
-            continue
-        if os.path.exists(os.path.join(p, "app.py")) and os.path.exists(os.path.join(p, "schema.sql")):
-            return p
-    raise RuntimeError("未找到项目根目录：要求在 D:\\Github 下存在包含 app.py 与 schema.sql 的目录")
+    try:
+        if os.path.isdir(base):
+            for d in os.listdir(base):
+                p = os.path.join(base, d)
+                if not os.path.isdir(p):
+                    continue
+                if os.path.exists(os.path.join(p, "app.py")) and os.path.exists(os.path.join(p, "schema.sql")):
+                    return p
+    except Exception:
+        pass
+    raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
 def write_report(path, lines):
@@ -51,7 +59,7 @@ def main():
     lines.append("# Phase3（人员管理模块）冒烟测试报告")
     lines.append("")
     lines.append(f"- 测试时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- Python：{sys.version.splitlines()[0]}")
+    lines.append(f"- Python：{sys.version.splitlines()[0].strip()}")
 
     repo_root = find_repo_root()
     lines.append(f"- 项目根目录（自动识别）：`{repo_root}`")
@@ -238,4 +246,3 @@ if __name__ == "__main__":
             print("FAIL")
             print(report_path)
         raise
-

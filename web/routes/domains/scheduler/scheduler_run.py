@@ -3,6 +3,8 @@ from __future__ import annotations
 from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
+from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
+from web.error_boundary import user_visible_app_error_message
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
@@ -30,16 +32,16 @@ def _parse_optional_checkbox_flag(name: str):
 def _run_result_flash(result: dict, *, overdue_text: str) -> None:
     ver = result.get("version")
     summary = result.get("summary") or {}
-    result_status = str(result.get("result_status") or "success").strip().lower()
+    result_status = str(result.get("result_status") or ScheduleResultStatus.SUCCESS.value).strip().lower()
     prefix = "排产完成"
     category = "success"
-    if result_status == "partial":
+    if result_status == ScheduleResultStatus.PARTIAL.value:
         prefix = "排产部分完成"
         category = "warning"
-    elif result_status == "failed":
+    elif result_status == ScheduleResultStatus.FAILED.value:
         prefix = "排产失败"
         category = "error"
-    elif result_status == "simulated":
+    elif result_status == ScheduleResultStatus.SIMULATED.value:
         raise RuntimeError("unexpected simulated result_status on /scheduler/run")
 
     version_text = f"（版本 {ver}）" if ver else ""
@@ -100,7 +102,7 @@ def run_schedule():
             total=int(summary_display.get("error_total") or 0),
         )
     except AppError as e:
-        flash(e.message, "error")
+        flash(user_visible_app_error_message(e), "error")
     except Exception:
         current_app.logger.exception("排产执行失败")
         flash("排产失败，请稍后重试或联系管理员。", "error")

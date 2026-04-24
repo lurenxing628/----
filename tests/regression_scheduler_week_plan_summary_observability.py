@@ -95,7 +95,7 @@ def _build_app(monkeypatch, history_service: _HistoryServiceStub, *, gantt_servi
     return app
 
 
-def _build_real_app(tmp_path, monkeypatch, *, summary_obj) -> Flask:
+def _build_real_app(tmp_path, monkeypatch, *, summary_obj, result_status: str = "partial") -> Flask:
     repo_root = str(REPO_ROOT)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
@@ -120,7 +120,7 @@ def _build_real_app(tmp_path, monkeypatch, *, summary_obj) -> Flask:
     conn = get_connection(str(test_db))
     conn.execute(
         "INSERT INTO ScheduleHistory (version, strategy, batch_count, op_count, result_status, result_summary, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (3, "priority_first", 1, 1, "partial", json.dumps(summary_obj, ensure_ascii=False), "pytest"),
+        (3, "priority_first", 1, 1, result_status, json.dumps(summary_obj, ensure_ascii=False), "pytest"),
     )
     conn.commit()
     conn.close()
@@ -183,6 +183,7 @@ def test_week_plan_route_exposes_selected_summary_display(monkeypatch) -> None:
         "raw_status": "partial",
         "outcome_status": "partial",
         "is_simulated": False,
+        "display_label": "部分成功",
     }
     assert payload["selected_summary_display"]["primary_degradation"]["details"] == ["资源池构建已降级"]
     assert payload["selected_summary_display"]["warning_total"] == 1
@@ -224,9 +225,68 @@ def test_build_summary_display_state_preserves_simulated_raw_status() -> None:
         "raw_status": "simulated",
         "outcome_status": "success",
         "is_simulated": True,
+        "display_label": "模拟排产 / 成功",
     }
     assert "\u6a21\u62df\u6392\u4ea7" in str((payload["primary_degradation"] or {}).get("message") or "")
     assert "\u672c\u6b21\u6392\u4ea7\u5df2\u6210\u529f" not in str((payload["primary_degradation"] or {}).get("message") or "")
+
+
+def test_build_summary_display_state_prefers_persisted_completion_status_for_simulated() -> None:
+    from web.viewmodels.scheduler_summary_display import build_summary_display_state
+
+    payload = build_summary_display_state(
+        {
+            "completion_status": "partial",
+            "counts": {"op_count": 3, "scheduled_ops": 3, "failed_ops": 0},
+            "warnings": [],
+            "errors": [],
+        },
+        result_status="simulated",
+    )
+
+    assert payload["completion_status"] == "partial"
+    assert payload["result_state"] == {
+        "raw_status": "simulated",
+        "outcome_status": "partial",
+        "is_simulated": True,
+        "display_label": "模拟排产 / 部分成功",
+    }
+    assert payload["result_status_label"] == "模拟排产 / 部分成功"
+
+
+def test_build_summary_display_state_does_not_infer_success_for_simulated_without_summary() -> None:
+    from web.viewmodels.scheduler_summary_display import build_summary_display_state
+
+    payload = build_summary_display_state(None, result_status="simulated")
+
+    assert payload["completion_status"] == "unknown"
+    assert payload["result_state"] == {
+        "raw_status": "simulated",
+        "outcome_status": "unknown",
+        "is_simulated": True,
+        "display_label": "模拟排产 / 完成状态未知",
+    }
+    assert payload["result_status_label"] == "模拟排产 / 完成状态未知"
+    assert "成功" not in payload["result_status_label"]
+
+
+def test_build_summary_display_state_prefers_persisted_completion_status_before_raw_status() -> None:
+    from web.viewmodels.scheduler_summary_display import build_summary_display_state
+
+    payload = build_summary_display_state(
+        {
+            "completion_status": "partial",
+            "counts": {"op_count": 3, "scheduled_ops": 3, "failed_ops": 0},
+            "warnings": [],
+            "errors": [],
+        },
+        result_status="success",
+    )
+
+    assert payload["completion_status"] == "partial"
+    assert payload["result_state"]["raw_status"] == "success"
+    assert payload["result_state"]["outcome_status"] == "partial"
+    assert payload["result_status_label"] == "部分成功"
 
 
 def test_build_summary_display_state_exposes_warning_pipeline_display() -> None:
@@ -340,3 +400,20 @@ def test_week_plan_page_renders_warning_pipeline_guard_html(tmp_path, monkeypatc
     assert "摘要告警：0 条" in html
     assert "摘要告警未能完整合并到历史摘要。" in html
     assert "summary_warnings_assignment_failed" not in html
+
+
+def test_week_plan_page_renders_simulated_completion_status_label(tmp_path, monkeypatch) -> None:
+    summary = {
+        "completion_status": "partial",
+        "counts": {"op_count": 3, "scheduled_ops": 2, "failed_ops": 1},
+        "warnings": [],
+        "errors": [],
+    }
+    app = _build_real_app(tmp_path, monkeypatch, summary_obj=summary, result_status="simulated")
+    client = app.test_client()
+
+    response = client.get("/scheduler/week-plan?week_start=2026-04-13&version=3")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert html.count("模拟排产 / 部分成功") >= 2

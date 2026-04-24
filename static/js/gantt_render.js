@@ -21,6 +21,7 @@
   var colorForStatusKey = ns.colorForStatusKey;
   var getColor = ns.getColor;
   var outlineApi = ns.outline;
+  var contractApi = ns.contract;
 
   if (typeof $ !== "function") return;
   if (typeof show !== "function") return;
@@ -30,13 +31,24 @@
   if (typeof norm !== "function") return;
   if (typeof includesI !== "function") return;
   if (!outlineApi) return;
+  if (!contractApi) return;
   if (!state || !_perfState) return;
 
   var setCriticalOutlineEnabled = outlineApi.setCriticalOutlineEnabled;
   var installCriticalOutlineSyncAdapter = outlineApi.installCriticalOutlineSyncAdapter;
+  var buildContractTasks = contractApi.buildRenderTasks;
+  var getArrowModeLabel = contractApi.getArrowModeLabel;
+  var getCriticalStatusLabel = contractApi.getCriticalStatusLabel;
+  var getCriticalTooltip = contractApi.getCriticalTooltip;
+  var shouldUseFallbackCalendarDays = contractApi.shouldUseFallbackCalendarDays;
 
   if (typeof setCriticalOutlineEnabled !== "function") return;
   if (typeof installCriticalOutlineSyncAdapter !== "function") return;
+  if (typeof buildContractTasks !== "function") return;
+  if (typeof getArrowModeLabel !== "function") return;
+  if (typeof getCriticalStatusLabel !== "function") return;
+  if (typeof getCriticalTooltip !== "function") return;
+  if (typeof shouldUseFallbackCalendarDays !== "function") return;
 
   // ---- render/decorate cache (Win7 友好：减少不必要的全量重渲染) ----
   let _renderToken = 0; // 每次全量 render() + new Gantt() 递增
@@ -88,21 +100,12 @@
   }
 
   function buildRenderTasks() {
-    // 注意：Frappe Gantt 会依赖 dependencies 去找任务；因此必须保证依赖指向的 id 也在本次 tasks 里
-    const visibleIds = new Set();
-    for (let i = 0; i < state.filteredTasks.length; i++) {
-      visibleIds.add(norm(state.filteredTasks[i] && state.filteredTasks[i].id));
-    }
-
-    const tasks = [];
-    for (let i = 0; i < state.filteredTasks.length; i++) {
+    const tasks = buildContractTasks(state.filteredTasks, state.ui.depsMode, state.critical);
+    for (let i = 0; i < tasks.length; i++) {
       const t0 = state.filteredTasks[i] || {};
-      const t = Object.assign({}, t0);
+      const t = tasks[i] || {};
       const meta0 = t0.meta || {};
-      // XSS 防御：避免后续对 meta 做标记时污染原始数据对象
       t.meta = Object.assign({}, meta0);
-
-      // XSS 防御：第三方 Gantt 组件内部可能用 innerHTML 渲染 task.name
       try {
         const rawName = str(t0.name || "");
         t.meta._raw_name = rawName;
@@ -110,26 +113,6 @@
       } catch (_) {
         // ignore
       }
-
-      let deps = "";
-      if (state.ui.depsMode === "critical") {
-        const pred = state.ccPrevByTo.get(norm(t.id));
-        deps = pred && visibleIds.has(pred) ? pred : "";
-      } else if (state.ui.depsMode === "process") {
-        deps = norm(t.dependencies);
-        if (deps) {
-          deps = deps
-            .split(",")
-            .map((x) => norm(x))
-            .filter((x) => x && visibleIds.has(x))
-            .join(",");
-        }
-      } else {
-        deps = "";
-      }
-      t.dependencies = deps;
-
-      tasks.push(t);
     }
     return tasks;
   }
@@ -177,9 +160,7 @@
       return "按状态";
     }
     function arrowText() {
-      if (state.ui.depsMode === "critical") return "关键链箭头";
-      if (state.ui.depsMode === "process") return "工艺依赖箭头";
-      return "无";
+      return getArrowModeLabel(state.ui.depsMode, state.critical);
     }
     function sampleBatchIds(limit) {
       const out = [];
@@ -196,16 +177,36 @@
       }
       return out;
     }
+    function criticalVisibleCount() {
+      if (state.critical && state.critical.available === false) return 0;
+      const ids = state.ccIdSet;
+      if (!ids || typeof ids.has !== "function") return 0;
+      const list = Array.isArray(state.allTasks) ? state.allTasks : [];
+      let count = 0;
+      for (let i = 0; i < list.length; i += 1) {
+        const tid = norm(list[i] && list[i].id);
+        if (tid && ids.has(tid)) count += 1;
+      }
+      return count;
+    }
 
     // 关键链：后端为“全版本口径”；当前页面仅展示本窗口 tasks 的子集
     const ccTotal = state.ccIdSet ? state.ccIdSet.size : 0;
-    const ccVisible = Number(_perfState.ccVisibleCount || 0);
+    const ccVisible = criticalVisibleCount();
     const makespanEnd = norm(state.critical && state.critical.makespan_end) || "-";
+    const ccStatusText = getCriticalStatusLabel(state.critical);
     const ccUnavailable = !!(state.critical && state.critical.available === false);
     const ccCacheText = ccUnavailable
       ? "不可用"
       : ((state.critical && state.critical.cache_hit === true) ? "命中" : "未命中");
     const batchSamples = state.ui.colorMode === "batch" ? sampleBatchIds(3) : [];
+    const calendarPayload = {
+      degradationEvents: state.degradationEvents,
+      degradationCounters: state.degradationCounters,
+      emptyReason: state.emptyReason,
+    };
+    const hasCalendarDays = Array.isArray(state.calendarDays) && state.calendarDays.length > 0;
+    const calendarBackgroundDisabled = !hasCalendarDays && !shouldUseFallbackCalendarDays(calendarPayload);
 
     // 图例在纯视觉交互时会高频触发；digest 未变化则跳过 DOM 重建
     const digest = [
@@ -217,7 +218,9 @@
       ccTotal,
       ccVisible,
       makespanEnd,
+      ccStatusText,
       ccCacheText,
+      calendarBackgroundDisabled ? "calendar-off" : "calendar-on",
       batchSamples.join("|"),
     ].join("||");
     if (digest === _perfState.legendDigest) return;
@@ -229,7 +232,7 @@
     const r1 = row();
     const summary = document.createElement("span");
     const vmZh = {"Day": "日", "Week": "周", "Month": "月"}[state.ui.viewMode] || "日";
-    summary.textContent = `显示 ${state.filteredTasks.length}/${state.allTasks.length}｜视图 ${vmZh}｜配色 ${modeText()}｜箭头 ${arrowText()}｜关键链（全版本/本窗口可见）${ccTotal}/${ccVisible}｜完工 ${makespanEnd}｜关键链缓存 ${ccCacheText}`;
+    summary.textContent = `显示 ${state.filteredTasks.length}/${state.allTasks.length}｜视图 ${vmZh}｜配色 ${modeText()}｜箭头 ${arrowText()}｜关键链（全版本/本窗口可见）${ccTotal}/${ccVisible}｜完工 ${makespanEnd}｜${ccStatusText}｜关键链缓存 ${ccCacheText}`;
     r1.appendChild(summary);
     el.appendChild(r1);
 
@@ -259,9 +262,17 @@
     // Row 3: markers
     const r3 = row();
     r3.appendChild(title("标记"));
-    r3.appendChild(item("假期/停工(背景)", { background: "#fee2e2" }));
+    if (calendarBackgroundDisabled) {
+      r3.appendChild(item("假期/停工(停用)", { background: "#ffffff", borderColor: "#94a3b8", borderWidth: 1.5 }));
+    } else {
+      r3.appendChild(item("假期/停工(背景)", { background: "#fee2e2" }));
+    }
     r3.appendChild(item("超期(红边)", { background: "#ffffff", borderColor: "#ef4444", borderWidth: 2.5 }));
-    r3.appendChild(item("关键链(外框)", { background: "#ffffff", borderColor: "#38bdf8", borderWidth: 2.5 }));
+    if (ccUnavailable) {
+      r3.appendChild(item("关键链(停用)", { background: "#ffffff", borderColor: "#94a3b8", borderWidth: 2.5 }));
+    } else {
+      r3.appendChild(item("关键链(外框)", { background: "#ffffff", borderColor: "#38bdf8", borderWidth: 2.5 }));
+    }
     r3.appendChild(item("外协(虚线)", { background: "#ffffff", borderColor: "#334155", borderWidth: 1.5, borderStyle: "dashed" }));
     r3.appendChild(item("非聚焦(变淡)", { background: "#94a3b8", opacity: 0.25 }));
     el.appendChild(r3);
@@ -270,16 +281,6 @@
   function initCalendarDays(days) {
     const list = Array.isArray(days) ? days : [];
     state.calendarDays = list;
-  }
-
-  function upsertCriticalOutlines(wrapper, enabled) {
-    if (!wrapper) return;
-    if (!enabled) {
-      removeCriticalOutlineNodes(wrapper);
-      return;
-    }
-    ensureCriticalOutlineNodes(wrapper);
-    syncCriticalOutlineGeometry(wrapper);
   }
 
   // 关键链徽标（CC）已弃用：仅保留清理逻辑，避免旧 DOM 残留
@@ -451,7 +452,14 @@
     const svg = document.querySelector("#gantt svg.gantt");
     if (!svg) return;
 
-    const days = (Array.isArray(state.calendarDays) && state.calendarDays.length) ? state.calendarDays : _buildFallbackCalendarDays();
+    const calendarPayload = {
+      degradationEvents: state.degradationEvents,
+      degradationCounters: state.degradationCounters,
+      emptyReason: state.emptyReason,
+    };
+    const days = (Array.isArray(state.calendarDays) && state.calendarDays.length)
+      ? state.calendarDays
+      : (shouldUseFallbackCalendarDays(calendarPayload) ? _buildFallbackCalendarDays() : []);
     const digest = _buildHolidayDigest(days);
     const height = _computeHolidayHeight(svg);
     const sameDigest = digest === _perfState.holidayDigest;
@@ -607,50 +615,6 @@
     }
   }
 
-  function _clearAllCriticalOutlines() {
-    const ids = Array.isArray(_perfState.decorateRenderedIds) ? _perfState.decorateRenderedIds : [];
-    if (ids.length > 0 && _perfState.wrappersById && _perfState.wrappersById.size > 0) {
-      for (let i = 0; i < ids.length; i++) {
-        const w = _perfState.wrappersById.get(ids[i]);
-        if (!w) continue;
-        try {
-          removeCriticalOutlineNodes(w);
-        } catch (_) {
-          // ignore
-        }
-      }
-      return;
-    }
-
-    try {
-      document.querySelectorAll("#gantt .bar-wrapper").forEach((w) => {
-        try {
-          removeCriticalOutlineNodes(w);
-        } catch (_) {
-          // ignore
-        }
-      });
-    } catch (_) {
-      // ignore
-    }
-  }
-
-  function _syncCriticalOutlinesAfterGeometryChange() {
-    const wrappers =
-      _perfState.wrappersById && _perfState.wrappersById.size > 0
-        ? Array.from(_perfState.wrappersById.values())
-        : document.querySelectorAll("#gantt .bar-wrapper");
-    try {
-      syncAllCriticalOutlines(wrappers, {
-        isCriticalWrapper: function (wrapper) {
-          return !!(wrapper && wrapper.classList && wrapper.classList.contains("aps-critical"));
-        },
-      });
-    } catch (_) {
-      // ignore
-    }
-  }
-
   function decorateStaticAfterRender(byId) {
     // 说明：仅在 new Gantt() 后执行一次（避免纯视觉交互反复 getBBox()/重排）
 
@@ -777,21 +741,6 @@
       }
     }
 
-    if (false) {
-      const renderedIds = [];
-      for (let i = 0; i < ccWrappers.length; i++) {
-        const w = ccWrappers[i];
-        const tid = norm(w.getAttribute("data-id"));
-        // 关键链外框：仅对 CC wrapper 插入（避免对所有 wrapper 反复 querySelectorAll）
-        upsertCriticalOutlines(w, true);
-        // CC 徽标已弃用：这里仅做清理（防止旧 DOM 残留）
-        upsertCriticalBadge(w, false);
-        if (tid) renderedIds.push(tid);
-      }
-      _perfState.decorateRenderedIds = renderedIds;
-    } else if (false) {
-      _perfState.decorateRenderedIds = [];
-    }
     _perfState.decorateRenderedIds = needCC ? renderedIds : [];
     if (needCC && !ui.highlightCC) {
       // 高亮关闭时：确保 class 也被移除（上面 toggle 已处理大部分；此处做一次兜底）
@@ -815,25 +764,6 @@
     _decorCache.highlightCC = ui.highlightCC;
 
     if (updateLegendFlag) updateLegend();
-  }
-
-  function safeDecorateDynamic(opts) {
-    try {
-      decorateDynamic(opts);
-    } catch (_) {
-      // 自动降级：确保正确性优先
-      if (_safeDecorateFallbacking) {
-        return;
-      }
-      _safeDecorateFallbacking = true;
-      try {
-        render();
-      } catch (_2) {
-        // ignore
-      } finally {
-        _safeDecorateFallbacking = false;
-      }
-    }
   }
 
   function safeDecorateDynamic(opts) {
@@ -903,9 +833,7 @@
       },
       custom_popup_html: function (task) {
         const meta = task && task.meta ? task.meta : {};
-        const taskId = norm(task && task.id);
-        const isCC = !!(state.ccIdSet && state.ccIdSet.has(taskId));
-        const ccMeta = (state.ccEdgeMetaByTo && taskId) ? state.ccEdgeMetaByTo.get(taskId) : null;
+        const criticalInfo = getCriticalTooltip(task, state.critical);
         const sk = statusKeyForTask(task);
         const skZh =
           sk === "done" ? "已完成" : sk === "in_progress" ? "进行中" : sk === "blocked" ? "阻塞" : "未开始";
@@ -925,15 +853,12 @@
         const statusText = escapeHtml(str(skZh));
         const priorityText = escapeHtml(str(meta.priority || "-"));
         const dueText = escapeHtml(str(meta.due_date || "-"));
-        const ccFromText = escapeHtml(str((ccMeta && ccMeta.from) || "-"));
-        const ccTypeRaw = norm(ccMeta && ccMeta.edge_type);
-        const ccTypeText = escapeHtml(
-          ccTypeRaw === "process"
-            ? "工艺前驱"
-            : (ccTypeRaw === "machine" ? "设备前驱" : (ccTypeRaw === "operator" ? "人员前驱" : "未知"))
-        );
-        const ccReasonText = escapeHtml(str((ccMeta && ccMeta.reason) || "-"));
-        const ccGapText = escapeHtml(str((ccMeta && typeof ccMeta.gap_minutes !== "undefined" && ccMeta.gap_minutes !== null) ? ccMeta.gap_minutes : "-"));
+        const ccStatusText = escapeHtml(str(criticalInfo.statusLabel));
+        const ccFromText = escapeHtml(str(criticalInfo.predecessorText));
+        const ccTypeText = escapeHtml(str(criticalInfo.edgeTypeText));
+        const ccReasonText = escapeHtml(str(criticalInfo.reasonText));
+        const ccGapText = escapeHtml(str(criticalInfo.gapText));
+        const ccUnavailableText = escapeHtml(str(criticalInfo.unavailableMessage));
 
         const lines = [
           `<div class="title">${titleText}</div>`,
@@ -946,10 +871,13 @@
           `<div class="subtitle">人员：${operatorText}</div>`,
           `<div class="subtitle">来源：${sourceText}｜状态：${statusText}</div>`,
           `<div class="subtitle">优先级：${priorityText}｜交期：${dueText}</div>`,
-          `<div class="subtitle">关键链：${isCC ? "是" : "否"}｜超期：${meta.is_overdue ? "是" : "否"}</div>`,
-          `<div class="subtitle">关键链前驱：${isCC ? ccFromText : "-"}｜类型：${isCC ? ccTypeText : "-"}｜间隔(分)：${isCC ? ccGapText : "-"}</div>`,
-          `<div class="subtitle">关键链依据：${isCC ? ccReasonText : "-"}</div>`,
+          `<div class="subtitle">关键链：${ccStatusText}｜超期：${meta.is_overdue ? "是" : "否"}</div>`,
+          `<div class="subtitle">关键链前驱：${ccFromText}｜类型：${ccTypeText}｜间隔(分)：${ccGapText}</div>`,
+          `<div class="subtitle">关键链依据：${ccReasonText}</div>`,
         ];
+        if (ccUnavailableText) {
+          lines.push(`<div class="subtitle">关键链降级：${ccUnavailableText}</div>`);
+        }
         return lines.join("") + `<div class="pointer"></div>`;
       },
     });

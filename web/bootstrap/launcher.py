@@ -4,6 +4,7 @@ import getpass
 import ipaddress
 import json
 import logging
+import ntpath
 import os
 import socket
 import subprocess
@@ -134,18 +135,25 @@ def read_shared_data_root_from_registry() -> str:
         return ""
     key_read = int(getattr(winreg, "KEY_READ", 0))
     wow64_64 = int(getattr(winreg, "KEY_WOW64_64KEY", 0))
+    open_key: Any = getattr(winreg, "OpenKey", None)
+    query_value_ex: Any = getattr(winreg, "QueryValueEx", None)
+    close_key: Any = getattr(winreg, "CloseKey", None)
+    hkey_local_machine: Any = getattr(winreg, "HKEY_LOCAL_MACHINE", None)
+    if not callable(open_key) or not callable(query_value_ex) or not callable(close_key) or hkey_local_machine is None:
+        return ""
     for access in (key_read | wow64_64, key_read):
         try:
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\APS", 0, access)
+            key = open_key(hkey_local_machine, r"SOFTWARE\APS", 0, access)
         except Exception:
             continue
         try:
-            value, _value_type = winreg.QueryValueEx(key, "SharedDataRoot")
+            result = query_value_ex(key, "SharedDataRoot")
+            value = result[0] if isinstance(result, tuple) and result else ""
         except Exception:
             value = ""
         finally:
             try:
-                winreg.CloseKey(key)
+                close_key(key)
             except Exception:
                 pass
         shared_root = _normalize_abs_dir(value)
@@ -557,8 +565,10 @@ def write_runtime_host_port_files(
 def default_chrome_profile_dir(runtime_dir: str) -> str:
     local_appdata = str(os.environ.get("LOCALAPPDATA") or "").strip()
     if local_appdata:
-        return os.path.join(local_appdata, "APS", "Chrome109Profile")
-    return os.path.join(str(runtime_dir), "chrome109_profile")
+        if "\\" in local_appdata and "/" not in local_appdata:
+            return os.path.abspath(ntpath.join(local_appdata, "APS", "Chrome109Profile"))
+        return os.path.abspath(os.path.join(local_appdata, "APS", "Chrome109Profile"))
+    return os.path.abspath(os.path.join(str(runtime_dir), "chrome109_profile"))
 
 
 def _runtime_contract_path(state_dir: str) -> str:
@@ -1192,4 +1202,3 @@ def stop_runtime_from_dir(
         except Exception:
             pass
     return 1
-

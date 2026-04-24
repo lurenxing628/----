@@ -3,6 +3,32 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from core.services.scheduler.degradation_messages import public_degradation_events
+
+
+def _public_critical_chain(chain: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(chain or {})
+    reason = str(out.get("reason") or "").strip()
+    if bool(out.get("available") is False):
+        out["ids"] = []
+        out["edges"] = []
+        out["edge_count"] = 0
+        if reason:
+            out["reason_code"] = reason
+        out["reason"] = {
+            "repo_exception": "关键链计算异常",
+            "unknown": "关键链暂不可用",
+        }.get(reason, "关键链暂不可用" if reason and reason.isascii() else reason)
+    return out
+
+
+def _public_history(history: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not isinstance(history, dict):
+        return None
+    out = dict(history)
+    out.pop("result_summary", None)
+    return out
+
 
 @dataclass
 class GanttContractDTO:
@@ -16,7 +42,7 @@ class GanttContractDTO:
 
     contract_version: int
     view: str
-    version: int
+    version: Optional[int]
     week_start: str
     week_end: str
     task_count: int
@@ -36,15 +62,15 @@ class GanttContractDTO:
         out: Dict[str, Any] = {
             "contract_version": int(self.contract_version),
             "view": str(self.view or "machine"),
-            "version": int(self.version),
+            "version": int(self.version) if self.version is not None else None,
             "week_start": str(self.week_start or ""),
             "week_end": str(self.week_end or ""),
             "task_count": int(self.task_count),
             "tasks": list(self.tasks or []),
             "calendar_days": list(self.calendar_days or []),
-            "critical_chain": dict(self.critical_chain or {}),
+            "critical_chain": _public_critical_chain(self.critical_chain or {}),
             "degraded": bool(self.degraded),
-            "degradation_events": list(self.degradation_events or []),
+            "degradation_events": public_degradation_events(self.degradation_events or []),
             "degradation_counters": dict(self.degradation_counters or {}),
             "empty_reason": self.empty_reason,
             "overdue_markers_degraded": bool(self.overdue_markers_degraded),
@@ -52,7 +78,7 @@ class GanttContractDTO:
             "overdue_markers_message": str(self.overdue_markers_message or ""),
         }
         if include_history:
-            out["history"] = dict(self.history) if isinstance(self.history, dict) else None
+            out["history"] = _public_history(self.history)
         return out
 
 
@@ -60,7 +86,7 @@ def build_gantt_contract(
     *,
     contract_version: int,
     view: str,
-    version: int,
+    version: Optional[int],
     week_start: str,
     week_end: str,
     tasks: List[Dict[str, Any]],
@@ -79,7 +105,7 @@ def build_gantt_contract(
     dto = GanttContractDTO(
         contract_version=int(contract_version),
         view=str(view or "machine"),
-        version=int(version),
+        version=int(version) if version is not None else None,
         week_start=str(week_start or ""),
         week_end=str(week_end or ""),
         task_count=len(tasks or []),

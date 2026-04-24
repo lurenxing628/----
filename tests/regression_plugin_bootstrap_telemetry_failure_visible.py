@@ -54,6 +54,7 @@ def main() -> None:
 
     events = list(plugin_status.get("degradation_events") or [])
     assert any(str(evt.get("code") or "") == "plugin_bootstrap_telemetry_failed" for evt in events), events
+    assert all("sample" not in evt for evt in events), events
 
     statuses = list(plugin_status.get("statuses") or [])
     assert any(str(item.get("plugin_id") or "") == "demo_plugin" for item in statuses), statuses
