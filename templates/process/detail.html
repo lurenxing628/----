@@ -90,11 +90,11 @@
                   <form method="post" action="{{ url_for('process.update_internal_hours', part_no=part.part_no, seq=op.seq) }}">
                     <div class="form-row">
                       <div class="form-field">
-                        <label class="muted">换型(h)</label>
+                        <label class="muted">换型（小时）</label>
                         <input name="setup_hours" class="w-90" value="{{ op.setup_hours or 0 }}">
                       </div>
                       <div class="form-field">
-                        <label class="muted">单件(h)</label>
+                        <label class="muted">单件（小时）</label>
                         <input name="unit_hours" class="w-90" value="{{ op.unit_hours or 0 }}">
                       </div>
                       <div>
@@ -221,4 +221,3 @@
     {% endif %}
   </div>
 {% endblock %}
-

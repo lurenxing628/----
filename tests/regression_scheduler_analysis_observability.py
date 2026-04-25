@@ -286,6 +286,14 @@ def main() -> None:
     assert "停机避让约束已降级" not in old_html, "旧 summary 不应展示停机降级提示"
     assert "冻结窗口约束已降级" not in old_html, "旧 summary 不应展示冻结窗口降级提示"
     assert "-/-" in old_html, "旧 summary 的 attempts 派工列应展示安全回退值"
+    assert "当前版本摘要缺少部分分析字段" in old_html, "旧 summary 应展示中文兼容提示"
+    assert "优化对比指标" in old_html, "旧 summary 兼容提示应展示中文字段名"
+    assert "评分顺序" in old_html, "旧 summary 兼容提示应展示中文字段名"
+    assert "comparison_metric" not in old_html, "旧 summary 不应暴露内部字段 comparison_metric"
+    assert "best_score_schema" not in old_html, "旧 summary 不应暴露内部字段 best_score_schema"
+    assert "new schema" not in old_html and "schema 字段" not in old_html, "旧 summary 不应暴露 schema 术语"
+    assert "start:priority_first|batch_order:slack" not in old_html, "旧 summary 不应暴露算法方案标签"
+    assert "方案 1" in old_html, "attempts 方案应显示为普通中文序号"
     assert 'stat-card-label">数据异常批次数</div>' not in old_html, "旧 summary 不应展示数据异常卡片"
     assert 'stat-card-label">未排批次数</div>' not in old_html, "旧 summary 不应展示未排批次卡片"
     assert "冻结工序数：" not in old_html, "旧 summary 不应展示冻结摘要"
@@ -348,7 +356,9 @@ def main() -> None:
     assert "及其他 2 个…" in new_html, "未展示冻结示例批次剩余数量"
     assert "排序策略" in new_html, "attempts 表头未更正为排序策略"
     assert "派工" in new_html, "attempts 表头未新增派工列"
-    assert "sgs/cr" in new_html, "attempts 派工列未闭环展示 dispatch_mode/dispatch_rule"
+    assert "智能派工/交期更紧的先做" in new_html, "attempts 派工列未闭环展示派工方式/智能派工策略"
+    assert "start:priority_first|sgs:cr" not in new_html, "attempts 不应暴露算法方案标签"
+    assert "方案 1" in new_html, "attempts 方案应显示为普通中文序号"
 
     fallback_summary = make_top_level_fallback_summary()
     fallback_selected, fallback_hist = build_case_inputs(version=3, summary_obj=fallback_summary)

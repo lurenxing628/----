@@ -79,10 +79,12 @@ def test_scheduler_config_template_shows_shared_preset_degradation_notice() -> N
         "scheduler.preset_save",
         "scheduler.preset_delete",
         '<details class="debug-details muted">',
-        "后端接口未注册（endpoint）",
+        "部分方案操作入口尚未启用。",
         "logs/aps.log、logs/aps_error.log",
     ):
         assert token in template_source
+    assert "后端接口未注册（endpoint）" not in template_source
+    assert "missing_preset_endpoints|join" not in template_source
 
 
 def test_scheduler_config_template_surfaces_shared_degraded_field_warning_contract() -> None:

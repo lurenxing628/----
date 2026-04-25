@@ -9,6 +9,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, YESNO_VALUES, CalendarDayType
+from core.services.common.enum_normalizers import calendar_day_type_label, yes_no_label
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
@@ -74,7 +75,7 @@ def _calendar_baseline_extra_state(*, holiday_default_efficiency: float) -> Dict
 
 def _require_holiday_default_efficiency(value: Optional[float]) -> float:
     if value is None:
-        raise ValidationError("holiday_default_efficiency 缺失，无法继续工作日历 Excel 导入。")
+        raise ValidationError("“假期工作效率”配置缺失，无法继续工作日历 Excel 导入。")
     return float(value)
 
 
@@ -118,10 +119,10 @@ def _load_holiday_default_efficiency_for_excel(
         return float(cfg_svc.get_holiday_default_efficiency()), None
     except ValidationError as exc:
         current_app.logger.warning(
-            "工作日历 Excel 导入读取 holiday_default_efficiency 非法，已拒绝操作：%s",
+            "工作日历 Excel 导入读取假期工作效率配置失败，已拒绝操作：%s",
             exc.message,
         )
-        flash("系统配置项 holiday_default_efficiency 非法，无法继续工作日历 Excel 导入，请先在排产参数中修复。", "error")
+        flash("“假期工作效率”配置无效，无法继续工作日历 Excel 导入，请先在排产参数中修复。", "error")
         return None, _render_excel_calendar_page(
             existing_list=existing_list,
             preview_rows=None,
@@ -189,7 +190,7 @@ def excel_calendar_preview():
 
         row["类型"] = _normalize_day_type(row.get("类型"))
         if row["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
-            return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
+            return "“类型”不合法，可填写：工作日 / 假期 / 周末 / 节假日；也兼容英文标准值 workday/holiday。"
 
         sh = row.get("可用工时")
         if sh is None or str(sh).strip() == "":
@@ -218,10 +219,10 @@ def excel_calendar_preview():
 
         row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
         if row["允许普通件"] not in YESNO_VALUES:
-            return "“允许普通件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
+            return "“允许普通件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
         row["允许急件"] = _normalize_yesno(row.get("允许急件"))
         if row["允许急件"] not in YESNO_VALUES:
-            return "“允许急件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
+            return "“允许急件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
 
         return None
 
@@ -317,7 +318,7 @@ def excel_calendar_confirm():
             return e.message
         row["类型"] = _normalize_day_type(row.get("类型"))
         if row["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
-            return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
+            return "“类型”不合法，可填写：工作日 / 假期 / 周末 / 节假日；也兼容英文标准值 workday/holiday。"
 
         # 可用工时/效率/允许*
         sh = row.get("可用工时")
@@ -346,10 +347,10 @@ def excel_calendar_confirm():
 
         row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
         if row["允许普通件"] not in YESNO_VALUES:
-            return "“允许普通件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
+            return "“允许普通件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
         row["允许急件"] = _normalize_yesno(row.get("允许急件"))
         if row["允许急件"] not in YESNO_VALUES:
-            return "“允许急件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
+            return "“允许急件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
         return None
 
     excel_svc = g.services.excel_service
@@ -490,11 +491,11 @@ def excel_calendar_export():
         [
             [
                 c.date,
-                _normalize_day_type(c.day_type),
+                calendar_day_type_label(c.day_type),
                 c.shift_hours,
                 c.efficiency,
-                _normalize_yesno(c.allow_normal),
-                _normalize_yesno(c.allow_urgent),
+                yes_no_label(c.allow_normal, default="yes"),
+                yes_no_label(c.allow_urgent, default="yes"),
                 c.remark,
             ]
             for c in rows

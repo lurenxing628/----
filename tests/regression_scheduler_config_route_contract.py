@@ -588,7 +588,7 @@ def test_scheduler_config_preset_apply_uses_effective_identity_in_flash(monkeypa
     assert response.status_code in (301, 302)
     with client.session_transaction() as session:
         flashes = list(session.get("_flashes") or [])
-    assert any("当前运行配置存在兼容修补或差异" in str(message) for _category, message in flashes), flashes
+    assert any("当前运行配置已被规范化" in str(message) for _category, message in flashes), flashes
     assert any("旧方案" in str(message) for _category, message in flashes), flashes
 
 
@@ -619,13 +619,7 @@ def test_scheduler_config_preset_apply_surfaces_rejected_validation_failure(monk
     assert any("当前方案未应用" in str(message) for _category, message in flashes), flashes
     assert any(field_label_for("priority_weight") in str(message) for _category, message in flashes), flashes
     assert any(field_label_for("due_weight") in str(message) for _category, message in flashes), flashes
-    assert any("priority_weight" in str(message) and "due_weight" in str(message) for _category, message in flashes), flashes
-    assert not any(
-        field_label_for("priority_weight") in str(message)
-        and "due_weight" in str(message)
-        and "priority_weight" not in str(message)
-        for _category, message in flashes
-    ), flashes
+    assert not any("priority_weight" in str(message) or "due_weight" in str(message) for _category, message in flashes), flashes
 
 
 def test_scheduler_config_multi_field_error_flash_keeps_full_message() -> None:
@@ -639,7 +633,7 @@ def test_scheduler_config_multi_field_error_flash_keeps_full_message() -> None:
 
     assert field_label_for("priority_weight") in text
     assert field_label_for("due_weight") in text
-    assert "priority_weight" in text and "due_weight" in text
+    assert "priority_weight" not in text and "due_weight" not in text
     assert text != f"{field_label_for('priority_weight')}：当前方案未应用。 方案缺少必填字段：、due_weight。"
 
 

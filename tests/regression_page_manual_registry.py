@@ -223,11 +223,11 @@ def main() -> None:
 
     # 6) 语义真值护栏：页面级说明必须写出真实允许值、默认值和危险边界
     manual_semantic_cases = {
-        "excel_personnel": ["在岗/启用/可用/正常/active", "停用/休假/停用/休假/离岗/inactive"],
-        "excel_personnel_link": ["新手/一般/中级/高级/专家/low/high/skilled", "主/非主"],
-        "excel_op_types": ["内部/外部", "internal/external", "内/外"],
+        "excel_personnel": ["在岗/启用/可用/正常", "停用/休假/停用/休假/离岗"],
+        "excel_personnel_link": ["新手/一般/中级/高级/专家", "主/非主"],
+        "excel_op_types": ["内部/外部", "内/外"],
         "excel_suppliers": ["填 `0`、负数或文字都会报错", "在用/正常/禁用", "状态和备注两列"],
-        "excel_calendar": ["留空按 `工作日/workday` 处理", "高级设置中的“假期默认效率”"],
+        "excel_calendar": ["留空按 `工作日` 处理", "高级设置中的“假期默认效率”"],
         "material_batch": ["需求数量必须大于 0", "已到数量允许为 0，但不能为负数"],
         "system_backup": ["恢复前自动备份", "自动回滚"],
     }
@@ -239,7 +239,7 @@ def main() -> None:
             assert phrase in payload_text, f"{manual_id} 缺少已核实语义片段：{phrase}"
 
     full_manual_phrases = [
-        "非 yes/no 枚举列填了 TRUE/FALSE",
+        "枚举字段优先填写中文值",
         '假期不填默认高级设置中的"假期默认效率"',
         "库存数量可以为 0，但不能为负数",
         '"需求数量"必须大于 0',

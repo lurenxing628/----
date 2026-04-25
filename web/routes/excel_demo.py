@@ -77,9 +77,9 @@ def _validate_operator_row(row: Dict[str, Any]) -> Optional[str]:
 
     st = normalize_operator_status(row.get("状态"))
     if not st:
-        return "“状态”不能为空，请填写：在岗 或 停用（也兼容 active / inactive）。"
+        return "“状态”不能为空，请填写：在岗 或 停用；也兼容英文标准值 active/inactive。"
     if st not in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
-        return "“状态”不合法，可填写：在岗 / 停用（也兼容 active / inactive）。"
+        return "“状态”不合法，可填写：在岗 / 停用；也兼容英文标准值 active/inactive。"
     row["状态"] = st
     return None
 
@@ -258,4 +258,3 @@ def download_template():
         download_name="人员基本信息.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-

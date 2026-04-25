@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.enum_normalizers import calendar_day_type_label, yes_no_label
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode
@@ -67,7 +68,7 @@ def _fallback_calendar_date_text(raw_date: Any) -> str:
 
 def _require_holiday_default_efficiency(value: Optional[float]) -> float:
     if value is None:
-        raise ValidationError("holiday_default_efficiency 缺失，无法继续人员专属工作日历 Excel 导入。")
+        raise ValidationError("“假期工作效率”配置缺失，无法继续人员专属工作日历 Excel 导入。")
     return float(value)
 
 
@@ -130,11 +131,11 @@ def _load_holiday_default_efficiency_for_excel(
         return float(cfg_svc.get_holiday_default_efficiency()), None
     except ValidationError as exc:
         current_app.logger.warning(
-            "人员专属工作日历 Excel 导入读取 holiday_default_efficiency 非法，已拒绝操作：%s",
+            "人员专属工作日历 Excel 导入读取假期工作效率配置失败，已拒绝操作：%s",
             exc.message,
         )
         flash(
-            "系统配置项 holiday_default_efficiency 非法，无法继续人员专属工作日历 Excel 导入，请先在排产参数中修复。",
+            "“假期工作效率”配置无效，无法继续人员专属工作日历 Excel 导入，请先在排产参数中修复。",
             "error",
         )
         return None, _render_excel_operator_calendar_page(
@@ -405,13 +406,13 @@ def excel_operator_calendar_export():
             [
                 c.operator_id,
                 c.date,
-                _normalize_operator_calendar_day_type(c.day_type),
+                calendar_day_type_label(c.day_type),
                 c.shift_start,
                 c.shift_end,
                 c.shift_hours,
                 c.efficiency,
-                _normalize_yesno(c.allow_normal),
-                _normalize_yesno(c.allow_urgent),
+                yes_no_label(c.allow_normal, default="yes"),
+                yes_no_label(c.allow_urgent, default="yes"),
                 c.remark,
             ]
             for c in rows
@@ -438,4 +439,3 @@ def excel_operator_calendar_export():
         download_name="人员专属工作日历.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-

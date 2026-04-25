@@ -30,8 +30,8 @@
             <th>工序</th>
             <th>工种</th>
             <th>归属</th>
-            <th>换型时间(h)</th>
-            <th>单件工时(h)</th>
+            <th>换型时间（小时）</th>
+            <th>单件工时（小时）</th>
           </tr>
         </thead>
         <tbody>
@@ -41,7 +41,7 @@
               <td>{{ r["图号"] }}</td>
               <td>{{ r["工序"] }}</td>
               <td>{{ r["工种"] or '-' }}</td>
-              <td>{{ r["归属"] }}</td>
+	              <td>{{ r["归属显示"] or '-' }}</td>
               <td>{{ r["换型时间(h)"] }}</td>
               <td>{{ r["单件工时(h)"] }}</td>
             </tr>
@@ -56,4 +56,3 @@
 
   <script src="{{ url_for('static', filename='js/excel_handler.js') }}" defer></script>
 {% endblock %}
-

@@ -6,6 +6,7 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import OpType
 from core.models.enums import SOURCE_TYPE_VALUES, SourceType
+from core.services.common.enum_normalizers import source_type_label
 from core.services.common.normalize import normalize_text
 from data.repositories import OpTypeRepository
 
@@ -97,9 +98,9 @@ class OpTypeService:
     def create(self, op_type_id: Any, name: Any, category: Any = SourceType.INTERNAL.value, remark: Any = None) -> OpType:
         ot_id, ot_name, ot_category = self._validate_fields(op_type_id, name, category)
         if ot_id is None:
-            raise ValidationError("鈥滃伐绉岻D鈥濅笉鑳戒负绌?", field="宸ョID")
+            raise ValidationError("“工种ID”不能为空", field="工种ID")
         if ot_name is None:
-            raise ValidationError("鈥滃伐绉嶅悕绉扳€濅笉鑳戒负绌?", field="宸ョ鍚嶇О")
+            raise ValidationError("“工种名称”不能为空", field="工种名称")
         ot_remark = self._normalize_text(remark)
 
         if self.repo.get(ot_id):
@@ -160,7 +161,12 @@ class OpTypeService:
     def build_existing_for_excel(self) -> Dict[str, Dict[str, Any]]:
         existing: Dict[str, Dict[str, Any]] = {}
         for ot in self.repo.list():
-            existing[ot.op_type_id] = {"工种ID": ot.op_type_id, "工种名称": ot.name, "归属": ot.category}
+            existing[ot.op_type_id] = {
+                "工种ID": ot.op_type_id,
+                "工种名称": ot.name,
+                "归属": ot.category,
+                "归属显示": source_type_label(ot.category),
+            }
         return existing
 
     def ensure_replace_allowed(self) -> None:
@@ -176,4 +182,3 @@ class OpTypeService:
             raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有零件工序模板引用了工种，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
         if self.repo.has_any_batch_operation_reference():
             raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有批次工序引用了工种，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
-

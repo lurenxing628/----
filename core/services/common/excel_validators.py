@@ -129,11 +129,11 @@ def get_batch_row_validate_and_normalize(
 
         target["优先级"] = _normalize_batch_priority(target.get("优先级"))
         if target["优先级"] not in BATCH_PRIORITY_VALUES:
-            return "“优先级”不合法（允许：normal/urgent/critical；或中文：普通/急件/特急）"
+            return "“优先级”不合法，可填写：普通 / 急件 / 特急；也兼容英文标准值 normal/urgent/critical。"
 
         target["齐套"] = _normalize_ready_status(target.get("齐套"))
         if target["齐套"] not in READY_STATUS_VALUES:
-            return "“齐套”不合法（允许：yes/no/partial；或中文：齐套/未齐套/部分齐套）"
+            return "“齐套”不合法，可填写：齐套 / 未齐套 / 部分齐套 / 是 / 否；也兼容英文标准值 yes/no/partial。"
 
         ready_res = _normalize_batch_date_cell(target.get("齐套日期"), field_label="齐套日期")
         if ready_res.get("error"):
@@ -181,7 +181,7 @@ def get_operator_calendar_row_validate_and_normalize(
 
         target["类型"] = _normalize_operator_calendar_day_type(target.get("类型"))
         if target["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
-            return "“类型”不合法（允许：workday/holiday；或中文：工作日/假期/节假日/周末）"
+            return "“类型”不合法，可填写：工作日 / 假期 / 周末 / 节假日；也兼容英文标准值 workday/holiday。"
 
         try:
             ss = normalize_hhmm(target.get("班次开始"), field="班次开始", allow_none=True)
@@ -235,13 +235,12 @@ def get_operator_calendar_row_validate_and_normalize(
 
         target["允许普通件"] = _normalize_yesno(target.get("允许普通件"))
         if target["允许普通件"] not in YESNO_VALUES:
-            return "“允许普通件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
+            return "“允许普通件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
         target["允许急件"] = _normalize_yesno(target.get("允许急件"))
         if target["允许急件"] not in YESNO_VALUES:
-            return "“允许急件”不合法（允许：yes/no/true/false/1/0；或中文：是/否）"
+            return "“允许急件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
 
         target["__id"] = f"{op_id}|{target.get('日期')}"
         return None
 
     return _validate_and_normalize
-

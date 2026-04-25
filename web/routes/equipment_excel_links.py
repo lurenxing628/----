@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.enum_normalizers import skill_level_label, yes_no_label
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
@@ -42,8 +43,8 @@ def _build_existing_machine_link_page_data() -> Tuple[List[Dict[str, Any]], Dict
             "设备名称": r["machine_name"],
             "工号": r["operator_id"],
             "姓名": r["operator_name"],
-            "技能等级": r["skill_level"],
-            "主操设备": r["is_primary"],
+            "技能等级": skill_level_label(r["skill_level"]),
+            "主操设备": yes_no_label(r["is_primary"]),
         }
         for r in rows
     ]
@@ -283,7 +284,7 @@ def excel_link_export():
     template_def = get_template_definition("设备人员关联.xlsx")
     output = build_xlsx_bytes(
         template_def["headers"],
-        [[r["machine_id"], r["operator_id"], r["skill_level"], r["is_primary"]] for r in rows],
+        [[r["machine_id"], r["operator_id"], skill_level_label(r["skill_level"]), yes_no_label(r["is_primary"])] for r in rows],
         format_spec=template_def.get("format_spec"),
         sanitize_formula=True,
     )
@@ -306,4 +307,3 @@ def excel_link_export():
         download_name="设备人员关联.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-

@@ -9,7 +9,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import OperatorStatus
-from core.services.common.enum_normalizers import normalize_operator_status
+from core.services.common.enum_normalizers import normalize_operator_status, operator_status_label
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode
@@ -40,9 +40,9 @@ def _validate_operator_excel_row(row: Dict[str, Any]) -> Optional[str]:
 
     st = normalize_operator_status(row.get("状态"))
     if not st:
-        return "状态不能为空，请填写：在岗 或 停用（也兼容 active / inactive）。"
+        return "状态不能为空，请填写：在岗 或 停用；也兼容英文标准值 active/inactive。"
     if st not in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
-        return "状态不合法，可填写：在岗 / 停用（也兼容 active / inactive）。"
+        return "状态不合法，可填写：在岗 / 停用；也兼容英文标准值 active/inactive。"
     row["状态"] = st
     return None
 
@@ -330,7 +330,7 @@ def excel_operator_export():
     template_def = get_template_definition("人员基本信息.xlsx")
     output = build_xlsx_bytes(
         template_def["headers"],
-        [[r.get("工号"), r.get("姓名"), r.get("状态"), r.get("班组"), r.get("备注")] for r in export_rows],
+        [[r.get("工号"), r.get("姓名"), operator_status_label(r.get("状态")), r.get("班组"), r.get("备注")] for r in export_rows],
         format_spec=template_def.get("format_spec"),
         sanitize_formula=True,
     )

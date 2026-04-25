@@ -237,8 +237,7 @@ class MachineDowntimeService:
             return
 
         if d.id is None:
-            raise BusinessError(ErrorCode.NOT_FOUND, "鍋滄満璁板綍 ID 缂哄け锛屾棤娉曟墽琛屽彇娑堛€?")
+            raise BusinessError(ErrorCode.NOT_FOUND, "停机记录 ID 缺失，无法执行取消。")
 
         with self.tx_manager.transaction():
             self.repo.cancel(int(d.id))
-

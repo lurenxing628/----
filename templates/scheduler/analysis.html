@@ -12,6 +12,15 @@
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {% set mode_zh = {'improve': '优化模式', 'greedy': '快速模式', 'single': '单次排产'} %}
+  {% set dispatch_mode_zh = {
+      'batch_order': '按批次顺序排',
+      'sgs': '智能派工'
+    } %}
+  {% set dispatch_rule_zh = {
+      'slack': '时间余量少的先做',
+      'cr': '交期更紧的先做',
+      'atc': '综合紧急度优先'
+    } %}
 <div class="card">
     <div class="page-header">
       <div class="page-title-group">
@@ -44,8 +53,8 @@
       </div>
       {% if selected %}
         <div class="toolbar-group">
-          {{ ui.link_button('查看甘特图-设备', url_for('scheduler.gantt_page', view='machine', version=selected.version), 'secondary', 'md') }}
-          {{ ui.link_button('查看甘特图-人员', url_for('scheduler.gantt_page', view='operator', version=selected.version), 'secondary', 'md') }}
+          {{ ui.link_button('查看设备甘特图', url_for('scheduler.gantt_page', view='machine', version=selected.version), 'secondary', 'md') }}
+          {{ ui.link_button('查看人员甘特图', url_for('scheduler.gantt_page', view='operator', version=selected.version), 'secondary', 'md') }}
         </div>
       {% endif %}
     </form>
@@ -91,8 +100,8 @@
       {% if compat_fallback and compat_fallback.used %}
         <div class="flash-card flash-warning mt-2">
           {{ compat_fallback.message }}
-          {% if compat_fallback.missing_fields %}
-            缺失字段：{{ compat_fallback.missing_fields | join('、') }}。
+          {% if compat_fallback.missing_field_labels %}
+            缺少项目：{{ compat_fallback.missing_field_labels | join('、') }}。
           {% endif %}
         </div>
       {% endif %}
@@ -100,9 +109,12 @@
         <details class="mt-2">
           <summary>本次配置快照</summary>
           <div class="muted mt-2">
-            排序：{{ algo.config_snapshot.get('sort_strategy', '-') }}
+            {% set snapshot_sort_strategy = algo.config_snapshot.get('sort_strategy', '-') %}
+            {% set snapshot_dispatch_mode = algo.config_snapshot.get('dispatch_mode') %}
+            {% set snapshot_dispatch_rule = algo.config_snapshot.get('dispatch_rule') %}
+            排序：{{ strategy_zh.get(snapshot_sort_strategy, snapshot_sort_strategy or '-') }}
             <span class="meta-sep">｜</span>
-            派工：{{ algo.config_snapshot.get('dispatch_mode', '-') }}{% if algo.config_snapshot.get('dispatch_rule') %}/{{ algo.config_snapshot.get('dispatch_rule') }}{% endif %}
+            派工：{{ dispatch_mode_zh.get(snapshot_dispatch_mode, snapshot_dispatch_mode or '-') }}{% if snapshot_dispatch_rule %}/{{ dispatch_rule_zh.get(snapshot_dispatch_rule, snapshot_dispatch_rule) }}{% endif %}
             <span class="meta-sep">｜</span>
             目标：{{ algo_config_snapshot_objective_label }}
             <span class="meta-sep">｜</span>
@@ -273,7 +285,7 @@
 
     {% if selected_summary and selected_summary.get('summary_truncated') %}
       <div class="flash-card flash-warning">
-        当前展示为裁剪后摘要（原始 {{ selected_summary.get('original_size_bytes', 0) }} 字节），attempts / 优化曲线 / 超期明细可能不完整。
+        当前展示为裁剪后摘要（原始 {{ selected_summary.get('original_size_bytes', 0) }} 字节），尝试方案、优化曲线、超期明细可能不完整。
       </div>
     {% endif %}
 
@@ -295,7 +307,7 @@
           <thead>
             <tr>
               <th>排序</th>
-              <th>方案编号</th>
+	              <th>方案</th>
               <th>排序策略</th>
               <th>派工</th>
               <th>失败工序数</th>
@@ -309,9 +321,11 @@
               {% set mm = r.metrics if r.metrics else {} %}
               <tr>
                 <td>{{ loop.index }}</td>
-                <td class="mono-tag">{{ r.tag }}</td>
+	                <td>方案 {{ loop.index }}</td>
                 <td>{{ strategy_zh.get(r.strategy, r.strategy or '-') }}</td>
-                <td>{{ r.dispatch_mode }}/{{ r.dispatch_rule }}</td>
+                {% set row_dispatch_mode = r.dispatch_mode or '-' %}
+                {% set row_dispatch_rule = r.dispatch_rule or '-' %}
+                <td>{{ dispatch_mode_zh.get(row_dispatch_mode, row_dispatch_mode) }}/{{ dispatch_rule_zh.get(row_dispatch_rule, row_dispatch_rule) }}</td>
                 <td>{{ r.failed_ops }}</td>
                 <td>
                   {% if objective_key in mm %}

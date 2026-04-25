@@ -163,9 +163,9 @@ class MachineService:
             team_id=team_id,
         )
         if mc_id is None:
-            raise ValidationError("璁惧缂栧彿涓嶈兘涓虹┖", field="璁惧缂栧彿")
+            raise ValidationError("设备编号不能为空", field="设备编号")
         if mc_name is None:
-            raise ValidationError("璁惧鍚嶇О涓嶈兘涓虹┖", field="璁惧鍚嶇О")
+            raise ValidationError("设备名称不能为空", field="设备名称")
         mc_remark = self._normalize_text(remark)
         mc_category = self._normalize_text(category)
 

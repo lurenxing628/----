@@ -66,7 +66,7 @@ def main() -> None:
         ext_days = row["ext_days"] if isinstance(row, sqlite3.Row) else row[0]
         assert abs(float(ext_days or 0.0) - 1.0) < 1e-9, f"ext_days 未回退为 1.0：{ext_days!r}"
         assert parse_result.status in (ParseStatus.PARTIAL, ParseStatus.PARTIAL.value), f"保存期 fallback 后状态应为 PARTIAL：{parse_result.status!r}"
-        assert any("已按 1.0 天写入 ext_days" in str(msg) for msg in (parse_result.warnings or [])), (
+        assert any("已按 1.0 天写入外协周期" in str(msg) for msg in (parse_result.warnings or [])), (
             f"未透出保存期 fallback warning：{parse_result.warnings!r}"
         )
 

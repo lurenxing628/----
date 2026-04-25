@@ -64,9 +64,9 @@
         <div class="form-field min-w-280">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
-            严格模式
+            严格校验工艺路线
           </label>
-          <div class="muted text-xs">开启后，模板自动补建不会再按兼容逻辑回退；解析器不支持 strict_mode 时会直接报错。</div>
+          <div class="muted text-xs">只在零件还没有工序模板、需要根据工艺路线自动生成模板时起作用：如果遇到系统不认识的工种、找不到供应商、或供应商默认周期无效，将直接报错并拒绝创建。</div>
         </div>
         <div>{{ ui.button('创建批次', 'primary', 'md', type_attr='submit') }}</div>
       </div>
@@ -189,4 +189,3 @@
     {% endif %}
   </div>
 {% endblock %}
-

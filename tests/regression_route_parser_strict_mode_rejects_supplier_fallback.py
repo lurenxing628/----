@@ -67,7 +67,7 @@ def main() -> None:
     assert result_missing.status in (ParseStatus.FAILED, ParseStatus.FAILED.value), (
         f"strict_mode 缺供应商映射应失败：{result_missing.status!r}"
     )
-    assert any("未找到供应商配置" in str(msg) and "strict_mode" in str(msg) for msg in (result_missing.errors or [])), (
+    assert any("未找到供应商配置" in str(msg) and "严格模式" in str(msg) for msg in (result_missing.errors or [])), (
         f"strict_mode 缺供应商错误未透出：{result_missing.errors!r}"
     )
 
@@ -80,7 +80,7 @@ def main() -> None:
     assert result_invalid.status in (ParseStatus.FAILED, ParseStatus.FAILED.value), (
         f"strict_mode default_days=0 应失败：{result_invalid.status!r}"
     )
-    assert any("strict_mode 已拒绝按 1.0 天处理" in str(msg) for msg in (result_invalid.errors or [])), (
+    assert any("严格模式已拒绝按 1.0 天处理" in str(msg) for msg in (result_invalid.errors or [])), (
         f"strict_mode 默认周期错误未透出：{result_invalid.errors!r}"
     )
 

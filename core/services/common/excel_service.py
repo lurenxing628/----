@@ -16,7 +16,7 @@ SOURCE_METADATA_KEYS = frozenset((SOURCE_ROW_NUM_KEY, SOURCE_SHEET_NAME_KEY))
 
 class ImportMode(Enum):
     APPEND = "append"  # 追加，不影响已有
-    OVERWRITE = "overwrite"  # 相同ID覆盖
+    OVERWRITE = "overwrite"  # 相同编号覆盖
     REPLACE = "replace"  # 清空后导入（Phase1 只做预览，真正清空落库在各模块实现）
 
 

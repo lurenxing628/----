@@ -5,6 +5,7 @@ import time
 from flask import g, send_file, url_for
 
 from core.models.enums import MergeMode, SourceType
+from core.services.common.enum_normalizers import source_type_label
 from core.services.common.excel_audit import log_excel_export
 from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.process.part_operation_query_service import PartOperationQueryService
@@ -38,7 +39,7 @@ def excel_part_ops_export():
                 r["part_no"],
                 r["seq"],
                 r["op_type_name"],
-                r["source"],
+                source_type_label(r["source"]),
                 r["supplier_name"] or "",
                 r["total_days"] if r["source"] == SourceType.EXTERNAL.value and r["merge_mode"] == MergeMode.MERGED.value and r["total_days"] is not None else (r["ext_days"] if r["source"] == SourceType.EXTERNAL.value else None),
             ]
@@ -71,4 +72,3 @@ def excel_part_ops_export():
         download_name="零件工序模板.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-

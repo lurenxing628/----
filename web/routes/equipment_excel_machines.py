@@ -9,7 +9,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import MACHINE_STATUS_VALUES
-from core.services.common.enum_normalizers import normalize_machine_status
+from core.services.common.enum_normalizers import machine_status_label, normalize_machine_status
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode
@@ -47,10 +47,10 @@ def _validate_machine_excel_row(row: Dict[str, Any]) -> Optional[str]:
 
     status = row.get("状态")
     if status is None or str(status).strip() == "":
-        return "状态不能为空，请填写：可用 / 停用 / 维修（也兼容 active / inactive / maintain）。"
+        return "状态不能为空，请填写：可用 / 停用 / 维修；也兼容英文标准值 active/inactive/maintain。"
     st = _normalize_machine_status_for_excel(status)
     if st not in MACHINE_STATUS_VALUES:
-        return "状态不合法，可填写：可用 / 停用 / 维修（也兼容 active / inactive / maintain）。"
+        return "状态不合法，可填写：可用 / 停用 / 维修；也兼容英文标准值 active/inactive/maintain。"
     row["状态"] = st
 
     return None
@@ -387,7 +387,7 @@ def excel_machine_export():
     template_def = get_template_definition("设备信息.xlsx")
     output = build_xlsx_bytes(
         template_def["headers"],
-        [[r["machine_id"], r["name"], r.get("op_type_name"), r.get("team_name"), r["status"]] for r in rows],
+        [[r["machine_id"], r["name"], r.get("op_type_name"), r.get("team_name"), machine_status_label(r["status"])] for r in rows],
         format_spec=template_def.get("format_spec"),
         sanitize_formula=True,
     )

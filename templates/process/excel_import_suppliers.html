@@ -22,7 +22,7 @@
       <table>
         <thead>
           <tr>
-            <th>供应商ID</th>
+            <th>供应商编号</th>
             <th>名称</th>
             <th>对应工种</th>
             <th>默认周期</th>
@@ -36,7 +36,7 @@
               <td>{{ r["名称"] }}</td>
               <td>{{ r["对应工种"] or '-' }}</td>
               <td>{{ r["默认周期"] }}</td>
-              <td>{{ r["状态"] }}</td>
+              <td>{{ r["状态显示"] or '-' }}</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -48,4 +48,3 @@
 
   <script src="{{ url_for('static', filename='js/excel_handler.js') }}" defer></script>
 {% endblock %}
-

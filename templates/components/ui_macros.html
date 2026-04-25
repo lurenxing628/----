@@ -55,7 +55,7 @@
 
 {% macro excel_import_mode_help(mode_options=None) %}
 {% set default_mode_options = [
-  {'value': 'overwrite', 'label': '覆盖（相同ID更新）'},
+  {'value': 'overwrite', 'label': '覆盖（相同编号更新）'},
   {'value': 'append', 'label': '追加（已存在则跳过）'},
   {'value': 'replace', 'label': '替换（清空后导入）'}
 ] %}
@@ -100,8 +100,8 @@
   {{ link_button('批次管理', url_for('scheduler.batches_manage_page'), 'primary' if active == 'batches_manage' else 'secondary', size) }}
   {{ link_button('高级设置/模板', url_for('scheduler.config_page'), 'primary' if active == 'config' else 'secondary', size) }}
   {{ link_button('资源排班中心', url_for('scheduler.resource_dispatch_page'), 'primary' if active == 'resource_dispatch' else 'secondary', size) }}
-  {{ link_button('甘特图-设备', url_for('scheduler.gantt_page', view='machine'), 'primary' if active == 'gantt_machine' else 'secondary', size) }}
-  {{ link_button('甘特图-人员', url_for('scheduler.gantt_page', view='operator'), 'primary' if active == 'gantt_operator' else 'secondary', size) }}
+  {{ link_button('设备甘特图', url_for('scheduler.gantt_page', view='machine'), 'primary' if active == 'gantt_machine' else 'secondary', size) }}
+  {{ link_button('人员甘特图', url_for('scheduler.gantt_page', view='operator'), 'primary' if active == 'gantt_operator' else 'secondary', size) }}
   {{ link_button('排产优化分析', url_for('scheduler.analysis_page'), 'primary' if active == 'analysis' else 'secondary', size) }}
   {{ link_button('周计划', url_for('scheduler.week_plan_page'), 'primary' if active == 'week_plan' else 'secondary', size) }}
   {{ link_button('工作日历配置', url_for('scheduler.calendar_page'), 'primary' if active == 'calendar' else 'secondary', size) }}

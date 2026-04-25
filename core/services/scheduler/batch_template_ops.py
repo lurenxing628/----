@@ -33,7 +33,7 @@ def invoke_template_resolver(svc, part_no: str, part_name: str, route_raw: str, 
         if strict_mode:
             raise BusinessError(
                 ErrorCode.ROUTE_PARSE_ERROR,
-                "当前模板解析器版本过旧，不支持 strict_mode，请升级解析器后重试。",
+                "当前模板解析器版本过旧，不支持严格模式，请升级解析器后重试。",
                 details={"reason": "strict_mode_unsupported"},
                 cause=exc,
             ) from exc
@@ -48,7 +48,7 @@ def invoke_template_resolver(svc, part_no: str, part_name: str, route_raw: str, 
     if strict_mode:
         raise BusinessError(
             ErrorCode.ROUTE_PARSE_ERROR,
-            "当前模板解析器版本过旧，不支持 strict_mode，请升级解析器后重试。",
+            "当前模板解析器版本过旧，不支持严格模式，请升级解析器后重试。",
             details={"reason": "strict_mode_unsupported"},
         )
     return resolver(part_no, part_name, route_raw, no_tx)

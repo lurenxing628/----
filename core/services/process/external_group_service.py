@@ -134,14 +134,16 @@ class ExternalGroupService:
                 op_type_name = normalize_text(getattr(op, "op_type_name", None)) or f"seq={seq}"
                 if strict_mode:
                     raise ValidationError(
-                        f"外部工序 {seq}（{op_type_name}）周期必须大于 0；strict_mode 已拒绝按 1.0 天回退",
+                        f"外部工序 {seq}（{op_type_name}）周期必须大于 0；严格模式已拒绝按 1.0 天回退",
                         field=f"ext_days_{seq}",
                     )
-                warning_text = (
-                    f"外部工序 {seq}（{op_type_name}）周期输入无效（raw={d!r}），compatible mode 已按 1.0 天回退写入 ext_days"
+                log_warning_text = (
+                    f"外部工序 {seq}（{op_type_name}）ext_days 无效，"
+                    f"raw={d!r}，compatible mode fallback to 1.0 day"
                 )
-                safe_warning(self.logger, warning_text)
-                append_unique_text_messages(user_warnings, warning_text)
+                user_warning_text = f"外部工序 {seq}（{op_type_name}）周期输入无效，兼容模式已按 1.0 天回退。"
+                safe_warning(self.logger, log_warning_text)
+                append_unique_text_messages(user_warnings, user_warning_text)
                 dv = 1.0
             self.op_repo.update(part_no, seq, {"ext_days": float(dv)})
 
@@ -204,4 +206,3 @@ class ExternalGroupService:
                 )
 
         return self._get_group_or_raise(gid)
-

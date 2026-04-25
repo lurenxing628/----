@@ -82,7 +82,7 @@ class SupplierExcelImportService:
             if "状态" in data or not existed:
                 status = self._normalize_supplier_status_for_excel(data.get("状态"))
                 if status not in SUPPLIER_STATUS_VALUES:
-                    raise ValidationError("“状态”不合法，可填写：启用 / 停用（也兼容 active / inactive）。", field="状态")
+                    raise ValidationError("“状态”不合法，可填写：启用 / 停用；也兼容英文标准值 active/inactive。", field="状态")
                 payload["status"] = status
             if "备注" in data or not existed:
                 payload["remark"] = normalize_text(data.get("备注"))
@@ -108,4 +108,3 @@ class SupplierExcelImportService:
         out = stats.to_dict()
         out["total_rows"] = len(rows)
         return out
-

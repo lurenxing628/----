@@ -5,6 +5,7 @@ from flask import current_app, flash, g, redirect, request, url_for
 from core.infrastructure.errors import ValidationError
 from core.services.personnel import OperatorService
 from core.services.scheduler import CalendarService, ConfigService
+from web.error_boundary import user_visible_app_error_message
 from web.ui_mode import render_ui_template as render_template
 
 from .normalizers import _normalize_operator_calendar_day_type, _normalize_yesno
@@ -82,9 +83,9 @@ def operator_calendar_upsert(operator_id: str):
         )
     except ValidationError as exc:
         if str(exc.field or "").strip() == "holiday_default_efficiency":
-            flash(f"系统配置项 holiday_default_efficiency 非法，无法保存个人日历，请先在排产参数中修复。{exc.message}", "error")
+            flash(f"“假期工作效率”配置无效，无法保存个人日历，请先在排产参数中修复。{user_visible_app_error_message(exc)}", "error")
         else:
-            flash(exc.message, "error")
+            flash(user_visible_app_error_message(exc), "error")
         return redirect(url_for("personnel.operator_calendar_page", operator_id=operator_id))
     flash("个人日历配置已保存。", "success")
     return redirect(url_for("personnel.operator_calendar_page", operator_id=operator_id))

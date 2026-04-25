@@ -2,23 +2,12 @@ from __future__ import annotations
 
 import io
 import os
-from typing import Any, Dict, Iterable, List, Mapping, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Sequence, Set
 
 import openpyxl
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
-
-from core.models.enums import (
-    BatchPriority,
-    CalendarDayType,
-    MachineStatus,
-    OperatorStatus,
-    ReadyStatus,
-    SourceType,
-    SupplierStatus,
-    YesNo,
-)
 
 
 def _close_workbook_quietly(wb: Any) -> None:
@@ -175,6 +164,107 @@ def _read_xlsx_headers(path: str) -> List[str]:
         _close_workbook_quietly(wb)
 
 
+_LEGACY_TEMPLATE_ENUM_VALUES: Set[str] = {
+    "active",
+    "inactive",
+    "maintain",
+    "internal",
+    "external",
+    "beginner",
+    "normal",
+    "expert",
+    "urgent",
+    "critical",
+    "partial",
+    "workday",
+    "holiday",
+    "yes",
+    "no",
+}
+
+
+def _cell_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _row_has_value(row: Sequence[Any]) -> bool:
+    return any(_cell_text(value) for value in row)
+
+
+def _inline_validation_values(formula: Any) -> List[str]:
+    text = _cell_text(formula)
+    if len(text) < 2 or not (text.startswith('"') and text.endswith('"')):
+        return []
+    return [item.strip() for item in text[1:-1].split(",") if item.strip()]
+
+
+def _non_empty_data_rows(ws: Any) -> List[Sequence[Any]]:
+    return [row for row in ws.iter_rows(min_row=2, values_only=True) if _row_has_value(row)]
+
+
+def _enum_texts_from_row(row: Sequence[Any], enum_col_indices: Iterable[int]) -> Set[str]:
+    texts: Set[str] = set()
+    for col_idx in enum_col_indices:
+        if col_idx >= len(row):
+            continue
+        text = _cell_text(row[col_idx]).lower()
+        if text:
+            texts.add(text)
+    return texts
+
+
+def _enum_texts_from_rows(rows: Iterable[Sequence[Any]], enum_col_indices: Iterable[int]) -> Set[str]:
+    texts: Set[str] = set()
+    for row in rows:
+        texts.update(_enum_texts_from_row(row, enum_col_indices))
+    return texts
+
+
+def _inline_validation_texts(ws: Any) -> Set[str]:
+    texts: Set[str] = set()
+    for dv in getattr(ws.data_validations, "dataValidation", []) or []:
+        for value in _inline_validation_values(getattr(dv, "formula1", "")):
+            texts.add(value.lower())
+    return texts
+
+
+def _known_generated_template_needs_refresh(path: str, template_def: Mapping[str, Any]) -> bool:
+    """Refresh old generated templates that still expose raw enum defaults.
+
+    The guard is intentionally narrow: if a workbook contains user data beyond the
+    built-in sample rows, keep it untouched and let download serve the disk file.
+    """
+    format_spec = template_def.get("format_spec", {}) or {}
+    enum_col_indices = set(format_spec.get("enum_cols", {}) or {})
+    if not enum_col_indices:
+        return False
+
+    sample_row_count = len(template_def.get("sample_rows") or [])
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True)
+    except Exception:
+        return False
+    try:
+        ws = _active_sheet_or_none(wb)
+        if ws is None:
+            return False
+
+        non_empty_data_rows = _non_empty_data_rows(ws)
+        if len(non_empty_data_rows) > sample_row_count:
+            return False
+
+        enum_texts = _enum_texts_from_rows(non_empty_data_rows, enum_col_indices)
+        enum_texts.update(_inline_validation_texts(ws))
+
+        return bool(enum_texts & _LEGACY_TEMPLATE_ENUM_VALUES)
+    except Exception:
+        return False
+    finally:
+        _close_workbook_quietly(wb)
+
+
 def get_template_definition(filename: str) -> Dict[str, Any]:
     for item in get_default_templates():
         if str(item.get("filename")) == str(filename):
@@ -196,20 +286,20 @@ def get_default_templates() -> List[Dict[str, Any]]:
         {
             "filename": "人员基本信息.xlsx",
             "headers": ["工号", "姓名", "状态", "班组", "备注"],
-            "sample_rows": [["OP001", "张三", OperatorStatus.ACTIVE.value, None, "示例备注"]],
+            "sample_rows": [["OP001", "张三", "在岗", None, "示例备注"]],
             "format_spec": {
                 "text_cols": [0, 1, 3, 4],
-                "enum_cols": {2: [OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value]},
+                "enum_cols": {2: ["在岗", "停用"]},
                 "column_widths": {0: 14, 1: 12, 2: 12, 3: 14, 4: 18},
             },
         },
         {
             "filename": "人员设备关联.xlsx",
             "headers": ["工号", "设备编号", "技能等级", "主操设备"],
-            "sample_rows": [["OP001", "CNC-01", "normal", YesNo.YES.value]],
+            "sample_rows": [["OP001", "CNC-01", "普通", "是"]],
             "format_spec": {
                 "text_cols": [0, 1],
-                "enum_cols": {2: ["beginner", "normal", "expert"], 3: ["yes", "no"]},
+                "enum_cols": {2: ["初级", "普通", "熟练"], 3: ["是", "否"]},
                 "column_widths": {0: 14, 1: 14, 2: 12, 3: 12},
             },
         },
@@ -217,20 +307,20 @@ def get_default_templates() -> List[Dict[str, Any]]:
         {
             "filename": "设备信息.xlsx",
             "headers": ["设备编号", "设备名称", "工种", "班组", "状态"],
-            "sample_rows": [["CNC-01", "数控车床1", "数车", None, MachineStatus.ACTIVE.value]],
+            "sample_rows": [["CNC-01", "数控车床1", "数车", None, "可用"]],
             "format_spec": {
                 "text_cols": [0, 1, 2, 3],
-                "enum_cols": {4: [MachineStatus.ACTIVE.value, MachineStatus.INACTIVE.value, MachineStatus.MAINTAIN.value]},
+                "enum_cols": {4: ["可用", "停用", "维修"]},
                 "column_widths": {0: 14, 1: 18, 2: 12, 3: 14, 4: 12},
             },
         },
         {
             "filename": "设备人员关联.xlsx",
             "headers": ["设备编号", "工号", "技能等级", "主操设备"],
-            "sample_rows": [["CNC-01", "OP001", "normal", YesNo.YES.value]],
+            "sample_rows": [["CNC-01", "OP001", "普通", "是"]],
             "format_spec": {
                 "text_cols": [0, 1],
-                "enum_cols": {2: ["beginner", "normal", "expert"], 3: ["yes", "no"]},
+                "enum_cols": {2: ["初级", "普通", "熟练"], 3: ["是", "否"]},
                 "column_widths": {0: 14, 1: 14, 2: 12, 3: 12},
             },
         },
@@ -238,21 +328,21 @@ def get_default_templates() -> List[Dict[str, Any]]:
         {
             "filename": "工种配置.xlsx",
             "headers": ["工种ID", "工种名称", "归属"],
-            "sample_rows": [["OT001", "数车", SourceType.INTERNAL.value], ["OT002", "标印", SourceType.EXTERNAL.value]],
+            "sample_rows": [["OT001", "数车", "内部"], ["OT002", "标印", "外部"]],
             "format_spec": {
                 "text_cols": [0, 1],
-                "enum_cols": {2: [SourceType.INTERNAL.value, SourceType.EXTERNAL.value]},
+                "enum_cols": {2: ["内部", "外部"]},
                 "column_widths": {0: 14, 1: 16, 2: 12},
             },
         },
         {
             "filename": "供应商配置.xlsx",
             "headers": ["供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"],
-            "sample_rows": [["S001", "外协-标印厂", "标印", 1, SupplierStatus.ACTIVE.value, "示例备注"]],
+            "sample_rows": [["S001", "外协-标印厂", "标印", 1, "启用", "示例备注"]],
             "format_spec": {
                 "text_cols": [0, 1, 2, 4, 5],
                 "float_cols": [3],
-                "enum_cols": {4: [SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value]},
+                "enum_cols": {4: ["启用", "停用"]},
                 "column_widths": {0: 14, 1: 18, 2: 14, 3: 12, 4: 12, 5: 18},
             },
         },
@@ -282,15 +372,15 @@ def get_default_templates() -> List[Dict[str, Any]]:
             # 对齐路由 `web/routes/scheduler_excel_batches.py` 的兜底模板与导入字段（含齐套日期）
             "headers": ["批次号", "图号", "数量", "交期", "优先级", "齐套", "齐套日期", "备注"],
             "sample_rows": [
-                ["B001", "A1234", 50, "2026-01-25", BatchPriority.URGENT.value, ReadyStatus.YES.value, "2026-01-24", "示例"]
+                ["B001", "A1234", 50, "2026-01-25", "急件", "齐套", "2026-01-24", "示例"]
             ],
             "format_spec": {
                 "text_cols": [0, 1, 7],
                 "int_cols": [2],
                 "date_cols": [3, 6],
                 "enum_cols": {
-                    4: [BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value],
-                    5: [ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value],
+                    4: ["普通", "急件", "特急"],
+                    5: ["齐套", "未齐套", "部分齐套"],
                 },
                 "column_widths": {0: 14, 1: 14, 2: 10, 3: 12, 4: 12, 5: 12, 6: 12, 7: 18},
             },
@@ -298,11 +388,11 @@ def get_default_templates() -> List[Dict[str, Any]]:
         {
             "filename": "工作日历.xlsx",
             "headers": ["日期", "类型", "可用工时", "效率", "允许普通件", "允许急件", "说明"],
-            "sample_rows": [["2026-01-21", CalendarDayType.WORKDAY.value, 8, 1.0, YesNo.YES.value, YesNo.YES.value, "示例"]],
+            "sample_rows": [["2026-01-21", "工作日", 8, 1.0, "是", "是", "示例"]],
             "format_spec": {
                 "date_cols": [0],
                 "float_cols": [2, 3],
-                "enum_cols": {1: [CalendarDayType.WORKDAY.value, CalendarDayType.HOLIDAY.value], 4: ["yes", "no"], 5: ["yes", "no"]},
+                "enum_cols": {1: ["工作日", "假期"], 4: ["是", "否"], 5: ["是", "否"]},
                 "text_cols": [6],
                 "column_widths": {0: 12, 1: 12, 2: 12, 3: 12, 4: 12, 5: 12, 6: 18},
             },
@@ -311,15 +401,15 @@ def get_default_templates() -> List[Dict[str, Any]]:
             "filename": "人员专属工作日历.xlsx",
             "headers": ["工号", "日期", "类型", "班次开始", "班次结束", "可用工时", "效率", "允许普通件", "允许急件", "说明"],
             "sample_rows": [
-                ["OP001", "2026-01-25", "holiday", "08:00", "", 0, 0.8, "no", "no", "示例：休假"],
-                ["OP001", "2026-01-26", "holiday", "08:00", "16:00", "", "", "yes", "yes", "示例：假期加班（用班次结束推导工时）"],
+                ["OP001", "2026-01-25", "假期", "08:00", "", 0, 0.8, "否", "否", "示例：休假"],
+                ["OP001", "2026-01-26", "假期", "08:00", "16:00", "", "", "是", "是", "示例：假期加班（用班次结束推导工时）"],
             ],
             "format_spec": {
                 "text_cols": [0, 9],
                 "date_cols": [1],
                 "time_cols": [3, 4],
                 "float_cols": [5, 6],
-                "enum_cols": {2: [CalendarDayType.WORKDAY.value, CalendarDayType.HOLIDAY.value], 7: ["yes", "no"], 8: ["yes", "no"]},
+                "enum_cols": {2: ["工作日", "假期"], 7: ["是", "否"], 8: ["是", "否"]},
                 "column_widths": {0: 14, 1: 12, 2: 12, 3: 10, 4: 10, 5: 12, 6: 12, 7: 12, 8: 12, 9: 18},
             },
         },
@@ -343,7 +433,11 @@ def ensure_excel_templates(template_dir: str) -> Dict[str, Any]:
         filename = t["filename"]
         path = os.path.join(template_dir, filename)
         expected_headers = [str(header).strip() for header in (t.get("headers") or [])]
-        if os.path.exists(path) and _read_xlsx_headers(path) == expected_headers:
+        if (
+            os.path.exists(path)
+            and _read_xlsx_headers(path) == expected_headers
+            and not _known_generated_template_needs_refresh(path, t)
+        ):
             skipped.append(filename)
             continue
         _write_xlsx(
@@ -355,4 +449,3 @@ def ensure_excel_templates(template_dir: str) -> Dict[str, Any]:
         created.append(filename)
 
     return {"template_dir": template_dir, "created": created, "skipped": skipped}
-

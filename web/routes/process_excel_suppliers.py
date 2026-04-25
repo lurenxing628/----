@@ -9,7 +9,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import SupplierStatus
-from core.services.common.enum_normalizers import normalize_supplier_status
+from core.services.common.enum_normalizers import normalize_supplier_status, supplier_status_label
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode
@@ -147,7 +147,7 @@ def excel_supplier_preview():
         if "状态" in row:
             row["状态"] = _normalize_supplier_status(row.get("状态"))
             if row["状态"] not in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
-                return "“状态”不合法（允许：active / inactive；或中文：启用/停用）"
+                return "“状态”不合法，可填写：启用 / 停用 / 在用 / 正常 / 禁用；也兼容英文标准值 active/inactive。"
 
         # 工种可选（允许 id 或 名称），预览阶段标准化为“名称”
         try:
@@ -234,7 +234,7 @@ def excel_supplier_confirm():
         if "状态" in row:
             row["状态"] = _normalize_supplier_status(row.get("状态"))
             if row["状态"] not in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
-                return "“状态”不合法（允许：active / inactive；或中文：启用/停用）"
+                return "“状态”不合法，可填写：启用 / 停用 / 在用 / 正常 / 禁用；也兼容英文标准值 active/inactive。"
         try:
             name = _resolve_op_type_name(row.get("对应工种"), op_type_svc=op_type_svc)
             row["对应工种"] = name
@@ -345,7 +345,7 @@ def excel_supplier_export():
     template_def = get_template_definition("供应商配置.xlsx")
     output = build_xlsx_bytes(
         template_def["headers"],
-        [[r["supplier_id"], r["name"], r["op_type_name"], r["default_days"], r["status"], r["remark"]] for r in rows],
+        [[r["supplier_id"], r["name"], r["op_type_name"], r["default_days"], supplier_status_label(r["status"]), r["remark"]] for r in rows],
         format_spec=template_def.get("format_spec"),
         sanitize_formula=True,
     )
@@ -368,4 +368,3 @@ def excel_supplier_export():
         download_name="供应商配置.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-

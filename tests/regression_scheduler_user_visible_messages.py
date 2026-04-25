@@ -115,7 +115,8 @@ def test_schedule_params_weighted_override_warning_does_not_echo_raw_value() -> 
     assert result.warnings
     assert any("数值字段已按兼容值标准化" in item for item in result.warnings), result.warnings
     assert "BAD_PRIORITY_SECRET" not in str(result.warnings)
-    assert "priority_weight" in str(result.warnings)
+    assert "优先级权重" in str(result.warnings)
+    assert "priority_weight" not in str(result.warnings)
 
 
 def test_scheduler_manual_missing_base_dir_message_is_user_facing_chinese() -> None:

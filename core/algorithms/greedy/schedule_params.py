@@ -40,7 +40,7 @@ def _public_field_degradation_message(*, code: str, field: str) -> str:
     field_key = str(field or "").strip()
     if not field_key:
         return message
-    return f"{field_key}（{_field_label(field_key)}）：{message}"
+    return f"{_field_label(field_key)}：{message}"
 
 
 @dataclass

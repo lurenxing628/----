@@ -25,12 +25,13 @@
   var contract = ns.contract;
 
   function _reportMissingDeps(missing) {
-    var msg = "甘特图脚本加载不完整，请刷新页面后重试。缺失：" + String((missing || []).join(", "));
+    var detail = String((missing || []).join(", "));
+    var msg = "甘特图页面脚本加载不完整，请刷新页面后重试。";
     if (typeof reportClientError === "function") {
-      reportClientError(msg);
+      reportClientError(msg, detail ? new Error(detail) : undefined);
       return;
     }
-    try { console.error(msg); } catch (_) {}
+    try { console.error(msg, detail); } catch (_) {}
   }
 
   var missingDeps = [];
@@ -225,11 +226,11 @@
       return;
     }
 
-    const dataUrl = norm(cfg && cfg.dataUrl ? cfg.dataUrl : "");
-    if (!dataUrl) {
-      if (errEl) {
-        errEl.textContent = "甘特图配置缺失：未找到数据接口 URL（data-url；兼容 data-data-url）。";
-      }
+      const dataUrl = norm(cfg && cfg.dataUrl ? cfg.dataUrl : "");
+      if (!dataUrl) {
+        if (errEl) {
+          errEl.textContent = "甘特图配置不完整：未找到数据接口，请刷新页面后重试。";
+        }
       resetCalendarDegradationState();
       applyCalendarDegradationState();
       resetOverdueMarkerState();
@@ -243,8 +244,9 @@
       url = new URL(dataUrl, window.location.origin);
     } catch (e) {
       if (errEl) {
-        errEl.textContent = `甘特图配置错误：数据接口 URL 不合法（dataUrl=${str(dataUrl)}）。`;
+        errEl.textContent = "甘特图配置错误：数据接口地址不合法，请刷新页面后重试。";
       }
+      reportClientError("甘特图数据接口地址不合法", e);
       resetCalendarDegradationState();
       applyCalendarDegradationState();
       resetOverdueMarkerState();
@@ -288,8 +290,9 @@
       const isAbortLike =
         !!(e && e.name === "AbortError") ||
         rawMsg.toLowerCase().indexOf("abort") >= 0;
+      const timeoutSeconds = Math.max(1, Math.round(fetchTimeoutMs / 1000));
       const msg = isAbortLike
-        ? `甘特图数据请求超时（>${fetchTimeoutMs}ms），请稍后重试。`
+        ? `甘特图数据请求超过 ${timeoutSeconds} 秒，请稍后重试。`
         : rawMsg;
       if (errEl) errEl.textContent = msg;
       else {

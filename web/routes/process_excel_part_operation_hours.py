@@ -10,6 +10,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import SourceType
+from core.services.common.enum_normalizers import source_type_label
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
@@ -38,7 +39,7 @@ from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 
 _PART_OP_HOURS_MODE_OPTIONS: List[Dict[str, str]] = [
-    {"value": ImportMode.OVERWRITE.value, "label": "覆盖（相同ID更新）"},
+    {"value": ImportMode.OVERWRITE.value, "label": "覆盖（相同编号更新）"},
     {"value": ImportMode.APPEND.value, "label": "追加（仅补齐空工时）"},
 ]
 
@@ -90,6 +91,7 @@ def _build_existing_internal() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dic
             "工序": seq,
             "工种": r["op_type_name"],
             "归属": source,
+            "归属显示": source_type_label(source),
             "换型时间(h)": float(r["setup_hours"] or 0.0),
             "单件工时(h)": float(r["unit_hours"] or 0.0),
         }
@@ -452,4 +454,3 @@ def excel_part_op_hours_export():
         download_name="零件工序工时.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-

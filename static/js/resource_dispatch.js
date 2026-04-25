@@ -358,7 +358,7 @@
       if (message) {
         parts.push(escapeHtml(message));
       } else if (code) {
-        parts.push(escapeHtml(code));
+        parts.push("未知退化提示");
       }
       if (count > 1) {
         parts.push("×" + escapeHtml(count));

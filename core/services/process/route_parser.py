@@ -143,10 +143,10 @@ class RouteParser:
                 text = str(raw_msg or "").strip()
                 if not text:
                     continue
-                out.append(text.replace("已按 1.0 天处理", "strict_mode 已拒绝按 1.0 天处理"))
+                out.append(text.replace("已按 1.0 天处理", "严格模式已拒绝按 1.0 天处理"))
             if out:
                 return out
-            return [f"工种“{op_type_name}”供应商默认周期配置无效，strict_mode 已拒绝按 1.0 天处理"]
+            return [f"工种“{op_type_name}”供应商默认周期配置无效，严格模式已拒绝按 1.0 天处理"]
 
         # Step 1: 正则匹配
         pattern = r"(\d+)([^\d]+)"
@@ -208,7 +208,7 @@ class RouteParser:
                 is_internal = False
                 is_recognized = False
                 if strict_mode:
-                    errors.append(f"工种“{op_type_name}”未在系统中配置，strict_mode 已拒绝默认标记为外部工序")
+                    errors.append(f"工种“{op_type_name}”未在系统中配置，严格模式已拒绝默认标记为外部工序")
                     strict_unknown = True
                 else:
                     warnings.append(f"工种“{op_type_name}”未在系统中配置，已默认标记为外部工序")
@@ -246,7 +246,7 @@ class RouteParser:
                 else:
                     if strict_mode:
                         errors.append(
-                            f"工种“{op_type_name}”未找到供应商配置，strict_mode 已拒绝按默认 1.0 天初始化外协周期"
+                            f"工种“{op_type_name}”未找到供应商配置，严格模式已拒绝按默认 1.0 天初始化外协周期"
                         )
                     else:
                         op.default_days = 1.0
@@ -333,9 +333,9 @@ class RouteParser:
         try:
             parsed_default_days = float(raw_default_days)
         except Exception:
-            return 1.0, [f"供应商“{supplier_id}”默认周期无法解析（{raw_default_days!r}），工种“{op_type_name}”已按 1.0 天处理"]
+            return 1.0, [f"供应商“{supplier_id}”默认周期无法解析，工种“{op_type_name}”已按 1.0 天处理"]
         if not math.isfinite(parsed_default_days) or parsed_default_days <= 0:
-            return 1.0, [f"供应商“{supplier_id}”默认周期无效（{raw_default_days!r}），工种“{op_type_name}”已按 1.0 天处理"]
+            return 1.0, [f"供应商“{supplier_id}”默认周期无效，工种“{op_type_name}”已按 1.0 天处理"]
         return float(parsed_default_days), []
 
     @staticmethod
@@ -453,4 +453,3 @@ class RouteParser:
             return False, "格式无效，请使用“工序号+工种名”格式"
 
         return True, f"格式有效，识别到 {len(matches)} 道工序"
-

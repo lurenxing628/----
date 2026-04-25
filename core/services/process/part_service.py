@@ -95,20 +95,20 @@ class PartService:
             safe_warning(self.logger, message)
 
         if raw_default_days is None or (isinstance(raw_default_days, str) and raw_default_days.strip() == ""):
-            _warn(f"外部工序 {seq}（{op_type_name}）缺少 default_days，保存模板时已按 1.0 天写入 ext_days")
+            _warn(f"外部工序 {seq}（{op_type_name}）缺少默认周期，保存模板时已按 1.0 天写入外协周期")
             return 1.0, True
 
         try:
             parsed_days = float(raw_default_days)
         except Exception:
             _warn(
-                f"外部工序 {seq}（{op_type_name}）default_days 无法解析（{raw_default_days!r}），保存模板时已按 1.0 天写入 ext_days"
+                f"外部工序 {seq}（{op_type_name}）默认周期无法解析，保存模板时已按 1.0 天写入外协周期"
             )
             return 1.0, True
 
         if not math.isfinite(parsed_days) or parsed_days <= 0:
             _warn(
-                f"外部工序 {seq}（{op_type_name}）default_days 无效（{raw_default_days!r}），保存模板时已按 1.0 天写入 ext_days"
+                f"外部工序 {seq}（{op_type_name}）默认周期无效，保存模板时已按 1.0 天写入外协周期"
             )
             return 1.0, True
 
@@ -596,4 +596,3 @@ class PartService:
         for p in self.part_repo.list():
             existing[p.part_no] = {"图号": p.part_no, "名称": p.part_name, "工艺路线字符串": p.route_raw}
         return existing
-

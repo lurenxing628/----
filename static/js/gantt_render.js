@@ -770,7 +770,7 @@
     try {
       decorateDynamic(opts);
     } catch (err) {
-      reportClientError("Gantt decorate failed", err);
+      reportClientError("甘特图装饰刷新失败", err);
       throw err;
     }
   }
@@ -872,7 +872,7 @@
           `<div class="subtitle">来源：${sourceText}｜状态：${statusText}</div>`,
           `<div class="subtitle">优先级：${priorityText}｜交期：${dueText}</div>`,
           `<div class="subtitle">关键链：${ccStatusText}｜超期：${meta.is_overdue ? "是" : "否"}</div>`,
-          `<div class="subtitle">关键链前驱：${ccFromText}｜类型：${ccTypeText}｜间隔(分)：${ccGapText}</div>`,
+          `<div class="subtitle">关键链前驱：${ccFromText}｜类型：${ccTypeText}｜间隔（分钟）：${ccGapText}</div>`,
           `<div class="subtitle">关键链依据：${ccReasonText}</div>`,
         ];
         if (ccUnavailableText) {

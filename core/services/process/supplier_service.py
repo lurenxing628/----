@@ -6,6 +6,7 @@ from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Supplier
 from core.models.enums import SUPPLIER_STATUS_VALUES, SupplierStatus
+from core.services.common.enum_normalizers import supplier_status_label
 from core.services.common.normalize import normalize_text
 from core.services.common.strict_parse import parse_required_float
 from data.repositories import OpTypeRepository, SupplierRepository
@@ -211,6 +212,7 @@ class SupplierService:
                 "对应工种": (ot.name if ot else None),
                 "默认周期": s.default_days,
                 "状态": s.status,
+                "状态显示": supplier_status_label(s.status),
                 "备注": s.remark,
             }
         return existing

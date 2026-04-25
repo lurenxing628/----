@@ -28,7 +28,7 @@
     {% if not global_cal_url %}
       <details class="debug-details muted mt-2">
         <summary>排查信息</summary>
-        后端接口未注册（endpoint：scheduler.calendar_page）。<br/>
+        全局工作日历入口尚未启用。<br/>
         常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
         处理：重启服务或重新打包升级。<br/>
         日志：logs/aps.log、logs/aps_error.log。
@@ -83,7 +83,7 @@
           <input name="shift_hours" type="number" min="0" step="0.25" placeholder="如：8" class="w-140">
         </div>
         <div class="form-field">
-          <label>效率（>0）</label>
+          <label>效率（大于 0）</label>
           <input name="efficiency" type="number" min="0.01" step="0.01" placeholder="如：1.0" class="w-140">
         </div>
         <div class="form-field">
@@ -107,10 +107,10 @@
         <div class="calendar-upsert-submit">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
       </div>
       {% if holiday_default_efficiency_degraded %}
-        <div class="muted mt-2">提示：当前 `holiday_default_efficiency` 配置已降级，页面不会自动补全假期效率；请先到排产参数页修复后再继续保存个人日历。</div>
+        <div class="muted mt-2">提示：当前“假期工作效率”配置无效，页面不会自动补全假期效率；请先到排产参数页修复后再继续保存个人日历。</div>
       {% else %}
       <div class="muted mt-2">
-        提示：假期默认不排产（可用工时为 0）。若假期需要上班，请把可用工时设置为 大于 0；效率留空时会按“假期默认效率”自动补充（当前：{{ holiday_default_efficiency }}）。
+        提示：假期默认不排产（可用工时为 0）。若假期需要上班，请把可用工时设置为大于 0；效率留空时会按“假期工作效率”自动补充（当前：{{ holiday_default_efficiency }}）。
       </div>
       {% endif %}
     </form>
@@ -174,4 +174,3 @@
   </script>
   <script src="{{ url_for('static', filename='js/calendar_picker.js') }}" defer></script>
 {% endblock %}
-

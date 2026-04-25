@@ -78,11 +78,11 @@
         </div>
         <div>
           <div class="muted">模块</div>
-          <input name="module" value="{{ filters.module }}" placeholder="如：system/scheduler/process（按英文值筛选）" class="w-180">
+          <input name="module" value="{{ filters.module }}" placeholder="可输入模块名称或代码" class="w-180">
         </div>
         <div>
           <div class="muted">动作</div>
-          <input name="action" value="{{ filters.action }}" placeholder="如：import/export/schedule（按英文值筛选）" class="w-180">
+          <input name="action" value="{{ filters.action }}" placeholder="可输入动作名称或代码" class="w-180">
         </div>
         <div>
           <div class="muted">日志级别</div>
@@ -153,15 +153,15 @@
               </td>
               <td>{{ r.id }}</td>
               <td>{{ r.log_time }}</td>
-              <td>{{ r.log_level }}</td>
-              <td><code>{{ r.module }}</code></td>
-              <td><code>{{ r.action }}</code></td>
-              <td>
-                {% if r.target_type %}
-                  <div><code>{{ r.target_type }}</code></div>
-                {% endif %}
-                {% if r.target_id %}
-                  <div class="muted"><code>{{ r.target_id }}</code></div>
+	              <td title="{{ r.log_level_label }}">{{ r.log_level_label }}</td>
+	              <td title="{{ r.module_label }}">{{ r.module_label }}</td>
+	              <td title="{{ r.action_label }}">{{ r.action_label }}</td>
+	              <td>
+	                {% if r.target_type %}
+	                  <div title="{{ r.target_type_label }}">{{ r.target_type_label }}</div>
+	                {% endif %}
+	                {% if r.target_id %}
+	                  <div class="muted"><code>{{ r.target_id }}</code></div>
                 {% endif %}
               </td>
               <td>
@@ -208,4 +208,3 @@
     })();
   </script>
 {% endblock %}
-

@@ -9,7 +9,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import SOURCE_TYPE_VALUES
-from core.services.common.enum_normalizers import normalize_op_type_category
+from core.services.common.enum_normalizers import normalize_op_type_category, source_type_label
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode
@@ -102,7 +102,7 @@ def _build_op_type_row_validator(
 
         cat = _normalize_op_type_category(row.get("归属"))
         if cat not in SOURCE_TYPE_VALUES:
-            return "“归属”不合法（允许：internal / external；或中文：内部/外部）"
+            return "“归属”不合法，可填写：内部 / 外部 / 内 / 外；也兼容英文标准值 internal/external。"
         row["归属"] = cat
 
         if int(name_counts.get(name, 0) or 0) > 1:
@@ -308,7 +308,7 @@ def excel_op_type_export():
     template_def = get_template_definition("工种配置.xlsx")
     output = build_xlsx_bytes(
         template_def["headers"],
-        [[r.op_type_id, r.name, r.category] for r in rows],
+        [[r.op_type_id, r.name, source_type_label(r.category)] for r in rows],
         format_spec=template_def.get("format_spec"),
         sanitize_formula=True,
     )
@@ -331,4 +331,3 @@ def excel_op_type_export():
         download_name="工种配置.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-

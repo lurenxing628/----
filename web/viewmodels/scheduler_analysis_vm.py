@@ -44,6 +44,11 @@ _FREEZE_STATE_LABELS = {
     "degraded": "已降级",
 }
 
+_COMPAT_FALLBACK_FIELD_LABELS = {
+    "comparison_metric": "优化对比指标",
+    "best_score_schema": "评分顺序",
+}
+
 
 def _summary_metric_value(
     selected_summary: Optional[Dict[str, Any]],
@@ -166,11 +171,12 @@ def _compat_fallback_state(selected_summary: Optional[Dict[str, Any]]) -> Dict[s
     if not isinstance(algo.get("best_score_schema"), list):
         missing_fields.append("best_score_schema")
     if not missing_fields:
-        return {"used": False, "missing_fields": [], "message": None}
+        return {"used": False, "missing_fields": [], "missing_field_labels": [], "message": None}
     return {
         "used": True,
         "missing_fields": missing_fields,
-        "message": "当前版本摘要缺少新 schema 字段，分析页已按兼容逻辑回退展示。",
+        "missing_field_labels": [_COMPAT_FALLBACK_FIELD_LABELS.get(field, "分析字段") for field in missing_fields],
+        "message": "当前版本摘要缺少部分分析字段，页面已按旧版本数据继续展示。",
     }
 
 

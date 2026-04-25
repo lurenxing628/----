@@ -28,6 +28,15 @@ def _format_single_field_preset_error(detail: str, field_key: str) -> str:
     return f"{label}：{cleaned_detail}"
 
 
+def _replace_field_keys_with_labels(detail: str, field_keys: List[str]) -> str:
+    text = str(detail or "")
+    for field_key in sorted({str(item or "").strip() for item in field_keys if str(item or "").strip()}, key=len, reverse=True):
+        label = field_label_for(field_key)
+        if label and label != field_key:
+            text = text.replace(field_key, label)
+    return text
+
+
 def _format_preset_error_flash(
     *,
     error_field: Optional[str],
@@ -36,6 +45,7 @@ def _format_preset_error_flash(
 ) -> str:
     detail = str(error_message or "当前配置未保存为方案。").strip() or "当前配置未保存为方案。"
     normalized_fields = _normalized_error_fields(error_field=error_field, error_fields=error_fields)
+    detail = _replace_field_keys_with_labels(detail, normalized_fields)
     if not normalized_fields:
         return detail
     if len(normalized_fields) > 1:
@@ -64,9 +74,9 @@ def _flash_preset_apply_feedback(applied: Dict[str, Any]) -> None:
         )
         return
     if status == "adjusted" and adjusted_fields:
-        sample = "、".join(str(field) for field in adjusted_fields[:5])
+        sample = "、".join(dict.fromkeys(field_label_for(str(field)) for field in adjusted_fields[:5]))
         flash(
-            f"方案已应用为：{effective or applied.get('requested_preset')}，但当前运行配置存在兼容修补或差异。"
+            f"方案已应用为：{effective or applied.get('requested_preset')}，但当前运行配置已被规范化，实际生效值与方案内容不完全一致。"
             + (f" 涉及字段：{sample}。" if sample else ""),
             "warning",
         )

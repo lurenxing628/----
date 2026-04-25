@@ -174,7 +174,8 @@ def test_calendar_pages_show_degraded_warning_when_holiday_default_efficiency_in
     resp_scheduler = client.get("/scheduler/calendar")
     scheduler_body = resp_scheduler.get_data(as_text=True)
     assert resp_scheduler.status_code == 200
-    assert "holiday_default_efficiency" in scheduler_body
+    assert "假期工作效率" in scheduler_body
+    assert "holiday_default_efficiency" not in scheduler_body
     assert '"holidayDefaultEfficiency": null' in scheduler_body
     assert '"holidayDefaultEfficiency": 0.8' not in scheduler_body
     assert "页面已临时按" in scheduler_body
@@ -186,14 +187,15 @@ def test_calendar_pages_show_degraded_warning_when_holiday_default_efficiency_in
     resp_personnel = client.get("/personnel/OP001/calendar")
     personnel_body = resp_personnel.get_data(as_text=True)
     assert resp_personnel.status_code == 200
-    assert "holiday_default_efficiency" in personnel_body
+    assert "假期工作效率" in personnel_body
+    assert "holiday_default_efficiency" not in personnel_body
     assert '"holidayDefaultEfficiency": null' in personnel_body
     assert '"holidayDefaultEfficiency": 0.8' not in personnel_body
     assert "页面已临时按" in personnel_body
     assert "0.8" in personnel_body
     assert "排产参数页修复配置" in personnel_body
     assert "继续依赖该默认值进行操作" in personnel_body
-    assert any("holiday_default_efficiency" in item for item in warnings)
+    assert any("假期工作效率" in item for item in warnings)
 
 
 def test_scheduler_config_page_shows_degraded_warning_when_holiday_default_efficiency_invalid(tmp_path, monkeypatch) -> None:
@@ -212,9 +214,8 @@ def test_scheduler_config_page_shows_degraded_warning_when_holiday_default_effic
     assert resp.status_code == 200
     assert 'name="holiday_default_efficiency"' in body
     assert 'value="0.8"' in body
-    assert "holiday_default_efficiency" in body
+    assert "假期工作效率 当前配置无效" in body
     assert 'class="flash-card flash-warning"' in body
-    assert any("holiday_default_efficiency" in item for item in warnings)
 
 
 def test_scheduler_config_page_shows_summary_and_inline_warnings_for_multiple_degraded_fields_in_v2(
@@ -243,7 +244,6 @@ def test_scheduler_config_page_shows_summary_and_inline_warnings_for_multiple_de
     assert 'name="objective"' in body
     assert 'name="dispatch_mode"' in body
     assert 'value="0.8"' in body
-    assert any("holiday_default_efficiency" in item for item in warnings)
 
 
 @pytest.mark.parametrize(
@@ -322,7 +322,8 @@ def test_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chai
     )
     body = resp.get_data(as_text=True)
     assert resp.status_code == 200
-    assert "holiday_default_efficiency" in body
+    assert "假期工作效率" in body
+    assert "holiday_default_efficiency" not in body
     assert "日历配置已保存" not in body
     assert _count_rows(db_path, "WorkCalendar") == 0
 
@@ -350,7 +351,8 @@ def test_operator_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_
     )
     body = resp.get_data(as_text=True)
     assert resp.status_code == 200
-    assert "holiday_default_efficiency" in body
+    assert "假期工作效率" in body
+    assert "holiday_default_efficiency" not in body
     assert "个人日历配置已保存" not in body
     assert _count_rows(db_path, "OperatorCalendar") == 0
 
@@ -381,7 +383,8 @@ def test_scheduler_excel_calendar_preview_and_confirm_reject_invalid_holiday_def
     )
     preview_body = preview_resp.get_data(as_text=True)
     assert preview_resp.status_code == 200
-    assert "holiday_default_efficiency" in preview_body
+    assert "假期工作效率" in preview_body
+    assert "holiday_default_efficiency" not in preview_body
     assert "工作日历 Excel 导入" in preview_body
     assert "排产参数中修复" in preview_body
     assert 'name="raw_rows_json"' not in preview_body
@@ -397,7 +400,8 @@ def test_scheduler_excel_calendar_preview_and_confirm_reject_invalid_holiday_def
     )
     confirm_body = confirm_resp.get_data(as_text=True)
     assert confirm_resp.status_code == 200
-    assert "holiday_default_efficiency" in confirm_body
+    assert "假期工作效率" in confirm_body
+    assert "holiday_default_efficiency" not in confirm_body
     assert "工作日历 Excel 导入" in confirm_body
     assert "排产参数中修复" in confirm_body
 
@@ -437,7 +441,8 @@ def test_operator_calendar_excel_preview_and_confirm_reject_invalid_holiday_defa
     )
     preview_body = preview_resp.get_data(as_text=True)
     assert preview_resp.status_code == 200
-    assert "holiday_default_efficiency" in preview_body
+    assert "假期工作效率" in preview_body
+    assert "holiday_default_efficiency" not in preview_body
     assert "人员专属工作日历 Excel 导入" in preview_body
     assert "排产参数中修复" in preview_body
     assert 'name="raw_rows_json"' not in preview_body
@@ -453,7 +458,8 @@ def test_operator_calendar_excel_preview_and_confirm_reject_invalid_holiday_defa
     )
     confirm_body = confirm_resp.get_data(as_text=True)
     assert confirm_resp.status_code == 200
-    assert "holiday_default_efficiency" in confirm_body
+    assert "假期工作效率" in confirm_body
+    assert "holiday_default_efficiency" not in confirm_body
     assert "人员专属工作日历 Excel 导入" in confirm_body
     assert "排产参数中修复" in confirm_body
 def test_scheduler_excel_calendar_preview_bootstraps_pristine_store_without_prior_read(tmp_path, monkeypatch) -> None:

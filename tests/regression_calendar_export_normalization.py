@@ -74,6 +74,11 @@ def main() -> None:
     os.environ["APS_EXCEL_TEMPLATE_DIR"] = test_templates
 
     from core.infrastructure.database import ensure_schema, get_connection
+    from core.models.enums import CalendarDayType, YesNo
+    from core.services.common.normalization_matrix import (
+        normalize_calendar_day_type_value,
+        normalize_yes_no_narrow_value,
+    )
 
     ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
 
@@ -108,9 +113,12 @@ def main() -> None:
     global_row = _find_row(global_rows, 日期="2026-02-01")
     if global_row is None:
         raise RuntimeError(f"未找到全局日历导出行：{global_rows!r}")
-    assert global_row["类型"] == "holiday", f"预期全局导出 类型=holiday，实际 {global_row['类型']!r}"
-    assert global_row["允许普通件"] == "yes", f"预期全局导出 允许普通件=yes，实际 {global_row['允许普通件']!r}"
-    assert global_row["允许急件"] == "no", f"预期全局导出 允许急件=no，实际 {global_row['允许急件']!r}"
+    assert global_row["类型"] == "假期", f"预期全局导出 类型=假期，实际 {global_row['类型']!r}"
+    assert global_row["允许普通件"] == "是", f"预期全局导出 允许普通件=是，实际 {global_row['允许普通件']!r}"
+    assert global_row["允许急件"] == "否", f"预期全局导出 允许急件=否，实际 {global_row['允许急件']!r}"
+    assert normalize_calendar_day_type_value(global_row["类型"]) == CalendarDayType.HOLIDAY.value
+    assert normalize_yes_no_narrow_value(global_row["允许普通件"]) == YesNo.YES.value
+    assert normalize_yes_no_narrow_value(global_row["允许急件"]) == YesNo.NO.value
 
     resp_operator = client.get("/personnel/excel/operator_calendar/export")
     _assert_status(resp_operator, "GET /personnel/excel/operator_calendar/export")
@@ -118,9 +126,12 @@ def main() -> None:
     operator_row = _find_row(operator_rows, 工号="OP100", 日期="2026-02-02")
     if operator_row is None:
         raise RuntimeError(f"未找到个人日历导出行：{operator_rows!r}")
-    assert operator_row["类型"] == "holiday", f"预期个人导出 类型=holiday，实际 {operator_row['类型']!r}"
-    assert operator_row["允许普通件"] == "yes", f"预期个人导出 允许普通件=yes，实际 {operator_row['允许普通件']!r}"
-    assert operator_row["允许急件"] == "no", f"预期个人导出 允许急件=no，实际 {operator_row['允许急件']!r}"
+    assert operator_row["类型"] == "假期", f"预期个人导出 类型=假期，实际 {operator_row['类型']!r}"
+    assert operator_row["允许普通件"] == "是", f"预期个人导出 允许普通件=是，实际 {operator_row['允许普通件']!r}"
+    assert operator_row["允许急件"] == "否", f"预期个人导出 允许急件=否，实际 {operator_row['允许急件']!r}"
+    assert normalize_calendar_day_type_value(operator_row["类型"]) == CalendarDayType.HOLIDAY.value
+    assert normalize_yes_no_narrow_value(operator_row["允许普通件"]) == YesNo.YES.value
+    assert normalize_yes_no_narrow_value(operator_row["允许急件"]) == YesNo.NO.value
 
     print("OK")
 

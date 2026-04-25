@@ -255,10 +255,10 @@ def send_excel_template_file(
     download_name: str,
     mimetype: str = XLSX_MIMETYPE,
 ):
+    data = Path(template_path).read_bytes()
     return send_file(
-        io.BytesIO(Path(template_path).read_bytes()),
+        io.BytesIO(data),
         as_attachment=True,
         download_name=download_name,
         mimetype=mimetype,
     )
-

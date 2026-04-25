@@ -56,10 +56,12 @@ def main() -> None:
 
         logger = MagicMock()
         svc = ExternalGroupService(conn, logger=logger)
+        user_warnings = []
         svc.set_merge_mode(
             group_id="G001",
             merge_mode="separate",
             per_op_days={10: "", 20: "0", 30: "abc"},
+            user_warnings=user_warnings,
             strict_mode=False,
         )
 
@@ -69,23 +71,27 @@ def main() -> None:
         ).fetchall()
         assert len(rows) == 3, f"外部工序数量异常：{len(rows)}"
         for row in rows:
-            assert abs(float(row["ext_days"] or 0.0) - 1.0) < 1e-9, f"compatible fallback 未按 1.0 天写入：{dict(row)!r}"
+            assert abs(float(row["ext_days"] or 0.0) - 1.0) < 1e-9, f"兼容回退未按 1.0 天写入：{dict(row)!r}"
 
         warning_messages = [str(call.args[0]) for call in logger.warning.call_args_list if call.args]
         assert len(warning_messages) == 3, f"warning 次数异常：{warning_messages!r}"
 
-        expected_cases = {
-            10: "raw=''",
-            20: "raw='0'",
-            30: "raw='abc'",
-        }
-        for seq, raw_fragment in expected_cases.items():
+        for seq in (10, 20, 30):
             matched = [msg for msg in warning_messages if f"外部工序 {seq}" in msg]
             assert matched, f"未找到 seq={seq} 的 fallback warning：{warning_messages!r}"
             msg = matched[0]
-            assert raw_fragment in msg, f"warning 未包含原始值 {raw_fragment}：{msg!r}"
-            assert "compatible mode" in msg, f"warning 未标识 compatible mode：{msg!r}"
-            assert "1.0 天回退" in msg, f"warning 未说明按 1.0 天回退：{msg!r}"
+            assert "raw=" in msg, f"内部日志应保留原始输入便于诊断：{msg!r}"
+            assert "ext_days" in msg, f"内部日志应保留目标字段便于诊断：{msg!r}"
+            assert "compatible mode fallback" in msg, f"内部日志应保留兼容回退诊断：{msg!r}"
+
+            user_matched = [text for text in user_warnings if f"外部工序 {seq}" in text]
+            assert user_matched, f"未找到 seq={seq} 的用户提示：{user_warnings!r}"
+            user_msg = user_matched[0]
+            assert "raw=" not in user_msg, f"用户提示不应暴露原始输入：{user_msg!r}"
+            assert "ext_days" not in user_msg, f"用户提示不应暴露内部字段：{user_msg!r}"
+            assert "compatible mode" not in user_msg, f"用户提示不应暴露英文兼容模式：{user_msg!r}"
+            assert "兼容模式" in user_msg, f"用户提示未标识兼容模式：{user_msg!r}"
+            assert "1.0 天回退" in user_msg, f"用户提示未说明按 1.0 天回退：{user_msg!r}"
 
         print("OK")
     finally:

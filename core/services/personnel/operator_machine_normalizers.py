@@ -22,7 +22,7 @@ def normalize_skill_level_optional(value: Any) -> Optional[str]:
         return normalize_skill_level_value(value, default=SkillLevel.NORMAL.value, allow_none=True, unknown_policy="raise")
     except ValueError as e:
         raise ValidationError(
-            "“技能等级”不正确，可填写：初级 / 普通 / 熟练（也兼容 beginner / normal / expert）。",
+            "“技能等级”不正确，可填写：初级 / 普通 / 熟练；也兼容英文标准值 beginner/normal/expert。",
             field="技能等级",
         ) from e
 
@@ -44,7 +44,7 @@ def normalize_yes_no_optional(value: Any, field: str) -> Optional[str]:
         )
     except ValueError as e:
         raise ValidationError(
-            "“主操设备”不正确，可填写：是 / 否 / 主操 / 非主操（也兼容 yes/no、true/false、1/0、on/off）。",
+            "“主操设备”不正确，可填写：是 / 否 / 主操 / 非主操；也兼容英文标准值 yes/no、true/false、1/0、on/off。",
             field=field,
         ) from e
 

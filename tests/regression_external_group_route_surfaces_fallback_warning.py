@@ -75,7 +75,8 @@ def test_external_group_route_surfaces_fallback_warning(tmp_path, monkeypatch) -
             flashes = list(sess.get("_flashes") or [])
 
         assert any(cat == "success" and "外部工序组周期模式已更新" in msg for cat, msg in flashes), flashes
-        assert any(cat == "warning" and "compatible mode 已按 1.0 天回退写入 ext_days" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "兼容模式已按 1.0 天回退" in msg for cat, msg in flashes), flashes
+        assert not any("compatible mode" in msg or "raw=" in msg or "ext_days" in msg for _cat, msg in flashes), flashes
 
         row = conn.execute(
             "SELECT ext_days FROM PartOperations WHERE part_no=? AND seq=?",

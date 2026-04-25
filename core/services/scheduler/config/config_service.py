@@ -235,7 +235,7 @@ class ConfigService:
     DEFAULT_FREEZE_WINDOW_ENABLED = str(default_for("freeze_window_enabled"))
     DEFAULT_FREEZE_WINDOW_DAYS = int(default_for("freeze_window_days"))
     HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE = (
-        "配置项 holiday_default_efficiency 当前非法，页面已临时按 {value:g} 显示默认值；"
+        "“假期工作效率”配置当前无效，页面已临时按 {value:g} 显示默认值；"
         "请先到排产参数页修复配置后再继续依赖该默认值进行操作。"
     )
 
@@ -1115,7 +1115,7 @@ class ConfigService:
         )
         if not degraded:
             return value, False, None
-        safe_warning(logger if logger is not None else self.logger, f"{consumer}读取 holiday_default_efficiency 非法，暂按默认值展示：{value:g}")
+        safe_warning(logger if logger is not None else self.logger, f"{consumer}读取假期工作效率配置失败，暂按默认值展示：{value:g}")
         return value, True, self.HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE.format(value=value)
 
     # -------------------------

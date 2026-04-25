@@ -51,7 +51,7 @@ def test_batch_service_legacy_template_resolver_rejects_strict_mode() -> None:
 
         err = exc_info.value
         assert err.code == ErrorCode.ROUTE_PARSE_ERROR
-        assert "不支持 strict_mode" in err.message
+        assert "不支持严格模式" in err.message
 
         row = conn.execute("SELECT COUNT(1) AS cnt FROM Batches WHERE batch_id=?", ("B_STRICT_LEGACY",)).fetchone()
         assert row is not None and int(row["cnt"] or 0) == 0

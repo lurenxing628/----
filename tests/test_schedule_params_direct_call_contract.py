@@ -77,7 +77,8 @@ def test_schedule_params_raw_dict_nonstrict_choice_fallback_is_visible() -> None
     )
 
     assert params.strategy == SortStrategy.PRIORITY_FIRST
-    assert any("sort_strategy" in warning for warning in params.warnings), params.warnings
+    assert any("排序策略" in warning for warning in params.warnings), params.warnings
+    assert not any("sort_strategy" in warning for warning in params.warnings), params.warnings
     assert int((algo_stats.get("param_fallbacks") or {}).get("sort_strategy_defaulted_count") or 0) == 1
 
 
@@ -91,7 +92,8 @@ def test_schedule_params_snapshot_nonstrict_choice_fallback_is_visible() -> None
     )
 
     assert params.strategy == SortStrategy.PRIORITY_FIRST
-    assert any("sort_strategy" in warning for warning in params.warnings), params.warnings
+    assert any("排序策略" in warning for warning in params.warnings), params.warnings
+    assert not any("sort_strategy" in warning for warning in params.warnings), params.warnings
     assert int((algo_stats.get("param_fallbacks") or {}).get("sort_strategy_defaulted_count") or 0) == 1
 
 
@@ -130,8 +132,9 @@ def test_schedule_params_weighted_override_invalid_values_fallback_in_non_strict
 
     assert params.used_params["priority_weight"] == pytest.approx(0.4)
     assert params.used_params["due_weight"] == pytest.approx(0.5)
-    assert any("priority_weight" in warning for warning in params.warnings), params.warnings
-    assert any("due_weight" in warning for warning in params.warnings), params.warnings
+    assert any("优先级权重" in warning for warning in params.warnings), params.warnings
+    assert any("交期权重" in warning for warning in params.warnings), params.warnings
+    assert not any("priority_weight" in warning or "due_weight" in warning for warning in params.warnings), params.warnings
     assert int((algo_stats.get("param_fallbacks") or {}).get("weighted_priority_weight_defaulted_count") or 0) == 1
     assert int((algo_stats.get("param_fallbacks") or {}).get("weighted_due_weight_defaulted_count") or 0) == 1
 

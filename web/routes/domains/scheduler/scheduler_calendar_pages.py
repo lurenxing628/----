@@ -68,7 +68,7 @@ def calendar_upsert():
     except ValidationError as exc:
         if str(exc.field or "").strip() == "holiday_default_efficiency":
             flash(
-                f"系统配置项 holiday_default_efficiency 非法，无法保存日历，请先在排产参数中修复。{user_visible_app_error_message(exc)}",
+                f"“假期工作效率”配置无效，无法保存日历，请先在排产参数中修复。{user_visible_app_error_message(exc)}",
                 "error",
             )
         else:

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
+from core.services.common.enum_normalizers import batch_priority_label, ready_status_label
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
@@ -369,7 +370,16 @@ def excel_batches_export():
     output = build_xlsx_bytes(
         template_def["headers"],
         [
-            [b.batch_id, b.part_no, b.quantity, b.due_date, b.priority, b.ready_status, getattr(b, "ready_date", None), b.remark]
+            [
+                b.batch_id,
+                b.part_no,
+                b.quantity,
+                b.due_date,
+                batch_priority_label(b.priority),
+                ready_status_label(b.ready_status),
+                getattr(b, "ready_date", None),
+                b.remark,
+            ]
             for b in rows
         ],
         format_spec=template_def.get("format_spec"),
