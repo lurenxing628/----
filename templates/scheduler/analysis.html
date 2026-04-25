@@ -38,6 +38,9 @@
         <label>选择版本</label>
         {% if versions and versions|length > 0 %}
           <select name="version" class="min-w-260">
+            {% if selected_history_resolution and selected_history_resolution.history_missing %}
+              <option value="" selected disabled>v{{ selected_history_resolution.requested_version }}（不存在）</option>
+            {% endif %}
             {% for v in versions %}
               <option value="{{ v.version }}" {% if selected and (selected.version|int)==(v.version|int) %}selected{% endif %}>
                 v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ v.result_status_label or status_zh.get(v.result_status, v.result_status or '-') }}）
@@ -114,7 +117,7 @@
             {% set snapshot_dispatch_rule = algo.config_snapshot.get('dispatch_rule') %}
             排序：{{ strategy_zh.get(snapshot_sort_strategy, snapshot_sort_strategy or '-') }}
             <span class="meta-sep">｜</span>
-            派工：{{ dispatch_mode_zh.get(snapshot_dispatch_mode, snapshot_dispatch_mode or '-') }}{% if snapshot_dispatch_rule %}/{{ dispatch_rule_zh.get(snapshot_dispatch_rule, snapshot_dispatch_rule) }}{% endif %}
+            派工：{{ dispatch_mode_zh.get(snapshot_dispatch_mode, snapshot_dispatch_mode or '-') }}{% if snapshot_dispatch_rule %} / {{ dispatch_rule_zh.get(snapshot_dispatch_rule, snapshot_dispatch_rule) }}{% endif %}
             <span class="meta-sep">｜</span>
             目标：{{ algo_config_snapshot_objective_label }}
             <span class="meta-sep">｜</span>
@@ -307,7 +310,7 @@
           <thead>
             <tr>
               <th>排序</th>
-	              <th>方案</th>
+              <th>方案来源</th>
               <th>排序策略</th>
               <th>派工</th>
               <th>失败工序数</th>
@@ -321,11 +324,13 @@
               {% set mm = r.metrics if r.metrics else {} %}
               <tr>
                 <td>{{ loop.index }}</td>
-	                <td>方案 {{ loop.index }}</td>
+                <td>{{ r.display_tag or '方案来源未知' }}</td>
                 <td>{{ strategy_zh.get(r.strategy, r.strategy or '-') }}</td>
-                {% set row_dispatch_mode = r.dispatch_mode or '-' %}
-                {% set row_dispatch_rule = r.dispatch_rule or '-' %}
-                <td>{{ dispatch_mode_zh.get(row_dispatch_mode, row_dispatch_mode) }}/{{ dispatch_rule_zh.get(row_dispatch_rule, row_dispatch_rule) }}</td>
+                {% set row_dispatch_mode = r.dispatch_mode %}
+                {% set row_dispatch_rule = r.dispatch_rule %}
+                <td>
+                  {{ dispatch_mode_zh.get(row_dispatch_mode, row_dispatch_mode or '-') }}{% if row_dispatch_rule %} / {{ dispatch_rule_zh.get(row_dispatch_rule, row_dispatch_rule) }}{% endif %}
+                </td>
                 <td>{{ r.failed_ops }}</td>
                 <td>
                   {% if objective_key in mm %}

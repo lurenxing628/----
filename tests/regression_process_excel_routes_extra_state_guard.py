@@ -213,8 +213,8 @@ def main() -> None:
     finally:
         conn.close()
     html = _confirm_routes(client, part_no="P_SUPPLIER_STATUS_GUARD", preview=preview, strict_mode="no")
-    _assert_no_repreview("供应商状态变化", html)
-    _assert_part_present(test_db, "P_SUPPLIER_STATUS_GUARD", "供应商状态变化")
+    _assert_need_repreview("供应商状态变化", html)
+    _assert_part_absent(test_db, "P_SUPPLIER_STATUS_GUARD", "供应商状态变化")
 
     preview = _preview_routes(client, part_no="P_SUPPLIER_GUARD", part_name="供应商漂移件", route_raw="5热处理", strict_mode="no")
     conn = get_connection(test_db)

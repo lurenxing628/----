@@ -58,9 +58,9 @@
       <div class="form-field">
         <label>周切换</label>
         <div class="inline-flex-wrap">
-          {{ ui.link_button('上周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset-1, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
-          {{ ui.link_button('回到本周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=0, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
-          {{ ui.link_button('下周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset+1, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
+          {{ ui.link_button('上周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset-1, version=version), 'secondary', 'sm') }}
+          {{ ui.link_button('回到本周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=0, version=version), 'secondary', 'sm') }}
+          {{ ui.link_button('下周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset+1, version=version), 'secondary', 'sm') }}
         </div>
       </div>
 

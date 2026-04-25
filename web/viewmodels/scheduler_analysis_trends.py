@@ -171,12 +171,15 @@ def _build_attempt_rows(algo: Dict[str, Any], *, objective_key: str) -> List[Dic
         if not isinstance(attempt, dict):
             continue
         metrics = attempt.get("metrics") if isinstance(attempt.get("metrics"), dict) else {}
+        raw_tag = str(attempt.get("tag") or "").strip()
+        source_tag = str(attempt.get("source") or attempt.get("origin") or "").strip()
         attempts_rows.append(
             {
-                "tag": attempt.get("tag") or "-",
+                "tag": raw_tag,
+                "display_tag": _public_attempt_display_label(raw_tag=raw_tag, source_tag=source_tag),
                 "strategy": attempt.get("strategy") or "-",
-                "dispatch_mode": attempt.get("dispatch_mode") or "-",
-                "dispatch_rule": attempt.get("dispatch_rule") or "-",
+                "dispatch_mode": attempt.get("dispatch_mode") or "",
+                "dispatch_rule": attempt.get("dispatch_rule") or "",
                 "failed_ops": safe_int(attempt.get("failed_ops"), default=0),
                 "score": attempt.get("score") if isinstance(attempt.get("score"), list) else [],
                 "metrics": metrics,
@@ -184,6 +187,19 @@ def _build_attempt_rows(algo: Dict[str, Any], *, objective_key: str) -> List[Dic
             }
         )
     return attempts_rows
+
+
+def _public_attempt_display_label(*, raw_tag: str, source_tag: str) -> str:
+    for value in (source_tag, raw_tag):
+        label = str(value or "").strip()
+        if not label:
+            continue
+        if "|" in label or ":" in label or "/" in label or "\\" in label:
+            continue
+        if "_" in label and not any("\u4e00" <= ch <= "\u9fff" for ch in label):
+            continue
+        return label
+    return ""
 
 
 def _build_trace_chart(algo: Dict[str, Any], *, objective_key: str) -> Optional[Dict[str, Any]]:
@@ -265,7 +281,9 @@ def sort_and_enrich_attempts(
         max_primary = max(max_primary, safe_float(selected_metrics.get(objective_key), default=0.0))
     if max_primary <= 0:
         max_primary = 0.0
-    for r in attempts_rows_sorted:
+    for index, r in enumerate(attempts_rows_sorted, start=1):
+        if not r.get("display_tag"):
+            r["display_tag"] = f"方案 {index}"
         v = safe_float(r.get("primary_value"), default=0.0)
         r["bar_pct"] = 0.0 if max_primary <= 0 else float(round((v / max_primary) * 100.0, 4))
     return attempts_rows_sorted

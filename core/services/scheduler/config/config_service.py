@@ -1030,7 +1030,7 @@ class ConfigService:
         return (
             self.ACTIVE_PRESET_META_KEY,
             self._serialize_active_preset_meta(meta),
-            "褰撳墠鍚敤鎺掍骇閰嶇疆妯℃澘鐨勭粨鏋勫寲鐪熺浉",
+            "当前启用排产配置模板的结构化来源记录",
         )
 
     def _active_preset_updates(

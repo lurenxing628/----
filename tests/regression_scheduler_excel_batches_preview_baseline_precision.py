@@ -14,7 +14,7 @@ if str(TESTS_DIR) not in sys.path:
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from excel_preview_confirm_helpers import build_confirm_payload
+from excel_preview_confirm_helpers import build_confirm_payload, extract_raw_rows_json
 
 
 def _build_app(tmp_path, monkeypatch):
@@ -149,6 +149,10 @@ def test_scheduler_excel_batches_unrelated_part_change_does_not_force_repreview(
         ],
         auto_generate_ops="0",
     )
+    raw_payload = extract_raw_rows_json(preview_html)
+    assert raw_payload.startswith("aps-preview-json-b64:")
+    assert '"normal"' not in raw_payload
+    assert '"yes"' not in raw_payload
 
     conn = get_connection(db_path)
     try:
@@ -266,7 +270,7 @@ def test_scheduler_excel_batches_autobuild_non_effective_supplier_change_does_no
     _assert_batch_present(db_path, "B_PARSE_SECONDARY_OK")
 
 
-def test_scheduler_excel_batches_autobuild_supplier_status_change_does_not_force_repreview(tmp_path, monkeypatch) -> None:
+def test_scheduler_excel_batches_autobuild_supplier_status_change_requires_repreview(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
 
     from core.infrastructure.database import get_connection
@@ -313,5 +317,5 @@ def test_scheduler_excel_batches_autobuild_supplier_status_change_does_not_force
 
     confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="1")
 
-    assert "需重新预览" not in confirm_html
-    _assert_batch_present(db_path, "B_PARSE_STATUS_OK")
+    assert "需重新预览" in confirm_html
+    _assert_batch_absent(db_path, "B_PARSE_STATUS_OK")

@@ -19,10 +19,12 @@ from ...excel_utils import (
     build_error_rows_message,
     build_preview_baseline_token,
     collect_error_rows,
+    encode_preview_rows_payload,
     extract_import_stats,
     flash_import_result,
     load_confirm_payload,
     preview_baseline_is_stale,
+    project_preview_rows_for_display,
     send_excel_template_file,
 )
 from ...excel_utils import (
@@ -69,7 +71,9 @@ def _build_existing_preview_data(batch_svc: BatchService) -> Tuple[Dict[str, Any
             "数量": v.quantity,
             "交期": v.due_date,
             "优先级": v.priority,
+            "优先级显示": batch_priority_label(v.priority),
             "齐套": v.ready_status,
+            "齐套显示": ready_status_label(v.ready_status),
             "齐套日期": getattr(v, "ready_date", None),
             "备注": v.remark,
         }
@@ -97,8 +101,11 @@ def _render_excel_batches_page(
         "scheduler/excel_import_batches.html",
         title="批次信息 - Excel 导入/导出",
         existing_list=existing_list,
-        preview_rows=preview_rows,
-        raw_rows_json=raw_rows_json,
+        preview_rows=project_preview_rows_for_display(
+            preview_rows,
+            {"优先级": batch_priority_label, "齐套": ready_status_label},
+        ),
+        raw_rows_json=encode_preview_rows_payload(raw_rows_json),
         preview_baseline=preview_baseline,
         mode=mode_value,
         filename=filename,

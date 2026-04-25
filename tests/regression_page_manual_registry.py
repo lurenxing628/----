@@ -252,5 +252,9 @@ def main() -> None:
     print("OK")
 
 
+def test_page_manual_registry_contract() -> None:
+    main()
+
+
 if __name__ == "__main__":
     main()

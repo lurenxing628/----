@@ -26,7 +26,9 @@
 
   function _reportMissingDeps(missing) {
     var detail = String((missing || []).join(", "));
-    var msg = "甘特图页面脚本加载不完整，请刷新页面后重试。";
+    var msg = detail
+      ? "甘特图页面脚本加载不完整（缺少 " + detail + "），请刷新页面后重试。"
+      : "甘特图页面脚本加载不完整，请刷新页面后重试。";
     if (typeof reportClientError === "function") {
       reportClientError(msg, detail ? new Error(detail) : undefined);
       return;

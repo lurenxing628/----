@@ -27,6 +27,7 @@
             <th>对应工种</th>
             <th>默认周期</th>
             <th>状态</th>
+            <th>备注</th>
           </tr>
         </thead>
         <tbody>
@@ -37,6 +38,7 @@
               <td>{{ r["对应工种"] or '-' }}</td>
               <td>{{ r["默认周期"] }}</td>
               <td>{{ r["状态显示"] or '-' }}</td>
+              <td>{{ r["备注"] or '-' }}</td>
             </tr>
           {% endfor %}
         </tbody>

@@ -113,6 +113,8 @@
         </thead>
         <tbody>
           {% for r in preview_rows %}
+            {% set preview_display_data = r.display_data if r.display_data is defined else {} %}
+            {% set preview_display_changes = r.display_changes if r.display_changes is defined else {} %}
             <tr>
               <td>{{ r.row_num }}</td>
               <td>
@@ -123,10 +125,10 @@
                 {% if r.status.value == 'error' %}<span class="badge badge-error">错误</span>{% endif %}
               </td>
               <td class="{{ 'error' if r.status.value == 'error' else '' }}">{{ r.message }}</td>
-              <td><pre>{{ r.data | tojson_zh(2) }}</pre></td>
+              <td><pre>{{ preview_display_data | tojson_zh(2) }}</pre></td>
               <td>
-                {% if r.changes %}
-                  <pre>{{ r.changes | tojson_zh(2) }}</pre>
+                {% if preview_display_changes %}
+                  <pre>{{ preview_display_changes | tojson_zh(2) }}</pre>
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
@@ -164,8 +166,8 @@
               <td>{{ r["图号"] }}</td>
               <td>{{ r["数量"] }}</td>
               <td>{% if r["交期"] %}{{ r["交期"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
-              <td>{{ r["优先级"] }}</td>
-              <td>{{ r["齐套"] }}</td>
+              <td>{{ r["优先级显示"] or '-' }}</td>
+              <td>{{ r["齐套显示"] or '-' }}</td>
               <td>{% if r["齐套日期"] %}{{ r["齐套日期"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
               <td>{% if r["备注"] %}{{ r["备注"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
             </tr>
@@ -179,4 +181,3 @@
 
   <script src="{{ url_for('static', filename='js/excel_handler.js') }}" defer></script>
 {% endblock %}
-

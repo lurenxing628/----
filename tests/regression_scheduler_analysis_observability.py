@@ -275,8 +275,8 @@ def main() -> None:
     old_selected, old_hist = build_case_inputs(version=1, summary_obj=old_summary)
     old_ctx = build_analysis_context(selected_ver=1, raw_hist=[old_hist], selected_item=old_selected)
     assert old_ctx.get("attempts"), "旧 summary 应提取出 attempts"
-    assert old_ctx["attempts"][0].get("dispatch_mode") == "-", "旧 summary 的 dispatch_mode 应安全回退为 '-'"
-    assert old_ctx["attempts"][0].get("dispatch_rule") == "-", "旧 summary 的 dispatch_rule 应安全回退为 '-'"
+    assert old_ctx["attempts"][0].get("dispatch_mode") == "", "旧 summary 缺少 dispatch_mode 时不应合成 '-'"
+    assert old_ctx["attempts"][0].get("dispatch_rule") == "", "旧 summary 缺少 dispatch_rule 时不应合成 '-'"
     assert not old_ctx.get("extra_cards"), "旧 summary 不应生成数据异常/未排批次卡片"
     assert old_ctx.get("freeze_display") is None, "旧 summary 不应生成冻结摘要"
 
@@ -285,7 +285,7 @@ def main() -> None:
     assert "裁剪后摘要" not in old_html, "旧 summary 不应展示裁剪提示"
     assert "停机避让约束已降级" not in old_html, "旧 summary 不应展示停机降级提示"
     assert "冻结窗口约束已降级" not in old_html, "旧 summary 不应展示冻结窗口降级提示"
-    assert "-/-" in old_html, "旧 summary 的 attempts 派工列应展示安全回退值"
+    assert "-/-" not in old_html, "旧 summary 缺少派工规则时不应展示 -/-"
     assert "当前版本摘要缺少部分分析字段" in old_html, "旧 summary 应展示中文兼容提示"
     assert "优化对比指标" in old_html, "旧 summary 兼容提示应展示中文字段名"
     assert "评分顺序" in old_html, "旧 summary 兼容提示应展示中文字段名"
@@ -356,7 +356,7 @@ def main() -> None:
     assert "及其他 2 个…" in new_html, "未展示冻结示例批次剩余数量"
     assert "排序策略" in new_html, "attempts 表头未更正为排序策略"
     assert "派工" in new_html, "attempts 表头未新增派工列"
-    assert "智能派工/交期更紧的先做" in new_html, "attempts 派工列未闭环展示派工方式/智能派工策略"
+    assert "智能派工 / 交期更紧的先做" in new_html, "attempts 派工列未闭环展示派工方式/智能派工策略"
     assert "start:priority_first|sgs:cr" not in new_html, "attempts 不应暴露算法方案标签"
     assert "方案 1" in new_html, "attempts 方案应显示为普通中文序号"
 

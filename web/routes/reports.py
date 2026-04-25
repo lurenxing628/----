@@ -100,6 +100,22 @@ def _send_report_export_file(report_export):
     return resp
 
 
+def _with_utilization_percent(rows):
+    out = []
+    for row in list(rows or []):
+        item = dict(row or {})
+        try:
+            raw_utilization = item.get("utilization")
+            if raw_utilization is None or str(raw_utilization).strip() == "":
+                item["utilization_percent"] = None
+            else:
+                item["utilization_percent"] = round(float(raw_utilization) * 100.0, 2)
+        except Exception:
+            item["utilization_percent"] = None
+        out.append(item)
+    return out
+
+
 @bp.get("/")
 def index():
     engine = ReportEngine(g.db)
@@ -195,8 +211,8 @@ def utilization_page():
         start_date=rep["start_date"],
         end_date=rep["end_date"],
         capacity_hours=rep["capacity_hours_per_resource"],
-        machine_rows=rep["machines"],
-        operator_rows=rep["operators"],
+        machine_rows=_with_utilization_percent(rep["machines"]),
+        operator_rows=_with_utilization_percent(rep["operators"]),
         date_source=date_source,
         has_history=has_history,
         empty_reason=empty_reason,

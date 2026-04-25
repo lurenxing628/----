@@ -46,6 +46,12 @@
     </form>
   </div>
 
+  {% if selected_missing_message %}
+    <div class="flash-card flash-warning mt-2">
+      {{ selected_missing_message }}
+    </div>
+  {% endif %}
+
   {% if selected %}
     <div class="card">
       <h3>版本详情：v{{ selected.version }}</h3>
@@ -110,7 +116,7 @@
             {% endfor %}
           </ul>
           {% if selected_summary_display.warning_hidden_count > 0 %}
-            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条告警，请到系统历史查看。</div>
+            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条告警未在当前详情中展开。</div>
           {% endif %}
         </div>
       {% endif %}
@@ -123,7 +129,7 @@
             {% endfor %}
           </ul>
           {% if selected_summary_display.error_hidden_count > 0 %}
-            <div class="muted text-xs">另有 {{ selected_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
+            <div class="muted text-xs">另有 {{ selected_summary_display.error_hidden_count }} 条错误未在当前详情中展开。</div>
           {% endif %}
         </div>
       {% endif %}

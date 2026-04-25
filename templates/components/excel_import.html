@@ -92,6 +92,8 @@
       </thead>
       <tbody>
         {% for r in preview_rows %}
+          {% set preview_display_data = r.display_data if r.display_data is defined else r.data %}
+          {% set preview_display_changes = r.display_changes if r.display_changes is defined else r.changes %}
           <tr>
             <td>{{ r.row_num }}</td>
             <td>
@@ -108,10 +110,10 @@
               {% endif %}
             </td>
             <td class="{{ 'error' if r.status.value == 'error' else '' }}">{{ r.message }}</td>
-            <td><pre>{{ r.data | tojson_zh(2) }}</pre></td>
+            <td><pre>{{ preview_display_data | tojson_zh(2) }}</pre></td>
             <td>
-              {% if r.changes %}
-                <pre>{{ r.changes | tojson_zh(2) }}</pre>
+              {% if preview_display_changes %}
+                <pre>{{ preview_display_changes | tojson_zh(2) }}</pre>
               {% else %}
                 <span class="muted">-</span>
               {% endif %}

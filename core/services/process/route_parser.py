@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.models.enums import SourceType
+from core.models.enums import SourceType, SupplierStatus
+from core.services.common.enum_normalizers import normalize_supplier_status
 from core.services.common.safe_logging import safe_info, safe_warning
 
 
@@ -367,7 +368,14 @@ class RouteParser:
         """
         supplier_map: Dict[str, Tuple[str, float]] = {}
         issues: Dict[str, List[str]] = {}
-        for supplier in (self.suppliers_repo.list() or []):
+        try:
+            suppliers = self.suppliers_repo.list(status=SupplierStatus.ACTIVE.value) or []
+        except TypeError:
+            suppliers = self.suppliers_repo.list() or []
+        for supplier in suppliers:
+            supplier_status = normalize_supplier_status(getattr(supplier, "status", SupplierStatus.ACTIVE.value))
+            if supplier_status != SupplierStatus.ACTIVE.value:
+                continue
             if not getattr(supplier, "op_type_id", None):
                 continue
             supplier_id = str(getattr(supplier, "supplier_id", "") or "").strip() or "?"

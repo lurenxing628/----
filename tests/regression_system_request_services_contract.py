@@ -224,6 +224,35 @@ def test_system_logs_page_uses_request_services_without_g_db(monkeypatch) -> Non
     ]
 
 
+def test_system_logs_page_resolves_chinese_filter_labels_to_raw_codes(monkeypatch) -> None:
+    import web.routes.system_logs as route_mod
+
+    monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
+
+    app = _build_app()
+    operation_log_svc = _OperationLogServiceStub()
+
+    with app.test_request_context("/system/logs?limit=5&module=系统管理&action=备份"):
+        _bind_services(
+            app,
+            SimpleNamespace(
+                system_config_service=_ConfigServiceStub(),
+                system_job_state_query_service=_JobStateQueryServiceStub(),
+                operation_log_service=operation_log_svc,
+            ),
+        )
+        payload = cast(Dict[str, Any], route_mod.logs_page())
+
+    assert operation_log_svc.list_calls[-1]["module"] == "system"
+    assert operation_log_svc.list_calls[-1]["action"] == "backup"
+    assert payload["filters"]["module"] == "系统管理"
+    assert payload["filters"]["module_code"] == "system"
+    assert payload["filters"]["action"] == "备份"
+    assert payload["filters"]["action_code"] == "backup"
+    assert payload["rows"][0]["module"] == "system"
+    assert payload["rows"][0]["module_label"] == "系统管理"
+
+
 def test_system_logs_page_does_not_swallow_missing_request_service(monkeypatch) -> None:
     import web.routes.system_logs as route_mod
 

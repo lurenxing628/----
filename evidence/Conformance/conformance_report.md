@@ -1,7 +1,7 @@
 # 实现一致性对标报告（实现 vs 开发文档规划 + 架构合规）
 
-- 生成时间：2026-04-15 22:11:55
-- 仓库根目录：`C:\Users\lurenxing\.limcode\worktrees\APS-Test\sp05-path-topology`
+- 生成方式：稳定快照（不含运行时间与绝对路径）
+- 仓库根目录：`<repo-root>`
 
 ## 总结
 - 检查项总数：13
@@ -85,18 +85,55 @@
 - **证据**：
   - `core/services/scheduler/config/config_service.py` 默认值片段：
 ```
-  -     DEFAULT_SORT_STRATEGY = "priority_first"
-  -     DEFAULT_PRIORITY_WEIGHT = 0.4
-  -     DEFAULT_DUE_WEIGHT = 0.5
-  -     DEFAULT_READY_WEIGHT = 0.1
-  -     DEFAULT_ENFORCE_READY_DEFAULT = "no"  # yes/no：执行排产时默认是否启用“齐套约束”
-  -     # 工作日历：假期默认效率（假期安排工作且效率未填时使用）
-  -     DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY = 0.8
-  - 
-  -     # 派工方式（V1.2）：默认保持 V1 行为（batch_order）
-  -     DEFAULT_DISPATCH_MODE = "batch_order"  # batch_order/sgs
-  -     DEFAULT_DISPATCH_RULE = "slack"  # slack/cr/atc（仅 sgs 生效）
-  -     DEFAULT_AUTO_ASSIGN_ENABLED = "no"  # yes/no
+  -     DEFAULT_SORT_STRATEGY = str(default_for("sort_strategy"))
+  -     DEFAULT_PRIORITY_WEIGHT = float(default_for("priority_weight"))
+  -     DEFAULT_DUE_WEIGHT = float(default_for("due_weight"))
+  -     DEFAULT_READY_WEIGHT = float(default_for("ready_weight"))
+  -     DEFAULT_ENFORCE_READY_DEFAULT = str(default_for("enforce_ready_default"))
+  -     DEFAULT_HOLIDAY_DEFAULT_EFFICIENCY = float(default_for("holiday_default_efficiency"))
+  -     DEFAULT_DISPATCH_MODE = str(default_for("dispatch_mode"))
+  -     DEFAULT_DISPATCH_RULE = str(default_for("dispatch_rule"))
+  -     DEFAULT_AUTO_ASSIGN_ENABLED = str(default_for("auto_assign_enabled"))
+  -     DEFAULT_AUTO_ASSIGN_PERSIST = str(default_for("auto_assign_persist"))
+  -     DEFAULT_ORTOOLS_ENABLED = str(default_for("ortools_enabled"))
+  -     DEFAULT_ORTOOLS_TIME_LIMIT_SECONDS = int(default_for("ortools_time_limit_seconds"))
+```
+  - `core/services/scheduler/config/config_field_spec.py` 默认值片段：
+```
+  - _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
+  -     ConfigFieldSpec(
+  -         key="sort_strategy",
+  -         field_type="enum",
+  -         default="priority_first",
+  -         label="排产策略",
+  -         description="当前排序策略",
+```
+```
+  -     ),
+  -     ConfigFieldSpec(
+  -         key="priority_weight",
+  -         field_type="float",
+  -         default=0.4,
+  -         label="优先级权重",
+  -         description="权重模式-优先级权重",
+```
+```
+  -     ),
+  -     ConfigFieldSpec(
+  -         key="due_weight",
+  -         field_type="float",
+  -         default=0.5,
+  -         label="交期权重",
+  -         description="权重模式-交期权重",
+```
+```
+  -     ),
+  -     ConfigFieldSpec(
+  -         key="ready_weight",
+  -         field_type="float",
+  -         default=0.1,
+  -         label="齐套权重",
+  -         description="权重模式-齐套权重",
 ```
 
 ### Excel 导入留痕 detail 键名（英文固定键）对齐开发文档
@@ -111,10 +148,10 @@
 - **严重性**：INFO
 - **证据**：
   - `core/services/scheduler/run/schedule_persistence.py`（AST）排产留痕检查：
-  - - persist_schedule(): line=244
-  - - with *.transaction(): line=284
-  - - history_repo.create(...): line=189 inside_tx=True
-  - - op_logger.info(...): line=235 action_ifexp_ok=True
+  - - persist_schedule(): line=353
+  - - with *.transaction(): line=384
+  - - history_repo.create(...): line=298 inside_tx=True
+  - - op_logger.info(...): line=344 action_ifexp_ok=True
 
 ### 分层架构合规（route 不直接操作 DB，service 不导入 Flask request）
 - **结果**：通过
@@ -134,14 +171,16 @@
 - **严重性**：MINOR
 - **说明**：建议按职责拆分超大文件（参考 scheduler.py 拆分先例）。
 - **证据**：
-  - 超过 500 行的文件数：7
-  - web/routes/domains/scheduler/scheduler_excel_calendar.py（521 行）
+  - 超过 500 行的文件数：9
+  - web/routes/domains/scheduler/scheduler_excel_calendar.py（531 行）
+  - core/services/scheduler/config/config_field_spec.py（601 行）
+  - core/services/scheduler/config/config_service.py（1939 行）
+  - core/services/scheduler/run/schedule_optimizer.py（645 行）
+  - core/services/scheduler/summary/schedule_summary.py（553 行）
   - core/services/personnel/operator_machine_service.py（505 行）
-  - core/services/process/part_service.py（599 行）
+  - core/services/process/part_service.py（598 行）
   - core/services/process/unit_excel/template_builder.py（569 行）
-  - core/services/scheduler/config/config_service.py（568 行）
-  - core/services/scheduler/run/schedule_optimizer.py（582 行）
-  - core/infrastructure/database.py（611 行）
+  - core/infrastructure/database.py（612 行）
 
 ### 模板目录完整性（templates/ 子目录与模块对齐）
 - **结果**：通过

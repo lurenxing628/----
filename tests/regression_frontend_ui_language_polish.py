@@ -45,6 +45,17 @@ def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
         assert "设了截止日期的话，排不完会提示失败。" not in source
 
 
+def test_scheduler_config_repair_notices_use_public_field_labels() -> None:
+    for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
+        source = _read(rel_path)
+        assert "notice.field_labels" in source
+        assert "notice.fields" not in source
+
+    config_service = _read("core/services/scheduler/config/config_service.py")
+    assert "当前启用排产配置模板的结构化来源记录" in config_service
+    assert "褰撳墠" not in config_service
+
+
 def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> None:
     analysis = _read("templates/scheduler/analysis.html")
     assert "dispatch_mode_zh" in analysis
@@ -65,6 +76,8 @@ def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> No
     assert "<code>{{ r.action }}</code>" not in logs
     assert "{{ r.module_label }}" in logs
     assert "{{ r.action_label }}" in logs
+    assert "{{ r.module }}" in logs
+    assert "{{ r.action }}" in logs
     assert 'title="{{ r.module }}"' not in logs
     assert 'title="{{ r.action }}"' not in logs
     assert 'title="{{ r.target_type }}"' not in logs
@@ -88,6 +101,36 @@ def test_debug_details_do_not_expose_flask_endpoint_names_to_users() -> None:
 
 
 def test_process_excel_current_tables_render_chinese_display_fields() -> None:
+    operators = _read("templates/personnel/excel_import_operator.html")
+    assert 'r["状态显示"]' in operators
+    assert '<td>{{ r["状态"] }}</td>' not in operators
+
+    machines = _read("templates/equipment/excel_import_machine.html")
+    assert 'r["状态显示"]' in machines
+    assert '<td>{{ r["状态"] }}</td>' not in machines
+
+    batches = _read("templates/scheduler/excel_import_batches.html")
+    assert 'r["优先级显示"]' in batches
+    assert 'r["齐套显示"]' in batches
+    assert '<td>{{ r["优先级"] }}</td>' not in batches
+    assert '<td>{{ r["齐套"] }}</td>' not in batches
+
+    calendar = _read("templates/scheduler/excel_import_calendar.html")
+    assert 'r["类型显示"]' in calendar
+    assert 'r["允许普通件显示"]' in calendar
+    assert 'r["允许急件显示"]' in calendar
+    assert '<td>{{ r["类型"] }}</td>' not in calendar
+    assert '<td>{{ r["允许普通件"] }}</td>' not in calendar
+    assert '<td>{{ r["允许急件"] }}</td>' not in calendar
+
+    operator_calendar = _read("templates/personnel/excel_import_operator_calendar.html")
+    assert 'r["类型显示"]' in operator_calendar
+    assert 'r["允许普通件显示"]' in operator_calendar
+    assert 'r["允许急件显示"]' in operator_calendar
+    assert '<td>{{ r["类型"] }}</td>' not in operator_calendar
+    assert '<td>{{ r["允许普通件"] }}</td>' not in operator_calendar
+    assert '<td>{{ r["允许急件"] }}</td>' not in operator_calendar
+
     op_types = _read("templates/process/excel_import_op_types.html")
     assert 'r["归属显示"]' in op_types
     assert '<td>{{ r["归属"] }}</td>' not in op_types
@@ -98,7 +141,38 @@ def test_process_excel_current_tables_render_chinese_display_fields() -> None:
 
     suppliers = _read("templates/process/excel_import_suppliers.html")
     assert 'r["状态显示"]' in suppliers
+    assert 'r["备注"]' in suppliers
     assert '<td>{{ r["状态"] }}</td>' not in suppliers
+
+    preview_component = _read("templates/components/excel_import.html")
+    assert "r.display_data" in preview_component
+    assert "r.data | tojson_zh" not in preview_component
+
+    batch_preview_template = _read("templates/scheduler/excel_import_batches.html")
+    assert "r.display_data" in batch_preview_template
+    assert "r.data | tojson_zh" not in batch_preview_template
+    assert "else r.data" not in batch_preview_template
+    batch_route = _read("web/routes/domains/scheduler/scheduler_excel_batches.py")
+    assert "encode_preview_rows_payload" in batch_route
+
+    operator_route = _read("web/routes/personnel_excel_operators.py")
+    assert '"状态显示": operator_status_label' in operator_route
+
+    machine_route = _read("web/routes/equipment_excel_machines.py")
+    assert '"状态显示": machine_status_label' in machine_route
+
+    assert '"优先级显示": batch_priority_label' in batch_route
+    assert '"齐套显示": ready_status_label' in batch_route
+
+    calendar_route = _read("web/routes/domains/scheduler/scheduler_excel_calendar.py")
+    assert '"类型显示": calendar_day_type_label' in calendar_route
+    assert '"允许普通件显示": yes_no_label' in calendar_route
+    assert '"允许急件显示": yes_no_label' in calendar_route
+
+    operator_calendar_route = _read("web/routes/personnel_excel_operator_calendar.py")
+    assert '"类型显示": calendar_day_type_label' in operator_calendar_route
+    assert '"允许普通件显示": yes_no_label' in operator_calendar_route
+    assert '"允许急件显示": yes_no_label' in operator_calendar_route
 
     op_type_service = _read("core/services/process/op_type_service.py")
     assert '"归属显示": source_type_label(ot.category)' in op_type_service
@@ -481,9 +555,44 @@ def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
     analysis_template = _read("templates/scheduler/analysis.html")
     assert "compat_fallback.missing_field_labels" in analysis_template
     assert "compat_fallback.missing_fields | join" not in analysis_template
-    assert "<th>方案</th>" in analysis_template
-    assert "{{ r.tag }}" not in analysis_template
-    assert "方案 {{ loop.index }}" in analysis_template
+    assert "<th>方案来源</th>" in analysis_template
+    assert "r.display_tag" in analysis_template or "{{ r.tag }}" in analysis_template
+    assert "方案 {{ loop.index }}" not in analysis_template
+    assert "row_dispatch_rule" in analysis_template
+    assert "/{{ dispatch_rule_zh" not in analysis_template
+
+
+def test_gantt_contract_frontend_preserves_reason_code_and_deduplicates_unavailable_tooltip() -> None:
+    gantt_contract = _read("static/js/gantt_contract.js")
+    assert "reason_code" in gantt_contract
+    assert "critical.reason_code" in gantt_contract or "raw.reason_code" in gantt_contract
+    assert "dedupeCriticalReason" in gantt_contract
+    assert "关键链暂不可用（关键链暂不可用）" not in gantt_contract
+    assert "reasonText, unavailableMessage" not in gantt_contract
+
+
+def test_reports_and_v2_batch_templates_match_public_manual_contracts() -> None:
+    utilization = _read("templates/reports/utilization.html")
+    assert "利用率(%)" in utilization
+    assert "utilization_percent" in utilization
+    assert "r.utilization if r.utilization is not none" not in utilization
+
+    exporter = _read("core/services/report/exporters/xlsx.py")
+    assert '["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]' in exporter
+    assert '"利用率(%)"' in exporter
+    assert "_utilization_percent" in exporter
+
+    for rel_path in ("web_new_test/templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches_manage.html"):
+        source = _read(rel_path)
+        assert "scheduler.delete_batch" in source
+        assert "确认删除该批次" in source
+        assert 'name="next"' in source
+
+    gantt_v2 = _read("web_new_test/templates/scheduler/gantt.html")
+    for line in gantt_v2.splitlines():
+        if "上周" in line or "回到本周" in line or "下周" in line:
+            assert "start_date=" not in line
+            assert "end_date=" not in line
 
 
 @pytest.mark.parametrize(

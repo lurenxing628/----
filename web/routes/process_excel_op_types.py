@@ -27,6 +27,7 @@ from .excel_utils import (
     flash_import_result,
     load_confirm_payload,
     preview_baseline_is_stale,
+    project_preview_rows_for_display,
     send_excel_template_file,
 )
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
@@ -49,7 +50,7 @@ def _render_excel_op_type_page(
         "process/excel_import_op_types.html",
         title="工种配置 - Excel 导入/导出",
         existing_list=list(existing.values()),
-        preview_rows=preview_rows,
+        preview_rows=project_preview_rows_for_display(preview_rows, {"归属": source_type_label}),
         raw_rows_json=raw_rows_json,
         preview_baseline=preview_baseline,
         mode=mode_value,

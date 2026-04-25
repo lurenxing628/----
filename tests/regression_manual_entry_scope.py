@@ -353,5 +353,9 @@ def main() -> None:
     print("OK")
 
 
+def test_manual_entry_scope_contract() -> None:
+    main()
+
+
 if __name__ == "__main__":
     main()

@@ -206,6 +206,22 @@ def test_system_history_route_zero_and_negative_versions_keep_exact_query_semant
     assert history_service.version_queries == [0, -1]
 
 
+def test_system_history_route_surfaces_missing_version_message(monkeypatch) -> None:
+    history_service = _HistoryServiceSelectiveStub({}, existing_versions={3})
+    app = _build_app(monkeypatch, history_service)
+    client = app.test_client()
+
+    response = client.get("/system/history?version=999")
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["filters"]["version"] == "999"
+    assert payload["selected"] is None
+    assert payload["selected_missing_version"] == 999
+    assert payload["selected_missing_message"] == "v999 无对应排产历史"
+    assert history_service.version_queries == [999]
+
+
 def test_system_history_route_rejects_non_integer_version(monkeypatch) -> None:
     history_service = _HistoryServiceSelectiveStub({}, existing_versions={3})
     app = _build_app(monkeypatch, history_service)
@@ -252,6 +268,18 @@ def test_system_history_page_renders_warning_pipeline_guard_html(tmp_path, monke
     assert "调试详情：原始摘要" not in html
     assert "summary_warnings_assignment_failed" not in html
     assert "INTERNAL_RESULT_SUMMARY_SECRET" not in html
+
+
+def test_system_history_page_renders_missing_version_notice(tmp_path, monkeypatch) -> None:
+    app = _build_real_app(tmp_path, monkeypatch, summary_obj={"warnings": []})
+    client = app.test_client()
+
+    response = client.get("/system/history?version=999")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "v999 无对应排产历史" in html
+    assert "摘要已加载" not in html
 
 
 def test_system_history_version_dropdown_uses_completion_status_label(tmp_path, monkeypatch) -> None:

@@ -46,19 +46,19 @@ def extract_overdue_batch_ids_with_meta(result_summary: Any) -> Dict[str, Any]:
     overdue = payload.get("overdue_batches")
     if overdue is None:
         meta["degraded"] = True
-        meta["message"] = "排产摘要缺少 overdue_batches，超期统计和标记可能不完整。"
+        meta["message"] = "排产摘要缺少超期清单，超期统计和标记可能不完整。"
         meta["reason"] = "overdue_batches_missing"
         return meta
     if isinstance(overdue, dict):
         overdue = overdue.get("items")
         if overdue is None:
             meta["degraded"] = True
-            meta["message"] = "排产摘要中的 overdue_batches.items 缺失，超期统计和标记可能不完整。"
+            meta["message"] = "排产摘要的超期清单明细缺失，超期统计和标记可能不完整。"
             meta["reason"] = "overdue_items_missing"
             return meta
     if not isinstance(overdue, Sequence) or isinstance(overdue, (str, bytes, bytearray)):
         meta["degraded"] = True
-        meta["message"] = "排产摘要中的 overdue_batches 格式不正确，超期统计和标记可能不完整。"
+        meta["message"] = "排产摘要的超期清单格式不正确，超期统计和标记可能不完整。"
         meta["reason"] = "overdue_batches_invalid_type"
         return meta
     result: List[str] = []

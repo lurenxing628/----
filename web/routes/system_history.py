@@ -5,6 +5,7 @@ from flask import request
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
+from .domains.scheduler.scheduler_history_resolution import build_requested_history_resolution
 from .normalizers import (
     _parse_result_summary_payload_with_meta,
     decorate_history_version_options,
@@ -25,6 +26,8 @@ def history_page():
     versions = decorate_history_version_options(q.list_versions(limit=30), log_label="排产历史页")
 
     selected = None
+    selected_missing_message = None
+    selected_missing_version = None
     selected_summary = None
     selected_summary_display = build_summary_display_state(None, result_status=None)
     ver = parse_optional_version_int(request.args.get("version"), field="version")
@@ -44,6 +47,9 @@ def history_page():
                 result_status=selected.get("result_status"),
                 parse_state=parse_state,
             )
+        else:
+            selected_missing_version = int(ver)
+            selected_missing_message = f"v{int(ver)} 无对应排产历史"
 
     items = [x.to_dict() for x in q.list_recent(limit=limit)]
     for it in items:
@@ -73,6 +79,13 @@ def history_page():
         selected=selected,
         selected_summary=selected_summary,
         selected_summary_display=selected_summary_display,
+        selected_history_resolution=build_requested_history_resolution(
+            requested_version=selected_missing_version,
+            selected_history=selected,
+            missing_message=selected_missing_message,
+        ),
+        selected_missing_version=selected_missing_version,
+        selected_missing_message=selected_missing_message,
         items=items,
         filters={"version": version_raw, "limit": str(limit)},
         pager=pager,

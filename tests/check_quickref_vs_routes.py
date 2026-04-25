@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Set, Tuple, cast
+from typing import Dict, Iterable, List, Optional, Set, Tuple, cast
 
 from flask import Flask
 
@@ -139,14 +139,41 @@ def _render_report(
     return "\n".join(out) + "\n"
 
 
+def _extract_doc_endpoints(markdown_text: str) -> Set[Tuple[str, str]]:
+    pat = re.compile(r"^-\s+`(GET|POST)\s+([^`]+)`", re.M)
+    return {(m.group(1), m.group(2).strip()) for m in pat.finditer(markdown_text or "")}
+
+
+def _collect_app_routes(app: Flask) -> Set[Tuple[str, str]]:
+    rule_set: Set[Tuple[str, str]] = set()
+    for r in app.url_map.iter_rules():
+        if r.rule.startswith("/static"):
+            continue
+        methods = set(r.methods or [])
+        for m in ("GET", "POST"):
+            if m in methods:
+                rule_set.add((m, str(r.rule)))
+    return rule_set
+
+
+def _diff_endpoints(
+    doc_eps: Iterable[Tuple[str, str]],
+    rule_eps: Iterable[Tuple[str, str]],
+) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
+    doc_set = set(doc_eps)
+    rule_set = set(rule_eps)
+    missing_in_code = sorted([ep for ep in doc_set if ep not in rule_set])
+    undocumented_in_doc = sorted([ep for ep in rule_set if ep not in doc_set])
+    return missing_in_code, undocumented_in_doc
+
+
 def main() -> int:
     repo_root = find_repo_root()
     doc_path = Path(repo_root) / "开发文档" / "系统速查表.md"
     txt = doc_path.read_text(encoding="utf-8", errors="strict")
 
     # 提取格式：- `GET /path`：xxx
-    pat = re.compile(r"^-\s+`(GET|POST)\s+([^`]+)`", re.M)
-    doc_eps = [(m.group(1), m.group(2).strip()) for m in pat.finditer(txt)]
+    doc_eps = _extract_doc_endpoints(txt)
 
     # 启动 app 并读取 url_map（隔离目录，避免污染真实 db/logs/backups）
     added_repo_root = False
@@ -159,14 +186,7 @@ def main() -> int:
                 added_repo_root = True
             app, module_name = _load_app_for_scan(repo_root)
 
-            rule_set: Set[Tuple[str, str]] = set()
-            for r in app.url_map.iter_rules():
-                if r.rule.startswith("/static"):
-                    continue
-                methods = set(r.methods or [])
-                for m in ("GET", "POST"):
-                    if m in methods:
-                        rule_set.add((m, str(r.rule)))
+            rule_set = _collect_app_routes(app)
         finally:
             if module_name:
                 sys.modules.pop(module_name, None)
@@ -178,10 +198,8 @@ def main() -> int:
             _close_temp_log_handlers(root)
             _restore_env(previous_env)
 
-    doc_set = set(doc_eps)
-    missing_in_code = sorted([ep for ep in doc_set if ep not in rule_set])
     # 当前约定为：除 /static 外，其余 GET/POST 路由都应进入系统速查表。
-    undocumented_in_doc = sorted([ep for ep in rule_set if ep not in doc_set])
+    missing_in_code, undocumented_in_doc = _diff_endpoints(doc_eps, rule_set)
     doc_display_path = doc_path.relative_to(repo_root).as_posix()
     report = _render_report(
         doc_display_path=doc_display_path,
@@ -204,4 +222,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

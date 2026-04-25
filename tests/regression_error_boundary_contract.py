@@ -125,6 +125,24 @@ def test_json_error_payload_hides_non_validation_internal_message() -> None:
     assert "secret_token" not in serialized
 
 
+def test_validation_error_message_hides_path_after_chinese_colon() -> None:
+    exc = BusinessError(
+        ErrorCode.VALIDATION_ERROR,
+        "文件错误：/tmp/private.xlsx",
+        details={"field": "start_date"},
+    )
+
+    assert error_boundary_mod.user_visible_app_error_message(exc) == "开始日期填写不正确，请检查后重试。"
+    assert error_boundary_mod.user_visible_app_error_details(exc) == {"field": "开始日期"}
+
+
+def test_non_validation_public_chinese_slash_message_is_not_genericized() -> None:
+    message = "外部/内部归属已存在，请改用覆盖/追加方式。"
+    exc = BusinessError(ErrorCode.DUPLICATE_ENTRY, message)
+
+    assert error_boundary_mod.user_visible_app_error_message(exc) == message
+
+
 def test_error_handler_500_page_does_not_depend_on_main_site_routes() -> None:
     app = _build_app()
 

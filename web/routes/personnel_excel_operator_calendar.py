@@ -28,6 +28,7 @@ from .excel_utils import (
     flash_import_result,
     load_confirm_payload,
     preview_baseline_is_stale,
+    project_preview_rows_for_display,
     send_excel_template_file,
 )
 from .personnel_bp import (
@@ -81,12 +82,15 @@ def _build_existing_operator_calendar_preview_data() -> Tuple[Dict[str, Dict[str
             "工号": c.operator_id,
             "日期": c.date,
             "类型": _normalize_operator_calendar_day_type(c.day_type),
+            "类型显示": calendar_day_type_label(c.day_type),
             "班次开始": c.shift_start,
             "班次结束": c.shift_end,
             "可用工时": c.shift_hours,
             "效率": c.efficiency,
             "允许普通件": c.allow_normal,
+            "允许普通件显示": yes_no_label(c.allow_normal),
             "允许急件": c.allow_urgent,
+            "允许急件显示": yes_no_label(c.allow_urgent),
             "说明": c.remark,
             "__id": f"{c.operator_id}|{c.date}",
         }
@@ -108,7 +112,10 @@ def _render_excel_operator_calendar_page(
         "personnel/excel_import_operator_calendar.html",
         title="人员专属工作日历 - Excel 导入/导出",
         existing_list=existing_list,
-        preview_rows=preview_rows,
+        preview_rows=project_preview_rows_for_display(
+            preview_rows,
+            {"类型": calendar_day_type_label, "允许普通件": yes_no_label, "允许急件": yes_no_label},
+        ),
         raw_rows_json=raw_rows_json,
         preview_baseline=preview_baseline,
         mode=mode_value,

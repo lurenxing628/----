@@ -28,6 +28,7 @@ def test_gantt_contract_clears_unavailable_critical_chain_payload() -> None:
             "ids": ["RAW-1"],
             "edges": [{"from": "RAW-1", "to": "RAW-2"}],
             "edge_count": 1,
+            "edge_type_stats": {"process": 1},
             "cache_hit": False,
         },
     )
@@ -37,6 +38,7 @@ def test_gantt_contract_clears_unavailable_critical_chain_payload() -> None:
     assert critical_chain["ids"] == []
     assert critical_chain["edges"] == []
     assert critical_chain["edge_count"] == 0
+    assert critical_chain["edge_type_stats"] == {}
     assert critical_chain["reason_code"] == "repo_exception"
     assert critical_chain["reason"] == "关键链计算异常"
 
@@ -1672,17 +1674,32 @@ def test_gantt_contract_critical_unavailable_message_maps_reason_code() -> None:
 {DOM_SHIM_JS}
 loadScript({_gantt_contract_js()});
 const api = window.__APS_GANTT__.contract;
-const critical = {{ ids: ["T1"], edges: [], available: false, reason: "repo_exception" }};
+const critical = {{ ids: ["T1"], edges: [], available: false, reason: "关键链计算异常", reason_code: "repo_exception" }};
+const state = {{}};
+const normalized = api.applyCriticalChainToState(state, critical);
 const messages = api.buildDegradationMessages({{
   degradation_counters: {{ critical_chain_unavailable: 1 }},
 }}, critical);
 const help = api.getHelpItems(critical).join(" ");
-process.stdout.write(JSON.stringify({{ messages, help }}));
+const tooltip = api.getCriticalTooltip({{ id: "T1" }}, critical);
+process.stdout.write(JSON.stringify({{ messages, help, tooltip, normalized, state }}));
 """
     result = _run_node_json(node_code)
 
     assert "关键链计算异常" in str(result)
-    assert "repo_exception" not in str(result)
+    assert result["normalized"]["reason_code"] == "repo_exception"
+    assert result["state"]["critical"]["reason_code"] == "repo_exception"
+    assert result["tooltip"]["reasonText"] in ("-", "关键链计算异常")
+    assert result["tooltip"]["unavailableMessage"].count("关键链计算异常") == 1
+    public_text = " ".join(
+        list(result["messages"])
+        + [
+            result["help"],
+            result["tooltip"]["reasonText"],
+            result["tooltip"]["unavailableMessage"],
+        ]
+    )
+    assert "repo_exception" not in public_text
 
 
 def test_gantt_contract_public_history_and_critical_reason_do_not_echo_raw_values() -> None:

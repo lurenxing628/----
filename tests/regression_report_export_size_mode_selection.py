@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from io import BytesIO
 from typing import Any, Dict, List, cast
 
 
@@ -24,6 +25,36 @@ def _assert_xlsx(resp, name: str, expect_version: int) -> None:
     cd = resp.headers.get("Content-Disposition", "")
     if f"v{int(expect_version)}" not in cd:
         raise RuntimeError(f"{name} filename 未包含 v{expect_version}（Content-Disposition={cd!r}）")
+
+
+def _assert_overdue_xlsx_columns(resp) -> None:
+    import openpyxl
+
+    wb = openpyxl.load_workbook(BytesIO(resp.data), data_only=True)
+    try:
+        ws = wb["overdue"]
+        headers = [ws.cell(row=1, column=i).value for i in range(1, 10)]
+        if headers != ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]:
+            raise RuntimeError(f"超期清单表头顺序异常：{headers!r}")
+        row_tail = [ws.cell(row=2, column=8).value, ws.cell(row=2, column=9).value]
+        if row_tail != [0.33, 8.0]:
+            raise RuntimeError(f"超期清单最后两列数据顺序异常：{row_tail!r}")
+    finally:
+        wb.close()
+
+
+def _assert_utilization_xlsx_percent(resp) -> None:
+    import openpyxl
+
+    wb = openpyxl.load_workbook(BytesIO(resp.data), data_only=True)
+    try:
+        ws = wb["machines"]
+        if ws["F1"].value != "利用率(%)":
+            raise RuntimeError(f"利用率表头异常：{ws['F1'].value!r}")
+        if ws["F2"].value != 50.0:
+            raise RuntimeError(f"利用率应以百分比数值导出：{ws['F2'].value!r}")
+    finally:
+        wb.close()
 
 
 def _make_overdue_items(count: int) -> List[Dict[str, Any]]:
@@ -141,6 +172,7 @@ def main() -> None:
 
         overdue_resp = client.get("/reports/overdue/export?version=7")
         _assert_xlsx(overdue_resp, "GET /reports/overdue/export", 7)
+        _assert_overdue_xlsx_columns(overdue_resp)
         overdue_mode = overdue_resp.headers.get("X-APS-Report-Export-Mode", "")
         if overdue_mode != "direct":
             raise RuntimeError(f"超期清单导出模式错误：{overdue_mode!r}")
@@ -150,6 +182,7 @@ def main() -> None:
 
         util_resp = client.get("/reports/utilization/export?version=7&start_date=2026-01-01&end_date=2026-01-07")
         _assert_xlsx(util_resp, "GET /reports/utilization/export", 7)
+        _assert_utilization_xlsx_percent(util_resp)
         util_mode = util_resp.headers.get("X-APS-Report-Export-Mode", "")
         if util_mode != "stream":
             raise RuntimeError(f"资源负荷导出模式错误：{util_mode!r}")

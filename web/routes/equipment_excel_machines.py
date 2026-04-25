@@ -30,6 +30,7 @@ from .excel_utils import (
     flash_import_result,
     load_confirm_payload,
     preview_baseline_is_stale,
+    project_preview_rows_for_display,
     send_excel_template_file,
 )
 
@@ -113,11 +114,19 @@ def _render_excel_machine_page(
     mode_value: str,
     filename: Optional[str],
 ):
+    existing_list = []
+    for row in list((existing or {}).values()):
+        existing_list.append(
+            {
+                **dict(row or {}),
+                "状态显示": machine_status_label((row or {}).get("状态")),
+            }
+        )
     return render_template(
         "equipment/excel_import_machine.html",
         title="设备信息 - Excel 导入/导出",
-        existing_list=list(existing.values()),
-        preview_rows=preview_rows,
+        existing_list=existing_list,
+        preview_rows=project_preview_rows_for_display(preview_rows, {"状态": machine_status_label}),
         raw_rows_json=raw_rows_json,
         preview_baseline=preview_baseline,
         mode=mode_value,

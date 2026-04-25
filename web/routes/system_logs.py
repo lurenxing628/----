@@ -5,7 +5,11 @@ from typing import Any, Dict, List, Optional
 from flask import flash, redirect, request, url_for
 
 from web.ui_mode import render_ui_template as render_template
-from web.viewmodels.system_logs_vm import build_operation_log_view_rows
+from web.viewmodels.system_logs_vm import (
+    build_operation_log_view_rows,
+    resolve_operation_log_action_filter,
+    resolve_operation_log_module_filter,
+)
 
 from .pagination import paginate_rows, parse_page_args
 from .system_bp import bp
@@ -23,8 +27,10 @@ from .system_utils import (
 def logs_page():
     start_time = request.args.get("start_time")
     end_time = request.args.get("end_time")
-    module = (request.args.get("module") or "").strip() or None
-    action = (request.args.get("action") or "").strip() or None
+    module_raw = (request.args.get("module") or "").strip()
+    action_raw = (request.args.get("action") or "").strip()
+    module = resolve_operation_log_module_filter(module_raw) or None
+    action = resolve_operation_log_action_filter(action_raw) or None
     log_level = (request.args.get("log_level") or "").strip() or None
     page, per_page = parse_page_args(request, default_per_page=50, max_per_page=500)
     limit = _safe_int(request.args.get("limit"), field="limit", default=per_page, min_v=1, max_v=500)
@@ -63,8 +69,10 @@ def logs_page():
         filters={
             "start_time": start_time or "",
             "end_time": end_time or "",
-            "module": module or "",
-            "action": action or "",
+            "module": module_raw,
+            "module_code": module or "",
+            "action": action_raw,
+            "action_code": action or "",
             "log_level": log_level or "",
             "limit": str(limit),
         },
@@ -133,4 +141,3 @@ def logs_delete_batch():
 
     flash(f"批量删除完成：成功 {deleted}。", "success" if deleted else "warning")
     return redirect(url_for("system.logs_page"))
-

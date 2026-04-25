@@ -35,6 +35,20 @@
     return out;
   }
 
+  function dedupeCriticalReason(message, reason) {
+    var text = norm(message);
+    var reasonText = norm(reason);
+    if (!text || !reasonText) return text;
+    var first = text.indexOf(reasonText);
+    if (first < 0) return text;
+    var next = text.indexOf(reasonText, first + reasonText.length);
+    while (next >= 0) {
+      text = text.slice(0, next) + text.slice(next + reasonText.length);
+      next = text.indexOf(reasonText, first + reasonText.length);
+    }
+    return text.replace(/（\s*）/g, "").replace(/\s{2,}/g, " ").trim();
+  }
+
   function normalizeCriticalChain(raw) {
     var src = raw && raw.__apsNormalizedCriticalChain === true ? raw : (raw || {});
     var idsRaw = Array.isArray(src.ids) ? src.ids : [];
@@ -70,6 +84,7 @@
     }
 
     var available = src.available !== false;
+    var reasonCode = norm(src.reason_code || src.reasonCode);
     var renderIdSet = available ? idSet : new Set();
     var renderPrevByTo = available ? prevByTo : new Map();
     var renderEdgeMetaByTo = available ? edgeMetaByTo : new Map();
@@ -81,6 +96,7 @@
       makespan_end: norm(src.makespan_end) || null,
       available: available,
       reason: norm(src.reason),
+      reason_code: reasonCode,
       cache_hit: src.cache_hit === true,
       idSet: renderIdSet,
       prevByTo: renderPrevByTo,
@@ -97,6 +113,7 @@
       makespan_end: cc.makespan_end,
       available: cc.available,
       reason: cc.reason,
+      reason_code: cc.reason_code,
       cache_hit: cc.cache_hit,
     };
     state.ccIdSet = cc.idSet;
@@ -109,17 +126,26 @@
     var cc = normalizeCriticalChain(critical);
     if (cc.available !== false) return "";
     var prefix = "关键链暂不可用";
-    var reason = publicCriticalChainReason(cc.reason);
+    var explicitReasonCode = critical && critical.reason_code;
+    var reason = publicCriticalChainReason(cc.reason, cc.reason_code || explicitReasonCode);
     if (reason) {
       prefix += "（" + reason + "）";
     }
-    return prefix + "，当前仅展示普通甘特任务与资源排程，不显示关键链控制前驱箭头与外框高亮。";
+    return dedupeCriticalReason(
+      prefix + "，当前仅展示普通甘特任务与资源排程，不显示关键链控制前驱箭头与外框高亮。",
+      reason
+    );
   }
 
-  function publicCriticalChainReason(reason) {
+  function publicCriticalChainReason(reason, reasonCode) {
+    var code = norm(reasonCode);
+    if (code === "repo_exception") return "关键链计算异常";
+    if (code === "no_history") return "暂无排产历史";
+    if (code === "unknown") return "状态未知";
     var text = norm(reason);
     if (!text) return "";
     if (text === "repo_exception") return "关键链计算异常";
+    if (text === "no_history") return "暂无排产历史";
     if (text === "unknown") return "状态未知";
     if (/^[A-Za-z0-9_.:-]+$/.test(text)) return "状态异常";
     return text;
@@ -198,7 +224,7 @@
   function getCriticalStatusLabel(critical) {
     var cc = normalizeCriticalChain(critical);
     if (cc.available === false) {
-      var reason = publicCriticalChainReason(cc.reason);
+      var reason = publicCriticalChainReason(cc.reason, cc.reason_code);
       return reason ? ("关键链暂不可用（" + reason + "）") : "关键链暂不可用";
     }
     return "关键链可用";
@@ -305,7 +331,7 @@
       predecessorText: isCritical && meta ? meta.from : "-",
       edgeTypeText: isCritical && meta ? getCriticalEdgeTypeLabel(meta.edge_type) : "-",
       reasonText: cc.available === false
-        ? unavailableMessage
+        ? (publicCriticalChainReason(cc.reason, cc.reason_code) || "-")
         : (isCritical && meta ? (meta.reason || "控制前驱") : "-"),
       gapText: isCritical && meta && meta.gap_minutes !== null && typeof meta.gap_minutes !== "undefined"
         ? str(meta.gap_minutes)
@@ -358,6 +384,7 @@
   api.escapeHtml = escapeHtml;
   api.normalizeCriticalChain = normalizeCriticalChain;
   api.applyCriticalChainToState = applyCriticalChainToState;
+  api.dedupeCriticalReason = dedupeCriticalReason;
   api.getCriticalChainUnavailableMessage = getCriticalChainUnavailableMessage;
   api.getArrowModeLabel = getArrowModeLabel;
   api.getCriticalEdgeTypeLabel = getCriticalEdgeTypeLabel;

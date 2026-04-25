@@ -56,6 +56,15 @@ def _make_output_buffer(*, write_only: bool) -> BinaryIO:
     return io.BytesIO()
 
 
+def _utilization_percent(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        return round(float(value) * 100.0, 2)
+    except Exception:
+        return value
+
+
 def export_overdue_xlsx(items: List[Dict[str, Any]], *, write_only: bool = False) -> BinaryIO:
     wb = openpyxl.Workbook(write_only=write_only)
     try:
@@ -64,7 +73,7 @@ def export_overdue_xlsx(items: List[Dict[str, Any]], *, write_only: bool = False
             raise RuntimeError("无法创建 overdue 工作表")
         if not write_only:
             ws.title = "overdue"
-            _append_row(ws, ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(小时)", "超期(天)"])
+            _append_row(ws, ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"])
             for it in items:
                 _append_row(
                     ws,
@@ -76,15 +85,15 @@ def export_overdue_xlsx(items: List[Dict[str, Any]], *, write_only: bool = False
                         it.get("quantity"),
                         it.get("due_date"),
                         it.get("finish_time") or it.get("as_of_time"),
-                        it.get("delay_hours"),
                         it.get("delay_days"),
+                        it.get("delay_hours"),
                     ],
                 )
             _format_sheet(ws)
         else:
             _append_write_only_row(
                 ws,
-                ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(小时)", "超期(天)"],
+                ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"],
                 is_header=True,
             )
             for it in items:
@@ -98,8 +107,8 @@ def export_overdue_xlsx(items: List[Dict[str, Any]], *, write_only: bool = False
                         it.get("quantity"),
                         it.get("due_date"),
                         it.get("finish_time") or it.get("as_of_time"),
-                        it.get("delay_hours"),
                         it.get("delay_days"),
+                        it.get("delay_hours"),
                     ],
                 )
 
@@ -124,7 +133,7 @@ def export_utilization_xlsx(
     try:
         if write_only:
             ws1 = wb.create_sheet("machines")
-            _append_write_only_row(ws1, ["设备编号", "设备名称", "负荷(小时)", "任务数", "可用工时(小时)", "利用率"], is_header=True)
+            _append_write_only_row(ws1, ["设备编号", "设备名称", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"], is_header=True)
             for r in machines:
                 _append_write_only_row(
                     ws1,
@@ -134,12 +143,12 @@ def export_utilization_xlsx(
                         r.get("hours"),
                         r.get("task_count"),
                         r.get("capacity_hours"),
-                        r.get("utilization"),
+                        _utilization_percent(r.get("utilization")),
                     ],
                 )
 
             ws2 = wb.create_sheet("operators")
-            _append_write_only_row(ws2, ["工号", "姓名", "负荷(小时)", "任务数", "可用工时(小时)", "利用率"], is_header=True)
+            _append_write_only_row(ws2, ["工号", "姓名", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"], is_header=True)
             for r in operators:
                 _append_write_only_row(
                     ws2,
@@ -149,7 +158,7 @@ def export_utilization_xlsx(
                         r.get("hours"),
                         r.get("task_count"),
                         r.get("capacity_hours"),
-                        r.get("utilization"),
+                        _utilization_percent(r.get("utilization")),
                     ],
                 )
         else:
@@ -157,7 +166,7 @@ def export_utilization_xlsx(
             if ws1 is None:
                 raise RuntimeError("无法创建 machines 工作表")
             ws1.title = "machines"
-            _append_row(ws1, ["设备编号", "设备名称", "负荷(小时)", "任务数", "可用工时(小时)", "利用率"])
+            _append_row(ws1, ["设备编号", "设备名称", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"])
             for r in machines:
                 _append_row(
                     ws1,
@@ -167,13 +176,13 @@ def export_utilization_xlsx(
                         r.get("hours"),
                         r.get("task_count"),
                         r.get("capacity_hours"),
-                        r.get("utilization"),
+                        _utilization_percent(r.get("utilization")),
                     ],
                 )
             _format_sheet(ws1)
 
             ws2 = wb.create_sheet("operators")
-            _append_row(ws2, ["工号", "姓名", "负荷(小时)", "任务数", "可用工时(小时)", "利用率"])
+            _append_row(ws2, ["工号", "姓名", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"])
             for r in operators:
                 _append_row(
                     ws2,
@@ -183,7 +192,7 @@ def export_utilization_xlsx(
                         r.get("hours"),
                         r.get("task_count"),
                         r.get("capacity_hours"),
-                        r.get("utilization"),
+                        _utilization_percent(r.get("utilization")),
                     ],
                 )
             _format_sheet(ws2)

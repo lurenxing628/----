@@ -165,9 +165,9 @@
           {% for notice in current_config_state.repair_notices %}
             <li>
               {{ notice.message or current_config_state.label }}
-              {% if notice.fields %}
+              {% if notice.field_labels %}
                 <span class="meta-sep">|</span>
-                涉及字段：{{ notice.fields|join('、') }}
+                涉及字段：{{ notice.field_labels|join('、') }}
               {% endif %}
             </li>
           {% endfor %}

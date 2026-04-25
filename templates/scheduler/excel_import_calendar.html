@@ -36,11 +36,11 @@
           {% for r in existing_list %}
             <tr>
               <td>{{ r["日期"] }}</td>
-              <td>{{ r["类型"] }}</td>
+              <td>{{ r["类型显示"] or '-' }}</td>
               <td>{{ r["可用工时"] }}</td>
               <td>{{ r["效率"] }}</td>
-              <td>{{ r["允许普通件"] }}</td>
-              <td>{{ r["允许急件"] }}</td>
+              <td>{{ r["允许普通件显示"] or '-' }}</td>
+              <td>{{ r["允许急件显示"] or '-' }}</td>
               <td>{% if r["说明"] %}{{ r["说明"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
             </tr>
           {% endfor %}
@@ -53,4 +53,3 @@
 
   <script src="{{ url_for('static', filename='js/excel_handler.js') }}" defer></script>
 {% endblock %}
-

@@ -5,6 +5,13 @@ from typing import Any, Dict, List, Optional
 
 from core.services.scheduler.degradation_messages import public_degradation_events
 
+_CRITICAL_REASON_LABELS = {
+    "repo_exception": "关键链计算异常",
+    "no_history": "暂无排产历史，关键链暂不可用",
+    "unknown": "关键链暂不可用",
+}
+_ALLOWED_CRITICAL_REASON_CODES = frozenset(_CRITICAL_REASON_LABELS)
+
 
 def _public_critical_chain(chain: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(chain or {})
@@ -13,12 +20,14 @@ def _public_critical_chain(chain: Dict[str, Any]) -> Dict[str, Any]:
         out["ids"] = []
         out["edges"] = []
         out["edge_count"] = 0
-        if reason:
-            out["reason_code"] = reason
-        out["reason"] = {
-            "repo_exception": "关键链计算异常",
-            "unknown": "关键链暂不可用",
-        }.get(reason, "关键链暂不可用" if reason and reason.isascii() else reason)
+        out["edge_type_stats"] = {}
+        reason_code = str(out.get("reason_code") or reason or "unknown").strip().lower() or "unknown"
+        if reason_code not in _ALLOWED_CRITICAL_REASON_CODES:
+            reason_code = "unknown"
+        out["reason_code"] = reason_code
+        out["reason"] = _CRITICAL_REASON_LABELS.get(reason_code) or (
+            "关键链暂不可用" if reason and reason.isascii() else reason
+        )
     return out
 
 

@@ -9,6 +9,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models.enums import SupplierStatus
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
@@ -62,15 +63,22 @@ def _validate_route_row(part_svc: PartService, row: Dict[str, Any], *, strict_mo
 
 
 def _route_parse_extra_state(part_svc: PartService, *, strict_mode: bool) -> Dict[str, Any]:
-    # 这里必须只镜像 RouteParser 真正读取的解析输入，
-    # 不能把供应商状态等展示/管理字段并入基线，
-    # 否则确认阶段会被与解析结果无关的变更误伤。
+    # 这里必须只镜像 RouteParser 真正读取的解析输入。
+    # 供应商状态会决定外协工序是否可被自动匹配，因此只纳入启用供应商集合。
     op_types = sorted(
         part_svc.op_type_repo.list() or [],
         key=lambda item: (str(getattr(item, "op_type_id", "") or ""), str(getattr(item, "name", "") or "")),
     )
+    try:
+        supplier_rows = part_svc.supplier_repo.list(status=SupplierStatus.ACTIVE.value) or []
+    except TypeError:
+        supplier_rows = [
+            item
+            for item in (part_svc.supplier_repo.list() or [])
+            if str(getattr(item, "status", SupplierStatus.ACTIVE.value) or "").strip().lower() == SupplierStatus.ACTIVE.value
+        ]
     suppliers = sorted(
-        part_svc.supplier_repo.list() or [],
+        supplier_rows,
         key=lambda item: (str(getattr(item, "supplier_id", "") or ""), str(getattr(item, "op_type_id", "") or "")),
     )
     return {
@@ -88,6 +96,7 @@ def _route_parse_extra_state(part_svc: PartService, *, strict_mode: bool) -> Dic
                 "supplier_id": supplier.supplier_id,
                 "op_type_id": supplier.op_type_id,
                 "default_days": supplier.default_days,
+                "status": supplier.status,
             }
             for supplier in suppliers
         ],
@@ -417,4 +426,3 @@ def excel_routes_export():
         download_name="零件工艺路线.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-

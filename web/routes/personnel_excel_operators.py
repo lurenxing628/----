@@ -27,6 +27,7 @@ from .excel_utils import (
     flash_import_result,
     load_confirm_payload,
     preview_baseline_is_stale,
+    project_preview_rows_for_display,
     send_excel_template_file,
 )
 from .personnel_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
@@ -61,11 +62,19 @@ def _render_excel_operator_page(
     mode_value: str,
     filename: Optional[str],
 ):
+    existing_list = []
+    for row in list((existing or {}).values()):
+        existing_list.append(
+            {
+                **dict(row or {}),
+                "状态显示": operator_status_label((row or {}).get("状态")),
+            }
+        )
     return render_template(
         "personnel/excel_import_operator.html",
         title="人员基本信息 - Excel 导入/导出",
-        existing_list=list(existing.values()),
-        preview_rows=preview_rows,
+        existing_list=existing_list,
+        preview_rows=project_preview_rows_for_display(preview_rows, {"状态": operator_status_label}),
         raw_rows_json=raw_rows_json,
         preview_baseline=preview_baseline,
         mode=mode_value,

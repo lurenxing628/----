@@ -72,6 +72,26 @@ def _label(value: Any, labels: Dict[str, str], fallback: str) -> str:
     return labels.get(key, fallback)
 
 
+def _resolve_label_or_code(value: Any, labels: Dict[str, str]) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text in labels:
+        return text
+    for code, label in labels.items():
+        if text == label:
+            return code
+    return text
+
+
+def resolve_operation_log_module_filter(value: Any) -> str:
+    return _resolve_label_or_code(value, _MODULE_LABELS)
+
+
+def resolve_operation_log_action_filter(value: Any) -> str:
+    return _resolve_label_or_code(value, _ACTION_LABELS)
+
+
 def _safe_load_detail_obj(detail_raw: Any) -> Optional[Dict[str, Any]]:
     if detail_raw is None:
         return None

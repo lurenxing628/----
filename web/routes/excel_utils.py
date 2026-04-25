@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import io
@@ -8,7 +9,7 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, send_file
 
@@ -17,6 +18,7 @@ from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_service import ImportMode, RowStatus
 
 XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+ENCODED_PREVIEW_ROWS_PREFIX = "aps-preview-json-b64:"
 
 
 def parse_import_mode(value: str) -> ImportMode:
@@ -87,10 +89,29 @@ class ConfirmPayload:
 
 def parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
     try:
-        rows = json.loads(raw_rows_json)
+        rows = json.loads(decode_preview_rows_payload(raw_rows_json))
         if not isinstance(rows, list):
             raise ValueError("rows not list")
         return rows
+    except Exception as e:
+        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
+
+
+def encode_preview_rows_payload(raw_rows_json: Optional[str]) -> Optional[str]:
+    raw = str(raw_rows_json or "")
+    if not raw:
+        return raw_rows_json
+    encoded = base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
+    return f"{ENCODED_PREVIEW_ROWS_PREFIX}{encoded}"
+
+
+def decode_preview_rows_payload(raw_rows_json: str) -> str:
+    raw = str(raw_rows_json or "")
+    if not raw.startswith(ENCODED_PREVIEW_ROWS_PREFIX):
+        return raw
+    encoded = raw[len(ENCODED_PREVIEW_ROWS_PREFIX) :].strip()
+    try:
+        return base64.urlsafe_b64decode(encoded.encode("ascii")).decode("utf-8")
     except Exception as e:
         raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
 
@@ -139,6 +160,49 @@ def preview_baseline_is_stale(
         id_column=id_column,
         extra_state=extra_state,
     )
+
+
+def project_row_for_display(
+    row: Optional[Dict[str, Any]],
+    field_projectors: Optional[Dict[str, Callable[[Any], Any]]] = None,
+) -> Dict[str, Any]:
+    item = dict(row or {})
+    for field, projector in (field_projectors or {}).items():
+        if field not in item:
+            continue
+        try:
+            item[field] = projector(item.get(field))
+        except Exception:
+            item[field] = item.get(field)
+    return item
+
+
+def project_changes_for_display(
+    changes: Optional[Dict[str, Any]],
+    field_projectors: Optional[Dict[str, Callable[[Any], Any]]] = None,
+) -> Dict[str, Any]:
+    projected: Dict[str, Any] = {}
+    for field, values in dict(changes or {}).items():
+        projector = (field_projectors or {}).get(field)
+        if not projector:
+            projected[field] = values
+            continue
+        try:
+            old_value, new_value = values
+            projected[field] = (projector(old_value), projector(new_value))
+        except Exception:
+            projected[field] = values
+    return projected
+
+
+def project_preview_rows_for_display(
+    preview_rows: Any,
+    field_projectors: Optional[Dict[str, Callable[[Any], Any]]] = None,
+) -> Any:
+    for preview_row in list(preview_rows or []):
+        preview_row.display_data = project_row_for_display(getattr(preview_row, "data", None), field_projectors)
+        preview_row.display_changes = project_changes_for_display(getattr(preview_row, "changes", None), field_projectors)
+    return preview_rows
 
 
 def collect_error_rows(preview_rows: List[Any]) -> List[Any]:

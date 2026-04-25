@@ -3,7 +3,6 @@ import os
 import re
 import sys
 import tempfile
-import time
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -208,15 +207,27 @@ def _check_backup_on_exit(repo_root: str) -> CheckResult:
 
 
 def _check_scheduler_config_defaults(repo_root: str) -> CheckResult:
-    path = os.path.join(repo_root, "core", "services", "scheduler", "config", "config_service.py")
-    txt = _read_text(path)
+    svc_path = os.path.join(repo_root, "core", "services", "scheduler", "config", "config_service.py")
+    spec_path = os.path.join(repo_root, "core", "services", "scheduler", "config", "config_field_spec.py")
+    txt = _read_text(svc_path)
+    spec_txt = _read_text(spec_path)
     ok = (
-        "DEFAULT_SORT_STRATEGY = \"priority_first\"" in txt
-        and "DEFAULT_PRIORITY_WEIGHT = 0.4" in txt
-        and "DEFAULT_DUE_WEIGHT = 0.5" in txt
-        and "DEFAULT_READY_WEIGHT = 0.1" in txt
+        'DEFAULT_SORT_STRATEGY = str(default_for("sort_strategy"))' in txt
+        and 'DEFAULT_PRIORITY_WEIGHT = float(default_for("priority_weight"))' in txt
+        and 'DEFAULT_DUE_WEIGHT = float(default_for("due_weight"))' in txt
+        and 'DEFAULT_READY_WEIGHT = float(default_for("ready_weight"))' in txt
+        and 'key="sort_strategy"' in spec_txt
+        and 'default="priority_first"' in spec_txt
+        and 'key="priority_weight"' in spec_txt
+        and "default=0.4" in spec_txt
+        and 'key="due_weight"' in spec_txt
+        and "default=0.5" in spec_txt
+        and 'key="ready_weight"' in spec_txt
+        and "default=0.1" in spec_txt
     )
-    evidence = ["`core/services/scheduler/config/config_service.py` 默认值片段："]
+    evidence = [
+        "`core/services/scheduler/config/config_service.py` 默认值片段：",
+    ]
     # 抽取 DEFAULT_* 区域
     lines = txt.splitlines()
     start = None
@@ -228,6 +239,14 @@ def _check_scheduler_config_defaults(repo_root: str) -> CheckResult:
         evidence.extend(["```", *lines[start : min(len(lines), start + 12)], "```"])
     else:
         evidence.append("未找到 DEFAULT_* 常量定义")
+    evidence.append("`core/services/scheduler/config/config_field_spec.py` 默认值片段：")
+    spec_lines = spec_txt.splitlines()
+    for key in ("sort_strategy", "priority_weight", "due_weight", "ready_weight"):
+        idx = next((i for i, line in enumerate(spec_lines) if f'key="{key}"' in line), None)
+        if idx is None:
+            evidence.append(f"- 未找到 key={key}")
+            continue
+        evidence.extend(["```", *spec_lines[max(0, idx - 2) : min(len(spec_lines), idx + 5)], "```"])
     return CheckResult(
         name="排产策略默认值（priority_first；权重 0.4/0.5/0.1）对齐开发文档",
         ok=ok,
@@ -675,8 +694,8 @@ def generate_report(repo_root: str) -> Tuple[str, List[CheckResult]]:
     lines: List[str] = []
     lines.append("# 实现一致性对标报告（实现 vs 开发文档规划 + 架构合规）")
     lines.append("")
-    lines.append(f"- 生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"- 仓库根目录：`{repo_root}`")
+    lines.append("- 生成方式：稳定快照（不含运行时间与绝对路径）")
+    lines.append("- 仓库根目录：`<repo-root>`")
     lines.append("")
     lines.append("## 总结")
     lines.append(f"- 检查项总数：{len(checks)}")

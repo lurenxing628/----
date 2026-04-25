@@ -12,6 +12,7 @@ from core.infrastructure.errors import AppError, ErrorCode, app_error_http_statu
 _INTERNAL_ASCII_RE = re.compile(r"[A-Za-z]")
 _INTERNAL_KEY_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*\b")
 _MACHINE_FIELD_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+_PATH_LIKE_RE = re.compile(r"(^|[\s:：,，;；(（\[{])(/[A-Za-z0-9_.-]|[A-Za-z]:[\\/]|\\\\|\.{1,2}/)")
 _PUBLIC_DIAGNOSTIC_REASONS = {
     "invalid_query_date",
     "invalid_schedule_rows",
@@ -86,7 +87,7 @@ def _looks_internal_non_validation_message(message: str) -> bool:
         return True
     if _message_mentions_machine_key(text):
         return True
-    if "/" in text or "\\" in text:
+    if _message_mentions_path_like(text):
         return True
     return False
 
@@ -120,6 +121,10 @@ def _message_mentions_internal_field(message: str, field: str) -> bool:
 
 def _message_mentions_machine_key(message: str) -> bool:
     return bool(_INTERNAL_KEY_RE.search(str(message or "")))
+
+
+def _message_mentions_path_like(message: str) -> bool:
+    return bool(_PATH_LIKE_RE.search(str(message or "")))
 
 
 def _public_invalid_query_details(details: dict) -> dict:
@@ -176,6 +181,7 @@ def _validation_error_message(exc: AppError, details: dict) -> str:
     field_label = get_user_visible_field_label(field)
     message_mentions_field = _message_mentions_internal_field(exc.message, field)
     message_mentions_key = _message_mentions_machine_key(exc.message)
+    message_mentions_path = _message_mentions_path_like(exc.message)
     reason_messages = {
         "invalid_schedule_rows": "排产结果包含无效排程行，系统已拒绝写入，请检查排产结果后重试。",
         "no_actionable_schedule_rows": "本次排产没有生成可保存的有效排程结果，请检查排产条件后重试。",
@@ -185,7 +191,7 @@ def _validation_error_message(exc: AppError, details: dict) -> str:
         return reason_messages[reason]
     if field == "freeze_window":
         return "冻结窗口配置或种子排程异常，请修复后重试。"
-    if not (_looks_internal_message(exc.message) or message_mentions_field or message_mentions_key):
+    if not (_looks_internal_message(exc.message) or message_mentions_field or message_mentions_key or message_mentions_path):
         return exc.message
     return f"{field_label}填写不正确，请检查后重试。" if field_label else "参数填写不正确，请检查后重试。"
 
@@ -215,6 +221,7 @@ def user_visible_app_error_details(exc: AppError) -> Optional[dict]:
             _looks_internal_message(exc.message)
             or _message_mentions_internal_field(exc.message, str(details.get("field") or ""))
             or _message_mentions_machine_key(exc.message)
+            or _message_mentions_path_like(exc.message)
         ):
             return _field_only_details(exc)
     return _replace_field_details(details)

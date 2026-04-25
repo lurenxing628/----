@@ -154,8 +154,14 @@
               <td>{{ r.id }}</td>
               <td>{{ r.log_time }}</td>
 	              <td title="{{ r.log_level_label }}">{{ r.log_level_label }}</td>
-	              <td title="{{ r.module_label }}">{{ r.module_label }}</td>
-	              <td title="{{ r.action_label }}">{{ r.action_label }}</td>
+		              <td>
+		                <div>{{ r.module_label }}</div>
+		                {% if r.module %}<div class="muted text-xs">{{ r.module }}</div>{% endif %}
+		              </td>
+		              <td>
+		                <div>{{ r.action_label }}</div>
+		                {% if r.action %}<div class="muted text-xs">{{ r.action }}</div>{% endif %}
+		              </td>
 	              <td>
 	                {% if r.target_type %}
 	                  <div title="{{ r.target_type_label }}">{{ r.target_type_label }}</div>

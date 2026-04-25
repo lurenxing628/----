@@ -400,13 +400,8 @@ def main() -> None:
 
     # 6) Markdown 一致性：事实源标题、镜像副本、内部锚点
     assert manual_text.startswith("# 系统使用说明"), "主说明书标题未更新为“系统使用说明”"
-    if manual_v2_text is None:
-        print(f"WARN: 未找到 v2 说明书镜像副本：{manual_v2_path}")
-    elif manual_text != manual_v2_text:
-        print(
-            "WARN: 主说明书与 v2 镜像副本不一致"
-            "（不影响运行时，当前唯一事实源是 static/docs/scheduler_manual.md）"
-        )
+    assert manual_v2_text is not None, f"未找到 v2 说明书镜像副本：{manual_v2_path}"
+    assert manual_text == manual_v2_text, "主说明书与 v2 镜像副本必须完全同步"
     heading_ids = _extract_heading_ids(manual_text)
     internal_hashes = _extract_internal_hashes(manual_text)
     missing_hashes = [item for item in internal_hashes if item not in heading_ids]
@@ -470,4 +465,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

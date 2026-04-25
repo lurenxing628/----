@@ -26,6 +26,7 @@ from ...excel_utils import (
     flash_import_result,
     load_confirm_payload,
     preview_baseline_is_stale,
+    project_preview_rows_for_display,
     send_excel_template_file,
 )
 from .scheduler_bp import bp
@@ -58,10 +59,13 @@ def _build_existing_preview_data() -> Tuple[Dict[str, Dict[str, Any]], List[Dict
         item = {
             "日期": c.date,
             "类型": _normalize_day_type(c.day_type),
+            "类型显示": calendar_day_type_label(c.day_type),
             "可用工时": c.shift_hours,
             "效率": c.efficiency,
             "允许普通件": c.allow_normal,
+            "允许普通件显示": yes_no_label(c.allow_normal),
             "允许急件": c.allow_urgent,
+            "允许急件显示": yes_no_label(c.allow_urgent),
             "说明": c.remark,
         }
         existing[c.date] = item
@@ -96,7 +100,10 @@ def _render_excel_calendar_page(
         "scheduler/excel_import_calendar.html",
         title="工作日历 - Excel 导入/导出",
         existing_list=existing_list,
-        preview_rows=preview_rows,
+        preview_rows=project_preview_rows_for_display(
+            preview_rows,
+            {"类型": calendar_day_type_label, "允许普通件": yes_no_label, "允许急件": yes_no_label},
+        ),
         raw_rows_json=raw_rows_json,
         preview_baseline=preview_baseline,
         mode=mode_value,
