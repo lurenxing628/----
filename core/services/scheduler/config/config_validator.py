@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from core.infrastructure.errors import ValidationError
-from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
+from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
 
 from .config_field_spec import MISSING_POLICY_INHERIT_LEGACY_OMISSION, coerce_config_field
 from .config_snapshot import ScheduleConfigSnapshot
+from .config_weight_policy import derive_ready_weight_from_priority_due, normalize_single_weight
 
 
 def _emit_number_below_minimum(
@@ -113,22 +114,28 @@ def normalize_preset_snapshot(
         missing=dw_missing,
         fallback=float(base.due_weight),
     )
-    if pw < 0 or dw < 0:
-        raise ValidationError("权重不能为负数", field="权重")
-    percent_mode = (pw > 1.0) or (dw > 1.0)
-    if percent_mode:
-        if (0 < pw < 1) or (0 < dw < 1):
-            raise ValidationError("权重输入疑似混用小数与百分比，请统一使用 0~1 或 0~100（%）。", field="权重")
-        if pw > 100.0 or dw > 100.0:
-            raise ValidationError("权重范围不合理（期望 0~1 或 0~100%）", field="权重")
-        pw = pw / 100.0
-        dw = dw / 100.0
-    if pw > 1.0 or dw > 1.0:
-        raise ValidationError("权重范围不合理（期望 0~1 或 0~100%）", field="权重")
-    rw = 1.0 - float(pw) - float(dw)
-    if rw < -1e-9:
-        raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
-    rw = max(0.0, float(rw))
+    rw_missing, rw_raw = _read("ready_weight")
+    rw = _preset_float(
+        "ready_weight",
+        rw_raw,
+        strict_mode=bool(strict_mode),
+        collector=collector,
+        missing=rw_missing,
+        fallback=float(base.ready_weight),
+    )
+    derived_pw, derived_dw, derived_rw = derive_ready_weight_from_priority_due(
+        pw,
+        dw,
+        priority_field="priority_weight",
+        due_field="due_weight",
+    )
+    if strict_mode:
+        explicit_ready_weight = normalize_single_weight(rw, field="ready_weight")
+        if abs(float(explicit_ready_weight) - float(derived_rw)) > 1e-6:
+            raise ValidationError("齐套权重应与优先级权重、交期权重的派生值一致。", field="权重")
+    pw = derived_pw
+    dw = derived_dw
+    rw = derived_rw
 
     hde_missing, hde_raw = _read("holiday_default_efficiency")
     hde = _preset_float(

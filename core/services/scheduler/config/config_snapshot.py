@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
-from core.services.common.degradation import (
+from core.shared.degradation import (
     DegradationCollector,
     DegradationEvent,
     degradation_events_to_dicts,
@@ -17,6 +17,7 @@ from .config_field_spec import (
     default_snapshot_values,
     list_config_fields,
 )
+from .config_weight_policy import normalize_weight_triplet
 
 
 @dataclass
@@ -151,7 +152,7 @@ def _coerce_degradation_event(raw: Any) -> Optional[DegradationEvent]:
     )
 
 
-def _seed_snapshot_degradation_collector(snapshot: ScheduleConfigSnapshot) -> DegradationCollector:
+def _seed_snapshot_degradation_collector(snapshot: Any) -> DegradationCollector:
     collector = DegradationCollector()
     for raw in getattr(snapshot, "degradation_events", ()) or ():
         event = _coerce_degradation_event(raw)
@@ -214,11 +215,7 @@ def _build_schedule_config_snapshot_from_runtime_cfg(
             cfg,
             source=source,
         )
-    collector = (
-        _seed_snapshot_degradation_collector(cfg)
-        if isinstance(cfg, ScheduleConfigSnapshot)
-        else DegradationCollector()
-    )
+    collector = _seed_snapshot_degradation_collector(cfg)
     default_map = default_snapshot_values()
     values: Dict[str, Any] = {}
 
@@ -233,6 +230,16 @@ def _build_schedule_config_snapshot_from_runtime_cfg(
             missing=missing,
             fallback=default_map[spec.key],
             missing_policy=(MISSING_POLICY_ERROR if bool(strict_mode) else MISSING_POLICY_FALLBACK_WITH_DEGRADATION),
+        )
+    if bool(strict_mode):
+        values["priority_weight"], values["due_weight"], values["ready_weight"] = normalize_weight_triplet(
+            values["priority_weight"],
+            values["due_weight"],
+            values["ready_weight"],
+            require_sum_1=True,
+            priority_field="priority_weight",
+            due_field="due_weight",
+            ready_field="ready_weight",
         )
 
     return ScheduleConfigSnapshot(
@@ -365,6 +372,16 @@ def build_schedule_config_snapshot(
             missing=missing,
             fallback=default_map[spec.key],
             missing_policy=(MISSING_POLICY_ERROR if bool(strict_mode) else MISSING_POLICY_FALLBACK_WITH_DEGRADATION),
+        )
+    if bool(strict_mode):
+        values["priority_weight"], values["due_weight"], values["ready_weight"] = normalize_weight_triplet(
+            values["priority_weight"],
+            values["due_weight"],
+            values["ready_weight"],
+            require_sum_1=True,
+            priority_field="priority_weight",
+            due_field="due_weight",
+            ready_field="ready_weight",
         )
 
     return ScheduleConfigSnapshot(

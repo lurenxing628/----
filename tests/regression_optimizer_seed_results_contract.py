@@ -12,8 +12,8 @@ from core.services.scheduler.run.schedule_optimizer import optimize_schedule
 def _cfg() -> SimpleNamespace:
     return SimpleNamespace(
         sort_strategy="priority_first",
-        priority_weight=1.0,
-        due_weight=1.0,
+        priority_weight=0.4,
+        due_weight=0.5,
         ready_weight=0.1,
         holiday_default_efficiency=0.8,
         enforce_ready_default="no",

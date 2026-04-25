@@ -151,6 +151,31 @@ def test_schedule_params_weighted_override_invalid_values_rejected_in_strict_mod
     assert exc_info.value.field == "priority_weight"
 
 
+def test_schedule_params_strict_mode_rejects_inconsistent_runtime_weight_triplet() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        _call_params(
+            config=_build_snapshot(sort_strategy="weighted", ready_weight=0.9),
+            strict_mode=True,
+        )
+
+    assert exc_info.value.field == "权重"
+
+
+def test_schedule_params_strict_mode_normalizes_percent_runtime_weight_triplet() -> None:
+    params = _call_params(
+        config=_build_snapshot(
+            sort_strategy="weighted",
+            priority_weight=40,
+            due_weight=50,
+            ready_weight=10,
+        ),
+        strict_mode=True,
+    )
+
+    assert params.used_params["priority_weight"] == pytest.approx(0.4)
+    assert params.used_params["due_weight"] == pytest.approx(0.5)
+
+
 def test_schedule_params_strict_mode_rejects_invalid_start_dt() -> None:
     with pytest.raises(ValidationError) as exc_info:
         resolve_schedule_params(

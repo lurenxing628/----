@@ -8,9 +8,9 @@ from core.algorithms.dispatch_rules import DispatchInputs, DispatchRule, build_d
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import EXTERNAL, INTERNAL, MERGED
 from core.infrastructure.errors import ValidationError
-from core.services.common.degradation import DegradationCollector
-from core.services.common.field_parse import parse_field_float
-from core.services.common.strict_parse import parse_optional_date
+from core.shared.degradation import DegradationCollector
+from core.shared.field_parse import parse_field_float
+from core.shared.strict_parse import parse_optional_date
 
 from ..algo_stats import increment_counter
 from ..date_parsers import parse_date

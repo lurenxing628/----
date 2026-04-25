@@ -51,9 +51,9 @@ def test_scheduler_config_repair_notices_use_public_field_labels() -> None:
         assert "notice.field_labels" in source
         assert "notice.fields" not in source
 
-    config_service = _read("core/services/scheduler/config/config_service.py")
-    assert "当前启用排产配置模板的结构化来源记录" in config_service
-    assert "褰撳墠" not in config_service
+    active_preset_service = _read("core/services/scheduler/config/active_preset_service.py")
+    assert "当前启用排产配置模板的结构化来源记录" in active_preset_service
+    assert "褰撳墠" not in active_preset_service
 
 
 def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> None:

@@ -323,6 +323,7 @@ def test_scheduler_config_post_surfaces_hidden_repair_notice(monkeypatch) -> Non
         flashes = list(session.get("_flashes") or [])
     warning_messages = [str(message) for category, message in flashes if category == "warning"]
     assert any("自动分配结果回写" in message for message in warning_messages), flashes
+    assert not any("保存为自定义配置" in message for message in warning_messages), flashes
     assert not any("auto_assign_persist" in message for message in warning_messages), flashes
     assert not any(category == "success" and "\u5df2\u4fdd\u5b58" in str(message) for category, message in flashes), flashes
 
@@ -388,6 +389,36 @@ def test_scheduler_config_post_surfaces_blocked_hidden_repair_notice(monkeypatch
     assert any(category == "warning" and "\u6765\u6e90\u7f3a\u5931" in str(message) for category, message in flashes), flashes
     assert not any(category == "warning" and "auto_assign_persist" in str(message) for category, message in flashes), flashes
     assert not any(category == "success" and "\u5df2\u4fdd\u5b58" in str(message) for category, message in flashes), flashes
+
+
+def test_scheduler_config_post_mixed_visible_change_and_blocked_hidden_repair_does_not_flash_success(monkeypatch) -> None:
+    config_service = _ConfigServiceStub()
+    config_service.save_outcome = SimpleNamespace(
+        visible_changed_fields=["sort_strategy"],
+        visible_repaired_fields=[],
+        hidden_repaired_fields=[],
+        blocked_hidden_repairs=["auto_assign_persist"],
+        notices=[
+            {
+                "kind": "blocked_hidden",
+                "fields": ["auto_assign_persist"],
+                "message": "检测到隐藏配置退化，但因来源缺失未自动修复：auto_assign_persist。",
+            }
+        ],
+        active_preset_after="custom",
+        active_preset_reason_after="manual",
+    )
+    app = _build_app(monkeypatch, config_service)
+    client = app.test_client()
+
+    response = client.post("/scheduler/config", data={"sort_strategy": "weighted"})
+
+    assert response.status_code in (301, 302)
+    with client.session_transaction() as session:
+        flashes = list(session.get("_flashes") or [])
+    assert any(category == "warning" and "来源缺失" in str(message) for category, message in flashes), flashes
+    assert not any(category == "success" for category, _message in flashes), flashes
+    assert "auto_assign_persist" not in str(flashes)
 
 
 def test_scheduler_config_post_surfaces_active_preset_meta_parse_warning(monkeypatch) -> None:
@@ -592,6 +623,38 @@ def test_scheduler_config_preset_apply_uses_effective_identity_in_flash(monkeypa
     assert any("旧方案" in str(message) for _category, message in flashes), flashes
 
 
+def test_scheduler_config_preset_apply_adjusted_flash_hides_unknown_raw_field(monkeypatch) -> None:
+    config_service = _ConfigServiceStub()
+    config_service.apply_result = {
+        "requested_preset": "旧方案",
+        "effective_active_preset": "旧方案",
+        "status": "adjusted",
+        "adjusted_fields": ["legacy_runtime_block", "legacyRuntimeBlock", "secret", "auto_assign_persist"],
+        "reason": "方案应用时发生规范化或修补，当前运行配置与所选方案存在差异。",
+        "error_field": None,
+        "error_message": None,
+    }
+    app = _build_app(monkeypatch, config_service)
+    client = app.test_client()
+
+    response = client.post(
+        "/scheduler/config/preset/apply",
+        data={"preset_name": "旧方案"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code in (301, 302)
+    with client.session_transaction() as session:
+        flashes = list(session.get("_flashes") or [])
+    text = str(flashes)
+    assert "当前运行配置已被规范化" in text
+    assert "legacy_runtime_block" not in text
+    assert "legacyRuntimeBlock" not in text
+    assert "secret" not in text
+    assert "auto_assign_persist" not in text
+    assert "隐藏配置" in text
+
+
 def test_scheduler_config_preset_apply_surfaces_rejected_validation_failure(monkeypatch) -> None:
     config_service = _ConfigServiceStub()
     config_service.apply_result = {
@@ -690,6 +753,31 @@ def test_scheduler_config_preset_save_surfaces_field_label_even_without_raw_key(
         flashes = list(session.get("_flashes") or [])
     assert any("当前配置未保存为方案" in str(message) for _category, message in flashes), flashes
     assert any(field_label_for("auto_assign_persist") in str(message) for _category, message in flashes), flashes
+
+
+def test_scheduler_config_preset_delete_missing_does_not_flash_success(monkeypatch) -> None:
+    from core.infrastructure.errors import BusinessError, ErrorCode
+
+    config_service = _ConfigServiceStub()
+
+    def _raise_missing(_name) -> None:
+        raise BusinessError(ErrorCode.NOT_FOUND, "未找到方案：missing-demo")
+
+    config_service.delete_preset = _raise_missing
+    app = _build_app(monkeypatch, config_service)
+    client = app.test_client()
+
+    response = client.post(
+        "/scheduler/config/preset/delete",
+        data={"preset_name": "missing-demo"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code in (301, 302)
+    with client.session_transaction() as session:
+        flashes = list(session.get("_flashes") or [])
+    assert any(category == "error" and "未找到方案" in str(message) for category, message in flashes), flashes
+    assert not any(category == "success" for category, _message in flashes), flashes
 
 
 def test_scheduler_config_page_exposes_hidden_degraded_warning_summary(monkeypatch) -> None:

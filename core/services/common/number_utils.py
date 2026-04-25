@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional, overload
 
-from core.services.common.strict_parse import (
+from core.shared.strict_parse import (
     parse_optional_float,
     parse_optional_int,
     parse_required_float,

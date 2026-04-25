@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.value_domains import INTERNAL
-from core.services.common.strict_parse import parse_optional_date, parse_optional_datetime
+from core.shared.strict_parse import parse_optional_date, parse_optional_datetime
 
 from ..sort_strategies import BatchForSort, SortStrategy, StrategyFactory
 from ..types import ScheduleResult, ScheduleSummary

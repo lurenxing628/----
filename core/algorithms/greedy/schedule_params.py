@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
-from core.services.common.degradation import DegradationCollector
-from core.services.common.field_parse import parse_field_float
-from core.services.common.strict_parse import parse_required_float
-from core.services.scheduler.degradation_messages import public_degradation_event_message
+from core.models.scheduler_degradation_messages import public_degradation_event_message
+from core.shared.degradation import DegradationCollector
+from core.shared.field_parse import parse_field_float
+from core.shared.strict_parse import parse_required_float
 
 from ..dispatch_rules import DispatchRule
 from ..sort_strategies import SortStrategy
@@ -25,6 +25,7 @@ _FIELD_LABELS = {
     "strategy_params": "策略参数",
     "priority_weight": "优先级权重",
     "due_weight": "交期权重",
+    "ready_weight": "就绪权重",
     "auto_assign_enabled": "自动分配",
 }
 
@@ -88,13 +89,13 @@ def _require_strategy_params_dict(strategy_params: Optional[Dict[str, Any]]) -> 
 
 
 def _config_default_for(key: str) -> Any:
-    from core.services.scheduler.config.config_field_spec import default_for
+    from core.models.schedule_config_runtime import default_for
 
     return default_for(key)
 
 
 def _build_runtime_snapshot(config: Any, *, strict_mode: bool) -> Any:
-    from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+    from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
 
     return ensure_schedule_config_snapshot(
         config,
@@ -104,8 +105,7 @@ def _build_runtime_snapshot(config: Any, *, strict_mode: bool) -> Any:
 
 
 def _validate_runtime_field(config: Any, field: str) -> None:
-    from core.services.scheduler.config.config_field_spec import MISSING_POLICY_ERROR
-    from core.services.scheduler.config.config_snapshot import coerce_runtime_config_field
+    from core.models.schedule_config_runtime import MISSING_POLICY_ERROR, coerce_runtime_config_field
 
     coerce_runtime_config_field(
         config,
@@ -114,6 +114,35 @@ def _validate_runtime_field(config: Any, field: str) -> None:
         source="schedule_params.runtime_config",
         collector=DegradationCollector(),
         missing_policy=MISSING_POLICY_ERROR,
+    )
+
+
+def _validate_runtime_weight_triplet(config: Any) -> Tuple[float, float, float]:
+    from core.models.schedule_config_runtime import (
+        MISSING_POLICY_ERROR,
+        coerce_runtime_config_field,
+        normalize_weight_triplet,
+    )
+
+    values = {
+        field: coerce_runtime_config_field(
+            config,
+            field,
+            strict_mode=True,
+            source="schedule_params.runtime_config",
+            collector=DegradationCollector(),
+            missing_policy=MISSING_POLICY_ERROR,
+        )
+        for field in ("priority_weight", "due_weight", "ready_weight")
+    }
+    return normalize_weight_triplet(
+        values["priority_weight"],
+        values["due_weight"],
+        values["ready_weight"],
+        require_sum_1=True,
+        priority_field="priority_weight",
+        due_field="due_weight",
+        ready_field="ready_weight",
     )
 
 
@@ -187,6 +216,145 @@ def _require_yes_no(raw_value: Any, *, field: str) -> str:
     return text
 
 
+def _resolve_base_time(
+    start_dt: Any,
+    *,
+    strict_mode: bool,
+    warnings: List[str],
+    algo_stats: Any,
+) -> datetime:
+    base_time = start_dt or datetime.now()
+    if isinstance(base_time, datetime):
+        return base_time
+    if base_time is None:
+        return datetime.now()
+
+    parsed = parse_datetime(base_time)
+    if parsed is not None:
+        increment_counter(algo_stats, "start_dt_parsed_count", bucket="param_fallbacks")
+        warnings.append(f"开始时间已规范化为：{parsed.strftime('%Y-%m-%d %H:%M:%S')}")
+        return parsed
+    if strict_mode:
+        raise ValidationError("“开始时间”格式不合法。", field="start_dt")
+    warnings.append(f"开始时间无法解析，已忽略：{start_dt!r}")
+    increment_counter(algo_stats, "start_dt_default_now_count", bucket="param_fallbacks")
+    return datetime.now()
+
+
+def _resolve_end_dt_exclusive(
+    end_date: Any,
+    *,
+    strict_mode: bool,
+    warnings: List[str],
+    algo_stats: Any,
+) -> Optional[datetime]:
+    end_d = parse_date(end_date)
+    if end_date is not None and end_d is None:
+        text = str(end_date).strip()
+        if text:
+            if strict_mode:
+                raise ValidationError("“截止日期”格式不合法。", field="end_date")
+            warnings.append(f"截止日期无法解析，已忽略：{end_date!r}")
+            increment_counter(algo_stats, "end_date_ignored_count", bucket="param_fallbacks")
+    if not end_d:
+        return None
+    return datetime(end_d.year, end_d.month, end_d.day, 0, 0, 0) + timedelta(days=1)
+
+
+def _resolve_strategy(
+    strategy: Optional[SortStrategy],
+    *,
+    snapshot_value: Callable[..., Any],
+) -> SortStrategy:
+    if strategy is not None:
+        return strategy
+    strategy_key = _require_choice(
+        snapshot_value("sort_strategy", counter_key="sort_strategy_defaulted_count"),
+        field="sort_strategy",
+        valid_values={item.value for item in SortStrategy},
+    )
+    return SortStrategy(strategy_key)
+
+
+def _runtime_weighted_params(
+    config: Any,
+    *,
+    strict_mode: bool,
+    snapshot_value: Callable[..., Any],
+) -> Dict[str, Any]:
+    if strict_mode:
+        priority_weight, due_weight, _ready_weight = _validate_runtime_weight_triplet(config)
+        return {
+            "priority_weight": float(priority_weight),
+            "due_weight": float(due_weight),
+        }
+    return {
+        "priority_weight": _require_weight(
+            snapshot_value("priority_weight", counter_key="weighted_priority_weight_defaulted_count"),
+            "priority_weight",
+        ),
+        "due_weight": _require_weight(
+            snapshot_value("due_weight", counter_key="weighted_due_weight_defaulted_count"),
+            "due_weight",
+        ),
+    }
+
+
+def _resolve_used_params(
+    *,
+    config: Any,
+    strategy: SortStrategy,
+    strategy_params: Optional[Dict[str, Any]],
+    strict_mode: bool,
+    warnings: List[str],
+    algo_stats: Any,
+    snapshot_value: Callable[..., Any],
+) -> Dict[str, Any]:
+    if strategy != SortStrategy.WEIGHTED:
+        return dict(strategy_params or {})
+    if strategy_params is not None:
+        return _weighted_strategy_params(
+            _require_strategy_params_dict(strategy_params),
+            strict_mode=bool(strict_mode),
+            warnings=warnings,
+            algo_stats=algo_stats,
+        )
+    return _runtime_weighted_params(config, strict_mode=bool(strict_mode), snapshot_value=snapshot_value)
+
+
+def _resolve_dispatch_mode_key(dispatch_mode: Optional[str], *, snapshot_value: Callable[..., Any]) -> str:
+    resolved_mode = dispatch_mode
+    if resolved_mode is None:
+        resolved_mode = snapshot_value("dispatch_mode", counter_key="dispatch_mode_defaulted_count")
+    return _require_choice(
+        resolved_mode,
+        field="dispatch_mode",
+        valid_values={"batch_order", "sgs"},
+    )
+
+
+def _resolve_dispatch_rule_enum(dispatch_rule: Optional[str], *, snapshot_value: Callable[..., Any]) -> DispatchRule:
+    resolved_rule = dispatch_rule
+    if resolved_rule is None:
+        resolved_rule = snapshot_value("dispatch_rule", counter_key="dispatch_rule_defaulted_count")
+    rule_key = _require_choice(
+        resolved_rule,
+        field="dispatch_rule",
+        valid_values={item.value for item in DispatchRule},
+    )
+    return DispatchRule(rule_key)
+
+
+def _resolve_auto_assign_enabled(*, snapshot_value: Callable[..., Any]) -> bool:
+    return (
+        _require_yes_no(
+            snapshot_value("auto_assign_enabled", counter_key="auto_assign_enabled_defaulted_count"),
+            field="auto_assign_enabled",
+        )
+        == "yes"
+    )
+
+
 def resolve_schedule_params(
     *,
     config: Any,
@@ -251,85 +419,31 @@ def resolve_schedule_params(
         _record_snapshot_degradations(field, counter_key=counter_key)
         return value
 
-    base_time = start_dt or datetime.now()
-    if base_time is not None and not isinstance(base_time, datetime):
-        parsed = parse_datetime(base_time)
-        if parsed is not None:
-            base_time = parsed
-            increment_counter(algo_stats, "start_dt_parsed_count", bucket="param_fallbacks")
-            warnings.append(f"开始时间已规范化为：{base_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        else:
-            if strict_mode:
-                raise ValidationError("“开始时间”格式不合法。", field="start_dt")
-            warnings.append(f"开始时间无法解析，已忽略：{start_dt!r}")
-            increment_counter(algo_stats, "start_dt_default_now_count", bucket="param_fallbacks")
-            base_time = datetime.now()
-
-    end_d = parse_date(end_date)
-    if end_date is not None and end_d is None:
-        text = str(end_date).strip()
-        if text:
-            if strict_mode:
-                raise ValidationError("“截止日期”格式不合法。", field="end_date")
-            warnings.append(f"截止日期无法解析，已忽略：{end_date!r}")
-            increment_counter(algo_stats, "end_date_ignored_count", bucket="param_fallbacks")
-    end_dt_exclusive: Optional[datetime] = None
-    if end_d:
-        end_dt_exclusive = datetime(end_d.year, end_d.month, end_d.day, 0, 0, 0) + timedelta(days=1)
-
-    if strategy is None:
-        strategy_key = _require_choice(
-            _snapshot_value("sort_strategy", counter_key="sort_strategy_defaulted_count"),
-            field="sort_strategy",
-            valid_values={item.value for item in SortStrategy},
-        )
-        strategy = SortStrategy(strategy_key)
-
-    used_params: Dict[str, Any]
-
-    if strategy == SortStrategy.WEIGHTED:
-        if strategy_params is not None:
-            used_params = _weighted_strategy_params(
-                _require_strategy_params_dict(strategy_params),
-                strict_mode=bool(strict_mode),
-                warnings=warnings,
-                algo_stats=algo_stats,
-            )
-        else:
-            used_params = {
-                "priority_weight": _require_weight(
-                    _snapshot_value("priority_weight", counter_key="weighted_priority_weight_defaulted_count"),
-                    "priority_weight",
-                ),
-                "due_weight": _require_weight(
-                    _snapshot_value("due_weight", counter_key="weighted_due_weight_defaulted_count"),
-                    "due_weight",
-                ),
-            }
-    else:
-        used_params = dict(strategy_params or {})
-
-    if dispatch_mode is None:
-        dispatch_mode = _snapshot_value("dispatch_mode", counter_key="dispatch_mode_defaulted_count")
-    dispatch_mode_key = _require_choice(
-        dispatch_mode,
-        field="dispatch_mode",
-        valid_values={"batch_order", "sgs"},
+    base_time = _resolve_base_time(
+        start_dt,
+        strict_mode=bool(strict_mode),
+        warnings=warnings,
+        algo_stats=algo_stats,
     )
-
-    if dispatch_rule is None:
-        dispatch_rule = _snapshot_value("dispatch_rule", counter_key="dispatch_rule_defaulted_count")
-    dispatch_rule_key = _require_choice(
-        dispatch_rule,
-        field="dispatch_rule",
-        valid_values={item.value for item in DispatchRule},
+    end_dt_exclusive = _resolve_end_dt_exclusive(
+        end_date,
+        strict_mode=bool(strict_mode),
+        warnings=warnings,
+        algo_stats=algo_stats,
     )
-    dispatch_rule_enum = DispatchRule(dispatch_rule_key)
-
-    auto_assign_enabled = _require_yes_no(
-        _snapshot_value("auto_assign_enabled", counter_key="auto_assign_enabled_defaulted_count"),
-        field="auto_assign_enabled",
-    ) == "yes"
+    resolved_strategy = _resolve_strategy(strategy, snapshot_value=_snapshot_value)
+    used_params = _resolve_used_params(
+        config=config,
+        strategy=resolved_strategy,
+        strategy_params=strategy_params,
+        strict_mode=bool(strict_mode),
+        warnings=warnings,
+        algo_stats=algo_stats,
+        snapshot_value=_snapshot_value,
+    )
+    dispatch_mode_key = _resolve_dispatch_mode_key(dispatch_mode, snapshot_value=_snapshot_value)
+    dispatch_rule_enum = _resolve_dispatch_rule_enum(dispatch_rule, snapshot_value=_snapshot_value)
+    auto_assign_enabled = _resolve_auto_assign_enabled(snapshot_value=_snapshot_value)
 
     if auto_assign_enabled and resource_pool is None:
         warnings.append("自动分配已启用，但资源池缺失，内部工序无法自动分配设备或人员。")
@@ -341,7 +455,7 @@ def resolve_schedule_params(
     return ScheduleParams(
         base_time=base_time,
         end_dt_exclusive=end_dt_exclusive,
-        strategy=strategy,
+        strategy=resolved_strategy,
         used_params=used_params,
         dispatch_mode_key=dispatch_mode_key,
         dispatch_rule_enum=dispatch_rule_enum,

@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.models import Batch, BatchOperation, ExternalGroup, PartOperation
-from core.services.common.degradation import DegradationCollector, DegradationEvent
+from core.shared.degradation import DegradationCollector, DegradationEvent
 
 
 @dataclass

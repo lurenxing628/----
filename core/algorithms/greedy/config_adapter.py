@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
 
 
 @dataclass(frozen=True)

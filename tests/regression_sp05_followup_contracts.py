@@ -12,11 +12,15 @@ def _read(rel_path: str) -> str:
 def test_calendar_pages_use_shared_holiday_default_efficiency_helper() -> None:
     scheduler_route = _read("web/routes/domains/scheduler/scheduler_calendar_pages.py")
     personnel_route = _read("web/routes/personnel_calendar_pages.py")
+    excel_route = _read("web/routes/domains/scheduler/scheduler_excel_calendar.py")
+    excel_template = _read("templates/scheduler/excel_import_calendar.html")
 
     assert "def _resolve_page_holiday_default_efficiency" not in scheduler_route
     assert "def _resolve_page_holiday_default_efficiency" not in personnel_route
     assert "get_holiday_default_efficiency_display_state(" in scheduler_route
     assert "get_holiday_default_efficiency_display_state(" in personnel_route
+    assert "get_holiday_default_efficiency_display_state(" in excel_route
+    assert "holiday_default_efficiency_warning" in excel_template
 
 
 def test_error_handlers_prefer_config_service_field_labels() -> None:

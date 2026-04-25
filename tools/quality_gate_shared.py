@@ -77,6 +77,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_config_service_active_preset_custom_sync.py",
     "tests/regression_config_snapshot_strict_numeric.py",
     "tests/regression_config_snapshot_projection_sync.py",
+    "tests/regression_config_service_component_contract.py",
     "tests/regression_config_service_relaxed_missing_visibility.py",
     "tests/regression_apply_preset_adjusted_marks_custom.py",
     "tests/regression_scheduler_batches_degraded_visibility.py",

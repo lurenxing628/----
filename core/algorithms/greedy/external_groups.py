@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import EXTERNAL, MERGED
-from core.services.common.degradation import DegradationCollector
-from core.services.common.field_parse import parse_field_float
+from core.shared.degradation import DegradationCollector
+from core.shared.field_parse import parse_field_float
 
 from .algo_stats import increment_counter
 
@@ -139,4 +139,3 @@ def schedule_external(
         ),
         False,
     )
-

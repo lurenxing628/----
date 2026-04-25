@@ -95,6 +95,9 @@ def _render_excel_calendar_page(
     preview_baseline: Optional[str],
     mode_value: str,
     filename: Optional[str],
+    holiday_default_efficiency: Optional[float] = None,
+    holiday_default_efficiency_degraded: bool = False,
+    holiday_default_efficiency_warning: Optional[str] = None,
 ):
     return render_template(
         "scheduler/excel_import_calendar.html",
@@ -112,6 +115,9 @@ def _render_excel_calendar_page(
         confirm_url=url_for("scheduler.excel_calendar_confirm"),
         template_download_url=url_for("scheduler.excel_calendar_template"),
         export_url=url_for("scheduler.excel_calendar_export"),
+        holiday_default_efficiency=holiday_default_efficiency,
+        holiday_default_efficiency_degraded=bool(holiday_default_efficiency_degraded),
+        holiday_default_efficiency_warning=holiday_default_efficiency_warning,
     )
 
 
@@ -137,12 +143,20 @@ def _load_holiday_default_efficiency_for_excel(
             preview_baseline=None,
             mode_value=mode_value,
             filename=filename,
+            holiday_default_efficiency=None,
+            holiday_default_efficiency_degraded=True,
+            holiday_default_efficiency_warning="“假期工作效率”配置无效，无法继续工作日历 Excel 导入，请先在排产参数中修复。",
         )
 
 
 @bp.get("/excel/calendar")
 def excel_calendar_page():
     _existing, existing_list = _build_existing_preview_data()
+    cfg_svc = g.services.config_service
+    hde, hde_degraded, hde_warning = cfg_svc.get_holiday_default_efficiency_display_state(
+        consumer="工作日历 Excel 导入页",
+        logger=current_app.logger,
+    )
     return _render_excel_calendar_page(
         existing_list=existing_list,
         preview_rows=None,
@@ -150,6 +164,9 @@ def excel_calendar_page():
         preview_baseline=None,
         mode_value=ImportMode.OVERWRITE.value,
         filename=None,
+        holiday_default_efficiency=hde,
+        holiday_default_efficiency_degraded=hde_degraded,
+        holiday_default_efficiency_warning=hde_warning,
     )
 
 

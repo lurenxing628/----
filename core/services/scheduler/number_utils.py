@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.services.common.enum_normalizers import normalize_yes_no_wide
-from core.services.common.number_utils import parse_finite_float, parse_finite_int
+from core.shared.boolean_normalize import normalize_yes_no_wide
+from core.shared.number_utils import parse_finite_float, parse_finite_int
 
 
 def to_yes_no(value: Any, *, default: str = "no") -> str:

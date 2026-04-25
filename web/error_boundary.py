@@ -97,9 +97,9 @@ def get_user_visible_field_label(field: Any) -> str:
     if not key:
         return ""
     try:
-        from core.services.scheduler.config.config_field_spec import field_label_for
+        from core.services.scheduler.config import ConfigService
 
-        label = str(field_label_for(key) or "").strip()
+        label = str(ConfigService.get_field_label(key) or "").strip()
     except Exception:
         label = ""
     if label and label != key:

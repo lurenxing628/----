@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms.objective_specs import objective_choice_labels as _objective_choice_labels
 from core.infrastructure.errors import ValidationError
-from core.services.common.degradation import DegradationCollector
-from core.services.common.field_parse import parse_field_float, parse_field_int
+from core.models.objective import objective_choice_labels as _objective_choice_labels
+from core.shared.degradation import DegradationCollector
+from core.shared.field_parse import parse_field_float, parse_field_int
 
 from ..number_utils import to_yes_no
 

@@ -12,9 +12,9 @@ from core.algorithms.greedy.algo_stats import increment_counter, merge_algo_stat
 from core.algorithms.greedy.scheduler import build_batch_sort_inputs, build_normalized_batches_map
 from core.algorithms.value_domains import INTERNAL
 from core.infrastructure.errors import ValidationError
-from core.services.common.strict_parse import parse_required_float, parse_required_int
 from core.services.scheduler.config.config_field_spec import choices_for
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.shared.strict_parse import parse_required_float, parse_required_int
 
 from .schedule_optimizer_steps import (
     _run_multi_start,
@@ -190,6 +190,78 @@ def _raise_invalid_seed_results_error(*, invalid_seed_count: int, invalid_seed_s
     exc.details["invalid_seed_count"] = int(invalid_seed_count)
     exc.details["invalid_seed_samples"] = list(invalid_seed_samples)
     raise exc
+
+
+def _seed_result_sample(item: Any) -> Dict[str, Any]:
+    if not isinstance(item, dict):
+        return {"type": type(item).__name__, "repr": repr(item)[:200]}
+    return {
+        "op_id": item.get("op_id"),
+        "op_code": item.get("op_code"),
+        "batch_id": item.get("batch_id"),
+        "seq": item.get("seq"),
+        "machine_id": item.get("machine_id"),
+        "operator_id": item.get("operator_id"),
+    }
+
+
+def _coerce_seed_result_item(item: Any, *, idx: int) -> ScheduleResult:
+    if not isinstance(item, dict):
+        raise TypeError(f"第 {idx + 1} 条种子排产结果不是字典（实际类型：{type(item).__name__}）。")
+    start_time, end_time = _coerce_seed_time_range(item, idx=idx)
+    return ScheduleResult(
+        op_id=int(item.get("op_id") or 0),
+        op_code=str(item.get("op_code") or ""),
+        batch_id=str(item.get("batch_id") or ""),
+        seq=int(item.get("seq") or 0),
+        machine_id=(str(item.get("machine_id") or "") or None),
+        operator_id=(str(item.get("operator_id") or "") or None),
+        start_time=start_time,
+        end_time=end_time,
+        source=str(item.get("source") or INTERNAL),
+        op_type_name=(str(item.get("op_type_name") or "") or None),
+    )
+
+
+def _coerce_seed_time_range(item: Dict[str, Any], *, idx: int) -> Tuple[Any, Any]:
+    start_time = item.get("start_time")
+    end_time = item.get("end_time")
+    if start_time is None or end_time is None:
+        raise TypeError(f"第 {idx + 1} 条种子排产结果缺少开始时间或结束时间。")
+    try:
+        valid_time_range = start_time < end_time
+    except Exception as exc:
+        raise TypeError(f"第 {idx + 1} 条种子排产结果的时间区间无效：{exc}") from exc
+    if not valid_time_range:
+        raise TypeError(f"第 {idx + 1} 条种子排产结果的开始时间必须早于结束时间。")
+    return start_time, end_time
+
+
+def _coerce_seed_results(
+    seed_results: List[Dict[str, Any]],
+    *,
+    optimizer_algo_stats: Dict[str, Any],
+) -> List[ScheduleResult]:
+    seed_sr_list: List[ScheduleResult] = []
+    invalid_seed_samples: List[Dict[str, Any]] = []
+    invalid_seed_count = 0
+    for idx, item in enumerate(seed_results or []):
+        try:
+            seed_sr_list.append(_coerce_seed_result_item(item, idx=idx))
+        except Exception as exc:
+            invalid_seed_count += 1
+            if len(invalid_seed_samples) < 5:
+                invalid_seed_samples.append({"index": int(idx), "error": str(exc), "sample": _seed_result_sample(item)})
+
+    increment_counter(optimizer_algo_stats, "optimizer_seed_result_invalid_count", invalid_seed_count)
+    if invalid_seed_count > 0:
+        optimizer_algo_stats.setdefault("fallback_samples", {})
+        optimizer_algo_stats["fallback_samples"]["optimizer_seed_result_invalid_samples"] = list(invalid_seed_samples)
+        _raise_invalid_seed_results_error(
+            invalid_seed_count=invalid_seed_count,
+            invalid_seed_samples=invalid_seed_samples,
+        )
+    return seed_sr_list
 
 
 def _run_local_search(
@@ -377,14 +449,14 @@ def optimize_schedule(
 
     说明：为保证兼容，本函数尽量保持与原 `ScheduleService.run_schedule()` 相同的口径与留痕结构。
     """
+    optimizer_algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
     cfg = ensure_schedule_config_snapshot(
         cfg,
         strict_mode=bool(strict_mode),
         source="scheduler.optimize_schedule",
     )
+    seed_sr_list = _coerce_seed_results(seed_results, optimizer_algo_stats=optimizer_algo_stats)
     scheduler = GreedyScheduler(calendar_service=calendar_service, config_service=cfg, logger=logger)
-
-    optimizer_algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
     valid_strategies = _effective_choice_values("sort_strategy", cfg_svc=cfg_svc, allowlist_attr="VALID_STRATEGIES")
     valid_dispatch_modes = _effective_choice_values("dispatch_mode", cfg_svc=cfg_svc, allowlist_attr="VALID_DISPATCH_MODES")
     valid_dispatch_rules = _effective_choice_values("dispatch_rule", cfg_svc=cfg_svc, allowlist_attr="VALID_DISPATCH_RULES")
@@ -436,72 +508,6 @@ def optimize_schedule(
 
     t_begin = time.time()
     deadline = (t_begin + float(time_budget_seconds)) if algo_mode == "improve" else float("inf")
-
-    seed_sr_list: List[ScheduleResult] = []
-    if seed_results:
-        invalid_seed_count = 0
-        invalid_seed_samples: List[Dict[str, Any]] = []
-        seed_attempted = 0
-        for idx, item in enumerate(seed_results):
-            seed_attempted += 1
-            try:
-                start_time = None
-                end_time = None
-                if not isinstance(item, dict):
-                    raise TypeError(f"第 {idx + 1} 条种子排产结果不是字典（实际类型：{type(item).__name__}）。")
-                start_time = item.get("start_time")
-                end_time = item.get("end_time")
-                if start_time is None or end_time is None:
-                    raise TypeError(f"第 {idx + 1} 条种子排产结果缺少开始时间或结束时间。")
-                try:
-                    valid_time_range = start_time < end_time
-                except Exception as exc:
-                    raise TypeError(f"第 {idx + 1} 条种子排产结果的时间区间无效：{exc}") from exc
-                if not valid_time_range:
-                    raise TypeError(f"第 {idx + 1} 条种子排产结果的开始时间必须早于结束时间。")
-                seed_sr_list.append(
-                    ScheduleResult(
-                        op_id=int(item.get("op_id") or 0),
-                        op_code=str(item.get("op_code") or ""),
-                        batch_id=str(item.get("batch_id") or ""),
-                        seq=int(item.get("seq") or 0),
-                        machine_id=(str(item.get("machine_id") or "") or None),
-                        operator_id=(str(item.get("operator_id") or "") or None),
-                        start_time=start_time,
-                        end_time=end_time,
-                        source=str(item.get("source") or INTERNAL),
-                        op_type_name=(str(item.get("op_type_name") or "") or None),
-                    )
-                )
-            except Exception as exc:
-                invalid_seed_count += 1
-                if len(invalid_seed_samples) < 5:
-                    try:
-                        sample = (
-                            {
-                                "op_id": item.get("op_id"),
-                                "op_code": item.get("op_code"),
-                                "batch_id": item.get("batch_id"),
-                                "seq": item.get("seq"),
-                                "machine_id": item.get("machine_id"),
-                                "operator_id": item.get("operator_id"),
-                            }
-                            if isinstance(item, dict)
-                            else {"type": type(item).__name__, "repr": repr(item)[:200]}
-                        )
-                    except Exception:
-                        sample = {"type": type(item).__name__}
-                    invalid_seed_samples.append({"index": int(idx), "error": str(exc), "sample": sample})
-                continue
-        increment_counter(optimizer_algo_stats, "optimizer_seed_result_invalid_count", invalid_seed_count)
-        if invalid_seed_count > 0:
-            optimizer_algo_stats.setdefault("fallback_samples", {})
-            optimizer_algo_stats["fallback_samples"]["optimizer_seed_result_invalid_samples"] = list(invalid_seed_samples)
-        if invalid_seed_count > 0:
-            _raise_invalid_seed_results_error(
-                invalid_seed_count=invalid_seed_count,
-                invalid_seed_samples=invalid_seed_samples,
-            )
 
     dispatch_mode_cfg = _require_choice(cfg.dispatch_mode, field="dispatch_mode", valid_values=valid_dispatch_modes)
     dispatch_rule_cfg = _require_choice(cfg.dispatch_rule, field="dispatch_rule", valid_values=valid_dispatch_rules)

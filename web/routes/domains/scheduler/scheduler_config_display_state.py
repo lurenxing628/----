@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from core.services.scheduler.config.config_field_spec import field_label_for, page_metadata_for
+from core.services.scheduler.config import ConfigService
 
 SCHEDULER_VISIBLE_CONFIG_FIELDS: Tuple[str, ...] = (
     "sort_strategy",
@@ -25,7 +25,7 @@ SCHEDULER_VISIBLE_CONFIG_FIELDS: Tuple[str, ...] = (
 
 
 def get_scheduler_visible_config_field_metadata() -> Dict[str, Any]:
-    return page_metadata_for(list(SCHEDULER_VISIBLE_CONFIG_FIELDS))
+    return ConfigService.get_page_metadata(list(SCHEDULER_VISIBLE_CONFIG_FIELDS))
 
 
 def _format_config_display_value(field: str, value: Any, *, config_field_metadata: Dict[str, Any]) -> str:
@@ -39,42 +39,17 @@ def _format_config_display_value(field: str, value: Any, *, config_field_metadat
     return str(value)
 
 
-_CONFIG_PUBLIC_FIELD_LABELS: Dict[str, str] = {
-    "auto_assign_persist": "自动分配结果回写",
-    "active_preset_meta": "方案来源记录",
-}
-
-
-def public_config_field_label(field: str) -> str:
-    normalized = str(field or "").strip()
-    if not normalized:
-        return "隐藏配置"
-    label = _CONFIG_PUBLIC_FIELD_LABELS.get(normalized) or field_label_for(normalized)
-    if label == normalized and "_" in normalized:
-        return "隐藏配置"
-    return str(label or "隐藏配置")
-
-
-def public_config_field_labels(fields: List[str]) -> List[str]:
-    labels: List[str] = []
-    for field in fields:
-        label = public_config_field_label(str(field or "").strip())
-        if label and label not in labels:
-            labels.append(label)
-    return labels
-
-
 def public_hidden_config_warning(field: str) -> str:
-    label = public_config_field_label(field)
+    label = ConfigService.public_config_field_label(field)
     return f"后台设置“{label}”当前需要保存修复；系统已按兼容配置继续运行。"
 
 
 def public_hidden_repair_notice(fields: List[str], *, blocked: bool) -> str:
-    labels = public_config_field_labels(fields) or ["隐藏配置"]
+    labels = ConfigService.public_config_field_labels(fields) or ["隐藏配置"]
     label_text = "、".join(labels)
     if blocked:
         return f"检测到后台设置“{label_text}”需要保存修复，但因来源缺失未自动修复。"
-    return f"后台设置“{label_text}”已按当前表单保存为自定义配置。"
+    return f"后台设置“{label_text}”已按当前表单值回写。"
 
 
 def public_meta_parse_warning() -> str:

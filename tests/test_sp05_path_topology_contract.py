@@ -332,6 +332,10 @@ def test_sp05_service_topology_and_strong_compatibility() -> None:
         for symbol in expected_symbols:
             assert getattr(old_module, symbol) is getattr(new_module, symbol), f"{old_name}:{symbol}"
 
+    config_package = importlib.import_module("core.services.scheduler.config")
+    config_service_module = importlib.import_module("core.services.scheduler.config.config_service")
+    assert config_package.ConfigService is config_service_module.ConfigService
+
 
 def test_sp05_legacy_import_scan_catches_package_init_relative_imports() -> None:
     service_source = "from .config_service import ConfigService\n"

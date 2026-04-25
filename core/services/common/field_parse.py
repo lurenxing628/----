@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from core.infrastructure.errors import ValidationError
-from core.services.common.compat_parse import parse_compat_float, parse_compat_int
-from core.services.common.degradation import DegradationCollector
-from core.services.common.strict_parse import parse_required_float, parse_required_int
+from core.shared.compat_parse import parse_compat_float, parse_compat_int
+from core.shared.degradation import DegradationCollector
+from core.shared.strict_parse import parse_required_float, parse_required_int
 
 _MIN_VIOLATION_USE_DEFAULT = object()
 

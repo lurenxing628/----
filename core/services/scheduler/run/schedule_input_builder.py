@@ -11,9 +11,9 @@ except ImportError:  # pragma: no cover
 from core.infrastructure.errors import ValidationError
 from core.models.enums import MergeMode, SourceType
 from core.services.common.build_outcome import BuildOutcome
-from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
-from core.services.common.field_parse import parse_field_float
-from core.services.common.strict_parse import parse_required_float
+from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
+from core.shared.field_parse import parse_field_float
+from core.shared.strict_parse import parse_required_float
 
 from .schedule_template_lookup import TemplateGroupLookupOutcome, lookup_template_group_context_for_op
 

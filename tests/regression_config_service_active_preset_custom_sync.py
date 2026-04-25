@@ -205,6 +205,112 @@ def test_config_service_apply_preset_with_unknown_top_level_key_keeps_active_nam
         conn.close()
 
 
+def test_config_service_current_config_state_hides_adjusted_raw_field_keys() -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        payload = cfg_svc.get_snapshot().to_dict()
+        payload["legacy_runtime_block"] = {"foo": "bar"}
+        payload["legacyRuntimeBlock"] = {"foo": "bar"}
+        payload["secret"] = "raw"
+
+        with cfg_svc.tx_manager.transaction():
+            cfg_svc.repo.set(
+                cfg_svc._preset_key("legacy-extra-key"),
+                json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                description="legacy extra key preset",
+            )
+
+        applied = cfg_svc.apply_preset("legacy-extra-key")
+        display_state = cfg_svc.get_preset_display_state(readonly=True)
+        current_config_state = dict(display_state.get("current_config_state") or {})
+
+        assert applied["status"] == "adjusted"
+        assert "legacy_runtime_block" in str(cfg_svc.get_active_preset_reason() or "")
+        assert "legacyRuntimeBlock" in str(cfg_svc.get_active_preset_reason() or "")
+        assert "secret" in str(cfg_svc.get_active_preset_reason() or "")
+        assert current_config_state["state"] == "adjusted"
+        assert "legacy_runtime_block" not in str(current_config_state.get("label") or "")
+        assert "legacyRuntimeBlock" not in str(current_config_state.get("label") or "")
+        assert "secret" not in str(current_config_state.get("label") or "")
+        assert "auto_assign_persist" not in str(current_config_state.get("label") or "")
+        assert "隐藏配置" in str(current_config_state.get("label") or "") or "配置字段" in str(
+            current_config_state.get("label") or ""
+        )
+        public_outcome = cfg_svc.save_page_config({}).to_public_outcome_dict()
+        assert "legacy_runtime_block" not in str(public_outcome)
+        assert "legacyRuntimeBlock" not in str(public_outcome)
+        assert "secret" not in str(public_outcome)
+        assert "隐藏配置" in str(public_outcome)
+    finally:
+        conn.close()
+
+
+def test_config_service_rejects_reserved_custom_preset_name() -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+
+        with pytest.raises(ValidationError):
+            cfg_svc.save_preset("custom")
+
+        assert cfg_svc.repo.get_value(cfg_svc._preset_key("custom"), default=None) is None
+        assert cfg_svc.get_active_preset() == cfg_svc.BUILTIN_PRESET_DEFAULT
+    finally:
+        conn.close()
+
+
+def test_config_service_delete_missing_preset_raises_not_found() -> None:
+    from core.infrastructure.errors import BusinessError, ErrorCode
+
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+
+        with pytest.raises(BusinessError) as exc_info:
+            cfg_svc.delete_preset("missing-demo")
+
+        assert exc_info.value.code == ErrorCode.NOT_FOUND
+        assert cfg_svc.get_active_preset() == cfg_svc.BUILTIN_PRESET_DEFAULT
+    finally:
+        conn.close()
+
+
+def test_config_service_save_preset_bootstraps_pristine_store() -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        saved = cfg_svc.save_preset("first-preset")
+
+        assert saved["status"] == "saved"
+        assert saved["effective_active_preset"] == "first-preset"
+        assert cfg_svc.get_active_preset() == "first-preset"
+        payload = json.loads(cfg_svc.repo.get_value(cfg_svc._preset_key("first-preset"), default="{}"))
+        assert payload["sort_strategy"] == cfg_svc.DEFAULT_SORT_STRATEGY
+        assert payload["auto_assign_persist"] == cfg_svc.DEFAULT_AUTO_ASSIGN_PERSIST
+    finally:
+        conn.close()
+
+
 def test_config_service_page_save_is_atomic_when_validation_fails() -> None:
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     try:
@@ -247,6 +353,176 @@ def test_config_service_page_save_is_atomic_when_validation_fails() -> None:
         assert after.to_dict() == before.to_dict()
         assert cfg_svc.get_active_preset() == "atomic-demo"
         assert cfg_svc.get_active_preset_reason() is None
+    finally:
+        conn.close()
+
+
+def _config_state(cfg_svc: ConfigService) -> dict:
+    return {
+        "snapshot": cfg_svc.get_snapshot(strict_mode=True).to_dict(),
+        "active_preset": cfg_svc.get_active_preset(),
+        "active_preset_reason": cfg_svc.get_active_preset_reason(),
+        "active_preset_meta": cfg_svc.get_active_preset_meta(),
+    }
+
+
+def _install_partial_set_batch_failure(cfg_svc: ConfigService, monkeypatch: pytest.MonkeyPatch) -> None:
+    original_set_batch = cfg_svc.repo.set_batch
+
+    def broken_set_batch(rows):
+        materialized = list(rows)
+        keys = [str(row[0]) for row in materialized]
+        assert cfg_svc.ACTIVE_PRESET_KEY in keys
+        first_active_index = keys.index(cfg_svc.ACTIVE_PRESET_KEY)
+        assert first_active_index > 0
+        original_set_batch(materialized[:first_active_index])
+        raise RuntimeError("injected partial write before active provenance")
+
+    monkeypatch.setattr(cfg_svc.repo, "set_batch", broken_set_batch)
+
+
+def test_config_service_save_preset_is_atomic_when_active_provenance_write_fails(monkeypatch) -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        before = _config_state(cfg_svc)
+        original_set_batch = cfg_svc.repo.set_batch
+
+        def broken_set_batch(rows):
+            materialized = list(rows)
+            assert any(str(row[0]) == cfg_svc.ACTIVE_PRESET_KEY for row in materialized)
+            raise RuntimeError("injected active provenance failure")
+
+        monkeypatch.setattr(cfg_svc.repo, "set_batch", broken_set_batch)
+
+        with pytest.raises(RuntimeError, match="injected active provenance failure"):
+            cfg_svc.save_preset("atomic-save")
+
+        monkeypatch.setattr(cfg_svc.repo, "set_batch", original_set_batch)
+        assert _config_state(cfg_svc) == before
+        assert cfg_svc.repo.get_value(cfg_svc._preset_key("atomic-save"), default=None) is None
+    finally:
+        conn.close()
+
+
+def test_config_service_apply_preset_is_atomic_when_active_provenance_write_fails(monkeypatch) -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        saved = cfg_svc.save_preset("atomic-apply")
+        assert saved["status"] == "saved"
+        cfg_svc.set_strategy("fifo")
+        before = _config_state(cfg_svc)
+        original_set_batch = cfg_svc.repo.set_batch
+
+        def broken_set_batch(rows):
+            materialized = list(rows)
+            if any(str(row[0]) == cfg_svc.ACTIVE_PRESET_KEY for row in materialized):
+                raise RuntimeError("injected active provenance failure")
+            original_set_batch(materialized)
+
+        monkeypatch.setattr(cfg_svc.repo, "set_batch", broken_set_batch)
+
+        with pytest.raises(RuntimeError, match="injected active provenance failure"):
+            cfg_svc.apply_preset("atomic-apply")
+
+        assert _config_state(cfg_svc) == before
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    ("operation_name", "operation"),
+    [
+        ("set_strategy", lambda svc: svc.set_strategy("fifo")),
+        ("set_weights", lambda svc: svc.set_weights(0.2, 0.3, 0.5)),
+        ("set_dispatch", lambda svc: svc.set_dispatch("sgs", "cr")),
+        ("set_auto_assign_enabled", lambda svc: svc.set_auto_assign_enabled("yes")),
+        ("set_ortools", lambda svc: svc.set_ortools("yes", 7)),
+        ("set_prefer_primary_skill", lambda svc: svc.set_prefer_primary_skill("yes")),
+        ("set_enforce_ready_default", lambda svc: svc.set_enforce_ready_default("yes")),
+        ("set_holiday_default_efficiency", lambda svc: svc.set_holiday_default_efficiency(0.6)),
+        ("set_algo_mode", lambda svc: svc.set_algo_mode("improve")),
+        ("set_time_budget_seconds", lambda svc: svc.set_time_budget_seconds(45)),
+        ("set_objective", lambda svc: svc.set_objective("min_weighted_tardiness")),
+        ("set_freeze_window", lambda svc: svc.set_freeze_window("yes", 3)),
+    ],
+)
+def test_config_service_setters_are_atomic_when_batch_fails_before_active_provenance(
+    operation_name,
+    operation,
+    monkeypatch,
+) -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        cfg_svc.save_preset(f"atomic-{operation_name}")
+        before = _config_state(cfg_svc)
+        _install_partial_set_batch_failure(cfg_svc, monkeypatch)
+
+        with pytest.raises(RuntimeError, match="injected partial write"):
+            operation(cfg_svc)
+
+        assert _config_state(cfg_svc) == before
+    finally:
+        conn.close()
+
+
+def test_config_service_page_save_is_atomic_when_batch_fails_before_active_provenance(monkeypatch) -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        cfg_svc.save_preset("atomic-page")
+        before = _config_state(cfg_svc)
+        form_values = cfg_svc.get_snapshot(strict_mode=True).to_dict()
+        form_values.update({"dispatch_mode": "sgs", "dispatch_rule": "cr"})
+        _install_partial_set_batch_failure(cfg_svc, monkeypatch)
+
+        with pytest.raises(RuntimeError, match="injected partial write"):
+            cfg_svc.save_page_config(form_values)
+
+        assert _config_state(cfg_svc) == before
+    finally:
+        conn.close()
+
+
+def test_config_service_restore_default_is_atomic_when_batch_fails_before_active_provenance(monkeypatch) -> None:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        _load_schema(conn)
+
+        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
+        cfg_svc.restore_default()
+        cfg_svc.set_dispatch("sgs", "cr")
+        before = _config_state(cfg_svc)
+        _install_partial_set_batch_failure(cfg_svc, monkeypatch)
+
+        with pytest.raises(RuntimeError, match="injected partial write"):
+            cfg_svc.restore_default()
+
+        assert _config_state(cfg_svc) == before
     finally:
         conn.close()
 
@@ -687,11 +963,15 @@ def test_config_service_page_save_hidden_repair_blocks_adjusted_named_provenance
         assert outcome["raw_missing_fields"] == []
         public_outcome = saved.to_public_outcome_dict()
         assert public_outcome["status"] == "blocked_hidden_repair"
+        assert public_outcome["repair_status"] == "blocked_hidden"
+        assert public_outcome["public_status_label"] == "部分配置未自动修复"
+        assert public_outcome["hidden_block_reason_label"] == "当前方案处于调整状态"
         assert "auto_assign_persist" not in public_outcome["effective_snapshot"]
         assert "raw_persisted_values" not in public_outcome
         assert "raw_effective_mismatches" not in public_outcome
         assert "MAYBE" not in str(public_outcome)
         assert "auto_assign_persist" not in str(public_outcome)
+        assert "来源缺失" not in str(public_outcome)
         assert "自动分配结果回写" in str(public_outcome)
         assert any(event.get("field") == "auto_assign_persist" for event in saved.effective_snapshot.degradation_events)
         assert cfg_svc.get("auto_assign_persist") == "MAYBE"

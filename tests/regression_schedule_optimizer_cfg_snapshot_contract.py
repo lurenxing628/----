@@ -59,6 +59,24 @@ def _optimize_with_cfg(cfg, *, strict_mode: bool = False):
     )
 
 
+def _optimize_with_cfg_and_seed(cfg, seed_results, *, strict_mode: bool = False):
+    return schedule_optimizer.optimize_schedule(
+        calendar_service=_StubCalendar(),
+        cfg_svc=SimpleNamespace(),
+        cfg=cfg,
+        algo_ops_to_schedule=[],
+        batches={},
+        start_dt=datetime(2026, 4, 1, 8, 0, 0),
+        end_date=None,
+        downtime_map={},
+        seed_results=list(seed_results or []),
+        resource_pool=None,
+        version=1,
+        logger=None,
+        strict_mode=bool(strict_mode),
+    )
+
+
 def _resolve_params(cfg, *, strict_mode: bool = False):
     return resolve_schedule_params(
         config=cfg,
@@ -159,6 +177,19 @@ def test_optimizer_strict_mode_rejects_blank_numeric_for_all_cfg_shapes(monkeypa
     _install_stub_scheduler(monkeypatch)
     with pytest.raises(ValidationError) as exc_info:
         _optimize_with_cfg(cfg, strict_mode=True)
+    assert exc_info.value.field == "priority_weight"
+
+
+def test_optimizer_strict_config_validation_precedes_invalid_seed_results(monkeypatch) -> None:
+    _install_stub_scheduler(monkeypatch)
+
+    with pytest.raises(ValidationError) as exc_info:
+        _optimize_with_cfg_and_seed(
+            {"priority_weight": "   "},
+            [{"op_id": 1, "start_time": None, "end_time": None}, "bad-item"],
+            strict_mode=True,
+        )
+
     assert exc_info.value.field == "priority_weight"
 
 
