@@ -26,6 +26,7 @@ def main() -> None:
         sys.path.insert(0, repo_root)
 
     import core.services.scheduler.schedule_service as schedule_service_mod
+    from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
     from core.services.scheduler.schedule_service import ScheduleService
 
     captured = {}
@@ -52,7 +53,7 @@ def main() -> None:
             errors=[],
             duration_seconds=0.0,
         )
-        return SimpleNamespace(
+        return OptimizationOutcome(
             results=[
                 SimpleNamespace(
                     op_id=1,

@@ -55,10 +55,28 @@ def main() -> None:
         sys.path.insert(0, repo_root)
 
     from core.infrastructure.errors import ValidationError
+    from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
     from core.services.scheduler.run.schedule_orchestrator import _build_summary_contract
     from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run
     from core.services.scheduler.schedule_service import ScheduleService
     from core.services.scheduler.schedule_summary_types import SummaryBuildContext
+
+    def _optimizer_outcome(**kwargs):
+        return OptimizationOutcome(
+            results=list(kwargs.get("results") or []),
+            summary=kwargs.get("summary"),
+            used_strategy=kwargs.get("used_strategy"),
+            used_params=dict(kwargs.get("used_params") or {}),
+            metrics=kwargs.get("metrics"),
+            best_score=tuple(kwargs.get("best_score") or ()),
+            best_order=list(kwargs.get("best_order") or []),
+            attempts=list(kwargs.get("attempts") or []),
+            improvement_trace=list(kwargs.get("improvement_trace") or []),
+            algo_mode=str(kwargs.get("algo_mode") or ""),
+            objective_name=str(kwargs.get("objective_name") or ""),
+            time_budget_seconds=int(kwargs.get("time_budget_seconds") or 0),
+            algo_stats=dict(kwargs.get("algo_stats") or {}),
+        )
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -83,7 +101,7 @@ def main() -> None:
             errors=[],
             duration_seconds=0.0,
         )
-        return SimpleNamespace(
+        return _optimizer_outcome(
             results=[],
             summary=summary,
             used_strategy=SimpleNamespace(value="priority_first"),
@@ -149,7 +167,7 @@ def main() -> None:
             errors=[],
             duration_seconds=0.0,
         )
-        return SimpleNamespace(
+        return _optimizer_outcome(
             results=[valid_result],
             summary=summary,
             used_strategy=SimpleNamespace(value="priority_first"),
@@ -294,7 +312,7 @@ def main() -> None:
             source="internal",
             op_type_name="A",
         )
-        return SimpleNamespace(
+        return _optimizer_outcome(
             results=[valid_result, invalid_result],
             summary=summary,
             used_strategy=SimpleNamespace(value="priority_first"),
@@ -361,7 +379,7 @@ def main() -> None:
             source="internal",
             op_type_name="Rogue",
         )
-        return SimpleNamespace(
+        return _optimizer_outcome(
             results=[valid_result, rogue_result],
             summary=summary,
             used_strategy=SimpleNamespace(value="priority_first"),

@@ -9,6 +9,7 @@ import pytest
 import core.services.scheduler.schedule_service as schedule_service_mod
 from core.infrastructure.errors import ValidationError
 from core.services.common.build_outcome import BuildOutcome
+from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
 from core.services.scheduler.schedule_service import ScheduleService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -79,7 +80,7 @@ def test_schedule_service_rejects_no_actionable_schedule_rows(monkeypatch) -> No
         )
 
         def _stub_optimize_schedule(**_kwargs):
-            return SimpleNamespace(
+            return OptimizationOutcome(
                 results=[
                     SimpleNamespace(
                         op_id=op_id,

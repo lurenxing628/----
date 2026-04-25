@@ -4,16 +4,18 @@ import inspect
 import time
 import traceback
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Protocol, Tuple
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import increment_counter, merge_algo_stats, snapshot_algo_stats
-from core.models.enums import YesNo
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
-from core.shared.strict_parse import parse_required_float, parse_required_int
 
-from ..number_utils import to_yes_no
+from .optimizer_config import (
+    ensure_optimizer_config_snapshot,
+    is_ortools_enabled,
+    ortools_time_limit_seconds,
+    weighted_strategy_params,
+)
 
 
 class SchedulerLike(Protocol):
@@ -21,40 +23,8 @@ class SchedulerLike(Protocol):
         ...
 
 
-def _is_yes(value: Any, *, default: str = YesNo.NO.value) -> bool:
-    return to_yes_no(value, default=default) == YesNo.YES.value
-
-
-def _snapshot_float(
-    cfg: Any,
-    key: str,
-    *,
-    min_value: Optional[float] = None,
-    min_inclusive: bool = True,
-    strict_mode: bool = False,
-) -> float:
-    snapshot = ensure_schedule_config_snapshot(
-        cfg,
-        strict_mode=bool(strict_mode),
-        source="scheduler.optimize_schedule_steps.float",
-    )
-    return float(
-        parse_required_float(
-            getattr(snapshot, key),
-            field=key,
-            min_value=min_value,
-            min_inclusive=min_inclusive,
-        )
-    )
-
-
-def _snapshot_int(cfg: Any, key: str, *, min_value: Optional[int] = None, strict_mode: bool = False) -> int:
-    snapshot = ensure_schedule_config_snapshot(
-        cfg,
-        strict_mode=bool(strict_mode),
-        source="scheduler.optimize_schedule_steps.int",
-    )
-    return int(parse_required_int(getattr(snapshot, key), field=key, min_value=min_value))
+def _step_config_snapshot(cfg: Any, *, strict_mode: bool) -> Any:
+    return ensure_optimizer_config_snapshot(cfg, strict_mode=bool(strict_mode))
 
 
 def _schedule_supports_strict_mode(scheduler: SchedulerLike) -> Optional[bool]:
@@ -92,6 +62,150 @@ def _schedule_with_optional_strict_mode(scheduler: SchedulerLike, *, strict_mode
     return scheduler.schedule(**kwargs)
 
 
+def _solve_ortools_order(
+    *,
+    deadline: float,
+    now: Callable[[], float],
+    snapshot: Any,
+    algo_ops_to_schedule: List[Any],
+    batches: Dict[str, Any],
+    start_dt: datetime,
+    logger: Any,
+) -> Optional[List[str]]:
+    from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
+
+    remaining = float(deadline - now())
+    # 时间预算不足时跳过 OR-Tools warm-start：
+    # - remaining<=0：避免已经超时仍强行跑 1s
+    # - remaining<1：避免 int(remaining)=0 被 tl=max(1,...) 拉回 1s 导致超时
+    if remaining < 1.0:
+        return None
+
+    tl_cfg = ortools_time_limit_seconds(snapshot)
+    tl = max(1, min(int(tl_cfg), int(remaining)))
+    return try_solve_bottleneck_batch_order(
+        operations=algo_ops_to_schedule,
+        batches=batches,
+        start_dt=start_dt,
+        time_limit_seconds=tl,
+        logger=logger,
+    )
+
+
+def _ortools_strategy_params(snapshot: Any, *, strategy: SortStrategy, strict_mode: bool) -> Dict[str, Any]:
+    if strategy != SortStrategy.WEIGHTED:
+        return {}
+    return weighted_strategy_params(snapshot, strict_mode=bool(strict_mode))
+
+
+def _evaluate_ortools_candidate(
+    *,
+    scheduler: SchedulerLike,
+    strict_mode: bool,
+    algo_ops_to_schedule: List[Any],
+    batches: Dict[str, Any],
+    strategy: SortStrategy,
+    params: Dict[str, Any],
+    start_dt: datetime,
+    end_date: Optional[date],
+    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
+    ort_order: List[str],
+    seed_sr_list: List[ScheduleResult],
+    dispatch_mode_cfg: str,
+    dispatch_rule_cfg: str,
+    resource_pool: Optional[Dict[str, Any]],
+    objective_name: str,
+    optimizer_algo_stats: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    res, summ, used_strat, used_params = _schedule_with_optional_strict_mode(
+        scheduler,
+        strict_mode=bool(strict_mode),
+        operations=algo_ops_to_schedule,
+        batches=batches,
+        strategy=strategy,
+        strategy_params=params,
+        start_dt=start_dt,
+        end_date=end_date,
+        machine_downtimes=downtime_map,
+        batch_order_override=list(ort_order),
+        seed_results=seed_sr_list,
+        dispatch_mode=dispatch_mode_cfg,
+        dispatch_rule=dispatch_rule_cfg,
+        resource_pool=resource_pool,
+    )
+    metrics = compute_metrics(res, batches)
+    score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
+    algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
+    return {
+        "results": res,
+        "summary": summ,
+        "strategy": used_strat,
+        "params": used_params,
+        "dispatch_mode": dispatch_mode_cfg,
+        "dispatch_rule": dispatch_rule_cfg,
+        "order": list(ort_order),
+        "metrics": metrics,
+        "score": score,
+        "algo_stats": algo_stats,
+    }
+
+
+def _append_ortools_attempt(*, attempts: List[Dict[str, Any]], candidate: Dict[str, Any]) -> None:
+    metrics = candidate["metrics"]
+    dispatch_mode = str(candidate.get("dispatch_mode") or "")
+    dispatch_rule = str(candidate.get("dispatch_rule") or "")
+    attempts.append(
+        {
+            "tag": f"ortools:bottleneck|{dispatch_mode}:{dispatch_rule}",
+            "strategy": candidate["strategy"].value,
+            "dispatch_mode": dispatch_mode,
+            "dispatch_rule": dispatch_rule,
+            "used_params": dict(candidate["params"] or {}),
+            "score": list(candidate["score"]),
+            "failed_ops": int(candidate["summary"].failed_ops),
+            "metrics": metrics.to_dict(),
+            "algo_stats": candidate["algo_stats"],
+        }
+    )
+
+
+def _append_ortools_trace(
+    *,
+    improvement_trace: List[Dict[str, Any]],
+    candidate: Dict[str, Any],
+    now: Callable[[], float],
+    t_begin: float,
+) -> None:
+    if len(improvement_trace) >= 200:
+        return
+    metrics = candidate["metrics"]
+    dispatch_mode = str(candidate.get("dispatch_mode") or "")
+    dispatch_rule = str(candidate.get("dispatch_rule") or "")
+    improvement_trace.append(
+        {
+            "elapsed_ms": int((now() - t_begin) * 1000),
+            "tag": f"ortools:bottleneck|{dispatch_mode}:{dispatch_rule}",
+            "strategy": candidate["strategy"].value,
+            "dispatch_mode": dispatch_mode,
+            "dispatch_rule": dispatch_rule,
+            "score": list(candidate["score"]),
+            "metrics": metrics.to_dict(),
+        }
+    )
+
+
+def _record_ortools_failure(*, optimizer_algo_stats: Optional[Dict[str, Any]], scheduler: SchedulerLike, logger: Any, exc: Exception) -> None:
+    increment_counter(optimizer_algo_stats if isinstance(optimizer_algo_stats, dict) else scheduler, "ortools_warmstart_failed_count")
+    if not logger:
+        return
+    tb = traceback.format_exc(limit=10)
+    # 尽量带堆栈（便于定位依赖缺失/配置错误等）；若 logger 不支持 exc_info 参数则回退为拼接文本。
+    try:
+        logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{exc}", exc_info=True)
+    except TypeError:
+        logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{exc}\n{tb}")
+
+
 def _run_ortools_warmstart(
     *,
     algo_mode: str,
@@ -116,110 +230,53 @@ def _run_ortools_warmstart(
     logger: Any,
     optimizer_algo_stats: Optional[Dict[str, Any]] = None,
     strict_mode: bool = False,
+    clock: Optional[Callable[[], float]] = None,
 ) -> Optional[Dict[str, Any]]:
     # 可选：OR-Tools 高质量起点（瓶颈子问题）
-    snapshot = ensure_schedule_config_snapshot(
-        cfg,
-        strict_mode=bool(strict_mode),
-        source="scheduler.optimize_schedule_steps.ortools",
-    )
+    snapshot = _step_config_snapshot(cfg, strict_mode=bool(strict_mode))
+    now = clock or time.time
 
-    if algo_mode == "improve" and _is_yes(snapshot.ortools_enabled, default=YesNo.NO.value):
-        try:
-            from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
+    if algo_mode != "improve" or not is_ortools_enabled(snapshot):
+        return best
 
-            remaining = float(deadline - time.time())
-            # 时间预算不足时跳过 OR-Tools warm-start：
-            # - remaining<=0：避免已经超时仍强行跑 1s
-            # - remaining<1：避免 int(remaining)=0 被 tl=max(1,...) 拉回 1s 导致超时
-            ort_order = None
-            if remaining >= 1.0:
-                tl_cfg = _snapshot_int(snapshot, "ortools_time_limit_seconds", min_value=1, strict_mode=bool(strict_mode))
-                tl = max(1, min(int(tl_cfg), int(remaining)))
-                ort_order = try_solve_bottleneck_batch_order(
-                    operations=algo_ops_to_schedule,
-                    batches=batches,
-                    start_dt=start_dt,
-                    time_limit_seconds=tl,
-                    logger=logger,
-                )
-            if ort_order and time.time() <= deadline:
-                # 用当前策略（仅用于“补齐 order 未覆盖的批次”）
-                ort_strat = strategy_enum
-                ort_params: Dict[str, Any] = {}
-                if ort_strat == SortStrategy.WEIGHTED:
-                    ort_params = {
-                        "priority_weight": _snapshot_float(snapshot, "priority_weight", min_value=0.0, strict_mode=bool(strict_mode)),
-                        "due_weight": _snapshot_float(snapshot, "due_weight", min_value=0.0, strict_mode=bool(strict_mode)),
-                    }
-                res, summ, used_strat, used_params = _schedule_with_optional_strict_mode(
-                    scheduler,
-                    strict_mode=bool(strict_mode),
-                    operations=algo_ops_to_schedule,
-                    batches=batches,
-                    strategy=ort_strat,
-                    strategy_params=ort_params,
-                    start_dt=start_dt,
-                    end_date=end_date,
-                    machine_downtimes=downtime_map,
-                    batch_order_override=list(ort_order),
-                    seed_results=seed_sr_list,
-                    dispatch_mode=dispatch_mode_cfg,
-                    dispatch_rule=dispatch_rule_cfg,
-                    resource_pool=resource_pool,
-                )
-                metrics = compute_metrics(res, batches)
-                score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
-                algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
-                attempts.append(
-                    {
-                        "tag": f"ortools:bottleneck|{dispatch_mode_cfg}:{dispatch_rule_cfg}",
-                        "strategy": used_strat.value,
-                        "dispatch_mode": dispatch_mode_cfg,
-                        "dispatch_rule": dispatch_rule_cfg,
-                        "used_params": dict(used_params or {}),
-                        "score": list(score),
-                        "failed_ops": int(summ.failed_ops),
-                        "metrics": metrics.to_dict(),
-                        "algo_stats": algo_stats,
-                    }
-                )
-                cand = {
-                    "results": res,
-                    "summary": summ,
-                    "strategy": used_strat,
-                    "params": used_params,
-                    "dispatch_mode": dispatch_mode_cfg,
-                    "dispatch_rule": dispatch_rule_cfg,
-                    "order": list(ort_order),
-                    "metrics": metrics,
-                    "score": score,
-                    "algo_stats": algo_stats,
-                }
-                if best is None or score < best["score"]:
-                    best = cand
-                    if len(improvement_trace) < 200:
-                        improvement_trace.append(
-                            {
-                                "elapsed_ms": int((time.time() - t_begin) * 1000),
-                                "tag": f"ortools:bottleneck|{dispatch_mode_cfg}:{dispatch_rule_cfg}",
-                                "strategy": used_strat.value,
-                                "dispatch_mode": dispatch_mode_cfg,
-                                "dispatch_rule": dispatch_rule_cfg,
-                                "score": list(score),
-                                "metrics": metrics.to_dict(),
-                            }
-                        )
-        except Exception as e:
-            # 可选项失败不阻断主流程
-            increment_counter(optimizer_algo_stats if isinstance(optimizer_algo_stats, dict) else scheduler, "ortools_warmstart_failed_count")
-            if logger:
-                tb = traceback.format_exc(limit=10)
-                # 尽量带堆栈（便于定位依赖缺失/配置错误等）；若 logger 不支持 exc_info 参数则回退为拼接文本。
-                try:
-                    logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{e}", exc_info=True)
-                except TypeError:
-                    logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{e}\n{tb}")
+    try:
+        ort_order = _solve_ortools_order(
+            deadline=deadline,
+            now=now,
+            snapshot=snapshot,
+            algo_ops_to_schedule=algo_ops_to_schedule,
+            batches=batches,
+            start_dt=start_dt,
+            logger=logger,
+        )
+        if not ort_order or now() > deadline:
+            return best
+
+        ort_strat = strategy_enum
+        cand = _evaluate_ortools_candidate(
+            scheduler=scheduler,
+            strict_mode=bool(strict_mode),
+            algo_ops_to_schedule=algo_ops_to_schedule,
+            batches=batches,
+            strategy=ort_strat,
+            params=_ortools_strategy_params(snapshot, strategy=ort_strat, strict_mode=bool(strict_mode)),
+            start_dt=start_dt,
+            end_date=end_date,
+            downtime_map=downtime_map,
+            ort_order=list(ort_order),
+            seed_sr_list=seed_sr_list,
+            dispatch_mode_cfg=dispatch_mode_cfg,
+            dispatch_rule_cfg=dispatch_rule_cfg,
+            resource_pool=resource_pool,
+            objective_name=objective_name,
+            optimizer_algo_stats=optimizer_algo_stats,
+        )
+        _append_ortools_attempt(attempts=attempts, candidate=cand)
+        if best is None or cand["score"] < best["score"]:
+            best = cand
+            _append_ortools_trace(improvement_trace=improvement_trace, candidate=cand, now=now, t_begin=t_begin)
+    except Exception as e:
+        _record_ortools_failure(optimizer_algo_stats=optimizer_algo_stats, scheduler=scheduler, logger=logger, exc=e)
     return best
 
 
@@ -238,10 +295,7 @@ def _resolve_multi_start_strategy_params(
 ) -> Dict[str, Any]:
     if strategy != SortStrategy.WEIGHTED:
         return {}
-    return {
-        "priority_weight": _snapshot_float(cfg, "priority_weight", min_value=0.0, strict_mode=bool(strict_mode)),
-        "due_weight": _snapshot_float(cfg, "due_weight", min_value=0.0, strict_mode=bool(strict_mode)),
-    }
+    return weighted_strategy_params(cfg, strict_mode=bool(strict_mode))
 
 
 def _get_cached_multi_start_order(
@@ -333,21 +387,19 @@ def _run_multi_start(
     build_order: Any,
     optimizer_algo_stats: Optional[Dict[str, Any]] = None,
     strict_mode: bool = False,
+    clock: Optional[Callable[[], float]] = None,
 ) -> Optional[Dict[str, Any]]:
     order_cache: Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]] = {}
-    snapshot = ensure_schedule_config_snapshot(
-        cfg,
-        strict_mode=bool(strict_mode),
-        source="scheduler.optimize_schedule_steps.multi_start",
-    )
+    snapshot = _step_config_snapshot(cfg, strict_mode=bool(strict_mode))
+    now = clock or time.time
 
     # 执行策略轮询（multi-start）
     for dm in dispatch_modes:
-        if time.time() > deadline:
+        if now() > deadline:
             break
         dispatch_rules = _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules)
         for k in keys:
-            if time.time() > deadline:
+            if now() > deadline:
                 break
             strat = SortStrategy(k)
             params0 = _resolve_multi_start_strategy_params(
@@ -358,7 +410,7 @@ def _run_multi_start(
             )
 
             for dr in dispatch_rules:
-                if time.time() > deadline:
+                if now() > deadline:
                     break
                 order = _get_cached_multi_start_order(
                     strategy=strat,
@@ -405,7 +457,7 @@ def _run_multi_start(
                     if len(improvement_trace) < 200:
                         improvement_trace.append(
                             {
-                                "elapsed_ms": int((time.time() - t_begin) * 1000),
+                                "elapsed_ms": int((now() - t_begin) * 1000),
                                 "tag": f"start:{k}|{dm}:{dr}",
                                 "strategy": cand["strategy"].value,
                                 "dispatch_mode": dm,

@@ -122,7 +122,7 @@ def make_new_summary() -> Dict[str, Any]:
             "metrics": make_metrics(overdue_count=1, invalid_due_count=2, unscheduled_batch_count=3),
             "attempts": [
                 {
-                    "tag": "start:priority_first|sgs:cr",
+                    "source_label": "多起点方案",
                     "strategy": "priority_first",
                     "dispatch_mode": "sgs",
                     "dispatch_rule": "cr",
@@ -358,7 +358,8 @@ def main() -> None:
     assert "派工" in new_html, "attempts 表头未新增派工列"
     assert "智能派工 / 交期更紧的先做" in new_html, "attempts 派工列未闭环展示派工方式/智能派工策略"
     assert "start:priority_first|sgs:cr" not in new_html, "attempts 不应暴露算法方案标签"
-    assert "方案 1" in new_html, "attempts 方案应显示为普通中文序号"
+    assert "多起点方案" in new_html, "新 summary 应展示安全的方案来源"
+    assert "方案来源未知" not in new_html, "新 summary 不应丢失安全方案来源后退化为未知"
 
     fallback_summary = make_top_level_fallback_summary()
     fallback_selected, fallback_hist = build_case_inputs(version=3, summary_obj=fallback_summary)

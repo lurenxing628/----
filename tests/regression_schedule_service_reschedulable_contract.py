@@ -30,6 +30,7 @@ def _make_conn(repo_root: str) -> sqlite3.Connection:
 
 def _patch_schedule_module(schedule_service_mod, captured):
     from core.services.common.build_outcome import BuildOutcome
+    from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
 
     def _stub_build_algo_operations(_svc, ops, *, strict_mode=False, return_outcome=False):
         captured["algo_input_ids"] = [int(op.id) for op in ops]
@@ -102,7 +103,7 @@ def _patch_schedule_module(schedule_service_mod, captured):
             errors=[],
             duration_seconds=0.0,
         )
-        return SimpleNamespace(
+        return OptimizationOutcome(
             results=results,
             summary=summary,
             used_strategy=SimpleNamespace(value="priority_first"),
@@ -115,6 +116,7 @@ def _patch_schedule_module(schedule_service_mod, captured):
             algo_mode="greedy",
             objective_name="min_overdue",
             time_budget_seconds=1,
+            algo_stats={},
         )
 
     def _stub_build_result_summary(*args, **kwargs):

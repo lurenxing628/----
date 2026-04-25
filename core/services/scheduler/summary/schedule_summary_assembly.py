@@ -7,6 +7,7 @@ from core.algorithms.objective_specs import best_score_schema, comparison_metric
 from core.models.enums import YesNo
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 
+from .optimizer_public_summary import project_public_algo_summary
 from .schedule_summary_types import (
     AlgorithmSummaryState,
     FallbackState,
@@ -269,14 +270,15 @@ def _build_result_summary_obj(
     serialize_end_date_fn: Callable[[Optional[Any]], Optional[str]],
 ) -> Dict[str, Any]:
     summary_errors = list(getattr(ctx.summary, "errors", None) or [])
-    return {
+    public_algo, optimizer_diagnostics = project_public_algo_summary(_algo_dict(algorithm_state))
+    result_summary = {
         "summary_schema_version": "1.2",
         "is_simulation": bool(ctx.simulate),
         "completion_status": str(completion_status or ""),
         "version": int(ctx.version),
         "strategy": ctx.used_strategy.value,
         "strategy_params": ctx.used_params or {},
-        "algo": _algo_dict(algorithm_state),
+        "algo": public_algo,
         "selected_batch_ids": list(ctx.normalized_batch_ids),
         "start_time": svc._format_dt(ctx.start_dt),
         "end_date": serialize_end_date_fn(ctx.end_date),
@@ -302,3 +304,6 @@ def _build_result_summary_obj(
         "warnings": list(freeze_state.all_warnings),
         "time_cost_ms": int(time_cost_ms),
     }
+    if optimizer_diagnostics:
+        result_summary["diagnostics"] = optimizer_diagnostics
+    return result_summary

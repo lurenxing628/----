@@ -37,6 +37,7 @@ def main() -> None:
     import core.services.scheduler.schedule_service as schedule_service_mod
     from core.services.common.build_outcome import BuildOutcome
     from core.services.scheduler.config_service import ConfigService
+    from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
     from core.services.scheduler.schedule_service import ScheduleService
 
     captured = {}
@@ -97,7 +98,7 @@ def main() -> None:
             errors=[],
             duration_seconds=0.0,
         )
-        return SimpleNamespace(
+        return OptimizationOutcome(
             results=results,
             summary=summary,
             used_strategy=SimpleNamespace(value="priority_first"),

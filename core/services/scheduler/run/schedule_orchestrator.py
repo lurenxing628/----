@@ -162,20 +162,24 @@ def _build_summary_contract(summary: Any, *, result_summary_obj: Dict[str, Any])
 
 
 def _normalize_optimizer_outcome(optimizer_outcome: Any) -> _NormalizedOptimizerOutcome:
+    from .schedule_optimizer import OptimizationOutcome
+
+    if not isinstance(optimizer_outcome, OptimizationOutcome):
+        raise TypeError("optimize_schedule_fn must return OptimizationOutcome")
     return _NormalizedOptimizerOutcome(
-        results=list(getattr(optimizer_outcome, "results", []) or []),
-        summary=getattr(optimizer_outcome, "summary", None),
-        used_strategy=getattr(optimizer_outcome, "used_strategy", None),
-        used_params=dict(getattr(optimizer_outcome, "used_params", {}) or {}),
-        best_metrics=getattr(optimizer_outcome, "metrics", None),
-        best_score=tuple(getattr(optimizer_outcome, "best_score", ()) or ()),
-        best_order=list(getattr(optimizer_outcome, "best_order", []) or []),
-        attempts=list(getattr(optimizer_outcome, "attempts", []) or []),
-        improvement_trace=list(getattr(optimizer_outcome, "improvement_trace", []) or []),
-        algo_mode=str(getattr(optimizer_outcome, "algo_mode", "") or ""),
-        objective_name=str(getattr(optimizer_outcome, "objective_name", "") or ""),
-        algo_stats=dict(getattr(optimizer_outcome, "algo_stats", {}) or {}),
-        time_budget_seconds=int(getattr(optimizer_outcome, "time_budget_seconds", 0) or 0),
+        results=list(optimizer_outcome.results or []),
+        summary=optimizer_outcome.summary,
+        used_strategy=optimizer_outcome.used_strategy,
+        used_params=dict(optimizer_outcome.used_params or {}),
+        best_metrics=optimizer_outcome.metrics,
+        best_score=tuple(optimizer_outcome.best_score or ()),
+        best_order=list(optimizer_outcome.best_order or []),
+        attempts=list(optimizer_outcome.attempts or []),
+        improvement_trace=list(optimizer_outcome.improvement_trace or []),
+        algo_mode=str(optimizer_outcome.algo_mode or ""),
+        objective_name=str(optimizer_outcome.objective_name or ""),
+        algo_stats=dict(optimizer_outcome.algo_stats or {}),
+        time_budget_seconds=int(optimizer_outcome.time_budget_seconds or 0),
     )
 
 

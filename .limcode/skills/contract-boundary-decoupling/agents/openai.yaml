@@ -1,0 +1,4 @@
+interface:
+  display_name: "Contract Boundary Decoupling"
+  short_description: "按合同边界做通用解耦"
+  default_prompt: "使用 contract-boundary-decoupling 技能，先画入口、输入、转换、执行、状态、输出、测试门禁的合同地图，再制定或执行保持行为等价的解耦方案。"

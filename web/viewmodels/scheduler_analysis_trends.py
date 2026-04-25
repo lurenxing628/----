@@ -171,12 +171,14 @@ def _build_attempt_rows(algo: Dict[str, Any], *, objective_key: str) -> List[Dic
         if not isinstance(attempt, dict):
             continue
         metrics = attempt.get("metrics") if isinstance(attempt.get("metrics"), dict) else {}
+        public_source_label = str(attempt.get("source_label") or "").strip()
         raw_tag = str(attempt.get("tag") or "").strip()
         source_tag = str(attempt.get("source") or attempt.get("origin") or "").strip()
         attempts_rows.append(
             {
                 "tag": raw_tag,
-                "display_tag": _public_attempt_display_label(raw_tag=raw_tag, source_tag=source_tag),
+                "display_tag": public_source_label
+                or _public_attempt_display_label(raw_tag=raw_tag, source_tag=source_tag),
                 "strategy": attempt.get("strategy") or "-",
                 "dispatch_mode": attempt.get("dispatch_mode") or "",
                 "dispatch_rule": attempt.get("dispatch_rule") or "",
