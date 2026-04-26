@@ -1,67 +1,64 @@
-# APS 测试系统
+# 回转壳体单元智能排产系统（APS）
 
 ## 项目定位
 
-本项目是面向 Win7 单机离线场景的 APS 排产测试系统，围绕批次、工艺、资源、排产、甘特图与报表链路提供本地运行、验证与交付支撑。当前开发与打包基线保持在 Python 3.8，并继续服从 Win7 兼容边界。
+本项目是面向 Win7 x64 离线单机与共享数据场景的本地 APS 智能排产系统。它的目标是在目标机不安装 Python、不依赖外网的前提下，完成基础资料维护、Excel 导入导出、批次排产、结果查看、报表导出、备份恢复和现场交付。
 
-## 启动方式
+当前开发与打包基线保持在 Python 3.8，并继续服从 Win7 兼容边界。正式交付时，目标机通过安装包和本地浏览器运行时访问 APS 页面。
 
-- `start.bat`
-  - 角色：默认界面的推荐开发入口。
-  - 场景：日常本地开发、调试默认页面。
-  - 行为：设置开发环境变量后调用 `python app.py`。
-- `app.py`
-  - 角色：默认界面程序入口。
-  - 场景：命令行直接启动，或由其他脚本显式调用 `main()`。
-- `start_new_ui.bat`
-  - 角色：新界面测试入口。
-  - 场景：验证新界面模板、样式与交互。
-  - 行为：设置开发环境变量后调用 `python app_new_ui.py`。
-- `app_new_ui.py`
-  - 角色：新界面程序入口。
-  - 场景：命令行直接启动新界面模式。
-- 实际访问地址以 `logs/aps_host.txt` 与 `logs/aps_port.txt` 为准。
-- 安装包与交付目录的浏览器启动链说明见 `./installer/README_WIN7_INSTALLER.md`。
+## 主要能力
 
-## 开发依赖安装
+- **基础资料维护**：人员、班组、设备、停机计划、工艺路线、工种、供应商、物料与批次物料。
+- **Excel 导入导出**：内置 `templates_excel/` 模板，支持上传预览、确认入库、导出、操作留痕；预览存在错误时整批拒绝导入，Excel 文件本体上限为 16MB。
+- **排产调度**：批次管理、批次工序补充、正式排产、模拟排产、齐套约束、工作日历、排产策略与常用方案。
+- **结果查看**：资源排班中心、甘特图、周计划、排产优化分析、排产历史。
+- **报表中心**：逾期、资源利用率、停机影响等报表，并支持导出。
+- **系统管理**：健康检查、备份恢复、日志、历史、界面模式切换、插件开关。
+- **可选增强**：`plugins/` 中提供 pandas Excel 后端与 OR-Tools 探测插件，默认关闭；OR-Tools 不是 Win7 交付必选依赖。
 
-在仓库根目录执行：
+## 快速启动
+
+### 源码开发启动
+
+先在仓库根目录安装开发依赖并启用本地钩子：
 
 ```powershell
 python -m pip install -r requirements-dev.txt
 python -m pre_commit install
 ```
 
-`pyrightconfig.gate.json` 鍙敤浜庝富閾?gate 锛岃鐩?`app.py`銆?`app_new_ui.py`銆?`config.py`銆?`core/`銆?`data/`銆?`web/`锛?`pyrightconfig.json` 淇濈暀涓哄叏浠撶被鍨嬪€哄姟鐩樼偣鍏ュ彛锛屼笉鐩存帴浣滀负鏈疆纭棬绂併€?
+常用启动入口：
 
-`requirements-dev.txt` 鍚屾椂绮剧‘閿佸畾 `pyright==1.1.406`銆?`.pre-commit-config.yaml` 褰撳墠浠嶅彧鎵ц `ruff` 锛?`pyright` 鐢?`scripts/run_quality_gate.py` 鍜?CI 浣滀负纭棬绂佽繍琛屻€?
+- `start.bat`：默认开发入口，设置开发环境变量后调用 `python app.py`。
+- `python app.py`：默认界面程序入口。
+- `start_new_ui.bat`：现代界面测试入口，设置开发环境变量后调用 `python app_new_ui.py`。
+- `python app_new_ui.py`：现代界面程序入口。
 
-若未先安装 `requirements-dev.txt`，本地 `python -m ruff` 钩子不会生效。
+实际访问地址不要写死端口，以启动后生成的 `logs/aps_host.txt` 与 `logs/aps_port.txt` 为准。
 
-## 测试方式
+### 界面模式
 
-### 统一质量门禁入口
+系统保留经典界面与现代界面。界面模式可在系统内切换，并通过 Cookie 与 `SystemConfig.ui_mode` 保存。未迁移的页面会继续复用经典模板，已迁移页面会优先使用 `web_new_test/templates/` 下的覆盖模板。
 
-在仓库根目录执行：
+### 正式交付与直拷交付
+
+- 正式交付优先使用双包：`APS_Main_Setup.exe` 与 `APS_Chrome109_Runtime.exe`。
+- 双包口径是管理员统一安装、共享同一套数据、仅允许单活用户。
+- Chrome109 运行时只保证打开 APS 本地页面，不承诺完整桌面 Chrome 能力。
+- 最小直拷与 legacy 应急交付说明见 `DELIVERY_WIN7.md`。
+- 安装包构建、安装、卸载、强制清理和启动排障说明见 `installer/README_WIN7_INSTALLER.md`。
+
+## 开发与质量门禁
+
+统一质量门禁入口：
 
 ```powershell
 python scripts/run_quality_gate.py
 ```
 
-统一门禁固定按以下顺序执行：
+这个入口会统一串联测试收集、`ruff`、`pyright`、架构适应度、治理台账、启动链专项回归和速查表一致性检查。本地与托管环境都以这条入口为准。
 
-- 仓库根活动 APS 实例前置检查
-- `python -m ruff --version` 与版本断言（`>=0.15,<0.16`）
-- `python -m pyright --version` 涓庣増鏈柇瑷€锛?`==1.1.406`
-- `python -c "import radon"`
-- `python -m ruff check`
-- `python -m pyright -p pyrightconfig.gate.json`
-- `python -m pytest -q tests/test_architecture_fitness.py`
-- `python scripts/sync_debt_ledger.py check`
-- 启动链专项回归统一 `pytest` 命令
-- `python tests/check_quickref_vs_routes.py`
-
-### 其他常用命令
+常用定向命令：
 
 ```powershell
 python -m pytest --collect-only tests -q
@@ -72,39 +69,48 @@ python -m pyright -p pyrightconfig.gate.json
 python -m pyright -p pyrightconfig.json
 ```
 
-专项回归目录、命名契约、治理台账入口与台账写入口说明统一维护在 `./开发文档/README.md`。
+补充说明：
+
+- `requirements-dev.txt` 固定声明本地开发与托管检查共用的依赖口径。
+- `ruff` 版本口径为 `>=0.15,<0.16`。
+- `pyright` 版本固定为 `==1.1.406`。
+- `.pre-commit-config.yaml` 当前只执行 `ruff` 快速反馈；`pyright` 由 `scripts/run_quality_gate.py` 与 CI 作为硬门禁运行。
+- `pyrightconfig.gate.json` 覆盖主链：`app.py`、`app_new_ui.py`、`config.py`、`core/`、`data/`、`web/`。
+- `pyrightconfig.json` 保留为全仓类型债务盘点入口，包含 `tests/` 等更宽范围，不直接作为本轮硬门禁。
+
+治理台账、测试目录命名契约与门禁细节统一维护在 `开发文档/README.md`。
 
 ## 关键目录
 
-- `core/`：核心领域、基础设施与服务
-- `data/`：数据访问层
-- `web/`：页面路由与装配
-- `templates/`、`static/`：页面模板与静态资源
-- `tests/`：自动化测试；新增 `main()` 风格专项回归优先落到 `tests/regression/`
-- `开发文档/`：开发说明、速查表与设计资料
-- `audit/`：审计与健康检查归档
-- `installer/`：Win7 双包交付说明与脚本
+- `core/`：核心领域、算法、基础设施、服务与插件运行框架。
+- `data/`：数据访问层。
+- `web/`：Flask 启动、路由、页面装配、界面模式与 viewmodel。
+- `templates/`、`static/`：经典页面模板与本地静态资源。
+- `web_new_test/templates/`：现代界面模板覆盖层。
+- `templates_excel/`：交付 Excel 模板。
+- `plugins/`：自研插件目录，当前插件默认关闭。
+- `tests/`：自动化测试；新增 `main()` 风格专项回归优先落到 `tests/regression/`。
+- `开发文档/`：开发说明、系统速查表、页面与接口清单、设计资料。
+- `installer/`：Win7 双包安装器说明与脚本。
+- `audit/`：审计与健康检查归档。
+- `evidence/`：门禁、验收和排查证据归档。
 
 ## 文档导航
 
-- 开发文档总入口：`./开发文档/README.md`
-- 系统速查表：`./开发文档/系统速查表.md`
-- Win7 安装包说明：`./installer/README_WIN7_INSTALLER.md`
-- 审计归档入口：`./audit/README.md`
+| 文档 | 用途 |
+| --- | --- |
+| `开发文档/README.md` | 开发文档总入口、开发基线、质量治理入口、测试命名契约 |
+| `开发文档/系统速查表.md` | 术语、枚举、接口、数据库字段、Excel 模板、打包交付关键点 |
+| `开发文档/面板与接口清单.md` | 页面、路由、参数、按钮、提示文案与用户可见入口 |
+| `installer/README_WIN7_INSTALLER.md` | Win7 双包构建、安装、卸载、强制清理与启动排障 |
+| `DELIVERY_WIN7.md` | Win7 离线交付、直拷目录与 legacy 应急交付说明 |
+| `ORTOOLS_WIN7_SPIKE.md` | OR-Tools 在 Win7 / Python 3.8 离线环境下的可行性结论 |
+| `plugins/README.md` | 自研插件约定与当前插件清单 |
+| `audit/README.md` | 审计归档入口 |
 
-## Win7 / Python 3.8 接受风险说明
+## Win7 / Python 3.8 兼容边界
 
-- 当前交付目标仍是 Win7 单机离线环境，因此开发与打包继续锁定 Python 3.8。
-- 这意味着依赖升级、语法升级与运行环境能力都要优先服从 Win7 / Python 3.8 兼容边界，而不是追求新版本特性。
-- 双包交付、共享数据目录与单活约束的详细说明见 `./installer/README_WIN7_INSTALLER.md`。
-
-## 后续子 plan 承接
-
-根入口现已提供统一质量门禁命令；治理台账结构、台账写入口、专项回归扩展与交接说明统一维护在 `./开发文档/README.md`。
-## Pyright 闂ㄧ琛ュ厖
-
-- `requirements-dev.txt` 宸茬簿纭綉瀹?`pyright==1.1.406`銆?
-- `.pre-commit-config.yaml` 褰撳墠浠嶅彧淇濈暀 `ruff` 蹇€熷弽棣堬紱`pyright` 鐢?`scripts/run_quality_gate.py` 鍜?CI 浣滀负纭棬绂佽繍琛屻€?
-- 涓绘摙闂ㄧ鍛戒护锛?`python -m pyright -p pyrightconfig.gate.json`
-- 鍏ㄤ粨鐩樼偣鍛戒护锛?`python -m pyright -p pyrightconfig.json`
-- `pyrightconfig.gate.json` 鍙鐩?`app.py`銆?`app_new_ui.py`銆?`config.py`銆?`core/`銆?`data/`銆?`web/`锛?`pyrightconfig.json` 淇濈暀涓哄叏浠撶被鍨嬪€哄姟鐩樼偣鍏ュ彛锛屼笉鐩存帴浣滀负鏈疆纭棬绂併€?
+- 当前目标仍是 Win7 x64 离线场景，因此依赖升级、语法升级与打包方案都要优先服从 Python 3.8 与 Win7 兼容性。
+- 目标机不要求安装 Python；源码开发与打包机仍使用 Python 3.8。
+- 页面不依赖外部脚本或样式，静态资源应随应用本地交付。
+- OR-Tools 只作为可选增强和现场探测能力；缺失时不影响主流程。
