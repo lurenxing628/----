@@ -4,7 +4,7 @@ import inspect
 import math
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, List, Mapping, NoReturn, Optional, Sequence, Tuple
 
 from core.infrastructure.errors import ValidationError
 
@@ -87,7 +87,7 @@ def validate_internal_hours_for_mode(op: Any, batch: Any, *, strict_mode: bool) 
         raise
 
 
-def raise_strict_internal_hours_validation(op: Any, batch: Any, exc: ValueError) -> None:
+def raise_strict_internal_hours_validation(op: Any, batch: Any, exc: ValueError) -> NoReturn:
     for field, raw_value in _internal_hour_fields(op, batch):
         if raw_value is True:
             continue
