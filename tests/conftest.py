@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import importlib.util
-import os
 import re
+import subprocess
 import sys
-import uuid
 from pathlib import Path
 
 import pytest
@@ -63,38 +61,31 @@ class RegressionMainFile(pytest.File):
 class RegressionMainItem(pytest.Item):
     def runtest(self) -> None:
         path = _node_path(self.parent)
-        module_name = f"_aps_regression_{path.stem}_{uuid.uuid4().hex}"
-        spec = importlib.util.spec_from_file_location(module_name, str(path))
-        if spec is None or spec.loader is None:
-            raise RuntimeError(f"无法为 {path.name} 创建模块加载器")
-        module = importlib.util.module_from_spec(spec)
-
-        original_env = os.environ.copy()
-        original_cwd = os.getcwd()
-        original_sys_path = list(sys.path)
-        sys.modules[module_name] = module
-        try:
-            spec.loader.exec_module(module)
-            main = getattr(module, "main", None)
-            if not callable(main):
-                raise AssertionError(f"{path.name} 缺少可调用的 main()")
-            try:
-                rc = main()
-            except SystemExit as exc:
-                code = exc.code
-                if code in (None, 0):
-                    return
-                raise AssertionError(f"{path.name} 以非 0 退出：{code}") from exc
-            if isinstance(rc, int) and not isinstance(rc, bool) and rc != 0:
-                raise AssertionError(f"{path.name} 返回了非 0 状态码：{rc}")
-        finally:
-            os.chdir(original_cwd)
-            os.environ.clear()
-            os.environ.update(original_env)
-            sys.path[:] = original_sys_path
-            sys.modules.pop(module_name, None)
+        runner = REPO_ROOT / "tests" / "main_style_regression_runner.py"
+        completed = subprocess.run(
+            [sys.executable, str(runner), str(path.resolve())],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if int(completed.returncode) != 0:
+            raise AssertionError(
+                "\n".join(
+                    [
+                        f"{path.name} 子进程执行失败",
+                        f"returncode={int(completed.returncode)}",
+                        f"cwd={REPO_ROOT}",
+                        f"script={path.resolve()}",
+                        "stdout:",
+                        str(completed.stdout or "").rstrip(),
+                        "stderr:",
+                        str(completed.stderr or "").rstrip(),
+                    ]
+                )
+            )
 
     def reportinfo(self):
         path = _node_path(self.parent)
         return path, 0, f"regression-main: {path.name}"
-
