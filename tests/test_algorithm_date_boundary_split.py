@@ -6,11 +6,12 @@ from types import SimpleNamespace
 
 import pytest
 
-import core.services.scheduler.schedule_optimizer as schedule_optimizer_module
+import core.services.scheduler.run.schedule_optimizer as schedule_optimizer_module
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.algorithms.sort_strategies import SortStrategy
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.schedule_optimizer import optimize_schedule
+from core.services.scheduler.config.config_field_spec import default_snapshot_values
+from core.services.scheduler.run.schedule_optimizer import optimize_schedule
 
 
 @dataclass
@@ -60,8 +61,14 @@ def _internal_op(batch_id: str):
     )
 
 
+def _config(**overrides):
+    values = default_snapshot_values()
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
 def test_schedule_override_full_cover_skips_default_sort_only_for_due_and_created_at():
-    scheduler = GreedyScheduler(calendar_service=_Calendar())
+    scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=_config())
     batch = _batch("B1", due_date="bad-due", ready_date="2026-01-01", created_at="bad-created")
 
     results, summary, strategy, _params = scheduler.schedule(
@@ -79,7 +86,7 @@ def test_schedule_override_full_cover_skips_default_sort_only_for_due_and_create
 
 
 def test_schedule_override_full_cover_still_validates_ready_date():
-    scheduler = GreedyScheduler(calendar_service=_Calendar())
+    scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=_config())
     batch = _batch("B1", due_date="bad-due", ready_date="bad-ready", created_at="bad-created")
 
     with pytest.raises(ValidationError) as exc_info:
@@ -98,7 +105,7 @@ def test_schedule_override_full_cover_still_validates_ready_date():
 def test_schedule_created_at_strict_only_applies_to_fifo():
     batch = _batch("B1", due_date="2026-01-02", ready_date=None, created_at="bad-created")
 
-    non_fifo_scheduler = GreedyScheduler(calendar_service=_Calendar())
+    non_fifo_scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=_config())
     results, summary, _strategy, _params = non_fifo_scheduler.schedule(
         operations=[_internal_op("B1")],
         batches={"B1": batch},
@@ -109,7 +116,7 @@ def test_schedule_created_at_strict_only_applies_to_fifo():
     assert summary.failed_ops == 0
     assert len(results) == 1
 
-    fifo_scheduler = GreedyScheduler(calendar_service=_Calendar())
+    fifo_scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=_config())
     with pytest.raises(ValidationError) as exc_info:
         fifo_scheduler.schedule(
             operations=[_internal_op("B1")],
@@ -123,7 +130,7 @@ def test_schedule_created_at_strict_only_applies_to_fifo():
 
 @pytest.mark.parametrize("strict_mode", [False, True])
 def test_ready_date_adjust_errors_bubble_without_silent_fallback(strict_mode: bool):
-    scheduler = GreedyScheduler(calendar_service=_Calendar(raise_on_midnight=True))
+    scheduler = GreedyScheduler(calendar_service=_Calendar(raise_on_midnight=True), config_service=_config())
     batch = _batch("B1", due_date="2026-01-02", ready_date="2026-01-03", created_at=None)
 
     with pytest.raises(RuntimeError, match="日历服务暂时不可用"):
@@ -170,7 +177,7 @@ def test_optimize_schedule_created_at_strict_only_for_current_strategy(monkeypat
     outcome = optimize_schedule(
         calendar_service=_Calendar(),
         cfg_svc=cfg_svc,
-        cfg=SimpleNamespace(
+        cfg=_config(
             sort_strategy="priority_first",
             algo_mode="greedy",
             objective="min_overdue",
@@ -196,7 +203,7 @@ def test_optimize_schedule_created_at_strict_only_for_current_strategy(monkeypat
         optimize_schedule(
             calendar_service=_Calendar(),
             cfg_svc=cfg_svc,
-            cfg=SimpleNamespace(
+            cfg=_config(
                 sort_strategy="fifo",
                 algo_mode="greedy",
                 objective="min_overdue",

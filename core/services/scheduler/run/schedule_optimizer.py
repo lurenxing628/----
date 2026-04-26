@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
-from core.algorithms.greedy.scheduler import build_batch_sort_inputs, build_normalized_batches_map
+from core.algorithms.ordering import build_batch_sort_inputs, build_normalized_batches_map
 
 from .optimizer_config import ensure_optimizer_config_snapshot, resolve_optimizer_config
 from .optimizer_local_search import run_local_search as _run_local_search_impl

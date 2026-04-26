@@ -24,7 +24,7 @@ def get_changed_files(repo_root):
         cwd=repo_root, capture_output=True, text=True, encoding="utf-8"
     )
     files = []
-    for line in result.stdout.strip().splitlines():
+    for line in result.stdout.splitlines():
         if len(line) > 3:
             fpath = line[3:].strip().strip('"')
             if " -> " in fpath:
@@ -285,9 +285,13 @@ def main():
     complexity_issues, complexity_skipped = check_complexity(repo_root, changed)
     radon_skipped = any("radon 未安装" in x for x in complexity_skipped)
     if radon_skipped:
-        complexity_label = "SKIP（radon 未安装）"
+        complexity_label = "FAIL（radon 未安装）"
+    elif complexity_issues:
+        complexity_label = f"FAIL（{len(complexity_issues)} 个超标函数）"
+    elif complexity_skipped:
+        complexity_label = f"FAIL（跳过 {len(complexity_skipped)} 个文件）"
     else:
-        complexity_label = "PASS" if not complexity_issues else f"WARN（{len(complexity_issues)} 个超标函数）"
+        complexity_label = "PASS"
     _safe_print(f"\n## 圈复杂度检查：{complexity_label}")
     if complexity_issues:
         for ci in complexity_issues[:10]:
@@ -311,7 +315,9 @@ def main():
         _safe_print("  无需额外联动更新")
 
     # 7) 总结
-    all_ok = lint_ok and not arch_violations
+    readable_ok = not arch_skipped and not quality_skipped
+    complexity_ok = not complexity_issues and not complexity_skipped
+    all_ok = lint_ok and not arch_violations and readable_ok and complexity_ok
     _safe_print(f"\n{'=' * 60}")
     warnings = []
     if any("ruff 未安装" in x for x in lint_issues):

@@ -28,6 +28,8 @@ from tools.quality_gate_support import (
     architecture_silent_allowlist_map,
     architecture_silent_scan_entries,
     load_ledger,
+    scan_complexity_entries,
+    scan_oversize_entries,
     validate_startup_samples,
 )
 
@@ -37,6 +39,19 @@ LEDGER_CORE_DIRS = CORE_DIRS
 
 CORE_DIRS = list(LEDGER_CORE_DIRS)
 NO_WILDCARD_DIRS = list(LEDGER_CORE_DIRS)
+GREEDY_REFACTOR_QUALITY_FILES = (
+    "core/algorithms/ordering.py",
+    "core/algorithms/greedy/scheduler.py",
+    "core/algorithms/greedy/run_context.py",
+    "core/algorithms/greedy/run_state.py",
+    "core/algorithms/greedy/internal_slot.py",
+    "core/algorithms/greedy/internal_operation.py",
+    "core/algorithms/greedy/auto_assign.py",
+    "core/algorithms/greedy/seed.py",
+    "core/algorithms/greedy/dispatch/batch_order.py",
+    "core/algorithms/greedy/dispatch/sgs.py",
+    "core/algorithms/greedy/dispatch/sgs_scoring.py",
+)
 
 
 def _collect_py_files(*rel_dirs: str) -> List[str]:
@@ -58,9 +73,19 @@ def _read(rel_path: str) -> str:
         return f.read()
 
 
-LOCAL_PARSE_HELPER_NAMES = {"_safe_float", "_safe_int", "_cfg_float", "_cfg_int", "_get_float", "_get_int"}
+LOCAL_PARSE_HELPER_NAMES = {
+    "_safe_float",
+    "_safe_int",
+    "_safe_seq",
+    "safe_float",
+    "safe_int",
+    "safe_seq",
+    "_cfg_float",
+    "_cfg_int",
+    "_get_float",
+    "_get_int",
+}
 LOCAL_PARSE_HELPER_ALLOWLIST = {
-    "core/algorithms/greedy/scheduler.py:_safe_int",
     "core/services/scheduler/_sched_utils.py:_safe_int",
     "core/services/scheduler/batch_service.py:_safe_float",
     "core/services/system/system_config_service.py:_get_int",
@@ -551,6 +576,29 @@ def test_known_oversize_entries_still_exceed_limit():
         if path not in scanned:
             stale_entries.append(f"{path}: <= {FILE_SIZE_LIMIT} lines")
     assert not stale_entries, "超长文件白名单存在已失效登记:\n" + "\n".join(stale_entries)
+
+
+def test_greedy_refactor_files_stay_under_quality_gate_limits():
+    """scheduler 解耦后的算法边界必须留在主架构门禁里。"""
+
+    oversize_entries = scan_oversize_entries(GREEDY_REFACTOR_QUALITY_FILES)
+    complexity_entries = scan_complexity_entries(GREEDY_REFACTOR_QUALITY_FILES)
+    messages = []
+    if oversize_entries:
+        messages.append(
+            "greedy 解耦文件超 500 行:\n"
+            + "\n".join(f"{item.get('path')}: {item.get('current_value')} lines" for item in oversize_entries)
+        )
+    if complexity_entries:
+        messages.append(
+            f"greedy 解耦文件存在超过 {COMPLEXITY_THRESHOLD} 的复杂函数:\n"
+            + "\n".join(
+                f"{item.get('path')}:{item.get('line')} {item.get('symbol')} "
+                f"complexity={item.get('current_value')} (rank {item.get('rank')})"
+                for item in complexity_entries
+            )
+        )
+    assert not messages, "\n\n".join(messages)
 
 
 # ─── Fitness 5: 圈复杂度门禁 ──────────────────────────────────

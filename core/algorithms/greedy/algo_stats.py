@@ -12,6 +12,10 @@ def _empty_stats() -> Dict[str, Any]:
     return {"fallback_counts": {}, "param_fallbacks": {}, "fallback_samples": {}}
 
 
+def make_algo_stats() -> Dict[str, Any]:
+    return _empty_stats()
+
+
 def ensure_algo_stats(target: Any) -> Dict[str, Any]:
     if isinstance(target, dict):
         stats = target
@@ -45,7 +49,7 @@ def snapshot_algo_stats(target: Any) -> Dict[str, Any]:
             bucket_copy: Dict[str, Any] = {}
             if isinstance(part, dict):
                 for key, value in part.items():
-                    bucket_copy[str(key)] = list(value) if isinstance(value, list) else []
+                    bucket_copy[str(key)] = deepcopy(value) if isinstance(value, list) else []
             copied[bucket] = bucket_copy
         return copied
 
@@ -75,35 +79,43 @@ def merge_algo_stats(*sources: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     for src in sources:
         if not isinstance(src, Mapping):
             continue
-        for bucket in _COUNTER_BUCKETS:
-            part = src.get(bucket)
-            if not isinstance(part, Mapping):
-                continue
-            bucket_out = merged.get(bucket)
-            if not isinstance(bucket_out, dict):
-                bucket_out = {}
-                merged[bucket] = bucket_out
-            for key, value in part.items():
-                try:
-                    delta = int(value)
-                except Exception:
-                    continue
-                if delta == 0:
-                    continue
-                bucket_out[key] = int(bucket_out.get(key, 0) or 0) + delta
-        for bucket in _SAMPLE_BUCKETS:
-            part = src.get(bucket)
-            if not isinstance(part, Mapping):
-                continue
-            bucket_out = merged.get(bucket)
-            if not isinstance(bucket_out, dict):
-                bucket_out = {}
-                merged[bucket] = bucket_out
-            for key, value in part.items():
-                if not isinstance(value, list) or not value:
-                    continue
-                existing = bucket_out.get(key)
-                existing_list = list(existing) if isinstance(existing, list) else []
-                existing_list.extend(value)
-                bucket_out[str(key)] = existing_list
+        _merge_counter_buckets(merged, src)
+        _merge_sample_buckets(merged, src)
     return merged
+
+
+def _merge_counter_buckets(merged: Dict[str, Any], src: Mapping[str, Any]) -> None:
+    for bucket in _COUNTER_BUCKETS:
+        part = src.get(bucket)
+        if not isinstance(part, Mapping):
+            continue
+        bucket_out = merged.get(bucket)
+        if not isinstance(bucket_out, dict):
+            bucket_out = {}
+            merged[bucket] = bucket_out
+        for key, value in part.items():
+            try:
+                delta = int(value)
+            except Exception:
+                continue
+            if delta == 0:
+                continue
+            bucket_out[key] = int(bucket_out.get(key, 0) or 0) + delta
+
+
+def _merge_sample_buckets(merged: Dict[str, Any], src: Mapping[str, Any]) -> None:
+    for bucket in _SAMPLE_BUCKETS:
+        part = src.get(bucket)
+        if not isinstance(part, Mapping):
+            continue
+        bucket_out = merged.get(bucket)
+        if not isinstance(bucket_out, dict):
+            bucket_out = {}
+            merged[bucket] = bucket_out
+        for key, value in part.items():
+            if not isinstance(value, list) or not value:
+                continue
+            existing = bucket_out.get(key)
+            existing_list = deepcopy(existing) if isinstance(existing, list) else []
+            existing_list.extend(deepcopy(value))
+            bucket_out[str(key)] = existing_list
