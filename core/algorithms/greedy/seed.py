@@ -20,7 +20,13 @@ def normalize_seed_results(
         return [], seed_op_ids, warnings
 
     lookup = _build_operation_lookup(operations)
-    counters = {"backfilled": 0, "dropped_invalid": 0, "dropped_bad_time": 0, "dropped_dup": 0}
+    counters = {
+        "backfilled": 0,
+        "dropped_invalid": 0,
+        "dropped_bad_time_order": 0,
+        "dropped_bad_time_incomparable": 0,
+        "dropped_dup": 0,
+    }
     dup_samples: List[str] = []
     normalized: List[ScheduleResult] = []
 
@@ -78,8 +84,9 @@ def _build_operation_lookup(operations: List[Any]) -> Dict[str, Any]:
 def _normalize_one_seed_result(seed_result: Any, *, lookup: Dict[str, Any]) -> Tuple[Optional[ScheduleResult], Optional[str]]:
     if not seed_result or getattr(seed_result, "start_time", None) is None or getattr(seed_result, "end_time", None) is None:
         return None, None
-    if not _has_valid_time_window(seed_result):
-        return None, "dropped_bad_time"
+    invalid_time_reason = _invalid_time_window_reason(seed_result)
+    if invalid_time_reason:
+        return None, invalid_time_reason
 
     raw_oid = getattr(seed_result, "op_id", 0)
     oid = _identity_int(raw_oid)
@@ -90,14 +97,16 @@ def _normalize_one_seed_result(seed_result: Any, *, lookup: Dict[str, Any]) -> T
     new_oid = _resolve_seed_op_id(seed_result, lookup=lookup)
     if new_oid <= 0:
         return None, "dropped_invalid"
-    return _with_seed_op_id(seed_result, new_oid), None
+    return _backfill_seed_op_id(seed_result, new_oid), None
 
 
-def _has_valid_time_window(seed_result: Any) -> bool:
+def _invalid_time_window_reason(seed_result: Any) -> Optional[str]:
     try:
-        return bool(seed_result.end_time > seed_result.start_time)
-    except Exception:
-        return False
+        if seed_result.end_time > seed_result.start_time:
+            return None
+    except TypeError:
+        return "dropped_bad_time_incomparable"
+    return "dropped_bad_time_order"
 
 
 def _resolve_seed_op_id(seed_result: Any, *, lookup: Dict[str, Any]) -> int:
@@ -110,23 +119,9 @@ def _resolve_seed_op_id(seed_result: Any, *, lookup: Dict[str, Any]) -> int:
     return int(lookup["op_id_by_batch_seq"].get(key, 0) or 0)
 
 
-def _with_seed_op_id(seed_result: ScheduleResult, op_id: int) -> ScheduleResult:
-    try:
-        seed_result.op_id = int(op_id)
-        return seed_result
-    except Exception:
-        return ScheduleResult(
-            op_id=int(op_id),
-            op_code=str(getattr(seed_result, "op_code", "") or ""),
-            batch_id=str(getattr(seed_result, "batch_id", "") or ""),
-            seq=_identity_int(getattr(seed_result, "seq", 0)),
-            machine_id=(str(getattr(seed_result, "machine_id", "") or "") or None),
-            operator_id=(str(getattr(seed_result, "operator_id", "") or "") or None),
-            start_time=getattr(seed_result, "start_time", None),
-            end_time=getattr(seed_result, "end_time", None),
-            source=str(getattr(seed_result, "source", INTERNAL) or INTERNAL),
-            op_type_name=(str(getattr(seed_result, "op_type_name", "") or "") or None),
-        )
+def _backfill_seed_op_id(seed_result: ScheduleResult, op_id: int) -> ScheduleResult:
+    seed_result.op_id = int(op_id)
+    return seed_result
 
 
 def _batch_seq_key(obj: Any) -> Optional[Tuple[str, int]]:
@@ -168,9 +163,12 @@ def _invalid_identity_supplied(value: Any) -> bool:
 
 
 def _record_seed_counters(algo_stats: Any, counters: Dict[str, int]) -> None:
+    bad_time_total = counters["dropped_bad_time_order"] + counters["dropped_bad_time_incomparable"]
     increment_counter(algo_stats, "seed_op_id_backfilled_count", counters["backfilled"])
     increment_counter(algo_stats, "seed_invalid_dropped_count", counters["dropped_invalid"])
-    increment_counter(algo_stats, "seed_bad_time_dropped_count", counters["dropped_bad_time"])
+    increment_counter(algo_stats, "seed_bad_time_dropped_count", bad_time_total)
+    increment_counter(algo_stats, "seed_bad_time_order_dropped_count", counters["dropped_bad_time_order"])
+    increment_counter(algo_stats, "seed_bad_time_incomparable_dropped_count", counters["dropped_bad_time_incomparable"])
     increment_counter(algo_stats, "seed_duplicate_dropped_count", counters["dropped_dup"])
 
 
@@ -180,8 +178,10 @@ def _seed_warnings(counters: Dict[str, int], dup_samples: List[str]) -> List[str
         warnings.append(f"seed_results 存在 {counters['backfilled']} 条 op_id<=0 的记录，已按 op_code/batch_id+seq 回填 op_id 以避免重复排产。")
     if counters["dropped_invalid"]:
         warnings.append(f"seed_results 存在 {counters['dropped_invalid']} 条 op_id 缺失或不合法且无法匹配的记录，已忽略（避免重复统计/排产）。")
-    if counters["dropped_bad_time"]:
-        warnings.append(f"seed_results 存在 {counters['dropped_bad_time']} 条 start_time>=end_time 的记录，已忽略（避免冻结窗口/资源占用异常）。")
+    if counters["dropped_bad_time_order"]:
+        warnings.append(f"seed_results 存在 {counters['dropped_bad_time_order']} 条 start_time>=end_time 的记录，已忽略（避免冻结窗口/资源占用异常）。")
+    if counters["dropped_bad_time_incomparable"]:
+        warnings.append(f"seed_results 存在 {counters['dropped_bad_time_incomparable']} 条时间无法比较的记录，已忽略（避免冻结窗口/资源占用异常）。")
     if counters["dropped_dup"]:
         sample = ", ".join([x for x in dup_samples if x][:5])
         warnings.append(

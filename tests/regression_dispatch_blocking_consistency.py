@@ -134,21 +134,27 @@ def _run(dispatch_mode: str):
 
 
 def main():
-    # 1) 两种派工模式对 blocked=False 的失败应保持一致：失败即阻断该批次后续工序
-    # 2) 两种派工模式对“无效 batch_id”的工序统计口径应一致：计入 failed_ops
-    for mode in ("batch_order", "sgs"):
-        results, summary, used_params = _run(mode)
+    # batch_order 仍走正式派工失败统计：失败即阻断该批次后续工序。
+    results, summary, used_params = _run("batch_order")
+    assert used_params.get("dispatch_mode") == "batch_order", f"dispatch_mode 解析异常：{used_params!r}"
+    assert summary.total_ops == 3, f"total_ops 应为 3，实际 {summary.total_ops}"
+    assert summary.scheduled_ops == 0, f"scheduled_ops 应为 0，实际 {summary.scheduled_ops}"
+    assert summary.failed_ops == 3, f"failed_ops 应为 3，实际 {summary.failed_ops}"
+    assert summary.scheduled_ops + summary.failed_ops == summary.total_ops, "summary 统计不一致"
+    assert len(results) == 0, f"不应产出排程结果，实际 results={len(results)}"
 
-        assert used_params.get("dispatch_mode") == mode, f"dispatch_mode 解析异常：{used_params!r}"
-        assert summary.total_ops == 3, f"total_ops 应为 3，实际 {summary.total_ops}"
-        assert summary.scheduled_ops == 0, f"scheduled_ops 应为 0，实际 {summary.scheduled_ops}"
-        assert summary.failed_ops == 3, f"failed_ops 应为 3，实际 {summary.failed_ops}"
-        assert summary.scheduled_ops + summary.failed_ops == summary.total_ops, "summary 统计不一致"
-        assert len(results) == 0, f"不应产出排程结果，实际 results={len(results)}"
+    from core.infrastructure.errors import ValidationError
+
+    # SGS 评分阶段必须能估算候选；缺资源不再生成不可评分兜底 key。
+    try:
+        _run("sgs")
+    except ValidationError as exc:
+        assert exc.field == "resource", f"SGS 缺资源应定位到 resource，实际={exc.field!r}"
+    else:
+        raise AssertionError("SGS 不应为缺资源内部工序生成不可评分兜底 key")
 
     print("OK")
 
 
 if __name__ == "__main__":
     main()
-

@@ -38,7 +38,7 @@ class ScheduleRunContext:
         try:
             self.logger.exception(message)
         except Exception:
-            pass
+            self.increment("dispatch_exception_log_failed_count")
 
     def schedule_external(self, *args: Any, **kwargs: Any):
         if callable(self.external_callback):

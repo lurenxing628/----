@@ -16,21 +16,37 @@ from core.algorithms.sort_strategies import SortStrategy
 from core.infrastructure.errors import ValidationError
 
 
-def test_normalized_batches_keep_first_duplicate_and_warn() -> None:
+def test_normalized_batches_reject_duplicate_batch_id() -> None:
     first = SimpleNamespace(batch_id="B1")
     second = SimpleNamespace(batch_id="B1")
-    warnings: list[str] = []
 
-    normalized = build_normalized_batches_map({" B1 ": first, "B1": second}, warnings=warnings)
+    with pytest.raises(ValidationError) as exc_info:
+        build_normalized_batches_map({" B1 ": first, "B1": second})
 
-    assert normalized == {"B1": first}
-    assert warnings and "批次ID规范化冲突" in warnings[0]
+    assert exc_info.value.field == "batch_id"
 
 
-def test_override_keeps_first_valid_batch_id_only() -> None:
+def test_normalized_batches_reject_empty_batch_id() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        build_normalized_batches_map({"": SimpleNamespace(batch_id="")})
+
+    assert exc_info.value.field == "batch_id"
+
+
+def test_override_keeps_valid_batch_ids_in_order() -> None:
     batches = {"B1": object(), "B2": object(), "B3": object()}
 
-    assert normalize_batch_order_override(["B2", "B1", "B2", "", "MISSING", "B3"], batches) == ["B2", "B1", "B3"]
+    assert normalize_batch_order_override(["B2", "B1", "B3"], batches) == ["B2", "B1", "B3"]
+
+
+@pytest.mark.parametrize("override", [["B1", "B1"], ["MISSING"], [""]])
+def test_override_rejects_invalid_batch_order_items(override: list[str]) -> None:
+    batches = {"B1": object(), "B2": object()}
+
+    with pytest.raises(ValidationError) as exc_info:
+        normalize_batch_order_override(override, batches)
+
+    assert exc_info.value.field == "batch_order_override"
 
 
 def test_strict_ready_date_error_is_not_hidden_by_full_override() -> None:
@@ -51,12 +67,15 @@ def test_strict_ready_date_error_is_not_hidden_by_full_override() -> None:
     assert exc_info.value.field == "ready_date"
 
 
-def test_bad_str_conversion_is_normalized_to_empty_text_id() -> None:
+def test_bad_str_conversion_is_rejected() -> None:
     class BadStr:
         def __str__(self) -> str:
             raise RuntimeError("boom")
 
-    assert normalize_text_id(BadStr()) == ""
+    with pytest.raises(ValidationError) as exc_info:
+        normalize_text_id(BadStr())
+
+    assert exc_info.value.field == "id"
 
 
 def test_operation_sort_key_uses_shared_integer_contract() -> None:

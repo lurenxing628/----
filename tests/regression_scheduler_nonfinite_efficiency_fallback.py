@@ -36,6 +36,7 @@ def main() -> None:
         sys.path.insert(0, repo_root)
 
     from core.algorithms import GreedyScheduler
+    from core.infrastructure.errors import ValidationError
 
     sched = GreedyScheduler(calendar_service=_StubCalendar())
     op = SimpleNamespace(
@@ -60,22 +61,19 @@ def main() -> None:
         quantity=1,
     )
 
-    results, summary, _strategy, _used_params = sched.schedule(
-        operations=[op],
-        batches={"B1": b},
-        start_dt=datetime(2026, 1, 1, 8, 0, 0),
-    )
-
-    assert summary.scheduled_ops == 1 and summary.failed_ops == 0, f"排产应成功：summary={summary!r}"
-    assert results, "应产生 1 条排程结果"
-    r0 = results[0]
-    assert r0.end_time and r0.start_time and r0.end_time > r0.start_time, f"非有限效率不应导致零时长：result={r0!r}"
-    dur_h = (r0.end_time - r0.start_time).total_seconds() / 3600.0
-    assert abs(dur_h - 2.0) < 1e-9, f"应按效率=1.0 回退：dur_h={dur_h!r}"
+    try:
+        sched.schedule(
+            operations=[op],
+            batches={"B1": b},
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+        )
+    except ValidationError as exc:
+        assert exc.field == "efficiency", f"非有限效率应定位到 efficiency，实际={exc.field!r}"
+    else:
+        raise AssertionError("非有限效率不应回退到 1.0 后继续排产")
 
     print("OK")
 
 
 if __name__ == "__main__":
     main()
-

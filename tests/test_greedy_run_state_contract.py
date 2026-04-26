@@ -57,4 +57,3 @@ def test_dispatch_success_advances_progress_and_records_internal_usage() -> None
     assert state.machine_busy_hours["M1"] == 1.0
     assert state.operator_busy_hours["O1"] == 1.0
     assert state.last_op_type_by_machine["M1"] == "Cut"
-

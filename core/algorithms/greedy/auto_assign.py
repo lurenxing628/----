@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.infrastructure.errors import ValidationError
+from core.shared.strict_parse import parse_required_int
+
 from .algo_stats import increment_counter
 from .internal_slot import estimate_internal_slot, validate_internal_hours
 
@@ -291,7 +294,10 @@ def _pair_score(
 
 
 def _pair_rank(pool: Dict[str, Any], operator_id: str, machine_id: str) -> int:
-    try:
-        return int(pool["pair_rank"].get((operator_id, machine_id), 9999))
-    except Exception:
+    pair = (operator_id, machine_id)
+    if pair not in pool["pair_rank"]:
         return 9999
+    try:
+        return parse_required_int(pool["pair_rank"][pair], field="pair_rank")
+    except ValidationError as exc:
+        raise ValidationError(f"pair_rank 必须是整数：operator_id={operator_id!r} machine_id={machine_id!r}", field="pair_rank") from exc

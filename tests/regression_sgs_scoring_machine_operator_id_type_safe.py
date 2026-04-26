@@ -58,7 +58,6 @@ def _build_case():
     )
     batches = {"B_LATE": batch_late, "B_EARLY": batch_early}
 
-    # 让排产阶段必定失败：setup_hours 非法（触发 _schedule_internal 的“工时不合法”错误）
     op_late = SimpleNamespace(
         id=1,
         op_code="OP_LATE",
@@ -67,7 +66,7 @@ def _build_case():
         source="internal",
         machine_id=123,  # int（历史代码会在评分阶段 .strip() 崩溃）
         operator_id=456,  # int
-        setup_hours="bad",
+        setup_hours=1.0,
         unit_hours=0.0,
         op_type_id="OT01",
         op_type_name="车削",
@@ -85,7 +84,7 @@ def _build_case():
         source="internal",
         machine_id=789,  # int
         operator_id=101,  # int
-        setup_hours="bad",
+        setup_hours=1.0,
         unit_hours=0.0,
         op_type_id="OT01",
         op_type_name="车削",
@@ -122,17 +121,15 @@ def main() -> None:
 
     assert used_params.get("dispatch_mode") == "sgs", f"dispatch_mode 解析异常：{used_params!r}"
     assert summary.total_ops == 2, f"total_ops 应为 2，实际 {summary.total_ops}"
-    assert summary.scheduled_ops == 0, f"scheduled_ops 应为 0，实际 {summary.scheduled_ops}"
-    assert summary.failed_ops == 2, f"failed_ops 应为 2，实际 {summary.failed_ops}"
-    assert len(results) == 0, f"不应产出排程结果，实际 results={len(results)}"
+    assert summary.scheduled_ops == 2, f"scheduled_ops 应为 2，实际 {summary.scheduled_ops}"
+    assert summary.failed_ops == 0, f"failed_ops 应为 0，实际 {summary.failed_ops}"
+    assert len(results) == 2, f"应产出 2 条排程结果，实际 results={len(results)}"
 
-    # 关键断言：第一个被尝试排产（从而产生 errors[0]）的应是更早交期的 OP_EARLY
-    assert summary.errors, "应产生错误信息（工时不合法）"
-    assert "OP_EARLY" in (summary.errors[0] or ""), f"SGS 评分选择错误：errors[0]={summary.errors[0]!r}"
+    # 关键断言：第一个被排产的应是更早交期的 OP_EARLY。
+    assert [result.op_code for result in results] == ["OP_EARLY", "OP_LATE"], results
 
     print("OK")
 
 
 if __name__ == "__main__":
     main()
-

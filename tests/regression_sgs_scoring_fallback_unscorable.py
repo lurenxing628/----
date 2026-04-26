@@ -19,7 +19,7 @@ class _StubCalendarService:
     """
     最小日历服务桩：满足 GreedyScheduler.schedule 所需接口。
 
-    说明：本用例只验证 SGS 评分兜底行为，不依赖真实工作日历逻辑。
+    说明：本用例只验证 SGS 评分阶段的合同失败行为，不依赖真实工作日历逻辑。
     """
 
     def adjust_to_working_time(self, dt: datetime, priority=None, operator_id: Optional[str] = None) -> datetime:  # noqa: D401
@@ -37,12 +37,11 @@ class _StubCalendarService:
 
 def _build_case():
     """
-    构造一个关键场景（复现历史 bug）：
+    构造一个关键场景：
 
     - 两个批次各 1 道外协工序，且 ext_days=0（评分阶段不可估算，历史代码会 continue）
     - 通过 batch_order_override 强制 candidates[0] 是“交期更晚”的批次
-    - 期望：即便所有候选都不可估算，SGS 仍应基于 dispatch key（交期）选择更紧急者，
-      而不是无条件回退到 candidates[0]。
+    - 期望：ext_days=0 在评分阶段直接暴露为输入合同错误，不再构造假排序 key。
     """
     batch_late = SimpleNamespace(
         batch_id="B_LATE",
@@ -114,30 +113,47 @@ def main():
 
     from core.algorithms import GreedyScheduler
 
+    _assert_invalid_external_duration_rejected(GreedyScheduler)
+    _test_probe_only_internal_ops(GreedyScheduler)
+    print("OK")
+
+
+def test_sgs_rejects_invalid_external_duration_without_unscorable_fallback():
+    from core.algorithms import GreedyScheduler
+
+    _assert_invalid_external_duration_rejected(GreedyScheduler)
+
+
+def test_sgs_probe_only_missing_resource_is_rejected_without_polluting_counters():
+    from core.algorithms import GreedyScheduler
+
+    _test_probe_only_internal_ops(GreedyScheduler)
+
+
+def _assert_invalid_external_duration_rejected(GreedyScheduler):
+    from core.infrastructure.errors import ValidationError
+
     operations, batches, start_dt = _build_case()
 
     sched = GreedyScheduler(calendar_service=_StubCalendarService())
-    results, summary, _strategy, used_params = sched.schedule(
-        operations=operations,
-        batches=batches,
-        start_dt=start_dt,
-        dispatch_mode="sgs",
-        dispatch_rule="slack",
-        batch_order_override=["B_LATE", "B_EARLY"],  # candidates[0] 将是 B_LATE（更晚交期）
-    )
-
-    assert used_params.get("dispatch_mode") == "sgs", f"dispatch_mode 解析异常：{used_params!r}"
-    assert summary.total_ops == 2, f"total_ops 应为 2，实际 {summary.total_ops}"
-    assert summary.scheduled_ops == 0, f"scheduled_ops 应为 0，实际 {summary.scheduled_ops}"
-    assert summary.failed_ops == 2, f"failed_ops 应为 2，实际 {summary.failed_ops}"
-    assert len(results) == 0, f"不应产出排程结果，实际 results={len(results)}"
-
-    # 关键断言：第一个被尝试排产（从而产生 errors[0]）的应是更早交期的 OP_EARLY
-    assert summary.errors, "应产生错误信息（外协周期不合法）"
-    assert "OP_EARLY" in (summary.errors[0] or ""), f"SGS 评分兜底选择错误：errors[0]={summary.errors[0]!r}"
+    try:
+        sched.schedule(
+            operations=operations,
+            batches=batches,
+            start_dt=start_dt,
+            dispatch_mode="sgs",
+            dispatch_rule="slack",
+            batch_order_override=["B_LATE", "B_EARLY"],  # candidates[0] 将是 B_LATE（更晚交期）
+        )
+    except ValidationError as exc:
+        assert exc.field == "ext_days", f"非法外协周期应定位到 ext_days，实际={exc.field!r}"
+    else:
+        raise AssertionError("SGS 评分阶段不应继续为 ext_days=0 的外协工序生成兜底排序 key")
 
     algo_stats = getattr(sched, "_last_algo_stats", {}) or {}
     fallback_counts = algo_stats.get("fallback_counts", {}) or {}
+    assert int(fallback_counts.get("dispatch_sgs_external_duration_unscorable_count") or 0) == 0, fallback_counts
+    assert int(fallback_counts.get("dispatch_key_proc_hours_fallback_count") or 0) == 0, fallback_counts
     probe_keys = [
         "auto_assign_missing_op_type_id_count",
         "auto_assign_missing_machine_pool_count",
@@ -152,18 +168,16 @@ def main():
             "probe_only=True 时不应记数"
         )
 
-    _test_probe_only_internal_ops(GreedyScheduler)
-    print("OK")
-
 
 def _test_probe_only_internal_ops(GreedyScheduler):
-    """验证 SGS 评分阶段的自动分配探测不污染 fallback_counts。
+    """验证 SGS 评分阶段的自动分配探测失败会显式失败且不污染 fallback_counts。
 
     构造内部工序（source=internal），缺 machine_id/operator_id/op_type_id，
     开启 auto_assign + resource_pool 非空。
-    评分阶段应走 probe_only=True → _count 为空操作 → 不累加计数。
-    正式排产阶段不传 probe_only → 应正常记数。
+    评分阶段应走 probe_only=True → _count 为空操作 → 不累加计数；
+    probe 失败后直接暴露资源合同错误，不再生成不可评分兜底 key。
     """
+    from core.infrastructure.errors import ValidationError
 
     class _StubConfigService:
         def __init__(self, values):
@@ -189,35 +203,29 @@ def _test_probe_only_internal_ops(GreedyScheduler):
         calendar_service=_StubCalendarService(),
         config_service=_StubConfigService({"auto_assign_enabled": "yes"}),
     )
-    results, summary, _strategy, used_params = sched.schedule(
-        operations=[op],
-        batches={"B_INT": batch},
-        start_dt=datetime(2026, 1, 1, 8, 0, 0),
-        dispatch_mode="sgs",
-        dispatch_rule="slack",
-        resource_pool={},  # 非 None → 触发自动分配
-    )
+    try:
+        sched.schedule(
+            operations=[op],
+            batches={"B_INT": batch},
+            start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            dispatch_mode="sgs",
+            dispatch_rule="slack",
+            resource_pool={},  # 非 None → 触发自动分配
+        )
+    except ValidationError as exc:
+        assert exc.field == "resource", f"自动分配 probe 失败应暴露资源合同错误，实际={exc.field!r}"
+    else:
+        raise AssertionError("SGS 评分阶段不应为缺资源内部工序生成不可评分兜底 key")
 
     algo_stats = getattr(sched, "_last_algo_stats", {}) or {}
     fallback_counts = algo_stats.get("fallback_counts", {}) or {}
 
-    # 核心断言：1 道工序 → 正式排产阶段记 1 次 auto_assign_missing_op_type_id_count。
-    # 若 probe_only=True 泄漏，评分阶段也会记 1 次 → 总计 2。
-    # 因此精确断言为 1 即可锁住 probe_only 的正确性。
-    assert fallback_counts.get("auto_assign_missing_op_type_id_count", 0) == 1, (
-        f"auto_assign_missing_op_type_id_count 应为 1（仅正式排产阶段），"
-        f"实际={fallback_counts.get('auto_assign_missing_op_type_id_count', 0)}；"
-        "若为 2 说明评分探测泄漏了计数（probe_only 未生效）"
+    assert fallback_counts.get("auto_assign_missing_op_type_id_count", 0) == 0, (
+        f"评分探测不应污染 auto_assign_missing_op_type_id_count，实际={fallback_counts!r}"
     )
-
-    assert int(fallback_counts.get("internal_auto_assign_attempt_count", 0)) == 1, (
-        f"正式排产阶段应恰好尝试 1 次自动分配：{fallback_counts!r}"
-    )
-    assert int(fallback_counts.get("internal_auto_assign_failed_count", 0)) == 1, (
-        f"正式排产阶段自动分配应恰好失败 1 次（缺 op_type_id）：{fallback_counts!r}"
-    )
+    assert int(fallback_counts.get("internal_auto_assign_attempt_count", 0)) == 0, fallback_counts
+    assert int(fallback_counts.get("internal_auto_assign_failed_count", 0)) == 0, fallback_counts
 
 
 if __name__ == "__main__":
     main()
-

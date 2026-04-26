@@ -18,7 +18,7 @@ class _StubCalendarService:
     """
     最小日历服务桩：满足 GreedyScheduler.schedule 所需接口。
 
-    说明：本用例只验证 batch_order_override 去重后的排序行为，
+    说明：本用例只验证 batch_order_override 重复项会被合同校验拦截，
     不依赖真实工作日历逻辑。
     """
 
@@ -37,11 +37,10 @@ class _StubCalendarService:
 
 def _build_case():
     """
-    复现 bug：
+    构造一个关键场景：
 
     - batch_order_override 含重复 batch_id（例如 ["B1","B2","B1","B3"]）
-    - 若不去重，最终 batch_order 字典会把 B1 的位置覆盖成“最后一次出现”的索引，
-      从而导致 B2 的工序优先于 B1 被尝试排产（排序错误）。
+    - 期望：重复覆盖顺序直接失败，不再靠“保留首次”继续排。
     """
 
     batches = {
@@ -142,31 +141,26 @@ def main():
         sys.path.insert(0, repo_root)
 
     from core.algorithms import GreedyScheduler
+    from core.infrastructure.errors import ValidationError
 
     operations, batches, start_dt = _build_case()
     sched = GreedyScheduler(calendar_service=_StubCalendarService())
 
-    results, summary, _strategy, used_params = sched.schedule(
-        operations=operations,
-        batches=batches,
-        start_dt=start_dt,
-        dispatch_mode="batch_order",
-        batch_order_override=["B1", "B2", "B1", "B3"],
-    )
-
-    assert used_params.get("dispatch_mode") == "batch_order", f"dispatch_mode 解析异常：{used_params!r}"
-    assert summary.total_ops == 3, f"total_ops 应为 3，实际 {summary.total_ops}"
-    assert summary.scheduled_ops == 0, f"scheduled_ops 应为 0，实际 {summary.scheduled_ops}"
-    assert summary.failed_ops == 3, f"failed_ops 应为 3，实际 {summary.failed_ops}"
-    assert len(results) == 0, f"不应产出排程结果，实际 results={len(results)}"
-
-    # 关键断言：去重后 B1 应保持在 override 的首位，因此第一个错误应来自 OP_B1
-    assert summary.errors, "应产生错误信息（外协周期不合法）"
-    assert "OP_B1" in (summary.errors[0] or ""), f"batch_order_override 去重失败：errors[0]={summary.errors[0]!r}"
+    try:
+        sched.schedule(
+            operations=operations,
+            batches=batches,
+            start_dt=start_dt,
+            dispatch_mode="batch_order",
+            batch_order_override=["B1", "B2", "B1", "B3"],
+        )
+    except ValidationError as exc:
+        assert exc.field == "batch_order_override", f"重复覆盖顺序应定位到 batch_order_override，实际={exc.field!r}"
+    else:
+        raise AssertionError("重复 batch_order_override 不应被静默去重后继续排产")
 
     print("OK")
 
 
 if __name__ == "__main__":
     main()
-

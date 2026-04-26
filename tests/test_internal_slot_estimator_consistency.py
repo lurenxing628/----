@@ -10,6 +10,7 @@ import pytest
 from core.algorithms.greedy import auto_assign as auto_assign_module
 from core.algorithms.greedy.internal_slot import estimate_internal_slot, validate_internal_hours
 from core.algorithms.greedy.scheduler import GreedyScheduler
+from core.infrastructure.errors import ValidationError
 
 
 @dataclass
@@ -246,7 +247,7 @@ def test_validate_internal_hours_keeps_direct_call_compatibility_and_exposes_pro
 
 
 def test_efficiency_fallback_only_updates_formal_schedule_counter():
-    calendar = _Calendar(efficiency=float("inf"))
+    calendar = _Calendar(efficiency=None)  # type: ignore[arg-type]
     scheduler = GreedyScheduler(calendar_service=calendar)
     op, batch = _build_internal_entities()
     base_time = datetime(2026, 1, 1, 8, 0, 0)
@@ -420,7 +421,7 @@ def test_zero_hours_at_segment_start_does_not_shift():
     assert estimate.total_hours == 0.0
 
 
-def test_efficiency_edge_cases_none_zero_and_exception():
+def test_efficiency_edge_cases_none_invalid_values_and_exception():
     op, batch = _build_internal_entities(setup_hours=2.0, unit_hours=0.0)
     base_time = datetime(2026, 1, 1, 8, 0, 0)
 
@@ -450,23 +451,18 @@ def test_efficiency_edge_cases_none_zero_and_exception():
     assert none_estimate.end_time == base_time + timedelta(hours=2)
     assert none_estimate.efficiency_fallback_used is True
 
-    class _ZeroEfficiencyCalendar(_Calendar):
+    class _InvalidEfficiencyCalendar(_Calendar):
+        def __init__(self, efficiency):
+            super().__init__(efficiency=efficiency)
+
         def get_efficiency(self, dt: datetime, operator_id=None):
-            return 0.0
+            return self.efficiency
 
-    zero_estimate = _estimate(_ZeroEfficiencyCalendar())
-    assert zero_estimate.total_hours == 2.0
-    assert zero_estimate.end_time == base_time + timedelta(hours=2)
-    assert zero_estimate.efficiency_fallback_used is True
+    for invalid_efficiency in (0.0, -1.0, float("inf"), float("nan")):
+        with pytest.raises(ValidationError) as exc_info:
+            _estimate(_InvalidEfficiencyCalendar(invalid_efficiency))
 
-    class _NegativeEfficiencyCalendar(_Calendar):
-        def get_efficiency(self, dt: datetime, operator_id=None):
-            return -1.0
-
-    negative_estimate = _estimate(_NegativeEfficiencyCalendar())
-    assert negative_estimate.total_hours == 2.0
-    assert negative_estimate.end_time == base_time + timedelta(hours=2)
-    assert negative_estimate.efficiency_fallback_used is True
+        assert exc_info.value.field == "efficiency"
 
     class _ExplodingEfficiencyCalendar(_Calendar):
         def get_efficiency(self, dt: datetime, operator_id=None):

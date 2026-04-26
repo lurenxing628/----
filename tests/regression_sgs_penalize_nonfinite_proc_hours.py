@@ -93,10 +93,11 @@ def main() -> None:
 
     from core.algorithms.dispatch_rules import DispatchRule
     from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
+    from core.infrastructure.errors import ValidationError
 
     base_time = datetime(2026, 1, 1, 8, 0, 0)
 
-    # BAD：交期更早，但工时为 inf（不可估算），应在评分阶段被惩罚
+    # BAD：交期更早，但工时为 inf（不可估算），应在评分阶段直接失败
     batch_bad = SimpleNamespace(batch_id="B_BAD", priority="normal", due_date=date(2026, 1, 1), quantity=1)
     op_bad = SimpleNamespace(
         id=1,
@@ -130,39 +131,41 @@ def main() -> None:
     results: List[Any] = []
     errors: List[str] = []
 
-    dispatch_sgs(
-        sched,
-        sorted_ops=[op_bad, op_ok],
-        batches={"B_BAD": batch_bad, "B_OK": batch_ok},
-        batch_order={"B_BAD": 0, "B_OK": 1},
-        dispatch_rule=DispatchRule.CR,
-        base_time=base_time,
-        end_dt_exclusive=None,
-        machine_downtimes=None,
-        batch_progress={},
-        external_group_cache={},
-        machine_timeline={},
-        operator_timeline={},
-        machine_busy_hours={},
-        operator_busy_hours={},
-        last_op_type_by_machine={},
-        last_end_by_machine={},
-        auto_assign_enabled=False,
-        resource_pool=None,
-        results=results,
-        errors=errors,
-        blocked_batches=set(),
-        scheduled_count=0,
-        failed_count=0,
-    )
+    try:
+        dispatch_sgs(
+            sched,
+            sorted_ops=[op_bad, op_ok],
+            batches={"B_BAD": batch_bad, "B_OK": batch_ok},
+            batch_order={"B_BAD": 0, "B_OK": 1},
+            dispatch_rule=DispatchRule.CR,
+            base_time=base_time,
+            end_dt_exclusive=None,
+            machine_downtimes=None,
+            batch_progress={},
+            external_group_cache={},
+            machine_timeline={},
+            operator_timeline={},
+            machine_busy_hours={},
+            operator_busy_hours={},
+            last_op_type_by_machine={},
+            last_end_by_machine={},
+            auto_assign_enabled=False,
+            resource_pool=None,
+            results=results,
+            errors=errors,
+            blocked_batches=set(),
+            scheduled_count=0,
+            failed_count=0,
+        )
+    except ValidationError as exc:
+        assert exc.field == "setup_hours", f"非法工时应定位到 setup_hours，实际={exc.field!r}"
+    else:
+        raise AssertionError("SGS 不应为非有限工时候选生成惩罚排序 key 后继续排产")
 
-    assert sched.calls, "未触发 _schedule_internal 调用"
-    assert sched.calls[0] == "OK_FINITE", f"不可估算工时候选未被惩罚：calls={sched.calls!r}"
-    assert results and getattr(results[0], "op_code", None) == "OK_FINITE", f"首个成功排程应为 OK_FINITE：results={results!r}"
+    assert sched.calls == [], f"评分阶段失败后不应进入正式派工：calls={sched.calls!r}"
 
     print("OK")
 
 
 if __name__ == "__main__":
     main()
-

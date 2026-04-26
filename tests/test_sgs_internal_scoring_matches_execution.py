@@ -151,9 +151,9 @@ def test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order(
     assert [result.batch_id for result in non_seed_results] == ["B_B", "B_A"]
 
 
-def test_sgs_probe_efficiency_fallback_does_not_pollute_formal_counter():
+def test_sgs_probe_none_efficiency_default_does_not_pollute_formal_counter():
     start_dt = datetime(2026, 1, 1, 8, 0, 0)
-    scheduler = GreedyScheduler(calendar_service=_Calendar(efficiency=float("inf")), config_service={"auto_assign_enabled": "yes"})
+    scheduler = GreedyScheduler(calendar_service=_Calendar(efficiency=None), config_service={"auto_assign_enabled": "yes"})  # type: ignore[arg-type]
 
     batches = {"B1": _batch("B1")}
     operations = [

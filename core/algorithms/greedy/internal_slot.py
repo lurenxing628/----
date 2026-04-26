@@ -128,9 +128,14 @@ def _resolve_efficiency(
     raw_eff = calendar.get_efficiency(start_time, operator_id=operator_id)
     if raw_eff is None:
         return 1.0, True
-    eff = float(raw_eff)
-    if (not math.isfinite(eff)) or eff <= 0:
-        return 1.0, True
+    try:
+        eff = float(raw_eff)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(f"日历效率必须是数字：efficiency={raw_eff!r}", field="efficiency") from exc
+    if not math.isfinite(eff):
+        raise ValidationError(f"日历效率必须是有限数字：efficiency={raw_eff!r}", field="efficiency")
+    if eff <= 0:
+        raise ValidationError(f"日历效率必须大于 0：efficiency={raw_eff!r}", field="efficiency")
     return eff, False
 
 
