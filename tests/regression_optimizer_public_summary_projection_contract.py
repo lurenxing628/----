@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from core.algorithms.evaluation import ScheduleMetrics
 from core.services.scheduler.schedule_summary import build_result_summary
 from core.services.scheduler.schedule_summary_types import SummaryBuildContext
+from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
 
 
 class _SummarySvc:
@@ -162,6 +163,55 @@ def test_public_summary_omits_empty_diagnostics_when_no_internal_attempt_fields(
     _overdue, _status, result_summary_obj, _json, _elapsed = build_result_summary(_SummarySvc(), ctx=ctx)
 
     assert "diagnostics" not in result_summary_obj
+
+
+def test_candidate_rejected_attempt_is_diagnostic_only() -> None:
+    public_algo, diagnostics = project_public_algo_summary(
+        {
+            "attempts": [
+                {
+                    "tag": "start:priority_first|batch_order:slack",
+                    "strategy": "priority_first",
+                    "dispatch_mode": "batch_order",
+                    "dispatch_rule": "slack",
+                    "score": [0.0],
+                    "failed_ops": 0,
+                    "metrics": {"overdue_count": 0},
+                },
+                {
+                    "tag": "local:swap",
+                    "strategy": "priority_first",
+                    "dispatch_mode": "sgs",
+                    "dispatch_rule": "slack",
+                    "source": "candidate_rejected",
+                    "origin": {"type": "ValidationError", "field": "resource", "message": "缺少资源"},
+                },
+            ]
+        }
+    )
+
+    assert public_algo["attempts"] == [
+        {
+            "strategy": "priority_first",
+            "dispatch_mode": "batch_order",
+            "dispatch_rule": "slack",
+            "score": [0.0],
+            "failed_ops": 0,
+            "metrics": {"overdue_count": 0},
+            "source_label": "多起点方案",
+        }
+    ]
+    diagnostic_attempt = [
+        attempt
+        for attempt in diagnostics["optimizer"]["attempts"]
+        if attempt.get("source") == "candidate_rejected"
+    ][0]
+    assert diagnostic_attempt["tag"] == "local:swap"
+    assert diagnostic_attempt["strategy"] == "priority_first"
+    assert diagnostic_attempt["dispatch_mode"] == "sgs"
+    assert diagnostic_attempt["dispatch_rule"] == "slack"
+    assert diagnostic_attempt["source"] == "candidate_rejected"
+    assert diagnostic_attempt["origin"]["field"] == "resource"
 
 
 def test_large_optimizer_diagnostics_are_truncated_before_summary_json_persistence() -> None:

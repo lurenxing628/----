@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
 
+from .optimizer_attempt_records import evaluate_optional_local_candidate
 from .optimizer_search_state import init_seen_hashes
 
 
@@ -181,6 +183,33 @@ def _should_skip_seen(cand_order: List[str], seen_hashes: Optional[set]) -> bool
     return False
 
 
+def _apply_candidate_result(
+    *,
+    candidate: Optional[Dict[str, Any]],
+    best: Dict[str, Any],
+    cur_order: List[str],
+    no_improve: int,
+    move: str,
+    attempts: List[Dict[str, Any]],
+    improvement_trace: List[Dict[str, Any]],
+    clock: Callable[[], float],
+    t_begin: float,
+) -> Tuple[Dict[str, Any], List[str], int]:
+    if candidate is None:
+        return best, cur_order, no_improve + 1
+    if candidate["score"] < best["score"]:
+        _record_improvement(
+            candidate=candidate,
+            move=move,
+            attempts=attempts,
+            improvement_trace=improvement_trace,
+            clock=clock,
+            t_begin=t_begin,
+        )
+        return candidate, list(candidate["order"]), 0
+    return best, cur_order, no_improve + 1
+
+
 def run_local_search(
     *,
     algo_mode: str,
@@ -230,39 +259,45 @@ def run_local_search(
             no_improve += 1
             continue
 
-        candidate = _evaluate_candidate(
-            scheduler=scheduler,
-            strict_mode=bool(strict_mode),
-            algo_ops_to_schedule=algo_ops_to_schedule,
-            batches=batches,
+        candidate = evaluate_optional_local_candidate(
+            evaluate=partial(
+                _evaluate_candidate,
+                scheduler=scheduler,
+                strict_mode=bool(strict_mode),
+                algo_ops_to_schedule=algo_ops_to_schedule,
+                batches=batches,
+                strategy=cur_strat,
+                params=cur_params,
+                start_dt=start_dt,
+                end_date=end_date,
+                downtime_map=downtime_map,
+                order=cand_order,
+                seed_sr_list=seed_sr_list,
+                dispatch_mode=cur_dispatch_mode,
+                dispatch_rule=cur_dispatch_rule,
+                resource_pool=resource_pool,
+                objective_name=objective_name,
+                optimizer_algo_stats=optimizer_algo_stats,
+                schedule_fn=schedule_fn,
+            ),
+            attempts=attempts,
+            move=move,
             strategy=cur_strat,
-            params=cur_params,
-            start_dt=start_dt,
-            end_date=end_date,
-            downtime_map=downtime_map,
-            order=cand_order,
-            seed_sr_list=seed_sr_list,
             dispatch_mode=cur_dispatch_mode,
             dispatch_rule=cur_dispatch_rule,
-            resource_pool=resource_pool,
-            objective_name=objective_name,
-            optimizer_algo_stats=optimizer_algo_stats,
-            schedule_fn=schedule_fn,
+            strict_mode=bool(strict_mode),
         )
-        if candidate["score"] < best["score"]:
-            best = candidate
-            cur_order = list(cand_order)
-            no_improve = 0
-            _record_improvement(
-                candidate=candidate,
-                move=move,
-                attempts=attempts,
-                improvement_trace=improvement_trace,
-                clock=clock,
-                t_begin=t_begin,
-            )
-        else:
-            no_improve += 1
+        best, cur_order, no_improve = _apply_candidate_result(
+            candidate=candidate,
+            best=best,
+            cur_order=cur_order,
+            no_improve=no_improve,
+            move=move,
+            attempts=attempts,
+            improvement_trace=improvement_trace,
+            clock=clock,
+            t_begin=t_begin,
+        )
 
         if no_improve >= restart_after:
             no_improve = 0

@@ -18,6 +18,15 @@ _DIAGNOSTIC_ATTEMPT_KEYS = {
     "used_params",
     "algo_stats",
 }
+_REJECTED_DIAGNOSTIC_ATTEMPT_KEYS = _DIAGNOSTIC_ATTEMPT_KEYS | {
+    "strategy",
+    "dispatch_mode",
+    "dispatch_rule",
+}
+
+
+def _is_candidate_rejected_attempt(attempt: Dict[str, Any]) -> bool:
+    return attempt.get("source") == "candidate_rejected"
 
 
 def _source_label(attempt: Dict[str, Any]) -> str:
@@ -40,12 +49,16 @@ def _project_attempts(attempts: Any) -> Tuple[List[Dict[str, Any]], List[Dict[st
     for attempt in attempts:
         if not isinstance(attempt, dict):
             continue
-        public_attempt = {key: attempt[key] for key in _PUBLIC_ATTEMPT_KEYS if key in attempt}
-        source_label = _source_label(attempt)
-        if source_label:
-            public_attempt["source_label"] = source_label
-        public_attempts.append(public_attempt)
-        diagnostics = {key: attempt[key] for key in _DIAGNOSTIC_ATTEMPT_KEYS if key in attempt}
+        if not _is_candidate_rejected_attempt(attempt):
+            public_attempt = {key: attempt[key] for key in _PUBLIC_ATTEMPT_KEYS if key in attempt}
+            source_label = _source_label(attempt)
+            if source_label:
+                public_attempt["source_label"] = source_label
+            public_attempts.append(public_attempt)
+            diagnostic_keys = _DIAGNOSTIC_ATTEMPT_KEYS
+        else:
+            diagnostic_keys = _REJECTED_DIAGNOSTIC_ATTEMPT_KEYS
+        diagnostics = {key: attempt[key] for key in diagnostic_keys if key in attempt}
         if diagnostics:
             diagnostic_attempts.append(diagnostics)
     return public_attempts, diagnostic_attempts

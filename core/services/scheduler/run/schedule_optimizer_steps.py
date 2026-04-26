@@ -4,12 +4,15 @@ import inspect
 import time
 import traceback
 from datetime import date, datetime
+from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import increment_counter, merge_algo_stats, snapshot_algo_stats
+from core.infrastructure.errors import ValidationError
 
+from .optimizer_attempt_records import candidate_tag, evaluate_optional_start_candidate
 from .optimizer_config import (
     ensure_optimizer_config_snapshot,
     is_ortools_enabled,
@@ -275,6 +278,10 @@ def _run_ortools_warmstart(
         if best is None or cand["score"] < best["score"]:
             best = cand
             _append_ortools_trace(improvement_trace=improvement_trace, candidate=cand, now=now, t_begin=t_begin)
+    except ValidationError as e:
+        if bool(strict_mode):
+            raise
+        _record_ortools_failure(optimizer_algo_stats=optimizer_algo_stats, scheduler=scheduler, logger=logger, exc=e)
     except Exception as e:
         _record_ortools_failure(optimizer_algo_stats=optimizer_algo_stats, scheduler=scheduler, logger=logger, exc=e)
     return best
@@ -392,6 +399,11 @@ def _run_multi_start(
     order_cache: Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]] = {}
     snapshot = _step_config_snapshot(cfg, strict_mode=bool(strict_mode))
     now = clock or time.time
+    primary = (
+        str(keys[0]) if keys else "",
+        str(dispatch_modes[0]) if dispatch_modes else "",
+        str(dispatch_rule_cfg),
+    )
 
     # 执行策略轮询（multi-start）
     for dm in dispatch_modes:
@@ -418,30 +430,41 @@ def _run_multi_start(
                     order_cache=order_cache,
                     build_order=build_order,
                 )
-                cand = _evaluate_multi_start_candidate(
-                    scheduler=scheduler,
-                    strict_mode=bool(strict_mode),
-                    algo_ops_to_schedule=algo_ops_to_schedule,
-                    batches=batches,
-                    strategy=strat,
-                    params=params0,
-                    start_dt=start_dt,
-                    end_date=end_date,
-                    downtime_map=downtime_map,
-                    order=order,
-                    seed_sr_list=seed_sr_list,
+                cand = evaluate_optional_start_candidate(
+                    evaluate=partial(
+                        _evaluate_multi_start_candidate,
+                        scheduler=scheduler,
+                        strict_mode=bool(strict_mode),
+                        algo_ops_to_schedule=algo_ops_to_schedule,
+                        batches=batches,
+                        strategy=strat,
+                        params=params0,
+                        start_dt=start_dt,
+                        end_date=end_date,
+                        downtime_map=downtime_map,
+                        order=order,
+                        seed_sr_list=seed_sr_list,
+                        dispatch_mode=dm,
+                        dispatch_rule=dr,
+                        resource_pool=resource_pool,
+                        objective_name=objective_name,
+                        optimizer_algo_stats=optimizer_algo_stats,
+                    ),
+                    attempts=attempts,
+                    strategy_key=k,
                     dispatch_mode=dm,
                     dispatch_rule=dr,
-                    resource_pool=resource_pool,
-                    objective_name=objective_name,
-                    optimizer_algo_stats=optimizer_algo_stats,
+                    primary=primary,
+                    strict_mode=bool(strict_mode),
                 )
+                if cand is None:
+                    continue
                 score = cand["score"]
                 metrics = cand["metrics"]
                 algo_stats = cand["algo_stats"]
                 attempts.append(
                     {
-                        "tag": f"start:{k}|{dm}:{dr}",
+                        "tag": candidate_tag(k, dm, dr),
                         "strategy": cand["strategy"].value,
                         "dispatch_mode": dm,
                         "dispatch_rule": dr,
@@ -458,7 +481,7 @@ def _run_multi_start(
                         improvement_trace.append(
                             {
                                 "elapsed_ms": int((now() - t_begin) * 1000),
-                                "tag": f"start:{k}|{dm}:{dr}",
+                                "tag": candidate_tag(k, dm, dr),
                                 "strategy": cand["strategy"].value,
                                 "dispatch_mode": dm,
                                 "dispatch_rule": dr,
