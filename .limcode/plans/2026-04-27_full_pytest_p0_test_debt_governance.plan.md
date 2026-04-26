@@ -483,47 +483,72 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/collect_full_test_debt.py \
 - 定向静态验证：`py_compile` 通过；`ruff check` 通过；`pyright` 为 `0 errors, 0 warnings, 0 informations`。
 - 两次 full pytest 结果：第一遍 `5 failed, 578 passed in 96.80s`；第二遍 `5 failed, 578 passed in 99.80s`。两次失败 nodeid 一致，未再出现 `_DummyProc`、`AttributeError: __enter__`、`subprocess.Popen` 污染链批量失败。
 - 隔离后采集器结果：`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/collect_full_test_debt.py --baseline-kind after_main_style_isolation --write-baseline audit/2026-04/20260427_full_pytest_p0_after_isolation_baseline.md -- tests -q --tb=short -ra -p no:cacheprovider` 退出码为 `1`（透传剩余 5 个 pytest 失败），`stderr_bytes=0`，`collected_count=583`，`failed_nodeid_count=5`，`classification_counts={"required_or_quality_gate_self_failure": 0, "main_style_isolation_candidate": 0, "candidate_test_debt": 5}`。
-- required/proof 移交清单：无 required/proof 失败移交给任务 3；raw baseline 中的 27 个 required/proof 失败已随 main-style 隔离消失。任务 3 仍需保留“required/proof 禁入 xfail 债务”的断言。
+- required/proof 移交清单：无 required/proof 失败移交给任务 3；raw baseline 中的 27 个 required/proof 失败已随 main-style 隔离消失。任务 3 仍需保留“required/proof 禁入 candidate_test_debt 候选债务”的 collector 合同；`mode=xfail` 登记拒绝留给任务 5/6/8。
 - candidate_test_debt 移交清单：`tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors`、`tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error`、`tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error`、`tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error`、`tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows`。
 - baseline 处置：`audit/2026-04/20260427_full_pytest_p0_after_isolation_baseline.md` 已生成，明确 `baseline_kind=after_main_style_isolation`、`importable=false`。该文件只作为任务 3/任务 4 的交接证据，不得直接导入台账。
 - 是否触发停线：未触发任务 2 停线；没有修改 quality gate / required / proof 文件，没有修改业务层，没有修改 workflow，没有新增外部依赖。
 
-### 任务 3：处理 required/proof 自身失败
+### 任务 3：确认 required/proof 已恢复，并阻止它们进入候选债务
 
 **任务 2 承接说明**
 - 任务 2 已完成 main-style 子进程隔离：`tests/conftest.py` 不再同进程 import 并调用 main-style 回归，而是用 `tests/main_style_regression_runner.py` 在子进程里执行；`tools/collect_full_test_debt.py` 已支持 `after_main_style_isolation` 对比基线，并修正隔离后的分类规则。
 - 任务 2 的实际验证结果是：隔离合同和采集器合同 `8 passed`，污染源前置 quality gate 单测 `2 passed`，两次 full pytest 都稳定为 `5 failed, 578 passed`，隔离后对比基线显示 required/proof 失败数为 0、main-style 污染候选为 0、候选测试债务为 5。
 - 本任务只接收任务 2 回填的隔离后对比结果。任务 1 的 raw baseline 只能作为历史对照，不能作为债务导入依据。
-- required/proof 失败先按三类判断：隔离后消失、隔离后仍单跑失败、证据不足。无论哪一类，都不得登记为 xfail 债务。
-- 如果 required/proof 单独运行通过，但 full pytest 里失败，优先判断为顺序污染或证据污染；如果单独运行仍失败，只允许修测试工具链自身的测试夹具或 helper，不允许改业务层，不允许导入台账。
-- 只有 required/proof 普通通过后，任务 4 才能生成正式可导入 baseline。
+- raw baseline 里的 27 条 required/proof 失败已随任务 2 的 main-style 子进程隔离消失；本任务不再默认修改 required/proof 测试文件。
+- 本任务只补 collector 层防回退：required/proof 失败不得进入 `candidate_test_debt`，只能进入 `required_or_quality_gate_self_failure`。
+- 真正的 `mode=xfail` 登记拒绝、台账 schema、pytest xfail hook、full-test-debt proof 接入，全部留给任务 5、任务 6、任务 8；本任务不得提前实现。
+- 只有 required/proof 普通通过，并且 collector 合同确认 required/proof 不进入候选债务后，任务 4 才能重新生成正式基线。
 
 **目标**
-- 质量门禁自己的 required/proof 测试不能登记成 xfail 债务，必须先恢复为普通通过，或确认它们已经被任务 2 的隔离修好。
+- 确认质量门禁自己的 required/proof 测试已经普通通过。
+- 增加一条现状锁定测试，防止后续把 required/proof 失败误采集成可导入的候选测试债务。
 
 **文件**
-- 修改：`tests/test_run_quality_gate.py`
-- 修改：`tests/test_run_full_selftest_report_metadata.py`
-- 修改：`tests/test_sp05_path_topology_contract.py`
+- 修改：`tests/test_full_test_debt_registry_contract.py`
+- 修改：`.limcode/plans/2026-04-27_full_pytest_p0_test_debt_governance.plan.md`
+- 验证：`tests/test_run_quality_gate.py`
+- 验证：`tests/test_run_full_selftest_report_metadata.py`
+- 验证：`tests/test_sp05_path_topology_contract.py`
 - 测试：`tests/test_run_quality_gate.py`
 - 测试：`tests/test_run_full_selftest_report_metadata.py`
 - 测试：`tests/test_sp05_path_topology_contract.py`
 
-- [ ] **步骤 1：写 required/proof 禁入债务断言**
+- [ ] **步骤 1：写 required/proof 禁入候选债务防回退测试**
 
 在 `tests/test_full_test_debt_registry_contract.py` 增加：
 
 ```python
-def test_full_test_debt_import_rejects_required_test_nodeids():
+def test_collect_full_test_debt_keeps_required_failures_out_of_candidate_debt():
     ...
 ```
 
 断言：
-- `tests/test_run_quality_gate.py::*` 不允许进入 `mode=xfail`。
-- `tests/test_run_full_selftest_report_metadata.py::*` 不允许进入 `mode=xfail`。
-- `iter_quality_gate_required_tests()` 覆盖的文件不允许进入 `mode=xfail`。
+- 临时项目里写一个 required/proof 路径失败，优先使用 `QUALITY_GATE_SELFTEST_PATH` 对应的 `tests/test_run_quality_gate.py`。
+- 同时写一个普通失败测试。
+- collector 使用 `--baseline-kind after_main_style_isolation` 运行。
+- required/proof nodeid 只进入 `required_or_quality_gate_self_failure`。
+- required/proof nodeid 不进入 `candidate_test_debt`。
+- 普通失败仍进入 `candidate_test_debt`。
+- payload 的 `importable` 仍为 `false`。
 
-- [ ] **步骤 2：先跑定向证明**
+说明：这是一条现状锁定测试，很可能一开始就通过；如果通过，不得为了制造 diff 去改 `tools/collect_full_test_debt.py`。
+
+- [ ] **步骤 2：运行 collector 合同测试**
+
+运行：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/test_full_test_debt_registry_contract.py \
+  --tb=short -p no:cacheprovider
+```
+
+预期：
+- 通过。
+- 如果失败，且失败原因是 required/proof 进入了 `candidate_test_debt`，才允许最小修改 `tools/collect_full_test_debt.py`。
+- 不允许在本任务中新建 `tools/test_debt_registry.py`、`tools/check_full_test_debt.py`，不允许改 `tools/quality_gate_ledger.py`、`scripts/sync_debt_ledger.py`，不允许接 pytest xfail hook。
+
+- [ ] **步骤 3：跑 required/proof 定向证明**
 
 运行：
 
@@ -536,31 +561,60 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
 ```
 
 预期：
-- 如果这些测试在单独运行时通过，说明 raw 全量失败大概率来自前序 main-style 污染；任务 2 隔离后再用正式基线确认。
-- 如果这些测试单独运行仍失败，只允许修测试工具链自身的测试夹具或 helper，不允许登记为 xfail，不允许改业务层。
+- 通过。
+- 如果失败，立即停线；只允许查测试工具链自身夹具或 helper，不允许登记债务，不允许改业务层。
 
-- [ ] **步骤 3：完成后复跑**
+- [ ] **步骤 4：运行静态快检**
 
 运行：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
-  tests/test_run_quality_gate.py \
-  tests/test_run_full_selftest_report_metadata.py \
-  tests/test_sp05_path_topology_contract.py \
-  --tb=short -p no:cacheprovider
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m py_compile \
+  tests/test_full_test_debt_registry_contract.py \
+  tools/collect_full_test_debt.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check \
+  tests/test_full_test_debt_registry_contract.py \
+  tools/collect_full_test_debt.py
 ```
 
-预期：通过。未通过前不得执行债务导入。
+预期：通过。若本任务被迫修改 `tools/collect_full_test_debt.py`，再补跑：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright \
+  tests/test_full_test_debt_registry_contract.py \
+  tools/collect_full_test_debt.py
+```
+
+- [ ] **步骤 5：审查与回填**
+
+要求：
+- 先调用只读子代理做需求符合性审查，确认没有提前实现任务 5/6/8，也没有修改三份 required/proof 测试文件。
+- 再调用只读子代理做测试与文档回填质量审查。
+- 审查不过先修复，再重新审查。
+- 审查通过后，在本任务下补写执行结果；同时在任务 4 头部补写任务 3 交接说明。
+
+**任务 3 执行结果（任务 4 承接用）**
+- 状态：已完成。任务 3 只补了 collector 层 required/proof 禁入候选债务的现状锁定测试，并回填计划；未修改 `tests/test_run_quality_gate.py`、`tests/test_run_full_selftest_report_metadata.py`、`tests/test_sp05_path_topology_contract.py`。
+- 根因结论：raw baseline 里的 27 条 required/proof 失败不是这些测试自身坏了，而是任务 2 已确认的 main-style 同进程污染带出的假失败。隔离后基线中 `required_or_quality_gate_self_failure=0`、`main_style_isolation_candidate=0`、`candidate_test_debt=5`。
+- 禁入结果：新增 `test_collect_full_test_debt_keeps_required_failures_out_of_candidate_debt`，确认 `QUALITY_GATE_SELFTEST_PATH` 对应的 required/proof 失败只进入 `required_or_quality_gate_self_failure`，不进入 `candidate_test_debt`，普通失败仍进入 `candidate_test_debt`，payload 仍为 `importable=false`。
+- 验证结果：`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py --tb=short -p no:cacheprovider` 结果为 `5 passed in 0.89s`；`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py tests/test_run_full_selftest_report_metadata.py tests/test_sp05_path_topology_contract.py --tb=short -p no:cacheprovider` 结果为 `51 passed in 6.79s`；`py_compile` 通过；`ruff check` 通过。
+- 审查结果：需求符合性审查先发现任务 2 交接里残留旧的 `xfail` 口径，已改为 `candidate_test_debt` 候选债务；代码质量审查建议补充 `baseline_kind` 和 `main_style_isolation_candidate` 断言，已纳入测试。
+- 停线状态：未触发。未新建正式 baseline，未导入台账，未提前实现任务 5/6/8，未修改业务层或 workflow。
 
 ### 任务 4：生成隔离后的正式 full pytest 债务基线
+
+**任务 3 交接说明**
+- raw baseline 只作历史对照，不能作为正式导入输入。
+- `audit/2026-04/20260427_full_pytest_p0_after_isolation_baseline.md` 只作任务 2/3 交接证据，不能直接导入台账；该文件的 `head_sha` 不是任务 4 执行时的新 HEAD。
+- 任务 3 已确认 required/proof 当前普通通过；后续不得把 `QUALITY_GATE_REQUIRED_TESTS` 覆盖的 nodeid 导入 `candidate_test_debt` 候选债务或登记为 `mode=xfail`。
+- 任务 4 必须重新生成正式基线，并显式校验 `required_or_quality_gate_self_failure=0`、`main_style_isolation_candidate=0`。
 
 **目标**
 - 在 main-style 污染消除、required/proof 自身测试通过之后，重新生成可导入债务的正式基线。
 
 **文件**
 - 新建：`audit/2026-04/20260427_full_pytest_p0_debt_baseline.md`
-- 修改：`tools/collect_full_test_debt.py`
+- 使用 / 验证：`tools/collect_full_test_debt.py`
 
 - [ ] **步骤 1：生成正式基线**
 
@@ -568,8 +622,9 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/collect_full_test_debt.py \
-  --pytest-args tests -q --tb=short -ra \
-  --write-baseline audit/2026-04/20260427_full_pytest_p0_debt_baseline.md
+  --baseline-kind after_main_style_isolation \
+  --write-baseline audit/2026-04/20260427_full_pytest_p0_debt_baseline.md \
+  -- tests -q --tb=short -ra -p no:cacheprovider
 ```
 
 预期：

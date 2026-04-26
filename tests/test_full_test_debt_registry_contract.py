@@ -6,6 +6,8 @@ import sys
 import textwrap
 from pathlib import Path
 
+from tools.quality_gate_shared import QUALITY_GATE_SELFTEST_PATH
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COLLECTOR = REPO_ROOT / "tools" / "collect_full_test_debt.py"
 BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
@@ -248,6 +250,36 @@ def test_collect_full_test_debt_writes_raw_baseline_machine_block(tmp_path: Path
     assert "tests/test_run_quality_gate.py::test_quality_gate_self_failure" in baseline_payload["classifications"][
         "required_or_quality_gate_self_failure"
     ]
+
+
+def test_collect_full_test_debt_keeps_required_failures_out_of_candidate_debt(tmp_path: Path) -> None:
+    required_nodeid = f"{QUALITY_GATE_SELFTEST_PATH}::test_quality_gate_self_failure"
+    regular_nodeid = "tests/test_regular_failure.py::test_regular_failure"
+    _write(
+        tmp_path / QUALITY_GATE_SELFTEST_PATH,
+        '''
+        def test_quality_gate_self_failure():
+            assert False, "required failure"
+        ''',
+    )
+    _write(
+        tmp_path / "tests" / "test_regular_failure.py",
+        '''
+        def test_regular_failure():
+            assert False, "regular failure"
+        ''',
+    )
+
+    proc = _run_collector(tmp_path, baseline_kind="after_main_style_isolation")
+    payload = _payload_from_stdout(proc)
+
+    assert proc.returncode == payload["exitstatus"]
+    assert payload["baseline_kind"] == "after_main_style_isolation"
+    assert payload["importable"] is False
+    assert required_nodeid in payload["classifications"]["required_or_quality_gate_self_failure"]
+    assert required_nodeid not in payload["classifications"]["candidate_test_debt"]
+    assert required_nodeid not in payload["classifications"]["main_style_isolation_candidate"]
+    assert regular_nodeid in payload["classifications"]["candidate_test_debt"]
 
 
 def test_collect_full_test_debt_after_isolation_does_not_hide_real_regression_failures(tmp_path: Path) -> None:
