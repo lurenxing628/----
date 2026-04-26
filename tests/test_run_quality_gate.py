@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -189,6 +190,11 @@ def test_quality_workflow_uploads_quality_gate_manifest_artifact():
     assert "actions/upload-artifact" in content
     assert "evidence/QualityGate/" in content
     assert "--require-clean-worktree" in content
+    quality_gate_job = re.search(r"(?ms)^  quality-gate:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)", content)
+    assert quality_gate_job is not None
+    assert re.search(r"(?m)^    env:\s*$", quality_gate_job.group("body"))
+    assert re.search(r"(?m)^      PYTHONUTF8:\s*['\"]?1['\"]?\s*$", quality_gate_job.group("body"))
+    assert re.search(r"(?m)^      PYTHONIOENCODING:\s*['\"]?utf-8['\"]?\s*$", quality_gate_job.group("body"))
 
 
 def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypatch, tmp_path):

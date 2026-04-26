@@ -11,6 +11,9 @@ jobs:
   quality-gate:
     runs-on: windows-latest
     timeout-minutes: 15
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
     steps:
       - name: 检出仓库
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
