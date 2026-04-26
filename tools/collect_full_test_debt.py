@@ -1,0 +1,313 @@
+from __future__ import annotations
+
+import argparse
+import contextlib
+import io
+import json
+import logging
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
+BASELINE_END = "<!-- APS-FULL-PYTEST-BASELINE:END -->"
+SCHEMA_VERSION = 1
+
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from tools.quality_gate_shared import iter_quality_gate_required_tests  # noqa: E402
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def _git_head_sha() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if int(completed.returncode) != 0:
+        return ""
+    return str(completed.stdout or "").strip()
+
+
+def _longrepr_text(report: Any) -> str:
+    text = getattr(report, "longreprtext", None)
+    if text is not None:
+        return str(text)
+    longrepr = getattr(report, "longrepr", None)
+    if longrepr is None:
+        return ""
+    return str(longrepr)
+
+
+def _report_nodeid(report: Any) -> str:
+    nodeid = str(getattr(report, "nodeid", "") or "").strip()
+    if nodeid:
+        return nodeid
+    fspath = str(getattr(report, "fspath", "") or "").strip()
+    return fspath.replace(os.sep, "/")
+
+
+class FullTestDebtCollector:
+    def __init__(self) -> None:
+        self.collected_nodeids: List[str] = []
+        self.collection_errors: List[Dict[str, Any]] = []
+        self.reports: List[Dict[str, Any]] = []
+        self.exitstatus: Optional[int] = None
+
+    def pytest_collection_modifyitems(self, session: Any, config: Any, items: Sequence[Any]) -> None:
+        self.collected_nodeids = [str(item.nodeid) for item in items]
+
+    def pytest_collectreport(self, report: Any) -> None:
+        if str(getattr(report, "outcome", "") or "") != "failed":
+            return
+        self.collection_errors.append(
+            {
+                "nodeid": _report_nodeid(report),
+                "outcome": str(getattr(report, "outcome", "") or ""),
+                "longrepr": _longrepr_text(report),
+            }
+        )
+
+    def pytest_runtest_logreport(self, report: Any) -> None:
+        self.reports.append(
+            {
+                "nodeid": str(report.nodeid),
+                "when": str(report.when),
+                "outcome": str(report.outcome),
+                "duration": float(getattr(report, "duration", 0.0) or 0.0),
+                "longrepr": _longrepr_text(report),
+            }
+        )
+
+    def pytest_sessionfinish(self, session: Any, exitstatus: Any) -> None:
+        self.exitstatus = int(exitstatus)
+
+
+def _nodeid_path(nodeid: str) -> str:
+    return str(nodeid or "").split("::", 1)[0]
+
+
+def _is_main_style_nodeid(nodeid: str) -> bool:
+    path = _nodeid_path(nodeid)
+    name = os.path.basename(path)
+    return name.startswith("regression_") and name.endswith(".py")
+
+
+def _belongs_to_required_tests(nodeid: str, required_paths: Iterable[str]) -> bool:
+    path = _nodeid_path(nodeid)
+    for required_path in required_paths:
+        required = str(required_path or "").replace("\\", "/")
+        if path == required or str(nodeid).startswith(required + "::"):
+            return True
+    return False
+
+
+def _has_main_style_pollution_signature(text: str) -> bool:
+    haystack = str(text or "")
+    if "_DummyProc" in haystack:
+        return True
+    if "AttributeError: __enter__" in haystack:
+        return True
+    return "subprocess.py" in haystack and "Popen" in haystack
+
+
+def _failed_report_texts(reports: Sequence[Dict[str, Any]], collection_errors: Sequence[Dict[str, Any]]) -> Dict[str, str]:
+    out: Dict[str, List[str]] = {}
+    for report in reports:
+        if report.get("outcome") != "failed":
+            continue
+        nodeid = str(report.get("nodeid") or "")
+        out.setdefault(nodeid, []).append(str(report.get("longrepr") or ""))
+    for error in collection_errors:
+        nodeid = str(error.get("nodeid") or "")
+        out.setdefault(nodeid, []).append(str(error.get("longrepr") or ""))
+    return {nodeid: "\n".join(parts) for nodeid, parts in out.items()}
+
+
+def _classify_failures(
+    reports: Sequence[Dict[str, Any]],
+    collection_errors: Sequence[Dict[str, Any]],
+    required_paths: Sequence[str],
+    baseline_kind: str,
+) -> Dict[str, List[str]]:
+    failed_texts = _failed_report_texts(reports, collection_errors)
+    classifications = {
+        "required_or_quality_gate_self_failure": [],
+        "main_style_isolation_candidate": [],
+        "candidate_test_debt": [],
+    }
+    for nodeid in sorted(failed_texts):
+        text = failed_texts[nodeid]
+        if _belongs_to_required_tests(nodeid, required_paths):
+            classifications["required_or_quality_gate_self_failure"].append(nodeid)
+        elif _has_main_style_pollution_signature(text) or (
+            baseline_kind == "raw_before_isolation" and _is_main_style_nodeid(nodeid)
+        ):
+            classifications["main_style_isolation_candidate"].append(nodeid)
+        else:
+            classifications["candidate_test_debt"].append(nodeid)
+    return classifications
+
+
+def _summarize(
+    collected_nodeids: Sequence[str],
+    reports: Sequence[Dict[str, Any]],
+    collection_errors: Sequence[Dict[str, Any]],
+    classifications: Dict[str, List[str]],
+) -> Dict[str, Any]:
+    outcome_counts: Dict[str, int] = {}
+    failed_nodeids: Set[str] = set()
+    for report in reports:
+        outcome = str(report.get("outcome") or "")
+        when = str(report.get("when") or "")
+        key = f"{when}:{outcome}" if when else outcome
+        outcome_counts[key] = int(outcome_counts.get(key, 0)) + 1
+        if outcome == "failed":
+            failed_nodeids.add(str(report.get("nodeid") or ""))
+    failed_nodeids.update(str(error.get("nodeid") or "") for error in collection_errors)
+    return {
+        "collected_count": len(list(collected_nodeids)),
+        "failed_nodeid_count": len([nodeid for nodeid in failed_nodeids if nodeid]),
+        "collection_error_count": len(list(collection_errors)),
+        "outcome_counts": outcome_counts,
+        "classification_counts": {key: len(value) for key, value in classifications.items()},
+    }
+
+
+def _build_payload(
+    *,
+    baseline_kind: str,
+    pytest_args: Sequence[str],
+    exitstatus: int,
+    collector: FullTestDebtCollector,
+    pytest_version: str,
+    generated_at: str,
+    head_sha: str,
+    required_paths: Sequence[str],
+) -> Dict[str, Any]:
+    classifications = _classify_failures(collector.reports, collector.collection_errors, required_paths, baseline_kind)
+    summary = _summarize(collector.collected_nodeids, collector.reports, collector.collection_errors, classifications)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "baseline_kind": baseline_kind,
+        "importable": False,
+        "generated_at": generated_at,
+        "head_sha": head_sha,
+        "python_executable": sys.executable,
+        "python_version": sys.version.splitlines()[0],
+        "pytest_version": pytest_version,
+        "pytest_args": list(pytest_args),
+        "exitstatus": int(exitstatus),
+        "collected_nodeids": list(collector.collected_nodeids),
+        "collection_errors": list(collector.collection_errors),
+        "reports": list(collector.reports),
+        "summary": summary,
+        "classifications": classifications,
+    }
+
+
+def _render_baseline_markdown(payload: Dict[str, Any]) -> str:
+    summary = dict(payload.get("summary") or {})
+    baseline_kind = str(payload.get("baseline_kind") or "")
+    title = "Full pytest P0 raw baseline"
+    description = "本文件记录 main-style 子进程隔离前的 full pytest 现场，只用于排查和对比。"
+    if baseline_kind == "after_main_style_isolation":
+        title = "Full pytest P0 after isolation baseline"
+        description = "本文件记录 main-style 子进程隔离后的 full pytest 对比现场，只用于任务 3 承接，不允许导入债务台账。"
+    lines = [
+        f"# {title}",
+        "",
+        description,
+        "",
+        f"- baseline_kind: `{payload.get('baseline_kind')}`",
+        f"- importable: `{str(payload.get('importable')).lower()}`",
+        f"- exitstatus: `{payload.get('exitstatus')}`",
+        f"- collected_count: `{summary.get('collected_count')}`",
+        f"- failed_nodeid_count: `{summary.get('failed_nodeid_count')}`",
+        "",
+        BASELINE_BEGIN,
+        "```json",
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+        "```",
+        BASELINE_END,
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
+    raw_args = list(argv if argv is not None else sys.argv[1:])
+    if "--" not in raw_args:
+        raise SystemExit(
+            "用法：collect_full_test_debt.py [--baseline-kind raw_before_isolation|after_main_style_isolation] "
+            "[--write-baseline PATH] -- <pytest args>"
+        )
+    separator = raw_args.index("--")
+    own_args = raw_args[:separator]
+    pytest_args = raw_args[separator + 1 :]
+    parser = argparse.ArgumentParser(description="Collect full pytest debt facts as structured JSON")
+    parser.add_argument(
+        "--baseline-kind",
+        default="raw_before_isolation",
+        choices=["raw_before_isolation", "after_main_style_isolation"],
+    )
+    parser.add_argument("--write-baseline")
+    parsed = parser.parse_args(own_args)
+    if not pytest_args:
+        parser.error("必须在 -- 后提供 pytest 参数")
+    parsed.pytest_args = pytest_args
+    return parsed
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = _parse_args(argv)
+    import pytest
+
+    logging.raiseExceptions = False
+    collector = FullTestDebtCollector()
+    pytest_stdout = io.StringIO()
+    pytest_stderr = io.StringIO()
+    generated_at = _now_iso()
+    head_sha = _git_head_sha()
+    required_paths = iter_quality_gate_required_tests()
+
+    with contextlib.redirect_stderr(pytest_stderr):
+        with contextlib.redirect_stdout(pytest_stdout):
+            exitstatus = int(pytest.main(list(args.pytest_args), plugins=[collector]))
+        if collector.exitstatus is not None:
+            exitstatus = int(collector.exitstatus)
+
+        payload = _build_payload(
+            baseline_kind=str(args.baseline_kind),
+            pytest_args=list(args.pytest_args),
+            exitstatus=exitstatus,
+            collector=collector,
+            pytest_version=str(getattr(pytest, "__version__", "")),
+            generated_at=generated_at,
+            head_sha=head_sha,
+            required_paths=required_paths,
+        )
+        if args.write_baseline:
+            baseline_path = Path(str(args.write_baseline))
+            baseline_path.parent.mkdir(parents=True, exist_ok=True)
+            baseline_path.write_text(_render_baseline_markdown(payload), encoding="utf-8")
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    sys.stdout.write("\n")
+    return int(exitstatus)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
