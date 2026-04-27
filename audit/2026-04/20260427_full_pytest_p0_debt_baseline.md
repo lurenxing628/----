@@ -666,12 +666,12 @@
     "no:cacheprovider"
   ],
   "exitstatus": 0,
-  "generated_at": "2026-04-27T14:21:22+08:00",
+  "generated_at": "2026-04-27T14:29:53+08:00",
   "git_status_short_after_write": [
     " M audit/2026-04/20260427_full_pytest_p0_debt_baseline.md"
   ],
   "git_status_short_before": [],
-  "head_sha": "a40175738f93c2b713ce7f0dd05847eab1883a6b",
+  "head_sha": "75b0c77cceddf5fa2c887fd281767c93e745b282",
   "importable": true,
   "importable_blockers": [],
   "pytest_args": [
@@ -687,13251 +687,13251 @@
   "python_version": "3.8.10 (v3.8.10:3d8993a744, May  3 2021, 09:09:08) ",
   "reports": [
     {
-      "duration": 0.0002099160000000877,
+      "duration": 0.00023304200000007214,
       "longrepr": "",
       "nodeid": "tests/regression/regression_collection_contract.py::regression_collection_contract",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.02149687499999997,
+      "duration": 0.021529750000000014,
       "longrepr": "",
       "nodeid": "tests/regression/regression_collection_contract.py::regression_collection_contract",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.137500000005016e-05,
+      "duration": 7.71660000000729e-05,
       "longrepr": "",
       "nodeid": "tests/regression/regression_collection_contract.py::regression_collection_contract",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.587499999997302e-05,
+      "duration": 4.599999999999049e-05,
       "longrepr": "",
       "nodeid": "tests/regression_app_db_path_no_dirname.py::regression_app_db_path_no_dirname",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.6632340840000001,
+      "duration": 0.664389458,
       "longrepr": "",
       "nodeid": "tests/regression_app_db_path_no_dirname.py::regression_app_db_path_no_dirname",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00013129099999997784,
+      "duration": 8.812499999999446e-05,
       "longrepr": "",
       "nodeid": "tests/regression_app_db_path_no_dirname.py::regression_app_db_path_no_dirname",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.712499999988019e-05,
+      "duration": 4.8000000000048004e-05,
       "longrepr": "",
       "nodeid": "tests/regression_app_new_ui_secret_key_runtime_ensure.py::regression_app_new_ui_secret_key_runtime_ensure",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.6580179589999999,
+      "duration": 0.6688153340000003,
       "longrepr": "",
       "nodeid": "tests/regression_app_new_ui_secret_key_runtime_ensure.py::regression_app_new_ui_secret_key_runtime_ensure",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 9.062499999989981e-05,
+      "duration": 7.825000000005744e-05,
       "longrepr": "",
       "nodeid": "tests/regression_app_new_ui_secret_key_runtime_ensure.py::regression_app_new_ui_secret_key_runtime_ensure",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.833300000006702e-05,
+      "duration": 4.6207999999658966e-05,
       "longrepr": "",
       "nodeid": "tests/regression_app_new_ui_security_hardening_enabled.py::regression_app_new_ui_security_hardening_enabled",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.6917373339999999,
+      "duration": 0.7054800000000001,
       "longrepr": "",
       "nodeid": "tests/regression_app_new_ui_security_hardening_enabled.py::regression_app_new_ui_security_hardening_enabled",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 9.274999999986377e-05,
+      "duration": 7.704200000002714e-05,
       "longrepr": "",
       "nodeid": "tests/regression_app_new_ui_security_hardening_enabled.py::regression_app_new_ui_security_hardening_enabled",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.3999999999998494e-05,
+      "duration": 5.27919999999682e-05,
       "longrepr": "",
       "nodeid": "tests/regression_app_new_ui_session_contract.py::regression_app_new_ui_session_contract",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.6594429580000001,
+      "duration": 0.6668776250000001,
       "longrepr": "",
       "nodeid": "tests/regression_app_new_ui_session_contract.py::regression_app_new_ui_session_contract",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 9.045800000029303e-05,
+      "duration": 8.012499999976441e-05,
       "longrepr": "",
       "nodeid": "tests/regression_app_new_ui_session_contract.py::regression_app_new_ui_session_contract",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.024999999969637e-05,
+      "duration": 4.895899999990405e-05,
       "longrepr": "",
       "nodeid": "tests/regression_auto_assign_empty_resource_pool.py::regression_auto_assign_empty_resource_pool",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.06183533299999988,
+      "duration": 0.06223429199999986,
       "longrepr": "",
       "nodeid": "tests/regression_auto_assign_empty_resource_pool.py::regression_auto_assign_empty_resource_pool",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00011404199999986986,
+      "duration": 9.766699999991246e-05,
       "longrepr": "",
       "nodeid": "tests/regression_auto_assign_empty_resource_pool.py::regression_auto_assign_empty_resource_pool",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.416700000004937e-05,
+      "duration": 5.208299999992505e-05,
       "longrepr": "",
       "nodeid": "tests/regression_auto_assign_fixed_operator_respects_op_type.py::regression_auto_assign_fixed_operator_respects_op_type",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.06201762500000019,
+      "duration": 0.06068920799999988,
       "longrepr": "",
       "nodeid": "tests/regression_auto_assign_fixed_operator_respects_op_type.py::regression_auto_assign_fixed_operator_respects_op_type",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.262500000011386e-05,
+      "duration": 0.00010016700000026191,
       "longrepr": "",
       "nodeid": "tests/regression_auto_assign_fixed_operator_respects_op_type.py::regression_auto_assign_fixed_operator_respects_op_type",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.820799999993852e-05,
+      "duration": 6.179200000033802e-05,
       "longrepr": "",
       "nodeid": "tests/regression_backup_restore_pending_verify_code.py::regression_backup_restore_pending_verify_code",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.03695466699999983,
+      "duration": 0.03670699999999982,
       "longrepr": "",
       "nodeid": "tests/regression_backup_restore_pending_verify_code.py::regression_backup_restore_pending_verify_code",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00010370800000014668,
+      "duration": 8.475000000007782e-05,
       "longrepr": "",
       "nodeid": "tests/regression_backup_restore_pending_verify_code.py::regression_backup_restore_pending_verify_code",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.7249999999721126e-05,
+      "duration": 4.9084000000032546e-05,
       "longrepr": "",
       "nodeid": "tests/regression_batch_detail_linkage.py::regression_batch_detail_linkage",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.6973596670000002,
+      "duration": 0.7027810420000002,
       "longrepr": "",
       "nodeid": "tests/regression_batch_detail_linkage.py::regression_batch_detail_linkage",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.004100000036374e-05,
+      "duration": 9.883300000002038e-05,
       "longrepr": "",
       "nodeid": "tests/regression_batch_detail_linkage.py::regression_batch_detail_linkage",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.866700000061286e-05,
+      "duration": 5.620800000016857e-05,
       "longrepr": "",
       "nodeid": "tests/regression_batch_excel_import_strict_mode_hardfail_atomic.py::regression_batch_excel_import_strict_mode_hardfail_atomic",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.11276337499999922,
+      "duration": 0.11153729099999943,
       "longrepr": "",
       "nodeid": "tests/regression_batch_excel_import_strict_mode_hardfail_atomic.py::regression_batch_excel_import_strict_mode_hardfail_atomic",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 9.279199999934207e-05,
+      "duration": 7.608400000069793e-05,
       "longrepr": "",
       "nodeid": "tests/regression_batch_excel_import_strict_mode_hardfail_atomic.py::regression_batch_excel_import_strict_mode_hardfail_atomic",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.33750000002442e-05,
+      "duration": 5.3249999999671616e-05,
       "longrepr": "",
       "nodeid": "tests/regression_batch_excel_preview_confirm_strict_mode_extra_state_guard.py::regression_batch_excel_preview_confirm_strict_mode_extra_state_guard",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.7045672500000002,
+      "duration": 0.6998539159999995,
       "longrepr": "",
       "nodeid": "tests/regression_batch_excel_preview_confirm_strict_mode_extra_state_guard.py::regression_batch_excel_preview_confirm_strict_mode_extra_state_guard",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00011895899999991855,
+      "duration": 0.00011637500000016843,
       "longrepr": "",
       "nodeid": "tests/regression_batch_excel_preview_confirm_strict_mode_extra_state_guard.py::regression_batch_excel_preview_confirm_strict_mode_extra_state_guard",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.945800000033529e-05,
+      "duration": 5.866599999926336e-05,
       "longrepr": "",
       "nodeid": "tests/regression_batch_import_unchanged_no_rebuild.py::regression_batch_import_unchanged_no_rebuild",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.04726545800000004,
+      "duration": 0.046506292000000116,
       "longrepr": "",
       "nodeid": "tests/regression_batch_import_unchanged_no_rebuild.py::regression_batch_import_unchanged_no_rebuild",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 7.300000000043383e-05,
+      "duration": 7.5166999999432e-05,
       "longrepr": "",
       "nodeid": "tests/regression_batch_import_unchanged_no_rebuild.py::regression_batch_import_unchanged_no_rebuild",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.7249999999721126e-05,
+      "duration": 5.945799999995671e-05,
       "longrepr": "",
       "nodeid": "tests/regression_batch_order_bid_unboundlocal.py::regression_batch_order_bid_unboundlocal",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.06143233299999995,
+      "duration": 0.061115832999999675,
       "longrepr": "",
       "nodeid": "tests/regression_batch_order_bid_unboundlocal.py::regression_batch_order_bid_unboundlocal",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00011916700000025315,
+      "duration": 7.649999999959078e-05,
       "longrepr": "",
       "nodeid": "tests/regression_batch_order_bid_unboundlocal.py::regression_batch_order_bid_unboundlocal",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.083300000041646e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_batch_order_override_dedup.py::regression_batch_order_override_dedup",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06071749999999998,
-      "longrepr": "",
-      "nodeid": "tests/regression_batch_order_override_dedup.py::regression_batch_order_override_dedup",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.958299999977214e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_batch_order_override_dedup.py::regression_batch_order_override_dedup",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.8833000000136906e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_batch_service_strict_mode_template_autoparse.py::regression_batch_service_strict_mode_template_autoparse",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.11196300000000026,
-      "longrepr": "",
-      "nodeid": "tests/regression_batch_service_strict_mode_template_autoparse.py::regression_batch_service_strict_mode_template_autoparse",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.200000000080365e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_batch_service_strict_mode_template_autoparse.py::regression_batch_service_strict_mode_template_autoparse",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.712500000003672e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_batch_template_autobuild_same_tx.py::regression_batch_template_autobuild_same_tx",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.11110083300000007,
-      "longrepr": "",
-      "nodeid": "tests/regression_batch_template_autobuild_same_tx.py::regression_batch_template_autobuild_same_tx",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011175000000029911,
-      "longrepr": "",
-      "nodeid": "tests/regression_batch_template_autobuild_same_tx.py::regression_batch_template_autobuild_same_tx",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.7291000000448946e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_build_outcome_contract.py::regression_build_outcome_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.024668375000000076,
-      "longrepr": "",
-      "nodeid": "tests/regression_build_outcome_contract.py::regression_build_outcome_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.629200000014436e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_build_outcome_contract.py::regression_build_outcome_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.579199999987793e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_export_normalization.py::regression_calendar_export_normalization",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7388527910000002,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_export_normalization.py::regression_calendar_export_normalization",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.862500000006435e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_export_normalization.py::regression_calendar_export_normalization",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.0625000000081855e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_no_tx_hardening.py::regression_calendar_no_tx_hardening",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07786079200000007,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_no_tx_hardening.py::regression_calendar_no_tx_hardening",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.066699999975668e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_no_tx_hardening.py::regression_calendar_no_tx_hardening",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.795800000056971e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_pages_readside_normalization.py::regression_calendar_pages_readside_normalization",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7003185420000007,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_pages_readside_normalization.py::regression_calendar_pages_readside_normalization",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.225000000017246e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_pages_readside_normalization.py::regression_calendar_pages_readside_normalization",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.129199999931444e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_shift_hours_roundtrip.py::regression_calendar_shift_hours_roundtrip",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.12863670800000016,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_shift_hours_roundtrip.py::regression_calendar_shift_hours_roundtrip",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.141600000006633e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_shift_hours_roundtrip.py::regression_calendar_shift_hours_roundtrip",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.054100000023709e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_shift_start_rollover.py::regression_calendar_shift_start_rollover",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06766979200000023,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_shift_start_rollover.py::regression_calendar_shift_start_rollover",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.38339999997828e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_calendar_shift_start_rollover.py::regression_calendar_shift_start_rollover",
       "outcome": "passed",
       "when": "teardown"
     },
     {
       "duration": 4.6417000000076314e-05,
       "longrepr": "",
+      "nodeid": "tests/regression_batch_order_override_dedup.py::regression_batch_order_override_dedup",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.062098999999999904,
+      "longrepr": "",
+      "nodeid": "tests/regression_batch_order_override_dedup.py::regression_batch_order_override_dedup",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.954099999998078e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_batch_order_override_dedup.py::regression_batch_order_override_dedup",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.204100000000267e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_batch_service_strict_mode_template_autoparse.py::regression_batch_service_strict_mode_template_autoparse",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.11282566599999999,
+      "longrepr": "",
+      "nodeid": "tests/regression_batch_service_strict_mode_template_autoparse.py::regression_batch_service_strict_mode_template_autoparse",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012370799999938953,
+      "longrepr": "",
+      "nodeid": "tests/regression_batch_service_strict_mode_template_autoparse.py::regression_batch_service_strict_mode_template_autoparse",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.7208000000308346e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_batch_template_autobuild_same_tx.py::regression_batch_template_autobuild_same_tx",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.11037766699999985,
+      "longrepr": "",
+      "nodeid": "tests/regression_batch_template_autobuild_same_tx.py::regression_batch_template_autobuild_same_tx",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.983399999922369e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_batch_template_autobuild_same_tx.py::regression_batch_template_autobuild_same_tx",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.174999999990604e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_build_outcome_contract.py::regression_build_outcome_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.024706874999999684,
+      "longrepr": "",
+      "nodeid": "tests/regression_build_outcome_contract.py::regression_build_outcome_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.49169999996846e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_build_outcome_contract.py::regression_build_outcome_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.366600000034083e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_export_normalization.py::regression_calendar_export_normalization",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7425385000000002,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_export_normalization.py::regression_calendar_export_normalization",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.53750000002762e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_export_normalization.py::regression_calendar_export_normalization",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.741600000013335e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_no_tx_hardening.py::regression_calendar_no_tx_hardening",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.07782504199999973,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_no_tx_hardening.py::regression_calendar_no_tx_hardening",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00016520800000030533,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_no_tx_hardening.py::regression_calendar_no_tx_hardening",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 7.937500000032571e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_pages_readside_normalization.py::regression_calendar_pages_readside_normalization",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7010576250000007,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_pages_readside_normalization.py::regression_calendar_pages_readside_normalization",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.883400000086027e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_pages_readside_normalization.py::regression_calendar_pages_readside_normalization",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7958999999764274e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_shift_hours_roundtrip.py::regression_calendar_shift_hours_roundtrip",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.13139187499999938,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_shift_hours_roundtrip.py::regression_calendar_shift_hours_roundtrip",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001335000000004527,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_shift_hours_roundtrip.py::regression_calendar_shift_hours_roundtrip",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.737499999991513e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_shift_start_rollover.py::regression_calendar_shift_start_rollover",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06798270800000061,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_shift_start_rollover.py::regression_calendar_shift_start_rollover",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.258299999968187e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_calendar_shift_start_rollover.py::regression_calendar_shift_start_rollover",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.75419999999005e-05,
+      "longrepr": "",
       "nodeid": "tests/regression_check_manual_layout_runtime_resolution.py::regression_check_manual_layout_runtime_resolution",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 1.5838368750000011,
+      "duration": 1.0811159999999997,
       "longrepr": "",
       "nodeid": "tests/regression_check_manual_layout_runtime_resolution.py::regression_check_manual_layout_runtime_resolution",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00018425000000021896,
+      "duration": 0.0003324169999991966,
       "longrepr": "",
       "nodeid": "tests/regression_check_manual_layout_runtime_resolution.py::regression_check_manual_layout_runtime_resolution",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 0.00011016600000068877,
+      "duration": 0.00012662500000004684,
       "longrepr": "",
       "nodeid": "tests/regression_common_broad_false_fixed.py::regression_common_broad_false_fixed",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.037931250000001526,
+      "duration": 0.04072366699999996,
       "longrepr": "",
       "nodeid": "tests/regression_common_broad_false_fixed.py::regression_common_broad_false_fixed",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00014491700000007768,
+      "duration": 0.000118708000000467,
       "longrepr": "",
       "nodeid": "tests/regression_common_broad_false_fixed.py::regression_common_broad_false_fixed",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 6.383400000053996e-05,
+      "duration": 7.083300000054749e-05,
       "longrepr": "",
       "nodeid": "tests/regression_compat_parse_emits_degradation.py::regression_compat_parse_emits_degradation",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.03452200000000083,
+      "duration": 0.035064625000000404,
       "longrepr": "",
       "nodeid": "tests/regression_compat_parse_emits_degradation.py::regression_compat_parse_emits_degradation",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.000207415999998517,
+      "duration": 0.0001051670000009608,
       "longrepr": "",
       "nodeid": "tests/regression_compat_parse_emits_degradation.py::regression_compat_parse_emits_degradation",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 6.758299999987116e-05,
+      "duration": 5.749999999871136e-05,
       "longrepr": "",
       "nodeid": "tests/regression_config_manual_markdown.py::regression_config_manual_markdown",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.7774555419999984,
+      "duration": 0.8509328329999999,
       "longrepr": "",
       "nodeid": "tests/regression_config_manual_markdown.py::regression_config_manual_markdown",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.499999999855845e-05,
+      "duration": 7.854199999890454e-05,
       "longrepr": "",
       "nodeid": "tests/regression_config_manual_markdown.py::regression_config_manual_markdown",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.0082999999645494e-05,
+      "duration": 5.741600000064295e-05,
       "longrepr": "",
       "nodeid": "tests/regression_config_snapshot_strict_numeric.py::regression_config_snapshot_strict_numeric",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.04457291599999991,
+      "duration": 0.045249332999999226,
       "longrepr": "",
       "nodeid": "tests/regression_config_snapshot_strict_numeric.py::regression_config_snapshot_strict_numeric",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.770800000057477e-05,
+      "duration": 9.408300000046665e-05,
       "longrepr": "",
       "nodeid": "tests/regression_config_snapshot_strict_numeric.py::regression_config_snapshot_strict_numeric",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 6.774999999947795e-05,
+      "duration": 5.037499999893669e-05,
       "longrepr": "",
       "nodeid": "tests/regression_dashboard_overdue_count_tolerance.py::regression_dashboard_overdue_count_tolerance",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.6868107499999994,
+      "duration": 0.7018737909999988,
       "longrepr": "",
       "nodeid": "tests/regression_dashboard_overdue_count_tolerance.py::regression_dashboard_overdue_count_tolerance",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.600000000136276e-05,
+      "duration": 8.187500000111925e-05,
       "longrepr": "",
       "nodeid": "tests/regression_dashboard_overdue_count_tolerance.py::regression_dashboard_overdue_count_tolerance",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.712500000003672e-05,
+      "duration": 4.887499999917111e-05,
       "longrepr": "",
       "nodeid": "tests/regression_degradation_collector_merge_counts.py::regression_degradation_collector_merge_counts",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.024858333000000954,
+      "duration": 0.02519054100000062,
       "longrepr": "",
       "nodeid": "tests/regression_degradation_collector_merge_counts.py::regression_degradation_collector_merge_counts",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.895800000097154e-05,
+      "duration": 7.987500000083969e-05,
       "longrepr": "",
       "nodeid": "tests/regression_degradation_collector_merge_counts.py::regression_degradation_collector_merge_counts",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.9875000000199066e-05,
+      "duration": 4.941599999952473e-05,
       "longrepr": "",
       "nodeid": "tests/regression_deletion_validator_source_case_insensitive.py::regression_deletion_validator_source_case_insensitive",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.10131066599999983,
+      "duration": 0.10426879200000094,
       "longrepr": "",
       "nodeid": "tests/regression_deletion_validator_source_case_insensitive.py::regression_deletion_validator_source_case_insensitive",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00010816700000049195,
+      "duration": 0.00010104200000071728,
       "longrepr": "",
       "nodeid": "tests/regression_deletion_validator_source_case_insensitive.py::regression_deletion_validator_source_case_insensitive",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.787499999991951e-05,
+      "duration": 6.14170000012848e-05,
       "longrepr": "",
       "nodeid": "tests/regression_dict_cfg_contract.py::regression_dict_cfg_contract",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0805532909999993,
+      "duration": 0.08173941699999965,
       "longrepr": "",
       "nodeid": "tests/regression_dict_cfg_contract.py::regression_dict_cfg_contract",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00010462500000052444,
+      "duration": 7.387500000000102e-05,
       "longrepr": "",
       "nodeid": "tests/regression_dict_cfg_contract.py::regression_dict_cfg_contract",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.825000000074908e-05,
+      "duration": 5.85419999996617e-05,
       "longrepr": "",
       "nodeid": "tests/regression_dispatch_blocking_consistency.py::regression_dispatch_blocking_consistency",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.06103725000000004,
+      "duration": 0.06101787499999922,
       "longrepr": "",
       "nodeid": "tests/regression_dispatch_blocking_consistency.py::regression_dispatch_blocking_consistency",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 9.133300000030431e-05,
+      "duration": 0.0001240410000011849,
       "longrepr": "",
       "nodeid": "tests/regression_dispatch_blocking_consistency.py::regression_dispatch_blocking_consistency",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.591700000133869e-05,
+      "duration": 5.1665999999173096e-05,
       "longrepr": "",
       "nodeid": "tests/regression_dispatch_rule_case_insensitive.py::regression_dispatch_rule_case_insensitive",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.057178957999999724,
+      "duration": 0.05724866599999956,
       "longrepr": "",
       "nodeid": "tests/regression_dispatch_rule_case_insensitive.py::regression_dispatch_rule_case_insensitive",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 9.866699999960815e-05,
+      "duration": 8.83329999989968e-05,
       "longrepr": "",
       "nodeid": "tests/regression_dispatch_rule_case_insensitive.py::regression_dispatch_rule_case_insensitive",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.183300000055624e-05,
+      "duration": 5.1166000000435474e-05,
       "longrepr": "",
       "nodeid": "tests/regression_dispatch_rules_nonfinite_proc_hours_safe.py::regression_dispatch_rules_nonfinite_proc_hours_safe",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.05717787500000071,
+      "duration": 0.058434625000000295,
       "longrepr": "",
       "nodeid": "tests/regression_dispatch_rules_nonfinite_proc_hours_safe.py::regression_dispatch_rules_nonfinite_proc_hours_safe",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 9.287499999999227e-05,
+      "duration": 8.175000000143484e-05,
       "longrepr": "",
       "nodeid": "tests/regression_dispatch_rules_nonfinite_proc_hours_safe.py::regression_dispatch_rules_nonfinite_proc_hours_safe",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.666600000113874e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_dispatch_rules_priority_case_insensitive.py::regression_dispatch_rules_priority_case_insensitive",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.05834658300000051,
-      "longrepr": "",
-      "nodeid": "tests/regression_dispatch_rules_priority_case_insensitive.py::regression_dispatch_rules_priority_case_insensitive",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010720799999930364,
-      "longrepr": "",
-      "nodeid": "tests/regression_dispatch_rules_priority_case_insensitive.py::regression_dispatch_rules_priority_case_insensitive",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.995799999996109e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_downtime_overlap_skips_invalid_segments.py::regression_downtime_overlap_skips_invalid_segments",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.05972508300000001,
-      "longrepr": "",
-      "nodeid": "tests/regression_downtime_overlap_skips_invalid_segments.py::regression_downtime_overlap_skips_invalid_segments",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.920900000080167e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_downtime_overlap_skips_invalid_segments.py::regression_downtime_overlap_skips_invalid_segments",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.97910000003543e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_due_exclusive_consistency.py::regression_due_exclusive_consistency",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.14693737500000026,
-      "longrepr": "",
-      "nodeid": "tests/regression_due_exclusive_consistency.py::regression_due_exclusive_consistency",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.350000000019065e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_due_exclusive_consistency.py::regression_due_exclusive_consistency",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.883299999924873e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_due_exclusive_guard_contract.py::regression_due_exclusive_guard_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.13971333399999963,
-      "longrepr": "",
-      "nodeid": "tests/regression_due_exclusive_guard_contract.py::regression_due_exclusive_guard_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.47920000005098e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_due_exclusive_guard_contract.py::regression_due_exclusive_guard_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.9625000000830255e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_efficiency_greater_than_one_shortens_hours.py::regression_efficiency_greater_than_one_shortens_hours",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.05982350000000025,
-      "longrepr": "",
-      "nodeid": "tests/regression_efficiency_greater_than_one_shortens_hours.py::regression_efficiency_greater_than_one_shortens_hours",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.537500000116438e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_efficiency_greater_than_one_shortens_hours.py::regression_efficiency_greater_than_one_shortens_hours",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.7750000000235104e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_ensure_schema_fastforward_empty_only.py::regression_ensure_schema_fastforward_empty_only",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06065337499999934,
-      "longrepr": "",
-      "nodeid": "tests/regression_ensure_schema_fastforward_empty_only.py::regression_ensure_schema_fastforward_empty_only",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011595900000038739,
-      "longrepr": "",
-      "nodeid": "tests/regression_ensure_schema_fastforward_empty_only.py::regression_ensure_schema_fastforward_empty_only",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.9625000000830255e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_demo_upload_guard.py::regression_excel_demo_upload_guard",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.704940624999999,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_demo_upload_guard.py::regression_excel_demo_upload_guard",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.762499999903639e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_demo_upload_guard.py::regression_excel_demo_upload_guard",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.637500000015393e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_failure_semantics_contracts.py::regression_excel_failure_semantics_contracts",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.16288650000000082,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_failure_semantics_contracts.py::regression_excel_failure_semantics_contracts",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.166699999989646e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_failure_semantics_contracts.py::regression_excel_failure_semantics_contracts",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.6916999998813935e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_import_executor_status_gate.py::regression_excel_import_executor_status_gate",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.031230041999998903,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_import_executor_status_gate.py::regression_excel_import_executor_status_gate",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.083299999979033e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_import_executor_status_gate.py::regression_excel_import_executor_status_gate",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.7750000000235104e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_import_result_semantics.py::regression_excel_import_result_semantics",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 1.0099557919999995,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_import_result_semantics.py::regression_excel_import_result_semantics",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.912500000057832e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_import_result_semantics.py::regression_excel_import_result_semantics",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.833299999873475e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_import_strict_reference_apply.py::regression_excel_import_strict_reference_apply",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.12231420799999881,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_import_strict_reference_apply.py::regression_excel_import_strict_reference_apply",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.412499999861268e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_import_strict_reference_apply.py::regression_excel_import_strict_reference_apply",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.795799999968153e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_normalizers_mixed_case.py::regression_excel_normalizers_mixed_case",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.20194408400000086,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_normalizers_mixed_case.py::regression_excel_normalizers_mixed_case",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00016812500000007446,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_normalizers_mixed_case.py::regression_excel_normalizers_mixed_case",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.383299999905944e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_operator_calendar_cross_midnight.py::regression_excel_operator_calendar_cross_midnight",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.04277229199999866,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_operator_calendar_cross_midnight.py::regression_excel_operator_calendar_cross_midnight",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.108400000139682e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_operator_calendar_cross_midnight.py::regression_excel_operator_calendar_cross_midnight",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.7000000000352316e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_preview_confirm_baseline_guard.py::regression_excel_preview_confirm_baseline_guard",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.750954333000001,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_preview_confirm_baseline_guard.py::regression_excel_preview_confirm_baseline_guard",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.958299999939356e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_preview_confirm_baseline_guard.py::regression_excel_preview_confirm_baseline_guard",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.083299999952828e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_preview_confirm_extra_state_guard.py::regression_excel_preview_confirm_extra_state_guard",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7693949159999995,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_preview_confirm_extra_state_guard.py::regression_excel_preview_confirm_extra_state_guard",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.400000000108321e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_preview_confirm_extra_state_guard.py::regression_excel_preview_confirm_extra_state_guard",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.80419999995263e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_routes_no_tx_surface_hidden.py::regression_excel_routes_no_tx_surface_hidden",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.020176041999999228,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_routes_no_tx_surface_hidden.py::regression_excel_routes_no_tx_surface_hidden",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.42920000003744e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_routes_no_tx_surface_hidden.py::regression_excel_routes_no_tx_surface_hidden",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.733299999948315e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_service_calc_changes_row.py::regression_excel_service_calc_changes_row",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.027311708000000934,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_service_calc_changes_row.py::regression_excel_service_calc_changes_row",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.037499999919874e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_service_calc_changes_row.py::regression_excel_service_calc_changes_row",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.9584000000990613e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_source_row_num_preserved.py::regression_excel_source_row_num_preserved",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.056274292000001225,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_source_row_num_preserved.py::regression_excel_source_row_num_preserved",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010479100000004848,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_source_row_num_preserved.py::regression_excel_source_row_num_preserved",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.366699999953539e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_validators_yesno_mixed_case.py::regression_excel_validators_yesno_mixed_case",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.04047850000000075,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_validators_yesno_mixed_case.py::regression_excel_validators_yesno_mixed_case",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.51669999999416e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_excel_validators_yesno_mixed_case.py::regression_excel_validators_yesno_mixed_case",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.6750000000983505e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_exit_backup_maintenance.py::regression_exit_backup_maintenance",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.3100967920000013,
-      "longrepr": "",
-      "nodeid": "tests/regression_exit_backup_maintenance.py::regression_exit_backup_maintenance",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.683399999931396e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_exit_backup_maintenance.py::regression_exit_backup_maintenance",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.9833000000276684e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_exit_backup_reloader_parent_skip.py::regression_exit_backup_reloader_parent_skip",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.3080786250000003,
-      "longrepr": "",
-      "nodeid": "tests/regression_exit_backup_reloader_parent_skip.py::regression_exit_backup_reloader_parent_skip",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.058300000219788e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_exit_backup_reloader_parent_skip.py::regression_exit_backup_reloader_parent_skip",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.8207999999050344e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_exit_backup_respects_config.py::regression_exit_backup_respects_config",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.31538895899999986,
-      "longrepr": "",
-      "nodeid": "tests/regression_exit_backup_respects_config.py::regression_exit_backup_respects_config",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.916600000219432e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_exit_backup_respects_config.py::regression_exit_backup_respects_config",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.366599999945265e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_group_service_compatible_mode_logs_fallback.py::regression_external_group_service_compatible_mode_logs_fallback",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.11932524999999927,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_group_service_compatible_mode_logs_fallback.py::regression_external_group_service_compatible_mode_logs_fallback",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00018774999999848774,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_group_service_compatible_mode_logs_fallback.py::regression_external_group_service_compatible_mode_logs_fallback",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.487500000000978e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_group_service_merge_mode_case_insensitive.py::regression_external_group_service_merge_mode_case_insensitive",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.10311679200000157,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_group_service_merge_mode_case_insensitive.py::regression_external_group_service_merge_mode_case_insensitive",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001237500000002001,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_group_service_merge_mode_case_insensitive.py::regression_external_group_service_merge_mode_case_insensitive",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.6291999996839195e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_group_service_strict_mode_blank_days.py::regression_external_group_service_strict_mode_blank_days",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.10487195800000038,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_group_service_strict_mode_blank_days.py::regression_external_group_service_strict_mode_blank_days",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.054099999872278e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_group_service_strict_mode_blank_days.py::regression_external_group_service_strict_mode_blank_days",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.662499999952274e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_merge_mode_case_insensitive.py::regression_external_merge_mode_case_insensitive",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.05759649999999894,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_merge_mode_case_insensitive.py::regression_external_merge_mode_case_insensitive",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.10830000009355e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_external_merge_mode_case_insensitive.py::regression_external_merge_mode_case_insensitive",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.912500000031628e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_freeze_window_bounds.py::regression_freeze_window_bounds",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.13876774999999952,
-      "longrepr": "",
-      "nodeid": "tests/regression_freeze_window_bounds.py::regression_freeze_window_bounds",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.566599999999426e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_freeze_window_bounds.py::regression_freeze_window_bounds",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.079199999968864e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_frontend_common_interactions.py::regression_frontend_common_interactions",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.02166033299999981,
-      "longrepr": "",
-      "nodeid": "tests/regression_frontend_common_interactions.py::regression_frontend_common_interactions",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.912499999918055e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_frontend_common_interactions.py::regression_frontend_common_interactions",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.491599999667528e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_calendar_load_failed_degraded.py::regression_gantt_calendar_load_failed_degraded",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7062409580000022,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_calendar_load_failed_degraded.py::regression_gantt_calendar_load_failed_degraded",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.279200000060882e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_calendar_load_failed_degraded.py::regression_gantt_calendar_load_failed_degraded",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.699999999857596e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_contract_snapshot.py::regression_gantt_contract_snapshot",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.6710974579999984,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_contract_snapshot.py::regression_gantt_contract_snapshot",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010762499999827924,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_contract_snapshot.py::regression_gantt_contract_snapshot",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.1375000001741e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_critical_chain_cache_thread_safe.py::regression_gantt_critical_chain_cache_thread_safe",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.1950179169999977,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_critical_chain_cache_thread_safe.py::regression_gantt_critical_chain_cache_thread_safe",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012925000000052478,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_critical_chain_cache_thread_safe.py::regression_gantt_critical_chain_cache_thread_safe",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 7.087499999869351e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_offset_range_consistency.py::regression_gantt_offset_range_consistency",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.6973997920000023,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_offset_range_consistency.py::regression_gantt_offset_range_consistency",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.154199999983348e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_offset_range_consistency.py::regression_gantt_offset_range_consistency",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.7291000001337125e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_status_mode_semantics.py::regression_gantt_status_mode_semantics",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.049201083999999895,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_status_mode_semantics.py::regression_gantt_status_mode_semantics",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.879099999920982e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_status_mode_semantics.py::regression_gantt_status_mode_semantics",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.812499999928832e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_url_persistence.py::regression_gantt_url_persistence",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.6948269170000003,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_url_persistence.py::regression_gantt_url_persistence",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.208300000196346e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_gantt_url_persistence.py::regression_gantt_url_persistence",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.1750000000794216e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_greedy_date_parsers.py::regression_greedy_date_parsers",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06015999999999977,
-      "longrepr": "",
-      "nodeid": "tests/regression_greedy_date_parsers.py::regression_greedy_date_parsers",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.225000000157024e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_greedy_date_parsers.py::regression_greedy_date_parsers",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.87910000011027e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_greedy_scheduler_algo_stats_auto_assign.py::regression_greedy_scheduler_algo_stats_auto_assign",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06014133400000077,
-      "longrepr": "",
-      "nodeid": "tests/regression_greedy_scheduler_algo_stats_auto_assign.py::regression_greedy_scheduler_algo_stats_auto_assign",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.812499999815259e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_greedy_scheduler_algo_stats_auto_assign.py::regression_greedy_scheduler_algo_stats_auto_assign",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.629200000039191e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_greedy_scheduler_algo_stats_seed_counts.py::regression_greedy_scheduler_algo_stats_seed_counts",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06127441599999983,
-      "longrepr": "",
-      "nodeid": "tests/regression_greedy_scheduler_algo_stats_seed_counts.py::regression_greedy_scheduler_algo_stats_seed_counts",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.758399999919675e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_greedy_scheduler_algo_stats_seed_counts.py::regression_greedy_scheduler_algo_stats_seed_counts",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.808399999944868e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_import_execution_stats_source_row_num.py::regression_import_execution_stats_source_row_num",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.031030416000000116,
-      "longrepr": "",
-      "nodeid": "tests/regression_import_execution_stats_source_row_num.py::regression_import_execution_stats_source_row_num",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.300000000005525e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_import_execution_stats_source_row_num.py::regression_import_execution_stats_source_row_num",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.637500000015393e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_improve_dispatch_modes.py::regression_improve_dispatch_modes",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07161829100000006,
-      "longrepr": "",
-      "nodeid": "tests/regression_improve_dispatch_modes.py::regression_improve_dispatch_modes",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.024999999951433e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_improve_dispatch_modes.py::regression_improve_dispatch_modes",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.7333000001259506e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_lazy_select_orphan_option.py::regression_lazy_select_orphan_option",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.6960873749999976,
-      "longrepr": "",
-      "nodeid": "tests/regression_lazy_select_orphan_option.py::regression_lazy_select_orphan_option",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.429199999999582e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_lazy_select_orphan_option.py::regression_lazy_select_orphan_option",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.5582999998572404e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_legacy_external_days_defaulted_visible.py::regression_legacy_external_days_defaulted_visible",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07612879199999867,
-      "longrepr": "",
-      "nodeid": "tests/regression_legacy_external_days_defaulted_visible.py::regression_legacy_external_days_defaulted_visible",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.416699999713728e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_legacy_external_days_defaulted_visible.py::regression_legacy_external_days_defaulted_visible",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.054100000023709e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_jobstate_retry_signal.py::regression_maintenance_jobstate_retry_signal",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07571508299999863,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_jobstate_retry_signal.py::regression_maintenance_jobstate_retry_signal",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.029099999935397e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_jobstate_retry_signal.py::regression_maintenance_jobstate_retry_signal",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.6666999999445125e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_real_oplog_visibility.py::regression_maintenance_real_oplog_visibility",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06621579200000127,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_real_oplog_visibility.py::regression_maintenance_real_oplog_visibility",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010329100000205926,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_real_oplog_visibility.py::regression_maintenance_real_oplog_visibility",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.116599999865912e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_telemetry_isolation.py::regression_maintenance_telemetry_isolation",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06127795799999802,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_telemetry_isolation.py::regression_maintenance_telemetry_isolation",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.391599999768573e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_telemetry_isolation.py::regression_maintenance_telemetry_isolation",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.6666999999445125e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_window_mutex.py::regression_maintenance_window_mutex",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06506245799999988,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_window_mutex.py::regression_maintenance_window_mutex",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011150000000270666,
-      "longrepr": "",
-      "nodeid": "tests/regression_maintenance_window_mutex.py::regression_maintenance_window_mutex",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.1124999998819476e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_metrics_horizon_semantics.py::regression_metrics_horizon_semantics",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.05971845800000253,
-      "longrepr": "",
-      "nodeid": "tests/regression_metrics_horizon_semantics.py::regression_metrics_horizon_semantics",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.137500000022669e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_metrics_horizon_semantics.py::regression_metrics_horizon_semantics",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.829099999881237e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_metrics_to_dict_nonfinite_safe.py::regression_metrics_to_dict_nonfinite_safe",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06075833399999908,
-      "longrepr": "",
-      "nodeid": "tests/regression_metrics_to_dict_nonfinite_safe.py::regression_metrics_to_dict_nonfinite_safe",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00015683300000191025,
-      "longrepr": "",
-      "nodeid": "tests/regression_metrics_to_dict_nonfinite_safe.py::regression_metrics_to_dict_nonfinite_safe",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.604200000064452e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_backup_dir_none_creates_backup.py::regression_migrate_backup_dir_none_creates_backup",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.046089333999997706,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_backup_dir_none_creates_backup.py::regression_migrate_backup_dir_none_creates_backup",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.237500000163323e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_backup_dir_none_creates_backup.py::regression_migrate_backup_dir_none_creates_backup",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.987499999842271e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_v2_unify_workcalendar_day_type.py::regression_migrate_v2_unify_workcalendar_day_type",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.056702624999999784,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_v2_unify_workcalendar_day_type.py::regression_migrate_v2_unify_workcalendar_day_type",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010025000000268847,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_v2_unify_workcalendar_day_type.py::regression_migrate_v2_unify_workcalendar_day_type",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.249999999890065e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_v4_sanitize_enum_text_fields.py::regression_migrate_v4_sanitize_enum_text_fields",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.05726795800000062,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_v4_sanitize_enum_text_fields.py::regression_migrate_v4_sanitize_enum_text_fields",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.670800000132317e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_v4_sanitize_enum_text_fields.py::regression_migrate_v4_sanitize_enum_text_fields",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.937499999968509e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_v5_normalize_operator_machine_legacy_values.py::regression_migrate_v5_normalize_operator_machine_legacy_values",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.059581458000000254,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_v5_normalize_operator_machine_legacy_values.py::regression_migrate_v5_normalize_operator_machine_legacy_values",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001190839999978266,
-      "longrepr": "",
-      "nodeid": "tests/regression_migrate_v5_normalize_operator_machine_legacy_values.py::regression_migrate_v5_normalize_operator_machine_legacy_values",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.1958000000240645e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migration_failfast_no_backup_storm.py::regression_migration_failfast_no_backup_storm",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.03909612500000037,
-      "longrepr": "",
-      "nodeid": "tests/regression_migration_failfast_no_backup_storm.py::regression_migration_failfast_no_backup_storm",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.67089999978532e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migration_failfast_no_backup_storm.py::regression_migration_failfast_no_backup_storm",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.891700000086985e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migration_outcome_partial_no_upgrade.py::regression_migration_outcome_partial_no_upgrade",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.03512783300000066,
-      "longrepr": "",
-      "nodeid": "tests/regression_migration_outcome_partial_no_upgrade.py::regression_migration_outcome_partial_no_upgrade",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.262499999707074e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migration_outcome_partial_no_upgrade.py::regression_migration_outcome_partial_no_upgrade",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.154200000134779e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migration_outcome_skip_no_upgrade.py::regression_migration_outcome_skip_no_upgrade",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.05797870800000027,
-      "longrepr": "",
-      "nodeid": "tests/regression_migration_outcome_skip_no_upgrade.py::regression_migration_outcome_skip_no_upgrade",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.675000000124555e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_migration_outcome_skip_no_upgrade.py::regression_migration_outcome_skip_no_upgrade",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.9291999999923064e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_model_enums_case_insensitive.py::regression_model_enums_case_insensitive",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.03558849999999936,
-      "longrepr": "",
-      "nodeid": "tests/regression_model_enums_case_insensitive.py::regression_model_enums_case_insensitive",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011687499999979423,
-      "longrepr": "",
-      "nodeid": "tests/regression_model_enums_case_insensitive.py::regression_model_enums_case_insensitive",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.366699999953539e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_models_numeric_parse_hybrid_safe.py::regression_models_numeric_parse_hybrid_safe",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.03573745799999983,
-      "longrepr": "",
-      "nodeid": "tests/regression_models_numeric_parse_hybrid_safe.py::regression_models_numeric_parse_hybrid_safe",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.22920000018712e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_models_numeric_parse_hybrid_safe.py::regression_models_numeric_parse_hybrid_safe",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.099999999913507e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_normalization_matrix_single_source.py::regression_normalization_matrix_single_source",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.17238233299999806,
-      "longrepr": "",
-      "nodeid": "tests/regression_normalization_matrix_single_source.py::regression_normalization_matrix_single_source",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.533300000086342e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_normalization_matrix_single_source.py::regression_normalization_matrix_single_source",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.820800000260306e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_number_utils_facade_delegates_strict_parse.py::regression_number_utils_facade_delegates_strict_parse",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.02641837499999866,
-      "longrepr": "",
-      "nodeid": "tests/regression_number_utils_facade_delegates_strict_parse.py::regression_number_utils_facade_delegates_strict_parse",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.508299999832047e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_number_utils_facade_delegates_strict_parse.py::regression_number_utils_facade_delegates_strict_parse",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.674999999920715e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_objective_case_normalization.py::regression_objective_case_normalization",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06641974999999789,
-      "longrepr": "",
-      "nodeid": "tests/regression_objective_case_normalization.py::regression_objective_case_normalization",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.79579999985458e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_objective_case_normalization.py::regression_objective_case_normalization",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.654199999976072e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_calendar_override_allows_work_on_global_holiday.py::regression_operator_calendar_override_allows_work_on_global_holiday",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.09786412500000097,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_calendar_override_allows_work_on_global_holiday.py::regression_operator_calendar_override_allows_work_on_global_holiday",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010995799999946598,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_calendar_override_allows_work_on_global_holiday.py::regression_operator_calendar_override_allows_work_on_global_holiday",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.679199999912953e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_machine_detail_readside_normalization.py::regression_operator_machine_detail_readside_normalization",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7072312079999996,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_machine_detail_readside_normalization.py::regression_operator_machine_detail_readside_normalization",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010208400000166762,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_machine_detail_readside_normalization.py::regression_operator_machine_detail_readside_normalization",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.295900000135134e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_machine_dirty_flags_visible.py::regression_operator_machine_dirty_flags_visible",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.6955339999999985,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_machine_dirty_flags_visible.py::regression_operator_machine_dirty_flags_visible",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011404099999978712,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_machine_dirty_flags_visible.py::regression_operator_machine_dirty_flags_visible",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.945799999944711e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_machine_missing_columns.py::regression_operator_machine_missing_columns",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.04767949999999743,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_machine_missing_columns.py::regression_operator_machine_missing_columns",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.979200000032051e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_operator_machine_missing_columns.py::regression_operator_machine_missing_columns",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.904200000055425e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_choice_case_normalization.py::regression_optimizer_choice_case_normalization",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07000566700000022,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_choice_case_normalization.py::regression_optimizer_choice_case_normalization",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010554200000001401,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_choice_case_normalization.py::regression_optimizer_choice_case_normalization",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.3250000000559794e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_ortools_logging_exc_info_safe.py::regression_optimizer_ortools_logging_exc_info_safe",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07540887499999727,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_ortools_logging_exc_info_safe.py::regression_optimizer_ortools_logging_exc_info_safe",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010062500000174168,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_ortools_logging_exc_info_safe.py::regression_optimizer_ortools_logging_exc_info_safe",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.133300000144004e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_outcome_algo_stats.py::regression_optimizer_outcome_algo_stats",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0695089160000002,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_outcome_algo_stats.py::regression_optimizer_outcome_algo_stats",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.42499999968993e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_outcome_algo_stats.py::regression_optimizer_outcome_algo_stats",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.554199999873276e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_zero_weight_cfg_preserved.py::regression_optimizer_zero_weight_cfg_preserved",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06977941699999946,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_zero_weight_cfg_preserved.py::regression_optimizer_zero_weight_cfg_preserved",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00014012500000148975,
-      "longrepr": "",
-      "nodeid": "tests/regression_optimizer_zero_weight_cfg_preserved.py::regression_optimizer_zero_weight_cfg_preserved",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.091700000292576e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_optional_ready_constraint.py::regression_optional_ready_constraint",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.1327177500000012,
-      "longrepr": "",
-      "nodeid": "tests/regression_optional_ready_constraint.py::regression_optional_ready_constraint",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.833300000039458e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_optional_ready_constraint.py::regression_optional_ready_constraint",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.0625000000081855e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_ortools_budget_guard_skip_when_no_time.py::regression_ortools_budget_guard_skip_when_no_time",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07404062499999853,
-      "longrepr": "",
-      "nodeid": "tests/regression_ortools_budget_guard_skip_when_no_time.py::regression_ortools_budget_guard_skip_when_no_time",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.395900000086499e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_ortools_budget_guard_skip_when_no_time.py::regression_ortools_budget_guard_skip_when_no_time",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.679199999912953e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_ortools_priority_weight_contract.py::regression_ortools_priority_weight_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.057996165999998794,
-      "longrepr": "",
-      "nodeid": "tests/regression_ortools_priority_weight_contract.py::regression_ortools_priority_weight_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.912499999842339e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_ortools_priority_weight_contract.py::regression_ortools_priority_weight_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.637500000015393e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_ortools_warmstart_skip_nonfinite.py::regression_ortools_warmstart_skip_nonfinite",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.02174349999999947,
-      "longrepr": "",
-      "nodeid": "tests/regression_ortools_warmstart_skip_nonfinite.py::regression_ortools_warmstart_skip_nonfinite",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.99170000003835e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_ortools_warmstart_skip_nonfinite.py::regression_ortools_warmstart_skip_nonfinite",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.591699999778598e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_part_operation_hours_service_stats_gate.py::regression_part_operation_hours_service_stats_gate",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.1045846250000011,
-      "longrepr": "",
-      "nodeid": "tests/regression_part_operation_hours_service_stats_gate.py::regression_part_operation_hours_service_stats_gate",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.241599999792015e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_part_operation_hours_service_stats_gate.py::regression_part_operation_hours_service_stats_gate",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.5958000001178334e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_part_service_create_strict_mode_atomic.py::regression_part_service_create_strict_mode_atomic",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.10311554200000117,
-      "longrepr": "",
-      "nodeid": "tests/regression_part_service_create_strict_mode_atomic.py::regression_part_service_create_strict_mode_atomic",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.920900000219945e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_part_service_create_strict_mode_atomic.py::regression_part_service_create_strict_mode_atomic",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.829099999881237e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_part_service_external_default_days_fallback.py::regression_part_service_external_default_days_fallback",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.10356333299999676,
-      "longrepr": "",
-      "nodeid": "tests/regression_part_service_external_default_days_fallback.py::regression_part_service_external_default_days_fallback",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.754200000282708e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_part_service_external_default_days_fallback.py::regression_part_service_external_default_days_fallback",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.76250000005507e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_personnel_excel_links_header_aliases.py::regression_personnel_excel_links_header_aliases",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7136643330000005,
-      "longrepr": "",
-      "nodeid": "tests/regression_personnel_excel_links_header_aliases.py::regression_personnel_excel_links_header_aliases",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0006926669999991475,
-      "longrepr": "",
-      "nodeid": "tests/regression_personnel_excel_links_header_aliases.py::regression_personnel_excel_links_header_aliases",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.7707999999934145e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_bootstrap_injects_config_reader.py::regression_plugin_bootstrap_injects_config_reader",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07104920800000158,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_bootstrap_injects_config_reader.py::regression_plugin_bootstrap_injects_config_reader",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.962499999791817e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_bootstrap_injects_config_reader.py::regression_plugin_bootstrap_injects_config_reader",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.4792000000247754e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_bootstrap_telemetry_failure_visible.py::regression_plugin_bootstrap_telemetry_failure_visible",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07355224999999876,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_bootstrap_telemetry_failure_visible.py::regression_plugin_bootstrap_telemetry_failure_visible",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.258299999752694e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_bootstrap_telemetry_failure_visible.py::regression_plugin_bootstrap_telemetry_failure_visible",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.695899999873632e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_capability_conflict_visible.py::regression_plugin_capability_conflict_visible",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.043413541999999694,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_capability_conflict_visible.py::regression_plugin_capability_conflict_visible",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010008400000316442,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_capability_conflict_visible.py::regression_plugin_capability_conflict_visible",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.900000000063187e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_manager_error_trace_visible.py::regression_plugin_manager_error_trace_visible",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.04283345800000049,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_manager_error_trace_visible.py::regression_plugin_manager_error_trace_visible",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.508300000187319e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_plugin_manager_error_trace_visible.py::regression_plugin_manager_error_trace_visible",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.291600000134622e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_priority_weight_case_insensitive.py::regression_priority_weight_case_insensitive",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06043541700000077,
-      "longrepr": "",
-      "nodeid": "tests/regression_priority_weight_case_insensitive.py::regression_priority_weight_case_insensitive",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.491700000272772e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_priority_weight_case_insensitive.py::regression_priority_weight_case_insensitive",
       "outcome": "passed",
       "when": "teardown"
     },
     {
       "duration": 4.61670000007075e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_part_operation_hours_append_fill_empty_only.py::regression_process_excel_part_operation_hours_append_fill_empty_only",
+      "nodeid": "tests/regression_dispatch_rules_priority_case_insensitive.py::regression_dispatch_rules_priority_case_insensitive",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.7362165830000009,
+      "duration": 0.058015499999999776,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_part_operation_hours_append_fill_empty_only.py::regression_process_excel_part_operation_hours_append_fill_empty_only",
+      "nodeid": "tests/regression_dispatch_rules_priority_case_insensitive.py::regression_dispatch_rules_priority_case_insensitive",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.008300000028612e-05,
+      "duration": 9.437499999975785e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_part_operation_hours_append_fill_empty_only.py::regression_process_excel_part_operation_hours_append_fill_empty_only",
+      "nodeid": "tests/regression_dispatch_rules_priority_case_insensitive.py::regression_dispatch_rules_priority_case_insensitive",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.449999999740385e-05,
+      "duration": 5.129100000011988e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_part_operation_hours_import.py::regression_process_excel_part_operation_hours_import",
+      "nodeid": "tests/regression_downtime_overlap_skips_invalid_segments.py::regression_downtime_overlap_skips_invalid_segments",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.7327179170000022,
+      "duration": 0.057930332999999834,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_part_operation_hours_import.py::regression_process_excel_part_operation_hours_import",
+      "nodeid": "tests/regression_downtime_overlap_skips_invalid_segments.py::regression_downtime_overlap_skips_invalid_segments",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.758399999919675e-05,
+      "duration": 9.404100000054427e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_part_operation_hours_import.py::regression_process_excel_part_operation_hours_import",
+      "nodeid": "tests/regression_downtime_overlap_skips_invalid_segments.py::regression_downtime_overlap_skips_invalid_segments",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.8249999998972726e-05,
+      "duration": 4.7792000000157486e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_part_operation_hours_source_row_num.py::regression_process_excel_part_operation_hours_source_row_num",
+      "nodeid": "tests/regression_due_exclusive_consistency.py::regression_due_exclusive_consistency",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.7040629999999979,
+      "duration": 0.1440231669999985,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_part_operation_hours_source_row_num.py::regression_process_excel_part_operation_hours_source_row_num",
+      "nodeid": "tests/regression_due_exclusive_consistency.py::regression_due_exclusive_consistency",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00012733399999831363,
+      "duration": 0.0001398330000004222,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_part_operation_hours_source_row_num.py::regression_process_excel_part_operation_hours_source_row_num",
+      "nodeid": "tests/regression_due_exclusive_consistency.py::regression_due_exclusive_consistency",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.537500000267869e-05,
+      "duration": 8.345900000072959e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_routes_extra_state_guard.py::regression_process_excel_routes_extra_state_guard",
+      "nodeid": "tests/regression_due_exclusive_guard_contract.py::regression_due_exclusive_guard_contract",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.7264937089999997,
+      "duration": 0.14165562500000028,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_routes_extra_state_guard.py::regression_process_excel_routes_extra_state_guard",
+      "nodeid": "tests/regression_due_exclusive_guard_contract.py::regression_due_exclusive_guard_contract",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.349999999879287e-05,
+      "duration": 9.587499999952342e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_process_excel_routes_extra_state_guard.py::regression_process_excel_routes_extra_state_guard",
+      "nodeid": "tests/regression_due_exclusive_guard_contract.py::regression_due_exclusive_guard_contract",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.7500000000866294e-05,
+      "duration": 5.3791000000913414e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_process_reparse_preserve_internal_hours.py::regression_process_reparse_preserve_internal_hours",
+      "nodeid": "tests/regression_efficiency_greater_than_one_shortens_hours.py::regression_efficiency_greater_than_one_shortens_hours",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.7434892919999996,
+      "duration": 0.061349040999999715,
       "longrepr": "",
-      "nodeid": "tests/regression_process_reparse_preserve_internal_hours.py::regression_process_reparse_preserve_internal_hours",
+      "nodeid": "tests/regression_efficiency_greater_than_one_shortens_hours.py::regression_efficiency_greater_than_one_shortens_hours",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.0001245419999982289,
+      "duration": 9.52500000011014e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_process_reparse_preserve_internal_hours.py::regression_process_reparse_preserve_internal_hours",
+      "nodeid": "tests/regression_efficiency_greater_than_one_shortens_hours.py::regression_efficiency_greater_than_one_shortens_hours",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.3707999999375033e-05,
+      "duration": 4.608299999908638e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_report_export_large_scope_rejects_need_async.py::regression_report_export_large_scope_rejects_need_async",
+      "nodeid": "tests/regression_ensure_schema_fastforward_empty_only.py::regression_ensure_schema_fastforward_empty_only",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.6724208750000003,
+      "duration": 0.06122287500000034,
       "longrepr": "",
-      "nodeid": "tests/regression_report_export_large_scope_rejects_need_async.py::regression_report_export_large_scope_rejects_need_async",
+      "nodeid": "tests/regression_ensure_schema_fastforward_empty_only.py::regression_ensure_schema_fastforward_empty_only",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 9.245800000101667e-05,
+      "duration": 0.00013891600000093263,
       "longrepr": "",
-      "nodeid": "tests/regression_report_export_large_scope_rejects_need_async.py::regression_report_export_large_scope_rejects_need_async",
+      "nodeid": "tests/regression_ensure_schema_fastforward_empty_only.py::regression_ensure_schema_fastforward_empty_only",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.208299999992505e-05,
+      "duration": 7.295800000051145e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_report_export_size_mode_selection.py::regression_report_export_size_mode_selection",
+      "nodeid": "tests/regression_excel_demo_upload_guard.py::regression_excel_demo_upload_guard",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.6759804580000015,
+      "duration": 0.7078100420000002,
       "longrepr": "",
-      "nodeid": "tests/regression_report_export_size_mode_selection.py::regression_report_export_size_mode_selection",
+      "nodeid": "tests/regression_excel_demo_upload_guard.py::regression_excel_demo_upload_guard",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.245900000147799e-05,
+      "duration": 7.395799999976305e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_report_export_size_mode_selection.py::regression_report_export_size_mode_selection",
+      "nodeid": "tests/regression_excel_demo_upload_guard.py::regression_excel_demo_upload_guard",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.674999999920715e-05,
+      "duration": 4.900000000063187e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_report_source_case_insensitive.py::regression_report_source_case_insensitive",
+      "nodeid": "tests/regression_excel_failure_semantics_contracts.py::regression_excel_failure_semantics_contracts",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.11833758299999886,
+      "duration": 0.163798667,
       "longrepr": "",
-      "nodeid": "tests/regression_report_source_case_insensitive.py::regression_report_source_case_insensitive",
+      "nodeid": "tests/regression_excel_failure_semantics_contracts.py::regression_excel_failure_semantics_contracts",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.95000000014079e-05,
+      "duration": 8.445799999989845e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_report_source_case_insensitive.py::regression_report_source_case_insensitive",
+      "nodeid": "tests/regression_excel_failure_semantics_contracts.py::regression_excel_failure_semantics_contracts",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.687500000244427e-05,
+      "duration": 5.016599999940752e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_reports_default_range_from_version_span.py::regression_reports_default_range_from_version_span",
+      "nodeid": "tests/regression_excel_import_executor_status_gate.py::regression_excel_import_executor_status_gate",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.6935790829999995,
+      "duration": 0.03169145799999917,
       "longrepr": "",
-      "nodeid": "tests/regression_reports_default_range_from_version_span.py::regression_reports_default_range_from_version_span",
+      "nodeid": "tests/regression_excel_import_executor_status_gate.py::regression_excel_import_executor_status_gate",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.366699999839966e-05,
+      "duration": 8.691599999899324e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_reports_default_range_from_version_span.py::regression_reports_default_range_from_version_span",
+      "nodeid": "tests/regression_excel_import_executor_status_gate.py::regression_excel_import_executor_status_gate",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.9083000000393895e-05,
+      "duration": 6.416700000144715e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_reports_export_version_default_latest.py::regression_reports_export_version_default_latest",
+      "nodeid": "tests/regression_excel_import_result_semantics.py::regression_excel_import_result_semantics",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.6995326669999962,
+      "duration": 0.9987219589999992,
       "longrepr": "",
-      "nodeid": "tests/regression_reports_export_version_default_latest.py::regression_reports_export_version_default_latest",
+      "nodeid": "tests/regression_excel_import_result_semantics.py::regression_excel_import_result_semantics",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.070799999870815e-05,
+      "duration": 9.799999999948739e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_reports_export_version_default_latest.py::regression_reports_export_version_default_latest",
+      "nodeid": "tests/regression_excel_import_result_semantics.py::regression_excel_import_result_semantics",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.8583000001656274e-05,
+      "duration": 5.433299999957342e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_restore_success_condition.py::regression_restore_success_condition",
+      "nodeid": "tests/regression_excel_import_strict_reference_apply.py::regression_excel_import_strict_reference_apply",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.7230654170000008,
+      "duration": 0.12205837499999994,
       "longrepr": "",
-      "nodeid": "tests/regression_restore_success_condition.py::regression_restore_success_condition",
+      "nodeid": "tests/regression_excel_import_strict_reference_apply.py::regression_excel_import_strict_reference_apply",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00011241700000397259,
+      "duration": 9.850000000000136e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_restore_success_condition.py::regression_restore_success_condition",
+      "nodeid": "tests/regression_excel_import_strict_reference_apply.py::regression_excel_import_strict_reference_apply",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.616700000388164e-05,
+      "duration": 5.341700000016658e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_route_parser_missing_supplier_warning.py::regression_route_parser_missing_supplier_warning",
+      "nodeid": "tests/regression_excel_normalizers_mixed_case.py::regression_excel_normalizers_mixed_case",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.10497958399999874,
+      "duration": 0.19579887499999948,
       "longrepr": "",
-      "nodeid": "tests/regression_route_parser_missing_supplier_warning.py::regression_route_parser_missing_supplier_warning",
+      "nodeid": "tests/regression_excel_normalizers_mixed_case.py::regression_excel_normalizers_mixed_case",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00013424999999500642,
+      "duration": 8.51669999999416e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_route_parser_missing_supplier_warning.py::regression_route_parser_missing_supplier_warning",
+      "nodeid": "tests/regression_excel_normalizers_mixed_case.py::regression_excel_normalizers_mixed_case",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 7.270899999411995e-05,
+      "duration": 5.249999999890065e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_route_parser_op_type_category_case_insensitive.py::regression_route_parser_op_type_category_case_insensitive",
+      "nodeid": "tests/regression_excel_operator_calendar_cross_midnight.py::regression_excel_operator_calendar_cross_midnight",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.10507120799999825,
+      "duration": 0.04408737500000015,
       "longrepr": "",
-      "nodeid": "tests/regression_route_parser_op_type_category_case_insensitive.py::regression_route_parser_op_type_category_case_insensitive",
+      "nodeid": "tests/regression_excel_operator_calendar_cross_midnight.py::regression_excel_operator_calendar_cross_midnight",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.083299999839255e-05,
+      "duration": 9.024999999951433e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_route_parser_op_type_category_case_insensitive.py::regression_route_parser_op_type_category_case_insensitive",
+      "nodeid": "tests/regression_excel_operator_calendar_cross_midnight.py::regression_excel_operator_calendar_cross_midnight",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.1042000002610166e-05,
+      "duration": 4.9666000000669897e-05,
       "longrepr": "",
-      "nodeid": "tests/regression_route_parser_preserve_errors_when_no_matches.py::regression_route_parser_preserve_errors_when_no_matches",
+      "nodeid": "tests/regression_excel_preview_confirm_baseline_guard.py::regression_excel_preview_confirm_baseline_guard",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.10438987500000252,
+      "duration": 0.7686290420000006,
       "longrepr": "",
-      "nodeid": "tests/regression_route_parser_preserve_errors_when_no_matches.py::regression_route_parser_preserve_errors_when_no_matches",
+      "nodeid": "tests/regression_excel_preview_confirm_baseline_guard.py::regression_excel_preview_confirm_baseline_guard",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 8.56250000040859e-05,
+      "duration": 0.0001208329999986546,
       "longrepr": "",
-      "nodeid": "tests/regression_route_parser_preserve_errors_when_no_matches.py::regression_route_parser_preserve_errors_when_no_matches",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.862499999802594e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_route_parser_strict_mode_rejects_supplier_fallback.py::regression_route_parser_strict_mode_rejects_supplier_fallback",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.10382325000000492,
-      "longrepr": "",
-      "nodeid": "tests/regression_route_parser_strict_mode_rejects_supplier_fallback.py::regression_route_parser_strict_mode_rejects_supplier_fallback",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.295800000013287e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_route_parser_strict_mode_rejects_supplier_fallback.py::regression_route_parser_strict_mode_rejects_supplier_fallback",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.658299999960036e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_route_parser_supplier_default_days_zero_trace.py::regression_route_parser_supplier_default_days_zero_trace",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.10419716600000584,
-      "longrepr": "",
-      "nodeid": "tests/regression_route_parser_supplier_default_days_zero_trace.py::regression_route_parser_supplier_default_days_zero_trace",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.779199999902175e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_route_parser_supplier_default_days_zero_trace.py::regression_route_parser_supplier_default_days_zero_trace",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.733299999770679e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_contract_launcher.py::regression_runtime_contract_launcher",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.04770979100000261,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_contract_launcher.py::regression_runtime_contract_launcher",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.833400000440861e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_contract_launcher.py::regression_runtime_contract_launcher",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.0041999998029496e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_lock_reloader_parent_skip.py::regression_runtime_lock_reloader_parent_skip",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 1.6397926670000018,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_lock_reloader_parent_skip.py::regression_runtime_lock_reloader_parent_skip",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.379100000155404e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_lock_reloader_parent_skip.py::regression_runtime_lock_reloader_parent_skip",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.9959000001820186e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_probe_resolution.py::regression_runtime_probe_resolution",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 1.5894320829999984,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_probe_resolution.py::regression_runtime_probe_resolution",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0004023750000001769,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_probe_resolution.py::regression_runtime_probe_resolution",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00012612500000130922,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_stop_cli.py::regression_runtime_stop_cli",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 1.8763674590000008,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_stop_cli.py::regression_runtime_stop_cli",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.991600000030076e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_runtime_stop_cli.py::regression_runtime_stop_cli",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.933400000339816e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_safe_next_url_hardening.py::regression_safe_next_url_hardening",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.6663870419999967,
-      "longrepr": "",
-      "nodeid": "tests/regression_safe_next_url_hardening.py::regression_safe_next_url_hardening",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010199999999827014,
-      "longrepr": "",
-      "nodeid": "tests/regression_safe_next_url_hardening.py::regression_safe_next_url_hardening",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.129200000197898e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sanitize_batch_dates_single_digit.py::regression_sanitize_batch_dates_single_digit",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.04806887499999846,
-      "longrepr": "",
-      "nodeid": "tests/regression_sanitize_batch_dates_single_digit.py::regression_sanitize_batch_dates_single_digit",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.966700000139326e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sanitize_batch_dates_single_digit.py::regression_sanitize_batch_dates_single_digit",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.899999999707916e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_history_not_created_for_empty_schedule.py::regression_schedule_history_not_created_for_empty_schedule",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.1211556250000001,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_history_not_created_for_empty_schedule.py::regression_schedule_history_not_created_for_empty_schedule",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.279200000060882e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_history_not_created_for_empty_schedule.py::regression_schedule_history_not_created_for_empty_schedule",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.654199999976072e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_input_builder_safe_float_parse.py::regression_schedule_input_builder_safe_float_parse",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.04174420799999723,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_input_builder_safe_float_parse.py::regression_schedule_input_builder_safe_float_parse",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.920799999538986e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_input_builder_safe_float_parse.py::regression_schedule_input_builder_safe_float_parse",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.58749999978636e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_input_collector_contract.py::regression_schedule_input_collector_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.09716325000000126,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_input_collector_contract.py::regression_schedule_input_collector_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.04169999994997e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_input_collector_contract.py::regression_schedule_input_collector_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.6417000000076314e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_orchestrator_contract.py::regression_schedule_orchestrator_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.09386549999999971,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_orchestrator_contract.py::regression_schedule_orchestrator_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0002218749999940428,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_orchestrator_contract.py::regression_schedule_orchestrator_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.162500000073123e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_params_read_failure_visible.py::regression_schedule_params_read_failure_visible",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06204595799999879,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_params_read_failure_visible.py::regression_schedule_params_read_failure_visible",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.020799999997053e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_params_read_failure_visible.py::regression_schedule_params_read_failure_visible",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.816599999912796e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_persistence_reject_empty_actionable_schedule.py::regression_schedule_persistence_reject_empty_actionable_schedule",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0997305420000032,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_persistence_reject_empty_actionable_schedule.py::regression_schedule_persistence_reject_empty_actionable_schedule",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.80420000015647e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_persistence_reject_empty_actionable_schedule.py::regression_schedule_persistence_reject_empty_actionable_schedule",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.1708000000871834e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_persistence_reschedulable_contract.py::regression_schedule_persistence_reschedulable_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.09575949999999978,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_persistence_reschedulable_contract.py::regression_schedule_persistence_reschedulable_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.38750000013988e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_persistence_reschedulable_contract.py::regression_schedule_persistence_reschedulable_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.641600000354629e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_all_frozen_short_circuit.py::regression_schedule_service_all_frozen_short_circuit",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.1158144589999992,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_all_frozen_short_circuit.py::regression_schedule_service_all_frozen_short_circuit",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.44160000031502e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_all_frozen_short_circuit.py::regression_schedule_service_all_frozen_short_circuit",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.604100000449307e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_empty_reschedulable_rejected.py::regression_schedule_service_empty_reschedulable_rejected",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.11601970800000316,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_empty_reschedulable_rejected.py::regression_schedule_service_empty_reschedulable_rejected",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010633299999796009,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_empty_reschedulable_rejected.py::regression_schedule_service_empty_reschedulable_rejected",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.029100000086828e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_facade_delegation.py::regression_schedule_service_facade_delegation",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.1103262909999998,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_facade_delegation.py::regression_schedule_service_facade_delegation",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.599999999920783e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_facade_delegation.py::regression_schedule_service_facade_delegation",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.56660000046827e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_missing_resource_source_case_insensitive.py::regression_schedule_service_missing_resource_source_case_insensitive",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.1134991669999934,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_missing_resource_source_case_insensitive.py::regression_schedule_service_missing_resource_source_case_insensitive",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.129200000046467e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_missing_resource_source_case_insensitive.py::regression_schedule_service_missing_resource_source_case_insensitive",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.741600000102153e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_passes_algo_stats_to_summary.py::regression_schedule_service_passes_algo_stats_to_summary",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.11180258300000645,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_passes_algo_stats_to_summary.py::regression_schedule_service_passes_algo_stats_to_summary",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.304199999997763e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_passes_algo_stats_to_summary.py::regression_schedule_service_passes_algo_stats_to_summary",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.812499999928832e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_reschedulable_contract.py::regression_schedule_service_reschedulable_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.11505224999999797,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_reschedulable_contract.py::regression_schedule_service_reschedulable_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.937500000565478e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_service_reschedulable_contract.py::regression_schedule_service_reschedulable_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.558300000212512e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_end_date_type_guard.py::regression_schedule_summary_end_date_type_guard",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07309183299999944,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_end_date_type_guard.py::regression_schedule_summary_end_date_type_guard",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.012499999665579e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_end_date_type_guard.py::regression_schedule_summary_end_date_type_guard",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.862499999802594e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_fallback_counts_output.py::regression_schedule_summary_fallback_counts_output",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07267804099999609,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_fallback_counts_output.py::regression_schedule_summary_fallback_counts_output",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.833400000440861e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_fallback_counts_output.py::regression_schedule_summary_fallback_counts_output",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.7500000000866294e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py::regression_schedule_summary_invalid_due_and_unscheduled_counts",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07295158299999827,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py::regression_schedule_summary_invalid_due_and_unscheduled_counts",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00014166599999754226,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py::regression_schedule_summary_invalid_due_and_unscheduled_counts",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 7.374999999854026e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_overdue_warning_append_fallback.py::regression_schedule_summary_overdue_warning_append_fallback",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07242929200000248,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_overdue_warning_append_fallback.py::regression_schedule_summary_overdue_warning_append_fallback",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012899999999405054,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_overdue_warning_append_fallback.py::regression_schedule_summary_overdue_warning_append_fallback",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.129100000151766e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_size_guard_large_lists.py::regression_schedule_summary_size_guard_large_lists",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2099223329999944,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_size_guard_large_lists.py::regression_schedule_summary_size_guard_large_lists",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001452499999956558,
-      "longrepr": "",
-      "nodeid": "tests/regression_schedule_summary_size_guard_large_lists.py::regression_schedule_summary_size_guard_large_lists",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.504099999915525e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_accepts_start_dt_string_and_safe_weights.py::regression_scheduler_accepts_start_dt_string_and_safe_weights",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.062431583999995155,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_accepts_start_dt_string_and_safe_weights.py::regression_scheduler_accepts_start_dt_string_and_safe_weights",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.916599999902019e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_accepts_start_dt_string_and_safe_weights.py::regression_scheduler_accepts_start_dt_string_and_safe_weights",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.812499999928832e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_analysis_observability.py::regression_scheduler_analysis_observability",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.8996455830000016,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_analysis_observability.py::regression_scheduler_analysis_observability",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.25410000007787e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_analysis_observability.py::regression_scheduler_analysis_observability",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.3749999999297415e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_apply_preset_reject_invalid_numeric.py::regression_scheduler_apply_preset_reject_invalid_numeric",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.08363741599999486,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_apply_preset_reject_invalid_numeric.py::regression_scheduler_apply_preset_reject_invalid_numeric",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010041700000584797,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_apply_preset_reject_invalid_numeric.py::regression_scheduler_apply_preset_reject_invalid_numeric",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.2125000003400146e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_enforce_ready_default_from_config.py::regression_scheduler_enforce_ready_default_from_config",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.144079167000001,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_enforce_ready_default_from_config.py::regression_scheduler_enforce_ready_default_from_config",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.066700000204264e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_enforce_ready_default_from_config.py::regression_scheduler_enforce_ready_default_from_config",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.812499999928832e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_excel_calendar_strict_numeric.py::regression_scheduler_excel_calendar_strict_numeric",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7096720000000047,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_excel_calendar_strict_numeric.py::regression_scheduler_excel_calendar_strict_numeric",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.779199999902175e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_excel_calendar_strict_numeric.py::regression_scheduler_excel_calendar_strict_numeric",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.7416999997551557e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_excel_calendar_uses_executor.py::regression_scheduler_excel_calendar_uses_executor",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7439690419999963,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_excel_calendar_uses_executor.py::regression_scheduler_excel_calendar_uses_executor",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.858399999349786e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_excel_calendar_uses_executor.py::regression_scheduler_excel_calendar_uses_executor",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.695799999865358e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_nonfinite_efficiency_fallback.py::regression_scheduler_nonfinite_efficiency_fallback",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06350470800000352,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_nonfinite_efficiency_fallback.py::regression_scheduler_nonfinite_efficiency_fallback",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.212500000581713e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_nonfinite_efficiency_fallback.py::regression_scheduler_nonfinite_efficiency_fallback",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.9083000000393895e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_reject_nonfinite_and_invalid_status.py::regression_scheduler_reject_nonfinite_and_invalid_status",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.12742879200000345,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_reject_nonfinite_and_invalid_status.py::regression_scheduler_reject_nonfinite_and_invalid_status",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.39590000044177e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_reject_nonfinite_and_invalid_status.py::regression_scheduler_reject_nonfinite_and_invalid_status",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.704100000514245e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_route_enforce_ready_tristate.py::regression_scheduler_route_enforce_ready_tristate",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.19886295900000306,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_route_enforce_ready_tristate.py::regression_scheduler_route_enforce_ready_tristate",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.241700000155561e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_route_enforce_ready_tristate.py::regression_scheduler_route_enforce_ready_tristate",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.6749999995654434e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_run_no_reschedulable_flash.py::regression_scheduler_run_no_reschedulable_flash",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7130236249999982,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_run_no_reschedulable_flash.py::regression_scheduler_run_no_reschedulable_flash",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.845800000438885e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_run_no_reschedulable_flash.py::regression_scheduler_run_no_reschedulable_flash",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.67910000025995e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_strict_mode_dispatch_flags.py::regression_scheduler_strict_mode_dispatch_flags",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.08411404099999942,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_strict_mode_dispatch_flags.py::regression_scheduler_strict_mode_dispatch_flags",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.100000000155205e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_strict_mode_dispatch_flags.py::regression_scheduler_strict_mode_dispatch_flags",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.041699999708271e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_week_plan_no_reschedulable_flash.py::regression_scheduler_week_plan_no_reschedulable_flash",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7040194159999942,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_week_plan_no_reschedulable_flash.py::regression_scheduler_week_plan_no_reschedulable_flash",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010825000000380669,
-      "longrepr": "",
-      "nodeid": "tests/regression_scheduler_week_plan_no_reschedulable_flash.py::regression_scheduler_week_plan_no_reschedulable_flash",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.445800000103418e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_dedup.py::regression_seed_results_dedup",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06109449999999583,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_dedup.py::regression_seed_results_dedup",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.454200000012179e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_dedup.py::regression_seed_results_dedup",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.049999999329202e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_drop_duplicate_op_id_and_bad_time.py::regression_seed_results_drop_duplicate_op_id_and_bad_time",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06541412500000376,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_drop_duplicate_op_id_and_bad_time.py::regression_seed_results_drop_duplicate_op_id_and_bad_time",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.987499999728698e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_drop_duplicate_op_id_and_bad_time.py::regression_seed_results_drop_duplicate_op_id_and_bad_time",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.691599999517848e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_freeze_missing_resource.py::regression_seed_results_freeze_missing_resource",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06111383299999318,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_freeze_missing_resource.py::regression_seed_results_freeze_missing_resource",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00015766699999630873,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_freeze_missing_resource.py::regression_seed_results_freeze_missing_resource",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 8.870799999982637e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_invalid_op_id_dedup.py::regression_seed_results_invalid_op_id_dedup",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06359979199999799,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_invalid_op_id_dedup.py::regression_seed_results_invalid_op_id_dedup",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.554200000077117e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_seed_results_invalid_op_id_dedup.py::regression_seed_results_invalid_op_id_dedup",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.7750000000235104e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sgs_atc_penalize_missing_resources.py::regression_sgs_atc_penalize_missing_resources",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06048629200000022,
-      "longrepr": "",
-      "nodeid": "tests/regression_sgs_atc_penalize_missing_resources.py::regression_sgs_atc_penalize_missing_resources",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.954100000517883e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sgs_atc_penalize_missing_resources.py::regression_sgs_atc_penalize_missing_resources",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.600000000465343e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sgs_penalize_nonfinite_proc_hours.py::regression_sgs_penalize_nonfinite_proc_hours",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06216533300000293,
-      "longrepr": "",
-      "nodeid": "tests/regression_sgs_penalize_nonfinite_proc_hours.py::regression_sgs_penalize_nonfinite_proc_hours",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.945899999839412e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sgs_penalize_nonfinite_proc_hours.py::regression_sgs_penalize_nonfinite_proc_hours",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.6417000000076314e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sgs_scoring_machine_operator_id_type_safe.py::regression_sgs_scoring_machine_operator_id_type_safe",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06584325000000035,
-      "longrepr": "",
-      "nodeid": "tests/regression_sgs_scoring_machine_operator_id_type_safe.py::regression_sgs_scoring_machine_operator_id_type_safe",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.841599999380833e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sgs_scoring_machine_operator_id_type_safe.py::regression_sgs_scoring_machine_operator_id_type_safe",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.579199999454886e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_shared_runtime_state.py::regression_shared_runtime_state",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.046389542000000006,
-      "longrepr": "",
-      "nodeid": "tests/regression_shared_runtime_state.py::regression_shared_runtime_state",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00023291600000163726,
-      "longrepr": "",
-      "nodeid": "tests/regression_shared_runtime_state.py::regression_shared_runtime_state",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 7.837500000107411e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_skill_rank_mapping.py::regression_skill_rank_mapping",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.13312570800000145,
-      "longrepr": "",
-      "nodeid": "tests/regression_skill_rank_mapping.py::regression_skill_rank_mapping",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010345799999811334,
-      "longrepr": "",
-      "nodeid": "tests/regression_skill_rank_mapping.py::regression_skill_rank_mapping",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.795800000323425e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sort_strategies_priority_case_insensitive.py::regression_sort_strategies_priority_case_insensitive",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.05729866699999775,
-      "longrepr": "",
-      "nodeid": "tests/regression_sort_strategies_priority_case_insensitive.py::regression_sort_strategies_priority_case_insensitive",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.183400000267739e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sort_strategies_priority_case_insensitive.py::regression_sort_strategies_priority_case_insensitive",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.812499999928832e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sort_strategy_case_insensitive.py::regression_sort_strategy_case_insensitive",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.059022375000004956,
-      "longrepr": "",
-      "nodeid": "tests/regression_sort_strategy_case_insensitive.py::regression_sort_strategy_case_insensitive",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.366599999793834e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sort_strategy_case_insensitive.py::regression_sort_strategy_case_insensitive",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.7500000000866294e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sqlite_detect_types_enabled.py::regression_sqlite_detect_types_enabled",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.03225791700000258,
-      "longrepr": "",
-      "nodeid": "tests/regression_sqlite_detect_types_enabled.py::regression_sqlite_detect_types_enabled",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.362499999492456e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_sqlite_detect_types_enabled.py::regression_sqlite_detect_types_enabled",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.6666999999445125e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_start_and_rerun_route_resolution.py::regression_start_and_rerun_route_resolution",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.05040341700000539,
-      "longrepr": "",
-      "nodeid": "tests/regression_start_and_rerun_route_resolution.py::regression_start_and_rerun_route_resolution",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.620799999903284e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_start_and_rerun_route_resolution.py::regression_start_and_rerun_route_resolution",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.341600000008384e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_startup_host_portfile.py::regression_startup_host_portfile",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.155694375000003,
-      "longrepr": "",
-      "nodeid": "tests/regression_startup_host_portfile.py::regression_startup_host_portfile",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012054100000113976,
-      "longrepr": "",
-      "nodeid": "tests/regression_startup_host_portfile.py::regression_startup_host_portfile",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.758300000342388e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_startup_host_portfile_new_ui.py::regression_startup_host_portfile_new_ui",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.144240249999996,
-      "longrepr": "",
-      "nodeid": "tests/regression_startup_host_portfile_new_ui.py::regression_startup_host_portfile_new_ui",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012054199999766979,
-      "longrepr": "",
-      "nodeid": "tests/regression_startup_host_portfile_new_ui.py::regression_startup_host_portfile_new_ui",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 8.06669999988685e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_status_category_mixed_case.py::regression_status_category_mixed_case",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.12502087500000414,
-      "longrepr": "",
-      "nodeid": "tests/regression_status_category_mixed_case.py::regression_status_category_mixed_case",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.400000000108321e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_status_category_mixed_case.py::regression_status_category_mixed_case",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.879200000118544e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_strict_parse_blank_required.py::regression_strict_parse_blank_required",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.031752916000002074,
-      "longrepr": "",
-      "nodeid": "tests/regression_strict_parse_blank_required.py::regression_strict_parse_blank_required",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00014237499999580905,
-      "longrepr": "",
-      "nodeid": "tests/regression_strict_parse_blank_required.py::regression_strict_parse_blank_required",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.4208999998195395e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_config_dirty_fields_contract.py::regression_system_config_dirty_fields_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.06158212500000104,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_config_dirty_fields_contract.py::regression_system_config_dirty_fields_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.874999999937017e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_config_dirty_fields_contract.py::regression_system_config_dirty_fields_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.1083999998979834e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_health_route.py::regression_system_health_route",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 1.1801501659999971,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_health_route.py::regression_system_health_route",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010079200000490118,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_health_route.py::regression_system_health_route",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.287500000150658e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_logs_delete_no_clamp.py::regression_system_logs_delete_no_clamp",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.6967380829999996,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_logs_delete_no_clamp.py::regression_system_logs_delete_no_clamp",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.337500000583532e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_logs_delete_no_clamp.py::regression_system_logs_delete_no_clamp",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.912500000386899e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_maintenance_invalid_last_run_visible.py::regression_system_maintenance_invalid_last_run_visible",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7028170000000031,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_maintenance_invalid_last_run_visible.py::regression_system_maintenance_invalid_last_run_visible",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.754200000282708e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_maintenance_invalid_last_run_visible.py::regression_system_maintenance_invalid_last_run_visible",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.412499999835063e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_maintenance_jobstate_commit.py::regression_system_maintenance_jobstate_commit",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.09058754099999788,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_maintenance_jobstate_commit.py::regression_system_maintenance_jobstate_commit",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.495800000218878e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_maintenance_jobstate_commit.py::regression_system_maintenance_jobstate_commit",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.941600000307744e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_maintenance_throttle_short_circuit.py::regression_system_maintenance_throttle_short_circuit",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.056330124999995235,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_maintenance_throttle_short_circuit.py::regression_system_maintenance_throttle_short_circuit",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.879099999996697e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_system_maintenance_throttle_short_circuit.py::regression_system_maintenance_throttle_short_circuit",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.629200000039191e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_template_no_inline_event_jinja.py::regression_template_no_inline_event_jinja",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.03606445800000557,
-      "longrepr": "",
-      "nodeid": "tests/regression_template_no_inline_event_jinja.py::regression_template_no_inline_event_jinja",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.591699999982438e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_template_no_inline_event_jinja.py::regression_template_no_inline_event_jinja",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.6375000003706646e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_template_urlfor_endpoints.py::regression_template_urlfor_endpoints",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.6693059160000061,
-      "longrepr": "",
-      "nodeid": "tests/regression_template_urlfor_endpoints.py::regression_template_urlfor_endpoints",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.754200000282708e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_template_urlfor_endpoints.py::regression_template_urlfor_endpoints",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.854200000181663e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_tojson_zh_autoescape.py::regression_tojson_zh_autoescape",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.6562784170000029,
-      "longrepr": "",
-      "nodeid": "tests/regression_tojson_zh_autoescape.py::regression_tojson_zh_autoescape",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00016312500000026375,
-      "longrepr": "",
-      "nodeid": "tests/regression_tojson_zh_autoescape.py::regression_tojson_zh_autoescape",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.5875000001037733e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_transaction_savepoint_nested.py::regression_transaction_savepoint_nested",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.04692679200000072,
-      "longrepr": "",
-      "nodeid": "tests/regression_transaction_savepoint_nested.py::regression_transaction_savepoint_nested",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.883300000344207e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_transaction_savepoint_nested.py::regression_transaction_savepoint_nested",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 8.058300000612917e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_ui_contract_table_overflow_guard.py::regression_ui_contract_table_overflow_guard",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.02031412499999874,
-      "longrepr": "",
-      "nodeid": "tests/regression_ui_contract_table_overflow_guard.py::regression_ui_contract_table_overflow_guard",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010091700000458559,
-      "longrepr": "",
-      "nodeid": "tests/regression_ui_contract_table_overflow_guard.py::regression_ui_contract_table_overflow_guard",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.041599999344726e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_diagnostics_visible.py::regression_unit_excel_converter_diagnostics_visible",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2241193329999973,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_diagnostics_visible.py::regression_unit_excel_converter_diagnostics_visible",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.870799999665223e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_diagnostics_visible.py::regression_unit_excel_converter_diagnostics_visible",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.5999999997548e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_duplicate_part_rows_no_override.py::regression_unit_excel_converter_duplicate_part_rows_no_override",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.11066704200000288,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_duplicate_part_rows_no_override.py::regression_unit_excel_converter_duplicate_part_rows_no_override",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.916700000189849e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_duplicate_part_rows_no_override.py::regression_unit_excel_converter_duplicate_part_rows_no_override",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.0874999999450665e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_facade_binding.py::regression_unit_excel_converter_facade_binding",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.10362183300000538,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_facade_binding.py::regression_unit_excel_converter_facade_binding",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.658299999491192e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_facade_binding.py::regression_unit_excel_converter_facade_binding",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.962500000260661e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_merge_steps_and_classify.py::regression_unit_excel_converter_merge_steps_and_classify",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.24533766700000115,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_merge_steps_and_classify.py::regression_unit_excel_converter_merge_steps_and_classify",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.808300000140434e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_unit_excel_converter_merge_steps_and_classify.py::regression_unit_excel_converter_merge_steps_and_classify",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.020800000465897e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_v2_strategy_zh_contract.py::regression_v2_strategy_zh_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.021237040999999124,
-      "longrepr": "",
-      "nodeid": "tests/regression_v2_strategy_zh_contract.py::regression_v2_strategy_zh_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010729099999906566,
-      "longrepr": "",
-      "nodeid": "tests/regression_v2_strategy_zh_contract.py::regression_v2_strategy_zh_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.070899999992662e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_validate_dist_runtime_identity.py::regression_validate_dist_runtime_identity",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.4730398749999978,
-      "longrepr": "",
-      "nodeid": "tests/regression_validate_dist_runtime_identity.py::regression_validate_dist_runtime_identity",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0004962080000012747,
-      "longrepr": "",
-      "nodeid": "tests/regression_validate_dist_runtime_identity.py::regression_validate_dist_runtime_identity",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00022654100000352173,
-      "longrepr": "",
-      "nodeid": "tests/regression_value_policies_matrix_contract.py::regression_value_policies_matrix_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.04252858299999218,
-      "longrepr": "",
-      "nodeid": "tests/regression_value_policies_matrix_contract.py::regression_value_policies_matrix_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011008299999559767,
-      "longrepr": "",
-      "nodeid": "tests/regression_value_policies_matrix_contract.py::regression_value_policies_matrix_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.112500000199361e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_warmstart_failure_surfaces_degradation.py::regression_warmstart_failure_surfaces_degradation",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.10904899999999884,
-      "longrepr": "",
-      "nodeid": "tests/regression_warmstart_failure_surfaces_degradation.py::regression_warmstart_failure_surfaces_degradation",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.912500000552882e-05,
-      "longrepr": "",
-      "nodeid": "tests/regression_warmstart_failure_surfaces_degradation.py::regression_warmstart_failure_surfaces_degradation",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 8.425000000045202e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_skips_default_sort_only_for_due_and_created_at",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.005079417000004582,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_skips_default_sort_only_for_due_and_created_at",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.041699999708271e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_skips_default_sort_only_for_due_and_created_at",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.058300000053805e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_still_validates_ready_date",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0002517920000002505,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_still_validates_ready_date",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.5625000009531504e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_still_validates_ready_date",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.974999999911688e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_created_at_strict_only_applies_to_fifo",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00067754200000536,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_created_at_strict_only_applies_to_fifo",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.5749999995005055e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_created_at_strict_only_applies_to_fifo",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00010012500000300406,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[False]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00016941699999506454,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[False]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.008300000180043e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[False]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.9707999991710494e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[True]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00014216700000702076,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[True]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.729200000179844e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[True]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 7.537499999443753e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_optimize_schedule_created_at_strict_only_for_current_strategy",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.000646458000005623,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_optimize_schedule_created_at_strict_only_for_current_strategy",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.466699999738921e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_optimize_schedule_created_at_strict_only_for_current_strategy",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.002311082999995051,
-      "longrepr": "",
-      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_create_app_uses_current_environment_each_time",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7760326660000061,
-      "longrepr": "",
-      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_create_app_uses_current_environment_each_time",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.395899999731228e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_create_app_uses_current_environment_each_time",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00030412499999954434,
-      "longrepr": "",
-      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_new_ui_create_app_uses_current_environment_each_time",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7194886249999968,
-      "longrepr": "",
-      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_new_ui_create_app_uses_current_environment_each_time",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.049999999888314e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_new_ui_create_app_uses_current_environment_each_time",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.574999999817919e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_execute_sql_directly",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.009365875000000301,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_execute_sql_directly",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.404200000214132e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_execute_sql_directly",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.4875000000388354e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_import_flask_request",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.015752292000001944,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_import_flask_request",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.149999999787269e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_import_flask_request",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.1667000004963484e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_import_repository",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004184499999993818,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_import_repository",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.983300000243162e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_import_repository",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.60829999976886e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_web_helpers_do_not_import_repository",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0003545840000072076,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_web_helpers_do_not_import_repository",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.325000000131695e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_web_helpers_do_not_import_repository",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.7332999994532656e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.03355616600001099,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.179199999361117e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.158299999801329e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_circular_service_dependencies",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.01250241599998958,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_circular_service_dependencies",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.124999999850388e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_circular_service_dependencies",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.058300000053805e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_wildcard_imports",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.023215333999999643,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_wildcard_imports",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.6042000008128525e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_wildcard_imports",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.791700000022047e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_new_local_parse_helpers",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.21961487499999066,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_new_local_parse_helpers",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.3917000002456916e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_new_local_parse_helpers",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.2958999998177205e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_stable_degradation_codes_cover_actual_usages",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.23948966600001143,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_stable_degradation_codes_cover_actual_usages",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.525000000261571e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_stable_degradation_codes_cover_actual_usages",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.533300000275631e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_use_assert_for_runtime_guards",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.1673683340000025,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_use_assert_for_runtime_guards",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.470800000750842e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_use_assert_for_runtime_guards",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.3000000005122274e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_silent_exception_swallow",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.6136039590000024,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_silent_exception_swallow",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.366700000626224e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_no_silent_exception_swallow",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.4333999994705664e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_startup_silent_fallback_samples",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.035326707999999485,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_startup_silent_fallback_samples",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.566699999803859e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_startup_silent_fallback_samples",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.3165999997540894e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_request_service_target_files_no_direct_assembly",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.3077895829999875,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_request_service_target_files_no_direct_assembly",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.499999998903604e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_request_service_target_files_no_direct_assembly",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.3582999996137914e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_repository_bundle_consumption_does_not_drift",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 2.436206833,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_repository_bundle_consumption_does_not_drift",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.008299999711198e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_repository_bundle_consumption_does_not_drift",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.800000000670934e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_file_size_limit",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.01721762500000068,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_file_size_limit",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.266600000197741e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_file_size_limit",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.379099999596292e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_known_oversize_entries_still_exceed_limit",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.015799749999999335,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_known_oversize_entries_still_exceed_limit",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.008399998971072e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_known_oversize_entries_still_exceed_limit",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.50830000033875e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_greedy_refactor_files_stay_under_quality_gate_limits",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.021321499999999105,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_greedy_refactor_files_stay_under_quality_gate_limits",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.9291000010498465e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_greedy_refactor_files_stay_under_quality_gate_limits",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.2624999991858203e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.3842800420000003,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.495899999630183e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.85839999981863e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.3760101249999934,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.2749999994716745e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.279099999848768e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_file_naming_snake_case",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.002229666999994606,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_file_naming_snake_case",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.049999999722331e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_architecture_fitness.py::test_file_naming_snake_case",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.000352667000001361,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_scheduler_bulk_delete_surfaces_business_reason_and_logs_unexpected",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2832000000000079,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_scheduler_bulk_delete_surfaces_business_reason_and_logs_unexpected",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.766600000205017e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_scheduler_bulk_delete_surfaces_business_reason_and_logs_unexpected",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00035258300000862164,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_equipment_bulk_routes_show_reasons_and_log_unexpected",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.27000745800000914,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_equipment_bulk_routes_show_reasons_and_log_unexpected",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.691700000123092e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_equipment_bulk_routes_show_reasons_and_log_unexpected",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00027695800000060444,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_personnel_bulk_routes_show_reasons_and_log_unexpected",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.26422666700000264,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_personnel_bulk_routes_show_reasons_and_log_unexpected",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.570800000029521e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_personnel_bulk_routes_show_reasons_and_log_unexpected",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0002996249999966949,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_process_bulk_delete_shows_reason_and_logs_unexpected",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2747279999999961,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_process_bulk_delete_shows_reason_and_logs_unexpected",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.204099998783022e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_process_bulk_delete_shows_reason_and_logs_unexpected",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.000350166999993462,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_system_backup_batch_delete_shows_specific_failure_reasons",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.28599583400000483,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_system_backup_batch_delete_shows_specific_failure_reasons",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.520900000519305e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_bulk_route_error_visibility.py::test_system_backup_batch_delete_shows_specific_failure_reasons",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.720799999802239e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_check_quickref_vs_routes.py::test_render_report_uses_repo_relative_path_and_stable_metadata",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0008539580000075375,
-      "longrepr": "",
-      "nodeid": "tests/test_check_quickref_vs_routes.py::test_render_report_uses_repo_relative_path_and_stable_metadata",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.183400000101756e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_check_quickref_vs_routes.py::test_render_report_uses_repo_relative_path_and_stable_metadata",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.44169999980204e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_check_quickref_vs_routes.py::test_extract_doc_endpoints_and_diff_missing_extra_method_mismatch",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0008029579999941916,
-      "longrepr": "",
-      "nodeid": "tests/test_check_quickref_vs_routes.py::test_extract_doc_endpoints_and_diff_missing_extra_method_mismatch",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.391699999928278e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_check_quickref_vs_routes.py::test_extract_doc_endpoints_and_diff_missing_extra_method_mismatch",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.158399998743789e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_occupy_resource_keeps_segments_sorted",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.133400000545407e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_occupy_resource_keeps_segments_sorted",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.350000000068576e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_occupy_resource_keeps_segments_sorted",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.695799999547944e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_runtime_state_helpers_handle_seed_and_dispatch_modes",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.891700000086985e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_runtime_state_helpers_handle_seed_and_dispatch_modes",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3625000000370164e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_runtime_state_helpers_handle_seed_and_dispatch_modes",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.633400000069287e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_update_machine_last_state_rejects_non_datetime_end_time",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.2999999994085556e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_update_machine_last_state_rejects_non_datetime_end_time",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.529200000684796e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_update_machine_last_state_rejects_non_datetime_end_time",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.7332999994532656e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_accumulate_busy_hours_rejects_non_datetime",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.975000000229102e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_accumulate_busy_hours_rejects_non_datetime",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.204199998663171e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_accumulate_busy_hours_rejects_non_datetime",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.562499999532065e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_schedule_normalizes_unordered_machine_downtimes_once",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0002933330000018941,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_schedule_normalizes_unordered_machine_downtimes_once",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.68749999921647e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_schedule_normalizes_unordered_machine_downtimes_once",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.795800000716554e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_enum_display_consistency.py::test_enum_display_wrappers_expected_outputs",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.9334000002641e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_enum_display_consistency.py::test_enum_display_wrappers_expected_outputs",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.6249999993742676e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_enum_display_consistency.py::test_enum_display_wrappers_expected_outputs",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0002867919999971491,
-      "longrepr": "",
-      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_shows_planned_downtime_when_overlay_available",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2920220830000062,
-      "longrepr": "",
-      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_shows_planned_downtime_when_overlay_available",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012658299999657174,
-      "longrepr": "",
-      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_shows_planned_downtime_when_overlay_available",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00033633400001065183,
-      "longrepr": "",
-      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_marks_downtime_overlay_as_degraded_when_query_fails",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.26814274999999554,
-      "longrepr": "",
-      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_marks_downtime_overlay_as_degraded_when_query_fails",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.05830000132346e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_marks_downtime_overlay_as_degraded_when_query_fails",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003124170000035065,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_batch_quantity_float_is_rejected_without_truncation",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0024241659999972853,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_batch_quantity_float_is_rejected_without_truncation",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.349999999282318e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_batch_quantity_float_is_rejected_without_truncation",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.02499999978545e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_accepts_parts_cache_without_conn",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.074999999976626e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_accepts_parts_cache_without_conn",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3375000001001354e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_accepts_parts_cache_without_conn",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.316700000117635e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_requires_conn_when_parts_cache_missing",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 8.220899999855646e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_requires_conn_when_parts_cache_missing",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.9792000009697404e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_requires_conn_when_parts_cache_missing",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.52919999926371e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_blank_helper_does_not_treat_zero_as_blank",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 3.9125000000694854e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_blank_helper_does_not_treat_zero_as_blank",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.091600000004746e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_blank_helper_does_not_treat_zero_as_blank",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00024020899999754874,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_import_service_does_not_treat_zero_id_as_blank",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.002960874999999419,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_import_service_does_not_treat_zero_id_as_blank",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.0959000006400856e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_import_service_does_not_treat_zero_id_as_blank",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.195799999706651e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_ensure_unique_ids_detects_integer_like_float_duplicates",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 8.708399998624827e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_ensure_unique_ids_detects_integer_like_float_duplicates",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.4458000001791333e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_ensure_unique_ids_detects_integer_like_float_duplicates",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00024083299999233532,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_fallback_trims_time_suffix",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.23836158299999965,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_fallback_trims_time_suffix",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.754100001022834e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_fallback_trims_time_suffix",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0002457919999869773,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_validator_rejects_bool_and_nonfinite_numeric_inputs",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.003284042000004206,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_validator_rejects_bool_and_nonfinite_numeric_inputs",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.4834000010828277e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_validator_rejects_bool_and_nonfinite_numeric_inputs",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00027749999999571173,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_and_confirm_reject_bool_numeric_cells",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2781899579999987,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_and_confirm_reject_bool_numeric_cells",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.604199998922923e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_and_confirm_reject_bool_numeric_cells",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0002837920000047234,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_upload_over_limit_returns_413",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.26638141600000154,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_upload_over_limit_returns_413",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.558299999743667e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_upload_over_limit_returns_413",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0002844999999922493,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_exact_file_limit_is_not_rejected_by_multipart_overhead",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.29495045900000605,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_exact_file_limit_is_not_rejected_by_multipart_overhead",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.208299999841074e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_exact_file_limit_is_not_rejected_by_multipart_overhead",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003164580000003525,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_op_type_preview_and_confirm_reject_duplicate_name_conflict",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.28053974999998843,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_op_type_preview_and_confirm_reject_duplicate_name_conflict",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.962499999791817e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_op_type_preview_and_confirm_reject_duplicate_name_conflict",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00028391600000077233,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_file_body_over_limit_returns_file_too_large_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.31293600000000765,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_file_body_over_limit_returns_file_too_large_error",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00014245799999912379,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_file_body_over_limit_returns_file_too_large_error",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004093750000038199,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_scheduler_calendar_preview_rejects_duplicate_dates_after_canonicalization",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2909238339999973,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_scheduler_calendar_preview_rejects_duplicate_dates_after_canonicalization",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.275000000423915e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_scheduler_calendar_preview_rejects_duplicate_dates_after_canonicalization",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.5666999994864454e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_build_xlsx_bytes_sanitizes_formula_like_strings",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.003801417000005358,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_build_xlsx_bytes_sanitizes_formula_like_strings",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.879200000753372e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_import_hardening.py::test_build_xlsx_bytes_sanitizes_formula_like_strings",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.887500000450018e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_normalizers_contract.py::test_regression_excel_normalizers_mixed_case_script_smoke",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.25375008399998933,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_normalizers_contract.py::test_regression_excel_normalizers_mixed_case_script_smoke",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.720799999968222e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_normalizers_contract.py::test_regression_excel_normalizers_mixed_case_script_smoke",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.600000000389628e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_true_for_equal_token",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0008477920000018457,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_true_for_equal_token",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.500000000007276e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_true_for_equal_token",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.170900000133315e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_for_different_token",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00030345899999417725,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_for_different_token",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.9416000007008734e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_for_different_token",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00013012499999831562,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_when_compare_digest_raises",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0003548340000065764,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_when_compare_digest_raises",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.6125000000406544e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_when_compare_digest_raises",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004487920000002532,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_nodeids_without_parsing_terminal_text",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.19887670800000024,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_nodeids_without_parsing_terminal_text",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012562499999546617,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_nodeids_without_parsing_terminal_text",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004851669999936803,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_collection_errors_and_exitstatus",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.18648354200000483,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_collection_errors_and_exitstatus",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00015004200000134915,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_collection_errors_and_exitstatus",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004217919999973674,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_raw_baseline_machine_block",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.14633891600000482,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_raw_baseline_machine_block",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012370800000383042,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_raw_baseline_machine_block",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003397909999875992,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_keeps_required_failures_out_of_candidate_debt",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.14080375000000345,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_keeps_required_failures_out_of_candidate_debt",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00013824999999201282,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_keeps_required_failures_out_of_candidate_debt",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004640830000113283,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_after_isolation_does_not_hide_real_regression_failures",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.17291008299999078,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_after_isolation_does_not_hide_real_regression_failures",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011783300000445251,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_after_isolation_does_not_hide_real_regression_failures",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00044625000001019544,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_importable_debt_baseline",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.21356929200000252,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_importable_debt_baseline",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001311250000100017,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_importable_debt_baseline",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00034283400000845177,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_zero_candidate_importable_baseline_is_current_proof",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.19966741599999693,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_zero_candidate_importable_baseline_is_current_proof",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00014820800001302814,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_zero_candidate_importable_baseline_is_current_proof",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004037080000074411,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_after_isolation_and_output_file",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.07758925000000261,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_after_isolation_and_output_file",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010566699999969842,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_after_isolation_and_output_file",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003729579999998123,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_clean_worktree",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.12793712500000254,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_clean_worktree",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00015166699999724642,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_clean_worktree",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00043924999999944703,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_blocked_classifications",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.6330995419999965,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_blocked_classifications",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010645899999417452,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_blocked_classifications",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0006003750000047603,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_bad_pytest_invocation",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.18985283300000333,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_bad_pytest_invocation",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001356249999986403,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_bad_pytest_invocation",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.254200000592846e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0005564169999985324,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.7708999997221326e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.5791000001950124e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_rejects_duplicates_and_negative_ratchet",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001341669999987971,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_rejects_duplicates_and_negative_ratchet",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3083000005262875e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_rejects_duplicates_and_negative_ratchet",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.808299999263909e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0002642080000043734,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3291999997686617e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003232090000011567,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_marks_registered_exact_nodeids_xfail",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.13353466700000638,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_marks_registered_exact_nodeids_xfail",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001164579999937132,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_marks_registered_exact_nodeids_xfail",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004224579999885236,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_keeps_unregistered_failures_failed",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.12811620799999446,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_keeps_unregistered_failures_failed",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00017779099999870596,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_keeps_unregistered_failures_failed",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004054580000030228,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_does_not_require_uncollected_registered_nodeids",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.12051700000000665,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_does_not_require_uncollected_registered_nodeids",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012370899999325502,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_does_not_require_uncollected_registered_nodeids",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00040250000000696673,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_strict_xpass_fails_when_registered_debt_is_fixed",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.12435554200000354,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_strict_xpass_fails_when_registered_debt_is_fixed",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011958300000003419,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_strict_xpass_fails_when_registered_debt_is_fixed",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003705829999915977,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_propagates_debt_registry_failures",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.12030937499999084,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_propagates_debt_registry_failures",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00014808299999913288,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_propagates_debt_registry_failures",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00013095899998916138,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_save_ledger_writes_test_debt_snapshot_and_machine_block",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00030608299999812516,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_save_ledger_writes_test_debt_snapshot_and_machine_block",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.991699999834509e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_save_ledger_writes_test_debt_snapshot_and_machine_block",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.9208000010357864e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_finalize_ledger_update_preserves_test_debt_and_stable_updated_at",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00018254200000455967,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_finalize_ledger_update_preserves_test_debt_and_stable_updated_at",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.1499999994698555e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_finalize_ledger_update_preserves_test_debt_and_stable_updated_at",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.170800000404597e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_refresh_auto_fields_preserves_test_debt",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001678329999919015,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_refresh_auto_fields_preserves_test_debt",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.037499999753891e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_refresh_auto_fields_preserves_test_debt",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.237499999566353e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_ordinary_sort_and_save_reject_missing_test_debt",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001708750000091186,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_ordinary_sort_and_save_reject_missing_test_debt",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.345800000749023e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_ordinary_sort_and_save_reject_missing_test_debt",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.9207999989798736e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_safe_int_parses_integer_float_forms",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.250000000955879e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_safe_int_parses_integer_float_forms",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.066699999645152e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_safe_int_parses_integer_float_forms",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.908299999011433e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_attach_process_dependencies_sorts_by_seq_even_when_seq_is_float",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.47919999860369e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_attach_process_dependencies_sorts_by_seq_even_when_seq_is_float",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.291599999817208e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_attach_process_dependencies_sorts_by_seq_even_when_seq_is_float",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.487499999721422e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_critical_chain_build_process_prev_respects_seq_even_when_seq_is_float",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001280829999927846,
-      "longrepr": "",
-      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_critical_chain_build_process_prev_respects_seq_even_when_seq_is_float",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.350000000068576e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_critical_chain_build_process_prev_respects_seq_even_when_seq_is_float",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.695799999547944e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_make_algo_stats_can_be_used_as_explicit_counter_sink",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.6208000000547145e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_make_algo_stats_can_be_used_as_explicit_counter_sink",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.070799999704832e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_make_algo_stats_can_be_used_as_explicit_counter_sink",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.000000000165983e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_legacy_scheduler_stats_snapshot_still_works",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.379200000277251e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_legacy_scheduler_stats_snapshot_still_works",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.241699999989578e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_legacy_scheduler_stats_snapshot_still_works",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.3583000004000496e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_legacy_scheduler_repairs_bad_stats_sink",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.899999999314787e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_legacy_scheduler_repairs_bad_stats_sink",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.070900000068377e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_legacy_scheduler_repairs_bad_stats_sink",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.454199999453067e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_external_fallback_writes_legacy_scheduler_stats",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.52080000030719e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_external_fallback_writes_legacy_scheduler_stats",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 2.958299999988867e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_external_fallback_writes_legacy_scheduler_stats",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.837500000258842e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_merge_algo_stats_deep_copies_fallback_samples",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.604199999709181e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_merge_algo_stats_deep_copies_fallback_samples",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.1332999995470345e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_merge_algo_stats_deep_copies_fallback_samples",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.1166999995189144e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_snapshot_algo_stats_fallback_deep_copies_fallback_samples",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.187499999692591e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_snapshot_algo_stats_fallback_deep_copies_fallback_samples",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.7374999990902324e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_snapshot_algo_stats_fallback_deep_copies_fallback_samples",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.5457999999266576e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_duplicate_batch_id",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.0500000003571586e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_duplicate_batch_id",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.112500000668206e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_duplicate_batch_id",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.616699999042794e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_empty_batch_id",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.316600000071503e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_empty_batch_id",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.025000000889122e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_empty_batch_id",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.424999999879219e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_keeps_valid_batch_ids_in_order",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 3.94580000033784e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_keeps_valid_batch_ids_in_order",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.0917000003682915e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_keeps_valid_batch_ids_in_order",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.8499999994410246e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override0]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.612499999723241e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override0]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.474999999752981e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override0]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.208299999992505e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override1]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.0457999989816926e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override1]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.4040999992157595e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override1]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.908300000749932e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override2]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001089999999948077,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override2]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.6417000004007605e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override2]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.4458000001791333e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_strict_ready_date_error_is_not_hidden_by_full_override",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.2458999991577e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_strict_ready_date_error_is_not_hidden_by_full_override",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.0084000002261746e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_strict_ready_date_error_is_not_hidden_by_full_override",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.587499999468946e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_bad_str_conversion_is_rejected",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.129199999804769e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_bad_str_conversion_is_rejected",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 2.9541000003519002e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_bad_str_conversion_is_rejected",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.300000000194814e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_operation_sort_key_uses_shared_integer_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.629199999328648e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_operation_sort_key_uses_shared_integer_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.0332999997995103e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_ordering_contract.py::test_operation_sort_key_uses_shared_integer_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.6417000004007605e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_optimizer_uses_ordering_contract_instead_of_scheduler_helpers",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00014245799999912379,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_optimizer_uses_ordering_contract_instead_of_scheduler_helpers",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.1750000005104084e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_optimizer_uses_ordering_contract_instead_of_scheduler_helpers",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.591699999105913e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_keeps_legacy_ordering_helper_export",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 3.991700000938181e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_keeps_legacy_ordering_helper_export",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.029200000526089e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_keeps_legacy_ordering_helper_export",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.325000000131695e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_modules_do_not_call_scheduler_private_callbacks",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00013662499999611555,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_modules_do_not_call_scheduler_private_callbacks",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.058400000099937e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_modules_do_not_call_scheduler_private_callbacks",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.262499998868407e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_files_and_entry_functions_stay_under_quality_gate",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.029563082999999324,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_files_and_entry_functions_stay_under_quality_gate",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.037500000388718e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_files_and_entry_functions_stay_under_quality_gate",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.420800000559666e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_algorithm_files_stay_under_complexity_threshold",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.01700266699999986,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_algorithm_files_stay_under_complexity_threshold",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.233299999929386e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_algorithm_files_stay_under_complexity_threshold",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.0542000007803836e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_schedule_still_uses_legacy_internal_callback",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00023774999999659485,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_schedule_still_uses_legacy_internal_callback",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.6667000003376415e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_schedule_still_uses_legacy_internal_callback",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.474999999752981e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_legacy_direct_dispatch_keeps_empty_state_containers_in_place",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00014999999999076863,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_legacy_direct_dispatch_keeps_empty_state_containers_in_place",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3249999987106094e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_legacy_direct_dispatch_keeps_empty_state_containers_in_place",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.67910000025995e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_identity_fields_reject_fractional_text_without_crashing",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.7584000003885194e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_identity_fields_reject_fractional_text_without_crashing",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.0125000009206815e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_identity_fields_reject_fractional_text_without_crashing",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.366699999673983e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_with_unknown_op_code_does_not_fall_back_to_batch_seq",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.7375000008287316e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_with_unknown_op_code_does_not_fall_back_to_batch_seq",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.041600000130984e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_with_unknown_op_code_does_not_fall_back_to_batch_seq",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.300000000194814e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_backfill_preserves_original_object_source_and_dynamic_attributes",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.845799999486644e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_backfill_preserves_original_object_source_and_dynamic_attributes",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 2.958299999988867e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_backfill_preserves_original_object_source_and_dynamic_attributes",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.541699999232151e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_bad_time_reasons_are_separated",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.949999999188549e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_bad_time_reasons_are_separated",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 2.958299999988867e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_bad_time_reasons_are_separated",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.2833000005894064e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_empty_machine_pool_records_single_root_cause",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.3082999994226157e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_empty_machine_pool_records_single_root_cause",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 2.95419999929436e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_empty_machine_pool_records_single_root_cause",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.2667000013475445e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_operator_requires_declared_op_type_pool",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.199999999343618e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_operator_requires_declared_op_type_pool",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 2.9249999997205123e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_operator_requires_declared_op_type_pool",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.51660000035281e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_uses_declared_machine_when_op_type_pool_is_unknown",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.770800000310828e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_uses_declared_machine_when_op_type_pool_is_unknown",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.0208000012521552e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_uses_declared_machine_when_op_type_pool_is_unknown",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.2165999996891514e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_respects_declared_op_type_pool",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.066600000385279e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_respects_declared_op_type_pool",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.041699999073444e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_respects_declared_op_type_pool",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.275000000257933e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_existing_pair_rank_must_be_integer",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 7.529200000533365e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_existing_pair_rank_must_be_integer",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.058299999736391e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_existing_pair_rank_must_be_integer",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.4540999990895216e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_scoring_hook_sync_does_not_leak_monkeypatch",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.000191958000002046,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_scoring_hook_sync_does_not_leak_monkeypatch",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3375000001001354e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_scoring_hook_sync_does_not_leak_monkeypatch",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.2791999998948995e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_main_loop_uses_legacy_scoring_wrapper",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00014108400000623078,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_main_loop_uses_legacy_scoring_wrapper",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.233399999658104e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_main_loop_uses_legacy_scoring_wrapper",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.254099999594473e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_enforces_strict_internal_input_before_legacy_callback",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.633299999236897e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_enforces_strict_internal_input_before_legacy_callback",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.620799999737301e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_enforces_strict_internal_input_before_legacy_callback",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.7250000005428774e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_strict_mode_does_not_break_legacy_internal_callback_signature",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.5583000005299255e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_strict_mode_does_not_break_legacy_internal_callback_signature",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 2.929100000415019e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_strict_mode_does_not_break_legacy_internal_callback_signature",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.2959000009213923e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_external_scoring_does_not_double_count_defaulted_days",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00010650000000111959,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_external_scoring_does_not_double_count_defaulted_days",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.0291999991050034e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_external_scoring_does_not_double_count_defaulted_days",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.300000000194814e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_ext_days_before_defaulting",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.216600000323979e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_ext_days_before_defaulting",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.183400000736583e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_ext_days_before_defaulting",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0008294590000019753,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_merged_total_days",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00017870800000707732,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_merged_total_days",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.641600000037215e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_merged_total_days",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.954199999611774e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_merged_external_group_allows_blank_member_ext_days_when_total_days_is_valid",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00012129200000288165,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_merged_external_group_allows_blank_member_ext_days_when_total_days_is_valid",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.2791999998948995e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_merged_external_group_allows_blank_member_ext_days_when_total_days_is_valid",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.445799998758048e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_sequence_identity",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.529099999534992e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_sequence_identity",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.608399999028734e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_sequence_identity",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.729099999816299e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_internal_hours_during_scoring_in_non_strict_mode",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 9.141600000361905e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_internal_hours_during_scoring_in_non_strict_mode",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.183399999784342e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_internal_hours_during_scoring_in_non_strict_mode",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.233399999658104e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_malformed_auto_assign_probe_result",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00014637499999992087,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_malformed_auto_assign_probe_result",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.1417000002420536e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_malformed_auto_assign_probe_result",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.287500000226373e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_propagates_validation_error_from_legacy_internal_callback",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00010733300000254076,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_propagates_validation_error_from_legacy_internal_callback",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.308299999105202e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_propagates_validation_error_from_legacy_internal_callback",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.487499999252577e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[batch_order]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001864580000017213,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[batch_order]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.7915999996585015e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[batch_order]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.9457999992341684e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[sgs]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00015295800000103554,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[sgs]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.8000000003535206e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[sgs]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.51669999929527e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_run_state_contract.py::test_seed_result_missing_resources_records_warning_counts_without_blocking",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00010954200000412584,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_run_state_contract.py::test_seed_result_missing_resources_records_warning_counts_without_blocking",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.366699999673983e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_run_state_contract.py::test_seed_result_missing_resources_records_warning_counts_without_blocking",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.350000000068576e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_run_state_contract.py::test_dispatch_success_advances_progress_and_records_internal_usage",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.241699998885906e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_run_state_contract.py::test_dispatch_success_advances_progress_and_records_internal_usage",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 2.9957999998941887e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_run_state_contract.py::test_dispatch_success_advances_progress_and_records_internal_usage",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.483299999298197e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_passes_start_dt_date_to_sorter",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001792500000021846,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_passes_start_dt_date_to_sorter",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.037499999753891e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_passes_start_dt_date_to_sorter",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.820799999549763e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_weighted_order_uses_start_dt_base_date",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00017462499999965075,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_weighted_order_uses_start_dt_base_date",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.1249999995329745e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_weighted_order_uses_start_dt_base_date",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003099580000025526,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_pages_show_degraded_warning_when_holiday_default_efficiency_invalid",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2756915410000005,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_pages_show_degraded_warning_when_holiday_default_efficiency_invalid",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.8791999996497e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_pages_show_degraded_warning_when_holiday_default_efficiency_invalid",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00028675000000077944,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_degraded_warning_when_holiday_default_efficiency_invalid",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.28624104200000033,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_degraded_warning_when_holiday_default_efficiency_invalid",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.966699999746197e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_degraded_warning_when_holiday_default_efficiency_invalid",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003824169999973037,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_summary_and_inline_warnings_for_multiple_degraded_fields_in_v2",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.28914249999999697,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_summary_and_inline_warnings_for_multiple_degraded_fields_in_v2",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.908299998860002e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_summary_and_inline_warnings_for_multiple_degraded_fields_in_v2",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00036016600000721155,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/config-False]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.30507049999999936,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/config-False]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.587499999634929e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/config-False]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003500830000007227,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/-False]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2861845000000045,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/-False]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010816700000759738,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/-False]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004402080000005526,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/calendar-False]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2778689999999955,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/calendar-False]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.720900000331767e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/calendar-False]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00040108299999985775,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/batches/B001-True]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.29478387499999315,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/batches/B001-True]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.658399999068479e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/batches/B001-True]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003401249999939182,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_renders_auto_assign_persist_visibility_in_v1_and_v2",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.30435195799999804,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_renders_auto_assign_persist_visibility_in_v1_and_v2",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.404100000485414e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_renders_auto_assign_persist_visibility_in_v1_and_v2",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003578750000059472,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2716731249999924,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.666700000503624e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003338340000027529,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.28143199999999524,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010991700000317906,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.3417000003719295e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_picker_js_does_not_rebuild_local_0_8_default",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00034033299999691735,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_picker_js_does_not_rebuild_local_0_8_default",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.800000000670934e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_picker_js_does_not_rebuild_local_0_8_default",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003705419999988635,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_and_confirm_reject_invalid_holiday_default_efficiency",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.3224976250000111,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_and_confirm_reject_invalid_holiday_default_efficiency",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.899999998845942e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_and_confirm_reject_invalid_holiday_default_efficiency",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003779160000050297,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_and_confirm_reject_invalid_holiday_default_efficiency",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.30479808300000855,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_and_confirm_reject_invalid_holiday_default_efficiency",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.879200001070785e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_and_confirm_reject_invalid_holiday_default_efficiency",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00035141699999030607,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_bootstraps_pristine_store_without_prior_read",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.3093899169999901,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_bootstraps_pristine_store_without_prior_read",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010720800000285635,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_bootstraps_pristine_store_without_prior_read",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004255829999948446,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_bootstraps_pristine_store_without_prior_read",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2964195419999953,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_bootstraps_pristine_store_without_prior_read",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.649999999477131e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_bootstraps_pristine_store_without_prior_read",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.820799999549763e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_matches_schedule_internal_and_is_read_only",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001502500000043483,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_matches_schedule_internal_and_is_read_only",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.62920000043232e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_matches_schedule_internal_and_is_read_only",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.900000000101045e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_uses_adjusted_max_of_prev_end_and_base_time",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.633300000657982e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_uses_adjusted_max_of_prev_end_and_base_time",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.7250000005428774e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_uses_adjusted_max_of_prev_end_and_base_time",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.754200000116725e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_handles_more_than_two_hundred_fragments",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0014976669999953174,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_handles_more_than_two_hundred_fragments",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.462499999784541e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_handles_more_than_two_hundred_fragments",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.679200000306082e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_abort_after_only_applies_after_adjustment_and_uses_strict_greater_than",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 7.674999999096599e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_abort_after_only_applies_after_adjustment_and_uses_strict_greater_than",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.379100000699964e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_abort_after_only_applies_after_adjustment_and_uses_strict_greater_than",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.5249999996267434e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_validate_internal_hours_keeps_direct_call_compatibility_and_exposes_property_errors",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00012275000000272485,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_validate_internal_hours_keeps_direct_call_compatibility_and_exposes_property_errors",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.650000000732234e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_validate_internal_hours_keeps_direct_call_compatibility_and_exposes_property_errors",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.791700000022047e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_fallback_only_updates_formal_schedule_counter",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 8.750000000645741e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_fallback_only_updates_formal_schedule_counter",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3709000007320356e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_fallback_only_updates_formal_schedule_counter",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.5207999999897766e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_auto_assign_passes_best_end_to_estimator_abort_after",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0002538749999985157,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_auto_assign_passes_best_end_to_estimator_abort_after",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.5749999995005055e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_auto_assign_passes_best_end_to_estimator_abort_after",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.6291999990112345e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_returns_start_equals_end",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.004200000120363e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_returns_start_equals_end",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.533299999958217e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_returns_start_equals_end",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.9375000000063665e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_still_avoids_occupied_segments",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.529200000215951e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_still_avoids_occupied_segments",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3375000001001354e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_still_avoids_occupied_segments",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.51669999929527e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_at_segment_start_does_not_shift",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.883299999709379e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_at_segment_start_does_not_shift",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.258399999594985e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_at_segment_start_does_not_shift",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.591600000163453e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_edge_cases_none_invalid_values_and_exception",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00020979199999260345,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_edge_cases_none_invalid_values_and_exception",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.837500000258842e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_edge_cases_none_invalid_values_and_exception",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.99159999915355e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_invalid_status_raises_and_rolls_back_all_changes",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0012312090000108356,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_invalid_status_raises_and_rolls_back_all_changes",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.679200000306082e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_invalid_status_raises_and_rolls_back_all_changes",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.733300000874351e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_name_raises_validation_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0010303749999991396,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_name_raises_validation_error",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.5334000003217625e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_name_raises_validation_error",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.62920000043232e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_status_raises_specific_message",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0010075419999964197,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_status_raises_specific_message",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.9375000000063665e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_status_raises_specific_message",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.779099999690061e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_valid_rows_commit_and_trim_fields",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0010562500000048658,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_valid_rows_commit_and_trim_fields",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.6667000003376415e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_valid_rows_commit_and_trim_fields",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.7374999990902324e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_update_without_team_column_preserves_existing_team_id",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0010120000000028995,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_update_without_team_column_preserves_existing_team_id",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.083299999990686e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_update_without_team_column_preserves_existing_team_id",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.666599999974096e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_team_accepts_id_or_name_and_blank_clears",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0011777499999965357,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_team_accepts_id_or_name_and_blank_clears",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.716700000528817e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_team_accepts_id_or_name_and_blank_clears",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00022370799999293922,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v1-\\u5df2\\u6e05\\u6d17 Batches \\u7684\\u65e5\\u671f\\u5b57\\u6bb5]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0014772499999935462,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v1-\\u5df2\\u6e05\\u6d17 Batches \\u7684\\u65e5\\u671f\\u5b57\\u6bb5]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.437499999696229e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v1-\\u5df2\\u6e05\\u6d17 Batches \\u7684\\u65e5\\u671f\\u5b57\\u6bb5]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00012179099999798382,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v2-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v2\\uff1a\\u5df2\\u5c06 WorkCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0011071670000006861,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v2-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v2\\uff1a\\u5df2\\u5c06 WorkCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010316600000237486,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v2-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v2\\uff1a\\u5df2\\u5c06 WorkCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00011041700000191668,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v3-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v3\\uff1a\\u5df2\\u5c06 OperatorCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0010063330000065207,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v3-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v3\\uff1a\\u5df2\\u5c06 OperatorCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.366699999205139e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v3-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v3\\uff1a\\u5df2\\u5c06 OperatorCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0001107079999940197,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v4-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v4\\uff1a\\u5df2\\u6e05\\u6d17 OperatorMachine.skill_level]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.001747665999999981,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v4-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v4\\uff1a\\u5df2\\u6e05\\u6d17 OperatorMachine.skill_level]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.354099998873153e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v4-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v4\\uff1a\\u5df2\\u6e05\\u6d17 OperatorMachine.skill_level]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.000108667000006335,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v5-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v5\\uff1a\\u5df2\\u4fee\\u6b63 OperatorMachine.skill_level]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0011228749999929732,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v5-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v5\\uff1a\\u5df2\\u4fee\\u6b63 OperatorMachine.skill_level]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.070899999599533e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v5-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v5\\uff1a\\u5df2\\u4fee\\u6b63 OperatorMachine.skill_level]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.737500000511318e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_v5_run_does_not_log_changed_rows_for_canonical_values",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0011163750000093842,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_v5_run_does_not_log_changed_rows_for_canonical_values",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.787499999281408e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_v5_run_does_not_log_changed_rows_for_canonical_values",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 8.687499999382453e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_ensure_schema_migration_entry_path_survives_broken_logger",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.03729345800000772,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_ensure_schema_migration_entry_path_survives_broken_logger",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.258400000078382e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_ensure_schema_migration_entry_path_survives_broken_logger",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00010762499999827924,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_v6_run_falls_back_to_stderr_when_logger_is_broken",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00033675000000243926,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_v6_run_falls_back_to_stderr_when_logger_is_broken",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.833299999835617e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_migration_logging_fallback.py::test_v6_run_falls_back_to_stderr_when_logger_is_broken",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.4625000001019544e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_normalize_text_none_and_blank",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.4625000001019544e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_normalize_text_none_and_blank",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.2915999994997946e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_normalize_text_none_and_blank",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.7250000005428774e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_normalize_text_str_and_non_str",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.12500000095406e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_normalize_text_str_and_non_str",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.220800000747204e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_normalize_text_str_and_non_str",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.887500000132604e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_none_buffer",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 3.799999998932435e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_none_buffer",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.404100000636845e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_none_buffer",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.2834000001666936e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_single_value_and_dedup_order",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.137499999501415e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_single_value_and_dedup_order",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.166700000178935e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_single_value_and_dedup_order",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.575000000921591e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_set_input",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 3.8041999999904874e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_set_input",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3625000000370164e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_set_input",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.8250000002904017e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_commits_valid_rows_and_keeps_row_errors",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0016584579999943116,
-      "longrepr": "",
-      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_commits_valid_rows_and_keeps_row_errors",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.833300000939289e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_commits_valid_rows_and_keeps_row_errors",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.3791999999598374e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_create",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0010415829999885773,
-      "longrepr": "",
-      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_create",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.941699999643333e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_create",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.8250000002904017e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_update",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0009806249999968486,
-      "longrepr": "",
-      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_update",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.887500000132604e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_update",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.4333000005281065e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_strips_name_and_normalizes_remark",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0009518749999983811,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_strips_name_and_normalizes_remark",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.604200000495439e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_strips_name_and_normalizes_remark",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.9624999999432475e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_update_without_team_column_preserves_existing_team_id",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0009348749999986694,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_update_without_team_column_preserves_existing_team_id",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.5084000003848814e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_update_without_team_column_preserves_existing_team_id",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.774999998995554e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_team_accepts_id_or_name_and_blank_clears",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0009926669999913429,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_team_accepts_id_or_name_and_blank_clears",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.6582999996426224e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_team_accepts_id_or_name_and_blank_clears",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 7.379199999490993e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_excel_route_error_handling.py::test_personnel_excel_preview_hides_internal_runtime_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2572650420000002,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_excel_route_error_handling.py::test_personnel_excel_preview_hides_internal_runtime_error",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.875000000012733e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_excel_route_error_handling.py::test_personnel_excel_preview_hides_internal_runtime_error",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.0791999999310065e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 8.495800000218878e-05,
-      "longrepr": "tests/test_operator_machine_exception_paths.py:45: in test_normalize_skill_level_optional_only_converts_value_error\n    with patch(\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1393: in __enter__\n    original, local = self.get_original()\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1366: in get_original\n    raise AttributeError(\nE   AttributeError: <module 'core.services.personnel.operator_machine_normalizers' from '/private/tmp/full-pytest-baseline.132b1M/wt/core/services/personnel/operator_machine_normalizers.py'> does not have the attribute 'normalize_skill_level'",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
-      "outcome": "skipped",
-      "when": "call"
-    },
-    {
-      "duration": 9.004199999651519e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.5999999997548e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.645899999568883e-05,
-      "longrepr": "tests/test_operator_machine_exception_paths.py:54: in test_normalize_skill_level_stored_only_falls_back_for_value_error\n    with patch(\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1393: in __enter__\n    original, local = self.get_original()\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1366: in get_original\n    raise AttributeError(\nE   AttributeError: <module 'core.services.personnel.operator_machine_normalizers' from '/private/tmp/full-pytest-baseline.132b1M/wt/core/services/personnel/operator_machine_normalizers.py'> does not have the attribute 'normalize_skill_level'",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
-      "outcome": "skipped",
-      "when": "call"
-    },
-    {
-      "duration": 9.962500000426644e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.5999999997548e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0011241250000040282,
-      "longrepr": "tests/test_operator_machine_exception_paths.py:72: in test_list_by_operator_propagates_unexpected_readside_normalization_errors\n    with patch(\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1393: in __enter__\n    original, local = self.get_original()\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1366: in get_original\n    raise AttributeError(\nE   AttributeError: <module 'core.services.personnel.operator_machine_normalizers' from '/private/tmp/full-pytest-baseline.132b1M/wt/core/services/personnel/operator_machine_normalizers.py'> does not have the attribute 'normalize_skill_level'",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
-      "outcome": "skipped",
-      "when": "call"
-    },
-    {
-      "duration": 9.041700000977926e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.85839999981863e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_preview_skill_and_primary_only_convert_validation_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.001471457999997483,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_preview_skill_and_primary_only_convert_validation_error",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.9709000006382666e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_preview_skill_and_primary_only_convert_validation_error",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.949999999974807e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0010200420000074928,
-      "longrepr": "tests/test_operator_machine_exception_paths.py:128: in test_resolve_write_values_only_converts_validation_error\n    assert new_skill is None\nE   AssertionError: assert 'normal' is None",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
-      "outcome": "skipped",
-      "when": "call"
-    },
-    {
-      "duration": 4.258300000969939e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.6375000007637937e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_query_service_only_falls_back_for_value_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0002085419999957594,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_query_service_only_falls_back_for_value_error",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.612499999405827e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_operator_machine_exception_paths.py::test_query_service_only_falls_back_for_value_error",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.554200000621677e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_scored_public_attempts_when_rejections_exceed_limit",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00011991600000271774,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_scored_public_attempts_when_rejections_exceed_limit",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.124999999215561e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_scored_public_attempts_when_rejections_exceed_limit",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.424999999879219e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostics_without_fake_score",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.18329999973821e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostics_without_fake_score",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 2.9334000004155314e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostics_without_fake_score",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.675000000669115e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostic_when_scored_attempts_fill_limit",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 8.508399999129779e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostic_when_scored_attempts_fill_limit",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.2665999995629136e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostic_when_scored_attempts_fill_limit",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.3333000004631685e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_distinct_rejected_origins_for_same_tag",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.133299999864448e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_distinct_rejected_origins_for_same_tag",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 2.9958999988366486e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_distinct_rejected_origins_for_same_tag",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.483300000084455e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_build_order_is_cached_per_strategy_within_single_multi_start_call",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0005187919999940505,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_build_order_is_cached_per_strategy_within_single_multi_start_call",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.483300000084455e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_build_order_is_cached_per_strategy_within_single_multi_start_call",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.537499999595184e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_records_optional_sgs_validation_error_without_losing_primary_best",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00020008399999937865,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_records_optional_sgs_validation_error_without_losing_primary_best",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.429199999516186e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_records_optional_sgs_validation_error_without_losing_primary_best",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.4374999998476596e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_strict_mode_raises_non_primary_sgs_validation_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00022179200000493893,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_strict_mode_raises_non_primary_sgs_validation_error",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.7624999990271135e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_strict_mode_raises_non_primary_sgs_validation_error",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.675000000669115e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_raises_primary_sgs_validation_error_without_fallback_to_batch_order",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00014904100000023845,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_raises_primary_sgs_validation_error_without_fallback_to_batch_order",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.72920000066324e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_raises_primary_sgs_validation_error_without_fallback_to_batch_order",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.791700000022047e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_partial_object_cfg_is_normalized_before_weighted_params",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001723339999983864,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_partial_object_cfg_is_normalized_before_weighted_params",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.616600000100334e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_partial_object_cfg_is_normalized_before_weighted_params",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.3041000008893207e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_partial_object_cfg_strict_error_is_not_swallowed_as_warmstart_failure",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.729200001132085e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_partial_object_cfg_strict_error_is_not_swallowed_as_warmstart_failure",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.6167000004638794e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_partial_object_cfg_strict_error_is_not_swallowed_as_warmstart_failure",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.404100000168e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_strict_mode_raises_candidate_validation_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0008676249999979291,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_strict_mode_raises_candidate_validation_error",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.2832999994857346e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_strict_mode_raises_candidate_validation_error",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.487500000356249e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_dedups_duplicate_neighbors_when_order_large",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 8.67910000010852e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_dedups_duplicate_neighbors_when_order_large",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.8000000003535206e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_dedups_duplicate_neighbors_when_order_large",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.866700000150104e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_retrying_duplicates_when_order_small",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00011208399999418361,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_retrying_duplicates_when_order_small",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.770799999358587e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_retrying_duplicates_when_order_small",
+      "nodeid": "tests/regression_excel_preview_confirm_baseline_guard.py::regression_excel_preview_confirm_baseline_guard",
       "outcome": "passed",
       "when": "teardown"
     },
     {
       "duration": 4.9291999999923064e-05,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_and_keeps_existing_best",
+      "nodeid": "tests/regression_excel_preview_confirm_extra_state_guard.py::regression_excel_preview_confirm_extra_state_guard",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 7.441699999333196e-05,
+      "duration": 0.7718690830000003,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_and_keeps_existing_best",
+      "nodeid": "tests/regression_excel_preview_confirm_extra_state_guard.py::regression_excel_preview_confirm_extra_state_guard",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.679099999942537e-05,
+      "duration": 8.949999999963154e-05,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_and_keeps_existing_best",
+      "nodeid": "tests/regression_excel_preview_confirm_extra_state_guard.py::regression_excel_preview_confirm_extra_state_guard",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.7708000010970864e-05,
+      "duration": 4.8249999998972726e-05,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_strict_mode_raises_rejected_neighbor_validation_error",
+      "nodeid": "tests/regression_excel_routes_no_tx_surface_hidden.py::regression_excel_routes_no_tx_surface_hidden",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 5.2375000009874384e-05,
+      "duration": 0.019960917000000578,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_strict_mode_raises_rejected_neighbor_validation_error",
+      "nodeid": "tests/regression_excel_routes_no_tx_surface_hidden.py::regression_excel_routes_no_tx_surface_hidden",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.7458000008427916e-05,
+      "duration": 7.991600000067933e-05,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_strict_mode_raises_rejected_neighbor_validation_error",
+      "nodeid": "tests/regression_excel_routes_no_tx_surface_hidden.py::regression_excel_routes_no_tx_surface_hidden",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.733299999770679e-05,
+      "duration": 4.6000000001100716e-05,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_after_existing_attempt_cap",
+      "nodeid": "tests/regression_excel_service_calc_changes_row.py::regression_excel_service_calc_changes_row",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.00012308299999119754,
+      "duration": 0.02836083299999892,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_after_existing_attempt_cap",
+      "nodeid": "tests/regression_excel_service_calc_changes_row.py::regression_excel_service_calc_changes_row",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.845800000590316e-05,
+      "duration": 9.545900000063057e-05,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_after_existing_attempt_cap",
+      "nodeid": "tests/regression_excel_service_calc_changes_row.py::regression_excel_service_calc_changes_row",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.3167000004350484e-05,
+      "duration": 5.970900000029644e-05,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_distinct_rejected_neighbor_origins",
+      "nodeid": "tests/regression_excel_source_row_num_preserved.py::regression_excel_source_row_num_preserved",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 7.991599999002119e-05,
+      "duration": 0.05671683299999941,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_distinct_rejected_neighbor_origins",
+      "nodeid": "tests/regression_excel_source_row_num_preserved.py::regression_excel_source_row_num_preserved",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.7792000000536063e-05,
+      "duration": 0.00011204099999950756,
       "longrepr": "",
-      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_distinct_rejected_neighbor_origins",
+      "nodeid": "tests/regression_excel_source_row_num_preserved.py::regression_excel_source_row_num_preserved",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 3.462499999784541e-05,
+      "duration": 5.4541999999102586e-05,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_parse_write_row_accepts_integer_float_string_forms",
+      "nodeid": "tests/regression_excel_validators_yesno_mixed_case.py::regression_excel_validators_yesno_mixed_case",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 5.1666999993926765e-05,
+      "duration": 0.04152670899999933,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_parse_write_row_accepts_integer_float_string_forms",
+      "nodeid": "tests/regression_excel_validators_yesno_mixed_case.py::regression_excel_validators_yesno_mixed_case",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.116699998884087e-05,
+      "duration": 8.449999999982083e-05,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_parse_write_row_accepts_integer_float_string_forms",
+      "nodeid": "tests/regression_excel_validators_yesno_mixed_case.py::regression_excel_validators_yesno_mixed_case",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 3.341699999737102e-05,
+      "duration": 4.812500000106468e-05,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_apply_preview_rows_turns_nan_inf_into_row_errors",
+      "nodeid": "tests/regression_exit_backup_maintenance.py::regression_exit_backup_maintenance",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.00010879100000238395,
+      "duration": 0.3168177919999984,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_apply_preview_rows_turns_nan_inf_into_row_errors",
+      "nodeid": "tests/regression_exit_backup_maintenance.py::regression_exit_backup_maintenance",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.1708999998159015e-05,
+      "duration": 8.562500000053319e-05,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_apply_preview_rows_turns_nan_inf_into_row_errors",
+      "nodeid": "tests/regression_exit_backup_maintenance.py::regression_exit_backup_maintenance",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 3.4458000001791333e-05,
+      "duration": 4.9083000000393895e-05,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_mixed_rows_commits_valid_and_keeps_row_errors",
+      "nodeid": "tests/regression_exit_backup_reloader_parent_skip.py::regression_exit_backup_reloader_parent_skip",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.001068374999988464,
+      "duration": 0.30847987499999974,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_mixed_rows_commits_valid_and_keeps_row_errors",
+      "nodeid": "tests/regression_exit_backup_reloader_parent_skip.py::regression_exit_backup_reloader_parent_skip",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.312500000163254e-05,
+      "duration": 7.420799999913186e-05,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_mixed_rows_commits_valid_and_keeps_row_errors",
+      "nodeid": "tests/regression_exit_backup_reloader_parent_skip.py::regression_exit_backup_reloader_parent_skip",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.154199999424236e-05,
+      "duration": 4.891700000086985e-05,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_unexpected_exception_rolls_back_all_changes",
+      "nodeid": "tests/regression_exit_backup_respects_config.py::regression_exit_backup_respects_config",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0014165000000048167,
+      "duration": 0.3134624579999983,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_unexpected_exception_rolls_back_all_changes",
+      "nodeid": "tests/regression_exit_backup_respects_config.py::regression_exit_backup_respects_config",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 5.566699999803859e-05,
+      "duration": 0.00038995799999952396,
       "longrepr": "",
-      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_unexpected_exception_rolls_back_all_changes",
+      "nodeid": "tests/regression_exit_backup_respects_config.py::regression_exit_backup_respects_config",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 8.591699999271896e-05,
+      "duration": 7.458400000004417e-05,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_changed_files_preserve_first_git_status_columns",
+      "nodeid": "tests/regression_external_group_service_compatible_mode_logs_fallback.py::regression_external_group_service_compatible_mode_logs_fallback",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.004066499999993312,
+      "duration": 0.11704645899999733,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_changed_files_preserve_first_git_status_columns",
+      "nodeid": "tests/regression_external_group_service_compatible_mode_logs_fallback.py::regression_external_group_service_compatible_mode_logs_fallback",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 4.675000000986529e-05,
+      "duration": 8.712500000029877e-05,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_changed_files_preserve_first_git_status_columns",
+      "nodeid": "tests/regression_external_group_service_compatible_mode_logs_fallback.py::regression_external_group_service_compatible_mode_logs_fallback",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.9582999995200225e-05,
+      "duration": 4.850000000189425e-05,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_changed_file_exceeds_complexity",
+      "nodeid": "tests/regression_external_group_service_merge_mode_case_insensitive.py::regression_external_group_service_merge_mode_case_insensitive",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0010421249999978954,
+      "duration": 0.1051620419999999,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_changed_file_exceeds_complexity",
+      "nodeid": "tests/regression_external_group_service_merge_mode_case_insensitive.py::regression_external_group_service_merge_mode_case_insensitive",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 4.3957999992016994e-05,
+      "duration": 0.00010437499999937927,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_changed_file_exceeds_complexity",
+      "nodeid": "tests/regression_external_group_service_merge_mode_case_insensitive.py::regression_external_group_service_merge_mode_case_insensitive",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 6.0541999999941254e-05,
+      "duration": 5.2542000002375744e-05,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_complexity_tool_is_missing",
+      "nodeid": "tests/regression_external_group_service_strict_mode_blank_days.py::regression_external_group_service_strict_mode_blank_days",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0010066669999986289,
+      "duration": 0.10361679100000032,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_complexity_tool_is_missing",
+      "nodeid": "tests/regression_external_group_service_strict_mode_blank_days.py::regression_external_group_service_strict_mode_blank_days",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 4.36250000035443e-05,
+      "duration": 0.00011416699999955426,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_complexity_tool_is_missing",
+      "nodeid": "tests/regression_external_group_service_strict_mode_blank_days.py::regression_external_group_service_strict_mode_blank_days",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.320900000072015e-05,
+      "duration": 6.608300000010559e-05,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_architecture_scan_skips_file",
+      "nodeid": "tests/regression_external_merge_mode_case_insensitive.py::regression_external_merge_mode_case_insensitive",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0009998750000050904,
+      "duration": 0.05791170800000245,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_architecture_scan_skips_file",
+      "nodeid": "tests/regression_external_merge_mode_case_insensitive.py::regression_external_merge_mode_case_insensitive",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 4.387500000291311e-05,
+      "duration": 8.579100000005724e-05,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_architecture_scan_skips_file",
+      "nodeid": "tests/regression_external_merge_mode_case_insensitive.py::regression_external_merge_mode_case_insensitive",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.5291000009560776e-05,
+      "duration": 4.820800000260306e-05,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_code_quality_scan_skips_file",
+      "nodeid": "tests/regression_freeze_window_bounds.py::regression_freeze_window_bounds",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0009725409999958856,
+      "duration": 0.13720891699999882,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_code_quality_scan_skips_file",
+      "nodeid": "tests/regression_freeze_window_bounds.py::regression_freeze_window_bounds",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 4.254200000275432e-05,
+      "duration": 8.179199999958087e-05,
       "longrepr": "",
-      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_code_quality_scan_skips_file",
+      "nodeid": "tests/regression_freeze_window_bounds.py::regression_freeze_window_bounds",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 3.7082999995163846e-05,
+      "duration": 5.054200000031983e-05,
       "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_batch_query_service_has_any",
+      "nodeid": "tests/regression_frontend_common_interactions.py::regression_frontend_common_interactions",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.00017645800001275802,
+      "duration": 0.02146529100000194,
       "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_batch_query_service_has_any",
+      "nodeid": "tests/regression_frontend_common_interactions.py::regression_frontend_common_interactions",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.120799999578594e-05,
+      "duration": 7.662499999838701e-05,
       "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_batch_query_service_has_any",
+      "nodeid": "tests/regression_frontend_common_interactions.py::regression_frontend_common_interactions",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 3.3874999999738975e-05,
+      "duration": 4.579200000165429e-05,
       "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_part_operation_query_service_lists_hours_and_details",
+      "nodeid": "tests/regression_gantt_calendar_load_failed_degraded.py::regression_gantt_calendar_load_failed_degraded",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.00023558400000922575,
+      "duration": 0.7186912079999992,
       "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_part_operation_query_service_lists_hours_and_details",
+      "nodeid": "tests/regression_gantt_calendar_load_failed_degraded.py::regression_gantt_calendar_load_failed_degraded",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.300000000194814e-05,
+      "duration": 9.062499999856755e-05,
       "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_part_operation_query_service_lists_hours_and_details",
+      "nodeid": "tests/regression_gantt_calendar_load_failed_degraded.py::regression_gantt_calendar_load_failed_degraded",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 3.579199999137472e-05,
+      "duration": 5.008300000142185e-05,
       "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_machine_downtime_query_service_list_active_machine_ids_at",
+      "nodeid": "tests/regression_gantt_contract_snapshot.py::regression_gantt_contract_snapshot",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.00012562499999546617,
+      "duration": 0.6747833750000005,
       "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_machine_downtime_query_service_list_active_machine_ids_at",
+      "nodeid": "tests/regression_gantt_contract_snapshot.py::regression_gantt_contract_snapshot",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.141600001299594e-05,
+      "duration": 9.8540999999841e-05,
       "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_machine_downtime_query_service_list_active_machine_ids_at",
+      "nodeid": "tests/regression_gantt_contract_snapshot.py::regression_gantt_contract_snapshot",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 3.816699999958928e-05,
+      "duration": 5.3875000002534534e-05,
       "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
+      "nodeid": "tests/regression_gantt_critical_chain_cache_thread_safe.py::regression_gantt_critical_chain_cache_thread_safe",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0003043330000025435,
-      "longrepr": "tests/test_query_services.py:163: in test_operator_machine_query_service_lists_with_names_and_linkage_rows\n    assert simple == [\nE   assert [{'dirty_fiel...': 'M2', ...}] == [{'is_primary...: 'beginner'}]\nE     \nE     At index 0 diff: {'operator_id': 'O1', 'machine_id': 'M1', 'skill_level': 'expert', 'is_primary': 'yes', 'dirty_fields': ['skill_level'], 'dirty_reasons': {'skill_level': \"历史技能等级 'high' 已兼容归一为 expert。\"}} != {'operator_id': 'O1', 'machine_id': 'M1', 'skill_level': 'expert', 'is_primary': 'yes'}\nE     Use -v to get more diff",
-      "nodeid": "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
-      "outcome": "skipped",
-      "when": "call"
-    },
-    {
-      "duration": 4.583300000149393e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.6167000004638794e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_schedule_history_query_service_versions_and_latest",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00024075000000323143,
-      "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_schedule_history_query_service_versions_and_latest",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.933299998948314e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_query_services.py::test_schedule_history_query_service_versions_and_latest",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0002979579999902171,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_nodeid_and_runner_file_are_not_collected",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.12455441699999881,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_nodeid_and_runner_file_are_not_collected",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00017608299999949395,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_nodeid_and_runner_file_are_not_collected",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00041712499999846386,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_exit_contract_and_failure_output",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 1.085369166999996,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_exit_contract_and_failure_output",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00016912499999932606,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_exit_contract_and_failure_output",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004330419999973856,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_subprocess_pollution_is_isolated",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.162991458999997,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_subprocess_pollution_is_isolated",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00013383399999611356,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_subprocess_pollution_is_isolated",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.84170000084805e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_runner_script_exists_and_is_not_main_style_collected",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.8547948340000033,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_runner_script_exists_and_is_not_main_style_collected",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00013679200000638048,
-      "longrepr": "",
-      "nodeid": "tests/test_regression_main_isolation_contract.py::test_runner_script_exists_and_is_not_main_style_collected",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.720800000437066e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_legacy_full_selftest_root_report_is_not_current_artifact",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00010666699999717366,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_legacy_full_selftest_root_report_is_not_current_artifact",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.958300000306281e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_legacy_full_selftest_root_report_is_not_current_artifact",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.5958000001178334e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_report_header_includes_revision_and_gate_manifest_metadata",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.005657709000004729,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_report_header_includes_revision_and_gate_manifest_metadata",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.316699999013963e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_report_header_includes_revision_and_gate_manifest_metadata",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00045820799999773953,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_tracked_regression_discovery_ignores_untracked_files",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.002036291999999662,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_tracked_regression_discovery_ignores_untracked_files",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.679199999837238e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_tracked_regression_discovery_ignores_untracked_files",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0002861250000023574,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_run_full_selftest_fails_when_quality_gate_manifest_is_unbound",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0021810840000000553,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_run_full_selftest_fails_when_quality_gate_manifest_is_unbound",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.7999999995672624e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_run_full_selftest_fails_when_quality_gate_manifest_is_unbound",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0002725000000083355,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_accepts_clean_proof_manifest",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2855637080000122,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_accepts_clean_proof_manifest",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001319170000044778,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_accepts_clean_proof_manifest",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00040949999998929343,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_manifest_replay_rechecks_clean_worktree",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.26584437500000035,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_manifest_replay_rechecks_clean_worktree",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011950000001093031,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_manifest_replay_rechecks_clean_worktree",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00046116699999743105,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_command_replay_failure",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2681487920000052,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_command_replay_failure",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00015412499999456486,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_command_replay_failure",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004472090000007256,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_replay_disabled_is_structural_only",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2638786670000002,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_replay_disabled_is_structural_only",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012312500000177806,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_replay_disabled_is_structural_only",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003819579999913003,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_replay_rejects_forged_non_collect_receipt_output",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.017125958999997692,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_replay_rejects_forged_non_collect_receipt_output",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001306660000039983,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_replay_rejects_forged_non_collect_receipt_output",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.4500000004509275e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_volatile_iso_timestamp",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00010904199999117736,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_volatile_iso_timestamp",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.462499999784541e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_volatile_iso_timestamp",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.7500000004797585e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_pyright_update_notice",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.695800000182771e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_pyright_update_notice",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.395800000305371e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_pyright_update_notice",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00039962500000001455,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_dirty_and_drifted_manifest",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2939962500000064,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_dirty_and_drifted_manifest",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012854199999878801,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_dirty_and_drifted_manifest",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00048562499999604825,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_reports_failed_manifest_reason",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.1486189170000074,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_reports_failed_manifest_reason",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011829099999260961,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_reports_failed_manifest_reason",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003948749999977963,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_head_mismatch_and_checkout_identity_mismatch",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2930824169999937,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_head_mismatch_and_checkout_identity_mismatch",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001197079999997186,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_head_mismatch_and_checkout_identity_mismatch",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00041412500000603814,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_or_wrong_proof_scope",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2937953329999914,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_or_wrong_proof_scope",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011283299998865459,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_or_wrong_proof_scope",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00040308299999480823,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_hash_mismatch",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.585765374999994,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_hash_mismatch",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00027866699998924105,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_hash_mismatch",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0005140840000024127,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_command_receipt_file",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2693762910000004,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_command_receipt_file",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010729200000980654,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_command_receipt_file",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0005052500000033433,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collection_proof",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.26925583300000255,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collection_proof",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011433299999907831,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collection_proof",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004671250000001237,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collect_receipt",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.267866166999994,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collect_receipt",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011295800000254985,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collect_receipt",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.67089999918835e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_explicit_guard_subset_comes_from_shared_registry",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0024036659999921994,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_explicit_guard_subset_comes_from_shared_registry",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.583400000512938e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_explicit_guard_subset_comes_from_shared_registry",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.1917000004332294e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_shared_quality_registry_does_not_split_quality_gate_error_identity",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00011091599999701884,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_shared_quality_registry_does_not_split_quality_gate_error_identity",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.379199999642424e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_shared_quality_registry_does_not_split_quality_gate_error_identity",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 8.008300000028612e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_reports_cleanup_hint_when_uncertain",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0026916249999970887,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_reports_cleanup_hint_when_uncertain",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.970800000592135e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_reports_cleanup_hint_when_uncertain",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00012254099999609025,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_allows_stale_trace_and_prints_paths",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.02319220799999755,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_allows_stale_trace_and_prints_paths",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.970800000440704e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_allows_stale_trace_and_prints_paths",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00039712500000632645,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.024150458000008257,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001314170000057402,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.912500000386899e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0030082910000004404,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.575000000135333e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.2417000003069916e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_quality_workflow_uploads_quality_gate_manifest_artifact",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0005830000000059954,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_quality_workflow_uploads_quality_gate_manifest_artifact",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.829099999881237e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_quality_workflow_uploads_quality_gate_manifest_artifact",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003471670000010363,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.12590816699999152,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012404099999230311,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00010254200000758829,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_missing_guard_file",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.002745833999995284,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_missing_guard_file",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.933399999629273e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_missing_guard_file",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.129199999804769e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_untracked_guard_file",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.002558125000007294,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_untracked_guard_file",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.891699999300727e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_untracked_guard_file",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003753750000043965,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_quality_gate_manifest_with_git_and_collection_proof",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.005849624999996195,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_quality_gate_manifest_with_git_and_collection_proof",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.525000000578984e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_quality_gate_manifest_with_git_and_collection_proof",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.2624999991858203e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_guard_collect_only_keeps_analysis_and_history_in_default_collect",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.2752926670000022,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_guard_collect_only_keeps_analysis_and_history_in_default_collect",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012474999999767533,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_guard_collect_only_keeps_analysis_and_history_in_default_collect",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.000496958000013592,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_allow_dirty_worktree_marks_manifest_unbound",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.02511466699999687,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_allow_dirty_worktree_marks_manifest_unbound",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001173330000057149,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_allow_dirty_worktree_marks_manifest_unbound",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003882919999966816,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_running_then_passed_manifest",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.02519041699999036,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_running_then_passed_manifest",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00014695800000197323,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_running_then_passed_manifest",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00040654100000381277,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_updates_manifest_to_failed_on_command_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.022730209000002333,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_updates_manifest_to_failed_on_command_error",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00013695900000243455,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_updates_manifest_to_failed_on_command_error",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00035937500000216005,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_by_default",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.02490329199999053,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_by_default",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00012904199999752564,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_by_default",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004132079999976668,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_when_require_clean_worktree",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.02374316599998849,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_when_require_clean_worktree",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001670409999974254,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_when_require_clean_worktree",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.7875000010199074e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_high_risk_untracked_source_diagnostic_covers_production_imported_py",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0028029159999931608,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_high_risk_untracked_source_diagnostic_covers_production_imported_py",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.7667000004025795e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_high_risk_untracked_source_diagnostic_covers_production_imported_py",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00035533300000167856,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_dirty_worktree_message_names_untracked_source",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.022151292000003764,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_dirty_worktree_message_names_untracked_source",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00013537500001348235,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_dirty_worktree_message_names_untracked_source",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00035325000000341333,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_fails_when_tracked_status_changes_during_gate",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.025641417000002775,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_fails_when_tracked_status_changes_during_gate",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00013145900000210986,
-      "longrepr": "",
-      "nodeid": "tests/test_run_quality_gate.py::test_main_fails_when_tracked_status_changes_during_gate",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.8374999991551704e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_setup_hours_rejected",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00012787499998978547,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_setup_hours_rejected",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.808299999263909e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_setup_hours_rejected",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.0208000001484834e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_ext_days_rejected",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 9.599999999920783e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_ext_days_rejected",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.366699999673983e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_ext_days_rejected",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.820800000653435e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_does_not_fallback_to_legacy_private_lookup",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.73749999972506e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_does_not_fallback_to_legacy_private_lookup",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.287500000226373e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_does_not_fallback_to_legacy_private_lookup",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.566699999169032e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_allows_missing_runtime_config_in_non_strict_direct_call",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0002524169999986725,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_allows_missing_runtime_config_in_non_strict_direct_call",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.37080000036849e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_allows_missing_runtime_config_in_non_strict_direct_call",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.6708000010321484e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_rejects_missing_runtime_config_in_strict_direct_call",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00013212500000747696,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_rejects_missing_runtime_config_in_strict_direct_call",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.187500000478849e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_rejects_missing_runtime_config_in_strict_direct_call",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.466700000842593e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_nonstrict_choice_fallback_is_visible",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00015108399999519406,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_nonstrict_choice_fallback_is_visible",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.275000000257933e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_nonstrict_choice_fallback_is_visible",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.3417000011581877e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_nonstrict_choice_fallback_is_visible",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00012145800000951112,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_nonstrict_choice_fallback_is_visible",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.570799999863539e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_nonstrict_choice_fallback_is_visible",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.55000000098471e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_strict_mode_rejects_consumed_invalid_choice",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00012675000000683667,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_strict_mode_rejects_consumed_invalid_choice",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.1500000005735274e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_strict_mode_rejects_consumed_invalid_choice",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.245799999262999e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_strict_mode_ignores_unconsumed_invalid_choice",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00012745800000857344,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_strict_mode_ignores_unconsumed_invalid_choice",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3583000004000496e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_strict_mode_ignores_unconsumed_invalid_choice",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.3625000000370164e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_fallback_in_non_strict_mode",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0008864169999895921,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_fallback_in_non_strict_mode",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.97920000081831e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_fallback_in_non_strict_mode",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.787500000702494e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_rejected_in_strict_mode",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 8.670799999777046e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_rejected_in_strict_mode",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.233300000715644e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_rejected_in_strict_mode",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.958300000306281e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_inconsistent_runtime_weight_triplet",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00021887500000161708,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_inconsistent_runtime_weight_triplet",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.37080000036849e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_inconsistent_runtime_weight_triplet",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.600000000072214e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_normalizes_percent_runtime_weight_triplet",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001443750000049704,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_normalizes_percent_runtime_weight_triplet",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.9624999999432475e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_normalizes_percent_runtime_weight_triplet",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.716599999847858e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_start_dt",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 9.5459000007736e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_start_dt",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.125000000636646e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_start_dt",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.7374999990902324e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_end_date",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.595899999377707e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_end_date",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.079200000399851e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_end_date",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00040145799999891096,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_logs_warning_when_latest_result_summary_is_invalid",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.4155808750000034,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_logs_warning_when_latest_result_summary_is_invalid",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.445899999287576e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_logs_warning_when_latest_result_summary_is_invalid",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003706669999985479,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_keeps_latest_history_when_summary_is_invalid",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.47349924999998905,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_keeps_latest_history_when_summary_is_invalid",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.374999998750354e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_keeps_latest_history_when_summary_is_invalid",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003676669999919113,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_logs_warning_for_selected_and_list_summary_parse_failures",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.4313111660000004,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_logs_warning_for_selected_and_list_summary_parse_failures",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.95000000014079e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_logs_warning_for_selected_and_list_summary_parse_failures",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00039616699999101,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_logs_warning_for_selected_and_trend_summary_parse_failures",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.464679916999998,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_logs_warning_for_selected_and_trend_summary_parse_failures",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.779200000537003e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_logs_warning_for_selected_and_trend_summary_parse_failures",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00040879099999813207,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.41757945800000584,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.000000000014552e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00034920800000293184,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.39673808300000246,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.966699999746197e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003398749999945494,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_surfaces_current_config_state_and_other_degradation_messages",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.43517795900000067,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_surfaces_current_config_state_and_other_degradation_messages",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.870900000739312e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_surfaces_current_config_state_and_other_degradation_messages",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003373330000044916,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.38784708299999693,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.287500000392356e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.5124999999757165e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_viewmodel_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 8.333300000629151e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_viewmodel_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.499999999689862e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_viewmodel_accepts_preparsed_result_summary_dict",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.9375000000063665e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_field_spec_registry_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.9667000002150417e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_field_spec_registry_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.204200000084256e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_field_spec_registry_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0029037080000051674,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_service_snapshot_includes_hidden_field_and_get_stays_single_arg",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0016604589999928976,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_service_snapshot_includes_hidden_field_and_get_stays_single_arg",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001261249999942038,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_service_snapshot_includes_hidden_field_and_get_stays_single_arg",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.387499998870226e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__schedule_config_snapshot_hidden_field_defaults_to_yes",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.633300000023155e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__schedule_config_snapshot_hidden_field_defaults_to_yes",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.4542000008741525e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__schedule_config_snapshot_hidden_field_defaults_to_yes",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.758399999753692e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__build_schedule_config_snapshot_strict_mode_rejects_missing_repo_fields",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.208400000673464e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__build_schedule_config_snapshot_strict_mode_rejects_missing_repo_fields",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.2583000006525253e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__build_schedule_config_snapshot_strict_mode_rejects_missing_repo_fields",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.591700000526998e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__ensure_schedule_config_snapshot_strict_mode_rejects_missing_runtime_fields",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.766700000719993e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__ensure_schedule_config_snapshot_strict_mode_rejects_missing_runtime_fields",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.204099999720711e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__ensure_schedule_config_snapshot_strict_mode_rejects_missing_runtime_fields",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.720799999484825e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_helpers_reject_removed_valid_override_kwargs",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 5.266700000561286e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_helpers_reject_removed_valid_override_kwargs",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3499999986474904e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_helpers_reject_removed_valid_override_kwargs",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 8.016700000723631e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_uses_request_services",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.01711054199999751,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_uses_request_services",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.533299999489373e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_uses_request_services",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.949999999505962e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_marks_parse_failure_and_incomplete_trend",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.016616458000001444,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_marks_parse_failure_and_incomplete_trend",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.01250000076925e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_marks_parse_failure_and_incomplete_trend",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 7.029200000374658e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_surfaces_missing_requested_history",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.01658320899998955,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_surfaces_missing_requested_history",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.224999999915326e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_surfaces_missing_requested_history",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.900000001053286e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_default_latest_does_not_synthesize_missing_selected",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.01601241699999889,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_default_latest_does_not_synthesize_missing_selected",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.291600000452036e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_default_latest_does_not_synthesize_missing_selected",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.88749999966376e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_explicit_old_version_uses_history_lookup_not_recent_dropdown",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.016824208999992152,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_explicit_old_version_uses_history_lookup_not_recent_dropdown",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.887500001084845e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_explicit_old_version_uses_history_lookup_not_recent_dropdown",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.600000001175886e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__calendar_pages_use_shared_holiday_default_efficiency_helper",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00025033299999677183,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__calendar_pages_use_shared_holiday_default_efficiency_helper",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.891699999769571e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__calendar_pages_use_shared_holiday_default_efficiency_helper",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.9125000000694854e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__error_handlers_prefer_config_service_field_labels",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 9.879200000284527e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__error_handlers_prefer_config_service_field_labels",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.2791999998948995e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__error_handlers_prefer_config_service_field_labels",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.7667000004025795e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_page_requests_and_uses_visible_field_metadata",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00022195799999735755,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_page_requests_and_uses_visible_field_metadata",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.300000000194814e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_page_requests_and_uses_visible_field_metadata",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.4540999990895216e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_shows_shared_preset_degradation_notice",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 8.637499999508691e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_shows_shared_preset_degradation_notice",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.0332999997995103e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_shows_shared_preset_degradation_notice",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.3375000001001354e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_surfaces_shared_degraded_field_warning_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00013583300000163945,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_surfaces_shared_degraded_field_warning_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.17919999872629e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_surfaces_shared_degraded_field_warning_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.7082999995163846e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_v2_template_matches_shared_metadata_and_warning_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00010679199999685807,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_v2_template_matches_shared_metadata_and_warning_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.025000000889122e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_v2_template_matches_shared_metadata_and_warning_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.366700001095069e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_manual_path_source_requires_base_dir_and_distinguishes_missing_reasons",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 8.120799999744577e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_manual_path_source_requires_base_dir_and_distinguishes_missing_reasons",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.270900000984511e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_manual_path_source_requires_base_dir_and_distinguishes_missing_reasons",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00035787499999173633,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_resource_dispatch_smoke.py::test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.5717889590000027,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_resource_dispatch_smoke.py::test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001025830000003225,
-      "longrepr": "",
-      "nodeid": "tests/test_scheduler_resource_dispatch_smoke.py::test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.891699998983313e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.000876000000005206,
-      "longrepr": "",
-      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.725000000860291e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.3500000003859896e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_probe_none_efficiency_default_does_not_pollute_formal_counter",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0003231249999942065,
-      "longrepr": "",
-      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_probe_none_efficiency_default_does_not_pollute_formal_counter",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.954200001032859e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_probe_none_efficiency_default_does_not_pollute_formal_counter",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.887500000450018e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_skill_level_normalization_contract.py::test_normalize_skill_level_canonical3_and_legacy_aliases",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 7.495799999901465e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_skill_level_normalization_contract.py::test_normalize_skill_level_canonical3_and_legacy_aliases",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.4124999999107786e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_skill_level_normalization_contract.py::test_normalize_skill_level_canonical3_and_legacy_aliases",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.8207999992323494e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_utilization_only_counts_internal_source",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.862499999726879e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_utilization_only_counts_internal_source",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.3959000006689166e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_utilization_only_counts_internal_source",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.608400000132406e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_downtime_impact_only_counts_internal_source",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 6.975000000863929e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_downtime_impact_only_counts_internal_source",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.4666999994215075e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_downtime_impact_only_counts_internal_source",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.741700000148285e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_source_merge_mode_constants.py::test_target_files_have_no_source_merge_mode_quoted_literals",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00042670799999200426,
-      "longrepr": "",
-      "nodeid": "tests/test_source_merge_mode_constants.py::test_target_files_have_no_source_merge_mode_quoted_literals",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.091599998901074e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_source_merge_mode_constants.py::test_target_files_have_no_source_merge_mode_quoted_literals",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0001874580000134074,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_service_topology_and_strong_compatibility",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0012264169999980368,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_service_topology_and_strong_compatibility",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.225000000701584e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_service_topology_and_strong_compatibility",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.941699999643333e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_package_init_relative_imports",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 8.604100000297876e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_package_init_relative_imports",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.375000000005457e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_package_init_relative_imports",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.0000000012696546e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_dynamic_import_strings",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001331250000049522,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_dynamic_import_strings",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.479100000447488e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_dynamic_import_strings",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.5249999996267434e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_production_code_does_not_grow_legacy_wrapper_imports",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.45366275000000655,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_production_code_does_not_grow_legacy_wrapper_imports",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.5000000003246896e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_production_code_does_not_grow_legacy_wrapper_imports",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.116599999155369e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_topology_and_compatibility_matrix",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.013188166999995588,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_topology_and_compatibility_matrix",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.65830000027745e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_topology_and_compatibility_matrix",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.5665999991229e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 1.5483500410000062,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.629199999494631e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.429200000151013e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_behavior_compat_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.19656879199999366,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_behavior_compat_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.29589999966629e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_behavior_compat_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.4874999989351636e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_domain_package_import_stays_passive",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.019392624999994723,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_domain_package_import_stays_passive",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00021787499998993098,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_domain_package_import_stays_passive",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.774999999947795e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_leaf_imports_do_not_pull_registrar_side_effects",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.7027301250000022,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_leaf_imports_do_not_pull_registrar_side_effects",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.316700000283618e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_leaf_imports_do_not_pull_registrar_side_effects",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.558399999789799e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_safe_next_url_has_one_policy_module",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00035649999999520787,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_safe_next_url_has_one_policy_module",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.02499999978545e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_safe_next_url_has_one_policy_module",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00045087499999851843,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_uses_single_base_dir_fact_source",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004428209000010952,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_uses_single_base_dir_fact_source",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.004199998699278e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_uses_single_base_dir_fact_source",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00032712499999831834,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_requires_base_dir_without_root_fallback",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0004005840000047556,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_requires_base_dir_without_root_fallback",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.5124999999757165e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_requires_base_dir_without_root_fallback",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.6332999997057414e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_documentation_uses_migrated_scheduler_paths",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.002335083000005511,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_documentation_uses_migrated_scheduler_paths",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.28339999984928e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_documentation_uses_migrated_scheduler_paths",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.425000000196633e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_normalizes_remark_text",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00180004199999928,
-      "longrepr": "",
-      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_normalizes_remark_text",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.2874999991227014e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_normalizes_remark_text",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.779099999690061e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_overwrite_preserves_existing_status_and_remark_when_columns_missing",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0010055839999978389,
-      "longrepr": "",
-      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_overwrite_preserves_existing_status_and_remark_when_columns_missing",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.5499999995636244e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_overwrite_preserves_existing_status_and_remark_when_columns_missing",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.562499999532065e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_rejects_blank_default_days",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0009038750000058826,
-      "longrepr": "",
-      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_rejects_blank_default_days",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.716700000211404e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_rejects_blank_default_days",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00013320800000826694,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_check_command_validates_current_ledger",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.005355999999991923,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_check_command_validates_current_ledger",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.858399999984613e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_check_command_validates_current_ledger",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00014525000000276123,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[migrate-inline-facts-refresh_migrate_inline_facts-False]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0040489169999915475,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[migrate-inline-facts-refresh_migrate_inline_facts-False]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.300000000043383e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[migrate-inline-facts-refresh_migrate_inline_facts-False]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00011970900000335405,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[scan-startup-baseline-refresh_scan_startup_baseline-False]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004470333000000437,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[scan-startup-baseline-refresh_scan_startup_baseline-False]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.216700000536093e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[scan-startup-baseline-refresh_scan_startup_baseline-False]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00013295800000889813,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[refresh-auto-fields-refresh_auto_fields-True]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004228166999993732,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[refresh-auto-fields-refresh_auto_fields-True]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.445800000027702e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[refresh-auto-fields-refresh_auto_fields-True]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00010391700000411674,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_skips_prevalidation_and_loads_required_ledger",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004204416000007427,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_skips_prevalidation_and_loads_required_ledger",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.46249999963311e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_skips_prevalidation_and_loads_required_ledger",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.029099999693699e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drifted",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00029029099999888786,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drifted",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.162499999438296e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drifted",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.287499999440115e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_prunes_resolved_complexity_entry",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0002242089999953123,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_prunes_resolved_complexity_entry",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.574999999817919e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_prunes_resolved_complexity_entry",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 8.425000000045202e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_command_updates_manual_fields",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.003906667000009634,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_command_updates_manual_fields",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.9208000010357864e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_command_updates_manual_fields",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.670799999611063e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_rejects_invalid_status_choice",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004839333999996143,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_rejects_invalid_status_choice",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.837499999789998e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_rejects_invalid_status_choice",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00012787499998978547,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_upsert_risk_command_dispatches",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004116667000005236,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_upsert_risk_command_dispatches",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.329100000674771e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_upsert_risk_command_dispatches",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 9.291599999983191e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_delete_risk_command_dispatches",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.003788749999998231,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_delete_risk_command_dispatches",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.137500000136242e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_delete_risk_command_dispatches",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003551660000056245,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_imports_seed_entries",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004933917000002452,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_imports_seed_entries",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.09580000012511e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_imports_seed_entries",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00042670900000985057,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update0-schema_version]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004697958999997809,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update0-schema_version]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.033399998907953e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update0-schema_version]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00037620899999524227,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update1-schema_version]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004242333000007648,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update1-schema_version]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.879100000389826e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update1-schema_version]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00034712499999045576,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update2-baseline_kind]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004988707999999065,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update2-baseline_kind]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010504099999764094,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update2-baseline_kind]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004726250000004484,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update3-importable]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004626874999999586,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update3-importable]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.270899999729409e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update3-importable]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00037920900000187885,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update4-importable]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004278833999990184,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update4-importable]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.90840000032722e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update4-importable]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003595839999945838,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update5-importable]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.005073875000007888,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update5-importable]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00023070800000368763,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update5-importable]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004892919999974765,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update6-pytest_exitstatus]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.02308579200000338,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update6-pytest_exitstatus]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.087499999793636e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update6-pytest_exitstatus]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003992079999903808,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-schema_version]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004749541999998996,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-schema_version]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.89169999961814e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-schema_version]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003775839999917707,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-classifications]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004679417000005515,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-classifications]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.812500000487944e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-classifications]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00040141700000617675,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt0]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004369332999999642,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt0]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.191699999964385e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt0]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00037120799999001974,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt1]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004470666999992545,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt1]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.820899999444464e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt1]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00037966699999003595,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-failed_nodeid_count]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004522124999994048,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-failed_nodeid_count]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00011125000000333785,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-failed_nodeid_count]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004367500000057589,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collected_nodeids]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004581625000000145,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collected_nodeids]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.120799999427163e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collected_nodeids]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00037458299999570954,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collection_errors]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004808167000007302,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collection_errors]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.304099999951632e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collection_errors]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00041220800000019153,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-reports]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004404041000000802,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-reports]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.416599999032769e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-reports]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0005818329999982552,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-worktree_clean_before]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0045004589999990685,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-worktree_clean_before]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.979100000454764e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-worktree_clean_before]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003742079999966563,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_blocked_classifications",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004424709000005578,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_blocked_classifications",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.995800001163843e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_blocked_classifications",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003712080000042306,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-required_or_quality_gate_self_failure]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004237291000009691,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-required_or_quality_gate_self_failure]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.941699999174489e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-required_or_quality_gate_self_failure]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00035412500000120417,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-main_style_isolation_candidate]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0055791249999970205,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-main_style_isolation_candidate]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00010266700000727269,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-main_style_isolation_candidate]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0004154580000061969,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-collection_error_count]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004462625000002163,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-collection_error_count]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.304099999316804e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-collection_error_count]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003345410000008542,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004296000000010736,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.795800000565123e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003617079999997941,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_empty_candidate_nodeid",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.005044583000000102,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_empty_candidate_nodeid",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.075000000928867e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_empty_candidate_nodeid",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003784169999931919,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_current_dry_run_candidate_drift",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004345958000001815,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_current_dry_run_candidate_drift",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.725000000074033e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_current_dry_run_candidate_drift",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00034966599999108894,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_does_not_overwrite_existing_test_debt",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004342790999999124,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_does_not_overwrite_existing_test_debt",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.02499999963402e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_does_not_overwrite_existing_test_debt",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 9.970799999337032e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[owner--owner]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.002714040999990175,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[owner--owner]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.166599999029131e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[owner--owner]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00012366600000746075,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[style-untriaged-untriaged]",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0028279999999938354,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[style-untriaged-untriaged]",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.454100000041763e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[style-untriaged-untriaged]",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.458300001099815e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_duplicate_debt_id",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.002810083999989388,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_duplicate_debt_id",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.658299999960036e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_duplicate_debt_id",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.475000000070395e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_system_services.py::test_operation_log_service_list_and_delete",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00032254199999215416,
-      "longrepr": "",
-      "nodeid": "tests/test_system_services.py::test_operation_log_service_list_and_delete",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.4124999999107786e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_system_services.py::test_operation_log_service_list_and_delete",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.858400000922302e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_system_services.py::test_system_job_state_query_service_get_and_map",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001517080000041915,
-      "longrepr": "",
-      "nodeid": "tests/test_system_services.py::test_system_job_state_query_service_get_and_map",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.316699999800221e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_system_services.py::test_system_job_state_query_service_get_and_map",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.429199999516186e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_system_services.py::test_system_config_service_get_value",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00012833300000636427,
-      "longrepr": "",
-      "nodeid": "tests/test_system_services.py::test_system_config_service_get_value",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.220800000747204e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_system_services.py::test_system_config_service_get_value",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00035595900000373604,
-      "longrepr": "",
-      "nodeid": "tests/test_team_pages_excel_smoke.py::test_team_pages_and_excel_routes_show_team_columns_and_headers",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.58930645800001,
-      "longrepr": "",
-      "nodeid": "tests/test_team_pages_excel_smoke.py::test_team_pages_and_excel_routes_show_team_columns_and_headers",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 8.799999999098418e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_team_pages_excel_smoke.py::test_team_pages_and_excel_routes_show_team_columns_and_headers",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.908299999328847e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_prefers_cookie_over_db",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0006524169999977403,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_prefers_cookie_over_db",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.241700000624405e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_prefers_cookie_over_db",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.395800000622785e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_normalize_manual_src_accepts_same_origin_absolute_url_and_preserves_trailing_question_mark",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0003809580000080359,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_normalize_manual_src_accepts_same_origin_absolute_url_and_preserves_trailing_question_mark",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.995800000211602e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_normalize_manual_src_accepts_same_origin_absolute_url_and_preserves_trailing_question_mark",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.958400000669826e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_reads_db_when_cookie_missing",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00045320799999615247,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_reads_db_when_cookie_missing",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.804099999626942e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_reads_db_when_cookie_missing",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 7.337499999948704e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_falls_back_to_default_for_invalid_db_value",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0006647919999949181,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_falls_back_to_default_for_invalid_db_value",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.183399999632911e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_falls_back_to_default_for_invalid_db_value",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 7.549999999412194e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_treats_null_db_value_as_invalid_and_logs_warning",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0005754169999931946,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_treats_null_db_value_as_invalid_and_logs_warning",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.92920000030972e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_treats_null_db_value_as_invalid_and_logs_warning",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.700000000137152e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_invalid_db_value_once_per_request",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0005406669999956648,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_invalid_db_value_once_per_request",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.0583999993136786e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_invalid_db_value_once_per_request",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 7.275000000106502e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_cookie_read_fails",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0004550409999950489,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_cookie_read_fails",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.654199999265529e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_cookie_read_fails",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.0208000001484834e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_without_request_context",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 4.3208999997546016e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_without_request_context",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.4124999999107786e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_without_request_context",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.7500000004797585e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_when_main_path_has_no_db_and_does_not_touch_services",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0004417090000004009,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_when_main_path_has_no_db_and_does_not_touch_services",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.94580000033784e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_when_main_path_has_no_db_and_does_not_touch_services",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 4.141600000195922e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_db_exists_but_services_missing",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0004410840000019789,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_db_exists_but_services_missing",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.808399999627454e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_db_exists_but_services_missing",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.8791999998011306e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00034604200000387664,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.7082999995163846e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.754200000116725e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_raises_when_system_config_service_access_fails",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0004264580000068463,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_raises_when_system_config_service_access_fails",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.724999999121792e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_raises_when_system_config_service_access_fails",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.133399999441735e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_db_read_fails",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00047404200000755736,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_db_read_fails",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.758400000071106e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_db_read_fails",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.770799999358587e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing_single_query_interface",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00034004100000117887,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing_single_query_interface",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.662499999279589e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing_single_query_interface",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 3.833399999564335e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_accepts_single_query_service_without_legacy_interfaces",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00029966699999306456,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_accepts_single_query_service_without_legacy_interfaces",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 3.587499999468946e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_accepts_single_query_service_without_legacy_interfaces",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.033300000751751e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_safe_url_for_logs_warning_on_non_build_error",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00030908399999418634,
+      "duration": 0.16896587500000138,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_safe_url_for_logs_warning_on_non_build_error",
+      "nodeid": "tests/regression_gantt_critical_chain_cache_thread_safe.py::regression_gantt_critical_chain_cache_thread_safe",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 4.36250000035443e-05,
+      "duration": 8.924999999848637e-05,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_safe_url_for_logs_warning_on_non_build_error",
+      "nodeid": "tests/regression_gantt_critical_chain_cache_thread_safe.py::regression_gantt_critical_chain_cache_thread_safe",
       "outcome": "passed",
       "when": "teardown"
     },
     {
       "duration": 5.616699999677621e-05,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_warns_once_when_v2_env_missing",
+      "nodeid": "tests/regression_gantt_offset_range_consistency.py::regression_gantt_offset_range_consistency",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0008701249999916172,
+      "duration": 0.7103421250000004,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_warns_once_when_v2_env_missing",
+      "nodeid": "tests/regression_gantt_offset_range_consistency.py::regression_gantt_offset_range_consistency",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 4.4875000000388354e-05,
+      "duration": 0.00012662500000004684,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_warns_once_when_v2_env_missing",
+      "nodeid": "tests/regression_gantt_offset_range_consistency.py::regression_gantt_offset_range_consistency",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 3.845800000590316e-05,
+      "duration": 5.962499999867532e-05,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_sets_degraded_context_when_v2_env_missing",
+      "nodeid": "tests/regression_gantt_status_mode_semantics.py::regression_gantt_status_mode_semantics",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0006910000000033278,
+      "duration": 0.05364954199999872,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_sets_degraded_context_when_v2_env_missing",
+      "nodeid": "tests/regression_gantt_status_mode_semantics.py::regression_gantt_status_mode_semantics",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.9125000000694854e-05,
+      "duration": 8.387499999784609e-05,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_sets_degraded_context_when_v2_env_missing",
+      "nodeid": "tests/regression_gantt_status_mode_semantics.py::regression_gantt_status_mode_semantics",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 0.00044929199999899083,
+      "duration": 4.7750000000235104e-05,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_marks_base_loader_resolution_as_degraded",
+      "nodeid": "tests/regression_gantt_url_persistence.py::regression_gantt_url_persistence",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0013647500000075752,
+      "duration": 0.712090332999999,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_marks_base_loader_resolution_as_degraded",
+      "nodeid": "tests/regression_gantt_url_persistence.py::regression_gantt_url_persistence",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 6.33340000035787e-05,
+      "duration": 7.566700000083415e-05,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_marks_base_loader_resolution_as_degraded",
+      "nodeid": "tests/regression_gantt_url_persistence.py::regression_gantt_url_persistence",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 6.629199999963475e-05,
+      "duration": 4.766600000039034e-05,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_logs_warning_when_env_globals_bridge_injection_fails",
+      "nodeid": "tests/regression_greedy_date_parsers.py::regression_greedy_date_parsers",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0005080000000106111,
+      "duration": 0.05873762499999913,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_logs_warning_when_env_globals_bridge_injection_fails",
+      "nodeid": "tests/regression_greedy_date_parsers.py::regression_greedy_date_parsers",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 5.020800000465897e-05,
+      "duration": 7.987499999728698e-05,
       "longrepr": "",
-      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_logs_warning_when_env_globals_bridge_injection_fails",
+      "nodeid": "tests/regression_greedy_date_parsers.py::regression_greedy_date_parsers",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.36250000035443e-05,
+      "duration": 4.7374999997629175e-05,
       "longrepr": "",
-      "nodeid": "tests/test_value_domains_consistency.py::test_value_domains_consistent_with_model_enums",
+      "nodeid": "tests/regression_greedy_scheduler_algo_stats_auto_assign.py::regression_greedy_scheduler_algo_stats_auto_assign",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 5.099999999913507e-05,
+      "duration": 0.060873833000002264,
       "longrepr": "",
-      "nodeid": "tests/test_value_domains_consistency.py::test_value_domains_consistent_with_model_enums",
+      "nodeid": "tests/regression_greedy_scheduler_algo_stats_auto_assign.py::regression_greedy_scheduler_algo_stats_auto_assign",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 3.508300000021336e-05,
+      "duration": 7.525000000185855e-05,
       "longrepr": "",
-      "nodeid": "tests/test_value_domains_consistency.py::test_value_domains_consistent_with_model_enums",
+      "nodeid": "tests/regression_greedy_scheduler_algo_stats_auto_assign.py::regression_greedy_scheduler_algo_stats_auto_assign",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 0.00010937500000807177,
+      "duration": 4.879200000118544e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_runtime_base_dir_fallback_logs_to_stderr",
+      "nodeid": "tests/regression_greedy_scheduler_algo_stats_seed_counts.py::regression_greedy_scheduler_algo_stats_seed_counts",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.00037379199999065804,
+      "duration": 0.06056812499999964,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_runtime_base_dir_fallback_logs_to_stderr",
+      "nodeid": "tests/regression_greedy_scheduler_algo_stats_seed_counts.py::regression_greedy_scheduler_algo_stats_seed_counts",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 6.450000000768341e-05,
+      "duration": 9.5667000000077e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_runtime_base_dir_fallback_logs_to_stderr",
+      "nodeid": "tests/regression_greedy_scheduler_algo_stats_seed_counts.py::regression_greedy_scheduler_algo_stats_seed_counts",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 0.00032941700000321816,
+      "duration": 5.4958000003324514e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_prefers_explicit_env",
+      "nodeid": "tests/regression_import_execution_stats_source_row_num.py::regression_import_execution_stats_source_row_num",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.004496375000002217,
+      "duration": 0.031022166999999712,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_prefers_explicit_env",
+      "nodeid": "tests/regression_import_execution_stats_source_row_num.py::regression_import_execution_stats_source_row_num",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 7.125000000485215e-05,
+      "duration": 7.733400000020652e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_prefers_explicit_env",
+      "nodeid": "tests/regression_import_execution_stats_source_row_num.py::regression_import_execution_stats_source_row_num",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 0.00046387500000832915,
+      "duration": 4.949999999936949e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_uses_registry_only_when_frozen",
+      "nodeid": "tests/regression_improve_dispatch_modes.py::regression_improve_dispatch_modes",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.003495208000003913,
+      "duration": 0.0719947079999983,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_uses_registry_only_when_frozen",
+      "nodeid": "tests/regression_improve_dispatch_modes.py::regression_improve_dispatch_modes",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 5.620800000372128e-05,
+      "duration": 8.374999999816168e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_uses_registry_only_when_frozen",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003473329999934549,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_prelaunch_log_dir_uses_shared_root",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0034677080000022897,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_prelaunch_log_dir_uses_shared_root",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.0415999996621395e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_prelaunch_log_dir_uses_shared_root",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.00036891700000296623,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_apply_runtime_config_uses_shared_root_for_all_data_dirs",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.011770374999997557,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_apply_runtime_config_uses_shared_root_for_all_data_dirs",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.341600000643211e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_apply_runtime_config_uses_shared_root_for_all_data_dirs",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 7.633399999917856e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_current_runtime_owner_uses_computername_when_userdomain_missing",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004043207999998799,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_current_runtime_owner_uses_computername_when_userdomain_missing",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.208300000309919e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_current_runtime_owner_uses_computername_when_userdomain_missing",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.000417458999990572,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_default_chrome_profile_dir_prefers_localappdata_profile_name",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.003275165999994556,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_default_chrome_profile_dir_prefers_localappdata_profile_name",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.9208999999782463e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_default_chrome_profile_dir_prefers_localappdata_profile_name",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003277920000073209,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_runtime_state_paths_returns_runtime_dir_for_runtime_and_log_dir",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.004954917000006276,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_runtime_state_paths_returns_runtime_dir_for_runtime_and_log_dir",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.883299999709379e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_runtime_state_paths_returns_runtime_dir_for_runtime_and_log_dir",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0003635000000059563,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 12.081411583000005,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0005274589999970658,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0011775419999935366,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_uses_state_dir_and_parent_runtime_dir",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.009731541999997262,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_uses_state_dir_and_parent_runtime_dir",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00018416599999682148,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_uses_state_dir_and_parent_runtime_dir",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0009959170000115591,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confirm",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.010392792000004647,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confirm",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.00018441699999982575,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confirm",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0008216660000073261,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_dir_waits_for_pid_exit_before_success",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.008144000000001483,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_dir_waits_for_pid_exit_before_success",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 0.0001212919999886708,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_dir_waits_for_pid_exit_before_success",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 0.0001206249999938791,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_aps_chrome_processes_fails_closed_when_pid_list_unavailable",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00536099999999351,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_aps_chrome_processes_fails_closed_when_pid_list_unavailable",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 7.633399999917856e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_aps_chrome_processes_fails_closed_when_pid_list_unavailable",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.9624999991569894e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_chrome_alive_probe_scopes_to_profile_specific_process",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0005481249999945703,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_chrome_alive_probe_scopes_to_profile_specific_process",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 9.849999999289594e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_chrome_alive_probe_scopes_to_profile_specific_process",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 6.558299999426254e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_contains_json_health_probe_and_owner_fallback",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0002652909999909525,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_contains_json_health_probe_and_owner_fallback",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.566699999803859e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_contains_json_health_probe_and_owner_fallback",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.833299999835617e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_python_runtime_stop_uses_powershell_and_fail_closed_cleanup",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00026720900000043457,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_python_runtime_stop_uses_powershell_and_fail_closed_cleanup",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.183300000055624e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_python_runtime_stop_uses_powershell_and_fail_closed_cleanup",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.295900000135134e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_contains_browser_smoke_for_runtime_and_legacy_paths",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0003999159999921176,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_contains_browser_smoke_for_runtime_and_legacy_paths",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.2791999991086414e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_contains_browser_smoke_for_runtime_and_legacy_paths",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.341699998950844e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_exposes_explicit_best_effort_cleanup_wrapper",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0001475410000040256,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_exposes_explicit_best_effort_cleanup_wrapper",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.841700000213223e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_exposes_explicit_best_effort_cleanup_wrapper",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.566699999803859e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installer_uninstall_stop_checks_multiple_runtime_roots",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00041187500001171884,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installer_uninstall_stop_checks_multiple_runtime_roots",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 6.183300000373038e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installer_uninstall_stop_checks_multiple_runtime_roots",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.8791999990148724e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_main_installer_contains_precleanup_and_skip_legacy_migration",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00019925000000853288,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_main_installer_contains_precleanup_and_skip_legacy_migration",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.012499998713338e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_main_installer_contains_precleanup_and_skip_legacy_migration",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.050000000039745e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_legacy_installer_uses_runtime_root_stop_contract",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.0003603330000032656,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_legacy_installer_uses_runtime_root_stop_contract",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 5.025000000102864e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_legacy_installer_uses_runtime_root_stop_contract",
-      "outcome": "passed",
-      "when": "teardown"
-    },
-    {
-      "duration": 5.595800000435247e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installers_fail_closed_on_silent_uninstall_and_retry_delete",
-      "outcome": "passed",
-      "when": "setup"
-    },
-    {
-      "duration": 0.00043320800000401505,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installers_fail_closed_on_silent_uninstall_and_retry_delete",
-      "outcome": "passed",
-      "when": "call"
-    },
-    {
-      "duration": 4.9250000003553396e-05,
-      "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installers_fail_closed_on_silent_uninstall_and_retry_delete",
+      "nodeid": "tests/regression_improve_dispatch_modes.py::regression_improve_dispatch_modes",
       "outcome": "passed",
       "when": "teardown"
     },
     {
       "duration": 4.9791999998660685e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_matches_profile_argument_not_current_user_only",
+      "nodeid": "tests/regression_lazy_select_orphan_option.py::regression_lazy_select_orphan_option",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0001425000000097043,
+      "duration": 0.7007680839999999,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_matches_profile_argument_not_current_user_only",
+      "nodeid": "tests/regression_lazy_select_orphan_option.py::regression_lazy_select_orphan_option",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 4.516599999249138e-05,
+      "duration": 8.350000000234559e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_matches_profile_argument_not_current_user_only",
+      "nodeid": "tests/regression_lazy_select_orphan_option.py::regression_lazy_select_orphan_option",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.52080000030719e-05,
+      "duration": 4.895800000070949e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_uses_current_user_profile_path_marker",
+      "nodeid": "tests/regression_legacy_external_days_defaulted_visible.py::regression_legacy_external_days_defaulted_visible",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.00011708299999213523,
+      "duration": 0.0741254999999974,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_uses_current_user_profile_path_marker",
+      "nodeid": "tests/regression_legacy_external_days_defaulted_visible.py::regression_legacy_external_days_defaulted_visible",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 4.266699998822787e-05,
+      "duration": 8.816600000116637e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_uses_current_user_profile_path_marker",
+      "nodeid": "tests/regression_legacy_external_days_defaulted_visible.py::regression_legacy_external_days_defaulted_visible",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.012500000134423e-05,
+      "duration": 5.025000000102864e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_build_scripts_guard_vendor_and_launcher_path",
+      "nodeid": "tests/regression_maintenance_jobstate_retry_signal.py::regression_maintenance_jobstate_retry_signal",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.00037637500000187174,
+      "duration": 0.07643758300000059,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_build_scripts_guard_vendor_and_launcher_path",
+      "nodeid": "tests/regression_maintenance_jobstate_retry_signal.py::regression_maintenance_jobstate_retry_signal",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 4.4459000008600924e-05,
+      "duration": 8.920799999856399e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_build_scripts_guard_vendor_and_launcher_path",
+      "nodeid": "tests/regression_maintenance_jobstate_retry_signal.py::regression_maintenance_jobstate_retry_signal",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 4.791699998918375e-05,
+      "duration": 4.749999999731358e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_remains_non_target_for_precleanup",
+      "nodeid": "tests/regression_maintenance_real_oplog_visibility.py::regression_maintenance_real_oplog_visibility",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.00011391599998944457,
+      "duration": 0.0649599589999994,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_remains_non_target_for_precleanup",
+      "nodeid": "tests/regression_maintenance_real_oplog_visibility.py::regression_maintenance_real_oplog_visibility",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.00016524999999489864,
+      "duration": 8.583400000006236e-05,
       "longrepr": "",
-      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_remains_non_target_for_precleanup",
+      "nodeid": "tests/regression_maintenance_real_oplog_visibility.py::regression_maintenance_real_oplog_visibility",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.987499999842271e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_maintenance_telemetry_isolation.py::regression_maintenance_telemetry_isolation",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06434970900000181,
+      "longrepr": "",
+      "nodeid": "tests/regression_maintenance_telemetry_isolation.py::regression_maintenance_telemetry_isolation",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.716600000013841e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_maintenance_telemetry_isolation.py::regression_maintenance_telemetry_isolation",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.574999999817919e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_maintenance_window_mutex.py::regression_maintenance_window_mutex",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06479262499999905,
+      "longrepr": "",
+      "nodeid": "tests/regression_maintenance_window_mutex.py::regression_maintenance_window_mutex",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.425000000045202e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_maintenance_window_mutex.py::regression_maintenance_window_mutex",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.770800000031272e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_metrics_horizon_semantics.py::regression_metrics_horizon_semantics",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.05972241599999961,
+      "longrepr": "",
+      "nodeid": "tests/regression_metrics_horizon_semantics.py::regression_metrics_horizon_semantics",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00011533400000018901,
+      "longrepr": "",
+      "nodeid": "tests/regression_metrics_horizon_semantics.py::regression_metrics_horizon_semantics",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.4125000001903345e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_metrics_to_dict_nonfinite_safe.py::regression_metrics_to_dict_nonfinite_safe",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.060415708000000734,
+      "longrepr": "",
+      "nodeid": "tests/regression_metrics_to_dict_nonfinite_safe.py::regression_metrics_to_dict_nonfinite_safe",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.312499999973966e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_metrics_to_dict_nonfinite_safe.py::regression_metrics_to_dict_nonfinite_safe",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7416999997551557e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_backup_dir_none_creates_backup.py::regression_migrate_backup_dir_none_creates_backup",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.04845225000000042,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_backup_dir_none_creates_backup.py::regression_migrate_backup_dir_none_creates_backup",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010054100000189692,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_backup_dir_none_creates_backup.py::regression_migrate_backup_dir_none_creates_backup",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.404199999858861e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_v2_unify_workcalendar_day_type.py::regression_migrate_v2_unify_workcalendar_day_type",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.05709004200000223,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_v2_unify_workcalendar_day_type.py::regression_migrate_v2_unify_workcalendar_day_type",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010199999999827014,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_v2_unify_workcalendar_day_type.py::regression_migrate_v2_unify_workcalendar_day_type",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.1708000000871834e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_v4_sanitize_enum_text_fields.py::regression_migrate_v4_sanitize_enum_text_fields",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06010512499999976,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_v4_sanitize_enum_text_fields.py::regression_migrate_v4_sanitize_enum_text_fields",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.337499999910847e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_v4_sanitize_enum_text_fields.py::regression_migrate_v4_sanitize_enum_text_fields",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.01669999977139e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_v5_normalize_operator_machine_legacy_values.py::regression_migrate_v5_normalize_operator_machine_legacy_values",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.056017666999998994,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_v5_normalize_operator_machine_legacy_values.py::regression_migrate_v5_normalize_operator_machine_legacy_values",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.516699999816524e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migrate_v5_normalize_operator_machine_legacy_values.py::regression_migrate_v5_normalize_operator_machine_legacy_values",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.9999999998107114e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migration_failfast_no_backup_storm.py::regression_migration_failfast_no_backup_storm",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.03978541700000093,
+      "longrepr": "",
+      "nodeid": "tests/regression_migration_failfast_no_backup_storm.py::regression_migration_failfast_no_backup_storm",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.975000000115529e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migration_failfast_no_backup_storm.py::regression_migration_failfast_no_backup_storm",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.5958000001178334e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migration_outcome_partial_no_upgrade.py::regression_migration_outcome_partial_no_upgrade",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.03600866700000083,
+      "longrepr": "",
+      "nodeid": "tests/regression_migration_outcome_partial_no_upgrade.py::regression_migration_outcome_partial_no_upgrade",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.379100000155404e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migration_outcome_partial_no_upgrade.py::regression_migration_outcome_partial_no_upgrade",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.649999999983834e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migration_outcome_skip_no_upgrade.py::regression_migration_outcome_skip_no_upgrade",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.05859983300000238,
+      "longrepr": "",
+      "nodeid": "tests/regression_migration_outcome_skip_no_upgrade.py::regression_migration_outcome_skip_no_upgrade",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.962500000147088e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_migration_outcome_skip_no_upgrade.py::regression_migration_outcome_skip_no_upgrade",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.649999999983834e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_model_enums_case_insensitive.py::regression_model_enums_case_insensitive",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.036776917000000964,
+      "longrepr": "",
+      "nodeid": "tests/regression_model_enums_case_insensitive.py::regression_model_enums_case_insensitive",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.63340000023527e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_model_enums_case_insensitive.py::regression_model_enums_case_insensitive",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.845800000197187e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_models_numeric_parse_hybrid_safe.py::regression_models_numeric_parse_hybrid_safe",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.036148000000000735,
+      "longrepr": "",
+      "nodeid": "tests/regression_models_numeric_parse_hybrid_safe.py::regression_models_numeric_parse_hybrid_safe",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.754199999965294e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_models_numeric_parse_hybrid_safe.py::regression_models_numeric_parse_hybrid_safe",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7041000001968314e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_normalization_matrix_single_source.py::regression_normalization_matrix_single_source",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.173780292,
+      "longrepr": "",
+      "nodeid": "tests/regression_normalization_matrix_single_source.py::regression_normalization_matrix_single_source",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.300000000005525e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_normalization_matrix_single_source.py::regression_normalization_matrix_single_source",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.1750000000794216e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_number_utils_facade_delegates_strict_parse.py::regression_number_utils_facade_delegates_strict_parse",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0266405419999991,
+      "longrepr": "",
+      "nodeid": "tests/regression_number_utils_facade_delegates_strict_parse.py::regression_number_utils_facade_delegates_strict_parse",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.208400000242477e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_number_utils_facade_delegates_strict_parse.py::regression_number_utils_facade_delegates_strict_parse",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.891700000086985e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_objective_case_normalization.py::regression_objective_case_normalization",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06628750000000139,
+      "longrepr": "",
+      "nodeid": "tests/regression_objective_case_normalization.py::regression_objective_case_normalization",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.137499999667398e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_objective_case_normalization.py::regression_objective_case_normalization",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.308299999740029e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_calendar_override_allows_work_on_global_holiday.py::regression_operator_calendar_override_allows_work_on_global_holiday",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.09619675000000072,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_calendar_override_allows_work_on_global_holiday.py::regression_operator_calendar_override_allows_work_on_global_holiday",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.125000000054229e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_calendar_override_allows_work_on_global_holiday.py::regression_operator_calendar_override_allows_work_on_global_holiday",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.9333999999845446e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_machine_detail_readside_normalization.py::regression_operator_machine_detail_readside_normalization",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7165912080000005,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_machine_detail_readside_normalization.py::regression_operator_machine_detail_readside_normalization",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.52500000011014e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_machine_detail_readside_normalization.py::regression_operator_machine_detail_readside_normalization",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.754100000032736e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_machine_dirty_flags_visible.py::regression_operator_machine_dirty_flags_visible",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.6972087499999979,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_machine_dirty_flags_visible.py::regression_operator_machine_dirty_flags_visible",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.020799999997053e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_machine_dirty_flags_visible.py::regression_operator_machine_dirty_flags_visible",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.912500000031628e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_machine_missing_columns.py::regression_operator_machine_missing_columns",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.047712624999999065,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_machine_missing_columns.py::regression_operator_machine_missing_columns",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.045799999896076e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_operator_machine_missing_columns.py::regression_operator_machine_missing_columns",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.004100000149947e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_choice_case_normalization.py::regression_optimizer_choice_case_normalization",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06993133300000309,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_choice_case_normalization.py::regression_optimizer_choice_case_normalization",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.300000000043383e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_choice_case_normalization.py::regression_optimizer_choice_case_normalization",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.054100000023709e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_ortools_logging_exc_info_safe.py::regression_optimizer_ortools_logging_exc_info_safe",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.07500941700000041,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_ortools_logging_exc_info_safe.py::regression_optimizer_ortools_logging_exc_info_safe",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.020799999959195e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_ortools_logging_exc_info_safe.py::regression_optimizer_ortools_logging_exc_info_safe",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.841599999849677e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_outcome_algo_stats.py::regression_optimizer_outcome_algo_stats",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0701407500000002,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_outcome_algo_stats.py::regression_optimizer_outcome_algo_stats",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.520800000117902e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_outcome_algo_stats.py::regression_optimizer_outcome_algo_stats",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.283399999811422e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_zero_weight_cfg_preserved.py::regression_optimizer_zero_weight_cfg_preserved",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06948058400000079,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_zero_weight_cfg_preserved.py::regression_optimizer_zero_weight_cfg_preserved",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.708299999999781e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_optimizer_zero_weight_cfg_preserved.py::regression_optimizer_zero_weight_cfg_preserved",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.833299999873475e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_optional_ready_constraint.py::regression_optional_ready_constraint",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.13345449999999914,
+      "longrepr": "",
+      "nodeid": "tests/regression_optional_ready_constraint.py::regression_optional_ready_constraint",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.779199999864318e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_optional_ready_constraint.py::regression_optional_ready_constraint",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.054200000031983e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_ortools_budget_guard_skip_when_no_time.py::regression_ortools_budget_guard_skip_when_no_time",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0740052079999991,
+      "longrepr": "",
+      "nodeid": "tests/regression_ortools_budget_guard_skip_when_no_time.py::regression_ortools_budget_guard_skip_when_no_time",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010370899999756489,
+      "longrepr": "",
+      "nodeid": "tests/regression_ortools_budget_guard_skip_when_no_time.py::regression_ortools_budget_guard_skip_when_no_time",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.225000000270597e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_ortools_priority_weight_contract.py::regression_ortools_priority_weight_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.05735279199999965,
+      "longrepr": "",
+      "nodeid": "tests/regression_ortools_priority_weight_contract.py::regression_ortools_priority_weight_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012362499999696297,
+      "longrepr": "",
+      "nodeid": "tests/regression_ortools_priority_weight_contract.py::regression_ortools_priority_weight_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.6874999998512976e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_ortools_warmstart_skip_nonfinite.py::regression_ortools_warmstart_skip_nonfinite",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.020517042000001595,
+      "longrepr": "",
+      "nodeid": "tests/regression_ortools_warmstart_skip_nonfinite.py::regression_ortools_warmstart_skip_nonfinite",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00014508400000323718,
+      "longrepr": "",
+      "nodeid": "tests/regression_ortools_warmstart_skip_nonfinite.py::regression_ortools_warmstart_skip_nonfinite",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.308300000095301e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_part_operation_hours_service_stats_gate.py::regression_part_operation_hours_service_stats_gate",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.10434150000000031,
+      "longrepr": "",
+      "nodeid": "tests/regression_part_operation_hours_service_stats_gate.py::regression_part_operation_hours_service_stats_gate",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.712499999992019e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_part_operation_hours_service_stats_gate.py::regression_part_operation_hours_service_stats_gate",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.912500000031628e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_part_service_create_strict_mode_atomic.py::regression_part_service_create_strict_mode_atomic",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.10377016600000033,
+      "longrepr": "",
+      "nodeid": "tests/regression_part_service_create_strict_mode_atomic.py::regression_part_service_create_strict_mode_atomic",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.000114792000001529,
+      "longrepr": "",
+      "nodeid": "tests/regression_part_service_create_strict_mode_atomic.py::regression_part_service_create_strict_mode_atomic",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.283300000120562e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_part_service_external_default_days_fallback.py::regression_part_service_external_default_days_fallback",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.10447233300000036,
+      "longrepr": "",
+      "nodeid": "tests/regression_part_service_external_default_days_fallback.py::regression_part_service_external_default_days_fallback",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.141700000052765e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_part_service_external_default_days_fallback.py::regression_part_service_external_default_days_fallback",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.070799999984388e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_personnel_excel_links_header_aliases.py::regression_personnel_excel_links_header_aliases",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7187842909999986,
+      "longrepr": "",
+      "nodeid": "tests/regression_personnel_excel_links_header_aliases.py::regression_personnel_excel_links_header_aliases",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001205420000012225,
+      "longrepr": "",
+      "nodeid": "tests/regression_personnel_excel_links_header_aliases.py::regression_personnel_excel_links_header_aliases",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.1832999997003526e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_bootstrap_injects_config_reader.py::regression_plugin_bootstrap_injects_config_reader",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.07279120800000172,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_bootstrap_injects_config_reader.py::regression_plugin_bootstrap_injects_config_reader",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.091699999823732e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_bootstrap_injects_config_reader.py::regression_plugin_bootstrap_injects_config_reader",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.945799999944711e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_bootstrap_telemetry_failure_visible.py::regression_plugin_bootstrap_telemetry_failure_visible",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.07567229200000014,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_bootstrap_telemetry_failure_visible.py::regression_plugin_bootstrap_telemetry_failure_visible",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012100000000003774,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_bootstrap_telemetry_failure_visible.py::regression_plugin_bootstrap_telemetry_failure_visible",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 8.74579999994296e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_capability_conflict_visible.py::regression_plugin_capability_conflict_visible",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.044279583999998096,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_capability_conflict_visible.py::regression_plugin_capability_conflict_visible",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.749999999973056e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_capability_conflict_visible.py::regression_plugin_capability_conflict_visible",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.633400000031429e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_manager_error_trace_visible.py::regression_plugin_manager_error_trace_visible",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.044581790999998816,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_manager_error_trace_visible.py::regression_plugin_manager_error_trace_visible",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.966700000139326e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_plugin_manager_error_trace_visible.py::regression_plugin_manager_error_trace_visible",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.383299999905944e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_priority_weight_case_insensitive.py::regression_priority_weight_case_insensitive",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.059848374999997844,
+      "longrepr": "",
+      "nodeid": "tests/regression_priority_weight_case_insensitive.py::regression_priority_weight_case_insensitive",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.141700000052765e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_priority_weight_case_insensitive.py::regression_priority_weight_case_insensitive",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.608300000048416e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_part_operation_hours_append_fill_empty_only.py::regression_process_excel_part_operation_hours_append_fill_empty_only",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7365937080000009,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_part_operation_hours_append_fill_empty_only.py::regression_process_excel_part_operation_hours_append_fill_empty_only",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.64999999987026e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_part_operation_hours_append_fill_empty_only.py::regression_process_excel_part_operation_hours_append_fill_empty_only",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.61670000007075e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_part_operation_hours_import.py::regression_process_excel_part_operation_hours_import",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7513600419999982,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_part_operation_hours_import.py::regression_process_excel_part_operation_hours_import",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.062500000212026e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_part_operation_hours_import.py::regression_process_excel_part_operation_hours_import",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.104199999905745e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_part_operation_hours_source_row_num.py::regression_process_excel_part_operation_hours_source_row_num",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.696704583999999,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_part_operation_hours_source_row_num.py::regression_process_excel_part_operation_hours_source_row_num",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.841700000061792e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_part_operation_hours_source_row_num.py::regression_process_excel_part_operation_hours_source_row_num",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.654199999976072e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_routes_extra_state_guard.py::regression_process_excel_routes_extra_state_guard",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7321921249999974,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_routes_extra_state_guard.py::regression_process_excel_routes_extra_state_guard",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.587499999952342e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_excel_routes_extra_state_guard.py::regression_process_excel_routes_extra_state_guard",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.2916999997876246e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_reparse_preserve_internal_hours.py::regression_process_reparse_preserve_internal_hours",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7341965409999993,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_reparse_preserve_internal_hours.py::regression_process_reparse_preserve_internal_hours",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.737500000004616e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_process_reparse_preserve_internal_hours.py::regression_process_reparse_preserve_internal_hours",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.916700000023866e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_report_export_large_scope_rejects_need_async.py::regression_report_export_large_scope_rejects_need_async",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.6662274169999982,
+      "longrepr": "",
+      "nodeid": "tests/regression_report_export_large_scope_rejects_need_async.py::regression_report_export_large_scope_rejects_need_async",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.691600000114818e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_report_export_large_scope_rejects_need_async.py::regression_report_export_large_scope_rejects_need_async",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.716700000173546e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_report_export_size_mode_selection.py::regression_report_export_size_mode_selection",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.6747975410000002,
+      "longrepr": "",
+      "nodeid": "tests/regression_report_export_size_mode_selection.py::regression_report_export_size_mode_selection",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.98329999973646e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_report_export_size_mode_selection.py::regression_report_export_size_mode_selection",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.637500000015393e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_report_source_case_insensitive.py::regression_report_source_case_insensitive",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.1194880420000004,
+      "longrepr": "",
+      "nodeid": "tests/regression_report_source_case_insensitive.py::regression_report_source_case_insensitive",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.508399999802464e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_report_source_case_insensitive.py::regression_report_source_case_insensitive",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.787499999991951e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_reports_default_range_from_version_span.py::regression_reports_default_range_from_version_span",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7032429580000006,
+      "longrepr": "",
+      "nodeid": "tests/regression_reports_default_range_from_version_span.py::regression_reports_default_range_from_version_span",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001202499999983786,
+      "longrepr": "",
+      "nodeid": "tests/regression_reports_default_range_from_version_span.py::regression_reports_default_range_from_version_span",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.7000000001750095e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_reports_export_version_default_latest.py::regression_reports_export_version_default_latest",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.6970018329999981,
+      "longrepr": "",
+      "nodeid": "tests/regression_reports_export_version_default_latest.py::regression_reports_export_version_default_latest",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.008399999999028e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_reports_export_version_default_latest.py::regression_reports_export_version_default_latest",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.2916999997876246e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_restore_success_condition.py::regression_restore_success_condition",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7352010419999999,
+      "longrepr": "",
+      "nodeid": "tests/regression_restore_success_condition.py::regression_restore_success_condition",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.23750000020118e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_restore_success_condition.py::regression_restore_success_condition",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.6666999999445125e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_missing_supplier_warning.py::regression_route_parser_missing_supplier_warning",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.10351037499999904,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_missing_supplier_warning.py::regression_route_parser_missing_supplier_warning",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010333400000206439,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_missing_supplier_warning.py::regression_route_parser_missing_supplier_warning",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.6833999998673335e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_op_type_category_case_insensitive.py::regression_route_parser_op_type_category_case_insensitive",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.10220308299999914,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_op_type_category_case_insensitive.py::regression_route_parser_op_type_category_case_insensitive",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.620900000659958e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_op_type_category_case_insensitive.py::regression_route_parser_op_type_category_case_insensitive",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.758300000418103e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_preserve_errors_when_no_matches.py::regression_route_parser_preserve_errors_when_no_matches",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.10247704099999311,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_preserve_errors_when_no_matches.py::regression_route_parser_preserve_errors_when_no_matches",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.833400000123447e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_preserve_errors_when_no_matches.py::regression_route_parser_preserve_errors_when_no_matches",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.970799999881592e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_strict_mode_rejects_supplier_fallback.py::regression_route_parser_strict_mode_rejects_supplier_fallback",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.10498008400000458,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_strict_mode_rejects_supplier_fallback.py::regression_route_parser_strict_mode_rejects_supplier_fallback",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00014608400000071242,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_strict_mode_rejects_supplier_fallback.py::regression_route_parser_strict_mode_rejects_supplier_fallback",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.262499999503234e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_supplier_default_days_zero_trace.py::regression_route_parser_supplier_default_days_zero_trace",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.10552316600000466,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_supplier_default_days_zero_trace.py::regression_route_parser_supplier_default_days_zero_trace",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.50409999944668e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_route_parser_supplier_default_days_zero_trace.py::regression_route_parser_supplier_default_days_zero_trace",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.9000000004184585e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_contract_launcher.py::regression_runtime_contract_launcher",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.04775495900000237,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_contract_launcher.py::regression_runtime_contract_launcher",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.324999999904549e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_contract_launcher.py::regression_runtime_contract_launcher",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.525000000261571e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_lock_reloader_parent_skip.py::regression_runtime_lock_reloader_parent_skip",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 1.6916030000000006,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_lock_reloader_parent_skip.py::regression_runtime_lock_reloader_parent_skip",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.733300000329791e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_lock_reloader_parent_skip.py::regression_runtime_lock_reloader_parent_skip",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.8750000004815774e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_probe_resolution.py::regression_runtime_probe_resolution",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 1.084960959,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_probe_resolution.py::regression_runtime_probe_resolution",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001642499999974234,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_probe_resolution.py::regression_runtime_probe_resolution",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00010175000000600676,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_stop_cli.py::regression_runtime_stop_cli",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 1.8750515830000012,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_stop_cli.py::regression_runtime_stop_cli",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.38750000013988e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_runtime_stop_cli.py::regression_runtime_stop_cli",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.887499999739475e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_safe_next_url_hardening.py::regression_safe_next_url_hardening",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.6682547499999956,
+      "longrepr": "",
+      "nodeid": "tests/regression_safe_next_url_hardening.py::regression_safe_next_url_hardening",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.724999999998317e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_safe_next_url_hardening.py::regression_safe_next_url_hardening",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.8499999998341536e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sanitize_batch_dates_single_digit.py::regression_sanitize_batch_dates_single_digit",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.04733362500000027,
+      "longrepr": "",
+      "nodeid": "tests/regression_sanitize_batch_dates_single_digit.py::regression_sanitize_batch_dates_single_digit",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.474999999918964e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sanitize_batch_dates_single_digit.py::regression_sanitize_batch_dates_single_digit",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.133299999788733e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_history_not_created_for_empty_schedule.py::regression_schedule_history_not_created_for_empty_schedule",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.11944075000000254,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_history_not_created_for_empty_schedule.py::regression_schedule_history_not_created_for_empty_schedule",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012379200000367518,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_history_not_created_for_empty_schedule.py::regression_schedule_history_not_created_for_empty_schedule",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.7957999999302956e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_input_builder_safe_float_parse.py::regression_schedule_input_builder_safe_float_parse",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.042776667000005375,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_input_builder_safe_float_parse.py::regression_schedule_input_builder_safe_float_parse",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.166600000374501e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_input_builder_safe_float_parse.py::regression_schedule_input_builder_safe_float_parse",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7750000000235104e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_input_collector_contract.py::regression_schedule_input_collector_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.09680883299999721,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_input_collector_contract.py::regression_schedule_input_collector_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.283399999697849e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_input_collector_contract.py::regression_schedule_input_collector_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7999999999603915e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_orchestrator_contract.py::regression_schedule_orchestrator_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.09643691699999835,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_orchestrator_contract.py::regression_schedule_orchestrator_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.808299999823021e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_orchestrator_contract.py::regression_schedule_orchestrator_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.8332999995182035e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_params_read_failure_visible.py::regression_schedule_params_read_failure_visible",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.059805374999996275,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_params_read_failure_visible.py::regression_schedule_params_read_failure_visible",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.612499999964939e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_params_read_failure_visible.py::regression_schedule_params_read_failure_visible",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.733300000481222e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_persistence_reject_empty_actionable_schedule.py::regression_schedule_persistence_reject_empty_actionable_schedule",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.09978570899999539,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_persistence_reject_empty_actionable_schedule.py::regression_schedule_persistence_reject_empty_actionable_schedule",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.491600000264498e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_persistence_reject_empty_actionable_schedule.py::regression_schedule_persistence_reject_empty_actionable_schedule",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.687500000244427e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_persistence_reschedulable_contract.py::regression_schedule_persistence_reschedulable_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0971067500000018,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_persistence_reschedulable_contract.py::regression_schedule_persistence_reschedulable_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.599999999996498e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_persistence_reschedulable_contract.py::regression_schedule_persistence_reschedulable_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.6916999998813935e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_all_frozen_short_circuit.py::regression_schedule_service_all_frozen_short_circuit",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.11592449999999843,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_all_frozen_short_circuit.py::regression_schedule_service_all_frozen_short_circuit",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.974999999760257e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_all_frozen_short_circuit.py::regression_schedule_service_all_frozen_short_circuit",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.76250000005507e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_empty_reschedulable_rejected.py::regression_schedule_service_empty_reschedulable_rejected",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.11658570800000234,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_empty_reschedulable_rejected.py::regression_schedule_service_empty_reschedulable_rejected",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.512500000217415e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_empty_reschedulable_rejected.py::regression_schedule_service_empty_reschedulable_rejected",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.954099999565642e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_facade_delegation.py::regression_schedule_service_facade_delegation",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.11238999999999777,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_facade_delegation.py::regression_schedule_service_facade_delegation",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.129200000046467e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_facade_delegation.py::regression_schedule_service_facade_delegation",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.0583000003712186e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_missing_resource_source_case_insensitive.py::regression_schedule_service_missing_resource_source_case_insensitive",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.11382650000000183,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_missing_resource_source_case_insensitive.py::regression_schedule_service_missing_resource_source_case_insensitive",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.170799999618339e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_missing_resource_source_case_insensitive.py::regression_schedule_service_missing_resource_source_case_insensitive",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.883299999391966e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_passes_algo_stats_to_summary.py::regression_schedule_service_passes_algo_stats_to_summary",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.11247700000000549,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_passes_algo_stats_to_summary.py::regression_schedule_service_passes_algo_stats_to_summary",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.579199999696584e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_passes_algo_stats_to_summary.py::regression_schedule_service_passes_algo_stats_to_summary",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.433299999741848e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_reschedulable_contract.py::regression_schedule_service_reschedulable_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.11603883400000115,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_reschedulable_contract.py::regression_schedule_service_reschedulable_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.170799999935753e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_service_reschedulable_contract.py::regression_schedule_service_reschedulable_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.404200000214132e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_end_date_type_guard.py::regression_schedule_summary_end_date_type_guard",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.07230670799999928,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_end_date_type_guard.py::regression_schedule_summary_end_date_type_guard",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001242499999989377,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_end_date_type_guard.py::regression_schedule_summary_end_date_type_guard",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.333299999994324e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_fallback_counts_output.py::regression_schedule_summary_fallback_counts_output",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.07235787500000157,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_fallback_counts_output.py::regression_schedule_summary_fallback_counts_output",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00013608300000100826,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_fallback_counts_output.py::regression_schedule_summary_fallback_counts_output",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.608299999693145e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py::regression_schedule_summary_invalid_due_and_unscheduled_counts",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.07407837499999914,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py::regression_schedule_summary_invalid_due_and_unscheduled_counts",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.991599999319533e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py::regression_schedule_summary_invalid_due_and_unscheduled_counts",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.283299999803148e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_overdue_warning_append_fallback.py::regression_schedule_summary_overdue_warning_append_fallback",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0730628330000016,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_overdue_warning_append_fallback.py::regression_schedule_summary_overdue_warning_append_fallback",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.100000000155205e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_overdue_warning_append_fallback.py::regression_schedule_summary_overdue_warning_append_fallback",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.77920000037102e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_size_guard_large_lists.py::regression_schedule_summary_size_guard_large_lists",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.19947595800000073,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_size_guard_large_lists.py::regression_schedule_summary_size_guard_large_lists",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.874999999937017e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_schedule_summary_size_guard_large_lists.py::regression_schedule_summary_size_guard_large_lists",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.3208000004190126e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_accepts_start_dt_string_and_safe_weights.py::regression_scheduler_accepts_start_dt_string_and_safe_weights",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06326641600000471,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_accepts_start_dt_string_and_safe_weights.py::regression_scheduler_accepts_start_dt_string_and_safe_weights",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.30839999963473e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_accepts_start_dt_string_and_safe_weights.py::regression_scheduler_accepts_start_dt_string_and_safe_weights",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.9374999996132374e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_analysis_observability.py::regression_scheduler_analysis_observability",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7627222079999996,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_analysis_observability.py::regression_scheduler_analysis_observability",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.508400000157735e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_analysis_observability.py::regression_scheduler_analysis_observability",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.2999999994085556e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_apply_preset_reject_invalid_numeric.py::regression_scheduler_apply_preset_reject_invalid_numeric",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.07747583300000116,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_apply_preset_reject_invalid_numeric.py::regression_scheduler_apply_preset_reject_invalid_numeric",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.579200000407127e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_apply_preset_reject_invalid_numeric.py::regression_scheduler_apply_preset_reject_invalid_numeric",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.2749999994716745e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_enforce_ready_default_from_config.py::regression_scheduler_enforce_ready_default_from_config",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.13455054099999586,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_enforce_ready_default_from_config.py::regression_scheduler_enforce_ready_default_from_config",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.733300000329791e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_enforce_ready_default_from_config.py::regression_scheduler_enforce_ready_default_from_config",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.8458999998501895e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_excel_calendar_strict_numeric.py::regression_scheduler_excel_calendar_strict_numeric",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7074700410000005,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_excel_calendar_strict_numeric.py::regression_scheduler_excel_calendar_strict_numeric",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.012500000376122e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_excel_calendar_strict_numeric.py::regression_scheduler_excel_calendar_strict_numeric",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.754200000434139e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_excel_calendar_uses_executor.py::regression_scheduler_excel_calendar_uses_executor",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7364860409999991,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_excel_calendar_uses_executor.py::regression_scheduler_excel_calendar_uses_executor",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.779200000219589e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_excel_calendar_uses_executor.py::regression_scheduler_excel_calendar_uses_executor",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.758400000071106e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_nonfinite_efficiency_fallback.py::regression_scheduler_nonfinite_efficiency_fallback",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0631643749999995,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_nonfinite_efficiency_fallback.py::regression_scheduler_nonfinite_efficiency_fallback",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.070799999870815e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_nonfinite_efficiency_fallback.py::regression_scheduler_nonfinite_efficiency_fallback",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.050000000039745e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_reject_nonfinite_and_invalid_status.py::regression_scheduler_reject_nonfinite_and_invalid_status",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.12986825000000124,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_reject_nonfinite_and_invalid_status.py::regression_scheduler_reject_nonfinite_and_invalid_status",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00013170799999784322,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_reject_nonfinite_and_invalid_status.py::regression_scheduler_reject_nonfinite_and_invalid_status",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.441700000119454e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_route_enforce_ready_tristate.py::regression_scheduler_route_enforce_ready_tristate",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.20233108300000424,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_route_enforce_ready_tristate.py::regression_scheduler_route_enforce_ready_tristate",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.954199999777757e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_route_enforce_ready_tristate.py::regression_scheduler_route_enforce_ready_tristate",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.412500000545606e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_run_no_reschedulable_flash.py::regression_scheduler_run_no_reschedulable_flash",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7568586249999996,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_run_no_reschedulable_flash.py::regression_scheduler_run_no_reschedulable_flash",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.958300000472263e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_run_no_reschedulable_flash.py::regression_scheduler_run_no_reschedulable_flash",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.8833000001025084e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_strict_mode_dispatch_flags.py::regression_scheduler_strict_mode_dispatch_flags",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.08596641700000163,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_strict_mode_dispatch_flags.py::regression_scheduler_strict_mode_dispatch_flags",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.837500000107411e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_strict_mode_dispatch_flags.py::regression_scheduler_strict_mode_dispatch_flags",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.0625000000081855e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_week_plan_no_reschedulable_flash.py::regression_scheduler_week_plan_no_reschedulable_flash",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7251099580000044,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_week_plan_no_reschedulable_flash.py::regression_scheduler_week_plan_no_reschedulable_flash",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.837500000424825e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_scheduler_week_plan_no_reschedulable_flash.py::regression_scheduler_week_plan_no_reschedulable_flash",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.8040999995512266e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_dedup.py::regression_seed_results_dedup",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06165379200000132,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_dedup.py::regression_seed_results_dedup",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.825000000138971e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_dedup.py::regression_seed_results_dedup",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.141700000166338e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_drop_duplicate_op_id_and_bad_time.py::regression_seed_results_drop_duplicate_op_id_and_bad_time",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06162979199999796,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_drop_duplicate_op_id_and_bad_time.py::regression_seed_results_drop_duplicate_op_id_and_bad_time",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.258300000107965e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_drop_duplicate_op_id_and_bad_time.py::regression_seed_results_drop_duplicate_op_id_and_bad_time",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.149999999787269e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_freeze_missing_resource.py::regression_seed_results_freeze_missing_resource",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06300295800000555,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_freeze_missing_resource.py::regression_seed_results_freeze_missing_resource",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.412499999759348e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_freeze_missing_resource.py::regression_seed_results_freeze_missing_resource",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.699999999819738e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_invalid_op_id_dedup.py::regression_seed_results_invalid_op_id_dedup",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06291379099999972,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_invalid_op_id_dedup.py::regression_seed_results_invalid_op_id_dedup",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.9415999998389e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_seed_results_invalid_op_id_dedup.py::regression_seed_results_invalid_op_id_dedup",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.92080000000783e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sgs_atc_penalize_missing_resources.py::regression_sgs_atc_penalize_missing_resources",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.05959479199999862,
+      "longrepr": "",
+      "nodeid": "tests/regression_sgs_atc_penalize_missing_resources.py::regression_sgs_atc_penalize_missing_resources",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.162499999997408e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sgs_atc_penalize_missing_resources.py::regression_sgs_atc_penalize_missing_resources",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.74579999973912e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sgs_penalize_nonfinite_proc_hours.py::regression_sgs_penalize_nonfinite_proc_hours",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.061020167000002346,
+      "longrepr": "",
+      "nodeid": "tests/regression_sgs_penalize_nonfinite_proc_hours.py::regression_sgs_penalize_nonfinite_proc_hours",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.770800000235113e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sgs_penalize_nonfinite_proc_hours.py::regression_sgs_penalize_nonfinite_proc_hours",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.837500000576256e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sgs_scoring_machine_operator_id_type_safe.py::regression_sgs_scoring_machine_operator_id_type_safe",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.06382758400000199,
+      "longrepr": "",
+      "nodeid": "tests/regression_sgs_scoring_machine_operator_id_type_safe.py::regression_sgs_scoring_machine_operator_id_type_safe",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00011495799999750034,
+      "longrepr": "",
+      "nodeid": "tests/regression_sgs_scoring_machine_operator_id_type_safe.py::regression_sgs_scoring_machine_operator_id_type_safe",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.629199999646062e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_shared_runtime_state.py::regression_shared_runtime_state",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.047974666999998306,
+      "longrepr": "",
+      "nodeid": "tests/regression_shared_runtime_state.py::regression_shared_runtime_state",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.029199999981529e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_shared_runtime_state.py::regression_shared_runtime_state",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7750000000235104e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_skill_rank_mapping.py::regression_skill_rank_mapping",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.13540520800000166,
+      "longrepr": "",
+      "nodeid": "tests/regression_skill_rank_mapping.py::regression_skill_rank_mapping",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.541699999715547e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_skill_rank_mapping.py::regression_skill_rank_mapping",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.0833000003081e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sort_strategies_priority_case_insensitive.py::regression_sort_strategies_priority_case_insensitive",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.05782779199999766,
+      "longrepr": "",
+      "nodeid": "tests/regression_sort_strategies_priority_case_insensitive.py::regression_sort_strategies_priority_case_insensitive",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00011945800000034978,
+      "longrepr": "",
+      "nodeid": "tests/regression_sort_strategies_priority_case_insensitive.py::regression_sort_strategies_priority_case_insensitive",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.537500000230011e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sort_strategy_case_insensitive.py::regression_sort_strategy_case_insensitive",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.05826774999999884,
+      "longrepr": "",
+      "nodeid": "tests/regression_sort_strategy_case_insensitive.py::regression_sort_strategy_case_insensitive",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.21249999987117e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sort_strategy_case_insensitive.py::regression_sort_strategy_case_insensitive",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.687500000244427e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sqlite_detect_types_enabled.py::regression_sqlite_detect_types_enabled",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.030874834000002238,
+      "longrepr": "",
+      "nodeid": "tests/regression_sqlite_detect_types_enabled.py::regression_sqlite_detect_types_enabled",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.891599999965138e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_sqlite_detect_types_enabled.py::regression_sqlite_detect_types_enabled",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.2040999996449955e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_start_and_rerun_route_resolution.py::regression_start_and_rerun_route_resolution",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.04974195900000211,
+      "longrepr": "",
+      "nodeid": "tests/regression_start_and_rerun_route_resolution.py::regression_start_and_rerun_route_resolution",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.308399999952144e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_start_and_rerun_route_resolution.py::regression_start_and_rerun_route_resolution",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.7416000004195666e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_startup_host_portfile.py::regression_startup_host_portfile",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.094929499999999,
+      "longrepr": "",
+      "nodeid": "tests/regression_startup_host_portfile.py::regression_startup_host_portfile",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00034916599999945674,
+      "longrepr": "",
+      "nodeid": "tests/regression_startup_host_portfile.py::regression_startup_host_portfile",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00032270799999878363,
+      "longrepr": "",
+      "nodeid": "tests/regression_startup_host_portfile_new_ui.py::regression_startup_host_portfile_new_ui",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.198056832999995,
+      "longrepr": "",
+      "nodeid": "tests/regression_startup_host_portfile_new_ui.py::regression_startup_host_portfile_new_ui",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001555409999980384,
+      "longrepr": "",
+      "nodeid": "tests/regression_startup_host_portfile_new_ui.py::regression_startup_host_portfile_new_ui",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.279200000136598e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_status_category_mixed_case.py::regression_status_category_mixed_case",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.13260458299999556,
+      "longrepr": "",
+      "nodeid": "tests/regression_status_category_mixed_case.py::regression_status_category_mixed_case",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.816699999807497e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_status_category_mixed_case.py::regression_status_category_mixed_case",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.000000000165983e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_strict_parse_blank_required.py::regression_strict_parse_blank_required",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.03390158299999513,
+      "longrepr": "",
+      "nodeid": "tests/regression_strict_parse_blank_required.py::regression_strict_parse_blank_required",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.208399999887206e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_strict_parse_blank_required.py::regression_strict_parse_blank_required",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.77920000037102e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_config_dirty_fields_contract.py::regression_system_config_dirty_fields_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.060931208999996045,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_config_dirty_fields_contract.py::regression_system_config_dirty_fields_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.920800000642657e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_config_dirty_fields_contract.py::regression_system_config_dirty_fields_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.904200000055425e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_health_route.py::regression_system_health_route",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 1.1836488749999958,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_health_route.py::regression_system_health_route",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001300420000021063,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_health_route.py::regression_system_health_route",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 7.616599999948903e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_logs_delete_no_clamp.py::regression_system_logs_delete_no_clamp",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.713657542,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_logs_delete_no_clamp.py::regression_system_logs_delete_no_clamp",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.012499999665579e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_logs_delete_no_clamp.py::regression_system_logs_delete_no_clamp",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.19590000038761e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_maintenance_invalid_last_run_visible.py::regression_system_maintenance_invalid_last_run_visible",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7119183749999962,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_maintenance_invalid_last_run_visible.py::regression_system_maintenance_invalid_last_run_visible",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.516600000518793e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_maintenance_invalid_last_run_visible.py::regression_system_maintenance_invalid_last_run_visible",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.250000000245336e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_maintenance_jobstate_commit.py::regression_system_maintenance_jobstate_commit",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.09937195799999898,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_maintenance_jobstate_commit.py::regression_system_maintenance_jobstate_commit",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.016700000013088e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_maintenance_jobstate_commit.py::regression_system_maintenance_jobstate_commit",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.72909999942317e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_maintenance_throttle_short_circuit.py::regression_system_maintenance_throttle_short_circuit",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.056142250000000615,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_maintenance_throttle_short_circuit.py::regression_system_maintenance_throttle_short_circuit",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012120800000303689,
+      "longrepr": "",
+      "nodeid": "tests/regression_system_maintenance_throttle_short_circuit.py::regression_system_maintenance_throttle_short_circuit",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.5875000001037733e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_template_no_inline_event_jinja.py::regression_template_no_inline_event_jinja",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.036924000000006174,
+      "longrepr": "",
+      "nodeid": "tests/regression_template_no_inline_event_jinja.py::regression_template_no_inline_event_jinja",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.108299999776136e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_template_no_inline_event_jinja.py::regression_template_no_inline_event_jinja",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.412499999835063e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_template_urlfor_endpoints.py::regression_template_urlfor_endpoints",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.6924977079999977,
+      "longrepr": "",
+      "nodeid": "tests/regression_template_urlfor_endpoints.py::regression_template_urlfor_endpoints",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.062499999856755e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_template_urlfor_endpoints.py::regression_template_urlfor_endpoints",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.262499999503234e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_tojson_zh_autoescape.py::regression_tojson_zh_autoescape",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.680282708,
+      "longrepr": "",
+      "nodeid": "tests/regression_tojson_zh_autoescape.py::regression_tojson_zh_autoescape",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010262499999669217,
+      "longrepr": "",
+      "nodeid": "tests/regression_tojson_zh_autoescape.py::regression_tojson_zh_autoescape",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.320800000025883e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_transaction_savepoint_nested.py::regression_transaction_savepoint_nested",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.04859645799999868,
+      "longrepr": "",
+      "nodeid": "tests/regression_transaction_savepoint_nested.py::regression_transaction_savepoint_nested",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.216600000565677e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_transaction_savepoint_nested.py::regression_transaction_savepoint_nested",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.575000000135333e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_ui_contract_table_overflow_guard.py::regression_ui_contract_table_overflow_guard",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.02074079100000148,
+      "longrepr": "",
+      "nodeid": "tests/regression_ui_contract_table_overflow_guard.py::regression_ui_contract_table_overflow_guard",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.516600000201379e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_ui_contract_table_overflow_guard.py::regression_ui_contract_table_overflow_guard",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.924999999644797e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_diagnostics_visible.py::regression_unit_excel_converter_diagnostics_visible",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2324762920000012,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_diagnostics_visible.py::regression_unit_excel_converter_diagnostics_visible",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.237499999808051e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_diagnostics_visible.py::regression_unit_excel_converter_diagnostics_visible",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.149999999787269e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_duplicate_part_rows_no_override.py::regression_unit_excel_converter_duplicate_part_rows_no_override",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.11453004099999475,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_duplicate_part_rows_no_override.py::regression_unit_excel_converter_duplicate_part_rows_no_override",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010120900000032407,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_duplicate_part_rows_no_override.py::regression_unit_excel_converter_duplicate_part_rows_no_override",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00010724999999922602,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_facade_binding.py::regression_unit_excel_converter_facade_binding",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.11544591699999529,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_facade_binding.py::regression_unit_excel_converter_facade_binding",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.595899999619405e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_facade_binding.py::regression_unit_excel_converter_facade_binding",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.6750000005934e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_merge_steps_and_classify.py::regression_unit_excel_converter_merge_steps_and_classify",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2600536670000011,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_merge_steps_and_classify.py::regression_unit_excel_converter_merge_steps_and_classify",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.779200000219589e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_unit_excel_converter_merge_steps_and_classify.py::regression_unit_excel_converter_merge_steps_and_classify",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.108300000244981e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_v2_strategy_zh_contract.py::regression_v2_strategy_zh_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.02104041700000181,
+      "longrepr": "",
+      "nodeid": "tests/regression_v2_strategy_zh_contract.py::regression_v2_strategy_zh_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.808300000533563e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_v2_strategy_zh_contract.py::regression_v2_strategy_zh_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.316600000071503e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_validate_dist_runtime_identity.py::regression_validate_dist_runtime_identity",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.4602473330000052,
+      "longrepr": "",
+      "nodeid": "tests/regression_validate_dist_runtime_identity.py::regression_validate_dist_runtime_identity",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0002537079999953562,
+      "longrepr": "",
+      "nodeid": "tests/regression_validate_dist_runtime_identity.py::regression_validate_dist_runtime_identity",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00010195800000190047,
+      "longrepr": "",
+      "nodeid": "tests/regression_value_policies_matrix_contract.py::regression_value_policies_matrix_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.03724887499999596,
+      "longrepr": "",
+      "nodeid": "tests/regression_value_policies_matrix_contract.py::regression_value_policies_matrix_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012458300000162126,
+      "longrepr": "",
+      "nodeid": "tests/regression_value_policies_matrix_contract.py::regression_value_policies_matrix_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.708400000514757e-05,
+      "longrepr": "",
+      "nodeid": "tests/regression_warmstart_failure_surfaces_degradation.py::regression_warmstart_failure_surfaces_degradation",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.13859304200000366,
+      "longrepr": "",
+      "nodeid": "tests/regression_warmstart_failure_surfaces_degradation.py::regression_warmstart_failure_surfaces_degradation",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00011383399999687072,
+      "longrepr": "",
+      "nodeid": "tests/regression_warmstart_failure_surfaces_degradation.py::regression_warmstart_failure_surfaces_degradation",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 7.733400000375923e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_skips_default_sort_only_for_due_and_created_at",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.005322833000001026,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_skips_default_sort_only_for_due_and_created_at",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.07079999994653e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_skips_default_sort_only_for_due_and_created_at",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.479100000054359e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_still_validates_ready_date",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00028887499999541433,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_still_validates_ready_date",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.7959000003695564e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_override_full_cover_still_validates_ready_date",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.400000000259752e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_created_at_strict_only_applies_to_fifo",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0007029580000050828,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_created_at_strict_only_applies_to_fifo",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.850000000227283e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_schedule_created_at_strict_only_applies_to_fifo",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00010220799999416386,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[False]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0001792920000056597,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[False]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.412500000228192e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[False]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.6166000000246186e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[True]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0001616250000040509,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[True]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.104200000654146e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_ready_date_adjust_errors_bubble_without_silent_fallback[True]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 8.458299999603014e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_optimize_schedule_created_at_strict_only_for_current_strategy",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0008002920000009794,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_optimize_schedule_created_at_strict_only_for_current_strategy",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.3999999998666226e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_algorithm_date_boundary_split.py::test_optimize_schedule_created_at_strict_only_for_current_strategy",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0019184169999988399,
+      "longrepr": "",
+      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_create_app_uses_current_environment_each_time",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.8386084170000103,
+      "longrepr": "",
+      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_create_app_uses_current_environment_each_time",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010179200000948185,
+      "longrepr": "",
+      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_create_app_uses_current_environment_each_time",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00032983399999864105,
+      "longrepr": "",
+      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_new_ui_create_app_uses_current_environment_each_time",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7509124170000092,
+      "longrepr": "",
+      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_new_ui_create_app_uses_current_environment_each_time",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.879099999920982e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_app_factory_runtime_env_refresh.py::test_app_new_ui_create_app_uses_current_environment_each_time",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7791999989499345e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_execute_sql_directly",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.009522875000001818,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_execute_sql_directly",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.6042000008128525e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_execute_sql_directly",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.999999999848569e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_import_flask_request",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.01608837499999538,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_import_flask_request",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.295800001192674e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_import_flask_request",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.358300000717463e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_import_repository",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004810583999997675,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_import_repository",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.24160000026086e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_routes_do_not_import_repository",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.154200000527908e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_web_helpers_do_not_import_repository",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003683329999972784,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_web_helpers_do_not_import_repository",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.466700000842593e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_web_helpers_do_not_import_repository",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.879100000858671e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.034177749999997786,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.0000000004833964e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7041000001968314e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_circular_service_dependencies",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.012091542000007394,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_circular_service_dependencies",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.8500000005446964e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_circular_service_dependencies",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.070900000385791e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_wildcard_imports",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.02507691600000328,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_wildcard_imports",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.1542000008453215e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_wildcard_imports",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.320799999391056e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_new_local_parse_helpers",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2330566669999996,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_new_local_parse_helpers",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.033300000751751e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_new_local_parse_helpers",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.483400000765414e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_stable_degradation_codes_cover_actual_usages",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.24668504199999575,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_stable_degradation_codes_cover_actual_usages",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.73749999972506e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_stable_degradation_codes_cover_actual_usages",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.662499999597003e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_use_assert_for_runtime_guards",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.17003541700000824,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_use_assert_for_runtime_guards",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.141699999773209e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_services_do_not_use_assert_for_runtime_guards",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7667000004025795e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_silent_exception_swallow",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.6482056669999992,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_silent_exception_swallow",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.470900000010715e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_no_silent_exception_swallow",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.570800000180952e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_startup_silent_fallback_samples",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0378927079999869,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_startup_silent_fallback_samples",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.766600000673861e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_startup_silent_fallback_samples",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.370799999582232e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_request_service_target_files_no_direct_assembly",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.32933116700000653,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_request_service_target_files_no_direct_assembly",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.8791000000724125e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_request_service_target_files_no_direct_assembly",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.6999999995023245e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_repository_bundle_consumption_does_not_drift",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 2.5307747079999956,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_repository_bundle_consumption_does_not_drift",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.0750000002940396e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_repository_bundle_consumption_does_not_drift",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.804199999204229e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_file_size_limit",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.01842183400000863,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_file_size_limit",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.208400000673464e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_file_size_limit",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.041699999708271e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_known_oversize_entries_still_exceed_limit",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.01717458299999919,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_known_oversize_entries_still_exceed_limit",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.7542000007515526e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_known_oversize_entries_still_exceed_limit",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7958000010339674e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_greedy_refactor_files_stay_under_quality_gate_limits",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.02103504100000464,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_greedy_refactor_files_stay_under_quality_gate_limits",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.212499999629472e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_greedy_refactor_files_stay_under_quality_gate_limits",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.341700000054516e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.39524462499998947,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.320800000025883e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.308299999740029e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.41471654200000785,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.016700000088804e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.416699999865159e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_file_naming_snake_case",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0022381250000051978,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_file_naming_snake_case",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.437500000165073e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_architecture_fitness.py::test_file_naming_snake_case",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00030225000000427826,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_scheduler_bulk_delete_surfaces_business_reason_and_logs_unexpected",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2772859580000073,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_scheduler_bulk_delete_surfaces_business_reason_and_logs_unexpected",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.962499999791817e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_scheduler_bulk_delete_surfaces_business_reason_and_logs_unexpected",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00030166599999859045,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_equipment_bulk_routes_show_reasons_and_log_unexpected",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.28051912499999787,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_equipment_bulk_routes_show_reasons_and_log_unexpected",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.854200000347646e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_equipment_bulk_routes_show_reasons_and_log_unexpected",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00029345900000521397,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_personnel_bulk_routes_show_reasons_and_log_unexpected",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.27789612499999805,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_personnel_bulk_routes_show_reasons_and_log_unexpected",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.404099999381742e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_personnel_bulk_routes_show_reasons_and_log_unexpected",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00028354200000535457,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_process_bulk_delete_shows_reason_and_logs_unexpected",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2969914579999937,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_process_bulk_delete_shows_reason_and_logs_unexpected",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.041600000296967e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_process_bulk_delete_shows_reason_and_logs_unexpected",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00029129100001057395,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_system_backup_batch_delete_shows_specific_failure_reasons",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2899191249999973,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_system_backup_batch_delete_shows_specific_failure_reasons",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.620800000220697e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_bulk_route_error_visibility.py::test_system_backup_batch_delete_shows_specific_failure_reasons",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.916700000023866e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_check_quickref_vs_routes.py::test_render_report_uses_repo_relative_path_and_stable_metadata",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0008538340000114886,
+      "longrepr": "",
+      "nodeid": "tests/test_check_quickref_vs_routes.py::test_render_report_uses_repo_relative_path_and_stable_metadata",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.1375000009225005e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_check_quickref_vs_routes.py::test_render_report_uses_repo_relative_path_and_stable_metadata",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.079100000353719e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_check_quickref_vs_routes.py::test_extract_doc_endpoints_and_diff_missing_extra_method_mismatch",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0008785419999952637,
+      "longrepr": "",
+      "nodeid": "tests/test_check_quickref_vs_routes.py::test_extract_doc_endpoints_and_diff_missing_extra_method_mismatch",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.183400000101756e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_check_quickref_vs_routes.py::test_extract_doc_endpoints_and_diff_missing_extra_method_mismatch",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.391600000985818e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_occupy_resource_keeps_segments_sorted",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.01669999977139e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_occupy_resource_keeps_segments_sorted",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.3375000001001354e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_occupy_resource_keeps_segments_sorted",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.8000000003535206e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_runtime_state_helpers_handle_seed_and_dispatch_modes",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.833399999881749e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_runtime_state_helpers_handle_seed_and_dispatch_modes",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.316699999800221e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_runtime_state_helpers_handle_seed_and_dispatch_modes",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.716700000211404e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_update_machine_last_state_rejects_non_datetime_end_time",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.1458000001503024e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_update_machine_last_state_rejects_non_datetime_end_time",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.399999999942338e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_update_machine_last_state_rejects_non_datetime_end_time",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.791700000022047e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_accumulate_busy_hours_rejects_non_datetime",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.0249999986817784e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_accumulate_busy_hours_rejects_non_datetime",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.3291999997686617e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_accumulate_busy_hours_rejects_non_datetime",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.637499999342708e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_schedule_normalizes_unordered_machine_downtimes_once",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003477089999961436,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_schedule_normalizes_unordered_machine_downtimes_once",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.558399998837558e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_downtime_timeline_ordered_insert.py::test_schedule_normalizes_unordered_machine_downtimes_once",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.9375000000063665e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_enum_display_consistency.py::test_enum_display_wrappers_expected_outputs",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.612500000358068e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_enum_display_consistency.py::test_enum_display_wrappers_expected_outputs",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6332999997057414e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_enum_display_consistency.py::test_enum_display_wrappers_expected_outputs",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00031900000000462114,
+      "longrepr": "",
+      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_shows_planned_downtime_when_overlay_available",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.28809412500000064,
+      "longrepr": "",
+      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_shows_planned_downtime_when_overlay_available",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.533400000487745e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_shows_planned_downtime_when_overlay_available",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00031416699999908815,
+      "longrepr": "",
+      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_marks_downtime_overlay_as_degraded_when_query_fails",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.27824320800000635,
+      "longrepr": "",
+      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_marks_downtime_overlay_as_degraded_when_query_fails",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.599999999920783e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_equipment_page_downtime_overlay_degraded.py::test_equipment_page_marks_downtime_overlay_as_degraded_when_query_fails",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003173750000087239,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_batch_quantity_float_is_rejected_without_truncation",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0025370000000037862,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_batch_quantity_float_is_rejected_without_truncation",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.858400000136044e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_batch_quantity_float_is_rejected_without_truncation",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.370799999264818e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_accepts_parts_cache_without_conn",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.5791999997722996e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_accepts_parts_cache_without_conn",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.4958000000528955e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_accepts_parts_cache_without_conn",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.0416000004483976e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_requires_conn_when_parts_cache_missing",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 8.729099999982282e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_requires_conn_when_parts_cache_missing",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.5999999994373866e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_batch_validator_requires_conn_when_parts_cache_missing",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.8124999989008757e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_blank_helper_does_not_treat_zero_as_blank",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.0082999987589574e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_blank_helper_does_not_treat_zero_as_blank",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.204200000084256e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_blank_helper_does_not_treat_zero_as_blank",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00023745800000085637,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_import_service_does_not_treat_zero_id_as_blank",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0026705420000041613,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_import_service_does_not_treat_zero_id_as_blank",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.408300000908639e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_import_service_does_not_treat_zero_id_as_blank",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.554100000575545e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_ensure_unique_ids_detects_integer_like_float_duplicates",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 9.22090000017306e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_ensure_unique_ids_detects_integer_like_float_duplicates",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.645799999674182e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_ensure_unique_ids_detects_integer_like_float_duplicates",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0002575840000105245,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_fallback_trims_time_suffix",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.25707633300000055,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_fallback_trims_time_suffix",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.137499999349984e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_fallback_trims_time_suffix",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0002813330000037695,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_validator_rejects_bool_and_nonfinite_numeric_inputs",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0029937499999874717,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_validator_rejects_bool_and_nonfinite_numeric_inputs",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.879200000435958e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_validator_rejects_bool_and_nonfinite_numeric_inputs",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0002904170000022077,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_and_confirm_reject_bool_numeric_cells",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.31533625000000143,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_and_confirm_reject_bool_numeric_cells",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.762500000614182e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_operator_calendar_preview_and_confirm_reject_bool_numeric_cells",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00031116699999245157,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_upload_over_limit_returns_413",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.25445333399999015,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_upload_over_limit_returns_413",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.937499999854936e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_upload_over_limit_returns_413",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00029616599999826576,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_exact_file_limit_is_not_rejected_by_multipart_overhead",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.29589229100000125,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_exact_file_limit_is_not_rejected_by_multipart_overhead",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.816699999807497e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_exact_file_limit_is_not_rejected_by_multipart_overhead",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00029195899999479025,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_op_type_preview_and_confirm_reject_duplicate_name_conflict",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2927042499999999,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_op_type_preview_and_confirm_reject_duplicate_name_conflict",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010037500000237287,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_op_type_preview_and_confirm_reject_duplicate_name_conflict",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003698750000040718,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_file_body_over_limit_returns_file_too_large_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.25351037500000473,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_file_body_over_limit_returns_file_too_large_error",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.699999999668307e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_file_body_over_limit_returns_file_too_large_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003026250000033315,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_scheduler_calendar_preview_rejects_duplicate_dates_after_canonicalization",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2849341250000066,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_scheduler_calendar_preview_rejects_duplicate_dates_after_canonicalization",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.162499999286865e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_scheduler_calendar_preview_rejects_duplicate_dates_after_canonicalization",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.4833000004018686e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_build_xlsx_bytes_sanitizes_formula_like_strings",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0032433340000039834,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_build_xlsx_bytes_sanitizes_formula_like_strings",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.9583000006236944e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_import_hardening.py::test_build_xlsx_bytes_sanitizes_formula_like_strings",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.616700000781293e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_normalizers_contract.py::test_regression_excel_normalizers_mixed_case_script_smoke",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.22040966699999842,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_normalizers_contract.py::test_regression_excel_normalizers_mixed_case_script_smoke",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.675000001152512e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_normalizers_contract.py::test_regression_excel_normalizers_mixed_case_script_smoke",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.645799999205337e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_true_for_equal_token",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0007809159999965232,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_true_for_equal_token",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.32909999972253e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_true_for_equal_token",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.391699999928278e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_for_different_token",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0002970840000102726,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_for_different_token",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.900000000101045e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_for_different_token",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00010845900000333586,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_when_compare_digest_raises",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003047080000015967,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_when_compare_digest_raises",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.291699999077082e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_excel_utils_compare_digest_guard.py::test_preview_baseline_matches_returns_false_when_compare_digest_raises",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00037574999998923886,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_nodeids_without_parsing_terminal_text",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.18671562500000505,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_nodeids_without_parsing_terminal_text",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00016229199999884258,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_nodeids_without_parsing_terminal_text",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00043141599999785285,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_collection_errors_and_exitstatus",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.17380995800000676,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_collection_errors_and_exitstatus",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00015316699999345929,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_records_collection_errors_and_exitstatus",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004903339999913214,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_raw_baseline_machine_block",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.1370524169999925,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_raw_baseline_machine_block",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010595900000964775,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_raw_baseline_machine_block",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00034487499999613647,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_keeps_required_failures_out_of_candidate_debt",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.13818633299999306,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_keeps_required_failures_out_of_candidate_debt",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010616699999843604,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_keeps_required_failures_out_of_candidate_debt",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003765419999979258,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_after_isolation_does_not_hide_real_regression_failures",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.17253720900001213,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_after_isolation_does_not_hide_real_regression_failures",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001443750000049704,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_after_isolation_does_not_hide_real_regression_failures",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00040258300001028147,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_importable_debt_baseline",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.20926337500000614,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_importable_debt_baseline",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00011945900000398524,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_writes_importable_debt_baseline",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00034058299999628616,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_zero_candidate_importable_baseline_is_current_proof",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.1992787920000012,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_zero_candidate_importable_baseline_is_current_proof",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00011341599999070695,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_zero_candidate_importable_baseline_is_current_proof",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00033849999999802094,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_after_isolation_and_output_file",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.08087041599999623,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_after_isolation_and_output_file",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00011220799999023257,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_after_isolation_and_output_file",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003907500000082109,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_clean_worktree",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.135445500000003,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_clean_worktree",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00015424999999424927,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_requires_clean_worktree",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.000398083000007432,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_blocked_classifications",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.6314547910000101,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_blocked_classifications",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.000134458000005111,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_blocked_classifications",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00039770799999416795,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_bad_pytest_invocation",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.19325645799999336,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_bad_pytest_invocation",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010500000000490672,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_collect_full_test_debt_importable_rejects_bad_pytest_invocation",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.316699999013963e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0005945840000123326,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.24999999921738e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.9375000000063665e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_rejects_duplicates_and_negative_ratchet",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00014854100000150083,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_rejects_duplicates_and_negative_ratchet",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.3375000001001354e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_rejects_duplicates_and_negative_ratchet",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.716699998790318e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 8.495800000218878e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.3874999999738975e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003876669999982596,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_marks_registered_exact_nodeids_xfail",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.13644737500000303,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_marks_registered_exact_nodeids_xfail",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00013891700000101537,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_marks_registered_exact_nodeids_xfail",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004062499999974989,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_keeps_unregistered_failures_failed",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.13174029099999984,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_keeps_unregistered_failures_failed",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010683300000380314,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_keeps_unregistered_failures_failed",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004989580000085425,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_does_not_require_uncollected_registered_nodeids",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.12315649999999323,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_does_not_require_uncollected_registered_nodeids",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012012499999514148,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_does_not_require_uncollected_registered_nodeids",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00043187500000385626,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_strict_xpass_fails_when_registered_debt_is_fixed",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.12342329199999824,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_strict_xpass_fails_when_registered_debt_is_fixed",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010591699999906723,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_strict_xpass_fails_when_registered_debt_is_fixed",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004130840000016178,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_propagates_debt_registry_failures",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.12591391699999122,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_propagates_debt_registry_failures",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00013950000000306773,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_pytest_collection_propagates_debt_registry_failures",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00011687500000334694,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_save_ledger_writes_test_debt_snapshot_and_machine_block",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00027241699999080993,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_save_ledger_writes_test_debt_snapshot_and_machine_block",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.379099999596292e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_save_ledger_writes_test_debt_snapshot_and_machine_block",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.525000000261571e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_finalize_ledger_update_preserves_test_debt_and_stable_updated_at",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00017966599999397204,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_finalize_ledger_update_preserves_test_debt_and_stable_updated_at",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.929199999674893e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_finalize_ledger_update_preserves_test_debt_and_stable_updated_at",
       "outcome": "passed",
       "when": "teardown"
     },
     {
       "duration": 5.808299999898736e-05,
       "longrepr": "",
-      "nodeid": "tests/test_yesno_normalization_contract.py::test_to_yes_no_wide_truthy_and_falsy_and_default",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_refresh_auto_fields_preserves_test_debt",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.0001089999999948077,
+      "duration": 0.0001599589999869977,
       "longrepr": "",
-      "nodeid": "tests/test_yesno_normalization_contract.py::test_to_yes_no_wide_truthy_and_falsy_and_default",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_refresh_auto_fields_preserves_test_debt",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 5.0333000004343376e-05,
+      "duration": 3.908400000796064e-05,
       "longrepr": "",
-      "nodeid": "tests/test_yesno_normalization_contract.py::test_to_yes_no_wide_truthy_and_falsy_and_default",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_refresh_auto_fields_preserves_test_debt",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.370900001366863e-05,
+      "duration": 5.054199999676712e-05,
       "longrepr": "",
-      "nodeid": "tests/test_yesno_normalization_contract.py::test_system_config_yes_no_unknown_is_no",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_ordinary_sort_and_save_reject_missing_test_debt",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 9.245800001167481e-05,
+      "duration": 0.00013045900000463462,
       "longrepr": "",
-      "nodeid": "tests/test_yesno_normalization_contract.py::test_system_config_yes_no_unknown_is_no",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_ordinary_sort_and_save_reject_missing_test_debt",
       "outcome": "passed",
       "when": "call"
     },
     {
       "duration": 4.3500000003859896e-05,
       "longrepr": "",
-      "nodeid": "tests/test_yesno_normalization_contract.py::test_system_config_yes_no_unknown_is_no",
+      "nodeid": "tests/test_full_test_debt_registry_contract.py::test_ordinary_sort_and_save_reject_missing_test_debt",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 6.287499999757529e-05,
+      "duration": 3.8250000002904017e-05,
       "longrepr": "",
-      "nodeid": "tests/test_yesno_normalization_contract.py::test_plugin_yes_no_unknown_follows_default_param",
+      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_safe_int_parses_integer_float_forms",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 7.183299999269366e-05,
+      "duration": 4.962500000260661e-05,
       "longrepr": "",
-      "nodeid": "tests/test_yesno_normalization_contract.py::test_plugin_yes_no_unknown_follows_default_param",
+      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_safe_int_parses_integer_float_forms",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.21250000041573e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_safe_int_parses_integer_float_forms",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.5416999995495644e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_attach_process_dependencies_sorts_by_seq_even_when_seq_is_float",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.066699999645152e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_attach_process_dependencies_sorts_by_seq_even_when_seq_is_float",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.087499999310239e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_attach_process_dependencies_sorts_by_seq_even_when_seq_is_float",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.579199999137472e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_critical_chain_build_process_prev_respects_seq_even_when_seq_is_float",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00012091700000382843,
+      "longrepr": "",
+      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_critical_chain_build_process_prev_respects_seq_even_when_seq_is_float",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.424999999879219e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_gantt_safe_int_parsing.py::test_critical_chain_build_process_prev_respects_seq_even_when_seq_is_float",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.929200001095978e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_make_algo_stats_can_be_used_as_explicit_counter_sink",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.4750000003878085e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_make_algo_stats_can_be_used_as_explicit_counter_sink",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.2583000006525253e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_make_algo_stats_can_be_used_as_explicit_counter_sink",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.645799999674182e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_legacy_scheduler_stats_snapshot_still_works",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.933300000686813e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_legacy_scheduler_stats_snapshot_still_works",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.166700000178935e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_legacy_scheduler_stats_snapshot_still_works",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.6667000003376415e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_legacy_scheduler_repairs_bad_stats_sink",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.61659999963149e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_legacy_scheduler_repairs_bad_stats_sink",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.462500001205626e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_legacy_scheduler_repairs_bad_stats_sink",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.39170000103195e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_external_fallback_writes_legacy_scheduler_stats",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.7625000007656126e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_external_fallback_writes_legacy_scheduler_stats",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 2.9334000004155314e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_run_context_external_fallback_writes_legacy_scheduler_stats",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.537499999595184e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_merge_algo_stats_deep_copies_fallback_samples",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.554099999471873e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_merge_algo_stats_deep_copies_fallback_samples",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.233299999294559e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_merge_algo_stats_deep_copies_fallback_samples",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.233399998871846e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_snapshot_algo_stats_fallback_deep_copies_fallback_samples",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.595800000435247e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_snapshot_algo_stats_fallback_deep_copies_fallback_samples",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6708999999746084e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_algo_stats_contract.py::test_snapshot_algo_stats_fallback_deep_copies_fallback_samples",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.5207999999897766e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_duplicate_batch_id",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.033300000751751e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_duplicate_batch_id",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.0042000005892078e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_duplicate_batch_id",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.641699998979675e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_empty_batch_id",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00012050000000840555,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_empty_batch_id",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.350000000068576e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_normalized_batches_reject_empty_batch_id",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.499999999689862e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_keeps_valid_batch_ids_in_order",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 3.9667000010013e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_keeps_valid_batch_ids_in_order",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.050000000826003e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_keeps_valid_batch_ids_in_order",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.479099999978644e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override0]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.787500000702494e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override0]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.4958000000528955e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override0]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.629199999646062e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override1]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.849999999123611e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override1]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.479199999389948e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override1]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.237499999566353e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override2]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.812500000639375e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override2]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.662499999279589e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_override_rejects_invalid_batch_order_items[override2]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.4834000004480004e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_strict_ready_date_error_is_not_hidden_by_full_override",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.874999999695319e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_strict_ready_date_error_is_not_hidden_by_full_override",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 2.9999999995311555e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_strict_ready_date_error_is_not_hidden_by_full_override",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.6249999993742676e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_bad_str_conversion_is_rejected",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.841700000530636e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_bad_str_conversion_is_rejected",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.0333999987419702e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_bad_str_conversion_is_rejected",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.354099999341997e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_operation_sort_key_uses_shared_integer_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.787500000702494e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_operation_sort_key_uses_shared_integer_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.1374999991840014e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_ordering_contract.py::test_operation_sort_key_uses_shared_integer_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.625000000795353e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_optimizer_uses_ordering_contract_instead_of_scheduler_helpers",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00013058399999010817,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_optimizer_uses_ordering_contract_instead_of_scheduler_helpers",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.2500000003210516e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_optimizer_uses_ordering_contract_instead_of_scheduler_helpers",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.620800001158386e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_keeps_legacy_ordering_helper_export",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.237499999248939e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_keeps_legacy_ordering_helper_export",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 2.9707999999573076e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_keeps_legacy_ordering_helper_export",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.37089999931095e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_modules_do_not_call_scheduler_private_callbacks",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00013670900000306574,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_modules_do_not_call_scheduler_private_callbacks",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.1082999996101535e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_modules_do_not_call_scheduler_private_callbacks",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.3625000000370164e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_files_and_entry_functions_stay_under_quality_gate",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.007980834000008485,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_files_and_entry_functions_stay_under_quality_gate",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.370799999899646e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_files_and_entry_functions_stay_under_quality_gate",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.391699999928278e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_algorithm_files_stay_under_complexity_threshold",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0175290419999925,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_algorithm_files_stay_under_complexity_threshold",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.0707999992359873e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_refactored_algorithm_files_stay_under_complexity_threshold",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.570899999123412e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_schedule_still_uses_legacy_internal_callback",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003243750000052614,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_schedule_still_uses_legacy_internal_callback",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6667000003376415e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_scheduler_schedule_still_uses_legacy_internal_callback",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.62920000043232e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_legacy_direct_dispatch_keeps_empty_state_containers_in_place",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.000170791999991593,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_legacy_direct_dispatch_keeps_empty_state_containers_in_place",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.558399998837558e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_legacy_direct_dispatch_keeps_empty_state_containers_in_place",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.129199999169941e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_identity_fields_reject_fractional_text_without_crashing",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 7.533299999806786e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_identity_fields_reject_fractional_text_without_crashing",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.129200000273613e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_identity_fields_reject_fractional_text_without_crashing",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.737500000511318e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_with_unknown_op_code_does_not_fall_back_to_batch_seq",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.0874999999450665e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_with_unknown_op_code_does_not_fall_back_to_batch_seq",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.299999998773728e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_with_unknown_op_code_does_not_fall_back_to_batch_seq",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.429199999516186e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_backfill_preserves_original_object_source_and_dynamic_attributes",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.93750000032378e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_backfill_preserves_original_object_source_and_dynamic_attributes",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 2.983399998868208e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_backfill_preserves_original_object_source_and_dynamic_attributes",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.7624999990271135e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_bad_time_reasons_are_separated",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.920799999614701e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_bad_time_reasons_are_separated",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.237500000352611e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_seed_bad_time_reasons_are_separated",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.68749999921647e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_empty_machine_pool_records_single_root_cause",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.387500000291311e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_empty_machine_pool_records_single_root_cause",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 2.933300000051986e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_empty_machine_pool_records_single_root_cause",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.341699999737102e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_operator_requires_declared_op_type_pool",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.279099999848768e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_operator_requires_declared_op_type_pool",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 2.9290999989939337e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_operator_requires_declared_op_type_pool",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.604200000495439e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_uses_declared_machine_when_op_type_pool_is_unknown",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 7.141599999727077e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_uses_declared_machine_when_op_type_pool_is_unknown",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.09999999927868e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_uses_declared_machine_when_op_type_pool_is_unknown",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.333400000826714e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_respects_declared_op_type_pool",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.225000000701584e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_respects_declared_op_type_pool",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 2.9875000009838004e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_fixed_machine_respects_declared_op_type_pool",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.424999999879219e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_existing_pair_rank_must_be_integer",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 8.270799999365863e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_existing_pair_rank_must_be_integer",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.1750000005104084e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_auto_assign_existing_pair_rank_must_be_integer",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.5791000001950124e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_scoring_hook_sync_does_not_leak_monkeypatch",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00027000000000043656,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_scoring_hook_sync_does_not_leak_monkeypatch",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.479100000447488e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_scoring_hook_sync_does_not_leak_monkeypatch",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.399999999942338e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_main_loop_uses_legacy_scoring_wrapper",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00014395799999533665,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_main_loop_uses_legacy_scoring_wrapper",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.2833000005894064e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_main_loop_uses_legacy_scoring_wrapper",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.4458000001791333e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_enforces_strict_internal_input_before_legacy_callback",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.591700000058154e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_enforces_strict_internal_input_before_legacy_callback",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.050000000826003e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_enforces_strict_internal_input_before_legacy_callback",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.3208999997546016e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_strict_mode_does_not_break_legacy_internal_callback_signature",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.7458999989989934e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_strict_mode_does_not_break_legacy_internal_callback_signature",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.0791999989787655e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_run_context_strict_mode_does_not_break_legacy_internal_callback_signature",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.408300000273812e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_external_scoring_does_not_double_count_defaulted_days",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0001447500000040236,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_external_scoring_does_not_double_count_defaulted_days",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.224999998963085e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_external_scoring_does_not_double_count_defaulted_days",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.420800000242252e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_ext_days_before_defaulting",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.929099999628761e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_ext_days_before_defaulting",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 2.9916999991996818e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_ext_days_before_defaulting",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.59579999980042e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_merged_total_days",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.9250000003553396e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_merged_total_days",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.4708000001160144e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_external_scoring_rejects_blank_merged_total_days",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.391599999247319e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_merged_external_group_allows_blank_member_ext_days_when_total_days_is_valid",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00013970899999549147,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_merged_external_group_allows_blank_member_ext_days_when_total_days_is_valid",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.541700000653236e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_sgs_strict_merged_external_group_allows_blank_member_ext_days_when_total_days_is_valid",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.6541000000056556e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_sequence_identity",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.1416999994557955e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_sequence_identity",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.0541000000994245e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_sequence_identity",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.6541000000056556e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_internal_hours_during_scoring_in_non_strict_mode",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 8.429199999682169e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_internal_hours_during_scoring_in_non_strict_mode",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.1208999999421394e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_invalid_internal_hours_during_scoring_in_non_strict_mode",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.3291999997686617e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_malformed_auto_assign_probe_result",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00014412500000560158,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_malformed_auto_assign_probe_result",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.187500000478849e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_rejects_malformed_auto_assign_probe_result",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.2707999991998804e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_propagates_validation_error_from_legacy_internal_callback",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00010629100000869585,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_propagates_validation_error_from_legacy_internal_callback",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.254099999594473e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_dispatch_sgs_propagates_validation_error_from_legacy_internal_callback",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 7.887499999981173e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[batch_order]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00018612499999903775,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[batch_order]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.041599999027312e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[batch_order]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.291699999077082e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[sgs]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00015520900001320115,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[sgs]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.845900000953861e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_refactor_contracts.py::test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes[sgs]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.737500000511318e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_run_state_contract.py::test_seed_result_missing_resources_records_warning_counts_without_blocking",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.874999999060492e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_run_state_contract.py::test_seed_result_missing_resources_records_warning_counts_without_blocking",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 2.945900000383972e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_run_state_contract.py::test_seed_result_missing_resources_records_warning_counts_without_blocking",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.612499999405827e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_run_state_contract.py::test_dispatch_success_advances_progress_and_records_internal_usage",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.4583000004649875e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_run_state_contract.py::test_dispatch_success_advances_progress_and_records_internal_usage",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.016600000194103e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_run_state_contract.py::test_dispatch_success_advances_progress_and_records_internal_usage",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.683399999156791e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_passes_start_dt_date_to_sorter",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00023849999999470128,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_passes_start_dt_date_to_sorter",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.129199999169941e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_passes_start_dt_date_to_sorter",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.1416999994557955e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_weighted_order_uses_start_dt_base_date",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00017070799999885367,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_weighted_order_uses_start_dt_base_date",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.1665999987117175e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_greedy_scheduler_base_date.py::test_greedy_scheduler_weighted_order_uses_start_dt_base_date",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00033408299999848623,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_pages_show_degraded_warning_when_holiday_default_efficiency_invalid",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.29720395900000085,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_pages_show_degraded_warning_when_holiday_default_efficiency_invalid",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.620900000266829e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_pages_show_degraded_warning_when_holiday_default_efficiency_invalid",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00032099999999957163,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_degraded_warning_when_holiday_default_efficiency_invalid",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.3109058750000031,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_degraded_warning_when_holiday_default_efficiency_invalid",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.404099999381742e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_degraded_warning_when_holiday_default_efficiency_invalid",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00037183299998844177,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_summary_and_inline_warnings_for_multiple_degraded_fields_in_v2",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2980066249999993,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_summary_and_inline_warnings_for_multiple_degraded_fields_in_v2",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.404099999381742e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_shows_summary_and_inline_warnings_for_multiple_degraded_fields_in_v2",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003624579999979005,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/config-False]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.30364987499999074,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/config-False]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010283400000332676,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/config-False]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004062499999974989,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/-False]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2963365419999917,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/-False]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010941600000080598,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/-False]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003854170000039403,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/calendar-False]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2809292079999892,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/calendar-False]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.345899999857465e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/calendar-False]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00037637500000187174,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/batches/B001-True]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.316897124999997,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/batches/B001-True]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.170799999935753e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_read_routes_do_not_repair_dirty_partial_schedule_config[/scheduler/batches/B001-True]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.000326541999996266,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_renders_auto_assign_persist_visibility_in_v1_and_v2",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2948066659999995,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_renders_auto_assign_persist_visibility_in_v1_and_v2",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00014287500000875752,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_config_page_renders_auto_assign_persist_visibility_in_v1_and_v2",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003488330000038786,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2791413750000089,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.133400000393976e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003338329999991174,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.27816691600000354,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.966699999428783e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_upsert_rejects_invalid_holiday_default_efficiency_in_post_chain",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.337500000417549e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_picker_js_does_not_rebuild_local_0_8_default",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0004136670000036702,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_picker_js_does_not_rebuild_local_0_8_default",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.354199998601871e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_calendar_picker_js_does_not_rebuild_local_0_8_default",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003109590000036633,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_and_confirm_reject_invalid_holiday_default_efficiency",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.31997908299999267,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_and_confirm_reject_invalid_holiday_default_efficiency",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.825000000138971e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_and_confirm_reject_invalid_holiday_default_efficiency",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003307080000070073,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_and_confirm_reject_invalid_holiday_default_efficiency",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.28899308299999404,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_and_confirm_reject_invalid_holiday_default_efficiency",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.741599999950722e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_and_confirm_reject_invalid_holiday_default_efficiency",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003717080000029682,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_bootstraps_pristine_store_without_prior_read",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.29339866600000164,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_bootstraps_pristine_store_without_prior_read",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.949999999823376e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_scheduler_excel_calendar_preview_bootstraps_pristine_store_without_prior_read",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003627080000114802,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_bootstraps_pristine_store_without_prior_read",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.29673808299999394,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_bootstraps_pristine_store_without_prior_read",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.266700000092442e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_holiday_default_efficiency_read_guard.py::test_operator_calendar_excel_preview_bootstraps_pristine_store_without_prior_read",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.879200000118544e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_matches_schedule_internal_and_is_read_only",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00014333299999691462,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_matches_schedule_internal_and_is_read_only",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.625000000795353e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_matches_schedule_internal_and_is_read_only",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.6582999996426224e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_uses_adjusted_max_of_prev_end_and_base_time",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.525000000578984e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_uses_adjusted_max_of_prev_end_and_base_time",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.695799999547944e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_uses_adjusted_max_of_prev_end_and_base_time",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.8791999998011306e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_handles_more_than_two_hundred_fragments",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0014737500000023829,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_handles_more_than_two_hundred_fragments",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.570799999863539e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_estimator_handles_more_than_two_hundred_fragments",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.774999998995554e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_abort_after_only_applies_after_adjustment_and_uses_strict_greater_than",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 7.716700000059973e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_abort_after_only_applies_after_adjustment_and_uses_strict_greater_than",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.383400000700476e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_abort_after_only_applies_after_adjustment_and_uses_strict_greater_than",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.633400000069287e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_validate_internal_hours_keeps_direct_call_compatibility_and_exposes_property_errors",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00011475000000871205,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_validate_internal_hours_keeps_direct_call_compatibility_and_exposes_property_errors",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.5834000001955246e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_validate_internal_hours_keeps_direct_call_compatibility_and_exposes_property_errors",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.695799999547944e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_fallback_only_updates_formal_schedule_counter",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 8.754200000282708e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_fallback_only_updates_formal_schedule_counter",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.37080000036849e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_fallback_only_updates_formal_schedule_counter",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.616600000100334e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_auto_assign_passes_best_end_to_estimator_abort_after",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0002576669999996284,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_auto_assign_passes_best_end_to_estimator_abort_after",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.645900000037727e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_auto_assign_passes_best_end_to_estimator_abort_after",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.654200000369201e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_returns_start_equals_end",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.05409999963058e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_returns_start_equals_end",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.091700000685705e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_returns_start_equals_end",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.758299999390147e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_still_avoids_occupied_segments",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.570799999394694e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_still_avoids_occupied_segments",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.4124999999107786e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_still_avoids_occupied_segments",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.583299999831979e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_at_segment_start_does_not_shift",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.008299999393785e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_at_segment_start_does_not_shift",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.2915999994997946e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_zero_hours_at_segment_start_does_not_shift",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.62920000043232e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_edge_cases_none_invalid_values_and_exception",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00021399999999971442,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_edge_cases_none_invalid_values_and_exception",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.862500000195723e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_internal_slot_estimator_consistency.py::test_efficiency_edge_cases_none_invalid_values_and_exception",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.999999999848569e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_invalid_status_raises_and_rolls_back_all_changes",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0015727079999976468,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_invalid_status_raises_and_rolls_back_all_changes",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.8500000005446964e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_invalid_status_raises_and_rolls_back_all_changes",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.420900000923211e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_name_raises_validation_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0010941249999945057,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_name_raises_validation_error",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.766700000085166e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_name_raises_validation_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.0458000000853644e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_status_raises_specific_message",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0010143749999969032,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_status_raises_specific_message",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.979199999548655e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_missing_status_raises_specific_message",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.0957999999591266e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_valid_rows_commit_and_trim_fields",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0010647910000045613,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_valid_rows_commit_and_trim_fields",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.812500000321961e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_valid_rows_commit_and_trim_fields",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.845899999532776e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_update_without_team_column_preserves_existing_team_id",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0010024169999951482,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_update_without_team_column_preserves_existing_team_id",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6541000000056556e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_update_without_team_column_preserves_existing_team_id",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.687500000637556e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_team_accepts_id_or_name_and_blank_clears",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.001050374999991277,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_team_accepts_id_or_name_and_blank_clears",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.704200000242963e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_machine_excel_import_apply_defense.py::test_apply_preview_rows_team_accepts_id_or_name_and_blank_clears",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00015358400000309302,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v1-\\u5df2\\u6e05\\u6d17 Batches \\u7684\\u65e5\\u671f\\u5b57\\u6bb5]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.001245000000011487,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v1-\\u5df2\\u6e05\\u6d17 Batches \\u7684\\u65e5\\u671f\\u5b57\\u6bb5]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.329200001038316e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v1-\\u5df2\\u6e05\\u6d17 Batches \\u7684\\u65e5\\u671f\\u5b57\\u6bb5]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0001182499999998754,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v2-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v2\\uff1a\\u5df2\\u5c06 WorkCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0010993340000027274,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v2-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v2\\uff1a\\u5df2\\u5c06 WorkCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.65420000021777e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v2-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v2\\uff1a\\u5df2\\u5c06 WorkCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00011933300000066538,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v3-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v3\\uff1a\\u5df2\\u5c06 OperatorCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0011067909999979975,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v3-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v3\\uff1a\\u5df2\\u5c06 OperatorCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.56249999906322e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v3-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v3\\uff1a\\u5df2\\u5c06 OperatorCalendar.day_type \\u7684 weekend \\u7edf\\u4e00\\u4e3a holiday]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00011345899999071207,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v4-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v4\\uff1a\\u5df2\\u6e05\\u6d17 OperatorMachine.skill_level]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0017794169999945098,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v4-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v4\\uff1a\\u5df2\\u6e05\\u6d17 OperatorMachine.skill_level]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.4375000007999e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v4-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v4\\uff1a\\u5df2\\u6e05\\u6d17 OperatorMachine.skill_level]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0001074169999952801,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v5-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v5\\uff1a\\u5df2\\u4fee\\u6b63 OperatorMachine.skill_level]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0011325419999934638,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v5-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v5\\uff1a\\u5df2\\u4fee\\u6b63 OperatorMachine.skill_level]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.449999999664669e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_each_migration_falls_back_to_stderr_when_logger_is_broken[run-_prep_v5-\\u6570\\u636e\\u5e93\\u8fc1\\u79fb v5\\uff1a\\u5df2\\u4fee\\u6b63 OperatorMachine.skill_level]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.904200001159097e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_v5_run_does_not_log_changed_rows_for_canonical_values",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.001393290999999408,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_v5_run_does_not_log_changed_rows_for_canonical_values",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.1749999994067366e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_v5_run_does_not_log_changed_rows_for_canonical_values",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 8.70419999898786e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_ensure_schema_migration_entry_path_survives_broken_logger",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0399505419999997,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_ensure_schema_migration_entry_path_survives_broken_logger",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.249999999383363e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_ensure_schema_migration_entry_path_survives_broken_logger",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 9.950000000458203e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_v6_run_falls_back_to_stderr_when_logger_is_broken",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00034629200000324545,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_v6_run_falls_back_to_stderr_when_logger_is_broken",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.837499999472584e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_migration_logging_fallback.py::test_v6_run_falls_back_to_stderr_when_logger_is_broken",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.374999999219199e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_normalize_text_none_and_blank",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.495799998949224e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_normalize_text_none_and_blank",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.4458000001791333e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_normalize_text_none_and_blank",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.86669999983269e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_normalize_text_str_and_non_str",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.175000000827822e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_normalize_text_str_and_non_str",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.40420000100039e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_normalize_text_str_and_non_str",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.9624999999432475e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_none_buffer",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 3.958300000306281e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_none_buffer",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.358299998978964e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_none_buffer",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.287500000543787e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_single_value_and_dedup_order",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.387500000291311e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_single_value_and_dedup_order",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.424999999879219e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_single_value_and_dedup_order",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.7250000005428774e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_set_input",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 3.94580000033784e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_set_input",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.462500001205626e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_normalize_text.py::test_append_unique_text_messages_accepts_set_input",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.9333000003693996e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_commits_valid_rows_and_keeps_row_errors",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.001158458000006135,
+      "longrepr": "",
+      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_commits_valid_rows_and_keeps_row_errors",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6041999990743534e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_commits_valid_rows_and_keeps_row_errors",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.070900000385791e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_create",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0010354590000076769,
+      "longrepr": "",
+      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_create",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.7332999994532656e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_create",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.716700000211404e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_update",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.000994333000008396,
+      "longrepr": "",
+      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_update",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6249999993742676e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_op_type_excel_import_apply_defense.py::test_apply_preview_rows_rejects_duplicate_name_on_update",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.9375000000063665e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_strips_name_and_normalizes_remark",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0009930840000009766,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_strips_name_and_normalizes_remark",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.637499999342708e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_strips_name_and_normalizes_remark",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.049999999722331e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_update_without_team_column_preserves_existing_team_id",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0009840830000058531,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_update_without_team_column_preserves_existing_team_id",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.729200000179844e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_update_without_team_column_preserves_existing_team_id",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.0082999987589574e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_team_accepts_id_or_name_and_blank_clears",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0013528329999985544,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_team_accepts_id_or_name_and_blank_clears",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.7917000003394605e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_excel_import_normalization.py::test_operator_excel_import_team_accepts_id_or_name_and_blank_clears",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 7.725000000391447e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_excel_route_error_handling.py::test_personnel_excel_preview_hides_internal_runtime_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.25590333400000986,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_excel_route_error_handling.py::test_personnel_excel_preview_hides_internal_runtime_error",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.720799999968222e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_excel_route_error_handling.py::test_personnel_excel_preview_hides_internal_runtime_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.045899999662652e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 9.195800001293719e-05,
+      "longrepr": "tests/test_operator_machine_exception_paths.py:45: in test_normalize_skill_level_optional_only_converts_value_error\n    with patch(\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1393: in __enter__\n    original, local = self.get_original()\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1366: in get_original\n    raise AttributeError(\nE   AttributeError: <module 'core.services.personnel.operator_machine_normalizers' from '/private/tmp/full-pytest-baseline.0ncjIa/wt/core/services/personnel/operator_machine_normalizers.py'> does not have the attribute 'normalize_skill_level'",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
+      "outcome": "skipped",
+      "when": "call"
+    },
+    {
+      "duration": 0.00011537499999292322,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.0916999995820333e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 7.520799999838346e-05,
+      "longrepr": "tests/test_operator_machine_exception_paths.py:54: in test_normalize_skill_level_stored_only_falls_back_for_value_error\n    with patch(\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1393: in __enter__\n    original, local = self.get_original()\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1366: in get_original\n    raise AttributeError(\nE   AttributeError: <module 'core.services.personnel.operator_machine_normalizers' from '/private/tmp/full-pytest-baseline.0ncjIa/wt/core/services/personnel/operator_machine_normalizers.py'> does not have the attribute 'normalize_skill_level'",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
+      "outcome": "skipped",
+      "when": "call"
+    },
+    {
+      "duration": 0.00016812500000185082,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.5957999990141616e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.001177041999994799,
+      "longrepr": "tests/test_operator_machine_exception_paths.py:72: in test_list_by_operator_propagates_unexpected_readside_normalization_errors\n    with patch(\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1393: in __enter__\n    original, local = self.get_original()\n/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/unittest/mock.py:1366: in get_original\n    raise AttributeError(\nE   AttributeError: <module 'core.services.personnel.operator_machine_normalizers' from '/private/tmp/full-pytest-baseline.0ncjIa/wt/core/services/personnel/operator_machine_normalizers.py'> does not have the attribute 'normalize_skill_level'",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
+      "outcome": "skipped",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010637500000143518,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.770799999676001e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_preview_skill_and_primary_only_convert_validation_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.001532541000003107,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_preview_skill_and_primary_only_convert_validation_error",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.5374999999125976e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_preview_skill_and_primary_only_convert_validation_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.000179709000008188,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0015846250000066675,
+      "longrepr": "tests/test_operator_machine_exception_paths.py:128: in test_resolve_write_values_only_converts_validation_error\n    assert new_skill is None\nE   AssertionError: assert 'normal' is None",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
+      "outcome": "skipped",
+      "when": "call"
+    },
+    {
+      "duration": 8.462499999950523e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.720799999802239e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_query_service_only_falls_back_for_value_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00032999999999105967,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_query_service_only_falls_back_for_value_error",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.4083000005912254e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_query_service_only_falls_back_for_value_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.3250000004491085e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_scored_public_attempts_when_rejections_exceed_limit",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00013370899999642916,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_scored_public_attempts_when_rejections_exceed_limit",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.55000000098471e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_scored_public_attempts_when_rejections_exceed_limit",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.7124999991533514e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostics_without_fake_score",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.416600000922699e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostics_without_fake_score",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.258399999594985e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostics_without_fake_score",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.7458999997852516e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostic_when_scored_attempts_fill_limit",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 9.312499999225565e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostic_when_scored_attempts_fill_limit",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.4499999998161e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_preserves_rejected_diagnostic_when_scored_attempts_fill_limit",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.591699999105913e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_distinct_rejected_origins_for_same_tag",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.2458000010014985e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_distinct_rejected_origins_for_same_tag",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.395799998884286e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_attempt_compaction_contract.py::test_compact_attempts_keeps_distinct_rejected_origins_for_same_tag",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.8583999995012164e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_build_order_is_cached_per_strategy_within_single_multi_start_call",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.000519415999988837,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_build_order_is_cached_per_strategy_within_single_multi_start_call",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.591699999105913e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_build_order_is_cached_per_strategy_within_single_multi_start_call",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.766700000085166e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_records_optional_sgs_validation_error_without_losing_primary_best",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00020295899999211997,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_records_optional_sgs_validation_error_without_losing_primary_best",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6041000001318935e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_records_optional_sgs_validation_error_without_losing_primary_best",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.7334000012378965e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_strict_mode_raises_non_primary_sgs_validation_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0002254579999885209,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_strict_mode_raises_non_primary_sgs_validation_error",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.454199999453067e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_strict_mode_raises_non_primary_sgs_validation_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.729200000179844e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_raises_primary_sgs_validation_error_without_fallback_to_batch_order",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00015045899999677204,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_raises_primary_sgs_validation_error_without_fallback_to_batch_order",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.037499999919874e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_raises_primary_sgs_validation_error_without_fallback_to_batch_order",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.758299999390147e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_partial_object_cfg_is_normalized_before_weighted_params",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00019550000000378986,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_partial_object_cfg_is_normalized_before_weighted_params",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.724999999121792e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_multi_start_partial_object_cfg_is_normalized_before_weighted_params",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.620800001158386e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_partial_object_cfg_strict_error_is_not_swallowed_as_warmstart_failure",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 7.275000000106502e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_partial_object_cfg_strict_error_is_not_swallowed_as_warmstart_failure",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6791999988849966e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_partial_object_cfg_strict_error_is_not_swallowed_as_warmstart_failure",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 7.824999998717885e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_strict_mode_raises_candidate_validation_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0009342909999929816,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_strict_mode_raises_candidate_validation_error",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.816699998855256e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_strict_mode_raises_candidate_validation_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.39169999914202e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_dedups_duplicate_neighbors_when_order_large",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 8.812500000487944e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_dedups_duplicate_neighbors_when_order_large",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.141699999138382e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_dedups_duplicate_neighbors_when_order_large",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.341600000008384e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_retrying_duplicates_when_order_small",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00012000000000966793,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_retrying_duplicates_when_order_small",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.162499999438296e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_retrying_duplicates_when_order_small",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.2834000001666936e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_and_keeps_existing_best",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 7.995900000423717e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_and_keeps_existing_best",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.304200000149194e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_and_keeps_existing_best",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.537500000230011e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_strict_mode_raises_rejected_neighbor_validation_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.545800000561485e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_strict_mode_raises_rejected_neighbor_validation_error",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.9874999998801286e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_strict_mode_raises_rejected_neighbor_validation_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.595800000435247e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_after_existing_attempt_cap",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0001291659999935746,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_after_existing_attempt_cap",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.058399998996265e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_records_rejected_neighbor_after_existing_attempt_cap",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.270900000198253e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_distinct_rejected_neighbor_origins",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 7.549999999412194e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_distinct_rejected_neighbor_origins",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.366600001048937e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_optimizer_local_search_neighbor_dedup.py::test_local_search_keeps_distinct_rejected_neighbor_origins",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.954199999611774e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_parse_write_row_accepts_integer_float_string_forms",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.279200000529727e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_parse_write_row_accepts_integer_float_string_forms",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.245800000684085e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_parse_write_row_accepts_integer_float_string_forms",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.637499999342708e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_apply_preview_rows_turns_nan_inf_into_row_errors",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00012174999999103875,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_apply_preview_rows_turns_nan_inf_into_row_errors",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.433400000574238e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_defense.py::test_apply_preview_rows_turns_nan_inf_into_row_errors",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.812500000321961e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_mixed_rows_commits_valid_and_keeps_row_errors",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0011947079999998778,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_mixed_rows_commits_valid_and_keeps_row_errors",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.654100000323069e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_mixed_rows_commits_valid_and_keeps_row_errors",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.49170000031063e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_unexpected_exception_rolls_back_all_changes",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0011960829999964062,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_unexpected_exception_rolls_back_all_changes",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.662499999597003e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_part_operation_hours_import_apply_mixed_rows.py::test_apply_preview_rows_unexpected_exception_rolls_back_all_changes",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.741700000783112e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_changed_files_preserve_first_git_status_columns",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004302249999994956,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_changed_files_preserve_first_git_status_columns",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.058299999267547e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_changed_files_preserve_first_git_status_columns",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 7.154099999695518e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_changed_file_exceeds_complexity",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.001196332999995775,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_changed_file_exceeds_complexity",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.895799999360406e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_changed_file_exceeds_complexity",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.129199999804769e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_complexity_tool_is_missing",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0010964589999957752,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_complexity_tool_is_missing",
       "outcome": "passed",
       "when": "call"
     },
     {
       "duration": 4.5999999997548e-05,
       "longrepr": "",
-      "nodeid": "tests/test_yesno_normalization_contract.py::test_plugin_yes_no_unknown_follows_default_param",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_complexity_tool_is_missing",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.7042000008777904e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_architecture_scan_skips_file",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0010490840000016988,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_architecture_scan_skips_file",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.5290999992175784e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_architecture_scan_skips_file",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.950000000609634e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_code_quality_scan_skips_file",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0010375829999986763,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_code_quality_scan_skips_file",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.5916000004808666e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_post_change_check_contract.py::test_post_change_check_fails_when_code_quality_scan_skips_file",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.058300000053805e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_batch_query_service_has_any",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00016758399999616813,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_batch_query_service_has_any",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.3833999992793906e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_batch_query_service_has_any",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.716700000211404e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_part_operation_query_service_lists_hours_and_details",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00026870800000722284,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_part_operation_query_service_lists_hours_and_details",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6332999997057414e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_part_operation_query_service_lists_hours_and_details",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.195799999706651e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_machine_downtime_query_service_list_active_machine_ids_at",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00014612500000055206,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_machine_downtime_query_service_list_active_machine_ids_at",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.424999999879219e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_machine_downtime_query_service_list_active_machine_ids_at",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.200000000764703e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003190830000079359,
+      "longrepr": "tests/test_query_services.py:163: in test_operator_machine_query_service_lists_with_names_and_linkage_rows\n    assert simple == [\nE   assert [{'dirty_fiel...': 'M2', ...}] == [{'is_primary...: 'beginner'}]\nE     \nE     At index 0 diff: {'operator_id': 'O1', 'machine_id': 'M1', 'skill_level': 'expert', 'is_primary': 'yes', 'dirty_fields': ['skill_level'], 'dirty_reasons': {'skill_level': \"历史技能等级 'high' 已兼容归一为 expert。\"}} != {'operator_id': 'O1', 'machine_id': 'M1', 'skill_level': 'expert', 'is_primary': 'yes'}\nE     Use -v to get more diff",
+      "nodeid": "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
+      "outcome": "skipped",
+      "when": "call"
+    },
+    {
+      "duration": 4.795799999612882e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.9874999998801286e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_schedule_history_query_service_versions_and_latest",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00019091599999399023,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_schedule_history_query_service_versions_and_latest",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.62920000043232e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_query_services.py::test_schedule_history_query_service_versions_and_latest",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003260000000011587,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_nodeid_and_runner_file_are_not_collected",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.12902716700000383,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_nodeid_and_runner_file_are_not_collected",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012587499999483498,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_nodeid_and_runner_file_are_not_collected",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00041766699999357115,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_exit_contract_and_failure_output",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 1.0909737079999928,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_exit_contract_and_failure_output",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00018041699999571392,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_exit_contract_and_failure_output",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0005202499999938937,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_subprocess_pollution_is_isolated",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.16213208299998882,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_subprocess_pollution_is_isolated",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001226669999994101,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_main_style_subprocess_pollution_is_isolated",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.2875000008612005e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_runner_script_exists_and_is_not_main_style_collected",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.8638416249999921,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_runner_script_exists_and_is_not_main_style_collected",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.300000000360797e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_regression_main_isolation_contract.py::test_runner_script_exists_and_is_not_main_style_collected",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.9290999999461746e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_legacy_full_selftest_root_report_is_not_current_artifact",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 8.954199999777757e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_legacy_full_selftest_root_report_is_not_current_artifact",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.424999999879219e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_legacy_full_selftest_root_report_is_not_current_artifact",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.958400000669826e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_report_header_includes_revision_and_gate_manifest_metadata",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.005454709000005664,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_report_header_includes_revision_and_gate_manifest_metadata",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.458299999361316e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_report_header_includes_revision_and_gate_manifest_metadata",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00041008300000555664,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_tracked_regression_discovery_ignores_untracked_files",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0019962500000048067,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_tracked_regression_discovery_ignores_untracked_files",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.950000000609634e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_tracked_regression_discovery_ignores_untracked_files",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0002727909999862277,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_run_full_selftest_fails_when_quality_gate_manifest_is_unbound",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0020743329999959315,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_run_full_selftest_fails_when_quality_gate_manifest_is_unbound",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.212500001050557e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_run_full_selftest_fails_when_quality_gate_manifest_is_unbound",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0002475409999931344,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_accepts_clean_proof_manifest",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2712300409999955,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_accepts_clean_proof_manifest",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012279100000966992,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_accepts_clean_proof_manifest",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00041949999999246756,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_manifest_replay_rechecks_clean_worktree",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.27041437500000143,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_manifest_replay_rechecks_clean_worktree",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00015000000000497948,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_manifest_replay_rechecks_clean_worktree",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0005919999999974834,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_command_replay_failure",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2727369159999995,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_command_replay_failure",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001498330000089254,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_command_replay_failure",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0005339589999948657,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_replay_disabled_is_structural_only",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.27776779100000226,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_replay_disabled_is_structural_only",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001352499999995871,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_replay_disabled_is_structural_only",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00045508400000926486,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_replay_rejects_forged_non_collect_receipt_output",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.018734125000008817,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_replay_rejects_forged_non_collect_receipt_output",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010066699999811135,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_replay_rejects_forged_non_collect_receipt_output",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.533299999489373e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_volatile_iso_timestamp",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00014224999999612464,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_volatile_iso_timestamp",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.170900000133315e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_volatile_iso_timestamp",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.24999999921738e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_pyright_update_notice",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.56249999906322e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_pyright_update_notice",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.487499999721422e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_normalized_output_ignores_pyright_update_notice",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004826250000036225,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_dirty_and_drifted_manifest",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2945072499999952,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_dirty_and_drifted_manifest",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012720799999499377,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_dirty_and_drifted_manifest",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00045687499999758074,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_reports_failed_manifest_reason",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.1481024590000004,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_reports_failed_manifest_reason",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00013837499999169722,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_reports_failed_manifest_reason",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00041995899999847097,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_head_mismatch_and_checkout_identity_mismatch",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2969988330000035,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_head_mismatch_and_checkout_identity_mismatch",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012158400001283098,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_head_mismatch_and_checkout_identity_mismatch",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004407499999956599,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_or_wrong_proof_scope",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.296106457999997,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_or_wrong_proof_scope",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001271659999986241,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_or_wrong_proof_scope",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00043779199999960383,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_hash_mismatch",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.5984179579999989,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_hash_mismatch",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012300000000209366,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_hash_mismatch",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00040675000001044737,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_command_receipt_file",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.28151250000000516,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_command_receipt_file",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001435839999999189,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_missing_command_receipt_file",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004409999999950287,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collection_proof",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.26925812500000745,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collection_proof",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010054100000900235,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collection_proof",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004951669999968544,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collect_receipt",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.2689955000000026,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collect_receipt",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00011933300000066538,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_quality_gate_binding_status_rejects_fabricated_collect_receipt",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.5165999995665516e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_explicit_guard_subset_comes_from_shared_registry",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.002430000000003929,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_explicit_guard_subset_comes_from_shared_registry",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.916700000023866e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_full_selftest_report_metadata.py::test_full_selftest_explicit_guard_subset_comes_from_shared_registry",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.5124999999757165e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_shared_quality_registry_does_not_split_quality_gate_error_identity",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0001379589999999098,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_shared_quality_registry_does_not_split_quality_gate_error_identity",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.320800000494728e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_shared_quality_registry_does_not_split_quality_gate_error_identity",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 9.0166000006775e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_reports_cleanup_hint_when_uncertain",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0029254170000001523,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_reports_cleanup_hint_when_uncertain",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.912500000704313e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_reports_cleanup_hint_when_uncertain",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0001216250000055652,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_allows_stale_trace_and_prints_paths",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.022710291000009875,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_allows_stale_trace_and_prints_paths",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.529099999383561e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_assert_no_active_runtime_allows_stale_trace_and_prints_paths",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00039612499999464035,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.025060666000001675,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00014050000000054297,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.6042000008128525e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.002593250000003877,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.145799999832889e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.9666999995802144e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_quality_workflow_uploads_quality_gate_manifest_artifact",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.000519124999996734,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_quality_workflow_uploads_quality_gate_manifest_artifact",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.6166999993602076e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_quality_workflow_uploads_quality_gate_manifest_artifact",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00033924999999612737,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.17828837500000816,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0002355830000055903,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00015191600000719063,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_missing_guard_file",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0030219169999980977,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_missing_guard_file",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.53340000095659e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_missing_guard_file",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.42500000083146e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_untracked_guard_file",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.002696999999997729,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_untracked_guard_file",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.512500000610544e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_guard_preflight_rejects_untracked_guard_file",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00041716699999483353,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_quality_gate_manifest_with_git_and_collection_proof",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.009643207999999959,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_quality_gate_manifest_with_git_and_collection_proof",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.15000000073951e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_quality_gate_manifest_with_git_and_collection_proof",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.904200000055425e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_guard_collect_only_keeps_analysis_and_history_in_default_collect",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.3152412080000033,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_guard_collect_only_keeps_analysis_and_history_in_default_collect",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.470899999541871e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_guard_collect_only_keeps_analysis_and_history_in_default_collect",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0005037499999929196,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_allow_dirty_worktree_marks_manifest_unbound",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.026582083999997508,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_allow_dirty_worktree_marks_manifest_unbound",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012599999999451938,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_allow_dirty_worktree_marks_manifest_unbound",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004234999999965794,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_running_then_passed_manifest",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.024417958000000795,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_running_then_passed_manifest",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001221670000006725,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_writes_running_then_passed_manifest",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004448749999994561,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_updates_manifest_to_failed_on_command_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.053032833000003166,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_updates_manifest_to_failed_on_command_error",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00017679200000486617,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_updates_manifest_to_failed_on_command_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.000538125000005607,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_by_default",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.029580540999987193,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_by_default",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00016616700000327,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_by_default",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004823340000115195,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_when_require_clean_worktree",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.033877375000002985,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_when_require_clean_worktree",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00014554200001271056,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_rejects_dirty_worktree_when_require_clean_worktree",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.7834000003254005e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_high_risk_untracked_source_diagnostic_covers_production_imported_py",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0029909590000016806,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_high_risk_untracked_source_diagnostic_covers_production_imported_py",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00015966700000547007,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_high_risk_untracked_source_diagnostic_covers_production_imported_py",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0010454170000002705,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_dirty_worktree_message_names_untracked_source",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.03101216700000009,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_dirty_worktree_message_names_untracked_source",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001550830000098813,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_dirty_worktree_message_names_untracked_source",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0009446669999988444,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_fails_when_tracked_status_changes_during_gate",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.1087031670000016,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_fails_when_tracked_status_changes_during_gate",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001732500000031223,
+      "longrepr": "",
+      "nodeid": "tests/test_run_quality_gate.py::test_main_fails_when_tracked_status_changes_during_gate",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.895799999995234e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_setup_hours_rejected",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00016616699998905915,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_setup_hours_rejected",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00019000000000346517,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_setup_hours_rejected",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0001052920000006452,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_ext_days_rejected",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.000969707999999514,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_ext_days_rejected",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001587499999970987,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_strict_blank_ext_days_rejected",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00020941600000412564,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_does_not_fallback_to_legacy_private_lookup",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00010387500000774708,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_does_not_fallback_to_legacy_private_lookup",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.412500000228192e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_input_builder_strict_hours_and_ext_days.py::test_schedule_input_builder_does_not_fallback_to_legacy_private_lookup",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.2541000002293003e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_allows_missing_runtime_config_in_non_strict_direct_call",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0006785420000028353,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_allows_missing_runtime_config_in_non_strict_direct_call",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.7749999996303814e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_allows_missing_runtime_config_in_non_strict_direct_call",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7665999986179486e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_rejects_missing_runtime_config_in_strict_direct_call",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00017016600000374638,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_rejects_missing_runtime_config_in_strict_direct_call",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.01249999981701e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_rejects_missing_runtime_config_in_strict_direct_call",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.333299999359497e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_nonstrict_choice_fallback_is_visible",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0001902909999955682,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_nonstrict_choice_fallback_is_visible",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.916599999342907e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_nonstrict_choice_fallback_is_visible",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.074999999659212e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_nonstrict_choice_fallback_is_visible",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00014399999999170632,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_nonstrict_choice_fallback_is_visible",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.920800000400959e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_nonstrict_choice_fallback_is_visible",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.366699999991397e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_strict_mode_rejects_consumed_invalid_choice",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00015412499999456486,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_strict_mode_rejects_consumed_invalid_choice",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00017187500000659384,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_raw_dict_strict_mode_rejects_consumed_invalid_choice",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00043233299999201336,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_strict_mode_ignores_unconsumed_invalid_choice",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0024114170000046897,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_strict_mode_ignores_unconsumed_invalid_choice",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00031195799999750307,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_snapshot_strict_mode_ignores_unconsumed_invalid_choice",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00027283400000044367,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_fallback_in_non_strict_mode",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0029894579999876214,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_fallback_in_non_strict_mode",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00020270900000696201,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_fallback_in_non_strict_mode",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00027916599999855407,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_rejected_in_strict_mode",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00021387500000003,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_rejected_in_strict_mode",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00018962500000441196,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_weighted_override_invalid_values_rejected_in_strict_mode",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 9.599999999920783e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_inconsistent_runtime_weight_triplet",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0007728749999955653,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_inconsistent_runtime_weight_triplet",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.283300000120562e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_inconsistent_runtime_weight_triplet",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00021866699999861794,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_normalizes_percent_runtime_weight_triplet",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0007951249999962329,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_normalizes_percent_runtime_weight_triplet",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0001817090000031385,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_normalizes_percent_runtime_weight_triplet",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00011816700001077152,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_start_dt",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004036833000000684,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_start_dt",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.083400001306472e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_start_dt",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.875000000798991e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_end_date",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 8.891699999935554e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_end_date",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.574999999817919e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_params_direct_call_contract.py::test_schedule_params_strict_mode_rejects_invalid_end_date",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.011146874999994338,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_logs_warning_when_latest_result_summary_is_invalid",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.6831865419999872,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_logs_warning_when_latest_result_summary_is_invalid",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.079099999098617e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_logs_warning_when_latest_result_summary_is_invalid",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003913749999924221,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_keeps_latest_history_when_summary_is_invalid",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.49945679100000007,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_keeps_latest_history_when_summary_is_invalid",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.558300000061081e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_keeps_latest_history_when_summary_is_invalid",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00039520800000047984,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_logs_warning_for_selected_and_list_summary_parse_failures",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.45150816700000007,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_logs_warning_for_selected_and_list_summary_parse_failures",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.820899999761878e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_logs_warning_for_selected_and_list_summary_parse_failures",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0005638330000010683,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_logs_warning_for_selected_and_trend_summary_parse_failures",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.48170837499999664,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_logs_warning_for_selected_and_trend_summary_parse_failures",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.366699999839966e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_logs_warning_for_selected_and_trend_summary_parse_failures",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00037129199999696993,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.43405120799999963,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00017037499999617012,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_dashboard_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00039137500000663294,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.41173599999999055,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.887499998877502e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003614590000040607,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_surfaces_current_config_state_and_other_degradation_messages",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.4339387499999958,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_surfaces_current_config_state_and_other_degradation_messages",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.191700000281799e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_batches_surfaces_current_config_state_and_other_degradation_messages",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003817919999988817,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.4108222499999954,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.237499999414922e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_system_history_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.9000000004184585e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_viewmodel_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 8.945899999446283e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_viewmodel_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.8833000004956375e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_schedule_summary_observability.py::test_scheduler_analysis_viewmodel_accepts_preparsed_result_summary_dict",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.2082999996750914e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_field_spec_registry_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.341600000325798e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_field_spec_registry_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.47090000047956e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_field_spec_registry_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0027664160000000493,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_service_snapshot_includes_hidden_field_and_get_stays_single_arg",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0016522499999922502,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_service_snapshot_includes_hidden_field_and_get_stays_single_arg",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010749999999859483,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_service_snapshot_includes_hidden_field_and_get_stays_single_arg",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.545900000607617e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__schedule_config_snapshot_hidden_field_defaults_to_yes",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.7667000004025795e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__schedule_config_snapshot_hidden_field_defaults_to_yes",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.741700000148285e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__schedule_config_snapshot_hidden_field_defaults_to_yes",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.279200000212313e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__build_schedule_config_snapshot_strict_mode_rejects_missing_repo_fields",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.845800000121471e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__build_schedule_config_snapshot_strict_mode_rejects_missing_repo_fields",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.7374999990902324e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__build_schedule_config_snapshot_strict_mode_rejects_missing_repo_fields",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.229200000338551e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__ensure_schedule_config_snapshot_strict_mode_rejects_missing_runtime_fields",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.249999999852207e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__ensure_schedule_config_snapshot_strict_mode_rejects_missing_runtime_fields",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6249999993742676e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__ensure_schedule_config_snapshot_strict_mode_rejects_missing_runtime_fields",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.1749999994067366e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_helpers_reject_removed_valid_override_kwargs",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.791700000656874e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_helpers_reject_removed_valid_override_kwargs",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.83329999920079e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_config_field_spec_contract__config_helpers_reject_removed_valid_override_kwargs",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.58330000078422e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_uses_request_services",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.020592500000006453,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_uses_request_services",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.799999999884676e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_uses_request_services",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 7.449999999664669e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_marks_parse_failure_and_incomplete_trend",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.01841054199999803,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_marks_parse_failure_and_incomplete_trend",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.116599999790196e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_marks_parse_failure_and_incomplete_trend",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 7.858300000407326e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_surfaces_missing_requested_history",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.01833337499999743,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_surfaces_missing_requested_history",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.654200000535184e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_route_surfaces_missing_requested_history",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 8.145800001102543e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_default_latest_does_not_synthesize_missing_selected",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.01770333400000368,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_default_latest_does_not_synthesize_missing_selected",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.02499999963402e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_default_latest_does_not_synthesize_missing_selected",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 8.854200000030232e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_explicit_old_version_uses_history_lookup_not_recent_dropdown",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.018810624999986203,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_explicit_old_version_uses_history_lookup_not_recent_dropdown",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.016700000406217e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_scheduler_analysis_route_contract__scheduler_analysis_explicit_old_version_uses_history_lookup_not_recent_dropdown",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.000000000165983e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__calendar_pages_use_shared_holiday_default_efficiency_helper",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004686165999999048,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__calendar_pages_use_shared_holiday_default_efficiency_helper",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.5374999999125976e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__calendar_pages_use_shared_holiday_default_efficiency_helper",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.433299999107021e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__error_handlers_prefer_config_service_field_labels",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 9.570800000346935e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__error_handlers_prefer_config_service_field_labels",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.612499999405827e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__error_handlers_prefer_config_service_field_labels",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.216600000641392e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_page_requests_and_uses_visible_field_metadata",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0010238750000013397,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_page_requests_and_uses_visible_field_metadata",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.7582999997075603e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_page_requests_and_uses_visible_field_metadata",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.516699999612683e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_shows_shared_preset_degradation_notice",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0001067500000004884,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_shows_shared_preset_degradation_notice",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6917000002745226e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_shows_shared_preset_degradation_notice",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.01249999981701e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_surfaces_shared_degraded_field_warning_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00015900000001067838,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_surfaces_shared_degraded_field_warning_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.7082999995163846e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_template_surfaces_shared_degraded_field_warning_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.366600001048937e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_v2_template_matches_shared_metadata_and_warning_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00031387500000334967,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_v2_template_matches_shared_metadata_and_warning_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.770799999676001e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_config_v2_template_matches_shared_metadata_and_warning_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.54170000097065e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_manual_path_source_requires_base_dir_and_distinguishes_missing_reasons",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00010354200000506353,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_manual_path_source_requires_base_dir_and_distinguishes_missing_reasons",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.78750000038508e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_followup_root_collect.py::test_regression_sp05_followup_contracts__scheduler_manual_path_source_requires_base_dir_and_distinguishes_missing_reasons",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00040212499999370266,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_resource_dispatch_smoke.py::test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.5673578330000026,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_resource_dispatch_smoke.py::test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.92909999947733e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_scheduler_resource_dispatch_smoke.py::test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry",
       "outcome": "passed",
       "when": "teardown"
     },
     {
       "duration": 4.9415999995972015e-05,
       "longrepr": "",
+      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0008386669999964624,
+      "longrepr": "",
+      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.925000000037926e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.941599999279788e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_probe_none_efficiency_default_does_not_pollute_formal_counter",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003028750000027003,
+      "longrepr": "",
+      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_probe_none_efficiency_default_does_not_pollute_formal_counter",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.6958999988078176e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sgs_internal_scoring_matches_execution.py::test_sgs_probe_none_efficiency_default_does_not_pollute_formal_counter",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.262500000606906e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_skill_level_normalization_contract.py::test_normalize_skill_level_canonical3_and_legacy_aliases",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.687500000168711e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_skill_level_normalization_contract.py::test_normalize_skill_level_canonical3_and_legacy_aliases",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.2415999996260325e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_skill_level_normalization_contract.py::test_normalize_skill_level_canonical3_and_legacy_aliases",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.662499999279589e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_utilization_only_counts_internal_source",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.495799999584051e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_utilization_only_counts_internal_source",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.2000000004472895e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_utilization_only_counts_internal_source",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.579199999137472e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_downtime_impact_only_counts_internal_source",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.587500000421187e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_downtime_impact_only_counts_internal_source",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.2500000003210516e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_source_merge_mode_constants.py::test_compute_downtime_impact_only_counts_internal_source",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.562499999532065e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_source_merge_mode_constants.py::test_target_files_have_no_source_merge_mode_quoted_literals",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0010205829999989646,
+      "longrepr": "",
+      "nodeid": "tests/test_source_merge_mode_constants.py::test_target_files_have_no_source_merge_mode_quoted_literals",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.358300000717463e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_source_merge_mode_constants.py::test_target_files_have_no_source_merge_mode_quoted_literals",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.425000000196633e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_service_topology_and_strong_compatibility",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0016159170000094036,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_service_topology_and_strong_compatibility",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.529199999581124e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_service_topology_and_strong_compatibility",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.304200000149194e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_package_init_relative_imports",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 8.37500000017144e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_package_init_relative_imports",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.4834000004480004e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_package_init_relative_imports",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.970800000274721e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_dynamic_import_strings",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00012850000000241835,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_dynamic_import_strings",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.262499998868407e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_legacy_import_scan_catches_dynamic_import_strings",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.562499999532065e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_production_code_does_not_grow_legacy_wrapper_imports",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.474653124999989,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_production_code_does_not_grow_legacy_wrapper_imports",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.912500000704313e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_production_code_does_not_grow_legacy_wrapper_imports",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.6292000007497336e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_topology_and_compatibility_matrix",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.013935333000006267,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_topology_and_compatibility_matrix",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.337500000734963e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_topology_and_compatibility_matrix",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.624999999691681e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 1.6529511250000013,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.216699999115008e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.520800000942018e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_behavior_compat_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.19427670799998964,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_behavior_compat_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.958400000835809e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_behavior_compat_route_wrapper_imports_force_fully_registered_scheduler_entrypoint",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.283400000484107e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_domain_package_import_stays_passive",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0189330830000074,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_domain_package_import_stays_passive",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00011270800000318104,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_domain_package_import_stays_passive",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.6792000009409094e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_leaf_imports_do_not_pull_registrar_side_effects",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.7208151250000014,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_leaf_imports_do_not_pull_registrar_side_effects",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.670799999777046e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_leaf_imports_do_not_pull_registrar_side_effects",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.033300000751751e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_safe_next_url_has_one_policy_module",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003335000000106447,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_safe_next_url_has_one_policy_module",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.395800000622785e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_safe_next_url_has_one_policy_module",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0006331249999931288,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_uses_single_base_dir_fact_source",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004143457999987277,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_uses_single_base_dir_fact_source",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.6792000009409094e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_uses_single_base_dir_fact_source",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003077920000009726,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_requires_base_dir_without_root_fallback",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0004024999999927559,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_requires_base_dir_without_root_fallback",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.5624999998494786e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_scheduler_manual_path_requires_base_dir_without_root_fallback",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.758399999753692e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_documentation_uses_migrated_scheduler_paths",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.002386749999999438,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_documentation_uses_migrated_scheduler_paths",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.991699999834509e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sp05_path_topology_contract.py::test_sp05_documentation_uses_migrated_scheduler_paths",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.549999999881038e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_normalizes_remark_text",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0013748329999998532,
+      "longrepr": "",
+      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_normalizes_remark_text",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00048508399999036556,
+      "longrepr": "",
+      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_normalizes_remark_text",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.6790999991562785e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_overwrite_preserves_existing_status_and_remark_when_columns_missing",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0013733330000036403,
+      "longrepr": "",
+      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_overwrite_preserves_existing_status_and_remark_when_columns_missing",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.704200000560377e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_overwrite_preserves_existing_status_and_remark_when_columns_missing",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.420800000559666e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_rejects_blank_default_days",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.000993833999999083,
+      "longrepr": "",
+      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_rejects_blank_default_days",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.783299999327028e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_supplier_excel_import_remark_normalization.py::test_supplier_excel_import_rejects_blank_default_days",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00014025000000117416,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_check_command_validates_current_ledger",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.005225916000000552,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_check_command_validates_current_ledger",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.541700000501805e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_check_command_validates_current_ledger",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00013433299999121573,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[migrate-inline-facts-refresh_migrate_inline_facts-False]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0038984579999947755,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[migrate-inline-facts-refresh_migrate_inline_facts-False]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.862500000044292e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[migrate-inline-facts-refresh_migrate_inline_facts-False]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00012483400000462552,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[scan-startup-baseline-refresh_scan_startup_baseline-False]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0044730839999971295,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[scan-startup-baseline-refresh_scan_startup_baseline-False]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010058300000537201,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[scan-startup-baseline-refresh_scan_startup_baseline-False]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00014154199999438788,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[refresh-auto-fields-refresh_auto_fields-True]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004347291999991398,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[refresh-auto-fields-refresh_auto_fields-True]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.504200000596484e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_command_dispatches_expected_mode[refresh-auto-fields-refresh_auto_fields-True]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 9.458299999209885e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_skips_prevalidation_and_loads_required_ledger",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004005792000000952,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_skips_prevalidation_and_loads_required_ledger",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.004100000074232e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_skips_prevalidation_and_loads_required_ledger",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.108300000562394e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drifted",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003229590000017879,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drifted",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.420800000559666e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drifted",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.583299999045721e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_prunes_resolved_complexity_entry",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00024233300000275904,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_prunes_resolved_complexity_entry",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.8500000005446964e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_refresh_auto_fields_prunes_resolved_complexity_entry",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 8.804099999792925e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_command_updates_manual_fields",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004089833999998405,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_command_updates_manual_fields",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.395900000200072e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_command_updates_manual_fields",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.86669999983269e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_rejects_invalid_status_choice",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00461083300000098,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_rejects_invalid_status_choice",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.6292000007497336e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_set_entry_fields_rejects_invalid_status_choice",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00011929100000429571,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_upsert_risk_command_dispatches",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004164083000006258,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_upsert_risk_command_dispatches",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.97089999906575e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_upsert_risk_command_dispatches",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 9.770900000205529e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_delete_risk_command_dispatches",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.003754834000005758,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_delete_risk_command_dispatches",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.120800000530835e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_delete_risk_command_dispatches",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00036629199999538287,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_imports_seed_entries",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.005549292000011974,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_imports_seed_entries",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.570800000029521e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_imports_seed_entries",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004169169999954647,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update0-schema_version]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004636500000003707,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update0-schema_version]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.654099999854225e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update0-schema_version]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003531670000000986,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update1-schema_version]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004172334000003275,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update1-schema_version]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.679200000154651e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update1-schema_version]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003816250000028276,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update2-baseline_kind]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004950875000005794,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update2-baseline_kind]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.620800000220697e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update2-baseline_kind]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00043204199999991033,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update3-importable]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0044057920000000195,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update3-importable]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.445800000027702e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update3-importable]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003832499999987249,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update4-importable]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004489250000005995,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update4-importable]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.920800000249528e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update4-importable]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00039658400000064375,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update5-importable]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004400791999998432,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update5-importable]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.400000001211993e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update5-importable]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0005626250000005939,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update6-pytest_exitstatus]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.02379658300000642,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update6-pytest_exitstatus]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.129199999335924e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_invalid_baseline[payload_update6-pytest_exitstatus]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004385000000013406,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-schema_version]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0045949590000020635,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-schema_version]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.862500000361706e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-schema_version]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00040329200000144283,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-classifications]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004848166999991577,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-classifications]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.970799999019619e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-classifications]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00040504200001123536,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt0]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004387207999997145,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt0]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.349999998813473e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt0]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003557090000043672,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt1]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004464000000012902,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt1]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.895799998891562e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-candidate_test_debt1]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003785419999928763,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-failed_nodeid_count]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.007408999999995558,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-failed_nodeid_count]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.608399999194717e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-failed_nodeid_count]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00044499999999914053,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collected_nodeids]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0051896249999998645,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collected_nodeids]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.070800000188228e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collected_nodeids]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00041020800000524105,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collection_errors]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004384917000010091,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collection_errors]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.445800000027702e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-collection_errors]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003682920000045442,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-reports]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.006230083000005493,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-reports]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.304199998894092e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-reports]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004254579999951602,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-worktree_clean_before]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0044727499999908105,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-worktree_clean_before]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.312500000011823e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_malformed_machine_contract[<lambda>-worktree_clean_before]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.000337707999989334,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_blocked_classifications",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004611624999995456,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_blocked_classifications",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.170799999618339e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_blocked_classifications",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.000423709000003214,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-required_or_quality_gate_self_failure]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.005389082999997186,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-required_or_quality_gate_self_failure]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.925000000203909e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-required_or_quality_gate_self_failure]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004288749999972197,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-main_style_isolation_candidate]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004599791000003961,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-main_style_isolation_candidate]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.670900000140591e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-main_style_isolation_candidate]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00039445799998816256,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-collection_error_count]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004418041999997513,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-collection_error_count]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.737500000359887e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero[<lambda>-collection_error_count]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004157500000019354,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.005511999999995965,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.566700001073514e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004919999999941638,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_empty_candidate_nodeid",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.004652832999994416,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_empty_candidate_nodeid",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.625000000643922e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_empty_candidate_nodeid",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00035150000000783166,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_current_dry_run_candidate_drift",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0042825840000091375,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_current_dry_run_candidate_drift",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.070799999553401e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_rejects_current_dry_run_candidate_drift",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003872500000028367,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_does_not_overwrite_existing_test_debt",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.006079166000006353,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_does_not_overwrite_existing_test_debt",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.516699999461252e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_test_debt_baseline_command_does_not_overwrite_existing_test_debt",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0001126249999998663,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[owner--owner]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0027990420000065797,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[owner--owner]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.379200000277251e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[owner--owner]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 9.241700000472974e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[style-untriaged-untriaged]",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.002410041000004526,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[style-untriaged-untriaged]",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.4584000011459466e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_empty_and_untriaged_fields[style-untriaged-untriaged]",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.812499999535703e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_duplicate_debt_id",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0027760420000078057,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_duplicate_debt_id",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.766600000039034e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_sync_debt_ledger.py::test_import_seed_metadata_rejects_duplicate_debt_id",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.02499999978545e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_system_services.py::test_operation_log_service_list_and_delete",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003235830000107853,
+      "longrepr": "",
+      "nodeid": "tests/test_system_services.py::test_operation_log_service_list_and_delete",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.429199999516186e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_system_services.py::test_operation_log_service_list_and_delete",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.529099998900165e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_system_services.py::test_system_job_state_query_service_get_and_map",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00014449999999044394,
+      "longrepr": "",
+      "nodeid": "tests/test_system_services.py::test_system_job_state_query_service_get_and_map",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.633400000069287e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_system_services.py::test_system_job_state_query_service_get_and_map",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.408299998852726e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_system_services.py::test_system_config_service_get_value",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00012562500000967702,
+      "longrepr": "",
+      "nodeid": "tests/test_system_services.py::test_system_config_service_get_value",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.2541999999580185e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_system_services.py::test_system_config_service_get_value",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003378749999995989,
+      "longrepr": "",
+      "nodeid": "tests/test_team_pages_excel_smoke.py::test_team_pages_and_excel_routes_show_team_columns_and_headers",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.652510250000006,
+      "longrepr": "",
+      "nodeid": "tests/test_team_pages_excel_smoke.py::test_team_pages_and_excel_routes_show_team_columns_and_headers",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00012087499999324791,
+      "longrepr": "",
+      "nodeid": "tests/test_team_pages_excel_smoke.py::test_team_pages_and_excel_routes_show_team_columns_and_headers",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00021579200000587662,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_prefers_cookie_over_db",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0008232499999962783,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_prefers_cookie_over_db",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.279200000529727e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_prefers_cookie_over_db",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.3708000010033174e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_normalize_manual_src_accepts_same_origin_absolute_url_and_preserves_trailing_question_mark",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00038437499999588454,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_normalize_manual_src_accepts_same_origin_absolute_url_and_preserves_trailing_question_mark",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.999999999848569e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_normalize_manual_src_accepts_same_origin_absolute_url_and_preserves_trailing_question_mark",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.037499999753891e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_reads_db_when_cookie_missing",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0004711250000042355,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_reads_db_when_cookie_missing",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.916699999706452e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_reads_db_when_cookie_missing",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 8.70419999898786e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_falls_back_to_default_for_invalid_db_value",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0005902919999982714,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_falls_back_to_default_for_invalid_db_value",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.870799999423525e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_falls_back_to_default_for_invalid_db_value",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.141699999773209e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_treats_null_db_value_as_invalid_and_logs_warning",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.000415625000002251,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_treats_null_db_value_as_invalid_and_logs_warning",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.495800000370309e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_treats_null_db_value_as_invalid_and_logs_warning",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.804199999204229e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_invalid_db_value_once_per_request",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0004085839999987684,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_invalid_db_value_once_per_request",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.504199999644243e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_invalid_db_value_once_per_request",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.0541999999941254e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_cookie_read_fails",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00040404199999954926,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_cookie_read_fails",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.524999999944157e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_cookie_read_fails",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.941699999643333e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_without_request_context",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 4.195799999706651e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_without_request_context",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.399999999942338e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_without_request_context",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.891600000827111e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_when_main_path_has_no_db_and_does_not_touch_services",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00040458399999465655,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_when_main_path_has_no_db_and_does_not_touch_services",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.7082999995163846e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_missing_when_main_path_has_no_db_and_does_not_touch_services",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.1584000001648747e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_db_exists_but_services_missing",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0004250420000033728,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_db_exists_but_services_missing",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.758299999390147e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_db_exists_but_services_missing",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.916600000763992e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00033849999999802094,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.6832999995795035e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.7792000000536063e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_raises_when_system_config_service_access_fails",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00041533299999230167,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_raises_when_system_config_service_access_fails",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.737500000511318e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_raises_when_system_config_service_access_fails",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 6.458400000042275e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_db_read_fails",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0004691670000056547,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_db_read_fails",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.4207999991385805e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_get_ui_mode_logs_warning_when_db_read_fails",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.891599999406026e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing_single_query_interface",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00033675000000243926,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing_single_query_interface",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.70839999987993e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_raises_when_system_config_service_missing_single_query_interface",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.783399999690573e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_accepts_single_query_service_without_legacy_interfaces",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00030304199999875436,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_accepts_single_query_service_without_legacy_interfaces",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.654200000369201e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_read_ui_mode_accepts_single_query_service_without_legacy_interfaces",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.937500000641194e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_safe_url_for_logs_warning_on_non_build_error",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003086250000023938,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_safe_url_for_logs_warning_on_non_build_error",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.304099999785649e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_safe_url_for_logs_warning_on_non_build_error",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.65830000027745e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_warns_once_when_v2_env_missing",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0008517920000059576,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_warns_once_when_v2_env_missing",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.6208000000547145e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_warns_once_when_v2_env_missing",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.8291999999273685e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_sets_degraded_context_when_v2_env_missing",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0007008339999998725,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_sets_degraded_context_when_v2_env_missing",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.929199999674893e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_sets_degraded_context_when_v2_env_missing",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00040041600000506605,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_marks_base_loader_resolution_as_degraded",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0012416249999915863,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_marks_base_loader_resolution_as_degraded",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.2999999994085556e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_marks_base_loader_resolution_as_degraded",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.870799999740939e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_logs_warning_when_env_globals_bridge_injection_fails",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0004412090000016633,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_logs_warning_when_env_globals_bridge_injection_fails",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.495799998949224e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_ui_mode.py::test_render_ui_template_logs_warning_when_env_globals_bridge_injection_fails",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.141700000559467e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_value_domains_consistency.py::test_value_domains_consistent_with_model_enums",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 6.004199998699278e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_value_domains_consistency.py::test_value_domains_consistent_with_model_enums",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.570799999863539e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_value_domains_consistency.py::test_value_domains_consistent_with_model_enums",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003315830000047981,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_runtime_base_dir_fallback_logs_to_stderr",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0004994159999966996,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_runtime_base_dir_fallback_logs_to_stderr",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 8.10410000013917e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_runtime_base_dir_fallback_logs_to_stderr",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00043558299999801875,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_prefers_explicit_env",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0038643329999956677,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_prefers_explicit_env",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.53749999912634e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_prefers_explicit_env",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00037283300000012787,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_uses_registry_only_when_frozen",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0034068750000102455,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_uses_registry_only_when_frozen",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.9624999991569894e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_shared_data_root_uses_registry_only_when_frozen",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00034183399999676567,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_prelaunch_log_dir_uses_shared_root",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.003514584000001264,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_prelaunch_log_dir_uses_shared_root",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.8125000009567884e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_prelaunch_log_dir_uses_shared_root",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003379169999959686,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_apply_runtime_config_uses_shared_root_for_all_data_dirs",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.01206287499999803,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_apply_runtime_config_uses_shared_root_for_all_data_dirs",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.491700000628043e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_apply_runtime_config_uses_shared_root_for_all_data_dirs",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 8.020900000360598e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_current_runtime_owner_uses_computername_when_userdomain_missing",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0037376249999994116,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_current_runtime_owner_uses_computername_when_userdomain_missing",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.6333000003405687e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_current_runtime_owner_uses_computername_when_userdomain_missing",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003822089999943046,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_default_chrome_profile_dir_prefers_localappdata_profile_name",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.003728917000003662,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_default_chrome_profile_dir_prefers_localappdata_profile_name",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 7.387499999822467e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_default_chrome_profile_dir_prefers_localappdata_profile_name",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.00038837499999999636,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_runtime_state_paths_returns_runtime_dir_for_runtime_and_log_dir",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.003618541999998115,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_runtime_state_paths_returns_runtime_dir_for_runtime_and_log_dir",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.537500000230011e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_resolve_runtime_state_paths_returns_runtime_dir_for_runtime_and_log_dir",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0003355420000019649,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 12.212004000000007,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.0003703340000100752,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0010943749999938746,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_uses_state_dir_and_parent_runtime_dir",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.008344665999999279,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_uses_state_dir_and_parent_runtime_dir",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00013995800000543568,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_uses_state_dir_and_parent_runtime_dir",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0006865839999932177,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confirm",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.010052916999995887,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confirm",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.441699999968023e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confirm",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.0004975419999908581,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_dir_waits_for_pid_exit_before_success",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.005402000000003682,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_dir_waits_for_pid_exit_before_success",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 9.066700000914807e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_runtime_from_dir_waits_for_pid_exit_before_success",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 0.000103165999988164,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_aps_chrome_processes_fails_closed_when_pid_list_unavailable",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.006208125000000564,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_aps_chrome_processes_fails_closed_when_pid_list_unavailable",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 0.00010670900000775418,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_stop_aps_chrome_processes_fails_closed_when_pid_list_unavailable",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.9874999990938704e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_chrome_alive_probe_scopes_to_profile_specific_process",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0005017499999979691,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_chrome_alive_probe_scopes_to_profile_specific_process",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 5.8625000008305506e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_chrome_alive_probe_scopes_to_profile_specific_process",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 5.362500000671844e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_contains_json_health_probe_and_owner_fallback",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.000213540999993711,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_contains_json_health_probe_and_owner_fallback",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.4707999990123426e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_bat_contains_json_health_probe_and_owner_fallback",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.9959000008925614e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_python_runtime_stop_uses_powershell_and_fail_closed_cleanup",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00022450000000162618,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_python_runtime_stop_uses_powershell_and_fail_closed_cleanup",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.250000000638465e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_launcher_python_runtime_stop_uses_powershell_and_fail_closed_cleanup",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.899999998997373e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_contains_browser_smoke_for_runtime_and_legacy_paths",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00039950000000033015,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_contains_browser_smoke_for_runtime_and_legacy_paths",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.262500000606906e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_contains_browser_smoke_for_runtime_and_legacy_paths",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.645900000355141e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_exposes_explicit_best_effort_cleanup_wrapper",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0001255829999990965,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_exposes_explicit_best_effort_cleanup_wrapper",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.108299999927567e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_package_script_exposes_explicit_best_effort_cleanup_wrapper",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.716699999107732e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installer_uninstall_stop_checks_multiple_runtime_roots",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003417079999934458,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installer_uninstall_stop_checks_multiple_runtime_roots",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.137499999501415e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installer_uninstall_stop_checks_multiple_runtime_roots",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.458299999043902e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_main_installer_contains_precleanup_and_skip_legacy_migration",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00014558299999123392,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_main_installer_contains_precleanup_and_skip_legacy_migration",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.187499999375177e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_main_installer_contains_precleanup_and_skip_legacy_migration",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.504100000701783e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_legacy_installer_uses_runtime_root_stop_contract",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.000358125000005316,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_legacy_installer_uses_runtime_root_stop_contract",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.10419999923306e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_legacy_installer_uses_runtime_root_stop_contract",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.8167000002763416e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installers_fail_closed_on_silent_uninstall_and_retry_delete",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003850829999976213,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installers_fail_closed_on_silent_uninstall_and_retry_delete",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.233399999975518e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_installers_fail_closed_on_silent_uninstall_and_retry_delete",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.533299998854545e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_matches_profile_argument_not_current_user_only",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00012970800000289273,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_matches_profile_argument_not_current_user_only",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.087499999627653e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_matches_profile_argument_not_current_user_only",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.333299999359497e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_uses_current_user_profile_path_marker",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00010737499999891043,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_uses_current_user_profile_path_marker",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.100000001017179e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_stop_helper_uses_current_user_profile_path_marker",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.7125000008918505e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_build_scripts_guard_vendor_and_launcher_path",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.0003663749999986976,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_build_scripts_guard_vendor_and_launcher_path",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.349999998964904e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_build_scripts_guard_vendor_and_launcher_path",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.787500000702494e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_remains_non_target_for_precleanup",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 0.00011150000000270666,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_remains_non_target_for_precleanup",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 6.270900000515667e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_win7_launcher_runtime_paths.py::test_chrome_installer_remains_non_target_for_precleanup",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.9165999996603205e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_yesno_normalization_contract.py::test_to_yes_no_wide_truthy_and_falsy_and_default",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 8.654100000171638e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_yesno_normalization_contract.py::test_to_yes_no_wide_truthy_and_falsy_and_default",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 4.066599998964193e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_yesno_normalization_contract.py::test_to_yes_no_wide_truthy_and_falsy_and_default",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.812499999218289e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_yesno_normalization_contract.py::test_system_config_yes_no_unknown_is_no",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 7.820899999444464e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_yesno_normalization_contract.py::test_system_config_yes_no_unknown_is_no",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.925000000037926e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_yesno_normalization_contract.py::test_system_config_yes_no_unknown_is_no",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 4.3915999995647326e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_yesno_normalization_contract.py::test_plugin_yes_no_unknown_follows_default_param",
+      "outcome": "passed",
+      "when": "setup"
+    },
+    {
+      "duration": 5.704199999456705e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_yesno_normalization_contract.py::test_plugin_yes_no_unknown_follows_default_param",
+      "outcome": "passed",
+      "when": "call"
+    },
+    {
+      "duration": 3.591700000526998e-05,
+      "longrepr": "",
+      "nodeid": "tests/test_yesno_normalization_contract.py::test_plugin_yes_no_unknown_follows_default_param",
+      "outcome": "passed",
+      "when": "teardown"
+    },
+    {
+      "duration": 3.9375000000063665e-05,
+      "longrepr": "",
       "nodeid": "tests/test_yesno_normalization_contract.py::test_excel_and_route_yesno_is_narrow_default_yes_unknown_passthrough",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.00010958299999686005,
+      "duration": 8.629199999177217e-05,
       "longrepr": "",
       "nodeid": "tests/test_yesno_normalization_contract.py::test_excel_and_route_yesno_is_narrow_default_yes_unknown_passthrough",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 4.287500000543787e-05,
+      "duration": 3.679200000306082e-05,
       "longrepr": "",
       "nodeid": "tests/test_yesno_normalization_contract.py::test_excel_and_route_yesno_is_narrow_default_yes_unknown_passthrough",
       "outcome": "passed",
       "when": "teardown"
     },
     {
-      "duration": 5.17499999972415e-05,
+      "duration": 4.320799999391056e-05,
       "longrepr": "",
       "nodeid": "tests/test_yesno_normalization_contract.py::test_calendar_admin_yesno_is_narrow_unknown_raises",
       "outcome": "passed",
       "when": "setup"
     },
     {
-      "duration": 0.00012045900000146048,
+      "duration": 9.720799999968222e-05,
       "longrepr": "",
       "nodeid": "tests/test_yesno_normalization_contract.py::test_calendar_admin_yesno_is_narrow_unknown_raises",
       "outcome": "passed",
       "when": "call"
     },
     {
-      "duration": 0.0005634160000056454,
+      "duration": 0.0006007909999965477,
       "longrepr": "",
       "nodeid": "tests/test_yesno_normalization_contract.py::test_calendar_admin_yesno_is_narrow_unknown_raises",
       "outcome": "passed",
