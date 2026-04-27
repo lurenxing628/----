@@ -44,6 +44,9 @@ def test_gantt_payload_surfaces_critical_chain_unavailable(monkeypatch) -> None:
         conn.commit()
 
         svc = GanttService(conn, logger=None, op_logger=None)
+        monkeypatch.setattr(GanttService, "_CRITICAL_CHAIN_CACHE", OrderedDict())
+        monkeypatch.setattr(GanttService, "_CRITICAL_CHAIN_CACHE_LOCK", threading.Lock())
+        monkeypatch.setattr(GanttService, "_CRITICAL_CHAIN_CACHE_MAX", 8)
 
         def _repo_raise(_version: int):
             raise RuntimeError("repo boom")
