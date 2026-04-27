@@ -190,6 +190,7 @@ def _summarize(
 def _build_payload(
     *,
     baseline_kind: str,
+    importable: bool,
     pytest_args: Sequence[str],
     exitstatus: int,
     collector: FullTestDebtCollector,
@@ -203,7 +204,7 @@ def _build_payload(
     return {
         "schema_version": SCHEMA_VERSION,
         "baseline_kind": baseline_kind,
-        "importable": False,
+        "importable": bool(importable),
         "generated_at": generated_at,
         "head_sha": head_sha,
         "python_executable": sys.executable,
@@ -222,9 +223,13 @@ def _build_payload(
 def _render_baseline_markdown(payload: Dict[str, Any]) -> str:
     summary = dict(payload.get("summary") or {})
     baseline_kind = str(payload.get("baseline_kind") or "")
+    importable = bool(payload.get("importable"))
     title = "Full pytest P0 raw baseline"
     description = "本文件记录 main-style 子进程隔离前的 full pytest 现场，只用于排查和对比。"
-    if baseline_kind == "after_main_style_isolation":
+    if baseline_kind == "after_main_style_isolation" and importable:
+        title = "Full pytest P0 debt baseline"
+        description = "本文件记录 main-style 子进程隔离后的正式 full pytest 债务基线，可作为任务 5 导入测试债务台账的正式输入。"
+    elif baseline_kind == "after_main_style_isolation":
         title = "Full pytest P0 after isolation baseline"
         description = "本文件记录 main-style 子进程隔离后的 full pytest 对比现场，只用于任务 3 承接，不允许导入债务台账。"
     lines = [
@@ -265,11 +270,31 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         choices=["raw_before_isolation", "after_main_style_isolation"],
     )
     parser.add_argument("--write-baseline")
+    parser.add_argument("--importable-debt-baseline", action="store_true")
     parsed = parser.parse_args(own_args)
     if not pytest_args:
         parser.error("必须在 -- 后提供 pytest 参数")
+    if parsed.importable_debt_baseline and parsed.baseline_kind != "after_main_style_isolation":
+        parser.error("--importable-debt-baseline 只能和 --baseline-kind after_main_style_isolation 一起使用")
+    if parsed.importable_debt_baseline and not parsed.write_baseline:
+        parser.error("--importable-debt-baseline 必须同时提供 --write-baseline")
     parsed.pytest_args = pytest_args
     return parsed
+
+
+def _importable_baseline_blockers(payload: Dict[str, Any]) -> List[str]:
+    summary = dict(payload.get("summary") or {})
+    counts = dict(summary.get("classification_counts") or {})
+    blockers: List[str] = []
+    if int(payload.get("exitstatus") or 0) not in {0, 1}:
+        blockers.append("pytest_exitstatus")
+    if int(counts.get("required_or_quality_gate_self_failure") or 0) != 0:
+        blockers.append("required_or_quality_gate_self_failure")
+    if int(counts.get("main_style_isolation_candidate") or 0) != 0:
+        blockers.append("main_style_isolation_candidate")
+    if int(summary.get("collection_error_count") or 0) != 0:
+        blockers.append("collection_error_count")
+    return blockers
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -290,22 +315,34 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if collector.exitstatus is not None:
             exitstatus = int(collector.exitstatus)
 
-        payload = _build_payload(
-            baseline_kind=str(args.baseline_kind),
-            pytest_args=list(args.pytest_args),
-            exitstatus=exitstatus,
-            collector=collector,
-            pytest_version=str(getattr(pytest, "__version__", "")),
-            generated_at=generated_at,
-            head_sha=head_sha,
-            required_paths=required_paths,
-        )
-        if args.write_baseline:
-            baseline_path = Path(str(args.write_baseline))
-            baseline_path.parent.mkdir(parents=True, exist_ok=True)
-            baseline_path.write_text(_render_baseline_markdown(payload), encoding="utf-8")
+    payload = _build_payload(
+        baseline_kind=str(args.baseline_kind),
+        importable=bool(args.importable_debt_baseline),
+        pytest_args=list(args.pytest_args),
+        exitstatus=exitstatus,
+        collector=collector,
+        pytest_version=str(getattr(pytest, "__version__", "")),
+        generated_at=generated_at,
+        head_sha=head_sha,
+        required_paths=required_paths,
+    )
+    if args.importable_debt_baseline:
+        blockers = _importable_baseline_blockers(payload)
+        if blockers:
+            sys.stderr.write("正式测试债务基线不能导入，存在禁入分类或收集错误：")
+            sys.stderr.write(", ".join(blockers))
+            sys.stderr.write("\n")
+            sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+            sys.stdout.write("\n")
+            return 2
+    if args.write_baseline:
+        baseline_path = Path(str(args.write_baseline))
+        baseline_path.parent.mkdir(parents=True, exist_ok=True)
+        baseline_path.write_text(_render_baseline_markdown(payload), encoding="utf-8")
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     sys.stdout.write("\n")
+    if args.importable_debt_baseline:
+        return 0
     return int(exitstatus)
 
 

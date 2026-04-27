@@ -127,6 +127,16 @@ def _payload_from_stdout(proc: subprocess.CompletedProcess) -> dict:
     return dict(json.loads(proc.stdout))
 
 
+def _payload_from_baseline(path: Path) -> dict:
+    baseline_text = path.read_text(encoding="utf-8")
+    block = baseline_text.split(BASELINE_BEGIN, 1)[1].split(BASELINE_END, 1)[0].strip()
+    if block.startswith("```json"):
+        block = block[len("```json") :].strip()
+    if block.endswith("```"):
+        block = block[: -len("```")].strip()
+    return dict(json.loads(block))
+
+
 def test_collect_full_test_debt_records_nodeids_without_parsing_terminal_text(tmp_path: Path) -> None:
     _write_main_style_conftest(tmp_path)
     _write(
@@ -235,13 +245,7 @@ def test_collect_full_test_debt_writes_raw_baseline_machine_block(tmp_path: Path
 
     proc = _run_collector(tmp_path, "--write-baseline", str(baseline_path))
     payload = _payload_from_stdout(proc)
-    baseline_text = baseline_path.read_text(encoding="utf-8")
-    block = baseline_text.split(BASELINE_BEGIN, 1)[1].split(BASELINE_END, 1)[0].strip()
-    if block.startswith("```json"):
-        block = block[len("```json") :].strip()
-    if block.endswith("```"):
-        block = block[: -len("```")].strip()
-    baseline_payload = json.loads(block)
+    baseline_payload = _payload_from_baseline(baseline_path)
 
     assert payload["importable"] is False
     assert baseline_payload["baseline_kind"] == "raw_before_isolation"
@@ -313,3 +317,171 @@ def test_collect_full_test_debt_after_isolation_does_not_hide_real_regression_fa
     assert "tests/test_pollution_signature.py::test_pollution_signature_failure" in payload["classifications"][
         "main_style_isolation_candidate"
     ]
+
+
+def test_collect_full_test_debt_writes_importable_debt_baseline(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "audit" / "debt_baseline.md"
+    debt_nodeid = "tests/test_debt_candidate.py::test_debt_candidate"
+    _write(
+        tmp_path / "tests" / "test_debt_candidate.py",
+        '''
+        def test_debt_candidate():
+            assert False, "known debt"
+        ''',
+    )
+
+    proc = _run_collector(
+        tmp_path,
+        "--importable-debt-baseline",
+        "--write-baseline",
+        str(baseline_path),
+        baseline_kind="after_main_style_isolation",
+    )
+    payload = _payload_from_stdout(proc)
+    baseline_payload = _payload_from_baseline(baseline_path)
+    baseline_text = baseline_path.read_text(encoding="utf-8")
+
+    assert proc.returncode == 0
+    assert payload["exitstatus"] == 1
+    assert payload["baseline_kind"] == "after_main_style_isolation"
+    assert payload["importable"] is True
+    assert debt_nodeid in payload["classifications"]["candidate_test_debt"]
+    assert payload["summary"]["classification_counts"] == {
+        "candidate_test_debt": 1,
+        "main_style_isolation_candidate": 0,
+        "required_or_quality_gate_self_failure": 0,
+    }
+    assert payload["summary"] == baseline_payload["summary"]
+    assert payload["classifications"] == baseline_payload["classifications"]
+    assert baseline_payload["importable"] is True
+    assert "Full pytest P0 debt baseline" in baseline_text
+    assert "可作为任务 5 导入测试债务台账的正式输入" in baseline_text
+    assert "不允许导入债务台账" not in baseline_text
+
+
+def test_collect_full_test_debt_importable_requires_after_isolation_and_output_file(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "audit" / "debt_baseline.md"
+    _write(
+        tmp_path / "tests" / "test_debt_candidate.py",
+        '''
+        def test_debt_candidate():
+            assert False, "known debt"
+        ''',
+    )
+
+    raw_proc = _run_collector(
+        tmp_path,
+        "--importable-debt-baseline",
+        "--write-baseline",
+        str(baseline_path),
+        baseline_kind="raw_before_isolation",
+    )
+    no_file_proc = _run_collector(
+        tmp_path,
+        "--importable-debt-baseline",
+        baseline_kind="after_main_style_isolation",
+    )
+
+    assert raw_proc.returncode == 2
+    assert no_file_proc.returncode == 2
+    assert "after_main_style_isolation" in raw_proc.stderr
+    assert "--write-baseline" in no_file_proc.stderr
+    assert not baseline_path.exists()
+
+
+def test_collect_full_test_debt_importable_rejects_blocked_classifications(tmp_path: Path) -> None:
+    required_path = tmp_path / "required" / "baseline.md"
+    pollution_path = tmp_path / "pollution" / "baseline.md"
+    collection_error_path = tmp_path / "collection_error" / "baseline.md"
+
+    required_project = tmp_path / "required"
+    _write(
+        required_project / QUALITY_GATE_SELFTEST_PATH,
+        '''
+        def test_quality_gate_self_failure():
+            assert False, "required failure"
+        ''',
+    )
+    required_proc = _run_collector(
+        required_project,
+        "--importable-debt-baseline",
+        "--write-baseline",
+        str(required_path),
+        baseline_kind="after_main_style_isolation",
+    )
+
+    pollution_project = tmp_path / "pollution"
+    _write(
+        pollution_project / "tests" / "test_pollution_signature.py",
+        '''
+        def test_pollution_signature_failure():
+            raise RuntimeError("AttributeError: __enter__ from subprocess.py Popen")
+        ''',
+    )
+    pollution_proc = _run_collector(
+        pollution_project,
+        "--importable-debt-baseline",
+        "--write-baseline",
+        str(pollution_path),
+        baseline_kind="after_main_style_isolation",
+    )
+
+    collection_error_project = tmp_path / "collection_error"
+    _write(
+        collection_error_project / "tests" / "test_collect_error.py",
+        '''
+        raise RuntimeError("collect boom")
+        ''',
+    )
+    collection_error_proc = _run_collector(
+        collection_error_project,
+        "--importable-debt-baseline",
+        "--write-baseline",
+        str(collection_error_path),
+        baseline_kind="after_main_style_isolation",
+    )
+
+    assert required_proc.returncode == 2
+    assert pollution_proc.returncode == 2
+    assert collection_error_proc.returncode == 2
+    assert "required_or_quality_gate_self_failure" in required_proc.stderr
+    assert "main_style_isolation_candidate" in pollution_proc.stderr
+    assert "collection_error_count" in collection_error_proc.stderr
+    assert not required_path.exists()
+    assert not pollution_path.exists()
+    assert not collection_error_path.exists()
+
+
+def test_collect_full_test_debt_importable_rejects_bad_pytest_invocation(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "audit" / "debt_baseline.md"
+    command = [
+        sys.executable,
+        str(COLLECTOR),
+        "--baseline-kind",
+        "after_main_style_isolation",
+        "--importable-debt-baseline",
+        "--write-baseline",
+        str(baseline_path),
+        "--",
+        "tests/does_not_exist.py",
+        "-q",
+        "--tb=short",
+        "-p",
+        "no:cacheprovider",
+    ]
+
+    with _ORIGINAL_POPEN(
+        command,
+        cwd=str(tmp_path),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+    ) as proc:
+        stdout, stderr = proc.communicate()
+    payload = dict(json.loads(stdout))
+
+    assert proc.returncode == 2
+    assert payload["exitstatus"] not in {0, 1}
+    assert "pytest_exitstatus" in stderr
+    assert not baseline_path.exists()
