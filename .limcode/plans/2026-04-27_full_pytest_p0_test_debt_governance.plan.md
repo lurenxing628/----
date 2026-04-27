@@ -1197,59 +1197,109 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest --collect-only -q tests -p 
 - 任务 7 还补了必需证明缺失检查：collect / ruff version / pyright version 任一缺失都会失败并写 failed manifest。任务 8 如果新增 `python tools/check_full_test_debt.py`，不需要再改 runner 才能保证它被执行。
 - 任务 8 仍必须自己证明 full-test-debt 的 source proof、receipt、replay、checker 输出合同；任务 7 没有新增 `tools/check_full_test_debt.py`，也没有把 full-test-debt proof 提前接入真实 command plan。
 
+**任务 8 细化边界**
+- 本任务只闭环 Finding 2：command plan、source proof、tool pyright、receipt/replay、checker 输出合同。
+- 本任务不做任务 9：不统一 required/startup/full-debt registry 出口，不重排测试 registry，不新增三套入口的共同抽象。
+- 本任务默认不改 `.github/workflows/quality.yml`，也默认不改 `scripts/run_quality_gate.py`；只有红灯证明 runner 仍有缺口时才允许触碰 runner。
+- 本任务允许新增的判断只限显式失败合同：JSON 坏、字段缺、登记缺、XPASS、ratchet 超限、required/proof 混入等必须直接失败，不允许空列表兜底、文本猜测、seed metadata 第二事实源或静默回退。
+
 **目标**
 - CI 仍然只跑统一门禁入口，但门禁能证明没有未登记全量失败。
 
 **文件**
 - 新建：`tools/check_full_test_debt.py`
+- 新建：`tests/test_check_full_test_debt.py`
+- 修改：`tools/collect_full_test_debt.py`
 - 修改：`tools/quality_gate_shared.py`
-- 修改：`tools/quality_gate_support.py`
-- 修改：`scripts/run_quality_gate.py`
 - 修改：`tests/test_run_quality_gate.py`
 - 修改：`tests/test_run_full_selftest_report_metadata.py`
+- 修改：`tests/test_full_test_debt_registry_contract.py`
+- 修改：`.limcode/plans/2026-04-27_full_pytest_p0_test_debt_governance.plan.md`
 
-- [ ] **步骤 1：写 proof 合同测试**
+- [x] **步骤 0：边界锁定**
+
+执行时已确认：
+- `tools/check_full_test_debt.py` 尚不存在。
+- `build_quality_gate_command_plan()` 尚未包含 `python tools/check_full_test_debt.py`。
+- `QUALITY_GATE_SOURCE_FILES` 尚未包含 collector / registry / pytest hook / main-style runner / 台账文件。
+- 现有 collector report 尚未结构化记录 xfail reason / strict XPASS。
+- 现有 runner 已经按 shared command plan 单次遍历，任务 8 不再重写 runner。
+
+- [x] **步骤 1：写红灯合同测试**
+
+在 `tests/test_full_test_debt_registry_contract.py` 增加 collector 合同：
+- `test_collect_full_test_debt_records_structured_xfail_reason`：登记债务 xfail 的 report 必须有结构化 `xfail_marker_reason`、`xfail_marker_strict`、`wasxfail_reason`。
+- `test_collect_full_test_debt_records_strict_xpass_without_text_guessing`：strict XPASS 必须用结构化字段识别。
+- `test_collect_full_test_debt_keeps_plain_skip_separate_from_debt_xfail`：普通 skip 不得被当成债务 xfail。
+
+新建 `tests/test_check_full_test_debt.py`，覆盖：
+- 通过场景：active xfail 都被 collect 到，reason 对齐，候选失败为 0。
+- 未登记失败：`candidate_test_debt` 非空必须失败。
+- 登记 nodeid 未收集：必须失败。
+- xfail reason 和台账不一致：必须失败。
+- active xfail 的 marker reason 和台账不一致：必须失败。
+- active xfail 的 marker strict 不是 `true`：必须失败。
+- collector `exitstatus` 不是 0：必须失败。
+- strict XPASS：必须失败。
+- `mode=fixed` 仍出现 xfail marker：必须失败。
+- ratchet 超限：必须失败。
+- collector stdout 不是 JSON：必须失败。
+- required/proof 混入 active xfail：必须失败。
 
 在 `tests/test_run_quality_gate.py` 增加断言：
 - command plan 包含 `python tools/check_full_test_debt.py`。
-- 该命令来自 `build_quality_gate_command_plan()`。
+- 该命令来自 `build_quality_gate_command_plan()`，位置在 collect-only 之后、ruff version 之前。
+- 现有“插入命令不会被跳过”的哨兵测试不得再使用真实 `python tools/check_full_test_debt.py`，避免和任务 8 真命令重复。
 - `scripts/run_quality_gate.py` 不手写第二套 full-test-debt 命令。
 - 新脚本在 `QUALITY_GATE_SOURCE_FILES` 里。
 - 新脚本在 `QUALITY_GATE_TOOL_PATHS` 里接受 pyright 检查。
-- `tools/collect_full_test_debt.py`、`tools/test_debt_registry.py`、`tests/conftest.py`、`tests/main_style_regression_runner.py` 也进入 `QUALITY_GATE_SOURCE_FILES`，因为它们共同决定 full-test-debt proof 语义。
+- `tools/collect_full_test_debt.py`、`tools/test_debt_registry.py`、`tests/conftest.py`、`tests/main_style_regression_runner.py`、`开发文档/技术债务治理台账.md` 也进入 `QUALITY_GATE_SOURCE_FILES`，因为它们共同决定 full-test-debt proof 语义。
 
 在 `tests/test_run_full_selftest_report_metadata.py` 增加断言：
 - command replay 会重新跑 `tools/check_full_test_debt.py`。
 - 缺少该 command receipt 时，quality gate binding 失败。
 - receipt hash 被篡改时，quality gate binding 失败。
 
-- [ ] **步骤 2：确认测试先失败**
+- [x] **步骤 2：确认红灯**
 
 运行：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py tests/test_run_full_selftest_report_metadata.py --tb=short -p no:cacheprovider
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py tests/test_check_full_test_debt.py tests/test_run_quality_gate.py tests/test_run_full_selftest_report_metadata.py --tb=short -p no:cacheprovider
 ```
 
-预期：因为 command plan 未接入 full-test-debt proof 而失败。
+结果：首轮红灯为 `17 failed, 67 passed`。失败原因正是 collector 尚无结构化 xfail 字段、checker 尚不存在、command plan 未接入 full-test-debt proof。对抗审查后又补了两条红灯：非 strict 的 active xfail 未被拒绝、`exitstatus=1` 且分类为空未被拒绝；两条都已先失败再修复。
 
-- [ ] **步骤 3：实现 `tools/check_full_test_debt.py`**
+- [x] **步骤 3：增强 collector 结构化 xfail**
+
+修改 `tools/collect_full_test_debt.py`：
+- report 行新增结构化字段：`xfail_marker_reason`、`xfail_marker_strict`、`wasxfail_reason`、`strict_xpass`。
+- 这些字段来自 pytest item marker 和 makereport 结果，不解析 `-rx`、终端文本或 `longrepr`。
+- 普通 skip 的 `xfail_marker_reason`、`wasxfail_reason` 必须为空。
+- 保持 baseline `schema_version=2`；这是 report 行加字段，不改变 baseline 顶层机器合同。
+
+- [x] **步骤 4：实现 `tools/check_full_test_debt.py`**
 
 行为：
-- 调用 `tools/collect_full_test_debt.py`，执行 `pytest tests -q --tb=short -ra`。
+- 读取正式台账，不读 `P0_TEST_DEBT_SEED_METADATA`，不读 audit baseline。
+- 调用 `tools/collect_full_test_debt.py`，执行 `pytest tests -q --tb=short -ra -p no:cacheprovider`。
 - 读取结构化 JSON。
 - 校验 collected nodeid 不为空。
-- 校验登记 nodeid 都被 collect 到。
-- 校验未登记失败数为 0。
+- 校验 `collection_errors` 为空。
+- 校验 `required_or_quality_gate_self_failure`、`main_style_isolation_candidate`、`candidate_test_debt` 全部为空。
+- 校验 active xfail 登记 nodeid 都被 full suite collect 到。
 - 校验 `mode=xfail` 数量不超过 `test_debt.ratchet.max_registered_xfail`。
+- 校验每个 active xfail 的 marker reason、marker strict、`wasxfail_reason` 都符合台账：reason 必须等于 `debt_id: reason`，strict 必须为 `true`。
+- 校验 collector `exitstatus` 必须为 0，避免 pytest 已失败但结构化分类没反映出来时被误放行。
 - 校验 `mode=fixed` 不再出现在 xfail marker 中。
 - 校验 required/proof 测试不在 `mode=xfail` 中。
-- 校验采集结果包含 xfail/xpass 相关字段，例如 `wasxfail` 或等价 reason 字段，能区分登记债务 xfail、普通 skip 和 XPASS。
-- stdout 输出稳定 JSON summary，供 quality gate receipt 记录 hash。
+- 校验 strict XPASS 不存在。
+- stdout 输出稳定 JSON summary，供 quality gate receipt 记录 hash；summary 不含时间、duration、临时路径或原始 longrepr。
+- checker 不写 baseline、不写 evidence、不刷新台账。
 
 第一版不新增 `quality_gate_manifest.json` 顶层自由字段。证明通过 command receipt、commands hash、source hash 和 replay 表达。这样不会制造第二套 manifest 字段解释口径。
 
-- [ ] **步骤 4：接入 shared command plan**
+- [x] **步骤 5：接入 shared command plan / source proof / tool pyright**
 
 在 `tools/quality_gate_shared.py::build_quality_gate_command_plan()` 增加：
 
@@ -1260,23 +1310,63 @@ python tools/check_full_test_debt.py
 放置位置：`python -m pytest --collect-only -q tests` 之后，`python -m ruff --version` 之前。
 
 同步：
-- `QUALITY_GATE_TOOL_PATHS`
-- `QUALITY_GATE_SOURCE_FILES`
-- `tools/quality_gate_support.py` 导出项
+- `QUALITY_GATE_TOOL_PATHS` 增加 checker、collector、test debt registry、`tests/conftest.py`、`tests/main_style_regression_runner.py`。
+- `QUALITY_GATE_SOURCE_FILES` 增加 checker、collector、test debt registry、`tests/conftest.py`、`tests/main_style_regression_runner.py`、`开发文档/技术债务治理台账.md`。
+- 如仅修改既有列表，不为了制造 diff 改 `tools/quality_gate_support.py`。
 
 不得修改 `.github/workflows/quality.yml`。
 
-- [ ] **步骤 5：重新运行 proof 合同**
+- [x] **步骤 6：绿灯验证**
 
 运行：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py tests/test_run_full_selftest_report_metadata.py --tb=short -p no:cacheprovider
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py tests/test_check_full_test_debt.py tests/test_run_quality_gate.py tests/test_run_full_selftest_report_metadata.py --tb=short -p no:cacheprovider
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m py_compile tools/check_full_test_debt.py tools/collect_full_test_debt.py tools/test_debt_registry.py tools/quality_gate_shared.py tests/conftest.py tests/main_style_regression_runner.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/check_full_test_debt.py tools/collect_full_test_debt.py tools/test_debt_registry.py tools/quality_gate_shared.py tests/conftest.py tests/main_style_regression_runner.py tests/test_check_full_test_debt.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright tools/check_full_test_debt.py tools/collect_full_test_debt.py tools/test_debt_registry.py tests/conftest.py tests/main_style_regression_runner.py
+git diff --check
 ```
 
-预期：通过。
+结果：通过。任务八相关四组测试最终为 `86 passed`；`tools/check_full_test_debt.py` 实跑通过，稳定 summary 显示 `active_xfail_count=5`、`collected_count=656`、`collection_error_count=0`、`fixed_count=0`、`max_registered_xfail=5`、`unexpected_failure_count=0`。
+
+- [x] **步骤 7：subagent 对抗审查**
+
+实现后调用至少 3 个只读 subagent：
+- 一路查 Finding 2 是否真正闭环，且没抢任务 9。
+- 一路查 checker/collector 是否没有 fallback、没有文本猜测、没有 seed 第二事实源。
+- 一路查 command plan、source proof、tool pyright、receipt/replay、clean gate 证明是否可信。
+
+结果：已调用 3 路只读 subagent。一路确认 Finding 2 主体闭环且未抢任务 9，同时指出 `exitstatus=1` 未强制失败；一路指出 active xfail 未强制 `strict=True`；一路确认 command plan、source proof、tool pyright、receipt/replay 链路可信，同时提醒必须提交后再跑 clean gate。两个代码缺口均已补红灯、修复并复跑任务八测试。
+
+- [x] **步骤 8：结果回填与提交**
+
+任务 8 完成后回填本节尾部：
+- 红灯测试名和旧代码失败原因。
+- checker 输出合同和实际 summary 字段。
+- source proof / tool pyright / receipt / replay 接入结果。
+- subagent 审查结论。
+- clean gate 的 HEAD、worktree 路径和结果。
+- 明确写：任务 9 只做 registry 收敛，不再重复 runner/proof 工作。
+
+**任务 8 执行结果回填**
+- 红灯测试：`test_collect_full_test_debt_records_structured_xfail_reason`、`test_collect_full_test_debt_records_strict_xpass_without_text_guessing`、`test_collect_full_test_debt_keeps_plain_skip_separate_from_debt_xfail`、`tests/test_check_full_test_debt.py` 的 checker 合同测试、`test_full_test_debt_proof_is_in_shared_quality_gate_plan`、`test_quality_gate_binding_status_replays_full_test_debt_proof_command`、缺 receipt 和篡改 receipt 的 replay 测试。旧代码失败原因是：collector 没有 xfail 机器字段、checker 文件不存在、shared command plan/source proof/tool proof 没有 full-test-debt 证明、receipt/replay 没有该命令。
+- collector 已用 pytest marker 和 makereport 结果记录 `xfail_marker_reason`、`xfail_marker_strict`、`wasxfail_reason`、`strict_xpass`。普通 skip 不会被当作债务 xfail，strict XPASS 不靠终端文本或 `longrepr` 猜。
+- checker 读取正式台账，不读 seed metadata，不读 audit baseline，不写 baseline/evidence/台账。它只解析 collector JSON，并对 JSON 坏、字段缺、收集为空、收集错误、未登记失败、required/proof 失败、main-style 候选、登记 nodeid 未收集、reason 不一致、marker strict 非 true、`mode=fixed` 仍 xfail、strict XPASS、ratchet 超限、required/proof active xfail、`exitstatus != 0` 直接失败。
+- checker 稳定输出字段：`schema_version`、`status`、`active_xfail_count`、`active_xfail_entries`、`collected_count`、`collection_error_count`、`fixed_count`、`max_registered_xfail`、`unexpected_failure_count`。实跑结果为 `active_xfail_count=5`、`collected_count=656`、`collection_error_count=0`、`fixed_count=0`、`max_registered_xfail=5`、`unexpected_failure_count=0`。
+- shared command plan 已在 collect-only 后、ruff version 前插入 `python tools/check_full_test_debt.py`，该命令 `capture_output=True`、`output_policy=exact`。`QUALITY_GATE_TOOL_PATHS` 和 `QUALITY_GATE_SOURCE_FILES` 已覆盖 checker、collector、test debt registry、pytest hook、main-style runner；`QUALITY_GATE_SOURCE_FILES` 额外覆盖 `开发文档/技术债务治理台账.md`。
+- receipt/replay 已覆盖 full-test-debt proof：replay 会重跑 `python tools/check_full_test_debt.py`，缺该 receipt 会失败，receipt hash 被篡改会失败。
+- 验证结果：任务八四组测试 `86 passed`；`tools/check_full_test_debt.py` 通过；`py_compile`、`ruff check`、`pyright`、`git diff --check`、`scripts/sync_debt_ledger.py check`、`aps-post-change-check` 均通过。
+- 对抗审查结论：3 路只读审查已完成，发现的两个真实缺口是 active xfail 未强制 strict、`exitstatus=1` 未强制失败；均已修复并新增测试。其余审查确认未解析终端文本、未使用 seed metadata 作为第二事实源、未抢任务 9、未修改 runner、未修改 GitHub Actions。
+- clean gate：最终 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree` 必须在本轮本地提交完成后的干净 worktree 上运行；结果和最终 HEAD 以提交后记录为准。
+- 明确未实施任务 9：本轮没有统一 required/startup/full-debt registry 出口，任务 9 只做 registry 收敛，不再重复 runner/proof 工作。
 
 ### 任务 9：收敛 required/startup/full-debt 三套入口
+
+**任务 8 承接预留**
+- 任务 8 已完成后，`python tools/check_full_test_debt.py` 已进入 shared command plan、source proof、tool pyright、receipt/replay，质量门禁已经能证明当前 full pytest 没有未登记失败。
+- 任务 9 只处理 required/startup/full-debt 三套入口从统一 registry 派生，不再重复 runner 改造、full-test-debt proof 接入或 receipt/replay 绑定。
 
 **目标**
 - 让 required tests、startup regressions、full test debt 都从同一个测试 registry 模块派生，避免以后再分裂。
