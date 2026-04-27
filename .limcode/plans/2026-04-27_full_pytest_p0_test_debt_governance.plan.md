@@ -1709,7 +1709,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - 当前返修来自 5 路初审和 3 路对抗复审后的 Review findings，重点修 4 个点：full pytest 债务 proof 只看 call 阶段会漏掉 setup / `xfail(run=False)`，CodeStable YAML fallback 读不懂多行列表，目录校验把 markdown 必填字段误套到 checklist.yaml，旧 baseline 不能继续作为当前证明。
 - full pytest 债务合同已补硬：采集报告新增 `xfail_marker_run`；检查器用所有阶段报告查未登记 xfail 和 active xfail，用 call 阶段普通 passed 判断 fixed；已补测试覆盖未登记 `xfail(run=False)`、已登记 setup xfail、fixed 债务仍在 setup xfail 这三条边界。
 - CodeStable 工具合同已补硬：无 PyYAML 时 fallback 支持常见 block list；坏 block list 和非独立 `---` 分隔符直接失败；目录模式下 `--require doc_type --require status` 只检查 markdown frontmatter，不再套到 checklist.yaml。
-- 证据文档收口：`codestable/issues/2026-04-27-review-contract-hardening/review-contract-hardening-fix-note.md` 已修正测试数量；`audit/2026-04/20260427_full_pytest_p0_debt_baseline.md` 的旧内容必须按历史快照看待，当前证明以后续干净工作区重新生成的 baseline 和 clean gate 为准。
+- 证据文档收口：`codestable/issues/2026-04-27-review-contract-hardening/review-contract-hardening-fix-note.md` 已修正测试数量；`audit/2026-04/20260427_full_pytest_p0_debt_baseline.md` 已在干净提交 `197663a9a4e5573f0e85a1a090fa2158baa33856` 上重新生成，机器块记录 `git_status_short_before=[]`、`worktree_clean_before=true`、`collected_count=690`、`candidate_test_debt=0`。
 - 本轮已复跑：`tests/test_run_quality_gate.py tests/test_run_full_selftest_report_metadata.py tests/test_check_full_test_debt.py tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py tests/test_regression_main_isolation_contract.py` 为 `154 passed`；`tests/test_codestable_tools_contract.py` 为 `10 passed`；`tools/check_full_test_debt.py` 为 `active_xfail_count=5`、`fixed_count=0`、`max_registered_xfail=5`、`collected_count=690`、`collection_error_count=0`；`scripts/sync_debt_ledger.py check` 通过。
 
 ---

@@ -50,9 +50,11 @@ tags: [quality-gate, full-test-debt, codestable, python38]
 - `.venv/bin/python scripts/sync_debt_ledger.py check`：通过。
 - `git diff --check`：通过。
 
-## 6. 遗留事项
+## 6. 收口说明
 
-`scripts/run_quality_gate.py --require-clean-worktree` 当前被本次未提交修复拦住，报错为工作区不干净。代码合入本地提交后，需要在干净工作区重跑这条 clean proof。
+`audit/2026-04/20260427_full_pytest_p0_debt_baseline.md` 已在干净提交 `197663a9a4e5573f0e85a1a090fa2158baa33856` 上重新生成。机器块记录 `git_status_short_before=[]`、`worktree_clean_before=true`、`collected_count=690`、`candidate_test_debt=0`，不再使用旧提交的 `631` 条采集结果冒充当前证明。
+
+本记录和新 baseline 提交后，需要在干净工作区重跑 `scripts/run_quality_gate.py --require-clean-worktree` 作为最终 clean proof。
 
 ## 7. 二次 deep review 返修
 
