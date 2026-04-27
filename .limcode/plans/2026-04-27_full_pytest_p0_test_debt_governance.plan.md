@@ -1364,58 +1364,50 @@ git diff --check
 
 ### 任务 9：收敛 required/startup/full-debt 三套入口
 
-**任务 8 承接预留**
+**任务 8 承接说明**
 - 任务 8 已完成后，`python tools/check_full_test_debt.py` 已进入 shared command plan、source proof、tool pyright、receipt/replay，质量门禁已经能证明当前 full pytest 没有未登记失败。
-- 任务 9 只处理 required/startup/full-debt 三套入口从统一 registry 派生，不再重复 runner 改造、full-test-debt proof 接入或 receipt/replay 绑定。
+- 任务 9 只处理 required/startup/full-debt 三套入口从统一 registry 派生，不重复 runner 改造、full-test-debt proof 接入、receipt/replay 绑定，也不改 GitHub Actions。
+- 执行前复核到的当前事实是：required tests 为 70 条，startup regressions 为 14 条，正式台账里的 active xfail 为 5 条；`tools/check_full_test_debt.py` 通过，summary 为 `active_xfail_count=5`、`collected_count=656`、`collection_error_count=0`、`fixed_count=0`、`max_registered_xfail=5`。
+
+**根因核实**
+- required/startup 清单原来手写在 `tools/quality_gate_shared.py`，full-debt 的正式事实源在 `开发文档/技术债务治理台账.md` 并由 `tools/test_debt_registry.py` 读取；三套入口虽然当前能跑通，但没有统一出口。
+- 任务 8 已经把 full-test-debt proof 接进门禁，任务 9 的风险不是“没跑 proof”，而是以后维护 required/startup/full-debt 时容易各改各的。
+- `tools/test_debt_registry.py` 会读取 `tools/quality_gate_shared.py` 和 `tools/quality_gate_ledger.py`；如果让 `quality_gate_shared.py` 反过来顶层导入 `test_debt_registry.py`，会有循环导入风险。所以本任务新增一个更薄的 `tools/test_registry.py` 作为 required/startup 清单事实源。
 
 **目标**
-- 让 required tests、startup regressions、full test debt 都从同一个测试 registry 模块派生，避免以后再分裂。
+- required tests、startup regressions、full test debt 对外由同一组 registry 出口提供，后续新增或删除测试时不再分散维护。
+- 保持现有门禁命令顺序和 proof 语义不变：collect-only 后仍先跑 `python tools/check_full_test_debt.py`，required pytest 仍在 `scripts/sync_debt_ledger.py check` 前，startup pytest 仍在台账检查后。
 
 **文件**
-- 新建或扩展：`tools/test_debt_registry.py`
+- 新建：`tools/test_registry.py`
+- 扩展：`tools/test_debt_registry.py`
 - 修改：`tools/quality_gate_shared.py`
+- 修改：`tools/quality_gate_support.py`
 - 测试：`tests/test_full_test_debt_registry_contract.py`
 - 测试：`tests/test_run_quality_gate.py`
 
-- [ ] **步骤 1：写 registry 一致性测试**
+**禁止越界**
+- 不修改 `.github/workflows/quality.yml`。
+- 不修改 `tools/check_full_test_debt.py` 的 proof 语义，不重做 collector 分类，不重接 receipt/replay。
+- 不修 5 条 operator-machine/query 旧测试债务，不把任何 `mode=xfail` 转成 `fixed`，不下调 `test_debt.ratchet.max_registered_xfail`。
+- 不把 `P0_TEST_DEBT_SEED_METADATA`、audit baseline 或 collector stdout 变成 active xfail 的第二事实源；正式事实源仍是 `开发文档/技术债务治理台账.md`。
+- 不把重型 full-suite 检查塞进 `tests/conftest.py` 的 collection hook；局部 pytest 仍只做精确 nodeid xfail 标记。
 
-在 `tests/test_full_test_debt_registry_contract.py` 增加：
+- [x] **步骤 1：写 registry 一致性红灯测试**
 
-```python
-def test_quality_gate_required_startup_and_full_debt_share_registry():
-    ...
-```
+已在 `tests/test_full_test_debt_registry_contract.py` 增加 `test_quality_gate_required_startup_and_full_debt_share_registry()`，断言：
+- `tools.test_debt_registry` 必须暴露 `iter_required_tests()`、`iter_startup_regressions()`、`load_test_debt_registry()`、`hash_test_debt_registry()`。
+- required tests、startup regressions、active xfail nodeids 都没有重复。
+- required tests 与 startup regressions 不互相混入；required tests 不允许出现在 active xfail 中。
+- required/startup 路径必须存在，并且已经被 git 跟踪。
+- registry hash 同一份输入多次计算稳定一致。
 
-断言：
-- required tests 没有重复。
-- startup regressions 没有重复。
-- full debt nodeids 没有重复。
-- required tests 不允许出现在 `mode=xfail` 的 test debt 中。
-- 所有路径都存在并被 git 跟踪。
+已在 `tests/test_run_quality_gate.py` 扩展门禁行为锁，断言：
+- `scripts.run_quality_gate.REQUIRED_TEST_ARGS`、`STARTUP_REGRESSION_ARGS`、`tools.quality_gate_shared.iter_quality_gate_required_tests()` 和 registry 出口完全一致。
+- required/startup pytest 命令的 display/args 来自 registry，且现有命令顺序不变。
+- `tools/test_registry.py` 进入 `QUALITY_GATE_TOOL_PATHS` 和 `QUALITY_GATE_SOURCE_FILES`，避免 source proof 漏掉新的事实源。
 
-- [ ] **步骤 2：确认测试先失败**
-
-运行：
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py tests/test_run_quality_gate.py --tb=short -p no:cacheprovider
-```
-
-预期：因为 registry 还没有统一出口而失败。
-
-- [ ] **步骤 3：收敛 registry 出口**
-
-`tools/test_debt_registry.py` 提供：
-- `iter_required_tests()`
-- `iter_startup_regressions()`
-- `load_test_debt_registry()`
-- `hash_test_debt_registry()`
-
-`tools/quality_gate_shared.py` 使用这些出口生成 command plan，不再在多个文件手工维护测试清单。
-
-不得同时保留旧路径和新路径。
-
-- [ ] **步骤 4：重新运行 registry 合同**
+- [x] **步骤 2：确认红灯测试先失败**
 
 运行：
 
@@ -1423,9 +1415,79 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_deb
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py tests/test_run_quality_gate.py --tb=short -p no:cacheprovider
 ```
 
-预期：通过。
+结果：`2 failed, 50 passed`。两条失败都来自缺少统一出口：
+- `ImportError: cannot import name 'hash_test_debt_registry' from 'tools.test_debt_registry'`
+- `ImportError: cannot import name 'iter_required_tests' from 'tools.test_debt_registry'`
+
+- [x] **步骤 3：收敛 registry 出口**
+
+实际实现：
+- `tools/test_registry.py` 成为 required/startup 清单唯一维护点，提供规范化、去重、required nodeid 匹配、路径状态检查和稳定 hash。
+- `tools/quality_gate_shared.py` 保留 `QUALITY_GATE_REQUIRED_TESTS`、`QUALITY_GATE_STARTUP_REGRESSION_ARGS` 等旧公开名字，但这些名字只作为 `tools/test_registry.py` 的兼容别名，不再重复手写清单。
+- `tools/test_debt_registry.py` 新增 `iter_required_tests()`、`iter_startup_regressions()`、`load_test_debt_registry()`、`hash_test_debt_registry()`；其中 full-debt 仍通过 `registered_test_debt_entries()` 从正式台账读取。
+- `tools/quality_gate_support.py` 同步导出新增 registry 出口，方便旧入口继续使用统一来源。
+
+- [x] **步骤 4：重新运行 registry 合同**
+
+运行：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py tests/test_run_quality_gate.py --tb=short -p no:cacheprovider
+```
+
+结果：`52 passed`。
+
+- [x] **步骤 5：任务 9 完整验收与审查**
+
+已运行：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py tests/test_run_quality_gate.py tests/test_check_full_test_debt.py tests/test_run_full_selftest_report_metadata.py --tb=short -p no:cacheprovider
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/test_registry.py tools/test_debt_registry.py tools/quality_gate_shared.py tools/quality_gate_support.py tests/test_full_test_debt_registry_contract.py tests/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright tools/test_registry.py tools/test_debt_registry.py tools/quality_gate_shared.py
+git diff --check
+```
+
+结果：
+- 任务 9 与任务 8 防回退测试组合：`87 passed`。
+- `tools/check_full_test_debt.py`：通过，`active_xfail_count=5`、`collected_count=657`、`collection_error_count=0`、`fixed_count=0`、`max_registered_xfail=5`、`unexpected_failure_count=0`。
+- `scripts/sync_debt_ledger.py check`：通过，`schema_version=2`、`test_debt_count=5`。
+- `ruff check`：通过。
+- `pyright tools/test_registry.py tools/test_debt_registry.py tools/quality_gate_shared.py`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check`：通过。
+
+只读 subagent 审查结果：
+- 入口边界审查：通过。确认 `tools/test_registry.py` 只导入标准库，没有循环导入风险；required/startup 清单已集中到 `test_registry`；full-debt 仍只读正式台账；没有抢任务 10，也没有改业务测试债务。
+- proof 链路审查：通过。确认 command plan 顺序保持不变，`tools/test_registry.py` 已进入 `QUALITY_GATE_TOOL_PATHS` 和 `QUALITY_GATE_SOURCE_FILES`，receipt/replay/source proof 没有放松。审查指出 `tools/test_registry.py` 仍是未跟踪文件，已作为提交边界要求纳入第一笔提交。
+- 文档与提交边界审查：要求把任务 10 头部改成完成态承接，并且不要把无关的 `codestable/compound/2026-04-27-explore-repo-garbage-files.md` 混入本任务提交。本轮按该建议处理。
+
+- [ ] **步骤 6：任务 9 收尾回填与提交**
+
+本步骤正在收尾。任务 9 执行结果已回填，任务 10 头部已改为完成态承接。提交后还需在干净工作区补跑 clean gate，并把最终结果回填后修订文档提交。
+
+提交边界：
+- 第一笔：测试入口 registry 收敛代码和测试。
+- 第二笔：本计划文件回填。
+
+提交后、工作区干净时，再运行：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+结果必须回填到任务 9 执行结果和任务 10 承接说明。
 
 ### 任务 10：建立只减不增的 ratchet
+
+**任务 9 承接说明**
+- 任务 9 已把 required/startup/full-debt 三套入口收敛到统一 registry。任务 10 不再重新整理入口清单，只在统一 registry 和正式台账上继续处理“只减不增”和 fixed 流程。
+- required/startup 清单事实源是 `tools/test_registry.py`；兼容旧入口的 `QUALITY_GATE_REQUIRED_TESTS`、`QUALITY_GATE_STARTUP_REGRESSION_ARGS` 仍由 `tools/quality_gate_shared.py` 导出，但只作为 `tools/test_registry.py` 的别名。
+- full-debt 正式事实源仍是 `开发文档/技术债务治理台账.md`。任务 10 预计依赖 `tools.test_debt_registry.load_test_debt_registry()`、`iter_required_tests()`、`iter_startup_regressions()` 和 `python tools/check_full_test_debt.py`。
+- 当前正式台账仍是 `mode=xfail` 5 条，`test_debt.ratchet.max_registered_xfail=5`；任务 9 没有把任何条目改成 `fixed`，也没有下调 ratchet。
+- 任务 9 的聚焦验证已通过：`87 passed`、`tools/check_full_test_debt.py` 通过、`scripts/sync_debt_ledger.py check` 通过、`ruff` 通过、改动文件 `pyright` 通过、`git diff --check` 通过。
+- 任务 9 的 clean gate 需要在两笔本地提交完成后的干净工作区补跑；补跑结果会在任务 9 收尾时回填。
 
 **目标**
 - 从 P0 完成后开始，已登记 xfail 数只能减少，不能增加。
