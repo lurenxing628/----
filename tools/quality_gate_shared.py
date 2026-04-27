@@ -11,11 +11,35 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence, Union
 
+from tools.test_registry import (
+    QUALITY_GATE_GUARD_TESTS,
+    QUALITY_GATE_REQUIRED_TESTS,
+    QUALITY_GATE_SELFTEST_PATH,
+    QUALITY_GATE_STARTUP_REGRESSION_ARGS,
+)
+from tools.test_registry import (
+    hash_required_tests_registry as _registry_required_tests_hash,
+)
+from tools.test_registry import (
+    iter_non_regression_guard_tests as _registry_non_regression_guard_tests,
+)
+from tools.test_registry import (
+    iter_required_tests as _registry_required_tests,
+)
+from tools.test_registry import (
+    iter_startup_regressions as _registry_startup_regressions,
+)
+from tools.test_registry import (
+    normalize_test_paths as _normalize_test_paths,
+)
+from tools.test_registry import (
+    required_test_nodeid_matches as _registry_required_test_nodeid_matches,
+)
+
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LEDGER_PATH = os.path.join(REPO_ROOT, "开发文档", "技术债务治理台账.md")
 STAGE_RECORD_PATH = os.path.join(REPO_ROOT, "开发文档", "阶段留痕与验收记录.md")
 TEST_ARCH_FITNESS_PATH = os.path.join(REPO_ROOT, "tests", "test_architecture_fitness.py")
-QUALITY_GATE_SELFTEST_PATH = "tests/test_run_quality_gate.py"
 QUALITY_GATE_MANIFEST_REL = os.path.join("evidence", "QualityGate", "quality_gate_manifest.json")
 QUALITY_GATE_RECEIPTS_DIR_REL = os.path.join("evidence", "QualityGate", "receipts")
 QUALITY_GATE_PYRIGHT_GATE_CONFIG = "pyrightconfig.gate.json"
@@ -36,6 +60,7 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/quality_gate_shared.py",
     "tools/quality_gate_support.py",
     "tools/test_debt_registry.py",
+    "tools/test_registry.py",
     "tests/conftest.py",
     "tests/main_style_regression_runner.py",
 ]
@@ -54,97 +79,10 @@ QUALITY_GATE_SOURCE_FILES = (
     "tools/quality_gate_shared.py",
     "tools/quality_gate_support.py",
     "tools/test_debt_registry.py",
+    "tools/test_registry.py",
     "tests/conftest.py",
     "tests/main_style_regression_runner.py",
 )
-QUALITY_GATE_STARTUP_REGRESSION_ARGS = [
-    "tests/regression_runtime_probe_resolution.py",
-    "tests/test_win7_launcher_runtime_paths.py",
-    "tests/regression_runtime_contract_launcher.py",
-    "tests/regression_runtime_lock_reloader_parent_skip.py",
-    "tests/regression_startup_host_portfile.py",
-    "tests/regression_startup_host_portfile_new_ui.py",
-    "tests/regression_plugin_bootstrap_config_failure_visible.py",
-    "tests/regression_plugin_bootstrap_injects_config_reader.py",
-    "tests/regression_plugin_bootstrap_telemetry_failure_visible.py",
-    "tests/regression_app_new_ui_secret_key_runtime_ensure.py",
-    "tests/regression_app_new_ui_session_contract.py",
-    "tests/regression_app_new_ui_security_hardening_enabled.py",
-    "tests/test_app_factory_runtime_env_refresh.py",
-    "tests/regression_runtime_stop_cli.py",
-]
-QUALITY_GATE_GUARD_TESTS = (
-    "tests/test_sp05_path_topology_contract.py",
-    "tests/test_schedule_input_builder_strict_hours_and_ext_days.py",
-    "tests/regression_scheduler_wrapper_import_order_contract.py",
-    "tests/regression_schedule_orchestrator_contract.py",
-    "tests/test_schedule_summary_observability.py",
-    "tests/regression_sp06_no_duplicate_defs.py",
-    "tests/test_schedule_params_direct_call_contract.py",
-    "tests/regression_config_field_metadata_shape.py",
-    "tests/regression_scheduler_config_route_contract.py",
-    "tests/regression_config_field_spec_contract.py",
-    "tests/regression_scheduler_config_manual_url_normalization.py",
-    "tests/regression_config_service_active_preset_custom_sync.py",
-    "tests/regression_config_snapshot_strict_numeric.py",
-    "tests/regression_config_snapshot_projection_sync.py",
-    "tests/regression_config_service_component_contract.py",
-    "tests/regression_config_service_relaxed_missing_visibility.py",
-    "tests/regression_apply_preset_adjusted_marks_custom.py",
-    "tests/regression_scheduler_batches_degraded_visibility.py",
-    "tests/regression_scheduler_objective_labels.py",
-    "tests/regression_objective_projection_contract.py",
-    "tests/regression_scheduler_analysis_route_contract.py",
-    "tests/regression_scheduler_analysis_observability.py",
-    "tests/regression_analysis_page_version_default_latest.py",
-    "tests/regression_scheduler_analysis_vm_legacy_summary_bridge.py",
-    "tests/regression_scheduler_week_plan_summary_observability.py",
-    "tests/regression_system_history_route_contract.py",
-    "tests/regression_sp05_followup_contracts.py",
-    "tests/regression_scheduler_user_visible_messages.py",
-    "tests/regression_route_version_normalizers_contract.py",
-    "tests/regression_gantt_page_version_default_latest.py",
-    "tests/regression_reports_page_version_default_latest.py",
-    "tests/regression_reports_export_version_default_latest.py",
-    "tests/regression_week_plan_filename_uses_normalized_version.py",
-    "tests/regression_gantt_calendar_load_failed_degraded.py",
-    "tests/regression_gantt_bad_time_rows_surface_degraded.py",
-    "tests/regression_gantt_contract_snapshot.py",
-    "tests/regression_gantt_critical_chain_unavailable.py",
-    "tests/regression_quality_gate_scan_contract.py",
-    "tests/regression_request_services_contract.py",
-    "tests/regression_request_services_lazy_construction.py",
-    "tests/regression_request_services_failure_propagation.py",
-    "tests/regression_optimizer_seed_results_contract.py",
-    "tests/regression_optimizer_seed_boundary_contract.py",
-    "tests/regression_optimizer_runtime_seam_contract.py",
-    "tests/regression_optimizer_outcome_type_contract.py",
-    "tests/regression_optimizer_public_summary_projection_contract.py",
-    "tests/regression_schedule_input_collector_contract.py",
-    "tests/regression_schedule_params_read_failure_visible.py",
-    "tests/regression_schedule_service_strict_snapshot_guard.py",
-    "tests/regression_schedule_service_facade_delegation.py",
-    "tests/regression_schedule_persistence_reject_empty_actionable_schedule.py",
-    "tests/regression_schedule_persistence_reschedulable_contract.py",
-    "tests/regression_schedule_optimizer_cfg_snapshot_contract.py",
-    "tests/regression_schedule_summary_cfg_snapshot_contract.py",
-    "tests/regression_schedule_summary_algo_warnings_union.py",
-    "tests/regression_schedule_summary_v11_contract.py",
-    "tests/regression_schedule_summary_size_guard_large_lists.py",
-    "tests/regression_schedule_summary_merge_context_degraded_code.py",
-    "tests/regression_schedule_summary_input_fallback_contract.py",
-    "tests/regression_scheduler_run_surfaces_resource_pool_warning.py",
-    "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py",
-    "tests/regression_error_field_label_source.py",
-    "tests/test_run_full_selftest_report_metadata.py",
-    "tests/test_ui_mode.py",
-    "tests/regression_safe_next_url_hardening.py",
-    "tests/regression_safe_next_url_observability.py",
-    "tests/test_holiday_default_efficiency_read_guard.py",
-    "tests/regression_error_boundary_contract.py",
-    "tests/regression_gantt_critical_outline_sync.py",
-)
-QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)
 
 LEDGER_BEGIN = "<!-- APS-DEBT-LEDGER:BEGIN -->"
 LEDGER_END = "<!-- APS-DEBT-LEDGER:END -->"
@@ -435,15 +373,7 @@ def _normalize_source_rows(gate_sources: Sequence[Dict[str, Any]]) -> List[Dict[
 
 
 def _normalize_required_tests(required_tests: Sequence[str]) -> List[str]:
-    out: List[str] = []
-    seen = set()
-    for rel_path in list(required_tests or []):
-        normalized = str(rel_path or "").strip().replace("\\", "/")
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        out.append(normalized)
-    return out
+    return _normalize_test_paths(required_tests)
 
 
 def _normalize_collection_proof(collection_proof: Dict[str, Any]) -> Dict[str, Any]:
@@ -608,33 +538,23 @@ def replay_quality_gate_command_plan(
 
 
 def iter_quality_gate_required_tests() -> List[str]:
-    return list(_normalize_required_tests(QUALITY_GATE_REQUIRED_TESTS))
+    return _registry_required_tests()
 
 
 def quality_gate_required_test_nodeid_matches(
     nodeid: str,
     required_tests: Sequence[str] = QUALITY_GATE_REQUIRED_TESTS,
 ) -> bool:
-    normalized_nodeid = str(nodeid or "").strip().replace("\\", "/")
-    node_path = normalized_nodeid.split("::", 1)[0]
-    return any(
-        node_path == required_path or normalized_nodeid.startswith(required_path + "::")
-        for required_path in _normalize_required_tests(required_tests)
-    )
+    return _registry_required_test_nodeid_matches(nodeid, required_tests)
 
 
 def iter_non_regression_guard_tests() -> List[str]:
-    out: List[str] = []
-    for rel_path in QUALITY_GATE_REQUIRED_TESTS:
-        name = os.path.basename(str(rel_path or ""))
-        if name.startswith("regression_"):
-            continue
-        out.append(str(rel_path))
-    return out
+    return _registry_non_regression_guard_tests()
 
 
 def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
     required_tests = iter_quality_gate_required_tests()
+    startup_regressions = _registry_startup_regressions()
     return [
         {
             "display": "python -m pytest --collect-only -q tests",
@@ -703,8 +623,8 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python -m pytest -q " + " ".join(QUALITY_GATE_STARTUP_REGRESSION_ARGS),
-            "args": ["python", "-m", "pytest", "-q"] + list(QUALITY_GATE_STARTUP_REGRESSION_ARGS),
+            "display": "python -m pytest -q " + " ".join(startup_regressions),
+            "args": ["python", "-m", "pytest", "-q"] + list(startup_regressions),
             "capture_output": False,
             "output_policy": "normalized",
         },
@@ -803,7 +723,7 @@ def build_quality_gate_source_proof(repo_root: Optional[Union[os.PathLike, str]]
 
 
 def hash_required_tests_registry(required_tests: Sequence[str]) -> str:
-    return _stable_json_hash(_normalize_required_tests(required_tests))
+    return _registry_required_tests_hash(required_tests)
 
 
 def hash_quality_gate_commands(commands: Sequence[Dict[str, Any]]) -> str:

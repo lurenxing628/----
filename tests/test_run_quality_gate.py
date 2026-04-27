@@ -132,6 +132,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert "tools/quality_gate_scan.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/quality_gate_operations.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/quality_gate_support.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/test_registry.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "scripts/sync_debt_ledger.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "python -m pytest -q " + " ".join(module.REQUIRED_TEST_ARGS) in displays
     assert "python scripts/sync_debt_ledger.py check" in displays
@@ -232,6 +233,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
         "tools/test_debt_registry.py",
+        "tools/test_registry.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
         "开发文档/技术债务治理台账.md",
@@ -243,6 +245,7 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
         "tools/test_debt_registry.py",
+        "tools/test_registry.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
     ]:
@@ -305,8 +308,15 @@ def test_main_fails_when_required_command_proof_is_missing(monkeypatch, tmp_path
 def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions():
     module = _import_run_quality_gate()
     shared = _shared_quality_registry()
+    from tools.test_debt_registry import iter_required_tests, iter_startup_regressions
 
+    required_from_registry = iter_required_tests()
+    startup_from_registry = iter_startup_regressions()
+
+    assert tuple(module.REQUIRED_TEST_ARGS) == tuple(required_from_registry)
     assert tuple(module.REQUIRED_TEST_ARGS) == tuple(shared.iter_quality_gate_required_tests())
+    assert tuple(module.STARTUP_REGRESSION_ARGS) == tuple(startup_from_registry)
+    assert tuple(shared.QUALITY_GATE_STARTUP_REGRESSION_ARGS) == tuple(startup_from_registry)
     assert module.QUALITY_GATE_SELFTEST == shared.QUALITY_GATE_SELFTEST_PATH
     assert len(module.REQUIRED_TEST_ARGS) == len(set(module.REQUIRED_TEST_ARGS))
     assert "tests/regression_scheduler_analysis_observability.py" in module.REQUIRED_TEST_ARGS
@@ -332,6 +342,15 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_optimizer_runtime_seam_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_optimizer_seed_boundary_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_schedule_summary_size_guard_large_lists.py" in module.REQUIRED_TEST_ARGS
+
+    command_plan = shared.build_quality_gate_command_plan()
+    displays = [str(command["display"]) for command in command_plan]
+    required_display = "python -m pytest -q " + " ".join(required_from_registry)
+    startup_display = "python -m pytest -q " + " ".join(startup_from_registry)
+    assert required_display in displays
+    assert startup_display in displays
+    assert displays.index(required_display) < displays.index("python scripts/sync_debt_ledger.py check")
+    assert displays.index("python scripts/sync_debt_ledger.py check") < displays.index(startup_display)
 
 
 def test_quality_workflow_uploads_quality_gate_manifest_artifact():
@@ -507,6 +526,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert "tools/quality_gate_scan.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "tools/quality_gate_operations.py" in {item["path"] for item in manifest["gate_sources"]}
     assert "scripts/sync_debt_ledger.py" in {item["path"] for item in manifest["gate_sources"]}
+    assert "tools/test_registry.py" in {item["path"] for item in manifest["gate_sources"]}
     assert ".github/workflows/quality.yml" in {item["path"] for item in manifest["gate_sources"]}
     assert manifest["collection_proof"]["default_collect_nodeids"]
     quality_gate_entry = next(

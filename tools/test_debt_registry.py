@@ -11,6 +11,15 @@ from .quality_gate_shared import (
     extract_json_code_block,
     now_shanghai_iso,
 )
+from .test_registry import (
+    hash_test_registry as _hash_test_registry,
+)
+from .test_registry import (
+    iter_required_tests as _iter_required_tests,
+)
+from .test_registry import (
+    iter_startup_regressions as _iter_startup_regressions,
+)
 
 BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
 BASELINE_END = "<!-- APS-FULL-PYTEST-BASELINE:END -->"
@@ -401,6 +410,49 @@ def active_xfail_nodeids(ledger: Dict[str, Any]) -> Set[str]:
     return set(active_xfail_entries_by_nodeid(ledger))
 
 
+def iter_required_tests() -> List[str]:
+    return _iter_required_tests()
+
+
+def iter_startup_regressions() -> List[str]:
+    return _iter_startup_regressions()
+
+
+def load_test_debt_registry(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    source_ledger = load_ledger(required=True) if ledger is None else ledger
+    entries = registered_test_debt_entries(source_ledger)
+    active_entries = [entry for entry in entries if str(entry.get("mode") or "") == "xfail"]
+    fixed_entries = [entry for entry in entries if str(entry.get("mode") or "") == "fixed"]
+    test_debt = _require_dict(source_ledger.get("test_debt"), "test_debt")
+    ratchet = _require_dict(test_debt.get("ratchet"), "test_debt.ratchet")
+    max_registered_xfail = _require_plain_int(
+        ratchet.get("max_registered_xfail"),
+        "test_debt.ratchet.max_registered_xfail",
+    )
+    active_entries.sort(key=lambda entry: str(entry["nodeid"]))
+    fixed_entries.sort(key=lambda entry: str(entry["nodeid"]))
+    active_nodeids = [str(entry["nodeid"]) for entry in active_entries]
+    return {
+        "required_tests": iter_required_tests(),
+        "startup_regressions": iter_startup_regressions(),
+        "active_xfail_count": len(active_entries),
+        "active_xfail_entries": active_entries,
+        "active_xfail_nodeids": active_nodeids,
+        "fixed_count": len(fixed_entries),
+        "fixed_entries": fixed_entries,
+        "max_registered_xfail": max_registered_xfail,
+    }
+
+
+def hash_test_debt_registry(ledger: Optional[Dict[str, Any]] = None) -> str:
+    registry = load_test_debt_registry(ledger)
+    return _hash_test_registry(
+        required_tests=cast(List[str], registry["required_tests"]),
+        startup_regressions=cast(List[str], registry["startup_regressions"]),
+        active_xfail_entries=cast(List[Dict[str, Any]], registry["active_xfail_entries"]),
+    )
+
+
 __all__ = [
     "P0_TEST_DEBT_SEED_METADATA",
     "TEST_DEBT_FAMILY",
@@ -409,7 +461,11 @@ __all__ = [
     "baseline_candidate_nodeids",
     "build_test_debt_entries",
     "build_test_debt_ledger_from_baseline",
+    "hash_test_debt_registry",
+    "iter_required_tests",
+    "iter_startup_regressions",
     "load_full_test_debt_baseline",
+    "load_test_debt_registry",
     "registered_test_debt_entries",
     "validate_current_candidate_payload",
     "validate_importable_baseline",

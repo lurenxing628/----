@@ -901,6 +901,53 @@ def test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger() -> None
     assert active_xfail_entries_by_nodeid(sorted_ledger) == {"tests/test_sample.py::test_active": active}
 
 
+def test_quality_gate_required_startup_and_full_debt_share_registry() -> None:
+    from tools import quality_gate_shared
+    from tools.quality_gate_ledger import load_ledger
+    from tools.test_debt_registry import (
+        hash_test_debt_registry,
+        iter_required_tests,
+        iter_startup_regressions,
+        load_test_debt_registry,
+    )
+
+    required_tests = iter_required_tests()
+    startup_regressions = iter_startup_regressions()
+    registry = load_test_debt_registry(load_ledger(required=True))
+
+    assert required_tests == quality_gate_shared.iter_quality_gate_required_tests()
+    assert startup_regressions == list(quality_gate_shared.QUALITY_GATE_STARTUP_REGRESSION_ARGS)
+    assert required_tests
+    assert startup_regressions
+    assert len(required_tests) == len(set(required_tests))
+    assert len(startup_regressions) == len(set(startup_regressions))
+    assert registry["required_tests"] == required_tests
+    assert registry["startup_regressions"] == startup_regressions
+    assert registry["active_xfail_count"] == len(registry["active_xfail_nodeids"])
+    assert len(registry["active_xfail_nodeids"]) == len(set(registry["active_xfail_nodeids"]))
+
+    required_paths = set(required_tests)
+    startup_paths = set(startup_regressions)
+    active_xfail_nodeids = set(registry["active_xfail_nodeids"])
+    active_xfail_paths = {nodeid.split("::", 1)[0] for nodeid in active_xfail_nodeids}
+    assert required_paths.isdisjoint(startup_paths)
+    assert required_paths.isdisjoint(active_xfail_paths)
+
+    for rel_path in [*required_tests, *startup_regressions]:
+        assert (REPO_ROOT / rel_path).exists(), rel_path
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", rel_path],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert tracked.returncode == 0, rel_path
+
+    first_hash = hash_test_debt_registry(load_ledger(required=True))
+    second_hash = hash_test_debt_registry(load_ledger(required=True))
+    assert first_hash == second_hash
+
+
 def test_pytest_collection_marks_registered_exact_nodeids_xfail(tmp_path: Path) -> None:
     entries = {
         "test_debt_aware.py::test_plain_failure": _valid_test_debt_entry("test_debt_aware.py::test_plain_failure"),

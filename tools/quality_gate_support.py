@@ -126,3 +126,9 @@ from .quality_gate_shared import (
     verify_quality_gate_manifest,
     write_text_file,
 )
+from .test_debt_registry import (
+    hash_test_debt_registry,
+    iter_required_tests,
+    iter_startup_regressions,
+    load_test_debt_registry,
+)
