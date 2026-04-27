@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from typing import Dict, List, Optional
 
@@ -15,6 +16,7 @@ from tools.quality_gate_support import (  # noqa: E402
     QualityGateError,
     delete_risk,
     load_ledger,
+    load_ledger_for_test_debt_import,
     now_shanghai_iso,
     refresh_auto_fields,
     refresh_migrate_inline_facts,
@@ -24,6 +26,57 @@ from tools.quality_gate_support import (  # noqa: E402
     upsert_risk,
     validate_ledger_against_current_scan,
 )
+from tools.test_debt_registry import (  # noqa: E402
+    baseline_candidate_nodeids,
+    build_test_debt_ledger_from_baseline,
+    load_full_test_debt_baseline,
+    validate_current_candidate_payload,
+)
+
+
+def current_git_head_sha() -> str:
+    proc = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return proc.stdout.strip()
+
+
+def collect_current_test_debt_payload() -> Dict[str, object]:
+    env = dict(os.environ)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            os.path.join(REPO_ROOT, "tools", "collect_full_test_debt.py"),
+            "--baseline-kind",
+            "after_main_style_isolation",
+            "--",
+            "tests",
+            "-q",
+            "--tb=short",
+            "-ra",
+            "-p",
+            "no:cacheprovider",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+    )
+    try:
+        payload = json.loads(str(proc.stdout or ""))
+    except json.JSONDecodeError as exc:
+        raise QualityGateError("当前 full pytest dry-run 未输出可解析 JSON") from exc
+    if not isinstance(payload, dict):
+        raise QualityGateError("当前 full pytest dry-run 输出不是对象")
+    return payload
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -64,6 +117,13 @@ def _build_parser() -> argparse.ArgumentParser:
     delete_risk_parser = subparsers.add_parser("delete-risk", help="删除 accepted_risks 条目")
     delete_risk_parser.add_argument("--id", required=True, help="风险 id")
     delete_risk_parser.set_defaults(handler=_handle_delete_risk)
+
+    import_test_debt_parser = subparsers.add_parser(
+        "import-test-debt-baseline",
+        help="把已核实的 full pytest 测试债务 baseline 受控导入治理台账",
+    )
+    import_test_debt_parser.add_argument("--baseline", required=True, help="full pytest P0 测试债务 baseline 文件")
+    import_test_debt_parser.set_defaults(handler=_handle_import_test_debt_baseline)
     return parser
 
 
@@ -81,6 +141,7 @@ def _handle_check(_args: argparse.Namespace) -> int:
         "oversize_count": len(ledger.get("oversize_allowlist") or []),
         "complexity_count": len(ledger.get("complexity_allowlist") or []),
         "silent_fallback_count": len((ledger.get("silent_fallback") or {}).get("entries") or []),
+        "test_debt_count": len((ledger.get("test_debt") or {}).get("entries") or []),
         "accepted_risk_count": len(ledger.get("accepted_risks") or []),
         "samples": summary.get("samples"),
     }
@@ -107,6 +168,7 @@ def _handle_refresh(args: argparse.Namespace) -> int:
         "oversize_count": len(next_ledger.get("oversize_allowlist") or []),
         "complexity_count": len(next_ledger.get("complexity_allowlist") or []),
         "silent_fallback_count": len((next_ledger.get("silent_fallback") or {}).get("entries") or []),
+        "test_debt_count": len((next_ledger.get("test_debt") or {}).get("entries") or []),
         "accepted_risk_count": len(next_ledger.get("accepted_risks") or []),
     }
     _print_summary("治理台账已刷新", payload)
@@ -169,6 +231,25 @@ def _handle_delete_risk(args: argparse.Namespace) -> int:
         "accepted_risks 已删除",
         {"id": args.id, "updated_at": next_ledger.get("updated_at")},
     )
+    return 0
+
+
+def _handle_import_test_debt_baseline(args: argparse.Namespace) -> int:
+    ledger = load_ledger_for_test_debt_import()
+    payload = load_full_test_debt_baseline(str(args.baseline))
+    current_payload = collect_current_test_debt_payload()
+    validate_current_candidate_payload(
+        current_payload,
+        expected_nodeids=baseline_candidate_nodeids(payload),
+    )
+    next_ledger, summary = build_test_debt_ledger_from_baseline(
+        ledger,
+        payload,
+        verified_head_sha=str(current_payload.get("head_sha") or current_git_head_sha()),
+        last_verified_at=now_shanghai_iso(),
+    )
+    save_ledger(next_ledger)
+    _print_summary("测试债务 baseline 已导入治理台账", summary)
     return 0
 
 

@@ -140,7 +140,7 @@ LEDGER_END = "<!-- APS-DEBT-LEDGER:END -->"
 SP02_FACT_BEGIN = "<!-- SP02-FACT-START -->"
 SP02_FACT_END = "<!-- SP02-FACT-END -->"
 
-LEDGER_SCHEMA_VERSION = 1
+LEDGER_SCHEMA_VERSION = 2
 FILE_SIZE_LIMIT = 500
 COMPLEXITY_THRESHOLD = 15
 
@@ -202,6 +202,7 @@ FALLBACK_KIND_VALUES = {
     "cleanup_best_effort",
 }
 ENTRY_STATUS_VALUES = {"open", "in_progress", "blocked", "fixed"}
+TEST_DEBT_MODE_VALUES = {"xfail", "fixed"}
 UI_MODE_SCOPE_TAG_VALUES = {"startup_guard", "render_bridge"}
 
 ENTRY_MANUAL_FIELDS = ["status", "owner", "batch", "notes", "exit_condition"]
@@ -889,6 +890,58 @@ def _load_verified_quality_gate_receipt(
     return payload, None
 
 
+def _verify_receipt_header(
+    receipt: Dict[str, Any],
+    normalized_command: Dict[str, Any],
+    *,
+    index: int,
+    run_id: str,
+) -> Optional[str]:
+    if int(receipt.get("schema_version") or 0) != QUALITY_GATE_PROOF_SCHEMA_VERSION:
+        return "UNBOUND: quality gate command receipt schema_version mismatch"
+    if str(receipt.get("run_id") or "").strip() != str(run_id or "").strip() or not str(run_id or "").strip():
+        return "UNBOUND: quality gate command receipt run_id mismatch"
+    if int(receipt.get("command_index") or 0) != int(index):
+        return "UNBOUND: quality gate command receipt command_index mismatch"
+    if str(receipt.get("command_hash") or "").strip() != _stable_json_hash(normalized_command):
+        return "UNBOUND: quality gate command receipt command_hash mismatch"
+    return None
+
+
+def _verify_receipt_command_fields(receipt: Dict[str, Any], command: Dict[str, Any], normalized_command: Dict[str, Any]) -> Optional[str]:
+    expected_values = (
+        ("display", str(command.get("display") or "").strip()),
+        ("args", [str(arg) for arg in list(command.get("args") or [])]),
+        ("capture_output", bool(command.get("capture_output"))),
+        ("output_policy", _command_output_policy(normalized_command)),
+    )
+    for key, expected_value in expected_values:
+        if receipt[key] != expected_value:
+            return f"UNBOUND: quality gate command receipt {key} mismatch"
+    return None
+
+
+def _verify_receipt_output_hashes(
+    receipt: Dict[str, Any],
+    normalized_command: Dict[str, Any],
+    *,
+    index: int,
+    current_collect_stdout: str,
+    current_collect_stderr: str,
+) -> Optional[str]:
+    if int(receipt["returncode"]) != 0:
+        return "UNBOUND: quality gate command receipt returncode mismatch"
+    for key in ("stdout_sha256", "stderr_sha256"):
+        if len(str(receipt.get(key) or "")) != 64:
+            return f"UNBOUND: quality gate command receipt {key.replace('_sha256', '')} hash mismatch"
+    collect_policy = _command_output_policy(normalized_command)
+    if index == 1 and receipt.get("stdout_sha256") != _hash_command_output(current_collect_stdout, policy=collect_policy):
+        return "UNBOUND: quality gate collect receipt stdout hash mismatch"
+    if index == 1 and receipt.get("stderr_sha256") != _hash_command_output(current_collect_stderr, policy=collect_policy):
+        return "UNBOUND: quality gate collect receipt stderr hash mismatch"
+    return None
+
+
 def _verify_quality_gate_receipt_payload(
     receipt_payload: Dict[str, Any],
     command: Dict[str, Any],
@@ -900,33 +953,19 @@ def _verify_quality_gate_receipt_payload(
 ) -> Optional[str]:
     receipt = _normalize_command_receipt_payload(receipt_payload)
     normalized_command = _normalize_command_rows([command])[0]
-    if int(receipt.get("schema_version") or 0) != QUALITY_GATE_PROOF_SCHEMA_VERSION:
-        return "UNBOUND: quality gate command receipt schema_version mismatch"
-    if str(receipt.get("run_id") or "").strip() != str(run_id or "").strip() or not str(run_id or "").strip():
-        return "UNBOUND: quality gate command receipt run_id mismatch"
-    if int(receipt.get("command_index") or 0) != int(index):
-        return "UNBOUND: quality gate command receipt command_index mismatch"
-    if str(receipt.get("command_hash") or "").strip() != _stable_json_hash(normalized_command):
-        return "UNBOUND: quality gate command receipt command_hash mismatch"
-    expected_values = (
-        ("display", str(command.get("display") or "").strip()),
-        ("args", [str(arg) for arg in list(command.get("args") or [])]),
-        ("capture_output", bool(command.get("capture_output"))),
-        ("output_policy", _command_output_policy(normalized_command)),
-    )
-    for key, expected_value in expected_values:
-        if receipt[key] != expected_value:
-            return f"UNBOUND: quality gate command receipt {key} mismatch"
-    if int(receipt["returncode"]) != 0:
-        return "UNBOUND: quality gate command receipt returncode mismatch"
-    for key in ("stdout_sha256", "stderr_sha256"):
-        if len(str(receipt.get(key) or "")) != 64:
-            return f"UNBOUND: quality gate command receipt {key.replace('_sha256', '')} hash mismatch"
-    collect_policy = _command_output_policy(normalized_command)
-    if index == 1 and receipt.get("stdout_sha256") != _hash_command_output(current_collect_stdout, policy=collect_policy):
-        return "UNBOUND: quality gate collect receipt stdout hash mismatch"
-    if index == 1 and receipt.get("stderr_sha256") != _hash_command_output(current_collect_stderr, policy=collect_policy):
-        return "UNBOUND: quality gate collect receipt stderr hash mismatch"
+    for error in (
+        _verify_receipt_header(receipt, normalized_command, index=index, run_id=run_id),
+        _verify_receipt_command_fields(receipt, command, normalized_command),
+        _verify_receipt_output_hashes(
+            receipt,
+            normalized_command,
+            index=index,
+            current_collect_stdout=current_collect_stdout,
+            current_collect_stderr=current_collect_stderr,
+        ),
+    ):
+        if error:
+            return error
     return None
 
 
@@ -967,6 +1006,144 @@ def _verify_quality_gate_command_receipts(
     return None
 
 
+def _verify_manifest_header(
+    repo_root: Union[os.PathLike, str],
+    manifest: Dict[str, Any],
+    head_sha: str,
+) -> tuple[Optional[str], str]:
+    current_identity = repo_identity(repo_root)
+    manifest_checkout_root = os.path.realpath(str(manifest.get("checkout_root_realpath") or "").strip())
+    manifest_git_common_dir = os.path.realpath(str(manifest.get("git_common_dir_realpath") or "").strip())
+    if manifest_checkout_root != current_identity["checkout_root_realpath"]:
+        return "UNBOUND: quality gate checkout root mismatch", ""
+    if manifest_git_common_dir != current_identity["git_common_dir_realpath"]:
+        return "UNBOUND: quality gate git common dir mismatch", ""
+    if str(manifest.get("status") or "").strip().lower() != "passed":
+        return f"UNBOUND: quality gate status={manifest.get('status') or 'unknown'}", ""
+    if int(manifest.get("schema_version") or 0) != QUALITY_GATE_PROOF_SCHEMA_VERSION:
+        return "UNBOUND: quality gate schema_version mismatch", ""
+    run_id = str(manifest.get("run_id") or "").strip()
+    if not run_id:
+        return "UNBOUND: quality gate run_id missing", ""
+    if str(manifest.get("head_sha") or "").strip() != str(head_sha or "").strip():
+        return "UNBOUND: quality gate head_sha 不匹配", ""
+    return None, run_id
+
+
+def _verify_manifest_git_status(manifest: Dict[str, Any], git_status_lines: Sequence[str]) -> Optional[str]:
+    manifest_git_status_before = [
+        str(line).rstrip() for line in list(manifest.get("git_status_short_before") or []) if str(line).strip()
+    ]
+    manifest_git_status_after = [
+        str(line).rstrip() for line in list(manifest.get("git_status_short_after") or []) if str(line).strip()
+    ]
+    current_git_status = [str(line).rstrip() for line in list(git_status_lines or []) if str(line).strip()]
+    if bool(manifest.get("is_dirty_before")) or manifest_git_status_before:
+        return "UNBOUND: quality gate started dirty"
+    return _verify_manifest_clean_finish(manifest, manifest_git_status_after, current_git_status)
+
+
+def _verify_manifest_clean_finish(
+    manifest: Dict[str, Any],
+    manifest_git_status_after: Sequence[str],
+    current_git_status: Sequence[str],
+) -> Optional[str]:
+    if bool(manifest.get("tracked_drift_detected")):
+        return "UNBOUND: quality gate tracked drift detected"
+    if bool(manifest.get("is_dirty_after")) or manifest_git_status_after:
+        return "UNBOUND: quality gate finished dirty"
+    if list(manifest_git_status_after) != list(current_git_status):
+        return "UNBOUND: quality gate git status --short 不匹配"
+    return None
+
+
+def _verify_manifest_static_proof(manifest: Dict[str, Any]) -> tuple[Optional[str], List[str], List[Dict[str, Any]]]:
+    if dict(manifest.get("proof_scope") or {}) != dict(QUALITY_GATE_PROOF_SCOPE):
+        return "UNBOUND: quality gate proof_scope mismatch", [], []
+
+    required_tests = _normalize_required_tests(manifest.get("required_tests") or [])
+    expected_required_tests = iter_quality_gate_required_tests()
+    if required_tests != expected_required_tests:
+        return "UNBOUND: quality gate required tests mismatch", [], []
+    if str(manifest.get("required_tests_hash") or "") != hash_required_tests_registry(required_tests):
+        return "UNBOUND: quality gate required_tests_hash mismatch", [], []
+
+    commands = _normalize_command_rows(manifest.get("commands") or [])
+    expected_commands = build_quality_gate_command_plan()
+    if commands != expected_commands:
+        return "UNBOUND: quality gate commands mismatch", [], []
+    if str(manifest.get("commands_hash") or "") != hash_quality_gate_commands(commands):
+        return "UNBOUND: quality gate commands_hash mismatch", [], []
+    return None, expected_required_tests, expected_commands
+
+
+def _verify_manifest_collection_and_receipts(
+    repo_root: Union[os.PathLike, str],
+    manifest: Dict[str, Any],
+    *,
+    expected_required_tests: Sequence[str],
+    expected_commands: Sequence[Dict[str, Any]],
+    run_id: str,
+) -> Optional[str]:
+    collect_ok, current_collect_nodeids, current_collect_stdout, current_collect_stderr, collect_note = (
+        collect_current_pytest_nodeids(repo_root)
+    )
+    if not collect_ok:
+        return collect_note
+
+    collection_error = _verify_quality_gate_collection_proof(
+        manifest,
+        current_collect_nodeids=current_collect_nodeids,
+        expected_required_tests=expected_required_tests,
+    )
+    if collection_error:
+        return collection_error
+
+    receipt_error = _verify_quality_gate_command_receipts(
+        repo_root,
+        manifest,
+        expected_commands=expected_commands,
+        run_id=run_id,
+        current_collect_stdout=current_collect_stdout,
+        current_collect_stderr=current_collect_stderr,
+    )
+    if receipt_error:
+        return receipt_error
+    return None
+
+
+def _verify_manifest_gate_sources(repo_root: Union[os.PathLike, str], manifest: Dict[str, Any]) -> Optional[str]:
+    gate_sources = _normalize_source_rows(manifest.get("gate_sources") or [])
+    expected_gate_sources = build_quality_gate_source_proof(repo_root)
+    if gate_sources != expected_gate_sources:
+        return "UNBOUND: quality gate gate sources mismatch"
+    if not all(bool(row.get("exists")) for row in gate_sources):
+        return "UNBOUND: quality gate gate sources missing"
+    if str(manifest.get("gate_sources_hash") or "") != hash_quality_gate_source_proof(gate_sources):
+        return "UNBOUND: quality gate gate_sources_hash mismatch"
+    return None
+
+
+def _verify_manifest_replay(
+    repo_root: Union[os.PathLike, str],
+    expected_commands: Sequence[Dict[str, Any]],
+    *,
+    replay_commands: bool,
+) -> Optional[str]:
+    if not replay_commands:
+        return "STRUCTURAL_ONLY: quality gate command replay disabled"
+
+    replay_error = replay_quality_gate_command_plan(repo_root, expected_commands, compare_receipts=True)
+    if replay_error:
+        return replay_error
+    post_replay_status = git_status_short_lines(repo_root)
+    if post_replay_status:
+        sample = ", ".join(post_replay_status[:5])
+        suffix = " ..." if len(post_replay_status) > 5 else ""
+        return f"UNBOUND: quality gate replay left dirty worktree: {sample}{suffix}"
+    return None
+
+
 def verify_quality_gate_manifest(
     *,
     repo_root: Union[os.PathLike, str],
@@ -978,102 +1155,30 @@ def verify_quality_gate_manifest(
     if not isinstance(manifest, dict):
         return False, "UNBOUND: quality gate manifest 非法"
 
-    current_identity = repo_identity(repo_root)
-    manifest_checkout_root = os.path.realpath(str(manifest.get("checkout_root_realpath") or "").strip())
-    manifest_git_common_dir = os.path.realpath(str(manifest.get("git_common_dir_realpath") or "").strip())
-    if manifest_checkout_root != current_identity["checkout_root_realpath"]:
-        return False, "UNBOUND: quality gate checkout root mismatch"
-    if manifest_git_common_dir != current_identity["git_common_dir_realpath"]:
-        return False, "UNBOUND: quality gate git common dir mismatch"
-    if str(manifest.get("status") or "").strip().lower() != "passed":
-        return False, f"UNBOUND: quality gate status={manifest.get('status') or 'unknown'}"
-    if int(manifest.get("schema_version") or 0) != QUALITY_GATE_PROOF_SCHEMA_VERSION:
-        return False, "UNBOUND: quality gate schema_version mismatch"
-    run_id = str(manifest.get("run_id") or "").strip()
-    if not run_id:
-        return False, "UNBOUND: quality gate run_id missing"
-    if str(manifest.get("head_sha") or "").strip() != str(head_sha or "").strip():
-        return False, "UNBOUND: quality gate head_sha 不匹配"
-
-    manifest_git_status_before = [
-        str(line).rstrip() for line in list(manifest.get("git_status_short_before") or []) if str(line).strip()
-    ]
-    manifest_git_status_after = [
-        str(line).rstrip() for line in list(manifest.get("git_status_short_after") or []) if str(line).strip()
-    ]
-    current_git_status = [str(line).rstrip() for line in list(git_status_lines or []) if str(line).strip()]
-    if bool(manifest.get("is_dirty_before")) or manifest_git_status_before:
-        return False, "UNBOUND: quality gate started dirty"
-    if bool(manifest.get("tracked_drift_detected")):
-        return False, "UNBOUND: quality gate tracked drift detected"
-    if bool(manifest.get("is_dirty_after")) or manifest_git_status_after:
-        return False, "UNBOUND: quality gate finished dirty"
-    if manifest_git_status_after != current_git_status:
-        return False, "UNBOUND: quality gate git status --short 不匹配"
-
-    if dict(manifest.get("proof_scope") or {}) != dict(QUALITY_GATE_PROOF_SCOPE):
-        return False, "UNBOUND: quality gate proof_scope mismatch"
-
-    required_tests = _normalize_required_tests(manifest.get("required_tests") or [])
-    expected_required_tests = iter_quality_gate_required_tests()
-    if required_tests != expected_required_tests:
-        return False, "UNBOUND: quality gate required tests mismatch"
-    if str(manifest.get("required_tests_hash") or "") != hash_required_tests_registry(required_tests):
-        return False, "UNBOUND: quality gate required_tests_hash mismatch"
-
-    commands = _normalize_command_rows(manifest.get("commands") or [])
-    expected_commands = build_quality_gate_command_plan()
-    if commands != expected_commands:
-        return False, "UNBOUND: quality gate commands mismatch"
-    if str(manifest.get("commands_hash") or "") != hash_quality_gate_commands(commands):
-        return False, "UNBOUND: quality gate commands_hash mismatch"
-
-    collect_ok, current_collect_nodeids, current_collect_stdout, current_collect_stderr, collect_note = (
-        collect_current_pytest_nodeids(repo_root)
-    )
-    if not collect_ok:
-        return False, collect_note
-
-    collection_error = _verify_quality_gate_collection_proof(
+    header_error, run_id = _verify_manifest_header(repo_root, manifest, head_sha)
+    if header_error:
+        return False, header_error
+    git_status_error = _verify_manifest_git_status(manifest, git_status_lines)
+    if git_status_error:
+        return False, git_status_error
+    static_error, expected_required_tests, expected_commands = _verify_manifest_static_proof(manifest)
+    if static_error:
+        return False, static_error
+    collection_error = _verify_manifest_collection_and_receipts(
+        repo_root,
         manifest,
-        current_collect_nodeids=current_collect_nodeids,
         expected_required_tests=expected_required_tests,
+        expected_commands=expected_commands,
+        run_id=run_id,
     )
     if collection_error:
         return False, collection_error
-
-    receipt_error = _verify_quality_gate_command_receipts(
-        repo_root,
-        manifest,
-        expected_commands=expected_commands,
-        run_id=run_id,
-        current_collect_stdout=current_collect_stdout,
-        current_collect_stderr=current_collect_stderr,
-    )
-    if receipt_error:
-        return False, receipt_error
-
-    gate_sources = _normalize_source_rows(manifest.get("gate_sources") or [])
-    expected_gate_sources = build_quality_gate_source_proof(repo_root)
-    if gate_sources != expected_gate_sources:
-        return False, "UNBOUND: quality gate gate sources mismatch"
-    if not all(bool(row.get("exists")) for row in gate_sources):
-        return False, "UNBOUND: quality gate gate sources missing"
-    if str(manifest.get("gate_sources_hash") or "") != hash_quality_gate_source_proof(gate_sources):
-        return False, "UNBOUND: quality gate gate_sources_hash mismatch"
-
-    if not replay_commands:
-        return False, "STRUCTURAL_ONLY: quality gate command replay disabled"
-
-    replay_error = replay_quality_gate_command_plan(repo_root, expected_commands, compare_receipts=True)
+    gate_source_error = _verify_manifest_gate_sources(repo_root, manifest)
+    if gate_source_error:
+        return False, gate_source_error
+    replay_error = _verify_manifest_replay(repo_root, expected_commands, replay_commands=replay_commands)
     if replay_error:
         return False, replay_error
-    post_replay_status = git_status_short_lines(repo_root)
-    if post_replay_status:
-        sample = ", ".join(post_replay_status[:5])
-        suffix = " ..." if len(post_replay_status) > 5 else ""
-        return False, f"UNBOUND: quality gate replay left dirty worktree: {sample}{suffix}"
-
     return True, "BOUND"
 
 

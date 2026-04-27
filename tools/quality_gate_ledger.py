@@ -20,6 +20,7 @@ from .quality_gate_shared import (
     SP02_FACT_END,
     STAGE_RECORD_PATH,
     STARTUP_SCOPE_PATTERNS,
+    TEST_DEBT_MODE_VALUES,
     UI_MODE_SCOPE_TAG_VALUES,
     QualityGateError,
     extract_json_code_block,
@@ -38,6 +39,7 @@ def default_ledger() -> Dict[str, Any]:
         "oversize_allowlist": [],
         "complexity_allowlist": [],
         "silent_fallback": {"scope": list(STARTUP_SCOPE_PATTERNS), "entries": []},
+        "test_debt": {"ratchet": {"max_registered_xfail": 0}, "entries": []},
         "accepted_risks": [],
     }
 
@@ -53,10 +55,51 @@ def load_ledger(required: bool = True) -> Dict[str, Any]:
     return sort_ledger(copy.deepcopy(ledger))
 
 
+def _validate_legacy_ledger_for_test_debt_import(ledger: Dict[str, Any]) -> None:
+    if not isinstance(ledger, dict):
+        raise QualityGateError("治理台账顶层必须是对象")
+    if ledger.get("schema_version") != 1:
+        raise QualityGateError("旧治理台账 schema_version 必须是 1")
+    if ledger.get("identity_strategy") != LEDGER_IDENTITY_STRATEGY:
+        raise QualityGateError("旧治理台账 identity_strategy 与约定不一致")
+    _require_string(ledger.get("updated_at"), "updated_at")
+    if not isinstance(ledger.get("oversize_allowlist"), list):
+        raise QualityGateError("旧治理台账 oversize_allowlist 必须是数组")
+    if not isinstance(ledger.get("complexity_allowlist"), list):
+        raise QualityGateError("旧治理台账 complexity_allowlist 必须是数组")
+    silent_fallback = ledger.get("silent_fallback")
+    if not isinstance(silent_fallback, dict):
+        raise QualityGateError("旧治理台账 silent_fallback 必须是对象")
+    if silent_fallback.get("scope") != list(STARTUP_SCOPE_PATTERNS):
+        raise QualityGateError("旧治理台账 silent_fallback.scope 与约定不一致")
+    if not isinstance(silent_fallback.get("entries"), list):
+        raise QualityGateError("旧治理台账 silent_fallback.entries 必须是数组")
+    if not isinstance(ledger.get("accepted_risks"), list):
+        raise QualityGateError("旧治理台账 accepted_risks 必须是数组")
+
+
+def load_ledger_for_test_debt_import() -> Dict[str, Any]:
+    if not os.path.exists(LEDGER_PATH):
+        raise QualityGateError("治理台账不存在：开发文档/技术债务治理台账.md")
+    text = read_text_file("开发文档/技术债务治理台账.md")
+    ledger = extract_json_code_block(text, LEDGER_BEGIN, LEDGER_END, "治理台账")
+    schema_version = ledger.get("schema_version")
+    if schema_version == LEDGER_SCHEMA_VERSION:
+        validate_ledger(ledger)
+        if cast(Dict[str, Any], ledger.get("test_debt") or {}).get("entries"):
+            raise QualityGateError("治理台账已存在 test_debt.entries，导入命令不得覆盖已有测试债务登记")
+        return sort_ledger(copy.deepcopy(ledger))
+    if schema_version == 1:
+        _validate_legacy_ledger_for_test_debt_import(ledger)
+        return copy.deepcopy(ledger)
+    raise QualityGateError(f"治理台账 schema_version 不支持测试债务导入：{schema_version}")
+
+
 def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
     oversize_count = len(ledger.get("oversize_allowlist") or [])
     complexity_count = len(ledger.get("complexity_allowlist") or [])
     fallback_entries = cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
+    test_debt_entries = cast(Dict[str, Any], ledger.get("test_debt") or {}).get("entries") or []
     risk_count = len(ledger.get("accepted_risks") or [])
     payload_block = render_marked_json_block(LEDGER_BEGIN, LEDGER_END, ledger)
     body = textwrap.dedent(
@@ -93,6 +136,7 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
         - 超长文件登记：__OVERSIZE_COUNT__
         - 高复杂度登记：__COMPLEXITY_COUNT__
         - 静默回退登记：__FALLBACK_COUNT__
+        - 测试债务登记：__TEST_DEBT_COUNT__
         - 接受风险：__RISK_COUNT__
 
         ## SP04 人工补充记录
@@ -113,6 +157,7 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
     body = body.replace("__OVERSIZE_COUNT__", str(oversize_count))
     body = body.replace("__COMPLEXITY_COUNT__", str(complexity_count))
     body = body.replace("__FALLBACK_COUNT__", str(len(fallback_entries)))
+    body = body.replace("__TEST_DEBT_COUNT__", str(len(test_debt_entries)))
     body = body.replace("__RISK_COUNT__", str(risk_count))
     return body + "\n\n" + payload_block + "\n"
 
@@ -169,7 +214,50 @@ def _validate_common_entry(entry: Dict[str, Any], field_prefix: str) -> None:
         raise QualityGateError(f"{field_prefix}.notes 必须是字符串或 null")
 
 
-def validate_ledger(ledger: Dict[str, Any]) -> None:
+def _require_no_untriaged(value: str, field_name: str) -> None:
+    if value.strip().lower() == "untriaged":
+        raise QualityGateError(f"{field_name} 不允许写 untriaged 占位")
+
+
+def _validate_test_debt_entry(entry: Dict[str, Any], field_prefix: str) -> Tuple[str, str, str]:
+    for field_name in [
+        "debt_id",
+        "nodeid",
+        "mode",
+        "reason",
+        "domain",
+        "style",
+        "root",
+        "owner",
+        "exit_condition",
+        "last_verified_at",
+        "debt_family",
+    ]:
+        if field_name not in entry:
+            raise QualityGateError(f"{field_prefix} 缺少字段 {field_name}")
+    debt_id = _require_string(entry.get("debt_id"), f"{field_prefix}.debt_id")
+    nodeid = _require_string(entry.get("nodeid"), f"{field_prefix}.nodeid")
+    mode = _require_string(entry.get("mode"), f"{field_prefix}.mode")
+    if mode not in TEST_DEBT_MODE_VALUES:
+        raise QualityGateError(f"{field_prefix}.mode 非法：{mode}")
+    for field_name in ["reason", "domain", "style", "owner", "exit_condition", "last_verified_at", "debt_family"]:
+        value = _require_string(entry.get(field_name), f"{field_prefix}.{field_name}")
+        _require_no_untriaged(value, f"{field_prefix}.{field_name}")
+    root = entry.get("root")
+    if not isinstance(root, dict):
+        raise QualityGateError(f"{field_prefix}.root 必须是对象")
+    root_module = _require_string(root.get("module"), f"{field_prefix}.root.module")
+    root_function = _require_string(root.get("function"), f"{field_prefix}.root.function")
+    _require_no_untriaged(root_module, f"{field_prefix}.root.module")
+    _require_no_untriaged(root_function, f"{field_prefix}.root.function")
+    if entry.get("notes") is not None and not isinstance(entry.get("notes"), str):
+        raise QualityGateError(f"{field_prefix}.notes 必须是字符串或 null")
+    return debt_id, nodeid, mode
+
+
+def _validate_ledger_sections(
+    ledger: Dict[str, Any],
+) -> Tuple[List[Any], List[Any], List[Any], int, List[Any], List[Any]]:
     if not isinstance(ledger, dict):
         raise QualityGateError("治理台账顶层必须是对象")
     if ledger.get("schema_version") != LEDGER_SCHEMA_VERSION:
@@ -182,6 +270,7 @@ def validate_ledger(ledger: Dict[str, Any]) -> None:
     oversize_entries = ledger.get("oversize_allowlist")
     complexity_entries = ledger.get("complexity_allowlist")
     silent_fallback = ledger.get("silent_fallback")
+    test_debt = ledger.get("test_debt")
     accepted_risks = ledger.get("accepted_risks")
 
     if not isinstance(oversize_entries, list):
@@ -190,6 +279,8 @@ def validate_ledger(ledger: Dict[str, Any]) -> None:
         raise QualityGateError("complexity_allowlist 必须是数组")
     if not isinstance(silent_fallback, dict):
         raise QualityGateError("silent_fallback 必须是对象")
+    if not isinstance(test_debt, dict):
+        raise QualityGateError("test_debt 必须是对象")
     if not isinstance(accepted_risks, list):
         raise QualityGateError("accepted_risks 必须是数组")
 
@@ -200,32 +291,64 @@ def validate_ledger(ledger: Dict[str, Any]) -> None:
     if not isinstance(entries, list):
         raise QualityGateError("silent_fallback.entries 必须是数组")
 
-    all_main_ids: Set[str] = set()
-    fallback_unique_keys = set()
+    test_debt_ratchet = test_debt.get("ratchet")
+    test_debt_entries = test_debt.get("entries")
+    if not isinstance(test_debt_ratchet, dict):
+        raise QualityGateError("test_debt.ratchet 必须是对象")
+    max_registered_xfail = _require_int(
+        test_debt_ratchet.get("max_registered_xfail"),
+        "test_debt.ratchet.max_registered_xfail",
+    )
+    if max_registered_xfail < 0:
+        raise QualityGateError("test_debt.ratchet.max_registered_xfail 必须大于等于 0")
+    if not isinstance(test_debt_entries, list):
+        raise QualityGateError("test_debt.entries 必须是数组")
 
+    return oversize_entries, complexity_entries, entries, max_registered_xfail, test_debt_entries, accepted_risks
+
+
+def _register_main_entry_id(all_main_ids: Set[str], entry_id: str) -> None:
+    if entry_id in all_main_ids:
+        raise QualityGateError(f"主条目 id 重复：{entry_id}")
+    all_main_ids.add(entry_id)
+
+
+def _validate_oversize_entries(oversize_entries: List[Any], all_main_ids: Set[str]) -> None:
     for index, entry in enumerate(oversize_entries):
         if not isinstance(entry, dict):
             raise QualityGateError(f"oversize_allowlist[{index}] 必须是对象")
         _validate_common_entry(entry, f"oversize_allowlist[{index}]")
         _require_int(entry.get("current_value"), f"oversize_allowlist[{index}].current_value")
         _require_int(entry.get("limit"), f"oversize_allowlist[{index}].limit")
-        entry_id = str(entry.get("id"))
-        if entry_id in all_main_ids:
-            raise QualityGateError(f"主条目 id 重复：{entry_id}")
-        all_main_ids.add(entry_id)
+        _register_main_entry_id(all_main_ids, str(entry.get("id")))
 
+
+def _validate_complexity_entries(complexity_entries: List[Any], all_main_ids: Set[str]) -> None:
     for index, entry in enumerate(complexity_entries):
         if not isinstance(entry, dict):
             raise QualityGateError(f"complexity_allowlist[{index}] 必须是对象")
         _validate_common_entry(entry, f"complexity_allowlist[{index}]")
         _require_int(entry.get("current_value"), f"complexity_allowlist[{index}].current_value")
         _require_int(entry.get("threshold"), f"complexity_allowlist[{index}].threshold")
-        entry_id = str(entry.get("id"))
-        if entry_id in all_main_ids:
-            raise QualityGateError(f"主条目 id 重复：{entry_id}")
-        all_main_ids.add(entry_id)
+        _register_main_entry_id(all_main_ids, str(entry.get("id")))
 
-    for index, entry in enumerate(entries):
+
+def _validate_ui_mode_scope(entry: Dict[str, Any]) -> None:
+    path = str(entry.get("path"))
+    scope_tag = entry.get("scope_tag")
+    if path == "web/ui_mode.py":
+        if scope_tag not in UI_MODE_SCOPE_TAG_VALUES:
+            raise QualityGateError("web/ui_mode.py 条目必须带合法 scope_tag：{}".format(entry.get("id")))
+        if scope_tag == "render_bridge" and str(entry.get("batch")) == "SP03":
+            raise QualityGateError("render_bridge 条目不得归属 SP03：{}".format(entry.get("id")))
+    elif scope_tag is not None and not isinstance(scope_tag, str):
+        raise QualityGateError("scope_tag 必须是字符串或 null：{}".format(entry.get("id")))
+
+
+def _validate_silent_fallback_entries(silent_entries: List[Any], all_main_ids: Set[str]) -> None:
+    fallback_unique_keys = set()
+
+    for index, entry in enumerate(silent_entries):
         if not isinstance(entry, dict):
             raise QualityGateError(f"silent_fallback.entries[{index}] 必须是对象")
         _validate_common_entry(entry, f"silent_fallback.entries[{index}]")
@@ -237,22 +360,11 @@ def validate_ledger(ledger: Dict[str, Any]) -> None:
         _require_string(entry.get("source"), f"silent_fallback.entries[{index}].source")
         if str(entry.get("fallback_kind")) not in FALLBACK_KIND_VALUES:
             raise QualityGateError("silent_fallback.entries[{}].fallback_kind 非法：{}".format(index, entry.get("fallback_kind")))
-        path = str(entry.get("path"))
-        scope_tag = entry.get("scope_tag")
-        if path == "web/ui_mode.py":
-            if scope_tag not in UI_MODE_SCOPE_TAG_VALUES:
-                raise QualityGateError("web/ui_mode.py 条目必须带合法 scope_tag：{}".format(entry.get("id")))
-            if scope_tag == "render_bridge" and str(entry.get("batch")) == "SP03":
-                raise QualityGateError("render_bridge 条目不得归属 SP03：{}".format(entry.get("id")))
-        elif scope_tag is not None and not isinstance(scope_tag, str):
-            raise QualityGateError("scope_tag 必须是字符串或 null：{}".format(entry.get("id")))
-        entry_id = str(entry.get("id"))
-        if entry_id in all_main_ids:
-            raise QualityGateError(f"主条目 id 重复：{entry_id}")
-        all_main_ids.add(entry_id)
+        _validate_ui_mode_scope(entry)
+        _register_main_entry_id(all_main_ids, str(entry.get("id")))
         except_ordinal = _require_int(entry.get("except_ordinal"), f"silent_fallback.entries[{index}].except_ordinal")
         unique_key = (
-            path,
+            str(entry.get("path")),
             str(entry.get("symbol") or ""),
             str(entry.get("handler_fingerprint")),
             except_ordinal,
@@ -261,6 +373,28 @@ def validate_ledger(ledger: Dict[str, Any]) -> None:
             raise QualityGateError(f"silent_fallback.entries 存在重复登记：{unique_key}")
         fallback_unique_keys.add(unique_key)
 
+
+def _validate_test_debt_entries(test_debt_entries: List[Any], max_registered_xfail: int) -> None:
+    test_debt_ids: Set[str] = set()
+    test_debt_nodeids: Set[str] = set()
+    active_xfail_count = 0
+    for index, entry in enumerate(test_debt_entries):
+        if not isinstance(entry, dict):
+            raise QualityGateError(f"test_debt.entries[{index}] 必须是对象")
+        debt_id, nodeid, mode = _validate_test_debt_entry(entry, f"test_debt.entries[{index}]")
+        if debt_id in test_debt_ids:
+            raise QualityGateError(f"test_debt.entries debt_id 重复：{debt_id}")
+        if nodeid in test_debt_nodeids:
+            raise QualityGateError(f"test_debt.entries nodeid 重复：{nodeid}")
+        test_debt_ids.add(debt_id)
+        test_debt_nodeids.add(nodeid)
+        if mode == "xfail":
+            active_xfail_count += 1
+    if active_xfail_count > max_registered_xfail:
+        raise QualityGateError("test_debt.ratchet.max_registered_xfail 小于当前 xfail 登记数量")
+
+
+def _validate_accepted_risks(accepted_risks: List[Any], all_main_ids: Set[str]) -> None:
     risk_ids = set()
     for index, risk in enumerate(accepted_risks):
         if not isinstance(risk, dict):
@@ -286,6 +420,23 @@ def validate_ledger(ledger: Dict[str, Any]) -> None:
         _require_string(risk.get("exit_condition"), f"accepted_risks[{index}].exit_condition")
         if risk.get("notes") is not None and not isinstance(risk.get("notes"), str):
             raise QualityGateError(f"accepted_risks[{index}].notes 必须是字符串或 null")
+
+
+def validate_ledger(ledger: Dict[str, Any]) -> None:
+    (
+        oversize_entries,
+        complexity_entries,
+        silent_entries,
+        max_registered_xfail,
+        test_debt_entries,
+        accepted_risks,
+    ) = _validate_ledger_sections(ledger)
+    all_main_ids: Set[str] = set()
+    _validate_oversize_entries(oversize_entries, all_main_ids)
+    _validate_complexity_entries(complexity_entries, all_main_ids)
+    _validate_silent_fallback_entries(silent_entries, all_main_ids)
+    _validate_test_debt_entries(test_debt_entries, max_registered_xfail)
+    _validate_accepted_risks(accepted_risks, all_main_ids)
 
 
 def entry_sort_key(entry: Dict[str, Any]) -> Tuple[Any, ...]:
@@ -314,16 +465,30 @@ def _ordered_common_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
-def sort_ledger(ledger: Dict[str, Any]) -> Dict[str, Any]:
-    result = {
-        "schema_version": LEDGER_SCHEMA_VERSION,
-        "identity_strategy": LEDGER_IDENTITY_STRATEGY,
-        "updated_at": ledger.get("updated_at") or now_shanghai_iso(),
-        "oversize_allowlist": [],
-        "complexity_allowlist": [],
-        "silent_fallback": {"scope": list(STARTUP_SCOPE_PATTERNS), "entries": []},
-        "accepted_risks": [],
+def _ordered_test_debt_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    data = {
+        "debt_id": entry.get("debt_id"),
+        "nodeid": entry.get("nodeid"),
+        "mode": entry.get("mode"),
+        "reason": entry.get("reason"),
+        "domain": entry.get("domain"),
+        "style": entry.get("style"),
+        "root": {
+            "module": cast(Dict[str, Any], entry.get("root") or {}).get("module"),
+            "function": cast(Dict[str, Any], entry.get("root") or {}).get("function"),
+        },
+        "owner": entry.get("owner"),
+        "exit_condition": entry.get("exit_condition"),
+        "last_verified_at": entry.get("last_verified_at"),
+        "debt_family": entry.get("debt_family"),
     }
+    if "notes" in entry:
+        data["notes"] = entry.get("notes")
+    return data
+
+
+def _ordered_oversize_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
+    ordered = []
     for entry in sorted(
         cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or []),
         key=lambda item: (str(item.get("path") or ""), str(item.get("id") or "")),
@@ -331,7 +496,12 @@ def sort_ledger(ledger: Dict[str, Any]) -> Dict[str, Any]:
         data = _ordered_common_fields(entry)
         data["current_value"] = int(entry.get("current_value") or 0)
         data["limit"] = int(entry.get("limit") or FILE_SIZE_LIMIT)
-        result["oversize_allowlist"].append(data)
+        ordered.append(data)
+    return ordered
+
+
+def _ordered_complexity_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
+    ordered = []
     for entry in sorted(
         cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or []),
         key=lambda item: (str(item.get("path") or ""), str(item.get("symbol") or ""), str(item.get("id") or "")),
@@ -339,7 +509,12 @@ def sort_ledger(ledger: Dict[str, Any]) -> Dict[str, Any]:
         data = _ordered_common_fields(entry)
         data["current_value"] = int(entry.get("current_value") or 0)
         data["threshold"] = int(entry.get("threshold") or COMPLEXITY_THRESHOLD)
-        result["complexity_allowlist"].append(data)
+        ordered.append(data)
+    return ordered
+
+
+def _ordered_silent_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
+    ordered = []
     for entry in sorted(
         cast(List[Dict[str, Any]], cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []),
         key=entry_sort_key,
@@ -354,7 +529,27 @@ def sort_ledger(ledger: Dict[str, Any]) -> Dict[str, Any]:
             data["scope_tag"] = entry.get("scope_tag")
         data["source"] = entry.get("source")
         data.setdefault("notes", entry.get("notes"))
-        result["silent_fallback"]["entries"].append(data)
+        ordered.append(data)
+    return ordered
+
+
+def _ordered_test_debt_section(test_debt: Dict[str, Any]) -> Dict[str, Any]:
+    ratchet = cast(Dict[str, Any], test_debt.get("ratchet") or {})
+    entries = [
+        _ordered_test_debt_entry(entry)
+        for entry in sorted(
+            cast(List[Dict[str, Any]], test_debt.get("entries") or []),
+            key=lambda item: (str(item.get("nodeid") or ""), str(item.get("debt_id") or "")),
+        )
+    ]
+    return {
+        "ratchet": {"max_registered_xfail": int(ratchet.get("max_registered_xfail", 0) or 0)},
+        "entries": entries,
+    }
+
+
+def _ordered_accepted_risks(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
+    ordered = []
     for risk in sorted(cast(List[Dict[str, Any]], ledger.get("accepted_risks") or []), key=lambda item: str(item.get("id") or "")):
         data = {
             "id": risk.get("id"),
@@ -366,8 +561,26 @@ def sort_ledger(ledger: Dict[str, Any]) -> Dict[str, Any]:
         }
         if "notes" in risk:
             data["notes"] = risk.get("notes")
-        result["accepted_risks"].append(data)
-    return result
+        ordered.append(data)
+    return ordered
+
+
+def sort_ledger(ledger: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(ledger.get("test_debt"), dict):
+        raise QualityGateError("test_debt 必须是对象")
+    test_debt = cast(Dict[str, Any], ledger.get("test_debt") or {})
+    if not isinstance(test_debt.get("ratchet"), dict):
+        raise QualityGateError("test_debt.ratchet 必须是对象")
+    return {
+        "schema_version": LEDGER_SCHEMA_VERSION,
+        "identity_strategy": LEDGER_IDENTITY_STRATEGY,
+        "updated_at": ledger.get("updated_at") or now_shanghai_iso(),
+        "oversize_allowlist": _ordered_oversize_entries(ledger),
+        "complexity_allowlist": _ordered_complexity_entries(ledger),
+        "silent_fallback": {"scope": list(STARTUP_SCOPE_PATTERNS), "entries": _ordered_silent_entries(ledger)},
+        "test_debt": _ordered_test_debt_section(test_debt),
+        "accepted_risks": _ordered_accepted_risks(ledger),
+    }
 
 
 def collect_main_entry_ids(ledger: Dict[str, Any]) -> Set[str]:
@@ -405,6 +618,7 @@ __all__ = [
     "default_ledger",
     "finalize_ledger_update",
     "load_ledger",
+    "load_ledger_for_test_debt_import",
     "load_sp02_facts_snapshot",
     "render_ledger_markdown",
     "save_ledger",

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib
+import json
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -15,6 +17,8 @@ def _import_sync_debt_ledger():
     repo_root = _repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
+    sys.modules.pop("tools.quality_gate_support", None)
+    sys.modules.pop("tools.test_debt_registry", None)
     sys.modules.pop("scripts.sync_debt_ledger", None)
     return importlib.import_module("scripts.sync_debt_ledger")
 
@@ -25,6 +29,91 @@ def _import_quality_gate_support():
         sys.path.insert(0, repo_root)
     sys.modules.pop("tools.quality_gate_support", None)
     return importlib.import_module("tools.quality_gate_support")
+
+
+def _import_test_debt_registry():
+    repo_root = _repo_root()
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    sys.modules.pop("tools.test_debt_registry", None)
+    return importlib.import_module("tools.test_debt_registry")
+
+
+BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
+BASELINE_END = "<!-- APS-FULL-PYTEST-BASELINE:END -->"
+P0_TEST_DEBT_NODEIDS = [
+    "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
+    "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
+    "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
+    "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
+    "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
+]
+
+
+def _legacy_schema1_ledger() -> dict:
+    support = _import_quality_gate_support()
+    return {
+        "schema_version": 1,
+        "identity_strategy": support.LEDGER_IDENTITY_STRATEGY,
+        "updated_at": "2026-04-27T08:00:00+08:00",
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {"scope": list(support.STARTUP_SCOPE_PATTERNS), "entries": []},
+        "accepted_risks": [],
+    }
+
+
+def _write_baseline(path: Path, payload: dict) -> None:
+    path.write_text(
+        textwrap.dedent(
+            f"""
+            # baseline
+
+            {BASELINE_BEGIN}
+            ```json
+            {json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)}
+            ```
+            {BASELINE_END}
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+
+def _baseline_payload(**overrides) -> dict:
+    payload = {
+        "schema_version": 1,
+        "baseline_kind": "after_main_style_isolation",
+        "importable": True,
+        "generated_at": "2026-04-27T08:00:00+08:00",
+        "head_sha": "baseline-sha",
+        "python_executable": sys.executable,
+        "python_version": sys.version.splitlines()[0],
+        "pytest_version": "8.0.0",
+        "pytest_args": ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"],
+        "exitstatus": 1,
+        "collected_nodeids": list(P0_TEST_DEBT_NODEIDS),
+        "collection_errors": [],
+        "reports": [],
+        "classifications": {
+            "candidate_test_debt": list(P0_TEST_DEBT_NODEIDS),
+            "main_style_isolation_candidate": [],
+            "required_or_quality_gate_self_failure": [],
+        },
+        "summary": {
+            "collected_count": 588,
+            "failed_nodeid_count": 5,
+            "collection_error_count": 0,
+            "classification_counts": {
+                "candidate_test_debt": 5,
+                "main_style_isolation_candidate": 0,
+                "required_or_quality_gate_self_failure": 0,
+            },
+            "outcome_counts": {"call:failed": 5, "call:passed": 583},
+        },
+    }
+    payload.update(overrides)
+    return payload
 
 
 def test_check_command_validates_current_ledger(monkeypatch, capsys):
@@ -388,3 +477,262 @@ def test_delete_risk_command_dispatches(monkeypatch, capsys):
     stdout = capsys.readouterr().out
     assert "accepted_risks 已删除" in stdout
     assert '"id": "risk:test"' in stdout
+
+
+def test_import_test_debt_baseline_command_imports_seed_entries(monkeypatch, tmp_path: Path, capsys):
+    module = _import_sync_debt_ledger()
+    baseline_path = tmp_path / "debt_baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: "verified-sha")
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
+
+    rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
+
+    assert rc == 0
+    saved = calls["saved_ledger"]
+    assert saved["schema_version"] == 2
+    assert saved["test_debt"]["ratchet"] == {"max_registered_xfail": 5}
+    assert [entry["nodeid"] for entry in saved["test_debt"]["entries"]] == sorted(P0_TEST_DEBT_NODEIDS)
+    assert {entry["mode"] for entry in saved["test_debt"]["entries"]} == {"xfail"}
+    assert all(entry["reason"] and entry["last_verified_at"] for entry in saved["test_debt"]["entries"])
+    assert all(entry["debt_family"] == "operator_machine_normalization_contract_drift" for entry in saved["test_debt"]["entries"])
+    stdout = capsys.readouterr().out
+    assert "测试债务 baseline 已导入治理台账" in stdout
+    assert '"baseline_head_sha": "baseline-sha"' in stdout
+    assert '"verified_head_sha": "verified-sha"' in stdout
+
+
+@pytest.mark.parametrize(
+    ("payload_update", "expected_message"),
+    [
+        ({"baseline_kind": "raw_before_isolation"}, "baseline_kind"),
+        ({"importable": False}, "importable"),
+        ({"exitstatus": 4}, "pytest_exitstatus"),
+    ],
+)
+def test_import_test_debt_baseline_command_rejects_invalid_baseline(
+    monkeypatch, tmp_path: Path, capsys, payload_update: dict, expected_message: str
+):
+    module = _import_sync_debt_ledger()
+    baseline_path = tmp_path / "bad_baseline.md"
+    _write_baseline(baseline_path, _baseline_payload(**payload_update))
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: "verified-sha")
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
+
+    rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
+
+    assert rc == 2
+    assert "saved_ledger" not in calls
+    assert expected_message in capsys.readouterr().err
+
+
+def test_import_test_debt_baseline_command_rejects_blocked_classifications(monkeypatch, tmp_path: Path, capsys):
+    module = _import_sync_debt_ledger()
+    baseline_path = tmp_path / "blocked_baseline.md"
+    payload = _baseline_payload()
+    payload["classifications"]["required_or_quality_gate_self_failure"] = ["tests/test_run_quality_gate.py::test_self"]
+    payload["summary"]["classification_counts"]["required_or_quality_gate_self_failure"] = 1
+    _write_baseline(baseline_path, payload)
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: "verified-sha")
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
+
+    rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
+
+    assert rc == 2
+    assert "saved_ledger" not in calls
+    assert "required_or_quality_gate_self_failure" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("payload_mutator", "expected_message"),
+    [
+        (
+            lambda payload: payload["classifications"].__setitem__(
+                "required_or_quality_gate_self_failure",
+                ["tests/test_run_quality_gate.py::test_self"],
+            ),
+            "required_or_quality_gate_self_failure",
+        ),
+        (
+            lambda payload: payload["classifications"].__setitem__(
+                "main_style_isolation_candidate",
+                ["tests/regression_polluted.py::regression_polluted"],
+            ),
+            "main_style_isolation_candidate",
+        ),
+        (
+            lambda payload: payload.__setitem__(
+                "collection_errors",
+                [{"nodeid": "tests/test_collect_error.py", "outcome": "failed", "longrepr": "collect boom"}],
+            ),
+            "collection_error_count",
+        ),
+    ],
+)
+def test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_when_counts_are_zero(
+    monkeypatch, tmp_path: Path, capsys, payload_mutator, expected_message: str
+):
+    module = _import_sync_debt_ledger()
+    baseline_path = tmp_path / "inconsistent_blockers.md"
+    payload = _baseline_payload()
+    payload_mutator(payload)
+    _write_baseline(baseline_path, payload)
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
+
+    rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
+
+    assert rc == 2
+    assert "saved_ledger" not in calls
+    assert expected_message in capsys.readouterr().err
+
+
+def test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid(monkeypatch, tmp_path: Path, capsys):
+    module = _import_sync_debt_ledger()
+    baseline_path = tmp_path / "unknown_nodeid_baseline.md"
+    payload = _baseline_payload()
+    payload["classifications"]["candidate_test_debt"] = ["tests/test_unknown.py::test_unknown"]
+    payload["summary"]["classification_counts"]["candidate_test_debt"] = 1
+    payload["summary"]["failed_nodeid_count"] = 1
+    _write_baseline(baseline_path, payload)
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: "verified-sha")
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
+
+    rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
+
+    assert rc == 2
+    assert "saved_ledger" not in calls
+    assert "candidate_test_debt" in capsys.readouterr().err
+
+
+def test_import_test_debt_baseline_command_rejects_empty_candidate_nodeid(monkeypatch, tmp_path: Path, capsys):
+    module = _import_sync_debt_ledger()
+    baseline_path = tmp_path / "empty_nodeid_baseline.md"
+    payload = _baseline_payload()
+    payload["classifications"]["candidate_test_debt"] = [*P0_TEST_DEBT_NODEIDS, ""]
+    _write_baseline(baseline_path, payload)
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
+
+    rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
+
+    assert rc == 2
+    assert "saved_ledger" not in calls
+    assert "candidate_test_debt" in capsys.readouterr().err
+
+
+def test_import_test_debt_baseline_command_rejects_current_dry_run_candidate_drift(
+    monkeypatch, tmp_path: Path, capsys
+):
+    module = _import_sync_debt_ledger()
+    baseline_path = tmp_path / "debt_baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+    current_payload = _baseline_payload(importable=False, head_sha="verified-sha")
+    current_payload["classifications"]["candidate_test_debt"] = ["tests/test_unknown.py::test_unknown"]
+    current_payload["summary"]["classification_counts"]["candidate_test_debt"] = 1
+    current_payload["summary"]["failed_nodeid_count"] = 1
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: current_payload)
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
+
+    rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
+
+    assert rc == 2
+    assert "saved_ledger" not in calls
+    assert "candidate_test_debt" in capsys.readouterr().err
+
+
+def test_import_test_debt_baseline_command_does_not_overwrite_existing_test_debt(
+    monkeypatch, tmp_path: Path, capsys
+):
+    module = _import_sync_debt_ledger()
+    baseline_path = tmp_path / "debt_baseline.md"
+    _write_baseline(baseline_path, _baseline_payload())
+    existing_ledger = _legacy_schema1_ledger()
+    existing_ledger["schema_version"] = 2
+    existing_ledger["test_debt"] = {
+        "ratchet": {"max_registered_xfail": 1},
+        "entries": [
+            {
+                "debt_id": "test-debt:kept",
+                "nodeid": P0_TEST_DEBT_NODEIDS[0],
+                "mode": "fixed",
+                "reason": "已经人工治理过，不能被 seed 覆盖",
+                "domain": "personnel.operator_machine",
+                "style": "stale_patch_target",
+                "root": {"module": "core.services.personnel.operator_machine_service", "function": "list_by_operator"},
+                "owner": "personnel.operator_machine",
+                "exit_condition": "保留人工结果",
+                "last_verified_at": "2026-04-27T08:00:00+08:00",
+                "debt_family": "operator_machine_normalization_contract_drift",
+            }
+        ],
+    }
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: existing_ledger)
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
+
+    rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
+
+    assert rc == 2
+    assert "saved_ledger" not in calls
+    assert "不得覆盖" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value", "expected_message"),
+    [
+        ("owner", "", "owner"),
+        ("style", "untriaged", "untriaged"),
+    ],
+)
+def test_import_seed_metadata_rejects_empty_and_untriaged_fields(monkeypatch, field_name: str, bad_value: str, expected_message: str):
+    from tools.quality_gate_shared import QualityGateError
+
+    test_debt_registry = _import_test_debt_registry()
+    seed = test_debt_registry.P0_TEST_DEBT_SEED_METADATA[P0_TEST_DEBT_NODEIDS[0]]
+    monkeypatch.setitem(seed, field_name, bad_value)
+
+    with pytest.raises(QualityGateError, match=expected_message):
+        test_debt_registry.build_test_debt_entries(_baseline_payload(), last_verified_at="2026-04-27T08:00:00+08:00")
+
+
+def test_import_seed_metadata_rejects_duplicate_debt_id(monkeypatch):
+    test_debt_registry = _import_test_debt_registry()
+    first_seed = test_debt_registry.P0_TEST_DEBT_SEED_METADATA[P0_TEST_DEBT_NODEIDS[0]]
+    second_seed = test_debt_registry.P0_TEST_DEBT_SEED_METADATA[P0_TEST_DEBT_NODEIDS[1]]
+    monkeypatch.setitem(second_seed, "debt_id", first_seed["debt_id"])
+
+    with pytest.raises(Exception, match="debt_id"):
+        test_debt_registry.build_test_debt_ledger_from_baseline(
+            _legacy_schema1_ledger(),
+            _baseline_payload(),
+            verified_head_sha="verified-sha",
+            last_verified_at="2026-04-27T08:00:00+08:00",
+        )

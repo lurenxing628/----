@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
+
+import pytest
 
 from tools.quality_gate_shared import QUALITY_GATE_SELFTEST_PATH
 
@@ -485,3 +488,194 @@ def test_collect_full_test_debt_importable_rejects_bad_pytest_invocation(tmp_pat
     assert payload["exitstatus"] not in {0, 1}
     assert "pytest_exitstatus" in stderr
     assert not baseline_path.exists()
+
+
+def _valid_test_debt_entry(nodeid: str = "tests/test_sample.py::test_debt") -> dict:
+    return {
+        "debt_id": "test-debt:sample",
+        "nodeid": nodeid,
+        "mode": "xfail",
+        "reason": "旧测试合同尚未更新",
+        "domain": "personnel.operator_machine",
+        "style": "stale_patch_target",
+        "root": {
+            "module": "core.services.personnel.operator_machine_normalizers",
+            "function": "normalize_skill_level_optional",
+        },
+        "owner": "personnel.operator_machine",
+        "exit_condition": "该 nodeid 定向 pytest 普通通过，并从正式 full pytest 债务基线移除。",
+        "last_verified_at": "2026-04-27T08:00:00+08:00",
+        "debt_family": "operator_machine_normalization_contract_drift",
+    }
+
+
+def _ledger_with_test_debt(*entries: dict, max_registered_xfail: int = 1) -> dict:
+    from tools.quality_gate_shared import LEDGER_IDENTITY_STRATEGY, LEDGER_SCHEMA_VERSION, STARTUP_SCOPE_PATTERNS
+
+    return {
+        "schema_version": LEDGER_SCHEMA_VERSION,
+        "identity_strategy": LEDGER_IDENTITY_STRATEGY,
+        "updated_at": "2026-04-27T08:00:00+08:00",
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {"scope": list(STARTUP_SCOPE_PATTERNS), "entries": []},
+        "test_debt": {
+            "ratchet": {"max_registered_xfail": max_registered_xfail},
+            "entries": list(entries),
+        },
+        "accepted_risks": [],
+    }
+
+
+def test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition() -> None:
+    from tools.quality_gate_ledger import validate_ledger
+    from tools.quality_gate_shared import LEDGER_SCHEMA_VERSION, QualityGateError
+    from tools.test_debt_registry import active_xfail_nodeids
+
+    assert LEDGER_SCHEMA_VERSION == 2
+    entry = _valid_test_debt_entry()
+    validate_ledger(_ledger_with_test_debt(entry))
+    assert active_xfail_nodeids(_ledger_with_test_debt(entry)) == {entry["nodeid"]}
+
+    for field_name in [
+        "debt_id",
+        "nodeid",
+        "mode",
+        "reason",
+        "domain",
+        "style",
+        "owner",
+        "exit_condition",
+        "last_verified_at",
+        "debt_family",
+    ]:
+        broken = copy.deepcopy(entry)
+        broken[field_name] = ""
+        with pytest.raises(QualityGateError, match=field_name):
+            validate_ledger(_ledger_with_test_debt(broken))
+
+    broken_root = copy.deepcopy(entry)
+    broken_root["root"] = {"module": "core.services.personnel.operator_machine_normalizers"}
+    with pytest.raises(QualityGateError, match="root.function"):
+        validate_ledger(_ledger_with_test_debt(broken_root))
+
+    broken_untriaged = copy.deepcopy(entry)
+    broken_untriaged["style"] = "untriaged"
+    with pytest.raises(QualityGateError, match="untriaged"):
+        validate_ledger(_ledger_with_test_debt(broken_untriaged))
+
+    broken_mode = copy.deepcopy(entry)
+    broken_mode["mode"] = "skip"
+    with pytest.raises(QualityGateError, match="mode"):
+        validate_ledger(_ledger_with_test_debt(broken_mode))
+
+
+def test_test_debt_registry_rejects_duplicates_and_negative_ratchet() -> None:
+    from tools.quality_gate_ledger import validate_ledger
+    from tools.quality_gate_shared import QualityGateError
+
+    first = _valid_test_debt_entry("tests/test_sample.py::test_one")
+    second = _valid_test_debt_entry("tests/test_sample.py::test_two")
+    second["debt_id"] = "test-debt:sample-two"
+
+    duplicate_nodeid = copy.deepcopy(second)
+    duplicate_nodeid["nodeid"] = first["nodeid"]
+    with pytest.raises(QualityGateError, match="nodeid"):
+        validate_ledger(_ledger_with_test_debt(first, duplicate_nodeid, max_registered_xfail=2))
+
+    duplicate_debt_id = copy.deepcopy(second)
+    duplicate_debt_id["debt_id"] = first["debt_id"]
+    with pytest.raises(QualityGateError, match="debt_id"):
+        validate_ledger(_ledger_with_test_debt(first, duplicate_debt_id, max_registered_xfail=2))
+
+    with pytest.raises(QualityGateError, match="max_registered_xfail"):
+        validate_ledger(_ledger_with_test_debt(first, max_registered_xfail=-1))
+
+    fixed_entry = copy.deepcopy(first)
+    fixed_entry["mode"] = "fixed"
+    validate_ledger(_ledger_with_test_debt(fixed_entry, max_registered_xfail=0))
+
+
+def test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger() -> None:
+    from tools.quality_gate_ledger import sort_ledger
+    from tools.test_debt_registry import active_xfail_nodeids
+
+    fixed = _valid_test_debt_entry("tests/test_sample.py::test_fixed")
+    fixed["debt_id"] = "test-debt:sample-fixed"
+    fixed["mode"] = "fixed"
+    active = _valid_test_debt_entry("tests/test_sample.py::test_active")
+    active["debt_id"] = "test-debt:sample-active"
+    ledger = _ledger_with_test_debt(fixed, active, max_registered_xfail=1)
+
+    sorted_ledger = sort_ledger(ledger)
+
+    assert sorted_ledger["test_debt"]["ratchet"] == {"max_registered_xfail": 1}
+    assert [entry["nodeid"] for entry in sorted_ledger["test_debt"]["entries"]] == [
+        "tests/test_sample.py::test_active",
+        "tests/test_sample.py::test_fixed",
+    ]
+    assert active_xfail_nodeids(sorted_ledger) == {"tests/test_sample.py::test_active"}
+
+
+def test_save_ledger_writes_test_debt_snapshot_and_machine_block(monkeypatch) -> None:
+    from tools import quality_gate_ledger
+
+    entry = _valid_test_debt_entry()
+    ledger = _ledger_with_test_debt(entry)
+    writes = {}
+
+    monkeypatch.setattr(quality_gate_ledger, "write_text_file", lambda path, text: writes.update({"path": path, "text": text}))
+
+    quality_gate_ledger.save_ledger(ledger)
+
+    assert writes["path"] == "开发文档/技术债务治理台账.md"
+    assert "测试债务登记：1" in writes["text"]
+    assert '"test_debt": {' in writes["text"]
+    assert entry["nodeid"] in writes["text"]
+
+
+def test_finalize_ledger_update_preserves_test_debt_and_stable_updated_at(monkeypatch) -> None:
+    from tools import quality_gate_ledger
+
+    entry = _valid_test_debt_entry()
+    ledger = _ledger_with_test_debt(entry)
+    monkeypatch.setattr(quality_gate_ledger, "load_ledger", lambda required=False: copy.deepcopy(ledger))
+
+    finalized = quality_gate_ledger.finalize_ledger_update(copy.deepcopy(ledger))
+
+    assert finalized["updated_at"] == ledger["updated_at"]
+    assert finalized["test_debt"] == quality_gate_ledger.sort_ledger(ledger)["test_debt"]
+
+
+def test_refresh_auto_fields_preserves_test_debt(monkeypatch) -> None:
+    from tools import quality_gate_support
+
+    entry = _valid_test_debt_entry()
+    ledger = _ledger_with_test_debt(entry)
+    refresh_globals = quality_gate_support.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    refreshed = quality_gate_support.refresh_auto_fields(copy.deepcopy(ledger))
+
+    assert refreshed["test_debt"] == ledger["test_debt"]
+
+
+def test_ordinary_sort_and_save_reject_missing_test_debt(monkeypatch) -> None:
+    from tools import quality_gate_ledger
+    from tools.quality_gate_shared import LEDGER_IDENTITY_STRATEGY, STARTUP_SCOPE_PATTERNS, QualityGateError
+
+    legacy_shape = {
+        "schema_version": 2,
+        "identity_strategy": LEDGER_IDENTITY_STRATEGY,
+        "updated_at": "2026-04-27T08:00:00+08:00",
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {"scope": list(STARTUP_SCOPE_PATTERNS), "entries": []},
+        "accepted_risks": [],
+    }
+    monkeypatch.setattr(quality_gate_ledger, "write_text_file", lambda _path, _text: None)
+
+    with pytest.raises(QualityGateError, match="test_debt"):
+        quality_gate_ledger.sort_ledger(legacy_shape)
+    with pytest.raises(QualityGateError, match="test_debt"):
+        quality_gate_ledger.save_ledger(legacy_shape)
