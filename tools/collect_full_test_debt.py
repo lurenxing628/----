@@ -8,6 +8,7 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
@@ -15,7 +16,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
 BASELINE_END = "<!-- APS-FULL-PYTEST-BASELINE:END -->"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -27,10 +28,10 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
-def _git_head_sha() -> str:
+def _git_head_sha(cwd: Optional[Path] = None) -> str:
     completed = subprocess.run(
         ["git", "rev-parse", "HEAD"],
-        cwd=str(REPO_ROOT),
+        cwd=str(cwd or Path.cwd()),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -40,6 +41,52 @@ def _git_head_sha() -> str:
     if int(completed.returncode) != 0:
         return ""
     return str(completed.stdout or "").strip()
+
+
+def _git_status_short(cwd: Path) -> List[str]:
+    completed = subprocess.run(
+        ["git", "status", "--short", "--untracked-files=all"],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if int(completed.returncode) != 0:
+        raise RuntimeError(str(completed.stderr or completed.stdout or "git status failed").strip())
+    return [line for line in str(completed.stdout or "").splitlines() if line.strip()]
+
+
+def _status_path(line: str) -> str:
+    text = str(line or "")[3:].strip()
+    if " -> " in text:
+        text = text.rsplit(" -> ", 1)[1].strip()
+    if text.startswith('"') and text.endswith('"'):
+        text = text[1:-1]
+    return text.replace("\\", "/")
+
+
+def _relative_to_cwd(path: Path, cwd: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(cwd.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _unexpected_status_lines(lines: Sequence[str], *, allowed_paths: Sequence[str]) -> List[str]:
+    allowed = {path.replace("\\", "/") for path in allowed_paths}
+    return [line for line in lines if _status_path(line) not in allowed]
+
+
+def _remove_existing_file(path: Optional[Path]) -> None:
+    if path is None:
+        return
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
 
 
 def _longrepr_text(report: Any) -> str:
@@ -198,15 +245,23 @@ def _build_payload(
     generated_at: str,
     head_sha: str,
     required_paths: Sequence[str],
+    collector_argv: Sequence[str],
+    git_status_short_before: Optional[Sequence[str]],
+    worktree_clean_before: Optional[bool],
+    importable_blockers: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     classifications = _classify_failures(collector.reports, collector.collection_errors, required_paths, baseline_kind)
     summary = _summarize(collector.collected_nodeids, collector.reports, collector.collection_errors, classifications)
     return {
         "schema_version": SCHEMA_VERSION,
         "baseline_kind": baseline_kind,
-        "importable": bool(importable),
+        "importable": importable is True,
+        "importable_blockers": list(importable_blockers or []),
         "generated_at": generated_at,
         "head_sha": head_sha,
+        "collector_argv": list(collector_argv),
+        "git_status_short_before": list(git_status_short_before) if git_status_short_before is not None else None,
+        "worktree_clean_before": worktree_clean_before,
         "python_executable": sys.executable,
         "python_version": sys.version.splitlines()[0],
         "pytest_version": pytest_version,
@@ -279,6 +334,7 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     if parsed.importable_debt_baseline and not parsed.write_baseline:
         parser.error("--importable-debt-baseline 必须同时提供 --write-baseline")
     parsed.pytest_args = pytest_args
+    parsed.collector_argv = raw_args
     return parsed
 
 
@@ -297,16 +353,54 @@ def _importable_baseline_blockers(payload: Dict[str, Any]) -> List[str]:
     return blockers
 
 
+def _write_baseline_atomically(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=str(path.parent),
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp_path = Path(handle.name)
+            handle.write(_render_baseline_markdown(payload))
+        tmp_path.replace(path)
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink()
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
     import pytest
+
+    cwd = Path.cwd()
+    baseline_path = Path(str(args.write_baseline)) if args.write_baseline else None
+    target_status_path = _relative_to_cwd(baseline_path, cwd) if baseline_path is not None else ""
+    git_status_short_before: Optional[List[str]] = None
+    worktree_clean_before: Optional[bool] = None
+    if args.importable_debt_baseline:
+        try:
+            git_status_short_before = _git_status_short(cwd)
+        except RuntimeError as exc:
+            sys.stderr.write(f"dirty_before_baseline: {exc}\n")
+            return 2
+        worktree_clean_before = not git_status_short_before
+        if git_status_short_before:
+            sys.stderr.write("dirty_before_baseline: 正式测试债务基线生成前工作区必须干净：")
+            sys.stderr.write(", ".join(git_status_short_before))
+            sys.stderr.write("\n")
+            return 2
 
     logging.raiseExceptions = False
     collector = FullTestDebtCollector()
     pytest_stdout = io.StringIO()
     pytest_stderr = io.StringIO()
     generated_at = _now_iso()
-    head_sha = _git_head_sha()
+    head_sha = _git_head_sha(cwd)
     required_paths = iter_quality_gate_required_tests()
 
     with contextlib.redirect_stderr(pytest_stderr):
@@ -325,10 +419,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         generated_at=generated_at,
         head_sha=head_sha,
         required_paths=required_paths,
+        collector_argv=list(args.collector_argv),
+        git_status_short_before=git_status_short_before,
+        worktree_clean_before=worktree_clean_before,
     )
     if args.importable_debt_baseline:
         blockers = _importable_baseline_blockers(payload)
+        try:
+            after_pytest_status = _git_status_short(cwd)
+        except RuntimeError:
+            after_pytest_status = ["git_status_after_pytest_failed"]
+        unexpected_after_pytest = _unexpected_status_lines(after_pytest_status, allowed_paths=[])
+        if unexpected_after_pytest:
+            blockers.append("worktree_drift_after_pytest")
+            payload["git_status_short_after_pytest"] = after_pytest_status
         if blockers:
+            payload["importable"] = False
+            payload["importable_blockers"] = blockers
+            _remove_existing_file(baseline_path)
             sys.stderr.write("正式测试债务基线不能导入，存在禁入分类或收集错误：")
             sys.stderr.write(", ".join(blockers))
             sys.stderr.write("\n")
@@ -336,9 +444,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             sys.stdout.write("\n")
             return 2
     if args.write_baseline:
-        baseline_path = Path(str(args.write_baseline))
-        baseline_path.parent.mkdir(parents=True, exist_ok=True)
-        baseline_path.write_text(_render_baseline_markdown(payload), encoding="utf-8")
+        _write_baseline_atomically(Path(str(args.write_baseline)), payload)
+        if args.importable_debt_baseline:
+            after_write_status = _git_status_short(cwd)
+            payload["git_status_short_after_write"] = after_write_status
+            unexpected_after_write = _unexpected_status_lines(after_write_status, allowed_paths=[target_status_path])
+            if unexpected_after_write:
+                payload["importable"] = False
+                payload["importable_blockers"] = ["worktree_drift_after_write"]
+                _remove_existing_file(baseline_path)
+                sys.stderr.write("正式测试债务基线写入后出现非 baseline 文件改动：")
+                sys.stderr.write(", ".join(unexpected_after_write))
+                sys.stderr.write("\n")
+                sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+                sys.stdout.write("\n")
+                return 2
+            _write_baseline_atomically(Path(str(args.write_baseline)), payload)
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     sys.stdout.write("\n")
     if args.importable_debt_baseline:

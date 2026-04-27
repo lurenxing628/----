@@ -25,8 +25,20 @@ def _shared_quality_registry():
     repo_root = _repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
-    sys.modules.pop("tools.quality_gate_shared", None)
     return importlib.import_module("tools.quality_gate_shared")
+
+
+def test_shared_quality_registry_does_not_split_quality_gate_error_identity():
+    repo_root = _repo_root()
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    shared = importlib.import_module("tools.quality_gate_shared")
+    ledger = importlib.import_module("tools.quality_gate_ledger")
+
+    registry = _shared_quality_registry()
+
+    assert registry.QualityGateError is shared.QualityGateError
+    assert ledger.QualityGateError is shared.QualityGateError
 
 
 def test_assert_no_active_runtime_reports_cleanup_hint_when_uncertain(monkeypatch):

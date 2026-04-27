@@ -722,6 +722,13 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/collect_full_test_debt.py \
 - 审查与返修：需求符合性审查通过。代码质量审查发现正式模式会把 pytest 参数错误误判成可导入 baseline，已补 `pytest_exitstatus` 禁入合同并复跑通过。
 - 停线状态：未触发 required/proof 禁入、main-style 污染、collection error、workflow 修改或业务层修改。新增条件分支都属于本任务已说明的“正式 baseline 参数校验 / 禁入分类与 pytest 异常退出显式失败合同”。
 
+**任务 6 后深审返修记录（2026-04-27）**
+- 多路只读 deep review 确认：上面的正式 baseline 不能再作为“可按自身 `head_sha` 复跑”的证明使用。它记录的 `head_sha=ee96b3248a2bdf8abf48a5c5eba8d152379c8fdf` 不包含 `--importable-debt-baseline` 参数；该参数在后续提交才出现。
+- 根因不是候选 nodeid 本身错了，而是正式 baseline 当时使用了未提交的 collector 能力生成，payload 只记录 `git rev-parse HEAD`，没有记录生成前工作区是否干净。
+- 本次返修不改写历史结论，只把旧 baseline 标记为 provenance 不足：它可以解释当时任务 4/5 如何推进，不能再作为可复跑正式输入。
+- 本次返修代码必须把 baseline schema 升到新版本，记录 `collector_argv`、`git_status_short_before=[]`、`worktree_clean_before=true`，并要求 `--importable-debt-baseline` 在生成前工作区干净、生成后只允许目标 baseline 文件变脏。
+- 本次返修必须先提交代码/测试/计划留痕，再从该干净提交重新生成 `audit/2026-04/20260427_full_pytest_p0_debt_baseline.md`；否则会重复制造“文件内容来自未提交代码，但 `head_sha` 指向旧提交”的断链。
+
 ### 任务 5：把测试债务并入现有治理台账
 
 **任务 4 承接说明**
@@ -732,6 +739,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/collect_full_test_debt.py \
 - 任务 5 导入前必须填好 `domain`、`style`、`root.module`、`root.function`、`owner`、`exit_condition`；不允许写 `untriaged` 占位。
 - 执行前已在当前 HEAD `19f743fca9fb145723e1353b4e812c3d24bd7be4` 下复跑 dry-run 采集：`collected_count=588`、`failed_nodeid_count=5`、`candidate_test_debt=5`、`required_or_quality_gate_self_failure=0`、`main_style_isolation_candidate=0`、`collection_error_count=0`，5 条 nodeid 与正式 baseline 一致。
 - 正式 baseline 机器块里的 `head_sha=ee96b3248a2bdf8abf48a5c5eba8d152379c8fdf` 不作为任务 5 的硬拒绝条件；原因是 baseline 文件提交后当前 HEAD 必然变化。任务 5 执行结果必须同时记录 `baseline_head_sha` 和 `verified_head_sha`，并记录候选集合一致性。
+- 返修修正：上一条是任务 5 执行当时的承接解释；任务 6 后深审确认，这份旧 baseline 的核心问题不是“提交后 HEAD 漂移”，而是 `baseline_head_sha` 本身不可复跑。后续任务必须改读返修后重新生成的新 baseline，旧 baseline 只保留历史留痕。
 
 **根因核实与对抗审查采纳**
 - 已调用多路只读调查 subagent 核实 5 条候选债务：
@@ -1003,7 +1011,7 @@ git status --short --branch
 - 当前 full pytest dry-run 复验：
   - 命令：`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python - <<'PY' ... collect_current_test_debt_payload() ... PY`
   - 结果：`exitstatus=1`，`collected_count=610`，`failed_nodeid_count=5`，`candidate_test_debt=5`，`required_or_quality_gate_self_failure=0`，`main_style_isolation_candidate=0`，`collection_error_count=0`。
-  - 当前收集数量从任务 4 的 588 变为 609，是因为任务 5 自身新增了测试；候选失败集合仍是原 5 条，没有新增测试债务。
+  - 当前收集数量从任务 4 的 588 变为 610，是因为任务 5 自身新增了测试；候选失败集合仍是原 5 条，没有新增测试债务。
 - 验证命令与结果：
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sync_debt_ledger.py tests/test_full_test_debt_registry_contract.py --tb=short -p no:cacheprovider`：`42 passed`。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`schema_version=2`，`test_debt_count=5`。
@@ -1126,6 +1134,14 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest --collect-only -q tests -p 
 
 ### 任务 7：质量门禁 runner 真正按 shared command plan 执行
 
+**任务 6 后深审返修前置块（必须先完成）**
+- 五条 review finding 已经由多路只读 subagent 和一轮对抗审查确认属实：旧正式 baseline 的 `head_sha` 不可复跑；导入校验过松；`test_run_quality_gate` reload shared 会制造 `QualityGateError` 类身份分裂；collector 拒绝正式 baseline 时 stdout 和旧文件会误导；source proof 还没有覆盖测试债务链路。
+- 任务 7 开始前先修前三类当前阻断：正式 baseline 机器合同、collector 拒绝路径、测试 helper reload 污染。修完后用新 baseline 替代旧 baseline，并把新 `head_sha`、schema、复验命令写回本计划。
+- Finding 5 不在这个前置块里抢跑实现。原因是当前 runner 仍有手写前三个命令再跑 `command_plan[3:]` 的问题；如果任务 8 现在插入 full-test-debt command，可能被 runner 跳过。正确顺序仍然是先任务 7，再任务 8。
+- 当前工作区已有与本次无关的 `evidence/DeepReview/reference_trace.md` 改动；正式 baseline 重新生成必须在返修代码提交后的干净环境中完成，不得把无关脏文件混入证明链。
+- 第一阶段返修落地范围：`tools/collect_full_test_debt.py` 将正式 baseline schema 升到 2，并增加生成前 clean 检查、生成命令和工作区证明字段、拒绝路径旧文件清理、成功路径临时文件替换；`tools/test_debt_registry.py` 改为强类型导入校验；`tests/test_run_quality_gate.py` 停止 reload shared，并增加 `QualityGateError` 类身份回归测试。
+- 第一阶段验证结果：`tests/test_run_quality_gate.py::test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition` 为 `2 passed`；`tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py tests/test_run_quality_gate.py` 为 `80 passed`；改动文件 `py_compile`、`ruff check`、`pyright` 均通过，`git diff --check` 通过。
+
 **任务 6 承接说明**
 - 任务 6 已把 pytest 运行时和治理台账接上：`开发文档/技术债务治理台账.md` 里 5 条 `mode=xfail` 的精确 nodeid，现在定向 pytest 结果为 `5 xfailed`。
 - pytest hook 只做 collection 阶段的精确 xfail 标记，不做全量失败证明，也不检查“所有登记 nodeid 是否都被本次 collect 到”。
@@ -1177,6 +1193,11 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_g
 预期：通过。
 
 ### 任务 8：质量门禁接入 full-test-debt proof
+
+**Finding 5 留痕**
+- 深审确认：`QUALITY_GATE_SOURCE_FILES` 当前还没有绑定 `tools/collect_full_test_debt.py`、`tools/test_debt_registry.py`、`tests/conftest.py`、`tests/main_style_regression_runner.py`，因此当前 source proof 不能声明已经覆盖 full-test-debt 语义。
+- 本缺口属于任务 8 的正式工作，不属于任务 6 后返修的代码范围。任务 8 落地时必须一次性接入 command plan、source proof、tool pyright 和 replay receipt；不能只把文件名塞进 source 列表。
+- 任务 8 必须等任务 7 runner 改造完成后再执行，避免新增 `python tools/check_full_test_debt.py` 被当前 `command_plan[3:]` 执行方式跳过。
 
 **目标**
 - CI 仍然只跑统一门禁入口，但门禁能证明没有未登记全量失败。

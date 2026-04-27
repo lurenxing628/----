@@ -82,11 +82,28 @@ def _write_baseline(path: Path, payload: dict) -> None:
 
 def _baseline_payload(**overrides) -> dict:
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "baseline_kind": "after_main_style_isolation",
         "importable": True,
+        "importable_blockers": [],
         "generated_at": "2026-04-27T08:00:00+08:00",
         "head_sha": "baseline-sha",
+        "collector_argv": [
+            "--baseline-kind",
+            "after_main_style_isolation",
+            "--importable-debt-baseline",
+            "--write-baseline",
+            "audit/2026-04/20260427_full_pytest_p0_debt_baseline.md",
+            "--",
+            "tests",
+            "-q",
+            "--tb=short",
+            "-ra",
+            "-p",
+            "no:cacheprovider",
+        ],
+        "git_status_short_before": [],
+        "worktree_clean_before": True,
         "python_executable": sys.executable,
         "python_version": sys.version.splitlines()[0],
         "pytest_version": "8.0.0",
@@ -509,8 +526,12 @@ def test_import_test_debt_baseline_command_imports_seed_entries(monkeypatch, tmp
 @pytest.mark.parametrize(
     ("payload_update", "expected_message"),
     [
+        ({"schema_version": 999}, "schema_version"),
+        ({"schema_version": "2"}, "schema_version"),
         ({"baseline_kind": "raw_before_isolation"}, "baseline_kind"),
         ({"importable": False}, "importable"),
+        ({"importable": "false"}, "importable"),
+        ({"importable": 1}, "importable"),
         ({"exitstatus": 4}, "pytest_exitstatus"),
     ],
 )
@@ -534,12 +555,48 @@ def test_import_test_debt_baseline_command_rejects_invalid_baseline(
     assert expected_message in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("payload_mutator", "expected_message"),
+    [
+        (lambda payload: payload.pop("schema_version"), "schema_version"),
+        (lambda payload: payload["classifications"].pop("candidate_test_debt"), "classifications"),
+        (lambda payload: payload["classifications"].__setitem__("candidate_test_debt", [""]), "candidate_test_debt"),
+        (lambda payload: payload["summary"]["classification_counts"].__setitem__("candidate_test_debt", "5"), "candidate_test_debt"),
+        (lambda payload: payload["summary"].__setitem__("failed_nodeid_count", "5"), "failed_nodeid_count"),
+        (lambda payload: payload.__setitem__("collected_nodeids", "not-a-list"), "collected_nodeids"),
+        (lambda payload: payload.__setitem__("collection_errors", "not-a-list"), "collection_errors"),
+        (lambda payload: payload.__setitem__("reports", "not-a-list"), "reports"),
+        (lambda payload: payload.__setitem__("worktree_clean_before", False), "worktree_clean_before"),
+    ],
+)
+def test_import_test_debt_baseline_command_rejects_malformed_machine_contract(
+    monkeypatch, tmp_path: Path, capsys, payload_mutator, expected_message: str
+):
+    module = _import_sync_debt_ledger()
+    baseline_path = tmp_path / "malformed_baseline.md"
+    payload = _baseline_payload()
+    payload_mutator(payload)
+    _write_baseline(baseline_path, payload)
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
+
+    rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
+
+    assert rc == 2
+    assert "saved_ledger" not in calls
+    assert expected_message in capsys.readouterr().err
+
+
 def test_import_test_debt_baseline_command_rejects_blocked_classifications(monkeypatch, tmp_path: Path, capsys):
     module = _import_sync_debt_ledger()
     baseline_path = tmp_path / "blocked_baseline.md"
     payload = _baseline_payload()
     payload["classifications"]["required_or_quality_gate_self_failure"] = ["tests/test_run_quality_gate.py::test_self"]
     payload["summary"]["classification_counts"]["required_or_quality_gate_self_failure"] = 1
+    payload["summary"]["failed_nodeid_count"] = 6
     _write_baseline(baseline_path, payload)
     calls = {}
 

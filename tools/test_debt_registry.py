@@ -14,6 +14,12 @@ from .quality_gate_shared import (
 
 BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
 BASELINE_END = "<!-- APS-FULL-PYTEST-BASELINE:END -->"
+BASELINE_SCHEMA_VERSION = 2
+BASELINE_CLASSIFICATION_KEYS = (
+    "candidate_test_debt",
+    "main_style_isolation_candidate",
+    "required_or_quality_gate_self_failure",
+)
 TEST_DEBT_FAMILY = "operator_machine_normalization_contract_drift"
 
 P0_TEST_DEBT_SEED_METADATA: Dict[str, Dict[str, Any]] = {
@@ -89,6 +95,98 @@ def _require_text(value: Any, field_name: str) -> str:
     return text
 
 
+def _require_plain_int(value: Any, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise QualityGateError(f"{field_name} 必须是整数")
+    return value
+
+
+def _require_bool(value: Any, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise QualityGateError(f"{field_name} 必须是布尔值")
+    return value
+
+
+def _require_dict(value: Any, field_name: str) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        raise QualityGateError(f"{field_name} 必须是对象")
+    return cast(Dict[str, Any], value)
+
+
+def _require_list(value: Any, field_name: str) -> List[Any]:
+    if not isinstance(value, list):
+        raise QualityGateError(f"{field_name} 必须是列表")
+    return list(value)
+
+
+def _require_string_list(value: Any, field_name: str, *, allow_empty: bool = True) -> List[str]:
+    raw_values = _require_list(value, field_name)
+    values: List[str] = []
+    for raw_value in raw_values:
+        if not isinstance(raw_value, str) or not raw_value.strip():
+            raise QualityGateError(f"{field_name} 必须只包含非空字符串")
+        values.append(raw_value)
+    if not allow_empty and not values:
+        raise QualityGateError(f"{field_name} 不能为空")
+    return values
+
+
+def _validate_baseline_machine_contract(payload: Dict[str, Any], *, require_importable: bool) -> None:
+    schema_version = _require_plain_int(payload.get("schema_version"), "schema_version")
+    if schema_version != BASELINE_SCHEMA_VERSION:
+        raise QualityGateError(f"schema_version 必须等于 {BASELINE_SCHEMA_VERSION}")
+    if str(payload.get("baseline_kind") or "") != "after_main_style_isolation":
+        raise QualityGateError("baseline_kind 必须是 after_main_style_isolation")
+    importable = _require_bool(payload.get("importable"), "importable")
+    if importable is not require_importable:
+        raise QualityGateError("importable 与当前导入口径不一致")
+    _require_plain_int(payload.get("exitstatus"), "exitstatus")
+    _require_list(payload.get("collected_nodeids"), "collected_nodeids")
+    _require_list(payload.get("collection_errors"), "collection_errors")
+    _require_list(payload.get("reports"), "reports")
+    _require_string_list(payload.get("importable_blockers"), "importable_blockers")
+
+    classifications = _require_dict(payload.get("classifications"), "classifications")
+    if set(classifications) != set(BASELINE_CLASSIFICATION_KEYS):
+        raise QualityGateError("classifications 必须精确包含三类测试债务分类")
+    classification_lists = {
+        key: _require_string_list(classifications.get(key), key)
+        for key in BASELINE_CLASSIFICATION_KEYS
+    }
+
+    summary = _require_dict(payload.get("summary"), "summary")
+    counts = _require_dict(summary.get("classification_counts"), "classification_counts")
+    if set(counts) != set(BASELINE_CLASSIFICATION_KEYS):
+        raise QualityGateError("classification_counts 必须精确包含三类测试债务分类")
+    for key in BASELINE_CLASSIFICATION_KEYS:
+        count = _require_plain_int(counts.get(key), key)
+        if count != len(classification_lists[key]):
+            raise QualityGateError(f"{key} 统计数与实际列表不一致")
+    failed_nodeid_count = _require_plain_int(summary.get("failed_nodeid_count"), "failed_nodeid_count")
+    if failed_nodeid_count != sum(len(values) for values in classification_lists.values()):
+        raise QualityGateError("failed_nodeid_count 与分类列表总数不一致")
+    collection_error_count = _require_plain_int(summary.get("collection_error_count"), "collection_error_count")
+    if collection_error_count != len(_require_list(payload.get("collection_errors"), "collection_errors")):
+        raise QualityGateError("collection_error_count 与 collection_errors 数量不一致")
+    outcome_counts = _require_dict(summary.get("outcome_counts"), "outcome_counts")
+    for key, value in outcome_counts.items():
+        _require_text(key, "outcome_counts.key")
+        _require_plain_int(value, f"outcome_counts.{key}")
+
+    collected_nodeids = _require_string_list(payload.get("collected_nodeids"), "collected_nodeids")
+    if not set(classification_lists["candidate_test_debt"]).issubset(set(collected_nodeids)):
+        raise QualityGateError("candidate_test_debt 必须来自 collected_nodeids")
+
+    if require_importable:
+        if _require_bool(payload.get("worktree_clean_before"), "worktree_clean_before") is not True:
+            raise QualityGateError("worktree_clean_before 必须为 true")
+        if _require_string_list(payload.get("git_status_short_before"), "git_status_short_before") != []:
+            raise QualityGateError("git_status_short_before 必须为空")
+        collector_argv = _require_string_list(payload.get("collector_argv"), "collector_argv", allow_empty=False)
+        if "--importable-debt-baseline" not in collector_argv:
+            raise QualityGateError("collector_argv 必须记录 --importable-debt-baseline")
+
+
 def _classification_list(payload: Dict[str, Any], key: str) -> List[str]:
     classifications = cast(Dict[str, Any], payload.get("classifications") or {})
     return [str(nodeid) for nodeid in list(classifications.get(key) or [])]
@@ -111,12 +209,18 @@ def _collection_error_blocker(payload: Dict[str, Any], summary: Dict[str, Any]) 
 
 
 def _baseline_blockers(payload: Dict[str, Any], *, require_importable: bool) -> List[str]:
+    try:
+        _validate_baseline_machine_contract(payload, require_importable=require_importable)
+    except QualityGateError as exc:
+        return [str(exc)]
     summary = dict(payload.get("summary") or {})
     counts = dict(summary.get("classification_counts") or {})
     blockers = []
     if str(payload.get("baseline_kind") or "") != "after_main_style_isolation":
         blockers.append("baseline_kind")
-    if require_importable and bool(payload.get("importable")) is not True:
+    if require_importable and payload.get("importable") is not True:
+        blockers.append("importable")
+    if not require_importable and payload.get("importable") is not False:
         blockers.append("importable")
     if int(payload.get("exitstatus") or 0) not in {0, 1}:
         blockers.append("pytest_exitstatus")

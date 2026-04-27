@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
 import sys
 import textwrap
@@ -21,6 +22,27 @@ _ORIGINAL_POPEN = subprocess.Popen
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(textwrap.dedent(content).lstrip(), encoding="utf-8")
+
+
+def _init_clean_git_repo(project: Path) -> None:
+    subprocess.run(["git", "init"], cwd=str(project), check=True, capture_output=True, text=True)
+    subprocess.run(["git", "add", "."], cwd=str(project), check=True, capture_output=True, text=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test Runner",
+            "commit",
+            "-m",
+            "test baseline",
+        ],
+        cwd=str(project),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def _write_main_style_conftest(project: Path) -> None:
@@ -112,6 +134,8 @@ def _run_collector(project: Path, *extra_args: str, baseline_kind: str = "raw_be
         "-p",
         "no:cacheprovider",
     ]
+    env = dict(os.environ)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     with _ORIGINAL_POPEN(
         command,
         cwd=str(project),
@@ -119,6 +143,7 @@ def _run_collector(project: Path, *extra_args: str, baseline_kind: str = "raw_be
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
+        env=env,
     ) as proc:
         stdout, stderr = proc.communicate()
     return subprocess.CompletedProcess(command, int(proc.returncode), stdout, stderr)
@@ -195,7 +220,7 @@ def test_collect_full_test_debt_records_nodeids_without_parsing_terminal_text(tm
     assert proc.returncode == payload["exitstatus"]
     assert proc.returncode == 1
     assert "NOISY_STDOUT_SHOULD_NOT_LEAK" not in proc.stdout
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["baseline_kind"] == "raw_before_isolation"
     assert payload["importable"] is False
     assert payload["pytest_args"] == ["tests", "-q", "--tb=short", "-p", "no:cacheprovider"]
@@ -332,6 +357,7 @@ def test_collect_full_test_debt_writes_importable_debt_baseline(tmp_path: Path) 
             assert False, "known debt"
         ''',
     )
+    _init_clean_git_repo(tmp_path)
 
     proc = _run_collector(
         tmp_path,
@@ -345,9 +371,13 @@ def test_collect_full_test_debt_writes_importable_debt_baseline(tmp_path: Path) 
     baseline_text = baseline_path.read_text(encoding="utf-8")
 
     assert proc.returncode == 0
+    assert payload["schema_version"] == 2
     assert payload["exitstatus"] == 1
     assert payload["baseline_kind"] == "after_main_style_isolation"
     assert payload["importable"] is True
+    assert payload["worktree_clean_before"] is True
+    assert payload["git_status_short_before"] == []
+    assert "--importable-debt-baseline" in payload["collector_argv"]
     assert debt_nodeid in payload["classifications"]["candidate_test_debt"]
     assert payload["summary"]["classification_counts"] == {
         "candidate_test_debt": 1,
@@ -392,6 +422,32 @@ def test_collect_full_test_debt_importable_requires_after_isolation_and_output_f
     assert not baseline_path.exists()
 
 
+def test_collect_full_test_debt_importable_requires_clean_worktree(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "audit" / "debt_baseline.md"
+    _write(
+        tmp_path / "tests" / "test_debt_candidate.py",
+        '''
+        def test_debt_candidate():
+            assert False, "known debt"
+        ''',
+    )
+    _init_clean_git_repo(tmp_path)
+    _write(tmp_path / "dirty.txt", "not committed")
+
+    proc = _run_collector(
+        tmp_path,
+        "--importable-debt-baseline",
+        "--write-baseline",
+        str(baseline_path),
+        baseline_kind="after_main_style_isolation",
+    )
+
+    assert proc.returncode == 2
+    assert "dirty_before_baseline" in proc.stderr
+    assert not baseline_path.exists()
+    assert not proc.stdout.strip()
+
+
 def test_collect_full_test_debt_importable_rejects_blocked_classifications(tmp_path: Path) -> None:
     required_path = tmp_path / "required" / "baseline.md"
     pollution_path = tmp_path / "pollution" / "baseline.md"
@@ -405,6 +461,8 @@ def test_collect_full_test_debt_importable_rejects_blocked_classifications(tmp_p
             assert False, "required failure"
         ''',
     )
+    _write(required_path, "STALE IMPORTABLE BASELINE")
+    _init_clean_git_repo(required_project)
     required_proc = _run_collector(
         required_project,
         "--importable-debt-baseline",
@@ -421,6 +479,8 @@ def test_collect_full_test_debt_importable_rejects_blocked_classifications(tmp_p
             raise RuntimeError("AttributeError: __enter__ from subprocess.py Popen")
         ''',
     )
+    _write(pollution_path, "STALE IMPORTABLE BASELINE")
+    _init_clean_git_repo(pollution_project)
     pollution_proc = _run_collector(
         pollution_project,
         "--importable-debt-baseline",
@@ -436,6 +496,8 @@ def test_collect_full_test_debt_importable_rejects_blocked_classifications(tmp_p
         raise RuntimeError("collect boom")
         ''',
     )
+    _write(collection_error_path, "STALE IMPORTABLE BASELINE")
+    _init_clean_git_repo(collection_error_project)
     collection_error_proc = _run_collector(
         collection_error_project,
         "--importable-debt-baseline",
@@ -450,6 +512,12 @@ def test_collect_full_test_debt_importable_rejects_blocked_classifications(tmp_p
     assert "required_or_quality_gate_self_failure" in required_proc.stderr
     assert "main_style_isolation_candidate" in pollution_proc.stderr
     assert "collection_error_count" in collection_error_proc.stderr
+    assert _payload_from_stdout(required_proc)["importable"] is False
+    assert _payload_from_stdout(pollution_proc)["importable"] is False
+    assert _payload_from_stdout(collection_error_proc)["importable"] is False
+    assert "required_or_quality_gate_self_failure" in _payload_from_stdout(required_proc)["importable_blockers"]
+    assert "main_style_isolation_candidate" in _payload_from_stdout(pollution_proc)["importable_blockers"]
+    assert "collection_error_count" in _payload_from_stdout(collection_error_proc)["importable_blockers"]
     assert not required_path.exists()
     assert not pollution_path.exists()
     assert not collection_error_path.exists()
@@ -457,6 +525,9 @@ def test_collect_full_test_debt_importable_rejects_blocked_classifications(tmp_p
 
 def test_collect_full_test_debt_importable_rejects_bad_pytest_invocation(tmp_path: Path) -> None:
     baseline_path = tmp_path / "audit" / "debt_baseline.md"
+    _write(tmp_path / "README.md", "clean repo")
+    _write(baseline_path, "STALE IMPORTABLE BASELINE")
+    _init_clean_git_repo(tmp_path)
     command = [
         sys.executable,
         str(COLLECTOR),
@@ -486,6 +557,8 @@ def test_collect_full_test_debt_importable_rejects_bad_pytest_invocation(tmp_pat
 
     assert proc.returncode == 2
     assert payload["exitstatus"] not in {0, 1}
+    assert payload["importable"] is False
+    assert "pytest_exitstatus" in payload["importable_blockers"]
     assert "pytest_exitstatus" in stderr
     assert not baseline_path.exists()
 
