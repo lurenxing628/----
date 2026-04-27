@@ -1599,32 +1599,109 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 **文件**
 - 修改：`README.md`
 - 修改：`开发文档/README.md`
+- 回填：`.limcode/plans/2026-04-27_full_pytest_p0_test_debt_governance.plan.md`
 
-- [ ] **步骤 1：更新根 README**
+**本任务不改**
+- 不改代码、测试、workflow、baseline 报告。
+- 不改 `开发文档/技术债务治理台账.md` 的受控机器结构块。
+- 不把 5 条已登记测试债务改成 fixed，也不下调 `test_debt.ratchet.max_registered_xfail`。
+
+**停线边界**
+- 如果文档同步必须改代码、workflow、baseline 或台账机器结构块，先停下来重新确认范围。
+- 如果 `tools/check_full_test_debt.py` 或 `scripts/sync_debt_ledger.py check` 失败，先判断是当前文档改动造成，还是已有门禁事实变化；不能把失败包装成“仅文档问题”继续提交。
+- 任务 11 后面没有任务 12，因此不硬造下一个任务头部；执行完成后在任务 11 末尾和 `## 4. 分层验证命令` 前写入 P0 收口说明。
+
+- [x] **步骤 1：更新根 README**
 
 修改 `README.md` 的质量门禁说明：
 - 本地入口仍是 `python scripts/run_quality_gate.py`。
 - CI 入口是 `python scripts/run_quality_gate.py --require-clean-worktree`。
 - 门禁包含 full-test-debt proof，但 proof 的意思是“没有未登记 full pytest 失败”，不是“历史债务已全部修完”。
+- `collect-only` 只列出测试，不执行 full pytest；`tests/regression` 是专项回归；`pytest tests` 才是直接执行全量测试。
 
-- [ ] **步骤 2：更新开发文档 README**
+执行结果：
+- `README.md` 已补充干净工作区 / 托管入口 `python scripts/run_quality_gate.py --require-clean-worktree`。
+- 已写清 `collect-only` 只列测试，不等于执行 full pytest。
+- 已写清 full-test-debt proof 证明“没有未登记的 full pytest 失败，已登记债务被台账管住并只能减少”，不是证明 5 条历史测试债务已经修完。
+
+- [x] **步骤 2：更新开发文档 README**
 
 修改 `开发文档/README.md`：
 - 增加 `test_debt` 登记规则。
 - 增加 main-style 回归统一子进程执行规则。
 - 明确新增 main-style 回归继续优先放 `tests/regression/`。
 - 明确 `pytest tests` 的全量结果通过 `tools/check_full_test_debt.py` 纳入门禁。
+- 明确测试债务修好后用 `python scripts/sync_debt_ledger.py mark-test-debt-fixed --debt-id ...` 标成 fixed，不手删台账条目。
+- 明确 `test_debt.ratchet.max_registered_xfail` 等于当前 active xfail 数，修掉一条后要同步下降。
 
-- [ ] **步骤 3：运行文档相关验证**
+执行结果：
+- `开发文档/README.md` 已补充 `python tools/check_full_test_debt.py` 在门禁固定顺序中的位置。
+- 已把“三类治理数据”改成当前真实口径：治理台账当前包含超长文件、高复杂度、静默回退、测试债务和接受风险。
+- 已写清测试债务修好后走 `mark-test-debt-fixed`，并写清 active xfail 数必须等于 `test_debt.ratchet.max_registered_xfail`。
+- 已写清 main-style 回归继续优先放 `tests/regression/`，由子进程执行；辅助 runner 不要命名成 `regression_*.py`。
+
+- [x] **步骤 3：运行文档旧口径扫描**
+
+运行：
+
+```bash
+rg -n "三类治理数据|collect-only|full pytest|check_full_test_debt|mark-test-debt-fixed|只减不增|未登记" README.md 开发文档/README.md
+```
+
+预期：只保留新口径解释，不再出现“collect-only 等于 full pytest 已执行”或“三类治理数据”的旧口径。
+
+结果：通过。扫描命中均为新口径解释，未再出现“三类治理数据”，也未出现“collect-only 等于 full pytest 已执行”的旧说法。
+
+- [x] **步骤 4：运行文档和门禁相关验证**
 
 运行：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/check_quickref_vs_routes.py
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py --tb=short -p no:cacheprovider
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+git diff --check
 ```
 
 预期：通过。
+
+结果：
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/check_quickref_vs_routes.py`：通过，输出 `OK`。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py --tb=short -p no:cacheprovider`：通过，`24 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：通过，`active_xfail_count=5`、`fixed_count=0`、`max_registered_xfail=5`、`collected_count=668`、`collection_error_count=0`、`unexpected_failure_count=0`。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`schema_version=2`、`test_debt_count=5`。
+- `git diff --check`：通过。
+
+- [x] **步骤 5：子代理复审、修复问题并提交后跑 clean gate**
+
+复审要求：
+- 文档复审：确认文案没有把 full-test-debt proof 写成“历史债务已修完”。
+- 边界复审：确认没有改代码、workflow、baseline、台账机器结构块，并确认本计划已回填。
+
+提交后运行：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+预期：通过，最后输出 `质量门禁通过`。
+
+复审结果：
+- 文档复审通过：确认文案没有把 full-test-debt proof 写成“历史测试债务已修完”，`collect-only`、full pytest 执行和 `tools/check_full_test_debt.py` 的关系表达清楚。
+- 边界复审通过：当前未提交改动仅限 `README.md`、`开发文档/README.md` 和本计划文件；没有改代码、测试、workflow、baseline、`开发文档/技术债务治理台账.md`，也没有硬造任务 12。
+- 复审未提出需要修复的问题。
+
+说明：提交后 clean gate 必须在干净工作区运行。本计划先记录提交前全部文档改动、验证和复审结果；最终提交后的 clean gate 结果在本轮交付说明中回报，避免为了记录“提交后验证结果”再次制造新的文档改动。
+
+**P0 收口说明**
+- 任务 11 已完成入口文档同步：根 README 和开发文档 README 都已写清 `collect-only` 只列测试，不等于执行 full pytest；full-test-debt proof 由 `python tools/check_full_test_debt.py` 完成，证明当前没有未登记的 full pytest 失败，且已登记测试债务受台账和只减不增规则约束。
+- 文档已写清当前 5 条 full pytest 测试债务仍是 active xfail，`fixed_count=0`，`max_registered_xfail=5`；本任务没有把它们伪装成已修完，也没有改成 fixed。
+- 文档已写清测试债务修好后的关闭动作：通过 `python scripts/sync_debt_ledger.py mark-test-debt-fixed --debt-id ...` 标成 fixed，并随剩余 active xfail 数同步下调 ratchet。
+- 文档已写清 main-style 回归继续优先放 `tests/regression/`，由子进程隔离执行，辅助 runner 不要命名成 `regression_*.py`。
+- 本任务没有修改代码、测试、workflow、baseline 报告，也没有修改 `开发文档/技术债务治理台账.md` 的受控机器结构块。
+- 提交前验证已通过：文档旧口径扫描、速查表一致性检查、`tests/test_run_quality_gate.py`、`tools/check_full_test_debt.py`、`scripts/sync_debt_ledger.py check`、`git diff --check`。
+- 提交前只读复审已通过：文档含义无问题，改动边界无问题，原计划已回填执行结果。
 
 ---
 

@@ -56,7 +56,15 @@ python -m pre_commit install
 python scripts/run_quality_gate.py
 ```
 
-这个入口会统一串联测试收集、`ruff`、`pyright`、架构适应度、治理台账、启动链专项回归和速查表一致性检查。本地与托管环境都以这条入口为准。
+干净工作区或托管环境使用：
+
+```powershell
+python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+这个入口会统一串联测试收集、full-test-debt proof、`ruff`、`pyright`、架构适应度、治理台账、启动链专项回归和速查表一致性检查。本地与托管环境都以这条入口为准。
+
+full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败，已登记的 full pytest 测试债务被台账管住，并且数量只能减少。它不是说历史 5 条测试债务已经全部修完。
 
 常用定向命令：
 
@@ -71,6 +79,9 @@ python -m pyright -p pyrightconfig.json
 
 补充说明：
 
+- `python -m pytest --collect-only tests -q` 只列出测试，不执行 full pytest。
+- `python -m pytest tests/regression -q` 用于专项回归；`python -m pytest tests -q` 是直接执行全量测试。
+- 质量门禁里的 full pytest 收口检查由 `python tools/check_full_test_debt.py` 完成，它会对照治理台账确认没有新的未登记失败。
 - `requirements-dev.txt` 固定声明本地开发与托管检查共用的依赖口径。
 - `ruff` 版本口径为 `>=0.15,<0.16`。
 - `pyright` 版本固定为 `==1.1.406`。
