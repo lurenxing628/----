@@ -608,32 +608,128 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright \
 - `audit/2026-04/20260427_full_pytest_p0_after_isolation_baseline.md` 只作任务 2/3 交接证据，不能直接导入台账；该文件的 `head_sha` 不是任务 4 执行时的新 HEAD。
 - 任务 3 已确认 required/proof 当前普通通过；后续不得把 `QUALITY_GATE_REQUIRED_TESTS` 覆盖的 nodeid 导入 `candidate_test_debt` 候选债务或登记为 `mode=xfail`。
 - 任务 4 必须重新生成正式基线，并显式校验 `required_or_quality_gate_self_failure=0`、`main_style_isolation_candidate=0`。
+- 只读复验当前 HEAD 时，full pytest 采集仍为 5 个候选债务，且 `required_or_quality_gate_self_failure=0`、`main_style_isolation_candidate=0`、`head_sha` 对上当前提交；该结果只作为任务 4 细化依据，正式结果以后续新基线为准。
+- 5 个调查 / 对抗审查 subagent 的结论一致：当前采集器只有“隔离后对比基线”，没有“正式可导入基线”的机器合同；因此任务 4 不能只重跑旧命令。
 
 **目标**
-- 在 main-style 污染消除、required/proof 自身测试通过之后，重新生成可导入债务的正式基线。
+- 在 main-style 污染消除、required/proof 自身测试通过之后，补齐“可导入债务正式基线”的机器合同，并重新生成当前 HEAD 下的正式 full pytest 债务基线。
+- 正式基线必须诚实记录 full pytest 原始退出码仍为 1，同时用 `importable=true` 表示“剩余失败已经全部归入候选测试债务，可交给任务 5 导入台账”。
 
 **文件**
+- 修改：`tools/collect_full_test_debt.py`
+- 修改：`tests/test_full_test_debt_registry_contract.py`
 - 新建：`audit/2026-04/20260427_full_pytest_p0_debt_baseline.md`
-- 使用 / 验证：`tools/collect_full_test_debt.py`
+- 修改：`.limcode/plans/2026-04-27_full_pytest_p0_test_debt_governance.plan.md`
 
-- [ ] **步骤 1：生成正式基线**
+- [x] **步骤 1：写正式可导入基线合同测试**
+
+在 `tests/test_full_test_debt_registry_contract.py` 增加测试，覆盖：
+- 新参数 `--importable-debt-baseline` 能生成 `importable=true` 的正式 baseline。
+- 普通 `--baseline-kind after_main_style_isolation` 仍保持 `importable=false`，并继续写“不能导入”的说明。
+- `--importable-debt-baseline` 只能和 `--baseline-kind after_main_style_isolation`、`--write-baseline` 一起使用。
+- required/proof 分类、main-style 污染分类、collection error 任一非 0 时，命令退出 `2`，且不写正式 baseline。
+- 正式 baseline 的机器块可解析，`summary` 和 `classifications` 与 stdout payload 一致。
+
+运行：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py --tb=short -p no:cacheprovider
+```
+
+预期：先失败，原因是采集器还没有 `--importable-debt-baseline`。
+
+- [x] **步骤 2：实现正式可导入基线合同**
+
+修改 `tools/collect_full_test_debt.py`：
+- 新增 `--importable-debt-baseline` 参数。
+- 该参数必须同时满足 `--baseline-kind after_main_style_isolation` 与 `--write-baseline`，否则直接退出 `2`。
+- 带该参数时，payload 写 `importable=true`，Markdown 标题为 `Full pytest P0 debt baseline`，说明写明“可作为任务 5 导入测试债务台账的正式输入”。
+- 不带该参数时，现有 `after_main_style_isolation` 行为不变，继续 `importable=false`，继续标明“不允许导入债务台账”。
+- 带该参数时，如果 `required_or_quality_gate_self_failure`、`main_style_isolation_candidate` 或 `collection_error_count` 任一非 0，命令退出 `2`，不写正式 baseline。
+- 带该参数且只剩已分类候选债务时，命令返回 `0`；payload 里的 `exitstatus` 仍保留 pytest 原始退出码。
+
+- [x] **步骤 3：重新运行合同测试与静态验证**
+
+运行：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py --tb=short -p no:cacheprovider
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m py_compile tools/collect_full_test_debt.py tests/test_full_test_debt_registry_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/collect_full_test_debt.py tests/test_full_test_debt_registry_contract.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright tools/collect_full_test_debt.py tests/test_full_test_debt_registry_contract.py
+```
+
+预期：全部通过。
+
+- [x] **步骤 4：生成正式基线**
 
 运行：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/collect_full_test_debt.py \
   --baseline-kind after_main_style_isolation \
+  --importable-debt-baseline \
   --write-baseline audit/2026-04/20260427_full_pytest_p0_debt_baseline.md \
   -- tests -q --tb=short -ra -p no:cacheprovider
 ```
 
 预期：
+- 命令退出码为 `0`。
 - 基线包含机器可读 JSON 结构块。
 - 基线标注 `baseline_kind = "after_main_style_isolation"`。
+- 基线标注 `importable = true`。
+- payload 中的 `exitstatus = 1`，表示 full pytest 仍有已知历史失败。
+- `head_sha` 等于当前 `git rev-parse HEAD`。
 - required/proof nodeid 不在 `candidate_test_debt` 中。
+- `required_or_quality_gate_self_failure=0`。
+- `main_style_isolation_candidate=0`。
+- `collection_error_count=0`。
+- `candidate_test_debt=5`，且 nodeid 精确等于任务 2/3 移交的 5 条。
 - 如果剩余失败数为 0，后续 `test_debt.entries` 为空，`max_registered_xfail=0`。
 
+- [x] **步骤 5：写入 5 条候选债务归因摘要**
+
+正式基线生成后，在本任务执行结果里写清以下 5 条候选债务，任务 5 导入时不得写 `untriaged` 占位：
+
+| nodeid | domain | style | root.module | root.function | owner | exit_condition |
+|---|---|---|---|---|---|---|
+| `tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error` | `personnel.operator_machine` | `stale_patch_target` | `core.services.personnel.operator_machine_normalizers` | `normalize_skill_level_optional` | `personnel.operator_machine` | 更新测试 patch 目标或改成公开入口验证，让该 nodeid 定向 pytest 普通通过，并从正式 full pytest 债务基线移除。 |
+| `tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error` | `personnel.operator_machine` | `stale_patch_target` | `core.services.personnel.operator_machine_normalizers` | `normalize_skill_level_stored` | `personnel.operator_machine` | 更新测试 patch 目标或改成公开入口验证，让该 nodeid 定向 pytest 普通通过，并从正式 full pytest 债务基线移除。 |
+| `tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors` | `personnel.operator_machine` | `stale_patch_target` | `core.services.personnel.operator_machine_service` | `list_by_operator` | `personnel.operator_machine` | 更新读侧异常传播测试的 patch 目标，让该 nodeid 定向 pytest 普通通过，并从正式 full pytest 债务基线移除。 |
+| `tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error` | `personnel.operator_machine` | `return_contract_drift` | `core.services.personnel.operator_machine_service` | `_resolve_write_values` | `personnel.operator_machine` | 按当前“返回旧值和错误消息、调用方跳过写入”的合同更新测试，或先改实现再同步测试；该 nodeid 定向 pytest 普通通过后，从正式 full pytest 债务基线移除。 |
+| `tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows` | `personnel.operator_machine` | `readside_normalization_contract_drift` | `core.services.personnel.operator_machine_query_service` | `OperatorMachineQueryService._normalize_row` | `personnel.operator_machine` | 更新测试，明确断言归一化后的 `skill_level/is_primary` 以及 `dirty_fields/dirty_reasons`；该 nodeid 定向 pytest 普通通过后，从正式 full pytest 债务基线移除。 |
+
+共同归因：`debt_family=operator_machine_normalization_contract_drift`。后续登记和 xfail 必须按精确 nodeid 拆 5 条，不能只登记 family。
+
+- [x] **步骤 6：审查、回填与任务 5 承接**
+
+要求：
+- 调用只读 subagent 做需求符合性审查，确认没有提前实现任务 5/6/8，没有修改台账 schema、pytest xfail、quality gate proof 或 workflow。
+- 调用只读 subagent 做代码质量审查，确认正式基线合同没有破坏 raw / after-isolation 旧口径。
+- 审查不过先修复，再重新审查。
+- 审查通过后，在本任务下补写执行结果；同时在任务 5 头部写清任务 4 生成了什么、5 条候选债务分别是什么、任务 5 只能接正式 baseline。
+
+**任务 4 执行结果（任务 5 承接用）**
+- 状态：已完成。任务 4 已补上正式可导入 full pytest 债务基线的机器合同，生成当前 HEAD 下的新正式 baseline，并把 5 条候选债务的归因写清楚。
+- 实际改动范围：修改 `tools/collect_full_test_debt.py`、`tests/test_full_test_debt_registry_contract.py`、`.limcode/plans/2026-04-27_full_pytest_p0_test_debt_governance.plan.md`；新建 `audit/2026-04/20260427_full_pytest_p0_debt_baseline.md`。未修改 `开发文档/技术债务治理台账.md`、`tools/quality_gate_ledger.py`、`scripts/sync_debt_ledger.py`、`tests/conftest.py`、`tools/quality_gate_shared.py`、`.github/workflows/quality.yml`。
+- 合同结果：`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py --tb=short -p no:cacheprovider` 最终结果为 `9 passed in 1.61s`。其中新增合同确认：普通 `after_main_style_isolation` 仍 `importable=false`；只有 `--importable-debt-baseline` 才会产出 `importable=true`；required/proof、main-style 污染、collection error 任一存在时，正式 baseline 直接拒绝写入；pytest 参数错误等非预期退出码也会拒绝写入正式 baseline。
+- 静态验证：`py_compile` 通过；`ruff check` 通过；`pyright` 为 `0 errors, 0 warnings, 0 informations`。
+- 正式 baseline：`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/collect_full_test_debt.py --baseline-kind after_main_style_isolation --importable-debt-baseline --write-baseline audit/2026-04/20260427_full_pytest_p0_debt_baseline.md -- tests -q --tb=short -ra -p no:cacheprovider` 退出码为 `0`；payload 中 `exitstatus=1`，表示 full pytest 仍有已知历史失败。
+- 正式 baseline 机器块校验：`head_sha=ee96b3248a2bdf8abf48a5c5eba8d152379c8fdf`，与当前 `git rev-parse HEAD` 一致；`baseline_kind=after_main_style_isolation`；`importable=true`；`collected_count=588`；`failed_nodeid_count=5`；`classification_counts={"candidate_test_debt": 5, "main_style_isolation_candidate": 0, "required_or_quality_gate_self_failure": 0}`；`collection_error_count=0`。
+- 5 条候选债务：`tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors`、`tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error`、`tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error`、`tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error`、`tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows`。
+- 归因结论：5 条都属于 `personnel.operator_machine`，共同 `debt_family=operator_machine_normalization_contract_drift`，但任务 5 必须按精确 nodeid 拆成 5 条登记；其中 3 条是 `stale_patch_target`，1 条是 `return_contract_drift`，1 条是 `readside_normalization_contract_drift`。
+- 任务 5 接口：只能读取 `audit/2026-04/20260427_full_pytest_p0_debt_baseline.md` 的机器块；不得读取旧的 `audit/2026-04/20260427_full_pytest_p0_after_isolation_baseline.md`；不得给任何条目写 `untriaged` 占位；不得把 required/proof 测试登记为 xfail。
+- 审查与返修：需求符合性审查通过。代码质量审查发现正式模式会把 pytest 参数错误误判成可导入 baseline，已补 `pytest_exitstatus` 禁入合同并复跑通过。
+- 停线状态：未触发 required/proof 禁入、main-style 污染、collection error、workflow 修改或业务层修改。新增条件分支都属于本任务已说明的“正式 baseline 参数校验 / 禁入分类与 pytest 异常退出显式失败合同”。
+
 ### 任务 5：把测试债务并入现有治理台账
+
+**任务 4 承接说明**
+- 任务 4 已生成正式可导入 baseline：`audit/2026-04/20260427_full_pytest_p0_debt_baseline.md`。
+- 这份正式 baseline 当前 `importable=true`，`required_or_quality_gate_self_failure=0`，`main_style_isolation_candidate=0`，`candidate_test_debt=5`，`collection_error_count=0`。
+- 任务 5 只能从这份正式 baseline 的机器块读取候选债务；不得直接导入 `audit/2026-04/20260427_full_pytest_p0_after_isolation_baseline.md`，因为那份文件是 `importable=false` 的任务 2/3 交接证据。
+- 5 条候选债务都属于 `personnel.operator_machine`，可共享 `debt_family=operator_machine_normalization_contract_drift`，但必须按精确 nodeid 分 5 条登记。
+- 任务 5 导入前必须填好 `domain`、`style`、`root.module`、`root.function`、`owner`、`exit_condition`；不允许写 `untriaged` 占位。
 
 **目标**
 - 不另起第二套债务事实源；nodeid 级测试债务进入 `开发文档/技术债务治理台账.md` 的受控 JSON。
