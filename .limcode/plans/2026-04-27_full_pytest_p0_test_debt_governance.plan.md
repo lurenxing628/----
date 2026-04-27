@@ -1490,67 +1490,108 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - 任务 9 的聚焦验证已通过：`87 passed`、`tools/check_full_test_debt.py` 通过、`scripts/sync_debt_ledger.py check` 通过、`ruff` 通过、改动文件 `pyright` 通过、`git diff --check` 通过。
 - 任务 9 提交后已在干净工作区补跑 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`，结果通过，最后输出 `质量门禁通过`。
 
+**任务 10 已完成结果**
+- 任务 10 已把“只减不增”从口头规则变成台账和门禁都会检查的硬规则：正式台账里的 active xfail 数必须等于 `test_debt.ratchet.max_registered_xfail`，不能多登记，也不能留下宽松余量。
+- 已新增 `python scripts/sync_debt_ledger.py mark-test-debt-fixed --debt-id ...`。以后某条测试债务真的修好后，先用这个命令把对应条目标成 `fixed`，命令会更新时间并按剩余 active xfail 数重算 ratchet。
+- `fixed` 条目会保留在 `test_debt.entries` 里作为关闭痕迹，但它不再属于 active xfail，也不会被 pytest 自动标成 xfail。`tools/check_full_test_debt.py` 会要求 fixed nodeid 被收集到、普通通过，并且没有任何 xfail 标记痕迹，包括空 reason 的 xfail 标记。
+- 本任务没有修那 5 条业务测试，没有修改正式台账、README、开发文档 README、GitHub Actions 或 baseline 报告。当前正式台账仍是 5 条 active xfail，`fixed_count=0`，`max_registered_xfail=5`。
+- 对抗复审发现一个真实缺口：fixed proof 原来只看 xfail reason，可能漏掉空 reason 的 xfail 标记。已通过 `xfail_marker_present` 显式字段修复，并补测试确认空 reason xfail 也会被抓住。
+
 **目标**
-- 从 P0 完成后开始，已登记 xfail 数只能减少，不能增加。
+- 从 P0 完成后开始，已登记 active xfail 数只能减少，不能增加；修掉一条后，ratchet 必须同步下降。
 
 **文件**
+- 修改：`tools/quality_gate_ledger.py`
 - 修改：`tools/test_debt_registry.py`
+- 修改：`tools/collect_full_test_debt.py`
 - 修改：`tools/check_full_test_debt.py`
 - 修改：`scripts/sync_debt_ledger.py`
 - 测试：`tests/test_full_test_debt_registry_contract.py`
+- 测试：`tests/test_check_full_test_debt.py`
+- 测试：`tests/test_sync_debt_ledger.py`
 
-- [ ] **步骤 1：写 ratchet 合同测试**
+- [x] **步骤 1：写 ratchet / fixed 红灯测试**
 
-在 `tests/test_full_test_debt_registry_contract.py` 增加：
+已补测试覆盖：
 
-```python
-def test_test_debt_ratchet_rejects_growth_and_fixed_entries():
-    ...
+- `tests/test_full_test_debt_registry_contract.py`：active xfail 数小于或大于 `max_registered_xfail` 都必须失败；空 reason 的 xfail 标记也会被 collector 记录成 `xfail_marker_present=true`。
+- `tests/test_check_full_test_debt.py`：fixed 条目必须被 collect 到、必须普通 passed、不能继续带 xfail marker / wasxfail / XPASS 痕迹；active xfail 数和 ratchet 不一致必须失败。
+- `tests/test_sync_debt_ledger.py`：`mark-test-debt-fixed` 成功路径、未知 debt_id、重复 debt_id、已经 fixed、ratchet 失真时失败且不保存。
+
+- [x] **步骤 2：确认测试先失败**
+
+运行任务 10 相关测试后先得到红灯：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py tests/test_check_full_test_debt.py tests/test_sync_debt_ledger.py --tb=short -p no:cacheprovider
 ```
 
-断言：
-- `entries` 中 `mode=xfail` 数量大于 `ratchet.max_registered_xfail` 时失败。
-- 删除一个 xfail entry 后，必须降低 `max_registered_xfail`。
-- `mode=fixed` 条目不能长期留在 registry 中。
+结果：`8 failed, 81 passed`。失败集中在：
+- ratchet 只有“不能超过上限”，还没要求精确等于 active xfail 数。
+- fixed 条目没有要求普通通过。
+- `mark-test-debt-fixed` 命令不存在。
 
-- [ ] **步骤 2：确认测试先失败**
+- [x] **步骤 3：实现 ratchet / fixed 闭环**
+
+实际实现：
+- `tools/quality_gate_ledger.py`：正式台账校验改成 `active_xfail_count == max_registered_xfail`，不允许留增长空位。
+- `tools/test_debt_registry.py`：新增 `mark_test_debt_fixed()`，按唯一 debt_id 找到 active xfail，改成 fixed，更新 `last_verified_at`，并按剩余 active xfail 数重算 ratchet。
+- `scripts/sync_debt_ledger.py`：新增 `mark-test-debt-fixed --debt-id ...` 命令；命令只读当前正式台账，不读 baseline，不碰 seed metadata；失败时不保存。
+- `tools/collect_full_test_debt.py`：报告新增 `xfail_marker_present`，避免空 reason 的 xfail 标记被误判成无 xfail。
+- `tools/check_full_test_debt.py`：fixed proof 要求 fixed nodeid 被 collect 到、有普通 passed 报告、没有 xfail marker、没有 wasxfail、没有 strict XPASS。
+
+新增命令形态：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py mark-test-debt-fixed --debt-id <debt-id>
+```
+
+成功后摘要会包含 `debt_id`、`nodeid`、`previous_max_registered_xfail`、`next_max_registered_xfail`、`active_xfail_count`、`fixed_count`、`updated_at`。
+
+- [x] **步骤 4：重新运行 ratchet 合同和门禁证明**
 
 运行：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py --tb=short -p no:cacheprovider
-```
-
-预期：因为 ratchet 还没有校验而失败。
-
-- [ ] **步骤 3：实现 ratchet**
-
-在 `tools/test_debt_registry.py` 和 `tools/check_full_test_debt.py` 中执行 ratchet 校验。发现增长直接报错。
-
-在 `scripts/sync_debt_ledger.py` 中增加命令：
-
-```bash
-python scripts/sync_debt_ledger.py mark-test-debt-fixed --debt-id TEST-DEBT-001
-```
-
-该命令只做两件事：
-- 把对应 entry 标成 `fixed`。
-- 把 `ratchet.max_registered_xfail` 下调 1。
-
-`ratchet.max_registered_xfail` 初始值必须由导入后的 `mode=xfail` 数量生成，不能手写 36 或 41。
-
-- [ ] **步骤 4：重新运行 ratchet 合同**
-
-运行：
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py --tb=short -p no:cacheprovider
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py tests/test_check_full_test_debt.py tests/test_sync_debt_ledger.py --tb=short -p no:cacheprovider
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/quality_gate_ledger.py tools/test_debt_registry.py tools/check_full_test_debt.py tools/collect_full_test_debt.py scripts/sync_debt_ledger.py tests/test_full_test_debt_registry_contract.py tests/test_check_full_test_debt.py tests/test_sync_debt_ledger.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright tools/quality_gate_ledger.py tools/test_debt_registry.py tools/check_full_test_debt.py tools/collect_full_test_debt.py scripts/sync_debt_ledger.py
+git diff --check
 ```
 
-预期：通过。
+结果：
+- 任务 10 相关测试：`91 passed`。
+- `tools/check_full_test_debt.py`：通过，`active_xfail_count=5`、`fixed_count=0`、`max_registered_xfail=5`、`collected_count=668`、`collection_error_count=0`、`unexpected_failure_count=0`。
+- `scripts/sync_debt_ledger.py check`：通过，`schema_version=2`、`test_debt_count=5`。
+- `ruff check`：通过。
+- `pyright`：`0 errors, 0 warnings, 0 informations`。
+- `git diff --check`：通过。
+
+- [x] **步骤 5：子代理复审、修复审查问题并最终 clean gate**
+
+子代理复审结果：
+- 测试覆盖复审：通过。确认成功、未知 id、重复 id、已 fixed、ratchet 失真不保存、active 少于/多于 max 失败、fixed 未收集/未普通通过/仍带 xfail 痕迹失败都已覆盖。
+- 提交边界复审：通过。确认没有混入 README、开发文档 README、`.github/workflows`、正式台账或 baseline 报告。
+- 实现复审：先发现 fixed proof 对空 reason xfail 标记不够硬；已补 `xfail_marker_present` 并复审通过。
+
+代码和测试提交后，在干净工作区运行：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+```
+
+结果：通过，最后输出 `质量门禁通过`。门禁里的 `python tools/check_full_test_debt.py` 再次确认 `active_xfail_count=5`、`fixed_count=0`、`max_registered_xfail=5`、`collected_count=668`。
 
 ### 任务 11：文档同步
+
+**任务 10 承接说明**
+- 任务 10 已建立 full-test-debt 的只减不增规则：正式台账里的 active xfail 数必须等于 `test_debt.ratchet.max_registered_xfail`，不能多登记，也不能保留宽松余量。
+- 已新增 `python scripts/sync_debt_ledger.py mark-test-debt-fixed --debt-id ...`。后续修掉某条测试债务时，应先用该命令把条目标成 fixed，并同步下调 ratchet。
+- fixed 条目不是“口头说修好了”即可通过，`tools/check_full_test_debt.py` 会要求它被 collect 到、有普通 passed 报告，并且没有任何 xfail 标记痕迹。
+- 当前正式台账仍是 5 条 active xfail，`fixed_count=0`，`max_registered_xfail=5`；任务 10 没有修改正式台账，也没有修改 README、开发文档 README、workflow 或 baseline 报告。
+- 任务 11 只做文档同步，不再改 ratchet 代码，不再改台账机器块，不修 5 条业务测试。文档要说清楚：full-test-debt proof 证明“没有未登记的 full pytest 失败，并且已登记债务只减不增”，不是证明历史债务已经全部修完。
 
 **目标**
 - 让 README 和开发文档不再暗示“collect-only 等于 full pytest 已执行”。
