@@ -35,7 +35,6 @@ import json
 import sys
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # Frontmatter parsing  (PyYAML used when available, builtin fallback otherwise)
 # ---------------------------------------------------------------------------
