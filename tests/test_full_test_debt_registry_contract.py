@@ -243,6 +243,90 @@ def test_collect_full_test_debt_records_nodeids_without_parsing_terminal_text(tm
     assert "tests/regression_x.py::regression_x" in payload["classifications"]["main_style_isolation_candidate"]
 
 
+def test_collect_full_test_debt_records_structured_xfail_reason(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "tests" / "test_xfail_reason.py",
+        '''
+        import pytest
+
+
+        @pytest.mark.xfail(reason="test-debt:sample: 旧测试合同尚未更新", strict=True)
+        def test_registered_debt_still_fails():
+            assert False
+        ''',
+    )
+
+    proc = _run_collector(tmp_path, baseline_kind="after_main_style_isolation")
+    payload = _payload_from_stdout(proc)
+    call_report = next(
+        report
+        for report in payload["reports"]
+        if report["nodeid"] == "tests/test_xfail_reason.py::test_registered_debt_still_fails"
+        and report["when"] == "call"
+    )
+
+    assert call_report["outcome"] == "skipped"
+    assert call_report["xfail_marker_reason"] == "test-debt:sample: 旧测试合同尚未更新"
+    assert call_report["xfail_marker_strict"] is True
+    assert call_report["wasxfail_reason"] == "test-debt:sample: 旧测试合同尚未更新"
+    assert call_report["strict_xpass"] is False
+
+
+def test_collect_full_test_debt_records_strict_xpass_without_text_guessing(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "tests" / "test_xpass.py",
+        '''
+        import pytest
+
+
+        @pytest.mark.xfail(reason="test-debt:sample: 旧测试合同尚未更新", strict=True)
+        def test_registered_debt_is_now_fixed():
+            assert True
+        ''',
+    )
+
+    proc = _run_collector(tmp_path, baseline_kind="after_main_style_isolation")
+    payload = _payload_from_stdout(proc)
+    call_report = next(
+        report
+        for report in payload["reports"]
+        if report["nodeid"] == "tests/test_xpass.py::test_registered_debt_is_now_fixed" and report["when"] == "call"
+    )
+
+    assert proc.returncode == payload["exitstatus"]
+    assert call_report["outcome"] == "failed"
+    assert call_report["xfail_marker_reason"] == "test-debt:sample: 旧测试合同尚未更新"
+    assert call_report["xfail_marker_strict"] is True
+    assert call_report["wasxfail_reason"] == ""
+    assert call_report["strict_xpass"] is True
+
+
+def test_collect_full_test_debt_keeps_plain_skip_separate_from_debt_xfail(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "tests" / "test_plain_skip.py",
+        '''
+        import pytest
+
+
+        @pytest.mark.skip(reason="ordinary skip")
+        def test_plain_skip():
+            assert False
+        ''',
+    )
+
+    proc = _run_collector(tmp_path, baseline_kind="after_main_style_isolation")
+    payload = _payload_from_stdout(proc)
+    skipped_report = next(
+        report
+        for report in payload["reports"]
+        if report["nodeid"] == "tests/test_plain_skip.py::test_plain_skip" and report["outcome"] == "skipped"
+    )
+
+    assert skipped_report["xfail_marker_reason"] == ""
+    assert skipped_report["wasxfail_reason"] == ""
+    assert skipped_report["strict_xpass"] is False
+
+
 def test_collect_full_test_debt_records_collection_errors_and_exitstatus(tmp_path: Path) -> None:
     _write(
         tmp_path / "tests" / "test_collect_error.py",

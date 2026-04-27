@@ -213,6 +213,73 @@ def test_quality_gate_binding_status_accepts_clean_proof_manifest(monkeypatch, t
     assert replayed == [[command["display"] for command in shared.build_quality_gate_command_plan()]]
 
 
+def test_quality_gate_binding_status_replays_full_test_debt_proof_command(monkeypatch, tmp_path) -> None:
+    module = _load_module()
+    shared = _load_shared_module()
+    repo_root = tmp_path / "repo"
+    _write_verified_manifest(repo_root)
+    replayed = []
+    monkeypatch.setattr(
+        shared,
+        "replay_quality_gate_command_plan",
+        lambda repo_root, commands, **_kwargs: replayed.append([command["display"] for command in commands]) or None,
+    )
+    monkeypatch.setattr(shared, "git_status_short_lines", lambda repo_root: [])
+
+    ok, note, _manifest_rel = module._quality_gate_binding_status(repo_root, "deadbeef", [])
+
+    assert ok is True
+    assert note == "BOUND"
+    assert "python tools/check_full_test_debt.py" in replayed[0]
+
+
+def test_quality_gate_binding_status_rejects_missing_full_test_debt_receipt(monkeypatch, tmp_path) -> None:
+    module = _load_module()
+    shared = _load_shared_module()
+    repo_root = tmp_path / "repo"
+    manifest_path = _write_verified_manifest(repo_root)
+    monkeypatch.setattr(shared, "replay_quality_gate_command_plan", lambda repo_root, commands, **_kwargs: None)
+    monkeypatch.setattr(shared, "git_status_short_lines", lambda repo_root: [])
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    display_to_receipt = {
+        command["display"]: receipt
+        for command, receipt in zip(manifest["commands"], manifest["command_receipts"])
+    }
+    receipt_path = repo_root / display_to_receipt["python tools/check_full_test_debt.py"]["path"]
+    receipt_path.unlink()
+
+    ok, note, _manifest_rel = module._quality_gate_binding_status(repo_root, "deadbeef", [])
+
+    assert ok is False
+    assert "command receipt missing" in note
+
+
+def test_quality_gate_binding_status_rejects_tampered_full_test_debt_receipt_hash(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    module = _load_module()
+    shared = _load_shared_module()
+    repo_root = tmp_path / "repo"
+    manifest_path = _write_verified_manifest(repo_root)
+    monkeypatch.setattr(shared, "replay_quality_gate_command_plan", lambda repo_root, commands, **_kwargs: None)
+    monkeypatch.setattr(shared, "git_status_short_lines", lambda repo_root: [])
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    display_to_receipt = {
+        command["display"]: receipt
+        for command, receipt in zip(manifest["commands"], manifest["command_receipts"])
+    }
+    receipt_path = repo_root / display_to_receipt["python tools/check_full_test_debt.py"]["path"]
+    receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt_payload["stdout_sha256"] = "0" * 64
+    receipt_path.write_text(json.dumps(receipt_payload, ensure_ascii=False), encoding="utf-8")
+
+    ok, note, _manifest_rel = module._quality_gate_binding_status(repo_root, "deadbeef", [])
+
+    assert ok is False
+    assert "command receipt hash mismatch" in note
+
+
 def test_quality_gate_manifest_replay_rechecks_clean_worktree(monkeypatch, tmp_path) -> None:
     shared = _load_shared_module()
     repo_root = tmp_path / "repo"

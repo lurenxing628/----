@@ -27,24 +27,35 @@ QUALITY_GATE_PROOF_SCHEMA_VERSION = 2
 QUALITY_GATE_TOOL_PATHS = [
     "scripts/run_quality_gate.py",
     "scripts/sync_debt_ledger.py",
+    "tools/check_full_test_debt.py",
+    "tools/collect_full_test_debt.py",
     "tools/quality_gate_entries.py",
     "tools/quality_gate_ledger.py",
     "tools/quality_gate_operations.py",
     "tools/quality_gate_scan.py",
     "tools/quality_gate_shared.py",
     "tools/quality_gate_support.py",
+    "tools/test_debt_registry.py",
+    "tests/conftest.py",
+    "tests/main_style_regression_runner.py",
 ]
 QUALITY_GATE_SOURCE_FILES = (
     ".github/workflows/quality.yml",
     ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py",
+    "开发文档/技术债务治理台账.md",
     "scripts/run_quality_gate.py",
     "scripts/sync_debt_ledger.py",
+    "tools/check_full_test_debt.py",
+    "tools/collect_full_test_debt.py",
     "tools/quality_gate_entries.py",
     "tools/quality_gate_ledger.py",
     "tools/quality_gate_operations.py",
     "tools/quality_gate_scan.py",
     "tools/quality_gate_shared.py",
     "tools/quality_gate_support.py",
+    "tools/test_debt_registry.py",
+    "tests/conftest.py",
+    "tests/main_style_regression_runner.py",
 )
 QUALITY_GATE_STARTUP_REGRESSION_ARGS = [
     "tests/regression_runtime_probe_resolution.py",
@@ -630,6 +641,12 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "args": ["python", "-m", "pytest", "--collect-only", "-q", "tests"],
             "capture_output": True,
             "output_policy": "normalized",
+        },
+        {
+            "display": "python tools/check_full_test_debt.py",
+            "args": ["python", "tools/check_full_test_debt.py"],
+            "capture_output": True,
+            "output_policy": "exact",
         },
         {
             "display": "python -m ruff --version",

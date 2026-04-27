@@ -11,7 +11,9 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
+from typing import Any, Dict, Generator, Iterable, List, Optional, Sequence, Set
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
@@ -131,7 +133,32 @@ class FullTestDebtCollector:
             }
         )
 
-    def pytest_runtest_logreport(self, report: Any) -> None:
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_runtest_makereport(self, item: Any, call: Any) -> Generator[Any, Any, None]:
+        outcome = yield
+        report = outcome.get_result()
+        marker = item.get_closest_marker("xfail")
+        xfail_marker_reason = ""
+        xfail_marker_strict = False
+        if marker is not None:
+            marker_reason = marker.kwargs.get("reason")
+            marker_strict = marker.kwargs.get("strict")
+            if marker_reason is not None:
+                xfail_marker_reason = str(marker_reason)
+            if marker_strict is not None:
+                xfail_marker_strict = bool(marker_strict)
+        wasxfail = getattr(report, "wasxfail", None)
+        wasxfail_reason = ""
+        if wasxfail is not None:
+            wasxfail_reason = str(wasxfail)
+        strict_xpass = (
+            str(report.when) == "call"
+            and marker is not None
+            and xfail_marker_strict
+            and str(report.outcome) == "failed"
+            and not wasxfail_reason
+            and getattr(call, "excinfo", None) is None
+        )
         self.reports.append(
             {
                 "nodeid": str(report.nodeid),
@@ -139,6 +166,10 @@ class FullTestDebtCollector:
                 "outcome": str(report.outcome),
                 "duration": float(getattr(report, "duration", 0.0) or 0.0),
                 "longrepr": _longrepr_text(report),
+                "xfail_marker_reason": xfail_marker_reason,
+                "xfail_marker_strict": xfail_marker_strict,
+                "wasxfail_reason": wasxfail_reason,
+                "strict_xpass": strict_xpass,
             }
         )
 

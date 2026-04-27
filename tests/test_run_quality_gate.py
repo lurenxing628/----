@@ -168,8 +168,8 @@ def test_main_executes_every_shared_command_when_plan_inserts_preflight(monkeypa
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     sentinel_command = {
-        "display": "python tools/check_full_test_debt.py",
-        "args": ["python", "tools/check_full_test_debt.py"],
+        "display": "python tools/sentinel_inserted_after_collect.py",
+        "args": ["python", "tools/sentinel_inserted_after_collect.py"],
         "capture_output": False,
         "output_policy": "normalized",
     }
@@ -203,13 +203,55 @@ def test_main_executes_every_shared_command_when_plan_inserts_preflight(monkeypa
     command_displays = [display for display, _args, _capture_output in calls if display != "guard_preflight"]
     expected_displays = [str(command["display"]) for command in patched_plan]
     assert command_displays == expected_displays
-    assert command_displays.count("python tools/check_full_test_debt.py") == 1
+    assert command_displays.count("python tools/sentinel_inserted_after_collect.py") == 1
     assert command_displays.count("python -m pyright --version") == 1
 
     manifest_path = repo_root / "evidence" / "QualityGate" / "quality_gate_manifest.json"
     manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))
     assert [str(command["display"]) for command in manifest["commands"]] == expected_displays
     assert len(manifest["command_receipts"]) == len(patched_plan)
+
+
+def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
+    module = _import_run_quality_gate()
+    shared = _shared_quality_registry()
+
+    command_plan = shared.build_quality_gate_command_plan()
+    displays = [str(command["display"]) for command in command_plan]
+    full_debt_display = "python tools/check_full_test_debt.py"
+    full_debt_command = command_plan[displays.index(full_debt_display)]
+
+    assert displays.index("python -m pytest --collect-only -q tests") < displays.index(full_debt_display)
+    assert displays.index(full_debt_display) < displays.index("python -m ruff --version")
+    assert full_debt_command["args"] == ["python", "tools/check_full_test_debt.py"]
+    assert full_debt_command["capture_output"] is True
+    assert full_debt_command["output_policy"] == "exact"
+
+    source_paths = set(shared.QUALITY_GATE_SOURCE_FILES)
+    for rel_path in [
+        "tools/check_full_test_debt.py",
+        "tools/collect_full_test_debt.py",
+        "tools/test_debt_registry.py",
+        "tests/conftest.py",
+        "tests/main_style_regression_runner.py",
+        "开发文档/技术债务治理台账.md",
+    ]:
+        assert rel_path in source_paths
+
+    tool_paths = set(shared.QUALITY_GATE_TOOL_PATHS)
+    for rel_path in [
+        "tools/check_full_test_debt.py",
+        "tools/collect_full_test_debt.py",
+        "tools/test_debt_registry.py",
+        "tests/conftest.py",
+        "tests/main_style_regression_runner.py",
+    ]:
+        assert rel_path in tool_paths
+
+    runner_source = (Path(_repo_root()) / "scripts" / "run_quality_gate.py").read_text(encoding="utf-8")
+    assert "tools/check_full_test_debt.py" not in runner_source
+    assert "tools/check_full_test_debt.py" in " ".join(displays)
+    assert tuple(module.REQUIRED_TEST_ARGS) == tuple(shared.iter_quality_gate_required_tests())
 
 
 @pytest.mark.parametrize(
