@@ -1025,13 +1025,14 @@ git status --short --branch
   - 未修改 `core/services/personnel/**`。
   - 未扩大 `accepted_risks` 去引用 `debt_id`。
 
-### 任务 6：给 pytest 接入 debt-aware xfail
+### 任务 6：给 pytest 接入 debt-aware xfail（已细化并执行）
 
 **任务 5 承接说明**
 - 任务 5 已完成台账 schema v2 和 5 条 `mode=xfail` 登记；正式事实源是 `开发文档/技术债务治理台账.md` 的 `test_debt.entries`。
-- 任务 5 只登记，不改变 pytest 行为；当前 5 条候选 nodeid 定向 pytest 仍是 `5 failed`，还没有显示为 xfail。
+- 任务 5 只登记，不改变 pytest 行为；执行任务 6 前，5 条候选 nodeid 定向 pytest 仍是 `5 failed`，还没有显示为 xfail。
 - 任务 6 只能接 `tests/conftest.py` 的 pytest collection hook 和 `tools/test_debt_registry.py` 的台账读取能力；不得改业务层，不得接 full-test-debt proof，不得把未登记的新失败吞掉。
 - 任务 6 需要继续遵守精确 nodeid 匹配：`mode=xfail` 才加 xfail，`mode=fixed` 不加；未收集到的登记 nodeid 不在 collection hook 里做全量失败检查。
+- 任务 6 对抗审查补充要求：不能只返回 nodeid 集合，还必须让 pytest marker reason 稳定包含 `debt_id` 和 `reason`，否则后续任务 8 很难证明“为什么这条失败被允许显示为 xfail”。
 
 **目标**
 - 已登记债务显示为 xfail；未登记的新失败仍然失败。
@@ -1041,22 +1042,25 @@ git status --short --branch
 - 修改：`tools/test_debt_registry.py`
 - 测试：`tests/test_full_test_debt_registry_contract.py`
 
-- [ ] **步骤 1：写 collection 合同测试**
+- [x] **步骤 1：写 collection 合同测试**
 
-在 `tests/test_full_test_debt_registry_contract.py` 增加：
+在 `tests/test_full_test_debt_registry_contract.py` 增加合同测试，实际覆盖：
+- 已登记失败用例显示为 xfailed，pytest 退出码为 0。
+- 已登记用例如果真实通过，会因为 `strict=True` 变成 XPASS(strict) 失败。
+- 参数化 nodeid 必须完整匹配，例如 `test_param[bad]` 不能误伤 `test_param[good]`。
+- fixture 参数化 nodeid 也必须完整匹配。
+- `mode=fixed` 不会进入 active xfail 映射。
+- 未登记的新失败仍然失败。
+- 登记项本次没被收集到不会失败，定向 pytest 不会被全量台账拖死。
+- registry/台账读取失败会让 pytest collection 失败。
+- xfail reason 稳定包含 `debt_id`，后续任务 8 可继续读取 reason 做 proof。
 
 ```python
-def test_registered_test_debt_marks_exact_nodeid_xfail_and_rejects_missing_nodeid(tmp_path):
+def test_pytest_collection_marks_registered_exact_nodeids_xfail(tmp_path):
     ...
 ```
 
-断言：
-- 只按精确 nodeid 匹配。
-- 普通定向 pytest 只给本次实际收集到的登记 nodeid 加 xfail，不检查未收集到的全量登记 nodeid。
-- 登记文件解析失败时，pytest collection 失败。
-- `mode=fixed` 不会加 xfail。
-
-- [ ] **步骤 2：确认测试先失败**
+- [x] **步骤 2：确认测试先失败**
 
 运行：
 
@@ -1064,20 +1068,24 @@ def test_registered_test_debt_marks_exact_nodeid_xfail_and_rejects_missing_nodei
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py --tb=short -p no:cacheprovider
 ```
 
-预期：因为 `tests/conftest.py` 还没有 debt-aware hook 而失败。
+实际红灯：
+- `ImportError: cannot import name 'active_xfail_entries_by_nodeid'`
+- `AttributeError: module '_repo_tests_conftest_under_test' has no attribute 'pytest_collection_modifyitems'`
+- 结果为 `6 failed, 15 passed`，失败原因正好指向缺 registry helper 和缺 pytest collection hook，不是测试本身写坏。
 
-- [ ] **步骤 3：接入 pytest hook**
+- [x] **步骤 3：接入 pytest hook**
 
-在 `tests/conftest.py` 增加 `pytest_collection_modifyitems`，行为为：
-- 加载 `tools/test_debt_registry.py` 的登记。
-- 计算 collected nodeid 集合。
-- 只处理当前 collected nodeid 中存在的登记项。
-- `mode=xfail` 时给 item 加 `pytest.mark.xfail(reason="TEST-DEBT-xxx: ...", strict=True)`。
-- `mode=fixed` 时不加 marker。
+实际实现：
+- `tools/test_debt_registry.py` 新增 `active_xfail_entries_by_nodeid(ledger=None)`。
+- 不传 ledger 时，函数通过现有 `load_ledger(required=True)` 读取正式治理台账并校验；传入 ledger 时只用于测试和调用方显式验证。
+- 该函数返回 `nodeid -> entry` 映射，只包含 `mode=xfail`，因此 marker 能拿到 `debt_id` 和 `reason`。
+- `active_xfail_nodeids(ledger)` 继续保留，改为基于 `active_xfail_entries_by_nodeid(ledger)` 返回 nodeid 集合。
+- `tests/conftest.py` 增加 `pytest_collection_modifyitems(items)`，只按当前收集到的 `item.nodeid` 精确匹配，命中后加 `pytest.mark.xfail(reason="<debt_id>: <reason>", strict=True)`。
+- 台账读取、字段校验或结构解析失败不会被吞掉，会让 pytest collection 直接失败。
 
 不得按文件前缀、目录、正则模糊匹配。不得在这里校验“登记 nodeid 是否全部被 collect 到”；这个全量一致性检查只放在 `tools/check_full_test_debt.py`。
 
-- [ ] **步骤 4：重新运行 collection 合同**
+- [x] **步骤 4：重新运行 collection 合同与任务 6 验证**
 
 运行：
 
@@ -1086,9 +1094,43 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_deb
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest --collect-only -q tests -p no:cacheprovider
 ```
 
-预期：通过，收集数量稳定。
+实际结果：
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py --tb=short -p no:cacheprovider`：`21 passed`。
+- 5 条正式登记 nodeid 定向 pytest：`5 xfailed`，已从任务 5 的普通失败变成已登记 xfail。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest --collect-only -q tests -p no:cacheprovider`：`615 tests collected`。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`schema_version=2`，`test_debt_count=5`。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tests/conftest.py tools/test_debt_registry.py tests/test_full_test_debt_registry_contract.py`：通过。
+- `pyright tests/conftest.py tools/test_debt_registry.py tests/test_full_test_debt_registry_contract.py`：`0 errors, 0 warnings, 0 informations`。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m py_compile tests/conftest.py tools/test_debt_registry.py tests/test_full_test_debt_registry_contract.py`：通过。
+- `git diff --check`：通过。
+
+**任务 6 执行结果**
+- 实际改动：
+  - `tools/test_debt_registry.py` 新增 `active_xfail_entries_by_nodeid()`，让 pytest 能从正式治理台账拿到 `nodeid/debt_id/reason`，同时只返回 `mode=xfail` 的登记。
+  - `tests/conftest.py` 新增 debt-aware collection hook，只对当前本次收集到、且 nodeid 精确命中的测试加 `strict=True` xfail；未登记测试保持原样失败。
+  - `tests/test_full_test_debt_registry_contract.py` 增加完整合同测试，覆盖参数化精确匹配、fixture 参数化精确匹配、未登记失败、未收集登记项、XPASS(strict)、registry 失败和 reason 包含 `debt_id`。
+- 行为变化：
+  - 任务 5 登记的 5 条 nodeid 现在显示为 `5 xfailed`。
+  - 如果未来某条登记项真的修好但仍留在台账里，会变成 XPASS(strict) 失败，提醒执行者从台账移除或改成 `mode=fixed`。
+  - 未登记的新失败不会被 hook 吞掉，仍然是普通失败。
+  - collection hook 不做“台账所有 nodeid 必须被本次 collect 到”的全量检查，定向 pytest 不会被全量台账拖死。
+- 子代理审查结论：
+  - 需求符合性审查通过：diff 只包含 `tests/conftest.py`、`tests/test_full_test_debt_registry_contract.py`、`tools/test_debt_registry.py`，没有提前修改 `tools/collect_full_test_debt.py`、`tools/check_full_test_debt.py`、`.github/workflows/quality.yml` 或业务层。
+  - 代码质量与对抗审查通过：确认没有吞未登记失败，reason 稳定包含 `debt_id/reason`，台账读取失败会显式失败，测试确实加载真实 repo `tests/conftest.py` hook，而不是复制一份 hook 逻辑。
+- 停线情况：
+  - 未修改业务层。
+  - 未接 full-test-debt proof。
+  - 未修改 quality workflow。
+  - 未新建 `tools/check_full_test_debt.py`。
+  - 未修改 `tools/collect_full_test_debt.py`。
 
 ### 任务 7：质量门禁 runner 真正按 shared command plan 执行
+
+**任务 6 承接说明**
+- 任务 6 已把 pytest 运行时和治理台账接上：`开发文档/技术债务治理台账.md` 里 5 条 `mode=xfail` 的精确 nodeid，现在定向 pytest 结果为 `5 xfailed`。
+- pytest hook 只做 collection 阶段的精确 xfail 标记，不做全量失败证明，也不检查“所有登记 nodeid 是否都被本次 collect 到”。
+- 任务 7 只能处理 `scripts/run_quality_gate.py` 是否真正按 `tools/quality_gate_shared.py::build_quality_gate_command_plan()` 执行的问题；不得在任务 7 里提前新建 `tools/check_full_test_debt.py`，不得提前接任务 8 的 full-test-debt proof。
+- 任务 8 后续接 proof 时，可以依赖任务 6 已经提供的稳定 xfail reason：`<debt_id>: <reason>`。
 
 **目标**
 - 先修正 `scripts/run_quality_gate.py` 的固定索引执行方式，避免新增命令插入 shared plan 后被跳过。
