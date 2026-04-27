@@ -30,6 +30,8 @@ Usage examples:
   python codestable/tools/search-yaml.py --dir content/posts --filter tags~=python --query "asyncio"
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import sys
@@ -39,8 +41,15 @@ from pathlib import Path
 # Frontmatter parsing  (PyYAML used when available, builtin fallback otherwise)
 # ---------------------------------------------------------------------------
 
+
+class FrontmatterError(RuntimeError):
+    pass
+
+
 def _parse_yaml_scalar(val: str):
     val = val.strip()
+    if (val.startswith("[") and not val.endswith("]")) or (val.endswith("]") and not val.startswith("[")):
+        raise FrontmatterError("Malformed inline YAML list")
     if val.startswith("[") and val.endswith("]"):
         inner = val[1:-1]
         return [item.strip().strip("'\"") for item in inner.split(",") if item.strip()]
@@ -54,37 +63,79 @@ def _parse_yaml_scalar(val: str):
     return val
 
 
+def _split_frontmatter(text: str) -> tuple[str, str] | None:
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return None
+    if lines[0].strip() != "---":
+        if lines[0].startswith("---"):
+            raise FrontmatterError("Opening delimiter must be a line containing only '---'")
+        return None
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            return "".join(lines[1:index]).strip(), "".join(lines[index + 1 :]).strip()
+    raise FrontmatterError("No closing '---' delimiter found")
+
+
+def _parse_builtin_yaml_mapping(fm_text: str) -> dict:
+    meta: dict = {}
+    current_list_key: str | None = None
+    for line_number, raw_line in enumerate(fm_text.splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if raw_line[:1].isspace():
+            if stripped.startswith("- "):
+                if current_list_key is None:
+                    raise FrontmatterError(f"List item without list field at line {line_number}")
+                meta[current_list_key].append(_parse_yaml_scalar(stripped[2:]))
+                continue
+            raise FrontmatterError(f"Unsupported nested YAML at line {line_number}")
+        current_list_key = None
+        if stripped.startswith("- "):
+            raise FrontmatterError(f"List item without list field at line {line_number}")
+        if ":" not in stripped:
+            raise FrontmatterError(f"Malformed YAML line {line_number}")
+        key, _, raw = stripped.partition(":")
+        key = key.strip()
+        if not key:
+            raise FrontmatterError(f"Empty YAML key at line {line_number}")
+        if raw.strip() == "":
+            meta[key] = []
+            current_list_key = key
+        else:
+            meta[key] = _parse_yaml_scalar(raw)
+    return meta
+
+
 def parse_frontmatter(text: str) -> tuple[dict, str]:
     """
     Split a markdown document into (frontmatter_dict, body_text).
     Returns ({}, full_text) when no frontmatter is present.
     """
-    if not text.startswith("---"):
+    split = _split_frontmatter(text)
+    if split is None:
         return {}, text
 
-    end = text.find("\n---", 3)
-    if end == -1:
-        return {}, text
-
-    fm_text = text[3:end].strip()
-    body = text[end + 4:].strip()
+    fm_text, body = split
 
     try:
         import yaml  # type: ignore
-        meta = yaml.safe_load(fm_text)
-        return (meta or {}), body
-    except Exception:
-        pass
+    except ImportError:
+        yaml = None  # type: ignore[assignment]
 
-    # Minimal fallback: handles scalar values and inline lists
-    meta: dict = {}
-    for line in fm_text.splitlines():
-        if not line.strip() or line.startswith("#") or ":" not in line:
-            continue
-        key, _, raw = line.partition(":")
-        meta[key.strip()] = _parse_yaml_scalar(raw)
+    if yaml is not None:
+        try:
+            meta = yaml.safe_load(fm_text)
+        except Exception as exc:
+            raise FrontmatterError(f"YAML syntax error: {exc}") from exc
+        if meta is None:
+            return {}, body
+        if not isinstance(meta, dict):
+            raise FrontmatterError(f"Expected YAML mapping, got {type(meta).__name__}")
+        return meta, body
 
-    return meta, body
+    return _parse_builtin_yaml_mapping(fm_text), body
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +150,10 @@ def load_documents(directory: Path) -> list[dict]:
         except OSError as exc:
             print(f"[warn] Cannot read {md_file.name}: {exc}", file=sys.stderr)
             continue
-        meta, body = parse_frontmatter(text)
+        try:
+            meta, body = parse_frontmatter(text)
+        except FrontmatterError as exc:
+            raise FrontmatterError(f"{md_file.relative_to(directory)}: {exc}") from exc
         docs.append({
             "file": str(md_file.relative_to(directory)),
             "path": str(md_file),
@@ -231,7 +285,7 @@ def print_json(results: list[dict], full: bool) -> None:
         if not full and len(body) > 400:
             body = body[:400] + "…"
         output.append({"file": doc["file"], "meta": doc["meta"], "body": body})
-    print(json.dumps(output, ensure_ascii=False, indent=2))
+    print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +344,11 @@ def main() -> None:
     args = _build_parser().parse_args()
     directory = _resolve_directory(args.dir)
 
-    docs = load_documents(directory)
+    try:
+        docs = load_documents(directory)
+    except FrontmatterError as exc:
+        print(f"[error] {exc}", file=sys.stderr)
+        sys.exit(1)
     if not docs:
         print(f"No .md files found in {directory}")
         return

@@ -141,13 +141,16 @@ class FullTestDebtCollector:
         xfail_marker_present = marker is not None
         xfail_marker_reason = ""
         xfail_marker_strict = False
+        xfail_marker_run = False
         if marker is not None:
             marker_reason = marker.kwargs.get("reason")
             marker_strict = marker.kwargs.get("strict")
+            marker_run = marker.kwargs.get("run", True)
             if marker_reason is not None:
                 xfail_marker_reason = str(marker_reason)
             if marker_strict is not None:
                 xfail_marker_strict = bool(marker_strict)
+            xfail_marker_run = bool(marker_run)
         wasxfail = getattr(report, "wasxfail", None)
         wasxfail_reason = ""
         if wasxfail is not None:
@@ -170,6 +173,7 @@ class FullTestDebtCollector:
                 "xfail_marker_present": xfail_marker_present,
                 "xfail_marker_reason": xfail_marker_reason,
                 "xfail_marker_strict": xfail_marker_strict,
+                "xfail_marker_run": xfail_marker_run,
                 "wasxfail_reason": wasxfail_reason,
                 "strict_xpass": strict_xpass,
             }
@@ -317,7 +321,7 @@ def _render_baseline_markdown(payload: Dict[str, Any]) -> str:
     if baseline_kind == "after_main_style_isolation" and importable and candidate_count > 0:
         title = "Full pytest P0 debt baseline"
         description = "本文件记录 main-style 子进程隔离后的正式 full pytest 债务基线，可作为任务 5 导入测试债务台账的正式输入。"
-    elif baseline_kind == "after_main_style_isolation" and importable:
+    elif baseline_kind == "after_main_style_isolation" and candidate_count == 0:
         title = "Full pytest P0 current debt proof baseline"
         description = "本文件记录当前 full pytest 债务证明；当前没有未登记 full pytest 失败，不作为任务 5 的导入种子。"
     elif baseline_kind == "after_main_style_isolation":
@@ -463,6 +467,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     if args.importable_debt_baseline:
         blockers = _importable_baseline_blockers(payload)
+        candidate_count = int(
+            dict(dict(payload.get("summary") or {}).get("classification_counts") or {}).get("candidate_test_debt") or 0
+        )
+        current_proof_without_seed = not blockers and candidate_count == 0
+        if current_proof_without_seed:
+            payload["importable"] = False
+            payload["importable_blockers"] = ["candidate_test_debt_empty"]
         try:
             after_pytest_status = _git_status_short(cwd)
         except RuntimeError:

@@ -27,6 +27,8 @@ Usage examples:
   python codestable/tools/validate-yaml.py --file docs/api/manifest.yaml --yaml-only
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import sys
@@ -55,23 +57,46 @@ except ImportError:
 
 
 def _builtin_parse_yaml(text: str) -> dict:
-    """Minimal YAML parser for flat key-value frontmatter (no nested structures)."""
+    """Minimal YAML parser for flat mappings with scalar values and block lists."""
     result: dict = {}
-    for line in text.splitlines():
+    current_list_key: str | None = None
+    for line_number, line in enumerate(text.splitlines(), start=1):
         stripped = line.strip()
-        if not stripped or stripped.startswith("#") or ":" not in stripped:
+        if not stripped or stripped.startswith("#"):
             continue
+        if line[:1].isspace():
+            if stripped.startswith("- "):
+                if current_list_key is None:
+                    raise ValueError(f"List item without list field at line {line_number}")
+                result[current_list_key].append(_parse_scalar_value(stripped[2:]))
+                continue
+            raise ValueError(f"Unsupported nested YAML at line {line_number}")
+        current_list_key = None
+        if stripped.startswith("- "):
+            raise ValueError(f"List item without list field at line {line_number}")
+        if ":" not in stripped:
+            raise ValueError(f"Malformed YAML line {line_number}")
         key, _, raw = stripped.partition(":")
         val = raw.strip()
-        # Inline list
-        if val.startswith("[") and val.endswith("]"):
-            inner = val[1:-1]
-            result[key.strip()] = [
-                item.strip().strip("'\"") for item in inner.split(",") if item.strip()
-            ]
+        key = key.strip()
+        if not key:
+            raise ValueError(f"Empty YAML key at line {line_number}")
+        if val == "":
+            result[key] = []
+            current_list_key = key
         else:
-            result[key.strip()] = val.strip("'\"") if val else ""
+            result[key] = _parse_scalar_value(val)
     return result
+
+
+def _parse_scalar_value(val: str):
+    val = val.strip()
+    if (val.startswith("[") and not val.endswith("]")) or (val.endswith("]") and not val.startswith("[")):
+        raise ValueError("Malformed inline YAML list")
+    if val.startswith("[") and val.endswith("]"):
+        inner = val[1:-1]
+        return [item.strip().strip("'\"") for item in inner.split(",") if item.strip()]
+    return val.strip("'\"") if val else ""
 
 
 def parse_yaml_text(text: str) -> tuple[dict | None, str | None]:
@@ -108,14 +133,19 @@ def extract_frontmatter(text: str) -> tuple[str | None, str | None]:
     Returns (frontmatter_text, None) on success,
     or (None, error_message) if frontmatter is missing or malformed.
     """
-    if not text.startswith("---"):
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
         return None, "No opening '---' delimiter found"
 
-    end = text.find("\n---", 3)
-    if end == -1:
+    closing_index = None
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            closing_index = index
+            break
+    if closing_index is None:
         return None, "No closing '---' delimiter found (frontmatter block not terminated)"
 
-    fm_text = text[3:end].strip()
+    fm_text = "".join(lines[1:closing_index]).strip()
     if not fm_text:
         return None, "Frontmatter block is empty"
 
@@ -252,7 +282,7 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--dir", type=str, help="Directory to scan recursively for .md files")
+    source.add_argument("--dir", type=str, help="Directory to scan recursively for .md/.yaml/.yml files")
     source.add_argument("--file", type=str, help="Single file to validate")
     parser.add_argument("--require", action="append", default=[], metavar="FIELD",
                         help="Require this field in frontmatter (repeatable)")
@@ -288,7 +318,7 @@ def _validate_directory(dir_str: str, require: list[str]) -> list[ValidationResu
         sys.exit(2)
 
     results = [validate_markdown_file(md, require, dp) for md in md_files]
-    results += [validate_yaml_file(yf, require, dp) for yf in yaml_files]
+    results += [validate_yaml_file(yf, [], dp) for yf in yaml_files]
     return results
 
 

@@ -9,6 +9,11 @@ from typing import Any, Dict, List, Optional
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+KNOWN_DEBT_NODEID = (
+    "tests/test_operator_machine_exception_paths.py"
+    "::test_normalize_skill_level_optional_only_converts_value_error"
+)
+FIXED_DEBT_NODEID = "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows"
 
 
 def _import_checker():
@@ -20,7 +25,7 @@ def _import_checker():
 
 
 def _entry(
-    nodeid: str = "tests/test_registered.py::test_known_debt",
+    nodeid: str = KNOWN_DEBT_NODEID,
     *,
     mode: str = "xfail",
     debt_id: str = "test-debt:sample",
@@ -65,22 +70,25 @@ def _ledger(*entries: Dict[str, Any], max_registered_xfail: int = 1) -> Dict[str
 def _report(
     nodeid: str,
     *,
+    when: str = "call",
     outcome: str = "skipped",
     wasxfail_reason: str = "test-debt:sample: 旧测试合同尚未更新",
     xfail_marker_present: bool = True,
     xfail_marker_reason: str = "test-debt:sample: 旧测试合同尚未更新",
     xfail_marker_strict: bool = True,
+    xfail_marker_run: bool = True,
     strict_xpass: bool = False,
 ) -> Dict[str, Any]:
     return {
         "nodeid": nodeid,
-        "when": "call",
+        "when": when,
         "outcome": outcome,
         "duration": 0.0,
         "longrepr": "",
         "xfail_marker_present": xfail_marker_present,
         "xfail_marker_reason": xfail_marker_reason,
         "xfail_marker_strict": xfail_marker_strict,
+        "xfail_marker_run": xfail_marker_run,
         "wasxfail_reason": wasxfail_reason,
         "strict_xpass": strict_xpass,
     }
@@ -137,7 +145,7 @@ def _payload(
 
 def test_check_full_test_debt_accepts_registered_xfails_and_stable_summary() -> None:
     checker = _import_checker()
-    nodeid = "tests/test_registered.py::test_known_debt"
+    nodeid = KNOWN_DEBT_NODEID
     entry = _entry(nodeid)
     payload = _payload(collected_nodeids=[nodeid], reports=[_report(nodeid)])
 
@@ -170,12 +178,13 @@ def test_check_full_test_debt_accepts_registered_xfails_and_stable_summary() -> 
         (lambda nodeid: {"collected_nodeids": [], "reports": []}, "collected_nodeids"),
         (lambda nodeid: {"reports": [_report(nodeid, wasxfail_reason="test-debt:sample: wrong")]}, "xfail reason"),
         (lambda nodeid: {"reports": [_report(nodeid, xfail_marker_strict=False)]}, "strict"),
+        (lambda nodeid: {"reports": [_report(nodeid, xfail_marker_run=False)]}, "run"),
         (lambda nodeid: {"reports": [_report(nodeid, outcome="failed", wasxfail_reason="", strict_xpass=True)]}, "XPASS"),
     ],
 )
 def test_check_full_test_debt_rejects_invalid_current_proof(payload_update, message: str) -> None:
     checker = _import_checker()
-    nodeid = "tests/test_registered.py::test_known_debt"
+    nodeid = KNOWN_DEBT_NODEID
     entry = _entry(nodeid)
     data = {
         "collected_nodeids": [nodeid],
@@ -191,7 +200,7 @@ def test_check_full_test_debt_rejects_invalid_current_proof(payload_update, mess
 
 def test_check_full_test_debt_rejects_fixed_entry_still_marked_xfail() -> None:
     checker = _import_checker()
-    nodeid = "tests/test_registered.py::test_fixed"
+    nodeid = FIXED_DEBT_NODEID
     entry = _entry(nodeid, mode="fixed")
     payload = _payload(collected_nodeids=[nodeid], reports=[_report(nodeid)])
 
@@ -201,7 +210,7 @@ def test_check_full_test_debt_rejects_fixed_entry_still_marked_xfail() -> None:
 
 def test_check_full_test_debt_accepts_fixed_entry_when_collected_and_passed() -> None:
     checker = _import_checker()
-    nodeid = "tests/test_registered.py::test_fixed"
+    nodeid = FIXED_DEBT_NODEID
     entry = _entry(nodeid, mode="fixed")
     payload = _payload(
         collected_nodeids=[nodeid],
@@ -213,6 +222,7 @@ def test_check_full_test_debt_accepts_fixed_entry_when_collected_and_passed() ->
                 xfail_marker_present=False,
                 xfail_marker_reason="",
                 xfail_marker_strict=False,
+                xfail_marker_run=False,
             )
         ],
     )
@@ -229,24 +239,25 @@ def test_check_full_test_debt_accepts_fixed_entry_when_collected_and_passed() ->
     [
         ([], [], "collect"),
         (
-            ["tests/test_registered.py::test_fixed"],
+            [FIXED_DEBT_NODEID],
             [
                 _report(
-                    "tests/test_registered.py::test_fixed",
+                    FIXED_DEBT_NODEID,
                     outcome="failed",
                     wasxfail_reason="",
                     xfail_marker_present=False,
                     xfail_marker_reason="",
                     xfail_marker_strict=False,
+                    xfail_marker_run=False,
                 )
             ],
             "普通通过",
         ),
         (
-            ["tests/test_registered.py::test_fixed"],
+            [FIXED_DEBT_NODEID],
             [
                 _report(
-                    "tests/test_registered.py::test_fixed",
+                    FIXED_DEBT_NODEID,
                     outcome="passed",
                     wasxfail_reason="",
                     xfail_marker_present=True,
@@ -262,7 +273,7 @@ def test_check_full_test_debt_rejects_invalid_fixed_proof(
     collected_nodeids: List[str], reports: List[Dict[str, Any]], message: str
 ) -> None:
     checker = _import_checker()
-    nodeid = "tests/test_registered.py::test_fixed"
+    nodeid = FIXED_DEBT_NODEID
     entry = _entry(nodeid, mode="fixed")
     payload = _payload(collected_nodeids=collected_nodeids, reports=reports)
 
@@ -272,7 +283,7 @@ def test_check_full_test_debt_rejects_invalid_fixed_proof(
 
 def test_check_full_test_debt_rejects_ratchet_overflow() -> None:
     checker = _import_checker()
-    nodeid = "tests/test_registered.py::test_known_debt"
+    nodeid = KNOWN_DEBT_NODEID
     entry = _entry(nodeid)
     payload = _payload(collected_nodeids=[nodeid], reports=[_report(nodeid)])
 
@@ -282,12 +293,79 @@ def test_check_full_test_debt_rejects_ratchet_overflow() -> None:
 
 def test_check_full_test_debt_rejects_ratchet_slack() -> None:
     checker = _import_checker()
-    nodeid = "tests/test_registered.py::test_known_debt"
+    nodeid = KNOWN_DEBT_NODEID
     entry = _entry(nodeid)
     payload = _payload(collected_nodeids=[nodeid], reports=[_report(nodeid)])
 
     with pytest.raises(checker.QualityGateError, match="max_registered_xfail"):
         checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=2))
+
+
+def test_check_full_test_debt_rejects_unregistered_xfail_report() -> None:
+    checker = _import_checker()
+    nodeid = KNOWN_DEBT_NODEID
+    payload = _payload(collected_nodeids=[nodeid], reports=[_report(nodeid)])
+
+    with pytest.raises(checker.QualityGateError, match="未登记 xfail"):
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(max_registered_xfail=0))
+
+
+def test_check_full_test_debt_rejects_unregistered_setup_xfail_run_false() -> None:
+    checker = _import_checker()
+    nodeid = KNOWN_DEBT_NODEID
+    payload = _payload(
+        collected_nodeids=[nodeid],
+        reports=[
+            _report(
+                nodeid,
+                when="setup",
+                outcome="skipped",
+                wasxfail_reason="test-debt:sample: 旧测试合同尚未更新",
+                xfail_marker_run=False,
+            )
+        ],
+    )
+
+    with pytest.raises(checker.QualityGateError, match="未登记 xfail"):
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(max_registered_xfail=0))
+
+
+def test_check_full_test_debt_accepts_registered_setup_xfail() -> None:
+    checker = _import_checker()
+    nodeid = KNOWN_DEBT_NODEID
+    entry = _entry(nodeid)
+    payload = _payload(
+        collected_nodeids=[nodeid],
+        reports=[_report(nodeid, when="setup", outcome="skipped")],
+    )
+
+    summary = checker.build_full_test_debt_summary(payload, ledger=_ledger(entry))
+
+    assert summary["active_xfail_count"] == 1
+    assert summary["fixed_count"] == 0
+
+
+def test_check_full_test_debt_rejects_fixed_entry_xfailed_during_setup() -> None:
+    checker = _import_checker()
+    nodeid = FIXED_DEBT_NODEID
+    entry = _entry(nodeid, mode="fixed")
+    payload = _payload(
+        collected_nodeids=[nodeid],
+        reports=[_report(nodeid, when="setup", outcome="skipped")],
+    )
+
+    with pytest.raises(checker.QualityGateError, match="fixed|普通通过|xfail"):
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=0))
+
+
+def test_check_full_test_debt_rejects_new_registered_xfail_even_if_ratchet_is_raised() -> None:
+    checker = _import_checker()
+    nodeid = "tests/test_new_failure.py::test_new_failure"
+    entry = _entry(nodeid)
+    payload = _payload(collected_nodeids=[nodeid], reports=[_report(nodeid)])
+
+    with pytest.raises(checker.QualityGateError, match="未批准 nodeid"):
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=1))
 
 
 def test_check_full_test_debt_rejects_bad_collector_json() -> None:
@@ -311,7 +389,7 @@ def test_check_full_test_debt_rejects_required_test_active_xfail() -> None:
 
 def test_check_full_test_debt_rejects_report_missing_xfail_machine_fields() -> None:
     checker = _import_checker()
-    nodeid = "tests/test_registered.py::test_known_debt"
+    nodeid = KNOWN_DEBT_NODEID
     entry = _entry(nodeid)
     report = copy.deepcopy(_report(nodeid))
     report.pop("wasxfail_reason")

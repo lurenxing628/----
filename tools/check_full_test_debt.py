@@ -36,6 +36,7 @@ REPORT_MACHINE_FIELDS = (
     "xfail_marker_present",
     "xfail_marker_reason",
     "xfail_marker_strict",
+    "xfail_marker_run",
     "wasxfail_reason",
     "strict_xpass",
 )
@@ -107,33 +108,60 @@ def _reports(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         _require_bool(report.get("xfail_marker_present"), f"reports[{index}].xfail_marker_present")
         _require_text(report.get("xfail_marker_reason"), f"reports[{index}].xfail_marker_reason")
         _require_bool(report.get("xfail_marker_strict"), f"reports[{index}].xfail_marker_strict")
+        _require_bool(report.get("xfail_marker_run"), f"reports[{index}].xfail_marker_run")
         _require_text(report.get("wasxfail_reason"), f"reports[{index}].wasxfail_reason")
         _require_bool(report.get("strict_xpass"), f"reports[{index}].strict_xpass")
         out.append(report)
     return out
 
 
-def _call_reports(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    return [report for report in _reports(payload) if str(report["when"]) == "call"]
+def _call_reports(reports: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [report for report in reports if str(report["when"]) == "call"]
+
+
+def _has_xfail_signal(report: Dict[str, Any]) -> bool:
+    return (
+        bool(report["xfail_marker_present"])
+        or bool(str(report["xfail_marker_reason"]))
+        or bool(str(report["wasxfail_reason"]))
+    )
+
+
+def _unique_values(values: Sequence[Any]) -> List[Any]:
+    out: List[Any] = []
+    for value in values:
+        if value not in out:
+            out.append(value)
+    return out
 
 
 def _collect_report_maps(
-    call_reports: Sequence[Dict[str, Any]],
-) -> Tuple[Dict[str, List[bool]], Dict[str, List[str]], Dict[str, List[bool]], Dict[str, List[str]], List[str]]:
+    reports: Sequence[Dict[str, Any]],
+) -> Tuple[
+    Dict[str, List[bool]],
+    Dict[str, List[str]],
+    Dict[str, List[bool]],
+    Dict[str, List[bool]],
+    Dict[str, List[str]],
+    List[str],
+]:
     marker_present_by_nodeid: Dict[str, List[bool]] = {}
     marker_reasons_by_nodeid: Dict[str, List[str]] = {}
     marker_strict_by_nodeid: Dict[str, List[bool]] = {}
+    marker_run_by_nodeid: Dict[str, List[bool]] = {}
     wasxfail_reasons_by_nodeid: Dict[str, List[str]] = {}
     strict_xpass_nodeids: List[str] = []
-    for report in call_reports:
+    for report in reports:
         nodeid = str(report["nodeid"])
         marker_reason = str(report["xfail_marker_reason"])
         wasxfail_reason = str(report["wasxfail_reason"])
         if bool(report["xfail_marker_present"]):
             marker_present_by_nodeid.setdefault(nodeid, []).append(True)
+            marker_run_by_nodeid.setdefault(nodeid, []).append(bool(report["xfail_marker_run"]))
         if marker_reason:
             marker_reasons_by_nodeid.setdefault(nodeid, []).append(marker_reason)
             marker_strict_by_nodeid.setdefault(nodeid, []).append(bool(report["xfail_marker_strict"]))
+            marker_run_by_nodeid.setdefault(nodeid, []).append(bool(report["xfail_marker_run"]))
         if wasxfail_reason:
             wasxfail_reasons_by_nodeid.setdefault(nodeid, []).append(wasxfail_reason)
         if bool(report["strict_xpass"]):
@@ -142,6 +170,7 @@ def _collect_report_maps(
         marker_present_by_nodeid,
         marker_reasons_by_nodeid,
         marker_strict_by_nodeid,
+        marker_run_by_nodeid,
         wasxfail_reasons_by_nodeid,
         sorted(set(strict_xpass_nodeids)),
     )
@@ -171,6 +200,7 @@ def _validate_active_entries(
     collected_nodeids: Sequence[str],
     marker_reasons_by_nodeid: Dict[str, List[str]],
     marker_strict_by_nodeid: Dict[str, List[bool]],
+    marker_run_by_nodeid: Dict[str, List[bool]],
     wasxfail_reasons_by_nodeid: Dict[str, List[str]],
 ) -> List[str]:
     collected = set(str(nodeid) for nodeid in collected_nodeids)
@@ -182,14 +212,16 @@ def _validate_active_entries(
         if nodeid not in collected:
             errors.append(f"active xfail nodeid 未被 collect：{nodeid}")
         expected_reason = f"{entry['debt_id']}: {entry['reason']}"
-        if marker_reasons_by_nodeid.get(nodeid) != [expected_reason]:
+        if _unique_values(marker_reasons_by_nodeid.get(nodeid, [])) != [expected_reason]:
             errors.append(f"xfail marker reason 不一致：{nodeid}")
-        if marker_strict_by_nodeid.get(nodeid) != [True]:
+        if _unique_values(marker_strict_by_nodeid.get(nodeid, [])) != [True]:
             errors.append(f"xfail marker strict 不为 true：{nodeid}")
+        if _unique_values(marker_run_by_nodeid.get(nodeid, [])) != [True]:
+            errors.append(f"xfail marker run 不为 true：{nodeid}")
         if nodeid not in wasxfail_reasons_by_nodeid:
             errors.append(f"xfail reason 缺失：{nodeid}")
             continue
-        if wasxfail_reasons_by_nodeid[nodeid] != [expected_reason]:
+        if _unique_values(wasxfail_reasons_by_nodeid[nodeid]) != [expected_reason]:
             errors.append(f"xfail reason 不一致：{nodeid}")
     return errors
 
@@ -223,6 +255,24 @@ def _validate_fixed_entries(
     return errors
 
 
+def _validate_no_unregistered_xfails(
+    reports: Sequence[Dict[str, Any]],
+    *,
+    active_entries: Sequence[Dict[str, Any]],
+) -> List[str]:
+    registered_active_nodeids = {str(entry["nodeid"]) for entry in active_entries}
+    errors: List[str] = []
+    reported_nodeids = set()
+    for report in reports:
+        nodeid = str(report["nodeid"])
+        if nodeid in registered_active_nodeids or nodeid in reported_nodeids:
+            continue
+        if _has_xfail_signal(report):
+            errors.append(f"未登记 xfail 出现在 proof 报告：{nodeid}")
+            reported_nodeids.add(nodeid)
+    return errors
+
+
 def build_full_test_debt_summary(payload: Dict[str, Any], *, ledger: Dict[str, Any]) -> Dict[str, Any]:
     validate_current_candidate_payload(payload, expected_nodeids=[])
     exitstatus = _require_int(payload.get("exitstatus"), "exitstatus")
@@ -234,22 +284,26 @@ def build_full_test_debt_summary(payload: Dict[str, Any], *, ledger: Dict[str, A
 
     active_entries, fixed_entries = _registered_entries_by_mode(ledger)
     max_registered_xfail = _max_registered_xfail(ledger)
-    call_reports = _call_reports(payload)
+    reports = _reports(payload)
+    call_reports = _call_reports(reports)
     (
         marker_present_by_nodeid,
         marker_reasons_by_nodeid,
         marker_strict_by_nodeid,
+        marker_run_by_nodeid,
         wasxfail_reasons_by_nodeid,
         strict_xpass_nodeids,
-    ) = _collect_report_maps(call_reports)
+    ) = _collect_report_maps(reports)
     errors = []
     errors.extend(_classification_errors(payload))
+    errors.extend(_validate_no_unregistered_xfails(reports, active_entries=active_entries))
     errors.extend(
         _validate_active_entries(
             active_entries,
             collected_nodeids=collected_nodeids,
             marker_reasons_by_nodeid=marker_reasons_by_nodeid,
             marker_strict_by_nodeid=marker_strict_by_nodeid,
+            marker_run_by_nodeid=marker_run_by_nodeid,
             wasxfail_reasons_by_nodeid=wasxfail_reasons_by_nodeid,
         )
     )

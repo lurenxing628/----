@@ -10,13 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from tools.quality_gate_shared import QUALITY_GATE_SELFTEST_PATH
+from tools.quality_gate_shared import FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS, QUALITY_GATE_SELFTEST_PATH
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COLLECTOR = REPO_ROOT / "tools" / "collect_full_test_debt.py"
 BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
 BASELINE_END = "<!-- APS-FULL-PYTEST-BASELINE:END -->"
 _ORIGINAL_POPEN = subprocess.Popen
+ALLOWED_TEST_DEBT_NODEIDS = list(FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS)
 
 
 def _write(path: Path, content: str) -> None:
@@ -269,6 +270,7 @@ def test_collect_full_test_debt_records_structured_xfail_reason(tmp_path: Path) 
     assert call_report["xfail_marker_present"] is True
     assert call_report["xfail_marker_reason"] == "test-debt:sample: 旧测试合同尚未更新"
     assert call_report["xfail_marker_strict"] is True
+    assert call_report["xfail_marker_run"] is True
     assert call_report["wasxfail_reason"] == "test-debt:sample: 旧测试合同尚未更新"
     assert call_report["strict_xpass"] is False
 
@@ -299,6 +301,7 @@ def test_collect_full_test_debt_records_strict_xpass_without_text_guessing(tmp_p
     assert call_report["xfail_marker_present"] is True
     assert call_report["xfail_marker_reason"] == "test-debt:sample: 旧测试合同尚未更新"
     assert call_report["xfail_marker_strict"] is True
+    assert call_report["xfail_marker_run"] is True
     assert call_report["wasxfail_reason"] == ""
     assert call_report["strict_xpass"] is True
 
@@ -326,6 +329,7 @@ def test_collect_full_test_debt_keeps_plain_skip_separate_from_debt_xfail(tmp_pa
 
     assert skipped_report["xfail_marker_present"] is False
     assert skipped_report["xfail_marker_reason"] == ""
+    assert skipped_report["xfail_marker_run"] is False
     assert skipped_report["wasxfail_reason"] == ""
     assert skipped_report["strict_xpass"] is False
 
@@ -354,7 +358,36 @@ def test_collect_full_test_debt_records_empty_reason_xfail_marker_presence(tmp_p
 
     assert call_report["xfail_marker_present"] is True
     assert call_report["xfail_marker_reason"] == ""
+    assert call_report["xfail_marker_run"] is True
     assert call_report["strict_xpass"] is False
+
+
+def test_collect_full_test_debt_records_xfail_run_false_without_call_report(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "tests" / "test_xfail_run_false.py",
+        '''
+        import pytest
+
+
+        @pytest.mark.xfail(reason="test-debt:sample: 旧测试合同尚未更新", strict=True, run=False)
+        def test_debt_not_run():
+            assert False
+        ''',
+    )
+
+    proc = _run_collector(tmp_path, baseline_kind="after_main_style_isolation")
+    payload = _payload_from_stdout(proc)
+    reports = [
+        report
+        for report in payload["reports"]
+        if report["nodeid"] == "tests/test_xfail_run_false.py::test_debt_not_run"
+    ]
+
+    assert reports
+    assert {report["when"] for report in reports} == {"setup", "teardown"}
+    assert all(report["xfail_marker_present"] is True for report in reports)
+    assert all(report["xfail_marker_run"] is False for report in reports)
+    assert any(report["wasxfail_reason"] for report in reports)
 
 
 def test_collect_full_test_debt_records_collection_errors_and_exitstatus(tmp_path: Path) -> None:
@@ -528,7 +561,8 @@ def test_collect_full_test_debt_zero_candidate_importable_baseline_is_current_pr
     baseline_text = baseline_path.read_text(encoding="utf-8")
 
     assert proc.returncode == 0
-    assert payload["importable"] is True
+    assert payload["importable"] is False
+    assert payload["importable_blockers"] == ["candidate_test_debt_empty"]
     assert payload["summary"]["classification_counts"]["candidate_test_debt"] == 0
     assert "Full pytest P0 current debt proof baseline" in baseline_text
     assert "当前没有未登记 full pytest 失败" in baseline_text
@@ -707,7 +741,7 @@ def test_collect_full_test_debt_importable_rejects_bad_pytest_invocation(tmp_pat
     assert not baseline_path.exists()
 
 
-def _valid_test_debt_entry(nodeid: str = "tests/test_sample.py::test_debt") -> dict:
+def _valid_test_debt_entry(nodeid: str = ALLOWED_TEST_DEBT_NODEIDS[0]) -> dict:
     return {
         "debt_id": "test-debt:sample",
         "nodeid": nodeid,
@@ -871,8 +905,8 @@ def test_test_debt_registry_rejects_duplicates_and_negative_ratchet() -> None:
     from tools.quality_gate_ledger import validate_ledger
     from tools.quality_gate_shared import QualityGateError
 
-    first = _valid_test_debt_entry("tests/test_sample.py::test_one")
-    second = _valid_test_debt_entry("tests/test_sample.py::test_two")
+    first = _valid_test_debt_entry(ALLOWED_TEST_DEBT_NODEIDS[0])
+    second = _valid_test_debt_entry(ALLOWED_TEST_DEBT_NODEIDS[1])
     second["debt_id"] = "test-debt:sample-two"
 
     duplicate_nodeid = copy.deepcopy(second)
@@ -912,17 +946,20 @@ def test_test_debt_registry_rejects_required_tests_as_active_xfail() -> None:
     validate_ledger(_ledger_with_test_debt(fixed_entry, max_registered_xfail=0))
 
     similar_prefix_entry = _valid_test_debt_entry(f"{QUALITY_GATE_SELFTEST_PATH}_extra.py::test_normal_debt")
-    validate_ledger(_ledger_with_test_debt(similar_prefix_entry))
+    with pytest.raises(QualityGateError, match="未批准 nodeid"):
+        validate_ledger(_ledger_with_test_debt(similar_prefix_entry))
 
 
 def test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger() -> None:
     from tools.quality_gate_ledger import sort_ledger
     from tools.test_debt_registry import active_xfail_entries_by_nodeid, active_xfail_nodeids
 
-    fixed = _valid_test_debt_entry("tests/test_sample.py::test_fixed")
+    fixed_nodeid = ALLOWED_TEST_DEBT_NODEIDS[1]
+    active_nodeid = ALLOWED_TEST_DEBT_NODEIDS[0]
+    fixed = _valid_test_debt_entry(fixed_nodeid)
     fixed["debt_id"] = "test-debt:sample-fixed"
     fixed["mode"] = "fixed"
-    active = _valid_test_debt_entry("tests/test_sample.py::test_active")
+    active = _valid_test_debt_entry(active_nodeid)
     active["debt_id"] = "test-debt:sample-active"
     ledger = _ledger_with_test_debt(fixed, active, max_registered_xfail=1)
 
@@ -930,11 +967,11 @@ def test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger() -> None
 
     assert sorted_ledger["test_debt"]["ratchet"] == {"max_registered_xfail": 1}
     assert [entry["nodeid"] for entry in sorted_ledger["test_debt"]["entries"]] == [
-        "tests/test_sample.py::test_active",
-        "tests/test_sample.py::test_fixed",
+        active_nodeid,
+        fixed_nodeid,
     ]
-    assert active_xfail_nodeids(sorted_ledger) == {"tests/test_sample.py::test_active"}
-    assert active_xfail_entries_by_nodeid(sorted_ledger) == {"tests/test_sample.py::test_active": active}
+    assert active_xfail_nodeids(sorted_ledger) == {active_nodeid}
+    assert active_xfail_entries_by_nodeid(sorted_ledger) == {active_nodeid: active}
 
 
 def test_quality_gate_required_startup_and_full_debt_share_registry() -> None:

@@ -11,6 +11,7 @@ from .quality_gate_shared import (
     ENTRY_STATUS_VALUES,
     FALLBACK_KIND_VALUES,
     FILE_SIZE_LIMIT,
+    FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS,
     LEDGER_BEGIN,
     LEDGER_END,
     LEDGER_IDENTITY_STRATEGY,
@@ -378,6 +379,7 @@ def _validate_silent_fallback_entries(silent_entries: List[Any], all_main_ids: S
 def _validate_test_debt_entries(test_debt_entries: List[Any], max_registered_xfail: int) -> None:
     test_debt_ids: Set[str] = set()
     test_debt_nodeids: Set[str] = set()
+    allowed_active_xfail_nodeids = set(FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS)
     active_xfail_count = 0
     for index, entry in enumerate(test_debt_entries):
         if not isinstance(entry, dict):
@@ -392,6 +394,8 @@ def _validate_test_debt_entries(test_debt_entries: List[Any], max_registered_xfa
         if mode == "xfail":
             if quality_gate_required_test_nodeid_matches(nodeid):
                 raise QualityGateError(f"test_debt.entries active xfail 不得登记 required/proof 测试：{nodeid}")
+            if nodeid not in allowed_active_xfail_nodeids:
+                raise QualityGateError(f"test_debt.entries active xfail 不得新增未批准 nodeid：{nodeid}")
             active_xfail_count += 1
     if active_xfail_count != max_registered_xfail:
         raise QualityGateError("test_debt.ratchet.max_registered_xfail 必须等于当前 xfail 登记数量")
@@ -538,6 +542,10 @@ def _ordered_silent_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def _ordered_test_debt_section(test_debt: Dict[str, Any]) -> Dict[str, Any]:
     ratchet = cast(Dict[str, Any], test_debt.get("ratchet") or {})
+    max_registered_xfail = _require_int(
+        ratchet.get("max_registered_xfail"),
+        "test_debt.ratchet.max_registered_xfail",
+    )
     entries = [
         _ordered_test_debt_entry(entry)
         for entry in sorted(
@@ -546,7 +554,7 @@ def _ordered_test_debt_section(test_debt: Dict[str, Any]) -> Dict[str, Any]:
         )
     ]
     return {
-        "ratchet": {"max_registered_xfail": int(ratchet.get("max_registered_xfail", 0) or 0)},
+        "ratchet": {"max_registered_xfail": max_registered_xfail},
         "entries": entries,
     }
 

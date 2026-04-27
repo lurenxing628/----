@@ -87,12 +87,15 @@ python codestable/tools/search-yaml.py --dir codestable/guides --filter status=c
 YAML 语法校验工具。用于验证 frontmatter 语法和必填字段。
 
 ```bash
-# 校验单个文件的 YAML 语法
+# 校验单个 Markdown 文件的 frontmatter
+python codestable/tools/validate-yaml.py --file {文件路径}
+
+# 校验单个纯 YAML 文件（例如 manifest.yaml）
 python codestable/tools/validate-yaml.py --file {文件路径} --yaml-only
 
 # 校验必填字段
 python codestable/tools/validate-yaml.py --file {文件路径} --require doc_type --require status
 
-# 批量校验目录下所有文件
+# 批量校验目录下所有文件；--require 只用于 Markdown frontmatter，不套到 checklist.yaml
 python codestable/tools/validate-yaml.py --dir {目录} --require doc_type --require status
 ```

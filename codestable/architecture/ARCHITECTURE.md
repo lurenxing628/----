@@ -41,4 +41,3 @@
 - Win7 x64、Python 3.8、离线交付是长期约束。
 - 质量门禁入口仍以仓库现有 `scripts/run_quality_gate.py` 为准。
 - 旧 `.limcode/plans/`、`.limcode/review/` 里有大量历史上下文，迁移初期不得批量删除或搬动。
-

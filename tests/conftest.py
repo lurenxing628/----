@@ -29,8 +29,8 @@ def _is_main_style_regression(path: Path) -> bool:
         return False
     try:
         text = path.read_text(encoding="utf-8")
-    except Exception:
-        return False
+    except Exception as exc:
+        raise RuntimeError(f"读取 regression 文件失败：{path}: {exc}") from exc
     return bool(_MAIN_DEF_RE.search(text)) and not bool(_TEST_DEF_RE.search(text))
 
 

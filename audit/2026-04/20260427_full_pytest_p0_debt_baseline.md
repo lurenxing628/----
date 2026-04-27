@@ -1,9 +1,9 @@
-# Full pytest P0 current debt proof baseline
+# Full pytest P0 historical current debt proof baseline
 
-本文件记录当前 full pytest 债务证明；当前没有未登记 full pytest 失败，不作为任务 5 的导入种子。
+本文件是历史快照，记录 `75b0c77cceddf5fa2c887fd281767c93e745b282` 当时的 full pytest 债务证明；它不再作为当前分支证明使用。当前证明必须以后续干净工作区重新生成的 baseline 和 clean gate 结果为准。
 
 - baseline_kind: `after_main_style_isolation`
-- importable: `true`
+- importable: `false`
 - exitstatus: `0`
 - collected_count: `631`
 - failed_nodeid_count: `0`
@@ -672,8 +672,10 @@
   ],
   "git_status_short_before": [],
   "head_sha": "75b0c77cceddf5fa2c887fd281767c93e745b282",
-  "importable": true,
-  "importable_blockers": [],
+  "importable": false,
+  "importable_blockers": [
+    "candidate_test_debt_empty"
+  ],
   "pytest_args": [
     "tests",
     "-q",

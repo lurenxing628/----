@@ -49,6 +49,8 @@ P0_TEST_DEBT_NODEIDS = [
     "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
     "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
 ]
+BASELINE_SHA = "a" * 40
+VERIFIED_SHA = "b" * 40
 
 
 def _legacy_schema1_ledger() -> dict:
@@ -119,7 +121,7 @@ def _baseline_payload(**overrides) -> dict:
         "importable": True,
         "importable_blockers": [],
         "generated_at": "2026-04-27T08:00:00+08:00",
-        "head_sha": "baseline-sha",
+        "head_sha": BASELINE_SHA,
         "collector_argv": [
             "--baseline-kind",
             "after_main_style_isolation",
@@ -560,8 +562,8 @@ def test_import_test_debt_baseline_command_imports_seed_entries(monkeypatch, tmp
     calls = {}
 
     monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
-    monkeypatch.setattr(module, "current_git_head_sha", lambda: "verified-sha")
-    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha=VERIFIED_SHA))
     monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
 
     rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
@@ -576,18 +578,17 @@ def test_import_test_debt_baseline_command_imports_seed_entries(monkeypatch, tmp
     assert all(entry["debt_family"] == "operator_machine_normalization_contract_drift" for entry in saved["test_debt"]["entries"])
     stdout = capsys.readouterr().out
     assert "测试债务 baseline 已导入治理台账" in stdout
-    assert '"baseline_head_sha": "baseline-sha"' in stdout
-    assert '"verified_head_sha": "verified-sha"' in stdout
+    assert f'"baseline_head_sha": "{BASELINE_SHA}"' in stdout
+    assert f'"verified_head_sha": "{VERIFIED_SHA}"' in stdout
 
 
-def test_importable_baseline_contract_accepts_zero_candidate_current_proof(tmp_path: Path):
+def test_importable_baseline_contract_rejects_zero_candidate_current_proof(tmp_path: Path):
     registry = _import_test_debt_registry()
     baseline_path = tmp_path / "zero_candidate_baseline.md"
     _write_baseline(baseline_path, _zero_candidate_payload())
 
-    payload = registry.load_full_test_debt_baseline(str(baseline_path))
-
-    assert registry.baseline_candidate_nodeids(payload) == []
+    with pytest.raises(registry.QualityGateError, match="0 候选"):
+        registry.load_full_test_debt_baseline(str(baseline_path))
 
 
 @pytest.mark.parametrize(
@@ -611,8 +612,8 @@ def test_import_test_debt_baseline_command_rejects_invalid_baseline(
     calls = {}
 
     monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
-    monkeypatch.setattr(module, "current_git_head_sha", lambda: "verified-sha")
-    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha=VERIFIED_SHA))
     monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
 
     rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
@@ -634,6 +635,9 @@ def test_import_test_debt_baseline_command_rejects_invalid_baseline(
         (lambda payload: payload.__setitem__("collection_errors", "not-a-list"), "collection_errors"),
         (lambda payload: payload.__setitem__("reports", "not-a-list"), "reports"),
         (lambda payload: payload.__setitem__("worktree_clean_before", False), "worktree_clean_before"),
+        (lambda payload: payload.pop("head_sha"), "head_sha"),
+        (lambda payload: payload.__setitem__("head_sha", ""), "head_sha"),
+        (lambda payload: payload.__setitem__("head_sha", "abc"), "head_sha"),
     ],
 )
 def test_import_test_debt_baseline_command_rejects_malformed_machine_contract(
@@ -647,7 +651,7 @@ def test_import_test_debt_baseline_command_rejects_malformed_machine_contract(
     calls = {}
 
     monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
-    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha=VERIFIED_SHA))
     monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
 
     rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
@@ -668,8 +672,8 @@ def test_import_test_debt_baseline_command_rejects_blocked_classifications(monke
     calls = {}
 
     monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
-    monkeypatch.setattr(module, "current_git_head_sha", lambda: "verified-sha")
-    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha=VERIFIED_SHA))
     monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
 
     rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
@@ -716,7 +720,7 @@ def test_import_test_debt_baseline_command_rejects_actual_blocker_lists_even_whe
     calls = {}
 
     monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
-    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha=VERIFIED_SHA))
     monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
 
     rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
@@ -734,7 +738,7 @@ def test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid(monk
     payload["collected_nodeids"] = ["tests/test_unknown.py::test_unknown"]
     payload["summary"]["classification_counts"]["candidate_test_debt"] = 1
     payload["summary"]["failed_nodeid_count"] = 1
-    current_payload = _baseline_payload(importable=False, head_sha="verified-sha")
+    current_payload = _baseline_payload(importable=False, head_sha=VERIFIED_SHA)
     current_payload["classifications"]["candidate_test_debt"] = ["tests/test_unknown.py::test_unknown"]
     current_payload["collected_nodeids"] = ["tests/test_unknown.py::test_unknown"]
     current_payload["summary"]["classification_counts"]["candidate_test_debt"] = 1
@@ -743,7 +747,7 @@ def test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid(monk
     calls = {}
 
     monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
-    monkeypatch.setattr(module, "current_git_head_sha", lambda: "verified-sha")
+    monkeypatch.setattr(module, "current_git_head_sha", lambda: VERIFIED_SHA)
     monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: current_payload)
     monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
 
@@ -763,7 +767,7 @@ def test_import_test_debt_baseline_command_rejects_empty_candidate_nodeid(monkey
     calls = {}
 
     monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
-    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha=VERIFIED_SHA))
     monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
 
     rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
@@ -779,7 +783,7 @@ def test_import_test_debt_baseline_command_rejects_current_dry_run_candidate_dri
     module = _import_sync_debt_ledger()
     baseline_path = tmp_path / "debt_baseline.md"
     _write_baseline(baseline_path, _baseline_payload())
-    current_payload = _baseline_payload(importable=False, head_sha="verified-sha")
+    current_payload = _baseline_payload(importable=False, head_sha=VERIFIED_SHA)
     current_payload["classifications"]["candidate_test_debt"] = ["tests/test_unknown.py::test_unknown"]
     current_payload["summary"]["classification_counts"]["candidate_test_debt"] = 1
     current_payload["summary"]["failed_nodeid_count"] = 1
@@ -825,7 +829,7 @@ def test_import_test_debt_baseline_command_does_not_overwrite_existing_test_debt
     calls = {}
 
     monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: existing_ledger)
-    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha=VERIFIED_SHA))
     monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
 
     rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
@@ -929,6 +933,15 @@ def test_import_seed_metadata_rejects_duplicate_debt_id(monkeypatch):
         test_debt_registry.build_test_debt_ledger_from_baseline(
             _legacy_schema1_ledger(),
             _baseline_payload(),
-            verified_head_sha="verified-sha",
+            verified_head_sha=VERIFIED_SHA,
             last_verified_at="2026-04-27T08:00:00+08:00",
         )
+
+
+def test_sort_ledger_does_not_fill_missing_test_debt_ratchet() -> None:
+    support = _import_quality_gate_support()
+    ledger = _schema2_ledger_with_test_debt(_test_debt_entry(), max_registered_xfail=1)
+    del ledger["test_debt"]["ratchet"]["max_registered_xfail"]
+
+    with pytest.raises(support.QualityGateError, match="max_registered_xfail"):
+        support.sort_ledger(ledger)

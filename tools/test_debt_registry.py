@@ -104,6 +104,13 @@ def _require_text(value: Any, field_name: str) -> str:
     return text
 
 
+def _require_git_sha(value: Any, field_name: str) -> str:
+    text = _require_text(value, field_name)
+    if len(text) != 40 or any(ch not in "0123456789abcdefABCDEF" for ch in text):
+        raise QualityGateError(f"{field_name} 必须是 40 位 Git 提交 SHA")
+    return text
+
+
 def _require_plain_int(value: Any, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise QualityGateError(f"{field_name} 必须是整数")
@@ -211,6 +218,9 @@ def _validate_baseline_machine_contract(payload: Dict[str, Any], *, require_impo
     _validate_candidate_nodeids_are_collected(payload, classification_lists)
 
     if require_importable:
+        _require_git_sha(payload.get("head_sha"), "head_sha")
+        if not classification_lists["candidate_test_debt"]:
+            raise QualityGateError("candidate_test_debt 不能为空，0 候选证明不能作为导入种子")
         _validate_importable_baseline_machine_fields(payload)
 
 
@@ -365,6 +375,8 @@ def build_test_debt_ledger_from_baseline(
     last_verified_at: str = "",
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     verified_at = last_verified_at or now_shanghai_iso()
+    baseline_head_sha = _require_git_sha(payload.get("head_sha"), "head_sha")
+    verified_sha = _require_git_sha(verified_head_sha, "verified_head_sha")
     entries = build_test_debt_entries(payload, last_verified_at=verified_at)
     next_ledger = copy.deepcopy(ledger)
     existing_test_debt = next_ledger.get("test_debt")
@@ -379,8 +391,8 @@ def build_test_debt_ledger_from_baseline(
     sorted_ledger = sort_ledger(next_ledger)
     validate_ledger(sorted_ledger)
     summary = {
-        "baseline_head_sha": str(payload.get("head_sha") or ""),
-        "verified_head_sha": verified_head_sha,
+        "baseline_head_sha": baseline_head_sha,
+        "verified_head_sha": verified_sha,
         "imported_count": len(entries),
         "nodeids": [entry["nodeid"] for entry in entries],
         "max_registered_xfail": sorted_ledger["test_debt"]["ratchet"]["max_registered_xfail"],

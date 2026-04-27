@@ -200,6 +200,19 @@ def test_main_style_subprocess_pollution_is_isolated(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
+def test_regression_file_read_failure_breaks_collection(tmp_path: Path) -> None:
+    _write_bridge_conftest(tmp_path)
+    bad_file = tmp_path / "tests" / "regression_bad_encoding.py"
+    bad_file.write_bytes(b"\xff\xfe\x00")
+
+    proc = _run_pytest(tmp_path, "--collect-only", "tests")
+
+    assert proc.returncode != 0
+    combined = proc.stdout + proc.stderr
+    assert "regression_bad_encoding.py" in combined
+    assert "UnicodeDecodeError" in combined or "codec" in combined
+
+
 def test_runner_script_exists_and_is_not_main_style_collected() -> None:
     assert RUNNER.exists()
 
