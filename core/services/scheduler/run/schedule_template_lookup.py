@@ -80,6 +80,57 @@ def _lookup_scope(op: BatchOperation, scope: Optional[str]) -> str:
     return f"schedule_input.batch[{batch_id}].seq[{seq}]"
 
 
+def _template_missing_outcome(
+    *,
+    strict_mode: bool,
+    collector: DegradationCollector,
+    event_scope: str,
+    op_code: str,
+    batch_id: str,
+    part_no: str,
+    seq: int,
+) -> TemplateGroupLookupOutcome:
+    message = f"外协工序 {op_code} 缺少模板工序（batch={batch_id}, part={part_no or '?'}，seq={seq}），组合并语义已退化。"
+    if strict_mode:
+        raise ValidationError(message, field="template")
+    collector.add(
+        code="template_missing",
+        scope=event_scope,
+        field="template",
+        message=message,
+        sample=f"batch_id={batch_id},part_no={part_no or '?'},seq={seq}",
+    )
+    return TemplateGroupLookupOutcome(None, None, True, collector.to_list())
+
+
+def _template_ext_group_id(tmpl: PartOperation) -> str:
+    return str(getattr(tmpl, "ext_group_id", None) or "").strip()
+
+
+def _external_group_missing_outcome(
+    *,
+    strict_mode: bool,
+    collector: DegradationCollector,
+    event_scope: str,
+    tmpl: PartOperation,
+    ext_group_id: str,
+    op_code: str,
+    batch_id: str,
+    seq: int,
+) -> TemplateGroupLookupOutcome:
+    message = f"外协工序 {op_code} 引用的外部组 {ext_group_id} 不存在（batch={batch_id}, seq={seq}），组合并语义已退化。"
+    if strict_mode:
+        raise ValidationError(message, field="ext_group_id")
+    collector.add(
+        code="external_group_missing",
+        scope=event_scope,
+        field="ext_group_id",
+        message=message,
+        sample=f"batch_id={batch_id},ext_group_id={ext_group_id},seq={seq}",
+    )
+    return TemplateGroupLookupOutcome(tmpl, None, True, collector.to_list())
+
+
 def lookup_template_group_context_for_op(
     svc: Any,
     op: BatchOperation,
@@ -105,35 +156,32 @@ def lookup_template_group_context_for_op(
 
     tmpl = _get_template_cached(svc, tmpl_cache, part_no=part_no, seq=seq)
     if not tmpl:
-        message = f"外协工序 {op_code} 缺少模板工序（batch={batch_id}, part={part_no or '?'}，seq={seq}），组合并语义已退化。"
-        if strict_mode:
-            raise ValidationError(message, field="template")
-        collector.add(
-            code="template_missing",
-            scope=event_scope,
-            field="template",
-            message=message,
-            sample=f"batch_id={batch_id},part_no={part_no or '?'},seq={seq}",
+        return _template_missing_outcome(
+            strict_mode=bool(strict_mode),
+            collector=collector,
+            event_scope=event_scope,
+            op_code=op_code,
+            batch_id=batch_id,
+            part_no=part_no,
+            seq=seq,
         )
-        return TemplateGroupLookupOutcome(None, None, True, collector.to_list())
 
-    ext_group_id = str(getattr(tmpl, "ext_group_id", None) or "").strip()
+    ext_group_id = _template_ext_group_id(tmpl)
     if not ext_group_id:
         return TemplateGroupLookupOutcome(tmpl, None, False, collector.to_list())
 
     grp = _get_group_cached(svc, grp_cache, ext_group_id)
     if grp is None:
-        message = f"外协工序 {op_code} 引用的外部组 {ext_group_id} 不存在（batch={batch_id}, seq={seq}），组合并语义已退化。"
-        if strict_mode:
-            raise ValidationError(message, field="ext_group_id")
-        collector.add(
-            code="external_group_missing",
-            scope=event_scope,
-            field="ext_group_id",
-            message=message,
-            sample=f"batch_id={batch_id},ext_group_id={ext_group_id},seq={seq}",
+        return _external_group_missing_outcome(
+            strict_mode=bool(strict_mode),
+            collector=collector,
+            event_scope=event_scope,
+            tmpl=tmpl,
+            ext_group_id=ext_group_id,
+            op_code=op_code,
+            batch_id=batch_id,
+            seq=seq,
         )
-        return TemplateGroupLookupOutcome(tmpl, None, True, collector.to_list())
 
     return TemplateGroupLookupOutcome(tmpl, grp, False, collector.to_list())
 

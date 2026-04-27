@@ -43,6 +43,16 @@ class OpForScheduleAlgo:
     merge_context_events: List[Dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass
+class _ExternalMergeContext:
+    ext_days: Optional[float] = None
+    ext_group_id: Optional[str] = None
+    ext_merge_mode: Optional[str] = None
+    ext_group_total_days: Optional[float] = None
+    merge_context_degraded: bool = False
+    merge_context_events: List[Dict[str, Any]] = field(default_factory=list)
+
+
 def _build_scope(op: Any) -> str:
     op_id = getattr(op, "id", None)
     if op_id not in (None, ""):
@@ -86,6 +96,117 @@ def _lookup_template_group_context(svc, op: Any, *, strict_mode: bool, scope: st
     return lookup_template_group_context_for_op(svc, op, strict_mode=bool(strict_mode), scope=scope)
 
 
+def _ext_group_id_from_template(tmpl: Any, *, merge_context_degraded: bool) -> Optional[str]:
+    if merge_context_degraded or tmpl is None:
+        return None
+    return str(getattr(tmpl, "ext_group_id", None) or "").strip() or None
+
+
+def _merge_mode_from_group(grp: Any, *, merge_context_degraded: bool) -> Optional[str]:
+    if merge_context_degraded or grp is None:
+        return None
+    return str(getattr(grp, "merge_mode", None) or "").strip().lower() or None
+
+
+def _should_use_external_days(
+    *,
+    merge_context_degraded: bool,
+    merge_mode: Optional[str],
+    total_days: Optional[float],
+) -> bool:
+    return bool(merge_context_degraded) or merge_mode != MergeMode.MERGED.value or total_days is None
+
+
+def _build_external_merge_context(
+    svc,
+    op: Any,
+    *,
+    strict_mode: bool,
+    scope: str,
+    collector: DegradationCollector,
+    op_code: str,
+) -> _ExternalMergeContext:
+    merge_event_collector = DegradationCollector()
+    lookup = _lookup_template_group_context(svc, op, strict_mode=bool(strict_mode), scope=scope)
+    merge_event_collector.extend(lookup.events)
+    collector.extend(lookup.events)
+
+    merge_context_degraded = bool(lookup.merge_context_degraded)
+    ext_group_id = _ext_group_id_from_template(lookup.template, merge_context_degraded=merge_context_degraded)
+    merge_mode = _merge_mode_from_group(lookup.group, merge_context_degraded=merge_context_degraded)
+    total_days: Optional[float] = None
+
+    if merge_mode == MergeMode.MERGED.value:
+        merge_event_count_before = len(merge_event_collector)
+        total_days = _merged_total_days(
+            getattr(lookup.group, "total_days", None),
+            strict_mode=bool(strict_mode),
+            scope=scope,
+            collector=merge_event_collector,
+            op_code=op_code,
+        )
+        if total_days is None:
+            merge_context_degraded = True
+            collector.extend(merge_event_collector.to_list()[merge_event_count_before:])
+            ext_group_id = None
+            merge_mode = None
+
+    ext_days: Optional[float] = None
+    if _should_use_external_days(
+        merge_context_degraded=merge_context_degraded,
+        merge_mode=merge_mode,
+        total_days=total_days,
+    ):
+        ext_days = parse_field_float(
+            getattr(op, "ext_days", None),
+            field="ext_days",
+            strict_mode=bool(strict_mode),
+            scope=scope,
+            fallback=1.0,
+            collector=collector,
+            min_value=0.0,
+            min_inclusive=False,
+        )
+
+    return _ExternalMergeContext(
+        ext_days=ext_days,
+        ext_group_id=ext_group_id,
+        ext_merge_mode=merge_mode,
+        ext_group_total_days=total_days,
+        merge_context_degraded=bool(merge_context_degraded),
+        merge_context_events=degradation_events_to_dicts(merge_event_collector.to_list()),
+    )
+
+
+def _make_algo_operation(
+    op: Any,
+    *,
+    setup_hours: float,
+    unit_hours: float,
+    external_context: _ExternalMergeContext,
+) -> OpForScheduleAlgo:
+    return OpForScheduleAlgo(
+        id=int(getattr(op, "id", 0) or 0),
+        op_code=str(getattr(op, "op_code", "") or ""),
+        batch_id=str(getattr(op, "batch_id", "") or ""),
+        seq=int(getattr(op, "seq", 0) or 0),
+        op_type_id=getattr(op, "op_type_id", None),
+        op_type_name=getattr(op, "op_type_name", None),
+        source=str(getattr(op, "source", "") or ""),
+        machine_id=getattr(op, "machine_id", None),
+        operator_id=getattr(op, "operator_id", None),
+        supplier_id=getattr(op, "supplier_id", None),
+        setup_hours=float(setup_hours),
+        unit_hours=float(unit_hours),
+        ext_days=external_context.ext_days,
+        ext_group_id=external_context.ext_group_id,
+        ext_merge_mode=external_context.ext_merge_mode,
+        ext_group_total_days=external_context.ext_group_total_days,
+        merge_context_degraded=bool(external_context.merge_context_degraded),
+        merge_context_events=list(external_context.merge_context_events),
+    )
+
+
 def _build_algo_operations_outcome(
     svc,
     reschedulable_operations: List[Any],
@@ -125,75 +246,22 @@ def _build_algo_operations_outcome(
             min_value=0.0,
         )
 
-        ext_days: Optional[float] = None
-        ext_group_id: Optional[str] = None
-        merge_mode: Optional[str] = None
-        total_days: Optional[float] = None
-        merge_context_degraded = False
-        merge_event_collector = DegradationCollector()
-
+        external_context = _ExternalMergeContext()
         if source_key == SourceType.EXTERNAL.value:
-            lookup = _lookup_template_group_context(svc, op, strict_mode=bool(strict_mode), scope=scope)
-            merge_event_collector.extend(lookup.events)
-            collector.extend(lookup.events)
-            merge_context_degraded = bool(lookup.merge_context_degraded)
-            tmpl = lookup.template
-            grp = lookup.group
-
-            if (not merge_context_degraded) and tmpl is not None:
-                ext_group_id = str(getattr(tmpl, "ext_group_id", None) or "").strip() or None
-            if (not merge_context_degraded) and grp is not None:
-                merge_mode = str(getattr(grp, "merge_mode", None) or "").strip().lower() or None
-                if merge_mode == MergeMode.MERGED.value:
-                    merge_event_count_before = len(merge_event_collector)
-                    total_days = _merged_total_days(
-                        getattr(grp, "total_days", None),
-                        strict_mode=bool(strict_mode),
-                        scope=scope,
-                        collector=merge_event_collector,
-                        op_code=op_code,
-                    )
-                    if total_days is None:
-                        merge_context_degraded = True
-                        collector.extend(merge_event_collector.to_list()[merge_event_count_before:])
-                        ext_group_id = None
-                        merge_mode = None
-                else:
-                    total_days = None
-
-            needs_ext_days = merge_context_degraded or merge_mode != MergeMode.MERGED.value or total_days is None
-            if needs_ext_days:
-                ext_days = parse_field_float(
-                    getattr(op, "ext_days", None),
-                    field="ext_days",
-                    strict_mode=bool(strict_mode),
-                    scope=scope,
-                    fallback=1.0,
-                    collector=collector,
-                    min_value=0.0,
-                    min_inclusive=False,
-                )
-
+            external_context = _build_external_merge_context(
+                svc,
+                op,
+                strict_mode=bool(strict_mode),
+                scope=scope,
+                collector=collector,
+                op_code=op_code,
+            )
         algo_ops.append(
-            OpForScheduleAlgo(
-                id=int(getattr(op, "id", 0) or 0),
-                op_code=str(getattr(op, "op_code", "") or ""),
-                batch_id=str(getattr(op, "batch_id", "") or ""),
-                seq=int(getattr(op, "seq", 0) or 0),
-                op_type_id=getattr(op, "op_type_id", None),
-                op_type_name=getattr(op, "op_type_name", None),
-                source=str(getattr(op, "source", "") or ""),
-                machine_id=getattr(op, "machine_id", None),
-                operator_id=getattr(op, "operator_id", None),
-                supplier_id=getattr(op, "supplier_id", None),
+            _make_algo_operation(
+                op,
                 setup_hours=float(setup_hours),
                 unit_hours=float(unit_hours),
-                ext_days=ext_days,
-                ext_group_id=ext_group_id,
-                ext_merge_mode=merge_mode,
-                ext_group_total_days=total_days,
-                merge_context_degraded=bool(merge_context_degraded),
-                merge_context_events=degradation_events_to_dicts(merge_event_collector.to_list()),
+                external_context=external_context,
             )
         )
     return BuildOutcome.from_collector(algo_ops, collector)
