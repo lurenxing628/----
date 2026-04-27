@@ -277,13 +277,18 @@ def _build_payload(
 
 def _render_baseline_markdown(payload: Dict[str, Any]) -> str:
     summary = dict(payload.get("summary") or {})
+    counts = dict(summary.get("classification_counts") or {})
     baseline_kind = str(payload.get("baseline_kind") or "")
     importable = bool(payload.get("importable"))
+    candidate_count = int(counts.get("candidate_test_debt") or 0)
     title = "Full pytest P0 raw baseline"
     description = "本文件记录 main-style 子进程隔离前的 full pytest 现场，只用于排查和对比。"
-    if baseline_kind == "after_main_style_isolation" and importable:
+    if baseline_kind == "after_main_style_isolation" and importable and candidate_count > 0:
         title = "Full pytest P0 debt baseline"
         description = "本文件记录 main-style 子进程隔离后的正式 full pytest 债务基线，可作为任务 5 导入测试债务台账的正式输入。"
+    elif baseline_kind == "after_main_style_isolation" and importable:
+        title = "Full pytest P0 current debt proof baseline"
+        description = "本文件记录当前 full pytest 债务证明；当前没有未登记 full pytest 失败，不作为任务 5 的导入种子。"
     elif baseline_kind == "after_main_style_isolation":
         title = "Full pytest P0 after isolation baseline"
         description = "本文件记录 main-style 子进程隔离后的 full pytest 对比现场，只用于任务 3 承接，不允许导入债务台账。"

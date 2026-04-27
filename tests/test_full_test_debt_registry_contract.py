@@ -392,6 +392,35 @@ def test_collect_full_test_debt_writes_importable_debt_baseline(tmp_path: Path) 
     assert "不允许导入债务台账" not in baseline_text
 
 
+def test_collect_full_test_debt_zero_candidate_importable_baseline_is_current_proof(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "audit" / "debt_baseline.md"
+    _write(
+        tmp_path / "tests" / "test_clean.py",
+        '''
+        def test_clean():
+            assert True
+        ''',
+    )
+    _init_clean_git_repo(tmp_path)
+
+    proc = _run_collector(
+        tmp_path,
+        "--importable-debt-baseline",
+        "--write-baseline",
+        str(baseline_path),
+        baseline_kind="after_main_style_isolation",
+    )
+    payload = _payload_from_stdout(proc)
+    baseline_text = baseline_path.read_text(encoding="utf-8")
+
+    assert proc.returncode == 0
+    assert payload["importable"] is True
+    assert payload["summary"]["classification_counts"]["candidate_test_debt"] == 0
+    assert "Full pytest P0 current debt proof baseline" in baseline_text
+    assert "当前没有未登记 full pytest 失败" in baseline_text
+    assert "任务 5 导入测试债务台账" not in baseline_text
+
+
 def test_collect_full_test_debt_importable_requires_after_isolation_and_output_file(tmp_path: Path) -> None:
     baseline_path = tmp_path / "audit" / "debt_baseline.md"
     _write(

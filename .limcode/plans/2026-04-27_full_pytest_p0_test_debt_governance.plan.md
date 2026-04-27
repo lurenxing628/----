@@ -1140,7 +1140,8 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest --collect-only -q tests -p 
 - Finding 5 不在这个前置块里抢跑实现。原因是当前 runner 仍有手写前三个命令再跑 `command_plan[3:]` 的问题；如果任务 8 现在插入 full-test-debt command，可能被 runner 跳过。正确顺序仍然是先任务 7，再任务 8。
 - 当前工作区已有与本次无关的 `evidence/DeepReview/reference_trace.md` 改动；正式 baseline 重新生成必须在返修代码提交后的干净环境中完成，不得把无关脏文件混入证明链。
 - 第一阶段返修落地范围：`tools/collect_full_test_debt.py` 将正式 baseline schema 升到 2，并增加生成前 clean 检查、生成命令和工作区证明字段、拒绝路径旧文件清理、成功路径临时文件替换；`tools/test_debt_registry.py` 改为强类型导入校验；`tests/test_run_quality_gate.py` 停止 reload shared，并增加 `QualityGateError` 类身份回归测试。
-- 第一阶段验证结果：`tests/test_run_quality_gate.py::test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition` 为 `2 passed`；`tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py tests/test_run_quality_gate.py` 为 `80 passed`；改动文件 `py_compile`、`ruff check`、`pyright` 均通过，`git diff --check` 通过。
+- 第一阶段追加修正：任务 6 已经让 5 条旧失败显示为 strict xfail，所以返修后从当前 HEAD 重新生成的正式 baseline 会是 `candidate_test_debt=0` 的“当前证明”，不再是任务 5 的 5 条导入种子。collector 的 Markdown 文案已按“有候选导入种子 / 0 候选当前证明”分开，避免再次误导人工。
+- 第一阶段验证结果：`tests/test_run_quality_gate.py::test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition` 为 `2 passed`；`tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py tests/test_run_quality_gate.py` 为 `81 passed`；改动文件 `py_compile`、`ruff check`、`pyright` 均通过，`git diff --check` 通过。
 
 **任务 6 承接说明**
 - 任务 6 已把 pytest 运行时和治理台账接上：`开发文档/技术债务治理台账.md` 里 5 条 `mode=xfail` 的精确 nodeid，现在定向 pytest 结果为 `5 xfailed`。
