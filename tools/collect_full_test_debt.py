@@ -21,7 +21,10 @@ SCHEMA_VERSION = 2
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.quality_gate_shared import iter_quality_gate_required_tests  # noqa: E402
+from tools.quality_gate_shared import (  # noqa: E402
+    iter_quality_gate_required_tests,
+    quality_gate_required_test_nodeid_matches,
+)
 
 
 def _now_iso() -> str:
@@ -154,12 +157,7 @@ def _is_main_style_nodeid(nodeid: str) -> bool:
 
 
 def _belongs_to_required_tests(nodeid: str, required_paths: Iterable[str]) -> bool:
-    path = _nodeid_path(nodeid)
-    for required_path in required_paths:
-        required = str(required_path or "").replace("\\", "/")
-        if path == required or str(nodeid).startswith(required + "::"):
-            return True
-    return False
+    return quality_gate_required_test_nodeid_matches(nodeid, tuple(required_paths))
 
 
 def _has_main_style_pollution_signature(text: str) -> bool:
@@ -391,10 +389,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         try:
             git_status_short_before = _git_status_short(cwd)
         except RuntimeError as exc:
+            _remove_existing_file(baseline_path)
             sys.stderr.write(f"dirty_before_baseline: {exc}\n")
             return 2
         worktree_clean_before = not git_status_short_before
         if git_status_short_before:
+            _remove_existing_file(baseline_path)
             sys.stderr.write("dirty_before_baseline: 正式测试债务基线生成前工作区必须干净：")
             sys.stderr.write(", ".join(git_status_short_before))
             sys.stderr.write("\n")

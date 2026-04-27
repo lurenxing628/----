@@ -131,29 +131,17 @@ def _require_string_list(value: Any, field_name: str, *, allow_empty: bool = Tru
     return values
 
 
-def _validate_baseline_machine_contract(payload: Dict[str, Any], *, require_importable: bool) -> None:
-    schema_version = _require_plain_int(payload.get("schema_version"), "schema_version")
-    if schema_version != BASELINE_SCHEMA_VERSION:
-        raise QualityGateError(f"schema_version 必须等于 {BASELINE_SCHEMA_VERSION}")
-    if str(payload.get("baseline_kind") or "") != "after_main_style_isolation":
-        raise QualityGateError("baseline_kind 必须是 after_main_style_isolation")
-    importable = _require_bool(payload.get("importable"), "importable")
-    if importable is not require_importable:
-        raise QualityGateError("importable 与当前导入口径不一致")
-    _require_plain_int(payload.get("exitstatus"), "exitstatus")
-    _require_list(payload.get("collected_nodeids"), "collected_nodeids")
-    _require_list(payload.get("collection_errors"), "collection_errors")
-    _require_list(payload.get("reports"), "reports")
-    _require_string_list(payload.get("importable_blockers"), "importable_blockers")
-
+def _validate_baseline_classifications(payload: Dict[str, Any]) -> Dict[str, List[str]]:
     classifications = _require_dict(payload.get("classifications"), "classifications")
     if set(classifications) != set(BASELINE_CLASSIFICATION_KEYS):
         raise QualityGateError("classifications 必须精确包含三类测试债务分类")
-    classification_lists = {
-        key: _require_string_list(classifications.get(key), key)
-        for key in BASELINE_CLASSIFICATION_KEYS
-    }
+    return {key: _require_string_list(classifications.get(key), key) for key in BASELINE_CLASSIFICATION_KEYS}
 
+
+def _validate_baseline_summary(
+    payload: Dict[str, Any],
+    classification_lists: Dict[str, List[str]],
+) -> Dict[str, Any]:
     summary = _require_dict(payload.get("summary"), "summary")
     counts = _require_dict(summary.get("classification_counts"), "classification_counts")
     if set(counts) != set(BASELINE_CLASSIFICATION_KEYS):
@@ -172,19 +160,49 @@ def _validate_baseline_machine_contract(payload: Dict[str, Any], *, require_impo
     for key, value in outcome_counts.items():
         _require_text(key, "outcome_counts.key")
         _require_plain_int(value, f"outcome_counts.{key}")
+    return summary
 
+
+def _validate_candidate_nodeids_are_collected(
+    payload: Dict[str, Any],
+    classification_lists: Dict[str, List[str]],
+) -> None:
     collected_nodeids = _require_string_list(payload.get("collected_nodeids"), "collected_nodeids")
     if not set(classification_lists["candidate_test_debt"]).issubset(set(collected_nodeids)):
         raise QualityGateError("candidate_test_debt 必须来自 collected_nodeids")
 
+
+def _validate_importable_baseline_machine_fields(payload: Dict[str, Any]) -> None:
+    if _require_bool(payload.get("worktree_clean_before"), "worktree_clean_before") is not True:
+        raise QualityGateError("worktree_clean_before 必须为 true")
+    if _require_string_list(payload.get("git_status_short_before"), "git_status_short_before") != []:
+        raise QualityGateError("git_status_short_before 必须为空")
+    collector_argv = _require_string_list(payload.get("collector_argv"), "collector_argv", allow_empty=False)
+    if "--importable-debt-baseline" not in collector_argv:
+        raise QualityGateError("collector_argv 必须记录 --importable-debt-baseline")
+
+
+def _validate_baseline_machine_contract(payload: Dict[str, Any], *, require_importable: bool) -> None:
+    schema_version = _require_plain_int(payload.get("schema_version"), "schema_version")
+    if schema_version != BASELINE_SCHEMA_VERSION:
+        raise QualityGateError(f"schema_version 必须等于 {BASELINE_SCHEMA_VERSION}")
+    if str(payload.get("baseline_kind") or "") != "after_main_style_isolation":
+        raise QualityGateError("baseline_kind 必须是 after_main_style_isolation")
+    importable = _require_bool(payload.get("importable"), "importable")
+    if importable is not require_importable:
+        raise QualityGateError("importable 与当前导入口径不一致")
+    _require_plain_int(payload.get("exitstatus"), "exitstatus")
+    _require_list(payload.get("collected_nodeids"), "collected_nodeids")
+    _require_list(payload.get("collection_errors"), "collection_errors")
+    _require_list(payload.get("reports"), "reports")
+    _require_string_list(payload.get("importable_blockers"), "importable_blockers")
+
+    classification_lists = _validate_baseline_classifications(payload)
+    _validate_baseline_summary(payload, classification_lists)
+    _validate_candidate_nodeids_are_collected(payload, classification_lists)
+
     if require_importable:
-        if _require_bool(payload.get("worktree_clean_before"), "worktree_clean_before") is not True:
-            raise QualityGateError("worktree_clean_before 必须为 true")
-        if _require_string_list(payload.get("git_status_short_before"), "git_status_short_before") != []:
-            raise QualityGateError("git_status_short_before 必须为空")
-        collector_argv = _require_string_list(payload.get("collector_argv"), "collector_argv", allow_empty=False)
-        if "--importable-debt-baseline" not in collector_argv:
-            raise QualityGateError("collector_argv 必须记录 --importable-debt-baseline")
+        _validate_importable_baseline_machine_fields(payload)
 
 
 def _classification_list(payload: Dict[str, Any], key: str) -> List[str]:
@@ -254,7 +272,6 @@ def validate_importable_baseline(payload: Dict[str, Any]) -> None:
     blockers = _baseline_blockers(payload, require_importable=True)
     if blockers:
         raise QualityGateError("测试债务 baseline 不能导入，存在禁入项：" + ", ".join(blockers))
-    _validate_candidate_nodeids(payload, expected_nodeids=sorted(P0_TEST_DEBT_SEED_METADATA))
 
 
 def validate_current_candidate_payload(payload: Dict[str, Any], *, expected_nodeids: Sequence[str]) -> None:
@@ -270,13 +287,13 @@ def _validate_candidate_nodeids(payload: Dict[str, Any], *, expected_nodeids: Se
     candidate_nodeids = baseline_candidate_nodeids(payload)
     expected = sorted(str(nodeid) for nodeid in expected_nodeids)
     if candidate_nodeids != expected:
-        raise QualityGateError("candidate_test_debt 与任务 5 已核实的 5 条 nodeid 不一致")
+        raise QualityGateError("candidate_test_debt 与待承接 baseline 候选集合不一致")
     summary = dict(payload.get("summary") or {})
     counts = dict(summary.get("classification_counts") or {})
     if int(counts.get("candidate_test_debt") or 0) != len(expected):
-        raise QualityGateError("candidate_test_debt 数量与任务 5 已核实数量不一致")
+        raise QualityGateError("candidate_test_debt 数量与待承接 baseline 候选集合不一致")
     if int(summary.get("failed_nodeid_count") or 0) != len(expected):
-        raise QualityGateError("failed_nodeid_count 与任务 5 已核实数量不一致")
+        raise QualityGateError("failed_nodeid_count 与待承接 baseline 候选集合不一致")
 
 
 def build_test_debt_entries(payload: Dict[str, Any], *, last_verified_at: str) -> List[Dict[str, Any]]:
@@ -287,7 +304,9 @@ def build_test_debt_entries(payload: Dict[str, Any], *, last_verified_at: str) -
     )
     entries: List[Dict[str, Any]] = []
     for nodeid in nodeids:
-        seed = copy.deepcopy(P0_TEST_DEBT_SEED_METADATA[nodeid])
+        seed = copy.deepcopy(
+            _require_dict(P0_TEST_DEBT_SEED_METADATA.get(nodeid), f"缺少测试债务登记元数据：{nodeid}")
+        )
         entry = {
             "debt_id": seed["debt_id"],
             "nodeid": nodeid,

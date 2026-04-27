@@ -116,6 +116,7 @@ from .quality_gate_shared import (
     iter_quality_gate_required_tests,
     now_shanghai_iso,
     parse_pytest_collect_nodeids,
+    quality_gate_required_test_nodeid_matches,
     read_text_file,
     render_marked_json_block,
     repo_abs,

@@ -600,6 +600,18 @@ def iter_quality_gate_required_tests() -> List[str]:
     return list(_normalize_required_tests(QUALITY_GATE_REQUIRED_TESTS))
 
 
+def quality_gate_required_test_nodeid_matches(
+    nodeid: str,
+    required_tests: Sequence[str] = QUALITY_GATE_REQUIRED_TESTS,
+) -> bool:
+    normalized_nodeid = str(nodeid or "").strip().replace("\\", "/")
+    node_path = normalized_nodeid.split("::", 1)[0]
+    return any(
+        node_path == required_path or normalized_nodeid.startswith(required_path + "::")
+        for required_path in _normalize_required_tests(required_tests)
+    )
+
+
 def iter_non_regression_guard_tests() -> List[str]:
     out: List[str] = []
     for rel_path in QUALITY_GATE_REQUIRED_TESTS:

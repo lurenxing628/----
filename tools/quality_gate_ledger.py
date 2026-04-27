@@ -25,6 +25,7 @@ from .quality_gate_shared import (
     QualityGateError,
     extract_json_code_block,
     now_shanghai_iso,
+    quality_gate_required_test_nodeid_matches,
     read_text_file,
     render_marked_json_block,
     write_text_file,
@@ -389,6 +390,8 @@ def _validate_test_debt_entries(test_debt_entries: List[Any], max_registered_xfa
         test_debt_ids.add(debt_id)
         test_debt_nodeids.add(nodeid)
         if mode == "xfail":
+            if quality_gate_required_test_nodeid_matches(nodeid):
+                raise QualityGateError(f"test_debt.entries active xfail 不得登记 required/proof 测试：{nodeid}")
             active_xfail_count += 1
     if active_xfail_count > max_registered_xfail:
         raise QualityGateError("test_debt.ratchet.max_registered_xfail 小于当前 xfail 登记数量")

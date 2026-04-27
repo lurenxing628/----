@@ -461,6 +461,7 @@ def test_collect_full_test_debt_importable_requires_clean_worktree(tmp_path: Pat
         ''',
     )
     _init_clean_git_repo(tmp_path)
+    _write(baseline_path, "STALE IMPORTABLE BASELINE")
     _write(tmp_path / "dirty.txt", "not committed")
 
     proc = _run_collector(
@@ -776,6 +777,22 @@ def test_test_debt_registry_rejects_duplicates_and_negative_ratchet() -> None:
     fixed_entry = copy.deepcopy(first)
     fixed_entry["mode"] = "fixed"
     validate_ledger(_ledger_with_test_debt(fixed_entry, max_registered_xfail=0))
+
+
+def test_test_debt_registry_rejects_required_tests_as_active_xfail() -> None:
+    from tools.quality_gate_ledger import validate_ledger
+    from tools.quality_gate_shared import QUALITY_GATE_SELFTEST_PATH, QualityGateError
+
+    required_entry = _valid_test_debt_entry(f"{QUALITY_GATE_SELFTEST_PATH}::test_required_selftest")
+    with pytest.raises(QualityGateError, match="required/proof"):
+        validate_ledger(_ledger_with_test_debt(required_entry))
+
+    fixed_entry = copy.deepcopy(required_entry)
+    fixed_entry["mode"] = "fixed"
+    validate_ledger(_ledger_with_test_debt(fixed_entry, max_registered_xfail=0))
+
+    similar_prefix_entry = _valid_test_debt_entry(f"{QUALITY_GATE_SELFTEST_PATH}_extra.py::test_normal_debt")
+    validate_ledger(_ledger_with_test_debt(similar_prefix_entry))
 
 
 def test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger() -> None:

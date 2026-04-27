@@ -133,6 +133,31 @@ def _baseline_payload(**overrides) -> dict:
     return payload
 
 
+def _zero_candidate_payload(**overrides) -> dict:
+    payload = _baseline_payload(
+        exitstatus=0,
+        collected_nodeids=["tests/test_clean.py::test_clean"],
+        classifications={
+            "candidate_test_debt": [],
+            "main_style_isolation_candidate": [],
+            "required_or_quality_gate_self_failure": [],
+        },
+        summary={
+            "collected_count": 1,
+            "failed_nodeid_count": 0,
+            "collection_error_count": 0,
+            "classification_counts": {
+                "candidate_test_debt": 0,
+                "main_style_isolation_candidate": 0,
+                "required_or_quality_gate_self_failure": 0,
+            },
+            "outcome_counts": {"call:passed": 1},
+        },
+    )
+    payload.update(overrides)
+    return payload
+
+
 def test_check_command_validates_current_ledger(monkeypatch, capsys):
     module = _import_sync_debt_ledger()
     calls = {}
@@ -523,6 +548,16 @@ def test_import_test_debt_baseline_command_imports_seed_entries(monkeypatch, tmp
     assert '"verified_head_sha": "verified-sha"' in stdout
 
 
+def test_importable_baseline_contract_accepts_zero_candidate_current_proof(tmp_path: Path):
+    registry = _import_test_debt_registry()
+    baseline_path = tmp_path / "zero_candidate_baseline.md"
+    _write_baseline(baseline_path, _zero_candidate_payload())
+
+    payload = registry.load_full_test_debt_baseline(str(baseline_path))
+
+    assert registry.baseline_candidate_nodeids(payload) == []
+
+
 @pytest.mark.parametrize(
     ("payload_update", "expected_message"),
     [
@@ -664,21 +699,27 @@ def test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid(monk
     baseline_path = tmp_path / "unknown_nodeid_baseline.md"
     payload = _baseline_payload()
     payload["classifications"]["candidate_test_debt"] = ["tests/test_unknown.py::test_unknown"]
+    payload["collected_nodeids"] = ["tests/test_unknown.py::test_unknown"]
     payload["summary"]["classification_counts"]["candidate_test_debt"] = 1
     payload["summary"]["failed_nodeid_count"] = 1
+    current_payload = _baseline_payload(importable=False, head_sha="verified-sha")
+    current_payload["classifications"]["candidate_test_debt"] = ["tests/test_unknown.py::test_unknown"]
+    current_payload["collected_nodeids"] = ["tests/test_unknown.py::test_unknown"]
+    current_payload["summary"]["classification_counts"]["candidate_test_debt"] = 1
+    current_payload["summary"]["failed_nodeid_count"] = 1
     _write_baseline(baseline_path, payload)
     calls = {}
 
     monkeypatch.setattr(module, "load_ledger_for_test_debt_import", lambda: _legacy_schema1_ledger())
     monkeypatch.setattr(module, "current_git_head_sha", lambda: "verified-sha")
-    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: _baseline_payload(importable=False, head_sha="verified-sha"))
+    monkeypatch.setattr(module, "collect_current_test_debt_payload", lambda: current_payload)
     monkeypatch.setattr(module, "save_ledger", lambda ledger: calls.setdefault("saved_ledger", ledger))
 
     rc = module.main(["import-test-debt-baseline", "--baseline", str(baseline_path)])
 
     assert rc == 2
     assert "saved_ledger" not in calls
-    assert "candidate_test_debt" in capsys.readouterr().err
+    assert "缺少测试债务登记元数据" in capsys.readouterr().err
 
 
 def test_import_test_debt_baseline_command_rejects_empty_candidate_nodeid(monkeypatch, tmp_path: Path, capsys):
