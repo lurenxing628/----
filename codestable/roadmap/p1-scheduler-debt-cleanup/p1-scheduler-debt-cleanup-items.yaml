@@ -28,8 +28,8 @@ items:
   - slug: schedule-input-external-merge-contract
     title: PR-1 排产输入与外协组合并合同
     description: "按 PR-0 映射表处理排产输入和外协组合并事实源，只围绕 input builder、合同层和模板组查询补证。"
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-04-28-schedule-input-external-merge-contract
     minimal_loop: false
     depends_on: [p1-debt-source-map]
     debt_types: [complexity, test_coverage]
@@ -39,10 +39,15 @@ items:
       - core/services/scheduler/run/schedule_input_contracts.py
       - core/services/scheduler/run/schedule_template_lookup.py
     exit_checks:
-      - python tools/check_full_test_debt.py
-      - python scripts/sync_debt_ledger.py check
-      - python scripts/run_quality_gate.py
-    notes: "承接 PR-0：P1-8/9/10 旧编号本身未找到独立来源，只能处理映射表列出的复杂度和合同证据；不改页面、不改落库，不声称 full-test-debt 减少。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_schedule_input_builder_external_merge_contract.py tests/test_schedule_template_lookup_contract.py tests/test_schedule_service_input_merge_context_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_schedule_input_builder_strict_hours_and_ext_days.py tests/regression_schedule_input_builder_template_missing_surfaces_event.py tests/regression_schedule_input_collector_contract.py tests/regression_schedule_input_collector_legacy_compat.py tests/regression_schedule_summary_merge_context_degraded_code.py tests/regression_schedule_summary_input_fallback_contract.py tests/test_sp05_path_topology_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/regression_external_merge_mode_case_insensitive.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_greedy_refactor_contracts.py tests/test_architecture_fitness.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+    notes: "已完成：P1-8/P1-9 两条复杂度登记已由 scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 移除；P1-10 已通过 builder、lookup、service-summary 三层测试补齐合同证据；本次未减少 full-test-debt，未改页面、落库、冻结、停机、runtime/plugin 或门禁工具。"
 
   - slug: freeze-window-disabled-contract
     title: PR-2 冻结窗口 decision/meta 合同
@@ -59,7 +64,7 @@ items:
       - python tools/check_full_test_debt.py
       - python scripts/sync_debt_ledger.py check
       - python scripts/run_quality_gate.py
-    notes: "承接 PR-0：P1-14/15 旧编号本身未找到独立来源，只能处理映射表列出的 freeze_window 复杂度和历史审查证据；不删除旧 meta 字段。"
+    notes: "承接 PR-1/M1：排产输入与外协组合并已收口，P1-8/P1-9 complexity 已关闭，P1-10 测试覆盖已补齐；这些 proof 不能继承为冻结窗口 proof。PR-2 必须从 freeze_window 当前事实重新核实 P1-14/15，不删除旧 meta 字段。"
 
   - slug: downtime-resource-pool-contract
     title: PR-3 停机区间与自动分配资源池合同

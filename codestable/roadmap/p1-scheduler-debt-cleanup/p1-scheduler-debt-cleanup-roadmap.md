@@ -126,6 +126,16 @@ M0 已完成的收口：
 - `core/services/scheduler/run/schedule_input_contracts.py`
 - `core/services/scheduler/run/schedule_template_lookup.py`
 
+M1 已完成的收口：
+
+- 已新增 `tests/test_schedule_input_builder_external_merge_contract.py`，直接覆盖内部工序不查模板、外协无组、`separate`、有效 `merged`、模板缺失、外部组缺失、非法 `total_days` 的 strict/non-strict 行为。
+- 已新增 `tests/test_schedule_template_lookup_contract.py`，固定模板缺失、无 `ext_group_id`、外部组缺失、`merged`/`separate`、缓存命中和 strict fail fast。
+- 已新增 `tests/test_schedule_service_input_merge_context_contract.py`，让 `ScheduleService.run_schedule()` 真走 collector 和 input builder，再进入 summary，证明 `merge_context_degraded` 不会被混成普通 `input_fallback`。
+- 已把 `schedule_input_builder.py` 和 `schedule_template_lookup.py` 中原本堆在入口里的判断搬到小 helper；没有改 `build_algo_operations(..., strict_mode, return_outcome)` 签名，没有改 `OpForScheduleAlgo` 字段，没有改事件 code/field 的基本形状。
+- `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 已把 `_build_algo_operations_outcome` 和 `lookup_template_group_context_for_op` 两条复杂度登记从台账受控结构块移除；这是 complexity 债务关闭，不是 full-test-debt 减少。
+- `core/services/scheduler/run/schedule_input_contracts.py` 仍只读参照，本轮没有修改 collector 合同层。
+- 本轮没有改页面、落库、冻结窗口、停机区间、runtime/plugin 或质量门禁工具。
+
 ### M2：冻结窗口
 
 职责：
@@ -535,7 +545,24 @@ M0 细化和执行结果：
 - 不改页面、不改落库。
 - 新增测试只围绕 input builder 和 template lookup。
 
+M1 执行结果：
+
+- P1-8 已关闭：`_build_algo_operations_outcome` 的复杂度登记已由台账同步脚本移除。
+- P1-9 已关闭：`lookup_template_group_context_for_op` 的复杂度登记已由台账同步脚本移除。
+- P1-10 已补证：外协组合并行为已有 builder、lookup、service-summary 三层窄测试锁住，但它本来不是 full-test-debt 或复杂度登记项，所以写作“测试覆盖补齐”，不写作“债务登记关闭”。
+- 已复跑 `tools/check_full_test_debt.py`，active xfail 仍是 5 条 operator-machine/personnel 相关登记；本 PR 不减少 full-test-debt。
+- 已复跑 `scripts/sync_debt_ledger.py check`，台账结构和自动字段通过检查。
+- 已复跑新增测试、排产输入 collector/summary 相关测试、外协 merged 回归、greedy 合同、架构体检、ruff 和 diff 空白检查。
+- 已在干净工作区复跑 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`，完整质量门禁通过。
+
 ### PR-2：冻结窗口 decision/meta 合同
+
+承接 PR-1 / M1 已完成结果：
+
+- M1 已完成排产输入与外协组合并合同收口，P1-8/P1-9 两条复杂度登记已关闭，P1-10 的外协组合并测试覆盖已补齐。
+- M1 没有改冻结窗口、停机区间、落库、页面、runtime/plugin 或质量门禁工具；PR-2 必须从冻结窗口当前代码和当前测试重新核实，不能继承 M1 的测试结论当作冻结窗口 proof。
+- M1 的 full-test-debt 结论只能说明“本轮没有减少 full-test-debt，active xfail 仍是 operator-machine/personnel 相关”；PR-2 如果要写任何债务减少，也必须用自己的 `tools/check_full_test_debt.py`、`scripts/sync_debt_ledger.py check` 和目标测试重新证明。
+- PR-2 仍以 `core/services/scheduler/run/freeze_window.py` 为主，不借 M1 的外协组合并 helper 扩大范围。
 
 目标：
 
@@ -684,3 +711,4 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：根据最新 main、README 质量门禁口径、技术债务台账、排产主链代码核实结果，以及两轮子代理审查，建立本路线图。
 - 2026-04-28：细化并执行 M0，落盘 `drafts/p1-debt-source-map.md`；明确 P1-8 到 P1-25 除本 roadmap 自引用外未找到独立编号来源，后续 PR 只能按映射表里的当前事实源执行；补齐 items.yaml 的 `description` 和 `feature: null`；修正 PR-4/PR-5 的过期 summary 路径。
 - 2026-04-28：复核 M0 后补硬执行口径：PR-0/M0 作为 roadmap 内部准备项标记为 `done`，P1 搜索证明排除 `.git/` 元数据，M0 proof 明确不是 clean quality gate，并把“不新增 if/fallback/兜底/静默回退逻辑”写成全局停止条件。
+- 2026-04-28：执行 M1，补齐排产输入、模板查询和服务汇总链路合同测试；最小拆分 `schedule_input_builder.py` 与 `schedule_template_lookup.py` 后刷新台账，P1-8/P1-9 两条复杂度登记已由脚本移除，P1-10 测试覆盖已补齐；PR-2 头部已写入 M1 完成内容和不可继承的 proof 边界。

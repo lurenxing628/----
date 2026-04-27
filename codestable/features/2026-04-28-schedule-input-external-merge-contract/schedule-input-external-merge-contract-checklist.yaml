@@ -1,0 +1,44 @@
+feature: 2026-04-28-schedule-input-external-merge-contract
+roadmap: p1-scheduler-debt-cleanup
+roadmap_item: schedule-input-external-merge-contract
+
+steps:
+  - id: step-1
+    title: 补排产输入和模板查找合同测试
+    status: done
+    exit_signal: builder、lookup、service 汇总链路的新增测试能独立运行。
+  - id: step-2
+    title: 最小拆分 input builder 和 template lookup
+    status: done
+    exit_signal: 两个复杂度登记函数降到阈值内，且没有新增静默兜底。
+  - id: step-3
+    title: 刷新台账并跑目标验证
+    status: done
+    exit_signal: 台账、full-test-debt、架构体检和相关排产测试通过。
+  - id: step-4
+    title: 回填路线图和验收记录
+    status: done
+    exit_signal: feature acceptance、roadmap、source-map、items、PR-2 承接说明都已更新。
+
+checks:
+  - id: check-1
+    title: 内部工序不查模板组，外协字段为空
+    status: passed
+  - id: check-2
+    title: 外协无组和 separate 组走单道 ext_days
+    status: passed
+  - id: check-3
+    title: 有效 merged 组使用 ext_group_total_days
+    status: passed
+  - id: check-4
+    title: 模板缺失、外部组缺失、非法 total_days 的 strict/non-strict 行为稳定
+    status: passed
+  - id: check-5
+    title: 服务和 summary 不把 merge_context_degraded 混入普通 input_fallback
+    status: passed
+  - id: check-6
+    title: P1-8/P1-9 复杂度登记按脚本口径关闭或更新
+    status: passed
+  - id: check-7
+    title: 不新增 full-test-debt，不修改门禁工具，不扩大到页面/落库/冻结/停机/runtime
+    status: passed

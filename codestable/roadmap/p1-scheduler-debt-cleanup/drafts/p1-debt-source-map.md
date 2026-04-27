@@ -41,9 +41,9 @@ full-test-debt 的事实源是 `开发文档/技术债务治理台账.md` 的 `t
 
 | old_p1 | 当前归属 PR | 债务类型 | 当前事实源 | 当前状态 | 是否纳入路线图处理 | 是否计入 full-test-debt 减少 | 下一步动作 | 证据结论 |
 |---|---|---|---|---|---|---|---|---|
-| P1-8 | PR-1 | complexity, test_coverage | `开发文档/技术债务治理台账.md:528` 登记 `_build_algo_operations_outcome` 复杂度；`core/services/scheduler/run/schedule_input_builder.py:89` 是当前实现入口。 | open | 是 | 否 | PR-1 只能围绕 input builder 合同和测试补证处理。 | 旧编号来源证据不足；当前事实源成立。 |
-| P1-9 | PR-1 | complexity, test_coverage | `开发文档/技术债务治理台账.md:554` 登记 `lookup_template_group_context_for_op` 复杂度；`core/services/scheduler/run/schedule_template_lookup.py:83` 是当前实现入口。 | open | 是 | 否 | PR-1 只能围绕模板组查询合同处理。 | 旧编号来源证据不足；当前事实源成立。 |
-| P1-10 | PR-1 | test_coverage | `core/services/scheduler/run/schedule_input_builder.py:135` 到 `175` 是外协组合并和退化字段当前实现。 | evidence-only | 是 | 否 | PR-1 可补合同测试；不能把它说成台账债务已存在。 | 旧编号来源证据不足；有代码事实但不是台账登记项。 |
+| P1-8 | PR-1 | complexity, test_coverage | 原事实源是 `_build_algo_operations_outcome` 复杂度登记；本轮已把判断拆到小 helper，`scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 已把该复杂度登记移出受控结构块。 | fixed-by-M1 | 是 | 否 | 已关闭复杂度登记；后续只按新增合同测试守住行为。 | 旧编号来源证据不足；当前复杂度事实源已解除，不等于 full-test-debt 减少。 |
+| P1-9 | PR-1 | complexity, test_coverage | 原事实源是 `lookup_template_group_context_for_op` 复杂度登记；本轮已把缺模板、缺外部组等判断拆到小 helper，`scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 已把该复杂度登记移出受控结构块。 | fixed-by-M1 | 是 | 否 | 已关闭复杂度登记；后续只按模板查询合同测试守住行为。 | 旧编号来源证据不足；当前复杂度事实源已解除，不等于 full-test-debt 减少。 |
+| P1-10 | PR-1 | test_coverage | `core/services/scheduler/run/schedule_input_builder.py` 的外协组合并字段和退化事件仍是代码事实；本轮新增 builder、lookup、service-summary 链路测试直接覆盖。 | evidence-locked-by-M1 | 是 | 否 | 合同测试已补齐；不是台账登记项，后续只观察是否被新改动打破。 | 旧编号来源证据不足；有代码事实但不是 full-test-debt 或复杂度登记项。 |
 | P1-11 | PR-6 | complexity, test_coverage | `开发文档/技术债务治理台账.md:541` 登记 `build_validated_schedule_payload` 复杂度；`core/services/scheduler/run/schedule_persistence.py:135` 是当前实现入口。 | open | 是 | 否 | PR-6 处理落库 payload 复杂度和合同。 | 旧编号来源证据不足；当前事实源成立。 |
 | P1-12 | PR-6 | test_coverage | `core/services/scheduler/run/schedule_persistence.py:195` 到 `200` 固定 out-of-scope、invalid、no-actionable 错误优先级。 | evidence-only | 是 | 否 | PR-6 可补错误优先级测试。 | 旧编号来源证据不足；有代码事实但不是台账登记项。 |
 | P1-13 | PR-6 | test_coverage | `core/services/scheduler/run/schedule_persistence.py:388` 到 `400` 是 `simulate` 和 auto-assign persist 当前写回入口。 | evidence-only | 是 | 否 | PR-6 可补 simulate/auto_assign_persist 合同测试。 | 旧编号来源证据不足；有代码事实但不是台账登记项。 |
@@ -78,3 +78,13 @@ PR-1 只能承接 P1-8、P1-9、P1-10 的当前事实源：
 - 外协组合并字段的代码事实和合同测试缺口。
 
 PR-1 不允许处理页面、落库、冻结、停机、runtime、plugin，也不允许写“full-test-debt 已减少”。如果 PR-1 执行时发现必须改证明工具或新增兜底，应立即停下另开任务。
+
+## 6. PR-1 / M1 执行结果
+
+M1 已按 PR-1 范围完成，结论如下：
+
+- P1-8：`_build_algo_operations_outcome` 的复杂度登记已被脚本移除；这是 complexity 债务关闭，不是 full-test-debt 减少。
+- P1-9：`lookup_template_group_context_for_op` 的复杂度登记已被脚本移除；这是 complexity 债务关闭，不是 full-test-debt 减少。
+- P1-10：外协组合并合同已由新增测试锁住，包括内部工序不查模板、外协无组、`separate`、有效 `merged`、模板缺失、外部组缺失、非法 `total_days` 的 strict/non-strict 行为，以及服务汇总层保留 `merge_context_degraded` 且不混入普通 `input_fallback`。
+- 本轮没有关闭 active full-test-debt；`tools/check_full_test_debt.py` 通过后仍是 5 条 operator-machine/personnel 相关 xfail。
+- 本轮没有修改页面、落库、冻结窗口、停机区间、runtime/plugin 或质量门禁工具。
