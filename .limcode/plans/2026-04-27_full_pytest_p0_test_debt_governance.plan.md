@@ -1463,21 +1463,22 @@ git diff --check
 - proof 链路审查：通过。确认 command plan 顺序保持不变，`tools/test_registry.py` 已进入 `QUALITY_GATE_TOOL_PATHS` 和 `QUALITY_GATE_SOURCE_FILES`，receipt/replay/source proof 没有放松。审查指出 `tools/test_registry.py` 仍是未跟踪文件，已作为提交边界要求纳入第一笔提交。
 - 文档与提交边界审查：要求把任务 10 头部改成完成态承接，并且不要把无关的 `codestable/compound/2026-04-27-explore-repo-garbage-files.md` 混入本任务提交。本轮按该建议处理。
 
-- [ ] **步骤 6：任务 9 收尾回填与提交**
+- [x] **步骤 6：任务 9 收尾回填与提交**
 
-本步骤正在收尾。任务 9 执行结果已回填，任务 10 头部已改为完成态承接。提交后还需在干净工作区补跑 clean gate，并把最终结果回填后修订文档提交。
+本步骤已完成。任务 9 执行结果已回填，任务 10 头部已改为完成态承接。
 
 提交边界：
-- 第一笔：测试入口 registry 收敛代码和测试。
-- 第二笔：本计划文件回填。
+- 第一笔：测试入口 registry 收敛代码和测试，提交 `6167f6a`。
+- 第二笔：本计划文件回填，提交 `3e07366`。
+- 工作区里另有一份无关的 CodeStable 探索记录 `codestable/compound/2026-04-27-explore-repo-garbage-files.md`。它不属于任务 9 入口收敛，所以没有混入前两笔；为了满足整棵工作区干净和最终 clean gate，已单独提交为 `f65b5dd`。
 
-提交后、工作区干净时，再运行：
+提交后、工作区干净时，已运行：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
 ```
 
-结果必须回填到任务 9 执行结果和任务 10 承接说明。
+结果：通过，最后输出 `质量门禁通过`。门禁命令中 `python tools/check_full_test_debt.py` 再次确认 `active_xfail_count=5`、`collected_count=657`、`collection_error_count=0`、`fixed_count=0`、`max_registered_xfail=5`。
 
 ### 任务 10：建立只减不增的 ratchet
 
@@ -1487,7 +1488,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - full-debt 正式事实源仍是 `开发文档/技术债务治理台账.md`。任务 10 预计依赖 `tools.test_debt_registry.load_test_debt_registry()`、`iter_required_tests()`、`iter_startup_regressions()` 和 `python tools/check_full_test_debt.py`。
 - 当前正式台账仍是 `mode=xfail` 5 条，`test_debt.ratchet.max_registered_xfail=5`；任务 9 没有把任何条目改成 `fixed`，也没有下调 ratchet。
 - 任务 9 的聚焦验证已通过：`87 passed`、`tools/check_full_test_debt.py` 通过、`scripts/sync_debt_ledger.py check` 通过、`ruff` 通过、改动文件 `pyright` 通过、`git diff --check` 通过。
-- 任务 9 的 clean gate 需要在两笔本地提交完成后的干净工作区补跑；补跑结果会在任务 9 收尾时回填。
+- 任务 9 提交后已在干净工作区补跑 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`，结果通过，最后输出 `质量门禁通过`。
 
 **目标**
 - 从 P0 完成后开始，已登记 xfail 数只能减少，不能增加。
