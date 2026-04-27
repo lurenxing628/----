@@ -1134,75 +1134,68 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest --collect-only -q tests -p 
 
 ### 任务 7：质量门禁 runner 真正按 shared command plan 执行
 
-**任务 6 后深审返修前置块（必须先完成）**
-- 五条 review finding 已经由多路只读 subagent 和一轮对抗审查确认属实：旧正式 baseline 的 `head_sha` 不可复跑；导入校验过松；`test_run_quality_gate` reload shared 会制造 `QualityGateError` 类身份分裂；collector 拒绝正式 baseline 时 stdout 和旧文件会误导；source proof 还没有覆盖测试债务链路。
-- 任务 7 开始前先修前三类当前阻断：正式 baseline 机器合同、collector 拒绝路径、测试 helper reload 污染。修完后用新 baseline 替代旧 baseline，并把新 `head_sha`、schema、复验命令写回本计划。
-- Finding 5 不在这个前置块里抢跑实现。原因是当前 runner 仍有手写前三个命令再跑 `command_plan[3:]` 的问题；如果任务 8 现在插入 full-test-debt command，可能被 runner 跳过。正确顺序仍然是先任务 7，再任务 8。
-- 当前工作区已有与本次无关的 `evidence/DeepReview/reference_trace.md` 改动；正式 baseline 重新生成必须在返修代码提交后的干净环境中完成，不得把无关脏文件混入证明链。
-- 第一阶段返修落地范围：`tools/collect_full_test_debt.py` 将正式 baseline schema 升到 2，并增加生成前 clean 检查、生成命令和工作区证明字段、拒绝路径旧文件清理、成功路径临时文件替换；`tools/test_debt_registry.py` 改为强类型导入校验；`tests/test_run_quality_gate.py` 停止 reload shared，并增加 `QualityGateError` 类身份回归测试。
-- 第一阶段追加修正：任务 6 已经让 5 条旧失败显示为 strict xfail，所以返修后从当前 HEAD 重新生成的正式 baseline 会是 `candidate_test_debt=0` 的“当前证明”，不再是任务 5 的 5 条导入种子。collector 的 Markdown 文案已按“有候选导入种子 / 0 候选当前证明”分开，避免再次误导人工。
-- 第一阶段验证结果：`tests/test_run_quality_gate.py::test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions tests/test_full_test_debt_registry_contract.py::test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition` 为 `2 passed`；`tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py tests/test_run_quality_gate.py` 为 `81 passed`；改动文件 `py_compile`、`ruff check`、`pyright` 均通过，`git diff --check` 通过。
-- 第二阶段正式 baseline 重生结果：在临时干净 worktree `/tmp/full-pytest-baseline.0ncjIa/wt`、detached HEAD `75b0c77cceddf5fa2c887fd281767c93e745b282` 下运行正式采集并重写 `audit/2026-04/20260427_full_pytest_p0_debt_baseline.md`。新机器块为 `schema_version=2`、`head_sha=75b0c77cceddf5fa2c887fd281767c93e745b282`、`worktree_clean_before=true`、`git_status_short_before=[]`、`collector_argv` 包含 `--importable-debt-baseline`、`exitstatus=0`、`collected_count=631`、`failed_nodeid_count=0`、`candidate_test_debt=0`、`required_or_quality_gate_self_failure=0`、`main_style_isolation_candidate=0`、`collection_error_count=0`。这份新 baseline 证明当前没有未登记 full pytest 失败，不再作为任务 5 的导入种子。
-- 第二阶段验证结果：已解析新 baseline 机器块并断言上述字段；`git show 75b0c77cceddf5fa2c887fd281767c93e745b282:tools/collect_full_test_debt.py` 可查到 `SCHEMA_VERSION = 2`、`--importable-debt-baseline`、`dirty_before_baseline`、`git_status_short_before`、`worktree_clean_before`；`git show 75b0c77cceddf5fa2c887fd281767c93e745b282:tools/test_debt_registry.py` 可查到 `BASELINE_SCHEMA_VERSION = 2`、强类型布尔校验、`collector_argv` 和 `worktree_clean_before` 校验；`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check` 通过，`test_debt_count=5`。
-- clean gate 返修补充：在临时干净 worktree 执行 `scripts/run_quality_gate.py --require-clean-worktree` 时，required suite 暴露 `tests/regression_gantt_critical_chain_unavailable.py` 顺序污染；单跑该测试通过，整组 required suite 中会因 `GanttService` 类级关键链缓存残留而命中旧缓存。已在该测试开头重置类级关键链缓存，定向验证 `tests/regression_gantt_critical_chain_unavailable.py` 为 `2 passed`，与缓存线程安全回归一起跑为 `3 passed`，`ruff check tests/regression_gantt_critical_chain_unavailable.py` 通过。该补充不改变业务代码，只是让 required suite 自身不再被前序测试污染。
-- 收尾门禁：在临时干净 worktree `/tmp/full-pytest-final-gate.gPWbdw/wt`、detached HEAD `dc582bc` 下放置被 git 忽略的 `.venv` 链接后，执行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`，结果为 `质量门禁通过`；该临时 worktree 结束后 `git status --short` 为空。当前主工作区仍只剩本次开始前已存在的 `evidence/DeepReview/reference_trace.md` 未提交改动。
+**任务 6 后审查返修与任务 7 边界**
+- 本轮 review finding 重新编号并固定归属：
+  - Finding 1：`scripts/run_quality_gate.py` 手写执行 collect、ruff version、pyright version，再从 `command_plan[3:]` 开始跑，新增命令插到 collect 后会被跳过。归属任务 7。
+  - Finding 2：`QUALITY_GATE_SOURCE_FILES` 还没覆盖 full-test-debt 语义链路。归属任务 8，本轮不抢跑。
+  - Finding 3：`P0_TEST_DEBT_SEED_METADATA` 仍参与决定可导入 nodeid。归属任务 7 前置返修。
+  - Finding 4：台账手写可把 required/proof 测试登记成 active xfail。归属任务 7 前置返修。
+  - Finding 5：dirty-before 拒绝路径会留下旧 baseline。归属任务 7 前置返修。
+- 当前工作区开始前已有 `evidence/DeepReview/reference_trace.md` 脏改动；它不属于任务 7 代码改动，不得混入任务 7 功能提交。
+- 用户新增约束：本轮不得新增 fallback、兜底或静默回退。新增判断只允许是“坏输入必须失败”的显式合同检查，并且要能被测试证明。
 
-**任务 6 承接说明**
-- 任务 6 已把 pytest 运行时和治理台账接上：`开发文档/技术债务治理台账.md` 里 5 条 `mode=xfail` 的精确 nodeid，现在定向 pytest 结果为 `5 xfailed`。
-- pytest hook 只做 collection 阶段的精确 xfail 标记，不做全量失败证明，也不检查“所有登记 nodeid 是否都被本次 collect 到”。
-- 任务 7 只能处理 `scripts/run_quality_gate.py` 是否真正按 `tools/quality_gate_shared.py::build_quality_gate_command_plan()` 执行的问题；不得在任务 7 里提前新建 `tools/check_full_test_debt.py`，不得提前接任务 8 的 full-test-debt proof。
-- 任务 8 后续接 proof 时，可以依赖任务 6 已经提供的稳定 xfail reason：`<debt_id>: <reason>`。
+**已完成的前置返修（Finding 3/4/5）**
+- [x] `tools/test_debt_registry.py` 已把“baseline 机器合同是否可信”和“seed metadata 如何生成登记条目”拆开：`validate_importable_baseline()` 不再要求 `candidate_test_debt` 等于 `P0_TEST_DEBT_SEED_METADATA` 的 key 集合；0 候选 current proof baseline 可以加载。
+- [x] `build_test_debt_entries()` 仍在真正生成台账登记项时要求 seed metadata 存在；未知候选会显式报错“缺少测试债务登记元数据”，不会变成 KeyError，也不会静默跳过。
+- [x] `tools/quality_gate_shared.py` 新增 required/proof nodeid 共享匹配 helper；`tools/collect_full_test_debt.py` 和 `tools/quality_gate_ledger.py` 共用同一判断口径，避免 collector 与台账校验分裂。
+- [x] `tools/quality_gate_ledger.py` 已禁止 `mode=xfail` 的 active 测试债务登记 required/proof 测试；`mode=fixed` 作为历史记录仍允许保留。
+- [x] `tools/collect_full_test_debt.py` 的 dirty-before 两个提前拒绝路径已经先删除旧 `--write-baseline` 目标文件，再返回失败，和后续禁入分类、写后漂移路径一致。
 
-**目标**
-- 先修正 `scripts/run_quality_gate.py` 的固定索引执行方式，避免新增命令插入 shared plan 后被跳过。
+**已完成的 runner 修复（Finding 1）**
+- [x] `tests/test_run_quality_gate.py::test_main_executes_every_shared_command_when_plan_inserts_preflight` 先用 monkeypatch 把 `python tools/check_full_test_debt.py` 作为哨兵命令插到 collect 和 ruff version 中间；旧 runner 会漏跑哨兵并重复 pyright version，测试先红。
+- [x] `scripts/run_quality_gate.py` 已删除手写前三条命令和 `command_plan[3:]`，改成 `_run_quality_gate_command_plan()` 单次遍历 shared command plan。每条命令只执行一次、写一次 receipt、进入 manifest 一次。
+- [x] collect、ruff version、pyright version 通过显式 handler 解析结果；其他命令只检查 returncode。这是命令验收表，不是“命令不存在就跳过”的兜底。
+- [x] 对抗审查发现“必需证明命令被删除也会通过”的风险后，已补 `tests/test_run_quality_gate.py::test_main_fails_when_required_command_proof_is_missing`。现在 collect / ruff version / pyright version 任一缺失，runner 都会显式失败，并把 manifest 写成 `failed`。
+- [x] 本轮没有新增 `tools/check_full_test_debt.py`，没有把 `python tools/check_full_test_debt.py` 接入真实 command plan，没有修改 `.github/workflows/quality.yml`，没有提前实现 Finding 2。
 
-**文件**
-- 修改：`scripts/run_quality_gate.py`
-- 修改：`tests/test_run_quality_gate.py`
+**验证结果**
+- 红灯确认：
+  - `test_collect_full_test_debt_importable_requires_clean_worktree` 先失败于旧 baseline 未删除。
+  - `test_test_debt_registry_rejects_required_tests_as_active_xfail` 先失败于 required/proof active xfail 未拒绝。
+  - `test_importable_baseline_contract_accepts_zero_candidate_current_proof` 先失败于 seed key 集合仍决定候选集合。
+  - `test_import_test_debt_baseline_command_rejects_unknown_candidate_nodeid` 先失败于旧 seed 集合错误消息。
+  - `test_main_executes_every_shared_command_when_plan_inserts_preflight` 先失败于哨兵命令被跳过、pyright version 被重复执行。
+  - `test_main_fails_when_required_command_proof_is_missing` 先失败于缺 collect / ruff version / pyright version 时 runner 仍通过。
+- 绿灯验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py tests/test_run_quality_gate.py --tb=short -p no:cacheprovider`：`87 passed`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m py_compile tools/test_debt_registry.py tools/quality_gate_ledger.py tools/collect_full_test_debt.py tools/quality_gate_shared.py tools/quality_gate_support.py scripts/run_quality_gate.py tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py tests/test_run_quality_gate.py`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/test_debt_registry.py tools/quality_gate_ledger.py tools/collect_full_test_debt.py tools/quality_gate_shared.py tools/quality_gate_support.py scripts/run_quality_gate.py tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py tests/test_run_quality_gate.py`：`All checks passed!`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright tools/test_debt_registry.py tools/quality_gate_ledger.py tools/collect_full_test_debt.py tools/quality_gate_shared.py tools/quality_gate_support.py scripts/run_quality_gate.py`：`0 errors, 0 warnings, 0 informations`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`test_debt_count=5`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/collect_full_test_debt.py --baseline-kind after_main_style_isolation -- tests -q --tb=short -ra -p no:cacheprovider`：通过，输出 `candidate_test_debt=0`、`required_or_quality_gate_self_failure=0`、`main_style_isolation_candidate=0`、`collection_error_count=0`、`failed_nodeid_count=0`、`collected_count=634`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .limcode/skills/aps-post-change-check/scripts/post_change_check.py`：最终 `PASS - 可以提交`。
+  - `git diff --check`：通过。
+- 新增条件扫描：
+  - 测试里的 `if display == ...` 只用于 fake 命令输出。
+  - `tools/quality_gate_ledger.py` 新增 `if quality_gate_required_test_nodeid_matches(nodeid)` 是 active xfail 禁入合同。
+  - `tools/test_debt_registry.py` 新增 `if schema_version != ...`、`if baseline_kind != ...`、`if importable is not ...`、`if worktree_clean_before is not True`、`if git_status_short_before != []`、`if "--importable-debt-baseline" not in collector_argv` 都是 baseline 机器合同失败检查。
+  - 未新增 fallback、兜底、静默回退逻辑。
 
-- [ ] **步骤 1：写命令顺序合同测试**
-
-在 `tests/test_run_quality_gate.py` 增加断言：
-- runner 执行的 display 顺序等于 `build_quality_gate_command_plan()`。
-- ruff version / pyright version 的解析仍然发生。
-- command receipt 数量等于 shared command plan 数量。
-
-- [ ] **步骤 2：确认测试先失败**
-
-运行：
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py --tb=short -p no:cacheprovider
-```
-
-预期：因为当前 runner 手写前三个命令并跑 `command_plan[3:]` 而失败。
-
-- [ ] **步骤 3：改造 runner**
-
-让 `scripts/run_quality_gate.py` 以 shared command plan 为唯一命令源。需要对特定 display 绑定结果解析器：
-- `python -m pytest --collect-only -q tests`：构建 collection proof。
-- `python -m ruff --version`：解析 ruff version。
-- `python -m pyright --version`：解析 pyright version。
-- 其他命令只要求 returncode 为 0。
-
-这一步必然需要 display 到解析器的映射或等价表驱动结构。实现前必须向用户说明新增条件分支或映射的必要性；不得写“命令不存在就跳过”的兜底。
-
-- [ ] **步骤 4：重新运行命令顺序合同**
-
-运行：
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_run_quality_gate.py --tb=short -p no:cacheprovider
-```
-
-预期：通过。
+**子代理审查结果**
+- 需求符合性审查：PASS。确认 Finding 1/3/4/5 已闭环；Finding 2 未抢跑；`python tools/check_full_test_debt.py` 只作为测试哨兵出现。
+- 测试与根因审查：PASS。确认测试覆盖哨兵插入、0 候选 proof、未知候选缺 seed、required/proof active xfail、相似前缀不误杀、dirty-before 删除旧 baseline。
+- 风险与提交边界审查：第一轮 BLOCKED，指出缺 collect / ruff version / pyright version 时 runner 会静默通过。已补显式必需证明检查和反向测试。
+- 返修复审：PASS。确认缺任一必需证明命令会失败并写 failed manifest；新增检查是显式合同失败，不是 fallback/兜底；Finding 2 仍未抢跑。
+- 当前仍需在最终提交点后的干净 worktree 上运行 `scripts/run_quality_gate.py --require-clean-worktree`，最终 clean gate 结果以提交后记录为准。
 
 ### 任务 8：质量门禁接入 full-test-debt proof
 
-**Finding 5 留痕**
+**Finding 2 留痕：source proof 未覆盖测试债务链路**
 - 深审确认：`QUALITY_GATE_SOURCE_FILES` 当前还没有绑定 `tools/collect_full_test_debt.py`、`tools/test_debt_registry.py`、`tests/conftest.py`、`tests/main_style_regression_runner.py`，因此当前 source proof 不能声明已经覆盖 full-test-debt 语义。
-- 本缺口属于任务 8 的正式工作，不属于任务 6 后返修的代码范围。任务 8 落地时必须一次性接入 command plan、source proof、tool pyright 和 replay receipt；不能只把文件名塞进 source 列表。
-- 任务 8 必须等任务 7 runner 改造完成后再执行，避免新增 `python tools/check_full_test_debt.py` 被当前 `command_plan[3:]` 执行方式跳过。
+- 本缺口属于任务 8 的正式工作，不属于任务 7 前置返修或 runner 修复范围。任务 8 落地时必须一次性接入 command plan、source proof、tool pyright 和 replay receipt；不能只把文件名塞进 source 列表。
+- 任务 7 已完成 runner 改造：runner 现在按 shared command plan 单次遍历执行，每条命令只执行一次、写一次 receipt、进入 manifest 一次；新增命令插到 collect 后、ruff version 前也不会被跳过。
+- 任务 7 还补了必需证明缺失检查：collect / ruff version / pyright version 任一缺失都会失败并写 failed manifest。任务 8 如果新增 `python tools/check_full_test_debt.py`，不需要再改 runner 才能保证它被执行。
+- 任务 8 仍必须自己证明 full-test-debt 的 source proof、receipt、replay、checker 输出合同；任务 7 没有新增 `tools/check_full_test_debt.py`，也没有把 full-test-debt proof 提前接入真实 command plan。
 
 **目标**
 - CI 仍然只跑统一门禁入口，但门禁能证明没有未登记全量失败。
