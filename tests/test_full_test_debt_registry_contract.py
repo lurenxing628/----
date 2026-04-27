@@ -527,6 +527,86 @@ def _ledger_with_test_debt(*entries: dict, max_registered_xfail: int = 1) -> dic
     }
 
 
+def _run_pytest(project: Path, *args: str) -> subprocess.CompletedProcess:
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "-q",
+        *args,
+        "-p",
+        "no:cacheprovider",
+    ]
+    with _ORIGINAL_POPEN(
+        command,
+        cwd=str(project),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+    ) as proc:
+        stdout, stderr = proc.communicate()
+    return subprocess.CompletedProcess(command, int(proc.returncode), stdout, stderr)
+
+
+def _write_debt_aware_conftest(project: Path, entries_by_nodeid: dict) -> None:
+    entries_json = json.dumps(entries_by_nodeid, ensure_ascii=False)
+    _write(
+        project / "conftest.py",
+        f'''
+        import importlib.util
+        import json
+        from pathlib import Path
+
+        REPO_ROOT = Path({str(REPO_ROOT)!r})
+        spec = importlib.util.spec_from_file_location(
+            "_repo_tests_conftest_under_test",
+            REPO_ROOT / "tests" / "conftest.py",
+        )
+        repo_conftest = importlib.util.module_from_spec(spec)
+        assert spec is not None and spec.loader is not None
+        spec.loader.exec_module(repo_conftest)
+
+        _ENTRIES_BY_NODEID = json.loads({entries_json!r})
+
+
+        def _fake_active_xfail_entries_by_nodeid():
+            return dict(_ENTRIES_BY_NODEID)
+
+
+        repo_conftest.active_xfail_entries_by_nodeid = _fake_active_xfail_entries_by_nodeid
+        pytest_collection_modifyitems = repo_conftest.pytest_collection_modifyitems
+        ''',
+    )
+
+
+def _write_broken_debt_conftest(project: Path) -> None:
+    _write(
+        project / "conftest.py",
+        f'''
+        import importlib.util
+        from pathlib import Path
+
+        REPO_ROOT = Path({str(REPO_ROOT)!r})
+        spec = importlib.util.spec_from_file_location(
+            "_repo_tests_conftest_under_test",
+            REPO_ROOT / "tests" / "conftest.py",
+        )
+        repo_conftest = importlib.util.module_from_spec(spec)
+        assert spec is not None and spec.loader is not None
+        spec.loader.exec_module(repo_conftest)
+
+
+        def _broken_active_xfail_entries_by_nodeid():
+            raise RuntimeError("broken debt ledger")
+
+
+        repo_conftest.active_xfail_entries_by_nodeid = _broken_active_xfail_entries_by_nodeid
+        pytest_collection_modifyitems = repo_conftest.pytest_collection_modifyitems
+        ''',
+    )
+
+
 def test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition() -> None:
     from tools.quality_gate_ledger import validate_ledger
     from tools.quality_gate_shared import LEDGER_SCHEMA_VERSION, QualityGateError
@@ -598,7 +678,7 @@ def test_test_debt_registry_rejects_duplicates_and_negative_ratchet() -> None:
 
 def test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger() -> None:
     from tools.quality_gate_ledger import sort_ledger
-    from tools.test_debt_registry import active_xfail_nodeids
+    from tools.test_debt_registry import active_xfail_entries_by_nodeid, active_xfail_nodeids
 
     fixed = _valid_test_debt_entry("tests/test_sample.py::test_fixed")
     fixed["debt_id"] = "test-debt:sample-fixed"
@@ -615,6 +695,125 @@ def test_sort_ledger_preserves_test_debt_and_active_xfail_reads_ledger() -> None
         "tests/test_sample.py::test_fixed",
     ]
     assert active_xfail_nodeids(sorted_ledger) == {"tests/test_sample.py::test_active"}
+    assert active_xfail_entries_by_nodeid(sorted_ledger) == {"tests/test_sample.py::test_active": active}
+
+
+def test_pytest_collection_marks_registered_exact_nodeids_xfail(tmp_path: Path) -> None:
+    entries = {
+        "test_debt_aware.py::test_plain_failure": _valid_test_debt_entry("test_debt_aware.py::test_plain_failure"),
+        "test_debt_aware.py::test_param[bad]": _valid_test_debt_entry("test_debt_aware.py::test_param[bad]"),
+        "test_debt_aware.py::test_fixture_param[dirty]": _valid_test_debt_entry(
+            "test_debt_aware.py::test_fixture_param[dirty]"
+        ),
+    }
+    _write_debt_aware_conftest(tmp_path, entries)
+    _write(
+        tmp_path / "test_debt_aware.py",
+        '''
+        import pytest
+
+
+        def test_plain_failure():
+            assert False
+
+
+        @pytest.mark.parametrize("value", ["good", "bad"])
+        def test_param(value):
+            assert value == "good"
+
+
+        @pytest.fixture(params=["clean", "dirty"])
+        def sample(request):
+            return request.param
+
+
+        def test_fixture_param(sample):
+            assert sample == "clean"
+        ''',
+    )
+
+    proc = _run_pytest(tmp_path, "test_debt_aware.py", "-rx")
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "2 passed" in proc.stdout
+    assert "3 xfailed" in proc.stdout
+    assert "test-debt:sample" in proc.stdout
+
+
+def test_pytest_collection_keeps_unregistered_failures_failed(tmp_path: Path) -> None:
+    _write_debt_aware_conftest(tmp_path, {})
+    _write(
+        tmp_path / "test_unregistered.py",
+        '''
+        def test_new_failure():
+            assert False
+        ''',
+    )
+
+    proc = _run_pytest(tmp_path, "test_unregistered.py")
+
+    assert proc.returncode == 1
+    assert "FAILED test_unregistered.py::test_new_failure" in proc.stdout
+
+
+def test_pytest_collection_does_not_require_uncollected_registered_nodeids(tmp_path: Path) -> None:
+    entries = {
+        "test_not_collected.py::test_registered_failure": _valid_test_debt_entry(
+            "test_not_collected.py::test_registered_failure"
+        )
+    }
+    _write_debt_aware_conftest(tmp_path, entries)
+    _write(
+        tmp_path / "test_directed.py",
+        '''
+        def test_directed_passes():
+            assert True
+        ''',
+    )
+
+    proc = _run_pytest(tmp_path, "test_directed.py::test_directed_passes")
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "1 passed" in proc.stdout
+    assert "xfailed" not in proc.stdout
+
+
+def test_pytest_collection_strict_xpass_fails_when_registered_debt_is_fixed(tmp_path: Path) -> None:
+    entries = {
+        "test_xpass.py::test_registered_now_passes": _valid_test_debt_entry(
+            "test_xpass.py::test_registered_now_passes"
+        )
+    }
+    _write_debt_aware_conftest(tmp_path, entries)
+    _write(
+        tmp_path / "test_xpass.py",
+        '''
+        def test_registered_now_passes():
+            assert True
+        ''',
+    )
+
+    proc = _run_pytest(tmp_path, "test_xpass.py", "-rxX")
+
+    assert proc.returncode == 1
+    assert "[XPASS(strict)]" in proc.stdout
+    assert "test-debt:sample" in proc.stdout
+
+
+def test_pytest_collection_propagates_debt_registry_failures(tmp_path: Path) -> None:
+    _write_broken_debt_conftest(tmp_path)
+    _write(
+        tmp_path / "test_sample.py",
+        '''
+        def test_plain_pass():
+            assert True
+        ''',
+    )
+
+    proc = _run_pytest(tmp_path, "test_sample.py")
+
+    assert proc.returncode != 0
+    assert "broken debt ledger" in proc.stdout + proc.stderr
 
 
 def test_save_ledger_writes_test_debt_snapshot_and_machine_block(monkeypatch) -> None:

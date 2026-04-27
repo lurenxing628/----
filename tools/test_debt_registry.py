@@ -4,7 +4,7 @@ import copy
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
-from .quality_gate_ledger import sort_ledger, validate_ledger
+from .quality_gate_ledger import load_ledger, sort_ledger, validate_ledger
 from .quality_gate_shared import (
     LEDGER_SCHEMA_VERSION,
     QualityGateError,
@@ -265,17 +265,23 @@ def registered_test_debt_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]
     ]
 
 
-def active_xfail_nodeids(ledger: Dict[str, Any]) -> Set[str]:
+def active_xfail_entries_by_nodeid(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
+    source_ledger = load_ledger(required=True) if ledger is None else ledger
     return {
-        str(entry["nodeid"])
-        for entry in registered_test_debt_entries(ledger)
+        str(entry["nodeid"]): dict(entry)
+        for entry in registered_test_debt_entries(source_ledger)
         if str(entry.get("mode") or "") == "xfail"
     }
+
+
+def active_xfail_nodeids(ledger: Dict[str, Any]) -> Set[str]:
+    return set(active_xfail_entries_by_nodeid(ledger))
 
 
 __all__ = [
     "P0_TEST_DEBT_SEED_METADATA",
     "TEST_DEBT_FAMILY",
+    "active_xfail_entries_by_nodeid",
     "active_xfail_nodeids",
     "baseline_candidate_nodeids",
     "build_test_debt_entries",

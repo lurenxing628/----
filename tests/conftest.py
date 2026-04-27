@@ -12,6 +12,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tools.test_debt_registry import active_xfail_entries_by_nodeid  # noqa: E402,I001
+
 
 _MAIN_DEF_RE = re.compile(r"(?m)^\s*def\s+main\s*\(")
 _TEST_DEF_RE = re.compile(r"(?m)^\s*def\s+test_")
@@ -51,6 +53,18 @@ def pytest_collect_file(file_path, parent):
     if not _is_main_style_regression(path):
         return None
     return _regression_file_from_parent(parent, path, file_path)
+
+
+def _test_debt_xfail_reason(entry) -> str:
+    return f"{entry['debt_id']}: {entry['reason']}"
+
+
+def pytest_collection_modifyitems(items):
+    entries_by_nodeid = active_xfail_entries_by_nodeid()
+    for item in items:
+        entry = entries_by_nodeid.get(str(item.nodeid))
+        if entry is not None:
+            item.add_marker(pytest.mark.xfail(reason=_test_debt_xfail_reason(entry), strict=True))
 
 
 class RegressionMainFile(pytest.File):
