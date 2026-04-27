@@ -10,7 +10,7 @@ import subprocess
 import sys
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
@@ -244,6 +244,67 @@ def _assert_pyright_version(output: Dict[str, Any]) -> str:
         expected = ".".join(str(part) for part in PYRIGHT_REQUIRED_VERSION)
         raise QualityGateError(f"pyright version must be {expected}, got: {text}")
     return text
+
+
+CommandResultHandler = Callable[[str, Dict[str, Any]], Dict[str, Any]]
+
+
+def _handle_checked_quality_gate_command(display: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    _assert_command_succeeded(display, result)
+    return {}
+
+
+def _handle_collect_quality_gate_command(_display: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    _assert_command_succeeded("python -m pytest --collect-only -q tests", result)
+    collect_output = str(result.get("stdout") or "").strip()
+    return {"collection_proof": _build_collection_proof(_parse_collect_nodeids(collect_output))}
+
+
+def _handle_ruff_version_quality_gate_command(_display: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    return {"ruff_version_output": _assert_ruff_version(result)}
+
+
+def _handle_pyright_version_quality_gate_command(_display: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    return {"pyright_version_output": _assert_pyright_version(result)}
+
+
+def _run_quality_gate_command_plan(
+    command_plan: Sequence[Dict[str, Any]],
+    *,
+    run_id: str,
+    commands: List[Dict[str, Any]],
+    command_receipts: List[Dict[str, str]],
+    parsed_command_results: Dict[str, Any],
+) -> None:
+    command_result_handlers: Dict[str, CommandResultHandler] = {
+        str(command["display"]): _handle_checked_quality_gate_command for command in command_plan
+    }
+    command_result_handlers.update(
+        {
+            "python -m pytest --collect-only -q tests": _handle_collect_quality_gate_command,
+            "python -m ruff --version": _handle_ruff_version_quality_gate_command,
+            "python -m pyright --version": _handle_pyright_version_quality_gate_command,
+        }
+    )
+    for command in command_plan:
+        display = str(command["display"])
+        result = _coerce_command_result(
+            _run_command(display, _resolve_command_args(command), capture_output=bool(command.get("capture_output")))
+        )
+        commands.append(command)
+        command_receipts.append(_write_command_receipt(command, run_id=run_id, index=len(command_receipts) + 1, result=result))
+        parsed_command_results.update(command_result_handlers[display](display, result))
+
+
+def _require_quality_gate_command_proofs(parsed_command_results: Dict[str, Any]) -> None:
+    required_proofs = {
+        "python -m pytest --collect-only -q tests": parsed_command_results.get("collection_proof"),
+        "python -m ruff --version": parsed_command_results.get("ruff_version_output"),
+        "python -m pyright --version": parsed_command_results.get("pyright_version_output"),
+    }
+    missing_display = next((display for display, value in required_proofs.items() if not value), "")
+    if missing_display:
+        raise QualityGateError(f"shared command plan 缺少必需证明命令或解析结果：{missing_display}")
 
 
 def _state_paths() -> Dict[str, str]:
@@ -560,7 +621,6 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
     command_plan = build_quality_gate_command_plan()
-    command_lookup = {str(command["display"]): dict(command) for command in command_plan}
     started_at = datetime.now().isoformat(timespec="seconds")
     _clear_quality_gate_receipts()
     head_sha = _git_head_sha()
@@ -572,6 +632,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     collection_proof: Optional[Dict[str, Any]] = None
     ruff_version_output: Optional[str] = None
     pyright_version_output: Optional[str] = None
+    parsed_command_results: Dict[str, Any] = {}
     failure_kind: Optional[str] = None
     git_status_short_after: Optional[List[str]] = None
     require_clean_worktree = bool(args.require_clean_worktree or not args.allow_dirty_worktree)
@@ -596,43 +657,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise
         _assert_guard_tests_ready()
 
-        collect_display = "python -m pytest --collect-only -q tests"
-        collect_command = command_lookup[collect_display]
-        collect_args = _resolve_command_args(collect_command)
-        collect_result = _coerce_command_result(_run_command(collect_display, collect_args, capture_output=True))
-        commands.append(collect_command)
-        command_receipts.append(_write_command_receipt(collect_command, run_id=run_id, index=len(command_receipts) + 1, result=collect_result))
-        _assert_command_succeeded(collect_display, collect_result)
-        collect_output = str(collect_result.get("stdout") or "").strip()
-        collection_proof = _build_collection_proof(_parse_collect_nodeids(collect_output))
-
-        ruff_command = command_lookup["python -m ruff --version"]
-        ruff_result = _coerce_command_result(
-            _run_command("python -m ruff --version", [sys.executable, "-m", "ruff", "--version"], capture_output=True)
+        _run_quality_gate_command_plan(
+            command_plan,
+            run_id=run_id,
+            commands=commands,
+            command_receipts=command_receipts,
+            parsed_command_results=parsed_command_results,
         )
-        commands.append(ruff_command)
-        command_receipts.append(_write_command_receipt(ruff_command, run_id=run_id, index=len(command_receipts) + 1, result=ruff_result))
-        ruff_version_output = _assert_ruff_version(ruff_result)
-
-        pyright_command = command_lookup["python -m pyright --version"]
-        pyright_result = _coerce_command_result(
-            _run_command("python -m pyright --version", [sys.executable, "-m", "pyright", "--version"], capture_output=True)
-        )
-        commands.append(pyright_command)
-        command_receipts.append(
-            _write_command_receipt(pyright_command, run_id=run_id, index=len(command_receipts) + 1, result=pyright_result)
-        )
-        pyright_version_output = _assert_pyright_version(pyright_result)
-
-        run_displays = [str(command["display"]) for command in command_plan[3:]]
-        for display in run_displays:
-            command = command_lookup[display]
-            result = _coerce_command_result(
-                _run_command(display, _resolve_command_args(command), capture_output=bool(command.get("capture_output")))
-            )
-            commands.append(command)
-            command_receipts.append(_write_command_receipt(command, run_id=run_id, index=len(command_receipts) + 1, result=result))
-            _assert_command_succeeded(display, result)
+        collection_proof = cast(Optional[Dict[str, Any]], parsed_command_results.get("collection_proof"))
+        ruff_version_output = cast(Optional[str], parsed_command_results.get("ruff_version_output"))
+        pyright_version_output = cast(Optional[str], parsed_command_results.get("pyright_version_output"))
+        _require_quality_gate_command_proofs(parsed_command_results)
 
         git_status_short_after = _git_status_lines()
         _apply_worktree_proof(
@@ -666,6 +701,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("质量门禁通过")
         return 0
     except Exception as exc:
+        collection_proof = cast(Optional[Dict[str, Any]], parsed_command_results.get("collection_proof"))
+        ruff_version_output = cast(Optional[str], parsed_command_results.get("ruff_version_output"))
+        pyright_version_output = cast(Optional[str], parsed_command_results.get("pyright_version_output"))
         if git_status_short_after is None:
             try:
                 git_status_short_after = _git_status_lines()

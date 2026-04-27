@@ -163,6 +163,103 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     )
 
 
+def test_main_executes_every_shared_command_when_plan_inserts_preflight(monkeypatch, tmp_path):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    sentinel_command = {
+        "display": "python tools/check_full_test_debt.py",
+        "args": ["python", "tools/check_full_test_debt.py"],
+        "capture_output": False,
+        "output_policy": "normalized",
+    }
+    original_plan = module.build_quality_gate_command_plan()
+    patched_plan = [original_plan[0], sentinel_command, *original_plan[1:]]
+
+    calls = []
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(patched_plan))
+    monkeypatch.setattr(module, "_assert_no_active_runtime", lambda: None)
+    monkeypatch.setattr(module, "_assert_guard_tests_ready", lambda: calls.append(("guard_preflight", [], False)))
+    monkeypatch.setattr(module, "_git_head_sha", lambda: "abc123")
+    git_status_calls = iter([[], []])
+    monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
+    monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+
+    def fake_run_command(display, args, capture_output=False):
+        calls.append((display, list(args), bool(capture_output)))
+        if display == "python -m ruff --version":
+            return "ruff 0.15.4"
+        if display == "python -m pyright --version":
+            return "pyright 1.1.406"
+        if display == "python -m pytest --collect-only -q tests":
+            return "tests/test_run_quality_gate.py::test_main_executes_every_shared_command_when_plan_inserts_preflight\n"
+        return ""
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    assert module.main([]) == 0
+
+    command_displays = [display for display, _args, _capture_output in calls if display != "guard_preflight"]
+    expected_displays = [str(command["display"]) for command in patched_plan]
+    assert command_displays == expected_displays
+    assert command_displays.count("python tools/check_full_test_debt.py") == 1
+    assert command_displays.count("python -m pyright --version") == 1
+
+    manifest_path = repo_root / "evidence" / "QualityGate" / "quality_gate_manifest.json"
+    manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert [str(command["display"]) for command in manifest["commands"]] == expected_displays
+    assert len(manifest["command_receipts"]) == len(patched_plan)
+
+
+@pytest.mark.parametrize(
+    "removed_display",
+    [
+        "python -m pytest --collect-only -q tests",
+        "python -m ruff --version",
+        "python -m pyright --version",
+    ],
+)
+def test_main_fails_when_required_command_proof_is_missing(monkeypatch, tmp_path, removed_display: str):
+    module = _import_run_quality_gate()
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    patched_plan = [
+        command
+        for command in module.build_quality_gate_command_plan()
+        if str(command["display"]) != removed_display
+    ]
+
+    monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
+    monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(patched_plan))
+    monkeypatch.setattr(module, "_assert_no_active_runtime", lambda: None)
+    monkeypatch.setattr(module, "_assert_guard_tests_ready", lambda: None)
+    monkeypatch.setattr(module, "_git_head_sha", lambda: "abc123")
+    git_status_calls = iter([[], []])
+    monkeypatch.setattr(module, "_git_status_lines", lambda: next(git_status_calls))
+    monkeypatch.setattr(module, "_runtime_state_snapshot", lambda: {"runtime_state": "absent"})
+
+    def fake_run_command(display, args, capture_output=False):
+        if display == "python -m ruff --version":
+            return "ruff 0.15.4"
+        if display == "python -m pyright --version":
+            return "pyright 1.1.406"
+        if display == "python -m pytest --collect-only -q tests":
+            return "tests/test_run_quality_gate.py::test_main_fails_when_required_command_proof_is_missing\n"
+        return ""
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+
+    with pytest.raises(module.QualityGateError) as exc_info:
+        module.main([])
+
+    assert removed_display in str(exc_info.value)
+    manifest_path = repo_root / "evidence" / "QualityGate" / "quality_gate_manifest.json"
+    manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["status"] == "failed"
+    assert removed_display in manifest["failure_message"]
+
+
 def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressions():
     module = _import_run_quality_gate()
     shared = _shared_quality_registry()
