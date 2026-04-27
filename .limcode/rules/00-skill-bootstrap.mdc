@@ -1,53 +1,67 @@
 ---
-description: 会话级技能引导：先进入 using-superpowers，再按 .limcode 技能体系分流
+description: 会话级技能引导：默认进入 CodeStable，再按 cs-* 工作流分流
 alwaysApply: true
 ---
 
 # 会话级技能引导
 
-## 唯一事实源
+## 当前默认入口
 
-当前项目的技能、规则、原生子代理模板与角色正文源文件事实源为：
+本仓库从 2026-04-27 起默认使用 CodeStable 工作流。
 
-- `.limcode/skills/`
-- `.limcode/rules/`
-- `.limcode/subagents/`
-- `.limcode/agents/`（角色正文源文件，不是 LimCode 原生子代理自动扫描目录）
+收到任务时，优先检查 `codestable/`：
 
-`.cursor/` 仅为旧宿主兼容层，不作为首选事实源。
+- 已存在 `codestable/`：读取 `codestable/reference/system-overview.md`，再按任务选择 `cs-*` 技能。
+- 不存在 `codestable/`：先走 `cs-onboard`。
 
-## 起步规则
+如果当前宿主没有自动注册 `cs-*` 技能入口，就直接读取已安装技能文件：
 
-在任何回复、澄清问题、搜索、改文件、跑命令之前，先读取：
-
-- `.limcode/skills/using-superpowers/SKILL.md`
-
-并按其中规则判断是否需要切换到其他技能。
+- `~/.codex/skills/<技能名>/SKILL.md`
+- 若上面不存在，再查 `~/.agents/skills/<技能名>/SKILL.md`
 
 ## 默认分流
 
-- 新功能 / 行为变更 → `brainstorming`
-- 复杂新功能 / 需要三轮对抗式设计 → `feature-design`
-- BUG / 失败用例 / 异常行为 → `systematic-debugging`
-- 复杂排查 / 独立验证 → `deep-investigate`
-- design 已批准 → `writing-plans`
-- plan 执行 → `subagent-driven-development` 或 `executing-plans`
-- 实现时 → `test-driven-development`
-- 任务完成后 → `requesting-code-review`
-- 深度审查 → `aps-deep-review`
-- 改后快检 → `aps-post-change-check`
-- 文档联动 → `aps-dev-doc-backfill`
-- 收尾 → `finishing-a-development-branch`
+- 开放式诉求 / 不知道走哪条路 → `cs`
+- 新功能 / 新能力 → `cs-feat`
+- 想法模糊 → `cs-brainstorm`
+- 大需求拆解 → `cs-roadmap`
+- BUG / 异常 / 文档错误 → `cs-issue`
+- 行为不变的重构 / 代码优化 → `cs-refactor`
+- 定向研究代码 → `cs-explore`
+- 需求文档 → `cs-req`
+- 架构文档 / 架构检查 → `cs-arch`
+- 技术决定 / 长期约束 → `cs-decide`
+- 踩坑经验 / 可复用做法 → `cs-learn` / `cs-trick`
+- 指南 / API 参考 → `cs-guide` / `cs-libdoc`
+
+## `.limcode` 的新定位
+
+`.limcode/` 现在是旧工作流归档和 APS 专项资产库，仍保留：
+
+- 历史 plan / review / design
+- APS 专项技能和脚本
+- 子代理兼容说明
+- 角色正文源文件
+
+不要再默认读取 `.limcode/skills/using-superpowers/SKILL.md`。只有用户明确要求旧流程、正在续作 `.limcode` 历史任务，或需要 APS 专项旧资料时，才回看 `.limcode`。
 
 ## 落盘约定
 
-- design：`.limcode/design/`
-- plan：`.limcode/plans/`
-- review：`.limcode/review/`
-- 审计取舍报告：`audit/YYYY-MM/`
+默认落盘位置按 CodeStable 执行：
+
+- requirements：`codestable/requirements/`
+- architecture：`codestable/architecture/`
+- roadmap：`codestable/roadmap/`
+- features：`codestable/features/`
+- issues：`codestable/issues/`
+- refactors：`codestable/refactors/`
+- compound：`codestable/compound/`
+
+只有在续作旧任务或用户明确要求时，才继续写入 `.limcode/design/`、`.limcode/plans/`、`.limcode/review/`。
 
 ## 子代理兼容
 
-涉及子代理兼容与继承规则时，统一遵循：
+涉及子代理兼容与继承规则时，仍可参考：
 
+- `.limcode/subagents/README.md`
 - `.limcode/skills/_shared/subagent-compat.md`

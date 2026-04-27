@@ -1,11 +1,15 @@
 ---
 name: using-superpowers
 description: >
-  会话总控技能：在任何回复、澄清问题或动手之前，先判断是否需要调用其他技能。
-  适用于所有会话起点，以及用户要求“按 superpowers 的方式协作”的场景。
+  旧 superpowers 风格会话总控技能。自 2026-04-27 起，本仓库默认入口已切换为
+  CodeStable；本技能只在用户明确要求旧流程、续作旧 `.limcode` 任务，或排查旧
+  流程记录时使用。
 ---
 
 # 在 limcode 中使用 superpowers
+
+> **迁移状态**：本仓库已经切换到 CodeStable。新任务默认从 `cs` / `cs-onboard`
+> / `cs-*` 技能分流，不再默认进入本技能。本文件保留用于旧任务回溯和旧流程兼容。
 
 > **定位**：这是 `obra/superpowers` 的 limcode 适配版总控技能。
 > **目标**：把“先判断方法、再行动”的纪律放在所有任务前面，避免直接跳进写代码。
