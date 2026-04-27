@@ -730,18 +730,44 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/collect_full_test_debt.py \
 - 任务 5 只能从这份正式 baseline 的机器块读取候选债务；不得直接导入 `audit/2026-04/20260427_full_pytest_p0_after_isolation_baseline.md`，因为那份文件是 `importable=false` 的任务 2/3 交接证据。
 - 5 条候选债务都属于 `personnel.operator_machine`，可共享 `debt_family=operator_machine_normalization_contract_drift`，但必须按精确 nodeid 分 5 条登记。
 - 任务 5 导入前必须填好 `domain`、`style`、`root.module`、`root.function`、`owner`、`exit_condition`；不允许写 `untriaged` 占位。
+- 执行前已在当前 HEAD `19f743fca9fb145723e1353b4e812c3d24bd7be4` 下复跑 dry-run 采集：`collected_count=588`、`failed_nodeid_count=5`、`candidate_test_debt=5`、`required_or_quality_gate_self_failure=0`、`main_style_isolation_candidate=0`、`collection_error_count=0`，5 条 nodeid 与正式 baseline 一致。
+- 正式 baseline 机器块里的 `head_sha=ee96b3248a2bdf8abf48a5c5eba8d152379c8fdf` 不作为任务 5 的硬拒绝条件；原因是 baseline 文件提交后当前 HEAD 必然变化。任务 5 执行结果必须同时记录 `baseline_head_sha` 和 `verified_head_sha`，并记录候选集合一致性。
+
+**根因核实与对抗审查采纳**
+- 已调用多路只读调查 subagent 核实 5 条候选债务：
+  - 3 条 `stale_patch_target` 属实：测试还在 patch 已不存在的 `core.services.personnel.operator_machine_normalizers.normalize_skill_level`，当前真实入口是 `normalize_skill_level_optional`、`normalize_skill_level_stored` 或 `list_by_operator` 链路。
+  - 1 条 `return_contract_drift` 属实：`_resolve_write_values()` 当前遇到校验错误时返回旧值和错误消息，测试仍期待 `None`。
+  - 1 条 `readside_normalization_contract_drift` 属实：查询服务当前会返回 `dirty_fields/dirty_reasons`，旧测试仍按只有普通字段做精确相等。
+- 已调用多路只读对抗审查 subagent 复核本计划，采纳以下修正：
+  - 计划必须先回填到原文档，再执行。
+  - `reason` 与 `last_verified_at` 必须进入 schema、测试和导入字段。
+  - `sort_ledger()`、`save_ledger()`、`finalize_ledger_update()`、`refresh-auto-fields` 必须有“不丢 test_debt”的红灯测试。
+  - `tools/test_debt_registry.py` 不能成为第二事实源；正式登记只能来自 `开发文档/技术债务治理台账.md` 的受控 JSON。
+  - 不扩大 `accepted_risks` 去引用 `debt_id`，这件事留给未来单独设计。
+  - schema1 到 schema2 的迁移只能通过 `import-test-debt-baseline` 受控入口完成；普通 `load_ledger()`、`check`、`refresh` 不自动补空 `test_debt`。
 
 **目标**
 - 不另起第二套债务事实源；nodeid 级测试债务进入 `开发文档/技术债务治理台账.md` 的受控 JSON。
+- 本任务只登记和治理，不修 5 条失败测试本身，不让 pytest 自动 xfail，不接 quality gate full-test-debt proof。
 
 **文件**
 - 修改：`开发文档/技术债务治理台账.md`
+- 修改：`tools/quality_gate_shared.py`
 - 修改：`tools/quality_gate_ledger.py`
+- 修改：`tools/quality_gate_support.py`
 - 修改：`scripts/sync_debt_ledger.py`
 - 新建：`tools/test_debt_registry.py`
 - 测试：`tests/test_full_test_debt_registry_contract.py`
+- 测试：`tests/test_sync_debt_ledger.py`
 
-- [ ] **步骤 1：写 ledger schema 合同测试**
+**禁止越界**
+- 不修改 `tests/conftest.py`，不接 debt-aware xfail。
+- 不新建 `tools/check_full_test_debt.py`，不接 full-test-debt proof。
+- 不修改 `.github/workflows/quality.yml`。
+- 不修改业务层文件，包括 `core/services/personnel/**`。
+- 不扩大 `accepted_risks` 去引用 `debt_id`。
+
+- [x] **步骤 1：写 ledger schema 合同测试**
 
 在 `tests/test_full_test_debt_registry_contract.py` 增加：
 
@@ -762,20 +788,60 @@ def test_test_debt_registry_requires_nodeid_owner_root_and_exit_condition(tmp_pa
 - `owner`
 - `exit_condition`
 - `last_verified_at`
+- `debt_family`
 
 `mode` 只允许 `xfail`、`fixed`。
 
-- [ ] **步骤 2：确认测试先失败**
+继续增加这些红灯测试：
+- 缺 `test_debt` 的 schema2 ledger 必须失败，不能自动补空对象。
+- `nodeid` 重复必须失败。
+- `debt_id` 重复必须失败。
+- `ratchet.max_registered_xfail` 小于 0 必须失败。
+- 任意人工字段为空、`root.module/root.function` 缺失或写 `untriaged` 必须失败。
+- `active_xfail_nodeids()` 只返回 `mode=xfail` 的精确 nodeid；`mode=fixed` 不得返回。
+- registry 必须从传入的 ledger / 台账结构读取正式登记，不得从 P0 seed 常量读取正式登记。
+
+- [x] **步骤 2：写 ledger 保留合同测试**
+
+在 `tests/test_full_test_debt_registry_contract.py` 或 `tests/test_sync_debt_ledger.py` 增加：
+- `sort_ledger()` 保留 `test_debt.ratchet` 和 `test_debt.entries`，并按 nodeid / debt_id 稳定排序。
+- `save_ledger()` 写出的 Markdown 当前快照包含测试债务数量，机器块包含完整 `test_debt`。
+- `finalize_ledger_update()` 不会在语义未变时刷新 `updated_at`，也不会丢 `test_debt`。
+- `refresh-auto-fields` 只刷新超长文件 / 复杂度 / 静默回退自动字段，必须原样保留 `test_debt`。
+- 缺 `test_debt` 的普通 `load_ledger()` / `check` / `refresh-auto-fields` 必须失败；schema1 旧台账只能交给导入命令的受控 legacy 读取路径。
+
+- [x] **步骤 3：写导入命令合同测试**
+
+在 `tests/test_sync_debt_ledger.py` 增加：
+- `import-test-debt-baseline --baseline audit/2026-04/20260427_full_pytest_p0_debt_baseline.md` 能把正式 baseline 的 5 条 `candidate_test_debt` 导入 `test_debt.entries`，并把 `ratchet.max_registered_xfail` 写成导入条数。
+- 成功摘要必须包含导入数量、nodeid 列表、`baseline_head_sha`、`verified_head_sha`、`ratchet.max_registered_xfail`、`updated_at`。
+- 导入命令只能读取 `APS-FULL-PYTEST-BASELINE` 机器块，不解析 Markdown 普通文字。
+- 拒绝 `baseline_kind=raw_before_isolation`。
+- 拒绝 `importable=false`。
+- 拒绝 `required_or_quality_gate_self_failure` 非 0。
+- 拒绝 `main_style_isolation_candidate` 非 0。
+- 拒绝 `collection_error_count` 非 0。
+- 拒绝 pytest 异常退出码。
+- 拒绝候选 nodeid 不等于任务 4 已核实的 5 条。
+- 拒绝缺任意 seed metadata、字段为空、`untriaged`、重复 nodeid、重复 debt_id。
+- baseline 机器块的 `head_sha` 与当前 HEAD 不一致时，不直接拒绝；必须依赖当前 dry-run 复验候选集合一致，并在执行结果中写清双 SHA。
+
+- [x] **步骤 4：确认红灯测试先失败**
 
 运行：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_debt_registry_contract.py --tb=short -p no:cacheprovider
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sync_debt_ledger.py --tb=short -p no:cacheprovider
 ```
 
-预期：因为 ledger 还没有 `test_debt` schema 而失败。
+预期：因为 ledger 还没有 `test_debt` schema、registry helper 和 `import-test-debt-baseline` 命令而失败。
 
-- [ ] **步骤 3：扩展 ledger schema**
+- [x] **步骤 5：扩展 ledger schema**
+
+在 `tools/quality_gate_shared.py` 中：
+- `LEDGER_SCHEMA_VERSION` 从 1 升到 2。
+- 新增 `TEST_DEBT_MODE_VALUES = {"xfail", "fixed"}`。
 
 在 `tools/quality_gate_ledger.py` 增加 `test_debt`：
 
@@ -797,8 +863,25 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_full_test_deb
 - `debt_id` 重复直接报错。
 - `mode=fixed` 的条目不得继续被 pytest xfail 使用。
 - `ratchet.max_registered_xfail` 小于 0 直接报错。
+- `render_ledger_markdown()` 的“当前快照”新增测试债务登记数量。
+- `collect_main_entry_ids()` 本任务不纳入 `debt_id`，避免扩大 `accepted_risks` 引用范围。
 
-- [ ] **步骤 4：增加导入命令**
+- [x] **步骤 6：新增 test debt registry helper**
+
+新建 `tools/test_debt_registry.py`，职责限定为：
+- 读取 baseline 机器块。
+- 保存任务 5 导入所需的 5 条 P0 seed metadata。
+- 根据 baseline candidate nodeid 构建完整 `test_debt.entries`。
+- 校验 test debt entry 字段完整性。
+- 从传入 ledger / 当前台账读取正式登记。
+- 提供 `active_xfail_nodeids(ledger)`，只返回 `mode=xfail` 的精确 nodeid，供任务 6 使用。
+
+硬边界：
+- seed metadata 只能用于导入，不能作为正式登记事实源。
+- 不在本文件里读取或修改 `tests/conftest.py`。
+- 不做 full pytest proof。
+
+- [x] **步骤 7：增加导入命令**
 
 在 `scripts/sync_debt_ledger.py` 增加：
 
@@ -810,9 +893,38 @@ python scripts/sync_debt_ledger.py import-test-debt-baseline --baseline audit/20
 
 导入前必须为每个 `candidate_test_debt` 填好 `domain`、`root.module`、`root.function`、`owner`、`exit_condition`。不允许写 `untriaged` 占位，因为用户要求 P0 全部核对，不接受只登记不归因。
 
-如果实现这一步必须新增条件分支，执行者先停下来向用户说明原因。
+导入命令是唯一允许 schema1 -> schema2 的受控迁移入口：
+- 先读取旧台账机器块。
+- 先用 legacy 校验确认旧台账仍有 `schema_version=1`、`identity_strategy`、`updated_at`、`oversize_allowlist`、`complexity_allowlist`、`silent_fallback`、`accepted_risks`，并且这些结构字段类型正确。
+- 再生成完整 schema2 ledger，添加 `test_debt`，保存回 `开发文档/技术债务治理台账.md`。
+- 普通 `load_ledger()`、`check`、`refresh` 不得自动迁移旧结构。
 
-- [ ] **步骤 5：重新运行 ledger 合同**
+本步骤新增条件分支属于显式失败合同：用于拒绝错误 baseline、拒绝旧台账损坏、拒绝候选集合不一致、拒绝字段缺失；不得写“读不到就跳过 / 收集失败也继续”的兜底。
+
+- [x] **步骤 8：导入测试债务并验证任务 5 边界**
+
+先在当前 HEAD 下 dry-run 复验正式 baseline 仍可承接：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/collect_full_test_debt.py --baseline-kind after_main_style_isolation -- tests -q --tb=short -ra -p no:cacheprovider
+```
+
+预期：返回码为 1，stdout JSON 中 `candidate_test_debt=5`、`required_or_quality_gate_self_failure=0`、`main_style_isolation_candidate=0`、`collection_error_count=0`，5 条 nodeid 与正式 baseline 完全一致。
+
+执行导入：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py import-test-debt-baseline --baseline audit/2026-04/20260427_full_pytest_p0_debt_baseline.md
+```
+
+预期：
+- `开发文档/技术债务治理台账.md` schema 变成 2。
+- `test_debt.ratchet.max_registered_xfail=5`。
+- `test_debt.entries` 有 5 条 `mode=xfail` 登记。
+- 每条登记都有完整 `reason`、`root`、`owner`、`exit_condition`、`last_verified_at`、`debt_family`。
+- 未修改 `tests/conftest.py`，5 条失败还没有变成 xfail。
+
+- [x] **步骤 9：重新运行 ledger 合同**
 
 运行：
 
@@ -823,7 +935,103 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
 
 预期：通过。
 
+- [x] **步骤 10：确认没有提前做任务 6 / 8**
+
+运行 5 条候选 nodeid 定向 pytest：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error \
+  tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error \
+  tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors \
+  tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error \
+  tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows \
+  --tb=short -p no:cacheprovider
+```
+
+预期：仍然 5 failed；这证明任务 5 没有改业务、没修测试、没接 pytest xfail。
+
+检查未越界：
+
+```bash
+git diff --name-only
+```
+
+预期：不包含 `tests/conftest.py`、`tools/check_full_test_debt.py`、`.github/workflows/quality.yml`、`core/services/personnel/**`。
+
+- [x] **步骤 11：审查、回填与任务 6 承接**
+
+要求：
+- 调用只读 subagent 做需求符合性审查，确认任务 5 已按 plan 完成，没有提前做任务 6/8，没有改业务层。
+- 调用只读 subagent 做代码质量审查，重点确认 `test_debt` 不会被 `sort_ledger` / `save_ledger` / `refresh-auto-fields` 丢掉，`tools/test_debt_registry.py` 没变成第二事实源。
+- 调用只读 subagent 做整体验收审查，确认验证命令、文档回填和台账机器块一致。
+- 审查不过先修复，再重新审查。
+- 审查通过后，在任务 5 下补写执行结果；同时在任务 6 头部写清任务 5 已完成什么、剩余什么、任务 6 只能接 pytest collection xfail。
+
+- [x] **步骤 12：任务 5 收尾检查与提交准备**
+
+运行：
+
+```bash
+ruff check tools/quality_gate_shared.py tools/quality_gate_ledger.py tools/quality_gate_support.py tools/test_debt_registry.py scripts/sync_debt_ledger.py tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py
+pyright
+git diff --check
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .limcode/skills/aps-post-change-check/scripts/post_change_check.py
+git status --short --branch
+```
+
+预期：
+- lint、pyright、diff check 通过。
+- post-change-check 没有本任务新增阻断项；如果有警告，按证据处理或写入执行结果。
+- 根据最终 `git status` 把整个工作区按真实改动分组合适提交；不能只提交当前会话以为改过的文件。
+
+**任务 5 执行结果**
+- 实际改动：
+  - `开发文档/技术债务治理台账.md` 已升级到 `schema_version=2`，新增 `test_debt.ratchet.max_registered_xfail=5`，新增 5 条 `mode=xfail` 测试债务登记。
+  - `tools/quality_gate_shared.py` 新增测试债务模式常量，并顺手拆小本次触碰到的质量门禁校验函数，避免改后检查复杂度超线。
+  - `tools/quality_gate_ledger.py` 新增 `test_debt` schema 校验、稳定排序、Markdown 快照数量、保存保留逻辑；普通 `load_ledger()` / `check` / `refresh-auto-fields` 不会静默给旧结构补空 `test_debt`。
+  - `tools/test_debt_registry.py` 只负责 baseline 机器块读取、导入 seed、正式台账读取和 `active_xfail_nodeids(ledger)`；正式事实源仍是 `开发文档/技术债务治理台账.md`。
+  - `scripts/sync_debt_ledger.py` 新增 `import-test-debt-baseline --baseline ...`，导入前会复验当前 full pytest 候选集合仍与正式 baseline 一致；已有 `test_debt.entries` 时拒绝覆盖。
+  - `tests/test_full_test_debt_registry_contract.py` 与 `tests/test_sync_debt_ledger.py` 已补 schema、保留、导入、防覆盖、禁入分类和 seed 字段校验。
+- 导入摘要：
+  - baseline 文件：`audit/2026-04/20260427_full_pytest_p0_debt_baseline.md`
+  - `baseline_head_sha=ee96b3248a2bdf8abf48a5c5eba8d152379c8fdf`
+  - `verified_head_sha=19f743fca9fb145723e1353b4e812c3d24bd7be4`
+  - 台账 `updated_at=2026-04-27T08:56:24+08:00`
+  - 导入数量：5；`max_registered_xfail=5`
+  - 5 条 nodeid 与任务 4 正式 baseline 完全一致，且每条都有 `debt_id/nodeid/mode/reason/domain/style/root.module/root.function/owner/exit_condition/last_verified_at/debt_family`。
+- 当前 full pytest dry-run 复验：
+  - 命令：`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python - <<'PY' ... collect_current_test_debt_payload() ... PY`
+  - 结果：`exitstatus=1`，`collected_count=610`，`failed_nodeid_count=5`，`candidate_test_debt=5`，`required_or_quality_gate_self_failure=0`，`main_style_isolation_candidate=0`，`collection_error_count=0`。
+  - 当前收集数量从任务 4 的 588 变为 609，是因为任务 5 自身新增了测试；候选失败集合仍是原 5 条，没有新增测试债务。
+- 验证命令与结果：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_sync_debt_ledger.py tests/test_full_test_debt_registry_contract.py --tb=short -p no:cacheprovider`：`42 passed`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`schema_version=2`，`test_debt_count=5`。
+  - 5 条候选 nodeid 定向 pytest：仍为 `5 failed`，证明任务 5 没有提前修业务、没有提前改测试、没有提前接 pytest xfail。
+  - `ruff check tools/quality_gate_shared.py tools/quality_gate_ledger.py tools/quality_gate_support.py tools/test_debt_registry.py scripts/sync_debt_ledger.py tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py`：通过。
+  - `pyright scripts/sync_debt_ledger.py tools/quality_gate_shared.py tools/quality_gate_ledger.py tools/quality_gate_support.py tools/test_debt_registry.py tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py`：通过。
+  - 全仓 `pyright`：仍有仓库既有 `238 errors, 6 warnings`，主要在旧测试和旧导入合同，不是任务 5 新增文件引入；本任务用“改动文件 pyright 通过 + 记录全仓既有失败”收口。
+  - `git diff --check`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .limcode/skills/aps-post-change-check/scripts/post_change_check.py`：通过。
+- 子代理审查结论与处理：
+  - 需求符合性审查指出导入命令必须复验当前候选集合、保留测试要补齐；已修复并新增测试。
+  - 代码质量审查指出 schema v2 上重跑导入会覆盖已有正式 `test_debt`，且禁入列表不能只看统计数；已改为已有登记拒绝覆盖，并同时检查实际列表和统计数。
+  - 代码质量复审指出 candidate 列表里混入空 nodeid 时不能被静默过滤；已改为保留原始列表参与比对，空 nodeid 会受控拒绝，并新增回归测试。
+  - 整体验收审查指出任务 5 执行结果与任务 6 承接未回填、改后检查复杂度失败；已回填，并拆小复杂度超线函数后复验通过。
+- 停线情况：
+  - 未修改 `tests/conftest.py`。
+  - 未新建 `tools/check_full_test_debt.py`。
+  - 未修改 `.github/workflows/quality.yml`。
+  - 未修改 `core/services/personnel/**`。
+  - 未扩大 `accepted_risks` 去引用 `debt_id`。
+
 ### 任务 6：给 pytest 接入 debt-aware xfail
+
+**任务 5 承接说明**
+- 任务 5 已完成台账 schema v2 和 5 条 `mode=xfail` 登记；正式事实源是 `开发文档/技术债务治理台账.md` 的 `test_debt.entries`。
+- 任务 5 只登记，不改变 pytest 行为；当前 5 条候选 nodeid 定向 pytest 仍是 `5 failed`，还没有显示为 xfail。
+- 任务 6 只能接 `tests/conftest.py` 的 pytest collection hook 和 `tools/test_debt_registry.py` 的台账读取能力；不得改业务层，不得接 full-test-debt proof，不得把未登记的新失败吞掉。
+- 任务 6 需要继续遵守精确 nodeid 匹配：`mode=xfail` 才加 xfail，`mode=fixed` 不加；未收集到的登记 nodeid 不在 collection hook 里做全量失败检查。
 
 **目标**
 - 已登记债务显示为 xfail；未登记的新失败仍然失败。
