@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import importlib
 import json
 import sys
@@ -61,6 +62,37 @@ def _legacy_schema1_ledger() -> dict:
         "silent_fallback": {"scope": list(support.STARTUP_SCOPE_PATTERNS), "entries": []},
         "accepted_risks": [],
     }
+
+
+def _test_debt_entry(
+    debt_id: str = "test-debt:sample-one",
+    nodeid: str = P0_TEST_DEBT_NODEIDS[0],
+    *,
+    mode: str = "xfail",
+) -> dict:
+    return {
+        "debt_id": debt_id,
+        "nodeid": nodeid,
+        "mode": mode,
+        "reason": "旧测试合同尚未更新",
+        "domain": "personnel.operator_machine",
+        "style": "stale_patch_target",
+        "root": {"module": "core.services.personnel.operator_machine_service", "function": "list_by_operator"},
+        "owner": "personnel.operator_machine",
+        "exit_condition": "该 nodeid 定向 pytest 普通通过，并从正式 full pytest 债务基线移除。",
+        "last_verified_at": "2026-04-27T08:00:00+08:00",
+        "debt_family": "operator_machine_normalization_contract_drift",
+    }
+
+
+def _schema2_ledger_with_test_debt(*entries: dict, max_registered_xfail: int = 1) -> dict:
+    ledger = _legacy_schema1_ledger()
+    ledger["schema_version"] = 2
+    ledger["test_debt"] = {
+        "ratchet": {"max_registered_xfail": max_registered_xfail},
+        "entries": list(entries),
+    }
+    return ledger
 
 
 def _write_baseline(path: Path, payload: dict) -> None:
@@ -801,6 +833,72 @@ def test_import_test_debt_baseline_command_does_not_overwrite_existing_test_debt
     assert rc == 2
     assert "saved_ledger" not in calls
     assert "不得覆盖" in capsys.readouterr().err
+
+
+def test_mark_test_debt_fixed_command_marks_entry_fixed_and_decrements_ratchet(monkeypatch, capsys):
+    module = _import_sync_debt_ledger()
+    first = _test_debt_entry("test-debt:sample-one", P0_TEST_DEBT_NODEIDS[0])
+    second = _test_debt_entry("test-debt:sample-two", P0_TEST_DEBT_NODEIDS[1])
+    ledger = _schema2_ledger_with_test_debt(first, second, max_registered_xfail=2)
+    original_ledger = copy.deepcopy(ledger)
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger", lambda required=True: ledger)
+    monkeypatch.setattr(module, "now_shanghai_iso", lambda: "2026-04-27T10:00:00+08:00")
+    monkeypatch.setattr(module, "save_ledger", lambda next_ledger: calls.setdefault("saved_ledger", next_ledger))
+
+    rc = module.main(["mark-test-debt-fixed", "--debt-id", "test-debt:sample-one"])
+
+    assert rc == 0
+    assert ledger == original_ledger
+    saved = calls["saved_ledger"]
+    assert saved["test_debt"]["ratchet"] == {"max_registered_xfail": 1}
+    entries = {entry["debt_id"]: entry for entry in saved["test_debt"]["entries"]}
+    assert entries["test-debt:sample-one"]["mode"] == "fixed"
+    assert entries["test-debt:sample-one"]["last_verified_at"] == "2026-04-27T10:00:00+08:00"
+    assert entries["test-debt:sample-two"]["mode"] == "xfail"
+    stdout = capsys.readouterr().out
+    assert "测试债务已标记为 fixed" in stdout
+    assert '"previous_max_registered_xfail": 2' in stdout
+    assert '"next_max_registered_xfail": 1' in stdout
+
+
+@pytest.mark.parametrize(
+    ("ledger", "expected_message"),
+    [
+        (_schema2_ledger_with_test_debt(_test_debt_entry("test-debt:other"), max_registered_xfail=1), "不存在"),
+        (
+            _schema2_ledger_with_test_debt(
+                _test_debt_entry("test-debt:sample-one", P0_TEST_DEBT_NODEIDS[0]),
+                _test_debt_entry("test-debt:sample-one", P0_TEST_DEBT_NODEIDS[1]),
+                max_registered_xfail=2,
+            ),
+            "重复",
+        ),
+        (
+            _schema2_ledger_with_test_debt(_test_debt_entry(mode="fixed"), max_registered_xfail=0),
+            "已经是 fixed",
+        ),
+        (
+            _schema2_ledger_with_test_debt(_test_debt_entry(), max_registered_xfail=2),
+            "max_registered_xfail",
+        ),
+    ],
+)
+def test_mark_test_debt_fixed_command_rejects_invalid_state(monkeypatch, capsys, ledger: dict, expected_message: str):
+    module = _import_sync_debt_ledger()
+    original_ledger = copy.deepcopy(ledger)
+    calls = {}
+
+    monkeypatch.setattr(module, "load_ledger", lambda required=True: ledger)
+    monkeypatch.setattr(module, "save_ledger", lambda next_ledger: calls.setdefault("saved_ledger", next_ledger))
+
+    rc = module.main(["mark-test-debt-fixed", "--debt-id", "test-debt:sample-one"])
+
+    assert rc == 2
+    assert "saved_ledger" not in calls
+    assert ledger == original_ledger
+    assert expected_message in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

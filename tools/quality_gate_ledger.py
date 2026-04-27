@@ -393,8 +393,8 @@ def _validate_test_debt_entries(test_debt_entries: List[Any], max_registered_xfa
             if quality_gate_required_test_nodeid_matches(nodeid):
                 raise QualityGateError(f"test_debt.entries active xfail 不得登记 required/proof 测试：{nodeid}")
             active_xfail_count += 1
-    if active_xfail_count > max_registered_xfail:
-        raise QualityGateError("test_debt.ratchet.max_registered_xfail 小于当前 xfail 登记数量")
+    if active_xfail_count != max_registered_xfail:
+        raise QualityGateError("test_debt.ratchet.max_registered_xfail 必须等于当前 xfail 登记数量")
 
 
 def _validate_accepted_risks(accepted_risks: List[Any], all_main_ids: Set[str]) -> None:

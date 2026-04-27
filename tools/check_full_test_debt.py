@@ -33,6 +33,7 @@ COLLECTOR_ARGS = [
     "no:cacheprovider",
 ]
 REPORT_MACHINE_FIELDS = (
+    "xfail_marker_present",
     "xfail_marker_reason",
     "xfail_marker_strict",
     "wasxfail_reason",
@@ -103,6 +104,7 @@ def _reports(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         _require_text(report.get("nodeid"), f"reports[{index}].nodeid")
         _require_text(report.get("when"), f"reports[{index}].when")
         _require_text(report.get("outcome"), f"reports[{index}].outcome")
+        _require_bool(report.get("xfail_marker_present"), f"reports[{index}].xfail_marker_present")
         _require_text(report.get("xfail_marker_reason"), f"reports[{index}].xfail_marker_reason")
         _require_bool(report.get("xfail_marker_strict"), f"reports[{index}].xfail_marker_strict")
         _require_text(report.get("wasxfail_reason"), f"reports[{index}].wasxfail_reason")
@@ -117,7 +119,8 @@ def _call_reports(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def _collect_report_maps(
     call_reports: Sequence[Dict[str, Any]],
-) -> Tuple[Dict[str, List[str]], Dict[str, List[bool]], Dict[str, List[str]], List[str]]:
+) -> Tuple[Dict[str, List[bool]], Dict[str, List[str]], Dict[str, List[bool]], Dict[str, List[str]], List[str]]:
+    marker_present_by_nodeid: Dict[str, List[bool]] = {}
     marker_reasons_by_nodeid: Dict[str, List[str]] = {}
     marker_strict_by_nodeid: Dict[str, List[bool]] = {}
     wasxfail_reasons_by_nodeid: Dict[str, List[str]] = {}
@@ -126,6 +129,8 @@ def _collect_report_maps(
         nodeid = str(report["nodeid"])
         marker_reason = str(report["xfail_marker_reason"])
         wasxfail_reason = str(report["wasxfail_reason"])
+        if bool(report["xfail_marker_present"]):
+            marker_present_by_nodeid.setdefault(nodeid, []).append(True)
         if marker_reason:
             marker_reasons_by_nodeid.setdefault(nodeid, []).append(marker_reason)
             marker_strict_by_nodeid.setdefault(nodeid, []).append(bool(report["xfail_marker_strict"]))
@@ -133,7 +138,13 @@ def _collect_report_maps(
             wasxfail_reasons_by_nodeid.setdefault(nodeid, []).append(wasxfail_reason)
         if bool(report["strict_xpass"]):
             strict_xpass_nodeids.append(nodeid)
-    return marker_reasons_by_nodeid, marker_strict_by_nodeid, wasxfail_reasons_by_nodeid, sorted(set(strict_xpass_nodeids))
+    return (
+        marker_present_by_nodeid,
+        marker_reasons_by_nodeid,
+        marker_strict_by_nodeid,
+        wasxfail_reasons_by_nodeid,
+        sorted(set(strict_xpass_nodeids)),
+    )
 
 
 def _classification_errors(payload: Dict[str, Any]) -> List[str]:
@@ -186,13 +197,28 @@ def _validate_active_entries(
 def _validate_fixed_entries(
     fixed_entries: Sequence[Dict[str, Any]],
     *,
+    collected_nodeids: Sequence[str],
+    call_reports: Sequence[Dict[str, Any]],
+    marker_present_by_nodeid: Dict[str, List[bool]],
     marker_reasons_by_nodeid: Dict[str, List[str]],
     wasxfail_reasons_by_nodeid: Dict[str, List[str]],
 ) -> List[str]:
+    collected = set(str(nodeid) for nodeid in collected_nodeids)
+    call_reports_by_nodeid: Dict[str, List[Dict[str, Any]]] = {}
+    for report in call_reports:
+        call_reports_by_nodeid.setdefault(str(report["nodeid"]), []).append(report)
     errors: List[str] = []
     for entry in fixed_entries:
         nodeid = str(entry["nodeid"])
-        if nodeid in marker_reasons_by_nodeid or nodeid in wasxfail_reasons_by_nodeid:
+        if nodeid not in collected:
+            errors.append(f"fixed 测试债务未被 collect：{nodeid}")
+        if not any(str(report["outcome"]) == "passed" for report in call_reports_by_nodeid.get(nodeid, [])):
+            errors.append(f"fixed 测试债务没有普通通过报告：{nodeid}")
+        if (
+            nodeid in marker_present_by_nodeid
+            or nodeid in marker_reasons_by_nodeid
+            or nodeid in wasxfail_reasons_by_nodeid
+        ):
             errors.append(f"fixed 测试债务仍被 xfail 标记：{nodeid}")
     return errors
 
@@ -209,9 +235,13 @@ def build_full_test_debt_summary(payload: Dict[str, Any], *, ledger: Dict[str, A
     active_entries, fixed_entries = _registered_entries_by_mode(ledger)
     max_registered_xfail = _max_registered_xfail(ledger)
     call_reports = _call_reports(payload)
-    marker_reasons_by_nodeid, marker_strict_by_nodeid, wasxfail_reasons_by_nodeid, strict_xpass_nodeids = (
-        _collect_report_maps(call_reports)
-    )
+    (
+        marker_present_by_nodeid,
+        marker_reasons_by_nodeid,
+        marker_strict_by_nodeid,
+        wasxfail_reasons_by_nodeid,
+        strict_xpass_nodeids,
+    ) = _collect_report_maps(call_reports)
     errors = []
     errors.extend(_classification_errors(payload))
     errors.extend(
@@ -226,6 +256,9 @@ def build_full_test_debt_summary(payload: Dict[str, Any], *, ledger: Dict[str, A
     errors.extend(
         _validate_fixed_entries(
             fixed_entries,
+            collected_nodeids=collected_nodeids,
+            call_reports=call_reports,
+            marker_present_by_nodeid=marker_present_by_nodeid,
             marker_reasons_by_nodeid=marker_reasons_by_nodeid,
             wasxfail_reasons_by_nodeid=wasxfail_reasons_by_nodeid,
         )

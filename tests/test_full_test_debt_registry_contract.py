@@ -266,6 +266,7 @@ def test_collect_full_test_debt_records_structured_xfail_reason(tmp_path: Path) 
     )
 
     assert call_report["outcome"] == "skipped"
+    assert call_report["xfail_marker_present"] is True
     assert call_report["xfail_marker_reason"] == "test-debt:sample: 旧测试合同尚未更新"
     assert call_report["xfail_marker_strict"] is True
     assert call_report["wasxfail_reason"] == "test-debt:sample: 旧测试合同尚未更新"
@@ -295,6 +296,7 @@ def test_collect_full_test_debt_records_strict_xpass_without_text_guessing(tmp_p
 
     assert proc.returncode == payload["exitstatus"]
     assert call_report["outcome"] == "failed"
+    assert call_report["xfail_marker_present"] is True
     assert call_report["xfail_marker_reason"] == "test-debt:sample: 旧测试合同尚未更新"
     assert call_report["xfail_marker_strict"] is True
     assert call_report["wasxfail_reason"] == ""
@@ -322,9 +324,37 @@ def test_collect_full_test_debt_keeps_plain_skip_separate_from_debt_xfail(tmp_pa
         if report["nodeid"] == "tests/test_plain_skip.py::test_plain_skip" and report["outcome"] == "skipped"
     )
 
+    assert skipped_report["xfail_marker_present"] is False
     assert skipped_report["xfail_marker_reason"] == ""
     assert skipped_report["wasxfail_reason"] == ""
     assert skipped_report["strict_xpass"] is False
+
+
+def test_collect_full_test_debt_records_empty_reason_xfail_marker_presence(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "tests" / "test_xfail_empty_reason.py",
+        '''
+        import pytest
+
+
+        @pytest.mark.xfail(strict=False)
+        def test_debt_marker_without_reason():
+            assert False
+        ''',
+    )
+
+    proc = _run_collector(tmp_path, baseline_kind="after_main_style_isolation")
+    payload = _payload_from_stdout(proc)
+    call_report = next(
+        report
+        for report in payload["reports"]
+        if report["nodeid"] == "tests/test_xfail_empty_reason.py::test_debt_marker_without_reason"
+        and report["when"] == "call"
+    )
+
+    assert call_report["xfail_marker_present"] is True
+    assert call_report["xfail_marker_reason"] == ""
+    assert call_report["strict_xpass"] is False
 
 
 def test_collect_full_test_debt_records_collection_errors_and_exitstatus(tmp_path: Path) -> None:
@@ -857,6 +887,12 @@ def test_test_debt_registry_rejects_duplicates_and_negative_ratchet() -> None:
 
     with pytest.raises(QualityGateError, match="max_registered_xfail"):
         validate_ledger(_ledger_with_test_debt(first, max_registered_xfail=-1))
+
+    with pytest.raises(QualityGateError, match="max_registered_xfail"):
+        validate_ledger(_ledger_with_test_debt(first, max_registered_xfail=0))
+
+    with pytest.raises(QualityGateError, match="max_registered_xfail"):
+        validate_ledger(_ledger_with_test_debt(first, max_registered_xfail=2))
 
     fixed_entry = copy.deepcopy(first)
     fixed_entry["mode"] = "fixed"

@@ -67,6 +67,7 @@ def _report(
     *,
     outcome: str = "skipped",
     wasxfail_reason: str = "test-debt:sample: 旧测试合同尚未更新",
+    xfail_marker_present: bool = True,
     xfail_marker_reason: str = "test-debt:sample: 旧测试合同尚未更新",
     xfail_marker_strict: bool = True,
     strict_xpass: bool = False,
@@ -77,6 +78,7 @@ def _report(
         "outcome": outcome,
         "duration": 0.0,
         "longrepr": "",
+        "xfail_marker_present": xfail_marker_present,
         "xfail_marker_reason": xfail_marker_reason,
         "xfail_marker_strict": xfail_marker_strict,
         "wasxfail_reason": wasxfail_reason,
@@ -197,6 +199,77 @@ def test_check_full_test_debt_rejects_fixed_entry_still_marked_xfail() -> None:
         checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=0))
 
 
+def test_check_full_test_debt_accepts_fixed_entry_when_collected_and_passed() -> None:
+    checker = _import_checker()
+    nodeid = "tests/test_registered.py::test_fixed"
+    entry = _entry(nodeid, mode="fixed")
+    payload = _payload(
+        collected_nodeids=[nodeid],
+        reports=[
+            _report(
+                nodeid,
+                outcome="passed",
+                wasxfail_reason="",
+                xfail_marker_present=False,
+                xfail_marker_reason="",
+                xfail_marker_strict=False,
+            )
+        ],
+    )
+
+    summary = checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=0))
+
+    assert summary["active_xfail_count"] == 0
+    assert summary["fixed_count"] == 1
+    assert summary["max_registered_xfail"] == 0
+
+
+@pytest.mark.parametrize(
+    ("collected_nodeids", "reports", "message"),
+    [
+        ([], [], "collect"),
+        (
+            ["tests/test_registered.py::test_fixed"],
+            [
+                _report(
+                    "tests/test_registered.py::test_fixed",
+                    outcome="failed",
+                    wasxfail_reason="",
+                    xfail_marker_present=False,
+                    xfail_marker_reason="",
+                    xfail_marker_strict=False,
+                )
+            ],
+            "普通通过",
+        ),
+        (
+            ["tests/test_registered.py::test_fixed"],
+            [
+                _report(
+                    "tests/test_registered.py::test_fixed",
+                    outcome="passed",
+                    wasxfail_reason="",
+                    xfail_marker_present=True,
+                    xfail_marker_reason="",
+                    xfail_marker_strict=False,
+                )
+            ],
+            "xfail",
+        ),
+    ],
+)
+def test_check_full_test_debt_rejects_invalid_fixed_proof(
+    collected_nodeids: List[str], reports: List[Dict[str, Any]], message: str
+) -> None:
+    checker = _import_checker()
+    nodeid = "tests/test_registered.py::test_fixed"
+    entry = _entry(nodeid, mode="fixed")
+    payload = _payload(collected_nodeids=collected_nodeids, reports=reports)
+
+    with pytest.raises(checker.QualityGateError, match=message):
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=0))
+
+
 def test_check_full_test_debt_rejects_ratchet_overflow() -> None:
     checker = _import_checker()
     nodeid = "tests/test_registered.py::test_known_debt"
@@ -205,6 +278,16 @@ def test_check_full_test_debt_rejects_ratchet_overflow() -> None:
 
     with pytest.raises(checker.QualityGateError, match="max_registered_xfail"):
         checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=0))
+
+
+def test_check_full_test_debt_rejects_ratchet_slack() -> None:
+    checker = _import_checker()
+    nodeid = "tests/test_registered.py::test_known_debt"
+    entry = _entry(nodeid)
+    payload = _payload(collected_nodeids=[nodeid], reports=[_report(nodeid)])
+
+    with pytest.raises(checker.QualityGateError, match="max_registered_xfail"):
+        checker.build_full_test_debt_summary(payload, ledger=_ledger(entry, max_registered_xfail=2))
 
 
 def test_check_full_test_debt_rejects_bad_collector_json() -> None:

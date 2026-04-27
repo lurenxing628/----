@@ -389,6 +389,61 @@ def build_test_debt_ledger_from_baseline(
     return sorted_ledger, summary
 
 
+def mark_test_debt_fixed(
+    ledger: Dict[str, Any],
+    debt_id: str,
+    *,
+    fixed_at: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    validate_ledger(ledger)
+    target_debt_id = _require_text(debt_id, "debt_id")
+    verified_at = _require_text(fixed_at, "fixed_at")
+    entries = registered_test_debt_entries(ledger)
+    matches = [entry for entry in entries if str(entry.get("debt_id") or "") == target_debt_id]
+    if not matches:
+        raise QualityGateError(f"测试债务 debt_id 不存在：{target_debt_id}")
+    if len(matches) > 1:
+        raise QualityGateError(f"测试债务 debt_id 重复：{target_debt_id}")
+    target = matches[0]
+    if str(target.get("mode") or "") == "fixed":
+        raise QualityGateError(f"测试债务已经是 fixed：{target_debt_id}")
+    if str(target.get("mode") or "") != "xfail":
+        raise QualityGateError(f"测试债务不是 active xfail：{target_debt_id}")
+
+    next_ledger = copy.deepcopy(ledger)
+    next_ledger["updated_at"] = verified_at
+    test_debt = _require_dict(next_ledger.get("test_debt"), "test_debt")
+    next_entries = _require_list(test_debt.get("entries"), "test_debt.entries")
+    for entry in next_entries:
+        item = _require_dict(entry, "test_debt.entries[]")
+        if str(item.get("debt_id") or "") == target_debt_id:
+            item["mode"] = "fixed"
+            item["last_verified_at"] = verified_at
+    active_xfail_count = sum(
+        1 for entry in next_entries if isinstance(entry, dict) and str(entry.get("mode") or "") == "xfail"
+    )
+    fixed_count = sum(1 for entry in next_entries if isinstance(entry, dict) and str(entry.get("mode") or "") == "fixed")
+    ratchet = _require_dict(test_debt.get("ratchet"), "test_debt.ratchet")
+    previous_max = _require_plain_int(
+        ratchet.get("max_registered_xfail"),
+        "test_debt.ratchet.max_registered_xfail",
+    )
+    ratchet["max_registered_xfail"] = active_xfail_count
+
+    sorted_ledger = sort_ledger(next_ledger)
+    validate_ledger(sorted_ledger)
+    summary = {
+        "debt_id": target_debt_id,
+        "nodeid": str(target["nodeid"]),
+        "previous_max_registered_xfail": previous_max,
+        "next_max_registered_xfail": active_xfail_count,
+        "active_xfail_count": active_xfail_count,
+        "fixed_count": fixed_count,
+        "updated_at": sorted_ledger.get("updated_at"),
+    }
+    return sorted_ledger, summary
+
+
 def registered_test_debt_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
     validate_ledger(ledger)
     return [
@@ -466,6 +521,7 @@ __all__ = [
     "iter_startup_regressions",
     "load_full_test_debt_baseline",
     "load_test_debt_registry",
+    "mark_test_debt_fixed",
     "registered_test_debt_entries",
     "validate_current_candidate_payload",
     "validate_importable_baseline",

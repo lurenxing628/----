@@ -30,6 +30,7 @@ from tools.test_debt_registry import (  # noqa: E402
     baseline_candidate_nodeids,
     build_test_debt_ledger_from_baseline,
     load_full_test_debt_baseline,
+    mark_test_debt_fixed,
     validate_current_candidate_payload,
 )
 
@@ -124,6 +125,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     import_test_debt_parser.add_argument("--baseline", required=True, help="full pytest P0 测试债务 baseline 文件")
     import_test_debt_parser.set_defaults(handler=_handle_import_test_debt_baseline)
+
+    mark_test_debt_fixed_parser = subparsers.add_parser(
+        "mark-test-debt-fixed",
+        help="把一条已修好的 full pytest 测试债务标记为 fixed 并同步下调 ratchet",
+    )
+    mark_test_debt_fixed_parser.add_argument("--debt-id", required=True, help="要关闭的测试债务 debt_id")
+    mark_test_debt_fixed_parser.set_defaults(handler=_handle_mark_test_debt_fixed)
     return parser
 
 
@@ -250,6 +258,18 @@ def _handle_import_test_debt_baseline(args: argparse.Namespace) -> int:
     )
     save_ledger(next_ledger)
     _print_summary("测试债务 baseline 已导入治理台账", summary)
+    return 0
+
+
+def _handle_mark_test_debt_fixed(args: argparse.Namespace) -> int:
+    ledger = load_ledger(required=True)
+    next_ledger, summary = mark_test_debt_fixed(
+        ledger,
+        str(args.debt_id),
+        fixed_at=now_shanghai_iso(),
+    )
+    save_ledger(next_ledger)
+    _print_summary("测试债务已标记为 fixed", summary)
     return 0
 
 

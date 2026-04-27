@@ -138,6 +138,7 @@ class FullTestDebtCollector:
         outcome = yield
         report = outcome.get_result()
         marker = item.get_closest_marker("xfail")
+        xfail_marker_present = marker is not None
         xfail_marker_reason = ""
         xfail_marker_strict = False
         if marker is not None:
@@ -166,6 +167,7 @@ class FullTestDebtCollector:
                 "outcome": str(report.outcome),
                 "duration": float(getattr(report, "duration", 0.0) or 0.0),
                 "longrepr": _longrepr_text(report),
+                "xfail_marker_present": xfail_marker_present,
                 "xfail_marker_reason": xfail_marker_reason,
                 "xfail_marker_strict": xfail_marker_strict,
                 "wasxfail_reason": wasxfail_reason,
