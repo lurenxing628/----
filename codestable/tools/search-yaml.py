@@ -3,7 +3,11 @@
 search-yaml.py — Generic YAML-frontmatter search tool for markdown document directories.
 
 Works on any directory of .md files that use YAML frontmatter (--- ... ---).
-Designed for AI agent use: fast, structured output, no required external dependencies.
+Designed for AI agent use: fast, structured output. PyYAML is provided by
+requirements-dev.txt; when it is missing, the builtin parser only supports
+simple Markdown frontmatter and fails closed on obvious malformed scalars.
+Markdown files without YAML frontmatter are ignored instead of being returned
+as unstructured search hits.
 
 Filter syntax (--filter flag, repeatable, AND logic):
   key=value     Exact match on a scalar field (case-insensitive)
@@ -22,7 +26,7 @@ Usage examples:
   python codestable/tools/search-yaml.py --dir codestable/compound --filter doc_type=learning --filter track=knowledge --json
 
   # Sort by a frontmatter date field (works on any ISO-8601 date string, YAML date, or sortable value)
-  python codestable/tools/search-yaml.py --dir codestable/library-docs --sort-by last_reviewed --order asc   # oldest first (stalest)
+  python codestable/tools/search-yaml.py --dir docs/api --sort-by last_reviewed --order asc                  # oldest first (stalest)
   python codestable/tools/search-yaml.py --dir codestable/compound --sort-by date --order desc              # newest first
 
   # Works on any yaml-frontmatter markdown directory
@@ -52,7 +56,13 @@ def _parse_yaml_scalar(val: str):
         raise FrontmatterError("Malformed inline YAML list")
     if val.startswith("[") and val.endswith("]"):
         inner = val[1:-1]
-        return [item.strip().strip("'\"") for item in inner.split(",") if item.strip()]
+        return [_parse_yaml_scalar(item.strip()) for item in inner.split(",") if item.strip()]
+    if val[:1] in {"'", '"'}:
+        if len(val) < 2 or val[-1] != val[0]:
+            raise FrontmatterError("Unterminated quoted scalar")
+        return val[1:-1]
+    if val[-1:] in {"'", '"'}:
+        raise FrontmatterError("Unmatched closing quote in scalar")
     lower = val.lower()
     if lower in ("true", "yes"):
         return True
@@ -108,14 +118,14 @@ def _parse_builtin_yaml_mapping(fm_text: str) -> dict:
     return meta
 
 
-def parse_frontmatter(text: str) -> tuple[dict, str]:
+def parse_frontmatter(text: str) -> tuple[dict | None, str]:
     """
     Split a markdown document into (frontmatter_dict, body_text).
-    Returns ({}, full_text) when no frontmatter is present.
+    Returns (None, full_text) when no frontmatter is present.
     """
     split = _split_frontmatter(text)
     if split is None:
-        return {}, text
+        return None, text
 
     fm_text, body = split
 
@@ -154,6 +164,8 @@ def load_documents(directory: Path) -> list[dict]:
             meta, body = parse_frontmatter(text)
         except FrontmatterError as exc:
             raise FrontmatterError(f"{md_file.relative_to(directory)}: {exc}") from exc
+        if meta is None:
+            continue
         docs.append({
             "file": str(md_file.relative_to(directory)),
             "path": str(md_file),
@@ -186,6 +198,10 @@ class Filter:
                 f"Invalid filter expression {raw!r}. "
                 "Use 'key=value' for exact match or 'key~=value' for substring/list-contains match."
             )
+        if not self.key:
+            raise argparse.ArgumentTypeError(f"Invalid filter expression {raw!r}: key cannot be empty.")
+        if not self.value:
+            raise argparse.ArgumentTypeError(f"Invalid filter expression {raw!r}: value cannot be empty.")
 
     def matches(self, meta: dict) -> bool:
         field_val = meta.get(self.key)
@@ -350,7 +366,7 @@ def main() -> None:
         print(f"[error] {exc}", file=sys.stderr)
         sys.exit(1)
     if not docs:
-        print(f"No .md files found in {directory}")
+        print(f"No YAML-frontmatter markdown documents found in {directory}")
         return
 
     results = [d for d in docs if doc_matches(d, args.filters, args.query)]

@@ -682,9 +682,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             failure_kind = "dirty_after_gate"
             raise QualityGateError("dirty worktree: clean proof requires an empty worktree after the gate runs")
 
+        success_by_clean_contract = {
+            True: ("passed", "质量门禁通过", 0),
+            False: (
+                "passed_but_unbound",
+                "质量门禁完成，但当前证明未绑定；manifest 已标记 passed_but_unbound，不能当作通过证明。",
+                2,
+            ),
+        }
+        success_status, success_message, success_return_code = success_by_clean_contract[require_clean_worktree]
         manifest.update(
             {
-                "status": "passed" if require_clean_worktree else "passed_but_unbound",
+                "status": success_status,
                 "finished_at": datetime.now().isoformat(timespec="seconds"),
                 "collection_proof": collection_proof,
                 "required_tests": list(REQUIRED_TEST_ARGS),
@@ -698,8 +707,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         apply_quality_gate_manifest_proof_fields(manifest, repo_root=REPO_ROOT)
         _write_quality_gate_manifest(manifest)
-        print("质量门禁通过")
-        return 0
+        print(success_message)
+        return success_return_code
     except Exception as exc:
         collection_proof = cast(Optional[Dict[str, Any]], parsed_command_results.get("collection_proof"))
         ruff_version_output = cast(Optional[str], parsed_command_results.get("ruff_version_output"))

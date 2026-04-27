@@ -114,6 +114,50 @@ def test_search_yaml_builtin_fallback_reads_block_list_filters(tmp_path: Path) -
     assert "codestable" in proc.stdout
 
 
+def test_search_yaml_rejects_empty_filter_parts(tmp_path: Path) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "doc.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            status: active
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    for raw_filter in ["=active", "~=active", "status=", "status~="]:
+        proc = _run_tool(SEARCH_TOOL, "--dir", str(docs_dir), "--filter", raw_filter)
+        assert proc.returncode == 2
+        assert "Invalid filter expression" in proc.stderr
+
+
+def test_search_yaml_skips_markdown_without_frontmatter(tmp_path: Path) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "plain.md").write_text("needle\n", encoding="utf-8")
+    (docs_dir / "doc.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            status: active
+            ---
+            needle
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    proc = _run_tool(SEARCH_TOOL, "--dir", str(docs_dir), "--query", "needle")
+
+    assert proc.returncode == 0
+    assert "doc.md" in proc.stdout
+    assert "plain.md" not in proc.stdout
+
+
 def test_search_yaml_json_output_serializes_yaml_dates(tmp_path: Path) -> None:
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()
@@ -183,6 +227,90 @@ def test_validate_yaml_builtin_fallback_rejects_bad_block_list(tmp_path: Path) -
 
     assert proc.returncode == 1
     assert "Unsupported nested YAML" in proc.stdout
+
+
+def test_validate_yaml_builtin_fallback_requires_pyyaml_for_yaml_files(tmp_path: Path) -> None:
+    checklist = tmp_path / "feature-checklist.yaml"
+    checklist.write_text(
+        textwrap.dedent(
+            """
+            steps:
+              - id: implement
+                status: done
+            checks:
+              - pytest
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    proc = _run_tool(
+        VALIDATE_TOOL,
+        "--file",
+        str(checklist),
+        "--yaml-only",
+        env=_env_without_pyyaml(tmp_path / "shadow-yaml"),
+    )
+
+    assert proc.returncode == 1
+    assert "PyYAML is required to validate pure YAML files" in proc.stdout
+
+
+def test_validate_yaml_builtin_fallback_rejects_unclosed_quote(tmp_path: Path) -> None:
+    doc = tmp_path / "bad.md"
+    doc.write_text(
+        textwrap.dedent(
+            """
+            ---
+            doc_type: learning
+            title: "unterminated
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    proc = _run_tool(
+        VALIDATE_TOOL,
+        "--file",
+        str(doc),
+        env=_env_without_pyyaml(tmp_path / "shadow-quote-validate"),
+    )
+
+    assert proc.returncode == 1
+    assert "Unterminated quoted scalar" in proc.stdout
+
+
+def test_search_yaml_builtin_fallback_rejects_unclosed_quote(tmp_path: Path) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "bad.md").write_text(
+        textwrap.dedent(
+            """
+            ---
+            doc_type: learning
+            title: "unterminated
+            ---
+            body
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+    proc = _run_tool(
+        SEARCH_TOOL,
+        "--dir",
+        str(docs_dir),
+        "--query",
+        "body",
+        "--json",
+        env=_env_without_pyyaml(tmp_path / "shadow-quote-search"),
+    )
+
+    assert proc.returncode == 1
+    assert "Unterminated quoted scalar" in proc.stderr
+    assert "bad.md" in proc.stderr
 
 
 def test_validate_yaml_rejects_non_line_frontmatter_delimiter(tmp_path: Path) -> None:

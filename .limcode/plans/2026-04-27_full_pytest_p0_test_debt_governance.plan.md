@@ -1712,6 +1712,14 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require
 - 证据文档收口：`codestable/issues/2026-04-27-review-contract-hardening/review-contract-hardening-fix-note.md` 已修正测试数量；`audit/2026-04/20260427_full_pytest_p0_debt_baseline.md` 已在干净提交 `197663a9a4e5573f0e85a1a090fa2158baa33856` 上重新生成，机器块记录 `git_status_short_before=[]`、`worktree_clean_before=true`、`collected_count=690`、`candidate_test_debt=0`。
 - 本轮已复跑：`tests/test_run_quality_gate.py tests/test_run_full_selftest_report_metadata.py tests/test_check_full_test_debt.py tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py tests/test_regression_main_isolation_contract.py` 为 `154 passed`；`tests/test_codestable_tools_contract.py` 为 `10 passed`；`tools/check_full_test_debt.py` 为 `active_xfail_count=5`、`fixed_count=0`、`max_registered_xfail=5`、`collected_count=690`、`collection_error_count=0`；`scripts/sync_debt_ledger.py check` 通过。
 
+**五次 deep review 返修记录（2026-04-27）**
+- 当前返修来自 5 路初审和 3 路对抗复审后的新增 Review findings，重点修 5 个点：baseline 导入只挡 candidate xfail 会漏掉 skipped xfail，坏 baseline report 缺机器字段时会冒 `KeyError`，`search-yaml.py --filter status~=` 会静默宽泛匹配，旧 `audit` baseline 不能代表当前 dirty 工作区，`requirements-dev.txt` 新增 PyYAML 越过了原 P0 边界。
+- full pytest 债务导入合同已补硬：只要 baseline reports 中出现任何 xfail 信号，importable baseline 就直接拒绝；baseline reports 缺 `strict_xpass`、`xfail_marker_present`、`xfail_marker_reason`、`wasxfail_reason` 等机器字段时抛 `QualityGateError`，不再冒 `KeyError`。当前 proof 入口仍由 `tools/check_full_test_debt.py` 负责区分已登记 xfail、未登记 xfail、fixed、ratchet，不被导入禁入规则抢跑。
+- CodeStable 搜索合同已补硬：`--filter =x`、`--filter ~=x`、`--filter status=`、`--filter status~=` 都直接参数失败；没有 YAML frontmatter 的普通 Markdown 会被跳过，不再混入结构化搜索结果；纯 YAML 仍要求 PyYAML，不继续扩大内置解析器能力。
+- 证据文档收口：`audit/2026-04/20260427_full_pytest_p0_debt_baseline.md` 顶部已明确说明机器块绑定旧提交 `197663a9a4e5573f0e85a1a090fa2158baa33856`，不能代表当前 dirty 工作区；`review-contract-hardening-fix-note.md` 写入 `clean_proof_status: pending_after_current_diff_commit`，说明最终 clean proof 仍需当前 diff 提交后复验。
+- PyYAML 边界例外已写明：它只作为 `requirements-dev.txt` 的开发期依赖服务 CodeStable YAML 工具，不进入 APS 运行时依赖，也不进入 Win7 离线目标机交付。本轮将它作为越过原计划“不新增外部依赖 / 不改 requirements-dev.txt”的已审查例外记录。
+- 本轮已复跑：`tests/test_run_quality_gate.py tests/test_run_full_selftest_report_metadata.py tests/test_check_full_test_debt.py tests/test_full_test_debt_registry_contract.py tests/test_sync_debt_ledger.py tests/test_regression_main_isolation_contract.py` 为 `159 passed`；`tests/test_codestable_tools_contract.py` 为 `15 passed`；覆盖本次计划五个测试文件的合并命令为 `169 passed`；`tools/check_full_test_debt.py` 为 `status=passed`、`active_xfail_count=5`、`fixed_count=0`、`max_registered_xfail=5`、`collected_count=700`、`collection_error_count=0`、`unexpected_failure_count=0`；`scripts/sync_debt_ledger.py check` 和 `git diff --check` 通过。
+
 ---
 
 ## 4. 分层验证命令

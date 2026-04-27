@@ -64,24 +64,20 @@ QUALITY_GATE_TOOL_PATHS = [
     "tests/conftest.py",
     "tests/main_style_regression_runner.py",
 ]
-QUALITY_GATE_SOURCE_FILES = (
-    ".github/workflows/quality.yml",
-    ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py",
-    "开发文档/技术债务治理台账.md",
-    "scripts/run_quality_gate.py",
-    "scripts/sync_debt_ledger.py",
-    "tools/check_full_test_debt.py",
-    "tools/collect_full_test_debt.py",
-    "tools/quality_gate_entries.py",
-    "tools/quality_gate_ledger.py",
-    "tools/quality_gate_operations.py",
-    "tools/quality_gate_scan.py",
-    "tools/quality_gate_shared.py",
-    "tools/quality_gate_support.py",
-    "tools/test_debt_registry.py",
-    "tools/test_registry.py",
-    "tests/conftest.py",
-    "tests/main_style_regression_runner.py",
+QUALITY_GATE_SOURCE_FILES = tuple(
+    dict.fromkeys(
+        (
+            ".github/workflows/quality.yml",
+            ".limcode/skills/aps-full-selftest/scripts/run_full_selftest.py",
+            "开发文档/技术债务治理台账.md",
+            QUALITY_GATE_PYRIGHT_GATE_CONFIG,
+            *QUALITY_GATE_TOOL_PATHS,
+            "tests/test_architecture_fitness.py",
+            *QUALITY_GATE_REQUIRED_TESTS,
+            *QUALITY_GATE_STARTUP_REGRESSION_ARGS,
+            "tests/check_quickref_vs_routes.py",
+        )
+    )
 )
 
 LEDGER_BEGIN = "<!-- APS-DEBT-LEDGER:BEGIN -->"

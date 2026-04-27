@@ -8,7 +8,7 @@
 
 ## 1. search-yaml.py
 
-通用 YAML frontmatter 搜索工具。从项目根目录运行，无需安装额外依赖（PyYAML 可选，有则用，无则内建 fallback parser）。
+通用 YAML frontmatter 搜索工具。从项目根目录运行。开发环境应先安装 `requirements-dev.txt`，其中包含 PyYAML；如果 PyYAML 缺失，工具只支持极简 Markdown frontmatter，并会拒绝明显坏掉的标量写法。没有 YAML frontmatter 的普通 Markdown 会被跳过，不会混进结构化搜索结果。
 
 ### 基本语法
 
@@ -20,6 +20,7 @@ python codestable/tools/search-yaml.py --dir {目录} [--filter key=value]... [-
 
 - `key=value`：字段精确匹配（大小写不敏感）
 - `key~=value`：字符串字段子串匹配；列表字段元素包含匹配
+- filter 的 key 和 value 都不能为空；`=x`、`~=x`、`status=`、`status~=` 都会直接报参数错误。
 
 ### 排序语法
 
@@ -64,8 +65,9 @@ python codestable/tools/search-yaml.py --dir codestable/compound --filter tags~=
 
 # 按时间排序
 python codestable/tools/search-yaml.py --dir codestable/compound --sort-by date --order desc                     # 最近归档的在前
-python codestable/tools/search-yaml.py --dir codestable/library-docs --sort-by last_reviewed --order asc         # 最久没 review 的在前（找陈旧文档）
-python codestable/tools/search-yaml.py --dir codestable/guides --filter status=current --sort-by last_reviewed --order asc
+python codestable/tools/search-yaml.py --dir docs/api --sort-by last_reviewed --order asc                        # 最久没 review 的 API 参考在前
+python codestable/tools/search-yaml.py --dir docs/dev --filter status=current --sort-by last_reviewed --order asc
+python codestable/tools/search-yaml.py --dir docs/user --filter status=current --sort-by last_reviewed --order asc
 ```
 
 ### 典型使用场景
@@ -84,7 +86,7 @@ python codestable/tools/search-yaml.py --dir codestable/guides --filter status=c
 
 ## 2. validate-yaml.py
 
-YAML 语法校验工具。用于验证 frontmatter 语法和必填字段。
+YAML 语法校验工具。用于验证 frontmatter 语法和必填字段。开发环境应先安装 `requirements-dev.txt`；纯 `.yaml/.yml` 文件需要 PyYAML 校验。
 
 ```bash
 # 校验单个 Markdown 文件的 frontmatter

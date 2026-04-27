@@ -8,7 +8,9 @@ Scans markdown files for YAML frontmatter (--- ... ---) and checks:
   3. (Optional) Required fields are present (--require flag)
 
 Designed for AI agent use: structured output, exit code reflects pass/fail,
-no required external dependencies (falls back to builtin parser if PyYAML unavailable).
+PyYAML is provided by requirements-dev.txt. If PyYAML is unavailable,
+the builtin parser only supports simple Markdown frontmatter and fails
+closed for pure YAML files.
 
 Usage examples:
   # Validate all .md files under codestable/features
@@ -37,9 +39,10 @@ from pathlib import Path
 # Force UTF-8 stdout/stderr on Windows where default codepage (e.g. GBK / cp936)
 # can't encode the ✓ / ✗ icons used in text output. Safe no-op on POSIX.
 for _stream in (sys.stdout, sys.stderr):
-    if hasattr(_stream, "reconfigure"):
+    _reconfigure = getattr(_stream, "reconfigure", None)
+    if callable(_reconfigure):
         try:
-            _stream.reconfigure(encoding="utf-8")
+            _reconfigure(encoding="utf-8")
         except Exception:
             pass
 
@@ -95,8 +98,16 @@ def _parse_scalar_value(val: str):
         raise ValueError("Malformed inline YAML list")
     if val.startswith("[") and val.endswith("]"):
         inner = val[1:-1]
-        return [item.strip().strip("'\"") for item in inner.split(",") if item.strip()]
-    return val.strip("'\"") if val else ""
+        return [_parse_scalar_value(item.strip()) for item in inner.split(",") if item.strip()]
+    if not val:
+        return ""
+    if val[0] in {"'", '"'}:
+        if len(val) < 2 or val[-1] != val[0]:
+            raise ValueError("Unterminated quoted scalar")
+        return val[1:-1]
+    if val[-1:] in {"'", '"'}:
+        raise ValueError("Unmatched closing quote in scalar")
+    return val
 
 
 def parse_yaml_text(text: str) -> tuple[dict | None, str | None]:
@@ -190,7 +201,7 @@ def _warn_if_builtin(result: ValidationResult) -> None:
     if not _HAS_PYYAML:
         result.warnings.append(
             "PyYAML not installed — using builtin fallback parser "
-            "(may miss some syntax errors). Install with: pip install pyyaml"
+            "for simple Markdown frontmatter only. Install with: pip install pyyaml"
         )
 
 
@@ -217,6 +228,11 @@ def _validate_file(
     else:
         yaml_text = text
 
+    if mode == "yaml" and not _HAS_PYYAML:
+        result.errors.append("PyYAML is required to validate pure YAML files")
+        return result
+
+    assert yaml_text is not None
     parsed, parse_err = parse_yaml_text(yaml_text)
     if parse_err:
         result.errors.append(f"YAML syntax error: {parse_err}")

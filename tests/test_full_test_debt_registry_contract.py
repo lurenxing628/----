@@ -539,6 +539,85 @@ def test_collect_full_test_debt_writes_importable_debt_baseline(tmp_path: Path) 
     assert "不允许导入债务台账" not in baseline_text
 
 
+def test_collect_full_test_debt_importable_baseline_rejects_strict_xpass_candidate(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "audit" / "debt_baseline.md"
+    debt_nodeid = "tests/test_xpass.py::test_registered_debt_is_now_fixed"
+    _write(
+        tmp_path / "tests" / "test_xpass.py",
+        '''
+        import pytest
+
+
+        @pytest.mark.xfail(reason="test-debt:sample: 旧测试合同尚未更新", strict=True)
+        def test_registered_debt_is_now_fixed():
+            assert True
+        ''',
+    )
+    _init_clean_git_repo(tmp_path)
+
+    proc = _run_collector(
+        tmp_path,
+        "--importable-debt-baseline",
+        "--write-baseline",
+        str(baseline_path),
+        baseline_kind="after_main_style_isolation",
+    )
+    payload = _payload_from_stdout(proc)
+    reports_by_key = {
+        (report["nodeid"], report["when"]): report
+        for report in payload["reports"]
+    }
+    call_report = reports_by_key[(debt_nodeid, "call")]
+
+    assert proc.returncode == 2
+    assert baseline_path.exists() is False
+    assert payload["importable"] is False
+    assert "xfail_signal" in payload["importable_blockers"]
+    assert payload["summary"]["classification_counts"]["candidate_test_debt"] == 1
+    assert debt_nodeid in payload["classifications"]["candidate_test_debt"]
+    assert call_report["strict_xpass"] is True
+
+
+def test_collect_full_test_debt_importable_baseline_rejects_skipped_xfail_signal(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "audit" / "debt_baseline.md"
+    xfail_nodeid = "tests/test_hidden_xfail.py::test_hidden_xfail"
+    _write(
+        tmp_path / "tests" / "test_hidden_xfail.py",
+        '''
+        import pytest
+
+
+        @pytest.mark.xfail(reason="test-debt:hidden: 不允许隐藏登记", strict=True)
+        def test_hidden_xfail():
+            assert False
+        ''',
+    )
+    _init_clean_git_repo(tmp_path)
+
+    proc = _run_collector(
+        tmp_path,
+        "--importable-debt-baseline",
+        "--write-baseline",
+        str(baseline_path),
+        baseline_kind="after_main_style_isolation",
+    )
+    payload = _payload_from_stdout(proc)
+    call_report = next(
+        report
+        for report in payload["reports"]
+        if report["nodeid"] == xfail_nodeid and report["when"] == "call"
+    )
+
+    assert proc.returncode == 2
+    assert baseline_path.exists() is False
+    assert payload["importable"] is False
+    assert "xfail_signal" in payload["importable_blockers"]
+    assert payload["summary"]["classification_counts"]["candidate_test_debt"] == 0
+    assert xfail_nodeid not in payload["classifications"]["candidate_test_debt"]
+    assert call_report["outcome"] == "skipped"
+    assert call_report["xfail_marker_present"] is True
+
+
 def test_collect_full_test_debt_zero_candidate_importable_baseline_is_current_proof(tmp_path: Path) -> None:
     baseline_path = tmp_path / "audit" / "debt_baseline.md"
     _write(

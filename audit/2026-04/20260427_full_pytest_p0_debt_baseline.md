@@ -1,6 +1,8 @@
-# Full pytest P0 current debt proof baseline
+# Full pytest P0 debt proof baseline bound to 197663a
 
-本文件记录当前 full pytest 债务证明；当前没有未登记 full pytest 失败，不作为任务 5 的导入种子。
+本文件记录提交 `197663a9a4e5573f0e85a1a090fa2158baa33856` 干净工作树上的 full pytest 债务证明；它说明该提交没有未登记 full pytest 失败，不作为任务 5 的导入种子。
+
+注意：本文件的机器块绑定 `head_sha=197663a9a4e5573f0e85a1a090fa2158baa33856`。如果当前 `HEAD` 或工作区存在后续改动，本文件不能单独代表当前工作区证明，必须重新运行 `tools/check_full_test_debt.py` 或 clean quality gate。
 
 - baseline_kind: `after_main_style_isolation`
 - importable: `false`

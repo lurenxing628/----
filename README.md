@@ -102,6 +102,8 @@ python -m pyright -p pyrightconfig.json
 - `plugins/`：自研插件目录，当前插件默认关闭。
 - `tests/`：自动化测试；新增 `main()` 风格专项回归优先落到 `tests/regression/`。
 - `开发文档/`：开发说明、系统速查表、页面与接口清单、设计资料。
+- `codestable/`：CodeStable 工作流事实源，记录需求、架构、问题修复、规划和知识沉淀；默认入口见 `codestable/reference/system-overview.md`。
+- `AGENTS.md`：AI 协作约定、CodeStable 分流规则和 APS 硬约束。
 - `installer/`：Win7 双包安装器说明与脚本。
 - `audit/`：审计与健康检查归档。
 - `evidence/`：门禁、验收和排查证据归档。
@@ -111,6 +113,8 @@ python -m pyright -p pyrightconfig.json
 | 文档 | 用途 |
 | --- | --- |
 | `开发文档/README.md` | 开发文档总入口、开发基线、质量治理入口、测试命名契约 |
+| `AGENTS.md` | AI 协作约定、CodeStable 默认分流规则、Win7 / Python 3.8 硬约束 |
+| `codestable/reference/system-overview.md` | CodeStable 工作流总览和各类任务入口说明 |
 | `开发文档/系统速查表.md` | 术语、枚举、接口、数据库字段、Excel 模板、打包交付关键点 |
 | `开发文档/面板与接口清单.md` | 页面、路由、参数、按钮、提示文案与用户可见入口 |
 | `installer/README_WIN7_INSTALLER.md` | Win7 双包构建、安装、卸载、强制清理与启动排障 |

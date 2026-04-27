@@ -29,6 +29,23 @@ BASELINE_CLASSIFICATION_KEYS = (
     "main_style_isolation_candidate",
     "required_or_quality_gate_self_failure",
 )
+BASELINE_XFAIL_SIGNAL_REPORT_KEYS = (
+    "strict_xpass",
+    "xfail_marker_present",
+    "xfail_marker_reason",
+    "wasxfail_reason",
+)
+BASELINE_REQUIRED_REPORT_FIELDS = (
+    "nodeid",
+    "when",
+    "outcome",
+    "xfail_marker_present",
+    "xfail_marker_reason",
+    "xfail_marker_strict",
+    "xfail_marker_run",
+    "wasxfail_reason",
+    "strict_xpass",
+)
 TEST_DEBT_FAMILY = "operator_machine_normalization_contract_drift"
 
 P0_TEST_DEBT_SEED_METADATA: Dict[str, Dict[str, Any]] = {
@@ -102,6 +119,12 @@ def _require_text(value: Any, field_name: str) -> str:
     if text.lower() == "untriaged":
         raise QualityGateError(f"{field_name} 不允许写 untriaged 占位")
     return text
+
+
+def _require_string(value: Any, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise QualityGateError(f"{field_name} 必须是字符串")
+    return value
 
 
 def _require_git_sha(value: Any, field_name: str) -> str:
@@ -188,6 +211,23 @@ def _validate_candidate_nodeids_are_collected(
         raise QualityGateError("candidate_test_debt 必须来自 collected_nodeids")
 
 
+def _validate_baseline_reports(payload: Dict[str, Any]) -> None:
+    for index, raw_report in enumerate(_require_list(payload.get("reports"), "reports")):
+        report = _require_dict(raw_report, f"reports[{index}]")
+        for field_name in BASELINE_REQUIRED_REPORT_FIELDS:
+            if field_name not in report:
+                raise QualityGateError(f"reports[{index}] 缺少字段 {field_name}")
+        _require_text(report.get("nodeid"), f"reports[{index}].nodeid")
+        _require_text(report.get("when"), f"reports[{index}].when")
+        _require_text(report.get("outcome"), f"reports[{index}].outcome")
+        _require_bool(report.get("xfail_marker_present"), f"reports[{index}].xfail_marker_present")
+        _require_string(report.get("xfail_marker_reason"), f"reports[{index}].xfail_marker_reason")
+        _require_bool(report.get("xfail_marker_strict"), f"reports[{index}].xfail_marker_strict")
+        _require_bool(report.get("xfail_marker_run"), f"reports[{index}].xfail_marker_run")
+        _require_string(report.get("wasxfail_reason"), f"reports[{index}].wasxfail_reason")
+        _require_bool(report.get("strict_xpass"), f"reports[{index}].strict_xpass")
+
+
 def _validate_importable_baseline_machine_fields(payload: Dict[str, Any]) -> None:
     if _require_bool(payload.get("worktree_clean_before"), "worktree_clean_before") is not True:
         raise QualityGateError("worktree_clean_before 必须为 true")
@@ -210,7 +250,7 @@ def _validate_baseline_machine_contract(payload: Dict[str, Any], *, require_impo
     _require_plain_int(payload.get("exitstatus"), "exitstatus")
     _require_list(payload.get("collected_nodeids"), "collected_nodeids")
     _require_list(payload.get("collection_errors"), "collection_errors")
-    _require_list(payload.get("reports"), "reports")
+    _validate_baseline_reports(payload)
     _require_string_list(payload.get("importable_blockers"), "importable_blockers")
 
     classification_lists = _validate_baseline_classifications(payload)
@@ -245,6 +285,17 @@ def _collection_error_blocker(payload: Dict[str, Any], summary: Dict[str, Any]) 
     return None
 
 
+def _report_has_xfail_signal(report: Dict[str, Any]) -> bool:
+    return any(bool(report[key]) for key in BASELINE_XFAIL_SIGNAL_REPORT_KEYS)
+
+
+def _xfail_signal_nodeids(payload: Dict[str, Any]) -> List[str]:
+    return sorted({
+        str(report["nodeid"])
+        for report in filter(_report_has_xfail_signal, payload["reports"])
+    })
+
+
 def _baseline_blockers(payload: Dict[str, Any], *, require_importable: bool) -> List[str]:
     try:
         _validate_baseline_machine_contract(payload, require_importable=require_importable)
@@ -268,6 +319,7 @@ def _baseline_blockers(payload: Dict[str, Any], *, require_importable: bool) -> 
     collection_blocker = _collection_error_blocker(payload, summary)
     if collection_blocker:
         blockers.append(collection_blocker)
+    blockers.extend(["xfail_signal"] * (require_importable and bool(_xfail_signal_nodeids(payload))))
     return blockers
 
 

@@ -601,6 +601,78 @@ def test_importable_baseline_contract_rejects_zero_candidate_current_proof(tmp_p
         ({"importable": "false"}, "importable"),
         ({"importable": 1}, "importable"),
         ({"exitstatus": 4}, "pytest_exitstatus"),
+        (
+            {
+                "reports": [
+                    {
+                        "nodeid": P0_TEST_DEBT_NODEIDS[0],
+                        "when": "call",
+                        "outcome": "failed",
+                        "duration": 0.0,
+                        "longrepr": "[XPASS(strict)] test-debt:sample",
+                        "xfail_marker_present": True,
+                        "xfail_marker_reason": "test-debt:sample: 旧测试合同尚未更新",
+                        "xfail_marker_strict": True,
+                        "xfail_marker_run": True,
+                        "wasxfail_reason": "",
+                        "strict_xpass": True,
+                    }
+                ],
+            },
+            "xfail_signal",
+        ),
+        (
+            {
+                "reports": [
+                    {
+                        "nodeid": P0_TEST_DEBT_NODEIDS[0],
+                        "when": "call",
+                        "outcome": "failed",
+                        "duration": 0.0,
+                        "longrepr": "[XPASS(strict)] test-debt:sample",
+                        "xfail_marker_present": True,
+                        "xfail_marker_reason": "test-debt:sample: 旧测试合同尚未更新",
+                        "xfail_marker_strict": True,
+                        "xfail_marker_run": True,
+                        "wasxfail_reason": "",
+                    }
+                ],
+            },
+            "reports[0] 缺少字段 strict_xpass",
+        ),
+        (
+            {
+                "reports": [
+                    {
+                        "nodeid": "tests/test_hidden_xfail.py::test_hidden_xfail",
+                        "when": "call",
+                        "outcome": "skipped",
+                        "duration": 0.0,
+                        "longrepr": "",
+                        "xfail_marker_present": True,
+                        "xfail_marker_reason": "test-debt:hidden: 不允许隐藏登记",
+                        "xfail_marker_strict": True,
+                        "xfail_marker_run": True,
+                        "wasxfail_reason": "test-debt:hidden: 不允许隐藏登记",
+                        "strict_xpass": False,
+                    },
+                    {
+                        "nodeid": P0_TEST_DEBT_NODEIDS[0],
+                        "when": "call",
+                        "outcome": "failed",
+                        "duration": 0.0,
+                        "longrepr": "known candidate",
+                        "xfail_marker_present": False,
+                        "xfail_marker_reason": "",
+                        "xfail_marker_strict": False,
+                        "xfail_marker_run": False,
+                        "wasxfail_reason": "",
+                        "strict_xpass": False,
+                    },
+                ],
+            },
+            "xfail_signal",
+        ),
     ],
 )
 def test_import_test_debt_baseline_command_rejects_invalid_baseline(

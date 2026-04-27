@@ -9,8 +9,10 @@
 1. 总体开发说明：`./开发文档.md`
 2. 系统速查表：`./系统速查表.md`
 3. 面板与接口清单：`./面板与接口清单.md`
-4. 决策记录目录：`./ADR/`
-5. V1.2 方案目录：`./V1.2/`
+4. AI 协作约定与默认工作流：`../AGENTS.md`
+5. CodeStable 工作流总览：`../codestable/reference/system-overview.md`
+6. 决策记录目录：`./ADR/`
+7. V1.2 方案目录：`./V1.2/`
 
 ## 开发基线
 
@@ -24,6 +26,7 @@ python -m pre_commit install
 说明：
 
 - `requirements-dev.txt` 已统一声明本地开发与托管检查共用的依赖口径。
+- `PyYAML` 是 CodeStable YAML 工具的开发期依赖；缺失时工具只支持极简 Markdown frontmatter，不能校验 checklist / manifest 这类纯 YAML 文件。
 - `ruff` 版本口径固定为 `>=0.15,<0.16`。
 - 若未先安装 `requirements-dev.txt`，`.pre-commit-config.yaml` 中的 `python -m ruff` 钩子不会生效。
 

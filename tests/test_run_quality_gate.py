@@ -229,6 +229,13 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
     assert full_debt_command["output_policy"] == "exact"
 
     source_paths = set(shared.QUALITY_GATE_SOURCE_FILES)
+    command_arg_paths = (
+        str(arg).replace("\\", "/")
+        for command in command_plan
+        for arg in command["args"]
+    )
+    command_python_targets = set(filter(lambda path: path.endswith(".py"), command_arg_paths))
+    assert command_python_targets <= source_paths
     for rel_path in [
         "tools/check_full_test_debt.py",
         "tools/collect_full_test_debt.py",
@@ -236,6 +243,8 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/test_registry.py",
         "tests/conftest.py",
         "tests/main_style_regression_runner.py",
+        "tests/test_architecture_fitness.py",
+        "tests/check_quickref_vs_routes.py",
         "开发文档/技术债务治理台账.md",
     ]:
         assert rel_path in source_paths
@@ -557,7 +566,7 @@ def test_guard_collect_only_keeps_analysis_and_history_in_default_collect() -> N
     assert "tests/regression_system_history_route_contract.py::test_system_history_route_uses_request_services" in output
 
 
-def test_main_allow_dirty_worktree_marks_manifest_unbound(monkeypatch, tmp_path):
+def test_main_allow_dirty_worktree_marks_manifest_unbound(monkeypatch, tmp_path, capsys):
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -583,7 +592,10 @@ def test_main_allow_dirty_worktree_marks_manifest_unbound(monkeypatch, tmp_path)
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
 
-    assert module.main(["--allow-dirty-worktree"]) == 0
+    assert module.main(["--allow-dirty-worktree"]) == 2
+    output = capsys.readouterr().out
+    assert "passed_but_unbound" in output
+    assert "质量门禁通过" not in output
 
     manifest_path = repo_root / "evidence" / "QualityGate" / "quality_gate_manifest.json"
     manifest = module.json.loads(manifest_path.read_text(encoding="utf-8"))

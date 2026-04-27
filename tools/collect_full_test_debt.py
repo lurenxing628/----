@@ -19,6 +19,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
 BASELINE_END = "<!-- APS-FULL-PYTEST-BASELINE:END -->"
 SCHEMA_VERSION = 2
+XFAIL_SIGNAL_REPORT_KEYS = (
+    "strict_xpass",
+    "xfail_marker_present",
+    "xfail_marker_reason",
+    "wasxfail_reason",
+)
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -390,7 +396,19 @@ def _importable_baseline_blockers(payload: Dict[str, Any]) -> List[str]:
         blockers.append("main_style_isolation_candidate")
     if int(summary.get("collection_error_count") or 0) != 0:
         blockers.append("collection_error_count")
+    blockers.extend(["xfail_signal"] * bool(_xfail_signal_nodeids(payload)))
     return blockers
+
+
+def _report_has_xfail_signal(report: Dict[str, Any]) -> bool:
+    return any(bool(report[key]) for key in XFAIL_SIGNAL_REPORT_KEYS)
+
+
+def _xfail_signal_nodeids(payload: Dict[str, Any]) -> List[str]:
+    return sorted({
+        str(report["nodeid"])
+        for report in filter(_report_has_xfail_signal, payload["reports"])
+    })
 
 
 def _write_baseline_atomically(path: Path, payload: Dict[str, Any]) -> None:
