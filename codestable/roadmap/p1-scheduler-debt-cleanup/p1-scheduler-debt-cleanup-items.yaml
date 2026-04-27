@@ -1,0 +1,188 @@
+roadmap: p1-scheduler-debt-cleanup
+created: 2026-04-28
+last_reviewed: 2026-04-28
+
+items:
+  - slug: p1-debt-source-map
+    title: PR-0 事实源和债务编号映射
+    description: "冻结 P1-8 到 P1-25 的证据口径，落盘映射表，防止后续 PR 把复杂度、静默回退、页面合同或普通测试误写成 full-test-debt。"
+    status: done
+    feature: null
+    minimal_loop: true
+    depends_on: []
+    debt_types: [full-test-debt, complexity, silent_fallback, startup_regression, test_coverage, ui_contract]
+    primary_paths:
+      - README.md
+      - 开发文档/技术债务治理台账.md
+      - tools/quality_gate_shared.py
+      - tools/check_full_test_debt.py
+      - tools/collect_full_test_debt.py
+      - scripts/sync_debt_ledger.py
+      - scripts/run_quality_gate.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+      - python tools/check_full_test_debt.py
+      - python scripts/sync_debt_ledger.py check
+    notes: "这是 roadmap 内部准备项，不是代码 feature，所以 feature 保持 null；映射表落到 codestable/roadmap/p1-scheduler-debt-cleanup/drafts/p1-debt-source-map.md；旧 P1 编号若只有本 roadmap 自引用，必须写当前工作树未找到独立来源，不能当作已确认旧编号。"
+
+  - slug: schedule-input-external-merge-contract
+    title: PR-1 排产输入与外协组合并合同
+    description: "按 PR-0 映射表处理排产输入和外协组合并事实源，只围绕 input builder、合同层和模板组查询补证。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [p1-debt-source-map]
+    debt_types: [complexity, test_coverage]
+    old_p1: [P1-8, P1-9, P1-10]
+    primary_paths:
+      - core/services/scheduler/run/schedule_input_builder.py
+      - core/services/scheduler/run/schedule_input_contracts.py
+      - core/services/scheduler/run/schedule_template_lookup.py
+    exit_checks:
+      - python tools/check_full_test_debt.py
+      - python scripts/sync_debt_ledger.py check
+      - python scripts/run_quality_gate.py
+    notes: "承接 PR-0：P1-8/9/10 旧编号本身未找到独立来源，只能处理映射表列出的复杂度和合同证据；不改页面、不改落库，不声称 full-test-debt 减少。"
+
+  - slug: freeze-window-disabled-contract
+    title: PR-2 冻结窗口 decision/meta 合同
+    description: "按 PR-0 映射表处理冻结窗口事实源，固定 disabled、degraded、applied、unapplied、partially_applied 的区别。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [schedule-input-external-merge-contract]
+    debt_types: [complexity, test_coverage]
+    old_p1: [P1-14, P1-15]
+    primary_paths:
+      - core/services/scheduler/run/freeze_window.py
+    exit_checks:
+      - python tools/check_full_test_debt.py
+      - python scripts/sync_debt_ledger.py check
+      - python scripts/run_quality_gate.py
+    notes: "承接 PR-0：P1-14/15 旧编号本身未找到独立来源，只能处理映射表列出的 freeze_window 复杂度和历史审查证据；不删除旧 meta 字段。"
+
+  - slug: downtime-resource-pool-contract
+    title: PR-3 停机区间与自动分配资源池合同
+    description: "按 PR-0 映射表处理停机区间和自动分配资源池事实源，补齐 load/extend 证明口径。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [freeze-window-disabled-contract]
+    debt_types: [complexity, test_coverage]
+    old_p1: [P1-16, P1-17]
+    primary_paths:
+      - core/services/scheduler/resource_pool_builder.py
+      - data/repositories/machine_downtime_repo.py
+    exit_checks:
+      - python tools/check_full_test_debt.py
+      - python scripts/sync_debt_ledger.py check
+      - python scripts/run_quality_gate.py
+    notes: "承接 PR-0：P1-16/17 旧编号本身未找到独立来源，只能处理映射表列出的 resource_pool_builder 复杂度和停机约束风险；不先改算法。"
+
+  - slug: optimizer-result-contract-evidence
+    title: PR-4 优化器结果合同补证
+    description: "保护近期优化器结果合同，只补 rejected reason、attempts、fallback 和 strict bad data 的证据缺口。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [downtime-resource-pool-contract]
+    debt_types: [test_coverage, silent_fallback]
+    old_p1: []
+    primary_paths:
+      - core/services/scheduler/run/schedule_optimizer.py
+      - core/services/scheduler/run/optimizer_search_state.py
+      - core/services/scheduler/summary/optimizer_public_summary.py
+    exit_checks:
+      - python tools/check_full_test_debt.py
+      - python scripts/sync_debt_ledger.py check
+      - python scripts/run_quality_gate.py
+    notes: "承接 PR-0：没有 old_p1；这是近期优化器合同补证任务。路径已核为 summary/optimizer_public_summary.py，不再引用不存在的 run/optimizer_public_summary.py。"
+
+  - slug: scheduler-summary-result-summary-contract
+    title: PR-5 summary/result_summary 合同
+    description: "固定 service summary 和历史 result_summary 的可持久化形状，让落库和页面吃同一层稳定输出。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [optimizer-result-contract-evidence]
+    debt_types: [test_coverage, ui_contract]
+    old_p1: []
+    primary_paths:
+      - core/services/scheduler/summary/schedule_summary.py
+      - core/services/scheduler/summary/schedule_summary_assembly.py
+      - core/services/scheduler/summary/optimizer_public_summary.py
+      - core/services/scheduler/run/schedule_persistence.py
+    exit_checks:
+      - python tools/check_full_test_debt.py
+      - python scripts/sync_debt_ledger.py check
+      - python scripts/run_quality_gate.py
+    notes: "承接 PR-0：没有 old_p1；这是 summary/result_summary 补证任务。已移除不存在的 schedule_core.py 和 run/optimizer_public_summary.py 路径。"
+
+  - slug: schedule-persistence-auto-assign-contract
+    title: PR-6 落库校验与 auto-assign persist
+    description: "按 PR-0 映射表处理落库校验和自动分配持久化事实源，固定错误优先级和写回条件。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [scheduler-summary-result-summary-contract]
+    debt_types: [complexity, test_coverage]
+    old_p1: [P1-11, P1-12, P1-13]
+    primary_paths:
+      - core/services/scheduler/run/schedule_persistence.py
+    exit_checks:
+      - python tools/check_full_test_debt.py
+      - python scripts/sync_debt_ledger.py check
+      - python scripts/run_quality_gate.py
+    notes: "承接 PR-0：P1-11/12/13 旧编号本身未找到独立来源，只能处理映射表列出的 schedule_persistence 复杂度和合同证据；只补缺失资源，不覆盖已有资源。"
+
+  - slug: scheduler-run-view-result
+    title: PR-7 /scheduler/run ViewResult
+    description: "按 PR-0 映射表处理 /scheduler/run 页面合同和复杂度事实源，让 route 只负责表单、服务调用、viewmodel、flash 和跳转。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [schedule-persistence-auto-assign-contract]
+    debt_types: [ui_contract, complexity, test_coverage]
+    old_p1: [P1-18]
+    primary_paths:
+      - web/routes/domains/scheduler/scheduler_run.py
+    exit_checks:
+      - python tools/check_full_test_debt.py
+      - python scripts/sync_debt_ledger.py check
+      - python scripts/run_quality_gate.py
+    notes: "承接 PR-0：P1-18 旧编号本身未找到独立来源，只能处理映射表列出的 scheduler_run 复杂度和 UI 合同证据；不声称 full-test-debt 减少。"
+
+  - slug: batches-page-viewmodel
+    title: PR-8 batches_page viewmodel
+    description: "按 PR-0 映射表处理 batches_page 页面状态装配事实源，先稳定 viewmodel 和快照测试。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [scheduler-run-view-result]
+    debt_types: [ui_contract, complexity, test_coverage]
+    old_p1: [P1-19]
+    primary_paths:
+      - web/routes/domains/scheduler/scheduler_batches.py
+    exit_checks:
+      - python tools/check_full_test_debt.py
+      - python scripts/sync_debt_ledger.py check
+      - python scripts/run_quality_gate.py
+    notes: "承接 PR-0：P1-19 旧编号本身未找到独立来源，只能处理映射表列出的 batches_page 复杂度和 UI 合同证据；先不改模板。"
+
+  - slug: runtime-plugin-infra-sidecar
+    title: PR-9 runtime/plugin/infra 支线
+    description: "按 PR-0 映射表处理 runtime、launcher、plugin 和 infra 支线事实源，只有启动链门禁实际变红才前移。"
+    status: planned
+    feature: null
+    minimal_loop: false
+    depends_on: [p1-debt-source-map]
+    debt_types: [startup_regression, complexity, oversize, silent_fallback, test_coverage]
+    old_p1: [P1-20, P1-21, P1-22, P1-23, P1-24, P1-25]
+    primary_paths:
+      - web/bootstrap/launcher.py
+      - web/bootstrap/plugins.py
+    exit_checks:
+      - python tools/check_full_test_debt.py
+      - python scripts/sync_debt_ledger.py check
+      - python scripts/run_quality_gate.py
+    notes: "承接 PR-0：P1-20..P1-24 可关联到 oversize/complexity/fallback 事实源，P1-25 旧编号和具体路径证据不足；只有启动链专项测试或 run_quality_gate 实际变红并有日志路径时才前移。"
