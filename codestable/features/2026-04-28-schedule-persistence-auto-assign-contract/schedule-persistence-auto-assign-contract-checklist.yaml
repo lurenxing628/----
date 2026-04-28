@@ -11,40 +11,40 @@ steps:
 
   - id: step-2
     title: 补齐落库校验和自动分配写回窄测试
-    status: pending
+    status: done
     exit_signal: 新增专项测试覆盖错误优先级、simulate、auto_assign_persist=no、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控。
 
   - id: step-3
     title: 原样搬移 build_validated_schedule_payload 现有判断
-    status: pending
+    status: done
     exit_signal: 私有 helper 承载原有判断，reason/details/优先级不变，复杂度登记可由受控脚本刷新判断。
 
   - id: step-4
     title: 跑验证、复审并回填执行结果
-    status: pending
-    exit_signal: 目标测试、下游测试、ruff、pyright、债务脚本、yaml、最终 clean quality gate 和 subagent 复审通过。
+    status: done
+    exit_signal: 目标测试、下游测试、ruff、pyright、债务脚本、yaml、diff 检查和 subagent 复审通过。
 
 checks:
   - id: check-1
     title: out_of_scope、invalid、no_actionable 错误优先级有证据
-    status: pending
+    status: passed
 
   - id: check-2
     title: simulate=True 不改真实批次、工序状态和自动分配资源
-    status: pending
+    status: passed
 
   - id: check-3
     title: auto_assign_persist=no 和外协结果不写回内部资源
-    status: pending
+    status: passed
 
   - id: check-4
     title: 已有资源不覆盖，只补空字段，missing set 不包含时不写回
-    status: pending
+    status: passed
 
   - id: check-5
     title: 没有新增 fallback、兜底、静默吞错或方案外代码改动
-    status: pending
+    status: passed
 
   - id: check-6
     title: P1-11/12/13 只按 complexity/test_coverage 回填，不写 full-test-debt 减少
-    status: pending
+    status: passed

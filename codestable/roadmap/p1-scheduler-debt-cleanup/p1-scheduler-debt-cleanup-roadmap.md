@@ -232,6 +232,15 @@ M5 执行前细化：
 - 如果红灯测试或静态检查证明必须新增业务 `if`、fallback、兜底、宽泛默认值、宽泛 `try/except`、新 reason 或新 details，立即停线说明，不直接实现。
 - PR-6 不减少 full-test-debt；P1-11 只有复杂度登记真的被受控脚本移除后才能写 fixed，P1-12/P1-13 只能写 test_coverage 证据锁定。
 
+M5 执行完成回填：
+
+- 已新增 PR-6 专项测试，覆盖错误优先级、simulate 不改真实状态和资源、`auto_assign_persist=no`、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控。
+- 已把 `build_validated_schedule_payload()` 的既有判断原样搬到私有 helper；错误文案、`reason`、`details`、优先级、source 判定和 `assigned_by_op_id` 形状保持不变。
+- `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 后，高复杂度登记从 40 降到 39，P1-11 对应复杂度登记已移除。
+- 本轮没有新增写前重读数据库工序的特殊检查；旧对象覆盖风险作为观察项保留。
+- 本轮没有改 summary、result_summary、schema、页面、route、viewmodel、repo、质量门禁脚本、full-test-debt 脚本或台账脚本运行逻辑。
+- `tools/check_full_test_debt.py` 仍显示 active xfail 为 5 条 operator-machine/query service 旧登记，`collected_count=744`，本轮不写 full-test-debt 减少。
+
 ### M6：页面展示合同
 
 职责：
@@ -794,7 +803,23 @@ PR-6 执行计划：
 6. 请 subagent 复审落库合同、自动分配写回、下游影响、无新增兜底和 CodeStable 回填；若发现真实问题，先修复再验收。
 7. 写 acceptance，PR-6 checklist 的 checks 按真实结果标 `passed/failed`，items 标 `done`，source-map 回填 P1-11/12/13，并在 PR-7 头部写清 PR-6 只证明落库合同，不证明 `/scheduler/run` 页面合同。
 
+PR-6 执行结果：
+
+- 已创建并验收 `codestable/features/2026-04-28-schedule-persistence-auto-assign-contract/`，checklist 全部完成，acceptance 已写入。
+- 已新增 `tests/regression_schedule_persistence_auto_assign_contract.py`，直接锁住错误优先级、全部非法但无可落库行、simulate、`auto_assign_persist=no`、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控。
+- 已把 `build_validated_schedule_payload()` 的既有判断原样搬到 `_build_validated_schedule_row()`；没有新增新 reason、新 details、fallback、兜底、静默吞错或宽泛默认值逻辑。
+- 已通过 PR-6 专项测试、现有落库/服务回归、PR-5 下游页面/报表读取回归、ruff、pyright、复杂度体检、full-test-debt、台账检查和 `git diff --check`。
+- `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 后，P1-11 复杂度登记已移除，`complexity_count=39`；P1-12/P1-13 按 test_coverage 锁证。
+- 本轮没有新增写前重读数据库工序的特殊检查，没有改 summary、页面、route、viewmodel、repo、runtime/plugin 或质量门禁工具；没有减少 full-test-debt，active xfail 仍为 5 条，`collected_count=744`。
+
 ### PR-7：/scheduler/run ViewResult
+
+PR-7 头部承接 PR-6 完成结果：
+
+- PR-6 已收口落库校验和 auto-assign persist：坏排产结果会在落库前按稳定优先级拒绝，simulate 不改真实批次/工序状态和资源，auto-assign persist 只补内部缺资源工序的空字段。
+- PR-6 只证明 `schedule_persistence.py` 的落库合同，不证明 `/scheduler/run` route、view result、flash、跳转或页面文案已经完成。
+- PR-7 可以承接稳定的 service/persistence 输出，但必须自己证明 route 只做表单解析、服务调用、view result、flash 和跳转；不能把 PR-6 的 proof 当成页面合同 proof。
+- PR-6 不减少 full-test-debt，active xfail 仍为 5 条；PR-7 若要声明任何债务变化，也必须用自己的测试、台账和 full-test-debt 检查重新证明。
 
 目标：
 
@@ -886,3 +911,4 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：细化 M4 完整治理计划，明确 M4 分 PR-4 优化器结果合同和 PR-5 summary/result_summary 合同两段执行；PR-4 不新增独立 reason 字段、不新增 fallback 行为，PR-5 承接落库历史和页面不泄漏内部诊断；items.yaml 已补窄测试、债务检查和最终 clean quality gate 命令。
 - 2026-04-28：完成 PR-4 优化器结果合同补证；新增 rejected 诊断穿过 attempts 压缩和 summary 投影后的分层测试，加严已有 `state.best is None` 路径外形测试；PR-4 没有改运行代码，没有新增 reason/fallback/兜底/静默吞错，没有减少 full-test-debt，active xfail 仍为 5 条。
 - 2026-04-28：完成 PR-5 summary/result_summary 合同补证；新增真实落库读回测试和真实页面/接口响应不泄漏测试，证明公开 attempts 不混入内部字段，diagnostics 正常大小下可落库读回但不展示到已覆盖响应；PR-5 没有改运行代码，没有改 schema 版本或 OptimizationOutcome，没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt；完整 M4 最终 clean quality gate 已通过。
+- 2026-04-28：完成 PR-6 落库校验与 auto-assign persist 合同；新增专项测试锁住错误优先级、simulate、配置关闭、外协隔离和只补空字段；原样搬移 `build_validated_schedule_payload()` 既有判断后关闭 P1-11 复杂度登记，`complexity_count=39`；P1-12/P1-13 按测试覆盖锁证；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-7 头部已写清不能继承落库 proof 当作页面 proof。
