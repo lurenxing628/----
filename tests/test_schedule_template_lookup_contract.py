@@ -36,12 +36,18 @@ def _op():
     return SimpleNamespace(id=2, op_code="OP_EXT_01", batch_id="B001", seq=20)
 
 
-def _template(ext_group_id):
-    return SimpleNamespace(ext_group_id=ext_group_id)
+def _template(ext_group_id, *, status="active"):
+    return SimpleNamespace(ext_group_id=ext_group_id, status=status)
 
 
-def _group(*, merge_mode=MergeMode.MERGED.value, total_days=4.0):
-    return SimpleNamespace(merge_mode=merge_mode, total_days=total_days)
+def _group(*, merge_mode=MergeMode.MERGED.value, total_days=4.0, part_no="P001", start_seq=20, end_seq=20):
+    return SimpleNamespace(
+        part_no=part_no,
+        start_seq=start_seq,
+        end_seq=end_seq,
+        merge_mode=merge_mode,
+        total_days=total_days,
+    )
 
 
 def _codes(outcome):
@@ -99,10 +105,35 @@ def test_lookup_external_group_missing_non_strict_returns_degraded_event() -> No
 
 
 @pytest.mark.parametrize(
+    ("template", "groups", "expected_code", "expected_field"),
+    [
+        (_template("G001", status="deleted"), {"G001": _group()}, "template_missing", "template"),
+        (_template("G001"), {"G001": _group(part_no="P999")}, "external_group_missing", "ext_group_id"),
+        (_template("G001"), {"G001": _group(start_seq=30, end_seq=40)}, "external_group_missing", "ext_group_id"),
+    ],
+)
+def test_lookup_unusable_context_non_strict_returns_degraded_event(
+    template,
+    groups,
+    expected_code,
+    expected_field,
+) -> None:
+    outcome = lookup_template_group_context_for_op(_LookupSvc(template=template, groups=groups), _op(), strict_mode=False)
+
+    assert outcome.group is None
+    assert outcome.merge_context_degraded is True
+    assert _codes(outcome) == [expected_code]
+    assert outcome.events[0].field == expected_field
+
+
+@pytest.mark.parametrize(
     ("template", "groups", "expected_field"),
     [
         (None, {}, "template"),
         (_template("G404"), {}, "ext_group_id"),
+        (_template("G001", status="deleted"), {"G001": _group()}, "template"),
+        (_template("G001"), {"G001": _group(part_no="P999")}, "ext_group_id"),
+        (_template("G001"), {"G001": _group(start_seq=30, end_seq=40)}, "ext_group_id"),
     ],
 )
 def test_lookup_missing_paths_raise_in_strict_mode(template, groups, expected_field) -> None:

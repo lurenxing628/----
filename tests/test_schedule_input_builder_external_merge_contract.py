@@ -64,12 +64,18 @@ def _op(*, source="external", ext_days=2.5):
     )
 
 
-def _template(ext_group_id):
-    return SimpleNamespace(ext_group_id=ext_group_id)
+def _template(ext_group_id, *, status="active"):
+    return SimpleNamespace(ext_group_id=ext_group_id, status=status)
 
 
-def _group(*, merge_mode, total_days):
-    return SimpleNamespace(merge_mode=merge_mode, total_days=total_days)
+def _group(*, merge_mode=MergeMode.MERGED.value, total_days=4.0, part_no="P001", start_seq=20, end_seq=20):
+    return SimpleNamespace(
+        part_no=part_no,
+        start_seq=start_seq,
+        end_seq=end_seq,
+        merge_mode=merge_mode,
+        total_days=total_days,
+    )
 
 
 def _single_result(outcome):
@@ -197,11 +203,43 @@ def test_invalid_group_total_days_non_strict_clears_merge_fields_and_records_mer
 
 
 @pytest.mark.parametrize(
+    ("template", "group", "expected_code", "expected_field"),
+    [
+        (_template("G001", status="deleted"), _group(), "template_missing", "template"),
+        (_template("G001"), _group(part_no="P999"), "external_group_missing", "ext_group_id"),
+        (_template("G001"), _group(start_seq=30, end_seq=40), "external_group_missing", "ext_group_id"),
+    ],
+)
+def test_unusable_template_group_context_non_strict_clears_merge_fields_and_falls_back_to_ext_days(
+    template,
+    group,
+    expected_code,
+    expected_field,
+) -> None:
+    svc = _BuilderSvc(template=template, groups={"G001": group})
+
+    outcome = build_algo_operations(svc, [_op(ext_days=2.5)], return_outcome=True)
+
+    algo_op = _single_result(outcome)
+    assert expected_code in _event_codes(outcome)
+    assert algo_op.ext_days == 2.5
+    assert algo_op.ext_group_id is None
+    assert algo_op.ext_merge_mode is None
+    assert algo_op.ext_group_total_days is None
+    assert algo_op.merge_context_degraded is True
+    assert [event["code"] for event in algo_op.merge_context_events] == [expected_code]
+    assert [event["field"] for event in algo_op.merge_context_events] == [expected_field]
+
+
+@pytest.mark.parametrize(
     ("template", "groups", "expected_field"),
     [
         (None, {}, "template"),
         (_template("G404"), {}, "ext_group_id"),
         (_template("G001"), {"G001": _group(merge_mode=MergeMode.MERGED.value, total_days="bad-number")}, "ext_group_total_days"),
+        (_template("G001", status="deleted"), {"G001": _group()}, "template"),
+        (_template("G001"), {"G001": _group(part_no="P999")}, "ext_group_id"),
+        (_template("G001"), {"G001": _group(start_seq=30, end_seq=40)}, "ext_group_id"),
     ],
 )
 def test_merge_context_failures_raise_in_strict_mode(template, groups, expected_field) -> None:
