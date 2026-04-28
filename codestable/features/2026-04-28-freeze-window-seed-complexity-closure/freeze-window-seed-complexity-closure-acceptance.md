@@ -49,6 +49,8 @@ P1-14 已按最终尾项完成。`build_freeze_window_seed()` 仍是原来的公
 - `codestable/tools/validate-yaml.py` 校验 roadmap 与本 feature 目录：通过。
 - `git diff --check`：通过。
 
+最终 clean gate 证明要绑定在归档提交之后的干净工作区上运行。也就是说，本文件记录 P1-14 feature 自身的验收结果；归档文档提交完成后，再以 `scripts/run_quality_gate.py --require-clean-worktree` 的结果作为最终证明，并在最终交付说明里记录对应 HEAD，避免写入证明后又改变 HEAD。
+
 ## 5. 收尾说明
 
 P1 当前可执行事实源已收尾：能在当前代码、台账或测试里找到明确事实源的 P1 项已经处理、锁证或复核；P1-25 仍是证据不足，不把它包装成已修。

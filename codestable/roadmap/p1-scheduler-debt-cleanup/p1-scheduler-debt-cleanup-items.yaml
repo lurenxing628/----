@@ -1,6 +1,6 @@
 roadmap: p1-scheduler-debt-cleanup
 created: 2026-04-28
-last_reviewed: 2026-04-28
+last_reviewed: 2026-04-29
 
 items:
   - slug: p1-debt-source-map
@@ -340,4 +340,4 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-freeze-window-seed-complexity-closure
       - git diff --check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
-    notes: "已完成：P1-14 的真实尾项是 build_freeze_window_seed 复杂度 26/15，本轮只在 freeze_window.py 内部拆分，不改公开入口、调用方、三元返回值、meta 原地写入、ValidationError(field=\"freeze_window\")、disabled/degraded 语义、seed_results 字段和排序、frozen_op_ids 可锁定范围。新增三条合同测试后，主函数复杂度从 26 降到 3，新增 helper 最高复杂度 9；scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 32 降到 31，P1-14 复杂度登记移除，silent_fallback_count 仍为 154。P1-24 保持 rechecked-by-M7-B，P1-25 保持 evidence-insufficient；本轮没有减少 full-test-debt，active xfail 仍为 5 条。"
+    notes: "已完成：P1-14 的真实尾项是 build_freeze_window_seed 复杂度 26/15，本轮只在 freeze_window.py 内部拆分，不改公开入口、调用方、三元返回值、meta 原地写入、ValidationError(field=\"freeze_window\")、disabled/degraded 语义、seed_results 字段和排序、frozen_op_ids 可锁定范围。新增三条合同测试后，主函数复杂度从 26 降到 3，新增 helper 最高复杂度 9；scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 32 降到 31，P1-14 复杂度登记移除，silent_fallback_count 仍为 154。P1-24 保持 rechecked-by-M7-B，P1-25 保持 evidence-insufficient，不进入本尾项完成/未完成统计；本轮没有减少 full-test-debt，active xfail 仍为 5 条。最终 clean gate 证明以归档提交之后的干净工作区运行结果为准，具体 HEAD 和结果写在最终交付说明里，不再反复改文档制造新 HEAD。"

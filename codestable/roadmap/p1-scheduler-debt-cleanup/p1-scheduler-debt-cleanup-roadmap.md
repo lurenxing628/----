@@ -1,7 +1,7 @@
 ---
 doc_type: roadmap
 slug: p1-scheduler-debt-cleanup
-status: active
+status: completed
 created: 2026-04-28
 last_reviewed: 2026-04-29
 tags: [scheduler, p1, technical-debt, quality-gate]
@@ -41,6 +41,7 @@ PR-0 事实源和债务编号映射
 -> PR-7 /scheduler/run 展示合同
 -> PR-8 batches_page viewmodel
 -> PR-9 runtime/plugin/infra 支线
+-> final-P1-tail / P1-14 冻结窗口种子复杂度收尾
 ```
 
 其中 PR-5 放在落库之前，是因为落库会把 `result_summary` 写进排产历史；如果 summary 的形状还不稳定，落库和页面都会被上游脏数据误导。
@@ -165,7 +166,7 @@ M2 执行完成回填：
 - 已补录 CodeStable feature 承接：`codestable/features/2026-04-28-freeze-window-disabled-contract/`，并把 items.yaml 的 M2 条目指向该 feature。
 - 已同步 `drafts/p1-debt-source-map.md`：P1-15 从 `needs-recheck` 改为 `evidence-locked-by-M2`；后续搜索旧 P1 编号时排除 `codestable/**`，避免被本次补录文档自引用污染。
 - 本轮没有新增 fallback、没有新增静默兜底，也没有把冻结窗口问题混进 `input_fallback` 或 `config_fallback`。
-- P1-14 没关闭：`build_freeze_window_seed` 当前复杂度是 26，阈值是 15，所以没有运行台账自动刷新移除复杂度登记。P1-15 的冻结窗口状态合同已由本轮测试补证，但它不是 full-test-debt 减少。
+- P1-14 在 M2 当时没有关闭：`build_freeze_window_seed` 当时复杂度是 26，阈值是 15，所以 M2 没有运行台账自动刷新移除复杂度登记；后续 P1 最终尾项已关闭这个复杂度事实源。P1-15 的冻结窗口状态合同已由本轮测试补证，但它不是 full-test-debt 减少。
 - `tools/check_full_test_debt.py` 仍显示 active xfail 为 5 条，集中在 operator-machine/query service 旧登记，本轮没有减少 full-test-debt。
 
 主要文件：
@@ -639,12 +640,12 @@ M1 执行结果：
 - 已请 4 个 subagent 做只读复审：冻结窗口合同、summary/页面/落库下游、无新增 fallback 对抗、roadmap/items/提交边界。复审提出的 degraded 公开字段风险和 strict 无上一版本行覆盖缺口已修复并复跑。
 - Review finding 修复补充：分析页现在以 `freeze_state` 展示冻结窗口状态，`enabled=no + freeze_state=degraded` 不再显示成普通未启用；已补真实页面渲染测试。
 - CodeStable 承接补充：已补录 `2026-04-28-freeze-window-disabled-contract` feature 三件套，items.yaml 已指向该 feature，source-map 已同步 P1-15 为 `evidence-locked-by-M2`。
-- M2 当时不关闭 P1-14：`build_freeze_window_seed` 复杂度仍为 26，高于阈值 15；未运行台账自动刷新移除该登记。P1-15 的状态合同已补测试锁住，但不写成 full-test-debt 减少。
+- M2 当时没有关闭 P1-14：`build_freeze_window_seed` 复杂度仍为 26，高于阈值 15；M2 未运行台账自动刷新移除该登记，后续已由 P1 最终尾项关闭。P1-15 的状态合同已补测试锁住，但不写成 full-test-debt 减少。
 - `tools/check_full_test_debt.py` 仍为 5 条 active xfail，集中在 operator-machine/query service 旧登记；本 PR 不减少 full-test-debt。
 
 退出条件：
 
-- 映射表中 P1-14/15 的当前事实源被解除、减少或确认已由近期提交解决。
+- 映射表中 P1-15 的当前事实源被解除、减少或确认已由近期提交解决；P1-14 在 M2 当时保留给后续尾项处理，现已由 P1 最终尾项关闭。
 - 不删除旧 meta 字段。
 - 冻结窗口测试覆盖配置关闭、天数为 0、无上一版本、配置降级、加载失败、部分 seed、无可 seed 工序。
 
@@ -655,7 +656,7 @@ M1 执行结果：
 - 冻结窗口状态合同已经收口，下一步只处理停机区间和自动分配资源池，不继承 M2 的冻结窗口 proof 当作停机 proof。
 - 二次审查发现的 M2 尾巴也已补齐：分析页降级展示已修正，M2 feature 承接已补录，P1-15 source-map 已同步。PR-3 仍不能继承这些 proof 当作停机或资源池 proof。
 - M2 没有减少 full-test-debt，active xfail 仍是 5 条 operator-machine/query service 旧登记；PR-3 如果要声明债务变化，必须用自己的测试和台账检查重新证明。
-- M2 没有关闭 P1-14 复杂度登记，说明 PR-3 不能把“冻结窗口复杂度未降”当作自己范围内的问题处理；PR-3 只从 `resource_pool_builder.py` 和 `machine_downtime_repo.py` 的当前事实源出发。
+- M2 当时没有关闭 P1-14 复杂度登记，说明 PR-3 不能把“冻结窗口复杂度未降”当作自己范围内的问题处理；该登记后续已由 P1 最终尾项关闭，PR-3 仍只从 `resource_pool_builder.py` 和 `machine_downtime_repo.py` 的当前事实源出发。
 
 M3 细化计划：
 
@@ -956,7 +957,7 @@ M7 执行结果回填：
 - P1-22：`_list_aps_chrome_pids`、`stop_runtime_from_dir` 复杂度登记已解除，同批关闭 `acquire_runtime_lock` 这个 launcher 复杂度兄弟项。
 - P1-23：`_apply_enabled_sources` 复杂度登记已解除。
 - P1-24：复核后没有 open plugin fallback 修复项，本轮只补用户可见状态。
-- P1-25：证据不足，未处理。
+- P1-25：证据不足，不属于本轮可执行完成项或未完成项；没有新路径、台账条目或测试 nodeid 前不另开修复。
 - `scripts/sync_debt_ledger.py check` 已通过，当前 `complexity_count=32`、`oversize_count=8`、`silent_fallback_count=154`、`test_debt_count=5`。
 - `tools/check_full_test_debt.py` 仍为 5 条 active xfail，本轮不声明 full-test-debt 减少。
 - 代码完成后已调用 4 路 subagent 只读审查：兜底审查、启动入口审查和插件合同审查均未发现阻断问题；台账审查发现 accepted risk 说明仍有乱码，已修成可读中文并重跑台账校验通过。
@@ -1004,17 +1005,17 @@ M7 执行结果回填：
 - P1-25 继续保持 `evidence-insufficient`，没有新路径、台账条目或测试 nodeid 前不得开修。
 - 后续如果做 full-test-debt，只能从 5 条 active xfail 本身入手，不能把本轮复杂度下降写成 full-test-debt 下降。
 
-## 排期建议
+## 执行顺序回顾 / 后续守则
 
-最小闭环是 PR-0。没有 PR-0，后面每个 PR 都可能把“测试覆盖”“复杂度减少”“full-test-debt 减少”混在一起说，最后会让验收失真。
+PR-0 是本路线图的起点。它先把 P1-8 到 P1-25 的文字编号、当前代码事实、台账事实和测试事实分清楚，避免后面把“测试覆盖”“复杂度减少”“full-test-debt 减少”混在一起说。
 
-PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺序推进。PR-9 是支线，默认不插队；只有启动链专项测试或统一门禁实际变红并有失败日志路径，才把 PR-9 前移。
+PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺序推进；PR-9 处理 runtime/plugin/infra 支线；最后的 final-P1-tail 只关闭 M2 当时留下的 P1-14 冻结窗口种子复杂度尾项。
 
-每个 PR 收尾时都要做三件事：
+后续如果继续在这块区域开新工作，仍然要守住三件事：
 
 - 更新或确认对应 P1 映射项状态。
-- 运行与本 PR 有关的窄测试。
-- 运行 full-test-debt 和台账同步检查；最终合并前运行统一质量门禁。
+- 运行与改动有关的窄测试。
+- 运行 full-test-debt 和台账同步检查；最终合并或发布前运行统一质量门禁。
 
 ## 验收口径
 
@@ -1039,7 +1040,7 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 当前 active full-test-debt 只有 5 个 operator-machine 查询 xfail。排产 PR 多数更可能减少 complexity、silent fallback、测试覆盖缺口或专项回归风险，而不是直接减少 full-test-debt。
 - 优化器相关合同已有近期提交支撑。PR-4 的默认动作是补证，不是改造。
 - PR-4/PR-5 路径已按当前代码修正为 `core/services/scheduler/summary/optimizer_public_summary.py`、`schedule_summary.py` 和 `schedule_summary_assembly.py`，不再引用不存在的 `run/optimizer_public_summary.py` 或 `run/schedule_core.py`。
-- P1-25 当前证据不足。除非后续补出具体路径、台账条目或测试 nodeid，否则不得直接进入修复。
+- P1-25 当前证据不足，不进入本路线图的完成/未完成统计。除非后续补出具体路径、台账条目或测试 nodeid，否则不得直接进入修复。
 - 冻结窗口不一定需要新公开 DTO。是否引入内部 decision 对象，以测试和代码简化程度为准。
 - 停机区间 helper 也不是强制动作。只有当 load 和 extend 的解析规则确实重复或漂移时，才抽 helper。
 - 落库的 `no_actionable` 与 `invalid_schedule_rows` 边界必须由测试写清楚，避免以后又靠中文文案判断。
@@ -1050,7 +1051,7 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：细化并执行 M0，落盘 `drafts/p1-debt-source-map.md`；明确 P1-8 到 P1-25 除本 roadmap 自引用外未找到独立编号来源，后续 PR 只能按映射表里的当前事实源执行；补齐 items.yaml 的 `description` 和 `feature: null`；修正 PR-4/PR-5 的过期 summary 路径。
 - 2026-04-28：复核 M0 后补硬执行口径：PR-0/M0 作为 roadmap 内部准备项标记为 `done`，P1 搜索证明排除 `.git/` 元数据，M0 proof 明确不是 clean quality gate，并把“不新增 if/fallback/兜底/静默回退逻辑”写成全局停止条件。
 - 2026-04-28：执行 M1，补齐排产输入、模板查询和服务汇总链路合同测试；最小拆分 `schedule_input_builder.py` 与 `schedule_template_lookup.py` 后刷新台账，P1-8/P1-9 两条复杂度登记已由脚本移除，P1-10 测试覆盖已补齐；PR-2 头部已写入 M1 完成内容和不可继承的 proof 边界。
-- 2026-04-28：执行 M2，给冻结窗口 disabled 原因补上 `freeze_disabled_reason`，把配置读取降级归入 `degraded` 并保持 strict fail closed；summary 只透传安全 disabled 原因，配置降级不伪装成 disabled；复审发现的问题已修复。P1-14 因复杂度仍为 26/15 保持打开，P1-15 已补状态合同测试，本轮未减少 full-test-debt。
+- 2026-04-28：执行 M2，给冻结窗口 disabled 原因补上 `freeze_disabled_reason`，把配置读取降级归入 `degraded` 并保持 strict fail closed；summary 只透传安全 disabled 原因，配置降级不伪装成 disabled；复审发现的问题已修复。P1-14 在 M2 当时因复杂度仍为 26/15 保持打开，后续已由 P1 最终尾项关闭；P1-15 已补状态合同测试，本轮未减少 full-test-debt。
 - 2026-04-28：修复 M2 二次 review finding：分析页按冻结窗口状态展示 degraded，不再把配置降级显示成普通未启用；补录 `2026-04-28-freeze-window-disabled-contract` feature 三件套；同步 P1-15 source-map 为 `evidence-locked-by-M2`，并在 M3 头部写清只能承接停机和资源池。
 - 2026-04-28：执行 M3，收口停机读取和资源池候选设备补停机合同；补齐 load/extend、仓库真实查询和 collector 真实链路测试；刷新台账后 P1-16/P1-17 复杂度事实源关闭，高复杂度登记从 42 降到 40；本轮未减少 full-test-debt，M4 头部已写清不能继承 M3 proof 当作优化器 proof，最终 clean quality gate 已通过。
 - 2026-04-28：修复 M3 二次 review findings：补跨过排产开始时间的停机查询测试、逐设备查询全部失败的 partial 口径测试、extend 查询前整体失败保留原 map 测试；把 M0 历史 `collected_count=700` 和当前 `collected_count=744` 拆开写，并把 source-map 台账引用改为稳定 id/symbol，不再靠会漂移的台账行号。
@@ -1063,3 +1064,4 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：处理 PR-8 对抗审核 findings；批次首页标题和空结果文案改成固定中性文案，配置面板装配 helper 从 route 文件移到共享配置展示 helper，测试补齐 `only_ready` 三态、非 pending 状态、空结果文案、summary 解析失败不泄漏原文和 route 使用 viewmodel 输出；没有新增 fallback/兜底/静默吞错。
 - 2026-04-28：完成 M7 runtime/plugin/infra 支线校准与执行；M7 拆成证据校准、launcher/runtime/Chrome stop、plugin enabled-source 三段，P1-20/P1-21/P1-22/P1-23 关闭当前事实源，P1-24 只复核，P1-25 继续证据不足；四路 subagent 复审后修复 accepted risk 乱码说明，最终台账为 `complexity_count=32`、`oversize_count=8`、`silent_fallback_count=154`、`test_debt_count=5`，本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt。
 - 2026-04-29：完成 P1 最终尾项 P1-14；`build_freeze_window_seed()` 公开入口不变，内部拆成范围准备、上一版读取、前缀套用和结果整理四段，补默认范围、显式子集、`seed_results` 排序和字段完整性测试；主函数复杂度从 26 降到 3，台账 `complexity_count=31`，`silent_fallback_count=154`，full-test-debt 仍为 5。P1 当前可执行事实源已收尾，但 P1-25 仍按证据不足保留，不写成已修。
+- 2026-04-29：归档 P1 roadmap 收尾状态；所有 items 已 `done`，路线图状态改为 `completed`。P1-24 只复核，不写成 fixed；P1-25 证据不足，不进入完成/未完成统计；full-test-debt 仍为 5 条旧 xfail。最终 clean gate 证明在本归档提交之后运行，并在最终交付说明记录对应 HEAD，避免“写入证明又改变 HEAD”的循环。

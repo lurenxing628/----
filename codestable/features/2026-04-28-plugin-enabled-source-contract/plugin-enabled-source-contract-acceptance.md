@@ -25,7 +25,7 @@ M7-B 已完成。插件开关来源整理已经从一个复杂函数拆成来源
 
 - P1-23：`complexity:web-bootstrap-plugins-_apply_enabled_sources` 已关闭。
 - P1-24：复核后没有作为 open bug 修复；当前 plugin fallback 仍按台账 fixed/baseline 状态管理。
-- P1-25：证据不足，未处理。
+- P1-25：证据不足，不属于本条可执行项，不算未完成项。
 - 本轮不声明 full-test-debt 减少。
 
 ## 4. 已运行验证
