@@ -135,8 +135,8 @@ items:
   - slug: scheduler-summary-result-summary-contract
     title: PR-5 summary/result_summary 合同
     description: "固定 service summary 和历史 result_summary 的可持久化形状，让落库和页面吃同一层稳定输出。"
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-04-28-scheduler-summary-result-summary-contract
     minimal_loop: false
     depends_on: [optimizer-result-contract-evidence]
     debt_types: [test_coverage, ui_contract]
@@ -150,11 +150,17 @@ items:
       - web/viewmodels/scheduler_summary_display.py
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-scheduler-summary-result-summary-contract
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_optimizer_public_summary_projection_contract.py tests/regression_schedule_summary_size_guard_large_lists.py tests/regression_schedule_summary_v11_contract.py tests/regression_schedule_service_passes_algo_stats_to_summary.py tests/regression_scheduler_summary_result_summary_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_system_history_route_contract.py tests/regression_scheduler_analysis_route_contract.py tests/regression_scheduler_batches_degraded_visibility.py tests/regression_reports_page_version_default_latest.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_week_plan_no_reschedulable_flash.py tests/regression_dashboard_overdue_count_tolerance.py tests/regression_gantt_invalid_summary_surfaces_overdue_degraded.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/summary/schedule_summary.py core/services/scheduler/summary/schedule_summary_assembly.py core/services/scheduler/summary/optimizer_public_summary.py core/services/scheduler/run/schedule_persistence.py web/routes/normalizers.py web/viewmodels/scheduler_summary_display.py tests/regression_optimizer_public_summary_projection_contract.py tests/regression_system_history_route_contract.py tests/regression_scheduler_summary_result_summary_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/summary/schedule_summary.py core/services/scheduler/summary/schedule_summary_assembly.py core/services/scheduler/summary/optimizer_public_summary.py core/services/scheduler/run/schedule_persistence.py web/routes/normalizers.py web/viewmodels/scheduler_summary_display.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
       - git diff --check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
-    notes: "计划：PR-5 只补 summary/result_summary、落库读回和页面展示证据，不改运行代码。重点证明 build_result_summary -> persist_schedule -> ScheduleHistoryRepository.get_by_version -> json.loads 后，公开 algo.attempts 全量不含 candidate_rejected/source/tag/used_params/algo_stats/origin；diagnostics.optimizer.attempts 正常大小下可随历史 JSON 落库读回；带 INTERNAL_OPTIMIZER_SECRET 的 diagnostics 在已覆盖页面和接口响应中不展示。未改 schema 版本，未改 OptimizationOutcome，未新增 fallback/兜底/静默吞错；不写 full-test-debt 减少；完整 M4 收口后必须在干净工作区跑最终 clean quality gate；具体 feature 目录和新测试检查在 PR-5 落盘时加入。"
+    notes: "已完成：PR-5 只补测试和 CodeStable 追踪文档，没有改运行代码。已证明 build_result_summary -> persist_schedule -> ScheduleHistoryRepository.get_by_version -> json.loads 后，公开 algo.attempts 全量不含 candidate_rejected/source/tag/used_params/algo_stats/origin；diagnostics.optimizer.attempts 正常大小下可随历史 JSON 落库读回；带 INTERNAL_OPTIMIZER_SECRET 的 diagnostics 在分析页、系统历史页、排产首页、周计划页、甘特图、资源排班页、报表入口和报表子页响应中不展示。未改 schema 版本，未改 OptimizationOutcome，未新增 fallback/兜底/静默吞错；不写 full-test-debt 减少，active xfail 仍为 5 条，collected_count=744；完整 M4 最终 clean quality gate 已通过。"
 
   - slug: schedule-persistence-auto-assign-contract
     title: PR-6 落库校验与 auto-assign persist

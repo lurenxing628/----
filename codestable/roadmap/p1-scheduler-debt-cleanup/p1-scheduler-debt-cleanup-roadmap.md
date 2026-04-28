@@ -737,19 +737,32 @@ PR-4 执行结果：
 
 PR-5 执行计划：
 
-1. 创建 PR-5 feature 三件套，items.yaml 改为 `in-progress`。
+1. 创建 `codestable/features/2026-04-28-scheduler-summary-result-summary-contract/` feature 三件套，items.yaml 改为 `in-progress`。
 2. 补 summary/落库测试，走 `build_result_summary -> persist_schedule -> ScheduleHistory` 读回，确认公开 `algo.attempts` 不含 `source`、`tag`、`used_params`、`algo_stats`、`origin`，诊断只在 `diagnostics.optimizer.attempts`。
 3. 补页面泄漏测试，构造带 `INTERNAL_OPTIMIZER_SECRET` 的 diagnostics，确认分析页、系统历史页、排产首页、周计划页、甘特图、资源排班页、报表入口和报表子页响应不显示这个内部词。
 4. 复跑 summary projection、size guard、service 透传 algo_stats、history/analysis/batches/week-plan/reports 页面合同和 full-test-debt/台账/yaml 检查。
 5. 请 subagent 复审落库/页面/历史读取、内部诊断不外泄、M5/PR-6 头部承接；若复审指出真实问题，先修再验收。
 6. 写 acceptance，PR-5 checklist 的 checks 按真实结果标 `passed/failed`，PR-5 items 标 done，并在 PR-6 头部写清完整 M4 已完成内容和不能继承的 proof 边界。
 
+PR-5 执行结果：
+
+- 已创建并验收 `codestable/features/2026-04-28-scheduler-summary-result-summary-contract/`，checklist 全部完成，acceptance 已写入。
+- 已新增真实落库读回测试，走 `build_result_summary -> persist_schedule -> ScheduleHistoryRepository.get_by_version -> json.loads`，确认公开 `algo.attempts` 全量不含 `candidate_rejected`、`source`、`tag`、`used_params`、`algo_stats`、`origin`。
+- 已确认 `diagnostics.optimizer.attempts` 在正常大小下随历史 JSON 落库并读回，rejected 诊断保留 `origin.type/field/message`；这只代表正常大小 summary，不代表超大 summary 必须保留 diagnostics，size guard 仍可截断并标记。
+- 已新增真实页面和接口响应不泄漏测试：把 `INTERNAL_OPTIMIZER_SECRET` 放进内部 diagnostics，访问分析页、系统历史页、排产首页、周计划页、甘特图、资源排班页、报表入口和报表子页，这些响应均不展示这个内部词。
+- 已通过 PR-5 目标测试、页面合同测试、ruff、pyright、full-test-debt、台账检查、yaml 校验和 `git diff --check`。full-test-debt 仍是 5 条 active xfail，`collected_count=744`，不声明减少。
+- 完整 M4 收口后已在干净工作区复跑 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`，最终质量门禁通过。
+- 本轮没有改运行代码，没有改 `summary_schema_version=1.2`，没有改 `OptimizationOutcome` 字段，没有新增 `if`、fallback、兜底、静默吞错或宽泛默认值逻辑，也没有在模板、route 或 viewmodel 里补二次过滤。
+
 ### PR-6：落库校验与 auto-assign persist
 
-PR-6 计划承接要求：
+PR-6 头部承接 M4 完整完成结果：
 
-- 只有 PR-4 和 PR-5 都完成并回填后，PR-6 才能承接 M4 已证明的稳定 summary 输入。
-- PR-6 不能把 M4 的 proof 当成落库校验和 auto-assign persist 已完成。PR-6 仍要自己证明 `build_validated_schedule_payload()` 错误优先级、simulate 不写状态、不持久化自动分配资源，以及 auto-assign persist 只补空资源且不覆盖已有资源。
+- M4 已拆成 PR-4 和 PR-5 完成：PR-4 固定优化器输出、rejected 诊断、attempts 压缩和已有 `state.best is None` 路径外形；PR-5 固定 summary/result_summary 写入历史、读回和页面展示边界。
+- M4 只补测试和 CodeStable 追踪文档，没有改运行代码；没有新增独立 `reason` 字段，没有改 `summary_schema_version=1.2`，没有改 `OptimizationOutcome` 字段，没有新增 `if`、fallback、兜底、静默吞错或宽泛默认值逻辑。
+- M4 不减少 full-test-debt，active xfail 仍是 5 条 operator-machine/query service 旧登记，`collected_count=744`。
+- M4 已在干净工作区通过最终质量门禁后交接给 PR-6。
+- PR-6 可以承接 M4 已证明的稳定 summary 输入，但不能把 M4 的 proof 当成落库校验和 auto-assign persist 已完成。PR-6 仍要自己证明 `build_validated_schedule_payload()` 错误优先级、simulate 不写状态、不持久化自动分配资源，以及 auto-assign persist 只补空资源且不覆盖已有资源。
 
 目标：
 
@@ -850,5 +863,6 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：修复 M2 二次 review finding：分析页按冻结窗口状态展示 degraded，不再把配置降级显示成普通未启用；补录 `2026-04-28-freeze-window-disabled-contract` feature 三件套；同步 P1-15 source-map 为 `evidence-locked-by-M2`，并在 M3 头部写清只能承接停机和资源池。
 - 2026-04-28：执行 M3，收口停机读取和资源池候选设备补停机合同；补齐 load/extend、仓库真实查询和 collector 真实链路测试；刷新台账后 P1-16/P1-17 复杂度事实源关闭，高复杂度登记从 42 降到 40；本轮未减少 full-test-debt，M4 头部已写清不能继承 M3 proof 当作优化器 proof，最终 clean quality gate 已通过。
 - 2026-04-28：修复 M3 二次 review findings：补跨过排产开始时间的停机查询测试、逐设备查询全部失败的 partial 口径测试、extend 查询前整体失败保留原 map 测试；把 M0 历史 `collected_count=700` 和当前 `collected_count=744` 拆开写，并把 source-map 台账引用改为稳定 id/symbol，不再靠会漂移的台账行号。
-- 2026-04-28：细化 M4 完整治理计划，明确 M4 分 PR-4 优化器结果合同和 PR-5 summary/result_summary 合同两段执行；PR-4 不新增独立 reason 字段、不新增 fallback 行为，PR-5 承接落库历史和页面不泄漏内部诊断；items.yaml 已补当前可执行的债务检查和最终 clean quality gate 收口要求，具体 feature/测试检查在对应 PR 落盘时加入。
+- 2026-04-28：细化 M4 完整治理计划，明确 M4 分 PR-4 优化器结果合同和 PR-5 summary/result_summary 合同两段执行；PR-4 不新增独立 reason 字段、不新增 fallback 行为，PR-5 承接落库历史和页面不泄漏内部诊断；items.yaml 已补窄测试、债务检查和最终 clean quality gate 命令。
 - 2026-04-28：完成 PR-4 优化器结果合同补证；新增 rejected 诊断穿过 attempts 压缩和 summary 投影后的分层测试，加严已有 `state.best is None` 路径外形测试；PR-4 没有改运行代码，没有新增 reason/fallback/兜底/静默吞错，没有减少 full-test-debt，active xfail 仍为 5 条。
+- 2026-04-28：完成 PR-5 summary/result_summary 合同补证；新增真实落库读回测试和真实页面/接口响应不泄漏测试，证明公开 attempts 不混入内部字段，diagnostics 正常大小下可落库读回但不展示到已覆盖响应；PR-5 没有改运行代码，没有改 schema 版本或 OptimizationOutcome，没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt；完整 M4 最终 clean quality gate 已通过。

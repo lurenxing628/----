@@ -1,0 +1,48 @@
+feature: 2026-04-28-scheduler-summary-result-summary-contract
+created: 2026-04-28
+
+steps:
+  - id: step-1
+    title: 建立 PR-5 承接和范围保护
+    status: done
+    exit_signal: feature design/checklist 已落盘，items.yaml 指向本 feature 并进入 in-progress。
+
+  - id: step-2
+    title: 补 summary 到历史落库读回证据
+    status: done
+    exit_signal: build_result_summary 写入 ScheduleHistory 再读回的测试通过。
+
+  - id: step-3
+    title: 补真实页面不泄漏内部诊断证据
+    status: done
+    exit_signal: 分析页、系统历史页、排产首页、周计划页、甘特图、资源排班页、报表入口和报表子页响应均不出现内部诊断词。
+
+  - id: step-4
+    title: 跑 PR-5 验证并复审
+    status: done
+    exit_signal: 目标测试、ruff、pyright、full-test-debt、台账检查、yaml 校验、最终 clean quality gate 和 subagent 复审通过。
+
+checks:
+  - id: check-1
+    title: 公开 attempts 不泄漏内部字段
+    status: passed
+
+  - id: check-2
+    title: diagnostics 正常大小下可随历史 JSON 落库并读回
+    status: passed
+
+  - id: check-3
+    title: 已覆盖页面和接口响应不展示 INTERNAL_OPTIMIZER_SECRET
+    status: passed
+
+  - id: check-4
+    title: 不改 schema 版本和公共 OptimizationOutcome 字段
+    status: passed
+
+  - id: check-5
+    title: 没有新增 fallback、兜底或静默吞错
+    status: passed
+
+  - id: check-6
+    title: 不声明 full-test-debt 减少
+    status: passed
