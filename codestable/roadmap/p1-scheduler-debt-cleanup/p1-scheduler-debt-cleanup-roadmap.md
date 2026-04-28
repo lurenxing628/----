@@ -108,7 +108,8 @@ M0 已完成的收口：
 - 映射表已落盘到 `codestable/roadmap/p1-scheduler-debt-cleanup/drafts/p1-debt-source-map.md`。
 - `rg -uuu` 搜索当前工作树并排除 `.git/` 元数据和本 roadmap 目录后，没有找到 P1-8 到 P1-25 的独立编号来源；这些编号目前只能作为本路线图整理标签使用。
 - 当前 active full-test-debt 是 5 个 operator-machine/personnel 相关 xfail，不是 scheduler P1-8 到 P1-25。
-- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py` 已通过，结果为 `active_xfail_count=5`、`collected_count=700`、`unexpected_failure_count=0`。
+- M0 当时 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py` 已通过，结果为 `active_xfail_count=5`、`collected_count=700`、`unexpected_failure_count=0`。
+- M3 二次 review 后复核 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py` 已通过，结果为 `active_xfail_count=5`、`collected_count=744`、`unexpected_failure_count=0`。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check` 已通过，结果为 `test_debt_count=5`。
 - 本次没有改 `tools/test_registry.py`、`tools/quality_gate_shared.py`、`tools/test_debt_registry.py`、`tools/check_full_test_debt.py`、`tools/collect_full_test_debt.py`、`tests/conftest.py`、`tests/main_style_regression_runner.py`、`scripts/run_quality_gate.py`、`scripts/sync_debt_ledger.py` 的运行逻辑。
 
@@ -648,12 +649,12 @@ M3 细化计划：
 执行结果：
 
 - 已完成 CodeStable feature 承接：`codestable/features/2026-04-28-downtime-resource-pool-contract/`，并把 items.yaml 的 M3 条目改为 done。
-- 已新增停机和资源池窄测试：停机读取成功、无记录、整体失败、单设备失败保留健康设备；资源池候选设备补停机、无停机不加空 key、部分失败保留成功设备；`MachineDowntimeRepository.list_active_after()` 真实查询；collector 真实 DB 链路。
+- 已新增停机和资源池窄测试：停机读取成功、无记录、整体失败、单设备失败保留健康设备、逐设备查询全部失败按 partial 暴露；资源池候选设备补停机、无停机不加空 key、部分失败保留成功设备、extend 查询前整体失败保留原 map；`MachineDowntimeRepository.list_active_after()` 真实查询覆盖跨过排产开始时间的停机记录；collector 真实 DB 链路。
 - 已把 `load_machine_downtimes` 和 `extend_downtime_map_for_resource_pool` 里重复的停机查询、时间段整理、失败设备记录和 meta/sample 写入收口到内部 helper；公开字段、warning 口径和 summary 投影保持不变。
 - 复杂度已回到阈值内：`load_machine_downtimes` 从 21 降到 5，`extend_downtime_map_for_resource_pool` 从 21 降到 8；`scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 后高复杂度登记从 42 降到 40。
-- 已请 4 个只读 subagent 做执行后复审：停机/资源池合同、无新增兜底、下游 summary/页面/导出影响、测试和债务证明。复审提出的 load 部分失败测试缺口已补齐并复跑转绿；文档回填已完成，最终 clean gate 已在本地提交后的干净工作区通过。
+- 已请 4 个只读 subagent 做执行后复审，又按 review findings 请 5 个子代理深挖根因。复审指出的跨开始时间查询、逐设备查询全失败、extend 整体失败、full-test-debt 精确数字和 source-map 行号漂移问题，已用测试和文档修正；没有改业务实现，也没有新增 fallback/兜底。
 - 本轮没有改冻结窗口、优化器主逻辑、落库、页面、runtime/plugin 或质量门禁工具；没有新增 fallback、兜底、静默吞错，也没有改变资源池候选设备的宽口径。
-- P1-16/P1-17 已按 complexity/test_coverage 关闭；`tools/check_full_test_debt.py` 通过后 active xfail 仍为 5 条 operator-machine/query service 旧登记，所以本轮不写 full-test-debt 减少。
+- P1-16/P1-17 已按 complexity/test_coverage 关闭；二次 review 后 `tools/check_full_test_debt.py` 通过，active xfail 仍为 5 条 operator-machine/query service 旧登记，`collected_count=744`，所以本轮不写 full-test-debt 减少。
 
 目标：
 
@@ -671,9 +672,9 @@ M3 细化计划：
 
 承接 PR-3 / M3 已完成结果：
 
-- M3 已完成停机区间读取和自动分配资源池候选设备补停机合同；load/extend 的公开 meta 字段和 summary 投影保持稳定。
+- M3 已完成停机区间读取和自动分配资源池候选设备补停机合同；二次 review 后补齐跨开始时间停机查询、逐设备查询全失败 partial 口径、extend 整体失败保留原 map 三个边界测试，load/extend 的公开 meta 字段和 summary 投影保持稳定。
 - M3 已关闭 P1-16/P1-17 当前复杂度事实源，并补齐普通测试证据；这只能证明停机和资源池合同，不等于优化器输出合同已经稳定。
-- M3 没有减少 full-test-debt，active xfail 仍为 5 条 operator-machine/query service 旧登记；PR-4 若要声明债务变化，必须用自己的测试和债务脚本重新证明。
+- M3 没有减少 full-test-debt，二次 review 后 active xfail 仍为 5 条 operator-machine/query service 旧登记，`collected_count=744`；PR-4 若要声明债务变化，必须用自己的测试和债务脚本重新证明。
 - PR-4 不要继承 M3 的停机 proof 当作优化器 proof，也不要顺手改资源池候选口径、停机读取或页面展示；只处理优化器结果、attempts、rejected reason、fallback 输出和 bad data strict/non-strict 证据。
 
 目标：
@@ -800,3 +801,4 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：执行 M2，给冻结窗口 disabled 原因补上 `freeze_disabled_reason`，把配置读取降级归入 `degraded` 并保持 strict fail closed；summary 只透传安全 disabled 原因，配置降级不伪装成 disabled；复审发现的问题已修复。P1-14 因复杂度仍为 26/15 保持打开，P1-15 已补状态合同测试，本轮未减少 full-test-debt。
 - 2026-04-28：修复 M2 二次 review finding：分析页按冻结窗口状态展示 degraded，不再把配置降级显示成普通未启用；补录 `2026-04-28-freeze-window-disabled-contract` feature 三件套；同步 P1-15 source-map 为 `evidence-locked-by-M2`，并在 M3 头部写清只能承接停机和资源池。
 - 2026-04-28：执行 M3，收口停机读取和资源池候选设备补停机合同；补齐 load/extend、仓库真实查询和 collector 真实链路测试；刷新台账后 P1-16/P1-17 复杂度事实源关闭，高复杂度登记从 42 降到 40；本轮未减少 full-test-debt，M4 头部已写清不能继承 M3 proof 当作优化器 proof，最终 clean quality gate 已通过。
+- 2026-04-28：修复 M3 二次 review findings：补跨过排产开始时间的停机查询测试、逐设备查询全部失败的 partial 口径测试、extend 查询前整体失败保留原 map 测试；把 M0 历史 `collected_count=700` 和当前 `collected_count=744` 拆开写，并把 source-map 台账引用改为稳定 id/symbol，不再靠会漂移的台账行号。

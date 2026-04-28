@@ -10,7 +10,7 @@ steps:
   - id: step-2
     title: 补齐停机读取和资源池扩展窄测试
     status: done
-    exit_signal: 新增测试覆盖无停机、整体失败、部分失败、候选设备补齐和仓库真实查询。
+    exit_signal: 新增测试覆盖无停机、整体失败、部分失败、逐设备查询全失败、extend 整体失败、候选设备补齐和仓库真实查询。
   - id: step-3
     title: 收口 resource_pool_builder 重复读取逻辑
     status: done
@@ -18,7 +18,7 @@ steps:
   - id: step-4
     title: 跑验证、复审并回填执行结果
     status: done
-    exit_signal: 目标测试、债务脚本、yaml、subagent 复审和最终 clean quality gate 均已通过。
+    exit_signal: 目标测试、债务脚本、yaml、subagent 复审、二次 review findings 修复和最终 clean quality gate 均已通过。
 
 checks:
   - id: check-1

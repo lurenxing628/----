@@ -100,7 +100,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
-    notes: "已完成：M3 已补录 feature 承接 2026-04-28-downtime-resource-pool-contract，并完成停机读取、资源池候选设备补停机、部分失败保留成功设备、MachineDowntimeRepository 真实查询和 collector 真实链路测试。load_machine_downtimes 复杂度从 21 降到 5，extend_downtime_map_for_resource_pool 从 21 降到 8；scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 42 降到 40。P1-16/P1-17 只按 complexity/test_coverage 关闭，不计入 full-test-debt 减少；active xfail 仍为 5 条 operator-machine/query service 旧登记。本轮没有改冻结窗口、优化器、落库、页面、runtime/plugin 或门禁工具，没有新增 fallback、兜底或静默吞错；最终 clean quality gate 已通过。"
+    notes: "已完成：M3 已补录 feature 承接 2026-04-28-downtime-resource-pool-contract，并完成停机读取、资源池候选设备补停机、部分失败保留成功设备、MachineDowntimeRepository 真实查询和 collector 真实链路测试。二次 review 后补齐跨过排产开始时间的停机查询、逐设备查询全部失败按 partial 暴露、extend 查询前整体失败保留原 map 三个边界测试，并把 source-map 的台账引用改为稳定 id/symbol。load_machine_downtimes 复杂度从 21 降到 5，extend_downtime_map_for_resource_pool 从 21 降到 8；scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 42 降到 40。P1-16/P1-17 只按 complexity/test_coverage 关闭，不计入 full-test-debt 减少；active xfail 仍为 5 条 operator-machine/query service 旧登记，当前 collected_count 为 744。本轮没有改冻结窗口、优化器、落库、页面、runtime/plugin 或门禁工具，没有新增 fallback、兜底或静默吞错；最终 clean quality gate 已通过。"
 
   - slug: optimizer-result-contract-evidence
     title: PR-4 优化器结果合同补证

@@ -26,6 +26,7 @@ def test_list_active_after_returns_only_active_rows_ending_after_start_ordered()
         """
     )
     rows = [
+        ("MC_1", "2026-01-01 07:30:00", "2026-01-01 08:30:00", "active"),
         ("MC_1", "2026-01-01 12:00:00", "2026-01-01 13:00:00", "active"),
         ("MC_1", "2026-01-01 09:00:00", "2026-01-01 10:00:00", "active"),
         ("MC_1", "2026-01-01 07:00:00", "2026-01-01 08:00:00", "active"),
@@ -46,6 +47,7 @@ def test_list_active_after_returns_only_active_rows_ending_after_start_ordered()
         conn.close()
 
     assert [(item.start_time, item.end_time, item.status) for item in found] == [
+        ("2026-01-01 07:30:00", "2026-01-01 08:30:00", "active"),
         ("2026-01-01 09:00:00", "2026-01-01 10:00:00", "active"),
         ("2026-01-01 12:00:00", "2026-01-01 13:00:00", "active"),
     ]

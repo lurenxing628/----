@@ -89,11 +89,13 @@ flowchart TD
 
 - 没有任何停机记录时，`downtime_load_ok=True`，`downtime_map={}`，不出现 warning。
 - 单设备加载失败时，失败设备进入 count/sample，健康设备的停机区间保留。
-- 停机仓库整体初始化或查询失败时，`downtime_load_ok=False`，summary 显示停机避让已降级，不把空 map 伪装成健康。
+- 停机仓库初始化、开始时间格式化或查询前准备失败时，`downtime_load_ok=False`，summary 显示停机避让已降级，不把空 map 伪装成健康。
+- 进入逐设备查询后，单台失败或多台全部失败都按 partial count/sample 暴露；这不是新增兜底，而是保持现有“按设备记录失败”的合同。
 - 自动分配关闭时，extend 不动原 map，也不写“尝试扩展”。
 - 自动分配开启且候选设备有停机时，候选设备停机被补齐。
 - 候选设备无停机时，不新增空 key，且 `downtime_extend_ok=True`。
 - 候选设备部分失败时，成功设备保留，失败设备进入 extend partial meta。
+- extend 查询前准备失败时，保留原 `downtime_map`，写入 `downtime_extend_ok=False` 和公开错误文案。
 - 反向核对：不新增 fallback、兜底、静默吞错；不改算法主逻辑；不减少 full-test-debt。
 
 ## 4. 与项目级架构文档的关系

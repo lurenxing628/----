@@ -40,6 +40,14 @@ class _RepoRows:
         return []
 
 
+class _RepoAlwaysFails:
+    def __init__(self, *_args, **_kwargs) -> None:
+        pass
+
+    def list_active_after(self, _machine_id: str, _start_str: str):
+        raise RuntimeError("downtime query failed")
+
+
 def _patch_repo(monkeypatch: pytest.MonkeyPatch, repo_cls) -> None:
     monkeypatch.setattr(builder_mod, "MachineDowntimeRepository", repo_cls)
 
@@ -192,6 +200,31 @@ def test_load_machine_downtimes_partial_failure_preserves_successful_machine(mon
     assert warnings == [f"【停机】{expected_error}"]
 
 
+def test_load_machine_downtimes_all_query_failures_use_partial_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_repo(monkeypatch, _RepoAlwaysFails)
+    meta = {}
+    warnings: List[str] = []
+
+    downtime_map = builder_mod.load_machine_downtimes(
+        _StubSvc(),
+        algo_ops=[
+            SimpleNamespace(source="internal", machine_id="MC_A"),
+            SimpleNamespace(source="internal", machine_id="MC_B"),
+        ],
+        start_dt=datetime(2026, 1, 1, 8, 0, 0),
+        warnings=warnings,
+        meta=meta,
+    )
+
+    expected_error = "部分设备停机区间加载失败（2 台，如：MC_A、MC_B），这些设备已降级为忽略停机约束"
+    assert downtime_map == {}
+    assert meta["downtime_load_ok"] is False
+    assert meta["downtime_load_error"] == expected_error
+    assert meta["downtime_partial_fail_count"] == 2
+    assert meta["downtime_partial_fail_machines_sample"] == ["MC_A", "MC_B"]
+    assert warnings == [f"【停机】{expected_error}"]
+
+
 def test_load_machine_downtimes_repo_failure_sets_public_error(monkeypatch: pytest.MonkeyPatch) -> None:
     class _BrokenRepo:
         def __init__(self, *_args, **_kwargs) -> None:
@@ -277,3 +310,38 @@ def test_extend_downtime_map_partial_failure_preserves_successful_candidates(mon
     assert meta["downtime_extend_partial_fail_count"] == 1
     assert meta["downtime_extend_partial_fail_machines_sample"] == ["MC_BAD"]
     assert any("MC_BAD" in item for item in warnings)
+
+
+def test_extend_downtime_map_repo_failure_preserves_existing_map_and_sets_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _BrokenRepo:
+        def __init__(self, *_args, **_kwargs) -> None:
+            raise RuntimeError("repo init failed")
+
+    _patch_repo(monkeypatch, _BrokenRepo)
+    existing = {
+        "MC_EXISTING": [
+            (datetime(2026, 1, 1, 9, 0, 0), datetime(2026, 1, 1, 10, 0, 0)),
+        ]
+    }
+    expected = {"MC_EXISTING": list(existing["MC_EXISTING"])}
+    meta = {}
+    warnings: List[str] = []
+
+    result = builder_mod.extend_downtime_map_for_resource_pool(
+        _StubSvc(),
+        cfg=SimpleNamespace(auto_assign_enabled="yes"),
+        resource_pool={"operators_by_machine": {"MC_NEW": ["OP_1"]}},
+        downtime_map=existing,
+        start_dt=datetime(2026, 1, 1, 8, 0, 0),
+        warnings=warnings,
+        meta=meta,
+    )
+
+    assert result is existing
+    assert result == expected
+    assert meta["downtime_extend_attempted"] is True
+    assert meta["downtime_extend_ok"] is False
+    assert meta["downtime_extend_error"] == builder_mod.DOWNTIME_EXTEND_FAILED_MESSAGE
+    assert warnings == [f"【停机】{builder_mod.DOWNTIME_EXTEND_FAILED_MESSAGE}"]
