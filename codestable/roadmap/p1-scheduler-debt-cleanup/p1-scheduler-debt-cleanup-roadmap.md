@@ -190,7 +190,7 @@ M2 执行完成回填：
 职责：
 
 - 只补合同证据，不再大拆优化器。
-- 固定被拒方案的 `reason`、`origin`、attempts 压缩、fallback 输出和 bad data strict/non-strict 行为。
+- 固定被拒方案的稳定诊断口径、`origin`、attempts 压缩、已有 `state.best is None` 输出外形和 bad data strict/non-strict 行为。
 - 固定 `summary` 和 `result_summary` 的稳定外形，避免落库和页面继续读不稳定深层字段。
 
 主要文件：
@@ -200,6 +200,15 @@ M2 执行完成回填：
 - `core/services/scheduler/summary/optimizer_public_summary.py`
 - `core/services/scheduler/summary/schedule_summary.py`
 - `core/services/scheduler/summary/schedule_summary_assembly.py`
+
+M4 执行前细化：
+
+- M4 按完整模块执行，但内部拆成两个可验段落：PR-4 只锁优化器结果合同，PR-5 再锁 `summary/result_summary`、落库历史和页面读取。两段都完成后，才算 M4 完整收口。
+- PR-4 不默认新增独立 `reason` 字段；稳定原因先按现有 `origin.type`、`origin.field` 和补充用的 `origin.message` 固定。若红灯证明必须新增字段，先停下来说明，因为这会改变公共诊断形状。
+- PR-4 只证明已有统计和诊断可见，并验证已有 `state.best is None` 路径的输出外形；不新增新的 fallback 行为，也不在 summary 或页面层补二次兜底。
+- PR-5 以 PR-4 的优化器输出为输入，证明 `result_summary.algo.attempts` 只放页面可展示字段，`diagnostics.optimizer.attempts` 可以随历史 JSON 落库但不被页面展示。
+- M4 不减少 full-test-debt，除非实际关闭 active xfail 中的精确 `debt_id/nodeid`，并通过 `tools/check_full_test_debt.py` 与 `scripts/sync_debt_ledger.py check`。
+- 本轮不改冻结窗口、停机资源池、落库业务规则、runtime/plugin 或质量门禁工具运行逻辑；如果测试逼出这些范围外问题，先回路线图更新，不在 feature 里偷改。
 
 ### M5：落库合同
 
@@ -368,11 +377,11 @@ extend meta：
 
 目标行为：
 
-- 每个被拒方案都有稳定 `reason`，不能只靠中文 message。
+- 每个被拒方案都有稳定诊断口径：`source="candidate_rejected"`、`origin.type`、`origin.field` 必须保留，`origin.message` 只作为排障补充，不作为唯一合同。
 - attempts 压缩不能挤掉关键 rejected diagnostics。
-- fallback 仍然返回 `OptimizationOutcome`，并保留稳定 attempts 和 algo_stats。
+- 已有 `state.best is None` 路径仍然返回真实 `OptimizationOutcome`，并保留稳定 attempts 和 algo_stats。
 - strict bad data 抛错字段稳定。
-- non-strict bad data 进入 degradation/fallback stats，不能静默吞掉。
+- non-strict bad data 只记录允许跳过的候选，不能静默改成成功。
 
 实现限制：
 
@@ -675,20 +684,36 @@ M3 细化计划：
 - M3 已完成停机区间读取和自动分配资源池候选设备补停机合同；二次 review 后补齐跨开始时间停机查询、逐设备查询全失败 partial 口径、extend 整体失败保留原 map 三个边界测试，load/extend 的公开 meta 字段和 summary 投影保持稳定。
 - M3 已关闭 P1-16/P1-17 当前复杂度事实源，并补齐普通测试证据；这只能证明停机和资源池合同，不等于优化器输出合同已经稳定。
 - M3 没有减少 full-test-debt，二次 review 后 active xfail 仍为 5 条 operator-machine/query service 旧登记，`collected_count=744`；PR-4 若要声明债务变化，必须用自己的测试和债务脚本重新证明。
-- PR-4 不要继承 M3 的停机 proof 当作优化器 proof，也不要顺手改资源池候选口径、停机读取或页面展示；只处理优化器结果、attempts、rejected reason、fallback 输出和 bad data strict/non-strict 证据。
+- PR-4 不要继承 M3 的停机 proof 当作优化器 proof，也不要顺手改资源池候选口径、停机读取或页面展示；只处理优化器结果、attempts、rejected 诊断口径、已有 `state.best is None` 输出外形和 bad data strict/non-strict 证据。
 
 目标：
 
 - 保护近期优化器提交。
-- 固定 rejected reason、attempts compact、fallback outcome、strict bad data 合同。
+- 固定 rejected 诊断口径、attempts compact、已有 `state.best is None` 输出外形、strict bad data 合同。
 
 退出条件：
 
-- 只补测试和少量字段标准化。
+- 只补测试和必要的诊断标准化；不新增独立 reason 字段，除非先停下说明并确认。
 - 不重新拆优化器。
 - 如果事实源显示优化器债务已经关闭，把结果回填到 PR-0 映射表，不做无意义改动。
 
+PR-4 执行计划：
+
+1. 创建 PR-4 feature 三件套，items.yaml 改为 `in-progress`。
+2. 先补红灯测试，覆盖 `12` 条 scored attempt 加 `1` 条 rejected attempt 进入 `build_result_summary` 后，公开 attempts 保留 `11` 条，rejected 留在 `diagnostics.optimizer.attempts`，并保留 `origin.type/field/message` 且没有假 `score`。
+3. 补已有 `state.best is None` 路径测试，覆盖该旧路径仍返回稳定 `OptimizationOutcome`，并断言 `summary`、`used_strategy`、`used_params`、`best_score`、`best_order`、`algo_stats`、`attempts` 外形。
+4. 复跑 optimizer attempts、local search、multi-start/OR-Tools strict、public summary projection、cfg snapshot、seed boundary 和 runtime seam 相关测试。
+5. 请 subagent 复审优化器链路、测试缺口和无新增兜底；若复审指出真实问题，先修再验收。
+6. 写 acceptance，PR-4 checklist 的 checks 按真实结果标 `passed/failed`，PR-4 items 标 done，并在 PR-5 头部写清 PR-4 已证明和不能替 PR-5 证明的边界。
+
 ### PR-5：summary/result_summary 合同
+
+计划承接 PR-4 / M4 优化器半段输出：
+
+- PR-4 需要先证明：被拒候选只作为诊断保留，attempts 压缩不会把关键 rejected diagnostics 挤掉，已有 `state.best is None` 路径仍返回稳定 `OptimizationOutcome`，strict 候选坏数据直接抛错，non-strict 只记录允许跳过的候选。
+- PR-4 的证明只覆盖优化器输出，不能替代 `summary/result_summary` 落库、历史读取和页面展示证明。
+- PR-5 必须自己证明：`result_summary` 写入前后的公开形状一致，页面不展示 `diagnostics.optimizer.attempts` 里的内部排障词，latest history 读取不需要猜优化器内部来源。
+- PR-5 仍要重新跑自己的 full-test-debt 和台账检查；不能继承 PR-4 proof 当作 summary proof。
 
 目标：
 
@@ -701,7 +726,21 @@ M3 细化计划：
 - summary display builder 有窄测试。
 - 落库前后 `result_summary` 字段一致。
 
+PR-5 执行计划：
+
+1. 创建 PR-5 feature 三件套，items.yaml 改为 `in-progress`。
+2. 补 summary/落库测试，走 `build_result_summary -> persist_schedule -> ScheduleHistory` 读回，确认公开 `algo.attempts` 不含 `source`、`tag`、`used_params`、`algo_stats`、`origin`，诊断只在 `diagnostics.optimizer.attempts`。
+3. 补页面泄漏测试，构造带 `INTERNAL_OPTIMIZER_SECRET` 的 diagnostics，确认分析页、系统历史页、排产首页、周计划页、甘特图、资源排班页、报表入口和报表子页响应不显示这个内部词。
+4. 复跑 summary projection、size guard、service 透传 algo_stats、history/analysis/batches/week-plan/reports 页面合同和 full-test-debt/台账/yaml 检查。
+5. 请 subagent 复审落库/页面/历史读取、内部诊断不外泄、M5/PR-6 头部承接；若复审指出真实问题，先修再验收。
+6. 写 acceptance，PR-5 checklist 的 checks 按真实结果标 `passed/failed`，PR-5 items 标 done，并在 PR-6 头部写清完整 M4 已完成内容和不能继承的 proof 边界。
+
 ### PR-6：落库校验与 auto-assign persist
+
+PR-6 计划承接要求：
+
+- 只有 PR-4 和 PR-5 都完成并回填后，PR-6 才能承接 M4 已证明的稳定 summary 输入。
+- PR-6 不能把 M4 的 proof 当成落库校验和 auto-assign persist 已完成。PR-6 仍要自己证明 `build_validated_schedule_payload()` 错误优先级、simulate 不写状态、不持久化自动分配资源，以及 auto-assign persist 只补空资源且不覆盖已有资源。
 
 目标：
 
@@ -802,3 +841,4 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：修复 M2 二次 review finding：分析页按冻结窗口状态展示 degraded，不再把配置降级显示成普通未启用；补录 `2026-04-28-freeze-window-disabled-contract` feature 三件套；同步 P1-15 source-map 为 `evidence-locked-by-M2`，并在 M3 头部写清只能承接停机和资源池。
 - 2026-04-28：执行 M3，收口停机读取和资源池候选设备补停机合同；补齐 load/extend、仓库真实查询和 collector 真实链路测试；刷新台账后 P1-16/P1-17 复杂度事实源关闭，高复杂度登记从 42 降到 40；本轮未减少 full-test-debt，M4 头部已写清不能继承 M3 proof 当作优化器 proof，最终 clean quality gate 已通过。
 - 2026-04-28：修复 M3 二次 review findings：补跨过排产开始时间的停机查询测试、逐设备查询全部失败的 partial 口径测试、extend 查询前整体失败保留原 map 测试；把 M0 历史 `collected_count=700` 和当前 `collected_count=744` 拆开写，并把 source-map 台账引用改为稳定 id/symbol，不再靠会漂移的台账行号。
+- 2026-04-28：细化 M4 完整治理计划，明确 M4 分 PR-4 优化器结果合同和 PR-5 summary/result_summary 合同两段执行；PR-4 不新增独立 reason 字段、不新增 fallback 行为，PR-5 承接落库历史和页面不泄漏内部诊断；items.yaml 已补当前可执行的债务检查和最终 clean quality gate 收口要求，具体 feature/测试检查在对应 PR 落盘时加入。

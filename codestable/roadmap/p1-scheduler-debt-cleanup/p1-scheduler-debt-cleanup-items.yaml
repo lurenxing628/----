@@ -104,7 +104,7 @@ items:
 
   - slug: optimizer-result-contract-evidence
     title: PR-4 优化器结果合同补证
-    description: "保护近期优化器结果合同，只补 rejected reason、attempts、fallback 和 strict bad data 的证据缺口。"
+    description: "保护近期优化器结果合同，只补 rejected origin、attempts、已有 state.best is None 输出外形和 strict/non-strict bad data 的证据缺口。"
     status: planned
     feature: null
     minimal_loop: false
@@ -114,12 +114,16 @@ items:
     primary_paths:
       - core/services/scheduler/run/schedule_optimizer.py
       - core/services/scheduler/run/optimizer_search_state.py
+      - core/services/scheduler/run/optimizer_attempt_records.py
+      - core/services/scheduler/run/schedule_optimizer_steps.py
+      - core/services/scheduler/run/optimizer_local_search.py
       - core/services/scheduler/summary/optimizer_public_summary.py
     exit_checks:
-      - python tools/check_full_test_debt.py
-      - python scripts/sync_debt_ledger.py check
-      - python scripts/run_quality_gate.py
-    notes: "承接 PR-0：没有 old_p1；这是近期优化器合同补证任务。路径已核为 summary/optimizer_public_summary.py，不再引用不存在的 run/optimizer_public_summary.py。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+      - git diff --check
+    notes: "计划：PR-4 只补优化器证据，不改运行代码。重点证明 12 条 scored attempt + 1 条 rejected attempt 进入 summary 后，公开 attempts 保留页面可展示记录，rejected 留在 diagnostics.optimizer.attempts，并保留 origin.type/origin.field/origin.message、无假 score；已有 state.best is None 路径仍返回真实 OptimizationOutcome；strict/non-strict 坏数据旧测试继续通过。PR-4 不新增独立 reason 字段，不新增 fallback、兜底或静默吞错，不写 full-test-debt 减少；具体 feature 目录和新测试检查在 PR-4 落盘时加入。"
 
   - slug: scheduler-summary-result-summary-contract
     title: PR-5 summary/result_summary 合同
@@ -135,11 +139,15 @@ items:
       - core/services/scheduler/summary/schedule_summary_assembly.py
       - core/services/scheduler/summary/optimizer_public_summary.py
       - core/services/scheduler/run/schedule_persistence.py
+      - web/routes/normalizers.py
+      - web/viewmodels/scheduler_summary_display.py
     exit_checks:
-      - python tools/check_full_test_debt.py
-      - python scripts/sync_debt_ledger.py check
-      - python scripts/run_quality_gate.py
-    notes: "承接 PR-0：没有 old_p1；这是 summary/result_summary 补证任务。已移除不存在的 schedule_core.py 和 run/optimizer_public_summary.py 路径。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+      - git diff --check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+    notes: "计划：PR-5 只补 summary/result_summary、落库读回和页面展示证据，不改运行代码。重点证明 build_result_summary -> persist_schedule -> ScheduleHistoryRepository.get_by_version -> json.loads 后，公开 algo.attempts 全量不含 candidate_rejected/source/tag/used_params/algo_stats/origin；diagnostics.optimizer.attempts 正常大小下可随历史 JSON 落库读回；带 INTERNAL_OPTIMIZER_SECRET 的 diagnostics 在已覆盖页面和接口响应中不展示。未改 schema 版本，未改 OptimizationOutcome，未新增 fallback/兜底/静默吞错；不写 full-test-debt 减少；完整 M4 收口后必须在干净工作区跑最终 clean quality gate；具体 feature 目录和新测试检查在 PR-5 落盘时加入。"
 
   - slug: schedule-persistence-auto-assign-contract
     title: PR-6 落库校验与 auto-assign persist
