@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: p1-scheduler-debt-cleanup
 status: active
 created: 2026-04-28
-last_reviewed: 2026-04-28
+last_reviewed: 2026-04-29
 tags: [scheduler, p1, technical-debt, quality-gate]
 related_requirements: []
 related_architecture: [codestable/architecture/ARCHITECTURE.md]
@@ -639,7 +639,7 @@ M1 执行结果：
 - 已请 4 个 subagent 做只读复审：冻结窗口合同、summary/页面/落库下游、无新增 fallback 对抗、roadmap/items/提交边界。复审提出的 degraded 公开字段风险和 strict 无上一版本行覆盖缺口已修复并复跑。
 - Review finding 修复补充：分析页现在以 `freeze_state` 展示冻结窗口状态，`enabled=no + freeze_state=degraded` 不再显示成普通未启用；已补真实页面渲染测试。
 - CodeStable 承接补充：已补录 `2026-04-28-freeze-window-disabled-contract` feature 三件套，items.yaml 已指向该 feature，source-map 已同步 P1-15 为 `evidence-locked-by-M2`。
-- P1-14 当前不关闭：`build_freeze_window_seed` 复杂度仍为 26，高于阈值 15；未运行台账自动刷新移除该登记。P1-15 的状态合同已补测试锁住，但不写成 full-test-debt 减少。
+- M2 当时不关闭 P1-14：`build_freeze_window_seed` 复杂度仍为 26，高于阈值 15；未运行台账自动刷新移除该登记。P1-15 的状态合同已补测试锁住，但不写成 full-test-debt 减少。
 - `tools/check_full_test_debt.py` 仍为 5 条 active xfail，集中在 operator-machine/query service 旧登记；本 PR 不减少 full-test-debt。
 
 退出条件：
@@ -969,6 +969,41 @@ M7 执行结果回填：
 - 后续看 M7 台账时，以新模块 id 和已修复的 accepted risk 中文说明为准；不要再引用旧 `launcher.py` 接受风险说明或乱码备注。
 - P1-25 仍然证据不足，除非补出具体路径、台账条目或测试 nodeid，否则不得开修。
 
+### P1 最终尾项：冻结窗口种子复杂度收尾
+
+最终尾项头部承接 M7 完成结果：
+
+- M1 到 M7 已把能在当前代码、台账或测试里找到明确事实源的 P1 项逐项处理到位。
+- M7 后还剩一个可执行尾巴：P1-14 的 `build_freeze_window_seed()` 复杂度登记仍在，复杂度为 26/15。
+- P1-24 已在 M7-B 只复核，不包装成 open bug。
+- P1-25 仍然证据不足，不开修，也不写成已修。
+- full-test-debt 仍只有 5 条 operator-machine/query service 旧 xfail，本尾项不减少它。
+
+执行边界：
+
+- 只改 `core/services/scheduler/run/freeze_window.py` 内部和冻结窗口合同测试。
+- 不新建公开模块，不改 `core.services.scheduler.freeze_window.build_freeze_window_seed` 门面。
+- 不改函数签名、三元返回值、`meta` 原地写入、`ValidationError(field="freeze_window")`、`disabled/degraded` 语义、`seed_results` 字段和排序、`frozen_op_ids` 锁定范围。
+- 不新增 fallback、兜底、默认成功或静默吞错。
+
+执行结果：
+
+- 新增 `codestable/features/2026-04-28-freeze-window-seed-complexity-closure/` feature 三件套。
+- `build_freeze_window_seed()` 内部拆成 `_prepare_freeze_seed_scope()`、`_load_previous_schedule_for_freeze()`、`_apply_freeze_prefixes()`、`_finish_freeze_seed_result()`，公开入口不变。
+- 新增三条合同测试，覆盖 `reschedulable_operations=None` 使用全部 `operations`、显式子集只冻结子集、`seed_results` 按 `(start_time, op_id)` 排序并保留字段。
+- `python -m radon cc -s core/services/scheduler/run/freeze_window.py` 显示 `build_freeze_window_seed()` 复杂度从 26 降到 3，拆出 helper 最高复杂度 9。
+- `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 后，`complexity_count` 从 32 降到 31，`complexity:core-services-scheduler-freeze_window-build_freeze_window_seed` 消失。
+- `silent_fallback_count` 仍为 154，没有增加。
+- `tools/check_full_test_debt.py` 仍为 5 条 active xfail，本轮不声明 full-test-debt 减少。
+
+后续任务头部承接说明：
+
+- P1 当前可执行事实源已收尾：能在当前工作树找到明确代码、台账或测试事实源的 P1 项，已经处理、锁证或复核。
+- P1-14 已关闭当前复杂度事实源，后续不要再引用旧 open 结论。
+- P1-24 继续保持 `rechecked-by-M7-B`，后续只有发现真实 open plugin fallback，才另开具体问题。
+- P1-25 继续保持 `evidence-insufficient`，没有新路径、台账条目或测试 nodeid 前不得开修。
+- 后续如果做 full-test-debt，只能从 5 条 active xfail 本身入手，不能把本轮复杂度下降写成 full-test-debt 下降。
+
 ## 排期建议
 
 最小闭环是 PR-0。没有 PR-0，后面每个 PR 都可能把“测试覆盖”“复杂度减少”“full-test-debt 减少”混在一起说，最后会让验收失真。
@@ -1027,3 +1062,4 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：完成 PR-8 `/scheduler/` 批次首页 viewmodel；把筛选状态、批次展示行、配置面板、最近历史面板和模板上下文从 route 搬到纯展示构建层，route 只保留请求读取、服务调用、分页、原有最近历史读取失败日志边界、viewmodel 和渲染；复审后补齐 `status=` 的全部状态下拉选项、精确空 status 测试、非 pending 状态控件隐藏测试，并移除 P1-19 复杂度登记，`complexity_count=37`；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-9 头部已写清不能继承页面 proof 当作 runtime/plugin/infra proof。
 - 2026-04-28：处理 PR-8 对抗审核 findings；批次首页标题和空结果文案改成固定中性文案，配置面板装配 helper 从 route 文件移到共享配置展示 helper，测试补齐 `only_ready` 三态、非 pending 状态、空结果文案、summary 解析失败不泄漏原文和 route 使用 viewmodel 输出；没有新增 fallback/兜底/静默吞错。
 - 2026-04-28：完成 M7 runtime/plugin/infra 支线校准与执行；M7 拆成证据校准、launcher/runtime/Chrome stop、plugin enabled-source 三段，P1-20/P1-21/P1-22/P1-23 关闭当前事实源，P1-24 只复核，P1-25 继续证据不足；四路 subagent 复审后修复 accepted risk 乱码说明，最终台账为 `complexity_count=32`、`oversize_count=8`、`silent_fallback_count=154`、`test_debt_count=5`，本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt。
+- 2026-04-29：完成 P1 最终尾项 P1-14；`build_freeze_window_seed()` 公开入口不变，内部拆成范围准备、上一版读取、前缀套用和结果整理四段，补默认范围、显式子集、`seed_results` 排序和字段完整性测试；主函数复杂度从 26 降到 3，台账 `complexity_count=31`，`silent_fallback_count=154`，full-test-debt 仍为 5。P1 当前可执行事实源已收尾，但 P1-25 仍按证据不足保留，不写成已修。

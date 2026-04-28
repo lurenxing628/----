@@ -77,7 +77,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/roadmap/p1-scheduler-debt-cleanup/p1-scheduler-debt-cleanup-items.yaml
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
-    notes: "已完成：M2 已补录 feature 承接，feature 目录为 codestable/features/2026-04-28-freeze-window-disabled-contract；freeze_window 现在用 freeze_disabled_reason 区分 config_disabled、no_days、no_previous_version、no_reschedulable_operations、no_previous_schedule_rows，并把 freeze_window_enabled/freeze_window_days 配置读取降级归入 degraded。summary 只在 freeze_state=disabled 时透传安全原因，配置降级不伪装成 disabled。分析页已按 freeze_state 展示 degraded，不再被 enabled=no 显示成普通未启用。未新增 fallback/静默兜底，未写入 input_fallback 或 config_fallback。P1-14 未关闭，build_freeze_window_seed 复杂度仍为 26/15；P1-15 已补状态合同测试并同步 source-map；本轮没有减少 full-test-debt，active xfail 仍为 5 条 operator-machine/query service 旧登记。"
+    notes: "已完成：M2 已补录 feature 承接，feature 目录为 codestable/features/2026-04-28-freeze-window-disabled-contract；freeze_window 现在用 freeze_disabled_reason 区分 config_disabled、no_days、no_previous_version、no_reschedulable_operations、no_previous_schedule_rows，并把 freeze_window_enabled/freeze_window_days 配置读取降级归入 degraded。summary 只在 freeze_state=disabled 时透传安全原因，配置降级不伪装成 disabled。分析页已按 freeze_state 展示 degraded，不再被 enabled=no 显示成普通未启用。未新增 fallback/静默兜底，未写入 input_fallback 或 config_fallback。M2 当时没有关闭 P1-14，build_freeze_window_seed 复杂度仍为 26/15；P1-15 已补状态合同测试并同步 source-map；本轮没有减少 full-test-debt，active xfail 仍为 5 条 operator-machine/query service 旧登记。"
 
   - slug: downtime-resource-pool-contract
     title: PR-3 停机区间与自动分配资源池合同
@@ -315,3 +315,29 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
     notes: "已完成：真实 pandas_excel_backend 和 ortools_probe 在无配置时默认关闭、不注册能力，Excel 默认仍走 openpyxl；_apply_enabled_sources 已拆成来源判定、公开状态行整理和整体来源汇总。系统页展示 telemetry_persisted 和 conflicted_capabilities。P1-24 只复核，不包装成 open bug；P1-25 继续证据不足。"
+
+  - slug: freeze-window-seed-complexity-closure
+    title: P1 最终尾项冻结窗口种子复杂度收尾
+    description: "只关闭 P1-14：把 build_freeze_window_seed 内部按职责拆小，保持外部入口、返回值、meta 原地写入、disabled/degraded 语义和 seed_results 合同不变。"
+    status: done
+    feature: 2026-04-28-freeze-window-seed-complexity-closure
+    minimal_loop: false
+    depends_on: [runtime-launcher-stop-contract, plugin-enabled-source-contract]
+    debt_types: [complexity, test_coverage]
+    old_p1: [P1-14]
+    primary_paths:
+      - core/services/scheduler/run/freeze_window.py
+      - tests/regression_freeze_window_fail_closed_contract.py
+      - 开发文档/技术债务治理台账.md
+      - codestable/roadmap/p1-scheduler-debt-cleanup/drafts/p1-debt-source-map.md
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_freeze_window_fail_closed_contract.py tests/regression_freeze_window_bounds.py tests/regression_schedule_summary_freeze_state_contract.py tests/regression_schedule_input_collector_contract.py tests/regression_schedule_input_collector_legacy_compat.py tests/regression_schedule_service_all_frozen_short_circuit.py tests/regression_analysis_page_version_default_latest.py tests/regression_scheduler_analysis_observability.py --tb=short
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m radon cc -s core/services/scheduler/run/freeze_window.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold tests/test_architecture_fitness.py::test_no_silent_exception_swallow tests/test_sp05_path_topology_contract.py --tb=short
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-freeze-window-seed-complexity-closure
+      - git diff --check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+    notes: "已完成：P1-14 的真实尾项是 build_freeze_window_seed 复杂度 26/15，本轮只在 freeze_window.py 内部拆分，不改公开入口、调用方、三元返回值、meta 原地写入、ValidationError(field=\"freeze_window\")、disabled/degraded 语义、seed_results 字段和排序、frozen_op_ids 可锁定范围。新增三条合同测试后，主函数复杂度从 26 降到 3，新增 helper 最高复杂度 9；scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 32 降到 31，P1-14 复杂度登记移除，silent_fallback_count 仍为 154。P1-24 保持 rechecked-by-M7-B，P1-25 保持 evidence-insufficient；本轮没有减少 full-test-debt，active xfail 仍为 5 条。"

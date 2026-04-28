@@ -1,0 +1,46 @@
+feature: 2026-04-28-freeze-window-seed-complexity-closure
+roadmap: p1-scheduler-debt-cleanup
+roadmap_item: freeze-window-seed-complexity-closure
+created: 2026-04-28
+
+steps:
+  - id: step-1
+    title: 补冻结窗口种子范围和结果合同测试
+    status: done
+    exit_signal: 不传 reschedulable_operations、显式子集、seed_results 排序和字段完整性均有测试覆盖。
+
+  - id: step-2
+    title: 拆 build_freeze_window_seed 内部职责
+    status: done
+    exit_signal: 主函数只串联准备范围、读取上一版、套用前缀和整理结果，公开入口不变。
+
+  - id: step-3
+    title: 刷新复杂度台账
+    status: done
+    exit_signal: P1-14 复杂度登记已移除，complexity_count 从 32 降到 31，silent_fallback_count 未增加。
+
+  - id: step-4
+    title: 回填 P1 尾项收尾文档
+    status: done
+    exit_signal: roadmap、items.yaml、source-map 和 acceptance 均写清 P1 当前可执行事实源已收尾。
+
+checks:
+  - id: check-1
+    title: 外部入口、返回值和 meta 写入方式不变
+    status: passed
+
+  - id: check-2
+    title: frozen_op_ids 和 seed_results 只来自可重排范围
+    status: passed
+
+  - id: check-3
+    title: 不新增 fallback、兜底或静默吞错
+    status: passed
+
+  - id: check-4
+    title: P1-24 保持只复核，P1-25 保持证据不足
+    status: passed
+
+  - id: check-5
+    title: full-test-debt 不写成减少
+    status: passed
