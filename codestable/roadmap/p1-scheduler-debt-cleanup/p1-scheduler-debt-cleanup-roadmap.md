@@ -699,19 +699,28 @@ M3 细化计划：
 
 PR-4 执行计划：
 
-1. 创建 PR-4 feature 三件套，items.yaml 改为 `in-progress`。
+1. 创建 `codestable/features/2026-04-28-optimizer-result-contract-evidence/` feature 三件套，items.yaml 改为 `in-progress`。
 2. 先补红灯测试，覆盖 `12` 条 scored attempt 加 `1` 条 rejected attempt 进入 `build_result_summary` 后，公开 attempts 保留 `11` 条，rejected 留在 `diagnostics.optimizer.attempts`，并保留 `origin.type/field/message` 且没有假 `score`。
 3. 补已有 `state.best is None` 路径测试，覆盖该旧路径仍返回稳定 `OptimizationOutcome`，并断言 `summary`、`used_strategy`、`used_params`、`best_score`、`best_order`、`algo_stats`、`attempts` 外形。
 4. 复跑 optimizer attempts、local search、multi-start/OR-Tools strict、public summary projection、cfg snapshot、seed boundary 和 runtime seam 相关测试。
 5. 请 subagent 复审优化器链路、测试缺口和无新增兜底；若复审指出真实问题，先修再验收。
 6. 写 acceptance，PR-4 checklist 的 checks 按真实结果标 `passed/failed`，PR-4 items 标 done，并在 PR-5 头部写清 PR-4 已证明和不能替 PR-5 证明的边界。
 
+PR-4 执行结果：
+
+- 已创建并验收 `codestable/features/2026-04-28-optimizer-result-contract-evidence/`，checklist 全部完成，acceptance 已写入。
+- 已新增 rejected 诊断穿过 attempts 压缩和 summary 投影后的分层测试：公开 attempts 只保留 11 条普通记录，不出现 `source`、`tag`、`used_params`、`algo_stats`、`origin`；rejected 记录留在 `diagnostics.optimizer.attempts`，保留 `origin.type/field/message`，且没有假 `score`。
+- 已加严已有 `state.best is None` 路径外形测试，确认仍返回真实 `OptimizationOutcome`，并固定 `summary`、`used_strategy`、`used_params`、`best_score`、`best_order`、`algo_stats`、`attempts`。
+- 已按 subagent 复审把 `optimizer_attempt_records.py`、`schedule_optimizer_steps.py`、`optimizer_local_search.py` 纳入 PR-4 文件边界和静态检查；本轮没有改这些运行文件。
+- 已通过 PR-4 目标测试、ruff、pyright、full-test-debt、台账检查、yaml 校验和 `git diff --check`。full-test-debt 仍是 5 条 active xfail，`collected_count=744`，不声明减少。
+- 本轮没有新增独立 `reason` 字段，没有新增 `if`、fallback、兜底、静默吞错或宽泛默认值逻辑，也没有改 summary、页面、落库、冻结窗口、停机资源池、runtime/plugin 或质量门禁工具运行逻辑。
+
 ### PR-5：summary/result_summary 合同
 
-计划承接 PR-4 / M4 优化器半段输出：
+承接 PR-4 / M4 优化器半段已完成结果：
 
-- PR-4 需要先证明：被拒候选只作为诊断保留，attempts 压缩不会把关键 rejected diagnostics 挤掉，已有 `state.best is None` 路径仍返回稳定 `OptimizationOutcome`，strict 候选坏数据直接抛错，non-strict 只记录允许跳过的候选。
-- PR-4 的证明只覆盖优化器输出，不能替代 `summary/result_summary` 落库、历史读取和页面展示证明。
+- PR-4 已经证明：被拒候选只作为诊断保留，attempts 压缩不会把关键 rejected diagnostics 挤掉，已有 `state.best is None` 路径仍返回稳定 `OptimizationOutcome`，strict 候选坏数据直接抛错，non-strict 只记录允许跳过的候选。
+- PR-4 的证明只覆盖优化器输出，不等于 `summary/result_summary` 落库、历史读取和页面展示已经稳定。
 - PR-5 必须自己证明：`result_summary` 写入前后的公开形状一致，页面不展示 `diagnostics.optimizer.attempts` 里的内部排障词，latest history 读取不需要猜优化器内部来源。
 - PR-5 仍要重新跑自己的 full-test-debt 和台账检查；不能继承 PR-4 proof 当作 summary proof。
 
@@ -842,3 +851,4 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：执行 M3，收口停机读取和资源池候选设备补停机合同；补齐 load/extend、仓库真实查询和 collector 真实链路测试；刷新台账后 P1-16/P1-17 复杂度事实源关闭，高复杂度登记从 42 降到 40；本轮未减少 full-test-debt，M4 头部已写清不能继承 M3 proof 当作优化器 proof，最终 clean quality gate 已通过。
 - 2026-04-28：修复 M3 二次 review findings：补跨过排产开始时间的停机查询测试、逐设备查询全部失败的 partial 口径测试、extend 查询前整体失败保留原 map 测试；把 M0 历史 `collected_count=700` 和当前 `collected_count=744` 拆开写，并把 source-map 台账引用改为稳定 id/symbol，不再靠会漂移的台账行号。
 - 2026-04-28：细化 M4 完整治理计划，明确 M4 分 PR-4 优化器结果合同和 PR-5 summary/result_summary 合同两段执行；PR-4 不新增独立 reason 字段、不新增 fallback 行为，PR-5 承接落库历史和页面不泄漏内部诊断；items.yaml 已补当前可执行的债务检查和最终 clean quality gate 收口要求，具体 feature/测试检查在对应 PR 落盘时加入。
+- 2026-04-28：完成 PR-4 优化器结果合同补证；新增 rejected 诊断穿过 attempts 压缩和 summary 投影后的分层测试，加严已有 `state.best is None` 路径外形测试；PR-4 没有改运行代码，没有新增 reason/fallback/兜底/静默吞错，没有减少 full-test-debt，active xfail 仍为 5 条。

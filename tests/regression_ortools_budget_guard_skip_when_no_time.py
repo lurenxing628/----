@@ -128,7 +128,23 @@ def main() -> None:
             logger=None,
         )
 
-        assert out is not None, "optimize_schedule 应返回 OptimizationOutcome"
+        assert isinstance(out, so.OptimizationOutcome), "optimize_schedule 应返回真实 OptimizationOutcome"
+        assert len(out.results) == 1, f"state.best 为空旧路径结果数异常：{out.results!r}"
+        assert out.summary.total_ops == 1, f"state.best 为空旧路径 summary 异常：{out.summary!r}"
+        assert out.summary.scheduled_ops == 1, f"state.best 为空旧路径 summary 异常：{out.summary!r}"
+        assert out.used_strategy.value == "priority_first", f"state.best 为空旧路径 strategy 异常：{out.used_strategy!r}"
+        assert out.used_params == {
+            "dispatch_mode": "batch_order",
+            "dispatch_rule": "slack",
+            "auto_assign_enabled": "no",
+        }, f"state.best 为空旧路径 params 异常：{out.used_params!r}"
+        assert out.best_order == ["B001"], f"state.best 为空旧路径 best_order 异常：{out.best_order!r}"
+        assert tuple(out.best_score)[0] == 0.0, f"state.best 为空旧路径 best_score 异常：{out.best_score!r}"
+        assert isinstance(out.attempts, list), f"state.best 为空旧路径 attempts 异常：{out.attempts!r}"
+        assert isinstance(out.algo_stats, dict), f"state.best 为空旧路径 algo_stats 异常：{out.algo_stats!r}"
+        assert out.algo_mode == "improve", f"state.best 为空旧路径 algo_mode 异常：{out.algo_mode!r}"
+        assert out.objective_name == "min_overdue", f"state.best 为空旧路径 objective 异常：{out.objective_name!r}"
+        assert out.time_budget_seconds == 1, f"state.best 为空旧路径 time_budget 异常：{out.time_budget_seconds!r}"
         assert fake_time.calls >= 2, "fake time 未生效"
     finally:
         # 还原 monkeypatch
@@ -140,4 +156,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

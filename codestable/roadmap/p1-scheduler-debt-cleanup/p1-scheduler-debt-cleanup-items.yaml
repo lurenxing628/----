@@ -105,8 +105,8 @@ items:
   - slug: optimizer-result-contract-evidence
     title: PR-4 优化器结果合同补证
     description: "保护近期优化器结果合同，只补 rejected origin、attempts、已有 state.best is None 输出外形和 strict/non-strict bad data 的证据缺口。"
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-04-28-optimizer-result-contract-evidence
     minimal_loop: false
     depends_on: [downtime-resource-pool-contract]
     debt_types: [test_coverage, silent_fallback]
@@ -120,10 +120,17 @@ items:
       - core/services/scheduler/summary/optimizer_public_summary.py
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-optimizer-result-contract-evidence
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_optimizer_attempt_compaction_contract.py tests/test_optimizer_local_search_neighbor_dedup.py tests/test_optimizer_build_order_once_per_strategy.py tests/regression_optimizer_public_summary_projection_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_schedule_optimizer_cfg_snapshot_contract.py tests/test_schedule_params_direct_call_contract.py tests/regression_optimizer_zero_weight_cfg_preserved.py tests/regression_optimizer_outcome_type_contract.py tests/regression_optimizer_runtime_seam_contract.py tests/regression_optimizer_seed_boundary_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/regression_ortools_budget_guard_skip_when_no_time.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/regression_warmstart_failure_surfaces_degradation.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_optimizer.py core/services/scheduler/run/optimizer_search_state.py core/services/scheduler/run/optimizer_attempt_records.py core/services/scheduler/run/schedule_optimizer_steps.py core/services/scheduler/run/optimizer_local_search.py core/services/scheduler/summary/optimizer_public_summary.py tests/test_optimizer_attempt_compaction_contract.py tests/test_optimizer_local_search_neighbor_dedup.py tests/test_optimizer_build_order_once_per_strategy.py tests/regression_optimizer_public_summary_projection_contract.py tests/regression_ortools_budget_guard_skip_when_no_time.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_optimizer.py core/services/scheduler/run/optimizer_search_state.py core/services/scheduler/run/optimizer_attempt_records.py core/services/scheduler/run/schedule_optimizer_steps.py core/services/scheduler/run/optimizer_local_search.py core/services/scheduler/summary/optimizer_public_summary.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
       - git diff --check
-    notes: "计划：PR-4 只补优化器证据，不改运行代码。重点证明 12 条 scored attempt + 1 条 rejected attempt 进入 summary 后，公开 attempts 保留页面可展示记录，rejected 留在 diagnostics.optimizer.attempts，并保留 origin.type/origin.field/origin.message、无假 score；已有 state.best is None 路径仍返回真实 OptimizationOutcome；strict/non-strict 坏数据旧测试继续通过。PR-4 不新增独立 reason 字段，不新增 fallback、兜底或静默吞错，不写 full-test-debt 减少；具体 feature 目录和新测试检查在 PR-4 落盘时加入。"
+    notes: "已完成：PR-4 只补测试和 CodeStable 追踪文档，没有改运行代码。已证明 12 条 scored attempt + 1 条 rejected attempt 进入 summary 后，公开 attempts 保留 11 条页面可展示记录，rejected 留在 diagnostics.optimizer.attempts，并保留 origin.type/origin.field/origin.message、无假 score；已有 state.best is None 路径仍返回真实 OptimizationOutcome；strict/non-strict 坏数据旧测试继续通过。PR-4 不新增独立 reason 字段，不新增 fallback、兜底或静默吞错，不写 full-test-debt 减少；active xfail 仍为 5 条，collected_count=744。"
 
   - slug: scheduler-summary-result-summary-contract
     title: PR-5 summary/result_summary 合同
