@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from typing import Optional, Sequence, cast
+
 from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
-from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
 from web.error_boundary import user_visible_app_error_message
-from web.viewmodels.scheduler_summary_display import build_summary_display_state
+from web.viewmodels.scheduler_run_view_result import RunScheduleViewResult, build_run_schedule_view_result
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
 from .scheduler_bp import (
@@ -29,27 +30,19 @@ def _parse_optional_checkbox_flag(name: str):
     return str(raw or "").strip().lower() in ("yes", "y", "true", "1", "on")
 
 
-def _run_result_flash(result: dict, *, overdue_text: str) -> None:
-    ver = result.get("version")
-    summary = result.get("summary") or {}
-    result_status = str(result.get("result_status") or ScheduleResultStatus.SUCCESS.value).strip().lower()
-    prefix = "排产完成"
-    category = "success"
-    if result_status == ScheduleResultStatus.PARTIAL.value:
-        prefix = "排产部分完成"
-        category = "warning"
-    elif result_status == ScheduleResultStatus.FAILED.value:
-        prefix = "排产失败"
-        category = "error"
-    elif result_status == ScheduleResultStatus.SIMULATED.value:
-        raise RuntimeError("unexpected simulated result_status on /scheduler/run")
-
-    version_text = f"（版本 {ver}）" if ver else ""
-    msg = (
-        f"{prefix}{version_text}：成功 {summary.get('scheduled_ops')}/{summary.get('total_ops')}，"
-        f"失败 {summary.get('failed_ops')}。{overdue_text}。"
+def _flash_run_schedule_view_result(view_result: RunScheduleViewResult) -> None:
+    flash(view_result.headline_message, view_result.headline_category)
+    if view_result.primary_degradation_message:
+        flash(view_result.primary_degradation_message, "warning")
+    if view_result.overdue_sample_message:
+        flash(view_result.overdue_sample_message, "warning")
+    warning_messages = cast(Optional[Sequence[str]], view_result.warning_messages)
+    _surface_secondary_degradation_messages(
+        view_result.secondary_degradation_messages,
+        suppress_messages=warning_messages,
     )
-    flash(msg, category)
+    _surface_schedule_warnings(view_result.warning_messages)
+    _surface_schedule_errors(view_result.error_preview, total=view_result.error_total)
 
 
 @bp.post("/run")
@@ -72,35 +65,7 @@ def run_schedule():
             enforce_ready=enforce_ready,
             strict_mode=strict_mode,
         )
-        summary = result.get("summary") or {}
-        summary_display = build_summary_display_state(
-            summary if isinstance(summary, dict) else None,
-            result_status=result.get("result_status"),
-        )
-        overdue = result.get("overdue_batches") or []
-        overdue_text = f"超期 {len(overdue)} 个" if overdue else "无超期"
-
-        _run_result_flash(result, overdue_text=overdue_text)
-        primary_degradation = summary_display.get("primary_degradation")
-        if isinstance(primary_degradation, dict):
-            details = "、".join(list(primary_degradation.get("details") or []))
-            detail = f" 原因：{details}" if details else ""
-            flash(f"{primary_degradation.get('message')}{detail}", "warning")
-
-        if overdue:
-            sample = "，".join([x.get("batch_id") for x in overdue[:10] if x.get("batch_id")])
-            if sample:
-                flash(f"超期批次（最多展示10个）：{sample}", "warning")
-
-        _surface_secondary_degradation_messages(
-            summary_display.get("display_secondary_degradation_messages"),
-            suppress_messages=summary.get("warnings"),
-        )
-        _surface_schedule_warnings(summary.get("warnings"))
-        _surface_schedule_errors(
-            summary_display.get("errors_preview"),
-            total=int(summary_display.get("error_total") or 0),
-        )
+        _flash_run_schedule_view_result(build_run_schedule_view_result(result))
     except AppError as e:
         flash(user_visible_app_error_message(e), "error")
     except Exception:
