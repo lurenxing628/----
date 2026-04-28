@@ -222,6 +222,16 @@ M4 执行前细化：
 
 - `core/services/scheduler/run/schedule_persistence.py`
 
+M5 执行前细化：
+
+- M5 对应 items.yaml 的 PR-6：`schedule-persistence-auto-assign-contract`，只处理 `core/services/scheduler/run/schedule_persistence.py` 和对应合同测试。
+- 当前没有确认出必须立刻改业务逻辑的功能 bug；根因是 `build_validated_schedule_payload()` 复杂度登记仍打开，且错误优先级、simulate、auto-assign 写回条件缺少 PR-6 专项测试。
+- 本轮代码改动只允许把 `build_validated_schedule_payload()` 的既有判断原样搬到私有 helper；错误文案、`reason`、`details`、优先级、source 判定和 `assigned_by_op_id` 形状必须保持不变。
+- 本轮不新增“写自动分配资源前重读数据库工序”的特殊检查；旧对象覆盖风险只作为观察项记录，后续如需治理另开任务。
+- 本轮不改 summary、result_summary、schema、页面、route、viewmodel、repo、质量门禁脚本、full-test-debt 脚本和台账脚本运行逻辑。
+- 如果红灯测试或静态检查证明必须新增业务 `if`、fallback、兜底、宽泛默认值、宽泛 `try/except`、新 reason 或新 details，立即停线说明，不直接实现。
+- PR-6 不减少 full-test-debt；P1-11 只有复杂度登记真的被受控脚本移除后才能写 fixed，P1-12/P1-13 只能写 test_coverage 证据锁定。
+
 ### M6：页面展示合同
 
 职责：
@@ -773,6 +783,16 @@ PR-6 头部承接 M4 完整完成结果：
 
 - 映射表中 P1-11/12/13 的当前事实源被解除、减少或确认已由近期提交解决。
 - `simulate=True`、`auto_assign_persist=no`、外协结果、已有资源不覆盖、缺资源只补缺失字段都有测试。
+
+PR-6 执行计划：
+
+1. 建立 `codestable/features/2026-04-28-schedule-persistence-auto-assign-contract/`，把 PR-6 design/checklist 与 roadmap item 互相指向，items.yaml 进入 `in-progress`。
+2. 新增 PR-6 专项测试，覆盖 out-of-scope 与 invalid 同时出现、全部非法但无可落库行、simulate 不改真实状态和资源、`auto_assign_persist=no`、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控。
+3. 只在 `schedule_persistence.py` 内原样搬移 `build_validated_schedule_payload()` 现有判断到私有 helper；不改 reason/details/优先级，不加新兜底。
+4. 复跑 PR-6 窄测试、现有落库/服务回归、PR-5 下游页面/报表读取回归、ruff、pyright、full-test-debt、台账、yaml 和 `git diff --check`。
+5. 若复杂度达标，用 `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 刷新台账，再用 `check` 复核；如果复杂度登记没关，停线说明，不为了指标新增逻辑。
+6. 请 subagent 复审落库合同、自动分配写回、下游影响、无新增兜底和 CodeStable 回填；若发现真实问题，先修复再验收。
+7. 写 acceptance，PR-6 checklist 的 checks 按真实结果标 `passed/failed`，items 标 `done`，source-map 回填 P1-11/12/13，并在 PR-7 头部写清 PR-6 只证明落库合同，不证明 `/scheduler/run` 页面合同。
 
 ### PR-7：/scheduler/run ViewResult
 

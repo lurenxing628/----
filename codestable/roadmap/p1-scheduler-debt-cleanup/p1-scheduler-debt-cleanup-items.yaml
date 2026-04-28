@@ -165,8 +165,8 @@ items:
   - slug: schedule-persistence-auto-assign-contract
     title: PR-6 落库校验与 auto-assign persist
     description: "按 PR-0 映射表处理落库校验和自动分配持久化事实源，固定错误优先级和写回条件。"
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-04-28-schedule-persistence-auto-assign-contract
     minimal_loop: false
     depends_on: [scheduler-summary-result-summary-contract]
     debt_types: [complexity, test_coverage]
@@ -174,10 +174,19 @@ items:
     primary_paths:
       - core/services/scheduler/run/schedule_persistence.py
     exit_checks:
-      - python tools/check_full_test_debt.py
-      - python scripts/sync_debt_ledger.py check
-      - python scripts/run_quality_gate.py
-    notes: "承接 PR-0：P1-11/12/13 旧编号本身未找到独立来源，只能处理映射表列出的 schedule_persistence 复杂度和合同证据；只补缺失资源，不覆盖已有资源。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_schedule_persistence_auto_assign_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_schedule_persistence_reschedulable_contract.py tests/regression_schedule_persistence_reject_empty_actionable_schedule.py tests/regression_auto_assign_persist_truthy_variants.py tests/regression_schedule_orchestrator_contract.py tests/regression_schedule_service_reject_no_actionable_schedule_rows.py tests/regression_schedule_service_empty_reschedulable_rejected.py tests/regression_schedule_history_not_created_for_empty_schedule.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_system_history_route_contract.py tests/regression_scheduler_analysis_route_contract.py tests/regression_scheduler_batches_degraded_visibility.py tests/regression_reports_page_version_default_latest.py tests/regression_scheduler_week_plan_no_reschedulable_flash.py tests/regression_dashboard_overdue_count_tolerance.py tests/regression_gantt_invalid_summary_surfaces_overdue_degraded.py tests/test_scheduler_resource_dispatch_smoke.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_persistence.py tests/regression_schedule_persistence_auto_assign_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_persistence.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-schedule-persistence-auto-assign-contract
+      - git diff --check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+    notes: "执行中：承接 PR-0 和 M4，P1-11/12/13 旧编号本身未找到独立来源，只能处理映射表列出的 schedule_persistence 复杂度和合同证据；只补缺失资源，不覆盖已有资源。本轮不新增写前重读数据库工序的特殊检查，不改 summary/页面/route/repo/门禁脚本，不声明 full-test-debt 减少。"
 
   - slug: scheduler-run-view-result
     title: PR-7 /scheduler/run ViewResult
