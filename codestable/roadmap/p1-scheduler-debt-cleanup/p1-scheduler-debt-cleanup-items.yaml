@@ -218,19 +218,33 @@ items:
   - slug: batches-page-viewmodel
     title: PR-8 batches_page viewmodel
     description: "按 PR-0 映射表处理 batches_page 页面状态装配事实源，先稳定 viewmodel 和快照测试。"
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-04-28-batches-page-viewmodel
     minimal_loop: false
     depends_on: [scheduler-run-view-result]
     debt_types: [ui_contract, complexity, test_coverage]
     old_p1: [P1-19]
     primary_paths:
       - web/routes/domains/scheduler/scheduler_batches.py
+      - web/viewmodels/scheduler_batches_page.py
+      - templates/scheduler/batches.html
+      - web_new_test/templates/scheduler/batches.html
     exit_checks:
-      - python tools/check_full_test_debt.py
-      - python scripts/sync_debt_ledger.py check
-      - python scripts/run_quality_gate.py
-    notes: "承接 PR-0：P1-19 旧编号本身未找到独立来源，只能处理映射表列出的 batches_page 复杂度和 UI 合同证据；先不改模板。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_scheduler_batches_page_viewmodel.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_batches_degraded_visibility.py tests/test_schedule_summary_observability.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_system_history_route_contract.py tests/regression_scheduler_analysis_route_contract.py tests/regression_scheduler_summary_result_summary_contract.py tests/regression_scheduler_config_route_contract.py tests/regression_sp05_followup_contracts.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_scheduler_run_view_result_contract.py tests/regression_scheduler_run_no_reschedulable_flash.py tests/regression_scheduler_route_enforce_ready_tristate.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_sp05_path_topology_contract.py tests/regression_page_manual_registry.py tests/regression_manual_entry_scope.py tests/regression_scheduler_excel_batches_helper_injection_contract.py tests/regression_scheduler_excel_batches_preview_baseline_precision.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check web/routes/domains/scheduler/scheduler_batches.py web/viewmodels/scheduler_batches_page.py tests/test_scheduler_batches_page_viewmodel.py tests/regression_manual_entry_scope.py tests/regression_scheduler_batches_degraded_visibility.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright web/routes/domains/scheduler/scheduler_batches.py web/viewmodels/scheduler_batches_page.py tests/test_scheduler_batches_page_viewmodel.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-batches-page-viewmodel
+      - git diff --check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+    notes: "已完成：P1-19 旧编号本身未找到独立来源，本轮只处理映射表列出的 batches_page 复杂度、UI 合同和测试覆盖事实源。已新增 SchedulerBatchesPageViewModel，把 /scheduler/ 批次首页的筛选状态、批次展示行、配置面板、最近历史面板和模板上下文从 route 搬到纯展示构建层；route 只保留请求读取、服务调用、分页、原有最近历史读取失败日志边界、viewmodel 构建和渲染。复审后补齐 status= 的全部状态下拉选项、精确空 status 测试、status=scheduled 控件隐藏测试，并把源码字符串测试改为运行时委托验证。没有新增 fallback、兜底、静默吞错、新 reason 或新 details；没有改 /scheduler/run、批次管理页、Excel 批次页、配置保存链路或共享 summary 展示规则。scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 38 降到 37，P1-19 复杂度登记移除；本轮不声明 full-test-debt 减少，active xfail 仍为 5 条，collected_count=766。"
 
   - slug: runtime-plugin-infra-sidecar
     title: PR-9 runtime/plugin/infra 支线
@@ -248,4 +262,4 @@ items:
       - python tools/check_full_test_debt.py
       - python scripts/sync_debt_ledger.py check
       - python scripts/run_quality_gate.py
-    notes: "承接 PR-0：P1-20..P1-24 可关联到 oversize/complexity/fallback 事实源，P1-25 旧编号和具体路径证据不足；只有启动链专项测试或 run_quality_gate 实际变红并有日志路径时才前移。"
+    notes: "承接 PR-8：PR-8 只证明 /scheduler/ 批次首页的筛选状态、批次展示行、配置面板、最近历史面板、模板全部状态选项和 viewmodel 装配，不证明 runtime/plugin/infra。PR-9 只能处理 P1-20..P1-24 可关联到的 oversize/complexity/fallback 事实源，P1-25 旧编号和具体路径仍证据不足；只有启动链专项测试或 run_quality_gate 实际变红并有日志路径时才前移。"

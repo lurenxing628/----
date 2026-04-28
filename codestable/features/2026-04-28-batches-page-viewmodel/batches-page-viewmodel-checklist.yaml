@@ -1,0 +1,46 @@
+feature: 2026-04-28-batches-page-viewmodel
+roadmap: p1-scheduler-debt-cleanup
+roadmap_item: batches-page-viewmodel
+created: 2026-04-28
+
+steps:
+  - id: step-1
+    title: 回填 PR-8 计划并建立 feature 承接
+    status: done
+    exit_signal: roadmap、items.yaml、source-map、design、checklist 互相指向同一 PR-8 任务。
+
+  - id: step-2
+    title: 补齐 batches_page 用户可见页面测试
+    status: done
+    exit_signal: 默认可收集测试已覆盖默认 status、空 status、status=scheduled、only_ready、批次行中文字段、配置降级、无最近历史、summary 解析失败、latest algo config snapshot 和非 pending 控件隐藏。
+
+  - id: step-3
+    title: 新增 batches_page viewmodel 并搬移页面装配
+    status: done
+    exit_signal: route 只保留请求读取、服务调用、现有历史读取异常边界、viewmodel 构建和 render_template。
+
+  - id: step-4
+    title: 跑验证、复审并回填执行结果
+    status: done
+    exit_signal: 目标测试、共享页面测试、静态检查、债务脚本、yaml、diff 检查和 subagent 复审已通过；复审发现的状态下拉框合同缺口已修复。
+
+checks:
+  - id: check-1
+    title: batches_page viewmodel 只消费普通数据，不导入 Flask、service、repo 或 route
+    status: passed
+
+  - id: check-2
+    title: 页面测试断用户可见 HTML 或模板上下文字段，不绑定 service 内部 summary 结构
+    status: passed
+
+  - id: check-3
+    title: 没有改 /scheduler/run、批次管理页、Excel 批次页、配置保存链路或共享 summary 展示规则；模板只补齐 status= 的全部状态选项
+    status: passed
+
+  - id: check-4
+    title: 没有新增 fallback、兜底、静默吞错或业务特殊分支
+    status: passed
+
+  - id: check-5
+    title: P1-19 只按 complexity/ui_contract/test_coverage 回填，不写 full-test-debt 减少
+    status: passed
