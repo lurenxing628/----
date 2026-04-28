@@ -111,10 +111,10 @@ def test_scheduler_batches_route_reuses_shared_degraded_display_builder() -> Non
     display_state_source = _read("web/routes/domains/scheduler/scheduler_config_display_state.py")
 
     assert "scheduler_config_display_state" in route_source
-    assert "build_config_degraded_display_state" in route_source
+    assert "build_scheduler_batches_config_panel_state" in route_source
     assert "build_scheduler_batches_page_view_model" in route_source
     assert "build_summary_display_state" in batches_viewmodel_source
-    assert "get_scheduler_visible_config_field_metadata" in route_source
+    assert "get_scheduler_visible_config_field_metadata" in display_state_source
     assert "_parse_result_summary_payload_with_meta" in route_source
     assert "latest_summary_display" in batches_viewmodel_source
     assert "latest_other_degradation_messages" in batches_viewmodel_source
@@ -123,9 +123,9 @@ def test_scheduler_batches_route_reuses_shared_degraded_display_builder() -> Non
     assert 'preset_display_state.get("current_config_state")' in config_route_source
     assert "get_scheduler_visible_config_field_metadata" in config_route_source
     assert "SCHEDULER_VISIBLE_CONFIG_FIELDS" in display_state_source
-    assert "config_field_warnings" in route_source
-    assert "config_degraded_fields" in route_source
-    assert "config_hidden_warnings" in route_source
+    assert "config_field_warnings" in display_state_source
+    assert "config_degraded_fields" in display_state_source
+    assert "config_hidden_warnings" in display_state_source
     assert "current_config_state" in batches_viewmodel_source
     assert "runtime_config_state" not in route_source
 

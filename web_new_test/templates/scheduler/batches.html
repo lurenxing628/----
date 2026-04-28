@@ -19,7 +19,7 @@
       </div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">选择批次后执行排产。新增和编辑批次请到「批次管理」。</p>
+    <p class="page-subtitle text-meta">筛选查看批次状态。新增和编辑批次请到「批次管理」。</p>
     {{ ui.scheduler_nav('batches') }}
   </div>
 
@@ -221,7 +221,7 @@
   </div>
 
   <div class="card">
-    <h3 class="section-title">选择批次并执行排产</h3>
+    <h3 class="section-title">批次列表</h3>
     <form method="get" action="{{ url_for('scheduler.batches_page') }}" class="mb-2">
       <div class="form-row">
         <div class="form-field">
@@ -362,7 +362,7 @@
         {% endif %}
       </form>
     {% else %}
-      <div class="muted">暂无批次数据，可以到批次管理手动新增或通过 Excel 导入。</div>
+      <div class="muted">当前筛选条件下暂无批次数据，可以调整状态或齐套条件，也可以到批次管理手动新增或通过 Excel 导入。</div>
     {% endif %}
   </div>
 {% endblock %}

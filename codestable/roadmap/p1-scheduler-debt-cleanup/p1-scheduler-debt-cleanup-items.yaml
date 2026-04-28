@@ -244,7 +244,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-batches-page-viewmodel
       - git diff --check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
-    notes: "已完成：P1-19 旧编号本身未找到独立来源，本轮只处理映射表列出的 batches_page 复杂度、UI 合同和测试覆盖事实源。已新增 SchedulerBatchesPageViewModel，把 /scheduler/ 批次首页的筛选状态、批次展示行、配置面板、最近历史面板和模板上下文从 route 搬到纯展示构建层；route 只保留请求读取、服务调用、分页、原有最近历史读取失败日志边界、viewmodel 构建和渲染。复审后补齐 status= 的全部状态下拉选项、精确空 status 测试、status=scheduled 控件隐藏测试，并把源码字符串测试改为运行时委托验证。没有新增 fallback、兜底、静默吞错、新 reason 或新 details；没有改 /scheduler/run、批次管理页、Excel 批次页、配置保存链路或共享 summary 展示规则。scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 38 降到 37，P1-19 复杂度登记移除；本轮不声明 full-test-debt 减少，active xfail 仍为 5 条，collected_count=766。"
+    notes: "已完成：P1-19 旧编号本身未找到独立来源，本轮只处理映射表列出的 batches_page 复杂度、UI 合同和测试覆盖事实源。已新增 SchedulerBatchesPageViewModel，把 /scheduler/ 批次首页的筛选状态、批次展示行、配置面板、最近历史面板和模板上下文从 route 搬到纯展示构建层；route 只保留请求读取、服务调用、分页、原有最近历史读取失败日志边界、配置面板共享构建器调用、viewmodel 构建和渲染。复审后补齐 status= 的全部状态下拉选项、精确空 status 测试、非 pending 状态控件隐藏测试、only_ready 三态测试、筛选空结果文案测试和 route 使用 viewmodel 输出测试，并把源码字符串测试改为运行时委托验证。后续对抗审核修正了全部状态页标题、筛选空结果文案和配置面板 helper 残留。没有新增 fallback、兜底、静默吞错、新 reason 或新 details；没有改 /scheduler/run、批次管理页、Excel 批次页、配置保存链路或共享 summary 展示规则。scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 38 降到 37，P1-19 复杂度登记移除；本轮不声明 full-test-debt 减少，active xfail 仍为 5 条，collected_count=772。"
 
   - slug: runtime-plugin-infra-sidecar
     title: PR-9 runtime/plugin/infra 支线

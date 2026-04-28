@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.scheduler.config_service import ConfigService
 from web.viewmodels.scheduler_batches_page import (
@@ -213,40 +215,93 @@ def test_batches_page_empty_status_lists_all_statuses_without_run_controls(tmp_p
     assert response.status_code == 200
     assert "B-PENDING" in body
     assert "B-SCHEDULED" in body
+    assert "批次列表" in body
+    assert "选择批次并执行排产" not in body
     assert '<option value="" selected>（全部）</option>' in _select_markup(body, "schedulerBatchesStatusFilter")
     assert "js-batch-check" not in body
     assert "jsSelectedCount" not in body
+    assert 'formaction="/scheduler/simulate"' not in body
+    assert "排产开始时间" not in body
 
 
-def test_batches_page_scheduled_status_hides_run_controls(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("status", "visible_batch", "selected_option"),
+    (
+        ("scheduled", "B-SCHEDULED", '<option value="scheduled" selected>已排</option>'),
+        ("processing", "B-PROCESSING", '<option value="processing" selected>加工中</option>'),
+        ("completed", "B-COMPLETED", '<option value="completed" selected>已完成</option>'),
+        ("cancelled", "B-CANCELLED", '<option value="cancelled" selected>已取消</option>'),
+    ),
+)
+def test_batches_page_non_pending_status_hides_run_controls(
+    tmp_path,
+    monkeypatch,
+    status: str,
+    visible_batch: str,
+    selected_option: str,
+) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_batch(db_path, batch_id="B-PENDING", status="pending")
     _insert_batch(db_path, batch_id="B-SCHEDULED", status="scheduled")
+    _insert_batch(db_path, batch_id="B-PROCESSING", status="processing")
+    _insert_batch(db_path, batch_id="B-COMPLETED", status="completed")
+    _insert_batch(db_path, batch_id="B-CANCELLED", status="cancelled")
 
-    response = app.test_client().get("/scheduler/?status=scheduled")
+    response = app.test_client().get(f"/scheduler/?status={status}")
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "B-SCHEDULED" in body
+    assert visible_batch in body
     assert "B-PENDING" not in body
-    assert '<option value="scheduled" selected>已排</option>' in _select_markup(body, "schedulerBatchesStatusFilter")
+    assert selected_option in _select_markup(body, "schedulerBatchesStatusFilter")
     assert "js-batch-check" not in body
     assert "jsSelectedCount" not in body
+    assert 'formaction="/scheduler/simulate"' not in body
+    assert "排产开始时间" not in body
 
 
-def test_batches_page_only_ready_filters_visible_rows(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("ready_status", "visible_batch", "visible_label", "hidden_batches"),
+    (
+        ("yes", "B-READY", "齐套", ("B-PARTIAL", "B-NO")),
+        ("partial", "B-PARTIAL", "部分齐套", ("B-READY", "B-NO")),
+        ("no", "B-NO", "未齐套", ("B-READY", "B-PARTIAL")),
+    ),
+)
+def test_batches_page_only_ready_filters_visible_rows(
+    tmp_path,
+    monkeypatch,
+    ready_status: str,
+    visible_batch: str,
+    visible_label: str,
+    hidden_batches: tuple[str, str],
+) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_batch(db_path, batch_id="B-PARTIAL", ready_status="partial")
     _insert_batch(db_path, batch_id="B-READY", ready_status="yes")
+    _insert_batch(db_path, batch_id="B-NO", ready_status="no")
 
-    response = app.test_client().get("/scheduler/?only_ready=partial")
+    response = app.test_client().get(f"/scheduler/?only_ready={ready_status}")
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "B-PARTIAL" in body
-    assert "B-READY" not in body
-    assert 'value="partial" selected' in body
-    assert "部分齐套" in body
+    assert visible_batch in body
+    for hidden_batch in hidden_batches:
+        assert hidden_batch not in body
+    assert f'value="{ready_status}" selected' in body
+    assert visible_label in body
+
+
+def test_batches_page_empty_filtered_result_uses_filter_specific_message(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    _insert_batch(db_path, batch_id="B-SCHEDULED", status="scheduled")
+
+    response = app.test_client().get("/scheduler/")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "B-SCHEDULED" not in body
+    assert "当前筛选条件下暂无批次数据，可以调整状态或齐套条件" in body
 
 
 def test_batches_page_renders_config_degraded_public_messages(tmp_path, monkeypatch) -> None:
@@ -293,6 +348,7 @@ def test_batches_page_latest_summary_parse_failed_renders_history_and_warning(tm
     assert "版本：<strong>v7</strong>" in body
     assert "还没有排过产" not in body
     assert "当前版本的排产摘要解析失败，页面仅展示基础历史信息。" in body
+    assert "{invalid json" not in body
 
 
 def test_batches_page_latest_algo_config_snapshot_renders_public_snapshot_state(tmp_path, monkeypatch) -> None:
@@ -335,17 +391,40 @@ def test_scheduler_batches_route_uses_page_view_model(tmp_path, monkeypatch) -> 
     original_builder = route_mod.build_scheduler_batches_page_view_model
     calls = []
 
+    class SentinelViewModel:
+        def __init__(self, inner):
+            self.inner = inner
+
+        def as_template_context(self):
+            context = self.inner.as_template_context()
+            context["batches"] = [
+                {
+                    "batch_id": "SENTINEL-FROM-VM",
+                    "part_no": "P-VM",
+                    "quantity": 1,
+                    "due_date": "2026-05-01",
+                    "priority_zh": "急件",
+                    "ready_status_zh": "齐套",
+                    "status_zh": "待排",
+                }
+            ]
+            return context
+
     def recording_builder(**kwargs):
         calls.append(kwargs)
-        return original_builder(**kwargs)
+        return SentinelViewModel(original_builder(**kwargs))
 
     monkeypatch.setattr(route_mod, "build_scheduler_batches_page_view_model", recording_builder)
 
     response = app.test_client().get("/scheduler/")
 
     assert response.status_code == 200
+    body = response.get_data(as_text=True)
+
     assert len(calls) == 1
     assert calls[0]["filter_state"].status == "pending"
     assert calls[0]["batches"][0]["batch_id"] == "B-PENDING"
     assert calls[0]["config_panel"].current_config_state
     assert calls[0]["latest_panel"].latest_history is None
+    assert "SENTINEL-FROM-VM" in body
+    assert "B-PENDING" not in body

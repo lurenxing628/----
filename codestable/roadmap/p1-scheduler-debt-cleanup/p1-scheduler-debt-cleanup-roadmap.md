@@ -904,13 +904,14 @@ PR-8 执行计划：
 PR-8 执行结果回填：
 
 - 已新增 `web/viewmodels/scheduler_batches_page.py`，把 `/scheduler/` 批次首页的筛选状态、批次展示行、配置面板、最近历史面板和模板上下文整理从 route 搬到纯展示构建层。
-- `web/routes/domains/scheduler/scheduler_batches.py:batches_page()` 现在只保留请求读取、服务调用、分页、原有最近历史读取失败日志边界、viewmodel 构建和渲染；没有把原有异常边界扩大到 summary 解析或整页渲染。
-- 已新增默认可收集的 `tests/test_scheduler_batches_page_viewmodel.py`，覆盖默认 `status=pending`、显式 `status=` 全部状态、`status=scheduled` 控件隐藏、`only_ready` 过滤、批次行中文字段、配置降级公开提示、无最近历史、summary 解析失败、latest algo config snapshot 和 route 运行时委托 viewmodel。
+- `web/routes/domains/scheduler/scheduler_batches.py:batches_page()` 现在只保留请求读取、服务调用、分页、原有最近历史读取失败日志边界、配置面板共享构建器调用、viewmodel 构建和渲染；没有把原有异常边界扩大到 summary 解析或整页渲染。
+- 已新增默认可收集的 `tests/test_scheduler_batches_page_viewmodel.py`，覆盖默认 `status=pending`、显式 `status=` 全部状态、非 pending 状态控件隐藏、`only_ready` 三态过滤、筛选空结果文案、批次行中文字段、配置降级公开提示、无最近历史、summary 解析失败不泄漏原文、latest algo config snapshot 和 route 使用 viewmodel 输出。
 - 对抗复审发现 `status=` 后端已经表示全部状态，但状态下拉框没有“全部”选项；已在 `templates/scheduler/batches.html` 和 `web_new_test/templates/scheduler/batches.html` 补齐这个既有页面合同，并把空 status 测试改成只检查状态下拉框。
+- 后续对抗审核发现全部状态页标题、筛选空结果文案和配置面板 helper 残留会让 PR-8 收口不够干净；已用固定中性文案修正页面误导，并把配置面板装配 helper 从 route 文件移到共享配置展示 helper。
 - 没有改 `/scheduler/run`、批次管理页、Excel 批次页、配置保存链路、页面说明 registry、route wrapper 或共享 summary 展示规则。
 - 没有新增 fallback、兜底、静默吞错、新默认值、新 reason 或新 details；本轮只是搬移已有页面装配判断，并修正模板与既有筛选合同的不一致。
 - `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 已移除 P1-19 对应的 `batches_page` 复杂度登记；`complexity_count` 从 38 降到 37。
-- `tools/check_full_test_debt.py` 仍是 5 条 active xfail，`collected_count=766`，本轮不写 full-test-debt 减少。
+- `tools/check_full_test_debt.py` 仍是 5 条 active xfail，`collected_count=772`，本轮不写 full-test-debt 减少。
 
 ### PR-9：runtime/plugin/infra 支线
 
@@ -988,4 +989,5 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：完成 PR-5 summary/result_summary 合同补证；新增真实落库读回测试和真实页面/接口响应不泄漏测试，证明公开 attempts 不混入内部字段，diagnostics 正常大小下可落库读回但不展示到已覆盖响应；PR-5 没有改运行代码，没有改 schema 版本或 OptimizationOutcome，没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt；完整 M4 最终 clean quality gate 已通过。
 - 2026-04-28：完成 PR-6 落库校验与 auto-assign persist 合同；新增专项测试锁住错误优先级、simulate、配置关闭、外协隔离和只补空字段，并在复审后改为默认门禁可收集的 `test_*.py` 路径；原样搬移 `build_validated_schedule_payload()` 既有判断后关闭 P1-11 复杂度登记，复审发现的 `row is None` 静默跳过分支已删除，`complexity_count=39`；P1-12/P1-13 按测试覆盖锁证；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-7 头部已写清不能继承落库 proof 当作页面 proof。
 - 2026-04-28：完成 PR-7 `/scheduler/run` ViewResult；把页面提示组装从 route 搬到纯展示构建层，route 只保留表单、服务调用、ViewResult、flash、异常边界和跳转；复审后补强跳转目标和普通异常通用提示测试，移除 P1-18 复杂度登记，`complexity_count=38`；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-8 头部已写清不能继承 `/scheduler/run` proof 当作 `batches_page()` proof。
-- 2026-04-28：完成 PR-8 `/scheduler/` 批次首页 viewmodel；把筛选状态、批次展示行、配置面板、最近历史面板和模板上下文从 route 搬到纯展示构建层，route 只保留请求读取、服务调用、分页、原有最近历史读取失败日志边界、viewmodel 和渲染；复审后补齐 `status=` 的全部状态下拉选项、精确空 status 测试、`status=scheduled` 控件隐藏测试，并移除 P1-19 复杂度登记，`complexity_count=37`；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-9 头部已写清不能继承页面 proof 当作 runtime/plugin/infra proof。
+- 2026-04-28：完成 PR-8 `/scheduler/` 批次首页 viewmodel；把筛选状态、批次展示行、配置面板、最近历史面板和模板上下文从 route 搬到纯展示构建层，route 只保留请求读取、服务调用、分页、原有最近历史读取失败日志边界、viewmodel 和渲染；复审后补齐 `status=` 的全部状态下拉选项、精确空 status 测试、非 pending 状态控件隐藏测试，并移除 P1-19 复杂度登记，`complexity_count=37`；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-9 头部已写清不能继承页面 proof 当作 runtime/plugin/infra proof。
+- 2026-04-28：处理 PR-8 对抗审核 findings；批次首页标题和空结果文案改成固定中性文案，配置面板装配 helper 从 route 文件移到共享配置展示 helper，测试补齐 `only_ready` 三态、非 pending 状态、空结果文案、summary 解析失败不泄漏原文和 route 使用 viewmodel 输出；没有新增 fallback/兜底/静默吞错。

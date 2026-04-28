@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
-from core.services.scheduler import ConfigService
 from web.error_boundary import user_visible_app_error_message
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_batches_page import (
@@ -15,7 +14,6 @@ from web.viewmodels.scheduler_batches_page import (
     build_batches_filter_state,
     build_latest_schedule_history_panel_state,
     build_scheduler_batches_page_view_model,
-    build_scheduler_config_panel_state,
 )
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
@@ -31,8 +29,7 @@ from .scheduler_bp import (
 )
 from .scheduler_config_display_state import (
     build_auto_assign_persist_display_state,
-    build_config_degraded_display_state,
-    get_scheduler_visible_config_field_metadata,
+    build_scheduler_batches_config_panel_state,
 )
 
 if TYPE_CHECKING:
@@ -66,34 +63,6 @@ def _load_latest_schedule_history_panel_inputs(
     return latest_history, latest_summary, latest_summary_parse_state
 
 
-def _build_scheduler_config_panel_state(cfg_svc: Any) -> Any:
-    cfg = cfg_svc.get_snapshot()
-    strategies = cfg_svc.get_available_strategies()
-    config_field_metadata = get_scheduler_visible_config_field_metadata()
-    config_field_warnings, config_degraded_fields, config_hidden_warnings = build_config_degraded_display_state(
-        cfg,
-        config_field_metadata=config_field_metadata,
-    )
-    preset_display_state = cfg_svc.get_preset_display_state(readonly=True, current_snapshot=cfg)
-    builtin_presets = [
-        ConfigService.BUILTIN_PRESET_DEFAULT,
-        ConfigService.BUILTIN_PRESET_DUE_FIRST,
-        ConfigService.BUILTIN_PRESET_MIN_CHANGEOVER,
-        ConfigService.BUILTIN_PRESET_IMPROVE_SLOW,
-    ]
-    return build_scheduler_config_panel_state(
-        cfg=cfg,
-        strategies=strategies,
-        config_field_metadata=config_field_metadata,
-        config_field_warnings=config_field_warnings,
-        config_degraded_fields=config_degraded_fields,
-        config_hidden_warnings=config_hidden_warnings,
-        preset_display_state=preset_display_state,
-        builtin_presets=builtin_presets,
-        auto_assign_persist_display_builder=build_auto_assign_persist_display_state,
-    )
-
-
 @bp.get("/")
 def batches_page():
     services = g.services
@@ -115,7 +84,7 @@ def batches_page():
         batch_status_label=_batch_status_zh,
     )
     view_rows, pager = paginate_rows(view_rows, page, per_page)
-    config_panel = _build_scheduler_config_panel_state(cfg_svc)
+    config_panel = build_scheduler_batches_config_panel_state(cfg_svc)
     latest_history, latest_summary, latest_summary_parse_state = _load_latest_schedule_history_panel_inputs(
         services.schedule_history_query_service
     )

@@ -12,12 +12,12 @@ steps:
   - id: step-2
     title: 补齐 batches_page 用户可见页面测试
     status: done
-    exit_signal: 默认可收集测试已覆盖默认 status、空 status、status=scheduled、only_ready、批次行中文字段、配置降级、无最近历史、summary 解析失败、latest algo config snapshot 和非 pending 控件隐藏。
+    exit_signal: 默认可收集测试已覆盖默认 status、空 status、非 pending 状态、only_ready 三态、筛选空结果文案、批次行中文字段、配置降级、无最近历史、summary 解析失败、latest algo config snapshot 和 route 使用 viewmodel 输出。
 
   - id: step-3
     title: 新增 batches_page viewmodel 并搬移页面装配
     status: done
-    exit_signal: route 只保留请求读取、服务调用、现有历史读取异常边界、viewmodel 构建和 render_template。
+    exit_signal: route 只保留请求读取、服务调用、现有历史读取异常边界、配置面板共享构建器调用、viewmodel 构建和 render_template。
 
   - id: step-4
     title: 跑验证、复审并回填执行结果

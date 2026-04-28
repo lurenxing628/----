@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from core.services.scheduler.config import ConfigService
+from web.viewmodels.scheduler_batches_page import build_scheduler_config_panel_state
 
 SCHEDULER_VISIBLE_CONFIG_FIELDS: Tuple[str, ...] = (
     "sort_strategy",
@@ -110,3 +111,31 @@ def build_auto_assign_persist_display_state(value: Any) -> Dict[str, Any]:
         "label": "未记录",
         "description": "该次排产快照未记录自动回写资源状态。",
     }
+
+
+def build_scheduler_batches_config_panel_state(cfg_svc: Any) -> Any:
+    cfg = cfg_svc.get_snapshot()
+    strategies = cfg_svc.get_available_strategies()
+    config_field_metadata = get_scheduler_visible_config_field_metadata()
+    config_field_warnings, config_degraded_fields, config_hidden_warnings = build_config_degraded_display_state(
+        cfg,
+        config_field_metadata=config_field_metadata,
+    )
+    preset_display_state = cfg_svc.get_preset_display_state(readonly=True, current_snapshot=cfg)
+    builtin_presets = [
+        ConfigService.BUILTIN_PRESET_DEFAULT,
+        ConfigService.BUILTIN_PRESET_DUE_FIRST,
+        ConfigService.BUILTIN_PRESET_MIN_CHANGEOVER,
+        ConfigService.BUILTIN_PRESET_IMPROVE_SLOW,
+    ]
+    return build_scheduler_config_panel_state(
+        cfg=cfg,
+        strategies=strategies,
+        config_field_metadata=config_field_metadata,
+        config_field_warnings=config_field_warnings,
+        config_degraded_fields=config_degraded_fields,
+        config_hidden_warnings=config_hidden_warnings,
+        preset_display_state=preset_display_state,
+        builtin_presets=builtin_presets,
+        auto_assign_persist_display_builder=build_auto_assign_persist_display_state,
+    )

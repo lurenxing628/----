@@ -21,7 +21,7 @@ PR-8 已完成。`/scheduler/` 批次首页的页面数据整理已经从 `batch
 | --- | --- | --- |
 | 默认没有 `status` 时只看待排批次 | 通过 | `tests/test_scheduler_batches_page_viewmodel.py::test_batches_page_defaults_to_pending_status_and_renders_pending_rows` |
 | 显式 `?status=` 表示全部状态 | 通过 | `test_batches_page_empty_status_lists_all_statuses_without_run_controls` |
-| `status=scheduled` 不显示执行排产控件 | 通过 | `test_batches_page_scheduled_status_hides_run_controls` |
+| 非 pending 状态不显示执行排产控件 | 通过 | `test_batches_page_non_pending_status_hides_run_controls` |
 | `only_ready` 三态过滤 | 通过 | `test_batches_page_only_ready_filters_visible_rows` |
 | 批次行中文字段 | 通过 | `test_batch_rows_filter_ready_and_add_public_labels` |
 | 配置降级只显示公开中文提示 | 通过 | `test_batches_page_renders_config_degraded_public_messages` |
@@ -34,7 +34,7 @@ PR-8 已完成。`/scheduler/` 批次首页的页面数据整理已经从 `batch
 
 - `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 已移除 `complexity:web-routes-domains-scheduler-scheduler_batches-batches_page` 登记。
 - `scripts/sync_debt_ledger.py check` 显示 `complexity_count=37`，说明 P1-19 对应的复杂度事实源已关闭。
-- `tools/check_full_test_debt.py` 显示 `active_xfail_count=5`、`collected_count=766`、`unexpected_failure_count=0`。
+- `tools/check_full_test_debt.py` 显示 `active_xfail_count=5`、`collected_count=772`、`unexpected_failure_count=0`。
 - 本轮只关闭 P1-19 的复杂度登记并补页面合同测试，不声明 full-test-debt 减少。
 
 ## 4. 复审结论
@@ -45,26 +45,34 @@ PR-8 已完成。`/scheduler/` 批次首页的页面数据整理已经从 `batch
 
 - 状态下拉框缺少“全部”选项，已在 `templates/scheduler/batches.html` 和 `web_new_test/templates/scheduler/batches.html` 补齐。
 - 空 status 测试原本可能被齐套下拉框误伤通过，已改为只检查状态下拉框。
-- 非 pending 状态控件隐藏覆盖偏窄，已补 `status=scheduled` 页面测试。
+- 非 pending 状态控件隐藏覆盖偏窄，已补 scheduled、processing、completed、cancelled 页面测试。
 - 原源码字符串测试偏脆，已改成运行时 patch route 构建器，确认 route 实际调用 viewmodel。
 - source-map、roadmap、items 和 checklist 的状态已按最终结果回填。
+
+后续对抗审核发现并已处理的问题：
+
+- 全部状态页标题和筛选空结果文案容易误导用户，已改成不承诺排产操作的固定文案。
+- 配置面板装配 helper 仍留在 route 文件，已搬到共享配置展示 helper，route 文件不再整理配置面板字段。
+- `only_ready`、非 pending 状态、route 是否使用 viewmodel 输出和 summary 解析失败不泄漏原文的测试已补硬。
+- feature YAML 校验记录已改为 `3 passed`；PR-8 原提交后的 clean gate 结果已回填。
 
 ## 5. 验证记录
 
 | 命令 | 结果 |
 | --- | --- |
-| `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_scheduler_batches_page_viewmodel.py` | 11 passed |
+| `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_scheduler_batches_page_viewmodel.py` | 17 passed |
 | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_batches_degraded_visibility.py tests/test_schedule_summary_observability.py` | 18 passed |
 | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_system_history_route_contract.py tests/regression_scheduler_analysis_route_contract.py tests/regression_scheduler_summary_result_summary_contract.py tests/regression_scheduler_config_route_contract.py tests/regression_sp05_followup_contracts.py` | 47 passed |
 | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_scheduler_run_view_result_contract.py tests/regression_scheduler_run_no_reschedulable_flash.py tests/regression_scheduler_route_enforce_ready_tristate.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py` | 18 passed |
 | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_sp05_path_topology_contract.py tests/regression_page_manual_registry.py tests/regression_manual_entry_scope.py tests/regression_scheduler_excel_batches_helper_injection_contract.py tests/regression_scheduler_excel_batches_preview_baseline_precision.py` | 23 passed |
 | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold` | 3 passed |
-| `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check web/routes/domains/scheduler/scheduler_batches.py web/viewmodels/scheduler_batches_page.py tests/test_scheduler_batches_page_viewmodel.py tests/regression_manual_entry_scope.py tests/regression_scheduler_batches_degraded_visibility.py` | passed |
-| `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright web/routes/domains/scheduler/scheduler_batches.py web/viewmodels/scheduler_batches_page.py tests/test_scheduler_batches_page_viewmodel.py` | 0 errors |
-| `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py` | passed, active_xfail_count=5, collected_count=766 |
+| `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check web/routes/domains/scheduler/scheduler_batches.py web/routes/domains/scheduler/scheduler_config_display_state.py web/viewmodels/scheduler_batches_page.py tests/test_scheduler_batches_page_viewmodel.py tests/regression_manual_entry_scope.py tests/regression_scheduler_batches_degraded_visibility.py` | passed |
+| `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright web/routes/domains/scheduler/scheduler_batches.py web/routes/domains/scheduler/scheduler_config_display_state.py web/viewmodels/scheduler_batches_page.py tests/test_scheduler_batches_page_viewmodel.py` | 0 errors |
+| `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py` | passed, active_xfail_count=5, collected_count=772 |
 | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check` | passed, complexity_count=37 |
 | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup` | 3 passed |
-| `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-batches-page-viewmodel` | 2 passed |
+| `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-batches-page-viewmodel` | 3 passed |
 | `git diff --check` | passed |
+| `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree` | passed |
 
-最终干净工作区门禁会在提交后再跑 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`。
+本次 review finding 修复后重新跑了 PR-8 专项测试、共享显示回归、架构复杂度检查、ruff、pyright、full-test-debt、台账、YAML 和 `git diff --check`。
