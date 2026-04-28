@@ -628,6 +628,23 @@ M1 执行结果：
 - M2 没有减少 full-test-debt，active xfail 仍是 5 条 operator-machine/query service 旧登记；PR-3 如果要声明债务变化，必须用自己的测试和台账检查重新证明。
 - M2 没有关闭 P1-14 复杂度登记，说明 PR-3 不能把“冻结窗口复杂度未降”当作自己范围内的问题处理；PR-3 只从 `resource_pool_builder.py` 和 `machine_downtime_repo.py` 的当前事实源出发。
 
+M3 细化计划：
+
+- 已由多个只读 subagent 核实：M3 只能绑定 P1-16 / P1-17，不继承 M1/M2 proof，不碰冻结窗口、优化器、落库、页面、runtime/plugin。
+- 当前代码已经有一部分 load/extend meta 和部分失败保留成功设备行为；本轮不能把已有行为包装成 bug，只能用新增测试证明缺口、补证或降复杂度。
+- 根因是 `downtime_map={}` 本身分不清“真没停机”还是“加载失败后为空”，必须靠明确 meta 和 summary 投影说明；同时 load/extend 重复了“查停机、整理区间、记录失败设备”的流程。
+- 本轮候选设备口径采用资源池宽口径：`operators_by_machine` 中有可用人员关系的设备；不进入逐工序精确候选和算法排序。
+- 实现限制：不新增业务 `if`、fallback、兜底或静默吞错；如必须加特殊处理，先停下来说明原因。
+
+执行步骤：
+
+1. 建立 `2026-04-28-downtime-resource-pool-contract` feature 承接，items.yaml 改为 `in-progress`。
+2. 补 `resource_pool_builder`、`MachineDowntimeRepository.list_active_after`、真实 DB collector 三类窄测试。
+3. 只在 `resource_pool_builder.py` 内部抽小 helper 收口重复读取逻辑，保持字段和值不变。
+4. 如果复杂度降到阈值内，用受控脚本刷新技术债务台账；只写 complexity 改善，不写 full-test-debt 减少。
+5. 跑目标验证、债务脚本、yaml 校验和 clean gate；执行后再请 subagent 做停机/资源池合同、无新增兜底、下游影响、测试债务四路复审。
+6. 验收通过后写 acceptance，M3 标 done，source-map 回填 P1-16/P1-17，PR-4 头部写清 M3 已做内容和不能继承的证明边界。
+
 目标：
 
 - 固定 downtime load 和 extend 的 meta 字段。
@@ -641,6 +658,10 @@ M1 执行结果：
 - 自动分配关闭、开启、部分失败、无停机记录均有测试。
 
 ### PR-4：优化器结果合同补证
+
+承接 PR-3 / M3 预留：
+
+- PR-3 完成后，需要在这里写明停机区间和资源池已经完成了哪些合同、关闭了哪些复杂度登记、哪些 proof 不能继承为优化器 proof。
 
 目标：
 

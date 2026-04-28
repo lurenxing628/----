@@ -82,8 +82,8 @@ items:
   - slug: downtime-resource-pool-contract
     title: PR-3 停机区间与自动分配资源池合同
     description: "按 PR-0 映射表处理停机区间和自动分配资源池事实源，补齐 load/extend 证明口径。"
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-04-28-downtime-resource-pool-contract
     minimal_loop: false
     depends_on: [freeze-window-disabled-contract]
     debt_types: [complexity, test_coverage]
@@ -92,10 +92,15 @@ items:
       - core/services/scheduler/resource_pool_builder.py
       - data/repositories/machine_downtime_repo.py
     exit_checks:
-      - python tools/check_full_test_debt.py
-      - python scripts/sync_debt_ledger.py check
-      - python scripts/run_quality_gate.py
-    notes: "承接 PR-2/M2：冻结窗口状态合同已经收口，但 proof 不能继承为停机和资源池 proof；下一步只处理 resource_pool_builder 与 machine_downtime_repo 的当前事实源，不处理冻结窗口。P1-16/17 旧编号本身未找到独立来源，只能处理映射表列出的 resource_pool_builder 复杂度和停机约束风险；不先改算法。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_resource_pool_builder_contract.py tests/test_machine_downtime_repository_contract.py tests/regression_schedule_input_collector_downtime_resource_pool_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_schedule_summary_v11_contract.py tests/regression_schedule_input_collector_contract.py tests/regression_scheduler_user_visible_messages.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_downtime_timeline_ordered_insert.py tests/regression_downtime_overlap_skips_invalid_segments.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+    notes: "承接 PR-2/M2：冻结窗口状态合同已经收口，但 proof 不能继承为停机和资源池 proof；本轮已进入 CodeStable feature 2026-04-28-downtime-resource-pool-contract。M3 只处理 resource_pool_builder 与 machine_downtime_repo 的当前事实源，不处理冻结窗口、优化器、落库、页面或 runtime/plugin。P1-16/17 旧编号本身未找到独立来源，只能处理映射表列出的 resource_pool_builder 复杂度和停机约束风险；不先改算法，不写 full-test-debt 减少。"
 
   - slug: optimizer-result-contract-evidence
     title: PR-4 优化器结果合同补证
