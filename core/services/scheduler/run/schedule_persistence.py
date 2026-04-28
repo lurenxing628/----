@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, cast
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import BatchOperationStatus, BatchStatus, SourceType, YesNo
@@ -199,15 +199,13 @@ def build_validated_schedule_payload(
         if validation_error is not None:
             validation_errors.append(validation_error)
             continue
-        if row is None:
-            continue
-
-        schedule_rows.append(row)
-        scheduled_op_ids.add(int(row.op_id))
-        if row.source == SourceType.INTERNAL.value:
-            assigned_by_op_id[int(row.op_id)] = {
-                "machine_id": row.machine_id,
-                "operator_id": row.operator_id,
+        validated_row = cast(ValidatedScheduleRow, row)
+        schedule_rows.append(validated_row)
+        scheduled_op_ids.add(int(validated_row.op_id))
+        if validated_row.source == SourceType.INTERNAL.value:
+            assigned_by_op_id[int(validated_row.op_id)] = {
+                "machine_id": validated_row.machine_id,
+                "operator_id": validated_row.operator_id,
             }
 
     if out_of_scope_op_ids:

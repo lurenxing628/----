@@ -174,10 +174,10 @@ items:
     primary_paths:
       - core/services/scheduler/run/schedule_persistence.py
     exit_checks:
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_schedule_persistence_auto_assign_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_schedule_persistence_auto_assign_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_schedule_persistence_reschedulable_contract.py tests/regression_schedule_persistence_reject_empty_actionable_schedule.py tests/regression_auto_assign_persist_truthy_variants.py tests/regression_schedule_orchestrator_contract.py tests/regression_schedule_service_reject_no_actionable_schedule_rows.py tests/regression_schedule_service_empty_reschedulable_rejected.py tests/regression_schedule_history_not_created_for_empty_schedule.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_system_history_route_contract.py tests/regression_scheduler_analysis_route_contract.py tests/regression_scheduler_batches_degraded_visibility.py tests/regression_reports_page_version_default_latest.py tests/regression_scheduler_week_plan_no_reschedulable_flash.py tests/regression_dashboard_overdue_count_tolerance.py tests/regression_gantt_invalid_summary_surfaces_overdue_degraded.py tests/test_scheduler_resource_dispatch_smoke.py
-      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_persistence.py tests/regression_schedule_persistence_auto_assign_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_persistence.py tests/test_schedule_persistence_auto_assign_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright core/services/scheduler/run/schedule_persistence.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
@@ -186,7 +186,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-schedule-persistence-auto-assign-contract
       - git diff --check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
-    notes: "已完成：P1-11/P1-12/P1-13 旧编号本身未找到独立来源，本轮只处理 schedule_persistence 当前事实源。已新增 PR-6 专项测试，覆盖错误优先级、simulate 不改真实状态和资源、auto_assign_persist=no、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控。build_validated_schedule_payload 既有判断已原样搬到私有 helper，scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 40 降到 39，P1-11 复杂度登记移除；P1-12/P1-13 按 test_coverage 证据锁定。本轮没有新增写前重读数据库工序的特殊检查，没有改 summary/页面/route/repo/门禁脚本，没有减少 full-test-debt；active xfail 仍为 5 条，collected_count=744。"
+    notes: "已完成：P1-11/P1-12/P1-13 旧编号本身未找到独立来源，本轮只处理 schedule_persistence 当前事实源。已新增 PR-6 专项测试，覆盖错误优先级、simulate 不改真实状态和资源、auto_assign_persist=no、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控；复审后测试文件改为默认门禁可收集的 test_*.py 路径。build_validated_schedule_payload 既有判断已原样搬到私有 helper，复审发现的 row is None 静默跳过分支已删除；scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 40 降到 39，P1-11 复杂度登记移除；P1-12/P1-13 按 test_coverage 证据锁定。本轮没有新增写前重读数据库工序的特殊检查，没有改 summary/页面/route/repo/门禁脚本，没有减少 full-test-debt；active xfail 仍为 5 条，collected_count=748。"
 
   - slug: scheduler-run-view-result
     title: PR-7 /scheduler/run ViewResult

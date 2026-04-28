@@ -178,6 +178,12 @@ def _resource_snapshot(conn: sqlite3.Connection) -> Dict[int, Dict[str, str]]:
     }
 
 
+def _batch_status(conn: sqlite3.Connection, batch_id: str = "B001") -> str:
+    row = conn.execute("SELECT status FROM Batches WHERE batch_id=?", (batch_id,)).fetchone()
+    assert row is not None
+    return str(row["status"] or "")
+
+
 def test_simulate_keeps_real_status_and_auto_assign_resources_unchanged() -> None:
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -205,6 +211,7 @@ def test_simulate_keeps_real_status_and_auto_assign_resources_unchanged() -> Non
 
         snap = _resource_snapshot(conn)
         assert snap[1] == {"status": "pending", "machine_id": "", "operator_id": ""}
+        assert _batch_status(conn) == "pending"
         assert int(conn.execute("SELECT COUNT(1) AS cnt FROM Schedule WHERE version=11").fetchone()["cnt"] or 0) == 1
         hist = conn.execute("SELECT result_status FROM ScheduleHistory WHERE version=11").fetchone()
         assert hist is not None and hist["result_status"] == "simulated"
@@ -278,7 +285,7 @@ def test_auto_assign_persist_only_fills_internal_missing_fields_without_overwrit
                 payload=payload,
                 operations=operations,
                 simulate=False,
-                missing_internal_resource_op_ids={1, 2, 3},
+                missing_internal_resource_op_ids={1, 2, 3, 4},
             ),
         )
 

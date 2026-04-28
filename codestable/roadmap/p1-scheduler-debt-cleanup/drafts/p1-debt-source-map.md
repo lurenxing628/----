@@ -119,4 +119,4 @@ M3 已按 PR-3 范围完成，结论如下：
 - P1-13 已按 test_coverage 锁证：新增测试覆盖 simulate 不改真实状态和资源、`auto_assign_persist=no` 不补资源、外协不写 internal 资源、已有资源不覆盖、只补空字段、missing set 不包含时不写回。
 - 本轮没有新增写前重读数据库工序的特殊检查；旧对象覆盖风险只作为观察项保留。
 - 本轮没有改 summary、result_summary、schema、页面、route、viewmodel、repo、runtime/plugin 或质量门禁工具。
-- 本轮没有减少 full-test-debt；`tools/check_full_test_debt.py` 通过，仍是 5 条 operator-machine/query service 相关 xfail，`collected_count=744`。
+- 本轮没有减少 full-test-debt；`tools/check_full_test_debt.py` 通过，仍是 5 条 operator-machine/query service 相关 xfail，`collected_count=748`。
