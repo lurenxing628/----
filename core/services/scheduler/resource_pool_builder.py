@@ -114,6 +114,94 @@ def _warn_service_logger(svc: Any, message: str, *, exc_info: bool = False) -> N
     safe_warning(getattr(svc, "logger", None), message, exc_info=exc_info)
 
 
+def _normalize_downtime_intervals(svc: Any, rows: List[Any]) -> List[Tuple[datetime, datetime]]:
+    intervals: List[Tuple[datetime, datetime]] = []
+    for d in rows:
+        st = svc._normalize_datetime(d.start_time)
+        et = svc._normalize_datetime(d.end_time)
+        if st and et and et > st:
+            intervals.append((st, et))
+    intervals.sort(key=lambda x: x[0])
+    return intervals
+
+
+def _load_downtime_intervals_for_machines(
+    svc: Any,
+    *,
+    dt_repo: MachineDowntimeRepository,
+    machine_ids: List[str],
+    start_str: str,
+    failure_log_template: str,
+) -> Tuple[Dict[str, List[Tuple[datetime, datetime]]], List[str]]:
+    downtime_map: Dict[str, List[Tuple[datetime, datetime]]] = {}
+    partial_fail_mids: List[str] = []
+    for mid in machine_ids:
+        try:
+            intervals = _normalize_downtime_intervals(svc, dt_repo.list_active_after(mid, start_str))
+            if intervals:
+                downtime_map[mid] = intervals
+        except Exception as e:
+            partial_fail_mids.append(str(mid))
+            _warn_service_logger(svc, failure_log_template.format(mid=mid, error=e), exc_info=True)
+    return downtime_map, partial_fail_mids
+
+
+def _partial_failure_message(*, label: str, failed_mids: List[str], suffix: str) -> Tuple[str, List[str]]:
+    sample = failed_mids[:5]
+    sample_text = "、".join(sample)
+    msg = f"{label}（{len(failed_mids)} 台"
+    if sample_text:
+        msg += f"，如：{sample_text}"
+    msg += f"），{suffix}"
+    return msg, sample
+
+
+def _record_load_meta_success(meta: Optional[Dict[str, Any]]) -> None:
+    if meta is not None:
+        meta["downtime_load_ok"] = True
+        meta["downtime_load_error"] = None
+
+
+def _record_load_meta_partial(meta: Optional[Dict[str, Any]], *, msg: str, sample: List[str], count: int) -> None:
+    if meta is not None:
+        meta["downtime_load_ok"] = False
+        meta["downtime_load_error"] = msg
+        meta["downtime_partial_fail_count"] = int(count)
+        meta["downtime_partial_fail_machines_sample"] = list(sample)
+
+
+def _record_extend_meta_partial(meta: Optional[Dict[str, Any]], *, msg: str, sample: List[str], count: int) -> None:
+    if meta is not None:
+        meta["downtime_extend_ok"] = False
+        meta["downtime_extend_error"] = msg
+        meta["downtime_extend_partial_fail_count"] = int(count)
+        meta["downtime_extend_partial_fail_machines_sample"] = list(sample)
+
+
+def _machine_ids_for_downtime_load(algo_ops: List[Any]) -> List[str]:
+    return sorted(
+        {
+            (op.machine_id or "").strip()
+            for op in algo_ops
+            if (op.source or "").strip().lower() == SourceType.INTERNAL.value and (op.machine_id or "").strip()
+        }
+    )
+
+
+def _extra_resource_pool_machine_ids(
+    resource_pool: Dict[str, Any],
+    *,
+    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
+) -> List[str]:
+    return sorted(
+        {
+            str(mid).strip()
+            for mid in (resource_pool.get("operators_by_machine") or {}).keys()
+            if str(mid).strip() and str(mid).strip() not in downtime_map
+        }
+    )
+
+
 
 def load_machine_downtimes(
     svc,
@@ -137,13 +225,7 @@ def load_machine_downtimes(
     try:
         dt_repo = MachineDowntimeRepository(svc.conn, logger=svc.logger)
         start_str = svc._format_dt(start_dt)
-        machine_ids = sorted(
-            {
-                (op.machine_id or "").strip()
-                for op in algo_ops
-                if (op.source or "").strip().lower() == SourceType.INTERNAL.value and (op.machine_id or "").strip()
-            }
-        )
+        machine_ids = _machine_ids_for_downtime_load(algo_ops)
     except Exception as e:
         downtime_map = {}
         if meta is not None:
@@ -153,40 +235,24 @@ def load_machine_downtimes(
         _warn_service_logger(svc, f"停机区间加载失败，已降级为忽略停机约束：{e}", exc_info=True)
         return downtime_map
 
-    partial_fail_mids: List[str] = []
-    for mid in machine_ids:
-        try:
-            rows = dt_repo.list_active_after(mid, start_str)
-            intervals: List[Tuple[datetime, datetime]] = []
-            for d in rows:
-                st = svc._normalize_datetime(d.start_time)
-                et = svc._normalize_datetime(d.end_time)
-                if st and et and et > st:
-                    intervals.append((st, et))
-            if intervals:
-                intervals.sort(key=lambda x: x[0])
-                downtime_map[mid] = intervals
-        except Exception as e:
-            partial_fail_mids.append(str(mid))
-            _warn_service_logger(svc, f"停机区间加载部分失败，设备 {mid} 已降级为忽略停机约束：{e}", exc_info=True)
+    downtime_map, partial_fail_mids = _load_downtime_intervals_for_machines(
+        svc,
+        dt_repo=dt_repo,
+        machine_ids=machine_ids,
+        start_str=start_str,
+        failure_log_template="停机区间加载部分失败，设备 {mid} 已降级为忽略停机约束：{error}",
+    )
 
     if partial_fail_mids:
-        sample = partial_fail_mids[:5]
-        sample_text = "、".join(sample)
-        msg = f"部分设备停机区间加载失败（{len(partial_fail_mids)} 台"
-        if sample_text:
-            msg += f"，如：{sample_text}"
-        msg += "），这些设备已降级为忽略停机约束"
-        if meta is not None:
-            meta["downtime_load_ok"] = False
-            meta["downtime_load_error"] = msg
-            meta["downtime_partial_fail_count"] = int(len(partial_fail_mids))
-            meta["downtime_partial_fail_machines_sample"] = list(sample)
+        msg, sample = _partial_failure_message(
+            label="部分设备停机区间加载失败",
+            failed_mids=partial_fail_mids,
+            suffix="这些设备已降级为忽略停机约束",
+        )
+        _record_load_meta_partial(meta, msg=msg, sample=sample, count=len(partial_fail_mids))
         _append_warning(warnings, f"【停机】{msg}")
     else:
-        if meta is not None:
-            meta["downtime_load_ok"] = True
-            meta["downtime_load_error"] = None
+        _record_load_meta_success(meta)
 
     return downtime_map
 
@@ -285,13 +351,7 @@ def extend_downtime_map_for_resource_pool(
     try:
         dt_repo = MachineDowntimeRepository(svc.conn, logger=svc.logger)
         start_str = svc._format_dt(start_dt)
-        extra_mids = sorted(
-            {
-                str(mid).strip()
-                for mid in (resource_pool.get("operators_by_machine") or {}).keys()
-                if str(mid).strip() and str(mid).strip() not in downtime_map
-            }
-        )
+        extra_mids = _extra_resource_pool_machine_ids(resource_pool, downtime_map=downtime_map)
     except Exception as e:
         if meta is not None:
             meta["downtime_extend_ok"] = False
@@ -300,35 +360,22 @@ def extend_downtime_map_for_resource_pool(
         _warn_service_logger(svc, f"停机区间扩展加载失败，候选设备可能未覆盖停机约束：{e}", exc_info=True)
         return downtime_map
 
-    partial_fail_mids: List[str] = []
-    for mid in extra_mids:
-        try:
-            rows = dt_repo.list_active_after(mid, start_str)
-            intervals: List[Tuple[datetime, datetime]] = []
-            for d in rows:
-                st = svc._normalize_datetime(d.start_time)
-                et = svc._normalize_datetime(d.end_time)
-                if st and et and et > st:
-                    intervals.append((st, et))
-            if intervals:
-                intervals.sort(key=lambda x: x[0])
-                downtime_map[mid] = intervals
-        except Exception as e:
-            partial_fail_mids.append(str(mid))
-            _warn_service_logger(svc, f"停机区间扩展部分失败，候选设备 {mid} 可能未覆盖停机约束：{e}", exc_info=True)
+    extra_downtime_map, partial_fail_mids = _load_downtime_intervals_for_machines(
+        svc,
+        dt_repo=dt_repo,
+        machine_ids=extra_mids,
+        start_str=start_str,
+        failure_log_template="停机区间扩展部分失败，候选设备 {mid} 可能未覆盖停机约束：{error}",
+    )
+    downtime_map.update(extra_downtime_map)
 
     if partial_fail_mids:
-        sample = partial_fail_mids[:5]
-        sample_text = "、".join(sample)
-        msg = f"部分候选设备停机区间扩展加载失败（{len(partial_fail_mids)} 台"
-        if sample_text:
-            msg += f"，如：{sample_text}"
-        msg += "），这些候选设备可能未覆盖停机约束"
-        if meta is not None:
-            meta["downtime_extend_ok"] = False
-            meta["downtime_extend_error"] = msg
-            meta["downtime_extend_partial_fail_count"] = int(len(partial_fail_mids))
-            meta["downtime_extend_partial_fail_machines_sample"] = list(sample)
+        msg, sample = _partial_failure_message(
+            label="部分候选设备停机区间扩展加载失败",
+            failed_mids=partial_fail_mids,
+            suffix="这些候选设备可能未覆盖停机约束",
+        )
+        _record_extend_meta_partial(meta, msg=msg, sample=sample, count=len(partial_fail_mids))
         _append_warning(warnings, f"【停机】{msg}")
 
     return downtime_map
