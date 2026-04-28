@@ -9,30 +9,30 @@ steps:
     exit_signal: roadmap、items.yaml、design、checklist 互相指向同一 M3 任务。
   - id: step-2
     title: 补齐停机读取和资源池扩展窄测试
-    status: pending
+    status: done
     exit_signal: 新增测试覆盖无停机、整体失败、部分失败、候选设备补齐和仓库真实查询。
   - id: step-3
     title: 收口 resource_pool_builder 重复读取逻辑
-    status: pending
+    status: done
     exit_signal: load/extend 复用内部 helper，公开字段不变，复杂度回到阈值内。
   - id: step-4
     title: 跑验证、复审并回填执行结果
-    status: pending
-    exit_signal: 目标测试、债务脚本、门禁和 subagent 复审通过，roadmap 与 acceptance 已写明结果。
+    status: done
+    exit_signal: 目标测试、债务脚本、yaml、subagent 复审和最终 clean quality gate 均已通过。
 
 checks:
   - id: check-1
     title: 停机读取成功、无记录、整体失败、部分失败合同均有证据
-    status: pending
+    status: passed
   - id: check-2
     title: 资源池候选设备补停机、无停机不加空 key、部分失败保留成功设备
-    status: pending
+    status: passed
   - id: check-3
     title: MachineDowntimeRepository list_active_after 有真实查询测试
-    status: pending
+    status: passed
   - id: check-4
     title: 没有新增 fallback、兜底、静默吞错或算法主逻辑改动
-    status: pending
+    status: passed
   - id: check-5
     title: P1-16/P1-17 只按 complexity/test_coverage 回填，不写 full-test-debt 减少
-    status: pending
+    status: passed
