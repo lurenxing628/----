@@ -98,3 +98,47 @@ def test_analysis_version_dropdown_uses_completion_status_label(tmp_path, monkey
 
     assert response.status_code == 200
     assert html.count("模拟排产 / 部分成功") >= 2
+
+
+def test_analysis_page_shows_degraded_freeze_window_when_config_defaults_to_disabled(tmp_path, monkeypatch) -> None:
+    app = _build_app(
+        tmp_path,
+        monkeypatch,
+        result_summary={
+            "algo": {
+                "metrics": {"overdue_count": 0, "makespan_hours": 8},
+                "freeze_window": {
+                    "enabled": "no",
+                    "days": 0,
+                    "frozen_op_count": 0,
+                    "frozen_batch_count": 0,
+                    "frozen_batch_ids_sample": [],
+                    "freeze_state": "degraded",
+                    "freeze_applied": False,
+                    "freeze_degradation_codes": ["freeze_seed_unavailable"],
+                    "degraded": True,
+                    "degradation_reason": "冻结窗口配置读取降级",
+                },
+            },
+            "degradation_events": [
+                {
+                    "code": "freeze_window_degraded",
+                    "scope": "schedule.summary.freeze_window",
+                    "field": "freeze_window",
+                    "message": "冻结窗口配置读取降级",
+                    "count": 1,
+                }
+            ],
+            "warnings": [],
+        },
+    )
+    client = app.test_client()
+
+    response = client.get("/scheduler/analysis?version=7")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "冻结窗口：已降级" in html
+    assert "当前状态：已降级" in html
+    assert "冻结窗口约束已降级" in html
+    assert "冻结窗口：未启用" not in html

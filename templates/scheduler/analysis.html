@@ -180,10 +180,10 @@
       {% endif %}
       {% if freeze_display %}
         <div class="muted mt-2">
-          {% if not freeze_display.enabled %}
+          {% if freeze_display.state == 'disabled' %}
             冻结窗口：未启用
           {% else %}
-            冻结窗口：已启用
+            冻结窗口：{{ '已启用' if freeze_display.enabled else freeze_display.state_label }}
             <span class="meta-sep">｜</span>
             当前状态：{{ freeze_display.state_label }}
             <span class="meta-sep">｜</span>
@@ -196,7 +196,7 @@
             冻结批次数：{{ freeze_display.frozen_batch_count }}
           {% endif %}
         </div>
-        {% if freeze_display.enabled and freeze_display.sample_batches %}
+        {% if freeze_display.state != 'disabled' and freeze_display.sample_batches %}
           <div class="muted mt-2">
             示例批次：{{ freeze_display.sample_batches|join('、') }}{% if freeze_display.sample_more_count > 0 %} 及其他 {{ freeze_display.sample_more_count }} 个…{% endif %}
           </div>
