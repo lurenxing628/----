@@ -173,6 +173,11 @@ def _algo_freeze_window_dict(
         if freeze_state.get("freeze_degradation_public_code") is not None:
             freeze_window["freeze_degradation_public_code"] = freeze_state.get("freeze_degradation_public_code")
         freeze_window["freeze_degradation_codes"] = list(freeze_state.get("freeze_degradation_codes") or [])
+    if (
+        str(freeze_state.get("freeze_state") or "").strip().lower() == "disabled"
+        and freeze_state.get("freeze_disabled_reason") is not None
+    ):
+        freeze_window["freeze_disabled_reason"] = freeze_state.get("freeze_disabled_reason")
     return freeze_window
 
 

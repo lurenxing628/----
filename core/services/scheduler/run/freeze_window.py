@@ -15,6 +15,13 @@ from core.services.scheduler.degradation_messages import (
 from ..number_utils import to_yes_no
 
 _FREEZE_DEGRADATION_CODE = "freeze_seed_unavailable"
+_FREEZE_CONFIG_FIELDS = {"freeze_window_enabled", "freeze_window_days"}
+_FREEZE_DISABLED_CONFIG_DISABLED = "config_disabled"
+_FREEZE_DISABLED_NO_DAYS = "no_days"
+_FREEZE_DISABLED_NO_PREVIOUS_VERSION = "no_previous_version"
+_FREEZE_DISABLED_CONFIG_DEGRADED = "config_degraded"
+_FREEZE_DISABLED_NO_RESCHEDULABLE_OPERATIONS = "no_reschedulable_operations"
+_FREEZE_DISABLED_NO_PREVIOUS_SCHEDULE_ROWS = "no_previous_schedule_rows"
 
 
 @dataclass(frozen=True)
@@ -34,23 +41,30 @@ def _init_freeze_meta(meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     out.setdefault("freeze_days", 0)
     out.setdefault("freeze_degradation_reason", None)
     out.setdefault("freeze_degradation_count", 0)
+    out.setdefault("freeze_disabled_reason", None)
     return out
 
 
+def _freeze_config_degraded(cfg: Any) -> bool:
+    for event in list(getattr(cfg, "degradation_events", ()) or ()):
+        if not isinstance(event, dict):
+            continue
+        field = str(event.get("field") or "").strip()
+        code = str(event.get("code") or "").strip()
+        if field in _FREEZE_CONFIG_FIELDS or code == _FREEZE_DEGRADATION_CODE:
+            return True
+    return False
+
+
+def _set_freeze_disabled(meta: Dict[str, Any], reason: str) -> None:
+    meta["freeze_state"] = "disabled"
+    meta["freeze_disabled_reason"] = reason
+
+
 def _freeze_window_days(cfg: Any, prev_version: int, *, strict_mode: bool, meta: Dict[str, Any], warnings: List[str]) -> int:
+    cfg_degraded = _freeze_config_degraded(cfg)
     enabled = to_yes_no(cfg.freeze_window_enabled, default=YesNo.NO.value) == YesNo.YES.value
     meta["freeze_enabled"] = bool(enabled)
-    if not enabled:
-        meta["freeze_state"] = "disabled"
-        meta["freeze_days"] = 0
-        return 0
-
-    cfg_events = list(getattr(cfg, "degradation_events", ()) or ())
-    cfg_degraded = any(
-        str(event.get("field") or "") == "freeze_window_days" or str(event.get("code") or "") == _FREEZE_DEGRADATION_CODE
-        for event in cfg_events
-        if isinstance(event, dict)
-    )
     days = int(cfg.freeze_window_days or 0)
     meta["freeze_days"] = int(days)
 
@@ -58,15 +72,20 @@ def _freeze_window_days(cfg: Any, prev_version: int, *, strict_mode: bool, meta:
         _record_freeze_degradation(
             meta,
             warnings,
-            "freeze window config degraded; treating as disabled",
+            "freeze window config degraded",
             strict_mode=strict_mode,
+            disabled_reason=_FREEZE_DISABLED_CONFIG_DEGRADED,
         )
         return 0
+    if not enabled:
+        _set_freeze_disabled(meta, _FREEZE_DISABLED_CONFIG_DISABLED)
+        meta["freeze_days"] = 0
+        return 0
     if days <= 0:
-        meta["freeze_state"] = "disabled"
+        _set_freeze_disabled(meta, _FREEZE_DISABLED_NO_DAYS)
         return 0
     if int(prev_version or 0) <= 0:
-        meta["freeze_state"] = "disabled"
+        _set_freeze_disabled(meta, _FREEZE_DISABLED_NO_PREVIOUS_VERSION)
         return 0
     return int(days)
 
@@ -77,8 +96,10 @@ def _record_freeze_degradation(
     message: str,
     *,
     strict_mode: bool,
+    disabled_reason: Optional[str] = None,
 ) -> None:
     meta["freeze_state"] = "degraded"
+    meta["freeze_disabled_reason"] = disabled_reason
     codes = [str(code).strip() for code in list(meta.get("freeze_degradation_codes") or []) if str(code).strip()]
     if _FREEZE_DEGRADATION_CODE not in codes:
         codes.append(_FREEZE_DEGRADATION_CODE)
@@ -269,6 +290,7 @@ def build_freeze_window_seed(
     op_ids_all = sorted(list(op_by_id.keys()))
     if not op_ids_all:
         freeze_meta["freeze_applied"] = False
+        _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_RESCHEDULABLE_OPERATIONS)
         _finalize_freeze_application_status(freeze_meta)
         return frozen_op_ids, seed_results, warnings
 
@@ -311,6 +333,7 @@ def build_freeze_window_seed(
     schedule_map = load_outcome.schedule_map
     if not schedule_map:
         freeze_meta["freeze_applied"] = False
+        _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_PREVIOUS_SCHEDULE_ROWS)
         _finalize_freeze_application_status(freeze_meta)
         return frozen_op_ids, seed_results, warnings
 

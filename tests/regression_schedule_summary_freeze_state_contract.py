@@ -161,6 +161,77 @@ def test_schedule_summary_freeze_state_controls_hard_constraints() -> None:
     assert "freeze_window" not in (not_applied_algo.get("hard_constraints") or []), not_applied_algo
 
 
+def test_schedule_summary_exposes_freeze_disabled_reason_without_degradation() -> None:
+    kwargs = _base_kwargs()
+    kwargs.update(
+        {
+            "cfg": {"auto_assign_enabled": "no", "freeze_window_enabled": "no", "freeze_window_days": 0},
+            "frozen_op_ids": set(),
+            "freeze_meta": {
+                "freeze_state": "disabled",
+                "freeze_applied": False,
+                "freeze_disabled_reason": "config_disabled",
+                "freeze_degradation_codes": [],
+            },
+        }
+    )
+
+    _overdue, _status, summary, _json_text, _ms = build_result_summary(**kwargs)
+    algo = summary.get("algo") or {}
+    freeze_window = algo.get("freeze_window") or {}
+
+    assert freeze_window.get("freeze_disabled_reason") == "config_disabled", freeze_window
+    assert not freeze_window.get("degraded"), freeze_window
+    assert "freeze_window" not in (algo.get("hard_constraints") or []), algo
+    assert not any(
+        str(item.get("code") or "") == "freeze_window_degraded"
+        for item in (summary.get("degradation_events") or [])
+        if isinstance(item, dict)
+    ), summary.get("degradation_events")
+
+
+def test_schedule_summary_freeze_disabled_reason_does_not_expand_warning_fallback() -> None:
+    kwargs = _base_kwargs()
+    kwargs["summary"].warnings = ["[freeze_window] previous schedule unavailable"]
+    kwargs.update(
+        {
+            "frozen_op_ids": set(),
+            "freeze_meta": None,
+        }
+    )
+
+    _overdue, _status, summary, _json_text, _ms = build_result_summary(**kwargs)
+    freeze_window = (summary.get("algo") or {}).get("freeze_window") or {}
+    warnings = summary.get("warnings") or []
+
+    assert any("freeze_window" in str(item) for item in warnings), warnings
+    assert "freeze_disabled_reason" not in freeze_window, freeze_window
+
+
+def test_schedule_summary_config_degraded_does_not_expose_disabled_reason() -> None:
+    kwargs = _base_kwargs()
+    kwargs.update(
+        {
+            "frozen_op_ids": set(),
+            "freeze_meta": {
+                "freeze_state": "degraded",
+                "freeze_applied": False,
+                "freeze_disabled_reason": "config_degraded",
+                "freeze_degradation_codes": ["freeze_seed_unavailable"],
+                "freeze_degradation_reason": "freeze config degraded",
+            },
+        }
+    )
+
+    _overdue, _status, summary, _json_text, _ms = build_result_summary(**kwargs)
+    freeze_window = (summary.get("algo") or {}).get("freeze_window") or {}
+    degradation_events = summary.get("degradation_events") or []
+
+    assert freeze_window.get("freeze_state") == "degraded", freeze_window
+    assert "freeze_disabled_reason" not in freeze_window, freeze_window
+    assert any(str(item.get("code") or "") == "freeze_window_degraded" for item in degradation_events), degradation_events
+
+
 def test_schedule_summary_freeze_degradation_prefers_structured_event_over_warning_text() -> None:
     kwargs = _base_kwargs()
     kwargs["summary"].warnings = ["[freeze_window] previous schedule unavailable"]

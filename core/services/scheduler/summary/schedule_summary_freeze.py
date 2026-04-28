@@ -135,6 +135,7 @@ def _freeze_meta_dict(
         "freeze_state": freeze_state,
         "freeze_applied": bool(applied),
         "freeze_application_status": application_status,
+        "freeze_disabled_reason": str(meta.get("freeze_disabled_reason") or "").strip() or None,
         "freeze_degradation_codes": degradation_codes,
         "freeze_degradation_public_code": _freeze_degradation_public_code(
             degraded=degraded,
