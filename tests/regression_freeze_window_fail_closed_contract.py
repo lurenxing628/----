@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -34,6 +35,16 @@ class _SuccessfulScheduleRepo:
                 "end_time": datetime(2026, 4, 1, 10, 0, 0),
             },
         ]
+
+
+class _RecordingScheduleRepo:
+    def __init__(self, rows):
+        self.rows = rows
+        self.calls = []
+
+    def list_version_rows_by_op_ids_start_range(self, **kwargs):
+        self.calls.append(kwargs)
+        return list(self.rows)
 
 
 class _MalformedScheduleRepo:
@@ -72,7 +83,7 @@ class _AllMissingPrefixScheduleRepo:
 
 
 class _StubSvc:
-    schedule_repo = _ExplodingScheduleRepo()
+    schedule_repo: Any = _ExplodingScheduleRepo()
 
     @staticmethod
     def _format_dt(value: datetime) -> str:
@@ -109,6 +120,146 @@ def _prefix_ops():
         SimpleNamespace(id=2, op_code="B001_20", batch_id="B001", seq=20, source="internal", op_type_name="A"),
         SimpleNamespace(id=3, op_code="B002_10", batch_id="B002", seq=10, source="internal", op_type_name="A"),
     ]
+
+
+def test_freeze_window_seed_uses_operations_when_reschedulable_operations_is_none() -> None:
+    meta = {}
+    svc = _StubSvc()
+    repo = _RecordingScheduleRepo(
+        [
+            {
+                "op_id": 1,
+                "machine_id": "MC001",
+                "operator_id": "OP001",
+                "start_time": datetime(2026, 4, 1, 8, 0, 0),
+                "end_time": datetime(2026, 4, 1, 10, 0, 0),
+            }
+        ]
+    )
+    svc.schedule_repo = repo
+    frozen_op_ids, seed_results, warnings = build_freeze_window_seed(
+        svc,
+        cfg=_cfg(),
+        prev_version=1,
+        start_dt=datetime(2026, 4, 1, 8, 0, 0),
+        operations=_ops(),
+        reschedulable_operations=None,
+        strict_mode=False,
+        meta=meta,
+    )
+
+    assert repo.calls[0]["op_ids"] == [1], repo.calls
+    assert frozen_op_ids == {1}, frozen_op_ids
+    assert [item.get("op_id") for item in seed_results] == [1], seed_results
+    assert warnings == [], warnings
+    assert meta.get("freeze_state") == "active", meta
+    assert meta.get("freeze_application_status") == "applied", meta
+
+
+def test_freeze_window_seed_limits_frozen_results_to_explicit_reschedulable_subset() -> None:
+    meta = {}
+    svc = _StubSvc()
+    repo = _RecordingScheduleRepo(
+        [
+            {
+                "op_id": 1,
+                "machine_id": "MC001",
+                "operator_id": "OP001",
+                "start_time": datetime(2026, 4, 1, 8, 0, 0),
+                "end_time": datetime(2026, 4, 1, 10, 0, 0),
+            },
+            {
+                "op_id": 3,
+                "machine_id": "MC003",
+                "operator_id": "OP003",
+                "start_time": datetime(2026, 4, 1, 11, 0, 0),
+                "end_time": datetime(2026, 4, 1, 12, 0, 0),
+            },
+        ]
+    )
+    svc.schedule_repo = repo
+    subset = [_prefix_ops()[2]]
+    frozen_op_ids, seed_results, warnings = build_freeze_window_seed(
+        svc,
+        cfg=_cfg(),
+        prev_version=1,
+        start_dt=datetime(2026, 4, 1, 8, 0, 0),
+        operations=_prefix_ops(),
+        reschedulable_operations=subset,
+        strict_mode=False,
+        meta=meta,
+    )
+
+    assert repo.calls[0]["op_ids"] == [3], repo.calls
+    assert frozen_op_ids == {3}, frozen_op_ids
+    assert [item.get("op_id") for item in seed_results] == [3], seed_results
+    assert warnings == [], warnings
+    assert meta.get("freeze_state") == "active", meta
+
+
+def test_freeze_window_seed_results_keep_fields_and_sort_by_start_time_then_op_id() -> None:
+    meta = {}
+    svc = _StubSvc()
+    operations = [
+        SimpleNamespace(id=30, op_code="B009_30", batch_id="B009", seq=30, source="internal", op_type_name="C"),
+        SimpleNamespace(id=20, op_code="B009_20", batch_id="B009", seq=20, source="internal", op_type_name="B"),
+        SimpleNamespace(id=10, op_code="B009_10", batch_id="B009", seq=10, source="internal", op_type_name="A"),
+    ]
+    repo = _RecordingScheduleRepo(
+        [
+            {
+                "op_id": 30,
+                "machine_id": "MC030",
+                "operator_id": "OP030",
+                "start_time": datetime(2026, 4, 1, 9, 0, 0),
+                "end_time": datetime(2026, 4, 1, 10, 0, 0),
+            },
+            {
+                "op_id": 20,
+                "machine_id": "MC020",
+                "operator_id": "OP020",
+                "start_time": datetime(2026, 4, 1, 8, 0, 0),
+                "end_time": datetime(2026, 4, 1, 9, 0, 0),
+            },
+            {
+                "op_id": 10,
+                "machine_id": "MC010",
+                "operator_id": "OP010",
+                "start_time": datetime(2026, 4, 1, 8, 0, 0),
+                "end_time": datetime(2026, 4, 1, 8, 30, 0),
+            },
+        ]
+    )
+    svc.schedule_repo = repo
+    frozen_op_ids, seed_results, warnings = build_freeze_window_seed(
+        svc,
+        cfg=_cfg(),
+        prev_version=1,
+        start_dt=datetime(2026, 4, 1, 8, 0, 0),
+        operations=operations,
+        reschedulable_operations=operations,
+        strict_mode=False,
+        meta=meta,
+    )
+
+    assert frozen_op_ids == {10, 20, 30}, frozen_op_ids
+    assert [item.get("op_id") for item in seed_results] == [10, 20, 30], seed_results
+    assert warnings == [], warnings
+    assert seed_results[0] == {
+        "op_id": 10,
+        "op_code": "B009_10",
+        "batch_id": "B009",
+        "seq": 10,
+        "machine_id": "MC010",
+        "operator_id": "OP010",
+        "start_time": datetime(2026, 4, 1, 8, 0, 0),
+        "end_time": datetime(2026, 4, 1, 8, 30, 0),
+        "source": "internal",
+        "op_type_name": "A",
+    }
+    assert seed_results[1]["start_time"] == datetime(2026, 4, 1, 8, 0, 0), seed_results
+    assert seed_results[1]["op_id"] == 20, seed_results
+    assert seed_results[2]["start_time"] == datetime(2026, 4, 1, 9, 0, 0), seed_results
 
 
 def test_freeze_window_disabled_by_config_never_reads_previous_schedule() -> None:

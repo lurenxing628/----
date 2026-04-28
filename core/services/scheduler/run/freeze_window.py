@@ -31,6 +31,16 @@ class _LoadedScheduleMapOutcome:
     invalid_row_samples: List[str]
 
 
+@dataclass(frozen=True)
+class _FreezeSeedScope:
+    freeze_days: int
+    start_str: str
+    freeze_end_str: str
+    seed_operations: List[Any]
+    op_by_id: Dict[int, Any]
+    op_ids_all: List[int]
+
+
 def _init_freeze_meta(meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     out = meta if isinstance(meta, dict) else {}
     out.setdefault("freeze_state", "disabled")
@@ -253,22 +263,27 @@ def _build_seed_results(
     return seed_results
 
 
-def build_freeze_window_seed(
+def _empty_freeze_seed_result(
+    freeze_meta: Dict[str, Any],
+    warnings: List[str],
+) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
+    freeze_meta["freeze_applied"] = False
+    _finalize_freeze_application_status(freeze_meta)
+    return set(), [], warnings
+
+
+def _prepare_freeze_seed_scope(
     svc,
     *,
     cfg: Any,
     prev_version: int,
     start_dt: datetime,
     operations: List[Any],
-    reschedulable_operations: Optional[List[Any]] = None,
-    strict_mode: bool = False,
-    meta: Optional[Dict[str, Any]] = None,
-) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
-    frozen_op_ids: Set[int] = set()
-    seed_results: List[Dict[str, Any]] = []
-    warnings: List[str] = []
-    freeze_meta = _init_freeze_meta(meta)
-
+    reschedulable_operations: Optional[List[Any]],
+    strict_mode: bool,
+    freeze_meta: Dict[str, Any],
+    warnings: List[str],
+) -> Optional[_FreezeSeedScope]:
     freeze_days = _freeze_window_days(
         cfg,
         prev_version,
@@ -277,30 +292,42 @@ def build_freeze_window_seed(
         warnings=warnings,
     )
     if freeze_days <= 0:
-        freeze_meta["freeze_applied"] = False
-        _finalize_freeze_application_status(freeze_meta)
-        return frozen_op_ids, seed_results, warnings
+        return None
 
     freeze_end = start_dt + timedelta(days=freeze_days)
-    freeze_end_str = svc._format_dt(freeze_end)
-    start_str = svc._format_dt(start_dt)
-
     seed_operations = reschedulable_operations if reschedulable_operations is not None else operations
     op_by_id: Dict[int, Any] = {int(op.id): op for op in seed_operations if op and op.id}
     op_ids_all = sorted(list(op_by_id.keys()))
     if not op_ids_all:
-        freeze_meta["freeze_applied"] = False
         _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_RESCHEDULABLE_OPERATIONS)
-        _finalize_freeze_application_status(freeze_meta)
-        return frozen_op_ids, seed_results, warnings
+        return None
 
+    return _FreezeSeedScope(
+        freeze_days=int(freeze_days),
+        start_str=svc._format_dt(start_dt),
+        freeze_end_str=svc._format_dt(freeze_end),
+        seed_operations=seed_operations,
+        op_by_id=op_by_id,
+        op_ids_all=op_ids_all,
+    )
+
+
+def _load_previous_schedule_for_freeze(
+    svc,
+    *,
+    scope: _FreezeSeedScope,
+    prev_version: int,
+    strict_mode: bool,
+    freeze_meta: Dict[str, Any],
+    warnings: List[str],
+) -> Optional[_LoadedScheduleMapOutcome]:
     try:
         load_outcome = _load_schedule_map(
             svc,
             prev_version=int(prev_version),
-            op_ids=op_ids_all,
-            start_str=start_str,
-            freeze_end_str=freeze_end_str,
+            op_ids=scope.op_ids_all,
+            start_str=scope.start_str,
+            freeze_end_str=scope.freeze_end_str,
         )
     except Exception:
         logger = getattr(svc, "logger", None)
@@ -312,9 +339,7 @@ def build_freeze_window_seed(
             FREEZE_WINDOW_DEGRADED_MESSAGE,
             strict_mode=bool(strict_mode),
         )
-        freeze_meta["freeze_applied"] = False
-        _finalize_freeze_application_status(freeze_meta)
-        return frozen_op_ids, seed_results, warnings
+        return None
 
     if load_outcome.invalid_row_count > 0:
         sample_text = ", ".join(load_outcome.invalid_row_samples[:5])
@@ -326,24 +351,32 @@ def build_freeze_window_seed(
             strict_mode=bool(strict_mode),
         )
         if not load_outcome.schedule_map:
-            freeze_meta["freeze_applied"] = False
-            _finalize_freeze_application_status(freeze_meta)
-            return frozen_op_ids, seed_results, warnings
+            return None
 
-    schedule_map = load_outcome.schedule_map
-    if not schedule_map:
-        freeze_meta["freeze_applied"] = False
+    if not load_outcome.schedule_map:
         _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_PREVIOUS_SCHEDULE_ROWS)
-        _finalize_freeze_application_status(freeze_meta)
-        return frozen_op_ids, seed_results, warnings
+        return None
 
-    seed_tmp: Dict[int, Dict[str, Any]] = {}
-    max_seq_by_batch = _max_seq_by_batch(schedule_map, op_by_id)
+    return load_outcome
+
+
+def _apply_freeze_prefixes(
+    svc,
+    *,
+    scope: _FreezeSeedScope,
+    schedule_map: Dict[int, Dict[str, Any]],
+    seed_tmp: Dict[int, Dict[str, Any]],
+    freeze_meta: Dict[str, Any],
+    warnings: List[str],
+    strict_mode: bool,
+) -> Set[int]:
+    frozen_op_ids: Set[int] = set()
+    max_seq_by_batch = _max_seq_by_batch(schedule_map, scope.op_by_id)
 
     for bid, max_seq in max_seq_by_batch.items():
         if max_seq <= 0:
             continue
-        prefix = _prefix_op_ids_for_batch(seed_operations, bid, max_seq)
+        prefix = _prefix_op_ids_for_batch(scope.seed_operations, bid, max_seq)
         missing = [oid for oid in prefix if oid not in schedule_map]
         if missing:
             sample = ", ".join([str(x) for x in missing[:5]])
@@ -369,7 +402,18 @@ def build_freeze_window_seed(
         for oid in prefix:
             frozen_op_ids.add(int(oid))
 
-    seed_results = _build_seed_results(frozen_op_ids, op_by_id=op_by_id, seed_tmp=seed_tmp)
+    return frozen_op_ids
+
+
+def _finish_freeze_seed_result(
+    frozen_op_ids: Set[int],
+    *,
+    scope: _FreezeSeedScope,
+    seed_tmp: Dict[int, Dict[str, Any]],
+    freeze_meta: Dict[str, Any],
+    warnings: List[str],
+) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
+    seed_results = _build_seed_results(frozen_op_ids, op_by_id=scope.op_by_id, seed_tmp=seed_tmp)
     seed_results.sort(key=lambda x: (x.get("start_time") or datetime.min, x.get("op_id") or 0))
 
     freeze_meta["freeze_applied"] = bool(frozen_op_ids)
@@ -377,3 +421,61 @@ def build_freeze_window_seed(
         freeze_meta["freeze_state"] = "active" if frozen_op_ids else "disabled"
     _finalize_freeze_application_status(freeze_meta)
     return frozen_op_ids, seed_results, warnings
+
+
+def build_freeze_window_seed(
+    svc,
+    *,
+    cfg: Any,
+    prev_version: int,
+    start_dt: datetime,
+    operations: List[Any],
+    reschedulable_operations: Optional[List[Any]] = None,
+    strict_mode: bool = False,
+    meta: Optional[Dict[str, Any]] = None,
+) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
+    warnings: List[str] = []
+    freeze_meta = _init_freeze_meta(meta)
+
+    scope = _prepare_freeze_seed_scope(
+        svc,
+        cfg=cfg,
+        prev_version=int(prev_version),
+        start_dt=start_dt,
+        operations=operations,
+        reschedulable_operations=reschedulable_operations,
+        strict_mode=bool(strict_mode),
+        freeze_meta=freeze_meta,
+        warnings=warnings,
+    )
+    if scope is None:
+        return _empty_freeze_seed_result(freeze_meta, warnings)
+
+    load_outcome = _load_previous_schedule_for_freeze(
+        svc,
+        scope=scope,
+        prev_version=int(prev_version),
+        strict_mode=bool(strict_mode),
+        freeze_meta=freeze_meta,
+        warnings=warnings,
+    )
+    if load_outcome is None:
+        return _empty_freeze_seed_result(freeze_meta, warnings)
+
+    seed_tmp: Dict[int, Dict[str, Any]] = {}
+    frozen_op_ids = _apply_freeze_prefixes(
+        svc,
+        scope=scope,
+        schedule_map=load_outcome.schedule_map,
+        seed_tmp=seed_tmp,
+        freeze_meta=freeze_meta,
+        warnings=warnings,
+        strict_mode=bool(strict_mode),
+    )
+    return _finish_freeze_seed_result(
+        frozen_op_ids,
+        scope=scope,
+        seed_tmp=seed_tmp,
+        freeze_meta=freeze_meta,
+        warnings=warnings,
+    )
