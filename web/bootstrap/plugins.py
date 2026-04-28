@@ -46,6 +46,45 @@ def _merge_plugin_degradation(status: Optional[Dict[str, Any]], collector: Degra
     return base
 
 
+def _resolve_enabled_source(
+    plugin_id: str,
+    row_source: str,
+    *,
+    enabled_source_map: Dict[str, str],
+    default_source: str,
+) -> str:
+    explicit_source = str(enabled_source_map.get(plugin_id) or "").strip()
+    if explicit_source:
+        return explicit_source
+    row_source_s = str(row_source or "").strip()
+    if row_source_s and not (row_source_s == "default" and str(default_source or "default") != "default"):
+        return row_source_s
+    return str(default_source or row_source_s or "default")
+
+
+def _public_plugin_status_row(row: Dict[str, Any], source: str) -> Dict[str, Any]:
+    public_row = dict(row or {})
+    public_row["enabled_source"] = source
+    if str(public_row.get("error") or "").strip():
+        public_row["error"] = "插件加载失败，请查看系统日志。"
+    return public_row
+
+
+def _config_source_summary(sources: list[str], default_source: str) -> str:
+    source_set = {str(source or "").strip() for source in sources if str(source or "").strip()}
+    has_config = "config" in source_set
+    non_config_sources = {source for source in source_set if source != "config"}
+    if has_config and non_config_sources:
+        return "mixed"
+    if has_config:
+        return "config"
+    if len(non_config_sources) == 1:
+        return next(iter(non_config_sources))
+    if len(non_config_sources) > 1:
+        return "mixed"
+    return str(default_source or "default")
+
+
 def _apply_enabled_sources(
     status: Optional[Dict[str, Any]],
     *,
@@ -55,43 +94,22 @@ def _apply_enabled_sources(
     base = dict(status or {}) if isinstance(status, dict) else {}
     raw_statuses = list(base.get("statuses") or [])
     statuses = []
-    saw_config = False
-    saw_default = False
-    non_config_sources = set()
+    sources: list[str] = []
 
     for item in raw_statuses:
         row = dict(item or {}) if isinstance(item, dict) else {}
         plugin_id = str(row.get("plugin_id") or "").strip()
-        explicit_source = str(enabled_source_map.get(plugin_id) or "").strip()
-        row_source = str(row.get("enabled_source") or "").strip()
-        if explicit_source:
-            source = explicit_source
-        elif row_source and not (row_source == "default" and str(default_source or "default") != "default"):
-            source = row_source
-        else:
-            source = str(default_source or row_source or "default")
-        row["enabled_source"] = source
-        if str(row.get("error") or "").strip():
-            row["error"] = "插件加载失败，请查看系统日志。"
-
-        if source == "config":
-            saw_config = True
-        else:
-            saw_default = True
-            non_config_sources.add(source)
-        statuses.append(row)
+        source = _resolve_enabled_source(
+            plugin_id,
+            str(row.get("enabled_source") or "").strip(),
+            enabled_source_map=enabled_source_map,
+            default_source=default_source,
+        )
+        sources.append(source)
+        statuses.append(_public_plugin_status_row(row, source))
 
     base["statuses"] = statuses
-    if saw_config and saw_default:
-        base["config_source"] = "mixed"
-    elif saw_config:
-        base["config_source"] = "config"
-    elif len(non_config_sources) == 1:
-        base["config_source"] = next(iter(non_config_sources))
-    elif len(non_config_sources) > 1:
-        base["config_source"] = "mixed"
-    else:
-        base["config_source"] = str(default_source or "default")
+    base["config_source"] = _config_source_summary(sources, default_source)
     return base
 
 

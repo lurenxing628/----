@@ -224,6 +224,29 @@
       <div class="muted mt-2">
         已注册能力：{{ (plugin_status.registry.capabilities | length) if plugin_status.registry and plugin_status.registry.capabilities else 0 }}
       </div>
+      <div class="muted mt-1">
+        留痕状态：
+        {% if plugin_status.telemetry_persisted is sameas true %}
+          已写入
+        {% elif plugin_status.telemetry_persisted is sameas false %}
+          写入失败
+        {% else %}
+          -
+        {% endif %}
+      </div>
+      {% if plugin_status.conflicted_capabilities and (plugin_status.conflicted_capabilities | length) > 0 %}
+        <div class="muted mt-1">
+          冲突能力：
+          <ul class="list-tight">
+            {% for item in plugin_status.conflicted_capabilities %}
+              <li>
+                <code>{{ item.capability or '-' }}</code>
+                保留 {{ item.kept_plugin_id or '-' }}，拒绝 {{ item.rejected_plugin_id or '-' }}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
 
       {% if plugin_status.statuses and (plugin_status.statuses | length) > 0 %}
         <table class="mt-3 table-sticky">
