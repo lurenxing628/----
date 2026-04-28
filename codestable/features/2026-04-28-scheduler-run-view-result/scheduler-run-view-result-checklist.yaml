@@ -12,7 +12,7 @@ steps:
   - id: step-2
     title: 补齐 /scheduler/run 用户可见提示测试
     status: done
-    exit_signal: 默认可收集测试覆盖成功、部分成功、失败、降级、告警、错误预览、超期样本和 AppError 用户提示。
+    exit_signal: 默认可收集测试覆盖成功、部分成功、失败、降级、告警、错误预览、超期样本、跳转目标、普通异常通用提示和 AppError 用户提示。
 
   - id: step-3
     title: 新增 RunScheduleViewResult 并搬移展示判断

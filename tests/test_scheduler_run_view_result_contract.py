@@ -107,13 +107,14 @@ def test_run_schedule_view_result_surfaces_public_degradation_warning_and_errors
     assert view_result.error_total == 4
 
 
-def test_scheduler_run_route_delegates_display_contract_to_view_result() -> None:
+def test_scheduler_run_route_does_not_parse_display_state_inline() -> None:
     route_source = (REPO_ROOT / "web/routes/domains/scheduler/scheduler_run.py").read_text(encoding="utf-8")
     run_body = route_source.split("def run_schedule():", 1)[1]
 
-    assert "build_run_schedule_view_result(result)" in run_body
     assert "build_summary_display_state" not in run_body
     assert "summary_display" not in run_body
+    assert 'result.get("summary")' not in run_body
+    assert 'result.get("overdue_batches")' not in run_body
     assert "overdue_batches" not in run_body
 
 
@@ -150,6 +151,7 @@ def test_scheduler_run_route_flashes_failed_result_and_overdue_sample_limit() ->
             flashes = get_flashed_messages(with_categories=True)
 
         assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.headers["Location"] == "/scheduler.batches_page"
         assert any(
             cat == "error" and "排产失败（版本 21）：成功 1/3，失败 2。超期 12 个。" in msg
             for cat, msg in flashes
@@ -186,8 +188,38 @@ def test_scheduler_run_route_flashes_app_error_user_message() -> None:
             flashes = get_flashed_messages(with_categories=True)
 
         assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.headers["Location"] == "/scheduler.batches_page"
         assert [msg for cat, msg in flashes if cat == "error"] == ["所选批次没有可重排工序，本次未执行排产。"]
         assert not any("排产完成" in msg for _cat, msg in flashes), flashes
         assert not any("[1001]" in msg or "ValidationError" in msg or "field" in msg for _cat, msg in flashes), flashes
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_run_route_flashes_generic_message_for_unexpected_error() -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            raise RuntimeError("database password leaked")
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-unexpected-error"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.headers["Location"] == "/scheduler.batches_page"
+        assert [msg for cat, msg in flashes if cat == "error"] == ["排产失败，请稍后重试或联系管理员。"]
+        assert not any("database" in msg or "password" in msg or "RuntimeError" in msg for _cat, msg in flashes), flashes
     finally:
         route_mod.url_for = old_url_for

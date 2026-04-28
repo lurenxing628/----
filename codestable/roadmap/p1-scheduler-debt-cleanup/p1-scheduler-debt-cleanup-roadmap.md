@@ -856,11 +856,12 @@ M6 / PR-7 执行结果回填：
 
 - 已新增 `web/viewmodels/scheduler_run_view_result.py`，把 `/scheduler/run` 的主提示、主降级、次级降级、告警、错误预览和超期样本整理从 route 搬到 ViewResult。
 - `web/routes/domains/scheduler/scheduler_run.py` 现在只保留表单解析、调用 `ScheduleService.run_schedule()`、构建 ViewResult、flash、异常边界和跳转。
-- 已新增 `tests/test_scheduler_run_view_result_contract.py`，覆盖成功、失败、公开降级提示、超期样本最多 10 个和 `AppError` 用户文案；现有 `/scheduler/run` 回归继续覆盖部分成功、告警数量、错误预览和 checkbox 三态。
+- 已新增 `tests/test_scheduler_run_view_result_contract.py`，覆盖成功、失败、公开降级提示、超期样本最多 10 个、跳转目标、普通异常通用提示和 `AppError` 用户文案；现有 `/scheduler/run` 回归继续覆盖部分成功、告警数量、错误预览和 checkbox 三态。
 - 对抗复审发现 ViewResult 曾多做一层消息默认整理，本轮已删除，继续交给原有 `scheduler_bp` 展示函数处理，没有新增 fallback、兜底、静默吞错、新 reason 或新 details。
+- 二次对抗审查又补强了测试：失败、业务错误和普通意外错误都会断言跳回批次页；普通意外错误只给用户看通用中文提示；源码字符串守护已收窄为“不让 route 直接拆展示状态”。
 - 没有改 `ScheduleService`、summary、result_summary、落库、模板、`scheduler_week_plan.py`、`scheduler_batches.py` 或 `scheduler_bp.py`。
 - `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 已移除 P1-18 对应的 `run_schedule` 复杂度登记；`complexity_count` 从 39 降到 38。
-- `tools/check_full_test_debt.py` 仍是 5 条 active xfail，`collected_count=754`，本轮不写 full-test-debt 减少。
+- `tools/check_full_test_debt.py` 仍是 5 条 active xfail，`collected_count=755`，本轮不写 full-test-debt 减少。
 
 ### PR-8：batches_page() viewmodel
 
@@ -949,3 +950,4 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：完成 PR-4 优化器结果合同补证；新增 rejected 诊断穿过 attempts 压缩和 summary 投影后的分层测试，加严已有 `state.best is None` 路径外形测试；PR-4 没有改运行代码，没有新增 reason/fallback/兜底/静默吞错，没有减少 full-test-debt，active xfail 仍为 5 条。
 - 2026-04-28：完成 PR-5 summary/result_summary 合同补证；新增真实落库读回测试和真实页面/接口响应不泄漏测试，证明公开 attempts 不混入内部字段，diagnostics 正常大小下可落库读回但不展示到已覆盖响应；PR-5 没有改运行代码，没有改 schema 版本或 OptimizationOutcome，没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt；完整 M4 最终 clean quality gate 已通过。
 - 2026-04-28：完成 PR-6 落库校验与 auto-assign persist 合同；新增专项测试锁住错误优先级、simulate、配置关闭、外协隔离和只补空字段，并在复审后改为默认门禁可收集的 `test_*.py` 路径；原样搬移 `build_validated_schedule_payload()` 既有判断后关闭 P1-11 复杂度登记，复审发现的 `row is None` 静默跳过分支已删除，`complexity_count=39`；P1-12/P1-13 按测试覆盖锁证；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-7 头部已写清不能继承落库 proof 当作页面 proof。
+- 2026-04-28：完成 PR-7 `/scheduler/run` ViewResult；把页面提示组装从 route 搬到纯展示构建层，route 只保留表单、服务调用、ViewResult、flash、异常边界和跳转；复审后补强跳转目标和普通异常通用提示测试，移除 P1-18 复杂度登记，`complexity_count=38`；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-8 头部已写清不能继承 `/scheduler/run` proof 当作 `batches_page()` proof。

@@ -213,7 +213,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-scheduler-run-view-result
       - git diff --check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
-    notes: "已完成：P1-18 旧编号本身未找到独立来源，本轮只处理当前 scheduler_run 复杂度、UI 合同和测试覆盖事实源。已新增 RunScheduleViewResult，把 /scheduler/run 的主提示、主降级、次级降级、告警、错误预览和超期样本从 route 搬到纯展示构建层；route 只保留表单解析、服务调用、ViewResult flash、异常边界和跳转。复审后删除了重复消息整理，没有新增 fallback、兜底、静默吞错、新 reason 或新 details。scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 39 降到 38，P1-18 复杂度登记移除；PR-7 不处理 batches_page，不声明 full-test-debt 减少，active xfail 仍为 5 条，collected_count=754。"
+    notes: "已完成：P1-18 旧编号本身未找到独立来源，本轮只处理当前 scheduler_run 复杂度、UI 合同和测试覆盖事实源。已新增 RunScheduleViewResult，把 /scheduler/run 的主提示、主降级、次级降级、告警、错误预览和超期样本从 route 搬到纯展示构建层；route 只保留表单解析、服务调用、ViewResult flash、异常边界和跳转。复审后删除了重复消息整理，没有新增 fallback、兜底、静默吞错、新 reason 或新 details；二次对抗审查后补强跳转目标和普通异常通用提示测试。scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 39 降到 38，P1-18 复杂度登记移除；PR-7 不处理 batches_page，不声明 full-test-debt 减少，active xfail 仍为 5 条，collected_count=755。"
 
   - slug: batches-page-viewmodel
     title: PR-8 batches_page viewmodel
