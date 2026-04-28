@@ -84,14 +84,15 @@ begin
     '  if (-not [string]::IsNullOrWhiteSpace($suffixMarker) -and $cmdLower.Contains($suffixMarker)) { return $true }; ' +
     '  if (-not [string]::IsNullOrWhiteSpace($exactMarker) -and $cmdLower.Contains($exactMarker)) { return $true }; ' +
     '  return $false }; ' +
-    '$items=$null; ' +
-    'if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { try { $items=@(Get-CimInstance Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { $items=$null } }; ' +
-    'if ($null -eq $items) { if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) { exit 1 }; try { $items=@(Get-WmiObject Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { exit 1 } }; ' +
-    '$targets=@(); ' +
-    'foreach ($item in @($items)) { $cmd=[string]$item.CommandLine; if (Test-ApsChromeCommandLine $cmd) { $targets += [int]$item.ProcessId } }; ' +
-    'foreach ($procId in @($targets)) { try { Stop-Process -Id $procId -Force -ErrorAction Stop } catch { exit 1 } }; ' +
-    'Start-Sleep -Milliseconds 800; ' +
-    '$remainingItems=$null; ' +
+	    '$items=$null; ' +
+	    'if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { try { $items=@(Get-CimInstance Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { $items=$null } }; ' +
+	    'if ($null -eq $items) { if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) { exit 1 }; try { $items=@(Get-WmiObject Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { exit 1 } }; ' +
+	    '$targets=@(); ' +
+	    'foreach ($item in @($items)) { $cmd=[string]$item.CommandLine; if (Test-ApsChromeCommandLine $cmd) { $targets += [int]$item.ProcessId } }; ' +
+	    '$failedStopIds=@(); ' +
+	    'foreach ($procId in @($targets)) { try { Stop-Process -Id $procId -Force -ErrorAction Stop } catch { $failedStopIds += [int]$procId } }; ' +
+	    'Start-Sleep -Milliseconds 800; ' +
+	    '$remainingItems=$null; ' +
     'if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { try { $remainingItems=@(Get-CimInstance Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { $remainingItems=$null } }; ' +
     'if ($null -eq $remainingItems) { if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) { exit 1 }; try { $remainingItems=@(Get-WmiObject Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { exit 1 } }; ' +
     'foreach ($item in @($remainingItems)) { $cmd=[string]$item.CommandLine; if (Test-ApsChromeCommandLine $cmd) { exit 1 } }; ' +
