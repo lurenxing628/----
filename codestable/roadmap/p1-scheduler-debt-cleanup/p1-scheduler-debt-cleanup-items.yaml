@@ -191,19 +191,29 @@ items:
   - slug: scheduler-run-view-result
     title: PR-7 /scheduler/run ViewResult
     description: "按 PR-0 映射表处理 /scheduler/run 页面合同和复杂度事实源，让 route 只负责表单、服务调用、viewmodel、flash 和跳转。"
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-04-28-scheduler-run-view-result
     minimal_loop: false
     depends_on: [schedule-persistence-auto-assign-contract]
     debt_types: [ui_contract, complexity, test_coverage]
     old_p1: [P1-18]
     primary_paths:
       - web/routes/domains/scheduler/scheduler_run.py
+      - web/viewmodels/scheduler_run_view_result.py
     exit_checks:
-      - python tools/check_full_test_debt.py
-      - python scripts/sync_debt_ledger.py check
-      - python scripts/run_quality_gate.py
-    notes: "承接 PR-0：P1-18 旧编号本身未找到独立来源，只能处理映射表列出的 scheduler_run 复杂度和 UI 合同证据；不声称 full-test-debt 减少。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_scheduler_run_view_result_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_run_no_reschedulable_flash.py tests/regression_scheduler_run_surfaces_resource_pool_warning.py tests/regression_scheduler_route_enforce_ready_tristate.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_scheduler_summary_result_summary_contract.py tests/regression_system_history_route_contract.py tests/regression_scheduler_analysis_route_contract.py tests/regression_scheduler_batches_degraded_visibility.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check web/routes/domains/scheduler/scheduler_run.py web/viewmodels/scheduler_run_view_result.py tests/test_scheduler_run_view_result_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright web/routes/domains/scheduler/scheduler_run.py web/viewmodels/scheduler_run_view_result.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/features/2026-04-28-scheduler-run-view-result
+      - git diff --check
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
+    notes: "已完成：P1-18 旧编号本身未找到独立来源，本轮只处理当前 scheduler_run 复杂度、UI 合同和测试覆盖事实源。已新增 RunScheduleViewResult，把 /scheduler/run 的主提示、主降级、次级降级、告警、错误预览和超期样本从 route 搬到纯展示构建层；route 只保留表单解析、服务调用、ViewResult flash、异常边界和跳转。复审后删除了重复消息整理，没有新增 fallback、兜底、静默吞错、新 reason 或新 details。scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 39 降到 38，P1-18 复杂度登记移除；PR-7 不处理 batches_page，不声明 full-test-debt 减少，active xfail 仍为 5 条，collected_count=754。"
 
   - slug: batches-page-viewmodel
     title: PR-8 batches_page viewmodel

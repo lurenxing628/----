@@ -832,7 +832,44 @@ PR-7 头部承接 PR-6 完成结果：
 - route 测试只 mock service，断用户可见 flash。
 - 页面没有因为 service 内部字段调整而反复返工。
 
+M6 / PR-7 执行前细化：
+
+- 本次只做 PR-7，不把 PR-8 `batches_page()` 混进同一轮实现。PR-8 继续作为下一任务，等 PR-7 验收后在头部承接。
+- 根因不是服务返回缺字段，而是 `run_schedule()` route 直接拆 `summary`、`result_status` 和 `overdue_batches` 来拼页面提示，route 背了展示规则。
+- 新增 `RunScheduleViewResult` 纯展示对象，只消费 `ScheduleService.run_schedule()` 返回的公开 dict，并复用 `build_summary_display_state()`。
+- `scheduler_run.py` 只保留表单解析、服务调用、ViewResult 构建、flash、异常边界和跳转；展示文案、降级、告警、错误预览和超期样本裁剪搬到 viewmodel。
+- 不改 `ScheduleService`、summary、result_summary、落库、模板、`scheduler_week_plan.py`、`scheduler_batches.py`、`scheduler_bp.py`。
+- 不新增业务 `if`、fallback、兜底、静默吞错、新默认值、新 reason 或新 details；如果实现时发现必须新增特殊处理，先停线说明原因。
+- P1-18 旧编号来源仍证据不足，本轮只按当前 `scheduler_run.py:run_schedule` 复杂度、页面合同和测试覆盖事实源处理；不写 full-test-debt 减少。
+
+执行步骤：
+
+1. 创建 `codestable/features/2026-04-28-scheduler-run-view-result/` design/checklist，并把 items.yaml 改为 `in-progress`。
+2. 补 `tests/test_scheduler_run_view_result_contract.py`，覆盖成功、部分成功、失败、公开降级提示、告警数量、错误预览、超期样本最多 10 个和 `AppError` 用户提示。
+3. 新增 `web/viewmodels/scheduler_run_view_result.py`，原样搬移 `/scheduler/run` 现有展示判断。
+4. 收薄 `web/routes/domains/scheduler/scheduler_run.py`，route 只按 ViewResult flash 和跳转。
+5. 跑 PR-7 目标测试、共享页面测试、ruff、pyright、复杂度体检、full-test-debt、台账检查、YAML 校验和 `git diff --check`。
+6. 若 `run_schedule` 复杂度降到阈值内，用 `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 刷新台账；否则停线说明，不为了关登记新增逻辑。
+7. 执行后请 subagent 复审 PR-7 合同、无新增兜底、共享层影响、测试是否绑定内部 summary、CodeStable 回填和债务口径；通过后写 acceptance，并在 PR-8 头部写清 proof 边界。
+
+M6 / PR-7 执行结果回填：
+
+- 已新增 `web/viewmodels/scheduler_run_view_result.py`，把 `/scheduler/run` 的主提示、主降级、次级降级、告警、错误预览和超期样本整理从 route 搬到 ViewResult。
+- `web/routes/domains/scheduler/scheduler_run.py` 现在只保留表单解析、调用 `ScheduleService.run_schedule()`、构建 ViewResult、flash、异常边界和跳转。
+- 已新增 `tests/test_scheduler_run_view_result_contract.py`，覆盖成功、失败、公开降级提示、超期样本最多 10 个和 `AppError` 用户文案；现有 `/scheduler/run` 回归继续覆盖部分成功、告警数量、错误预览和 checkbox 三态。
+- 对抗复审发现 ViewResult 曾多做一层消息默认整理，本轮已删除，继续交给原有 `scheduler_bp` 展示函数处理，没有新增 fallback、兜底、静默吞错、新 reason 或新 details。
+- 没有改 `ScheduleService`、summary、result_summary、落库、模板、`scheduler_week_plan.py`、`scheduler_batches.py` 或 `scheduler_bp.py`。
+- `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 已移除 P1-18 对应的 `run_schedule` 复杂度登记；`complexity_count` 从 39 降到 38。
+- `tools/check_full_test_debt.py` 仍是 5 条 active xfail，`collected_count=754`，本轮不写 full-test-debt 减少。
+
 ### PR-8：batches_page() viewmodel
+
+PR-8 头部承接 PR-7 完成结果：
+
+- PR-7 只证明 `/scheduler/run` 的表单解析、服务调用、ViewResult 构建、flash、异常边界和跳转。
+- PR-7 不证明 `batches_page()` 的筛选、批次行、配置面板、最新历史面板、latest summary 解析或页面快照。
+- PR-8 必须从 P1-19 自己开始取证，先确认 `complexity:web-routes-domains-scheduler-scheduler_batches-batches_page` 仍是当前事实源。
+- PR-8 不能继承 PR-7 的 full-test-debt、复杂度或页面 proof；完成时也要自己跑目标测试、共享页面保护、债务检查和 CodeStable 回填。
 
 目标：
 
