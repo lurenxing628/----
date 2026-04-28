@@ -227,6 +227,7 @@
         <div class="form-field">
           <label for="schedulerBatchesStatusFilter">状态</label>
           <select id="schedulerBatchesStatusFilter" name="status">
+            <option value="" {% if status=='' %}selected{% endif %}>（全部）</option>
             <option value="pending" {% if status=='pending' %}selected{% endif %}>待排</option>
             <option value="scheduled" {% if status=='scheduled' %}selected{% endif %}>已排</option>
             <option value="processing" {% if status=='processing' %}selected{% endif %}>加工中</option>

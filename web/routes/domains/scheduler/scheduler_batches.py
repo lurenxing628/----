@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from flask import current_app, flash, g, redirect, request, url_for
 
@@ -10,8 +10,13 @@ from core.infrastructure.errors import AppError
 from core.services.scheduler import ConfigService
 from web.error_boundary import user_visible_app_error_message
 from web.ui_mode import render_ui_template as render_template
-from web.viewmodels.scheduler_analysis_labels import objective_label_for
-from web.viewmodels.scheduler_summary_display import build_summary_display_state
+from web.viewmodels.scheduler_batches_page import (
+    build_batch_rows,
+    build_batches_filter_state,
+    build_latest_schedule_history_panel_state,
+    build_scheduler_batches_page_view_model,
+    build_scheduler_config_panel_state,
+)
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
 from ...navigation_utils import _safe_next_url
@@ -19,7 +24,6 @@ from ...normalizers import _parse_result_summary_payload_with_meta
 from ...pagination import paginate_rows, parse_page_args
 from .scheduler_bp import (
     _batch_status_zh,
-    _normalize_warning_texts,
     _priority_zh,
     _ready_zh,
     _surface_schedule_warnings,
@@ -35,63 +39,16 @@ if TYPE_CHECKING:
     from core.services.scheduler import BatchService
 
 
-@bp.get("/")
-def batches_page():
-    services = g.services
-    batch_svc = services.batch_service
-    cfg_svc = services.config_service
+def _empty_latest_summary_parse_state() -> Dict[str, Any]:
+    return {"payload": None, "parse_failed": False, "user_message": None, "reason": None}
 
-    # 兼容：允许 ?status= 表示“全部状态”；未提供 status 参数时默认 pending
-    if "status" in request.args:
-        status = (request.args.get("status") or "").strip()
-    else:
-        status = "pending"
-    only_ready = (request.args.get("only_ready") or "").strip()  # yes/no/partial or empty
 
-    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
-    batches = batch_svc.list(status=status if status else None)
-    view_rows: List[Dict[str, Any]] = []
-    for b in batches:
-        if only_ready and (b.ready_status or "") != only_ready:
-            continue
-        view_rows.append(
-            {
-                **b.to_dict(),
-                "priority_zh": _priority_zh(b.priority),
-                "ready_status_zh": _ready_zh(b.ready_status),
-                "status_zh": _batch_status_zh(b.status),
-            }
-        )
-
-    view_rows, pager = paginate_rows(view_rows, page, per_page)
-    cfg = cfg_svc.get_snapshot()
-    strategies = cfg_svc.get_available_strategies()
-    config_field_metadata = get_scheduler_visible_config_field_metadata()
-    config_field_warnings, config_degraded_fields, config_hidden_warnings = build_config_degraded_display_state(
-        cfg,
-        config_field_metadata=config_field_metadata,
-    )
-    config_degraded_field_labels = [
-        str(getattr(config_field_metadata.get(field), "label", "") or field)
-        for field in config_degraded_fields
-    ]
-    preset_display_state = cfg_svc.get_preset_display_state(readonly=True, current_snapshot=cfg)
-    presets = list(preset_display_state.get("presets") or [])
-    active_preset = preset_display_state.get("active_preset")
-    builtin_presets = [
-        ConfigService.BUILTIN_PRESET_DEFAULT,
-        ConfigService.BUILTIN_PRESET_DUE_FIRST,
-        ConfigService.BUILTIN_PRESET_MIN_CHANGEOVER,
-        ConfigService.BUILTIN_PRESET_IMPROVE_SLOW,
-    ]
-    current_config_state = dict(preset_display_state.get("current_config_state") or {})
-    current_auto_assign_persist_state = build_auto_assign_persist_display_state(getattr(cfg, "auto_assign_persist", None))
-
-    # 最近一次排产（用于用户确认“留痕已写入”）
+def _load_latest_schedule_history_panel_inputs(
+    hist_q: Any,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Dict[str, Any]]:
     latest_history = None
     latest_summary = None
-    latest_summary_parse_state = {"payload": None, "parse_failed": False, "user_message": None, "reason": None}
-    hist_q = services.schedule_history_query_service
+    latest_summary_parse_state = _empty_latest_summary_parse_state()
     try:
         items = hist_q.list_recent(limit=1)
         latest_history = items[0].to_dict() if items else None
@@ -106,60 +63,81 @@ def batches_page():
             log_label="排产页",
         )
         latest_summary = latest_summary_parse_state.get("payload")
-    latest_summary_display = build_summary_display_state(
-        latest_summary if isinstance(latest_summary, dict) else None,
-        result_status=(latest_history or {}).get("result_status"),
-        parse_state=latest_summary_parse_state,
-    )
-    latest_warning_messages = _normalize_warning_texts((latest_summary or {}).get("warnings") if isinstance(latest_summary, dict) else None)
-    latest_warning_preview = list(latest_summary_display.get("warnings_preview") or [])
-    if not latest_warning_preview and not latest_summary_display.get("warning_total"):
-        latest_warning_preview = latest_warning_messages[:3]
-    latest_warning_total = int(latest_summary_display.get("warning_total") or len(latest_warning_messages))
-    latest_warning_hidden_count = int(
-        latest_summary_display.get("warning_hidden_count") or max(0, latest_warning_total - len(latest_warning_preview))
-    )
-    latest_objective_label = "-"
-    latest_algo = latest_summary.get("algo") if isinstance(latest_summary, dict) else None
-    latest_other_degradation_messages = list(latest_summary_display.get("display_secondary_degradation_messages") or [])
-    latest_auto_assign_persist_state = None
-    if isinstance(latest_algo, dict):
-        latest_objective_label = objective_label_for(latest_algo.get("objective"), algo=latest_algo)
-        config_snapshot = latest_algo.get("config_snapshot")
-        if isinstance(config_snapshot, dict):
-            latest_auto_assign_persist_state = build_auto_assign_persist_display_state(
-                config_snapshot.get("auto_assign_persist")
-            )
+    return latest_history, latest_summary, latest_summary_parse_state
 
-    return render_template(
-        "scheduler/batches.html",
-        title="排产调度",
-        batches=view_rows,
-        status=status,
-        only_ready=only_ready,
+
+def _build_scheduler_config_panel_state(cfg_svc: Any) -> Any:
+    cfg = cfg_svc.get_snapshot()
+    strategies = cfg_svc.get_available_strategies()
+    config_field_metadata = get_scheduler_visible_config_field_metadata()
+    config_field_warnings, config_degraded_fields, config_hidden_warnings = build_config_degraded_display_state(
+        cfg,
+        config_field_metadata=config_field_metadata,
+    )
+    preset_display_state = cfg_svc.get_preset_display_state(readonly=True, current_snapshot=cfg)
+    builtin_presets = [
+        ConfigService.BUILTIN_PRESET_DEFAULT,
+        ConfigService.BUILTIN_PRESET_DUE_FIRST,
+        ConfigService.BUILTIN_PRESET_MIN_CHANGEOVER,
+        ConfigService.BUILTIN_PRESET_IMPROVE_SLOW,
+    ]
+    return build_scheduler_config_panel_state(
         cfg=cfg,
         strategies=strategies,
         config_field_metadata=config_field_metadata,
         config_field_warnings=config_field_warnings,
         config_degraded_fields=config_degraded_fields,
-        config_degraded_field_labels=config_degraded_field_labels,
         config_hidden_warnings=config_hidden_warnings,
-        presets=presets,
-        active_preset=active_preset,
+        preset_display_state=preset_display_state,
         builtin_presets=builtin_presets,
-        current_config_state=current_config_state,
-        current_auto_assign_persist_state=current_auto_assign_persist_state,
+        auto_assign_persist_display_builder=build_auto_assign_persist_display_state,
+    )
+
+
+@bp.get("/")
+def batches_page():
+    services = g.services
+    batch_svc = services.batch_service
+    cfg_svc = services.config_service
+
+    filter_state = build_batches_filter_state(
+        has_status_arg="status" in request.args,
+        raw_status=request.args.get("status"),
+        raw_only_ready=request.args.get("only_ready"),
+    )
+    page, per_page = parse_page_args(request, default_per_page=100, max_per_page=300)
+    batches = batch_svc.list(status=filter_state.service_status)
+    view_rows = build_batch_rows(
+        batches,
+        only_ready=filter_state.only_ready,
+        priority_label=_priority_zh,
+        ready_label=_ready_zh,
+        batch_status_label=_batch_status_zh,
+    )
+    view_rows, pager = paginate_rows(view_rows, page, per_page)
+    config_panel = _build_scheduler_config_panel_state(cfg_svc)
+    latest_history, latest_summary, latest_summary_parse_state = _load_latest_schedule_history_panel_inputs(
+        services.schedule_history_query_service
+    )
+    latest_panel = build_latest_schedule_history_panel_state(
         latest_history=latest_history,
         latest_summary=latest_summary,
-        latest_summary_display=latest_summary_display,
-        latest_objective_label=latest_objective_label,
-        latest_auto_assign_persist_state=latest_auto_assign_persist_state,
-        latest_other_degradation_messages=latest_other_degradation_messages,
-        latest_warning_preview=latest_warning_preview,
-        latest_warning_total=latest_warning_total,
-        latest_warning_hidden_count=latest_warning_hidden_count,
-        default_start_dt=(datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d 08:00"),
+        latest_summary_parse_state=latest_summary_parse_state,
+        auto_assign_persist_display_builder=build_auto_assign_persist_display_state,
+    )
+    view_model = build_scheduler_batches_page_view_model(
+        filter_state=filter_state,
+        batches=view_rows,
         pager=pager,
+        config_panel=config_panel,
+        latest_panel=latest_panel,
+        current_time=datetime.now(),
+    )
+
+    return render_template(
+        "scheduler/batches.html",
+        title="排产调度",
+        **view_model.as_template_context(),
     )
 
 

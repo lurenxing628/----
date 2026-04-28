@@ -18,6 +18,7 @@ import os
 import re
 import sys
 import tempfile
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import quote
@@ -333,7 +334,11 @@ def main() -> None:
     expected_filename = quote("系统使用说明.md", safe="")
     _assert_contains(content_disposition, expected_filename, "说明书下载文件名未更新为“系统使用说明.md”")
 
-    with patch("web.routes.scheduler_config._resolve_scheduler_manual_md_path", return_value=(None, [])):
+    with ExitStack() as stack:
+        stack.enter_context(patch("web.routes.scheduler_config._resolve_scheduler_manual_md_path", return_value=(None, [])))
+        stack.enter_context(
+            patch("web.routes.domains.scheduler.scheduler_config._resolve_scheduler_manual_md_path", return_value=(None, []))
+        )
         dirty_download_resp = client.get(
             _build_url(
                 app,
