@@ -611,7 +611,7 @@ if not defined HAS_POWERSHELL (
   exit /b 0
 )
 set "CHROME_PROFILE_MARKER=%CHROME_PROFILE_DIR:'=''%"
-powershell -NoProfile -Command "$marker='%CHROME_PROFILE_MARKER%'.ToLowerInvariant(); $items=$null; if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { try { $items=@(Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction Stop) } catch { $items=$null } }; if ($null -eq $items) { if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) { exit 1 }; try { $items=@(Get-WmiObject Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction Stop) } catch { exit 1 } }; foreach ($item in @($items)) { $cmd=[string]$item.CommandLine; if ([string]::IsNullOrWhiteSpace($cmd)) { continue }; $cmdLower=$cmd.ToLowerInvariant(); if ($cmdLower.Contains('--user-data-dir') -and $cmdLower.Contains($marker)) { exit 0 } }; exit 2" >nul 2>&1
+powershell -NoProfile -Command "$marker='%CHROME_PROFILE_MARKER%'.ToLowerInvariant(); $prefix='--user-data-dir='; function Split-CommandLineArgs([string]$cmd) { $tokens=@(); if ($null -eq $cmd -or $cmd.Trim().Length -eq 0) { return $tokens }; $buf=New-Object System.Text.StringBuilder; $inQuotes=$false; for ($i=0; $i -lt $cmd.Length; $i++) { $ch=$cmd[$i]; if ($ch -eq [char]34) { $slashCount=0; $j=$i-1; while ($j -ge 0 -and $cmd[$j] -eq [char]92) { $slashCount++; $j-- }; if (($slashCount %% 2) -eq 0) { $inQuotes=-not $inQuotes; continue } }; if (-not $inQuotes -and [char]::IsWhiteSpace($ch)) { if ($buf.Length -gt 0) { $tokens += $buf.ToString(); $null=$buf.Remove(0,$buf.Length) }; continue }; [void]$buf.Append($ch) }; if ($buf.Length -gt 0) { $tokens += $buf.ToString() }; return $tokens }; function Test-ApsChromeCommandLine([string]$cmd) { foreach ($arg in @(Split-CommandLineArgs $cmd)) { $argLower=$arg.ToLowerInvariant(); if ($argLower.StartsWith($prefix) -and $argLower.Substring($prefix.Length) -eq $marker) { return $true } }; return $false }; $items=$null; if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { try { $items=@(Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction Stop) } catch { $items=$null } }; if ($null -eq $items) { if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) { exit 1 }; try { $items=@(Get-WmiObject Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction Stop) } catch { exit 1 } }; foreach ($item in @($items)) { $cmd=[string]$item.CommandLine; if (Test-ApsChromeCommandLine $cmd) { exit 0 } }; exit 2" >nul 2>&1
 set "CHROME_QUERY_RC=%ERRORLEVEL%"
 if "!CHROME_QUERY_RC!"=="0" (
   set "CHROME_ALIVE=1"
@@ -672,4 +672,3 @@ exit /b 0
 :log
 >>"%LAUNCHER_LOG%" echo [%date% %time%] %*
 exit /b 0
-

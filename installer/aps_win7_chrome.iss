@@ -77,12 +77,17 @@ begin
     '$ErrorActionPreference=''Stop''; ' +
     '$exactMarker=''' + ExactMarker + '''; ' +
     '$suffixMarker=''' + SuffixMarker + '''; ' +
+    '$prefix=''--user-data-dir=''; ' +
+    'function Split-CommandLineArgs([string]$cmd) { ' +
+    '  $tokens=@(); if ($null -eq $cmd -or $cmd.Trim().Length -eq 0) { return $tokens }; ' +
+    '  $buf=New-Object System.Text.StringBuilder; $inQuotes=$false; ' +
+    '  for ($i=0; $i -lt $cmd.Length; $i++) { ' +
+    '    $ch=$cmd[$i]; if ($ch -eq [char]34) { $slashCount=0; $j=$i-1; while ($j -ge 0 -and $cmd[$j] -eq [char]92) { $slashCount++; $j-- }; if (($slashCount % 2) -eq 0) { $inQuotes=-not $inQuotes; continue } }; ' +
+    '    if (-not $inQuotes -and [char]::IsWhiteSpace($ch)) { if ($buf.Length -gt 0) { $tokens += $buf.ToString(); $null=$buf.Remove(0,$buf.Length) }; continue }; ' +
+    '    [void]$buf.Append($ch) }; ' +
+    '  if ($buf.Length -gt 0) { $tokens += $buf.ToString() }; return $tokens }; ' +
     'function Test-ApsChromeCommandLine([string]$cmd) { ' +
-    '  if ([string]::IsNullOrWhiteSpace($cmd)) { return $false }; ' +
-    '  $cmdLower=$cmd.ToLowerInvariant(); ' +
-    '  if (-not $cmdLower.Contains(''--user-data-dir'')) { return $false }; ' +
-    '  if (-not [string]::IsNullOrWhiteSpace($suffixMarker) -and $cmdLower.Contains($suffixMarker)) { return $true }; ' +
-    '  if (-not [string]::IsNullOrWhiteSpace($exactMarker) -and $cmdLower.Contains($exactMarker)) { return $true }; ' +
+    '  foreach ($arg in @(Split-CommandLineArgs $cmd)) { $argLower=$arg.ToLowerInvariant(); if ($argLower.StartsWith($prefix)) { $profile=$argLower.Substring($prefix.Length); if ($null -ne $exactMarker -and $exactMarker.Trim().Length -gt 0 -and $profile -eq $exactMarker) { return $true }; if ($null -ne $suffixMarker -and $suffixMarker.Trim().Length -gt 0 -and $profile.EndsWith($suffixMarker)) { return $true } } }; ' +
     '  return $false }; ' +
 	    '$items=$null; ' +
 	    'if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { try { $items=@(Get-CimInstance Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { $items=$null } }; ' +

@@ -75,14 +75,21 @@ def _query_process_executable_path(pid: int) -> Optional[str]:
     script = (
         "$ErrorActionPreference='Stop';"
         f"$pid0={pid_i};"
-        "try {"
-        "$proc = Get-Process -Id $pid0 -ErrorAction Stop;"
-        "$path = [string]$proc.Path;"
-        "if ([string]::IsNullOrWhiteSpace($path)) { exit 2 };"
+        "$proc = $null;"
+        "if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {"
+        "try { $proc = Get-CimInstance Win32_Process -Filter \"ProcessId=$pid0\" -ErrorAction Stop | Select-Object -First 1 }"
+        "catch { $proc = $null }"
+        "}"
+        "if ($null -eq $proc) {"
+        "if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) { exit 1 };"
+        "try { $proc = Get-WmiObject Win32_Process -Filter \"ProcessId=$pid0\" -ErrorAction Stop | Select-Object -First 1 }"
+        "catch { exit 1 }"
+        "}"
+        "$path = [string]$proc.ExecutablePath;"
+        "if ($null -eq $path -or $path.Trim().Length -eq 0) { exit 2 };"
         "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;"
         "Write-Output $path;"
         "exit 0"
-        "} catch { exit 1 }"
     )
     rc, output = _run_powershell_text(script, timeout_s=8.0)
     if rc == 2:

@@ -105,12 +105,43 @@ def _chrome_pid_query_script(profile_dir: str) -> str:
         "}"
         "if ($null -eq $items) { exit 1 }"
         "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;"
+        "$prefix='--user-data-dir=';"
+        "function Split-CommandLineArgs([string]$cmd) {"
+        "  $tokens = @();"
+        "  if ($null -eq $cmd -or $cmd.Trim().Length -eq 0) { return $tokens };"
+        "  $buf = New-Object System.Text.StringBuilder;"
+        "  $inQuotes = $false;"
+        "  for ($i = 0; $i -lt $cmd.Length; $i++) {"
+        "    $ch = $cmd[$i];"
+        "    if ($ch -eq [char]34) {"
+        "      $slashCount = 0;"
+        "      $j = $i - 1;"
+        "      while ($j -ge 0 -and $cmd[$j] -eq [char]92) { $slashCount++; $j-- };"
+        "      if (($slashCount % 2) -eq 0) { $inQuotes = -not $inQuotes; continue }"
+        "    };"
+        "    if (-not $inQuotes -and [char]::IsWhiteSpace($ch)) {"
+        "      if ($buf.Length -gt 0) { $tokens += $buf.ToString(); $null = $buf.Remove(0, $buf.Length) };"
+        "      continue"
+        "    };"
+        "    [void]$buf.Append($ch)"
+        "  };"
+        "  if ($buf.Length -gt 0) { $tokens += $buf.ToString() };"
+        "  return $tokens"
+        "}"
+        "function Test-ApsChromeCommandLine([string]$cmd) {"
+        "  foreach ($arg in @(Split-CommandLineArgs $cmd)) {"
+        "    $argLower = $arg.ToLowerInvariant();"
+        "    if ($argLower.StartsWith($prefix)) {"
+        "      if ($argLower.Substring($prefix.Length) -eq $marker) { return $true }"
+        "    }"
+        "  };"
+        "  return $false"
+        "}"
         "foreach ($item in $items) {"
         "  $cmd = [string]$item.CommandLine;"
-        "  if (-not [string]::IsNullOrWhiteSpace($cmd)) {"
-        "  $cmdLower = $cmd.ToLowerInvariant(); if ($cmdLower.Contains('--user-data-dir') -and $cmdLower.Contains($marker)) {"
+        "  if (Test-ApsChromeCommandLine $cmd) {"
         "    Write-Output ([string][int]$item.ProcessId)"
-        "  } }"
+        "  }"
         "}"
         "exit 0"
     )
@@ -352,12 +383,7 @@ def _can_force_kill_runtime(status: Dict[str, Any]) -> bool:
     pid_match = status.get("pid_match")
     if pid_match is True:
         return True
-    if pid_match is False:
-        return False
-    expected_exe_path = str(status.get("expected_exe_path") or "").strip()
-    helper_exe_path = os.path.normcase(os.path.abspath(str(sys.executable or "").strip()))
-    expected_exe_norm = os.path.normcase(os.path.abspath(expected_exe_path)) if expected_exe_path else ""
-    return bool(expected_exe_norm and expected_exe_norm == helper_exe_path)
+    return False
 
 
 def _runtime_stop_failure_reason(status: Dict[str, Any], *, shutdown_requested: bool) -> str:
@@ -427,7 +453,7 @@ def _wait_for_runtime_stop(state_dir: str, deadline: float) -> Dict[str, Any]:
         if _runtime_stop_is_complete(status):
             return status
         time.sleep(0.25)
-    return status
+    return _classify_runtime_state(state_dir)
 
 
 def _try_force_kill_runtime(state_dir: str, status: Dict[str, Any]) -> Dict[str, Any]:

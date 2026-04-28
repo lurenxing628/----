@@ -243,8 +243,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/launcher_stop.py",
         symbol="_log_runtime_stop_failure",
-        line_start=459,
-        line_end=460,
+        line_start=485,
+        line_end=486,
         fallback_kind="silent_swallow",
     ),
     SilentFallbackSample(

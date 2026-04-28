@@ -937,6 +937,9 @@ M7-A launcher 门面瘦身与 runtime 启停修复：
 - `stop_aps_chrome_processes()` 仍返回 bool，`stop_runtime_from_dir()` 仍返回 0/1，`--runtime-stop` 外部合同不变。
 - APS Chrome 停止改为“最终复查同 profile 进程是否仍存在”；旧 pid 已经被连带关闭不再误报失败，最终仍有 profile 进程则继续失败。
 - Chrome 独立安装脚本同步改为记录 Stop-Process 失败 pid 后再最终复查，不改变 silent uninstall 的失败返回口径。
+- 复审后补齐启动 bat、Chrome 独立卸载脚本和 Win7 打包 smoke 的 profile 参数合同：不再在整条 `CommandLine` 里搜文本，而是只认真正拆出来的 `--user-data-dir` 参数；legacy 打包路径不再全局关闭所有 Chrome。
+- 对抗复审补齐 `\"` 转义引号场景，避免把其它参数里的假 `--user-data-dir` 错切成真参数；legacy 打包删除旧 dist 前只按旧 dist 内 Chrome 可执行文件路径做定点清理。
+- runtime 强杀仍保留给安装/卸载阻塞场景，但 pid 身份改为通过 CIM/WMI 的 `ExecutablePath` 确认；确认不了时不强杀，避免只信本地合同文件。
 - `tools/quality_gate_shared.py` 的启动链样本点已迁移到新文件对应处理点；`开发文档/技术债务治理台账.md` 的 accepted risk 引用已从旧 `launcher.py` id 迁移到新模块 id。
 
 M7-B plugin enabled-source 合同收窄：

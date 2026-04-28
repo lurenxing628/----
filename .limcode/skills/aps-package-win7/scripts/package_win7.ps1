@@ -194,12 +194,13 @@ function Wait-HttpReady([string]$url, [int]$timeoutSeconds) {
 }
 
 function Get-ChromeIdsByMarker([string]$marker) {
-    if ([string]::IsNullOrWhiteSpace($marker)) {
+    if ($null -eq $marker -or $marker.Trim().Length -eq 0) {
         return @()
     }
 
     $markerLower = $marker.ToLowerInvariant()
     $items = $null
+    $prefix = "--user-data-dir="
 
     if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
         try {
@@ -224,7 +225,14 @@ function Get-ChromeIdsByMarker([string]$marker) {
     $targetIds = New-Object System.Collections.Generic.List[int]
     foreach ($item in @($items)) {
         $cmdLine = [string]$item.CommandLine
-        if (-not [string]::IsNullOrWhiteSpace($cmdLine) -and $cmdLine.ToLowerInvariant().Contains($markerLower)) {
+        $matchedProfile = $false
+        foreach ($arg in @(Split-CommandLineArgs $cmdLine)) {
+            $argLower = $arg.ToLowerInvariant()
+            if ($argLower.StartsWith($prefix) -and $argLower.Substring($prefix.Length) -eq $markerLower) {
+                $matchedProfile = $true
+            }
+        }
+        if ($matchedProfile) {
             $targetIdValue = 0
             try {
                 $targetIdValue = [int]$item.ProcessId
@@ -239,6 +247,44 @@ function Get-ChromeIdsByMarker([string]$marker) {
     }
 
     return $targetIds.ToArray()
+}
+
+function Split-CommandLineArgs([string]$cmdLine) {
+    $tokens = @()
+    if ($null -eq $cmdLine -or $cmdLine.Trim().Length -eq 0) {
+        return $tokens
+    }
+
+    $buf = New-Object System.Text.StringBuilder
+    $inQuotes = $false
+    for ($i = 0; $i -lt $cmdLine.Length; $i++) {
+        $ch = $cmdLine[$i]
+        if ($ch -eq [char]34) {
+            $slashCount = 0
+            $j = $i - 1
+            while ($j -ge 0 -and $cmdLine[$j] -eq [char]92) {
+                $slashCount++
+                $j--
+            }
+            if (($slashCount % 2) -eq 0) {
+                $inQuotes = -not $inQuotes
+                continue
+            }
+        }
+        if (-not $inQuotes -and [char]::IsWhiteSpace($ch)) {
+            if ($buf.Length -gt 0) {
+                $tokens += $buf.ToString()
+                $null = $buf.Remove(0, $buf.Length)
+            }
+            continue
+        }
+        [void]$buf.Append($ch)
+    }
+
+    if ($buf.Length -gt 0) {
+        $tokens += $buf.ToString()
+    }
+    return $tokens
 }
 
 function Stop-ProcessTreeByIds([int[]]$targetIds) {
@@ -258,6 +304,69 @@ function Stop-ProcessTreeByIdsBestEffort([int[]]$targetIds) {
     try {
         Stop-ProcessTreeByIds $targetIds
     } catch {
+    }
+}
+
+function Get-ChromeIdsByExecutablePath([string]$chromeExe) {
+    if ($null -eq $chromeExe -or $chromeExe.Trim().Length -eq 0 -or -not (Test-Path $chromeExe)) {
+        return @()
+    }
+
+    $targetExe = (Resolve-Path $chromeExe).Path.ToLowerInvariant()
+    $items = $null
+    if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
+        try {
+            $items = @(Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction Stop)
+        } catch {
+            $items = $null
+        }
+    }
+
+    if ($null -eq $items) {
+        if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) {
+            return @()
+        }
+
+        try {
+            $items = @(Get-WmiObject Win32_Process -Filter "Name='chrome.exe'" -ErrorAction Stop)
+        } catch {
+            return @()
+        }
+    }
+
+    $targetIds = New-Object System.Collections.Generic.List[int]
+    foreach ($item in @($items)) {
+        $exePath = [string]$item.ExecutablePath
+        if ($null -eq $exePath -or $exePath.Trim().Length -eq 0) {
+            continue
+        }
+        if ($exePath.ToLowerInvariant() -eq $targetExe) {
+            $targetIdValue = 0
+            try {
+                $targetIdValue = [int]$item.ProcessId
+            } catch {
+                $targetIdValue = 0
+            }
+            if ($targetIdValue -gt 0 -and -not $targetIds.Contains($targetIdValue)) {
+                $targetIds.Add($targetIdValue)
+            }
+        }
+    }
+
+    return $targetIds.ToArray()
+}
+
+function Stop-LegacyDistChromeBestEffort {
+    if (-not (Test-Path "dist")) {
+        return
+    }
+
+    foreach ($distEntry in @(Get-ChildItem dist -Directory -ErrorAction SilentlyContinue)) {
+        $chromeExe = Join-Path $distEntry.FullName "tools\chrome109\chrome.exe"
+        $chromeIds = @(Get-ChromeIdsByExecutablePath $chromeExe)
+        if ($chromeIds.Count -gt 0) {
+            Stop-ProcessTreeByIdsBestEffort $chromeIds
+        }
     }
 }
 
@@ -471,9 +580,7 @@ function Invoke-LegacyPackageBuild([string]$iscc) {
     Initialize-OfflineChrome109 $chrome
     Test-PathOrThrow $chrome "Missing $chrome. Provide offline Chrome109 at tools\\Chrome.109.0.5414.120.x64\\chrome.exe or tools\\ungoogled-chromium_109*.zip"
 
-    cmd /c "taskkill /IM chrome.exe /F /T >nul 2>nul" | Out-Null
-    Start-Sleep -Seconds 2
-
+    Stop-LegacyDistChromeBestEffort
     Remove-PathWithRetry "build"
     Remove-PathWithRetry "dist"
 
