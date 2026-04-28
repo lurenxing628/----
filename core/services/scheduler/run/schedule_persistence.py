@@ -132,6 +132,50 @@ def _result_identity(result: Any, *, index: int) -> str:
     return ",".join(parts)
 
 
+def _build_validated_schedule_row(
+    result: Any,
+    *,
+    index: int,
+    allowed_op_ids: Optional[Set[int]],
+) -> Tuple[Optional[ValidatedScheduleRow], Optional[int], Optional[str]]:
+    identity = _result_identity(result, index=index)
+    if result is None:
+        return None, None, f"{identity}: result is None"
+    try:
+        op_id = int(getattr(result, "op_id", 0) or 0)
+    except Exception:
+        return None, None, f"{identity}: invalid op_id"
+    if op_id <= 0:
+        return None, None, f"{identity}: op_id must be positive"
+    if allowed_op_ids is not None and op_id not in allowed_op_ids:
+        return None, int(op_id), None
+
+    start_time = getattr(result, "start_time", None)
+    end_time = getattr(result, "end_time", None)
+    if start_time is None or end_time is None:
+        return None, None, f"{identity}: missing start_time/end_time"
+    try:
+        valid_time_range = start_time < end_time
+    except Exception:
+        return None, None, f"{identity}: start_time/end_time are not comparable"
+    if not valid_time_range:
+        return None, None, f"{identity}: start_time must be earlier than end_time"
+
+    source = str(getattr(result, "source", "") or "").strip().lower()
+    return (
+        ValidatedScheduleRow(
+            op_id=int(op_id),
+            machine_id=getattr(result, "machine_id", None),
+            operator_id=getattr(result, "operator_id", None),
+            start_time=start_time,
+            end_time=end_time,
+            source=source,
+        ),
+        None,
+        None,
+    )
+
+
 def build_validated_schedule_payload(
     results: List[Any],
     *,
@@ -144,52 +188,26 @@ def build_validated_schedule_payload(
     validation_errors: List[str] = []
 
     for index, result in enumerate(list(results or [])):
-        identity = _result_identity(result, index=index)
-        if result is None:
-            validation_errors.append(f"{identity}: result is None")
-            continue
-        try:
-            op_id = int(getattr(result, "op_id", 0) or 0)
-        except Exception:
-            validation_errors.append(f"{identity}: invalid op_id")
-            continue
-        if op_id <= 0:
-            validation_errors.append(f"{identity}: op_id must be positive")
-            continue
-        if allowed_op_ids is not None and op_id not in allowed_op_ids:
-            out_of_scope_op_ids.append(int(op_id))
-            continue
-
-        start_time = getattr(result, "start_time", None)
-        end_time = getattr(result, "end_time", None)
-        if start_time is None or end_time is None:
-            validation_errors.append(f"{identity}: missing start_time/end_time")
-            continue
-        try:
-            valid_time_range = start_time < end_time
-        except Exception:
-            validation_errors.append(f"{identity}: start_time/end_time are not comparable")
-            continue
-        if not valid_time_range:
-            validation_errors.append(f"{identity}: start_time must be earlier than end_time")
-            continue
-
-        source = str(getattr(result, "source", "") or "").strip().lower()
-        schedule_rows.append(
-            ValidatedScheduleRow(
-                op_id=int(op_id),
-                machine_id=getattr(result, "machine_id", None),
-                operator_id=getattr(result, "operator_id", None),
-                start_time=start_time,
-                end_time=end_time,
-                source=source,
-            )
+        row, out_of_scope_op_id, validation_error = _build_validated_schedule_row(
+            result,
+            index=index,
+            allowed_op_ids=allowed_op_ids,
         )
-        scheduled_op_ids.add(int(op_id))
-        if source == SourceType.INTERNAL.value:
-            assigned_by_op_id[int(op_id)] = {
-                "machine_id": getattr(result, "machine_id", None),
-                "operator_id": getattr(result, "operator_id", None),
+        if out_of_scope_op_id is not None:
+            out_of_scope_op_ids.append(int(out_of_scope_op_id))
+            continue
+        if validation_error is not None:
+            validation_errors.append(validation_error)
+            continue
+        if row is None:
+            continue
+
+        schedule_rows.append(row)
+        scheduled_op_ids.add(int(row.op_id))
+        if row.source == SourceType.INTERNAL.value:
+            assigned_by_op_id[int(row.op_id)] = {
+                "machine_id": row.machine_id,
+                "operator_id": row.operator_id,
             }
 
     if out_of_scope_op_ids:
