@@ -1,0 +1,41 @@
+feature: 2026-04-28-freeze-window-disabled-contract
+roadmap: p1-scheduler-debt-cleanup
+roadmap_item: freeze-window-disabled-contract
+
+steps:
+  - id: step-1
+    title: 收口冻结窗口 disabled/degraded 状态合同
+    status: done
+    exit_signal: freeze_disabled_reason、config_degraded、strict fail closed 和 summary 透传边界已有测试覆盖。
+  - id: step-2
+    title: 修正分析页降级展示
+    status: done
+    exit_signal: enabled=no 且 freeze_state=degraded 的真实页面渲染显示已降级，不显示普通未启用。
+  - id: step-3
+    title: 补录 CodeStable 承接和事实源映射
+    status: done
+    exit_signal: feature 三件套、items.yaml、roadmap 和 source-map 均指向同一 M2 结论。
+  - id: step-4
+    title: 跑目标验证和最终门禁
+    status: done
+    exit_signal: 页面、冻结窗口、summary、共享展示、债务口径、yaml 校验和 clean quality gate 通过。
+
+checks:
+  - id: check-1
+    title: 普通 disabled 原因可区分，且不记 degraded
+    status: passed
+  - id: check-2
+    title: 配置读取降级进入 degraded，strict 模式 fail closed
+    status: passed
+  - id: check-3
+    title: summary 不把 config_degraded 公开成 disabled reason
+    status: passed
+  - id: check-4
+    title: 分析页展示以 freeze_state 为主事实，不被 enabled=no 遮掉降级
+    status: passed
+  - id: check-5
+    title: P1-15 source-map 与 roadmap/items 结论一致
+    status: passed
+  - id: check-6
+    title: P1-14 和 full-test-debt 未被夸大关闭
+    status: passed

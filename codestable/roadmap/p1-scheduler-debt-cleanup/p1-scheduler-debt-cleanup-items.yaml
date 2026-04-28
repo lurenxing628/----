@@ -53,7 +53,7 @@ items:
     title: PR-2 冻结窗口 decision/meta 合同
     description: "按 PR-0 映射表处理冻结窗口事实源，固定 disabled、degraded、applied、unapplied、partially_applied 的区别。"
     status: done
-    feature: null
+    feature: 2026-04-28-freeze-window-disabled-contract
     minimal_loop: false
     depends_on: [schedule-input-external-merge-contract]
     debt_types: [complexity, test_coverage]
@@ -62,8 +62,10 @@ items:
       - core/services/scheduler/run/freeze_window.py
       - core/services/scheduler/summary/schedule_summary_freeze.py
       - core/services/scheduler/summary/schedule_summary_assembly.py
+      - templates/scheduler/analysis.html
       - tests/regression_freeze_window_fail_closed_contract.py
       - tests/regression_schedule_summary_freeze_state_contract.py
+      - tests/regression_analysis_page_version_default_latest.py
     exit_checks:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/regression_freeze_window_fail_closed_contract.py tests/regression_schedule_summary_freeze_state_contract.py
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/regression_freeze_window_bounds.py
@@ -75,7 +77,7 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --file codestable/roadmap/p1-scheduler-debt-cleanup/p1-scheduler-debt-cleanup-items.yaml
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
-    notes: "已完成：M2 按 roadmap 执行，未另开 feature 目录；freeze_window 现在用 freeze_disabled_reason 区分 config_disabled、no_days、no_previous_version、no_reschedulable_operations、no_previous_schedule_rows，并把 freeze_window_enabled/freeze_window_days 配置读取降级归入 degraded。summary 只在 freeze_state=disabled 时透传安全原因，配置降级不伪装成 disabled。未新增 fallback/静默兜底，未写入 input_fallback 或 config_fallback。P1-14 未关闭，build_freeze_window_seed 复杂度仍为 26/15；P1-15 已补状态合同测试；本轮没有减少 full-test-debt，active xfail 仍为 5 条 operator-machine/query service 旧登记。"
+    notes: "已完成：M2 已补录 feature 承接，feature 目录为 codestable/features/2026-04-28-freeze-window-disabled-contract；freeze_window 现在用 freeze_disabled_reason 区分 config_disabled、no_days、no_previous_version、no_reschedulable_operations、no_previous_schedule_rows，并把 freeze_window_enabled/freeze_window_days 配置读取降级归入 degraded。summary 只在 freeze_state=disabled 时透传安全原因，配置降级不伪装成 disabled。分析页已按 freeze_state 展示 degraded，不再被 enabled=no 显示成普通未启用。未新增 fallback/静默兜底，未写入 input_fallback 或 config_fallback。P1-14 未关闭，build_freeze_window_seed 复杂度仍为 26/15；P1-15 已补状态合同测试并同步 source-map；本轮没有减少 full-test-debt，active xfail 仍为 5 条 operator-machine/query service 旧登记。"
 
   - slug: downtime-resource-pool-contract
     title: PR-3 停机区间与自动分配资源池合同

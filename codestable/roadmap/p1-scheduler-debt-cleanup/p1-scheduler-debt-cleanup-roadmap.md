@@ -160,6 +160,9 @@ M2 执行完成回填：
 - 已保留全部旧 meta 字段；summary 只在 `freeze_state="disabled"` 时透传安全原因字段，`config_degraded` 仍走降级字段表达，不把内部错误原文、路径或数据库异常暴露给页面和历史解释。
 - 已补冻结窗口和 summary 合同测试，覆盖配置关闭、天数为 0、没有上一版本、没有可 seed、上一版本无行、成功应用、配置降级 relaxed/strict、缺前缀 strict、坏时间 strict，以及旧 warning 兼容不扩大。
 - 复审后修掉了一处下游语义风险：配置降级不再以 `freeze_disabled_reason` 暴露到 `result_summary.algo.freeze_window`，避免页面或历史 JSON 把 degraded 误读成 disabled。
+- 二次审查后又补修了分析页展示问题：页面现在以 `freeze_state` 为主事实，`enabled=no + freeze_state=degraded` 会显示“已降级”，不会被显示成普通“未启用”。
+- 已补录 CodeStable feature 承接：`codestable/features/2026-04-28-freeze-window-disabled-contract/`，并把 items.yaml 的 M2 条目指向该 feature。
+- 已同步 `drafts/p1-debt-source-map.md`：P1-15 从 `needs-recheck` 改为 `evidence-locked-by-M2`；后续搜索旧 P1 编号时排除 `codestable/**`，避免被本次补录文档自引用污染。
 - 本轮没有新增 fallback、没有新增静默兜底，也没有把冻结窗口问题混进 `input_fallback` 或 `config_fallback`。
 - P1-14 没关闭：`build_freeze_window_seed` 当前复杂度是 26，阈值是 15，所以没有运行台账自动刷新移除复杂度登记。P1-15 的冻结窗口状态合同已由本轮测试补证，但它不是 full-test-debt 减少。
 - `tools/check_full_test_debt.py` 仍显示 active xfail 为 5 条，集中在 operator-machine/query service 旧登记，本轮没有减少 full-test-debt。
@@ -605,6 +608,8 @@ M1 执行结果：
 - 已把 summary 输出收窄为“只在 `freeze_state="disabled"` 时透传 `freeze_disabled_reason`”；配置降级继续通过降级 code/reason/count 表达，避免页面和历史解释误读。
 - 已补 `tests/regression_freeze_window_fail_closed_contract.py` 与 `tests/regression_schedule_summary_freeze_state_contract.py`，并复跑冻结窗口、summary/config 下游、复杂度体检、ruff、pyright、full-test-debt、台账检查和 yaml 校验。
 - 已请 4 个 subagent 做只读复审：冻结窗口合同、summary/页面/落库下游、无新增 fallback 对抗、roadmap/items/提交边界。复审提出的 degraded 公开字段风险和 strict 无上一版本行覆盖缺口已修复并复跑。
+- Review finding 修复补充：分析页现在以 `freeze_state` 展示冻结窗口状态，`enabled=no + freeze_state=degraded` 不再显示成普通未启用；已补真实页面渲染测试。
+- CodeStable 承接补充：已补录 `2026-04-28-freeze-window-disabled-contract` feature 三件套，items.yaml 已指向该 feature，source-map 已同步 P1-15 为 `evidence-locked-by-M2`。
 - P1-14 当前不关闭：`build_freeze_window_seed` 复杂度仍为 26，高于阈值 15；未运行台账自动刷新移除该登记。P1-15 的状态合同已补测试锁住，但不写成 full-test-debt 减少。
 - `tools/check_full_test_debt.py` 仍为 5 条 active xfail，集中在 operator-machine/query service 旧登记；本 PR 不减少 full-test-debt。
 
@@ -619,6 +624,7 @@ M1 执行结果：
 承接 PR-2 / M2 已完成结果：
 
 - 冻结窗口状态合同已经收口，下一步只处理停机区间和自动分配资源池，不继承 M2 的冻结窗口 proof 当作停机 proof。
+- 二次审查发现的 M2 尾巴也已补齐：分析页降级展示已修正，M2 feature 承接已补录，P1-15 source-map 已同步。PR-3 仍不能继承这些 proof 当作停机或资源池 proof。
 - M2 没有减少 full-test-debt，active xfail 仍是 5 条 operator-machine/query service 旧登记；PR-3 如果要声明债务变化，必须用自己的测试和台账检查重新证明。
 - M2 没有关闭 P1-14 复杂度登记，说明 PR-3 不能把“冻结窗口复杂度未降”当作自己范围内的问题处理；PR-3 只从 `resource_pool_builder.py` 和 `machine_downtime_repo.py` 的当前事实源出发。
 
@@ -758,3 +764,4 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：复核 M0 后补硬执行口径：PR-0/M0 作为 roadmap 内部准备项标记为 `done`，P1 搜索证明排除 `.git/` 元数据，M0 proof 明确不是 clean quality gate，并把“不新增 if/fallback/兜底/静默回退逻辑”写成全局停止条件。
 - 2026-04-28：执行 M1，补齐排产输入、模板查询和服务汇总链路合同测试；最小拆分 `schedule_input_builder.py` 与 `schedule_template_lookup.py` 后刷新台账，P1-8/P1-9 两条复杂度登记已由脚本移除，P1-10 测试覆盖已补齐；PR-2 头部已写入 M1 完成内容和不可继承的 proof 边界。
 - 2026-04-28：执行 M2，给冻结窗口 disabled 原因补上 `freeze_disabled_reason`，把配置读取降级归入 `degraded` 并保持 strict fail closed；summary 只透传安全 disabled 原因，配置降级不伪装成 disabled；复审发现的问题已修复。P1-14 因复杂度仍为 26/15 保持打开，P1-15 已补状态合同测试，本轮未减少 full-test-debt。
+- 2026-04-28：修复 M2 二次 review finding：分析页按冻结窗口状态展示 degraded，不再把配置降级显示成普通未启用；补录 `2026-04-28-freeze-window-disabled-contract` feature 三件套；同步 P1-15 source-map 为 `evidence-locked-by-M2`，并在 M3 头部写清只能承接停机和资源池。
