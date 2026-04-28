@@ -913,26 +913,58 @@ PR-8 执行结果回填：
 - `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 已移除 P1-19 对应的 `batches_page` 复杂度登记；`complexity_count` 从 38 降到 37。
 - `tools/check_full_test_debt.py` 仍是 5 条 active xfail，`collected_count=772`，本轮不写 full-test-debt 减少。
 
-### PR-9：runtime/plugin/infra 支线
+### PR-9 / M7：runtime/plugin/infra 支线
 
-PR-9 头部承接 PR-8 完成结果：
+M7 头部承接 PR-8 完成结果：
 
 - PR-8 只证明 `/scheduler/` 批次首页的筛选状态、批次展示行、配置面板、最近历史面板、模板“全部状态”选项和 viewmodel 装配。
 - PR-8 不证明 runtime/plugin/infra，不证明启动链、插件 enabled source、Chrome 停机、launcher 分类或 plugin degradation。
-- PR-9 仍只能按 P1-20 到 P1-24 的当前事实源逐项取证；P1-25 旧编号和具体路径继续证据不足，不得直接开修。
-- PR-9 不得继承 PR-8 的页面 proof 当作启动链或插件 proof；如要前移，必须有启动链专项测试或 `scripts/run_quality_gate.py` 实际变红并有失败日志路径。
+- M7 深挖后确认不能把 P1-20..P1-25 塞进一个宽泛 PR：P1-20/P1-21/P1-22 属于 launcher/runtime/Chrome stop；P1-23 属于 plugin enabled-source；P1-24 只复核 plugin fallback；P1-25 继续证据不足，不开修。
+- M7 不继承 PR-8 的页面 proof；所有结论都必须来自启动链专项测试、plugin 专项测试、架构体检、台账检查和 CodeStable 回填。
 
-目标：
+M7-0 证据校准和设计落地：
 
-- 处理映射表中 P1-20 到 P1-24 对应的 runtime/plugin/infra 事实源。
-- P1-25 当前工作树证据不足，不得直接开修；需要先补具体路径、台账条目或测试 nodeid。
-- 只有启动链专项测试或 `scripts/run_quality_gate.py` 实际变红，并有失败日志路径时，PR-9 才可以前移到 PR-3 后面。
+- 两轮 subagent 深挖确认 `web/bootstrap/launcher.py` 是启动现场门面，不是普通工具文件；`entrypoint.py`、`scripts/run_quality_gate.py`、批处理、安装包和测试都依赖它的公开函数。
+- `launcher.py` 的根因是职责混在一起，但公开函数名、状态文件、合同字段和 CLI 返回码不能改。
+- Chrome stop 有真行为问题：多进程 Chrome 中一个 pid 被杀可能连带带走另一个 pid，旧实现按“每个旧 pid 都杀成功”判断，会误报失败。
+- `web/bootstrap/plugins.py:_apply_enabled_sources` 的根因是插件开关来源判定、公开状态行整理、错误脱敏和整体来源汇总混在一起。
+- P1-24 没有找到可包装成 open bug 的 plugin fallback；P1-25 没有找到当前路径、台账条目或测试 nodeid。
 
-退出条件：
+M7-A launcher 门面瘦身与 runtime 启停修复：
 
-- 不插队排产主链，除非门禁或启动链专项测试明确变红并有失败日志。
-- runtime lock、Chrome 停机、插件 enabled source、插件 degradation 有专项测试。
-- infra 类 P1 不被模糊塞进 plugin，需要单独标出事实源和退出条件。
+- 新增 `web/bootstrap/launcher_network.py`、`launcher_paths.py`、`launcher_processes.py`、`launcher_contracts.py`、`launcher_stop.py`。
+- `web/bootstrap/launcher.py` 保留公开门面和旧测试兼容入口，从 1204 行降到 177 行；新模块都仍在 `web/bootstrap/**/*.py` 扫描范围内，没有把债移出门禁。
+- `stop_aps_chrome_processes()` 仍返回 bool，`stop_runtime_from_dir()` 仍返回 0/1，`--runtime-stop` 外部合同不变。
+- APS Chrome 停止改为“最终复查同 profile 进程是否仍存在”；旧 pid 已经被连带关闭不再误报失败，最终仍有 profile 进程则继续失败。
+- Chrome 独立安装脚本同步改为记录 Stop-Process 失败 pid 后再最终复查，不改变 silent uninstall 的失败返回口径。
+- `tools/quality_gate_shared.py` 的启动链样本点已迁移到新文件对应处理点；`开发文档/技术债务治理台账.md` 的 accepted risk 引用已从旧 `launcher.py` id 迁移到新模块 id。
+
+M7-B plugin enabled-source 合同收窄：
+
+- `_apply_enabled_sources()` 已拆成 `_resolve_enabled_source()`、`_public_plugin_status_row()`、`_config_source_summary()`。
+- 新增真实可选插件默认关闭测试：`pandas_excel_backend` 和 `ortools_probe` 无配置时默认关闭、不注册能力，Excel 默认仍走 openpyxl。
+- 系统页新增插件留痕状态和冲突能力展示，状态结构里的 `telemetry_persisted` 与 `conflicted_capabilities` 不再只能靠内部数据查看。
+- P1-24 只写“已复核”，不包装成已修 open bug；P1-25 保持证据不足。
+
+M7 执行结果回填：
+
+- P1-20：`oversize:web-bootstrap-launcher` 已解除，超长登记从 9 降到 8。
+- P1-21：`_classify_runtime_state` 复杂度登记已解除。
+- P1-22：`_list_aps_chrome_pids`、`stop_runtime_from_dir` 复杂度登记已解除，同批关闭 `acquire_runtime_lock` 这个 launcher 复杂度兄弟项。
+- P1-23：`_apply_enabled_sources` 复杂度登记已解除。
+- P1-24：复核后没有 open plugin fallback 修复项，本轮只补用户可见状态。
+- P1-25：证据不足，未处理。
+- `scripts/sync_debt_ledger.py check` 已通过，当前 `complexity_count=32`、`oversize_count=8`、`silent_fallback_count=154`、`test_debt_count=5`。
+- `tools/check_full_test_debt.py` 仍为 5 条 active xfail，本轮不声明 full-test-debt 减少。
+- 代码完成后已调用 4 路 subagent 只读审查：兜底审查、启动入口审查和插件合同审查均未发现阻断问题；台账审查发现 accepted risk 说明仍有乱码，已修成可读中文并重跑台账校验通过。
+
+后续任务头部承接说明：
+
+- M7 已把 runtime/plugin/infra 支线中有当前事实源的 P1-20/P1-21/P1-22/P1-23 处理完成。
+- 后续如果继续做启动链，只能基于新 `launcher_*` 模块和当前台账事实源，不得再引用旧 `launcher.py` 行号或旧复杂度登记。
+- 后续如果继续做 plugin，只能基于新 enabled-source 合同和真实 open 台账项；P1-24 不能被当作未修 bug 反复包装。
+- 后续看 M7 台账时，以新模块 id 和已修复的 accepted risk 中文说明为准；不要再引用旧 `launcher.py` 接受风险说明或乱码备注。
+- P1-25 仍然证据不足，除非补出具体路径、台账条目或测试 nodeid，否则不得开修。
 
 ## 排期建议
 
@@ -991,3 +1023,4 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：完成 PR-7 `/scheduler/run` ViewResult；把页面提示组装从 route 搬到纯展示构建层，route 只保留表单、服务调用、ViewResult、flash、异常边界和跳转；复审后补强跳转目标和普通异常通用提示测试，移除 P1-18 复杂度登记，`complexity_count=38`；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-8 头部已写清不能继承 `/scheduler/run` proof 当作 `batches_page()` proof。
 - 2026-04-28：完成 PR-8 `/scheduler/` 批次首页 viewmodel；把筛选状态、批次展示行、配置面板、最近历史面板和模板上下文从 route 搬到纯展示构建层，route 只保留请求读取、服务调用、分页、原有最近历史读取失败日志边界、viewmodel 和渲染；复审后补齐 `status=` 的全部状态下拉选项、精确空 status 测试、非 pending 状态控件隐藏测试，并移除 P1-19 复杂度登记，`complexity_count=37`；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-9 头部已写清不能继承页面 proof 当作 runtime/plugin/infra proof。
 - 2026-04-28：处理 PR-8 对抗审核 findings；批次首页标题和空结果文案改成固定中性文案，配置面板装配 helper 从 route 文件移到共享配置展示 helper，测试补齐 `only_ready` 三态、非 pending 状态、空结果文案、summary 解析失败不泄漏原文和 route 使用 viewmodel 输出；没有新增 fallback/兜底/静默吞错。
+- 2026-04-28：完成 M7 runtime/plugin/infra 支线校准与执行；M7 拆成证据校准、launcher/runtime/Chrome stop、plugin enabled-source 三段，P1-20/P1-21/P1-22/P1-23 关闭当前事实源，P1-24 只复核，P1-25 继续证据不足；四路 subagent 复审后修复 accepted risk 乱码说明，最终台账为 `complexity_count=32`、`oversize_count=8`、`silent_fallback_count=154`、`test_debt_count=5`，本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt。

@@ -1,0 +1,38 @@
+feature: 2026-04-28-plugin-enabled-source-contract
+roadmap: p1-scheduler-debt-cleanup
+roadmap_item: plugin-enabled-source-contract
+created: 2026-04-28
+
+steps:
+  - id: step-1
+    title: 补插件默认关闭和来源汇总测试
+    status: done
+    exit_signal: 真实 pandas/ortools 插件默认关闭、无能力注册、openpyxl 默认路径和来源汇总均被测试覆盖。
+
+  - id: step-2
+    title: 拆 _apply_enabled_sources 职责
+    status: done
+    exit_signal: 来源判定、公开状态行整理、整体来源汇总已经拆成小函数。
+
+  - id: step-3
+    title: 补系统页插件可见信息
+    status: done
+    exit_signal: 系统页模板包含留痕状态和冲突能力信息。
+
+  - id: step-4
+    title: 验证、复审和回填
+    status: done
+    exit_signal: plugin 回归、架构检查、台账检查和 subagent 复审完成。
+
+checks:
+  - id: check-1
+    title: 不改变 PluginManager 默认关闭合同
+    status: passed
+
+  - id: check-2
+    title: P1-24 只复核，不包装成 open bug
+    status: passed
+
+  - id: check-3
+    title: 没有新增 plugin fallback 或兜底分支
+    status: passed

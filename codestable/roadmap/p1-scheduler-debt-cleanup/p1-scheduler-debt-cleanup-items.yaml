@@ -246,20 +246,64 @@ items:
       - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
     notes: "已完成：P1-19 旧编号本身未找到独立来源，本轮只处理映射表列出的 batches_page 复杂度、UI 合同和测试覆盖事实源。已新增 SchedulerBatchesPageViewModel，把 /scheduler/ 批次首页的筛选状态、批次展示行、配置面板、最近历史面板和模板上下文从 route 搬到纯展示构建层；route 只保留请求读取、服务调用、分页、原有最近历史读取失败日志边界、配置面板共享构建器调用、viewmodel 构建和渲染。复审后补齐 status= 的全部状态下拉选项、精确空 status 测试、非 pending 状态控件隐藏测试、only_ready 三态测试、筛选空结果文案测试和 route 使用 viewmodel 输出测试，并把源码字符串测试改为运行时委托验证。后续对抗审核修正了全部状态页标题、筛选空结果文案和配置面板 helper 残留。没有新增 fallback、兜底、静默吞错、新 reason 或新 details；没有改 /scheduler/run、批次管理页、Excel 批次页、配置保存链路或共享 summary 展示规则。scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields 后 complexity_count 从 38 降到 37，P1-19 复杂度登记移除；本轮不声明 full-test-debt 减少，active xfail 仍为 5 条，collected_count=772。"
 
-  - slug: runtime-plugin-infra-sidecar
-    title: PR-9 runtime/plugin/infra 支线
-    description: "按 PR-0 映射表处理 runtime、launcher、plugin 和 infra 支线事实源，只有启动链门禁实际变红才前移。"
-    status: planned
+  - slug: runtime-plugin-infra-scope-calibration
+    title: M7-0 runtime/plugin/infra 证据校准
+    description: "把 PR-9 从宽泛支线改成 M7-0/M7-A/M7-B 三段，写清 P1-25 证据不足、P1-24 只复核、启动链台账刷新方式和公开入口边界。"
+    status: done
     feature: null
     minimal_loop: false
     depends_on: [p1-debt-source-map]
     debt_types: [startup_regression, complexity, oversize, silent_fallback, test_coverage]
     old_p1: [P1-20, P1-21, P1-22, P1-23, P1-24, P1-25]
     primary_paths:
-      - web/bootstrap/launcher.py
-      - web/bootstrap/plugins.py
+      - codestable/roadmap/p1-scheduler-debt-cleanup/p1-scheduler-debt-cleanup-roadmap.md
+      - codestable/roadmap/p1-scheduler-debt-cleanup/p1-scheduler-debt-cleanup-items.yaml
+      - codestable/roadmap/p1-scheduler-debt-cleanup/drafts/p1-debt-source-map.md
     exit_checks:
-      - python tools/check_full_test_debt.py
-      - python scripts/sync_debt_ledger.py check
-      - python scripts/run_quality_gate.py
-    notes: "承接 PR-8：PR-8 只证明 /scheduler/ 批次首页的筛选状态、批次展示行、配置面板、最近历史面板、模板全部状态选项和 viewmodel 装配，不证明 runtime/plugin/infra。PR-9 只能处理 P1-20..P1-24 可关联到的 oversize/complexity/fallback 事实源，P1-25 旧编号和具体路径仍证据不足；只有启动链专项测试或 run_quality_gate 实际变红并有日志路径时才前移。"
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python codestable/tools/validate-yaml.py --dir codestable/roadmap/p1-scheduler-debt-cleanup
+    notes: "已完成：两轮子代理深挖后确认 M7 真边界不是泛泛 runtime/plugin/infra。P1-20/P1-21/P1-22 归 launcher 门面瘦身与 runtime/Chrome stop；P1-23 归 plugin enabled-source；P1-24 只复核 plugin fallback 是否仍 open；P1-25 证据不足，不开修。本条只做计划校准，不写 full-test-debt 减少。"
+
+  - slug: runtime-launcher-stop-contract
+    title: M7-A launcher 门面瘦身与 runtime 启停修复
+    description: "保留 launcher.py 公开门面，把路径、合同、锁、进程探测和停止流程下沉；修正 APS Chrome 停止按旧 pid 判断导致的误报失败。"
+    status: done
+    feature: 2026-04-28-runtime-launcher-stop-contract
+    minimal_loop: false
+    depends_on: [runtime-plugin-infra-scope-calibration]
+    debt_types: [startup_regression, complexity, oversize, silent_fallback, test_coverage]
+    old_p1: [P1-20, P1-21, P1-22]
+    primary_paths:
+      - web/bootstrap/launcher.py
+      - web/bootstrap/launcher_network.py
+      - web/bootstrap/launcher_paths.py
+      - web/bootstrap/launcher_processes.py
+      - web/bootstrap/launcher_contracts.py
+      - web/bootstrap/launcher_stop.py
+      - installer/aps_win7_chrome.iss
+      - tests/test_win7_launcher_runtime_paths.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_win7_launcher_runtime_paths.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_runtime_contract_launcher.py tests/regression_shared_runtime_state.py tests/regression_runtime_lock_reloader_parent_skip.py tests/regression_runtime_stop_cli.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold tests/test_architecture_fitness.py::test_no_silent_exception_swallow tests/test_architecture_fitness.py::test_startup_silent_fallback_samples
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+    notes: "已完成：launcher.py 从 1204 行降到 177 行；新增 launcher_network / launcher_paths / launcher_processes / launcher_contracts / launcher_stop，且都仍在 web/bootstrap/**/*.py 扫描范围内。Chrome stop 改为最终复查同 profile 进程是否仍存在；stop_aps_chrome_processes 仍返回 bool，--runtime-stop 仍返回 0/1。启动链台账刷新后 oversize_count 从 9 降到 8，complexity_count 从 37 降到 32 的一部分来自本条；本条不声明 full-test-debt 减少。"
+
+  - slug: plugin-enabled-source-contract
+    title: M7-B plugin enabled-source 合同收窄
+    description: "拆清插件开关来源判定、公开状态行整理和整体来源汇总；补真实可选插件默认关闭与系统页可见信息测试。"
+    status: done
+    feature: 2026-04-28-plugin-enabled-source-contract
+    minimal_loop: false
+    depends_on: [runtime-plugin-infra-scope-calibration]
+    debt_types: [startup_regression, complexity, silent_fallback, test_coverage, ui_contract]
+    old_p1: [P1-23, P1-24]
+    primary_paths:
+      - web/bootstrap/plugins.py
+      - templates/system/backup.html
+      - tests/test_plugin_enabled_source_contract.py
+    exit_checks:
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_plugin_enabled_source_contract.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_plugin_bootstrap_config_failure_visible.py tests/regression_plugin_bootstrap_injects_config_reader.py tests/regression_plugin_bootstrap_telemetry_failure_visible.py tests/regression_plugin_capability_conflict_visible.py
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_architecture_fitness.py::test_known_complexity_entries_still_exceed_threshold
+      - PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check
+    notes: "已完成：真实 pandas_excel_backend 和 ortools_probe 在无配置时默认关闭、不注册能力，Excel 默认仍走 openpyxl；_apply_enabled_sources 已拆成来源判定、公开状态行整理和整体来源汇总。系统页展示 telemetry_persisted 和 conflicted_capabilities。P1-24 只复核，不包装成 open bug；P1-25 继续证据不足。"

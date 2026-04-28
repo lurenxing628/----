@@ -229,8 +229,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/plugins.py",
         symbol="bootstrap_plugins",
-        line_start=160,
-        line_end=169,
+        line_start=178,
+        line_end=187,
         fallback_kind="observable_degrade",
     ),
     SilentFallbackSample(
@@ -241,10 +241,10 @@ STARTUP_SAMPLE_EXPECTATIONS = [
         fallback_kind="cleanup_best_effort",
     ),
     SilentFallbackSample(
-        path="web/bootstrap/launcher.py",
-        symbol="stop_runtime_from_dir",
-        line_start=1202,
-        line_end=1203,
+        path="web/bootstrap/launcher_stop.py",
+        symbol="_log_runtime_stop_failure",
+        line_start=459,
+        line_end=460,
         fallback_kind="silent_swallow",
     ),
     SilentFallbackSample(

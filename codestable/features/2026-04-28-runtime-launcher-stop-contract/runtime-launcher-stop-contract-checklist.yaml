@@ -1,0 +1,42 @@
+feature: 2026-04-28-runtime-launcher-stop-contract
+roadmap: p1-scheduler-debt-cleanup
+roadmap_item: runtime-launcher-stop-contract
+created: 2026-04-28
+
+steps:
+  - id: step-1
+    title: 校准 M7-A 计划和公开入口边界
+    status: done
+    exit_signal: roadmap、items.yaml 和 source-map 已写清 P1-20/P1-21/P1-22 范围，P1-25 排除。
+
+  - id: step-2
+    title: 补 Chrome stop 和 launcher 门面合同测试
+    status: done
+    exit_signal: 测试覆盖最终复查、残留失败、无 logger 可见原因、CLI 参数和公开函数门面。
+
+  - id: step-3
+    title: 拆 launcher 职责并修 Chrome stop 判断
+    status: done
+    exit_signal: launcher.py 只保留门面，路径、合同、锁、进程探测、停止流程已下沉，新模块仍在启动链扫描范围内。
+
+  - id: step-4
+    title: 刷新台账、复审和验收
+    status: done
+    exit_signal: 启动链台账、样本坐标、专项测试、架构检查和 subagent 复审完成。
+
+checks:
+  - id: check-1
+    title: 公开函数名、返回值、状态文件和 CLI 返回码不变
+    status: passed
+
+  - id: check-2
+    title: APS Chrome 只清理专用 profile，成功以最终复查为准
+    status: passed
+
+  - id: check-3
+    title: 新模块没有逃出 web/bootstrap 扫描范围
+    status: passed
+
+  - id: check-4
+    title: P1-20/P1-21/P1-22 只写 complexity/oversize/startup proof，不写 full-test-debt 减少
+    status: passed
