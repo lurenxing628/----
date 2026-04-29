@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 from core.models import Machine
 
 from .base_repo import BaseRepository
+from .reference_checks import exists_any_nonblank_reference, exists_value_reference
 
 
 class MachineRepository(BaseRepository):
@@ -94,41 +95,33 @@ class MachineRepository(BaseRepository):
         self.execute("DELETE FROM Machines")
 
     def is_referenced_by_batch_operations(self, machine_id: str) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM BatchOperations WHERE machine_id = ? LIMIT 1",
-                (machine_id,),
-                default=None,
-            )
-            is not None
+        return exists_value_reference(
+            self,
+            table="BatchOperations",
+            column="machine_id",
+            value=machine_id,
         )
 
     def is_referenced_by_schedule(self, machine_id: str) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM Schedule WHERE machine_id = ? LIMIT 1",
-                (machine_id,),
-                default=None,
-            )
-            is not None
+        return exists_value_reference(
+            self,
+            table="Schedule",
+            column="machine_id",
+            value=machine_id,
         )
 
     def has_any_batch_operations_machine_reference(self) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM BatchOperations WHERE machine_id IS NOT NULL AND TRIM(machine_id) <> '' LIMIT 1",
-                default=None,
-            )
-            is not None
+        return exists_any_nonblank_reference(
+            self,
+            table="BatchOperations",
+            column="machine_id",
         )
 
     def has_any_schedule_machine_reference(self) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM Schedule WHERE machine_id IS NOT NULL AND TRIM(machine_id) <> '' LIMIT 1",
-                default=None,
-            )
-            is not None
+        return exists_any_nonblank_reference(
+            self,
+            table="Schedule",
+            column="machine_id",
         )
 
     def list_for_export(self) -> List[Dict[str, Any]]:

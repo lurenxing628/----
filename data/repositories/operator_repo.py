@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 from core.models import Operator
 
 from .base_repo import BaseRepository
+from .reference_checks import exists_any_nonblank_reference, exists_value_reference
 
 
 class OperatorRepository(BaseRepository):
@@ -88,39 +89,31 @@ class OperatorRepository(BaseRepository):
     # 引用检查（给 Service 层做删除/清空保护）
     # -------------------------
     def is_referenced_by_batch_operations(self, operator_id: str) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM BatchOperations WHERE operator_id = ? LIMIT 1",
-                (operator_id,),
-                default=None,
-            )
-            is not None
+        return exists_value_reference(
+            self,
+            table="BatchOperations",
+            column="operator_id",
+            value=operator_id,
         )
 
     def is_referenced_by_schedule(self, operator_id: str) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM Schedule WHERE operator_id = ? LIMIT 1",
-                (operator_id,),
-                default=None,
-            )
-            is not None
+        return exists_value_reference(
+            self,
+            table="Schedule",
+            column="operator_id",
+            value=operator_id,
         )
 
     def has_any_batch_operations_operator_reference(self) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM BatchOperations WHERE operator_id IS NOT NULL AND TRIM(operator_id) <> '' LIMIT 1",
-                default=None,
-            )
-            is not None
+        return exists_any_nonblank_reference(
+            self,
+            table="BatchOperations",
+            column="operator_id",
         )
 
     def has_any_schedule_operator_reference(self) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM Schedule WHERE operator_id IS NOT NULL AND TRIM(operator_id) <> '' LIMIT 1",
-                default=None,
-            )
-            is not None
+        return exists_any_nonblank_reference(
+            self,
+            table="Schedule",
+            column="operator_id",
         )
