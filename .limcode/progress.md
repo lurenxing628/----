@@ -1,82 +1,69 @@
 # 项目进度
 - Project: APS Test
-- Updated At: 2026-04-14T14:13:37.575Z
+- Updated At: 2026-04-29T22:48:10+08:00
 - Status: active
-- Phase: implementation
+- Phase: closure
 
 ## 当前摘要
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
-- 当前进度：1/1 个里程碑已完成；最新：sp04-complete
-- 当前焦点：SP04 请求级容器与仓储束已完成并完成门禁复验
-- 最新结论：本次未提交改动整体质量较好，关键目标基本达成，未发现明确的 P0/P1 功能性 bug；但请求级容器迁移尚未全量收口，且仍残留少量兼容垫片与一处静默吞异常，因此建议按“有条件通过”处理，并在后续批次继续收口。
-- 下一步：优先明确请求级容器剩余直连路由的迁移边界；随后收紧 scheduler_batch_detail 的弱兜底、评估删除 schedule_input_collector 的旧签名兼容垫片，并为 ui_mode 渲染期注入失败补 warning once。
+- 当前进度：P1 排产债务路线图 13/13 项已完成；最终合并还差工作区收口和干净门禁证明。
+- 当前焦点：把批次页全选框修复、最终复审证据和本进度说明按主题提交，然后在干净工作区重新跑质量门禁。
+- 最新结论：多路复审没有发现当前 P1 已提交代码存在阻塞合并的 P0/P1/P2 问题；当前未提交的批次页修复是必要尾项，用来避免非待排或全部状态列表还显示“全选”框。full-test-debt 仍是 5 条已登记旧 xfail，本轮不能写成减少。schema v7 会拦住已有重复 Schedule(version, op_id) 的老库，部署前必须先备份并人工清理重复排程行。
+- 下一步：先提交批次页尾项和复审证据；确认工作区干净后运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`；通过后再快进合并回 `main`，并在 `main` 上复跑同一门禁。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
 
 <!-- LIMCODE_PROGRESS_ARTIFACTS_START -->
-- 计划：`.limcode/plans/20260405_技术债务最终合并修复plan/subplans/SP04_请求级容器与仓储束.md`
-- 审查：`.limcode/review/2026-04-14_请求级容器与排产链路深度review.md`
+- 路线图：`codestable/roadmap/p1-scheduler-debt-cleanup/p1-scheduler-debt-cleanup-roadmap.md`
+- 条目清单：`codestable/roadmap/p1-scheduler-debt-cleanup/p1-scheduler-debt-cleanup-items.yaml`
+- 映射表：`codestable/roadmap/p1-scheduler-debt-cleanup/drafts/p1-debt-source-map.md`
+- 审查：`.limcode/review/a94d3ac048b81c50a6279c1b1119b6fad4c4a14a_deep_review.md`
+- 直接证据：`evidence/DeepReview/a94d3ac_round4_git_evidence/`
 <!-- LIMCODE_PROGRESS_ARTIFACTS_END -->
 
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [x] 阶段0/0.5：核实现状基线、直接装配命中、构造签名与容器接口冻结口径  `#sp04-baseline`
-- [x] 阶段1：建立仓储束并改造 ScheduleService，保持旧公开签名与 svc.<repo> 代理面稳定  `#sp04-bundle`
-- [x] 阶段2/3：建立请求级服务容器并接入工厂与自定义测试工厂  `#sp04-container`
-- [x] 阶段5/6：残余直接装配清点、门禁更新、治理台账与交接文档同步  `#sp04-gates-docs`
-- [x] 阶段4：两批路由切换到请求级容器，并改造 web/ui_mode.py 与相关回归  `#sp04-routes-ui`
-- [x] 运行最小验证集合并根据结果收口  `#sp04-verify`
+- [x] 路线图收口：`p1-scheduler-debt-cleanup` 已标记 completed，13 个 item 全部 done。 `#p1-roadmap`
+- [x] 最终复审：多路检查确认 P1 主线、页面、runtime/plugin/Win7 支线没有发现阻塞合并问题。 `#p1-review`
+- [x] 批次页尾项：非待排和全部状态列表不再显示表头“全选”框，普通模板和镜像模板已同步。 `#p1-batches-checkbox`
+- [ ] 提交收口：把批次页修复、复审证据和本进度说明按主题提交。 `#p1-commit`
+- [ ] 干净门禁：工作区干净后运行 `scripts/run_quality_gate.py --require-clean-worktree`。 `#p1-clean-gate`
+- [ ] 合并验证：快进合并回 `main` 后，在 `main` 上复跑同一质量门禁。 `#p1-merge-main`
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
 
 <!-- LIMCODE_PROGRESS_MILESTONES_START -->
-### sp04-complete · SP04 请求级容器与仓储束完成
-- 状态：completed
-- 记录时间：2026-04-11T14:00:00.219Z
-- 开始时间：2026-04-11T09:12:39.087Z
-- 完成时间：2026-04-11T13:59:47.972Z
-- 关联 TODO：sp04-baseline, sp04-bundle, sp04-container, sp04-gates-docs, sp04-routes-ui, sp04-verify
+### p1-scheduler-debt-cleanup-closeout · P1 排产债务收尾
+- 状态：in-progress
+- 记录时间：2026-04-29T22:48:10+08:00
+- 开始时间：2026-04-27T23:43:00+08:00
+- 关联 TODO：p1-roadmap, p1-review, p1-batches-checkbox, p1-commit, p1-clean-gate, p1-merge-main
 - 关联文档：
-  - 计划：`.limcode/plans/20260405_技术债务最终合并修复plan/subplans/SP04_请求级容器与仓储束.md`
-  - 审查：`.limcode/review/2026-04-11_SP04_请求级容器与仓储束_review.md`
+  - 路线图：`codestable/roadmap/p1-scheduler-debt-cleanup/p1-scheduler-debt-cleanup-roadmap.md`
+  - 审查：`.limcode/review/a94d3ac048b81c50a6279c1b1119b6fad4c4a14a_deep_review.md`
 - 摘要:
-完成请求级服务容器挂载、ScheduleService 私有仓储束收口、两批目标路由切换、web/ui_mode.py 容器守卫改造，以及直接装配 / _repos 漂移门禁更新；全量质量门禁与收口回归已再次通过。
-- 下一步：按治理台账与交接文档推进 SP05，基于当前残余快照继续收口目录骨架与路径门禁，不回改 SP04 已稳定入口。
+P1 排产债务路线图已经完成条目收口，当前分支也已经处理 schema v7、排产落库、冻结窗口、summary/result_summary、插件 reset、Win7 启停链和 P1-14 最终尾项。合并前剩余工作不是继续扩大 P1，而是把当前未提交尾项收干净，并用干净工作区质量门禁绑定最终 HEAD。
+- 下一步：提交当前未提交修复和证据，跑 clean gate，通过后快进合并回 `main`。
 <!-- LIMCODE_PROGRESS_MILESTONES_END -->
 
 ## 风险与阻塞
 
 <!-- LIMCODE_PROGRESS_RISKS_START -->
-- risk-sgs-large-pool | active | SGS 大资源池性能退化：统一估算后，自动分配探测、评分与正式排产会放大估算次数；需用新增候选对 > 200 的基准脚本与 30% 阈值共同守门。
+- risk-dirty-worktree | active | 当前工作区还有未提交修复和证据文件，质量门禁只能得到 passed_but_unbound，不能当作最终合并证明。
+- risk-schema-v7-duplicate-schedule | active | schema v7 会阻止已有重复 Schedule(version, op_id) 的老库继续升级；部署前要先备份并清理重复排程行，这属于数据保护，不是代码故障。
+- risk-full-test-debt-unchanged | active | 当前 full-test-debt 仍是 5 条已登记旧 xfail；本轮 P1 不能写成减少 full-test-debt。
 <!-- LIMCODE_PROGRESS_RISKS_END -->
 
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-04-11T16:22:47.190Z | artifact_changed | review | 同步审查结论：.limcode/review/2026-04-11_sp04_request_services_deep_review.md
-- 2026-04-11T17:18:42.730Z | artifact_changed | review | 同步审查文档：.limcode/review/2026-04-11_sp05_目录骨架与路径门禁_review.md
-- 2026-04-11T17:19:29.083Z | artifact_changed | review | 同步审查里程碑：m1
-- 2026-04-11T17:20:00.289Z | artifact_changed | review | 同步审查里程碑：m2
-- 2026-04-11T17:20:39.143Z | artifact_changed | review | 同步审查里程碑：m3
-- 2026-04-11T17:20:53.413Z | artifact_changed | review | 同步审查结论：.limcode/review/2026-04-11_sp05_目录骨架与路径门禁_review.md
-- 2026-04-12T06:07:57.109Z | artifact_changed | review | 同步审查文档：.limcode/review/sp05-目录骨架与路径门禁-plan-三轮深度审查.md
-- 2026-04-12T06:08:18.268Z | artifact_changed | review | 同步审查里程碑：R1-goal-completeness
-- 2026-04-12T06:08:52.750Z | artifact_changed | review | 同步审查里程碑：R2-elegance
-- 2026-04-12T06:10:36.242Z | artifact_changed | review | 同步审查里程碑：R3-logic-bugs
-- 2026-04-12T06:20:48.242Z | artifact_changed | review | 重新打开审查：.limcode/review/2026-04-11_sp05_目录骨架与路径门禁_review.md
-- 2026-04-12T06:21:36.712Z | artifact_changed | review | 同步审查里程碑：m4
-- 2026-04-12T06:22:42.946Z | artifact_changed | review | 同步审查结论：.limcode/review/2026-04-11_sp05_目录骨架与路径门禁_review.md
-- 2026-04-13T12:11:38.240Z | artifact_changed | review | 同步审查文档：.limcode/review/2026-04-13_sp04_request_services_repository_bundle_review.md
-- 2026-04-13T12:12:02.840Z | artifact_changed | review | 同步审查里程碑：round1
-- 2026-04-13T12:12:15.573Z | artifact_changed | review | 同步审查里程碑：round2
-- 2026-04-13T12:12:43.550Z | artifact_changed | review | 同步审查里程碑：round3
-- 2026-04-13T12:13:01.498Z | artifact_changed | review | 同步审查结论：.limcode/review/2026-04-13_sp04_request_services_repository_bundle_review.md
-- 2026-04-14T14:13:12.932Z | artifact_changed | review | 同步审查文档：.limcode/review/2026-04-14_请求级容器与排产链路深度review.md
-- 2026-04-14T14:13:37.575Z | artifact_changed | review | 同步审查结论：.limcode/review/2026-04-14_请求级容器与排产链路深度review.md
+- 2026-04-29T12:24:33+08:00 | artifact_changed | review | 同步审查文档：`.limcode/review/a94d3ac048b81c50a6279c1b1119b6fad4c4a14a_deep_review.md`
+- 2026-04-29T12:48:54+08:00 | artifact_changed | review | 归档 Round 4 直接 diff 证据和目标验证结果。
+- 2026-04-29T22:48:10+08:00 | progress_fixed | progress | 改写当前进度为 P1 收尾语境，移除英文截断摘要和旧任务当前焦点。
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -86,217 +73,128 @@
   "projectId": "aps-test",
   "projectName": "APS Test",
   "createdAt": "2026-04-07T06:34:24.925Z",
-  "updatedAt": "2026-04-14T14:13:37.575Z",
+  "updatedAt": "2026-04-29T22:48:10+08:00",
   "status": "active",
-  "phase": "implementation",
-  "currentFocus": "SP04 请求级容器与仓储束已完成并完成门禁复验",
-  "latestConclusion": "本次未提交改动整体质量较好，关键目标基本达成，未发现明确的 P0/P1 功能性 bug；但请求级容器迁移尚未全量收口，且仍残留少量兼容垫片与一处静默吞异常，因此建议按“有条件通过”处理，并在后续批次继续收口。",
-  "currentBlocker": null,
-  "nextAction": "优先明确请求级容器剩余直连路由的迁移边界；随后收紧 scheduler_batch_detail 的弱兜底、评估删除 schedule_input_collector 的旧签名兼容垫片，并为 ui_mode 渲染期注入失败补 warning once。",
+  "phase": "closure",
+  "currentFocus": "P1 排产债务收尾：提交批次页尾项、最终复审证据和进度说明，然后跑干净工作区质量门禁。",
+  "latestConclusion": "P1 排产债务路线图 13 个条目已经全部 done，主文档已 completed。多路复审没有发现当前 P1 已提交代码存在阻塞合并的 P0/P1/P2 问题。当前未提交的批次页修复是必要尾项，用来避免非待排或全部状态列表还显示表头全选框。full-test-debt 仍是 5 条已登记旧 xfail，本轮不能写成减少。schema v7 会拦住已有重复 Schedule(version, op_id) 的老库，部署前必须先备份并人工清理重复排程行。",
+  "currentBlocker": "工作区仍有未提交修复和证据文件，最终 clean gate 尚未绑定干净 HEAD。",
+  "nextAction": "按主题提交当前未提交修复和证据；工作区干净后运行 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree；通过后快进合并回 main，并在 main 上复跑同一门禁。",
   "activeArtifacts": {
-    "plan": ".limcode/plans/20260405_技术债务最终合并修复plan/subplans/SP04_请求级容器与仓储束.md",
-    "review": ".limcode/review/2026-04-14_请求级容器与排产链路深度review.md"
+    "roadmap": "codestable/roadmap/p1-scheduler-debt-cleanup/p1-scheduler-debt-cleanup-roadmap.md",
+    "items": "codestable/roadmap/p1-scheduler-debt-cleanup/p1-scheduler-debt-cleanup-items.yaml",
+    "sourceMap": "codestable/roadmap/p1-scheduler-debt-cleanup/drafts/p1-debt-source-map.md",
+    "review": ".limcode/review/a94d3ac048b81c50a6279c1b1119b6fad4c4a14a_deep_review.md",
+    "evidence": "evidence/DeepReview/a94d3ac_round4_git_evidence/"
   },
   "todos": [
     {
-      "id": "sp04-baseline",
-      "content": "阶段0/0.5：核实现状基线、直接装配命中、构造签名与容器接口冻结口径",
+      "id": "p1-roadmap",
+      "content": "路线图收口：p1-scheduler-debt-cleanup 已标记 completed，13 个 item 全部 done。",
       "status": "completed"
     },
     {
-      "id": "sp04-bundle",
-      "content": "阶段1：建立仓储束并改造 ScheduleService，保持旧公开签名与 svc.<repo> 代理面稳定",
+      "id": "p1-review",
+      "content": "最终复审：多路检查确认 P1 主线、页面、runtime/plugin/Win7 支线没有发现阻塞合并问题。",
       "status": "completed"
     },
     {
-      "id": "sp04-container",
-      "content": "阶段2/3：建立请求级服务容器并接入工厂与自定义测试工厂",
+      "id": "p1-batches-checkbox",
+      "content": "批次页尾项：非待排和全部状态列表不再显示表头全选框，普通模板和镜像模板已同步。",
       "status": "completed"
     },
     {
-      "id": "sp04-gates-docs",
-      "content": "阶段5/6：残余直接装配清点、门禁更新、治理台账与交接文档同步",
-      "status": "completed"
+      "id": "p1-commit",
+      "content": "提交收口：把批次页修复、复审证据和本进度说明按主题提交。",
+      "status": "pending"
     },
     {
-      "id": "sp04-routes-ui",
-      "content": "阶段4：两批路由切换到请求级容器，并改造 web/ui_mode.py 与相关回归",
-      "status": "completed"
+      "id": "p1-clean-gate",
+      "content": "干净门禁：工作区干净后运行 scripts/run_quality_gate.py --require-clean-worktree。",
+      "status": "pending"
     },
     {
-      "id": "sp04-verify",
-      "content": "运行最小验证集合并根据结果收口",
-      "status": "completed"
+      "id": "p1-merge-main",
+      "content": "合并验证：快进合并回 main 后，在 main 上复跑同一质量门禁。",
+      "status": "pending"
     }
   ],
   "milestones": [
     {
-      "id": "sp04-complete",
-      "title": "SP04 请求级容器与仓储束完成",
-      "status": "completed",
-      "summary": "完成请求级服务容器挂载、ScheduleService 私有仓储束收口、两批目标路由切换、web/ui_mode.py 容器守卫改造，以及直接装配 / _repos 漂移门禁更新；全量质量门禁与收口回归已再次通过。",
+      "id": "p1-scheduler-debt-cleanup-closeout",
+      "title": "P1 排产债务收尾",
+      "status": "in-progress",
+      "summary": "P1 排产债务路线图已经完成条目收口，合并前剩余工作是提交当前未提交尾项并跑干净工作区质量门禁。",
       "relatedTodoIds": [
-        "sp04-baseline",
-        "sp04-bundle",
-        "sp04-container",
-        "sp04-gates-docs",
-        "sp04-routes-ui",
-        "sp04-verify"
+        "p1-roadmap",
+        "p1-review",
+        "p1-batches-checkbox",
+        "p1-commit",
+        "p1-clean-gate",
+        "p1-merge-main"
       ],
-      "relatedReviewMilestoneIds": [],
       "relatedArtifacts": {
-        "plan": ".limcode/plans/20260405_技术债务最终合并修复plan/subplans/SP04_请求级容器与仓储束.md",
-        "review": ".limcode/review/2026-04-11_SP04_请求级容器与仓储束_review.md"
+        "roadmap": "codestable/roadmap/p1-scheduler-debt-cleanup/p1-scheduler-debt-cleanup-roadmap.md",
+        "review": ".limcode/review/a94d3ac048b81c50a6279c1b1119b6fad4c4a14a_deep_review.md"
       },
-      "startedAt": "2026-04-11T09:12:39.087Z",
-      "completedAt": "2026-04-11T13:59:47.972Z",
-      "recordedAt": "2026-04-11T14:00:00.219Z",
-      "nextAction": "按治理台账与交接文档推进 SP05，基于当前残余快照继续收口目录骨架与路径门禁，不回改 SP04 已稳定入口。"
+      "startedAt": "2026-04-27T23:43:00+08:00",
+      "recordedAt": "2026-04-29T22:48:10+08:00",
+      "nextAction": "提交当前未提交修复和证据，跑 clean gate，通过后快进合并回 main。"
     }
   ],
   "risks": [
     {
-      "id": "risk-sgs-large-pool",
-      "title": "SGS 大资源池性能退化",
-      "description": "统一估算后，自动分配探测、评分与正式排产会放大估算次数；需用新增候选对 > 200 的基准脚本与 30% 阈值共同守门。",
+      "id": "risk-dirty-worktree",
+      "title": "工作区未收口",
+      "description": "当前工作区还有未提交修复和证据文件，质量门禁只能得到 passed_but_unbound，不能当作最终合并证明。",
+      "status": "active"
+    },
+    {
+      "id": "risk-schema-v7-duplicate-schedule",
+      "title": "schema v7 会拦住重复排程老库",
+      "description": "已有重复 Schedule(version, op_id) 的老库会在 v7 迁移时被阻止继续升级；部署前要先备份并清理重复排程行。",
+      "status": "active"
+    },
+    {
+      "id": "risk-full-test-debt-unchanged",
+      "title": "full-test-debt 未减少",
+      "description": "当前 full-test-debt 仍是 5 条已登记旧 xfail；本轮 P1 不能写成减少 full-test-debt。",
       "status": "active"
     }
   ],
   "log": [
     {
-      "at": "2026-04-11T16:22:47.190Z",
+      "at": "2026-04-29T12:24:33+08:00",
       "type": "artifact_changed",
       "refId": "review",
-      "message": "同步审查结论：.limcode/review/2026-04-11_sp04_request_services_deep_review.md"
+      "message": "同步审查文档：.limcode/review/a94d3ac048b81c50a6279c1b1119b6fad4c4a14a_deep_review.md"
     },
     {
-      "at": "2026-04-11T17:18:42.730Z",
+      "at": "2026-04-29T12:48:54+08:00",
       "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查文档：.limcode/review/2026-04-11_sp05_目录骨架与路径门禁_review.md"
+      "refId": "evidence",
+      "message": "归档 Round 4 直接 diff 证据和目标验证结果。"
     },
     {
-      "at": "2026-04-11T17:19:29.083Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查里程碑：m1"
-    },
-    {
-      "at": "2026-04-11T17:20:00.289Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查里程碑：m2"
-    },
-    {
-      "at": "2026-04-11T17:20:39.143Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查里程碑：m3"
-    },
-    {
-      "at": "2026-04-11T17:20:53.413Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查结论：.limcode/review/2026-04-11_sp05_目录骨架与路径门禁_review.md"
-    },
-    {
-      "at": "2026-04-12T06:07:57.109Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查文档：.limcode/review/sp05-目录骨架与路径门禁-plan-三轮深度审查.md"
-    },
-    {
-      "at": "2026-04-12T06:08:18.268Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查里程碑：R1-goal-completeness"
-    },
-    {
-      "at": "2026-04-12T06:08:52.750Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查里程碑：R2-elegance"
-    },
-    {
-      "at": "2026-04-12T06:10:36.242Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查里程碑：R3-logic-bugs"
-    },
-    {
-      "at": "2026-04-12T06:20:48.242Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "重新打开审查：.limcode/review/2026-04-11_sp05_目录骨架与路径门禁_review.md"
-    },
-    {
-      "at": "2026-04-12T06:21:36.712Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查里程碑：m4"
-    },
-    {
-      "at": "2026-04-12T06:22:42.946Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查结论：.limcode/review/2026-04-11_sp05_目录骨架与路径门禁_review.md"
-    },
-    {
-      "at": "2026-04-13T12:11:38.240Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查文档：.limcode/review/2026-04-13_sp04_request_services_repository_bundle_review.md"
-    },
-    {
-      "at": "2026-04-13T12:12:02.840Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查里程碑：round1"
-    },
-    {
-      "at": "2026-04-13T12:12:15.573Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查里程碑：round2"
-    },
-    {
-      "at": "2026-04-13T12:12:43.550Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查里程碑：round3"
-    },
-    {
-      "at": "2026-04-13T12:13:01.498Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查结论：.limcode/review/2026-04-13_sp04_request_services_repository_bundle_review.md"
-    },
-    {
-      "at": "2026-04-14T14:13:12.932Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查文档：.limcode/review/2026-04-14_请求级容器与排产链路深度review.md"
-    },
-    {
-      "at": "2026-04-14T14:13:37.575Z",
-      "type": "artifact_changed",
-      "refId": "review",
-      "message": "同步审查结论：.limcode/review/2026-04-14_请求级容器与排产链路深度review.md"
+      "at": "2026-04-29T22:48:10+08:00",
+      "type": "progress_fixed",
+      "refId": "progress",
+      "message": "改写当前进度为 P1 收尾语境，移除英文截断摘要和旧任务当前焦点。"
     }
   ],
   "stats": {
     "milestonesTotal": 1,
-    "milestonesCompleted": 1,
+    "milestonesCompleted": 0,
     "todosTotal": 6,
-    "todosCompleted": 6,
+    "todosCompleted": 3,
     "todosInProgress": 0,
     "todosCancelled": 0,
-    "activeRisks": 1
+    "activeRisks": 3
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-04-14T14:13:37.575Z",
-    "bodyHash": "sha256:4bd02c715fd7846d7f38d4a59880217de3b96f7a72b42941e008dd7571434489"
+    "generatedAt": "2026-04-29T22:48:10+08:00",
+    "bodyHash": "manual-p1-closeout-progress-2026-04-29"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->
