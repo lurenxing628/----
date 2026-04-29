@@ -203,9 +203,7 @@ def test_candidate_rejected_attempt_is_diagnostic_only() -> None:
         }
     ]
     diagnostic_attempt = [
-        attempt
-        for attempt in diagnostics["optimizer"]["attempts"]
-        if attempt.get("source") == "candidate_rejected"
+        attempt for attempt in diagnostics["optimizer"]["attempts"] if attempt.get("source") == "candidate_rejected"
     ][0]
     assert diagnostic_attempt["tag"] == "local:swap"
     assert diagnostic_attempt["strategy"] == "priority_first"
@@ -215,7 +213,7 @@ def test_candidate_rejected_attempt_is_diagnostic_only() -> None:
     assert diagnostic_attempt["origin"]["field"] == "resource"
 
 
-def test_rejected_diagnostic_survives_compaction_before_summary_projection() -> None:
+def test_rejected_diagnostic_survives_summary_attempt_compaction() -> None:
     start = datetime(2026, 4, 1, 8, 0, 0)
     metrics = ScheduleMetrics(
         overdue_count=0,
@@ -284,7 +282,7 @@ def test_rejected_diagnostic_survives_compaction_before_summary_projection() -> 
         best_score=(0.0,),
         best_metrics=metrics,
         best_order=["B001"],
-        attempts=compact_attempts(attempts, limit=12),
+        attempts=attempts,
         improvement_trace=[],
         frozen_op_ids=set(),
         algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
@@ -294,14 +292,10 @@ def test_rejected_diagnostic_survives_compaction_before_summary_projection() -> 
 
     _overdue, _status, result_summary_obj, _json, _elapsed = build_result_summary(_SummarySvc(), ctx=ctx)
 
-    public_attempts = ((result_summary_obj.get("algo") or {}).get("attempts") or [])
+    public_attempts = (result_summary_obj.get("algo") or {}).get("attempts") or []
     diagnostics = result_summary_obj.get("diagnostics") or {}
     diagnostic_attempts = (diagnostics.get("optimizer") or {}).get("attempts") or []
-    rejected_attempts = [
-        attempt
-        for attempt in diagnostic_attempts
-        if attempt.get("source") == "candidate_rejected"
-    ]
+    rejected_attempts = [attempt for attempt in diagnostic_attempts if attempt.get("source") == "candidate_rejected"]
     assert len(public_attempts) == 11
     assert all(attempt.get("source") != "candidate_rejected" for attempt in public_attempts)
     assert all("source" not in attempt for attempt in public_attempts)

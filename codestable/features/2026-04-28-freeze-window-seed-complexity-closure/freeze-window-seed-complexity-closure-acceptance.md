@@ -30,7 +30,7 @@ P1-14 已按最终尾项完成。`build_freeze_window_seed()` 仍是原来的公
 | `build_freeze_window_seed()` 复杂度 | 从 26 降到 3 |
 | 拆出 helper 最高复杂度 | 9 |
 | `complexity_count` | 从 32 降到 31 |
-| `silent_fallback_count` | 154，未增加 |
+| `silent_fallback_count` | 153，未增加 |
 | full-test-debt | 仍为 5 条 active xfail |
 | P1-24 | 保持 `rechecked-by-M7-B` |
 | P1-25 | 保持 `evidence-insufficient` |
@@ -43,9 +43,9 @@ P1-14 已按最终尾项完成。`build_freeze_window_seed()` 仍是原来的公
 - `tests/test_architecture_fitness.py` 指定 3 项与 `tests/test_sp05_path_topology_contract.py`：通过。
 - `python -m ruff check core/services/scheduler/run/freeze_window.py tests/regression_freeze_window_fail_closed_contract.py`：通过。
 - `python -m pyright core/services/scheduler/run/freeze_window.py tests/regression_freeze_window_fail_closed_contract.py`：通过。
-- `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields`：通过，`complexity_count=31`，`silent_fallback_count=154`。
+- `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields`：通过，`complexity_count=31`，`silent_fallback_count=153`。
 - `scripts/sync_debt_ledger.py check`：通过。
-- `tools/check_full_test_debt.py`：通过，active xfail 仍为 5。
+- `tools/check_full_test_debt.py`：通过，active xfail 仍为 5，当前 collected_count=792。
 - `codestable/tools/validate-yaml.py` 校验 roadmap 与本 feature 目录：通过。
 - `git diff --check`：通过。
 

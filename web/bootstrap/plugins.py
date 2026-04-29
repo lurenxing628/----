@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, Optional
 
 from core.infrastructure.database import get_connection
 from core.infrastructure.logging import OperationLogger, safe_log
-from core.plugins import PluginManager, get_plugin_status
+from core.plugins import PluginManager, reset_plugin_state
+from core.plugins.registry import PluginRegistry
 from core.services.common.degradation import DegradationCollector
 from core.services.scheduler.degradation_messages import public_degradation_events
 from data.repositories import SystemConfigRepository
@@ -44,6 +46,37 @@ def _merge_plugin_degradation(status: Optional[Dict[str, Any]], collector: Degra
     base["degradation_events"] = public_degradation_events(merged.to_list())
     base["degradation_counters"] = merged.to_counters()
     return base
+
+
+def _ensure_plugin_status_shape(status: Optional[Dict[str, Any]], *, base_dir: str) -> Dict[str, Any]:
+    base = dict(status or {}) if isinstance(status, dict) else {}
+    registry = base.get("registry")
+    if not isinstance(registry, dict):
+        registry = PluginRegistry().to_dict()
+    base["registry"] = registry
+    base.setdefault("loaded_at", None)
+    base.setdefault("vendor_paths", [])
+    base.setdefault("plugins_dir", os.path.join(os.path.abspath(str(base_dir or ".")), "plugins"))
+    base.setdefault("statuses", [])
+    base.setdefault("conflicted_capabilities", list(registry.get("conflicted_capabilities") or []))
+    base.setdefault("conflict_policy", registry.get("conflict_policy") or PluginRegistry().conflict_policy)
+    base.setdefault("telemetry_persisted", None)
+    return base
+
+
+def _record_plugin_status_failures(status: Optional[Dict[str, Any]], collector: DegradationCollector) -> None:
+    base = dict(status or {}) if isinstance(status, dict) else {}
+    for item in list(base.get("statuses") or []):
+        row = dict(item or {}) if isinstance(item, dict) else {}
+        if not str(row.get("error") or "").strip():
+            continue
+        plugin_id = str(row.get("plugin_id") or "").strip() or "-"
+        collector.add(
+            code="plugin_bootstrap_load_failed",
+            scope="plugins.bootstrap",
+            field=f"plugin.{plugin_id}",
+            message="插件加载失败，请查看系统日志。",
+        )
 
 
 def _resolve_enabled_source(
@@ -198,25 +231,23 @@ def bootstrap_plugins(base_dir: str, database_path: str, *, logger: logging.Logg
     try:
         plugin_status = PluginManager.load_from_base_dir(base_dir, config_reader=config_reader, logger=logger)
     except Exception as exc:
+        collector.add(
+            code="plugin_bootstrap_load_failed",
+            scope="plugins.bootstrap",
+            field="plugins",
+            message="插件加载失败，请查看系统日志。",
+            sample=exc.__class__.__name__,
+        )
         safe_log(logger, "error", "插件加载失败（已忽略，启动继续）：%s", exc)
-        try:
-            plugin_status = get_plugin_status()
-        except Exception as status_exc:
-            plugin_status = {}
-            collector.add(
-                code="plugin_bootstrap_status_snapshot_failed",
-                scope="plugins.bootstrap",
-                field="plugin_status",
-                message="插件加载失败后读取插件状态快照异常，当前返回空状态。",
-                sample=status_exc.__class__.__name__,
-            )
-            safe_log(logger, "error", "插件状态快照读取失败，当前返回空状态：%s", status_exc)
+        plugin_status = reset_plugin_state(base_dir)
 
     plugin_status = _apply_enabled_sources(
         plugin_status,
         enabled_source_map=enabled_source_map,
         default_source=default_enabled_source,
     )
+    plugin_status = _ensure_plugin_status_shape(plugin_status, base_dir=base_dir)
+    _record_plugin_status_failures(plugin_status, collector)
 
     if conn0 is not None:
         try:
@@ -251,4 +282,5 @@ def bootstrap_plugins(base_dir: str, database_path: str, *, logger: logging.Logg
                 pass
 
     plugin_status = _merge_plugin_degradation(plugin_status, collector)
+    plugin_status = _ensure_plugin_status_shape(plugin_status, base_dir=base_dir)
     return plugin_status

@@ -104,14 +104,14 @@ function Resolve-DistDir {
 }
 
 function Find-LauncherPath {
-    $launcherMatches = Get-ChildItem -Path "assets" -Filter "*.bat" -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like "*Chrome*.bat" }
+    $launcherFileName = -join ([char[]](21551, 21160, 95, 25490, 20135, 31995, 32479, 95, 67, 104, 114, 111, 109, 101, 46, 98, 97, 116))
+    $launcherPath = Join-Path "assets" $launcherFileName
 
-    if (-not $launcherMatches -or $launcherMatches.Count -ne 1) {
-        throw "Expected exactly one launcher bat in assets matching *Chrome*.bat."
+    if (-not (Test-Path $launcherPath -PathType Leaf)) {
+        throw "Expected launcher bat at assets\\$launcherFileName."
     }
 
-    return $launcherMatches[0].FullName
+    return (Resolve-Path $launcherPath).Path
 }
 
 function Copy-LauncherToDist([string]$distDir) {

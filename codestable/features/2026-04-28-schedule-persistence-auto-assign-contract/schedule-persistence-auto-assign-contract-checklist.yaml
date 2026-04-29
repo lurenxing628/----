@@ -12,12 +12,12 @@ steps:
   - id: step-2
     title: 补齐落库校验和自动分配写回窄测试
     status: done
-    exit_signal: 新增专项测试覆盖错误优先级、simulate、auto_assign_persist=no、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控。
+    exit_signal: 新增专项测试覆盖错误优先级、duplicate_schedule_rows、simulate、auto_assign_persist=no、外协隔离、已有资源不覆盖、只补空字段、missing set 门控和 v7 迁移。
 
   - id: step-3
     title: 原样搬移 build_validated_schedule_payload 现有判断
     status: done
-    exit_signal: 私有 helper 承载原有判断，reason/details/优先级不变，复杂度登记可由受控脚本刷新判断。
+    exit_signal: 私有 helper 承载原有判断；duplicate_schedule_rows 与 v7 唯一索引已作为最终复审硬化补充记录，复杂度登记可由受控脚本刷新判断。
 
   - id: step-4
     title: 跑验证、复审并回填执行结果
@@ -26,7 +26,7 @@ steps:
 
 checks:
   - id: check-1
-    title: out_of_scope、invalid、no_actionable 错误优先级有证据
+    title: out_of_scope、duplicate、invalid、no_actionable 错误优先级有证据
     status: passed
 
   - id: check-2
@@ -47,4 +47,8 @@ checks:
 
   - id: check-6
     title: P1-11/12/13 只按 complexity/test_coverage 回填，不写 full-test-debt 减少
+    status: passed
+
+  - id: check-7
+    title: schema v7 唯一索引正向迁移和重复历史行 fail fast 有证据
     status: passed

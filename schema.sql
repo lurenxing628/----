@@ -326,6 +326,7 @@ CREATE INDEX IF NOT EXISTS idx_batches_due_date ON Batches(due_date);
 CREATE INDEX IF NOT EXISTS idx_batch_operations_batch ON BatchOperations(batch_id);
 CREATE INDEX IF NOT EXISTS idx_batch_operations_status ON BatchOperations(status);
 CREATE INDEX IF NOT EXISTS idx_schedule_op ON Schedule(op_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_version_op_unique ON Schedule(version, op_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_machine ON Schedule(machine_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_operator ON Schedule(operator_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_time ON Schedule(start_time, end_time);
@@ -390,4 +391,3 @@ CREATE TABLE IF NOT EXISTS BatchMaterials (
     FOREIGN KEY (batch_id) REFERENCES Batches(batch_id) ON DELETE CASCADE,
     FOREIGN KEY (material_id) REFERENCES Materials(material_id)
 );
-

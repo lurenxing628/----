@@ -30,6 +30,7 @@ STABLE_DEGRADATION_CODES = (
     "plugin_bootstrap_db_unavailable",
     "plugin_bootstrap_config_reader_failed",
     "plugin_bootstrap_config_read_failed",
+    "plugin_bootstrap_load_failed",
     "plugin_bootstrap_status_snapshot_failed",
     "plugin_bootstrap_telemetry_failed",
 )
@@ -85,7 +86,14 @@ class DegradationCollector:
                 sample=sample,
             )
         else:
-            if count != 1 or code is not None or scope is not None or field is not None or message is not None or sample is not None:
+            if (
+                count != 1
+                or code is not None
+                or scope is not None
+                or field is not None
+                or message is not None
+                or sample is not None
+            ):
                 raise ValueError("传入 event 对象时，不允许同时传递事件字段参数")
 
         key = (event.code, event.scope, event.field, event.message)

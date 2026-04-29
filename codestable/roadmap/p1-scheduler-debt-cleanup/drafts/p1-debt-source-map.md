@@ -46,7 +46,7 @@ full-test-debt 的事实源是 `开发文档/技术债务治理台账.md` 的 `t
 | P1-9 | PR-1 | complexity, test_coverage | 原事实源是 `lookup_template_group_context_for_op` 复杂度登记；本轮已把缺模板、缺外部组等判断拆到小 helper，`scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 已把该复杂度登记移出受控结构块。 | fixed-by-M1 | 是 | 否 | 已关闭复杂度登记；后续只按模板查询合同测试守住行为。 | 旧编号来源证据不足；当前复杂度事实源已解除，不等于 full-test-debt 减少。 |
 | P1-10 | PR-1 | test_coverage | `core/services/scheduler/run/schedule_input_builder.py` 的外协组合并字段和退化事件仍是代码事实；本轮新增 builder、lookup、service-summary 链路测试直接覆盖。 | evidence-locked-by-M1 | 是 | 否 | 合同测试已补齐；不是台账登记项，后续只观察是否被新改动打破。 | 旧编号来源证据不足；有代码事实但不是 full-test-debt 或复杂度登记项。 |
 | P1-11 | PR-6 | complexity, test_coverage | 原事实源是 `complexity:core-services-scheduler-run-schedule_persistence-build_validated_schedule_payload` 登记；本轮已把 `build_validated_schedule_payload()` 的既有判断原样搬到私有 helper，`scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 已把该复杂度登记移出受控结构块。 | fixed-by-M5 | 是 | 否 | 已关闭复杂度登记；后续只按新增合同测试守住行为。 | 旧编号来源证据不足；当前复杂度事实源已解除，不等于 full-test-debt 减少。 |
-| P1-12 | PR-6 | test_coverage | `core/services/scheduler/run/schedule_persistence.py` 中落库前错误优先级合同固定 out-of-scope、invalid、no-actionable 的先后关系；本轮新增 PR-6 专项测试覆盖 out-of-scope 与 invalid 同时出现、invalid 与有效行同时出现、全部非法但无可落库行。 | evidence-locked-by-M5 | 是 | 否 | 合同测试已补齐；不是台账登记项，后续只观察是否被新改动打破。 | 旧编号来源证据不足；有代码事实但不是 full-test-debt 或复杂度登记项。 |
+| P1-12 | PR-6 | test_coverage | `core/services/scheduler/run/schedule_persistence.py` 中落库前错误优先级合同固定 out-of-scope、duplicate、invalid、no-actionable 的先后关系；本轮新增 PR-6 专项测试覆盖 out-of-scope 与 invalid 同时出现、重复有效 op_id、invalid 与有效行同时出现、全部非法但无可落库行。 | evidence-locked-by-M5 | 是 | 否 | 合同测试已补齐；不是台账登记项，后续只观察是否被新改动打破。 | 旧编号来源证据不足；有代码事实但不是 full-test-debt 或复杂度登记项。 |
 | P1-13 | PR-6 | test_coverage | `core/services/scheduler/run/schedule_persistence.py` 中 `simulate` 和 auto-assign persist 写回合同仍是当前事实源；本轮新增 PR-6 专项测试覆盖 simulate 不改真实状态和资源、`auto_assign_persist=no`、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控。 | evidence-locked-by-M5 | 是 | 否 | 合同测试已补齐；不是台账登记项，后续只观察是否被新改动打破。 | 旧编号来源证据不足；有代码事实但不是 full-test-debt 或复杂度登记项。 |
 | P1-14 | final-P1-tail | complexity, test_coverage | 原事实源是 `complexity:core-services-scheduler-freeze_window-build_freeze_window_seed`；最终尾项已把 `build_freeze_window_seed()` 内部拆成范围准备、上一版读取、前缀套用和结果整理四段，`scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 已把该复杂度登记移出受控结构块。 | fixed-by-final-P1-tail | 是 | 否 | 已关闭复杂度登记；后续只按冻结窗口种子合同测试守住行为。 | 旧编号来源证据不足；当前复杂度事实源已解除，不等于 full-test-debt 减少。 |
 | P1-15 | PR-2 | test_coverage | `.limcode/plans/20260405_技术债务最终合并修复plan/subplans/SP07_排产主链边界收口.md` 记录 freeze/seed 语义；当前入口是 `core/services/scheduler/run/freeze_window.py` 的冻结窗口状态写入；M2 已补 `freeze_disabled_reason`、`config_degraded`、summary 公开形状和分析页展示测试。 | evidence-locked-by-M2 | 是 | 否 | 合同测试已补齐；后续只观察是否被新改动打破。 | 旧编号来源证据不足；当前冻结窗口状态合同已由 M2 锁住，不等于 full-test-debt 减少，也不代表 P1-14 复杂度关闭。 |
@@ -115,11 +115,11 @@ M3 已按 PR-3 范围完成，结论如下：
 ## PR-6 / M5 执行回填
 
 - P1-11 已按 complexity 关闭：`build_validated_schedule_payload()` 既有判断被原样搬到私有 helper，`scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 后高复杂度登记从 40 降到 39。
-- P1-12 已按 test_coverage 锁证：新增测试覆盖 out-of-scope 优先、invalid + 有效行、全部非法但无可落库行三类错误边界。
+- P1-12 已按 test_coverage 锁证：新增测试覆盖 out-of-scope 优先、duplicate_schedule_rows、invalid + 有效行、全部非法但无可落库行四类错误边界。
 - P1-13 已按 test_coverage 锁证：新增测试覆盖 simulate 不改真实状态和资源、`auto_assign_persist=no` 不补资源、外协不写 internal 资源、已有资源不覆盖、只补空字段、missing set 不包含时不写回。
 - 本轮没有新增写前重读数据库工序的特殊检查；旧对象覆盖风险只作为观察项保留。
-- 本轮没有改 summary、result_summary、schema、页面、route、viewmodel、repo、runtime/plugin 或质量门禁工具。
-- 本轮没有减少 full-test-debt；`tools/check_full_test_debt.py` 通过，仍是 5 条 operator-machine/query service 相关 xfail，`collected_count=748`。
+- 原 PR-6 没有改 summary、result_summary、页面、route、viewmodel、repo、runtime/plugin 或质量门禁工具；最终复审后已正式吸收 schema v7 / idx_schedule_version_op_unique 完整性硬化。
+- 本轮没有减少 full-test-debt；`tools/check_full_test_debt.py` 通过，仍是 5 条 operator-machine/query service 相关 xfail，`collected_count=792`。
 
 ## P1 最终尾项执行回填
 
@@ -127,7 +127,7 @@ M3 已按 PR-3 范围完成，结论如下：
 - 新增测试锁住三件事：`reschedulable_operations=None` 时使用全部 `operations`；显式传子集时 `frozen_op_ids` 和 `seed_results` 只能来自子集；`seed_results` 继续按 `(start_time, op_id)` 排序并保留原字段。
 - `python -m radon cc -s core/services/scheduler/run/freeze_window.py` 显示 `build_freeze_window_seed()` 从 26 降到 3，拆出的 helper 最高复杂度为 9。
 - `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 后，高复杂度登记从 32 降到 31；`complexity:core-services-scheduler-freeze_window-build_freeze_window_seed` 已移除。
-- `silent_fallback_count` 仍为 154，没有新增 fallback、兜底或静默吞错。
+- `silent_fallback_count` 仍为 153，没有新增 fallback、兜底或静默吞错。当前 full-test-debt proof 为 active_xfail_count=5、collected_count=792。
 - P1-24 保持 `rechecked-by-M7-B`，不包装成 open bug；P1-25 保持 `evidence-insufficient`，没有新证据不开修。
 - 本轮没有减少 full-test-debt；`tools/check_full_test_debt.py` 通过后仍是 5 条 active xfail。
 - P1 当前可执行事实源已收尾：能在当前代码、台账或测试里找到明确事实源的 P1 项已经处理、锁证或复核；证据不足的 P1-25 不写成已修。

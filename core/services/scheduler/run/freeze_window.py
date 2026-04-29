@@ -71,7 +71,9 @@ def _set_freeze_disabled(meta: Dict[str, Any], reason: str) -> None:
     meta["freeze_disabled_reason"] = reason
 
 
-def _freeze_window_days(cfg: Any, prev_version: int, *, strict_mode: bool, meta: Dict[str, Any], warnings: List[str]) -> int:
+def _freeze_window_days(
+    cfg: Any, prev_version: int, *, strict_mode: bool, meta: Dict[str, Any], warnings: List[str]
+) -> int:
     cfg_degraded = _freeze_config_degraded(cfg)
     enabled = to_yes_no(cfg.freeze_window_enabled, default=YesNo.NO.value) == YesNo.YES.value
     meta["freeze_enabled"] = bool(enabled)
@@ -165,6 +167,7 @@ def _load_schedule_map(
     schedule_map: Dict[int, Dict[str, Any]] = {}
     invalid_row_count = 0
     invalid_row_samples: List[str] = []
+    duplicate_op_ids: Set[int] = set()
     rows = svc.schedule_repo.list_version_rows_by_op_ids_start_range(
         version=int(prev_version),
         op_ids=op_ids,
@@ -177,6 +180,13 @@ def _load_schedule_map(
             oid = int(row_dict.get("op_id") or 0)
             if oid <= 0:
                 raise ValueError("op_id must be positive")
+            if oid in schedule_map or oid in duplicate_op_ids:
+                duplicate_op_ids.add(int(oid))
+                schedule_map.pop(int(oid), None)
+                invalid_row_count += 1
+                if len(invalid_row_samples) < 5:
+                    invalid_row_samples.append(f"duplicate op_id={oid}")
+                continue
             schedule_map[int(oid)] = row_dict
         except Exception:
             invalid_row_count += 1

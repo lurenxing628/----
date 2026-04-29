@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from core.algorithms.objective_specs import best_score_schema, comparison_metric_key
 from core.models.enums import YesNo
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.services.scheduler.run.optimizer_search_state import compact_attempts
 
 from .optimizer_public_summary import project_public_algo_summary
 from .schedule_summary_types import (
@@ -135,8 +136,12 @@ def _algo_downtime_dict(*, auto_assign_enabled: bool, downtime_state: Dict[str, 
         "extend_attempted": bool(downtime_state.get("downtime_extend_attempted")) if auto_assign_enabled else False,
         "load_partial_fail_count": int(downtime_state.get("load_partial_fail_count") or 0),
         "load_partial_fail_machines_sample": list(downtime_state.get("load_partial_fail_machines_sample") or []),
-        "extend_partial_fail_count": int(downtime_state.get("extend_partial_fail_count") or 0) if auto_assign_enabled else 0,
-        "extend_partial_fail_machines_sample": list(downtime_state.get("extend_partial_fail_machines_sample") or []) if auto_assign_enabled else [],
+        "extend_partial_fail_count": int(downtime_state.get("extend_partial_fail_count") or 0)
+        if auto_assign_enabled
+        else 0,
+        "extend_partial_fail_machines_sample": list(downtime_state.get("extend_partial_fail_machines_sample") or [])
+        if auto_assign_enabled
+        else [],
     }
 
 
@@ -162,8 +167,10 @@ def _algo_freeze_window_dict(
         "degraded": str(freeze_state.get("freeze_state") or "") == "degraded",
         "degradation_reason": freeze_state.get("degradation_reason"),
     }
-    expose_state = bool(freeze_state.get("freeze_applied")) or bool(freeze_window["degraded"]) or bool(
-        freeze_state.get("freeze_degradation_codes")
+    expose_state = (
+        bool(freeze_state.get("freeze_applied"))
+        or bool(freeze_window["degraded"])
+        or bool(freeze_state.get("freeze_degradation_codes"))
     )
     if expose_state:
         freeze_window["freeze_state"] = freeze_state.get("freeze_state")
@@ -229,9 +236,11 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
         "best_score_schema": _best_score_schema(ctx.objective_name),
         "metrics": ctx.best_metrics.to_dict() if ctx.best_metrics is not None else None,
         "best_batch_order": list(ctx.best_order or []),
-        "attempts": list(ctx.attempts or [])[:12],
+        "attempts": compact_attempts(list(ctx.attempts or []), limit=12),
         "improvement_trace": list(ctx.improvement_trace or [])[:200],
-        "downtime_avoid": _algo_downtime_dict(auto_assign_enabled=auto_assign_enabled, downtime_state=state.downtime_state),
+        "downtime_avoid": _algo_downtime_dict(
+            auto_assign_enabled=auto_assign_enabled, downtime_state=state.downtime_state
+        ),
         "input_contract": _algo_input_contract_dict(state.input_state),
         "merge_context_degraded": bool(state.warning_state.merge_context_degraded),
         "merge_context_events": list(state.warning_state.merge_context_events),

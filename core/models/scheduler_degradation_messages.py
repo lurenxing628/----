@@ -35,6 +35,7 @@ _PUBLIC_EVENT_MESSAGES = {
     "plugin_bootstrap_db_unavailable": "插件配置数据库不可用，当前按默认开关运行。",
     "plugin_bootstrap_config_reader_failed": "插件配置读取器初始化失败，当前按默认开关运行。",
     "plugin_bootstrap_config_read_failed": "插件配置读取失败，当前按默认开关运行。",
+    "plugin_bootstrap_load_failed": "插件加载失败，请查看系统日志。",
     "plugin_bootstrap_status_snapshot_failed": "插件状态读取失败，当前仅展示可用的插件状态。",
     "plugin_bootstrap_telemetry_failed": "插件启动留痕写入失败，请查看系统日志。",
 }

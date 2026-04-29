@@ -152,6 +152,14 @@ if not defined CHROME_PROFILE_READY (
 
 call :detect_powershell
 call :log powershell_available=%HAS_POWERSHELL%
+if not defined HAS_POWERSHELL (
+  call :log launcher_blocked=no_powershell
+  echo [launcher] PowerShell is required to verify the APS runtime owner and health.
+  echo [launcher] Install or enable PowerShell before launching APS.
+  echo [launcher] Check shared logs: %LAUNCHER_LOG%
+  pause
+  exit /b 12
+)
 
 call :try_reuse_existing
 if defined BLOCKED_BY_OTHER goto :BLOCKED
@@ -485,37 +493,28 @@ set "CONTRACT_PORT="
 set "CONTRACT_VALID="
 set "CONTRACT_READ_ERROR="
 if not exist "%RUNTIME_CONTRACT_FILE%" exit /b 0
-for /f "tokens=1,* delims=:" %%A in ('findstr /R /C:"\"owner\"" "%RUNTIME_CONTRACT_FILE%"') do (
-  set "RAW_VALUE=%%B"
-  set "RAW_VALUE=!RAW_VALUE:,=!"
-  set "RAW_VALUE=!RAW_VALUE:"=!"
-  for /f "tokens=* delims= " %%V in ("!RAW_VALUE!") do if not defined CONTRACT_OWNER set "CONTRACT_OWNER=%%V"
+if not defined HAS_POWERSHELL (
+  set "CONTRACT_READ_ERROR=contract_parser_unavailable"
+  exit /b 0
 )
-for /f "tokens=1,* delims=:" %%A in ('findstr /R /C:"\"pid\"" "%RUNTIME_CONTRACT_FILE%"') do (
-  set "RAW_VALUE=%%B"
-  set "RAW_VALUE=!RAW_VALUE:,=!"
-  set "RAW_VALUE=!RAW_VALUE:"=!"
-  for /f "tokens=* delims= " %%V in ("!RAW_VALUE!") do if not defined CONTRACT_PID set "CONTRACT_PID=%%V"
+set "CONTRACT_TMP=%TEMP%\aps_contract_%RANDOM%_%RANDOM%.tmp"
+set "APS_RUNTIME_CONTRACT_FILE=%RUNTIME_CONTRACT_FILE%"
+powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $path=$env:APS_RUNTIME_CONTRACT_FILE; $json=[System.IO.File]::ReadAllText($path,[System.Text.Encoding]::UTF8); $obj=$null; if (Get-Command ConvertFrom-Json -ErrorAction SilentlyContinue) { $obj=$json | ConvertFrom-Json } else { Add-Type -AssemblyName System.Web.Extensions; $obj=(New-Object System.Web.Script.Serialization.JavaScriptSerializer).DeserializeObject($json) }; function Get-ContractValue([string]$name) { if ($obj -is [System.Collections.IDictionary]) { return $obj[$name] }; $prop=$obj.PSObject.Properties[$name]; if ($null -ne $prop) { return $prop.Value }; return $null }; Write-Output ('owner=' + [string](Get-ContractValue 'owner')); Write-Output ('pid=' + [string](Get-ContractValue 'pid')); Write-Output ('contract_version=' + [string](Get-ContractValue 'contract_version')); Write-Output ('host=' + [string](Get-ContractValue 'host')); Write-Output ('port=' + [string](Get-ContractValue 'port'))" >"!CONTRACT_TMP!" 2>nul
+set "CONTRACT_RC=%ERRORLEVEL%"
+if not "!CONTRACT_RC!"=="0" (
+  del /f /q "!CONTRACT_TMP!" >nul 2>&1
+  set "CONTRACT_READ_ERROR=contract_parse_failed"
+  exit /b 0
 )
-for /f "tokens=1,* delims=:" %%A in ('findstr /R /C:"\"contract_version\"" "%RUNTIME_CONTRACT_FILE%"') do (
-  set "RAW_VALUE=%%B"
-  set "RAW_VALUE=!RAW_VALUE:,=!"
-  set "RAW_VALUE=!RAW_VALUE:"=!"
-  for /f "tokens=* delims= " %%V in ("!RAW_VALUE!") do if not defined CONTRACT_VERSION set "CONTRACT_VERSION=%%V"
+for /f "usebackq tokens=1,* delims==" %%A in ("!CONTRACT_TMP!") do (
+  if /I "%%A"=="owner" set "CONTRACT_OWNER=%%B"
+  if /I "%%A"=="pid" set "CONTRACT_PID=%%B"
+  if /I "%%A"=="contract_version" set "CONTRACT_VERSION=%%B"
+  if /I "%%A"=="host" set "CONTRACT_HOST=%%B"
+  if /I "%%A"=="port" set "CONTRACT_PORT=%%B"
 )
-for /f "tokens=1,* delims=:" %%A in ('findstr /R /C:"\"host\"" "%RUNTIME_CONTRACT_FILE%"') do (
-  set "RAW_VALUE=%%B"
-  set "RAW_VALUE=!RAW_VALUE:,=!"
-  set "RAW_VALUE=!RAW_VALUE:"=!"
-  for /f "tokens=* delims= " %%V in ("!RAW_VALUE!") do if not defined CONTRACT_HOST set "CONTRACT_HOST=%%V"
-)
-for /f "tokens=1,* delims=:" %%A in ('findstr /R /C:"\"port\"" "%RUNTIME_CONTRACT_FILE%"') do (
-  set "RAW_VALUE=%%B"
-  set "RAW_VALUE=!RAW_VALUE:,=!"
-  set "RAW_VALUE=!RAW_VALUE:"=!"
-  for /f "tokens=* delims= " %%V in ("!RAW_VALUE!") do if not defined CONTRACT_PORT set "CONTRACT_PORT=%%V"
-)
-call :normalize_contract_owner
+del /f /q "!CONTRACT_TMP!" >nul 2>&1
+call :log contract_owner_normalized="%CONTRACT_OWNER%"
 
 if defined CONTRACT_PID (
   echo !CONTRACT_PID! | findstr /R "^[0-9][0-9]*$" >nul
@@ -535,15 +534,6 @@ if not "%CONTRACT_VERSION%"=="1" (
 )
 if defined CONTRACT_OWNER if defined CONTRACT_PID set "CONTRACT_VALID=1"
 if not defined CONTRACT_VALID set "CONTRACT_READ_ERROR=contract_missing_fields"
-exit /b 0
-
-:normalize_contract_owner
-if not defined CONTRACT_OWNER (
-  call :log contract_owner_normalized=
-  exit /b 0
-)
-set "CONTRACT_OWNER=!CONTRACT_OWNER:\=\!"
-call :log contract_owner_normalized="!CONTRACT_OWNER!"
 exit /b 0
 
 :lock_is_active

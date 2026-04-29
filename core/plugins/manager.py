@@ -72,6 +72,25 @@ def get_plugin_status() -> Dict[str, Any]:
     }
 
 
+def reset_plugin_state(base_dir: str | None = None) -> Dict[str, Any]:
+    """清空进程内插件能力状态，并返回同形状的空状态快照。"""
+
+    registry = PluginRegistry()
+    plugins_dir = os.path.join(os.path.abspath(base_dir or "."), "plugins")
+    _STATE.update(
+        {
+            "loaded_at": None,
+            "vendor_paths": [],
+            "plugins_dir": plugins_dir,
+            "statuses": [],
+            "registry": registry,
+            "conflicted_capabilities": [],
+            "conflict_policy": registry.conflict_policy,
+        }
+    )
+    return get_plugin_status()
+
+
 def get_plugin_registry() -> PluginRegistry:
     reg = _STATE.get("registry")
     return reg if isinstance(reg, PluginRegistry) else PluginRegistry()

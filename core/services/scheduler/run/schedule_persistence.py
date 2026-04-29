@@ -6,9 +6,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, cast
 from core.infrastructure.errors import ValidationError
 from core.models.enums import BatchOperationStatus, BatchStatus, SourceType, YesNo
 
-_TERMINAL_OPERATION_STATUSES = frozenset(
-    (BatchOperationStatus.COMPLETED.value, BatchOperationStatus.SKIPPED.value)
-)
+_TERMINAL_OPERATION_STATUSES = frozenset((BatchOperationStatus.COMPLETED.value, BatchOperationStatus.SKIPPED.value))
 
 
 @dataclass(frozen=True)
@@ -117,6 +115,16 @@ def _raise_out_of_scope_schedule_rows_error(out_of_scope_op_ids: List[int]) -> N
     raise exc
 
 
+def _raise_duplicate_schedule_rows_error(duplicate_op_ids: List[int]) -> None:
+    normalized_ids = sorted({int(op_id) for op_id in list(duplicate_op_ids or []) if int(op_id) > 0})
+    exc = ValidationError("优化结果包含重复工序排程，已拒绝写入", field="schedule_results")
+    exc.details = dict(exc.details or {})
+    exc.details["reason"] = "duplicate_schedule_rows"
+    exc.details["count"] = int(len(normalized_ids))
+    exc.details["sample_op_ids"] = normalized_ids[:10]
+    raise exc
+
+
 def _result_identity(result: Any, *, index: int) -> str:
     if result is None:
         return f"results[{index}]"
@@ -186,6 +194,7 @@ def build_validated_schedule_payload(
     assigned_by_op_id: Dict[int, Dict[str, Any]] = {}
     out_of_scope_op_ids: List[int] = []
     validation_errors: List[str] = []
+    duplicate_op_ids: List[int] = []
 
     for index, result in enumerate(list(results or [])):
         row, out_of_scope_op_id, validation_error = _build_validated_schedule_row(
@@ -200,6 +209,9 @@ def build_validated_schedule_payload(
             validation_errors.append(validation_error)
             continue
         validated_row = cast(ValidatedScheduleRow, row)
+        if int(validated_row.op_id) in scheduled_op_ids:
+            duplicate_op_ids.append(int(validated_row.op_id))
+            continue
         schedule_rows.append(validated_row)
         scheduled_op_ids.add(int(validated_row.op_id))
         if validated_row.source == SourceType.INTERNAL.value:
@@ -210,6 +222,8 @@ def build_validated_schedule_payload(
 
     if out_of_scope_op_ids:
         _raise_out_of_scope_schedule_rows_error(out_of_scope_op_ids)
+    if duplicate_op_ids:
+        _raise_duplicate_schedule_rows_error(duplicate_op_ids)
     if validation_errors and schedule_rows:
         _raise_invalid_schedule_rows_error(validation_errors)
     if not schedule_rows:
@@ -262,7 +276,10 @@ def _persist_operation_statuses(
         op_id = int(op.id)
         if op_id not in scheduled_op_ids:
             continue
-        if _normalized_status_text(getattr(op, "status", None), default=BatchOperationStatus.PENDING.value) in _TERMINAL_OPERATION_STATUSES:
+        if (
+            _normalized_status_text(getattr(op, "status", None), default=BatchOperationStatus.PENDING.value)
+            in _TERMINAL_OPERATION_STATUSES
+        ):
             continue
         svc.op_repo.update(op_id, {"status": BatchOperationStatus.SCHEDULED.value})
         _maybe_persist_auto_assign_resources(

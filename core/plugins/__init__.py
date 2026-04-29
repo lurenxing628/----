@@ -7,7 +7,7 @@
 - 缺失/失败可回退，且状态可观测（系统页展示 + 日志/留痕）
 """
 
-from .manager import PluginManager, get_plugin_registry, get_plugin_status
+from .manager import PluginManager, get_plugin_registry, get_plugin_status, reset_plugin_state
 
-__all__ = ["PluginManager", "get_plugin_registry", "get_plugin_status"]
+__all__ = ["PluginManager", "get_plugin_registry", "get_plugin_status", "reset_plugin_state"]
 

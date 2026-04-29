@@ -137,7 +137,6 @@ def test_resolve_runtime_state_paths_returns_runtime_dir_for_runtime_and_log_dir
     assert log_paths["lock_path"].endswith(os.path.join("logs", "aps_runtime.lock"))
 
 
-
 def test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok(monkeypatch, tmp_path):
     launcher = _import_launcher()
     state_dir = tmp_path / "shared-data" / "logs"
@@ -359,8 +358,12 @@ def test_launcher_profile_pattern_rejects_adjacent_profile_names(tmp_path):
     profile_dir = tmp_path / "APS" / "Chrome109Profile"
     marker = str(profile_dir).lower()
 
-    assert _command_line_matches_exact_profile(f'chrome.exe --user-data-dir="{marker}" --app=http://127.0.0.1:5000', marker)
-    assert _command_line_matches_exact_profile(f'chrome.exe "--user-data-dir={marker}" --app=http://127.0.0.1:5000', marker)
+    assert _command_line_matches_exact_profile(
+        f'chrome.exe --user-data-dir="{marker}" --app=http://127.0.0.1:5000', marker
+    )
+    assert _command_line_matches_exact_profile(
+        f'chrome.exe "--user-data-dir={marker}" --app=http://127.0.0.1:5000', marker
+    )
     assert _command_line_matches_exact_profile(
         f'chrome.exe --user-data-dir="{marker.replace("chrome109profile", "Chrome109Profile")}"',
         marker,
@@ -518,10 +521,9 @@ def test_runtime_stop_cli_passes_stop_aps_chrome_flag():
         default_chrome_profile_dir=lambda runtime_dir: os.path.join(runtime_dir, "chrome109_profile"),
         pick_bind_host=lambda raw_host, logger=None: "127.0.0.1",
         pick_port=lambda host, preferred, logger=None: (host, int(preferred)),
-        stop_runtime_from_dir=lambda runtime_dir, stop_aps_chrome=False: calls.setdefault(
-            "stop", (runtime_dir, stop_aps_chrome)
-        )
-        and 0,
+        stop_runtime_from_dir=lambda runtime_dir, stop_aps_chrome=False: (
+            calls.setdefault("stop", (runtime_dir, stop_aps_chrome)) and 0
+        ),
         serve_runtime_app=lambda app, host, port: None,
         should_use_runtime_reloader=lambda debug: False,
         should_own_runtime_resources=lambda debug: True,
@@ -529,7 +531,10 @@ def test_runtime_stop_cli_passes_stop_aps_chrome_flag():
         atexit_register=lambda *args, **kwargs: None,
     )
 
-    assert app_main("default", anchor_file=__file__, argv=["--runtime-stop", "D:/runtime", "--stop-aps-chrome"], deps=deps) == 0
+    assert (
+        app_main("default", anchor_file=__file__, argv=["--runtime-stop", "D:/runtime", "--stop-aps-chrome"], deps=deps)
+        == 0
+    )
     assert calls["stop"] == ("D:/runtime", True)
 
 
@@ -579,7 +584,9 @@ def test_launcher_bat_chrome_alive_probe_scopes_to_profile_specific_process():
     assert "$cmdLower.Contains($marker)" not in text
     assert 'tasklist /FI "IMAGENAME eq chrome.exe" /NH /FO CSV' not in text
     assert 'findstr /I /C:"\\"chrome.exe\\""' not in text
-    assert _command_line_matches_exact_profile(f'chrome.exe --user-data-dir="{marker}" --app=http://127.0.0.1:5000', marker)
+    assert _command_line_matches_exact_profile(
+        f'chrome.exe --user-data-dir="{marker}" --app=http://127.0.0.1:5000', marker
+    )
     assert not _command_line_matches_exact_profile(f'chrome.exe --user-data-dir="{marker}2"', marker)
     assert not _command_line_matches_exact_profile(f'chrome.exe --user-data-dir="{marker}_bak"', marker)
     assert not _command_line_matches_exact_profile(
@@ -601,11 +608,16 @@ def test_launcher_bat_contains_json_health_probe_and_owner_fallback():
     assert "LOCK_ACTIVE=UNKNOWN" in text
     assert "BLOCKED_BY_UNCERTAIN" in text
     assert "RUNTIME_CONTRACT_FILE" in text
+    assert "JavaScriptSerializer" in text
+    assert "contract_parse_failed" in text
+    assert "launcher_blocked=no_powershell" in text
+    assert "PowerShell is required to verify the APS runtime owner and health." in text
     assert "port_file_invalid" in text
     assert 'set "HOST=!FILE_HOST!"' in text
     assert 'set "PORT=!FILE_PORT!"' in text
     assert 'call :log launch_error="!LAUNCH_ERROR!"' in text
-    assert 'set "CONTRACT_OWNER=!CONTRACT_OWNER:\\=\\!"' in text
+    assert 'findstr /R /C:"\\"owner\\""' not in text
+    assert 'set "CONTRACT_OWNER=!CONTRACT_OWNER:\\=\\!"' not in text
     assert 'tasklist /FI "PID eq !LOCK_PID!" /NH /FO CSV' in text
     assert "where wmic" not in text
     assert "wmic process where" not in text
@@ -633,16 +645,23 @@ def test_launcher_python_runtime_stop_uses_powershell_and_fail_closed_cleanup():
 
 
 def test_package_script_contains_browser_smoke_for_runtime_and_legacy_paths():
-    text = (Path(_repo_root()) / ".limcode" / "skills" / "aps-package-win7" / "scripts" / "package_win7.ps1").read_text(encoding="utf-8")
+    text = (Path(_repo_root()) / ".limcode" / "skills" / "aps-package-win7" / "scripts" / "package_win7.ps1").read_text(
+        encoding="utf-8"
+    )
     assert "Invoke-ChromeRuntimeSmoke" in text
     assert "BROWSER SMOKE OK" in text
     assert "--app=$url" in text
     assert 'Invoke-ChromeRuntimeSmoke (Join-Path $payloadDir "chrome.exe") "chrome runtime payload"' in text
-    assert 'Invoke-ChromeRuntimeSmoke (Join-Path $distDir "tools\\chrome109\\chrome.exe") "legacy dist chrome runtime"' in text
+    assert (
+        'Invoke-ChromeRuntimeSmoke (Join-Path $distDir "tools\\chrome109\\chrome.exe") "legacy dist chrome runtime"'
+        in text
+    )
 
 
 def test_package_script_exposes_explicit_best_effort_cleanup_wrapper():
-    text = (Path(_repo_root()) / ".limcode" / "skills" / "aps-package-win7" / "scripts" / "package_win7.ps1").read_text(encoding="utf-8")
+    text = (Path(_repo_root()) / ".limcode" / "skills" / "aps-package-win7" / "scripts" / "package_win7.ps1").read_text(
+        encoding="utf-8"
+    )
     marker = r"c:\temp\aps-smoke\chrome109profile"
 
     assert "function Stop-ProcessTreeByIdsBestEffort" in text
@@ -663,7 +682,9 @@ def test_package_script_exposes_explicit_best_effort_cleanup_wrapper():
     assert "Stop-LegacyDistChromeBestEffort" in legacy_preclean
     assert "Get-ChromeIdsByExecutablePath" in text
     assert "[string]::IsNullOrWhiteSpace" not in text
-    assert _command_line_matches_exact_profile(f'chrome.exe --user-data-dir="{marker}" --app=http://127.0.0.1:5000', marker)
+    assert _command_line_matches_exact_profile(
+        f'chrome.exe --user-data-dir="{marker}" --app=http://127.0.0.1:5000', marker
+    )
     assert not _command_line_matches_exact_profile(f'chrome.exe --user-data-dir="{marker}2"', marker)
     assert not _command_line_matches_exact_profile(f'chrome.exe --user-data-dir="{marker}_bak"', marker)
     assert not _command_line_matches_exact_profile(
@@ -772,11 +793,16 @@ def test_build_scripts_guard_vendor_and_launcher_path():
     repo_root = Path(_repo_root())
     onedir_text = (repo_root / "build_win7_onedir.bat").read_text(encoding="utf-8")
     installer_text = (repo_root / "build_win7_installer.bat").read_text(encoding="utf-8")
+    package_text = (repo_root / ".limcode" / "skills" / "aps-package-win7" / "scripts" / "package_win7.ps1").read_text(
+        encoding="utf-8"
+    )
 
     assert "if exist vendor (" in onedir_text
     assert "vendor 目录不存在，跳过 vendor 数据目录。" in onedir_text
     assert r"assets\启动_排产系统_Chrome.bat" in installer_text
     assert "*Chrome*.bat" not in installer_text
+    assert "[char[]](21551, 21160, 95, 25490, 20135, 31995, 32479" in package_text
+    assert "*Chrome*.bat" not in package_text
 
 
 def test_chrome_installer_remains_non_target_for_precleanup():

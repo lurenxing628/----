@@ -67,6 +67,26 @@ class _PartiallyInvalidScheduleRepo:
         ]
 
 
+class _DuplicateScheduleRepo:
+    def list_version_rows_by_op_ids_start_range(self, **kwargs):
+        return [
+            {
+                "op_id": 1,
+                "machine_id": "MC_A",
+                "operator_id": "OP_A",
+                "start_time": datetime(2026, 4, 1, 8, 0, 0),
+                "end_time": datetime(2026, 4, 1, 10, 0, 0),
+            },
+            {
+                "op_id": 1,
+                "machine_id": "MC_B",
+                "operator_id": "OP_B",
+                "start_time": datetime(2026, 4, 1, 11, 0, 0),
+                "end_time": datetime(2026, 4, 1, 12, 0, 0),
+            },
+        ]
+
+
 class _PartialMissingPrefixScheduleRepo:
     def list_version_rows_by_op_ids_start_range(self, **kwargs):
         return [
@@ -509,6 +529,49 @@ def test_freeze_window_invalid_previous_rows_relaxed_mode_surfaces_degradation()
     assert meta.get("freeze_applied") is False, meta
     assert meta.get("freeze_application_status") == "unapplied", meta
     assert meta.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], meta
+    assert warnings, warnings
+
+
+def test_freeze_window_duplicate_previous_rows_strict_mode_fail_closed() -> None:
+    meta = {}
+    svc = _StubSvc()
+    svc.schedule_repo = _DuplicateScheduleRepo()
+    with pytest.raises(ValidationError) as exc_info:
+        build_freeze_window_seed(
+            svc,
+            cfg=_cfg(),
+            prev_version=1,
+            start_dt=datetime(2026, 4, 1, 8, 0, 0),
+            operations=_ops(),
+            reschedulable_operations=_ops(),
+            strict_mode=True,
+            meta=meta,
+        )
+
+    assert exc_info.value.field == "freeze_window", exc_info.value.field
+    assert meta.get("freeze_state") == "degraded", meta
+
+
+def test_freeze_window_duplicate_previous_rows_relaxed_mode_does_not_pick_one() -> None:
+    meta = {}
+    svc = _StubSvc()
+    svc.schedule_repo = _DuplicateScheduleRepo()
+    frozen_op_ids, seed_results, warnings = build_freeze_window_seed(
+        svc,
+        cfg=_cfg(),
+        prev_version=1,
+        start_dt=datetime(2026, 4, 1, 8, 0, 0),
+        operations=_ops(),
+        reschedulable_operations=_ops(),
+        strict_mode=False,
+        meta=meta,
+    )
+
+    assert frozen_op_ids == set(), frozen_op_ids
+    assert seed_results == [], seed_results
+    assert meta.get("freeze_state") == "degraded", meta
+    assert meta.get("freeze_applied") is False, meta
+    assert meta.get("freeze_application_status") == "unapplied", meta
     assert warnings, warnings
 
 

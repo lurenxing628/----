@@ -227,20 +227,22 @@ M5 执行前细化：
 
 - M5 对应 items.yaml 的 PR-6：`schedule-persistence-auto-assign-contract`，只处理 `core/services/scheduler/run/schedule_persistence.py` 和对应合同测试。
 - 当前没有确认出必须立刻改业务逻辑的功能 bug；根因是 `build_validated_schedule_payload()` 复杂度登记仍打开，且错误优先级、simulate、auto-assign 写回条件缺少 PR-6 专项测试。
-- 本轮代码改动只允许把 `build_validated_schedule_payload()` 的既有判断原样搬到私有 helper；错误文案、`reason`、`details`、优先级、source 判定和 `assigned_by_op_id` 形状必须保持不变。
+- 原始 PR-6 代码改动只允许把 `build_validated_schedule_payload()` 的既有判断搬到私有 helper；最终复审后，`duplicate_schedule_rows` 作为唯一新增 public reason 正式纳入落库合同，用来拒绝同一次优化结果中的重复 `op_id`。
+- 最终复审后，schema v7 / `idx_schedule_version_op_unique` 作为 Schedule 完整性硬化纳入本路线图：新库直接带唯一索引，v6 旧库迁移到 v7 时若已有重复 `(version, op_id)` 会 fail fast，要求先人工清理或恢复备份。
 - 本轮不新增“写自动分配资源前重读数据库工序”的特殊检查；旧对象覆盖风险只作为观察项记录，后续如需治理另开任务。
-- 本轮不改 summary、result_summary、schema、页面、route、viewmodel、repo、质量门禁脚本、full-test-debt 脚本和台账脚本运行逻辑。
-- 如果红灯测试或静态检查证明必须新增业务 `if`、fallback、兜底、宽泛默认值、宽泛 `try/except`、新 reason 或新 details，立即停线说明，不直接实现。
+- 本轮不改 summary、result_summary、页面、route、viewmodel、repo、质量门禁脚本、full-test-debt 脚本和台账脚本运行逻辑。
+- 如果红灯测试或静态检查证明必须新增业务 `if`、fallback、兜底、宽泛默认值、宽泛 `try/except` 或更多新 reason/details，立即停线说明，不直接实现。
 - PR-6 不减少 full-test-debt；P1-11 只有复杂度登记真的被受控脚本移除后才能写 fixed，P1-12/P1-13 只能写 test_coverage 证据锁定。
 
 M5 执行完成回填：
 
-- 已新增 PR-6 专项测试，覆盖错误优先级、simulate 不改真实状态和资源、`auto_assign_persist=no`、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控。
-- 已把 `build_validated_schedule_payload()` 的既有判断原样搬到私有 helper；错误文案、`reason`、`details`、优先级、source 判定和 `assigned_by_op_id` 形状保持不变。
+- 已新增 PR-6 专项测试，覆盖错误优先级、重复 `op_id` 拒绝、simulate 不改真实状态和资源、`auto_assign_persist=no`、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控。
+- 已把 `build_validated_schedule_payload()` 的既有判断搬到私有 helper，并补入 `duplicate_schedule_rows` 明确拒绝重复有效排程行；当前错误优先级为 out-of-scope > duplicate > invalid > no-actionable。
+- 最终复审补充 schema v7：`schema.sql` 与 v7 迁移创建 `idx_schedule_version_op_unique`，正向迁移测试证明非重复历史 Schedule 行保留，负向迁移测试证明重复历史行会 fail fast。
 - `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 后，高复杂度登记从 40 降到 39，P1-11 对应复杂度登记已移除。
 - 本轮没有新增写前重读数据库工序的特殊检查；旧对象覆盖风险作为观察项保留。
-- 本轮没有改 summary、result_summary、schema、页面、route、viewmodel、repo、质量门禁脚本、full-test-debt 脚本或台账脚本运行逻辑。
-- `tools/check_full_test_debt.py` 仍显示 active xfail 为 5 条 operator-machine/query service 旧登记，`collected_count=748`，本轮不写 full-test-debt 减少。
+- 本轮没有改 summary、result_summary、页面、route、viewmodel、repo、质量门禁脚本、full-test-debt 脚本或台账脚本运行逻辑。
+- `tools/check_full_test_debt.py` 仍显示 active xfail 为 5 条 operator-machine/query service 旧登记；最终复审当前 proof 为 `collected_count=792`，本轮不写 full-test-debt 减少。
 
 ### M6：页面展示合同
 
@@ -428,6 +430,7 @@ extend meta：
 
 ```text
 out_of_scope_schedule_rows
+> duplicate_schedule_rows
 > invalid_schedule_rows
 > no_actionable_schedule_rows
 ```
@@ -435,6 +438,7 @@ out_of_scope_schedule_rows
 目标行为：
 
 - 只要存在 out-of-scope 行，优先抛 out-of-scope。
+- 同一批优化输出中，同一个 `op_id` 出现多条有效排程行时，抛 `duplicate_schedule_rows`，拒绝让后续落库或数据库索引替调用方“任选一条”。
 - 有合法行也有非法行时，抛 invalid rows。
 - 没有任何可落库行时，抛 no actionable，并带上 validation_errors。
 - `simulate=True` 不更新工序状态、不持久化 auto-assign。
@@ -772,14 +776,14 @@ PR-5 执行结果：
 - 已新增真实页面和接口响应不泄漏测试：把 `INTERNAL_OPTIMIZER_SECRET` 放进内部 diagnostics，访问分析页、系统历史页、排产首页、周计划页、甘特图、资源排班页、报表入口和报表子页，这些响应均不展示这个内部词。
 - 已通过 PR-5 目标测试、页面合同测试、ruff、pyright、full-test-debt、台账检查、yaml 校验和 `git diff --check`。full-test-debt 仍是 5 条 active xfail，`collected_count=744`，不声明减少。
 - 完整 M4 收口后已在干净工作区复跑 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`，最终质量门禁通过。
-- 本轮没有改运行代码，没有改 `summary_schema_version=1.2`，没有改 `OptimizationOutcome` 字段，没有新增 `if`、fallback、兜底、静默吞错或宽泛默认值逻辑，也没有在模板、route 或 viewmodel 里补二次过滤。
+- PR-5 初次验收时没有改运行代码；最终复审后，当前分支已在 `schedule_summary_assembly.py` 的运行路径中调用 `compact_attempts(list(ctx.attempts or []), limit=12)`，确保 rejected diagnostics 不会被普通 attempts 截断挤掉。`summary_schema_version=1.2` 和 `OptimizationOutcome` 字段仍未改变，也没有在模板、route 或 viewmodel 里补二次过滤。
 
 ### PR-6：落库校验与 auto-assign persist
 
 PR-6 头部承接 M4 完整完成结果：
 
 - M4 已拆成 PR-4 和 PR-5 完成：PR-4 固定优化器输出、rejected 诊断、attempts 压缩和已有 `state.best is None` 路径外形；PR-5 固定 summary/result_summary 写入历史、读回和页面展示边界。
-- M4 只补测试和 CodeStable 追踪文档，没有改运行代码；没有新增独立 `reason` 字段，没有改 `summary_schema_version=1.2`，没有改 `OptimizationOutcome` 字段，没有新增 `if`、fallback、兜底、静默吞错或宽泛默认值逻辑。
+- M4 初次收口只补测试和 CodeStable 追踪文档；最终复审后，当前分支把 attempts 压缩前移到 `schedule_summary_assembly.py` 的运行装配点，用同一 `compact_attempts()` 规则保护公开 attempts 和 diagnostics。没有改 `summary_schema_version=1.2`，没有改 `OptimizationOutcome` 字段，也没有新增 fallback、兜底、静默吞错或宽泛默认值逻辑。
 - M4 不减少 full-test-debt，active xfail 仍是 5 条 operator-machine/query service 旧登记，`collected_count=744`。
 - M4 已在干净工作区通过最终质量门禁后交接给 PR-6。
 - PR-6 可以承接 M4 已证明的稳定 summary 输入，但不能把 M4 的 proof 当成落库校验和 auto-assign persist 已完成。PR-6 仍要自己证明 `build_validated_schedule_payload()` 错误优先级、simulate 不写状态、不持久化自动分配资源，以及 auto-assign persist 只补空资源且不覆盖已有资源。
@@ -797,8 +801,8 @@ PR-6 头部承接 M4 完整完成结果：
 PR-6 执行计划：
 
 1. 建立 `codestable/features/2026-04-28-schedule-persistence-auto-assign-contract/`，把 PR-6 design/checklist 与 roadmap item 互相指向，items.yaml 进入 `in-progress`。
-2. 新增 PR-6 专项测试，覆盖 out-of-scope 与 invalid 同时出现、全部非法但无可落库行、simulate 不改真实状态和资源、`auto_assign_persist=no`、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控。
-3. 只在 `schedule_persistence.py` 内原样搬移 `build_validated_schedule_payload()` 现有判断到私有 helper；不改 reason/details/优先级，不加新兜底。
+2. 新增 PR-6 专项测试，覆盖 out-of-scope 与 invalid 同时出现、duplicate_schedule_rows、全部非法但无可落库行、simulate 不改真实状态和资源、`auto_assign_persist=no`、外协隔离、已有资源不覆盖、只补空字段、missing set 门控和 v7 唯一索引迁移。
+3. 在 `schedule_persistence.py` 内搬移 `build_validated_schedule_payload()` 现有判断到私有 helper；最终复审唯一新增 public reason 是 `duplicate_schedule_rows`，同时把 schema v7 唯一索引作为硬化层，不加兜底。
 4. 复跑 PR-6 窄测试、现有落库/服务回归、PR-5 下游页面/报表读取回归、ruff、pyright、full-test-debt、台账、yaml 和 `git diff --check`。
 5. 若复杂度达标，用 `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 刷新台账，再用 `check` 复核；如果复杂度登记没关，停线说明，不为了指标新增逻辑。
 6. 请 subagent 复审落库合同、自动分配写回、下游影响、无新增兜底和 CodeStable 回填；若发现真实问题，先修复再验收。
@@ -807,11 +811,11 @@ PR-6 执行计划：
 PR-6 执行结果：
 
 - 已创建并验收 `codestable/features/2026-04-28-schedule-persistence-auto-assign-contract/`，checklist 全部完成，acceptance 已写入。
-- 已新增 `tests/test_schedule_persistence_auto_assign_contract.py`，直接锁住错误优先级、全部非法但无可落库行、simulate、`auto_assign_persist=no`、外协隔离、已有资源不覆盖、只补空字段和 missing set 门控；该文件已进入默认 pytest 收集，默认收集数为 748。
-- 已把 `build_validated_schedule_payload()` 的既有判断原样搬到 `_build_validated_schedule_row()`；对抗性复审发现的 `row is None` 静默跳过分支已删除，没有新增新 reason、新 details、fallback、兜底、静默吞错或宽泛默认值逻辑。
+- 已新增 `tests/test_schedule_persistence_auto_assign_contract.py`，直接锁住错误优先级、duplicate_schedule_rows、全部非法但无可落库行、simulate、`auto_assign_persist=no`、外协隔离、已有资源不覆盖、只补空字段、missing set 门控和 v7 唯一索引迁移；该文件已进入默认 pytest 收集，最终复审当前默认收集数为 792。
+- 已把 `build_validated_schedule_payload()` 的既有判断搬到 `_build_validated_schedule_row()`；对抗性复审发现的 `row is None` 静默跳过分支已删除。`duplicate_schedule_rows` 是正式记录的唯一新增 public reason，不属于 fallback/兜底/静默吞错。
 - 已通过 PR-6 专项测试、现有落库/服务回归、PR-5 下游页面/报表读取回归、ruff、pyright、复杂度体检、full-test-debt、台账检查、YAML 校验和 `git diff --check`；复审修正提交后最终 clean quality gate 也要在干净工作区复跑通过。
 - `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 后，P1-11 复杂度登记已移除，`complexity_count=39`；P1-12/P1-13 按 test_coverage 锁证。
-- 本轮没有新增写前重读数据库工序的特殊检查，没有改 summary、页面、route、viewmodel、repo、runtime/plugin 或质量门禁工具；没有减少 full-test-debt，active xfail 仍为 5 条，`collected_count=748`。
+- 本轮没有新增写前重读数据库工序的特殊检查，没有改 summary、页面、route、viewmodel、repo、runtime/plugin 或质量门禁工具；schema 只按 v7 唯一索引硬化记录；没有减少 full-test-debt，active xfail 仍为 5 条，`collected_count=792`。
 
 ### PR-7：/scheduler/run ViewResult
 
@@ -948,6 +952,7 @@ M7-B plugin enabled-source 合同收窄：
 - `_apply_enabled_sources()` 已拆成 `_resolve_enabled_source()`、`_public_plugin_status_row()`、`_config_source_summary()`。
 - 新增真实可选插件默认关闭测试：`pandas_excel_backend` 和 `ortools_probe` 无配置时默认关闭、不注册能力，Excel 默认仍走 openpyxl。
 - 系统页新增插件留痕状态和冲突能力展示，状态结构里的 `telemetry_persisted` 与 `conflicted_capabilities` 不再只能靠内部数据查看。
+- 最终复审补充：`PluginManager.load_from_base_dir()` 整体失败时，`bootstrap_plugins()` 会调用 `reset_plugin_state(base_dir)` 清空进程内全局 registry/status，避免旧插件能力继续影响 Excel backend 或系统页状态。
 - P1-24 只写“已复核”，不包装成已修 open bug；P1-25 保持证据不足。
 
 M7 执行结果回填：
@@ -958,7 +963,7 @@ M7 执行结果回填：
 - P1-23：`_apply_enabled_sources` 复杂度登记已解除。
 - P1-24：复核后没有 open plugin fallback 修复项，本轮只补用户可见状态。
 - P1-25：证据不足，不属于本轮可执行完成项或未完成项；没有新路径、台账条目或测试 nodeid 前不另开修复。
-- `scripts/sync_debt_ledger.py check` 已通过，当前 `complexity_count=32`、`oversize_count=8`、`silent_fallback_count=154`、`test_debt_count=5`。
+- `scripts/sync_debt_ledger.py check` 已通过，当前 `complexity_count=32`、`oversize_count=8`、`silent_fallback_count=153`、`test_debt_count=5`。
 - `tools/check_full_test_debt.py` 仍为 5 条 active xfail，本轮不声明 full-test-debt 减少。
 - 代码完成后已调用 4 路 subagent 只读审查：兜底审查、启动入口审查和插件合同审查均未发现阻断问题；台账审查发现 accepted risk 说明仍有乱码，已修成可读中文并重跑台账校验通过。
 
@@ -994,7 +999,7 @@ M7 执行结果回填：
 - 新增三条合同测试，覆盖 `reschedulable_operations=None` 使用全部 `operations`、显式子集只冻结子集、`seed_results` 按 `(start_time, op_id)` 排序并保留字段。
 - `python -m radon cc -s core/services/scheduler/run/freeze_window.py` 显示 `build_freeze_window_seed()` 复杂度从 26 降到 3，拆出 helper 最高复杂度 9。
 - `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 后，`complexity_count` 从 32 降到 31，`complexity:core-services-scheduler-freeze_window-build_freeze_window_seed` 消失。
-- `silent_fallback_count` 仍为 154，没有增加。
+- `silent_fallback_count` 仍为 153，没有增加。
 - `tools/check_full_test_debt.py` 仍为 5 条 active xfail，本轮不声明 full-test-debt 减少。
 
 后续任务头部承接说明：
@@ -1057,11 +1062,11 @@ PR-0 映射表落盘并通过证明检查后，排产主链按 PR-1 到 PR-8 顺
 - 2026-04-28：修复 M3 二次 review findings：补跨过排产开始时间的停机查询测试、逐设备查询全部失败的 partial 口径测试、extend 查询前整体失败保留原 map 测试；把 M0 历史 `collected_count=700` 和当前 `collected_count=744` 拆开写，并把 source-map 台账引用改为稳定 id/symbol，不再靠会漂移的台账行号。
 - 2026-04-28：细化 M4 完整治理计划，明确 M4 分 PR-4 优化器结果合同和 PR-5 summary/result_summary 合同两段执行；PR-4 不新增独立 reason 字段、不新增 fallback 行为，PR-5 承接落库历史和页面不泄漏内部诊断；items.yaml 已补窄测试、债务检查和最终 clean quality gate 命令。
 - 2026-04-28：完成 PR-4 优化器结果合同补证；新增 rejected 诊断穿过 attempts 压缩和 summary 投影后的分层测试，加严已有 `state.best is None` 路径外形测试；PR-4 没有改运行代码，没有新增 reason/fallback/兜底/静默吞错，没有减少 full-test-debt，active xfail 仍为 5 条。
-- 2026-04-28：完成 PR-5 summary/result_summary 合同补证；新增真实落库读回测试和真实页面/接口响应不泄漏测试，证明公开 attempts 不混入内部字段，diagnostics 正常大小下可落库读回但不展示到已覆盖响应；PR-5 没有改运行代码，没有改 schema 版本或 OptimizationOutcome，没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt；完整 M4 最终 clean quality gate 已通过。
+- 2026-04-28：完成 PR-5 summary/result_summary 合同补证；新增真实落库读回测试和真实页面/接口响应不泄漏测试，证明公开 attempts 不混入内部字段，diagnostics 正常大小下可落库读回但不展示到已覆盖响应；PR-5 初次验收没有改运行代码；最终复审后，当前分支在 `schedule_summary_assembly.py` 运行路径使用 `compact_attempts()` 保护 rejected diagnostics。没有改 `summary_schema_version=1.2` 或 OptimizationOutcome，没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt；完整 M4 最终 clean quality gate 已通过。
 - 2026-04-28：完成 PR-6 落库校验与 auto-assign persist 合同；新增专项测试锁住错误优先级、simulate、配置关闭、外协隔离和只补空字段，并在复审后改为默认门禁可收集的 `test_*.py` 路径；原样搬移 `build_validated_schedule_payload()` 既有判断后关闭 P1-11 复杂度登记，复审发现的 `row is None` 静默跳过分支已删除，`complexity_count=39`；P1-12/P1-13 按测试覆盖锁证；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-7 头部已写清不能继承落库 proof 当作页面 proof。
 - 2026-04-28：完成 PR-7 `/scheduler/run` ViewResult；把页面提示组装从 route 搬到纯展示构建层，route 只保留表单、服务调用、ViewResult、flash、异常边界和跳转；复审后补强跳转目标和普通异常通用提示测试，移除 P1-18 复杂度登记，`complexity_count=38`；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-8 头部已写清不能继承 `/scheduler/run` proof 当作 `batches_page()` proof。
 - 2026-04-28：完成 PR-8 `/scheduler/` 批次首页 viewmodel；把筛选状态、批次展示行、配置面板、最近历史面板和模板上下文从 route 搬到纯展示构建层，route 只保留请求读取、服务调用、分页、原有最近历史读取失败日志边界、viewmodel 和渲染；复审后补齐 `status=` 的全部状态下拉选项、精确空 status 测试、非 pending 状态控件隐藏测试，并移除 P1-19 复杂度登记，`complexity_count=37`；本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt，PR-9 头部已写清不能继承页面 proof 当作 runtime/plugin/infra proof。
 - 2026-04-28：处理 PR-8 对抗审核 findings；批次首页标题和空结果文案改成固定中性文案，配置面板装配 helper 从 route 文件移到共享配置展示 helper，测试补齐 `only_ready` 三态、非 pending 状态、空结果文案、summary 解析失败不泄漏原文和 route 使用 viewmodel 输出；没有新增 fallback/兜底/静默吞错。
-- 2026-04-28：完成 M7 runtime/plugin/infra 支线校准与执行；M7 拆成证据校准、launcher/runtime/Chrome stop、plugin enabled-source 三段，P1-20/P1-21/P1-22/P1-23 关闭当前事实源，P1-24 只复核，P1-25 继续证据不足；四路 subagent 复审后修复 accepted risk 乱码说明，最终台账为 `complexity_count=32`、`oversize_count=8`、`silent_fallback_count=154`、`test_debt_count=5`，本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt。
-- 2026-04-29：完成 P1 最终尾项 P1-14；`build_freeze_window_seed()` 公开入口不变，内部拆成范围准备、上一版读取、前缀套用和结果整理四段，补默认范围、显式子集、`seed_results` 排序和字段完整性测试；主函数复杂度从 26 降到 3，台账 `complexity_count=31`，`silent_fallback_count=154`，full-test-debt 仍为 5。P1 当前可执行事实源已收尾，但 P1-25 仍按证据不足保留，不写成已修。
-- 2026-04-29：归档 P1 roadmap 收尾状态；所有 items 已 `done`，路线图状态改为 `completed`。P1-24 只复核，不写成 fixed；P1-25 证据不足，不进入完成/未完成统计；full-test-debt 仍为 5 条旧 xfail。最终 clean gate 证明在本归档提交之后运行，并在最终交付说明记录对应 HEAD，避免“写入证明又改变 HEAD”的循环。
+- 2026-04-28：完成 M7 runtime/plugin/infra 支线校准与执行；M7 拆成证据校准、launcher/runtime/Chrome stop、plugin enabled-source 三段，P1-20/P1-21/P1-22/P1-23 关闭当前事实源，P1-24 只复核，P1-25 继续证据不足；四路 subagent 复审后修复 accepted risk 乱码说明，最终台账为 `complexity_count=32`、`oversize_count=8`、`silent_fallback_count=153`、`test_debt_count=5`，本轮没有新增 fallback/兜底/静默吞错，没有减少 full-test-debt。
+- 2026-04-29：完成 P1 最终尾项 P1-14；`build_freeze_window_seed()` 公开入口不变，内部拆成范围准备、上一版读取、前缀套用和结果整理四段，补默认范围、显式子集、`seed_results` 排序和字段完整性测试；主函数复杂度从 26 降到 3，台账 `complexity_count=31`，`silent_fallback_count=153`，full-test-debt 仍为 5，当前 `collected_count=792`。P1 当前可执行事实源已收尾，但 P1-25 仍按证据不足保留，不写成已修。
+- 2026-04-29：归档 P1 roadmap 收尾状态；所有 items 已 `done`，路线图状态改为 `completed`。P1-24 只复核，不写成 fixed；P1-25 证据不足，不进入完成/未完成统计；full-test-debt 仍为 5 条旧 xfail，当前 `collected_count=792`。最终 clean gate 证明在本归档提交之后运行，并在最终交付说明记录对应 HEAD，避免“写入证明又改变 HEAD”的循环。

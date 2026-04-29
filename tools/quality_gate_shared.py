@@ -229,8 +229,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/plugins.py",
         symbol="bootstrap_plugins",
-        line_start=178,
-        line_end=187,
+        line_start=223,
+        line_end=234,
         fallback_kind="observable_degrade",
     ),
     SilentFallbackSample(

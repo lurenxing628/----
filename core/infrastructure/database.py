@@ -12,10 +12,10 @@ from typing import List, Optional
 
 from .migrations.common import MigrationOutcome, fallback_log
 
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 7
 _CREATE_TABLE_RE = re.compile(r"(?ims)^\s*(CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(.*?\);)")
 _CREATE_INDEX_RE = re.compile(
-    r"(?im)^\s*(CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+[A-Za-z_][A-Za-z0-9_]*\s+ON\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(.*?\);)"
+    r"(?im)^\s*(CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+[A-Za-z_][A-Za-z0-9_]*\s+ON\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(.*?\);)"
 )
 
 
@@ -198,7 +198,9 @@ def _bootstrap_missing_tables_from_schema(conn: sqlite3.Connection, schema_sql: 
     except Exception:
         pass
     if logger:
-        fallback_log(logger, "warning", f"检测到非空数据库缺失整表，已按 schema.sql 补齐：{', '.join(missing_tables)}。")
+        fallback_log(
+            logger, "warning", f"检测到非空数据库缺失整表，已按 schema.sql 补齐：{', '.join(missing_tables)}。"
+        )
     return missing_tables
 
 
@@ -290,7 +292,9 @@ def _preflight_migration_contract(
         _cleanup_probe_db(probe_path)
 
 
-def ensure_schema(db_path: str, logger=None, schema_path: Optional[str] = None, backup_dir: Optional[str] = None) -> None:
+def ensure_schema(
+    db_path: str, logger=None, schema_path: Optional[str] = None, backup_dir: Optional[str] = None
+) -> None:
     """
     确保数据库表结构存在。
 
@@ -402,7 +406,9 @@ def _ensure_schema_version(conn: sqlite3.Connection, logger=None) -> None:
     if v <= 0 and _detect_schema_is_current(conn) and _is_truly_empty_db(conn):
         _set_schema_version(conn, CURRENT_SCHEMA_VERSION)
         if logger:
-            fallback_log(logger, "info", f"检测到新库结构已满足当前版本，SchemaVersion 已设为 {CURRENT_SCHEMA_VERSION}。")
+            fallback_log(
+                logger, "info", f"检测到新库结构已满足当前版本，SchemaVersion 已设为 {CURRENT_SCHEMA_VERSION}。"
+            )
 
 
 def _is_truly_empty_db(conn: sqlite3.Connection) -> bool:
@@ -468,7 +474,19 @@ def _detect_schema_is_current(conn: sqlite3.Connection) -> bool:
             "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('SystemConfig','SystemJobState')"
         ).fetchall()
         names = {r[0] if not isinstance(r, sqlite3.Row) else r["name"] for r in row}
-        return "SystemConfig" in names and "SystemJobState" in names
+        if not ("SystemConfig" in names and "SystemJobState" in names):
+            return False
+        index_row = conn.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type='index'
+              AND name='idx_schedule_version_op_unique'
+              AND tbl_name='Schedule'
+            LIMIT 1
+            """
+        ).fetchone()
+        return index_row is not None
     except Exception:
         return False
 
@@ -525,7 +543,9 @@ def _migrate_with_backup(
         os.makedirs(effective_backup_dir, exist_ok=True)
     except Exception as e:
         if logger:
-            fallback_log(logger, "error", f"数据库迁移前无法创建备份目录，已阻断迁移：{e}（dir={effective_backup_dir}）")
+            fallback_log(
+                logger, "error", f"数据库迁移前无法创建备份目录，已阻断迁移：{e}（dir={effective_backup_dir}）"
+            )
         raise
 
     from core.infrastructure.backup import BackupManager, maintenance_window
