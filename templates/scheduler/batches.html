@@ -281,7 +281,13 @@
         <table id="batchesTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1" data-col-resize="1">
         <thead>
           <tr>
-            <th class="w-60"><input type="checkbox" class="js-select-all" title="全选"></th>
+            <th class="w-60">
+              {% if status == 'pending' %}
+                <input type="checkbox" class="js-select-all" title="全选">
+              {% else %}
+                <span class="muted">-</span>
+              {% endif %}
+            </th>
             <th class="w-140" data-sort="text">批次号</th>
             <th class="w-150" data-sort="text">图号</th>
             <th class="w-100 text-right" data-sort="number">数量</th>

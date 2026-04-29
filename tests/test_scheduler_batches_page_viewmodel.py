@@ -202,6 +202,7 @@ def test_batches_page_defaults_to_pending_status_and_renders_pending_rows(tmp_pa
     assert "B-SCHEDULED" not in body
     assert 'value="pending" selected' in body
     assert "js-batch-check" in body
+    assert "js-select-all" in body
 
 
 def test_batches_page_empty_status_lists_all_statuses_without_run_controls(tmp_path, monkeypatch) -> None:
@@ -219,6 +220,7 @@ def test_batches_page_empty_status_lists_all_statuses_without_run_controls(tmp_p
     assert "选择批次并执行排产" not in body
     assert '<option value="" selected>（全部）</option>' in _select_markup(body, "schedulerBatchesStatusFilter")
     assert "js-batch-check" not in body
+    assert "js-select-all" not in body
     assert "jsSelectedCount" not in body
     assert 'formaction="/scheduler/simulate"' not in body
     assert "排产开始时间" not in body
@@ -255,6 +257,7 @@ def test_batches_page_non_pending_status_hides_run_controls(
     assert "B-PENDING" not in body
     assert selected_option in _select_markup(body, "schedulerBatchesStatusFilter")
     assert "js-batch-check" not in body
+    assert "js-select-all" not in body
     assert "jsSelectedCount" not in body
     assert 'formaction="/scheduler/simulate"' not in body
     assert "排产开始时间" not in body
