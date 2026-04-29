@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 from core.models import Schedule
 
 from .base_repo import BaseRepository
+from .schedule_detail_query import build_schedule_detail_sql
 
 
 def _require_schedule_op_id(schedule: Schedule) -> int:
@@ -118,45 +119,9 @@ class ScheduleRepository(BaseRepository):
           start_time < end AND end_time > start
         - 返回 dict 行（带 join 字段），供服务层直接拼装输出。
         """
-        sql = """
-        SELECT
-            s.id AS schedule_id,
-            s.op_id AS op_id,
-            s.start_time AS start_time,
-            s.end_time AS end_time,
-            s.lock_status AS lock_status,
-            s.version AS version,
-
-            bo.op_code AS op_code,
-            bo.batch_id AS batch_id,
-            bo.piece_id AS piece_id,
-            bo.seq AS seq,
-            bo.op_type_name AS op_type_name,
-            bo.source AS source,
-            bo.status AS op_status,
-            s.machine_id AS machine_id,
-            s.operator_id AS operator_id,
-            bo.supplier_id AS supplier_id,
-
-            b.part_no AS part_no,
-            b.part_name AS part_name,
-            b.due_date AS due_date,
-            b.priority AS priority,
-
-            m.name AS machine_name,
-            o.name AS operator_name,
-            sup.name AS supplier_name
-        FROM Schedule s
-        LEFT JOIN BatchOperations bo ON bo.id = s.op_id
-        LEFT JOIN Batches b ON b.batch_id = bo.batch_id
-        LEFT JOIN Machines m ON m.machine_id = s.machine_id
-        LEFT JOIN Operators o ON o.operator_id = s.operator_id
-        LEFT JOIN Suppliers sup ON sup.supplier_id = bo.supplier_id
-        WHERE s.version = ?
-          AND s.start_time < ?
-          AND s.end_time > ?
-        ORDER BY s.start_time, s.id
-        """
+        sql = build_schedule_detail_sql(
+            where_clauses=("s.version = ?", "s.start_time < ?", "s.end_time > ?"),
+        )
         return self.fetchall(sql, (int(version), end_time, start_time))
 
     def list_dispatch_rows_with_resource_context(
@@ -168,63 +133,21 @@ class ScheduleRepository(BaseRepository):
         scope_type: Optional[str] = None,
         scope_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        sql = """
-        SELECT
-            s.id AS schedule_id,
-            s.op_id AS op_id,
-            s.start_time AS start_time,
-            s.end_time AS end_time,
-            s.lock_status AS lock_status,
-            s.version AS version,
-
-            bo.op_code AS op_code,
-            bo.batch_id AS batch_id,
-            bo.piece_id AS piece_id,
-            bo.seq AS seq,
-            bo.op_type_name AS op_type_name,
-            bo.source AS source,
-            bo.status AS op_status,
-            bo.supplier_id AS supplier_id,
-
-            b.part_no AS part_no,
-            b.part_name AS part_name,
-            b.due_date AS due_date,
-            b.priority AS priority,
-
-            s.machine_id AS machine_id,
-            m.name AS machine_name,
-            m.team_id AS machine_team_id,
-            mt.name AS machine_team_name,
-
-            s.operator_id AS operator_id,
-            o.name AS operator_name,
-            o.team_id AS operator_team_id,
-            ot.name AS operator_team_name,
-
-            sup.name AS supplier_name
-        FROM Schedule s
-        LEFT JOIN BatchOperations bo ON bo.id = s.op_id
-        LEFT JOIN Batches b ON b.batch_id = bo.batch_id
-        LEFT JOIN Machines m ON m.machine_id = s.machine_id
-        LEFT JOIN ResourceTeams mt ON mt.team_id = m.team_id
-        LEFT JOIN Operators o ON o.operator_id = s.operator_id
-        LEFT JOIN ResourceTeams ot ON ot.team_id = o.team_id
-        LEFT JOIN Suppliers sup ON sup.supplier_id = bo.supplier_id
-        WHERE s.version = ?
-          AND s.start_time < ?
-          AND s.end_time > ?
-        """
+        where_clauses = ["s.version = ?", "s.start_time < ?", "s.end_time > ?"]
         params: List[Any] = [int(version), end_time, start_time]
         if scope_type == "operator" and scope_id:
-            sql += " AND s.operator_id = ?"
+            where_clauses.append("s.operator_id = ?")
             params.append(scope_id)
         elif scope_type == "machine" and scope_id:
-            sql += " AND s.machine_id = ?"
+            where_clauses.append("s.machine_id = ?")
             params.append(scope_id)
         elif scope_type == "team" and scope_id:
-            sql += " AND ((o.team_id = ?) OR (m.team_id = ?))"
+            where_clauses.append("((o.team_id = ?) OR (m.team_id = ?))")
             params.extend([scope_id, scope_id])
-        sql += " ORDER BY s.start_time, s.id"
+        sql = build_schedule_detail_sql(
+            where_clauses=tuple(where_clauses),
+            include_team_context=True,
+        )
         return self.fetchall(sql, tuple(params))
 
     def list_by_version_with_details(self, version: int) -> List[Dict[str, Any]]:
@@ -234,43 +157,7 @@ class ScheduleRepository(BaseRepository):
         说明：
         - 返回 dict 行（带 join 字段），供服务层直接拼装输出。
         """
-        sql = """
-        SELECT
-            s.id AS schedule_id,
-            s.op_id AS op_id,
-            s.start_time AS start_time,
-            s.end_time AS end_time,
-            s.lock_status AS lock_status,
-            s.version AS version,
-
-            bo.op_code AS op_code,
-            bo.batch_id AS batch_id,
-            bo.piece_id AS piece_id,
-            bo.seq AS seq,
-            bo.op_type_name AS op_type_name,
-            bo.source AS source,
-            bo.status AS op_status,
-            s.machine_id AS machine_id,
-            s.operator_id AS operator_id,
-            bo.supplier_id AS supplier_id,
-
-            b.part_no AS part_no,
-            b.part_name AS part_name,
-            b.due_date AS due_date,
-            b.priority AS priority,
-
-            m.name AS machine_name,
-            o.name AS operator_name,
-            sup.name AS supplier_name
-        FROM Schedule s
-        LEFT JOIN BatchOperations bo ON bo.id = s.op_id
-        LEFT JOIN Batches b ON b.batch_id = bo.batch_id
-        LEFT JOIN Machines m ON m.machine_id = s.machine_id
-        LEFT JOIN Operators o ON o.operator_id = s.operator_id
-        LEFT JOIN Suppliers sup ON sup.supplier_id = bo.supplier_id
-        WHERE s.version = ?
-        ORDER BY s.start_time, s.id
-        """
+        sql = build_schedule_detail_sql(where_clauses=("s.version = ?",))
         return self.fetchall(sql, (int(version),))
 
     def list_by_machine(self, machine_id: str, version: Optional[int] = None) -> List[Schedule]:
@@ -328,4 +215,3 @@ class ScheduleRepository(BaseRepository):
 
     def delete_by_op(self, op_id: int) -> None:
         self.execute("DELETE FROM Schedule WHERE op_id = ?", (int(op_id),))
-
