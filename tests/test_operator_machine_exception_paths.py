@@ -43,7 +43,7 @@ def test_normalize_skill_level_optional_only_converts_value_error() -> None:
     assert "技能等级" in exc_info.value.message
 
     with patch(
-        "core.services.personnel.operator_machine_normalizers.normalize_skill_level",
+        "core.services.personnel.operator_machine_normalizers.normalize_skill_level_value",
         side_effect=RuntimeError("normalize exploded"),
     ):
         with pytest.raises(RuntimeError, match="normalize exploded"):
@@ -52,13 +52,13 @@ def test_normalize_skill_level_optional_only_converts_value_error() -> None:
 
 def test_normalize_skill_level_stored_only_falls_back_for_value_error() -> None:
     with patch(
-        "core.services.personnel.operator_machine_normalizers.normalize_skill_level",
+        "core.services.personnel.operator_machine_normalizers.normalize_skill_level_value",
         side_effect=ValueError("invalid skill"),
     ):
         assert OperatorMachineService._normalize_skill_level_stored("bad") == "normal"
 
     with patch(
-        "core.services.personnel.operator_machine_normalizers.normalize_skill_level",
+        "core.services.personnel.operator_machine_normalizers.normalize_skill_level_value",
         side_effect=RuntimeError("normalize exploded"),
     ):
         with pytest.raises(RuntimeError, match="normalize exploded"):
@@ -70,7 +70,7 @@ def test_list_by_operator_propagates_unexpected_readside_normalization_errors() 
     try:
         svc = OperatorMachineService(conn)
         with patch(
-            "core.services.personnel.operator_machine_normalizers.normalize_skill_level",
+            "core.services.personnel.operator_machine_normalizers.normalize_skill_level_value",
             side_effect=RuntimeError("normalize exploded"),
         ):
             with pytest.raises(RuntimeError, match="normalize exploded"):
