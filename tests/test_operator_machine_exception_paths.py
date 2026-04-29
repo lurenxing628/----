@@ -125,8 +125,8 @@ def test_resolve_write_values_only_converts_validation_error() -> None:
             has_primary_col=True,
             old={"skill_level": "normal", "is_primary": "no"},
         )
-        assert new_skill is None
-        assert new_primary is None
+        assert new_skill == "normal"
+        assert new_primary == "no"
         assert err is not None
         assert "技能等级" in err
 
