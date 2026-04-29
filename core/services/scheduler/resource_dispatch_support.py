@@ -139,8 +139,8 @@ def build_dispatch_summary(
         if item.get("is_cross_team"):
             cross_team_count += 1
         counterpart_id = _text(item.get("counterpart_resource_id"))
-        counterpart_label = _text(item.get("counterpart_resource_label"))
-        if not counterpart_id or counterpart_label.startswith("外协"):
+        source = _text(item.get("source")).lower()
+        if not counterpart_id or source == "external":
             external_count += 1
 
     summary_empty_reason = empty_reason if not seen else None
@@ -264,17 +264,13 @@ def build_scope_result(
 def empty_dispatch_payload(
     *,
     scope_type: str,
-    scope_type_label: str,
     team_axis: str,
-    team_axis_label: str,
     version: Optional[int],
 ) -> Dict[str, Any]:
     return {
         "filters": {
             "scope_type": scope_type,
-            "scope_type_label": scope_type_label,
             "team_axis": team_axis,
-            "team_axis_label": team_axis_label,
             "version": version,
         },
         "summary": {
@@ -426,31 +422,21 @@ def build_single_scope_payload(
 def build_dispatch_filters(
     *,
     normalized_scope_type: str,
-    scope_type_label: str,
     selected_scope_id: str,
     selected_scope_name: str,
     normalized_team_axis: str,
-    team_axis_label: str,
     dr: DispatchRange,
     selected_version: int,
 ) -> Dict[str, Any]:
     return {
         "scope_type": normalized_scope_type,
-        "scope_type_label": scope_type_label,
         "scope_id": selected_scope_id,
         "scope_name": selected_scope_name,
-        "scope_label": f"{selected_scope_id} {selected_scope_name}".strip(),
         "operator_id": selected_scope_id if normalized_scope_type == "operator" else "",
         "machine_id": selected_scope_id if normalized_scope_type == "machine" else "",
         "team_id": selected_scope_id if normalized_scope_type == "team" else "",
         "team_axis": normalized_team_axis,
-        "team_axis_label": team_axis_label,
         "period_preset": dr.period_preset,
-        "period_preset_label": {
-            "week": "按周",
-            "month": "按月",
-            "custom": "自定义",
-        }.get(dr.period_preset, dr.period_preset),
         "query_date": dr.query_date.isoformat(),
         "start_date": dr.start_date.isoformat(),
         "end_date": dr.end_date.isoformat(),

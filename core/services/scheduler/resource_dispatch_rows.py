@@ -10,12 +10,6 @@ from ._sched_display_utils import (
     BAD_TIME_EMPTY_REASON as _BAD_TIME_EMPTY_REASON,
 )
 from ._sched_display_utils import (
-    display_machine as _display_machine,
-)
-from ._sched_display_utils import (
-    display_operator as _display_operator,
-)
-from ._sched_display_utils import (
     duration_minutes as _duration_minutes,
 )
 from ._sched_display_utils import (
@@ -46,14 +40,6 @@ def _text(value: Any) -> str:
     return str(value or "").strip()
 
 
-def _scope_type_label(scope_type: str) -> str:
-    return "人员" if scope_type == "operator" else "设备"
-
-
-def _counterpart_type_label(scope_type: str) -> str:
-    return "设备" if scope_type == "operator" else "人员"
-
-
 def _current_resource(scope_type: str, row: Mapping[str, Any]) -> Dict[str, str]:
     if scope_type == "operator":
         resource_id = _text(row.get("operator_id"))
@@ -61,7 +47,6 @@ def _current_resource(scope_type: str, row: Mapping[str, Any]) -> Dict[str, str]
         return {
             "id": resource_id,
             "name": resource_name,
-            "label": _display_operator(resource_id, resource_name),
             "team_id": _text(row.get("operator_team_id")),
             "team_name": _text(row.get("operator_team_name")),
         }
@@ -71,7 +56,6 @@ def _current_resource(scope_type: str, row: Mapping[str, Any]) -> Dict[str, str]
     return {
         "id": resource_id,
         "name": resource_name,
-        "label": _display_machine(resource_id, resource_name, row.get("supplier_name")),
         "team_id": _text(row.get("machine_team_id")),
         "team_name": _text(row.get("machine_team_name")),
     }
@@ -84,7 +68,6 @@ def _counterpart_resource(scope_type: str, row: Mapping[str, Any]) -> Dict[str, 
         return {
             "id": resource_id,
             "name": resource_name or _text(row.get("supplier_name")),
-            "label": _display_machine(resource_id, resource_name, row.get("supplier_name")),
             "team_id": _text(row.get("machine_team_id")),
             "team_name": _text(row.get("machine_team_name")),
         }
@@ -94,18 +77,9 @@ def _counterpart_resource(scope_type: str, row: Mapping[str, Any]) -> Dict[str, 
     return {
         "id": resource_id,
         "name": resource_name,
-        "label": _display_operator(resource_id, resource_name),
         "team_id": _text(row.get("operator_team_id")),
         "team_name": _text(row.get("operator_team_name")),
     }
-
-
-def _team_relation_label(current_team_id: str, counterpart_team_id: str) -> str:
-    if current_team_id and counterpart_team_id:
-        if current_team_id == counterpart_team_id:
-            return "同班组"
-        return "跨班组借调"
-    return "班组归属未维护"
 
 
 def _clamp_to_range(st: datetime, et: datetime, dr: DispatchRange) -> Optional[Tuple[datetime, datetime]]:
@@ -176,7 +150,6 @@ def normalize_dispatch_row(
     counterpart = _counterpart_resource(scope_type, row)
     batch_id = _text(row.get("batch_id"))
     task_code = _text(row.get("op_code")) or (f"op_{row.get('op_id')}" if row.get("op_id") is not None else "")
-    team_relation = _team_relation_label(current["team_id"], counterpart["team_id"])
     is_cross_team = bool(current["team_id"] and counterpart["team_id"] and current["team_id"] != counterpart["team_id"])
     normalized = {
         "schedule_id": row.get("schedule_id"),
@@ -196,19 +169,14 @@ def normalize_dispatch_row(
         "duration_minutes": _duration_minutes(st, et),
         "lock_status": _text(row.get("lock_status")),
         "scope_type": scope_type,
-        "scope_type_label": _scope_type_label(scope_type),
-        "counterpart_type_label": _counterpart_type_label(scope_type),
         "scope_id": scope_id,
         "scope_name": scope_name,
-        "scope_label": f"{scope_id} {scope_name}".strip(),
         "current_resource_id": current["id"],
         "current_resource_name": current["name"],
-        "current_resource_label": current["label"],
         "current_team_id": current["team_id"],
         "current_team_name": current["team_name"],
         "counterpart_resource_id": counterpart["id"],
         "counterpart_resource_name": counterpart["name"],
-        "counterpart_resource_label": counterpart["label"],
         "counterpart_team_id": counterpart["team_id"],
         "counterpart_team_name": counterpart["team_name"],
         "machine_id": _text(row.get("machine_id")),
@@ -219,8 +187,8 @@ def normalize_dispatch_row(
         "operator_name": _text(row.get("operator_name")),
         "operator_team_id": _text(row.get("operator_team_id")),
         "operator_team_name": _text(row.get("operator_team_name")),
+        "supplier_id": _text(row.get("supplier_id")),
         "supplier_name": _text(row.get("supplier_name")),
-        "team_relation_label": team_relation,
         "is_cross_team": is_cross_team,
         "is_cross_day": st.date() != et.date(),
         "is_overdue": bool(batch_id and batch_id in overdue_set),
@@ -296,9 +264,7 @@ def _task_classes(normalized: Dict[str, Any]) -> List[str]:
 def _task_group_key(normalized: Dict[str, Any], scope_id: str) -> str:
     return (
         normalized.get("current_resource_id")
-        or normalized.get("current_resource_label")
         or scope_id
-        or normalized.get("scope_label")
         or "resource"
     )
 
@@ -309,7 +275,7 @@ def _build_dispatch_task(normalized: Dict[str, Any], scope_id: str, start_dt: da
     meta["group_key"] = _task_group_key(normalized, scope_id)
     meta["visible_start"] = _fmt_dt(start_dt)
     meta["visible_end"] = _fmt_dt(end_dt)
-    name = f"{normalized.get('op_code') or task_id} {normalized.get('counterpart_resource_label') or ''}".strip()
+    name = str(normalized.get("op_code") or task_id).strip()
     return {
         "id": task_id,
         "schedule_id": normalized.get("schedule_id"),
@@ -355,8 +321,6 @@ def _calendar_item_text(item: Dict[str, Any], start_dt: datetime, end_dt: dateti
     title = _text(item.get("op_code")) or _text(item.get("batch_id"))
     if title:
         parts.append(title)
-    if item.get("counterpart_resource_label"):
-        parts.append(_text(item.get("counterpart_resource_label")))
     if item.get("part_no"):
         parts.append(_text(item.get("part_no")))
     return " ".join(part for part in parts if part)
@@ -372,9 +336,9 @@ def _calendar_headers(dr: DispatchRange) -> List[str]:
 
 
 def _calendar_group_keys(normalized: Dict[str, Any], scope_id: str) -> Tuple[str, str]:
-    resource_key = _text(normalized.get("current_resource_id")) or _text(normalized.get("current_resource_label"))
-    resource_label = _text(normalized.get("current_resource_label")) or _text(normalized.get("scope_label"))
-    return resource_key or scope_id, resource_label
+    resource_key = _text(normalized.get("current_resource_id")) or _text(normalized.get("supplier_name")) or scope_id
+    resource_name = _text(normalized.get("current_resource_name"))
+    return resource_key or scope_id, resource_name
 
 
 def _ensure_calendar_group(
@@ -392,10 +356,15 @@ def _ensure_calendar_group(
         return group_item
     group_item = {
         "scope_type": scope_type,
-        "scope_type_label": _scope_type_label(scope_type),
         "scope_id": resource_key,
         "scope_name": _text(normalized.get("current_resource_name")),
-        "scope_label": resource_label,
+        "current_resource_id": _text(normalized.get("current_resource_id")),
+        "current_resource_name": _text(normalized.get("current_resource_name")),
+        "machine_id": _text(normalized.get("machine_id")),
+        "machine_name": _text(normalized.get("machine_name")),
+        "operator_id": _text(normalized.get("operator_id")),
+        "operator_name": _text(normalized.get("operator_name")),
+        "supplier_name": _text(normalized.get("supplier_name")),
         "cells": {header: [] for header in headers},
     }
     grouped[group_key] = group_item
@@ -414,7 +383,15 @@ def _append_calendar_segments(group_item: Dict[str, Any], normalized: Dict[str, 
                 "text": _calendar_item_text(normalized, part_start, part_end),
                 "batch_id": normalized.get("batch_id"),
                 "op_code": normalized.get("op_code"),
-                "counterpart_resource_label": normalized.get("counterpart_resource_label"),
+                "part_no": normalized.get("part_no"),
+                "scope_type": normalized.get("scope_type"),
+                "counterpart_resource_id": normalized.get("counterpart_resource_id"),
+                "counterpart_resource_name": normalized.get("counterpart_resource_name"),
+                "machine_id": normalized.get("machine_id"),
+                "machine_name": normalized.get("machine_name"),
+                "operator_id": normalized.get("operator_id"),
+                "operator_name": normalized.get("operator_name"),
+                "supplier_name": normalized.get("supplier_name"),
                 "is_overdue": normalized.get("is_overdue"),
             }
         )
@@ -465,10 +442,15 @@ def build_dispatch_calendar_matrix(
         out_rows.append(
             {
                 "scope_type": group_item["scope_type"],
-                "scope_type_label": group_item["scope_type_label"],
                 "scope_id": group_item["scope_id"],
                 "scope_name": group_item["scope_name"],
-                "scope_label": group_item["scope_label"],
+                "current_resource_id": group_item["current_resource_id"],
+                "current_resource_name": group_item["current_resource_name"],
+                "machine_id": group_item["machine_id"],
+                "machine_name": group_item["machine_name"],
+                "operator_id": group_item["operator_id"],
+                "operator_name": group_item["operator_name"],
+                "supplier_name": group_item["supplier_name"],
                 "cells": _calendar_cells(group_item, headers),
             }
         )

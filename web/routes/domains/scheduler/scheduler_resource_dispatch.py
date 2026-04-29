@@ -6,8 +6,9 @@ from urllib.parse import urlencode
 
 from flask import current_app, flash, g, jsonify, redirect, request, send_file, url_for
 
-from core.infrastructure.errors import AppError, ErrorCode, error_response
+from core.infrastructure.errors import AppError, BusinessError, ErrorCode, error_response
 from core.services.common.excel_audit import log_excel_export
+from core.services.scheduler.resource_dispatch_excel import build_resource_dispatch_workbook
 from web.error_boundary import (
     build_user_visible_app_error_payload,
     get_user_visible_field_label,
@@ -16,6 +17,11 @@ from web.error_boundary import (
 )
 from web.routes.normalizers import decorate_history_version_options
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_resource_dispatch import (
+    build_resource_dispatch_filename,
+    decorate_resource_dispatch_context,
+    decorate_resource_dispatch_payload,
+)
 
 from .scheduler_bp import bp
 
@@ -199,12 +205,13 @@ def resource_dispatch_page():
         flash("加载资源排班中心页面失败，请稍后重试。", "error")
         context = svc.build_page_context()
 
-    filters = context.get("filters") or {}
     context = dict(context)
     context["versions"] = decorate_history_version_options(
         context.get("versions") or [],
         log_label="资源排班页",
     )
+    context = decorate_resource_dispatch_context(context)
+    filters = context.get("filters") or {}
     export_url = None
     if context.get("has_history") and context.get("can_query"):
         export_url = _export_url(filters)
@@ -221,7 +228,7 @@ def resource_dispatch_page():
 @bp.get("/resource-dispatch/data")
 def resource_dispatch_data():
     try:
-        payload = _svc().get_dispatch_payload(**_request_kwargs())
+        payload = decorate_resource_dispatch_payload(_svc().get_dispatch_payload(**_request_kwargs()))
         return jsonify({"success": True, "data": payload})
     except AppError as exc:
         return json_error_response(exc, payload=_error_payload_with_invalid_query_keys(exc))
@@ -235,7 +242,16 @@ def resource_dispatch_export():
     start = time.time()
     svc = _svc()
     try:
-        buf, filename, payload = svc.build_export(**_request_kwargs())
+        payload = svc.get_dispatch_payload(**_request_kwargs())
+        if not payload.get("has_history"):
+            raise BusinessError(
+                ErrorCode.NOT_FOUND,
+                "暂无排产历史，无法导出资源排班。",
+                details={"field": "version", "status": "no_history"},
+            )
+        payload = decorate_resource_dispatch_payload(payload)
+        buf = build_resource_dispatch_workbook(payload)
+        filename = build_resource_dispatch_filename(payload)
         filters = payload.get("filters") or {}
         summary = payload.get("summary") or {}
         detail_rows = payload.get("detail_rows") or []

@@ -72,15 +72,6 @@ class ResourceDispatchService:
             return self._text(machine_id)
         return self._text(team_id)
 
-    def _period_preset_label(self, value: str) -> str:
-        return {"week": "按周", "month": "按月", "custom": "自定义"}.get(value, value)
-
-    def _scope_type_label(self, value: str) -> str:
-        return {"operator": "人员", "machine": "设备", "team": "班组"}.get(value, value)
-
-    def _team_axis_label(self, value: str) -> str:
-        return "人员轴" if value == "operator" else "设备轴"
-
     def _latest_version(self) -> int:
         return int(self.history_service.get_latest_version() or 0)
 
@@ -121,7 +112,7 @@ class ResourceDispatchService:
     def _scope_name(self, scope_type: str, scope_id: str) -> str:
         record = self._scope_record(scope_type, scope_id)
         if not record:
-            label = self._scope_type_label(scope_type)
+            label = {"operator": "人员", "machine": "设备", "team": "班组"}.get(scope_type, scope_type)
             raise ValidationError(f"所选{label}不存在：{scope_id}", field="scope_id")
         return str(getattr(record, "name", "") or "").strip()
 
@@ -132,7 +123,6 @@ class ResourceDispatchService:
                 "name": item.name,
                 "status": item.status,
                 "team_id": item.team_id,
-                "label": f"{item.operator_id} {item.name}".strip(),
             }
             for item in self.operator_service.list()
         ]
@@ -142,7 +132,6 @@ class ResourceDispatchService:
                 "name": item.name,
                 "status": item.status,
                 "team_id": item.team_id,
-                "label": f"{item.machine_id} {item.name}".strip(),
             }
             for item in self.machine_service.list()
         ]
@@ -151,7 +140,6 @@ class ResourceDispatchService:
                 "id": item.team_id,
                 "name": item.name,
                 "status": item.status,
-                "label": f"{item.team_id} {item.name}".strip(),
             }
             for item in self.team_service.list(status=None)
         ]
@@ -241,17 +229,13 @@ class ResourceDispatchService:
         return {
             "filters": {
                 "scope_type": normalized_scope_type,
-                "scope_type_label": self._scope_type_label(normalized_scope_type),
                 "scope_id": selected_scope_id or "",
                 "scope_name": selected_scope_name,
-                "scope_label": f"{selected_scope_id or ''} {selected_scope_name}".strip(),
                 "operator_id": selected_scope_id if normalized_scope_type == "operator" else self._text(operator_id) or "",
                 "machine_id": selected_scope_id if normalized_scope_type == "machine" else self._text(machine_id) or "",
                 "team_id": selected_scope_id if normalized_scope_type == "team" else self._text(team_id) or "",
                 "team_axis": normalized_team_axis,
-                "team_axis_label": self._team_axis_label(normalized_team_axis),
                 "period_preset": dr.period_preset,
-                "period_preset_label": self._period_preset_label(dr.period_preset),
                 "query_date": dr.query_date.isoformat(),
                 "start_date": dr.start_date.isoformat(),
                 "end_date": dr.end_date.isoformat(),
@@ -287,9 +271,7 @@ class ResourceDispatchService:
         if version_resolution.status == "no_history":
             payload = empty_dispatch_payload(
                 scope_type=normalized_scope_type,
-                scope_type_label=self._scope_type_label(normalized_scope_type),
                 team_axis=normalized_team_axis,
-                team_axis_label=self._team_axis_label(normalized_team_axis),
                 version=None,
             )
             payload["status"] = "no_history"
@@ -343,11 +325,9 @@ class ResourceDispatchService:
             )
         payload["filters"] = build_dispatch_filters(
             normalized_scope_type=normalized_scope_type,
-            scope_type_label=self._scope_type_label(normalized_scope_type),
             selected_scope_id=selected_scope_id,
             selected_scope_name=selected_scope_name,
             normalized_team_axis=normalized_team_axis,
-            team_axis_label=self._team_axis_label(normalized_team_axis),
             dr=dr,
             selected_version=selected_version,
         )
@@ -374,8 +354,6 @@ class ResourceDispatchService:
         buf = build_resource_dispatch_workbook(payload)
         filters = payload.get("filters") or {}
         filename = "资源排班"
-        if filters.get("scope_type_label"):
-            filename += f"_{filters['scope_type_label']}"
         if filters.get("scope_id"):
             filename += f"_{filters['scope_id']}"
         if filters.get("scope_type") == "team" and filters.get("team_axis"):
