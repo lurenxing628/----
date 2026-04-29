@@ -1,0 +1,23 @@
+治理台账校验通过
+{
+  "accepted_risk_count": 5,
+  "checked_at": "2026-04-29T20:44:48+08:00",
+  "complexity_count": 31,
+  "oversize_count": 8,
+  "samples": {
+    "fallback_kinds": [
+      "cleanup_best_effort",
+      "observable_degrade",
+      "silent_default_fallback",
+      "silent_swallow"
+    ],
+    "sample_count": 7,
+    "scope_tags": [
+      "render_bridge",
+      "startup_guard"
+    ]
+  },
+  "schema_version": 2,
+  "silent_fallback_count": 153,
+  "test_debt_count": 5
+}

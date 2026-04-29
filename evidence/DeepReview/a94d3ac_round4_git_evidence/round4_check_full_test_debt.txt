@@ -1,0 +1,37 @@
+{
+  "active_xfail_count": 5,
+  "active_xfail_entries": [
+    {
+      "debt_id": "test-debt:operator-machine-list-by-operator-stale-patch",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
+      "reason": "测试仍在 patch 已不存在的技能等级归一化旧入口，无法验证 list_by_operator 的异常传播合同。"
+    },
+    {
+      "debt_id": "test-debt:operator-machine-normalize-skill-level-optional-stale-patch",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
+      "reason": "测试仍在 patch 已不存在的 normalize_skill_level 旧入口，无法验证可选技能等级归一化合同。"
+    },
+    {
+      "debt_id": "test-debt:operator-machine-normalize-skill-level-stored-stale-patch",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
+      "reason": "测试仍在 patch 已不存在的 normalize_skill_level 旧入口，无法验证落库存储技能等级归一化合同。"
+    },
+    {
+      "debt_id": "test-debt:operator-machine-resolve-write-values-return-contract",
+      "nodeid": "tests/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
+      "reason": "测试仍期待写入解析错误时返回 None，但当前合同是返回旧值和错误消息、调用方跳过写入。"
+    },
+    {
+      "debt_id": "test-debt:operator-machine-query-service-dirty-fields-contract",
+      "nodeid": "tests/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
+      "reason": "测试仍按普通字段精确相等，未覆盖查询服务当前返回 dirty_fields/dirty_reasons 的读侧归一化合同。"
+    }
+  ],
+  "collected_count": 792,
+  "collection_error_count": 0,
+  "fixed_count": 0,
+  "max_registered_xfail": 5,
+  "schema_version": 1,
+  "status": "passed",
+  "unexpected_failure_count": 0
+}

@@ -1,0 +1,16 @@
+changed_files=31
+status_A=1
+status_M=30
+numstat_files=31
+insertions=696
+deletions=265
+top_level_dirs=
+  codestable: 10
+  core: 10
+  tests: 5
+  "\345\274\200\345\217\221\346\226\207\346\241\243: 1
+  "assets: 1
+  .: 1
+  .limcode: 1
+  tools: 1
+  web: 1
