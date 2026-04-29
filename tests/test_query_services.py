@@ -216,6 +216,17 @@ def test_operator_machine_query_service_lists_with_names_and_linkage_rows() -> N
     assert q.list_simple_rows_for_machine_operator_sets(["M1"], []) == []
 
 
+def test_operator_machine_query_service_marks_dirty_primary_blank() -> None:
+    row = OperatorMachineQueryService._normalize_row(
+        {"operator_id": "O1", "machine_id": "M1", "skill_level": "normal", "is_primary": ""}
+    )
+
+    assert row["skill_level"] == "normal"
+    assert row["is_primary"] == "no"
+    assert "is_primary" in row.get("dirty_fields", [])
+    assert "历史主操标记为空" in row.get("dirty_reasons", {}).get("is_primary", "")
+
+
 def test_schedule_history_query_service_versions_and_latest() -> None:
     conn = _mem_conn()
     conn.execute(
