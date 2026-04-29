@@ -26,6 +26,33 @@ class BatchOperation:
     status: str = BatchOperationStatus.PENDING.value  # pending/scheduled/processing/completed/skipped
     created_at: Optional[str] = None
 
+    def is_external(self) -> bool:
+        return str(self.source or "").strip().lower() == SourceType.EXTERNAL.value
+
+    def is_internal(self) -> bool:
+        return not self.is_external()
+
+    def is_pending(self) -> bool:
+        return str(self.status or "").strip().lower() == BatchOperationStatus.PENDING.value
+
+    def is_scheduled(self) -> bool:
+        return str(self.status or "").strip().lower() == BatchOperationStatus.SCHEDULED.value
+
+    def is_processing(self) -> bool:
+        return str(self.status or "").strip().lower() == BatchOperationStatus.PROCESSING.value
+
+    def is_completed(self) -> bool:
+        return str(self.status or "").strip().lower() == BatchOperationStatus.COMPLETED.value
+
+    def is_skipped(self) -> bool:
+        return str(self.status or "").strip().lower() == BatchOperationStatus.SKIPPED.value
+
+    def has_supplier(self) -> bool:
+        return bool(str(self.supplier_id or "").strip())
+
+    def processing_hours(self) -> float:
+        return float(self.setup_hours or 0.0) + float(self.unit_hours or 0.0)
+
     @classmethod
     def from_row(cls, row: RowLike) -> BatchOperation:
         raw_id = get(row, "id")
@@ -83,4 +110,3 @@ class BatchOperation:
                 "created_at": self.created_at,
             }
         )
-

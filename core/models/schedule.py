@@ -19,6 +19,21 @@ class Schedule:
     version: int = 1
     created_at: Optional[str] = None
 
+    def is_locked(self) -> bool:
+        return str(self.lock_status or "").strip().lower() == LockStatus.LOCKED.value
+
+    def is_unlocked(self) -> bool:
+        return not self.is_locked()
+
+    def has_machine(self) -> bool:
+        return bool(str(self.machine_id or "").strip())
+
+    def has_operator(self) -> bool:
+        return bool(str(self.operator_id or "").strip())
+
+    def has_any_resource(self) -> bool:
+        return self.has_machine() or self.has_operator()
+
     @classmethod
     def from_row(cls, row: RowLike) -> Schedule:
         raw_id = get(row, "id")
@@ -54,4 +69,3 @@ class Schedule:
                 "created_at": self.created_at,
             }
         )
-
