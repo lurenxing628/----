@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import BatchOperation
-from core.models.enums import BatchOperationStatus, MachineStatus, MergeMode, OperatorStatus, SourceType, SupplierStatus
+from core.models.enums import BatchOperationStatus, MachineStatus, MergeMode, OperatorStatus, SupplierStatus
 from core.services.common.strict_parse import parse_required_float
 
 
@@ -24,11 +24,11 @@ def get_operation(svc, op_id: Any) -> BatchOperation:
     return svc._get_op_or_raise(oid)
 
 
-def get_external_merge_hint_for_op(svc, op: Any) -> Dict[str, Any]:
+def get_external_merge_hint_for_op(svc, op: BatchOperation) -> Dict[str, Any]:
     """
     返回外部工序“合并周期”提示信息（供页面展示）。
     """
-    if (op.source or "").strip().lower() != SourceType.EXTERNAL.value:
+    if not op.is_external():
         return {"is_external": False}
 
     tmpl, grp = svc._get_template_and_group_for_op(op)
@@ -67,7 +67,7 @@ def _normalize_batch_op_status(svc, value: Any) -> Optional[str]:
 def _ensure_internal_operation_editable(op: BatchOperation, *, op_id: Any) -> None:
     if op.id is None:
         raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
-    if (op.source or "").strip().lower() != SourceType.INTERNAL.value:
+    if not op.is_internal():
         raise ValidationError("只能编辑内部工序的设备/人员/工时信息", field="source")
 
 
@@ -182,7 +182,7 @@ def update_external_operation(
     if op.id is None:
         raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
     op_id_int = int(op.id)
-    if (op.source or "").strip().lower() != SourceType.EXTERNAL.value:
+    if not op.is_external():
         raise ValidationError("只能编辑外部工序的供应商/周期信息", field="source")
 
     supplier_provided = supplier_id is not None

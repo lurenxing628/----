@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import ExternalGroup, PartOperation
-from core.models.enums import MERGE_MODE_VALUES, MergeMode, SourceType
+from core.models.enums import MERGE_MODE_VALUES, MergeMode
 from core.services.common.normalize import append_unique_text_messages, normalize_text
 from core.services.common.safe_logging import safe_warning
 from data.repositories import ExternalGroupRepository, PartOperationRepository
@@ -50,7 +50,7 @@ class ExternalGroupService:
         for op in ops:
             if op.ext_group_id != group_id:
                 continue
-            if (op.source or "").strip().lower() != SourceType.EXTERNAL.value:
+            if not op.is_external():
                 continue
             out.append(op)
         return out

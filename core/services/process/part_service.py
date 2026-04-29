@@ -70,7 +70,7 @@ class PartService:
         snapshot: Dict[int, Tuple[float, float]] = {}
         ops = self.op_repo.list_by_part(part_no, include_deleted=False)
         for op in ops:
-            if (op.source or "").strip().lower() != SourceType.INTERNAL.value:
+            if not op.is_internal():
                 continue
             try:
                 seq = int(op.seq)
@@ -502,9 +502,9 @@ class PartService:
             raise ValidationError("工时不能为负数", field="工时")
 
         op = self.op_repo.get(pn, s)
-        if not op or (op.status or "").strip().lower() != PartOperationStatus.ACTIVE.value:
+        if not op or not op.is_active():
             raise BusinessError(ErrorCode.NOT_FOUND, f"工序 {s} 不存在或已删除")
-        if (op.source or "").strip().lower() != SourceType.INTERNAL.value:
+        if not op.is_internal():
             raise ValidationError("只能编辑内部工序工时", field="工序")
 
         with self.tx_manager.transaction():
@@ -528,8 +528,8 @@ class PartService:
             int(op.seq)
             for op in ops
             if op.ext_group_id == gid
-            and (op.source or "").strip().lower() == SourceType.EXTERNAL.value
-            and (op.status or "").strip().lower() == PartOperationStatus.ACTIVE.value
+            and op.is_external()
+            and op.is_active()
         ]
 
         # 严格按文档规则：仅允许删除“首部连续外部组”或“尾部连续外部组”
@@ -581,8 +581,8 @@ class PartService:
                 int(op.seq)
                 for op in ops
                 if op.ext_group_id == group.group_id
-                and (op.source or "").strip().lower() == SourceType.EXTERNAL.value
-                and (op.status or "").strip().lower() == PartOperationStatus.ACTIVE.value
+                and op.is_external()
+                and op.is_active()
             ]
             if seqs and all(s in deletable_seqs for s in seqs):
                 group_ids.append(group.group_id)
