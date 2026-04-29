@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Mapping, Sequence
 
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector
@@ -29,7 +29,7 @@ from ._sched_display_utils import (
 from .gantt_range import WeekRange
 
 
-def build_week_plan_rows(*, rows: Sequence[Dict[str, Any]], wr: WeekRange) -> BuildOutcome[List[Dict[str, Any]]]:
+def build_week_plan_rows(*, rows: Sequence[Mapping[str, Any]], wr: WeekRange) -> BuildOutcome[List[Dict[str, Any]]]:
     """
     生成周计划行（用于页面预览与导出）。
 

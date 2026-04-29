@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from core.infrastructure.errors import ValidationError
 from core.models.enums import SourceType
@@ -151,7 +151,7 @@ def compute_overdue_buckets(
 
 def compute_utilization(
     *,
-    schedule_rows: List[Dict[str, Any]],
+    schedule_rows: Sequence[Mapping[str, Any]],
     start_dt: datetime,
     end_dt_excl: datetime,
     cap_hours: float,
@@ -223,7 +223,7 @@ def compute_utilization(
 def compute_downtime_impact(
     *,
     downtime_rows: List[Dict[str, Any]],
-    schedule_rows: List[Dict[str, Any]],
+    schedule_rows: Sequence[Mapping[str, Any]],
     start_dt: datetime,
     end_dt_excl: datetime,
 ) -> List[Dict[str, Any]]:
@@ -283,4 +283,3 @@ def compute_downtime_impact(
 
     items.sort(key=lambda x: (-(x.get("downtime_hours") or 0.0), x.get("machine_id") or ""))
     return items
-

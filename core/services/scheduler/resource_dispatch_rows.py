@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector
@@ -54,7 +54,7 @@ def _counterpart_type_label(scope_type: str) -> str:
     return "设备" if scope_type == "operator" else "人员"
 
 
-def _current_resource(scope_type: str, row: Dict[str, Any]) -> Dict[str, str]:
+def _current_resource(scope_type: str, row: Mapping[str, Any]) -> Dict[str, str]:
     if scope_type == "operator":
         resource_id = _text(row.get("operator_id"))
         resource_name = _text(row.get("operator_name"))
@@ -77,7 +77,7 @@ def _current_resource(scope_type: str, row: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
-def _counterpart_resource(scope_type: str, row: Dict[str, Any]) -> Dict[str, str]:
+def _counterpart_resource(scope_type: str, row: Mapping[str, Any]) -> Dict[str, str]:
     if scope_type == "operator":
         resource_id = _text(row.get("machine_id"))
         resource_name = _text(row.get("machine_name"))
@@ -116,7 +116,7 @@ def _clamp_to_range(st: datetime, et: datetime, dr: DispatchRange) -> Optional[T
     return st2, et2
 
 
-def _prepared_time_range(row: Dict[str, Any]) -> Tuple[Optional[datetime], Optional[datetime]]:
+def _prepared_time_range(row: Mapping[str, Any]) -> Tuple[Optional[datetime], Optional[datetime]]:
     start_time = row.get("_parsed_start_time")
     end_time = row.get("_parsed_end_time")
     if isinstance(start_time, datetime) and isinstance(end_time, datetime):
@@ -125,7 +125,7 @@ def _prepared_time_range(row: Dict[str, Any]) -> Tuple[Optional[datetime], Optio
 
 
 def prepare_dispatch_rows(
-    rows: Sequence[Dict[str, Any]],
+    rows: Sequence[Mapping[str, Any]],
     *,
     scope: str = "resource_dispatch.rows",
 ) -> BuildOutcome[List[Dict[str, Any]]]:
@@ -158,7 +158,7 @@ def normalize_dispatch_row(
     scope_type: str,
     scope_id: str,
     scope_name: str,
-    row: Dict[str, Any],
+    row: Mapping[str, Any],
     overdue_set: Set[str],
 ) -> BuildOutcome[Optional[Dict[str, Any]]]:
     collector = DegradationCollector()
@@ -167,7 +167,7 @@ def normalize_dispatch_row(
         _record_bad_time_row(
             collector,
             scope="resource_dispatch.detail_rows",
-            row=row,
+            row=dict(row),
             message=_BAD_TIME_ROW_MESSAGE,
         )
         return BuildOutcome.from_collector(None, collector)
@@ -233,7 +233,7 @@ def build_dispatch_detail_rows(
     scope_type: str,
     scope_id: str,
     scope_name: str,
-    rows: Sequence[Dict[str, Any]],
+    rows: Sequence[Mapping[str, Any]],
     overdue_set: Set[str],
 ) -> BuildOutcome[List[Dict[str, Any]]]:
     collector = DegradationCollector()

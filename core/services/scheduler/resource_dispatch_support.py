@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set
 
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import (
@@ -314,7 +314,7 @@ def build_team_scope_payload(
     selected_scope_name: str,
     normalized_team_axis: str,
     dr: DispatchRange,
-    rows: List[Dict[str, Any]],
+    rows: Sequence[Mapping[str, Any]],
     overdue_set: Set[str],
 ) -> Dict[str, Any]:
     prepared_rows = prepare_dispatch_rows(rows)
@@ -387,7 +387,7 @@ def build_single_scope_payload(
     selected_scope_id: str,
     selected_scope_name: str,
     dr: DispatchRange,
-    rows: List[Dict[str, Any]],
+    rows: Sequence[Mapping[str, Any]],
     overdue_set: Set[str],
 ) -> Dict[str, Any]:
     prepared_rows = prepare_dispatch_rows(rows)

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union, cast
 
 from core.models import Schedule
 
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
+from .schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleSeedRow, ScheduleTimeSpanRow
 
 
 def _require_schedule_op_id(schedule: Schedule) -> int:
@@ -32,7 +33,7 @@ class ScheduleRepository(BaseRepository):
         )
         return [Schedule.from_row(r) for r in rows]
 
-    def get_version_time_span(self, version: int) -> Optional[Dict[str, Any]]:
+    def get_version_time_span(self, version: int) -> Optional[ScheduleTimeSpanRow]:
         """
         查询指定版本的排程时间范围（最早开始 / 最晚结束）。
         返回 None 表示该版本暂无有效排程记录。
@@ -75,7 +76,7 @@ class ScheduleRepository(BaseRepository):
         start_time: str,
         end_time: str,
         chunk_size: int = 900,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[ScheduleSeedRow]:
         """
         查询指定版本与 [start_time, end_time) 范围“有重叠”的排程记录，并限定 op_id 集合。
 
@@ -94,7 +95,7 @@ class ScheduleRepository(BaseRepository):
         if not ids:
             return []
 
-        out: List[Dict[str, Any]] = []
+        out: List[ScheduleSeedRow] = []
         for i in range(0, len(ids), int(chunk_size)):
             chunk = ids[i : i + int(chunk_size)]
             placeholders = ",".join(["?"] * len(chunk))
@@ -107,10 +108,10 @@ class ScheduleRepository(BaseRepository):
               AND end_time > ?
             """
             params: List[Any] = [int(version)] + list(chunk) + [end_time, start_time]
-            out.extend(self.fetchall(sql, tuple(params)))
+            out.extend(cast(List[ScheduleSeedRow], self.fetchall(sql, tuple(params))))
         return out
 
-    def list_overlapping_with_details(self, start_time: str, end_time: str, version: int) -> List[Dict[str, Any]]:
+    def list_overlapping_with_details(self, start_time: str, end_time: str, version: int) -> List[ScheduleDetailRow]:
         """
         查询与给定时间区间“有重叠”的排程记录，并补齐甘特图/周计划所需的关联信息。
 
@@ -122,7 +123,7 @@ class ScheduleRepository(BaseRepository):
         sql = build_schedule_detail_sql(
             where_clauses=("s.version = ?", "s.start_time < ?", "s.end_time > ?"),
         )
-        return self.fetchall(sql, (int(version), end_time, start_time))
+        return cast(List[ScheduleDetailRow], self.fetchall(sql, (int(version), end_time, start_time)))
 
     def list_dispatch_rows_with_resource_context(
         self,
@@ -132,7 +133,7 @@ class ScheduleRepository(BaseRepository):
         version: int,
         scope_type: Optional[str] = None,
         scope_id: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[ScheduleDispatchRow]:
         where_clauses = ["s.version = ?", "s.start_time < ?", "s.end_time > ?"]
         params: List[Any] = [int(version), end_time, start_time]
         if scope_type == "operator" and scope_id:
@@ -148,9 +149,9 @@ class ScheduleRepository(BaseRepository):
             where_clauses=tuple(where_clauses),
             include_team_context=True,
         )
-        return self.fetchall(sql, tuple(params))
+        return cast(List[ScheduleDispatchRow], self.fetchall(sql, tuple(params)))
 
-    def list_by_version_with_details(self, version: int) -> List[Dict[str, Any]]:
+    def list_by_version_with_details(self, version: int) -> List[ScheduleDetailRow]:
         """
         查询指定版本的全部排程记录，并补齐甘特图/关键链识别所需的关联信息。
 
@@ -158,7 +159,7 @@ class ScheduleRepository(BaseRepository):
         - 返回 dict 行（带 join 字段），供服务层直接拼装输出。
         """
         sql = build_schedule_detail_sql(where_clauses=("s.version = ?",))
-        return self.fetchall(sql, (int(version),))
+        return cast(List[ScheduleDetailRow], self.fetchall(sql, (int(version),)))
 
     def list_by_machine(self, machine_id: str, version: Optional[int] = None) -> List[Schedule]:
         if version is None:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from core.models.enums import CalendarDayType, YesNo
 from core.services.common.build_outcome import BuildOutcome
@@ -124,14 +124,14 @@ def _build_one_task(
     *,
     view: str,
     wr: WeekRange,
-    row: Dict[str, Any],
+    row: Mapping[str, Any],
     overdue_set: Set[str],
 ) -> BuildOutcome[Optional[Dict[str, Any]]]:
     collector = DegradationCollector()
     st = _parse_dt(row.get("start_time"))
     et = _parse_dt(row.get("end_time"))
     if not st or not et or not (st < et):
-        _record_bad_time_row(collector, scope="gantt.tasks", row=row)
+        _record_bad_time_row(collector, scope="gantt.tasks", row=dict(row))
         return BuildOutcome.from_collector(None, collector)
 
     clamped = _clamp_to_week(st, et, wr=wr)
@@ -241,7 +241,7 @@ def build_tasks(
     *,
     view: str,
     wr: WeekRange,
-    rows: Sequence[Dict[str, Any]],
+    rows: Sequence[Mapping[str, Any]],
     overdue_set: Set[str],
 ) -> BuildOutcome[List[Dict[str, Any]]]:
     """
@@ -250,7 +250,7 @@ def build_tasks(
     collector = DegradationCollector()
     tasks: List[Dict[str, Any]] = []
     for row in rows:
-        outcome = _build_one_task(view=view, wr=wr, row=dict(row), overdue_set=overdue_set)
+        outcome = _build_one_task(view=view, wr=wr, row=row, overdue_set=overdue_set)
         collector.extend(outcome.events)
         if outcome.value is not None:
             tasks.append(outcome.value)
