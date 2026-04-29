@@ -159,30 +159,59 @@ def test_operator_machine_query_service_lists_with_names_and_linkage_rows() -> N
 
     q = OperatorMachineQueryService(conn)
 
+    def _by_link_key(rows):
+        return {(r.get("operator_id"), r.get("machine_id")): r for r in rows}
+
+    def _assert_normalized_link(row, *, skill_level, is_primary, dirty_skill):
+        assert row["skill_level"] == skill_level
+        assert row["is_primary"] == is_primary
+        if dirty_skill:
+            assert row.get("dirty_fields") == ["skill_level"]
+            assert "历史技能等级" in row.get("dirty_reasons", {}).get("skill_level", "")
+        else:
+            assert row.get("dirty_fields", []) == []
+            assert row.get("dirty_reasons", {}) == {}
+
     simple = sorted(q.list_simple_rows(), key=lambda r: (r.get("machine_id"), r.get("operator_id")))
-    assert simple == [
-        {"operator_id": "O1", "machine_id": "M1", "skill_level": "expert", "is_primary": "yes"},
-        {"operator_id": "O2", "machine_id": "M1", "skill_level": "normal", "is_primary": "no"},
-        {"operator_id": "O1", "machine_id": "M2", "skill_level": "beginner", "is_primary": "no"},
-    ]
+    assert [(r["machine_id"], r["operator_id"]) for r in simple] == [("M1", "O1"), ("M1", "O2"), ("M2", "O1")]
+    simple_by_key = _by_link_key(simple)
+    _assert_normalized_link(simple_by_key[("O1", "M1")], skill_level="expert", is_primary="yes", dirty_skill=True)
+    _assert_normalized_link(simple_by_key[("O2", "M1")], skill_level="normal", is_primary="no", dirty_skill=False)
+    _assert_normalized_link(simple_by_key[("O1", "M2")], skill_level="beginner", is_primary="no", dirty_skill=True)
 
     by_mc = q.list_with_names_by_machine()
     assert [(r["machine_id"], r["operator_id"]) for r in by_mc] == [("M1", "O1"), ("M1", "O2"), ("M2", "O1")]
     assert by_mc[0]["machine_name"] == "机床1"
     assert by_mc[0]["operator_name"] == "张三"
+    by_mc_by_key = _by_link_key(by_mc)
+    _assert_normalized_link(by_mc_by_key[("O1", "M1")], skill_level="expert", is_primary="yes", dirty_skill=True)
+    _assert_normalized_link(by_mc_by_key[("O2", "M1")], skill_level="normal", is_primary="no", dirty_skill=False)
+    _assert_normalized_link(by_mc_by_key[("O1", "M2")], skill_level="beginner", is_primary="no", dirty_skill=True)
 
     by_op = q.list_with_names_by_operator()
     assert [(r["operator_id"], r["machine_id"]) for r in by_op] == [("O1", "M1"), ("O1", "M2"), ("O2", "M1")]
     assert by_op[0]["operator_name"] == "张三"
     assert by_op[0]["machine_name"] == "机床1"
+    by_op_by_key = _by_link_key(by_op)
+    _assert_normalized_link(by_op_by_key[("O1", "M1")], skill_level="expert", is_primary="yes", dirty_skill=True)
+    _assert_normalized_link(by_op_by_key[("O1", "M2")], skill_level="beginner", is_primary="no", dirty_skill=True)
+    _assert_normalized_link(by_op_by_key[("O2", "M1")], skill_level="normal", is_primary="no", dirty_skill=False)
 
     links = q.list_links_with_operator_info()
     assert [(r["machine_id"], r["operator_id"]) for r in links] == [("M1", "O1"), ("M1", "O2"), ("M2", "O1")]
     assert links[0]["operator_name"] == "张三"
     assert links[0]["operator_status"] == "active"
+    assert all("dirty_fields" not in r for r in links)
+    assert all("dirty_reasons" not in r for r in links)
 
     sub = q.list_simple_rows_for_machine_operator_sets(["M1", "M2"], ["O1"])
     assert [(r["machine_id"], r["operator_id"]) for r in sub] == [("M1", "O1"), ("M2", "O1")]
+    sub_by_key = _by_link_key(sub)
+    _assert_normalized_link(sub_by_key[("O1", "M1")], skill_level="expert", is_primary="yes", dirty_skill=True)
+    _assert_normalized_link(sub_by_key[("O1", "M2")], skill_level="beginner", is_primary="no", dirty_skill=True)
+    sub_normal = q.list_simple_rows_for_machine_operator_sets(["M1"], ["O2"])
+    assert [(r["machine_id"], r["operator_id"]) for r in sub_normal] == [("M1", "O2")]
+    _assert_normalized_link(sub_normal[0], skill_level="normal", is_primary="no", dirty_skill=False)
     assert q.list_simple_rows_for_machine_operator_sets([], ["O1"]) == []
     assert q.list_simple_rows_for_machine_operator_sets(["M1"], []) == []
 
@@ -239,4 +268,3 @@ def test_schedule_history_query_service_versions_and_latest() -> None:
     assert len(recent) == 2
     assert int(recent[0].version or 0) == 2
     assert int(recent[1].version or 0) == 1
-
