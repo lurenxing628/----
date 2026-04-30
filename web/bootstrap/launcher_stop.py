@@ -1,22 +1,28 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from core.infrastructure.logging import safe_log
-
+from . import launcher_chrome as _chrome
+from .launcher_chrome import _StopChromeResult
 from .launcher_contracts import (
+    CONTRACT_STATUS_INVALID,
+    CONTRACT_STATUS_MISSING,
+    CONTRACT_STATUS_UNREADABLE,
+    CONTRACT_STATUS_VALID,
+    RuntimeContractReadResult,
     _is_runtime_lock_active,
     delete_runtime_contract_files,
     read_runtime_contract,
+    read_runtime_contract_result,
     read_runtime_lock,
 )
+from .launcher_health import HealthProbeResult, probe_runtime_health_result
+from .launcher_observability import launcher_log_warning
 from .launcher_paths import (
     RUNTIME_SHUTDOWN_PATH,
     default_chrome_profile_dir,
@@ -24,18 +30,37 @@ from .launcher_paths import (
     resolve_runtime_stop_context,
     state_contract_paths,
 )
-from .launcher_processes import _kill_runtime_pid, _pid_exists, _pid_matches_contract, _pid_state, _run_powershell_text
+from .launcher_processes import (
+    _kill_runtime_pid,
+    _pid_exists,
+    _pid_matches_contract,
+    _pid_state,
+    _run_powershell_text,
+    set_process_log_context,
+)
+
+_DEFAULT_READ_RUNTIME_CONTRACT = read_runtime_contract
+_DEFAULT_READ_RUNTIME_CONTRACT_RESULT = read_runtime_contract_result
 
 
-@dataclass(frozen=True)
-class _StopChromeResult:
-    ok: bool
-    status: str
-    profile_dir: str
-    pids: list[int]
-    remaining_pids: list[int]
-    failed_pids: list[int]
-    reason: str = ""
+def _contract_log_kwargs(contract: Dict[str, Any]) -> Dict[str, str]:
+    data_dirs = contract.get("data_dirs") or {}
+    state_dir = ""
+    if isinstance(data_dirs, dict):
+        state_dir = str(data_dirs.get("log_dir") or "").strip()
+    runtime_dir = str(contract.get("runtime_dir") or "").strip()
+    return {"state_dir": state_dir, "runtime_dir": runtime_dir}
+
+
+def _launcher_log_contract_warning(message: str, *args: Any, contract: Dict[str, Any]) -> None:
+    log_kwargs = _contract_log_kwargs(contract)
+    launcher_log_warning(
+        None,
+        message,
+        *args,
+        state_dir=log_kwargs.get("state_dir") or None,
+        runtime_dir=log_kwargs.get("runtime_dir") or None,
+    )
 
 
 def _build_shutdown_url(contract: Dict[str, Any]) -> Optional[str]:
@@ -43,7 +68,12 @@ def _build_shutdown_url(contract: Dict[str, Any]) -> Optional[str]:
     try:
         port = int(contract.get("port") or 0)
     except Exception as exc:
-        safe_log(None, "warning", "运行时停止端口非法，无法构造关闭地址：port=%r error=%s", contract.get("port"), exc)
+        _launcher_log_contract_warning(
+            "运行时停止端口非法，无法构造关闭地址：port=%r error=%s",
+            contract.get("port"),
+            exc,
+            contract=contract,
+        )
         port = 0
     if port <= 0:
         return None
@@ -67,163 +97,69 @@ def _request_runtime_shutdown(contract: Dict[str, Any], timeout_s: float = 3.0) 
     except urllib.error.HTTPError as e:
         ok = int(getattr(e, "code", 500)) < 400
         if not ok:
-            safe_log(None, "warning", "运行时关闭请求被拒绝：url=%s status=%s", url, getattr(e, "code", 500))
+            _launcher_log_contract_warning("运行时关闭请求被拒绝：url=%s status=%s", url, getattr(e, "code", 500), contract=contract)
         return ok
     except Exception as exc:
-        safe_log(None, "warning", "运行时关闭请求失败：url=%s error=%s", url, exc)
+        _launcher_log_contract_warning("运行时关闭请求失败：url=%s error=%s", url, exc, contract=contract)
         return False
 
 
 def _probe_runtime_health(host: str, port: int, timeout_s: float = 1.5, *, log_failures: bool = False) -> bool:
-    url = f"http://{str(host or '').strip() or '127.0.0.1'}:{int(port)}/system/health"
-    req = urllib.request.Request(url, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=max(float(timeout_s), 0.2)) as resp:
-            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
-    except Exception as exc:
-        if log_failures:
-            safe_log(None, "warning", "运行时健康探测失败：url=%s error=%s", url, exc)
-        return False
-    return (
-        payload.get("app") == "aps"
-        and payload.get("status") == "ok"
-        and int(payload.get("contract_version") or 0) == 1
-    )
+    return probe_runtime_health_result(host, port, timeout_s=timeout_s, log_failures=log_failures).ok
+
+
+_DEFAULT_PROBE_RUNTIME_HEALTH = _probe_runtime_health
+_DEFAULT_PROBE_RUNTIME_HEALTH_RESULT = probe_runtime_health_result
 
 
 def probe_runtime_health(host: str, port: int, timeout_s: float = 1.5) -> bool:
     """公开只读探针：按运行时健康接口口径探测目标实例是否健康。"""
-
     return _probe_runtime_health(host, port, timeout_s=timeout_s, log_failures=True)
 
 
 def _chrome_pid_query_script(profile_dir: str) -> str:
-    marker = os.path.abspath(str(profile_dir or "").strip()).replace("'", "''").lower()
-    return (
-        "$ErrorActionPreference='Stop';"
-        f"$marker='{marker}';"
-        "$items = $null;"
-        "if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {"
-        "  try { $items = @(Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction Stop) }"
-        "  catch { $items = $null }"
-        "}"
-        "if ($null -eq $items -and (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) {"
-        "  try { $items = @(Get-WmiObject Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction Stop) }"
-        "  catch { exit 1 }"
-        "}"
-        "if ($null -eq $items) { exit 1 }"
-        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;"
-        "$prefix='--user-data-dir=';"
-        "function Split-CommandLineArgs([string]$cmd) {"
-        "  $tokens = @();"
-        "  if ($null -eq $cmd -or $cmd.Trim().Length -eq 0) { return $tokens };"
-        "  $buf = New-Object System.Text.StringBuilder;"
-        "  $inQuotes = $false;"
-        "  for ($i = 0; $i -lt $cmd.Length; $i++) {"
-        "    $ch = $cmd[$i];"
-        "    if ($ch -eq [char]34) {"
-        "      $slashCount = 0;"
-        "      $j = $i - 1;"
-        "      while ($j -ge 0 -and $cmd[$j] -eq [char]92) { $slashCount++; $j-- };"
-        "      if (($slashCount % 2) -eq 0) { $inQuotes = -not $inQuotes; continue }"
-        "    };"
-        "    if (-not $inQuotes -and [char]::IsWhiteSpace($ch)) {"
-        "      if ($buf.Length -gt 0) { $tokens += $buf.ToString(); $null = $buf.Remove(0, $buf.Length) };"
-        "      continue"
-        "    };"
-        "    [void]$buf.Append($ch)"
-        "  };"
-        "  if ($buf.Length -gt 0) { $tokens += $buf.ToString() };"
-        "  return $tokens"
-        "}"
-        "function Test-ApsChromeCommandLine([string]$cmd) {"
-        "  foreach ($arg in @(Split-CommandLineArgs $cmd)) {"
-        "    $argLower = $arg.ToLowerInvariant();"
-        "    if ($argLower.StartsWith($prefix)) {"
-        "      if ($argLower.Substring($prefix.Length) -eq $marker) { return $true }"
-        "    }"
-        "  };"
-        "  return $false"
-        "}"
-        "foreach ($item in $items) {"
-        "  $cmd = [string]$item.CommandLine;"
-        "  if (Test-ApsChromeCommandLine $cmd) {"
-        "    Write-Output ([string][int]$item.ProcessId)"
-        "  }"
-        "}"
-        "exit 0"
+    return _chrome._chrome_pid_query_script(profile_dir)
+
+
+def _parse_chrome_pid_output(output: str) -> List[int]:
+    return _chrome._parse_chrome_pid_output(output)
+
+
+def _list_aps_chrome_pids(profile_dir: str) -> Optional[List[int]]:
+    return _chrome._list_aps_chrome_pids(profile_dir, run_powershell_text=_run_powershell_text)
+
+
+def _stop_aps_chrome_with_result(profile_dir: Optional[str]) -> _StopChromeResult:
+    return _chrome._stop_aps_chrome_with_result(
+        profile_dir,
+        list_pids=_list_aps_chrome_pids,
+        kill_pid=_kill_runtime_pid,
     )
 
 
-def _parse_chrome_pid_output(output: str) -> list[int]:
-    pids: list[int] = []
-    for line in str(output or "").splitlines():
-        value = str(line or "").strip()
-        if not value:
-            continue
-        if value.startswith("ProcessId="):
-            value = value.split("=", 1)[1].strip()
-        if value.isdigit():
-            pid_i = int(value)
-            if pid_i > 0 and pid_i not in pids:
-                pids.append(pid_i)
-    return pids
-
-
-def _list_aps_chrome_pids(profile_dir: str) -> Optional[list[int]]:
-    target_profile = os.path.abspath(str(profile_dir or "").strip()) if str(profile_dir or "").strip() else ""
-    if os.name != "nt":
-        return []
-    if not target_profile:
-        return []
-    rc, output = _run_powershell_text(_chrome_pid_query_script(target_profile), timeout_s=8.0)
-    if rc is None or rc != 0:
-        return None
-    return _parse_chrome_pid_output(output)
-
-
-def _stop_aps_chrome_with_result(profile_dir: str | None) -> _StopChromeResult:
-    target_profile = str(profile_dir or "").strip()
-    if not target_profile:
-        return _StopChromeResult(True, "profile_missing", target_profile, [], [], [])
-    pids = _list_aps_chrome_pids(target_profile)
-    if pids is None:
-        return _StopChromeResult(False, "process_list_unavailable", target_profile, [], [], [], "list_failed")
-    failed_pids = [int(pid) for pid in pids if not _kill_runtime_pid(pid)]
-    remaining_pids = _list_aps_chrome_pids(target_profile)
-    if remaining_pids is None:
-        return _StopChromeResult(False, "final_recheck_unavailable", target_profile, list(pids), [], failed_pids, "recheck_failed")
-    if remaining_pids:
-        return _StopChromeResult(False, "profile_processes_still_running", target_profile, list(pids), list(remaining_pids), failed_pids)
-    return _StopChromeResult(True, "stopped", target_profile, list(pids), [], failed_pids)
-
-
-def stop_aps_chrome_processes(profile_dir: str | None, logger: logging.Logger | None = None) -> bool:
+def stop_aps_chrome_processes(profile_dir: Optional[str], logger: Optional[logging.Logger] = None) -> bool:
     result = _stop_aps_chrome_with_result(profile_dir)
     if not result.ok and logger is not None:
         _log_chrome_stop_failure(result, logger=logger)
     return result.ok
 
 
-def _log_chrome_stop_failure(result: _StopChromeResult, *, logger: logging.Logger | None) -> None:
-    message = (
-        f"chrome_stop_failed status={result.status} profile={result.profile_dir} "
-        f"pids={result.pids} failed_pids={result.failed_pids} remaining_pids={result.remaining_pids}"
-    )
-    safe_log(logger, "warning", message)
+def _log_chrome_stop_failure(result: _StopChromeResult, *, logger: Optional[logging.Logger], state_dir: str = "") -> None:
+    _chrome._log_chrome_stop_failure(result, logger=logger, state_dir=state_dir)
 
 
 def _stop_aps_chrome_if_requested(
     stop_aps_chrome: bool,
-    profile_dir: str | None,
+    profile_dir: Optional[str],
     *,
-    logger: logging.Logger | None = None,
+    logger: Optional[logging.Logger] = None,
+    state_dir: str = "",
 ) -> _StopChromeResult:
     if not stop_aps_chrome:
         return _StopChromeResult(True, "not_requested", str(profile_dir or "").strip(), [], [], [])
     result = _stop_aps_chrome_with_result(profile_dir)
     if not result.ok:
-        _log_chrome_stop_failure(result, logger=logger)
+        _log_chrome_stop_failure(result, logger=logger, state_dir=state_dir)
     return result
 
 
@@ -244,7 +180,7 @@ def _read_text_file(path: str) -> str:
         with open(path, encoding="utf-8") as f:
             return (f.read() or "").strip()
     except Exception as exc:
-        safe_log(None, "warning", "读取运行时状态文件失败，已按空值处理：path=%s error=%s", path, exc)
+        launcher_log_warning(None, "读取运行时状态文件失败，已按空值处理：path=%s error=%s", path, exc, state_dir=os.path.dirname(path))
         return ""
 
 
@@ -252,7 +188,7 @@ def _read_port_file(path: str) -> int:
     try:
         return int(_read_text_file(path))
     except Exception as exc:
-        safe_log(None, "warning", "读取运行时端口文件失败，已按无效端口处理：path=%s error=%s", path, exc)
+        launcher_log_warning(None, "读取运行时端口文件失败，已按无效端口处理：path=%s error=%s", path, exc, state_dir=os.path.dirname(path))
         return 0
 
 
@@ -277,7 +213,7 @@ def _safe_int(value: Any) -> int:
     try:
         return int(value or 0)
     except Exception as exc:
-        safe_log(None, "warning", "解析运行时整数失败，已按 0 处理：value=%r error=%s", value, exc)
+        launcher_log_warning(None, "解析运行时整数失败，已按 0 处理：value=%r error=%s", value, exc)
         return 0
 
 
@@ -289,13 +225,51 @@ def _runtime_pid_match(contract_pid: int, lock_pid: int, expected_exe_path: str)
     return None
 
 
-def _endpoint_status(contract: Optional[Dict[str, Any]], endpoint_files: Dict[str, Any]) -> Dict[str, Any]:
+def _read_contract_result_for_status(state_dir: str) -> RuntimeContractReadResult:
+    if read_runtime_contract is not _DEFAULT_READ_RUNTIME_CONTRACT and read_runtime_contract_result is _DEFAULT_READ_RUNTIME_CONTRACT_RESULT:
+        paths = resolve_runtime_state_paths(state_dir)
+        payload = read_runtime_contract(state_dir)
+        if isinstance(payload, dict):
+            return RuntimeContractReadResult(
+                status=CONTRACT_STATUS_VALID,
+                payload=payload,
+                path=paths["contract_path"],
+                state_dir=state_dir,
+                reason="legacy_wrapper_valid",
+            )
+        return RuntimeContractReadResult(
+            status=CONTRACT_STATUS_MISSING,
+            payload=None,
+            path=paths["contract_path"],
+            state_dir=state_dir,
+            reason="legacy_wrapper_missing",
+        )
+    return read_runtime_contract_result(state_dir)
+
+
+def _health_result_for_status(host: str, port: int, state_dir: str) -> HealthProbeResult:
+    if _probe_runtime_health is not _DEFAULT_PROBE_RUNTIME_HEALTH and probe_runtime_health_result is _DEFAULT_PROBE_RUNTIME_HEALTH_RESULT:
+        ok = bool(_probe_runtime_health(host, int(port), timeout_s=0.75))
+        return HealthProbeResult(ok, f"http://{host}:{int(port)}/system/health", "" if ok else "legacy_probe_false")
+    return probe_runtime_health_result(host, int(port), timeout_s=0.75, state_dir=state_dir)
+
+
+def _endpoint_status(contract: Optional[Dict[str, Any]], endpoint_files: Dict[str, Any], state_dir: str) -> Dict[str, Any]:
     contract_host = str((contract or {}).get("host") or "").strip()
     contract_port = _safe_int((contract or {}).get("port"))
     host = contract_host or str(endpoint_files.get("host") or "").strip() or "127.0.0.1"
     port = contract_port if contract_port > 0 else int(endpoint_files.get("port") or 0)
-    endpoint_up = bool(host and int(port or 0) > 0 and _probe_runtime_health(host, int(port), timeout_s=0.75))
-    return {"host": host, "port": int(port or 0), "endpoint_up": endpoint_up}
+    if not host or int(port or 0) <= 0:
+        health_result = HealthProbeResult(False, "", "missing_endpoint")
+    else:
+        health_result = _health_result_for_status(host, int(port), state_dir)
+    return {
+        "host": host,
+        "port": int(port or 0),
+        "endpoint_up": bool(health_result.ok),
+        "health_reason": health_result.reason,
+        "health_error": health_result.error,
+    }
 
 
 def _has_runtime_artifacts(paths: Dict[str, str]) -> bool:
@@ -310,23 +284,39 @@ def _has_runtime_artifacts(paths: Dict[str, str]) -> bool:
     return any(os.path.exists(path) for path in artifact_paths)
 
 
+def _invalid_contract_still_unsafe(contract_status: str, endpoint_up: bool, lock_active: bool) -> bool:
+    return contract_status in {CONTRACT_STATUS_INVALID, CONTRACT_STATUS_UNREADABLE} and (endpoint_up or lock_active)
+
+
+def _contract_pid_mismatch(contract: Optional[Dict[str, Any]], contract_pid: int, identity: Dict[str, Any]) -> bool:
+    return contract is not None and contract_pid > 0 and (
+        identity.get("pid_exists") is False or identity.get("pid_match") is False
+    )
+
+
+def _contract_pid_requires_mixed(contract_pid: int, identity: Dict[str, Any]) -> bool:
+    if contract_pid <= 0:
+        return False
+    if identity.get("pid_exists") is None:
+        return True
+    return bool(identity.get("pid_exists")) and identity.get("pid_match") is not False
+
+
 def _runtime_state_name(
     *,
     endpoint_up: bool,
     contract: Optional[Dict[str, Any]],
+    contract_status: str,
     identity: Dict[str, Any],
     lock_active: bool,
     has_artifacts: bool,
 ) -> str:
-    contract_pid = int(identity.get("contract_pid") or 0)
-    contract_mismatch = contract is not None and contract_pid > 0 and (
-        identity.get("pid_exists") is False or identity.get("pid_match") is False
-    )
-    if endpoint_up:
-        return "mixed" if contract_mismatch else "active"
-    if contract_pid > 0 and identity.get("pid_exists") is None:
+    if _invalid_contract_still_unsafe(contract_status, endpoint_up, lock_active):
         return "mixed"
-    if contract_pid > 0 and bool(identity.get("pid_exists")) and identity.get("pid_match") is not False:
+    contract_pid = int(identity.get("contract_pid") or 0)
+    if endpoint_up:
+        return "mixed" if _contract_pid_mismatch(contract, contract_pid, identity) else "active"
+    if _contract_pid_requires_mixed(contract_pid, identity):
         return "mixed"
     if lock_active:
         return "mixed"
@@ -337,17 +327,21 @@ def _runtime_state_name(
 
 def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
     runtime_dir_abs, state_dir = resolve_runtime_stop_context(runtime_dir_or_state_dir)
+    set_process_log_context(state_dir=state_dir, runtime_dir=runtime_dir_abs)
     paths = resolve_runtime_state_paths(state_dir)
     endpoint_files = _read_runtime_endpoint_files(state_dir)
-    contract = read_runtime_contract(state_dir)
+    contract_result = _read_contract_result_for_status(state_dir)
+    has_artifacts = _has_runtime_artifacts(paths)
+    contract_capability = contract_result.to_capability(has_runtime_artifacts=has_artifacts)
+    contract = contract_result.payload if contract_result.ok else None
     lock_payload = read_runtime_lock(state_dir)
     identity = _runtime_identity(contract, lock_payload)
-    endpoint = _endpoint_status(contract, endpoint_files)
+    endpoint = _endpoint_status(contract, endpoint_files, state_dir)
     lock_active = bool(lock_payload and _is_runtime_lock_active(lock_payload, expected_exe_path=identity["expected_exe_path"]))
-    has_artifacts = _has_runtime_artifacts(paths)
     state = _runtime_state_name(
         endpoint_up=bool(endpoint["endpoint_up"]),
         contract=contract,
+        contract_status=contract_result.status,
         identity=identity,
         lock_active=lock_active,
         has_artifacts=has_artifacts,
@@ -357,10 +351,17 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
         "state_dir": state_dir,
         "paths": paths,
         "contract": contract,
+        "contract_result": contract_result,
+        "contract_capability": contract_capability,
+        "contract_status": contract_result.status,
+        "contract_reason": contract_result.reason,
+        "contract_error": contract_result.error,
         "lock": lock_payload,
         "host": endpoint["host"],
         "port": endpoint["port"],
         "endpoint_up": endpoint["endpoint_up"],
+        "health_reason": endpoint.get("health_reason"),
+        "health_error": endpoint.get("health_error"),
         "pid": int(identity["pid"] or 0),
         "pid_exists": identity["pid_exists"],
         "pid_match": identity["pid_match"],
@@ -395,6 +396,9 @@ def _can_force_kill_runtime(status: Dict[str, Any]) -> bool:
 
 
 def _runtime_stop_failure_reason(status: Dict[str, Any], *, shutdown_requested: bool) -> str:
+    contract_status = str(status.get("contract_status") or "")
+    if contract_status in {CONTRACT_STATUS_INVALID, CONTRACT_STATUS_UNREADABLE}:
+        return f"contract_{contract_status}"
     if status.get("pid_match") is False:
         return "pid_mismatch"
     if str(status.get("state") or "") == "mixed":
@@ -427,7 +431,7 @@ def _runtime_process_inactive(pid: int, pid_match_hint: Optional[bool] = None) -
 def _finalize_stopped_runtime(status: Dict[str, Any], runtime_dir_abs: str, *, stop_aps_chrome: bool, logger) -> int:
     delete_runtime_contract_files(str(status.get("state_dir") or ""))
     profile_dir = str(status.get("chrome_profile_dir") or "").strip() or default_chrome_profile_dir(runtime_dir_abs)
-    chrome_result = _stop_aps_chrome_if_requested(stop_aps_chrome, profile_dir, logger=logger)
+    chrome_result = _stop_aps_chrome_if_requested(stop_aps_chrome, profile_dir, logger=logger, state_dir=str(status.get("state_dir") or ""))
     return 0 if chrome_result.ok else 1
 
 
@@ -436,7 +440,7 @@ def stop_runtime_from_dir(
     *,
     stop_aps_chrome: bool = False,
     timeout_s: float = 15.0,
-    logger: logging.Logger | None = None,
+    logger: Optional[logging.Logger] = None,
 ) -> int:
     runtime_dir_abs, state_dir = resolve_runtime_stop_context(runtime_dir)
     status = _classify_runtime_state(state_dir)
@@ -472,16 +476,15 @@ def _try_force_kill_runtime(state_dir: str, status: Dict[str, Any]) -> Dict[str,
         return status
     killed = _kill_runtime_pid(int(status.get("pid") or 0))
     if not killed:
-        safe_log(None, "warning", "运行时强制停止命令未成功，继续等待最终复查：pid=%s", status.get("pid"))
+        launcher_log_warning(None, "运行时强制停止命令未成功，继续等待最终复查：pid=%s", status.get("pid"), state_dir=str(status.get("state_dir") or ""))
     kill_deadline = time.time() + 6.0
     return _wait_for_runtime_stop(state_dir, kill_deadline)
 
 
-def _log_runtime_stop_failure(status: Dict[str, Any], *, shutdown_requested: bool, logger: logging.Logger | None) -> None:
+def _log_runtime_stop_failure(status: Dict[str, Any], *, shutdown_requested: bool, logger: Optional[logging.Logger]) -> None:
     reason = _runtime_stop_failure_reason(status, shutdown_requested=shutdown_requested)
-    safe_log(
+    launcher_log_warning(
         logger,
-        "warning",
         "runtime_stop_failed reason=%s state=%s shutdown_requested=%s pid=%s pid_exists=%s pid_match=%s host=%s port=%s endpoint_up=%s lock_active=%s",
         reason,
         status.get("state"),
@@ -493,4 +496,5 @@ def _log_runtime_stop_failure(status: Dict[str, Any], *, shutdown_requested: boo
         status.get("port"),
         status.get("endpoint_up"),
         status.get("lock_active"),
+        state_dir=str(status.get("state_dir") or ""),
     )

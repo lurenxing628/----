@@ -145,6 +145,115 @@ def test_resolve_runtime_state_paths_returns_runtime_dir_for_runtime_and_log_dir
     assert log_paths["lock_path"].endswith(os.path.join("logs", "aps_runtime.lock"))
 
 
+def _write_runtime_lock_file(state_dir: Path, pid: int) -> Path:
+    state_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = state_dir / "aps_runtime.lock"
+    lock_path.write_text(
+        f"pid={int(pid)}\nowner=LOCALBOX\\alice\nexe_path={sys.executable}\n",
+        encoding="utf-8",
+    )
+    return lock_path
+
+
+def test_release_runtime_lock_does_not_delete_when_expected_pid_invalid(tmp_path):
+    launcher = _import_launcher()
+    lock_path = _write_runtime_lock_file(tmp_path / "logs", 12345)
+
+    launcher.release_runtime_lock(str(lock_path.parent), expected_pid="bad")  # type: ignore[arg-type]
+
+    assert lock_path.exists()
+
+
+def test_release_runtime_lock_does_not_delete_when_expected_pid_non_positive(tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "logs"
+
+    lock_zero = _write_runtime_lock_file(state_dir, 12345)
+    launcher.release_runtime_lock(str(state_dir), expected_pid=0)
+    assert lock_zero.exists()
+
+    lock_negative = _write_runtime_lock_file(state_dir, 12345)
+    launcher.release_runtime_lock(str(state_dir), expected_pid=-1)
+    assert lock_negative.exists()
+
+
+def test_release_runtime_lock_only_deletes_matching_pid_or_current_process(tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "logs"
+
+    mismatched = _write_runtime_lock_file(state_dir, 12345)
+    launcher.release_runtime_lock(str(state_dir), expected_pid=54321)
+    assert mismatched.exists()
+
+    matched = _write_runtime_lock_file(state_dir, 12345)
+    launcher.release_runtime_lock(str(state_dir), expected_pid=12345)
+    assert not matched.exists()
+
+    current = _write_runtime_lock_file(state_dir, os.getpid())
+    launcher.release_runtime_lock(str(state_dir))
+    assert not current.exists()
+
+
+def _write_unreadable_runtime_contract_state(state_dir: Path, *, port: int = 5000) -> None:
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "aps_runtime.json").write_text("{bad-json", encoding="utf-8")
+    (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    (state_dir / "aps_port.txt").write_text(str(int(port)) + "\n", encoding="utf-8")
+
+
+def test_stop_runtime_keeps_unreadable_contract_when_endpoint_still_healthy(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "logs"
+    _write_unreadable_runtime_contract_state(state_dir)
+    calls = {}
+
+    monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: True)
+    monkeypatch.setattr(launcher, "delete_runtime_contract_files", lambda path: calls.setdefault("delete", path))
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 1
+    assert calls == {}
+    assert (state_dir / "aps_runtime.json").exists()
+    status = launcher._classify_runtime_state(str(state_dir))
+    assert status["contract_status"] == "unreadable"
+    assert status["state"] == "mixed"
+
+
+def test_stop_runtime_cleans_unreadable_contract_only_when_stale(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "logs"
+    _write_unreadable_runtime_contract_state(state_dir)
+    calls = {}
+
+    monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: False)
+    monkeypatch.setattr(launcher, "delete_runtime_contract_files", lambda path: calls.setdefault("delete", path))
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 0
+    assert calls["delete"] == os.path.abspath(str(state_dir))
+    status = launcher._classify_runtime_state(str(state_dir))
+    assert status["contract_status"] == "unreadable"
+    assert status["contract_reason"] != "contract_missing"
+
+
+def test_new_probe_runtime_health_result_monkeypatch_is_used(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    launcher_stop = _import_launcher_stop()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir(parents=True)
+    (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+
+    def _fake_probe_result(host, port, timeout_s=1.5, *, log_failures=False, state_dir=None):
+        return launcher_stop.HealthProbeResult(True, f"http://{host}:{port}/system/health")
+
+    monkeypatch.setattr(launcher, "probe_runtime_health_result", _fake_probe_result)
+    launcher._sync_launcher_hooks(include_chrome_hook=False)
+
+    status = launcher._classify_runtime_state(str(state_dir))
+
+    assert status["endpoint_up"] is True
+    assert status["state"] == "active"
+
+
 def test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok(monkeypatch, tmp_path):
     launcher = _import_launcher()
     state_dir = tmp_path / "shared-data" / "logs"
@@ -593,8 +702,10 @@ def test_launcher_facade_exports_runtime_contract_surface():
         "delete_runtime_contract_files",
         "pick_bind_host",
         "pick_port",
+        "probe_runtime_health_result",
         "probe_runtime_health",
         "read_runtime_contract",
+        "read_runtime_contract_result",
         "read_runtime_lock",
         "release_runtime_lock",
         "resolve_prelaunch_log_dir",
@@ -674,18 +785,21 @@ def test_launcher_bat_contains_json_health_probe_and_owner_fallback():
 def test_launcher_python_runtime_stop_uses_powershell_and_fail_closed_cleanup():
     text = (Path(_repo_root()) / "web" / "bootstrap" / "launcher_processes.py").read_text(encoding="utf-8")
     stop_text = (Path(_repo_root()) / "web" / "bootstrap" / "launcher_stop.py").read_text(encoding="utf-8")
+    chrome_text = (Path(_repo_root()) / "web" / "bootstrap" / "launcher_chrome.py").read_text(encoding="utf-8")
     assert "_run_powershell_text" in text
     assert "ProcessId=$pid0" in text
     assert "Get-WmiObject Win32_Process" in text
     assert "ExecutablePath" in text
     assert "Get-Process -Id $pid0" not in text
-    assert "Get-CimInstance Win32_Process" in stop_text
-    assert "pids is None" in stop_text
+    assert "Get-CimInstance Win32_Process" in chrome_text
+    assert "pids is None" in chrome_text
     assert "_stop_aps_chrome_if_requested" in stop_text
     assert '["wmic"' not in text
     assert '["wmic"' not in stop_text
+    assert '["wmic"' not in chrome_text
     assert "[string]::IsNullOrWhiteSpace" not in text
     assert "[string]::IsNullOrWhiteSpace" not in stop_text
+    assert "[string]::IsNullOrWhiteSpace" not in chrome_text
 
 
 def test_package_script_contains_browser_smoke_for_runtime_and_legacy_paths():

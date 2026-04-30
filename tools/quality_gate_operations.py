@@ -41,6 +41,7 @@ from .quality_gate_shared import (
     collect_quality_rule_files,
     collect_startup_scope_files,
     is_startup_scope_path,
+    now_shanghai_iso,
     read_text_file,
     slugify,
 )
@@ -65,6 +66,12 @@ SILENT_REFRESH_GROUP_ALIASES = {
     ("web/ui_mode.py", "init_ui_mode"): ("web/render_bridge.py", "init_ui_mode"),
     ("web/ui_mode.py", "render_ui_template"): ("web/render_bridge.py", "render_ui_template"),
     ("web/ui_mode.py", "safe_url_for"): ("web/manual_src_security.py", "safe_url_for"),
+}
+ALLOWED_SILENT_REALIGN_KIND_TRANSITIONS = {
+    ("silent_swallow", "observable_degrade"),
+    ("silent_default_fallback", "observable_degrade"),
+    ("cleanup_best_effort", "cleanup_best_effort"),
+    ("observable_degrade", "observable_degrade"),
 }
 
 
@@ -230,6 +237,64 @@ def _silent_scan_index(entries: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str
     return index
 
 
+def _is_allowed_silent_realign(old_entry: Dict[str, Any], new_entry: Dict[str, Any]) -> Tuple[bool, str]:
+    old_kind = str(old_entry.get("fallback_kind") or "")
+    new_kind = str(new_entry.get("fallback_kind") or "")
+    old_scope = str(old_entry.get("scope_tag") or "")
+    new_scope = str(new_entry.get("scope_tag") or "")
+    if old_scope != new_scope:
+        return False, f"scope_tag changed {old_scope}->{new_scope}"
+
+    if _silent_refresh_group_key(old_entry) != _silent_refresh_group_key(new_entry):
+        return False, "path/symbol alias group changed"
+
+    new_hash = str(new_entry.get("handler_context_hash") or "")
+    if not new_hash.startswith("sha1:"):
+        return False, "new handler_context_hash missing"
+
+    old_hash = str(old_entry.get("handler_context_hash") or "")
+    old_fingerprint = str(old_entry.get("handler_fingerprint") or "")
+    new_fingerprint = str(new_entry.get("handler_fingerprint") or "")
+    if int(old_entry.get("except_ordinal") or 0) != int(new_entry.get("except_ordinal") or 0) and old_hash:
+        return False, "except ordinal changed"
+    if not old_hash:
+        hash_reason = "handler_context_hash initialized"
+        hash_matched = True
+    else:
+        if not old_hash.startswith("sha1:"):
+            return False, "old handler_context_hash invalid"
+        if old_hash != new_hash:
+            return False, "handler_context_hash changed"
+        hash_reason = "handler_context_hash matched"
+        hash_matched = True
+
+    if str(old_entry.get("id") or "") and str(old_entry.get("id") or "") == str(new_entry.get("id") or "") and old_kind == new_kind:
+        return True, f"same id; kind {old_kind}->{new_kind}; scope_tag unchanged; {hash_reason}"
+
+    if old_kind == new_kind and old_fingerprint == new_fingerprint:
+        return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; scope_tag unchanged; {hash_reason}"
+    # 旧 architecture_fitness 计数器曾把非启动链清理动作记成 silent_swallow。
+    # 这里仅允许这批历史非启动链条目回到 cleanup_best_effort，不用于启动链或 accepted risk 换绑放宽。
+    if (
+        str(old_entry.get("source") or "") == "migrated_from_architecture_fitness_counter"
+        and not is_startup_scope_path(str(old_entry.get("path") or ""))
+        and old_kind == "silent_swallow"
+        and new_kind == "cleanup_best_effort"
+    ):
+        return True, f"legacy architecture silent entry reclassified as cleanup_best_effort; scope_tag unchanged; {hash_reason}"
+    if (old_kind, new_kind) not in ALLOWED_SILENT_REALIGN_KIND_TRANSITIONS:
+        return False, f"fallback kind transition {old_kind}->{new_kind} is not allowed"
+    if not hash_matched:
+        return False, "handler_context_hash changed"
+    return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; scope_tag unchanged; handler_context_hash matched"
+
+
+def _apply_silent_realign_metadata(old_entry: Dict[str, Any], new_entry: Dict[str, Any], reason: str) -> None:
+    new_entry["realigned_from"] = str(old_entry.get("id") or "")
+    new_entry["realigned_at"] = now_shanghai_iso().split("T", 1)[0]
+    new_entry["realignment_reason"] = reason
+
+
 def _resolve_silent_refresh_entry(
     entry: Dict[str, Any],
     silent_scan: Dict[Tuple[str, str, str, int], Dict[str, Any]],
@@ -242,6 +307,9 @@ def _resolve_silent_refresh_entry(
     )
     matched = silent_scan.get(key)
     if matched is not None:
+        allowed, reason = _is_allowed_silent_realign(entry, matched)
+        if not allowed:
+            raise QualityGateError("静默回退条目自动对齐被拒绝：{} {}".format(entry.get("id"), reason))
         return matched
 
     fallback_candidates = [
@@ -250,6 +318,9 @@ def _resolve_silent_refresh_entry(
         if scan_key[:3] == key[:3]
     ]
     if len(fallback_candidates) == 1:
+        allowed, reason = _is_allowed_silent_realign(entry, fallback_candidates[0])
+        if not allowed:
+            raise QualityGateError("静默回退条目自动对齐被拒绝：{} {}".format(entry.get("id"), reason))
         return fallback_candidates[0]
 
     same_handler_candidates = [
@@ -258,6 +329,9 @@ def _resolve_silent_refresh_entry(
         if scan_key[0] == key[0] and scan_key[1] == key[1] and scan_key[3] == key[3]
     ]
     if len(same_handler_candidates) == 1:
+        allowed, reason = _is_allowed_silent_realign(entry, same_handler_candidates[0])
+        if not allowed:
+            raise QualityGateError("静默回退条目自动对齐被拒绝：{} {}".format(entry.get("id"), reason))
         return same_handler_candidates[0]
 
     raise QualityGateError("静默回退条目已无法通过当前扫描对齐：{}".format(entry.get("id")))
@@ -285,7 +359,8 @@ def _silent_group_alignment(
         new_ordered = sorted(new_items, key=lambda item: (int(item.get("except_ordinal") or 0), int(item.get("line_start") or 0)))
         for old_item, new_item in zip(old_ordered, new_ordered):
             old_id = str(old_item.get("id") or "")
-            if old_id:
+            allowed, _reason = _is_allowed_silent_realign(old_item, new_item)
+            if old_id and allowed:
                 aligned[old_id] = dict(new_item)
     return aligned
 
@@ -362,10 +437,18 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
                 removed_silent_ids.add(str(entry.get("id") or ""))
                 continue
         refreshed_entry = build_silent_entry(matched_entry, source=str(entry.get("source") or "baseline_scan"), existing=entry)
+        allowed, realign_reason = _is_allowed_silent_realign(entry, matched_entry)
+        if not allowed:
+            raise QualityGateError("静默回退条目自动对齐被拒绝：{} {}".format(entry.get("id"), realign_reason))
         old_id = str(entry.get("id") or "")
         new_id = str(refreshed_entry.get("id") or "")
         if old_id and new_id and old_id != new_id:
-            silent_id_replacements[old_id] = new_id
+            if old_id in accepted_entry_ids and not str(entry.get("handler_context_hash") or "").startswith("sha1:"):
+                refreshed_entry["id"] = old_id
+                new_id = old_id
+            else:
+                _apply_silent_realign_metadata(entry, refreshed_entry, realign_reason)
+                silent_id_replacements[old_id] = new_id
         refreshed_silent.append(refreshed_entry)
 
     if silent_id_replacements or removed_silent_ids:

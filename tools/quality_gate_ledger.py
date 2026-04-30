@@ -375,6 +375,12 @@ def _validate_silent_fallback_entries(silent_entries: List[Any], all_main_ids: S
             raise QualityGateError(f"silent_fallback.entries[{index}] 必须是对象")
         _validate_common_entry(entry, f"silent_fallback.entries[{index}]")
         _require_string(entry.get("handler_fingerprint"), f"silent_fallback.entries[{index}].handler_fingerprint")
+        handler_context_hash = _require_string(
+            entry.get("handler_context_hash"),
+            f"silent_fallback.entries[{index}].handler_context_hash",
+        )
+        if not handler_context_hash.startswith("sha1:"):
+            raise QualityGateError(f"silent_fallback.entries[{index}].handler_context_hash 必须以 sha1: 开头")
         _require_int(entry.get("except_ordinal"), f"silent_fallback.entries[{index}].except_ordinal")
         _require_int(entry.get("line_start"), f"silent_fallback.entries[{index}].line_start")
         _require_int(entry.get("line_end"), f"silent_fallback.entries[{index}].line_end")
@@ -394,6 +400,14 @@ def _validate_silent_fallback_entries(silent_entries: List[Any], all_main_ids: S
         if unique_key in fallback_unique_keys:
             raise QualityGateError(f"silent_fallback.entries 存在重复登记：{unique_key}")
         fallback_unique_keys.add(unique_key)
+        realigned_from = entry.get("realigned_from")
+        realigned_at = entry.get("realigned_at")
+        realignment_reason = entry.get("realignment_reason")
+        has_realign_field = any(item is not None for item in (realigned_from, realigned_at, realignment_reason))
+        if has_realign_field:
+            _require_string(realigned_from, f"silent_fallback.entries[{index}].realigned_from")
+            _require_string(realigned_at, f"silent_fallback.entries[{index}].realigned_at")
+            _require_string(realignment_reason, f"silent_fallback.entries[{index}].realignment_reason")
 
 
 def _validate_test_debt_entries(test_debt_entries: List[Any], max_registered_xfail: int) -> None:
@@ -548,12 +562,16 @@ def _ordered_silent_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
     ):
         data = _ordered_common_fields(entry)
         data["handler_fingerprint"] = entry.get("handler_fingerprint")
+        data["handler_context_hash"] = entry.get("handler_context_hash")
         data["except_ordinal"] = int(entry.get("except_ordinal") or 0)
         data["line_start"] = int(entry.get("line_start") or 0)
         data["line_end"] = int(entry.get("line_end") or 0)
         data["fallback_kind"] = entry.get("fallback_kind")
         if entry.get("scope_tag") is not None:
             data["scope_tag"] = entry.get("scope_tag")
+        for field_name in ("realigned_from", "realigned_at", "realignment_reason"):
+            if entry.get(field_name) is not None:
+                data[field_name] = entry.get(field_name)
         data["source"] = entry.get("source")
         data.setdefault("notes", entry.get("notes"))
         ordered.append(data)

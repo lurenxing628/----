@@ -4,9 +4,9 @@ import getpass
 import ntpath
 import os
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from core.infrastructure.logging import safe_log
+from .launcher_observability import launcher_log_warning
 
 RUNTIME_CONTRACT_VERSION = 1
 RUNTIME_SHUTDOWN_PATH = "/system/runtime/shutdown"
@@ -14,21 +14,21 @@ RUNTIME_LOCK_FILE = "aps_runtime.lock"
 RUNTIME_ERROR_FILE = "aps_launch_error.txt"
 
 
-def _normalize_db_path_for_runtime(db_path: str | None) -> str:
+def _normalize_db_path_for_runtime(db_path: Optional[str]) -> str:
     raw = str(db_path or "").strip()
     if not raw:
         return ""
     return os.path.normcase(os.path.abspath(raw))
 
 
-def _normalize_abs_dir(path: str | None) -> str:
+def _normalize_abs_dir(path: Optional[str]) -> str:
     raw = str(path or "").strip()
     if not raw:
         return ""
     return os.path.abspath(raw)
 
 
-def _compose_runtime_owner(user: str | None, domain: str | None) -> str:
+def _compose_runtime_owner(user: Optional[str], domain: Optional[str]) -> str:
     user_s = str(user or "").strip()
     domain_s = str(domain or "").strip()
     if domain_s and user_s and domain_s.lower() != user_s.lower():
@@ -42,7 +42,7 @@ def current_runtime_owner() -> str:
         try:
             user = str(getpass.getuser() or "").strip()
         except Exception as exc:
-            safe_log(None, "warning", "读取当前用户失败，运行时 owner 将按 unknown 处理：%s", exc)
+            launcher_log_warning(None, "读取当前用户失败，运行时 owner 将按 unknown 处理：%s", exc)
             user = ""
     domain = str(os.environ.get("USERDOMAIN") or os.environ.get("COMPUTERNAME") or "").strip()
     return _compose_runtime_owner(user, domain)
@@ -65,19 +65,19 @@ def read_shared_data_root_from_registry() -> str:
         try:
             key = open_key(hkey_local_machine, r"SOFTWARE\APS", 0, access)
         except OSError as exc:
-            safe_log(None, "warning", "读取 APS 共享数据目录注册表失败，尝试下一个访问模式：access=%s error=%s", access, exc)
+            launcher_log_warning(None, "读取 APS 共享数据目录注册表失败，尝试下一个访问模式：access=%s error=%s", access, exc)
             continue
         try:
             result = query_value_ex(key, "SharedDataRoot")
             value = result[0] if isinstance(result, tuple) and result else ""
         except Exception as exc:
-            safe_log(None, "warning", "读取 APS SharedDataRoot 注册表值失败，将继续使用后续回退路径：%s", exc)
+            launcher_log_warning(None, "读取 APS SharedDataRoot 注册表值失败，将继续使用后续回退路径：%s", exc)
             value = ""
         finally:
             try:
                 close_key(key)
             except Exception as exc:
-                safe_log(None, "warning", "关闭 APS 注册表句柄失败，已继续：%s", exc)
+                launcher_log_warning(None, "关闭 APS 注册表句柄失败，已继续：%s", exc)
         shared_root = _normalize_abs_dir(value)
         if shared_root:
             return shared_root
@@ -114,12 +114,12 @@ def runtime_log_dir(runtime_dir: str) -> str:
     return os.path.join(str(runtime_dir), "logs")
 
 
-def resolve_runtime_state_dir(runtime_dir: str, cfg_log_dir: str | None = None) -> str:
+def resolve_runtime_state_dir(runtime_dir: str, cfg_log_dir: Optional[str] = None) -> str:
     cfg_log_dir_s = ""
     try:
         cfg_log_dir_s = str(cfg_log_dir).strip() if cfg_log_dir is not None else ""
     except Exception as exc:
-        safe_log(None, "warning", "解析运行时状态目录配置失败，已回退到 runtime/logs：%s", exc)
+        launcher_log_warning(None, "解析运行时状态目录配置失败，已回退到 runtime/logs：%s", exc, runtime_dir=runtime_dir)
         cfg_log_dir_s = ""
     if cfg_log_dir_s:
         return os.path.abspath(cfg_log_dir_s)
@@ -152,7 +152,7 @@ def runtime_dir_from_state_dir(state_dir: str) -> str:
     return state_dir_abs
 
 
-def resolve_runtime_stop_context(runtime_dir_or_state_dir: str) -> tuple[str, str]:
+def resolve_runtime_stop_context(runtime_dir_or_state_dir: str) -> Tuple[str, str]:
     raw_path = os.path.abspath(str(runtime_dir_or_state_dir))
     state_dir = resolve_runtime_state_dir_for_read(raw_path)
     if os.path.normcase(raw_path) == os.path.normcase(state_dir):
@@ -162,7 +162,7 @@ def resolve_runtime_stop_context(runtime_dir_or_state_dir: str) -> tuple[str, st
     return runtime_dir, state_dir
 
 
-def runtime_log_mirror_dir(runtime_dir: str, cfg_log_dir: str | None = None) -> str:
+def runtime_log_mirror_dir(runtime_dir: str, cfg_log_dir: Optional[str] = None) -> str:
     repo_log_dir = os.path.abspath(runtime_log_dir(runtime_dir))
     state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
     if os.path.normcase(repo_log_dir) == os.path.normcase(state_dir):
@@ -170,7 +170,7 @@ def runtime_log_mirror_dir(runtime_dir: str, cfg_log_dir: str | None = None) -> 
     return repo_log_dir
 
 
-def state_contract_paths(state_dir: str) -> tuple[str, str, str, str]:
+def state_contract_paths(state_dir: str) -> Tuple[str, str, str, str]:
     return (
         os.path.join(state_dir, "aps_host.txt"),
         os.path.join(state_dir, "aps_port.txt"),

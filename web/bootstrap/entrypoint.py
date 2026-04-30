@@ -33,6 +33,7 @@ from .launcher import (
     write_runtime_contract_file,
     write_runtime_host_port_files,
 )
+from .launcher_observability import launcher_log_warning
 from .paths import runtime_base_dir
 
 
@@ -103,7 +104,7 @@ def _write_launch_error_with_observability(
     deps: EntryPointDeps,
     runtime_dir: str,
     message: str,
-    log_dir: str | None,
+    log_dir: Optional[str],
     *,
     logger,
     context: str,
@@ -111,7 +112,14 @@ def _write_launch_error_with_observability(
     try:
         deps.write_launch_error(runtime_dir, message, log_dir)
     except Exception as exc:
-        safe_log(logger, "error", "%s，但写入启动错误文件失败：%s", context, exc)
+        launcher_log_warning(
+            logger,
+            "%s，但写入启动错误文件失败：%s",
+            context,
+            exc,
+            runtime_dir=runtime_dir,
+            state_dir=log_dir,
+        )
 
 
 def configure_runtime_contract(
@@ -184,7 +192,12 @@ def app_main(
     try:
         deps.clear_launch_error(prelaunch_log_dir)
     except Exception as exc:
-        safe_log(None, "warning", "清理历史启动错误文件失败，已继续启动：%s", exc)
+        launcher_log_warning(
+            None,
+            "清理历史启动错误文件失败，已继续启动：%s",
+            exc,
+            state_dir=prelaunch_log_dir,
+        )
 
     try:
         app = deps.create_app()
@@ -210,7 +223,10 @@ def app_main(
             safe_log(app.logger, "warning", "APS_PORT=%r 非法，已回退到默认候选端口 5000：%s", raw_port, exc)
 
     requested_host = host
-    host, port = deps.pick_port(host, preferred_port, logger=app.logger)
+    try:
+        host, port = deps.pick_port(host, preferred_port, logger=app.logger, state_dir=prelaunch_log_dir, runtime_dir=runtime_dir)
+    except TypeError:
+        host, port = deps.pick_port(host, preferred_port, logger=app.logger)
     if host != requested_host:
         safe_log(app.logger, "warning", "APS_HOST=%s 不可绑定，已回退到 %s（port=%s）", requested_host, host, port)
 

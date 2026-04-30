@@ -129,6 +129,8 @@ def main() -> None:
 
         health = runtime_probe.probe_health(f"http://127.0.0.1:{server.port}", timeout=2.0)
         _assert(bool(health), "probe_health 未识别健康 APS 实例")
+        health_result = runtime_probe.probe_health_result(f"http://127.0.0.1:{server.port}", timeout=2.0)
+        _assert(bool(health_result.ok), "probe_health_result 未识别健康 APS 实例")
 
         preferred = runtime_probe.resolve_healthy_endpoint(
             tmpdir,
@@ -154,6 +156,11 @@ def main() -> None:
         _assert(bool(invalid_preferred), "非法 preferred 参数时应继续回退到 runtime_files")
         _assert(invalid_preferred["source"] == "runtime_files", "非法 preferred 参数后应回退到 runtime_files")
         _assert("preferred 端点参数非法" in invalid_preferred_stderr.getvalue(), "非法 preferred 参数未输出告警")
+        launcher_log = os.path.join(tmpdir, "logs", "launcher.log")
+        _assert(os.path.exists(launcher_log), "非法 preferred 参数未写入 launcher.log")
+        with open(launcher_log, encoding="utf-8") as f:
+            launcher_log_text = f.read()
+        _assert("preferred 端点参数非法" in launcher_log_text, "launcher.log 未记录非法 preferred 参数")
 
         waited = runtime_probe.wait_for_healthy_runtime_endpoint(tmpdir, timeout_s=2, interval_s=0.1)
         _assert(int(waited["port"]) == server.port, "wait_for_healthy_runtime_endpoint 返回的端口不正确")
@@ -196,6 +203,8 @@ def main() -> None:
     with _HealthServer({"app": "other", "status": "ok"}) as non_aps_server:
         non_aps = runtime_probe.probe_health(f"http://127.0.0.1:{non_aps_server.port}", timeout=2.0)
         _assert(non_aps is None, "非 APS 健康响应不应被接受")
+        non_aps_result = runtime_probe.probe_health_result(f"http://127.0.0.1:{non_aps_server.port}", timeout=2.0)
+        _assert(non_aps_result.reason == "unexpected_health_payload", "非 APS 健康响应应保留失败原因")
 
     with _HealthServer({"app": "aps", "status": "ok", "contract_version": 2}) as wrong_contract_server:
         wrong_contract = runtime_probe.probe_health(f"http://127.0.0.1:{wrong_contract_server.port}", timeout=2.0)

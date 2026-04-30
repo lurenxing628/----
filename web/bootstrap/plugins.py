@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from core.infrastructure.database import get_connection
 from core.infrastructure.logging import OperationLogger, safe_log
@@ -103,7 +103,7 @@ def _public_plugin_status_row(row: Dict[str, Any], source: str) -> Dict[str, Any
     return public_row
 
 
-def _config_source_summary(sources: list[str], default_source: str) -> str:
+def _config_source_summary(sources: List[str], default_source: str) -> str:
     source_set = {str(source or "").strip() for source in sources if str(source or "").strip()}
     has_config = "config" in source_set
     non_config_sources = {source for source in source_set if source != "config"}
@@ -127,7 +127,7 @@ def _apply_enabled_sources(
     base = dict(status or {}) if isinstance(status, dict) else {}
     raw_statuses = list(base.get("statuses") or [])
     statuses = []
-    sources: list[str] = []
+    sources: List[str] = []
 
     for item in raw_statuses:
         row = dict(item or {}) if isinstance(item, dict) else {}
@@ -149,7 +149,7 @@ def _apply_enabled_sources(
 def _build_plugin_config_reader(
     conn,
     *,
-    logger: logging.Logger | None = None,
+    logger: Optional[logging.Logger] = None,
     collector: DegradationCollector,
 ):
     if conn is None:
@@ -195,7 +195,7 @@ def _build_plugin_config_reader(
     return _reader
 
 
-def bootstrap_plugins(base_dir: str, database_path: str, *, logger: logging.Logger | None = None):
+def bootstrap_plugins(base_dir: str, database_path: str, *, logger: Optional[logging.Logger] = None):
     """
     加载可选插件并记录运行留痕。
 

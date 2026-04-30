@@ -302,7 +302,7 @@ def test_refresh_auto_fields_skips_prevalidation_and_loads_required_ledger(monke
     assert '"mode": "refresh-auto-fields"' in stdout
 
 
-def test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drifted(monkeypatch):
+def test_refresh_auto_fields_rejects_silent_entry_when_except_ordinal_drifted(monkeypatch):
     module = _import_quality_gate_support()
     ledger = {
         "oversize_allowlist": [],
@@ -321,6 +321,7 @@ def test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drif
                     "last_verified_at": "2026-04-15T08:26:05+08:00",
                     "notes": "startup baseline",
                     "handler_fingerprint": "sha1:42cf3c7f221e2bcafa3ca2f57a514825d0645f89",
+                    "handler_context_hash": "sha1:ctx-stable",
                     "except_ordinal": 7,
                     "line_start": 346,
                     "line_end": 353,
@@ -336,6 +337,7 @@ def test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drif
         "path": "web/bootstrap/factory.py",
         "symbol": "_open_db",
         "handler_fingerprint": "sha1:42cf3c7f221e2bcafa3ca2f57a514825d0645f89",
+        "handler_context_hash": "sha1:ctx-stable",
         "except_ordinal": 8,
         "line_start": 375,
         "line_end": 382,
@@ -357,13 +359,8 @@ def test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drif
     )
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
-    refreshed = module.refresh_auto_fields(ledger)
-    entry = refreshed["silent_fallback"]["entries"][0]
-
-    assert entry["id"] == "fallback:web-bootstrap-factory-_open_db-42cf3c7f221e"
-    assert entry["except_ordinal"] == 8
-    assert entry["line_start"] == 375
-    assert entry["line_end"] == 382
+    with pytest.raises(module.QualityGateError, match="except ordinal changed|handler_context_hash changed"):
+        module.refresh_auto_fields(ledger)
 
 
 def test_refresh_auto_fields_realigns_silent_entry_when_handler_fingerprint_changed(monkeypatch):
@@ -385,6 +382,7 @@ def test_refresh_auto_fields_realigns_silent_entry_when_handler_fingerprint_chan
                     "last_verified_at": "2026-04-15T08:26:05+08:00",
                     "notes": "startup baseline",
                     "handler_fingerprint": "sha1:old-fingerprint",
+                    "handler_context_hash": "sha1:ctx-contract",
                     "except_ordinal": 1,
                     "line_start": 388,
                     "line_end": 389,
@@ -409,6 +407,7 @@ def test_refresh_auto_fields_realigns_silent_entry_when_handler_fingerprint_chan
         "path": "web/bootstrap/launcher_contracts.py",
         "symbol": "read_runtime_contract",
         "handler_fingerprint": "sha1:new-fingerprint",
+        "handler_context_hash": "sha1:ctx-contract",
         "except_ordinal": 1,
         "line_start": 390,
         "line_end": 392,
@@ -425,12 +424,14 @@ def test_refresh_auto_fields_realigns_silent_entry_when_handler_fingerprint_chan
     assert entry["handler_fingerprint"] == "sha1:new-fingerprint"
     assert entry["fallback_kind"] == "observable_degrade"
     assert entry["owner"] == "SP03"
+    assert entry["realigned_from"] == "fallback:web-bootstrap-launcher-contracts-read_runtime_contract-old"
+    assert "kind silent_default_fallback->observable_degrade" in entry["realignment_reason"]
     assert refreshed["accepted_risks"][0]["entry_ids"] == [
         "fallback:web-bootstrap-launcher-contracts-read_runtime_contract-new"
     ]
 
 
-def test_refresh_auto_fields_realigns_silent_entries_when_earlier_handler_left_scan(monkeypatch):
+def test_refresh_auto_fields_rejects_silent_entries_when_earlier_handler_left_scan(monkeypatch):
     module = _import_quality_gate_support()
     ledger = {
         "oversize_allowlist": [],
@@ -449,6 +450,7 @@ def test_refresh_auto_fields_realigns_silent_entries_when_earlier_handler_left_s
                     "last_verified_at": "2026-04-15T08:26:05+08:00",
                     "notes": "startup baseline",
                     "handler_fingerprint": "sha1:old-query",
+                    "handler_context_hash": "sha1:ctx-query",
                     "except_ordinal": 2,
                     "line_start": 69,
                     "line_end": 70,
@@ -466,6 +468,7 @@ def test_refresh_auto_fields_realigns_silent_entries_when_earlier_handler_left_s
                     "last_verified_at": "2026-04-15T08:26:05+08:00",
                     "notes": "startup baseline",
                     "handler_fingerprint": "sha1:old-close",
+                    "handler_context_hash": "sha1:ctx-close",
                     "except_ordinal": 3,
                     "line_start": 74,
                     "line_end": 75,
@@ -491,6 +494,7 @@ def test_refresh_auto_fields_realigns_silent_entries_when_earlier_handler_left_s
             "path": "web/bootstrap/launcher_paths.py",
             "symbol": "read_shared_data_root_from_registry",
             "handler_fingerprint": "sha1:new-query",
+            "handler_context_hash": "sha1:ctx-query",
             "except_ordinal": 1,
             "line_start": 73,
             "line_end": 75,
@@ -501,6 +505,7 @@ def test_refresh_auto_fields_realigns_silent_entries_when_earlier_handler_left_s
             "path": "web/bootstrap/launcher_paths.py",
             "symbol": "read_shared_data_root_from_registry",
             "handler_fingerprint": "sha1:new-close",
+            "handler_context_hash": "sha1:ctx-close",
             "except_ordinal": 2,
             "line_start": 79,
             "line_end": 80,
@@ -512,16 +517,8 @@ def test_refresh_auto_fields_realigns_silent_entries_when_earlier_handler_left_s
     monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: scan_entries)
     monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
-    refreshed = module.refresh_auto_fields(ledger)
-
-    assert [entry["id"] for entry in refreshed["silent_fallback"]["entries"]] == [
-        "fallback:registry-query-new",
-        "fallback:registry-close-new",
-    ]
-    assert refreshed["accepted_risks"][0]["entry_ids"] == [
-        "fallback:registry-query-new",
-        "fallback:registry-close-new",
-    ]
+    with pytest.raises(module.QualityGateError, match="except ordinal changed|handler_context_hash changed"):
+        module.refresh_auto_fields(ledger)
 
 
 def test_refresh_auto_fields_realigns_silent_entries_when_symbol_was_split_for_state_result(monkeypatch):
@@ -543,6 +540,7 @@ def test_refresh_auto_fields_realigns_silent_entries_when_symbol_was_split_for_s
                     "last_verified_at": "2026-04-15T08:26:05+08:00",
                     "notes": "startup baseline",
                     "handler_fingerprint": "sha1:old-pid",
+                    "handler_context_hash": "sha1:ctx-pid",
                     "except_ordinal": 1,
                     "line_start": 15,
                     "line_end": 16,
@@ -567,6 +565,7 @@ def test_refresh_auto_fields_realigns_silent_entries_when_symbol_was_split_for_s
         "path": "web/bootstrap/launcher_processes.py",
         "symbol": "_pid_state",
         "handler_fingerprint": "sha1:new-pid",
+        "handler_context_hash": "sha1:ctx-pid",
         "except_ordinal": 1,
         "line_start": 27,
         "line_end": 29,
@@ -581,7 +580,267 @@ def test_refresh_auto_fields_realigns_silent_entries_when_symbol_was_split_for_s
 
     assert refreshed["silent_fallback"]["entries"][0]["id"] == "fallback:pid-state-new"
     assert refreshed["silent_fallback"]["entries"][0]["symbol"] == "_pid_state"
+    assert refreshed["silent_fallback"]["entries"][0]["realigned_from"] == "fallback:pid-exists-old"
     assert refreshed["accepted_risks"][0]["entry_ids"] == ["fallback:pid-state-new"]
+
+
+def test_refresh_auto_fields_rejects_silent_realign_when_context_hash_changed(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:contract-old",
+                    "path": "web/bootstrap/launcher_contracts.py",
+                    "symbol": "read_runtime_contract",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "startup baseline",
+                    "handler_fingerprint": "sha1:old-contract",
+                    "handler_context_hash": "sha1:ctx-old",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 12,
+                    "fallback_kind": "silent_default_fallback",
+                    "source": "baseline_scan",
+                }
+            ],
+        },
+    }
+    scan_entry = {
+        "id": "fallback:contract-new",
+        "path": "web/bootstrap/launcher_contracts.py",
+        "symbol": "read_runtime_contract",
+        "handler_fingerprint": "sha1:new-contract",
+        "handler_context_hash": "sha1:ctx-new",
+        "except_ordinal": 1,
+        "line_start": 20,
+        "line_end": 22,
+        "fallback_kind": "observable_degrade",
+    }
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    with pytest.raises(module.QualityGateError, match="handler_context_hash changed"):
+        module.refresh_auto_fields(ledger)
+
+
+def test_refresh_auto_fields_rejects_same_id_when_context_hash_changed(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:runtime-probe-same",
+                    "path": "web/bootstrap/runtime_probe.py",
+                    "symbol": "probe_health_result",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "startup baseline",
+                    "handler_fingerprint": "sha1:same-fingerprint",
+                    "handler_context_hash": "sha1:ctx-old",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 12,
+                    "fallback_kind": "observable_degrade",
+                    "source": "baseline_scan",
+                }
+            ],
+        },
+        "accepted_risks": [
+            {
+                "id": "risk:runtime-probe-win7",
+                "entry_ids": ["fallback:runtime-probe-same"],
+                "owner": "techdebt",
+                "reason": "Win7 现场复核前保留",
+                "review_after": "2026-05-31",
+                "exit_condition": "Win7 现场复核后删除。",
+            }
+        ],
+    }
+    scan_entry = {
+        "id": "fallback:runtime-probe-same",
+        "path": "web/bootstrap/runtime_probe.py",
+        "symbol": "probe_health_result",
+        "handler_fingerprint": "sha1:same-fingerprint",
+        "handler_context_hash": "sha1:ctx-new",
+        "except_ordinal": 1,
+        "line_start": 20,
+        "line_end": 22,
+        "fallback_kind": "observable_degrade",
+    }
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    with pytest.raises(module.QualityGateError, match="handler_context_hash changed"):
+        module.refresh_auto_fields(ledger)
+
+
+def test_refresh_auto_fields_rejects_silent_kind_regression(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:runtime-probe-old",
+                    "path": "web/bootstrap/runtime_probe.py",
+                    "symbol": "probe_health",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "startup baseline",
+                    "handler_fingerprint": "sha1:old-probe",
+                    "handler_context_hash": "sha1:ctx-probe",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 12,
+                    "fallback_kind": "observable_degrade",
+                    "source": "baseline_scan",
+                }
+            ],
+        },
+    }
+    scan_entry = {
+        "id": "fallback:runtime-probe-new",
+        "path": "web/bootstrap/runtime_probe.py",
+        "symbol": "probe_health",
+        "handler_fingerprint": "sha1:new-probe",
+        "handler_context_hash": "sha1:ctx-probe",
+        "except_ordinal": 1,
+        "line_start": 20,
+        "line_end": 22,
+        "fallback_kind": "silent_swallow",
+    }
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    with pytest.raises(module.QualityGateError, match="fallback kind transition"):
+        module.refresh_auto_fields(ledger)
+
+
+def test_refresh_auto_fields_allows_legacy_non_startup_cleanup_reclassify(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:legacy-backup-cleanup",
+                    "path": "core/infrastructure/backup.py",
+                    "symbol": "cleanup_old_backups",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "legacy architecture counter",
+                    "handler_fingerprint": "sha1:old-cleanup",
+                    "handler_context_hash": "sha1:ctx-cleanup",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 12,
+                    "fallback_kind": "silent_swallow",
+                    "source": "migrated_from_architecture_fitness_counter",
+                }
+            ],
+        },
+    }
+    scan_entry = {
+        "id": "fallback:legacy-backup-cleanup-new",
+        "path": "core/infrastructure/backup.py",
+        "symbol": "cleanup_old_backups",
+        "handler_fingerprint": "sha1:new-cleanup",
+        "handler_context_hash": "sha1:ctx-cleanup",
+        "except_ordinal": 1,
+        "line_start": 20,
+        "line_end": 22,
+        "fallback_kind": "cleanup_best_effort",
+    }
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    refreshed = module.refresh_auto_fields(ledger)
+
+    entry = refreshed["silent_fallback"]["entries"][0]
+    assert entry["id"] == "fallback:legacy-backup-cleanup-new"
+    assert entry["realigned_from"] == "fallback:legacy-backup-cleanup"
+    assert "legacy architecture silent entry reclassified" in entry["realignment_reason"]
+
+
+def test_refresh_auto_fields_rejects_startup_cleanup_reclassify(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:legacy-startup-cleanup",
+                    "path": "web/bootstrap/launcher_stop.py",
+                    "symbol": "_wait_for_runtime_stop",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "legacy architecture counter",
+                    "handler_fingerprint": "sha1:old-startup-cleanup",
+                    "handler_context_hash": "sha1:ctx-startup-cleanup",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 12,
+                    "fallback_kind": "silent_swallow",
+                    "source": "migrated_from_architecture_fitness_counter",
+                }
+            ],
+        },
+    }
+    scan_entry = {
+        "id": "fallback:legacy-startup-cleanup-new",
+        "path": "web/bootstrap/launcher_stop.py",
+        "symbol": "_wait_for_runtime_stop",
+        "handler_fingerprint": "sha1:new-startup-cleanup",
+        "handler_context_hash": "sha1:ctx-startup-cleanup",
+        "except_ordinal": 1,
+        "line_start": 20,
+        "line_end": 22,
+        "fallback_kind": "cleanup_best_effort",
+    }
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    with pytest.raises(module.QualityGateError, match="fallback kind transition"):
+        module.refresh_auto_fields(ledger)
 
 
 def test_refresh_auto_fields_prunes_resolved_silent_entry_and_risk_reference(monkeypatch):
@@ -603,6 +862,7 @@ def test_refresh_auto_fields_prunes_resolved_silent_entry_and_risk_reference(mon
                     "last_verified_at": "2026-04-15T08:26:05+08:00",
                     "notes": "startup baseline",
                     "handler_fingerprint": "sha1:old-log",
+                    "handler_context_hash": "sha1:ctx-log",
                     "except_ordinal": 1,
                     "line_start": 207,
                     "line_end": 208,
@@ -620,6 +880,7 @@ def test_refresh_auto_fields_prunes_resolved_silent_entry_and_risk_reference(mon
                     "last_verified_at": "2026-04-15T08:26:05+08:00",
                     "notes": "startup baseline",
                     "handler_fingerprint": "sha1:old-request",
+                    "handler_context_hash": "sha1:ctx-request",
                     "except_ordinal": 1,
                     "line_start": 60,
                     "line_end": 61,
@@ -644,6 +905,7 @@ def test_refresh_auto_fields_prunes_resolved_silent_entry_and_risk_reference(mon
         "path": "web/bootstrap/launcher_stop.py",
         "symbol": "_request_runtime_shutdown",
         "handler_fingerprint": "sha1:new-request",
+        "handler_context_hash": "sha1:ctx-request",
         "except_ordinal": 1,
         "line_start": 72,
         "line_end": 74,
@@ -1335,6 +1597,7 @@ def test_validate_ledger_rejects_ui_mode_split_scope_drift(path: str, scope_tag:
             "last_verified_at": "2026-04-30T13:30:00+08:00",
             "notes": "scope test",
             "handler_fingerprint": "sha1:sample",
+            "handler_context_hash": "sha1:sample-context",
             "except_ordinal": 1,
             "line_start": 1,
             "line_end": 2,
@@ -1345,4 +1608,44 @@ def test_validate_ledger_rejects_ui_mode_split_scope_drift(path: str, scope_tag:
     ]
 
     with pytest.raises(support.QualityGateError, match=expected_message):
+        support.validate_ledger(ledger)
+
+
+def test_validate_ledger_requires_realignment_reason_when_entry_marks_realign() -> None:
+    support = _import_quality_gate_support()
+    ledger = _schema2_ledger_with_test_debt(max_registered_xfail=0)
+    ledger["silent_fallback"]["entries"] = [
+        {
+            "id": "fallback:web-bootstrap-launcher-contracts-read-runtime-contract-new",
+            "path": "web/bootstrap/launcher_contracts.py",
+            "symbol": "read_runtime_contract",
+            "status": "open",
+            "owner": "techdebt",
+            "batch": "phase5",
+            "exit_condition": "keep tracking",
+            "last_verified_at": "2026-04-30T13:30:00+08:00",
+            "notes": "realign test",
+            "handler_fingerprint": "sha1:sample",
+            "handler_context_hash": "sha1:sample-context",
+            "except_ordinal": 1,
+            "line_start": 1,
+            "line_end": 2,
+            "fallback_kind": "observable_degrade",
+            "source": "baseline_scan",
+            "realigned_from": "fallback:web-bootstrap-launcher-contracts-read-runtime-contract-old",
+            "realigned_at": "2026-04-30",
+        }
+    ]
+    ledger["accepted_risks"] = [
+        {
+            "id": "accepted:test",
+            "entry_ids": ["fallback:web-bootstrap-launcher-contracts-read-runtime-contract-new"],
+            "owner": "techdebt",
+            "reason": "test",
+            "review_after": "2026-05-31",
+            "exit_condition": "test",
+        }
+    ]
+
+    with pytest.raises(support.QualityGateError, match="realignment_reason"):
         support.validate_ledger(ledger)

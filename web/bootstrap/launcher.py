@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from . import launcher_contracts as _contracts
 from . import launcher_paths as _paths
 from . import launcher_processes as _processes
@@ -16,13 +18,14 @@ from .launcher_contracts import (
     clear_launch_error,
     delete_runtime_contract_files,
     read_runtime_contract,
+    read_runtime_contract_result,
     read_runtime_lock,
     release_runtime_lock,
     write_launch_error,
     write_runtime_contract_file,
     write_runtime_host_port_files,
 )
-from .launcher_network import _can_bind, pick_bind_host, pick_port
+from .launcher_network import BindProbeResult, _can_bind, _can_bind_result, pick_bind_host, pick_port
 from .launcher_paths import (
     RUNTIME_CONTRACT_VERSION as _RUNTIME_CONTRACT_VERSION,
 )
@@ -96,12 +99,15 @@ from .launcher_stop import (
     _runtime_stop_is_complete,
     _stop_aps_chrome_if_requested,
     probe_runtime_health,
+    probe_runtime_health_result,
 )
 
 time = _stop.time
 
+_FACADE_RESULT_API = (BindProbeResult, _can_bind_result, read_runtime_contract_result, probe_runtime_health_result)
 
-def resolve_shared_data_root(base_dir: str, *, frozen: bool | None = None) -> str:
+
+def resolve_shared_data_root(base_dir: str, *, frozen: Optional[bool] = None) -> str:
     _paths.read_shared_data_root_from_registry = read_shared_data_root_from_registry
     return _resolve_shared_data_root_impl(base_dir, frozen=frozen)
 
@@ -123,7 +129,9 @@ def _sync_launcher_hooks(*, include_chrome_hook: bool) -> None:
     _stop._list_aps_chrome_pids = _list_aps_chrome_pids
     _stop.delete_runtime_contract_files = delete_runtime_contract_files
     _stop.read_runtime_contract = read_runtime_contract
+    _stop.read_runtime_contract_result = read_runtime_contract_result
     _stop.read_runtime_lock = read_runtime_lock
+    _stop.probe_runtime_health_result = probe_runtime_health_result
     _stop.default_chrome_profile_dir = default_chrome_profile_dir
     if include_chrome_hook:
         _sync_chrome_stop_hook()
@@ -151,7 +159,7 @@ def _sync_chrome_stop_hook() -> None:
     _stop._stop_aps_chrome_with_result = _hooked_stop_result
 
 
-def stop_aps_chrome_processes(profile_dir: str | None, logger=None) -> bool:
+def stop_aps_chrome_processes(profile_dir: Optional[str], logger=None) -> bool:
     _sync_launcher_hooks(include_chrome_hook=False)
     return _stop.stop_aps_chrome_processes(profile_dir, logger=logger)
 

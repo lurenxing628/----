@@ -117,9 +117,9 @@ def _literal_kind(node: Optional[ast.AST]) -> str:
 def _categorize_call(node: ast.Call) -> str:
     target = _call_target_name(node.func)
     tail = target.split(".")[-1]
-    if target in {"_log_warning", "fallback_log", "safe_log"}:
+    if target in {"_launcher_log_contract_warning", "_log_warning", "fallback_log", "launcher_log_warning", "safe_log"}:
         return "log:warning"
-    if tail in {"_app_log_once", "_log_startup_warning", "safe_log"}:
+    if tail in {"_app_log_once", "_launcher_log_contract_warning", "_log_startup_warning", "launcher_log_warning", "safe_log"}:
         return "log:warning"
     if tail == "_write_launch_error_with_observability":
         return "log:error"
@@ -318,6 +318,11 @@ def _fingerprint_for_signature(signature: Dict[str, Any]) -> str:
     return "sha1:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
+def _handler_context_hash(handler: ast.ExceptHandler) -> str:
+    raw = ast.dump(handler, include_attributes=False)
+    return "sha1:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
 def ui_mode_scope_tag(symbol: str, path: str = "web/ui_mode.py") -> str:
     rel_path = str(path).replace("\\", "/")
     if rel_path in UI_MODE_RENDER_BRIDGE_PATHS:
@@ -357,6 +362,7 @@ def scan_silent_fallback_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
                 "path": rel_path,
                 "symbol": symbol,
                 "handler_fingerprint": fingerprint,
+                "handler_context_hash": _handler_context_hash(handler),
                 "except_ordinal": int(ordinal_map[symbol]),
                 "line_start": int(getattr(handler, "lineno", 0) or 0),
                 "line_end": int(getattr(handler, "end_lineno", getattr(handler, "lineno", 0) or 0) or 0),

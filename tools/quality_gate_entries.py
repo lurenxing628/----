@@ -103,6 +103,7 @@ def build_silent_entry(entry: Dict[str, Any], source: str, existing: Optional[Di
         "path": entry.get("path"),
         "symbol": entry.get("symbol"),
         "handler_fingerprint": entry.get("handler_fingerprint"),
+        "handler_context_hash": entry.get("handler_context_hash"),
         "except_ordinal": int(entry.get("except_ordinal") or 0),
         "line_start": int(entry.get("line_start") or 0),
         "line_end": int(entry.get("line_end") or 0),
@@ -119,7 +120,16 @@ def build_silent_entry(entry: Dict[str, Any], source: str, existing: Optional[Di
     merged["id"] = base["id"]
     if source == "migrated_from_architecture_fitness_counter":
         merged["fallback_kind"] = "silent_swallow"
-    _maybe_refresh_last_verified(existing, merged, ["line_start", "line_end", "handler_fingerprint", "fallback_kind", "source", "scope_tag"])
+    for field_name in ("realigned_from", "realigned_at", "realignment_reason"):
+        if entry.get(field_name) not in (None, ""):
+            merged[field_name] = entry.get(field_name)
+        elif existing is not None and existing.get(field_name) not in (None, ""):
+            merged[field_name] = existing.get(field_name)
+    _maybe_refresh_last_verified(
+        existing,
+        merged,
+        ["line_start", "line_end", "handler_fingerprint", "handler_context_hash", "fallback_kind", "source", "scope_tag"],
+    )
     return merged
 
 

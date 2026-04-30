@@ -307,6 +307,39 @@ def test_ui_mode_split_scope_tags_stay_separated() -> None:
             assert entry.get("scope_tag") == "render_bridge"
 
 
+def test_silent_fallback_entries_include_stable_handler_context_hash() -> None:
+    entries = scan_mod.scan_silent_fallback_entries(shared_mod.collect_startup_scope_files())
+    assert entries
+    for entry in entries:
+        assert str(entry.get("handler_context_hash") or "").startswith("sha1:")
+
+    import ast
+
+    first = ast.parse(
+        "def f():\n"
+        "    try:\n"
+        "        work()\n"
+        "    except Exception:\n"
+        "        logger.warning('x')\n"
+    )
+    second = ast.parse(
+        "\n\n"
+        "def f():\n"
+        "    try:\n"
+        "        work()\n"
+        "    except Exception:\n"
+        "        logger.warning('x')\n"
+    )
+
+    def _handler(tree):
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler):
+                return node
+        raise AssertionError("missing handler")
+
+    assert scan_mod._handler_context_hash(_handler(first)) == scan_mod._handler_context_hash(_handler(second))
+
+
 def test_request_service_target_files_keep_system_route_gate_coverage() -> None:
     system_targets = {
         "web/routes/system_backup.py",

@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
-from core.infrastructure.logging import safe_log
+from .launcher_observability import launcher_log_warning
 
 
-def runtime_base_dir(anchor_file: str | None = None) -> str:
+def runtime_base_dir(anchor_file: Optional[str] = None) -> str:
     """
     获取运行根目录：
     - 源码运行：入口锚点文件所在目录（通常为仓库根目录 app.py 所在目录）
@@ -26,13 +27,11 @@ def runtime_base_dir(anchor_file: str | None = None) -> str:
             fallback = os.path.abspath(os.path.dirname(anchor_file) or ".")
         else:
             fallback = os.path.abspath(".")
-        safe_log(
+        launcher_log_warning(
             None,
-            "warning",
             "运行根目录解析失败，已回退到绝对路径：fallback=%s anchor_file=%r error=%s",
             fallback,
             anchor_file,
             exc,
         )
         return fallback
-

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import sys
 import tempfile
@@ -28,6 +29,89 @@ def find_repo_root() -> str:
 def _assert(condition: bool, message: str) -> None:
     if not condition:
         raise RuntimeError(message)
+
+
+def _load_launcher():
+    repo_root = find_repo_root()
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    sys.modules.pop("web.bootstrap.launcher", None)
+    return importlib.import_module("web.bootstrap.launcher")
+
+
+def _write_contract_payload(runtime_dir: Path, payload) -> Path:
+    state_dir = runtime_dir / "logs"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    contract_path = state_dir / "aps_runtime.json"
+    contract_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return contract_path
+
+
+def _valid_contract_payload(runtime_dir: Path) -> dict:
+    return {
+        "contract_version": 1,
+        "pid": 12345,
+        "host": "127.0.0.1",
+        "port": 5000,
+        "shutdown_token": "runtime-token",
+        "exe_path": sys.executable,
+        "runtime_dir": str(runtime_dir),
+        "chrome_profile_dir": str(runtime_dir / "chrome109_profile"),
+    }
+
+
+def test_read_runtime_contract_result_statuses(tmp_path: Path) -> None:
+    launcher = _load_launcher()
+    runtime_dir = tmp_path / "runtime"
+
+    missing = launcher.read_runtime_contract_result(str(runtime_dir))
+    assert missing.status == "missing"
+    assert not missing.ok
+    assert launcher.read_runtime_contract(str(runtime_dir)) is None
+
+    state_dir = runtime_dir / "logs"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "aps_runtime.json").write_text("{bad-json", encoding="utf-8")
+    unreadable = launcher.read_runtime_contract_result(str(runtime_dir))
+    assert unreadable.status == "unreadable"
+    assert unreadable.error
+    assert launcher.read_runtime_contract(str(runtime_dir)) is None
+
+    _write_contract_payload(runtime_dir, ["not", "dict"])
+    invalid_type = launcher.read_runtime_contract_result(str(runtime_dir))
+    assert invalid_type.status == "invalid"
+    assert invalid_type.reason == "contract_not_object"
+
+    payload = _valid_contract_payload(runtime_dir)
+    payload["contract_version"] = 2
+    _write_contract_payload(runtime_dir, payload)
+    invalid_version = launcher.read_runtime_contract_result(str(runtime_dir))
+    assert invalid_version.status == "invalid"
+    assert invalid_version.reason == "contract_version_mismatch"
+
+    for key in ("pid", "port"):
+        payload = _valid_contract_payload(runtime_dir)
+        payload[key] = 0
+        _write_contract_payload(runtime_dir, payload)
+        invalid_field = launcher.read_runtime_contract_result(str(runtime_dir))
+        assert invalid_field.status == "invalid"
+        assert invalid_field.reason == f"invalid_{key}"
+
+    for key in ("shutdown_token", "exe_path", "runtime_dir", "chrome_profile_dir"):
+        payload = _valid_contract_payload(runtime_dir)
+        payload[key] = ""
+        _write_contract_payload(runtime_dir, payload)
+        missing_field = launcher.read_runtime_contract_result(str(runtime_dir))
+        assert missing_field.status == "invalid"
+        assert missing_field.reason == f"missing_{key}"
+
+    payload = _valid_contract_payload(runtime_dir)
+    _write_contract_payload(runtime_dir, payload)
+    valid = launcher.read_runtime_contract_result(str(runtime_dir))
+    assert valid.status == "valid"
+    assert valid.ok
+    assert valid.payload is not None
+    assert launcher.read_runtime_contract(str(runtime_dir)) is not None
 
 
 def main() -> None:
