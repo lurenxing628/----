@@ -236,10 +236,10 @@ STARTUP_SAMPLE_EXPECTATIONS = [
         scope_tag="render_bridge",
     ),
     SilentFallbackSample(
-        path="web/bootstrap/runtime_probe.py",
-        symbol="read_runtime_host_port",
-        line_start=53,
-        line_end=54,
+        path="web/bootstrap/static_versioning.py",
+        symbol="_mtime_version",
+        line_start=68,
+        line_end=69,
         fallback_kind="silent_default_fallback",
     ),
     SilentFallbackSample(

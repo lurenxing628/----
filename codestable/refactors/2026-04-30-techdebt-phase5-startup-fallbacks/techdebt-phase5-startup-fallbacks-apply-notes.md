@@ -141,3 +141,30 @@ tags: [techdebt, startup, fallback, win7]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，silent_fallback_count=151。
 - 偏离：
   - 此小批只处理 processes/stop；network/runtime_probe 按后续小批继续处理。
+
+## 步骤 4.3：收敛 network/runtime_probe 启动网络与运行探测回退
+
+- 完成时间：2026-04-30
+- 改动文件：
+  - `web/bootstrap/launcher_network.py`
+  - `web/bootstrap/runtime_probe.py`
+  - `tools/quality_gate_shared.py`
+  - `开发文档/技术债务治理台账.md`
+- 改动内容：
+  - `pick_bind_host()` 遇到非法 host 时仍回到 `127.0.0.1`，但会用 `safe_log()` 写出原因，不再让日志器异常制造二次静默吞错。
+  - `_can_bind()` 保留端口探测的返回值合同；普通候选端口探测不刷屏，只有明确要求记录失败时才写 warning。
+  - `_bind_ephemeral_port()` 和 socket 关闭失败路径保留 best effort，但补充 warning，现场能知道是哪个 host/port 或临时端口步骤失败。
+  - `pick_port()` 保留端口占用后自动换路和临时端口回退，但每次跨 host 或使用临时端口都会写 warning。
+  - `read_runtime_host_port()` 和 `read_runtime_db_path()` 对文件缺失仍表示“没有运行实例/没有 db_path”，但文件存在且读坏、端口非法会写 warning。
+  - `probe_health()` 增加 `log_failures` 参数；等待循环可以保持安静，最终端点解析失败时会写出可读原因。
+  - 启动链样本点从已经改成可观测的 `runtime_probe.read_runtime_host_port`，改到仍然稳定存在的 `static_versioning._mtime_version`，保证四类 fallback 样本继续覆盖。
+- 扫描结果：
+  - raw fallback scanner：observable_degrade 69、cleanup_best_effort 17、silent_default_fallback 10、silent_swallow 9。
+  - 台账数量从 151 降到 149。
+- 已完成验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_win7_launcher_runtime_paths.py tests/regression_runtime_contract_launcher.py tests/regression_runtime_probe_resolution.py tests/regression_runtime_stop_cli.py tests/regression_runtime_lock_reloader_parent_skip.py tests/regression_entrypoint_meta_failure_visible.py tests/test_architecture_fitness.py::test_no_silent_exception_swallow tests/test_architecture_fitness.py::test_startup_silent_fallback_samples tests/regression_quality_gate_scan_contract.py`：70 passed。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check web/bootstrap/launcher_network.py web/bootstrap/runtime_probe.py tools/quality_gate_shared.py`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`：0 errors，6 个既有 warning。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：passed，active_xfail_count=0，fixed_count=5，collected_count=856。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，silent_fallback_count=149。
+- 偏离：无。launcher fallback 收敛小批已完成，下一步进入 `web/ui_mode.py` 拆分。

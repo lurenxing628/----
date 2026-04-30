@@ -50,9 +50,11 @@ def read_runtime_host_port(runtime_dir: str) -> Optional[Tuple[str, int]]:
     try:
         host = _read_text(host_file) or "127.0.0.1"
         port = int(_read_text(port_file))
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "读取运行时 host/port 文件失败，已按无运行实例处理：dir=%s error=%s", runtime_dir, exc)
         return None
     if port <= 0:
+        safe_log(None, "warning", "运行时端口文件非法，已按无运行实例处理：dir=%s port=%s", runtime_dir, port)
         return None
     return (host, port)
 
@@ -63,7 +65,8 @@ def read_runtime_db_path(runtime_dir: str) -> Optional[str]:
         return None
     try:
         db_path = _normalize_db_path(_read_text(db_file))
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "读取运行时 db_path 文件失败，已按无 db_path 处理：path=%s error=%s", db_file, exc)
         return None
     if not db_path:
         return None
@@ -82,17 +85,21 @@ def delete_stale_runtime_files(runtime_dir: str) -> None:
             safe_log(None, "warning", "删除运行时残留文件失败，已继续：path=%s error=%s", path, exc)
 
 
-def probe_health(base_url: str, timeout: float = 2.0) -> Optional[Dict[str, Any]]:
+def probe_health(base_url: str, timeout: float = 2.0, *, log_failures: bool = False) -> Optional[Dict[str, Any]]:
     url = str(base_url).rstrip("/") + "/system/health"
     req = urllib.request.Request(url, method="GET")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
-    except Exception:
+    except Exception as exc:
+        if log_failures:
+            safe_log(None, "warning", "运行时健康探测失败：url=%s error=%s", url, exc)
         return None
     try:
         contract_version = int(payload.get("contract_version") or 0)
-    except Exception:
+    except Exception as exc:
+        if log_failures:
+            safe_log(None, "warning", "运行时健康响应版本非法：url=%s error=%s", url, exc)
         contract_version = 0
     if (
         payload.get("app") != "aps"
@@ -128,16 +135,18 @@ def resolve_healthy_endpoint(
             host = ""
             port = 0
         if host and port > 0:
-            health = probe_health(build_base_url(host, port), timeout=timeout)
+            health = probe_health(build_base_url(host, port), timeout=timeout, log_failures=True)
             if health is not None:
                 return _build_endpoint_result(host, port, "preferred", health)
+            safe_log(None, "warning", "preferred 端点健康探测未通过：host=%s port=%s", host, port)
 
     runtime = read_runtime_host_port(runtime_dir)
     if runtime is None:
         return None
     host, port = runtime
-    health = probe_health(build_base_url(host, port), timeout=timeout)
+    health = probe_health(build_base_url(host, port), timeout=timeout, log_failures=True)
     if health is None:
+        safe_log(None, "warning", "运行时文件端点健康探测未通过：host=%s port=%s", host, port)
         return None
     return _build_endpoint_result(host, port, "runtime_files", health)
 

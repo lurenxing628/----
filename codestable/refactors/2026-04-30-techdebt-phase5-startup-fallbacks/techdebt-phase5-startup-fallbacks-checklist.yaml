@@ -16,8 +16,8 @@ steps:
     exit_signal: CapabilityResult 和 available/degraded/unavailable 已新增；降级/不可用必须带 reason 且会写 warning 日志；测试、ruff、pyright、full-test-debt 和台账检查通过。
   - id: launcher-fallbacks
     title: 收敛 launcher fallback 为可观测结果
-    status: in-progress
-    exit_signal: paths/contracts 与 processes/stop 已完成；network/runtime_probe 待处理。
+    status: done
+    exit_signal: paths/contracts、processes/stop、network/runtime_probe 已完成；silent_fallback_count 从 153 降到 149；定向测试、ruff、pyright、full-test-debt 和台账检查通过。
   - id: ui-mode-split
     title: 拆分 web/ui_mode.py
     status: pending
@@ -43,7 +43,7 @@ checks:
     status: in-progress
   - id: no-fallback-silent-growth
     title: silent_swallow 和 silent_default_fallback 数量下降且不新增无解释回退
-    status: pending
+    status: in-progress
   - id: accepted-risk-owned
     title: 保留 accepted risk 都有 owner、review_after 和 exit_condition
     status: pending
