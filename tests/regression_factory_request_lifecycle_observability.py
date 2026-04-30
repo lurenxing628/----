@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional, cast
 import pytest
 from flask import Flask, Response, g, request
 
+import core.infrastructure.backup as backup_mod
 import web.bootstrap.factory as factory_mod
 import web.error_boundary as error_boundary_mod
 from web.bootstrap.entrypoint import create_app_with_mode
@@ -318,6 +319,32 @@ def test_open_db_returns_500_when_maintenance_detection_fails(tmp_path: Path, mo
 
     assert captured["count"] == 0
     assert backend_calls == []
+    assert any("系统状态检测失败，已中止请求" in message for message in errors), errors
+
+
+def test_open_db_returns_500_when_maintenance_lock_read_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    open_db = _get_before_hook(app, "_open_db")
+    warnings = _capture_warnings(monkeypatch, app)
+    errors = _capture_errors(monkeypatch, app)
+    captured, backend_calls = _patch_request_services_probe(monkeypatch)
+
+    monkeypatch.setattr(
+        backup_mod,
+        "read_maintenance_lock_state",
+        lambda _db_path: (_ for _ in ()).throw(RuntimeError("lock read boom")),
+    )
+
+    with app.test_request_context("/scheduler/"):
+        result = open_db()
+        assert isinstance(result, tuple)
+        assert result[1] == 500
+        assert getattr(g, "db", None) is None
+        assert getattr(g, "services", None) is None
+
+    assert captured["count"] == 0
+    assert backend_calls == []
+    assert any("维护锁状态检测失败" in message for message in warnings), warnings
     assert any("系统状态检测失败，已中止请求" in message for message in errors), errors
 
 

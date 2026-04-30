@@ -69,6 +69,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_request_services_contract.py",
     "tests/regression_request_services_lazy_construction.py",
     "tests/regression_request_services_failure_propagation.py",
+    "tests/regression_factory_request_lifecycle_observability.py",
     "tests/regression_optimizer_seed_results_contract.py",
     "tests/regression_optimizer_seed_boundary_contract.py",
     "tests/regression_optimizer_runtime_seam_contract.py",

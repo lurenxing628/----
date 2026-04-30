@@ -178,8 +178,9 @@ def is_maintenance_window_active(db_path: str, *, logger=None) -> bool:
             except Exception as e:
                 fallback_log(logger, "warning", f"陈旧维护锁自动清理失败：{e}（path={lock_path}）")
         return True
-    except Exception:
-        return False
+    except Exception as exc:
+        fallback_log(logger, "warning", f"维护锁状态检测失败，已按不可确认处理并阻止继续：{exc}")
+        raise MaintenanceWindowError("lock_state_unavailable", "系统维护锁状态检测失败，请稍后重试。") from exc
 
 
 def ensure_backup_allowed(db_path: str, *, logger=None) -> None:

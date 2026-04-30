@@ -97,6 +97,47 @@ def main() -> None:
     if os.path.exists(stale_lock):
         raise RuntimeError("陈旧维护锁自愈后应被删除")
 
+    lock_warnings = []
+
+    class _ListLogger:
+        def warning(self, message):
+            lock_warnings.append(str(message))
+
+    with mock.patch.object(backup_mod, "read_maintenance_lock_state", side_effect=RuntimeError("lock read boom")):
+        try:
+            is_maintenance_window_active(db_path, logger=_ListLogger())
+        except MaintenanceWindowError as e:
+            if e.code != "lock_state_unavailable":
+                raise RuntimeError(f"维护锁读取失败预期 lock_state_unavailable，实际 {e.code}/{e}")
+        else:
+            raise RuntimeError("维护锁读取失败时不应按无维护窗口放行")
+
+        try:
+            backup_mod.ensure_backup_allowed(db_path, logger=_ListLogger())
+        except MaintenanceWindowError as e:
+            if e.code != "lock_state_unavailable":
+                raise RuntimeError(f"backup 放行检查预期 lock_state_unavailable，实际 {e.code}/{e}")
+        else:
+            raise RuntimeError("维护锁读取失败时 ensure_backup_allowed 不应放行")
+
+        try:
+            mgr.backup(suffix="lock_read_failed")
+        except MaintenanceWindowError as e:
+            if e.code != "lock_state_unavailable":
+                raise RuntimeError(f"backup() 预期 lock_state_unavailable，实际 {e.code}/{e}")
+        else:
+            raise RuntimeError("维护锁读取失败时 backup() 不应成功生成备份")
+
+        restore_result = mgr.restore(backup_path)
+        if restore_result.ok or restore_result.code != "lock_state_unavailable":
+            raise RuntimeError(
+                "维护锁读取失败时 restore() 不应继续恢复，实际 "
+                f"ok={restore_result.ok} code={restore_result.code} message={restore_result.message}"
+            )
+
+    if not any("维护锁状态检测失败" in message for message in lock_warnings):
+        raise RuntimeError(f"维护锁读取失败应记录可诊断 warning，实际日志：{lock_warnings}")
+
     backup_entered = threading.Event()
     backup_release = threading.Event()
 

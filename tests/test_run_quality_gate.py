@@ -346,6 +346,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_request_services_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_request_services_lazy_construction.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_request_services_failure_propagation.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_factory_request_lifecycle_observability.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_optimizer_outcome_type_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_optimizer_public_summary_projection_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_optimizer_runtime_seam_contract.py" in module.REQUIRED_TEST_ARGS

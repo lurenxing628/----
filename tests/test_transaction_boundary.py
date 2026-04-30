@@ -155,7 +155,7 @@ def test_nested_savepoint_rollback_failure_blocks_outer_commit(tmp_path, caplog)
         manager = TransactionManager(conn)
 
         with caplog.at_level(logging.DEBUG, logger="core.infrastructure.transaction"):
-            with pytest.raises(RuntimeError, match="事务状态不可信"):
+            with pytest.raises(RuntimeError, match="已阻止提交"):
                 with manager.transaction():
                     conn.execute("INSERT INTO t (val) VALUES ('outer_before')")
                     try:

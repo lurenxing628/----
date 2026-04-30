@@ -242,6 +242,62 @@ tags: [techdebt, startup, fallback, win7]
   - 当前仍未执行 Win7 真机 / 虚拟机复测。
   - 4 条 Win7 accepted risk 继续保留，不能包装成已关闭。
 
+## 75eb996 后二次 review 合并前补丁
+
+- 分支指向确认：
+  - 本地 `HEAD` 与远端 `origin/codex/techdebt-phase5-startup-fallbacks` 都已指向 `75eb99618f484a264bb2a2da79d5f6d7461bed6e`。
+  - 因此上一轮启动链补丁没有遗漏在 PR head 之外。
+- 事务 poison 复核：
+  - 外部 review 提到 `_block_commit_if_poisoned()` 可能 rollback 后继续 commit。
+  - 当前代码里 `_block_commit_if_poisoned()` 在 `_commit_scope()` 前执行，发现 poison 后无论 rollback 是否成功都会抛出 `事务状态不可信，已阻止提交`。
+  - 本轮不改事务生产代码，只把 `tests/test_transaction_boundary.py::test_nested_savepoint_rollback_failure_blocks_outer_commit` 的断言收紧到 `已阻止提交`，避免后续误把其他异常当成 poison hard barrier。
+- 维护锁 fail-open 修正：
+  - `core/infrastructure/backup.py::is_maintenance_window_active()` 不再在维护锁状态检测异常时返回 `False`。
+  - 维护锁状态不可确认时会记录 warning，并抛出 `MaintenanceWindowError("lock_state_unavailable", "系统维护锁状态检测失败，请稍后重试。")`。
+  - 当前线程已经持有维护窗口时仍然返回 `True`，不破坏 restore / migration 的嵌套维护窗口。
+  - 锁文件内容读不到时仍按已有 state 处理并视为维护中，不改成放行。
+- 新增 / 收紧测试：
+  - `tests/regression_maintenance_window_mutex.py` 覆盖 `read_maintenance_lock_state()` 抛异常时，`is_maintenance_window_active()`、`ensure_backup_allowed()`、`BackupManager.backup()` 和 `BackupManager.restore()` 都不能放行。
+  - `tests/regression_factory_request_lifecycle_observability.py` 覆盖请求入口里维护锁内部读取失败时返回 500，且不挂载 `g.db` / `g.services`。
+  - `tools/test_registry.py` 已把 `tests/regression_factory_request_lifecycle_observability.py` 加入质量门禁必跑清单，避免这条请求入口回归只在手工点名时才执行。
+  - `tests/test_run_quality_gate.py` 已加断言，防止后续有人把这条请求入口回归从必跑清单里漏掉。
+  - `tests/test_transaction_boundary.py` 明确 poison 路径最终异常来自“已阻止提交”。
+- 非 blocker 延期项：
+
+| 文件 / 函数 | 本轮处理 | 延期原因 | 台账状态 / 后续退出条件 |
+| --- | --- | --- | --- |
+| `web/manual_src_security.py::safe_url_for()` | 不改 | 牵涉说明入口和模板可用性，当前属于有日志的页面降级，不是合并 blocker | 继续保持 `open`；后续要区分 BuildError、上下文缺失和真正程序错误 |
+| `web/bootstrap/runtime_probe.py` | 不改 | 旧 `None` 返回已经是运行时探测兼容合同，合并前大改容易影响启动探测 | 继续保持 `open`；后续先设计三态 result，再迁移 legacy facade |
+| `web/bootstrap/launcher_processes.py::_parse_pid()` | 不改 | 小范围可修，但不是本轮真实 blocker；避免维护锁修复顺带改变启动链台账数量 | 继续保持 `open`；后续按 `_safe_int()` 同类方式收窄捕获范围 |
+| `web/bootstrap/launcher_network.py` | 不改 | 端口 / host / socket 回退和 Win7 启动边界强相关，当前没有 Win7 真机 / 虚拟机复测 | 继续保持 `open` 和 Win7 accepted risk；后续需要 Win7 复测后再关闭 |
+
+- 已完成验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_run_quality_gate.py tests/regression_factory_request_lifecycle_observability.py`：`41 passed`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_transaction_boundary.py tests/regression_maintenance_window_mutex.py tests/regression_factory_request_lifecycle_observability.py`：`24 passed`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/infrastructure/backup.py tools/test_registry.py tests/test_run_quality_gate.py tests/test_transaction_boundary.py tests/regression_maintenance_window_mutex.py tests/regression_factory_request_lifecycle_observability.py`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -k "transaction or database or migration or backup or maintenance" -p no:cacheprovider`：`49 passed, 885 deselected`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -k "launcher or runtime or startup or stop or ui_mode or render_bridge" -p no:cacheprovider`：`141 passed, 793 deselected`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`：`0 errors`，仍有 6 个既有 scheduler `__all__` warning。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：通过，`active_xfail_count=0`，`fixed_count=5`，`collected_count=934`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`silent_fallback_count=118`，`accepted_risk_count=4`。
+- 第一轮对抗审查：
+  - 维护锁 fail-closed 审查：未发现 blocker；建议补的 `BackupManager.backup()` / `restore()` 入口覆盖已补。
+  - 事务 poison 结论审查：未发现 blocker；确认 review blocker 在当前提交不成立。
+  - 延期项和台账文字审查：未发现 blocker；确认没有把 `safe_url_for()`、`runtime_probe.py`、`_parse_pid()`、`launcher_network.py` 写成已修复。
+  - 测试覆盖审查：第一轮当时未发现 blocker；第二轮重新检查后发现请求入口回归原先未进必跑清单，现已通过 `tools/test_registry.py` 和 `tests/test_run_quality_gate.py` 修正。
+- 第二轮对抗审查中途发现并已修复：
+  - 维护锁最终审查指出：请求入口新增回归虽然手工点名会跑，但原先没有进入质量门禁必跑清单。
+  - 已通过 `tools/test_registry.py` 绑定到统一门禁，并用 `tests/test_run_quality_gate.py` 锁住清单。
+  - 修复后显式收集 `tests/regression_factory_request_lifecycle_observability.py`，确认 17 条用例都会被点名文件收集。
+- 第二轮最终对抗审查：
+  - 维护锁并发 / 备份 / 恢复 / 请求入口审查：未发现 fail-open 或漏放行 blocker。
+  - 事务 / 数据库 / 迁移回滚审查：未发现本轮维护锁修复引入的新风险。
+  - 台账和文字边界审查：未发现把延期项写成已修复，也未发现宣称 Win7 真机闭环。
+  - 验证证据审查：确认请求入口回归已进质量门禁必跑清单；剩余事项是用临时干净工作树跑最终总门禁。
+- Win7 状态仍不变：
+  - 当前仍未执行 Win7 真机 / 虚拟机复测。
+  - 4 条 Win7 accepted risk 继续保留，不能包装成已关闭。
+
 ### 0a631dc 补丁后的对抗审查收口
 
 - 第二轮对抗审查发现并已补掉 4 个 blocker：
@@ -312,7 +368,7 @@ tags: [techdebt, startup, fallback, win7]
   - 非启动链里已经标为 `fixed` 的 silent fallback 条目，如果当前扫描不再需要承接，会在 `refresh-auto-fields` 中移出。
   - 启动链范围的 fixed 条目不会因为 fixed 状态被直接剪掉，避免架构扫描把当前仍存在的启动链处理器误判成“未登记新增项”。
   - 因此本轮先用 `scan-startup-baseline` 恢复启动链当前扫描登记，再用 `refresh-auto-fields` 对齐字段。
-- 当前最终台账结果：
+- 当时台账结果（已被后续 `75eb996` 补丁刷新为 `silent_fallback_count=118`）：
   - `oversize_count=1`
   - `complexity_count=18`
   - `silent_fallback_count=119`
