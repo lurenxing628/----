@@ -8,8 +8,8 @@ steps:
     exit_signal: 基线文件和 refactor 记录已提交，未改业务代码。
   - id: scheduler-summary-config
     title: 拆分 scheduler summary 与 config field spec
-    status: pending
-    exit_signal: 两个超长文件降到阈值内或成为 facade，相关测试和台账检查通过。
+    status: done
+    exit_signal: 两个超长文件已降到阈值内；相关定向测试、ruff、pyright、full-test-debt 和台账检查通过。
   - id: infrastructure-complexity
     title: 拆分事务备份迁移和数据库入口
     status: pending
