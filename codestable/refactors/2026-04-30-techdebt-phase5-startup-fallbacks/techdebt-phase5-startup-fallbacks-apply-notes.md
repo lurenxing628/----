@@ -211,3 +211,21 @@ tags: [techdebt, startup, fallback, win7]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：passed，active_xfail_count=0，fixed_count=5，collected_count=861。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，silent_fallback_count=144。
 - 偏离：无。accepted risk 和 Win7 复核记录按下一步继续处理。
+
+## 步骤 6：收口 accepted risk 和 Win7 复核记录
+
+- 完成时间：2026-04-30
+- 改动文件：
+  - `开发文档/技术债务治理台账.md`
+  - `audit/2026-05/phase5_win7_startup_review.md`
+  - `codestable/refactors/2026-04-30-techdebt-phase5-startup-fallbacks/techdebt-phase5-startup-fallbacks-checklist.yaml`
+  - `codestable/refactors/2026-04-30-techdebt-phase5-startup-fallbacks/techdebt-phase5-startup-fallbacks-apply-notes.md`
+- 改动内容：
+  - 使用 `scripts/sync_debt_ledger.py delete-risk` 删除 `risk:ui-mode-render-bridge-observable-degrade`，因为它不依赖 Win7 真机/虚拟机才能证明。
+  - 使用 `scripts/sync_debt_ledger.py upsert-risk` 更新 4 条 Win7 accepted risk，统一补为 `review_after=2026-05-31`。
+  - 保留的风险只剩 Win7 现场才能最终证明的启动链风险：端口/主机绑定、进程探测与 Chrome profile、runtime lock/contract、运行根目录/owner。
+  - 新增 `audit/2026-05/phase5_win7_startup_review.md`，明确当前 macOS 开发机未执行 Win7 真机/虚拟机复测，相关风险继续保留。
+- 已完成验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，accepted_risk_count=4。
+- 偏离：
+  - 未修改 `installer/README_WIN7_INSTALLER.md`、`DELIVERY_WIN7.md` 和 `开发文档/系统速查表.md`，因为现有文档已经写明不误杀普通 Chrome、profile 精确匹配、无法确认时失败闭合、Win7 复测边界和 launcher 日志排障口径。

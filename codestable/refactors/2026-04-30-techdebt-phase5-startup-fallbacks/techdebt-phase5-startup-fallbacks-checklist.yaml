@@ -24,8 +24,8 @@ steps:
     exit_signal: web/ui_mode.py 已降到 77 行 facade；request/store/render/security 职责拆开；public API、V2 正常命中、真实渲染异常透出、扫描范围和台账检查通过。
   - id: accepted-risk-win7
     title: 收口 accepted risk 和 Win7 复核记录
-    status: pending
-    exit_signal: 已消除风险删除，保留风险有 owner、review_after、exit_condition，Win7 复核状态写清。
+    status: done
+    exit_signal: 非 Win7 风险 risk:ui-mode-render-bridge-observable-degrade 已删除；4 条 Win7 风险保留并补齐 2026-05-31 review_after、复测退出条件和审计记录。
   - id: phase5-adversarial-review
     title: 阶段 5 对抗审查
     status: pending
@@ -40,13 +40,13 @@ checks:
     status: done
   - id: no-chrome-miskill
     title: 普通 Chrome 不被误杀，无法确认身份时失败闭合
-    status: in-progress
+    status: done
   - id: no-fallback-silent-growth
     title: silent_swallow 和 silent_default_fallback 数量下降且不新增无解释回退
     status: done
   - id: accepted-risk-owned
     title: 保留 accepted risk 都有 owner、review_after 和 exit_condition
-    status: pending
+    status: done
   - id: clean-quality-gate
     title: 最终干净工作区质量门禁通过
     status: pending
