@@ -92,6 +92,7 @@ from .quality_gate_shared import (
     TEST_DEBT_MODE_VALUES,
     UI_MODE_SCOPE_TAG_VALUES,
     UI_MODE_STARTUP_GUARD_SYMBOLS,
+    UI_MODE_STARTUP_SCOPE_PATHS,
     QualityGateError,
     SilentFallbackSample,
     apply_quality_gate_manifest_proof_fields,

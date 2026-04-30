@@ -7,6 +7,9 @@ import pytest
 from flask import Flask, g
 from jinja2 import DictLoader
 
+import web.manual_src_security as manual_src_security_mod
+import web.render_bridge as render_bridge_mod
+import web.ui_mode_request as ui_mode_request_mod
 from core.services.system import SystemConfigService
 from web import ui_mode as ui_mode_mod
 from web.ui_mode import UI_MODE_COOKIE_KEY, get_ui_mode, normalize_manual_src
@@ -80,6 +83,26 @@ def test_get_ui_mode_prefers_cookie_over_db() -> None:
             assert get_ui_mode(default="v1") == "v2"
     finally:
         conn.close()
+
+
+def test_ui_mode_facade_keeps_public_api_exports() -> None:
+    expected_names = {
+        "UI_MODE_COOKIE_KEY",
+        "UI_MODE_CONFIG_KEY",
+        "normalize_ui_mode",
+        "init_ui_mode",
+        "get_ui_mode",
+        "safe_url_for",
+        "render_ui_template",
+        "normalize_manual_src",
+        "get_manual_url",
+        "get_full_manual_section_url",
+        "get_help_card",
+    }
+
+    assert expected_names.issubset(set(ui_mode_mod.__all__))
+    for name in expected_names:
+        assert hasattr(ui_mode_mod, name)
 
 
 def test_normalize_manual_src_accepts_same_origin_absolute_url_and_preserves_trailing_question_mark() -> None:
@@ -182,7 +205,7 @@ def test_get_ui_mode_logs_warning_when_cookie_read_fails(monkeypatch) -> None:
                 raise RuntimeError("cookie exploded")
 
         monkeypatch.setattr(app.logger, "warning", _fake_warning)
-        monkeypatch.setattr(ui_mode_mod, "request", SimpleNamespace(cookies=_RaisingCookies()))
+        monkeypatch.setattr(ui_mode_request_mod, "request", SimpleNamespace(cookies=_RaisingCookies()))
 
         with app.test_request_context("/"):
             _attach_system_config_service(app, conn)
@@ -317,7 +340,11 @@ def test_safe_url_for_logs_warning_on_non_build_error(monkeypatch) -> None:
         warnings.append(message % args if args else str(message))
 
     monkeypatch.setattr(app.logger, "warning", _fake_warning)
-    monkeypatch.setattr(ui_mode_mod, "url_for", lambda endpoint, **values: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        manual_src_security_mod,
+        "url_for",
+        lambda endpoint, **values: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
 
     with app.test_request_context("/demo"):
         assert ui_mode_mod.safe_url_for("missing.endpoint") is None
@@ -382,7 +409,7 @@ def test_render_ui_template_marks_base_loader_resolution_as_degraded(tmp_path, m
 
     monkeypatch.setattr(app.logger, "warning", _fake_warning)
     ui_mode_mod.init_ui_mode(app, str(tmp_path))
-    monkeypatch.setattr(ui_mode_mod, "get_ui_mode", lambda default=None: "v2")
+    monkeypatch.setattr(render_bridge_mod, "get_ui_mode", lambda default=None: "v2")
 
     with app.test_request_context("/demo"):
         rendered = ui_mode_mod.render_ui_template("demo.html")
@@ -395,6 +422,49 @@ def test_render_ui_template_marks_base_loader_resolution_as_degraded(tmp_path, m
     assert "mode=v2 but template resolved via base loader" in warnings[0]
     assert "template=demo.html" in warnings[0]
     assert "path=/demo" in warnings[0]
+
+
+def test_render_ui_template_uses_v2_template_when_available(tmp_path, monkeypatch) -> None:
+    base_templates = tmp_path / "templates"
+    base_templates.mkdir(parents=True)
+    (base_templates / "demo.html").write_text("base", encoding="utf-8")
+    v2_templates = tmp_path / "web_new_test" / "templates"
+    v2_templates.mkdir(parents=True)
+    (tmp_path / "web_new_test" / "static").mkdir(parents=True)
+    (v2_templates / "demo.html").write_text(
+        "{{ ui_mode }}|{{ ui_template_env }}|{{ ui_template_source }}|{{ 1 if ui_template_env_degraded else 0 }}",
+        encoding="utf-8",
+    )
+
+    app = Flask(__name__, template_folder=str(base_templates))
+    ui_mode_mod.init_ui_mode(app, str(tmp_path))
+    monkeypatch.setattr(render_bridge_mod, "get_ui_mode", lambda default=None: "v2")
+
+    with app.test_request_context("/demo"):
+        rendered = ui_mode_mod.render_ui_template("demo.html")
+        assert g.ui_template_env == "v2"
+        assert g.ui_template_source == "v2"
+        assert g.ui_template_env_degraded is False
+
+    assert rendered == "v2|v2|v2|0"
+
+
+def test_render_ui_template_propagates_real_template_render_error(tmp_path, monkeypatch) -> None:
+    v2_templates = tmp_path / "web_new_test" / "templates"
+    v2_templates.mkdir(parents=True)
+    (tmp_path / "web_new_test" / "static").mkdir(parents=True)
+    (v2_templates / "demo.html").write_text("{{ boom() }}", encoding="utf-8")
+
+    app = Flask(__name__)
+    ui_mode_mod.init_ui_mode(app, str(tmp_path))
+    monkeypatch.setattr(render_bridge_mod, "get_ui_mode", lambda default=None: "v2")
+
+    def _boom():
+        raise RuntimeError("render boom")
+
+    with app.test_request_context("/demo"):
+        with pytest.raises(RuntimeError, match="render boom"):
+            ui_mode_mod.render_ui_template("demo.html", boom=_boom)
 
 
 def test_render_ui_template_logs_warning_when_env_globals_bridge_injection_fails(monkeypatch) -> None:
@@ -424,8 +494,8 @@ def test_render_ui_template_logs_warning_when_env_globals_bridge_injection_fails
         warnings.append(message % args if args else str(message))
 
     monkeypatch.setattr(app.logger, "warning", _fake_warning)
-    monkeypatch.setattr(ui_mode_mod, "get_ui_mode", lambda default=None: "v2")
-    monkeypatch.setattr(ui_mode_mod, "_get_v2_env", lambda current_app: _EnvStub())
+    monkeypatch.setattr(render_bridge_mod, "get_ui_mode", lambda default=None: "v2")
+    monkeypatch.setattr(render_bridge_mod, "_get_v2_env", lambda current_app: _EnvStub())
 
     with app.test_request_context("/bridge"):
         rendered = ui_mode_mod.render_ui_template("demo.html")

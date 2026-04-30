@@ -168,3 +168,46 @@ tags: [techdebt, startup, fallback, win7]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：passed，active_xfail_count=0，fixed_count=5，collected_count=856。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，silent_fallback_count=149。
 - 偏离：无。launcher fallback 收敛小批已完成，下一步进入 `web/ui_mode.py` 拆分。
+
+## 步骤 5：拆分 web/ui_mode.py
+
+- 完成时间：2026-04-30
+- 改动文件：
+  - `web/ui_mode.py`
+  - `web/ui_mode_request.py`
+  - `web/ui_mode_store.py`
+  - `web/render_bridge.py`
+  - `web/manual_src_security.py`
+  - `tools/quality_gate_shared.py`
+  - `tools/quality_gate_support.py`
+  - `tools/quality_gate_ledger.py`
+  - `tools/quality_gate_operations.py`
+  - `tests/test_ui_mode.py`
+  - `tests/regression_ui_mode_startup_guard_observability.py`
+  - `tests/regression_scheduler_config_manual_url_normalization.py`
+  - `tests/test_architecture_fitness.py`
+  - `tests/regression_quality_gate_scan_contract.py`
+  - `tests/test_sync_debt_ledger.py`
+  - `开发文档/技术债务治理台账.md`
+- 改动内容：
+  - `web/ui_mode.py` 从 511 行降到 77 行，只保留旧 public API 和测试兼容私有名的导出。
+  - `web/ui_mode_request.py` 负责 UI mode 规范化、cookie 优先读取和默认值回退。
+  - `web/ui_mode_store.py` 负责 `SystemConfig.ui_mode` 读取；请求容器损坏继续显式报错，数据库读取失败才告警后回默认值。
+  - `web/render_bridge.py` 负责 V2 静态资源注册、V2 模板环境、模板 helper 注入、V1/V2 渲染桥接和运行期回退告警。
+  - `web/manual_src_security.py` 负责 manual `src` 同源/路径安全、说明书链接和 `safe_url_for()`。
+  - 请求服务扫描范围也纳入新拆文件，避免 `_read_ui_mode_from_db` 等逻辑搬走后漏扫。
+  - 台账校验对新拆文件按路径强制 scope：request/store 只能是 `startup_guard`，render/security 只能是 `render_bridge`；旧 `web/ui_mode.py` facade 继续允许历史双 scope。
+  - 启动链样本点迁移到真实新文件；通过 `scan-startup-baseline` 受控刷新台账，旧 `web/ui_mode.py` fallback 条目迁移到新文件条目。
+  - 新增 public API 导出合同、V2 模板真实命中合同、真实模板渲染异常透出合同。
+- 扫描结果：
+  - raw fallback scanner：observable_degrade 79、cleanup_best_effort 17、silent_default_fallback 2、silent_swallow 2。
+  - UI mode 拆分文件：observable_degrade 17、silent_default_fallback 1。
+  - 台账数量从 149 降到 144。
+  - oversize_count 从 2 降到 1，`web/ui_mode.py` 已不再超长。
+- 已完成验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_ui_mode.py tests/regression_ui_mode_startup_guard_observability.py tests/regression_scheduler_config_manual_url_normalization.py tests/regression_safe_next_url_hardening.py tests/regression_manual_entry_scope.py tests/regression_config_manual_markdown.py tests/test_architecture_fitness.py::test_no_silent_exception_swallow tests/test_architecture_fitness.py::test_startup_silent_fallback_samples tests/test_architecture_fitness.py::test_request_service_target_files_no_direct_assembly tests/regression_quality_gate_scan_contract.py tests/test_sync_debt_ledger.py::test_validate_ledger_rejects_ui_mode_split_scope_drift`：56 passed。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check ...`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`：0 errors，6 个既有 warning。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：passed，active_xfail_count=0，fixed_count=5，collected_count=861。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，silent_fallback_count=144。
+- 偏离：无。accepted risk 和 Win7 复核记录按下一步继续处理。

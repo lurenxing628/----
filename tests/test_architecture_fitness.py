@@ -19,6 +19,7 @@ from tools.quality_gate_support import (
     COMPLEXITY_THRESHOLD,
     CORE_DIRS,
     FILE_SIZE_LIMIT,
+    UI_MODE_STARTUP_SCOPE_PATHS,
     architecture_complexity_allowlist_map,
     architecture_complexity_scan_map,
     architecture_oversize_allowlist_map,
@@ -499,7 +500,9 @@ def test_no_silent_exception_swallow():
             mismatched_entries.append(
                 f"{entry_id} fallback_kind 不一致：台账={ledger_entry.get('fallback_kind')} 实扫={entry.get('fallback_kind')}"
             )
-        if str(entry.get("path")) == "web/ui_mode.py" and str(ledger_entry.get("scope_tag")) != str(entry.get("scope_tag")):
+        if str(entry.get("path")) in set(UI_MODE_STARTUP_SCOPE_PATHS) and str(ledger_entry.get("scope_tag")) != str(
+            entry.get("scope_tag")
+        ):
             mismatched_entries.append(
                 f"{entry_id} scope_tag 不一致：台账={ledger_entry.get('scope_tag')} 实扫={entry.get('scope_tag')}"
             )

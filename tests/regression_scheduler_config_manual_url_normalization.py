@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from flask import Flask
 
+import web.manual_src_security as manual_src_security_mod
 import web.routes.scheduler_config as route_mod
 import web.ui_mode as ui_mode_mod
 
@@ -10,7 +11,7 @@ import web.ui_mode as ui_mode_mod
 def test_get_full_manual_section_url_returns_empty_string_when_manual_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(ui_mode_mod, "build_manual_for_endpoint", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(manual_src_security_mod, "build_manual_for_endpoint", lambda *_args, **_kwargs: None)
 
     assert ui_mode_mod.get_full_manual_section_url(endpoint="scheduler.gantt_page", src="/scheduler/gantt") == ""
 

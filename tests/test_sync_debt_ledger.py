@@ -1311,3 +1311,38 @@ def test_sort_ledger_does_not_fill_missing_test_debt_ratchet() -> None:
 
     with pytest.raises(support.QualityGateError, match="max_registered_xfail"):
         support.sort_ledger(ledger)
+
+
+@pytest.mark.parametrize(
+    ("path", "scope_tag", "expected_message"),
+    [
+        ("web/ui_mode_store.py", "render_bridge", "startup_guard"),
+        ("web/render_bridge.py", "startup_guard", "render_bridge"),
+    ],
+)
+def test_validate_ledger_rejects_ui_mode_split_scope_drift(path: str, scope_tag: str, expected_message: str) -> None:
+    support = _import_quality_gate_support()
+    ledger = _schema2_ledger_with_test_debt(max_registered_xfail=0)
+    ledger["silent_fallback"]["entries"] = [
+        {
+            "id": f"fallback:{path.replace('/', '-')}-sample",
+            "path": path,
+            "symbol": "sample",
+            "status": "open",
+            "owner": "techdebt",
+            "batch": "phase5",
+            "exit_condition": "keep tracking",
+            "last_verified_at": "2026-04-30T13:30:00+08:00",
+            "notes": "scope test",
+            "handler_fingerprint": "sha1:sample",
+            "except_ordinal": 1,
+            "line_start": 1,
+            "line_end": 2,
+            "fallback_kind": "observable_degrade",
+            "scope_tag": scope_tag,
+            "source": "baseline_scan",
+        }
+    ]
+
+    with pytest.raises(support.QualityGateError, match=expected_message):
+        support.validate_ledger(ledger)

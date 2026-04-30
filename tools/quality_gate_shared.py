@@ -121,6 +121,10 @@ REQUEST_SERVICE_SCAN_SCOPE_PATTERNS = [
     "web/error_handlers.py",
     "web/error_boundary.py",
     "web/ui_mode.py",
+    "web/ui_mode_request.py",
+    "web/ui_mode_store.py",
+    "web/render_bridge.py",
+    "web/manual_src_security.py",
     "tests/run_real_db_replay_e2e.py",
     "tests/run_complex_excel_cases_e2e.py",
 ]
@@ -148,6 +152,10 @@ REQUEST_SERVICE_TARGET_FILES = [
     "web/error_handlers.py",
     "web/error_boundary.py",
     "web/ui_mode.py",
+    "web/ui_mode_request.py",
+    "web/ui_mode_store.py",
+    "web/render_bridge.py",
+    "web/manual_src_security.py",
 ]
 REQUEST_SERVICE_TARGET_SYMBOLS = {
     "tests/run_real_db_replay_e2e.py": ["_create_test_app", "_open_db"],
@@ -228,12 +236,11 @@ class SilentFallbackSample:
 
 STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
-        path="web/ui_mode.py",
-        symbol="_log_warning",
-        line_start=49,
-        line_end=50,
+        path="web/bootstrap/static_versioning.py",
+        symbol="_versioned_url_for",
+        line_start=84,
+        line_end=86,
         fallback_kind="silent_swallow",
-        scope_tag="render_bridge",
     ),
     SilentFallbackSample(
         path="web/bootstrap/static_versioning.py",
@@ -264,18 +271,18 @@ STARTUP_SAMPLE_EXPECTATIONS = [
         fallback_kind="observable_degrade",
     ),
     SilentFallbackSample(
-        path="web/ui_mode.py",
+        path="web/ui_mode_store.py",
         symbol="_read_ui_mode_from_db",
-        line_start=272,
-        line_end=274,
+        line_start=61,
+        line_end=63,
         fallback_kind="observable_degrade",
         scope_tag="startup_guard",
     ),
     SilentFallbackSample(
-        path="web/ui_mode.py",
+        path="web/manual_src_security.py",
         symbol="safe_url_for",
-        line_start=402,
-        line_end=409,
+        line_start=120,
+        line_end=128,
         fallback_kind="observable_degrade",
         scope_tag="render_bridge",
     ),

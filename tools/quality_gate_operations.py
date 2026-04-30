@@ -35,6 +35,7 @@ from .quality_gate_shared import (
     REQUEST_SERVICE_TARGET_FILES,
     REQUEST_SERVICE_TARGET_SYMBOLS,
     STARTUP_SCOPE_PATTERNS,
+    UI_MODE_STARTUP_SCOPE_PATHS,
     QualityGateError,
     collect_globbed_files,
     collect_quality_rule_files,
@@ -49,6 +50,21 @@ SILENT_REFRESH_SYMBOL_ALIASES = {
     ("web/bootstrap/launcher_processes.py", "_parse_pid"): "_pid_state",
     ("web/bootstrap/launcher_processes.py", "_posix_pid_state"): "_pid_state",
     ("web/bootstrap/launcher_processes.py", "_windows_pid_state"): "_pid_state",
+}
+SILENT_REFRESH_GROUP_ALIASES = {
+    ("web/ui_mode.py", "_describe_template_name"): ("web/render_bridge.py", "_describe_template_name"),
+    ("web/ui_mode.py", "_normalize_relative_manual_src"): ("web/manual_src_security.py", "_normalize_relative_manual_src"),
+    ("web/ui_mode.py", "_read_ui_mode_from_db"): ("web/ui_mode_store.py", "_read_ui_mode_from_db"),
+    ("web/ui_mode.py", "_resolve_manual_endpoint"): ("web/manual_src_security.py", "_resolve_manual_endpoint"),
+    ("web/ui_mode.py", "_resolve_manual_src"): ("web/manual_src_security.py", "_resolve_manual_src"),
+    ("web/ui_mode.py", "_resolve_template_source"): ("web/render_bridge.py", "_resolve_template_source"),
+    ("web/ui_mode.py", "_resolve_template_url_for"): ("web/render_bridge.py", "_resolve_template_url_for"),
+    ("web/ui_mode.py", "_same_origin_absolute_manual_src"): ("web/manual_src_security.py", "_same_origin_absolute_manual_src"),
+    ("web/ui_mode.py", "_warn_v2_render_fallback_once"): ("web/render_bridge.py", "_warn_v2_render_fallback_once"),
+    ("web/ui_mode.py", "get_ui_mode"): ("web/ui_mode_request.py", "get_ui_mode"),
+    ("web/ui_mode.py", "init_ui_mode"): ("web/render_bridge.py", "init_ui_mode"),
+    ("web/ui_mode.py", "render_ui_template"): ("web/render_bridge.py", "render_ui_template"),
+    ("web/ui_mode.py", "safe_url_for"): ("web/manual_src_security.py", "safe_url_for"),
 }
 
 
@@ -174,6 +190,30 @@ def refresh_scan_startup_baseline(ledger: Optional[Dict[str, Any]] = None) -> Di
         "scope": list(STARTUP_SCOPE_PATTERNS),
         "entries": remove_entries_by_predicate(silent_existing, lambda entry: is_startup_scope_path(str(entry.get("path")))) + startup_silent,
     }
+    replacements = _silent_group_alignment(
+        [dict(entry) for entry in silent_existing if is_startup_scope_path(str(entry.get("path")))],
+        startup_silent,
+    )
+    id_replacements = {
+        old_id: str(new_entry.get("id") or "")
+        for old_id, new_entry in replacements.items()
+        if old_id and str(new_entry.get("id") or "")
+    }
+    main_ids = collect_main_entry_ids(ledger)
+    refreshed_risks = []
+    for risk in cast(List[Dict[str, Any]], ledger.get("accepted_risks") or []):
+        next_entry_ids = []
+        for entry_id in list(risk.get("entry_ids") or []):
+            next_id = id_replacements.get(str(entry_id), str(entry_id))
+            if next_id not in main_ids:
+                continue
+            if next_id not in next_entry_ids:
+                next_entry_ids.append(next_id)
+        if not next_entry_ids:
+            continue
+        risk["entry_ids"] = next_entry_ids
+        refreshed_risks.append(risk)
+    ledger["accepted_risks"] = refreshed_risks
     return finalize_ledger_update(ledger)
 
 
@@ -253,6 +293,9 @@ def _silent_group_alignment(
 def _silent_refresh_group_key(entry: Dict[str, Any]) -> Tuple[str, str]:
     path = str(entry.get("path") or "")
     symbol = str(entry.get("symbol") or "")
+    group_alias = SILENT_REFRESH_GROUP_ALIASES.get((path, symbol))
+    if group_alias is not None:
+        return group_alias
     return path, SILENT_REFRESH_SYMBOL_ALIASES.get((path, symbol), symbol)
 
 
@@ -301,7 +344,7 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
             build_complexity_entry(str(item["path"]), str(item["symbol"]), int(item["current_value"]), existing=entry)
         )
 
-    silent_paths = sorted({str(entry.get("path")) for entry in silent_entries})
+    silent_paths = sorted({str(entry.get("path")) for entry in silent_entries} | set(UI_MODE_STARTUP_SCOPE_PATHS))
     silent_scan_entries = scan_silent_fallback_entries(silent_paths)
     silent_scan = _silent_scan_index(silent_scan_entries)
     silent_group_alignment = _silent_group_alignment(silent_entries, silent_scan_entries)

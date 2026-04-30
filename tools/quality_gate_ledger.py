@@ -22,7 +22,10 @@ from .quality_gate_shared import (
     STAGE_RECORD_PATH,
     STARTUP_SCOPE_PATTERNS,
     TEST_DEBT_MODE_VALUES,
+    UI_MODE_RENDER_BRIDGE_PATHS,
     UI_MODE_SCOPE_TAG_VALUES,
+    UI_MODE_STARTUP_GUARD_PATHS,
+    UI_MODE_STARTUP_SCOPE_PATHS,
     QualityGateError,
     extract_json_code_block,
     now_shanghai_iso,
@@ -350,9 +353,16 @@ def _validate_ui_mode_scope(entry: Dict[str, Any]) -> None:
     scope_tag = entry.get("scope_tag")
     if path == "web/ui_mode.py":
         if scope_tag not in UI_MODE_SCOPE_TAG_VALUES:
-            raise QualityGateError("web/ui_mode.py 条目必须带合法 scope_tag：{}".format(entry.get("id")))
+            raise QualityGateError("UI mode 启动链条目必须带合法 scope_tag：{}".format(entry.get("id")))
         if scope_tag == "render_bridge" and str(entry.get("batch")) == "SP03":
             raise QualityGateError("render_bridge 条目不得归属 SP03：{}".format(entry.get("id")))
+    elif path in set(UI_MODE_STARTUP_SCOPE_PATHS):
+        if scope_tag not in UI_MODE_SCOPE_TAG_VALUES:
+            raise QualityGateError("UI mode 启动链条目必须带合法 scope_tag：{}".format(entry.get("id")))
+        if path in UI_MODE_STARTUP_GUARD_PATHS and scope_tag != "startup_guard":
+            raise QualityGateError("startup_guard 文件不得登记为其他 scope_tag：{}".format(entry.get("id")))
+        if path in UI_MODE_RENDER_BRIDGE_PATHS and scope_tag != "render_bridge":
+            raise QualityGateError("render_bridge 文件不得登记为其他 scope_tag：{}".format(entry.get("id")))
     elif scope_tag is not None and not isinstance(scope_tag, str):
         raise QualityGateError("scope_tag 必须是字符串或 null：{}".format(entry.get("id")))
 

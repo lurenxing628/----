@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from flask import Flask
 
+import web.render_bridge as render_bridge_mod
 import web.ui_mode as ui_mode_mod
 
 
@@ -35,7 +36,7 @@ def test_init_ui_mode_static_dir_logger_failure_falls_back_to_stderr(
         raise RuntimeError("logger boom")
 
     monkeypatch.setattr(app.logger, "warning", _boom_warning)
-    monkeypatch.setattr(ui_mode_mod.os.path, "isdir", lambda path: False)
+    monkeypatch.setattr(render_bridge_mod.os.path, "isdir", lambda path: False)
 
     ui_mode_mod.init_ui_mode(app, str(tmp_path))
 
