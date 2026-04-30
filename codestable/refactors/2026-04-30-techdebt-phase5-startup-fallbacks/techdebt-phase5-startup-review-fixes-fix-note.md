@@ -47,6 +47,11 @@ tags: [techdebt, startup, fallback, win7]
   - 先确认 APS Chrome 停止成功。
   - Chrome 停止失败时保留 `aps_runtime.json`、`aps_runtime.lock`、host/port 等现场文件，方便重试和排查。
   - Chrome 停止成功后才清理运行痕迹。
+- `stop_runtime_from_dir()` 继续补强 contract 和清理失败闭合：
+  - `invalid` / `unreadable` 的 `aps_runtime.json` 不再落到 `stale` 状态。
+  - endpoint 不通、lock 不活跃但 contract 损坏时，状态为 `blocked_contract`，停止命令返回失败并保留现场文件。
+  - 新增 `RuntimeCleanupResult`，运行时文件清理失败会让停止命令返回失败，不再把“删不干净”当成停止成功。
+  - 旧 `delete_runtime_contract_files()` 仍保留给退出钩子和旧调用方使用，新停止链改走 `delete_runtime_contract_files_result()`。
 - `TransactionManager.transaction()` 的事务归属判断改为失败闭合：
   - `conn.in_transaction` 缺失或读取失败时直接抛错。
   - 不再猜“当前上下文拥有事务”，避免误提交或误回滚外层事务。
@@ -99,7 +104,9 @@ tags: [techdebt, startup, fallback, win7]
 ## 已验证命令
 
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_win7_launcher_runtime_paths.py tests/regression_runtime_contract_launcher.py tests/regression_runtime_probe_resolution.py tests/regression_runtime_lock_reloader_parent_skip.py tests/regression_runtime_stop_cli.py tests/test_launcher_observability.py tests/regression_transaction_savepoint_nested.py`
-  - 结果：`68 passed`。
+  - 结果：`77 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_no_silent_exception_swallow tests/test_architecture_fitness.py::test_startup_silent_fallback_samples tests/regression_quality_gate_scan_contract.py tests/test_sync_debt_ledger.py tests/test_check_full_test_debt.py tests/test_full_test_debt_registry_contract.py`
+  - 结果：`138 passed`。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_launcher_observability.py tests/test_win7_launcher_runtime_paths.py tests/regression_runtime_contract_launcher.py tests/regression_runtime_probe_resolution.py tests/regression_runtime_lock_reloader_parent_skip.py tests/regression_runtime_stop_cli.py tests/test_sync_debt_ledger.py tests/regression_quality_gate_scan_contract.py`
   - 结果：`142 passed`。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_no_silent_exception_swallow tests/test_sync_debt_ledger.py::test_refresh_auto_fields_rejects_silent_entry_when_except_ordinal_drifted --tb=short -ra`
@@ -113,9 +120,9 @@ tags: [techdebt, startup, fallback, win7]
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`
   - 结果：`0 errors`，仍有 6 个既有 warning，位置在 `core/services/scheduler/__init__.py`，不属于本轮启动链改动。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`
-  - 结果：通过，`active_xfail_count=0`，`collected_count=889`，旧 5 条测试债仍为 fixed。
+  - 结果：通过，`active_xfail_count=0`，`collected_count=894`，旧 5 条测试债仍为 fixed。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`
-  - 结果：通过，`silent_fallback_count=135`，`accepted_risk_count=4`。
+  - 结果：通过，`silent_fallback_count=136`，`accepted_risk_count=4`。
 
 ## 对抗审查结果
 
@@ -124,9 +131,15 @@ tags: [techdebt, startup, fallback, win7]
 - 台账 realign 初审发现 1 个 blocker；已修复后重新复审，无 blocker。
 - wrapper / monkeypatch / Python 3.8 兼容复审：无 blocker。
 - 运行锁结果化、Chrome 收尾顺序和事务失败闭合的最终复审：无 blocker。
+- 本轮 P1 二次收口后的 4 个全新 subagent 复审：
+  - 坏 contract 不再被 `stale cleanup` 删除：无 blocker。
+  - `RuntimeCleanupResult` 与停止链清理失败返回：无 blocker。
+  - Chrome 清理失败后的 retry 证据保留：无 blocker。
+  - Python 3.8、`safe_log(None)`、scanner 与台账对齐：无 blocker。
 
 ## 全量验证
 
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -p no:cacheprovider`
-  - 结果：`889 passed`。
-- clean quality gate 需要在提交后用干净工作区执行，结果以本轮最终收尾说明为准。
+  - 结果：`894 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`
+  - 结果：干净工作区通过，输出 `质量门禁通过`。

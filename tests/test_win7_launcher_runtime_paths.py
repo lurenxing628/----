@@ -319,6 +319,13 @@ def _write_unreadable_runtime_contract_state(state_dir: Path, *, port: int = 500
     (state_dir / "aps_port.txt").write_text(str(int(port)) + "\n", encoding="utf-8")
 
 
+def _write_invalid_runtime_contract_state(state_dir: Path, payload) -> None:
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "aps_runtime.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+
+
 def test_stop_runtime_keeps_unreadable_contract_when_endpoint_still_healthy(monkeypatch, tmp_path):
     launcher = _import_launcher()
     state_dir = tmp_path / "logs"
@@ -336,7 +343,7 @@ def test_stop_runtime_keeps_unreadable_contract_when_endpoint_still_healthy(monk
     assert status["state"] == "mixed"
 
 
-def test_stop_runtime_cleans_unreadable_contract_only_when_stale(monkeypatch, tmp_path):
+def test_stop_runtime_keeps_unreadable_contract_when_endpoint_down(monkeypatch, tmp_path):
     launcher = _import_launcher()
     state_dir = tmp_path / "logs"
     _write_unreadable_runtime_contract_state(state_dir)
@@ -345,11 +352,82 @@ def test_stop_runtime_cleans_unreadable_contract_only_when_stale(monkeypatch, tm
     monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: False)
     monkeypatch.setattr(launcher, "delete_runtime_contract_files", lambda path: calls.setdefault("delete", path))
 
-    assert launcher.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 0
-    assert calls["delete"] == os.path.abspath(str(state_dir))
+    assert launcher.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 1
+    assert calls == {}
+    assert (state_dir / "aps_runtime.json").exists()
+    assert (state_dir / "aps_host.txt").exists()
+    assert (state_dir / "aps_port.txt").exists()
     status = launcher._classify_runtime_state(str(state_dir))
     assert status["contract_status"] == "unreadable"
+    assert status["state"] == "blocked_contract"
     assert status["contract_reason"] != "contract_missing"
+
+
+def test_stop_runtime_keeps_invalid_contract_when_endpoint_down(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "logs"
+    _write_invalid_runtime_contract_state(
+        state_dir,
+        {
+            "contract_version": 2,
+            "pid": 999999,
+            "host": "127.0.0.1",
+            "port": 5000,
+            "shutdown_token": "token",
+            "exe_path": sys.executable,
+            "runtime_dir": str(tmp_path),
+            "chrome_profile_dir": str(tmp_path / "profile"),
+        },
+    )
+    calls = {}
+
+    monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: False)
+    monkeypatch.setattr(launcher, "delete_runtime_contract_files", lambda path: calls.setdefault("delete", path))
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 1
+    assert calls == {}
+    assert (state_dir / "aps_runtime.json").exists()
+    status = launcher._classify_runtime_state(str(state_dir))
+    assert status["contract_status"] == "invalid"
+    assert status["contract_reason"] == "contract_version_mismatch"
+    assert status["state"] == "blocked_contract"
+    assert launcher._runtime_stop_failure_reason(status, shutdown_requested=False) == "contract_invalid"
+    assert launcher._runtime_stop_is_complete(status) is False
+
+
+def test_stop_runtime_keeps_invalid_shape_contract_when_endpoint_down(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "logs"
+    _write_invalid_runtime_contract_state(state_dir, ["not", "dict"])
+    calls = {}
+
+    monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: False)
+    monkeypatch.setattr(launcher, "delete_runtime_contract_files", lambda path: calls.setdefault("delete", path))
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 1
+    assert calls == {}
+    assert (state_dir / "aps_runtime.json").exists()
+    status = launcher._classify_runtime_state(str(state_dir))
+    assert status["contract_status"] == "invalid"
+    assert status["contract_reason"] == "contract_not_object"
+    assert status["state"] == "blocked_contract"
+
+
+def test_blocked_contract_state_is_not_stop_complete():
+    launcher_stop = _import_launcher_stop()
+    identity = {"contract_pid": 0, "pid_exists": False, "pid_match": None}
+
+    state = launcher_stop._runtime_state_name(
+        endpoint_up=False,
+        contract=None,
+        contract_status="unreadable",
+        identity=identity,
+        lock_active=False,
+        has_artifacts=True,
+    )
+
+    assert state == "blocked_contract"
+    assert launcher_stop._runtime_stop_is_complete({"state": state, "endpoint_up": False}) is False
 
 
 def test_new_probe_runtime_health_result_monkeypatch_is_used(monkeypatch, tmp_path):
@@ -359,6 +437,8 @@ def test_new_probe_runtime_health_result_monkeypatch_is_used(monkeypatch, tmp_pa
     state_dir.mkdir(parents=True)
     (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
     (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+    (state_dir / "aps_db_path.txt").write_text(str(tmp_path / "db" / "aps.db") + "\n", encoding="utf-8")
+    (state_dir / "aps_launch_error.txt").write_text("old error\n", encoding="utf-8")
 
     def _fake_probe_result(host, port, timeout_s=1.5, *, log_failures=False, state_dir=None):
         return launcher_stop.HealthProbeResult(True, f"http://{host}:{port}/system/health")
@@ -439,6 +519,8 @@ def test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confi
     custom_profile = tmp_path / "custom-profile"
     (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
     (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+    (state_dir / "aps_db_path.txt").write_text(str(tmp_path / "db" / "aps.db") + "\n", encoding="utf-8")
+    (state_dir / "aps_launch_error.txt").write_text("old error\n", encoding="utf-8")
     (state_dir / "aps_runtime.lock").write_text(
         f"pid=999999\nowner=LOCALBOX\\alice\nexe_path={sys.executable}\n",
         encoding="utf-8",
@@ -476,6 +558,8 @@ def test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confi
     assert (state_dir / "aps_runtime.lock").exists()
     assert (state_dir / "aps_host.txt").exists()
     assert (state_dir / "aps_port.txt").exists()
+    assert (state_dir / "aps_db_path.txt").exists()
+    assert (state_dir / "aps_launch_error.txt").exists()
 
 
 def test_stop_runtime_from_log_dir_cleans_files_after_chrome_cleanup_success(monkeypatch, tmp_path):
@@ -485,6 +569,8 @@ def test_stop_runtime_from_log_dir_cleans_files_after_chrome_cleanup_success(mon
     custom_profile = tmp_path / "custom-profile"
     (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
     (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+    (state_dir / "aps_db_path.txt").write_text(str(tmp_path / "db" / "aps.db") + "\n", encoding="utf-8")
+    (state_dir / "aps_launch_error.txt").write_text("old error\n", encoding="utf-8")
     (state_dir / "aps_runtime.lock").write_text(
         f"pid=999999\nowner=LOCALBOX\\alice\nexe_path={sys.executable}\n",
         encoding="utf-8",
@@ -522,6 +608,116 @@ def test_stop_runtime_from_log_dir_cleans_files_after_chrome_cleanup_success(mon
     assert not (state_dir / "aps_runtime.lock").exists()
     assert not (state_dir / "aps_host.txt").exists()
     assert not (state_dir / "aps_port.txt").exists()
+    assert not (state_dir / "aps_db_path.txt").exists()
+    assert not (state_dir / "aps_launch_error.txt").exists()
+
+
+def test_stop_runtime_returns_failure_when_runtime_cleanup_fails(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "shared-data" / "logs"
+    state_dir.mkdir(parents=True)
+    custom_profile = tmp_path / "custom-profile"
+    (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+    (state_dir / "aps_runtime.lock").write_text(
+        f"pid=999999\nowner=LOCALBOX\\alice\nexe_path={sys.executable}\n",
+        encoding="utf-8",
+    )
+    (state_dir / "aps_runtime.json").write_text(
+        json.dumps(
+            {
+                "contract_version": 1,
+                "pid": 999999,
+                "host": "127.0.0.1",
+                "port": 5000,
+                "shutdown_token": "token",
+                "exe_path": sys.executable,
+                "runtime_dir": str(tmp_path / "shared-data"),
+                "chrome_profile_dir": str(custom_profile),
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    calls = []
+
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: False)
+    monkeypatch.setattr(launcher, "stop_aps_chrome_processes", lambda profile_dir, logger=None: calls.append(profile_dir) or True)
+
+    def _cleanup_result(path: str):
+        return launcher.RuntimeCleanupResult(
+            state_dir=os.path.abspath(path),
+            target_dirs=(os.path.abspath(path),),
+            attempted_paths=(str(state_dir / "aps_runtime.json"),),
+            removed_paths=(),
+            missing_paths=(),
+            failures=(
+                launcher.RuntimeCleanupFailure(
+                    path=str(state_dir / "aps_runtime.json"),
+                    reason="remove_failed",
+                    error="locked",
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(launcher, "delete_runtime_contract_files_result", _cleanup_result)
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), stop_aps_chrome=True) == 1
+    assert calls == [os.path.abspath(str(custom_profile))]
+    assert (state_dir / "aps_runtime.json").exists()
+
+
+def test_stop_runtime_retry_preserves_then_cleans_runtime_artifacts(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "shared-data" / "logs"
+    state_dir.mkdir(parents=True)
+    custom_profile = tmp_path / "custom-profile"
+    (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+    (state_dir / "aps_db_path.txt").write_text(str(tmp_path / "db" / "aps.db") + "\n", encoding="utf-8")
+    (state_dir / "aps_launch_error.txt").write_text("old error\n", encoding="utf-8")
+    (state_dir / "aps_runtime.lock").write_text(
+        f"pid=999999\nowner=LOCALBOX\\alice\nexe_path={sys.executable}\n",
+        encoding="utf-8",
+    )
+    (state_dir / "aps_runtime.json").write_text(
+        json.dumps(
+            {
+                "contract_version": 1,
+                "pid": 999999,
+                "host": "127.0.0.1",
+                "port": 5000,
+                "shutdown_token": "token",
+                "exe_path": sys.executable,
+                "runtime_dir": str(tmp_path / "shared-data"),
+                "chrome_profile_dir": str(custom_profile),
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    stop_results = iter([False, True])
+
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: False)
+    monkeypatch.setattr(launcher, "stop_aps_chrome_processes", lambda profile_dir, logger=None: next(stop_results))
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), stop_aps_chrome=True) == 1
+    assert (state_dir / "aps_runtime.json").exists()
+    assert (state_dir / "aps_runtime.lock").exists()
+    assert (state_dir / "aps_host.txt").exists()
+    assert (state_dir / "aps_port.txt").exists()
+    assert (state_dir / "aps_db_path.txt").exists()
+    assert (state_dir / "aps_launch_error.txt").exists()
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), stop_aps_chrome=True) == 0
+    assert not (state_dir / "aps_runtime.json").exists()
+    assert not (state_dir / "aps_runtime.lock").exists()
+    assert not (state_dir / "aps_host.txt").exists()
+    assert not (state_dir / "aps_port.txt").exists()
+    assert not (state_dir / "aps_db_path.txt").exists()
+    assert not (state_dir / "aps_launch_error.txt").exists()
 
 
 def test_stop_runtime_from_dir_waits_for_pid_exit_before_success(monkeypatch, tmp_path):
@@ -896,11 +1092,14 @@ def test_launcher_facade_exports_runtime_contract_surface():
     launcher = _import_launcher()
     expected_names = [
         "RuntimeLockError",
+        "RuntimeCleanupFailure",
+        "RuntimeCleanupResult",
         "acquire_runtime_lock",
         "clear_launch_error",
         "current_runtime_owner",
         "default_chrome_profile_dir",
         "delete_runtime_contract_files",
+        "delete_runtime_contract_files_result",
         "pick_bind_host",
         "pick_port",
         "probe_runtime_health_result",

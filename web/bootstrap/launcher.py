@@ -7,6 +7,8 @@ from . import launcher_paths as _paths
 from . import launcher_processes as _processes
 from . import launcher_stop as _stop
 from .launcher_contracts import (
+    RuntimeCleanupFailure,
+    RuntimeCleanupResult,
     RuntimeLockError,
     _is_runtime_lock_active,
     _read_key_value_file,
@@ -17,6 +19,7 @@ from .launcher_contracts import (
     acquire_runtime_lock,
     clear_launch_error,
     delete_runtime_contract_files,
+    delete_runtime_contract_files_result,
     read_runtime_contract,
     read_runtime_contract_result,
     read_runtime_lock,
@@ -108,7 +111,10 @@ time = _stop.time
 
 _FACADE_RESULT_API = (
     BindProbeResult,
+    RuntimeCleanupFailure,
+    RuntimeCleanupResult,
     _can_bind_result,
+    delete_runtime_contract_files_result,
     read_runtime_contract_result,
     read_runtime_lock_result,
     probe_runtime_health_result,
@@ -136,6 +142,7 @@ def _sync_launcher_hooks(*, include_chrome_hook: bool) -> None:
     _stop._request_runtime_shutdown = _request_runtime_shutdown
     _stop._list_aps_chrome_pids = _list_aps_chrome_pids
     _stop.delete_runtime_contract_files = delete_runtime_contract_files
+    _stop.delete_runtime_contract_files_result = delete_runtime_contract_files_result
     _stop.read_runtime_contract = read_runtime_contract
     _stop.read_runtime_contract_result = read_runtime_contract_result
     _stop.read_runtime_lock = read_runtime_lock

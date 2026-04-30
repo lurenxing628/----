@@ -5,8 +5,12 @@ from typing import Any, Dict, Optional
 from .launcher_contracts import CONTRACT_STATUS_INVALID, CONTRACT_STATUS_UNREADABLE
 
 
+def _is_bad_contract_status(contract_status: str) -> bool:
+    return contract_status in {CONTRACT_STATUS_INVALID, CONTRACT_STATUS_UNREADABLE}
+
+
 def _invalid_contract_still_unsafe(contract_status: str, endpoint_up: bool, lock_active: bool) -> bool:
-    return contract_status in {CONTRACT_STATUS_INVALID, CONTRACT_STATUS_UNREADABLE} and (endpoint_up or lock_active)
+    return _is_bad_contract_status(contract_status) and (endpoint_up or lock_active)
 
 
 def _contract_pid_mismatch(contract: Optional[Dict[str, Any]], contract_pid: int, identity: Dict[str, Any]) -> bool:
@@ -34,6 +38,8 @@ def _runtime_state_name(
 ) -> str:
     if _invalid_contract_still_unsafe(contract_status, endpoint_up, lock_active):
         return "mixed"
+    if _is_bad_contract_status(contract_status) and has_artifacts:
+        return "blocked_contract"
     contract_pid = int(identity.get("contract_pid") or 0)
     if endpoint_up:
         return "mixed" if _contract_pid_mismatch(contract, contract_pid, identity) else "active"

@@ -5,10 +5,15 @@ import logging
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from core.infrastructure.logging import safe_log
 
+from .launcher_cleanup_result import (
+    RuntimeCleanupFailure,
+    RuntimeCleanupResult,
+    delete_runtime_contract_files_result,
+)
 from .launcher_contract_result import (
     CONTRACT_STATUS_INVALID as CONTRACT_STATUS_INVALID,
 )
@@ -46,8 +51,6 @@ from .launcher_lock_result import (
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import (
     RUNTIME_CONTRACT_VERSION,
-    RUNTIME_ERROR_FILE,
-    RUNTIME_LOCK_FILE,
     _normalize_db_path_for_runtime,
     current_runtime_owner,
     default_chrome_profile_dir,
@@ -61,6 +64,8 @@ from .launcher_paths import (
     state_contract_paths,
 )
 from .launcher_processes import _pid_matches_contract, _pid_state, set_process_log_context
+
+_LAUNCHER_CLEANUP_API = (RuntimeCleanupFailure, RuntimeCleanupResult)
 
 
 class RuntimeLockError(RuntimeError):
@@ -445,55 +450,4 @@ def read_runtime_contract(runtime_dir: str) -> Optional[Dict[str, Any]]:
 
 
 def delete_runtime_contract_files(runtime_dir: str) -> None:
-    state_dir = resolve_runtime_state_dir_for_read(runtime_dir)
-    log_dirs = _runtime_contract_log_dirs(state_dir)
-    paths = []
-    for log_dir in log_dirs:
-        paths.extend(
-            [
-                os.path.join(log_dir, "aps_runtime.json"),
-                os.path.join(log_dir, "aps_port.txt"),
-                os.path.join(log_dir, "aps_host.txt"),
-                os.path.join(log_dir, "aps_db_path.txt"),
-                os.path.join(log_dir, RUNTIME_LOCK_FILE),
-                os.path.join(log_dir, RUNTIME_ERROR_FILE),
-            ]
-        )
-    for path in paths:
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
-        except Exception as exc:
-            launcher_log_warning(None, "删除运行时契约相关文件失败，已继续：path=%s error=%s", path, exc, state_dir=state_dir)
-
-
-def _runtime_contract_log_dirs(state_dir: str) -> List[str]:
-    log_dirs = [state_dir]
-    contract_path = _runtime_contract_path(state_dir)
-    try:
-        with open(contract_path, encoding="utf-8") as f:
-            payload = json.load(f)
-    except Exception as exc:
-        launcher_log_warning(None, "读取运行时契约镜像目录失败，将只清理当前状态目录：path=%s error=%s", contract_path, exc, state_dir=state_dir)
-        return log_dirs
-    if not isinstance(payload, dict):
-        return log_dirs
-    runtime_dir_raw = str(payload.get("runtime_dir") or "").strip()
-    if runtime_dir_raw:
-        runtime_log_dir_abs = os.path.abspath(runtime_log_dir(runtime_dir_raw))
-        if os.path.normcase(runtime_log_dir_abs) != os.path.normcase(os.path.abspath(state_dir)):
-            log_dirs.append(runtime_log_dir_abs)
-    data_dirs = payload.get("data_dirs") or {}
-    if isinstance(data_dirs, dict):
-        _append_mirror_log_dir(log_dirs, state_dir, data_dirs.get("log_dir"))
-    return log_dirs
-
-
-def _append_mirror_log_dir(log_dirs: List[str], state_dir: str, mirror_log_dir: Any) -> None:
-    mirror_log_dir_s = str(mirror_log_dir or "").strip()
-    if not mirror_log_dir_s:
-        return
-    mirror_log_dir_abs = os.path.abspath(mirror_log_dir_s)
-    if os.path.normcase(mirror_log_dir_abs) != os.path.normcase(os.path.abspath(state_dir)):
-        log_dirs.append(mirror_log_dir_abs)
+    delete_runtime_contract_files_result(runtime_dir)

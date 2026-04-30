@@ -114,6 +114,102 @@ def test_read_runtime_contract_result_statuses(tmp_path: Path) -> None:
     assert launcher.read_runtime_contract(str(runtime_dir)) is not None
 
 
+def _write_cleanup_artifacts(log_dir: Path) -> None:
+    log_dir.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "aps_port.txt",
+        "aps_host.txt",
+        "aps_db_path.txt",
+        "aps_runtime.lock",
+        "aps_launch_error.txt",
+    ):
+        (log_dir / name).write_text("x\n", encoding="utf-8")
+
+
+def test_delete_runtime_contract_files_result_reports_success_and_missing(tmp_path: Path) -> None:
+    launcher = _load_launcher()
+    runtime_dir = tmp_path / "runtime"
+    state_dir = runtime_dir / "logs"
+    _write_cleanup_artifacts(state_dir)
+    payload = _valid_contract_payload(runtime_dir)
+    _write_contract_payload(runtime_dir, payload)
+    (state_dir / "aps_launch_error.txt").unlink()
+
+    result = launcher.delete_runtime_contract_files_result(str(runtime_dir))
+
+    assert result.ok
+    assert str(state_dir / "aps_runtime.json") in result.removed_paths
+    assert str(state_dir / "aps_launch_error.txt") in result.missing_paths
+    assert result.failures == ()
+
+
+def test_delete_runtime_contract_files_result_reports_remove_failure(monkeypatch, tmp_path: Path) -> None:
+    launcher = _load_launcher()
+    cleanup_mod = importlib.import_module("web.bootstrap.launcher_cleanup_result")
+    runtime_dir = tmp_path / "runtime"
+    state_dir = runtime_dir / "logs"
+    _write_cleanup_artifacts(state_dir)
+    _write_contract_payload(runtime_dir, _valid_contract_payload(runtime_dir))
+    blocked_path = str(state_dir / "aps_host.txt")
+    real_remove = cleanup_mod.os.remove
+
+    def _remove(path):
+        if str(path) == blocked_path:
+            raise PermissionError("locked")
+        return real_remove(path)
+
+    monkeypatch.setattr(cleanup_mod.os, "remove", _remove)
+
+    result = launcher.delete_runtime_contract_files_result(str(runtime_dir))
+
+    assert not result.ok
+    assert any(failure.path == blocked_path and failure.reason == "remove_failed" for failure in result.failures)
+
+
+def test_delete_runtime_contract_files_result_reports_mirror_failure(monkeypatch, tmp_path: Path) -> None:
+    launcher = _load_launcher()
+    cleanup_mod = importlib.import_module("web.bootstrap.launcher_cleanup_result")
+    runtime_dir = tmp_path / "runtime"
+    state_dir = runtime_dir / "logs"
+    mirror_dir = runtime_dir / "logs_mirror"
+    _write_cleanup_artifacts(state_dir)
+    _write_cleanup_artifacts(mirror_dir)
+    payload = _valid_contract_payload(runtime_dir)
+    payload["data_dirs"] = {"log_dir": str(mirror_dir)}
+    _write_contract_payload(runtime_dir, payload)
+    blocked_path = str(mirror_dir / "aps_host.txt")
+    real_remove = cleanup_mod.os.remove
+
+    def _remove(path):
+        if str(path) == blocked_path:
+            raise PermissionError("mirror locked")
+        return real_remove(path)
+
+    monkeypatch.setattr(cleanup_mod.os, "remove", _remove)
+
+    result = launcher.delete_runtime_contract_files_result(str(runtime_dir))
+
+    assert not result.ok
+    assert str(mirror_dir) in result.target_dirs
+    assert any(failure.path == blocked_path for failure in result.failures)
+
+
+def test_delete_runtime_contract_files_wrapper_keeps_legacy_no_raise(monkeypatch, tmp_path: Path) -> None:
+    launcher = _load_launcher()
+    cleanup_mod = importlib.import_module("web.bootstrap.launcher_cleanup_result")
+    runtime_dir = tmp_path / "runtime"
+    state_dir = runtime_dir / "logs"
+    _write_cleanup_artifacts(state_dir)
+    _write_contract_payload(runtime_dir, _valid_contract_payload(runtime_dir))
+
+    def _remove(_path):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(cleanup_mod.os, "remove", _remove)
+
+    launcher.delete_runtime_contract_files(str(runtime_dir))
+
+
 def main() -> None:
     repo_root = find_repo_root()
     if repo_root not in sys.path:

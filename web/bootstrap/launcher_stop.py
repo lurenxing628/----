@@ -17,6 +17,7 @@ from .launcher_contracts import (
     RuntimeContractReadResult,
     _is_runtime_lock_active,
     delete_runtime_contract_files,
+    delete_runtime_contract_files_result,
     read_runtime_contract,
     read_runtime_contract_result,
     read_runtime_lock,
@@ -44,12 +45,16 @@ from .launcher_processes import (
     _run_powershell_text,
     set_process_log_context,
 )
+from .launcher_stop_cleanup import delete_runtime_contract_files_result_for_stop
+from .launcher_stop_process import runtime_process_inactive
 from .launcher_stop_state import _runtime_state_name, _runtime_stop_is_complete
 
 _DEFAULT_READ_RUNTIME_CONTRACT = read_runtime_contract
 _DEFAULT_READ_RUNTIME_CONTRACT_RESULT = read_runtime_contract_result
 _DEFAULT_READ_RUNTIME_LOCK = read_runtime_lock
 _DEFAULT_READ_RUNTIME_LOCK_RESULT = read_runtime_lock_result
+_DEFAULT_DELETE_RUNTIME_CONTRACT_FILES = delete_runtime_contract_files
+_DEFAULT_DELETE_RUNTIME_CONTRACT_FILES_RESULT = delete_runtime_contract_files_result
 
 
 def _contract_log_kwargs(contract: Dict[str, Any]) -> Dict[str, str]:
@@ -399,29 +404,31 @@ def _runtime_stop_failure_reason(status: Dict[str, Any], *, shutdown_requested: 
 
 
 def _runtime_process_inactive(pid: int, pid_match_hint: Optional[bool] = None) -> bool:
-    pid_text = str(pid or "").strip()
-    if not pid_text:
-        return True
-    pid_digits = pid_text[1:] if pid_text.startswith("-") else pid_text
-    if not pid_digits.isdigit():
-        return True
-    pid_i = int(pid_text)
-    if pid_i <= 0 or pid_match_hint is False:
-        return True
-    pid_state = _pid_state(pid_i)
-    if pid_state is None:
-        return False
-    if not pid_state:
-        return True
-    return False
+    return runtime_process_inactive(pid, pid_match_hint, pid_state_func=_pid_state)
 
 
 def _finalize_stopped_runtime(status: Dict[str, Any], runtime_dir_abs: str, *, stop_aps_chrome: bool, logger) -> int:
+    state_dir = str(status.get("state_dir") or "")
     profile_dir = str(status.get("chrome_profile_dir") or "").strip() or default_chrome_profile_dir(runtime_dir_abs)
-    chrome_result = _stop_aps_chrome_if_requested(stop_aps_chrome, profile_dir, logger=logger, state_dir=str(status.get("state_dir") or ""))
+    chrome_result = _stop_aps_chrome_if_requested(stop_aps_chrome, profile_dir, logger=logger, state_dir=state_dir)
     if not chrome_result.ok:
         return 1
-    delete_runtime_contract_files(str(status.get("state_dir") or ""))
+    cleanup_result = delete_runtime_contract_files_result_for_stop(
+        state_dir,
+        delete_runtime_contract_files=delete_runtime_contract_files,
+        delete_runtime_contract_files_result=delete_runtime_contract_files_result,
+        default_delete_runtime_contract_files=_DEFAULT_DELETE_RUNTIME_CONTRACT_FILES,
+        default_delete_runtime_contract_files_result=_DEFAULT_DELETE_RUNTIME_CONTRACT_FILES_RESULT,
+    )
+    if not cleanup_result.ok:
+        launcher_log_warning(
+            logger,
+            "运行时契约相关文件未清理干净，停止命令按失败处理：failures=%s",
+            [failure.path for failure in cleanup_result.failures],
+            state_dir=state_dir,
+            write_launch_error=True,
+        )
+        return 1
     return 0
 
 
