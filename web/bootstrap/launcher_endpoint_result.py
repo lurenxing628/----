@@ -11,6 +11,7 @@ ENDPOINT_STATUS_MISSING = "missing"
 ENDPOINT_STATUS_VALID = "valid"
 ENDPOINT_STATUS_INVALID = "invalid"
 ENDPOINT_STATUS_UNREADABLE = "unreadable"
+ENDPOINT_STATUS_EMPTY = "empty"
 
 
 @dataclass(frozen=True)
@@ -26,11 +27,33 @@ class RuntimeEndpointReadResult:
     port_error: str = ""
 
     @property
+    def host_present(self) -> bool:
+        return self.host_status != ENDPOINT_STATUS_MISSING
+
+    @property
+    def port_present(self) -> bool:
+        return self.port_status != ENDPOINT_STATUS_MISSING
+
+    @property
+    def incomplete(self) -> bool:
+        return self.host_present != self.port_present
+
+    @property
+    def both_missing(self) -> bool:
+        return not self.host_present and not self.port_present
+
+    @property
     def uncertain(self) -> bool:
-        return self.host_status == ENDPOINT_STATUS_UNREADABLE or self.port_status in {
+        uncertain_statuses = {
+            ENDPOINT_STATUS_EMPTY,
             ENDPOINT_STATUS_INVALID,
             ENDPOINT_STATUS_UNREADABLE,
         }
+        return (
+            self.incomplete
+            or self.host_status in uncertain_statuses
+            or self.port_status in uncertain_statuses
+        )
 
     def as_legacy_dict(self) -> Dict[str, Any]:
         return {
@@ -70,7 +93,7 @@ def _read_host_file(path: str) -> Tuple[str, str, str]:
         return "", ENDPOINT_STATUS_UNREADABLE, error
     value = value.strip()
     if not value:
-        return "", ENDPOINT_STATUS_MISSING, ""
+        return "", ENDPOINT_STATUS_EMPTY, "host_empty"
     return value, ENDPOINT_STATUS_VALID, ""
 
 
@@ -81,6 +104,9 @@ def _read_port_file(path: str) -> Tuple[int, str, str]:
     if error:
         return 0, ENDPOINT_STATUS_UNREADABLE, error
     value = value.strip()
+    if not value:
+        launcher_log_warning(None, "运行时端口文件为空：path=%s", path, state_dir=os.path.dirname(path))
+        return 0, ENDPOINT_STATUS_EMPTY, "port_empty"
     if not value.isdecimal():
         launcher_log_warning(None, "运行时端口文件内容非法：path=%s value=%r", path, value, state_dir=os.path.dirname(path))
         return 0, ENDPOINT_STATUS_INVALID, "port_not_integer"

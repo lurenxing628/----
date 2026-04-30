@@ -486,6 +486,81 @@ def test_stop_runtime_keeps_artifacts_when_endpoint_port_invalid(tmp_path):
     assert status["endpoint_uncertain"] is True
 
 
+def test_stop_runtime_blocks_when_only_port_file_exists(monkeypatch, tmp_path):
+    launcher_stop = _import_launcher_stop()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir(parents=True)
+    port_path = state_dir / "aps_port.txt"
+    db_path = state_dir / "aps_db_path.txt"
+    port_path.write_text("5000\n", encoding="utf-8")
+    db_path.write_text(str(tmp_path / "db" / "aps.db") + "\n", encoding="utf-8")
+
+    def _health_down(host, port, state_dir):
+        return launcher_stop.HealthProbeResult(False, f"http://{host}:{port}/system/health", "test_endpoint_down")
+
+    monkeypatch.setattr(launcher_stop, "_health_result_for_status", _health_down)
+
+    assert launcher_stop.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 1
+    assert port_path.exists()
+    assert db_path.exists()
+    status = launcher_stop._classify_runtime_state(str(state_dir))
+    assert status["state"] == "blocked_endpoint"
+    assert status["endpoint_host_status"] == "missing"
+    assert status["endpoint_port_status"] == "valid"
+    assert status["endpoint_uncertain"] is True
+
+
+def test_stop_runtime_blocks_when_only_host_file_exists(monkeypatch, tmp_path):
+    launcher_stop = _import_launcher_stop()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir(parents=True)
+    host_path = state_dir / "aps_host.txt"
+    db_path = state_dir / "aps_db_path.txt"
+    host_path.write_text("127.0.0.1\n", encoding="utf-8")
+    db_path.write_text(str(tmp_path / "db" / "aps.db") + "\n", encoding="utf-8")
+
+    def _health_down(host, port, state_dir):
+        return launcher_stop.HealthProbeResult(False, f"http://{host}:{port}/system/health", "test_endpoint_down")
+
+    monkeypatch.setattr(launcher_stop, "_health_result_for_status", _health_down)
+
+    assert launcher_stop.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 1
+    assert host_path.exists()
+    assert db_path.exists()
+    status = launcher_stop._classify_runtime_state(str(state_dir))
+    assert status["state"] == "blocked_endpoint"
+    assert status["endpoint_host_status"] == "valid"
+    assert status["endpoint_port_status"] == "missing"
+    assert status["endpoint_uncertain"] is True
+
+
+def test_stop_runtime_blocks_when_host_file_blank_but_port_exists(monkeypatch, tmp_path):
+    launcher_stop = _import_launcher_stop()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir(parents=True)
+    host_path = state_dir / "aps_host.txt"
+    port_path = state_dir / "aps_port.txt"
+    db_path = state_dir / "aps_db_path.txt"
+    host_path.write_text("   \n", encoding="utf-8")
+    port_path.write_text("5000\n", encoding="utf-8")
+    db_path.write_text(str(tmp_path / "db" / "aps.db") + "\n", encoding="utf-8")
+
+    def _health_down(host, port, state_dir):
+        return launcher_stop.HealthProbeResult(False, f"http://{host}:{port}/system/health", "test_endpoint_down")
+
+    monkeypatch.setattr(launcher_stop, "_health_result_for_status", _health_down)
+
+    assert launcher_stop.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 1
+    assert host_path.exists()
+    assert port_path.exists()
+    assert db_path.exists()
+    status = launcher_stop._classify_runtime_state(str(state_dir))
+    assert status["state"] == "blocked_endpoint"
+    assert status["endpoint_host_status"] == "empty"
+    assert status["endpoint_port_status"] == "valid"
+    assert status["endpoint_uncertain"] is True
+
+
 def test_stop_runtime_still_cleans_stale_artifact_when_endpoint_files_missing(tmp_path):
     launcher = _import_launcher()
     state_dir = tmp_path / "logs"
@@ -526,6 +601,43 @@ def test_contract_endpoint_overrides_invalid_endpoint_file(tmp_path):
     assert status["host"] == "127.0.0.1"
     assert status["port"] == 5000
     assert status["endpoint_port_status"] == "invalid"
+    assert status["endpoint_uncertain"] is False
+    assert status["state"] != "blocked_endpoint"
+
+
+def test_valid_contract_overrides_incomplete_endpoint_files(monkeypatch, tmp_path):
+    launcher_stop = _import_launcher_stop()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir(parents=True)
+    (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+    (state_dir / "aps_runtime.json").write_text(
+        json.dumps(
+            {
+                "contract_version": 1,
+                "pid": 999999,
+                "host": "127.0.0.1",
+                "port": 5001,
+                "shutdown_token": "token",
+                "exe_path": sys.executable,
+                "runtime_dir": str(tmp_path),
+                "chrome_profile_dir": str(tmp_path / "profile"),
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    def _health_down(host, port, state_dir):
+        return launcher_stop.HealthProbeResult(False, f"http://{host}:{port}/system/health", "test_endpoint_down")
+
+    monkeypatch.setattr(launcher_stop, "_health_result_for_status", _health_down)
+    status = launcher_stop._classify_runtime_state(str(state_dir))
+
+    assert status["contract_status"] == "valid"
+    assert status["host"] == "127.0.0.1"
+    assert status["port"] == 5001
+    assert status["endpoint_host_status"] == "missing"
+    assert status["endpoint_port_status"] == "valid"
     assert status["endpoint_uncertain"] is False
     assert status["state"] != "blocked_endpoint"
 
