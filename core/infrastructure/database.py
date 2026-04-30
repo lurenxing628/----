@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 import sys
@@ -40,6 +41,8 @@ from .migration_state import (
 )
 from .migrations.common import fallback_log
 
+_LOGGER = logging.getLogger(__name__)
+
 __all__ = [
     "CURRENT_SCHEMA_VERSION",
     "MigrationContractError",
@@ -69,9 +72,7 @@ def get_connection(db_path: str) -> sqlite3.Connection:
 
 
 def _bootstrap_missing_tables_from_schema(conn: sqlite3.Connection, schema_sql: str, logger=None) -> List[str]:
-    missing_tables = _bootstrap_missing_tables_from_schema_impl(conn, schema_sql, logger=logger)
-    conn.commit()
-    return missing_tables
+    return _bootstrap_missing_tables_from_schema_impl(conn, schema_sql, logger=logger)
 
 
 def ensure_schema(
@@ -129,12 +130,17 @@ def ensure_schema(
             conn.commit()
             if logger:
                 fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")
-        except Exception:
+        except Exception as init_exc:
             # 失败尽最大努力回滚，避免半初始化状态
             try:
                 conn.rollback()
-            except Exception:
-                pass
+            except Exception as rollback_exc:
+                fallback_log(
+                    logger or _LOGGER,
+                    "error",
+                    f"数据库结构初始化失败后的回滚也失败，数据库状态不可信：init={init_exc}; rollback={rollback_exc}",
+                )
+                raise RuntimeError("数据库结构初始化失败，且回滚失败；数据库状态不可信") from rollback_exc
             raise
     finally:
         try:

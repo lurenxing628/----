@@ -137,3 +137,45 @@ def test_bootstrap_missing_tables_commit_failure_raises(monkeypatch):
         bootstrap_mod.bootstrap_missing_tables_from_schema(conn, schema_sql, logger=None)
 
     assert conn.scripts
+
+
+def test_database_bootstrap_wrapper_does_not_commit_twice(monkeypatch):
+    from core.infrastructure import database as database_mod
+
+    class CommitBombConn:
+        def commit(self):
+            raise AssertionError("wrapper must not commit")
+
+    monkeypatch.setattr(
+        database_mod,
+        "_bootstrap_missing_tables_from_schema_impl",
+        lambda conn, schema_sql, logger=None: ["Foo"],
+    )
+
+    assert database_mod._bootstrap_missing_tables_from_schema(CommitBombConn(), "CREATE TABLE Foo(id);") == ["Foo"]
+
+
+def test_ensure_schema_initialization_rollback_failure_raises(monkeypatch, tmp_path):
+    from core.infrastructure import database as database_mod
+
+    class RollbackFailConn:
+        def rollback(self):
+            raise sqlite3.OperationalError("rollback failed")
+
+        def close(self):
+            return None
+
+    schema_path = tmp_path / "schema.sql"
+    schema_path.write_text("CREATE TABLE Foo (id INTEGER PRIMARY KEY);", encoding="utf-8")
+
+    monkeypatch.setattr(database_mod, "get_connection", lambda _db_path: RollbackFailConn())
+
+    def _load_schema_fail(_schema_path):
+        raise RuntimeError("schema load failed")
+
+    monkeypatch.setattr(database_mod, "_load_schema_sql", _load_schema_fail)
+
+    with pytest.raises(RuntimeError, match="数据库结构初始化失败，且回滚失败；数据库状态不可信") as exc_info:
+        database_mod.ensure_schema(str(tmp_path / "app.db"), schema_path=str(schema_path))
+
+    assert "rollback failed" in str(exc_info.value.__cause__)
