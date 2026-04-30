@@ -65,7 +65,7 @@ def test_transaction_rolls_back_nested_savepoint_without_affecting_outer(tmp_pat
         conn.close()
 
 
-def test_transaction_logs_rollback_failure_without_swallowing_original(caplog):
+def test_transaction_raises_untrusted_when_outer_rollback_fails(caplog):
     from core.infrastructure.transaction import TransactionManager
 
     class RollbackFailConn:
@@ -87,19 +87,40 @@ def test_transaction_logs_rollback_failure_without_swallowing_original(caplog):
     manager = TransactionManager(conn)
 
     with caplog.at_level(logging.ERROR, logger="core.infrastructure.transaction"):
-        try:
+        with pytest.raises(RuntimeError, match="事务回滚失败，连接状态不可信"):
             with manager.transaction():
                 raise RuntimeError("original failure")
-        except RuntimeError as exc:
-            assert "original failure" in str(exc)
-        else:
-            raise AssertionError("原始异常必须继续向外抛出")
 
-    assert "事务回滚失败" in caplog.text
-    assert "事务已回滚：original failure" in caplog.text
+    assert "rollback fail" in caplog.text
+    assert "原始异常=original failure" in caplog.text
+    assert "回滚异常=事务回滚失败，连接状态不可信" in caplog.text
 
 
-def test_nested_savepoint_rollback_failure_blocks_outer_commit(tmp_path):
+def test_transaction_commit_failure_with_rollback_failure_raises_combined_error():
+    from core.infrastructure.transaction import TransactionManager
+
+    class CommitAndRollbackFailConn:
+        in_transaction = False
+
+        def execute(self, sql):
+            return None
+
+        def commit(self):
+            raise sqlite3.OperationalError("commit fail")
+
+        def rollback(self):
+            raise sqlite3.OperationalError("rollback fail")
+
+    manager = TransactionManager(CommitAndRollbackFailConn())
+
+    with pytest.raises(RuntimeError, match="事务提交失败，且回滚失败；连接状态不可信") as exc_info:
+        with manager.transaction():
+            pass
+
+    assert "commit fail" in str(exc_info.value.__cause__)
+
+
+def test_nested_savepoint_rollback_failure_blocks_outer_commit(tmp_path, caplog):
     from core.infrastructure.transaction import TransactionManager
 
     class RollbackToFailConn:
@@ -133,18 +154,20 @@ def test_nested_savepoint_rollback_failure_blocks_outer_commit(tmp_path):
         conn = RollbackToFailConn(raw_conn)
         manager = TransactionManager(conn)
 
-        with pytest.raises(RuntimeError, match="事务状态不可信"):
-            with manager.transaction():
-                conn.execute("INSERT INTO t (val) VALUES ('outer_before')")
-                try:
-                    with manager.transaction():
-                        conn.execute("INSERT INTO t (val) VALUES ('inner_should_not_commit')")
-                        raise RuntimeError("inner boom")
-                except RuntimeError as exc:
-                    assert "inner boom" in str(exc)
-                conn.execute("INSERT INTO t (val) VALUES ('outer_after')")
+        with caplog.at_level(logging.DEBUG, logger="core.infrastructure.transaction"):
+            with pytest.raises(RuntimeError, match="事务状态不可信"):
+                with manager.transaction():
+                    conn.execute("INSERT INTO t (val) VALUES ('outer_before')")
+                    try:
+                        with manager.transaction():
+                            conn.execute("INSERT INTO t (val) VALUES ('inner_should_not_commit')")
+                            raise RuntimeError("inner boom")
+                    except RuntimeError as exc:
+                        assert "事务回滚失败，连接状态不可信" in str(exc)
+                    conn.execute("INSERT INTO t (val) VALUES ('outer_after')")
 
         rows = [row[0] for row in raw_conn.execute("SELECT val FROM t ORDER BY id").fetchall()]
         assert rows == []
+        assert "事务提交成功" not in caplog.text
     finally:
         raw_conn.close()

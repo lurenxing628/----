@@ -126,7 +126,7 @@ def main() -> None:
         rows3 = [r[0] for r in conn.execute("SELECT val FROM t ORDER BY id").fetchall()]
         assert rows3 == [], f"inner RELEASE SAVEPOINT 失败后应整体回滚，rows={rows3!r}"
 
-        # Case 4：内层 ROLLBACK TO SAVEPOINT 失败时，异常仍应向外传播，且外层整体回滚
+        # Case 4：内层 ROLLBACK TO SAVEPOINT 失败时，必须按连接状态不可信失败闭合，且外层整体回滚
         pconn_rb = _PatchableConn(conn)
         tm_rb = TransactionManager(pconn_rb)
         original_execute_rb = pconn_rb.execute
@@ -146,9 +146,9 @@ def main() -> None:
                     with tm_rb.transaction():
                         pconn_rb.execute("INSERT INTO t (val) VALUES ('inner_rb')")
                         raise RuntimeError("inner boom")
-                raise AssertionError("预期 inner ROLLBACK TO SAVEPOINT 失败时抛出原始 inner 异常")
+                raise AssertionError("预期 inner ROLLBACK TO SAVEPOINT 失败时抛出事务不可信异常")
             except RuntimeError as e:
-                assert "inner boom" in str(e), f"异常信息不匹配：{e!r}"
+                assert "事务回滚失败，连接状态不可信" in str(e), f"异常信息不匹配：{e!r}"
 
         rows4 = [r[0] for r in conn.execute("SELECT val FROM t ORDER BY id").fetchall()]
         assert rows4 == [], f"inner ROLLBACK TO SAVEPOINT 失败后应整体回滚，rows={rows4!r}"

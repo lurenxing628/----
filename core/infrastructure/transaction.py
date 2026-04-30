@@ -118,7 +118,8 @@ def _rollback_outer_transaction(conn) -> None:
     try:
         conn.rollback()
     except Exception as exc:
-        logger.error(f"事务回滚失败：{exc}")
+        logger.error(f"事务回滚失败，连接状态不可信：{exc}")
+        raise RuntimeError("事务回滚失败，连接状态不可信") from exc
 
 
 def _rollback_scope(conn, depth: int, owns_tx: bool, sp_name: Optional[str]) -> None:
@@ -153,7 +154,11 @@ def _commit_outer_transaction(conn) -> None:
     try:
         conn.commit()
     except Exception as e:
-        _rollback_outer_transaction(conn)
+        try:
+            _rollback_outer_transaction(conn)
+        except Exception as rollback_exc:
+            logger.error(f"事务提交失败，且回滚失败；连接状态不可信：commit={e}; rollback={rollback_exc}")
+            raise RuntimeError("事务提交失败，且回滚失败；连接状态不可信") from e
         logger.error(f"事务提交失败：{e}")
         raise
 
@@ -194,7 +199,8 @@ def _transaction_scope(conn):
                 _rollback_scope(conn, depth, owns_tx, sp_name)
             except Exception as rollback_exc:
                 _mark_poisoned(conn, rollback_exc)
-                logger.error(f"事务回滚失败，事务状态不可信：{rollback_exc}")
+                logger.error(f"事务回滚失败，事务状态不可信：原始异常={e}; 回滚异常={rollback_exc}")
+                raise RuntimeError("事务回滚失败，连接状态不可信") from rollback_exc
             logger.error(f"事务已回滚：{e}")
             raise
         else:
