@@ -1240,7 +1240,7 @@ def test_finalize_ledger_update_preserves_test_debt_and_stable_updated_at(monkey
 
     entry = _valid_test_debt_entry()
     ledger = _ledger_with_test_debt(entry)
-    monkeypatch.setattr(quality_gate_ledger, "load_ledger", lambda required=False: copy.deepcopy(ledger))
+    monkeypatch.setattr(quality_gate_ledger, "load_ledger_unvalidated", lambda required=False: copy.deepcopy(ledger))
 
     finalized = quality_gate_ledger.finalize_ledger_update(copy.deepcopy(ledger))
 

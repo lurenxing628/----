@@ -20,7 +20,9 @@ from .quality_gate_shared import (
     REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS,
     REQUEST_SERVICE_SCAN_SCOPE_PATTERNS,
     STARTUP_SAMPLE_EXPECTATIONS,
+    UI_MODE_RENDER_BRIDGE_PATHS,
     UI_MODE_SCOPE_TAG_VALUES,
+    UI_MODE_STARTUP_GUARD_PATHS,
     UI_MODE_STARTUP_GUARD_SYMBOLS,
     QualityGateError,
     collect_globbed_files,
@@ -316,7 +318,14 @@ def _fingerprint_for_signature(signature: Dict[str, Any]) -> str:
     return "sha1:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
-def ui_mode_scope_tag(symbol: str) -> str:
+def ui_mode_scope_tag(symbol: str, path: str = "web/ui_mode.py") -> str:
+    rel_path = str(path).replace("\\", "/")
+    if rel_path in UI_MODE_RENDER_BRIDGE_PATHS:
+        return "render_bridge"
+    if rel_path in UI_MODE_STARTUP_GUARD_PATHS and rel_path != "web/ui_mode.py":
+        return "startup_guard"
+    if rel_path == "web/ui_mode.py":
+        return "startup_guard" if symbol in UI_MODE_STARTUP_GUARD_SYMBOLS else "render_bridge"
     if symbol in UI_MODE_STARTUP_GUARD_SYMBOLS:
         return "startup_guard"
     return "render_bridge"
@@ -355,8 +364,8 @@ def scan_silent_fallback_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
                 "fallback_kind": fallback_kind,
                 "signature": signature,
             }
-            if rel_path == "web/ui_mode.py":
-                entry["scope_tag"] = ui_mode_scope_tag(symbol)
+            if rel_path in UI_MODE_STARTUP_GUARD_PATHS or rel_path in UI_MODE_RENDER_BRIDGE_PATHS:
+                entry["scope_tag"] = ui_mode_scope_tag(symbol, rel_path)
             entries.append(entry)
     _assign_silent_entry_ids(entries)
     return sorted(entries, key=entry_sort_key)

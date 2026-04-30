@@ -272,6 +272,29 @@ def test_request_service_scan_scope_covers_error_path_files() -> None:
     assert "web/error_boundary.py" in scanned
 
 
+def test_startup_scope_patterns_cover_ui_mode_split_files() -> None:
+    expected_patterns = {
+        "web/bootstrap/**/*.py",
+        "web/ui_mode.py",
+        "web/ui_mode_request.py",
+        "web/ui_mode_store.py",
+        "web/render_bridge.py",
+        "web/manual_src_security.py",
+    }
+
+    assert expected_patterns.issubset(set(shared_mod.STARTUP_SCOPE_PATTERNS))
+    assert all(shared_mod.is_startup_scope_path(path) for path in expected_patterns if not path.endswith("*.py"))
+
+
+def test_ui_mode_split_scope_tags_stay_separated() -> None:
+    assert scan_mod.ui_mode_scope_tag("_read_ui_mode_from_db", "web/ui_mode.py") == "startup_guard"
+    assert scan_mod.ui_mode_scope_tag("render_ui_template", "web/ui_mode.py") == "render_bridge"
+    assert scan_mod.ui_mode_scope_tag("read_ui_mode_request", "web/ui_mode_request.py") == "startup_guard"
+    assert scan_mod.ui_mode_scope_tag("read_ui_mode_store", "web/ui_mode_store.py") == "startup_guard"
+    assert scan_mod.ui_mode_scope_tag("render_ui_template", "web/render_bridge.py") == "render_bridge"
+    assert scan_mod.ui_mode_scope_tag("normalize_manual_src", "web/manual_src_security.py") == "render_bridge"
+
+
 def test_request_service_target_files_keep_system_route_gate_coverage() -> None:
     system_targets = {
         "web/routes/system_backup.py",

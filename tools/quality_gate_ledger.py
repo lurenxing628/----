@@ -57,6 +57,16 @@ def load_ledger(required: bool = True) -> Dict[str, Any]:
     return sort_ledger(copy.deepcopy(ledger))
 
 
+def load_ledger_unvalidated(required: bool = True) -> Dict[str, Any]:
+    if not os.path.exists(LEDGER_PATH):
+        if required:
+            raise QualityGateError("治理台账不存在：开发文档/技术债务治理台账.md")
+        return default_ledger()
+    text = read_text_file("开发文档/技术债务治理台账.md")
+    ledger = extract_json_code_block(text, LEDGER_BEGIN, LEDGER_END, "治理台账")
+    return sort_ledger(copy.deepcopy(ledger))
+
+
 def _validate_legacy_ledger_for_test_debt_import(ledger: Dict[str, Any]) -> None:
     if not isinstance(ledger, dict):
         raise QualityGateError("治理台账顶层必须是对象")
@@ -613,10 +623,12 @@ def _ledger_semantics_equal(left: Dict[str, Any], right: Dict[str, Any]) -> bool
 
 
 def finalize_ledger_update(ledger: Dict[str, Any]) -> Dict[str, Any]:
-    current = load_ledger(required=False)
+    current = load_ledger_unvalidated(required=False)
     next_ledger = sort_ledger(copy.deepcopy(ledger))
     current_sorted = sort_ledger(copy.deepcopy(current))
-    if _ledger_semantics_equal(current_sorted, next_ledger):
+    current_scope = cast(Dict[str, Any], current.get("silent_fallback") or {}).get("scope")
+    scope_already_current = current_scope == list(STARTUP_SCOPE_PATTERNS)
+    if scope_already_current and _ledger_semantics_equal(current_sorted, next_ledger):
         next_ledger["updated_at"] = current_sorted.get("updated_at") or next_ledger.get("updated_at")
     else:
         next_ledger["updated_at"] = now_shanghai_iso()
@@ -629,6 +641,7 @@ __all__ = [
     "default_ledger",
     "finalize_ledger_update",
     "load_ledger",
+    "load_ledger_unvalidated",
     "load_ledger_for_test_debt_import",
     "load_sp02_facts_snapshot",
     "render_ledger_markdown",

@@ -97,7 +97,23 @@ CORE_DIRS = [
     "core/infrastructure",
     "web/viewmodels",
 ]
-STARTUP_SCOPE_PATTERNS = ["web/bootstrap/**/*.py", "web/ui_mode.py"]
+UI_MODE_STARTUP_SCOPE_PATHS = [
+    "web/ui_mode.py",
+    "web/ui_mode_request.py",
+    "web/ui_mode_store.py",
+    "web/render_bridge.py",
+    "web/manual_src_security.py",
+]
+UI_MODE_STARTUP_GUARD_PATHS = {
+    "web/ui_mode.py",
+    "web/ui_mode_request.py",
+    "web/ui_mode_store.py",
+}
+UI_MODE_RENDER_BRIDGE_PATHS = {
+    "web/render_bridge.py",
+    "web/manual_src_security.py",
+}
+STARTUP_SCOPE_PATTERNS = ["web/bootstrap/**/*.py", *UI_MODE_STARTUP_SCOPE_PATHS]
 UI_MODE_STARTUP_GUARD_SYMBOLS = {"init_ui_mode", "_read_ui_mode_from_db", "get_ui_mode"}
 
 REQUEST_SERVICE_SCAN_SCOPE_PATTERNS = [
@@ -1154,7 +1170,7 @@ def collect_quality_rule_files() -> List[str]:
 
 def is_startup_scope_path(path: str) -> bool:
     rel_path = str(path).replace("\\", "/")
-    return rel_path == "web/ui_mode.py" or rel_path.startswith("web/bootstrap/")
+    return rel_path in set(UI_MODE_STARTUP_SCOPE_PATHS) or rel_path.startswith("web/bootstrap/")
 
 
 def ensure_single_marker(text: str, marker: str, label: str) -> None:

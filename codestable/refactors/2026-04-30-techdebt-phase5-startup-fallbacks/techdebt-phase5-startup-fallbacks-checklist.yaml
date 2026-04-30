@@ -8,8 +8,8 @@ steps:
     exit_signal: 基线文件和 refactor 记录已创建，未改业务代码。
   - id: startup-scan-scope
     title: 更新 ui_mode 拆分后的启动链扫描范围
-    status: pending
-    exit_signal: 新拆文件被 fallback scanner 覆盖，startup_guard 和 render_bridge scope_tag 不混账。
+    status: done
+    exit_signal: 新拆文件已纳入 STARTUP_SCOPE_PATTERNS；request/store 归 startup_guard，render/security 归 render_bridge；定向测试、ruff、pyright、full-test-debt 和台账检查通过。
   - id: runtime-capabilities
     title: 引入启动运行时能力结果模型
     status: pending

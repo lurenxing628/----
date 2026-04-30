@@ -17,6 +17,7 @@ from tools.quality_gate_support import (  # noqa: E402
     delete_risk,
     load_ledger,
     load_ledger_for_test_debt_import,
+    load_ledger_unvalidated,
     now_shanghai_iso,
     refresh_auto_fields,
     refresh_migrate_inline_facts,
@@ -159,13 +160,13 @@ def _handle_check(_args: argparse.Namespace) -> int:
 
 def _handle_refresh(args: argparse.Namespace) -> int:
     mode = str(args.mode)
-    current = load_ledger(required=False) if mode in {"migrate-inline-facts", "scan-startup-baseline"} else None
+    current = load_ledger_unvalidated(required=False) if mode in {"migrate-inline-facts", "scan-startup-baseline"} else None
     if mode == "migrate-inline-facts":
         next_ledger = refresh_migrate_inline_facts(current)
     elif mode == "scan-startup-baseline":
         next_ledger = refresh_scan_startup_baseline(current)
     elif mode == "refresh-auto-fields":
-        current = load_ledger(required=True)
+        current = load_ledger_unvalidated(required=True)
         next_ledger = refresh_auto_fields(current)
     else:  # pragma: no cover
         raise QualityGateError(f"未知 refresh 模式：{mode}")

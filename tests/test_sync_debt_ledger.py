@@ -238,7 +238,7 @@ def test_refresh_command_dispatches_expected_mode(
         calls["load_required"] = required
         return current_ledger
 
-    monkeypatch.setattr(module, "load_ledger", fake_load_ledger)
+    monkeypatch.setattr(module, "load_ledger_unvalidated", fake_load_ledger)
     monkeypatch.setattr(module, "now_shanghai_iso", lambda: "2026-04-10T01:02:03+08:00")
 
     def _unexpected(_ledger):
@@ -282,7 +282,7 @@ def test_refresh_auto_fields_skips_prevalidation_and_loads_required_ledger(monke
         calls["refreshed_ledger"] = ledger
         return next_ledger
 
-    monkeypatch.setattr(module, "load_ledger", fake_load_ledger)
+    monkeypatch.setattr(module, "load_ledger_unvalidated", fake_load_ledger)
     monkeypatch.setattr(
         module,
         "validate_ledger_against_current_scan",

@@ -22,6 +22,7 @@ from .quality_gate_ledger import (
     finalize_ledger_update,
     load_ledger,
     load_ledger_for_test_debt_import,
+    load_ledger_unvalidated,
     load_sp02_facts_snapshot,
     render_ledger_markdown,
     save_ledger,
