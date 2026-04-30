@@ -5,11 +5,21 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
+from core.models.enums import SourceType
 from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
 from core.services.common.excel_templates import get_template_definition
 
 from .parser import PartContext, StationMeta, StepRecord
+from .part_sheet_builder import build_part_operation_hours_rows, build_route_rows
+from .resource_sheet_builder import (
+    build_machine_name,
+    build_machines_rows,
+    build_operator_machine_rows,
+    build_operator_rows,
+    most_common_key,
+)
+from .route_sheet_builder import build_op_types_rows, build_suppliers_rows
+from .template_validation import record_diagnostic
 
 
 @dataclass
@@ -54,19 +64,19 @@ class UnitTemplateBuilder:
         self._apply_final_names(op_records, conflict_names)
 
         by_part = self._group_op_records_by_part(op_records)
-        route_rows = self._build_route_rows(by_part)
-        part_operation_hours_rows = self._build_part_operation_hours_rows(by_part)
+        route_rows = build_route_rows(by_part)
+        part_operation_hours_rows = build_part_operation_hours_rows(by_part)
 
-        operator_id_map, operators_rows = self._build_operator_rows(operator_names)
-        machines_rows = self._build_machines_rows(
+        operator_id_map, operators_rows = build_operator_rows(operator_names)
+        machines_rows = build_machines_rows(
             used_machine_ids=used_machine_ids,
             machine_label_map=machine_label_map,
             machine_internal_counter=machine_internal_counter,
         )
-        operator_machine_rows = self._build_operator_machine_rows(links, operator_id_map, collector=collector, samples=samples)
+        operator_machine_rows = build_operator_machine_rows(links, operator_id_map, collector=collector, samples=samples)
 
-        op_types_rows = self._build_op_types_rows(op_records)
-        suppliers_rows = self._build_suppliers_rows(op_records, op_types_rows, collector=collector, samples=samples)
+        op_types_rows = build_op_types_rows(op_records)
+        suppliers_rows = build_suppliers_rows(op_records, op_types_rows, collector=collector, samples=samples)
 
         diagnostics = {
             "events": degradation_events_to_dicts(collector.to_list()),
@@ -96,20 +106,15 @@ class UnitTemplateBuilder:
         message: str,
         sample: Any,
     ) -> None:
-        collector.add(
+        record_diagnostic(
+            collector,
+            samples,
             code=code,
             scope=scope,
             field=field,
             message=message,
-            sample=(str(sample)[:200] if sample is not None else None),
+            sample=sample,
         )
-        bucket = samples.setdefault(str(code), [])
-        if len(bucket) >= 10:
-            return
-        try:
-            bucket.append(sample)
-        except Exception:
-            bucket.append(str(sample))
 
     @staticmethod
     def _build_machine_op_hint(parts: Dict[str, PartContext]) -> Dict[str, Counter]:
@@ -292,70 +297,28 @@ class UnitTemplateBuilder:
 
     @staticmethod
     def _build_route_rows(by_part: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-        route_rows: List[Dict[str, Any]] = []
-        for part_no in sorted(by_part.keys()):
-            recs = sorted(by_part[part_no], key=lambda x: int(x["seq"]))
-            part_name = str(recs[0].get("part_name") or part_no)
-            route_string = "".join([f"{int(r['seq'])}{str(r.get('final_name') or '')}" for r in recs])
-            route_rows.append({"图号": part_no, "名称": part_name, "工艺路线字符串": route_string})
-        return route_rows
+        return build_route_rows(by_part)
 
     @staticmethod
     def _build_part_operation_hours_rows(by_part: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-        rows: List[Dict[str, Any]] = []
-        for part_no in sorted(by_part.keys()):
-            recs = sorted(by_part[part_no], key=lambda x: int(x["seq"]))
-            for rec in recs:
-                if not rec.get("source_internal"):
-                    continue
-                rows.append(
-                    {
-                        "图号": part_no,
-                        "工序": int(rec["seq"]),
-                        "换型时间(h)": float(rec.get("setup_hours") or 0.0),
-                        "单件工时(h)": float(rec.get("unit_hours") or 0.0),
-                    }
-                )
-        return rows
+        return build_part_operation_hours_rows(by_part)
 
     @staticmethod
     def _build_operator_rows(operator_names: Set[str]) -> Tuple[Dict[str, str], List[Dict[str, Any]]]:
-        operator_id_map: Dict[str, str] = {}
-        used_operator_ids: Set[str] = set()
-        operators_rows: List[Dict[str, Any]] = []
-        next_operator_no = 900001
-        for name in sorted(operator_names):
-            while f"{next_operator_no:06d}" in used_operator_ids:
-                next_operator_no += 1
-            op_id = f"{next_operator_no:06d}"
-            used_operator_ids.add(op_id)
-            next_operator_no += 1
-            operator_id_map[name] = op_id
-            operators_rows.append({"工号": op_id, "姓名": name, "状态": OperatorStatus.ACTIVE.value, "班组": None, "备注": None})
-        return operator_id_map, operators_rows
+        return build_operator_rows(operator_names)
 
+    @staticmethod
     def _build_machines_rows(
-        self,
         *,
         used_machine_ids: Set[str],
         machine_label_map: Dict[str, str],
         machine_internal_counter: Dict[str, Counter],
     ) -> List[Dict[str, Any]]:
-        machines_rows: List[Dict[str, Any]] = []
-        for machine_id in sorted(used_machine_ids):
-            display = machine_label_map.get(machine_id) or machine_id
-            machine_name = self._build_machine_name(machine_id=machine_id, machine_label=display)
-            op_name = self._most_common_key(machine_internal_counter.get(machine_id))
-            machines_rows.append(
-                {
-                    "设备编号": machine_id,
-                    "设备名称": machine_name,
-                    "工种": op_name,
-                    "班组": None,
-                    "状态": MachineStatus.ACTIVE.value,
-                }
-            )
-        return machines_rows
+        return build_machines_rows(
+            used_machine_ids=used_machine_ids,
+            machine_label_map=machine_label_map,
+            machine_internal_counter=machine_internal_counter,
+        )
 
     @staticmethod
     def _build_operator_machine_rows(
@@ -365,45 +328,11 @@ class UnitTemplateBuilder:
         collector: DegradationCollector,
         samples: Dict[str, List[Any]],
     ) -> List[Dict[str, Any]]:
-        rows: List[Dict[str, Any]] = []
-        for operator_name, machine_id in sorted(links, key=lambda x: (operator_id_map.get(x[0], x[0]), x[1])):
-            op_id = operator_id_map.get(operator_name)
-            if not op_id:
-                continue
-            UnitTemplateBuilder._record_diagnostic(
-                collector,
-                samples,
-                code="default_filled",
-                scope="unit_excel.operator_machine",
-                field="技能等级",
-                message="人员设备关联缺少技能等级，已默认补齐为 normal。",
-                sample={"工号": op_id, "设备编号": machine_id, "value": "normal"},
-            )
-            UnitTemplateBuilder._record_diagnostic(
-                collector,
-                samples,
-                code="default_filled",
-                scope="unit_excel.operator_machine",
-                field="主操设备",
-                message="人员设备关联缺少主操标记，已默认补齐为 no。",
-                sample={"工号": op_id, "设备编号": machine_id, "value": YesNo.NO.value},
-            )
-            rows.append({"工号": op_id, "设备编号": machine_id, "技能等级": "normal", "主操设备": YesNo.NO.value})
-        return rows
+        return build_operator_machine_rows(links, operator_id_map, collector=collector, samples=samples)
 
     @staticmethod
     def _build_op_types_rows(op_records: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        op_type_states: Dict[str, Set[str]] = defaultdict(set)
-        for rec in op_records:
-            nm = str(rec.get("final_name") or "")
-            st = SourceType.INTERNAL.value if rec.get("source_internal") else SourceType.EXTERNAL.value
-            op_type_states[nm].add(st)
-
-        op_types_rows: List[Dict[str, Any]] = []
-        for idx, op_name in enumerate(sorted(op_type_states.keys()), start=1):
-            cat = SourceType.INTERNAL.value if SourceType.INTERNAL.value in op_type_states[op_name] else SourceType.EXTERNAL.value
-            op_types_rows.append({"工种ID": f"OT{idx:03d}", "工种名称": op_name, "归属": cat})
-        return op_types_rows
+        return build_op_types_rows(op_records)
 
     @staticmethod
     def _build_suppliers_rows(
@@ -413,63 +342,7 @@ class UnitTemplateBuilder:
         collector: DegradationCollector,
         samples: Dict[str, List[Any]],
     ) -> List[Dict[str, Any]]:
-        external_days_by_name: Dict[str, List[float]] = defaultdict(list)
-        for rec in op_records:
-            if rec.get("source_internal"):
-                continue
-            name = str(rec.get("final_name") or "")
-            hint = rec.get("ext_days_hint")
-            if isinstance(hint, (int, float)) and float(hint) > 0:
-                external_days_by_name[name].append(float(hint))
-
-        external_names = [
-            str(r.get("工种名称") or "")
-            for r in op_types_rows
-            if str(r.get("归属") or "").strip() == SourceType.EXTERNAL.value
-        ]
-        suppliers_rows: List[Dict[str, Any]] = []
-        for idx, op_name in enumerate(sorted([n for n in external_names if n]), start=1):
-            days_list = external_days_by_name.get(op_name) or []
-            default_days = round(sum(days_list) / len(days_list), 4) if days_list else 1.0
-            if not days_list:
-                UnitTemplateBuilder._record_diagnostic(
-                    collector,
-                    samples,
-                    code="default_filled",
-                    scope="unit_excel.suppliers",
-                    field="默认周期",
-                    message="外协供应商缺少周期样本，已默认补齐为 1.0 天。",
-                    sample={"对应工种": op_name, "value": 1.0},
-                )
-            UnitTemplateBuilder._record_diagnostic(
-                collector,
-                samples,
-                code="default_filled",
-                scope="unit_excel.suppliers",
-                field="状态",
-                message="外协供应商状态未提供，已默认补齐为 active。",
-                sample={"对应工种": op_name, "value": SupplierStatus.ACTIVE.value},
-            )
-            UnitTemplateBuilder._record_diagnostic(
-                collector,
-                samples,
-                code="default_filled",
-                scope="unit_excel.suppliers",
-                field="备注",
-                message="外协供应商备注未提供，已默认补齐为空。",
-                sample={"对应工种": op_name, "value": None},
-            )
-            suppliers_rows.append(
-                {
-                    "供应商ID": f"S{idx:03d}",
-                    "名称": f"外协-{op_name}",
-                    "对应工种": op_name,
-                    "默认周期": default_days,
-                    "状态": SupplierStatus.ACTIVE.value,
-                    "备注": None,
-                }
-            )
-        return suppliers_rows
+        return build_suppliers_rows(op_records, op_types_rows, collector=collector, samples=samples)
 
     def _infer_op_name_for_missing_seq(
         self,
@@ -551,19 +424,8 @@ class UnitTemplateBuilder:
 
     @staticmethod
     def _most_common_key(counter: Optional[Counter]) -> Optional[str]:
-        if not counter:
-            return None
-        try:
-            return counter.most_common(1)[0][0]
-        except Exception:
-            return None
+        return most_common_key(counter)
 
     @staticmethod
     def _build_machine_name(machine_id: str, machine_label: str) -> str:
-        label = (machine_label or "").strip()
-        label = re.sub(r"[（(].*?[）)]", "", label).strip()
-        mid = (machine_id or "").strip()
-        if label and label != mid:
-            return label
-        return mid or label
-
+        return build_machine_name(machine_id=machine_id, machine_label=machine_label)

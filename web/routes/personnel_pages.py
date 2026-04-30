@@ -14,6 +14,7 @@ from web.ui_mode import render_ui_template as render_template
 
 from .pagination import paginate_rows, parse_page_args
 from .personnel_bp import _machine_status_zh, _operator_status_zh, bp
+from .personnel_detail_context import build_personnel_detail_context
 from .team_view_helpers import build_team_name_map, load_team_options
 
 
@@ -99,82 +100,10 @@ def create_operator():
 
 @bp.get("/<operator_id>")
 def detail_page(operator_id: str):
-    op_svc = OperatorService(g.db, op_logger=getattr(g, "op_logger", None))
-    link_q = OperatorMachineQueryService(g.db, op_logger=getattr(g, "op_logger", None))
-    mc_svc = MachineService(g.db, op_logger=getattr(g, "op_logger", None))
-
-    op = op_svc.get(operator_id)
-    links = [
-        row for row in link_q.list_simple_rows() if str(row.get("operator_id") or "").strip() == str(operator_id or "").strip()
-    ]
-    team_options = load_team_options()
-    team_name_map = build_team_name_map(team_options)
-
-    machines = {m.machine_id: m for m in mc_svc.list()}
-    linked_machine_ids = {str(link.get("machine_id") or "").strip() for link in links}
-
-    linked_machines: List[Dict[str, Any]] = []
-    for link in links:
-        machine_id = str(link.get("machine_id") or "").strip()
-        m = machines.get(machine_id)
-        linked_machines.append(
-            {
-                "machine_id": machine_id,
-                "machine_name": (m.name if m else None),
-                "status": (m.status if m else None),
-                "status_zh": _machine_status_zh(m.status) if m else "-",
-                "skill_level": link.get("skill_level"),
-                "is_primary": link.get("is_primary"),
-                "dirty_fields": list(link.get("dirty_fields") or []),
-                "dirty_reasons": dict(link.get("dirty_reasons") or {}),
-            }
-        )
-
-    dirty_link_rows = [m for m in linked_machines if bool(m.get("dirty_fields"))]
-    dirty_link_fields = sorted(
-        {
-            str(field).strip()
-            for row in dirty_link_rows
-            for field in list(row.get("dirty_fields") or [])
-            if str(field).strip()
-        }
-    )
-    dirty_link_reasons: Dict[str, str] = {}
-    for row in dirty_link_rows:
-        for field, reason in dict(row.get("dirty_reasons") or {}).items():
-            if field not in dirty_link_reasons and str(reason or "").strip():
-                dirty_link_reasons[str(field)] = str(reason)
-
-    available_machines: List[Dict[str, Any]] = []
-    for m in machines.values():
-        if m.machine_id in linked_machine_ids:
-            continue
-        available_machines.append(
-            {
-                "machine_id": m.machine_id,
-                "machine_name": m.name,
-                "status": m.status,
-                "status_zh": _machine_status_zh(m.status),
-            }
-        )
-    available_machines.sort(key=lambda x: x["machine_id"])
-
+    context = build_personnel_detail_context(g.db, operator_id, op_logger=getattr(g, "op_logger", None))
     return render_template(
         "personnel/detail.html",
-        title=f"人员详情 - {op.operator_id} {op.name}",
-        operator=op.to_dict(),
-        operator_team_name=team_name_map.get(op.team_id or ""),
-        team_options=team_options,
-        operator_status_zh=_operator_status_zh(op.status),
-        status_options=[(OperatorStatus.ACTIVE.value, "在岗"), (OperatorStatus.INACTIVE.value, "停用/休假")],
-        linked_machines=linked_machines,
-        link_dirty_summary={
-            "row_count": int(len(dirty_link_rows)),
-            "fields": dirty_link_fields,
-            "reasons": dirty_link_reasons,
-        },
-        available_machines=available_machines,
-        skill_level_options=list(skill_level_options()),
+        **context,
     )
 
 

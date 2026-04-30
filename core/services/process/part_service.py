@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.models import ExternalGroup, Part, PartOperation
-from core.models.enums import YESNO_VALUES, MergeMode, PartOperationStatus, SourceType, YesNo
+from core.models import Part
+from core.models.enums import YESNO_VALUES, YesNo
 from core.services.common.normalize import append_unique_text_messages, normalize_text
 from core.services.common.safe_logging import safe_warning
 from data.repositories import (
@@ -18,7 +17,15 @@ from data.repositories import (
 )
 
 from .deletion_validator import DeletionValidator
-from .deletion_validator import Operation as DeleteOp
+from .part_delete_guard import PartDeleteGuard
+from .part_excel_adapter import build_existing_for_excel_routes
+from .part_route_validation import (
+    build_internal_hours_snapshot,
+    build_route_parse_baseline_snapshot,
+    coerce_external_default_days,
+    operation_source_or_raise,
+    save_template_no_tx,
+)
 from .route_parser import ParseResult, ParseStatus, RouteParser
 
 
@@ -39,6 +46,12 @@ class PartService:
 
         self.route_parser = RouteParser(self.op_type_repo, self.supplier_repo, logger=logger)
         self.deletion_validator = DeletionValidator()
+        self.delete_guard = PartDeleteGuard(
+            op_repo=self.op_repo,
+            group_repo=self.group_repo,
+            tx_manager=self.tx_manager,
+            deletion_validator=self.deletion_validator,
+        )
 
     # -------------------------
     # 工具方法
@@ -63,21 +76,7 @@ class PartService:
         return p
 
     def _build_internal_hours_snapshot(self, part_no: str) -> Dict[int, Tuple[float, float]]:
-        """
-        构建 internal 工序工时快照（按 seq 维度）。
-        用于 reparse/路线覆盖时保留同 part_no+seq 的历史工时。
-        """
-        snapshot: Dict[int, Tuple[float, float]] = {}
-        ops = self.op_repo.list_by_part(part_no, include_deleted=False)
-        for op in ops:
-            if not op.is_internal():
-                continue
-            try:
-                seq = int(op.seq)
-            except Exception:
-                continue
-            snapshot[seq] = (float(op.setup_hours or 0.0), float(op.unit_hours or 0.0))
-        return snapshot
+        return build_internal_hours_snapshot(self.op_repo, part_no)
 
     def _coerce_external_default_days(
         self,
@@ -85,45 +84,11 @@ class PartService:
         *,
         warnings: Optional[List[str]] = None,
     ) -> Tuple[float, bool]:
-        raw_default_days = getattr(op, "default_days", None)
-        seq = int(getattr(op, "seq", 0) or 0)
-        op_type_name = self._normalize_text(getattr(op, "op_type_name", None)) or f"seq={seq}"
-
-        def _warn(message: str) -> None:
-            if warnings is not None:
-                warnings.append(message)
-            safe_warning(self.logger, message)
-
-        if raw_default_days is None or (isinstance(raw_default_days, str) and raw_default_days.strip() == ""):
-            _warn(f"外部工序 {seq}（{op_type_name}）缺少默认周期，保存模板时已按 1.0 天写入外协周期")
-            return 1.0, True
-
-        try:
-            parsed_days = float(raw_default_days)
-        except Exception:
-            _warn(
-                f"外部工序 {seq}（{op_type_name}）默认周期无法解析，保存模板时已按 1.0 天写入外协周期"
-            )
-            return 1.0, True
-
-        if not math.isfinite(parsed_days) or parsed_days <= 0:
-            _warn(
-                f"外部工序 {seq}（{op_type_name}）默认周期无效，保存模板时已按 1.0 天写入外协周期"
-            )
-            return 1.0, True
-
-        return float(parsed_days), False
+        return coerce_external_default_days(op, logger=self.logger, warnings=warnings)
 
     @staticmethod
     def _operation_source_or_raise(op: Any) -> str:
-        source = str(getattr(op, "source", "") or "").strip().lower()
-        if source in (SourceType.INTERNAL.value, SourceType.EXTERNAL.value):
-            return source
-
-        seq = getattr(op, "seq", None)
-        seq_label = f"工序 {seq}" if seq not in (None, "") else "工序"
-        raise ValidationError(f"{seq_label}来源无效，只能是 internal 或 external", field="source")
-
+        return operation_source_or_raise(op)
 
     # -------------------------
     # Parts CRUD
@@ -132,53 +97,6 @@ class PartService:
         if route_parsed and route_parsed not in YESNO_VALUES:
             raise ValidationError("工艺路线解析状态不正确，请选择：是 / 否。", field="工艺路线解析状态")
         return self.part_repo.list(route_parsed=route_parsed)
-
-    def _build_route_parse_operation_snapshot(self, op: Any) -> Optional[Dict[str, Any]]:
-        op_type_name = self._normalize_text(getattr(op, "op_type_name", None))
-        if not op_type_name:
-            return None
-        source = (self._normalize_text(getattr(op, "source", None)) or "").strip().lower() or None
-        return {
-            "name": op_type_name,
-            "matched_op_type_id": self._normalize_text(getattr(op, "op_type_id", None)),
-            "source": source,
-        }
-
-    def _build_route_parse_supplier_snapshot(self, op: Any, *, source: Optional[str], op_type_name: str) -> Optional[Dict[str, Any]]:
-        supplier_id = self._normalize_text(getattr(op, "supplier_id", None))
-        if source != SourceType.EXTERNAL.value or not supplier_id:
-            return None
-        return {
-            "supplier_id": supplier_id,
-            "op_type_id": self._normalize_text(getattr(op, "op_type_id", None)),
-            "op_type_name": op_type_name,
-            "default_days": getattr(op, "default_days", None),
-        }
-
-    def _build_route_parse_baseline_entry(self, *, part_no: str, route_raw: Any) -> Dict[str, Any]:
-        parse_result = self.parse(route_raw, part_no=part_no, strict_mode=False)
-        route_op_types: List[Dict[str, Any]] = []
-        suppliers: List[Dict[str, Any]] = []
-        seen_op_type_names = set()
-        seen_supplier_names = set()
-        for op in list(getattr(parse_result, "operations", None) or []):
-            operation_snapshot = self._build_route_parse_operation_snapshot(op)
-            if operation_snapshot is None:
-                continue
-            op_type_name = str(operation_snapshot["name"])
-            if op_type_name not in seen_op_type_names:
-                seen_op_type_names.add(op_type_name)
-                route_op_types.append(operation_snapshot)
-            supplier_snapshot = self._build_route_parse_supplier_snapshot(
-                op,
-                source=operation_snapshot.get("source"),
-                op_type_name=op_type_name,
-            )
-            if supplier_snapshot is None or op_type_name in seen_supplier_names:
-                continue
-            seen_supplier_names.add(op_type_name)
-            suppliers.append(supplier_snapshot)
-        return {"part_no": part_no, "route_op_types": route_op_types, "suppliers": suppliers}
 
     def build_route_parse_baseline_snapshot(
         self,
@@ -194,19 +112,12 @@ class PartService:
         - 基线只保留会影响自动补建结果的解析事实；
         - route_raw 自身的变化由调用方单独快照，避免这里重复携带原始输入。
         """
-        if not part_nos:
-            return []
-
-        cache = parts_cache if isinstance(parts_cache, dict) else {p.part_no: p for p in self.list()}
-        snapshot: List[Dict[str, Any]] = []
-        for raw_part_no in part_nos:
-            part_no = self._normalize_text(raw_part_no)
-            if not part_no:
-                continue
-            part = cache.get(part_no)
-            route_raw = getattr(part, "route_raw", None) if part is not None else None
-            snapshot.append(self._build_route_parse_baseline_entry(part_no=part_no, route_raw=route_raw))
-        return snapshot
+        return build_route_parse_baseline_snapshot(
+            part_nos=part_nos,
+            parts_cache=parts_cache,
+            list_parts=self.list,
+            parse_route=lambda route_raw, part_no: self.parse(route_raw, part_no=part_no, strict_mode=False),
+        )
 
     def get(self, part_no: str) -> Part:
         pn = self._normalize_text(part_no)
@@ -411,71 +322,14 @@ class PartService:
         """
         保存模板（不包含事务控制）。调用方必须保证已在事务中，或可接受多语句写入。
         """
-        # operations
-        for op in parse_result.operations:
-            source = self._operation_source_or_raise(op)
-            if source == SourceType.INTERNAL.value:
-                seq = int(op.seq)
-                setup_hours = 0.0
-                unit_hours = 0.0
-                if preserved_internal_hours and seq in preserved_internal_hours:
-                    old_setup, old_unit = preserved_internal_hours.get(seq, (0.0, 0.0))
-                    setup_hours = float(old_setup or 0.0)
-                    unit_hours = float(old_unit or 0.0)
-                self.op_repo.create(
-                    {
-                        "part_no": part_no,
-                        "seq": seq,
-                        "op_type_id": op.op_type_id,
-                        "op_type_name": op.op_type_name,
-                        "source": SourceType.INTERNAL.value,
-                        "supplier_id": None,
-                        "ext_days": None,
-                        "ext_group_id": None,
-                        "setup_hours": setup_hours,
-                        "unit_hours": unit_hours,
-                        "status": PartOperationStatus.ACTIVE.value,
-                    }
-                )
-            else:
-                ext_days, used_fallback = self._coerce_external_default_days(op, warnings=parse_result.warnings)
-                if used_fallback and parse_result.status != ParseStatus.FAILED:
-                    parse_result.status = ParseStatus.PARTIAL
-                self.op_repo.create(
-                    {
-                        "part_no": part_no,
-                        "seq": int(op.seq),
-                        "op_type_id": op.op_type_id,
-                        "op_type_name": op.op_type_name,
-                        "source": SourceType.EXTERNAL.value,
-                        "supplier_id": op.supplier_id,
-                        "ext_days": float(ext_days),
-                        "ext_group_id": op.ext_group_id,
-                        "setup_hours": 0.0,
-                        "unit_hours": 0.0,
-                        "status": PartOperationStatus.ACTIVE.value,
-                    }
-                )
-
-        # groups (默认 separate)
-        for g in parse_result.external_groups:
-            main_supplier_id = None
-            for op in g.operations:
-                if op.supplier_id:
-                    main_supplier_id = op.supplier_id
-                    break
-            self.group_repo.create(
-                {
-                    "group_id": g.group_id,
-                    "part_no": part_no,
-                    "start_seq": int(g.start_seq),
-                    "end_seq": int(g.end_seq),
-                    "merge_mode": MergeMode.SEPARATE.value,
-                    "total_days": None,
-                    "supplier_id": main_supplier_id,
-                    "remark": None,
-                }
-            )
+        save_template_no_tx(
+            op_repo=self.op_repo,
+            group_repo=self.group_repo,
+            logger=getattr(self, "logger", None),
+            part_no=part_no,
+            parse_result=parse_result,
+            preserved_internal_hours=preserved_internal_hours,
+        )
 
     # -------------------------
     # 模板读取与编辑（页面使用）
@@ -530,41 +384,7 @@ class PartService:
             raise ValidationError("缺少外部工序组ID", field="group_id")
         self._get_or_raise(pn)
 
-        g = self.group_repo.get(gid)
-        if not g or g.part_no != pn:
-            raise BusinessError(ErrorCode.EXTERNAL_GROUP_ERROR, "外部工序组不存在或不属于该零件")
-
-        ops = self.op_repo.list_by_part(pn, include_deleted=False)
-        to_delete = [
-            int(op.seq)
-            for op in ops
-            if op.ext_group_id == gid
-            and op.is_external()
-            and op.is_active()
-        ]
-
-        # 严格按文档规则：仅允许删除“首部连续外部组”或“尾部连续外部组”
-        # 注意：文档的 DeletionValidator 里提供了 get_deletion_groups()（首/尾组），这里必须用它做最终判定。
-        del_ops = [DeleteOp(seq=int(op.seq), source=op.source, status=op.status) for op in ops]
-        deletable_groups = self.deletion_validator.get_deletion_groups(del_ops)  # List[List[int]]
-        if not any(sorted(gp) == sorted(to_delete) for gp in deletable_groups):
-            raise BusinessError(
-                ErrorCode.OPERATION_DELETE_DENIED,
-                "不允许删除：仅首部/尾部连续外部工序组可删除，中间外部组不可删除。",
-                details={"to_delete": to_delete, "deletable_groups": deletable_groups},
-            )
-
-        # 通过严格组判定后，再执行 can_delete 作为补充校验（给出更友好 message）
-        check = self.deletion_validator.can_delete(del_ops, to_delete=to_delete)
-        if not check.can_delete:
-            raise BusinessError(ErrorCode.OPERATION_DELETE_DENIED, check.message, details={"affected_ops": check.affected_ops})
-
-        with self.tx_manager.transaction():
-            for seq in to_delete:
-                self.op_repo.mark_deleted(pn, seq)
-            self.group_repo.delete(gid)
-
-        return {"message": check.message, "deleted_seqs": to_delete, "result": check.result.value}
+        return self.delete_guard.delete_external_group(part_no=pn, group_id=gid)
 
     def calc_deletable_external_group_ids(self, part_no: str) -> List[str]:
         """
@@ -574,36 +394,10 @@ class PartService:
         pn = self._normalize_text(part_no)
         if not pn:
             return []
-        ops = self.op_repo.list_by_part(pn, include_deleted=False)
-        if not ops:
-            return []
-
-        del_ops = [DeleteOp(seq=int(op.seq), source=op.source, status=op.status) for op in ops]
-        deletable_groups = self.deletion_validator.get_deletion_groups(del_ops)  # List[List[seq]]
-        deletable_seqs = set()
-        for g in deletable_groups:
-            for s in g:
-                deletable_seqs.add(int(s))
-
-        group_ids: List[str] = []
-        for group in self.group_repo.list_by_part(pn):
-            # 若该组的全部工序 seq 都在 deletable_seqs 中，则认为组可删
-            seqs = [
-                int(op.seq)
-                for op in ops
-                if op.ext_group_id == group.group_id
-                and op.is_external()
-                and op.is_active()
-            ]
-            if seqs and all(s in deletable_seqs for s in seqs):
-                group_ids.append(group.group_id)
-        return group_ids
+        return self.delete_guard.calc_deletable_external_group_ids(pn)
 
     # -------------------------
     # Excel 辅助
     # -------------------------
     def build_existing_for_excel_routes(self) -> Dict[str, Dict[str, Any]]:
-        existing: Dict[str, Dict[str, Any]] = {}
-        for p in self.part_repo.list():
-            existing[p.part_no] = {"图号": p.part_no, "名称": p.part_name, "工艺路线字符串": p.route_raw}
-        return existing
+        return build_existing_for_excel_routes(self.part_repo)

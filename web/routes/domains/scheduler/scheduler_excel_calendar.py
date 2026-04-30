@@ -8,14 +8,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
 from core.infrastructure.errors import ValidationError
-from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, YESNO_VALUES, CalendarDayType
 from core.services.common.enum_normalizers import calendar_day_type_label, yes_no_label
 from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
-from core.services.common.normalize import is_blank_value
-from core.services.common.number_utils import parse_finite_float
-from core.services.scheduler import CalendarService
 from web.ui_mode import render_ui_template as render_template
 
 from ...excel_utils import (
@@ -30,11 +26,15 @@ from ...excel_utils import (
     send_excel_template_file,
 )
 from .scheduler_bp import bp
+from .scheduler_excel_calendar_rows import (
+    build_calendar_row_validators,
+    calendar_baseline_extra_state,
+    normalize_calendar_rows,
+    require_holiday_default_efficiency,
+)
 from .scheduler_utils import (
     _ensure_unique_ids,
-    _normalize_calendar_date,
     _normalize_day_type,
-    _normalize_yesno,
     _parse_mode,
     _read_uploaded_xlsx,
 )
@@ -42,13 +42,6 @@ from .scheduler_utils import (
 # ============================================================
 # Excel：工作日历（WorkCalendar）
 # ============================================================
-
-
-def _canonicalize_calendar_date(value: Any) -> str:
-    try:
-        return CalendarService._normalize_date(value)  # type: ignore[attr-defined]
-    except ValidationError:
-        return _normalize_calendar_date(value)
 
 
 def _build_existing_preview_data() -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
@@ -71,16 +64,6 @@ def _build_existing_preview_data() -> Tuple[Dict[str, Dict[str, Any]], List[Dict
         existing[c.date] = item
         existing_list.append(item)
     return existing, existing_list
-
-
-def _calendar_baseline_extra_state(*, holiday_default_efficiency: float) -> Dict[str, Any]:
-    return {"holiday_default_efficiency": float(holiday_default_efficiency)}
-
-
-def _require_holiday_default_efficiency(value: Optional[float]) -> float:
-    if value is None:
-        raise ValidationError("“假期工作效率”配置缺失，无法继续工作日历 Excel 导入。")
-    return float(value)
 
 
 def execute_preview_rows_transactional(services: Any, **kwargs: Any) -> Any:
@@ -188,81 +171,25 @@ def excel_calendar_preview():
     )
     if error_response is not None:
         return error_response
-    hde_value = _require_holiday_default_efficiency(hde)
+    hde_value = require_holiday_default_efficiency(hde)
 
     rows = _read_uploaded_xlsx(file)
-
-    normalized_rows: List[Dict[str, Any]] = []
-    for r in rows:
-        item = dict(r)
-        item["日期"] = _canonicalize_calendar_date(item.get("日期"))
-        item["类型"] = _normalize_day_type(item.get("类型"))
-        item["允许普通件"] = _normalize_yesno(item.get("允许普通件"))
-        item["允许急件"] = _normalize_yesno(item.get("允许急件"))
-        # 说明字段：允许为空
-        normalized_rows.append(item)
+    normalized_rows = normalize_calendar_rows(rows)
     _ensure_unique_ids(normalized_rows, id_column="日期")
-
-    def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if is_blank_value(row.get("日期")):
-            return "“日期”不能为空"
-        # 严格日期校验（允许 YYYY/MM/DD；统一写回 YYYY-MM-DD）
-        try:
-            row["日期"] = CalendarService._normalize_date(row.get("日期"))  # type: ignore[attr-defined]
-        except ValidationError as e:
-            return e.message
-
-        row["类型"] = _normalize_day_type(row.get("类型"))
-        if row["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
-            return "“类型”不合法，可填写：工作日 / 假期 / 周末 / 节假日；也兼容英文标准值 workday/holiday。"
-
-        sh = row.get("可用工时")
-        if sh is None or str(sh).strip() == "":
-            # 允许空：按类型给默认
-            row["可用工时"] = 8 if row["类型"] == CalendarDayType.WORKDAY.value else 0
-        else:
-            try:
-                v = parse_finite_float(sh, field="可用工时")
-                if v < 0:
-                    return "“可用工时”不能为负数"
-                row["可用工时"] = v
-            except ValidationError as e:
-                return e.message
-
-        eff = row.get("效率")
-        if eff is None or str(eff).strip() == "":
-            row["效率"] = 1.0 if row["类型"] == CalendarDayType.WORKDAY.value else hde_value
-        else:
-            try:
-                v = parse_finite_float(eff, field="效率")
-                if v <= 0:
-                    return "“效率”必须大于 0"
-                row["效率"] = v
-            except ValidationError as e:
-                return e.message
-
-        row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
-        if row["允许普通件"] not in YESNO_VALUES:
-            return "“允许普通件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
-        row["允许急件"] = _normalize_yesno(row.get("允许急件"))
-        if row["允许急件"] not in YESNO_VALUES:
-            return "“允许急件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
-
-        return None
 
     excel_svc = g.services.excel_service
     preview_rows = excel_svc.preview_import(
         rows=normalized_rows,
         id_column="日期",
         existing_data=existing,
-        validators=[validate_row],
+        validators=build_calendar_row_validators(holiday_default_efficiency=hde_value),
         mode=mode,
     )
     preview_baseline = build_preview_baseline_token(
         existing_data=existing,
         mode=mode,
         id_column="日期",
-        extra_state=_calendar_baseline_extra_state(holiday_default_efficiency=hde_value),
+        extra_state=calendar_baseline_extra_state(holiday_default_efficiency=hde_value),
     )
 
     time_cost_ms = int((time.time() - start) * 1000)
@@ -304,14 +231,14 @@ def excel_calendar_confirm():
     )
     if error_response is not None:
         return error_response
-    hde_value = _require_holiday_default_efficiency(hde)
+    hde_value = require_holiday_default_efficiency(hde)
 
     if preview_baseline_is_stale(
         payload.preview_baseline,
         existing_data=existing,
         mode=mode,
         id_column="日期",
-        extra_state=_calendar_baseline_extra_state(holiday_default_efficiency=hde_value),
+        extra_state=calendar_baseline_extra_state(holiday_default_efficiency=hde_value),
     ):
         flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
         return _render_excel_calendar_page(
@@ -323,66 +250,15 @@ def excel_calendar_confirm():
             filename=filename,
         )
 
-    normalized_rows: List[Dict[str, Any]] = []
-    for r in rows:
-        item = dict(r)
-        item["日期"] = _canonicalize_calendar_date(item.get("日期"))
-        item["类型"] = _normalize_day_type(item.get("类型"))
-        item["允许普通件"] = _normalize_yesno(item.get("允许普通件"))
-        item["允许急件"] = _normalize_yesno(item.get("允许急件"))
-        normalized_rows.append(item)
+    normalized_rows = normalize_calendar_rows(rows)
     _ensure_unique_ids(normalized_rows, id_column="日期")
-
-    def validate_row(row: Dict[str, Any]) -> Optional[str]:
-        if is_blank_value(row.get("日期")):
-            return "“日期”不能为空"
-        try:
-            row["日期"] = CalendarService._normalize_date(row.get("日期"))  # type: ignore[attr-defined]
-        except ValidationError as e:
-            return e.message
-        row["类型"] = _normalize_day_type(row.get("类型"))
-        if row["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
-            return "“类型”不合法，可填写：工作日 / 假期 / 周末 / 节假日；也兼容英文标准值 workday/holiday。"
-
-        # 可用工时/效率/允许*
-        sh = row.get("可用工时")
-        if sh is None or str(sh).strip() == "":
-            row["可用工时"] = 8 if row["类型"] == CalendarDayType.WORKDAY.value else 0
-        else:
-            try:
-                v = parse_finite_float(sh, field="可用工时")
-                if v < 0:
-                    return "“可用工时”不能为负数"
-                row["可用工时"] = v
-            except ValidationError as e:
-                return e.message
-
-        eff = row.get("效率")
-        if eff is None or str(eff).strip() == "":
-            row["效率"] = 1.0 if row["类型"] == CalendarDayType.WORKDAY.value else hde_value
-        else:
-            try:
-                v = parse_finite_float(eff, field="效率")
-                if v <= 0:
-                    return "“效率”必须大于 0"
-                row["效率"] = v
-            except ValidationError as e:
-                return e.message
-
-        row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
-        if row["允许普通件"] not in YESNO_VALUES:
-            return "“允许普通件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
-        row["允许急件"] = _normalize_yesno(row.get("允许急件"))
-        if row["允许急件"] not in YESNO_VALUES:
-            return "“允许急件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
-        return None
 
     excel_svc = g.services.excel_service
     preview_rows = excel_svc.preview_import(
         rows=normalized_rows,
         id_column="日期",
         existing_data=existing,
-        validators=[validate_row],
+        validators=build_calendar_row_validators(holiday_default_efficiency=hde_value),
         mode=mode,
     )
 

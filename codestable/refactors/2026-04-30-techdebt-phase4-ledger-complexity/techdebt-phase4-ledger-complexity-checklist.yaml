@@ -16,8 +16,8 @@ steps:
     exit_signal: database.py 超长登记已消除；backup 和 v4 sanitizer 复杂度登记已消除；迁移/备份/事务测试、ruff、pyright 和台账检查通过。
   - id: process-report-routes
     title: 拆分业务服务和相关路由
-    status: pending
-    exit_signal: 业务复杂度下降，route 只保留请求响应编排。
+    status: done
+    exit_signal: report、unit_excel、route_parser、part_service、人员详情、排产日历和系统备份已拆分；定向测试、ruff、pyright、full-test-debt 和台账检查通过，oversize 降到 2，complexity 降到 20。
   - id: phase4-ledger-review
     title: 刷新台账并做阶段 4 对抗审查
     status: pending
