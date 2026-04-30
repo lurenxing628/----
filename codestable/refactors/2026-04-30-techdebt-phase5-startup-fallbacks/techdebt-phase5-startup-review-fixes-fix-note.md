@@ -242,6 +242,33 @@ tags: [techdebt, startup, fallback, win7]
   - 当前仍未执行 Win7 真机 / 虚拟机复测。
   - 4 条 Win7 accepted risk 继续保留，不能包装成已关闭。
 
+## fb31b416 后维护锁误判 review 证明加固
+
+- 本轮 review 结论复核：
+  - 外部 review 提到 `is_maintenance_window_active()` 在普通锁存在路径可能自然返回 `None`。
+  - 本地 `fb31b416bc7bb6c49a1aa526d3c27ea722d1e500` 上未复现该 blocker：锁文件存在且不是可自愈陈旧锁时，函数已经返回 `True`。
+  - 临时真实锁文件实测返回 `True bool`；`tests/regression_maintenance_window_mutex.py` 也能被项目 main-style pytest collector 收集并执行。
+- 本轮只做证明加固：
+  - 不改 `core/infrastructure/backup.py` 生产逻辑。
+  - 不处理 `integrity_check` 执行失败、维护锁释放日志、临时文件清理日志、`busy_timeout` 日志等非 blocker 项。
+  - 继续把 `safe_url_for()`、`runtime_probe.py`、`_parse_pid()`、`launcher_network.py` 保持为后续项，不写成已修复。
+- 新增 / 收紧测试：
+  - `tests/regression_factory_request_lifecycle_observability.py` 增加真实维护锁文件存在路径：普通 `/scheduler/` 请求必须返回 503，且不挂载 `g.db` / `g.services`，请求服务探针也不能被调用。
+  - `tools/test_registry.py` 已把 `tests/regression_maintenance_window_mutex.py` 加入质量门禁必跑清单。
+  - `tests/test_run_quality_gate.py` 已加断言，防止后续把维护窗口互斥回归从必跑清单里漏掉。
+- 已完成验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest --collect-only -q tests/regression_maintenance_window_mutex.py tests/regression_factory_request_lifecycle_observability.py`：收集到 19 条，包括互斥脚本 1 条和请求入口 18 条。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_factory_request_lifecycle_observability.py tests/regression_maintenance_window_mutex.py tests/test_run_quality_gate.py`：`43 passed`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -k "maintenance or backup or restore or database or migration or request_lifecycle" -p no:cacheprovider`：`43 passed, 891 deselected`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -k "launcher or runtime or startup or stop or ui_mode or render_bridge" -p no:cacheprovider`：`141 passed, 793 deselected`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/test_registry.py tests/test_run_quality_gate.py tests/regression_factory_request_lifecycle_observability.py tests/regression_maintenance_window_mutex.py`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`：`0 errors`，仍有 6 个既有 scheduler `__all__` warning。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：通过，`active_xfail_count=0`，`fixed_count=5`，`collected_count=934`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`silent_fallback_count=118`，`accepted_risk_count=4`。
+- Win7 状态仍不变：
+  - 当前仍未执行 Win7 真机 / 虚拟机复测。
+  - 4 条 Win7 accepted risk 继续保留，不能包装成已关闭。
+
 ## 75eb996 后二次 review 合并前补丁
 
 - 分支指向确认：

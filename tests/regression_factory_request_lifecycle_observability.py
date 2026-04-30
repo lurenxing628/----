@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional, cast
 
@@ -290,6 +292,32 @@ def test_open_db_does_not_mount_request_services_for_maintenance_short_circuit(
     captured, backend_calls = _patch_request_services_probe(monkeypatch)
 
     monkeypatch.setattr(factory_mod, "is_maintenance_window_active", lambda *args, **kwargs: True)
+
+    with app.test_request_context("/scheduler/"):
+        response = open_db()
+        assert isinstance(response, tuple)
+        assert response[1] == 503
+        assert getattr(g, "db", None) is None
+        assert getattr(g, "services", None) is None
+
+    assert captured["count"] == 0
+    assert backend_calls == []
+
+
+def test_open_db_returns_503_for_existing_maintenance_lock_without_mounting_services(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = _build_app(tmp_path, monkeypatch)
+    open_db = _get_before_hook(app, "_open_db")
+    captured, backend_calls = _patch_request_services_probe(monkeypatch)
+
+    db_path = str(app.config["DATABASE_PATH"])
+    lock_path = Path(db_path + ".maintenance.lock")
+    lock_path.write_text(
+        f"pid={os.getpid()} action=request_probe ts={datetime.now().isoformat()}",
+        encoding="utf-8",
+    )
 
     with app.test_request_context("/scheduler/"):
         response = open_db()
