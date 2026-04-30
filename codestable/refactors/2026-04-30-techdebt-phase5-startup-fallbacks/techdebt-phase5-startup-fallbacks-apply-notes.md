@@ -57,3 +57,22 @@ tags: [techdebt, startup, fallback, win7]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：passed，active_xfail_count=0，fixed_count=5，collected_count=847。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，silent_fallback_count=153。
 - 偏离：无。此步骤只补扫描和台账刷新能力，不拆 `web/ui_mode.py` 业务逻辑。
+
+## 步骤 3：引入启动运行时能力结果模型
+
+- 完成时间：2026-04-30
+- 改动文件：
+  - `web/bootstrap/runtime_capabilities.py`
+  - `tests/test_runtime_capabilities.py`
+- 改动内容：
+  - 新增 `CapabilityResult`，统一表达 `available`、`degraded`、`unavailable` 三种状态。
+  - 新增 `available()`、`degraded()`、`unavailable()` helper。
+  - `degraded()` 和 `unavailable()` 必须提供 reason；空 reason 会直接抛 `ValueError`，避免后续继续制造“没解释的降级”。
+  - 降级和不可用都会写 warning 日志，后续 launcher 接入时可以用它替代无声默认值。
+- 已完成验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/test_runtime_capabilities.py -q -p no:cacheprovider`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check web/bootstrap/runtime_capabilities.py tests/test_runtime_capabilities.py`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`：0 errors，6 个既有 warning。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：passed，active_xfail_count=0，fixed_count=5，collected_count=850。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，silent_fallback_count=153。
+- 偏离：无。此步骤只新增模型和测试，尚未批量改 launcher 调用方。

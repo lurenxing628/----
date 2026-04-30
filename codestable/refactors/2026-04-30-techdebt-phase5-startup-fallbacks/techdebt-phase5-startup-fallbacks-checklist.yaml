@@ -12,8 +12,8 @@ steps:
     exit_signal: 新拆文件已纳入 STARTUP_SCOPE_PATTERNS；request/store 归 startup_guard，render/security 归 render_bridge；定向测试、ruff、pyright、full-test-debt 和台账检查通过。
   - id: runtime-capabilities
     title: 引入启动运行时能力结果模型
-    status: pending
-    exit_signal: CapabilityResult 和 available/degraded/unavailable 测试通过。
+    status: done
+    exit_signal: CapabilityResult 和 available/degraded/unavailable 已新增；降级/不可用必须带 reason 且会写 warning 日志；测试、ruff、pyright、full-test-debt 和台账检查通过。
   - id: launcher-fallbacks
     title: 收敛 launcher fallback 为可观测结果
     status: pending
