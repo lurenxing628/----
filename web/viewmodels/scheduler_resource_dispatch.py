@@ -112,8 +112,15 @@ def _current_resource_label(row: MutableMapping[str, Any]) -> str:
 def _counterpart_resource_label(row: MutableMapping[str, Any]) -> str:
     scope_type = _text(row.get("scope_type")).lower()
     if scope_type == "operator":
-        return _display_machine(row.get("machine_id") or row.get("counterpart_resource_id"), row.get("machine_name"), row.get("supplier_name"))
-    return _display_operator(row.get("operator_id") or row.get("counterpart_resource_id"), row.get("operator_name"))
+        return _display_machine(
+            row.get("machine_id") or row.get("counterpart_resource_id"),
+            row.get("machine_name") or row.get("counterpart_resource_name"),
+            row.get("supplier_name"),
+        )
+    return _display_operator(
+        row.get("operator_id") or row.get("counterpart_resource_id"),
+        row.get("operator_name") or row.get("counterpart_resource_name"),
+    )
 
 
 def _decorate_detail_row(row: MutableMapping[str, Any]) -> None:
@@ -196,9 +203,12 @@ def _decorate_task(task: MutableMapping[str, Any]) -> None:
     if isinstance(meta, MutableMapping):
         _decorate_detail_row(meta)
         task_id = _text(task.get("id"))
-        title = _text(meta.get("op_code")) or task_id
+        title = _text(meta.get("op_code")) or _text(task.get("name")) or task_id
         counterpart = _text(meta.get("counterpart_resource_label"))
-        task["name"] = f"{title} {counterpart}".strip()
+    else:
+        title = _text(task.get("name")) or _text(task.get("id"))
+        counterpart = ""
+    task["name"] = f"{title} {counterpart}".strip()
 
 
 def _decorate_tasks(tasks: Any) -> None:
@@ -249,7 +259,8 @@ def build_resource_dispatch_filename(payload: Dict[str, Any]) -> str:
     if scope_id:
         filename += f"_{scope_id}"
     if _text(filters.get("scope_type")) == "team" and _text(filters.get("team_axis")):
-        filename += f"_{_text(filters.get('team_axis'))}"
+        team_axis_text = _text(filters.get("team_axis_label")) or team_axis_label(filters.get("team_axis"))
+        filename += f"_{team_axis_text}"
     if _text(filters.get("start_date")) and _text(filters.get("end_date")):
         filename += f"_{_text(filters.get('start_date'))}_{_text(filters.get('end_date'))}"
     if _text(filters.get("version")):

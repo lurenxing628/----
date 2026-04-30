@@ -162,6 +162,55 @@ def test_resource_dispatch_payload_labels_external_and_unassigned_resources() ->
     assert out["detail_rows"][1]["counterpart_resource_label"] == "外协/未分配"
 
 
+def test_resource_dispatch_payload_decorates_task_without_meta() -> None:
+    payload = {
+        "filters": {
+            "scope_type": "operator",
+            "scope_id": "O1",
+            "scope_name": "张三",
+            "team_axis": "machine",
+            "period_preset": "week",
+        },
+        "tasks": [
+            {"id": "task-1"},
+            {"id": "task-2", "meta": "bad-meta"},
+            {"id": "task-3", "meta": ["bad-meta"]},
+        ],
+    }
+
+    out = decorate_resource_dispatch_payload(payload)
+
+    assert out["tasks"][0]["name"] == "task-1"
+    assert out["tasks"][1]["name"] == "task-2"
+    assert out["tasks"][2]["name"] == "task-3"
+
+
+def test_resource_dispatch_counterpart_label_uses_counterpart_resource_name_fallback() -> None:
+    payload = {
+        "detail_rows": [
+            {
+                "scope_type": "operator",
+                "scope_id": "OP001",
+                "scope_name": "张三",
+                "counterpart_resource_id": "MC001",
+                "counterpart_resource_name": "设备一",
+            },
+            {
+                "scope_type": "machine",
+                "scope_id": "MC001",
+                "scope_name": "设备一",
+                "counterpart_resource_id": "OP001",
+                "counterpart_resource_name": "张三",
+            },
+        ]
+    }
+
+    out = decorate_resource_dispatch_payload(payload)
+
+    assert out["detail_rows"][0]["counterpart_resource_label"] == "MC001 设备一"
+    assert out["detail_rows"][1]["counterpart_resource_label"] == "OP001 张三"
+
+
 def test_resource_dispatch_export_filename_uses_decorated_filter_labels() -> None:
     payload = decorate_resource_dispatch_payload(
         {
@@ -179,3 +228,25 @@ def test_resource_dispatch_export_filename_uses_decorated_filter_labels() -> Non
     )
 
     assert build_resource_dispatch_filename(payload) == "资源排班_人员_OP001_2026-03-02_2026-03-08_v7.xlsx"
+
+
+def test_resource_dispatch_export_filename_uses_team_axis_label() -> None:
+    payload = decorate_resource_dispatch_payload(
+        {
+            "filters": {
+                "scope_type": "team",
+                "scope_id": "TEAM-01",
+                "scope_name": "装配一组",
+                "team_axis": "operator",
+                "period_preset": "week",
+                "start_date": "2026-05-01",
+                "end_date": "2026-05-07",
+                "version": 9,
+            }
+        }
+    )
+
+    filename = build_resource_dispatch_filename(payload)
+
+    assert filename == "资源排班_班组_TEAM-01_人员轴_2026-05-01_2026-05-07_v9.xlsx"
+    assert "operator" not in filename
