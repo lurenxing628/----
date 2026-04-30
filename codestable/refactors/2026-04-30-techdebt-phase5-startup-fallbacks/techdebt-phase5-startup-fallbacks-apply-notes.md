@@ -76,3 +76,32 @@ tags: [techdebt, startup, fallback, win7]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：passed，active_xfail_count=0，fixed_count=5，collected_count=850。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，silent_fallback_count=153。
 - 偏离：无。此步骤只新增模型和测试，尚未批量改 launcher 调用方。
+
+## 步骤 4.1：收敛 paths/contracts 启动链回退
+
+- 完成时间：2026-04-30
+- 改动文件：
+  - `web/bootstrap/launcher_paths.py`
+  - `web/bootstrap/launcher_contracts.py`
+  - `tools/quality_gate_operations.py`
+  - `tests/test_sync_debt_ledger.py`
+  - `开发文档/技术债务治理台账.md`
+- 改动内容：
+  - `current_runtime_owner()` 读取当前用户失败时仍按旧合同回到 `unknown`，但会写 warning，现场能看到原因。
+  - `read_shared_data_root_from_registry()` 读注册表失败、读值失败、关闭句柄失败时继续保留旧回退顺序，但会写 warning。
+  - `resolve_runtime_state_dir()` 遇到非法 `cfg_log_dir` 对象时仍回到 `runtime/logs`，但会写 warning。
+  - `read_runtime_lock()`、`read_runtime_contract()`、契约字段规范化、镜像写入、清理锁/错误/契约文件失败等路径保留旧返回值和 best effort 行为，但补了 warning。
+  - `refresh-auto-fields` 增加同路径、同函数、同序号唯一命中时的自动字段对齐能力，解决“同一个 except 从静默改成可观测后指纹变化，台账受控刷新无法继续”的问题；旧 entry id 会保留，避免 accepted risk 引用断裂。
+  - 台账通过受控刷新更新本批自动字段；`silent_fallback_count` 保持 153，后续 accepted risk 收口阶段再删除已消除风险。
+- 扫描结果：
+  - raw fallback scanner：observable_degrade 52、silent_default_fallback 27、cleanup_best_effort 17、silent_swallow 13。
+  - 台账数量仍为 153；本小批只迁移已登记处理器的自动字段和 accepted risk 引用，不扩大历史未处理范围。
+- 已完成验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_win7_launcher_runtime_paths.py tests/regression_runtime_contract_launcher.py tests/regression_runtime_lock_reloader_parent_skip.py tests/test_sync_debt_ledger.py::test_refresh_auto_fields_realigns_silent_entry_when_handler_fingerprint_changed tests/test_sync_debt_ledger.py::test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drifted tests/test_sync_debt_ledger.py::test_refresh_auto_fields_realigns_silent_entries_when_earlier_handler_left_scan tests/test_architecture_fitness.py::test_no_silent_exception_swallow tests/test_architecture_fitness.py::test_startup_silent_fallback_samples`：45 passed。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/quality_gate_entries.py tools/quality_gate_operations.py tests/test_sync_debt_ledger.py web/bootstrap/launcher_paths.py web/bootstrap/launcher_contracts.py`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`：0 errors，6 个既有 warning。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：passed，active_xfail_count=0，fixed_count=5，collected_count=852。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields`：通过，silent_fallback_count=153。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，silent_fallback_count=153。
+- 偏离：
+  - 此小批只处理 paths/contracts；processes/stop/network/runtime_probe 按后续小批继续处理。

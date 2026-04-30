@@ -16,8 +16,8 @@ steps:
     exit_signal: CapabilityResult 和 available/degraded/unavailable 已新增；降级/不可用必须带 reason 且会写 warning 日志；测试、ruff、pyright、full-test-debt 和台账检查通过。
   - id: launcher-fallbacks
     title: 收敛 launcher fallback 为可观测结果
-    status: pending
-    exit_signal: paths/contracts/processes/stop/network/runtime_probe 定向测试通过。
+    status: in-progress
+    exit_signal: paths/contracts 已完成第一小批；processes/stop/network/runtime_probe 待处理。
   - id: ui-mode-split
     title: 拆分 web/ui_mode.py
     status: pending

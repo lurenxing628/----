@@ -116,6 +116,7 @@ def build_silent_entry(entry: Dict[str, Any], source: str, existing: Optional[Di
     if scope_tag == "render_bridge":
         base["exit_condition"] = "完成替代渲染桥接方案或明确维持现状的长期策略"
     merged = _merge_manual_fields(existing, base)
+    merged["id"] = base["id"]
     if source == "migrated_from_architecture_fitness_counter":
         merged["fallback_kind"] = "silent_swallow"
     _maybe_refresh_last_verified(existing, merged, ["line_start", "line_end", "handler_fingerprint", "fallback_kind", "source", "scope_tag"])

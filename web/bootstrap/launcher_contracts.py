@@ -7,6 +7,8 @@ import sys
 import time
 from typing import Any, Dict, Optional
 
+from core.infrastructure.logging import safe_log
+
 from .launcher_paths import (
     RUNTIME_CONTRACT_VERSION,
     RUNTIME_ERROR_FILE,
@@ -32,7 +34,8 @@ class RuntimeLockError(RuntimeError):
         self.owner = str(owner or "").strip()
         try:
             self.pid = int(pid or 0)
-        except Exception:
+        except Exception as exc:
+            safe_log(None, "warning", "解析运行时锁 pid 失败，已按 0 处理：pid=%r error=%s", pid, exc)
             self.pid = 0
 
 
@@ -68,7 +71,8 @@ def _read_key_value_file(path: str) -> Dict[str, str]:
     try:
         with open(path, encoding="utf-8") as f:
             lines = f.readlines()
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "读取运行时键值文件失败，已按空文件处理：path=%s error=%s", path, exc)
         return {}
     for raw in lines:
         line = str(raw or "").strip()
@@ -92,7 +96,8 @@ def read_runtime_lock(runtime_dir_or_state_dir: str) -> Optional[Dict[str, Any]]
     payload: Dict[str, Any] = dict(payload_raw)
     try:
         payload["pid"] = int(payload.get("pid") or 0)
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "运行时锁 pid 非法，已按失效锁处理：path=%s error=%s", lock_path, exc)
         payload["pid"] = 0
     payload["state_dir"] = state_dir
     payload["path"] = lock_path
@@ -104,7 +109,8 @@ def _is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str
         return False
     try:
         pid = int(lock_payload.get("pid") or 0)
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "运行时锁 pid 非法，已按非活跃处理：%s", exc)
         pid = 0
     if pid <= 0 or not _pid_exists(pid):
         return False
@@ -142,8 +148,8 @@ def _create_new_runtime_lock(lock_path: str, payload: Dict[str, Any]) -> bool:
     except Exception:
         try:
             os.remove(lock_path)
-        except Exception:
-            pass
+        except Exception as cleanup_exc:
+            safe_log(None, "warning", "创建运行时锁失败后清理锁文件失败，已继续抛出原错误：path=%s error=%s", lock_path, cleanup_exc)
         raise
     return True
 
@@ -206,7 +212,8 @@ def release_runtime_lock(runtime_dir_or_state_dir: str, expected_pid: int | None
     pid0 = int(existing.get("pid") or 0)
     try:
         pid_expected = int(expected_pid if expected_pid is not None else os.getpid())
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "释放运行时锁时 expected_pid 非法，已按当前锁归属不确定处理：%s", exc)
         pid_expected = 0
     if pid_expected > 0 and pid0 > 0 and pid0 != pid_expected:
         return
@@ -214,8 +221,8 @@ def release_runtime_lock(runtime_dir_or_state_dir: str, expected_pid: int | None
         os.remove(str(existing.get("path") or ""))
     except FileNotFoundError:
         pass
-    except Exception:
-        pass
+    except Exception as exc:
+        safe_log(None, "warning", "释放运行时锁失败，已继续：path=%s error=%s", existing.get("path"), exc)
 
 
 def write_launch_error(runtime_dir: str, message: str, cfg_log_dir: str | None = None) -> str:
@@ -234,8 +241,8 @@ def clear_launch_error(runtime_dir_or_state_dir: str) -> None:
         os.remove(error_path)
     except FileNotFoundError:
         pass
-    except Exception:
-        pass
+    except Exception as exc:
+        safe_log(None, "warning", "清理启动错误文件失败，已继续：path=%s error=%s", error_path, exc)
 
 
 def write_runtime_host_port_files(
@@ -257,16 +264,16 @@ def write_runtime_host_port_files(
         try:
             os.makedirs(mirror_log_dir, exist_ok=True)
             _write_runtime_state_triplet(mirror_log_dir, host, port, db_for_runtime)
-        except Exception:
-            pass
+        except Exception as exc:
+            safe_log(logger, "warning", "写入运行时镜像端点文件失败，主状态文件已写入：dir=%s error=%s", mirror_log_dir, exc)
     if logger is not None:
         try:
             host_file, port_file, db_file, _contract_file = state_contract_paths(state_dir)
             logger.info(f"端口已写入：{port_file} -> {int(port)}")
             logger.info(f"Host 已写入：{host_file}")
             logger.info(f"DB 路径已写入：{db_file} -> {db_for_runtime}")
-        except Exception:
-            pass
+        except Exception as exc:
+            safe_log(logger, "warning", "记录运行时端点文件日志失败，已继续：%s", exc)
 
 
 def _runtime_contract_path(state_dir: str) -> str:
@@ -354,13 +361,13 @@ def write_runtime_contract_file(
         try:
             os.makedirs(mirror_log_dir, exist_ok=True)
             _write_runtime_contract_payload(mirror_log_dir, payload)
-        except Exception:
-            pass
+        except Exception as exc:
+            safe_log(logger, "warning", "写入运行时镜像契约失败，主契约已写入：dir=%s error=%s", mirror_log_dir, exc)
     if logger is not None:
         try:
             logger.info(f"运行时契约已写入：{contract_path}")
-        except Exception:
-            pass
+        except Exception as exc:
+            safe_log(logger, "warning", "记录运行时契约日志失败，已继续：%s", exc)
     return contract_path
 
 
@@ -380,7 +387,8 @@ def read_runtime_contract(runtime_dir: str) -> Optional[Dict[str, Any]]:
     try:
         with open(contract_path, encoding="utf-8") as f:
             payload = json.load(f)
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "读取运行时契约失败，已按无有效契约处理：path=%s error=%s", contract_path, exc)
         return None
     return _normalize_runtime_contract_payload(payload)
 
@@ -390,14 +398,16 @@ def _normalize_runtime_contract_payload(payload: Any) -> Optional[Dict[str, Any]
         return None
     try:
         payload["contract_version"] = int(payload.get("contract_version") or 0)
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "运行时契约 contract_version 非法，已按无效契约处理：%s", exc)
         payload["contract_version"] = 0
     if payload["contract_version"] != RUNTIME_CONTRACT_VERSION:
         return None
     for key in ("pid", "port"):
         try:
             payload[key] = int(payload.get(key) or 0)
-        except Exception:
+        except Exception as exc:
+            safe_log(None, "warning", "运行时契约字段非法，已按 0 处理：field=%s error=%s", key, exc)
             payload[key] = 0
     return payload
 
@@ -422,8 +432,8 @@ def delete_runtime_contract_files(runtime_dir: str) -> None:
             os.remove(path)
         except FileNotFoundError:
             pass
-        except Exception:
-            pass
+        except Exception as exc:
+            safe_log(None, "warning", "删除运行时契约相关文件失败，已继续：path=%s error=%s", path, exc)
 
 
 def _runtime_contract_log_dirs(state_dir: str) -> list[str]:
@@ -432,7 +442,8 @@ def _runtime_contract_log_dirs(state_dir: str) -> list[str]:
     try:
         with open(contract_path, encoding="utf-8") as f:
             payload = json.load(f)
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "读取运行时契约镜像目录失败，将只清理当前状态目录：path=%s error=%s", contract_path, exc)
         return log_dirs
     if not isinstance(payload, dict):
         return log_dirs

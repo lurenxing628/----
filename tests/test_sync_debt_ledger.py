@@ -351,6 +351,7 @@ def test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drif
         lambda scan_item, source, existing=None: {
             **dict(existing or {}),
             **dict(scan_item),
+            "id": (existing or {}).get("id", scan_item.get("id")),
             "source": source,
         },
     )
@@ -363,7 +364,164 @@ def test_refresh_auto_fields_realigns_silent_entry_when_only_except_ordinal_drif
     assert entry["except_ordinal"] == 8
     assert entry["line_start"] == 375
     assert entry["line_end"] == 382
+
+
+def test_refresh_auto_fields_realigns_silent_entry_when_handler_fingerprint_changed(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:web-bootstrap-launcher-contracts-read_runtime_contract-old",
+                    "path": "web/bootstrap/launcher_contracts.py",
+                    "symbol": "read_runtime_contract",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "startup baseline",
+                    "handler_fingerprint": "sha1:old-fingerprint",
+                    "except_ordinal": 1,
+                    "line_start": 388,
+                    "line_end": 389,
+                    "fallback_kind": "silent_default_fallback",
+                    "source": "baseline_scan",
+                }
+            ],
+        },
+        "accepted_risks": [
+            {
+                "id": "risk:launcher-runtime-lock-contract-win7",
+                "entry_ids": ["fallback:web-bootstrap-launcher-contracts-read_runtime_contract-old"],
+                "owner": "techdebt",
+                "reason": "Win7 现场复核前保留",
+                "review_after": "2026-05-31",
+                "exit_condition": "Win7 现场复核后删除。",
+            }
+        ],
+    }
+    scan_entry = {
+        "id": "fallback:web-bootstrap-launcher-contracts-read_runtime_contract-new",
+        "path": "web/bootstrap/launcher_contracts.py",
+        "symbol": "read_runtime_contract",
+        "handler_fingerprint": "sha1:new-fingerprint",
+        "except_ordinal": 1,
+        "line_start": 390,
+        "line_end": 392,
+        "fallback_kind": "observable_degrade",
+    }
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    refreshed = module.refresh_auto_fields(ledger)
+    entry = refreshed["silent_fallback"]["entries"][0]
+
+    assert entry["id"] == "fallback:web-bootstrap-launcher-contracts-read_runtime_contract-new"
+    assert entry["handler_fingerprint"] == "sha1:new-fingerprint"
+    assert entry["fallback_kind"] == "observable_degrade"
     assert entry["owner"] == "SP03"
+    assert refreshed["accepted_risks"][0]["entry_ids"] == [
+        "fallback:web-bootstrap-launcher-contracts-read_runtime_contract-new"
+    ]
+
+
+def test_refresh_auto_fields_realigns_silent_entries_when_earlier_handler_left_scan(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:registry-query-old",
+                    "path": "web/bootstrap/launcher_paths.py",
+                    "symbol": "read_shared_data_root_from_registry",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "startup baseline",
+                    "handler_fingerprint": "sha1:old-query",
+                    "except_ordinal": 2,
+                    "line_start": 69,
+                    "line_end": 70,
+                    "fallback_kind": "silent_default_fallback",
+                    "source": "baseline_scan",
+                },
+                {
+                    "id": "fallback:registry-close-old",
+                    "path": "web/bootstrap/launcher_paths.py",
+                    "symbol": "read_shared_data_root_from_registry",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "startup baseline",
+                    "handler_fingerprint": "sha1:old-close",
+                    "except_ordinal": 3,
+                    "line_start": 74,
+                    "line_end": 75,
+                    "fallback_kind": "silent_swallow",
+                    "source": "baseline_scan",
+                },
+            ],
+        },
+        "accepted_risks": [
+            {
+                "id": "risk:launcher-runtime-root-owner-win7",
+                "entry_ids": ["fallback:registry-query-old", "fallback:registry-close-old"],
+                "owner": "techdebt",
+                "reason": "Win7 现场复核前保留",
+                "review_after": "2026-05-31",
+                "exit_condition": "Win7 现场复核后删除。",
+            }
+        ],
+    }
+    scan_entries = [
+        {
+            "id": "fallback:registry-query-new",
+            "path": "web/bootstrap/launcher_paths.py",
+            "symbol": "read_shared_data_root_from_registry",
+            "handler_fingerprint": "sha1:new-query",
+            "except_ordinal": 1,
+            "line_start": 73,
+            "line_end": 75,
+            "fallback_kind": "observable_degrade",
+        },
+        {
+            "id": "fallback:registry-close-new",
+            "path": "web/bootstrap/launcher_paths.py",
+            "symbol": "read_shared_data_root_from_registry",
+            "handler_fingerprint": "sha1:new-close",
+            "except_ordinal": 2,
+            "line_start": 79,
+            "line_end": 80,
+            "fallback_kind": "observable_degrade",
+        },
+    ]
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: scan_entries)
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    refreshed = module.refresh_auto_fields(ledger)
+
+    assert [entry["id"] for entry in refreshed["silent_fallback"]["entries"]] == [
+        "fallback:registry-query-new",
+        "fallback:registry-close-new",
+    ]
+    assert refreshed["accepted_risks"][0]["entry_ids"] == [
+        "fallback:registry-query-new",
+        "fallback:registry-close-new",
+    ]
 
 
 def test_refresh_auto_fields_prunes_resolved_complexity_entry(monkeypatch):

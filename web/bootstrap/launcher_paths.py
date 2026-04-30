@@ -6,6 +6,8 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
+from core.infrastructure.logging import safe_log
+
 RUNTIME_CONTRACT_VERSION = 1
 RUNTIME_SHUTDOWN_PATH = "/system/runtime/shutdown"
 RUNTIME_LOCK_FILE = "aps_runtime.lock"
@@ -39,7 +41,8 @@ def current_runtime_owner() -> str:
     if not user:
         try:
             user = str(getpass.getuser() or "").strip()
-        except Exception:
+        except Exception as exc:
+            safe_log(None, "warning", "读取当前用户失败，运行时 owner 将按 unknown 处理：%s", exc)
             user = ""
     domain = str(os.environ.get("USERDOMAIN") or os.environ.get("COMPUTERNAME") or "").strip()
     return _compose_runtime_owner(user, domain)
@@ -61,18 +64,20 @@ def read_shared_data_root_from_registry() -> str:
     for access in (key_read | wow64_64, key_read):
         try:
             key = open_key(hkey_local_machine, r"SOFTWARE\APS", 0, access)
-        except Exception:
+        except OSError as exc:
+            safe_log(None, "warning", "读取 APS 共享数据目录注册表失败，尝试下一个访问模式：access=%s error=%s", access, exc)
             continue
         try:
             result = query_value_ex(key, "SharedDataRoot")
             value = result[0] if isinstance(result, tuple) and result else ""
-        except Exception:
+        except Exception as exc:
+            safe_log(None, "warning", "读取 APS SharedDataRoot 注册表值失败，将继续使用后续回退路径：%s", exc)
             value = ""
         finally:
             try:
                 close_key(key)
-            except Exception:
-                pass
+            except Exception as exc:
+                safe_log(None, "warning", "关闭 APS 注册表句柄失败，已继续：%s", exc)
         shared_root = _normalize_abs_dir(value)
         if shared_root:
             return shared_root
@@ -113,7 +118,8 @@ def resolve_runtime_state_dir(runtime_dir: str, cfg_log_dir: str | None = None) 
     cfg_log_dir_s = ""
     try:
         cfg_log_dir_s = str(cfg_log_dir).strip() if cfg_log_dir is not None else ""
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "解析运行时状态目录配置失败，已回退到 runtime/logs：%s", exc)
         cfg_log_dir_s = ""
     if cfg_log_dir_s:
         return os.path.abspath(cfg_log_dir_s)

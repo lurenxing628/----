@@ -205,7 +205,42 @@ def _resolve_silent_refresh_entry(
     if len(fallback_candidates) == 1:
         return fallback_candidates[0]
 
+    same_handler_candidates = [
+        dict(candidate)
+        for scan_key, candidate in silent_scan.items()
+        if scan_key[0] == key[0] and scan_key[1] == key[1] and scan_key[3] == key[3]
+    ]
+    if len(same_handler_candidates) == 1:
+        return same_handler_candidates[0]
+
     raise QualityGateError("静默回退条目已无法通过当前扫描对齐：{}".format(entry.get("id")))
+
+
+def _silent_group_alignment(
+    silent_entries: Sequence[Dict[str, Any]],
+    scan_entries: Sequence[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    old_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    new_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    for entry in silent_entries:
+        key = (str(entry.get("path") or ""), str(entry.get("symbol") or ""))
+        old_groups.setdefault(key, []).append(dict(entry))
+    for entry in scan_entries:
+        key = (str(entry.get("path") or ""), str(entry.get("symbol") or ""))
+        new_groups.setdefault(key, []).append(dict(entry))
+
+    aligned: Dict[str, Dict[str, Any]] = {}
+    for key, old_items in old_groups.items():
+        new_items = new_groups.get(key) or []
+        if len(old_items) != len(new_items):
+            continue
+        old_ordered = sorted(old_items, key=lambda item: (int(item.get("except_ordinal") or 0), int(item.get("line_start") or 0)))
+        new_ordered = sorted(new_items, key=lambda item: (int(item.get("except_ordinal") or 0), int(item.get("line_start") or 0)))
+        for old_item, new_item in zip(old_ordered, new_ordered):
+            old_id = str(old_item.get("id") or "")
+            if old_id:
+                aligned[old_id] = dict(new_item)
+    return aligned
 
 
 def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -249,13 +284,30 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
         )
 
     silent_paths = sorted({str(entry.get("path")) for entry in silent_entries})
-    silent_scan = _silent_scan_index(scan_silent_fallback_entries(silent_paths))
+    silent_scan_entries = scan_silent_fallback_entries(silent_paths)
+    silent_scan = _silent_scan_index(silent_scan_entries)
+    silent_group_alignment = _silent_group_alignment(silent_entries, silent_scan_entries)
     refreshed_silent = []
+    silent_id_replacements: Dict[str, str] = {}
     for entry in silent_entries:
-        matched_entry = _resolve_silent_refresh_entry(entry, silent_scan)
-        refreshed_silent.append(
-            build_silent_entry(matched_entry, source=str(entry.get("source") or "baseline_scan"), existing=entry)
-        )
+        matched_entry = silent_group_alignment.get(str(entry.get("id") or ""))
+        if matched_entry is None:
+            matched_entry = _resolve_silent_refresh_entry(entry, silent_scan)
+        refreshed_entry = build_silent_entry(matched_entry, source=str(entry.get("source") or "baseline_scan"), existing=entry)
+        old_id = str(entry.get("id") or "")
+        new_id = str(refreshed_entry.get("id") or "")
+        if old_id and new_id and old_id != new_id:
+            silent_id_replacements[old_id] = new_id
+        refreshed_silent.append(refreshed_entry)
+
+    if silent_id_replacements:
+        for risk in cast(List[Dict[str, Any]], ledger.get("accepted_risks") or []):
+            next_entry_ids = []
+            for entry_id in list(risk.get("entry_ids") or []):
+                next_id = silent_id_replacements.get(str(entry_id), str(entry_id))
+                if next_id not in next_entry_ids:
+                    next_entry_ids.append(next_id)
+            risk["entry_ids"] = next_entry_ids
 
     ledger["oversize_allowlist"] = refreshed_oversize
     ledger["complexity_allowlist"] = refreshed_complexity
