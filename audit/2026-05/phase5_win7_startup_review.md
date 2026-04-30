@@ -5,7 +5,8 @@
 - 日期：2026-04-30
 - 当前开发机：macOS（本机不是 Win7）
 - 当前分支：`codex/techdebt-phase5-startup-fallbacks`
-- 记录创建时 HEAD：`14703da`
+- 阶段 5 代码与台账收口 HEAD：`b95f7d9`
+- 说明：本文件后续如有修正，只修复审计记录文字，不改变阶段 5 代码与台账事实；最终证明仍以本文件所在提交之后重新运行的本地验证和 clean quality gate 为准。
 - Python 口径：`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python ...`
 - Chrome runtime：未在本机执行 Win7 Chrome109 运行时复测
 
@@ -39,18 +40,22 @@
 ## 保留风险
 
 - `risk:launcher-bind-host-port-win7`
+  - owner：SP03
   - 保留原因：端口绑定、自动换路和 socket 行为需要 Win7 x64 目标机确认。
   - review_after：2026-05-31
   - exit_condition：完成 Win7 x64 启动、端口占用后自动换路、再次启动和 launcher.log 可读原因复测。
 - `risk:launcher-process-probe-kill-win7`
+  - owner：SP03
   - 保留原因：tasklist、PowerShell、WMI/CIM、Chrome profile 精确匹配和不误杀普通 Chrome 需要 Win7 x64 目标机确认。
   - review_after：2026-05-31
   - exit_condition：完成普通 Chrome 共存、APS Chrome profile 精确匹配、Profile2/_bak/URL 伪造负例、无法枚举进程时失败闭合和 runtime stop 复测。
 - `risk:launcher-runtime-lock-contract-win7`
+  - owner：SP03
   - 保留原因：运行锁、runtime contract、残留文件清理和停机链需要 Win7 x64 目标机确认。
   - review_after：2026-05-31
   - exit_condition：完成启动、停止、再次启动、损坏 runtime contract、残留 lock/contract 清理和停止失败可读原因复测。
 - `risk:launcher-runtime-root-owner-win7`
+  - owner：SP03
   - 保留原因：运行根目录、注册表、owner 解析和第二账户持锁阻止进入需要 Win7 x64 目标机确认。
   - review_after：2026-05-31
   - exit_condition：完成机器级注册表、当前进程环境变量、共享数据目录、第二账户持锁阻止进入和 owner 归属可读原因复测。
