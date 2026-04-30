@@ -121,6 +121,6 @@ def _read_existing_endpoint_text(path: str) -> Tuple[str, str]:
     try:
         with open(path, encoding="utf-8") as f:
             return (f.read() or "").strip(), ""
-    except Exception as exc:
+    except (OSError, UnicodeError) as exc:
         launcher_log_warning(None, "读取运行时端点文件失败：path=%s error=%s", path, exc, state_dir=os.path.dirname(path))
         return "", str(exc)

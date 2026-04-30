@@ -450,4 +450,13 @@ def read_runtime_contract(runtime_dir: str) -> Optional[Dict[str, Any]]:
 
 
 def delete_runtime_contract_files(runtime_dir: str) -> None:
-    delete_runtime_contract_files_result(runtime_dir)
+    """兼容旧调用的尽力清理入口；停止链判断成功与否必须使用 result 版本。"""
+    result = delete_runtime_contract_files_result(runtime_dir)
+    if not result.ok:
+        launcher_log_warning(
+            None,
+            "运行时契约兼容清理入口未清理干净，调用方如需判断成功必须改用 result 版本：failures=%s",
+            [failure.path for failure in result.failures],
+            state_dir=result.state_dir,
+            write_launch_error=True,
+        )

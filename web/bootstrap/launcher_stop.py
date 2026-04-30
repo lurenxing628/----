@@ -87,7 +87,7 @@ def _build_shutdown_url(contract: Dict[str, Any]) -> Optional[str]:
     host = str(contract.get("host") or "").strip() or "127.0.0.1"
     try:
         port = int(contract.get("port") or 0)
-    except Exception as exc:
+    except (TypeError, ValueError) as exc:
         _launcher_log_contract_warning(
             "运行时停止端口非法，无法构造关闭地址：port=%r error=%s",
             contract.get("port"),
