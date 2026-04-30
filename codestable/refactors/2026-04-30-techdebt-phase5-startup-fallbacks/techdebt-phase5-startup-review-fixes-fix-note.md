@@ -162,7 +162,7 @@ tags: [techdebt, startup, fallback, win7]
 - transaction 阶段 4 基础设施主入口已收紧：
   - `in_transaction_context()` 读取事务深度失败时记录 warning，并按“处于事务内”处理，避免误开独立提交。
   - `TransactionManager.transaction()` 保留旧入口，但真实上下文流程下沉到 helper，BEGIN / SAVEPOINT / rollback / commit 规则只维护一份。
-  - rollback 失败会记录日志，原始业务异常继续向外抛出。
+  - rollback 失败会记录日志；如果回滚本身失败，后续补丁会按“连接状态不可信”向外失败闭合，不再只抛原始业务异常。
 - 尾部低风险清理：
   - endpoint 文件读取只捕获文件/编码错误。
   - shutdown URL 端口解析只捕获类型/数值错误。
@@ -214,5 +214,51 @@ tags: [techdebt, startup, fallback, win7]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：通过，`active_xfail_count=0`，`collected_count=911`。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields && PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`complexity_count=18`，`silent_fallback_count=120`，`accepted_risk_count=4`。
 - Win7 状态不变：
+  - 当前仍未执行 Win7 真机 / 虚拟机复测。
+  - 4 条 Win7 accepted risk 继续保留，不能包装成已关闭。
+
+## 597178e 后合并前尾修
+
+- 复核结论：
+  - review 中关于 `_block_commit_if_poisoned()` “回滚成功后继续 commit” 的 P0 判断，在当前 `597178e` 代码里已经不成立。
+  - 当前代码里 `_block_commit_if_poisoned()` 发现 poison 后，无论回滚是否成功都会 `raise RuntimeError`。
+  - `tests/test_transaction_boundary.py::test_nested_savepoint_rollback_failure_blocks_outer_commit` 已经覆盖“内层回滚失败、外层捕获后继续写、最终外层不能提交”。
+- 本轮没有重做 lock / contract / endpoint / Chrome 收尾链路。
+- 本轮真实补的是三个基础设施尾巴：
+  - 外层事务 rollback 失败时，不再只记录日志，而是抛出 `事务回滚失败，连接状态不可信`。
+  - commit 失败且 rollback 也失败时，抛出 `事务提交失败，且回滚失败；连接状态不可信`。
+  - 数据库结构初始化失败后，如果 rollback 也失败，抛出 `数据库结构初始化失败，且回滚失败；数据库状态不可信`。
+  - `database.py::_bootstrap_missing_tables_from_schema()` 不再做二次 `commit()`，只保留兼容 wrapper。
+  - 迁移失败后，如果迁移前备份缺失或备份恢复失败，抛出 `MigrationRollbackError`，不再只写日志后继续抛原迁移错误。
+- 新增 / 更新测试锁住：
+  - 外层事务 rollback 失败必须向调用方暴露连接不可信。
+  - commit 失败 + rollback 失败必须暴露组合错误。
+  - savepoint 回滚失败导致 poison 后，不允许出现“事务提交成功”。
+  - 数据库初始化 rollback 失败必须向外抛出。
+  - 数据库补表 wrapper 不再二次提交。
+  - 迁移失败后备份恢复失败、备份缺失都必须强传播。
+  - 迁移失败但备份恢复成功时，仍保留原迁移错误。
+- Win7 状态仍不变：
+  - 当前仍未执行 Win7 真机 / 虚拟机复测。
+  - 4 条 Win7 accepted risk 继续保留，不能包装成已关闭。
+
+### 597178e 后最终台账和门禁修正
+
+- 台账刷新边界补强：
+  - 非启动链里已经标为 `fixed` 的 silent fallback 条目，如果当前扫描不再需要承接，会在 `refresh-auto-fields` 中移出。
+  - 启动链范围的 fixed 条目不会因为 fixed 状态被直接剪掉，避免架构扫描把当前仍存在的启动链处理器误判成“未登记新增项”。
+  - 因此本轮先用 `scan-startup-baseline` 恢复启动链当前扫描登记，再用 `refresh-auto-fields` 对齐字段。
+- 当前最终台账结果：
+  - `oversize_count=1`
+  - `complexity_count=18`
+  - `silent_fallback_count=119`
+  - `accepted_risk_count=4`
+  - `test_debt_count=5`
+- 当前最终补充验证：
+  - `tests/test_architecture_fitness.py::test_no_silent_exception_swallow`
+  - `tests/test_architecture_fitness.py::test_startup_silent_fallback_samples`
+  - `tools/check_full_test_debt.py`
+  - `scripts/sync_debt_ledger.py check`
+- Win7 状态仍不变：
   - 当前仍未执行 Win7 真机 / 虚拟机复测。
   - 4 条 Win7 accepted risk 继续保留，不能包装成已关闭。

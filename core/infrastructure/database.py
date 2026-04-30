@@ -75,6 +75,18 @@ def _bootstrap_missing_tables_from_schema(conn: sqlite3.Connection, schema_sql: 
     return _bootstrap_missing_tables_from_schema_impl(conn, schema_sql, logger=logger)
 
 
+def _rollback_failed_schema_initialization(conn: sqlite3.Connection, init_exc: Exception, logger=None) -> None:
+    try:
+        conn.rollback()
+    except Exception as rollback_exc:
+        fallback_log(
+            logger or _LOGGER,
+            "error",
+            f"数据库结构初始化失败后的回滚也失败，数据库状态不可信：init={init_exc}; rollback={rollback_exc}",
+        )
+        raise RuntimeError("数据库结构初始化失败，且回滚失败；数据库状态不可信") from rollback_exc
+
+
 def ensure_schema(
     db_path: str, logger=None, schema_path: Optional[str] = None, backup_dir: Optional[str] = None
 ) -> None:
@@ -132,15 +144,7 @@ def ensure_schema(
                 fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")
         except Exception as init_exc:
             # 失败尽最大努力回滚，避免半初始化状态
-            try:
-                conn.rollback()
-            except Exception as rollback_exc:
-                fallback_log(
-                    logger or _LOGGER,
-                    "error",
-                    f"数据库结构初始化失败后的回滚也失败，数据库状态不可信：init={init_exc}; rollback={rollback_exc}",
-                )
-                raise RuntimeError("数据库结构初始化失败，且回滚失败；数据库状态不可信") from rollback_exc
+            _rollback_failed_schema_initialization(conn, init_exc, logger=logger)
             raise
     finally:
         try:

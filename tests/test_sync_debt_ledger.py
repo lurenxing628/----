@@ -922,6 +922,67 @@ def test_refresh_auto_fields_prunes_resolved_silent_entry_and_risk_reference(mon
     assert refreshed["accepted_risks"][0]["entry_ids"] == ["fallback:still-open-new"]
 
 
+def test_refresh_auto_fields_prunes_fixed_silent_entry_without_realigning(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["core/infrastructure/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:fixed-old",
+                    "path": "core/infrastructure/database.py",
+                    "symbol": "ensure_schema",
+                    "status": "fixed",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "fixed entry should be pruned",
+                    "last_verified_at": "2026-04-30T21:27:43+08:00",
+                    "notes": "已修复",
+                    "handler_fingerprint": "sha1:old-fixed",
+                    "handler_context_hash": "sha1:ctx-fixed",
+                    "except_ordinal": 3,
+                    "line_start": 136,
+                    "line_end": 137,
+                    "fallback_kind": "silent_swallow",
+                    "source": "migrated_from_architecture_fitness_counter",
+                }
+            ],
+        },
+        "accepted_risks": [
+            {
+                "id": "risk:fixed-old",
+                "entry_ids": ["fallback:fixed-old"],
+                "owner": "techdebt",
+                "reason": "旧风险",
+                "review_after": "2026-05-31",
+                "exit_condition": "fixed 后移除。",
+            }
+        ],
+    }
+    scan_entry = {
+        "id": "fallback:current-handler",
+        "path": "core/infrastructure/database.py",
+        "symbol": "ensure_schema",
+        "handler_fingerprint": "sha1:old-fixed",
+        "handler_context_hash": "sha1:ctx-fixed",
+        "except_ordinal": 1,
+        "line_start": 90,
+        "line_end": 91,
+        "fallback_kind": "silent_swallow",
+    }
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    refreshed = module.refresh_auto_fields(ledger)
+
+    assert refreshed["silent_fallback"]["entries"] == []
+    assert refreshed["accepted_risks"] == []
+
+
 def test_refresh_auto_fields_prunes_resolved_complexity_entry(monkeypatch):
     module = _import_quality_gate_support()
     ledger = {

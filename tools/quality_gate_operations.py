@@ -427,6 +427,9 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
     silent_id_replacements: Dict[str, str] = {}
     removed_silent_ids: Set[str] = set()
     for entry in silent_entries:
+        if str(entry.get("status") or "open") == "fixed" and not is_startup_scope_path(str(entry.get("path") or "")):
+            removed_silent_ids.add(str(entry.get("id") or ""))
+            continue
         matched_entry = silent_group_alignment.get(str(entry.get("id") or ""))
         if matched_entry is None:
             try:
