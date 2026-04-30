@@ -52,6 +52,11 @@ tags: [techdebt, startup, fallback, win7]
   - endpoint 不通、lock 不活跃但 contract 损坏时，状态为 `blocked_contract`，停止命令返回失败并保留现场文件。
   - 新增 `RuntimeCleanupResult`，运行时文件清理失败会让停止命令返回失败，不再把“删不干净”当成停止成功。
   - 旧 `delete_runtime_contract_files()` 仍保留给退出钩子和旧调用方使用，新停止链改走 `delete_runtime_contract_files_result()`。
+- 继续补强运行时 endpoint 文件读取：
+  - 新增 `RuntimeEndpointReadResult`，把 `aps_host.txt` / `aps_port.txt` 的缺失、不可读和非法内容分开。
+  - 停止主链不再把 host 文件不可读或 port 文件非法压成空值 / 0 后当作 `stale` 清理。
+  - endpoint 文件读坏且仍有 runtime 痕迹时，状态进入 `blocked_endpoint`，停止命令返回失败并保留现场文件。
+  - 旧 `_read_runtime_endpoint_files()` 仍保留旧 dict 返回形状，便于旧测试和旧调用方兼容。
 - `TransactionManager.transaction()` 的事务归属判断改为失败闭合：
   - `conn.in_transaction` 缺失或读取失败时直接抛错。
   - 不再猜“当前上下文拥有事务”，避免误提交或误回滚外层事务。
@@ -96,6 +101,7 @@ tags: [techdebt, startup, fallback, win7]
   - 启动链更容易查日志。
   - 运行锁更不容易误删。
   - contract 损坏不再被当成普通 missing。
+  - endpoint 文件读坏不再被当成普通 stale。
   - Chrome/profile 相关自动化负例仍保持失败闭合。
 - 本轮不能证明：
   - Win7 真机启动、停止、再次启动已经现场闭环。
@@ -120,9 +126,9 @@ tags: [techdebt, startup, fallback, win7]
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`
   - 结果：`0 errors`，仍有 6 个既有 warning，位置在 `core/services/scheduler/__init__.py`，不属于本轮启动链改动。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`
-  - 结果：通过，`active_xfail_count=0`，`collected_count=894`，旧 5 条测试债仍为 fixed。
+  - 结果：通过，`active_xfail_count=0`，`collected_count=899`，旧 5 条测试债仍为 fixed。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`
-  - 结果：通过，`silent_fallback_count=136`，`accepted_risk_count=4`。
+  - 结果：通过，`silent_fallback_count=135`，`accepted_risk_count=4`。
 
 ## 对抗审查结果
 
@@ -136,10 +142,14 @@ tags: [techdebt, startup, fallback, win7]
   - `RuntimeCleanupResult` 与停止链清理失败返回：无 blocker。
   - Chrome 清理失败后的 retry 证据保留：无 blocker。
   - Python 3.8、`safe_log(None)`、scanner 与台账对齐：无 blocker。
+- 本次剩余增强：
+  - bba3604 review 中 lock / contract / Chrome / cleanup 阻断项已经由后续提交修复。
+  - endpoint 文件读取失败本次补为结果对象，避免 host/port 文件异常被误当作可清理旧残留。
+  - 这仍不代表 Win7 现场风险关闭，4 条 Win7 accepted risk 继续保留。
 
 ## 全量验证
 
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -p no:cacheprovider`
-  - 结果：`894 passed`。
+  - 结果：`899 passed`。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`
   - 结果：干净工作区通过，输出 `质量门禁通过`。

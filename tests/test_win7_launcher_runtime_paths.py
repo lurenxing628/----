@@ -430,6 +430,123 @@ def test_blocked_contract_state_is_not_stop_complete():
     assert launcher_stop._runtime_stop_is_complete({"state": state, "endpoint_up": False}) is False
 
 
+def test_stop_runtime_keeps_artifacts_when_endpoint_files_unreadable(monkeypatch, tmp_path):
+    launcher_stop = _import_launcher_stop()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir(parents=True)
+    host_path = state_dir / "aps_host.txt"
+    port_path = state_dir / "aps_port.txt"
+    host_path.write_text("127.0.0.1\n", encoding="utf-8")
+    port_path.write_text("5000\n", encoding="utf-8")
+    (state_dir / "aps_db_path.txt").write_text(str(tmp_path / "db" / "aps.db") + "\n", encoding="utf-8")
+    calls = {}
+
+    def _fake_endpoint_result(path: str):
+        return launcher_stop.RuntimeEndpointReadResult(
+            state_dir=os.path.abspath(path),
+            host="",
+            port=0,
+            host_status="unreadable",
+            port_status="missing",
+            host_path=str(host_path),
+            port_path=str(port_path),
+            host_error="permission denied",
+        )
+
+    monkeypatch.setattr(launcher_stop, "read_runtime_endpoint_files_result", _fake_endpoint_result)
+    monkeypatch.setattr(launcher_stop, "delete_runtime_contract_files", lambda path: calls.setdefault("delete", path))
+
+    assert launcher_stop.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 1
+    assert calls == {}
+    assert host_path.exists()
+    assert port_path.exists()
+    assert (state_dir / "aps_db_path.txt").exists()
+    status = launcher_stop._classify_runtime_state(str(state_dir))
+    assert status["state"] == "blocked_endpoint"
+    assert status["endpoint_host_status"] == "unreadable"
+    assert status["endpoint_uncertain"] is True
+    assert launcher_stop._runtime_stop_failure_reason(status, shutdown_requested=False) == "endpoint_files_uncertain"
+
+
+def test_stop_runtime_keeps_artifacts_when_endpoint_port_invalid(tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir(parents=True)
+    (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    (state_dir / "aps_port.txt").write_text("not-a-port\n", encoding="utf-8")
+    (state_dir / "aps_db_path.txt").write_text(str(tmp_path / "db" / "aps.db") + "\n", encoding="utf-8")
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 1
+    assert (state_dir / "aps_host.txt").exists()
+    assert (state_dir / "aps_port.txt").exists()
+    assert (state_dir / "aps_db_path.txt").exists()
+    status = launcher._classify_runtime_state(str(state_dir))
+    assert status["state"] == "blocked_endpoint"
+    assert status["endpoint_port_status"] == "invalid"
+    assert status["endpoint_uncertain"] is True
+
+
+def test_stop_runtime_still_cleans_stale_artifact_when_endpoint_files_missing(tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir(parents=True)
+    db_path = state_dir / "aps_db_path.txt"
+    db_path.write_text(str(tmp_path / "db" / "aps.db") + "\n", encoding="utf-8")
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), timeout_s=0.1) == 0
+    assert not db_path.exists()
+
+
+def test_contract_endpoint_overrides_invalid_endpoint_file(tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir(parents=True)
+    (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    (state_dir / "aps_port.txt").write_text("not-a-port\n", encoding="utf-8")
+    (state_dir / "aps_runtime.json").write_text(
+        json.dumps(
+            {
+                "contract_version": 1,
+                "pid": 999999,
+                "host": "127.0.0.1",
+                "port": 5000,
+                "shutdown_token": "token",
+                "exe_path": sys.executable,
+                "runtime_dir": str(tmp_path),
+                "chrome_profile_dir": str(tmp_path / "profile"),
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    status = launcher._classify_runtime_state(str(state_dir))
+
+    assert status["contract_status"] == "valid"
+    assert status["host"] == "127.0.0.1"
+    assert status["port"] == 5000
+    assert status["endpoint_port_status"] == "invalid"
+    assert status["endpoint_uncertain"] is False
+    assert status["state"] != "blocked_endpoint"
+
+
+def test_read_runtime_endpoint_files_legacy_shape(tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir(parents=True)
+    (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+
+    got = launcher._read_runtime_endpoint_files(str(state_dir))
+
+    assert got == {
+        "host": "127.0.0.1",
+        "port": 5000,
+        "host_exists": True,
+        "port_exists": True,
+    }
+
+
 def test_new_probe_runtime_health_result_monkeypatch_is_used(monkeypatch, tmp_path):
     launcher = _import_launcher()
     launcher_stop = _import_launcher_stop()
@@ -1094,6 +1211,7 @@ def test_launcher_facade_exports_runtime_contract_surface():
         "RuntimeLockError",
         "RuntimeCleanupFailure",
         "RuntimeCleanupResult",
+        "RuntimeEndpointReadResult",
         "acquire_runtime_lock",
         "clear_launch_error",
         "current_runtime_owner",
@@ -1106,6 +1224,7 @@ def test_launcher_facade_exports_runtime_contract_surface():
         "probe_runtime_health",
         "read_runtime_contract",
         "read_runtime_contract_result",
+        "read_runtime_endpoint_files_result",
         "read_runtime_lock",
         "read_runtime_lock_result",
         "release_runtime_lock",

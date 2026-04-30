@@ -266,8 +266,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/launcher_stop.py",
         symbol="_request_runtime_shutdown",
-        line_start=116,
-        line_end=118,
+        line_start=122,
+        line_end=124,
         fallback_kind="observable_degrade",
     ),
     SilentFallbackSample(

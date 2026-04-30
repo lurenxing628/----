@@ -143,7 +143,7 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
 
         ## 当前静默回退门禁边界
 
-        - 启动链范围（`web/bootstrap/**/*.py`、`web/ui_mode.py`）按四类分类全量冻结。
+        - 启动链范围（`web/bootstrap/**/*.py`、`web/ui_mode.py`、`web/ui_mode_request.py`、`web/ui_mode_store.py`、`web/render_bridge.py`、`web/manual_src_security.py`）按四类分类全量冻结。
         - 非启动链范围当前只续管历史 `silent_swallow` 遗留项，不据此把 `silent_default_fallback` / `observable_degrade` 扩展为全仓新增门禁。
 
         ## 当前快照

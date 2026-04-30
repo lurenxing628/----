@@ -29,6 +29,7 @@ from .launcher_contracts import (
     write_runtime_contract_file,
     write_runtime_host_port_files,
 )
+from .launcher_endpoint_result import RuntimeEndpointReadResult, read_runtime_endpoint_files_result
 from .launcher_network import BindProbeResult, _can_bind, _can_bind_result, pick_bind_host, pick_port
 from .launcher_paths import (
     RUNTIME_CONTRACT_VERSION as _RUNTIME_CONTRACT_VERSION,
@@ -113,9 +114,11 @@ _FACADE_RESULT_API = (
     BindProbeResult,
     RuntimeCleanupFailure,
     RuntimeCleanupResult,
+    RuntimeEndpointReadResult,
     _can_bind_result,
     delete_runtime_contract_files_result,
     read_runtime_contract_result,
+    read_runtime_endpoint_files_result,
     read_runtime_lock_result,
     probe_runtime_health_result,
 )
@@ -145,6 +148,7 @@ def _sync_launcher_hooks(*, include_chrome_hook: bool) -> None:
     _stop.delete_runtime_contract_files_result = delete_runtime_contract_files_result
     _stop.read_runtime_contract = read_runtime_contract
     _stop.read_runtime_contract_result = read_runtime_contract_result
+    _stop.read_runtime_endpoint_files_result = read_runtime_endpoint_files_result
     _stop.read_runtime_lock = read_runtime_lock
     _stop.read_runtime_lock_result = read_runtime_lock_result
     _stop.probe_runtime_health_result = probe_runtime_health_result

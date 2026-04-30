@@ -35,11 +35,14 @@ def _runtime_state_name(
     identity: Dict[str, Any],
     lock_active: bool,
     has_artifacts: bool,
+    endpoint_uncertain: bool = False,
 ) -> str:
     if _invalid_contract_still_unsafe(contract_status, endpoint_up, lock_active):
         return "mixed"
     if _is_bad_contract_status(contract_status) and has_artifacts:
         return "blocked_contract"
+    if endpoint_uncertain and has_artifacts:
+        return "mixed" if endpoint_up else "blocked_endpoint"
     contract_pid = int(identity.get("contract_pid") or 0)
     if endpoint_up:
         return "mixed" if _contract_pid_mismatch(contract, contract_pid, identity) else "active"

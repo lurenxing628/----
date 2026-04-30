@@ -23,6 +23,13 @@ from .launcher_contracts import (
     read_runtime_lock,
     read_runtime_lock_result,
 )
+from .launcher_endpoint_result import (
+    RuntimeEndpointReadResult,
+    read_runtime_endpoint_files_result,
+)
+from .launcher_endpoint_result import (
+    read_runtime_endpoint_files as _read_runtime_endpoint_files,
+)
 from .launcher_health import HealthProbeResult, probe_runtime_health_result
 from .launcher_lock_result import (
     LOCK_STATUS_MISSING,
@@ -35,7 +42,6 @@ from .launcher_paths import (
     default_chrome_profile_dir,
     resolve_runtime_state_paths,
     resolve_runtime_stop_context,
-    state_contract_paths,
 )
 from .launcher_processes import (
     _kill_runtime_pid,
@@ -177,35 +183,6 @@ def _stop_aps_chrome_if_requested(
     return result
 
 
-def _read_runtime_endpoint_files(state_dir: str) -> Dict[str, Any]:
-    host_path, port_path, _db_path, _contract_path = state_contract_paths(state_dir)
-    host = _read_text_file(host_path) if os.path.exists(host_path) else ""
-    port = _read_port_file(port_path) if os.path.exists(port_path) else 0
-    return {
-        "host": host,
-        "port": port,
-        "host_exists": os.path.exists(host_path),
-        "port_exists": os.path.exists(port_path),
-    }
-
-
-def _read_text_file(path: str) -> str:
-    try:
-        with open(path, encoding="utf-8") as f:
-            return (f.read() or "").strip()
-    except Exception as exc:
-        launcher_log_warning(None, "读取运行时状态文件失败，已按空值处理：path=%s error=%s", path, exc, state_dir=os.path.dirname(path))
-        return ""
-
-
-def _read_port_file(path: str) -> int:
-    try:
-        return int(_read_text_file(path))
-    except Exception as exc:
-        launcher_log_warning(None, "读取运行时端口文件失败，已按无效端口处理：path=%s error=%s", path, exc, state_dir=os.path.dirname(path))
-        return 0
-
-
 def _runtime_identity(contract: Optional[Dict[str, Any]], lock_payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     contract_pid = _safe_int((contract or {}).get("pid"))
     lock_pid = _safe_int((lock_payload or {}).get("pid"))
@@ -290,11 +267,11 @@ def _health_result_for_status(host: str, port: int, state_dir: str) -> HealthPro
     return probe_runtime_health_result(host, int(port), timeout_s=0.75, state_dir=state_dir)
 
 
-def _endpoint_status(contract: Optional[Dict[str, Any]], endpoint_files: Dict[str, Any], state_dir: str) -> Dict[str, Any]:
+def _endpoint_status(contract: Optional[Dict[str, Any]], endpoint_files: RuntimeEndpointReadResult, state_dir: str) -> Dict[str, Any]:
     contract_host = str((contract or {}).get("host") or "").strip()
     contract_port = _safe_int((contract or {}).get("port"))
-    host = contract_host or str(endpoint_files.get("host") or "").strip() or "127.0.0.1"
-    port = contract_port if contract_port > 0 else int(endpoint_files.get("port") or 0)
+    host = contract_host or endpoint_files.host or "127.0.0.1"
+    port = contract_port if contract_port > 0 else int(endpoint_files.port or 0)
     if not host or int(port or 0) <= 0:
         health_result = HealthProbeResult(False, "", "missing_endpoint")
     else:
@@ -324,7 +301,7 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
     runtime_dir_abs, state_dir = resolve_runtime_stop_context(runtime_dir_or_state_dir)
     set_process_log_context(state_dir=state_dir, runtime_dir=runtime_dir_abs)
     paths = resolve_runtime_state_paths(state_dir)
-    endpoint_files = _read_runtime_endpoint_files(state_dir)
+    endpoint_files = read_runtime_endpoint_files_result(state_dir)
     contract_result = _read_contract_result_for_status(state_dir)
     has_artifacts = _has_runtime_artifacts(paths)
     contract_capability = contract_result.to_capability(has_runtime_artifacts=has_artifacts)
@@ -333,6 +310,7 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
     lock_payload = lock_result.payload if lock_result.ok else None
     identity = _runtime_identity(contract, lock_payload)
     endpoint = _endpoint_status(contract, endpoint_files, state_dir)
+    endpoint_uncertain = bool(endpoint_files.uncertain and not contract_result.ok)
     lock_unknown = lock_result.status not in {LOCK_STATUS_MISSING, LOCK_STATUS_VALID}
     lock_active = bool(lock_unknown or (lock_payload and _is_runtime_lock_active(lock_payload, expected_exe_path=identity["expected_exe_path"])))
     state = _runtime_state_name(
@@ -342,6 +320,7 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
         identity=identity,
         lock_active=lock_active,
         has_artifacts=has_artifacts,
+        endpoint_uncertain=endpoint_uncertain,
     )
     return {
         "runtime_dir": runtime_dir_abs,
@@ -362,6 +341,11 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
         "endpoint_up": endpoint["endpoint_up"],
         "health_reason": endpoint.get("health_reason"),
         "health_error": endpoint.get("health_error"),
+        "endpoint_host_status": endpoint_files.host_status,
+        "endpoint_port_status": endpoint_files.port_status,
+        "endpoint_host_error": endpoint_files.host_error,
+        "endpoint_port_error": endpoint_files.port_error,
+        "endpoint_uncertain": endpoint_uncertain,
         "pid": int(identity["pid"] or 0),
         "pid_exists": identity["pid_exists"],
         "pid_match": identity["pid_match"],
@@ -396,6 +380,8 @@ def _runtime_stop_failure_reason(status: Dict[str, Any], *, shutdown_requested: 
         return "pid_mismatch"
     if str(status.get("state") or "") == "mixed":
         return "mixed_state"
+    if str(status.get("state") or "") == "blocked_endpoint":
+        return "endpoint_files_uncertain"
     if bool(status.get("endpoint_up")):
         if not shutdown_requested and isinstance(status.get("contract"), dict):
             return "shutdown_request_failed"
