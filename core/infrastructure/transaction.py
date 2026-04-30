@@ -4,7 +4,7 @@ import logging
 import threading
 from contextlib import contextmanager
 from functools import wraps
-from typing import Dict
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,97 @@ def in_transaction_context(conn) -> bool:
         return int(_depth_map().get(id(conn), 0) or 0) > 0
     except Exception:
         return False
+
+
+def _current_depth(conn) -> int:
+    return int(_depth_map().get(id(conn), 0) or 0)
+
+
+def _owns_transaction(conn, depth: int) -> bool:
+    if depth != 1:
+        return False
+    try:
+        return not bool(getattr(conn, "in_transaction", False))
+    except Exception:
+        # 防御：极少数连接实现可能没有该属性；此时按“自己负责提交”处理
+        return True
+
+
+def _savepoint_name(conn, depth: int) -> str:
+    return f"aps_tx_{id(conn)}_{depth}"
+
+
+def _begin_scope(conn, depth: int, owns_tx: bool) -> Optional[str]:
+    if depth == 1 and owns_tx:
+        # 最外层且由我们负责事务边界：必须显式 BEGIN，避免最外层 SAVEPOINT 在 RELEASE 后已提交，
+        # 导致后续 commit() 再失败时来不及回滚。
+        conn.execute("BEGIN")
+        return None
+
+    sp_name = _savepoint_name(conn, depth)
+    conn.execute(f"SAVEPOINT {sp_name}")
+    return sp_name
+
+
+def _rollback_savepoint(conn, sp_name: str) -> None:
+    try:
+        conn.execute(f"ROLLBACK TO SAVEPOINT {sp_name}")
+    except Exception as e:
+        logger.error(f"SAVEPOINT 回滚失败：{e}")
+    try:
+        conn.execute(f"RELEASE SAVEPOINT {sp_name}")
+    except Exception as e:
+        logger.error(f"SAVEPOINT 释放失败（回滚路径）：{e}")
+
+
+def _rollback_outer_transaction(conn) -> None:
+    try:
+        conn.rollback()
+    except Exception as exc:
+        logger.error(f"事务回滚失败：{exc}")
+
+
+def _rollback_scope(conn, depth: int, owns_tx: bool, sp_name: Optional[str]) -> None:
+    if sp_name is not None:
+        # 回滚到本层 savepoint（不影响外层）
+        _rollback_savepoint(conn, sp_name)
+    elif depth == 1 and owns_tx:
+        # 最外层且由我们启动的事务：结束事务（避免悬挂在半事务状态）
+        _rollback_outer_transaction(conn)
+
+
+def _release_savepoint(conn, sp_name: str) -> None:
+    try:
+        conn.execute(f"RELEASE SAVEPOINT {sp_name}")
+    except Exception as e:
+        # RELEASE 失败时事务状态可能不确定：尽最大努力回滚本层并结束事务（若由我们启动）
+        try:
+            conn.execute(f"ROLLBACK TO SAVEPOINT {sp_name}")
+        except Exception as e2:
+            logger.error(f"SAVEPOINT 回滚失败（提交路径）：{e2}")
+        try:
+            conn.execute(f"RELEASE SAVEPOINT {sp_name}")
+        except Exception as e2:
+            logger.error(f"SAVEPOINT 释放失败（提交路径-回滚后）：{e2}")
+        logger.error(f"SAVEPOINT 释放失败（提交路径）：{e}")
+        raise
+
+
+def _commit_outer_transaction(conn) -> None:
+    try:
+        conn.commit()
+    except Exception as e:
+        _rollback_outer_transaction(conn)
+        logger.error(f"事务提交失败：{e}")
+        raise
+
+
+def _commit_scope(conn, depth: int, owns_tx: bool, sp_name: Optional[str]) -> None:
+    if sp_name is not None:
+        # 正常路径：释放本层 savepoint
+        _release_savepoint(conn, sp_name)
+    elif depth == 1 and owns_tx:
+        _commit_outer_transaction(conn)
 
 
 class TransactionManager:
@@ -155,4 +246,3 @@ def transactional(func):
             return func(self, *args, **kwargs)
 
     return wrapper
-

@@ -82,43 +82,64 @@ def _pid_exists(pid: Optional[int]) -> bool:
     return True
 
 
-def read_maintenance_lock_state(db_path: str) -> Optional[dict]:
-    lock_path = _maintenance_lock_path(db_path)
-    if not os.path.exists(lock_path):
-        return None
+def _empty_maintenance_lock_state(lock_path: str) -> dict:
     state = {"path": lock_path, "pid": None, "action": None, "ts": None, "age_seconds": None, "raw": ""}
+    return state
+
+
+def _read_lock_file_text(lock_path: str, state: dict) -> Optional[str]:
     try:
         with open(lock_path, "rb") as f:
             raw = f.read().decode("utf-8", errors="ignore").strip()
     except Exception as e:
         state["read_error"] = e
+        return None
+    return raw
+
+
+def _apply_maintenance_lock_token(state: dict, token: str) -> None:
+    if "=" not in token:
+        return
+    key, value = token.split("=", 1)
+    key = str(key or "").strip().lower()
+    value = str(value or "").strip()
+    if key == "pid":
+        try:
+            state["pid"] = int(value)
+        except Exception:
+            state["pid"] = None
+    elif key == "action":
+        state["action"] = value or None
+    elif key == "ts":
+        state["ts_text"] = value or None
+        try:
+            state["ts"] = datetime.fromisoformat(value)
+        except Exception:
+            state["ts"] = None
+
+
+def _apply_maintenance_lock_age(state: dict) -> None:
+    ts = state.get("ts")
+    if not isinstance(ts, datetime):
+        return
+    try:
+        state["age_seconds"] = max(0.0, (datetime.now() - ts).total_seconds())
+    except Exception:
+        state["age_seconds"] = None
+
+
+def read_maintenance_lock_state(db_path: str) -> Optional[dict]:
+    lock_path = _maintenance_lock_path(db_path)
+    if not os.path.exists(lock_path):
+        return None
+    state = _empty_maintenance_lock_state(lock_path)
+    raw = _read_lock_file_text(lock_path, state)
+    if raw is None:
         return state
     state["raw"] = raw
     for token in raw.split():
-        if "=" not in token:
-            continue
-        key, value = token.split("=", 1)
-        key = str(key or "").strip().lower()
-        value = str(value or "").strip()
-        if key == "pid":
-            try:
-                state["pid"] = int(value)
-            except Exception:
-                state["pid"] = None
-        elif key == "action":
-            state["action"] = value or None
-        elif key == "ts":
-            state["ts_text"] = value or None
-            try:
-                state["ts"] = datetime.fromisoformat(value)
-            except Exception:
-                state["ts"] = None
-    ts = state.get("ts")
-    if isinstance(ts, datetime):
-        try:
-            state["age_seconds"] = max(0.0, (datetime.now() - ts).total_seconds())
-        except Exception:
-            state["age_seconds"] = None
+        _apply_maintenance_lock_token(state, token)
+    _apply_maintenance_lock_age(state)
     return state
 
 
@@ -168,22 +189,34 @@ def ensure_backup_allowed(db_path: str, *, logger=None) -> None:
         raise MaintenanceWindowError("busy", "数据库正在维护/恢复中，请稍后重试。")
 
 
+def _enter_nested_maintenance_window(state: dict, db_abs: str) -> None:
+    if state.get("db_path") != db_abs:
+        raise MaintenanceWindowError("busy", "当前线程已有其他维护任务在执行，暂不支持跨数据库嵌套维护。")
+    state["depth"] = int(state.get("depth") or 0) + 1
+
+
+def _exit_nested_maintenance_window(state: dict) -> None:
+    state["depth"] = max(0, int(state.get("depth") or 1) - 1)
+
+
+def _acquire_maintenance_mutex() -> None:
+    if not _MAINT_MUTEX.acquire(blocking=False):
+        raise MaintenanceWindowError("busy", "数据库正在维护/恢复中，请稍后重试。")
+
+
 @contextmanager
 def maintenance_window(db_path: str, *, logger=None, action: str = "maintenance") -> Iterator[None]:
     db_abs = os.path.abspath(db_path)
     state = _current_maintenance_state()
     if state is not None:
-        if state.get("db_path") != db_abs:
-            raise MaintenanceWindowError("busy", "当前线程已有其他维护任务在执行，暂不支持跨数据库嵌套维护。")
-        state["depth"] = int(state.get("depth") or 0) + 1
+        _enter_nested_maintenance_window(state, db_abs)
         try:
             yield
         finally:
-            state["depth"] = max(0, int(state.get("depth") or 1) - 1)
+            _exit_nested_maintenance_window(state)
         return
 
-    if not _MAINT_MUTEX.acquire(blocking=False):
-        raise MaintenanceWindowError("busy", "数据库正在维护/恢复中，请稍后重试。")
+    _acquire_maintenance_mutex()
 
     lock_path = _maintenance_lock_path(db_abs)
     lock_fd = None
@@ -425,4 +458,3 @@ class BackupManager:
                 }
             )
         return backups
-
