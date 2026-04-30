@@ -1,0 +1,44 @@
+doc_type: refactor-checklist
+refactor: 2026-04-30-techdebt-phase4-ledger-complexity
+status: in-progress
+steps:
+  - id: phase4-baseline
+    title: 记录阶段 4/5 开工基线
+    status: done
+    exit_signal: 基线文件和 refactor 记录已提交，未改业务代码。
+  - id: scheduler-summary-config
+    title: 拆分 scheduler summary 与 config field spec
+    status: pending
+    exit_signal: 两个超长文件降到阈值内或成为 facade，相关测试和台账检查通过。
+  - id: infrastructure-complexity
+    title: 拆分事务备份迁移和数据库入口
+    status: pending
+    exit_signal: 基础设施复杂度下降，迁移/备份/事务测试通过。
+  - id: process-report-routes
+    title: 拆分业务服务和相关路由
+    status: pending
+    exit_signal: 业务复杂度下降，route 只保留请求响应编排。
+  - id: phase4-ledger-review
+    title: 刷新台账并做阶段 4 对抗审查
+    status: pending
+    exit_signal: 台账只关闭已达标条目，subagent 对抗审查无阻断。
+  - id: phase4-clean-gate
+    title: 运行阶段 4 clean quality gate
+    status: pending
+    exit_signal: scripts/run_quality_gate.py --require-clean-worktree 通过。
+checks:
+  - id: no-public-api-drift
+    title: public API、导入路径和返回字段不漂移
+    status: pending
+  - id: no-user-copy-change
+    title: 不改用户可见文案
+    status: pending
+  - id: no-new-fallback
+    title: 不新增静默吞错或宽泛 fallback
+    status: pending
+  - id: no-new-test-debt
+    title: 不新增 full-test-debt
+    status: pending
+  - id: clean-quality-gate
+    title: 最终干净工作区质量门禁通过
+    status: pending

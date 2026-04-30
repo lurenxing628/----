@@ -1,0 +1,93 @@
+# 阶段 4/5 技术债治理基线
+
+生成时间：2026-04-30 10:31 +08:00
+
+## 分支和解释器
+
+- 起点分支：techdebt-phase3-domain-boundary
+- 起点 HEAD：0d23669a7e595179a22c8e2b3356d9c80e1a6456
+- 阶段 4 分支：codex/techdebt-phase4-ledger-complexity
+- Python：.venv/bin/python，Python 3.8.10
+- ruff：0.15.11
+- pyright：1.1.406
+- 命令前缀：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python
+
+## 开工检查
+
+- git status --short --branch：干净，位于 techdebt-phase3-domain-boundary...origin/techdebt-phase3-domain-boundary
+- tools/check_full_test_debt.py：passed
+- full-test-debt collected_count：841
+- active_xfail_count：0
+- fixed_count：5
+- scripts/sync_debt_ledger.py check：通过
+
+## 台账数量
+
+- oversize_allowlist active：8
+- complexity_allowlist active：29
+- silent_fallback 台账登记：153
+- 当前启动链扫描 fallback：109
+  - observable_degrade：35
+  - cleanup_best_effort：17
+  - silent_default_fallback：39
+  - silent_swallow：18
+- test_debt_count：5
+- accepted_risk_count：5
+
+## active oversize 基线
+
+- oversize:core-infrastructure-database：632 / 500，core/infrastructure/database.py
+- oversize:core-services-personnel-operator_machine_service：505 / 500，core/services/personnel/operator_machine_service.py
+- oversize:core-services-process-part_service：609 / 500，core/services/process/part_service.py
+- oversize:core-services-process-unit_excel-template_builder：569 / 500，core/services/process/unit_excel/template_builder.py
+- oversize:core-services-scheduler-config-config_field_spec：601 / 500，core/services/scheduler/config/config_field_spec.py
+- oversize:core-services-scheduler-summary-schedule_summary：723 / 500，core/services/scheduler/summary/schedule_summary.py
+- oversize:web-routes-scheduler_excel_calendar：548 / 500，web/routes/domains/scheduler/scheduler_excel_calendar.py
+- oversize:web-ui_mode：511 / 500，web/ui_mode.py
+
+## active complexity 基线
+
+- complexity:core-infrastructure-backup-maintenance_window：18 / 15，core/infrastructure/backup.py::maintenance_window
+- complexity:core-infrastructure-backup-read_maintenance_lock_state：16 / 15，core/infrastructure/backup.py::read_maintenance_lock_state
+- complexity:core-infrastructure-database-_migrate_with_backup：27 / 15，core/infrastructure/database.py::_migrate_with_backup
+- complexity:core-infrastructure-database-ensure_schema：17 / 15，core/infrastructure/database.py::ensure_schema
+- complexity:core-infrastructure-migrations-v1-_sanitize_batch_dates：20 / 15，core/infrastructure/migrations/v1.py::_sanitize_batch_dates
+- complexity:core-infrastructure-migrations-v4-_sanitize_field：33 / 15，core/infrastructure/migrations/v4.py::_sanitize_field
+- complexity:core-infrastructure-transaction-transaction：22 / 15，core/infrastructure/transaction.py::transaction
+- complexity:core-models-batch_operation-from_row：21 / 15，core/models/batch_operation.py::from_row
+- complexity:core-models-calendar-from_row：17 / 15，core/models/calendar.py::from_row
+- complexity:core-models-part_operation-from_row：16 / 15，core/models/part_operation.py::from_row
+- complexity:core-services-equipment-machine_downtime_service-create_by_scope：19 / 15，core/services/equipment/machine_downtime_service.py::create_by_scope
+- complexity:core-services-personnel-operator_machine_query_service-_normalize_row：19 / 15，core/services/personnel/operator_machine_query_service.py::_normalize_row
+- complexity:core-services-personnel-operator_machine_service-apply_import_links：21 / 15，core/services/personnel/operator_machine_service.py::apply_import_links
+- complexity:core-services-process-route_parser-parse：37 / 15，core/services/process/route_parser.py::parse
+- complexity:core-services-process-unit_excel-template_builder-_build_suppliers_rows：16 / 15，core/services/process/unit_excel/template_builder.py::_build_suppliers_rows
+- complexity:core-services-report-calculations-compute_downtime_impact：24 / 15，core/services/report/calculations.py::compute_downtime_impact
+- complexity:core-services-report-calculations-compute_utilization：21 / 15，core/services/report/calculations.py::compute_utilization
+- complexity:core-services-scheduler-gantt_range-resolve_week_range：16 / 15，core/services/scheduler/gantt_range.py::resolve_week_range
+- complexity:core-services-scheduler-gantt_week_plan-build_week_plan_rows：17 / 15，core/services/scheduler/gantt_week_plan.py::build_week_plan_rows
+- complexity:core-services-scheduler-operation_edit_service-update_external_operation：21 / 15，core/services/scheduler/operation_edit_service.py::update_external_operation
+- complexity:core-services-scheduler-resource_dispatch_excel-_summary_pairs：19 / 15，core/services/scheduler/resource_dispatch_excel.py::_summary_pairs
+- complexity:core-services-scheduler-resource_dispatch_support-extract_overdue_batch_ids_with_meta：19 / 15，core/services/scheduler/resource_dispatch_support.py::extract_overdue_batch_ids_with_meta
+- complexity:web-bootstrap-entrypoint-app_main：20 / 15，web/bootstrap/entrypoint.py::app_main
+- complexity:web-bootstrap-factory-create_app_core：18 / 15，web/bootstrap/factory.py::create_app_core
+- complexity:web-routes-personnel_pages-detail_page：30 / 15，web/routes/personnel_pages.py::detail_page
+- complexity:web-routes-process_excel_routes-excel_routes_confirm：20 / 15，web/routes/process_excel_routes.py::excel_routes_confirm
+- complexity:web-routes-system_backup-backup_restore：21 / 15，web/routes/system_backup.py::backup_restore
+- complexity:web-ui_mode-_same_origin_absolute_manual_src：16 / 15，web/ui_mode.py::_same_origin_absolute_manual_src
+- complexity:web-viewmodels-scheduler_analysis_vm-build_freeze_display：16 / 15，web/viewmodels/scheduler_analysis_vm.py::build_freeze_display
+
+## accepted risk 基线
+
+- risk:launcher-bind-host-port-win7，entry_ids=7，review_after=Win7 打包链下一次集中整治时复核
+- risk:launcher-process-probe-kill-win7，entry_ids=10，review_after=Win7 打包链下一次集中整治时复核
+- risk:launcher-runtime-lock-contract-win7，entry_ids=21，review_after=Win7 打包链下一次集中整治时复核
+- risk:launcher-runtime-root-owner-win7，entry_ids=4，review_after=Win7 打包链下一次集中整治时复核
+- risk:ui-mode-render-bridge-observable-degrade，entry_ids=1，review_after=SP09 完成后复核
+
+## 本基线用途
+
+- 这是阶段 4/5 开工前的事实记录，不是修复结果。
+- 后续只允许通过 scripts/sync_debt_ledger.py 的受控命令更新技术债台账结构块。
+- oversize / complexity 只有在扫描证明已经降到阈值内时才允许关闭。
+- full-test-debt 不作为阶段 4 成果宣称；当前只要求不新增。
