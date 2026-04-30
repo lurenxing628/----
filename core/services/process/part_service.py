@@ -114,6 +114,16 @@ class PartService:
 
         return float(parsed_days), False
 
+    @staticmethod
+    def _operation_source_or_raise(op: Any) -> str:
+        source = str(getattr(op, "source", "") or "").strip().lower()
+        if source in (SourceType.INTERNAL.value, SourceType.EXTERNAL.value):
+            return source
+
+        seq = getattr(op, "seq", None)
+        seq_label = f"工序 {seq}" if seq not in (None, "") else "工序"
+        raise ValidationError(f"{seq_label}来源无效，只能是 internal 或 external", field="source")
+
 
     # -------------------------
     # Parts CRUD
@@ -403,7 +413,8 @@ class PartService:
         """
         # operations
         for op in parse_result.operations:
-            if (op.source or "").strip().lower() == SourceType.INTERNAL.value:
+            source = self._operation_source_or_raise(op)
+            if source == SourceType.INTERNAL.value:
                 seq = int(op.seq)
                 setup_hours = 0.0
                 unit_hours = 0.0

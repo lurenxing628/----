@@ -45,10 +45,12 @@ class DeletionValidator:
         """
         将 source 规范化为 internal/external。
         - 大小写/空格容错
-        - 未知值按 internal 处理（更保守，避免误删）
+        - 未知值保持为空，由上层拒绝删除，避免把异常来源误当成内部或外部工序
         """
         v = str(value or "").strip().lower()
-        return SourceType.EXTERNAL.value if v == SourceType.EXTERNAL.value else SourceType.INTERNAL.value
+        if v in (SourceType.INTERNAL.value, SourceType.EXTERNAL.value):
+            return v
+        return ""
 
     @staticmethod
     def _norm_status(value: Any) -> str:
@@ -68,6 +70,10 @@ class DeletionValidator:
         to_delete_set = set([int(x) for x in (to_delete or [])])
         active_ops = self._filter_active_ops(operations)
         op_map = self._build_op_map(active_ops)
+
+        invalid_source = self._validate_sources(active_ops)
+        if invalid_source is not None:
+            return invalid_source
 
         invalid = self._validate_delete_targets(op_map, to_delete_set)
         if invalid is not None:
@@ -140,6 +146,18 @@ class DeletionValidator:
                 )
         return None
 
+    def _validate_sources(self, active_ops: List[Operation]) -> Optional[DeletionCheckResult]:
+        for op in active_ops:
+            if self._norm_source(op.source):
+                continue
+            return DeletionCheckResult(
+                result=ValidationResult.DENIED,
+                can_delete=False,
+                message=f"工序 {op.seq} 来源无效，不能判断是否可删除。",
+                affected_ops=[int(op.seq)],
+            )
+        return None
+
     @staticmethod
     def _check_remaining_sanity(remaining: List[Operation]) -> Optional[DeletionCheckResult]:
         if not remaining:
@@ -174,6 +192,8 @@ class DeletionValidator:
         )
         if not active_ops:
             return []
+        if self._validate_sources(active_ops) is not None:
+            return []
 
         groups: List[List[int]] = []
 
@@ -198,4 +218,3 @@ class DeletionValidator:
             groups.append(tail_group)
 
         return groups
-

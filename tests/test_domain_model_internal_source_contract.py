@@ -7,7 +7,15 @@ import pytest
 
 from core.infrastructure.errors import ValidationError
 from core.models import BatchOperation, PartOperation
+from core.services.process.deletion_validator import (
+    DeletionValidator,
+    ValidationResult,
+)
+from core.services.process.deletion_validator import (
+    Operation as DeleteOp,
+)
 from core.services.process.part_service import PartService
+from core.services.process.route_parser import ParsedOperation, ParseResult, ParseStatus
 from core.services.scheduler.operation_edit_service import _ensure_internal_operation_editable
 
 
@@ -32,6 +40,11 @@ class _TxManager:
     def transaction(self) -> Iterator[None]:
         raise AssertionError("unknown source must be rejected before transaction")
         yield
+
+
+class _RejectingCreateRepo:
+    def create(self, values: Any) -> None:
+        raise AssertionError("unknown source must be rejected before persistence")
 
 
 def test_part_service_update_internal_hours_rejects_unknown_source() -> None:
@@ -61,3 +74,44 @@ def test_operation_edit_rejects_unknown_batch_operation_source() -> None:
 
     with pytest.raises(ValidationError, match="只能编辑内部工序"):
         _ensure_internal_operation_editable(op, op_id=1)
+
+
+def test_part_service_save_template_rejects_unknown_parsed_operation_source() -> None:
+    svc = PartService.__new__(PartService)
+    svc.op_repo = _RejectingCreateRepo()
+    svc.group_repo = _RejectingCreateRepo()
+    parse_result = ParseResult(
+        status=ParseStatus.SUCCESS,
+        operations=[
+            ParsedOperation(
+                seq=10,
+                op_type_name="旧来源工序",
+                source="legacy",
+            )
+        ],
+        external_groups=[],
+        warnings=[],
+        errors=[],
+        stats={"total": 1, "internal": 0, "external": 0, "unknown": 1},
+        original_input="10旧来源工序",
+        normalized_input="10旧来源工序",
+    )
+
+    with pytest.raises(ValidationError, match="来源无效"):
+        svc._save_template_no_tx(part_no="P1", parse_result=parse_result)
+
+
+def test_deletion_validator_rejects_unknown_source_in_active_operations() -> None:
+    validator = DeletionValidator()
+    ops = [
+        DeleteOp(seq=1, source="external"),
+        DeleteOp(seq=2, source="legacy"),
+    ]
+
+    result = validator.can_delete(ops, to_delete=[1])
+
+    assert result.result == ValidationResult.DENIED
+    assert result.can_delete is False
+    assert result.affected_ops == [2]
+    assert "来源无效" in result.message
+    assert validator.get_deletion_groups(ops) == []
