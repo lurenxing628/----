@@ -147,6 +147,41 @@ tags: [techdebt, startup, fallback, win7]
   - endpoint 文件读取失败本次补为结果对象，避免 host/port 文件异常被误当作可清理旧残留。
   - 这仍不代表 Win7 现场风险关闭，4 条 Win7 accepted risk 继续保留。
 
+## 0ef6e08 后续合并前补丁
+
+- endpoint 文件组完整性继续补强：
+  - `aps_host.txt` 和 `aps_port.txt` 都不存在时，仍可按旧残留判断。
+  - 只有 host、只有 port、host 空白、port 空白、port 非法或文件不可读时，都按“不确定”处理。
+  - 没有 valid contract 时，不确定 endpoint 会进入 `blocked_endpoint`，停止命令返回失败并保留 runtime 证据。
+  - 有 valid contract 时，继续使用 contract 里的 host/port，不会因为坏的旧 endpoint 文件误挡正常停止链。
+- database 阶段 4 基础设施主入口已接管：
+  - `database.py::_preflight_migration_contract()` 保留旧名字，但真实逻辑委托 `migration_runner.preflight_migration_contract()`。
+  - `database.py::_migrate_with_backup()` 保留旧名字，但真实逻辑委托 `migration_runner.migrate_with_backup()`。
+  - 删除 `database.py` 中旧的大段迁移/备份/回滚实现，避免 `database.py` 和 `migration_runner.py` 双轨维护。
+  - `_bootstrap_missing_tables_from_schema()` 不再吞掉 commit 失败，提交失败会直接向上抛出。
+- transaction 阶段 4 基础设施主入口已收紧：
+  - `in_transaction_context()` 读取事务深度失败时记录 warning，并按“处于事务内”处理，避免误开独立提交。
+  - `TransactionManager.transaction()` 保留旧入口，但真实上下文流程下沉到 helper，BEGIN / SAVEPOINT / rollback / commit 规则只维护一份。
+  - rollback 失败会记录日志，原始业务异常继续向外抛出。
+- 尾部低风险清理：
+  - endpoint 文件读取只捕获文件/编码错误。
+  - shutdown URL 端口解析只捕获类型/数值错误。
+  - 旧 `delete_runtime_contract_files()` 明确标注为兼容 best-effort 入口；停止链成功判断必须走 result 版本。
+- 台账变化：
+  - `complexity_count` 从 20 降到 18。
+  - `silent_fallback_count` 从 135 降到 120。
+  - `accepted_risk_count` 仍为 4，Win7 真机 / VM 未复测，不关闭风险。
+- 新增定向验证：
+  - `tests/test_win7_launcher_runtime_paths.py`：`66 passed`。
+  - `tests -q -k "launcher or runtime or endpoint or stop or win7"`：`102 passed, 801 deselected`。
+  - `tests/test_database_migration_runner_delegation.py`：`1 passed`。
+  - `tests -q -k "database or migration or schema or backup"`：`33 passed, 871 deselected`。
+  - `tests/test_transaction_boundary.py tests/regression_transaction_savepoint_nested.py`：`5 passed`。
+  - `tests -q -k "transaction or savepoint or operation_logger"`：`5 passed, 903 deselected`。
+  - `tests -q -k "launcher or runtime or summary"`：`119 passed, 789 deselected`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`：`0 errors`，仍有 6 个既有 scheduler `__all__` warning。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`silent_fallback_count=120`，`accepted_risk_count=4`。
+
 ## 全量验证
 
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -p no:cacheprovider`
