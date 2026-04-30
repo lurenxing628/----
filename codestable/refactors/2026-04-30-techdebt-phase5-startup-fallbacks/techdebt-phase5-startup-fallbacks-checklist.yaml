@@ -1,6 +1,6 @@
 doc_type: refactor-checklist
 refactor: 2026-04-30-techdebt-phase5-startup-fallbacks
-status: in-progress
+status: completed
 steps:
   - id: phase5-baseline
     title: 记录阶段 5 启动链 fallback 基线
@@ -28,11 +28,11 @@ steps:
     exit_signal: 非 Win7 风险 risk:ui-mode-render-bridge-observable-degrade 已删除；4 条 Win7 风险保留并补齐 2026-05-31 review_after、复测退出条件和审计记录。
   - id: phase5-adversarial-review
     title: 阶段 5 对抗审查
-    status: pending
+    status: done
     exit_signal: 4 个 subagent 对 Chrome/profile、scanner、accepted risk、ui_mode API 审查无阻断。
   - id: phase5-clean-gate
     title: 运行阶段 5 clean quality gate
-    status: pending
+    status: done
     exit_signal: scripts/run_quality_gate.py --require-clean-worktree 通过。
 checks:
   - id: no-public-api-drift
@@ -49,4 +49,4 @@ checks:
     status: done
   - id: clean-quality-gate
     title: 最终干净工作区质量门禁通过
-    status: pending
+    status: done

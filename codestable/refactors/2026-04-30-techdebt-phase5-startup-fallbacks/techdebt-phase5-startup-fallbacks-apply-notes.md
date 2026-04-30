@@ -229,3 +229,21 @@ tags: [techdebt, startup, fallback, win7]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，accepted_risk_count=4。
 - 偏离：
   - 未修改 `installer/README_WIN7_INSTALLER.md`、`DELIVERY_WIN7.md` 和 `开发文档/系统速查表.md`，因为现有文档已经写明不误杀普通 Chrome、profile 精确匹配、无法确认时失败闭合、Win7 复测边界和 launcher 日志排障口径。
+
+## 步骤 7：阶段 5 对抗审查和 clean gate
+
+- 完成时间：2026-04-30
+- 对抗审查结果：
+  - Chrome/profile 误杀审查：无阻断；普通 Chrome、相近 profile、伪造 URL 参数和无法确认身份场景保持失败闭合。非阻断限制是 Win7 真机/虚拟机仍未执行，相关 accepted risk 保留。
+  - fallback scanner 漏扫审查：无阻断；新增 `web/ui_mode_request.py`、`web/ui_mode_store.py`、`web/render_bridge.py`、`web/manual_src_security.py` 均纳入扫描，`startup_guard` 和 `render_bridge` 的 scope_tag 没有混账。
+  - accepted risk 边界审查：初审发现 Win7 复核记录里 HEAD 表述不准、保留风险缺 owner 展示；已在后续提交中修正，复审无阻断。
+  - `web/ui_mode.py` facade/API 审查：无阻断；旧 public API、导入路径、现代模板缺失回退、真实渲染异常透出和 manual src 安全边界保持可验证。
+- clean quality gate：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -p no:cacheprovider`：861 passed。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`：通过。
+- 最终阶段 5 收口数量：
+  - 阶段 5 基线：silent_fallback_count=153，accepted_risk_count=5。
+  - 阶段 5 收口：silent_fallback_count=144，accepted_risk_count=4。
+  - 原始启动链扫描从 silent_default_fallback 39 / silent_swallow 18 降到 silent_default_fallback 2 / silent_swallow 2。
+- 偏离：
+  - 当前机器是 macOS 开发环境，未执行 Win7 真机/虚拟机复测；4 条 Win7 现场风险继续保留，并写明 owner、review_after 和 exit_condition。
