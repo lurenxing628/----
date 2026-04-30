@@ -4,6 +4,8 @@ import logging
 import sqlite3
 from typing import List
 
+import pytest
+
 
 def test_in_transaction_context_fails_closed_when_depth_lookup_errors(monkeypatch, caplog):
     from core.infrastructure import transaction as tx_mod
@@ -95,3 +97,54 @@ def test_transaction_logs_rollback_failure_without_swallowing_original(caplog):
 
     assert "事务回滚失败" in caplog.text
     assert "事务已回滚：original failure" in caplog.text
+
+
+def test_nested_savepoint_rollback_failure_blocks_outer_commit(tmp_path):
+    from core.infrastructure.transaction import TransactionManager
+
+    class RollbackToFailConn:
+        def __init__(self, inner):
+            self.inner = inner
+            self.remaining_failures = 1
+
+        @property
+        def in_transaction(self):
+            return self.inner.in_transaction
+
+        def execute(self, sql):
+            stmt = " ".join(str(sql).split()).upper()
+            if stmt.startswith("ROLLBACK TO SAVEPOINT APS_TX_") and self.remaining_failures > 0:
+                self.remaining_failures -= 1
+                raise sqlite3.OperationalError("rollback-to savepoint failed")
+            return self.inner.execute(sql)
+
+        def commit(self):
+            return self.inner.commit()
+
+        def rollback(self):
+            return self.inner.rollback()
+
+    db_path = tmp_path / "tx_poison.db"
+    raw_conn = sqlite3.connect(str(db_path))
+    try:
+        raw_conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, val TEXT NOT NULL)")
+        raw_conn.commit()
+
+        conn = RollbackToFailConn(raw_conn)
+        manager = TransactionManager(conn)
+
+        with pytest.raises(RuntimeError, match="事务状态不可信"):
+            with manager.transaction():
+                conn.execute("INSERT INTO t (val) VALUES ('outer_before')")
+                try:
+                    with manager.transaction():
+                        conn.execute("INSERT INTO t (val) VALUES ('inner_should_not_commit')")
+                        raise RuntimeError("inner boom")
+                except RuntimeError as exc:
+                    assert "inner boom" in str(exc)
+                conn.execute("INSERT INTO t (val) VALUES ('outer_after')")
+
+        rows = [row[0] for row in raw_conn.execute("SELECT val FROM t ORDER BY id").fetchall()]
+        assert rows == []
+    finally:
+        raw_conn.close()

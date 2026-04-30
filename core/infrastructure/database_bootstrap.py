@@ -53,7 +53,8 @@ def bootstrap_missing_tables_from_schema(conn: sqlite3.Connection, schema_sql: s
     try:
         conn.commit()
     except Exception as exc:
-        fallback_log(logger, "warning", f"缺失整表补齐后提交失败（已继续）：{exc}")
+        fallback_log(logger, "error", f"缺失整表补齐后提交失败，已阻断迁移：{exc}")
+        raise
     if logger:
         fallback_log(
             logger, "warning", f"检测到非空数据库缺失整表，已按 schema.sql 补齐：{', '.join(missing_tables)}。"

@@ -19,6 +19,26 @@ def _depth_map() -> Dict[int, int]:
     return m
 
 
+def _poison_map() -> Dict[int, BaseException]:
+    m = getattr(_TX_LOCAL, "poison_map", None)
+    if m is None:
+        m = {}
+        _TX_LOCAL.poison_map = m
+    return m
+
+
+def _mark_poisoned(conn, exc: BaseException) -> None:
+    _poison_map()[id(conn)] = exc
+
+
+def _poison_reason(conn) -> Optional[BaseException]:
+    return _poison_map().get(id(conn))
+
+
+def _clear_poison(conn) -> None:
+    _poison_map().pop(id(conn), None)
+
+
 def _inc_depth(conn) -> None:
     m = _depth_map()
     key = id(conn)
@@ -86,10 +106,12 @@ def _rollback_savepoint(conn, sp_name: str) -> None:
         conn.execute(f"ROLLBACK TO SAVEPOINT {sp_name}")
     except Exception as e:
         logger.error(f"SAVEPOINT 回滚失败：{e}")
+        raise RuntimeError(f"SAVEPOINT 回滚失败：{e}") from e
     try:
         conn.execute(f"RELEASE SAVEPOINT {sp_name}")
     except Exception as e:
         logger.error(f"SAVEPOINT 释放失败（回滚路径）：{e}")
+        raise RuntimeError(f"SAVEPOINT 释放失败（回滚路径）：{e}") from e
 
 
 def _rollback_outer_transaction(conn) -> None:
@@ -117,10 +139,12 @@ def _release_savepoint(conn, sp_name: str) -> None:
             conn.execute(f"ROLLBACK TO SAVEPOINT {sp_name}")
         except Exception as e2:
             logger.error(f"SAVEPOINT 回滚失败（提交路径）：{e2}")
+            raise RuntimeError(f"SAVEPOINT 释放失败且回滚失败：{e}; rollback={e2}") from e
         try:
             conn.execute(f"RELEASE SAVEPOINT {sp_name}")
         except Exception as e2:
             logger.error(f"SAVEPOINT 释放失败（提交路径-回滚后）：{e2}")
+            raise RuntimeError(f"SAVEPOINT 释放失败且回滚后释放失败：{e}; release_after_rollback={e2}") from e
         logger.error(f"SAVEPOINT 释放失败（提交路径）：{e}")
         raise
 
@@ -142,10 +166,22 @@ def _commit_scope(conn, depth: int, owns_tx: bool, sp_name: Optional[str]) -> No
         _commit_outer_transaction(conn)
 
 
+def _block_commit_if_poisoned(conn, depth: int, owns_tx: bool, sp_name: Optional[str]) -> None:
+    reason = _poison_reason(conn)
+    if reason is None:
+        return
+    try:
+        _rollback_scope(conn, depth, owns_tx, sp_name)
+    except Exception as rollback_exc:
+        logger.error(f"事务状态不可信后的回滚也失败：{rollback_exc}")
+    raise RuntimeError(f"事务状态不可信，已阻止提交：{reason}") from reason
+
+
 @contextmanager
 def _transaction_scope(conn):
     _inc_depth(conn)
     sp_name = None
+    depth = 0
     try:
         depth = _current_depth(conn)
         owns_tx = _owns_transaction(conn, depth)
@@ -154,13 +190,24 @@ def _transaction_scope(conn):
         try:
             yield conn
         except Exception as e:
-            _rollback_scope(conn, depth, owns_tx, sp_name)
+            try:
+                _rollback_scope(conn, depth, owns_tx, sp_name)
+            except Exception as rollback_exc:
+                _mark_poisoned(conn, rollback_exc)
+                logger.error(f"事务回滚失败，事务状态不可信：{rollback_exc}")
             logger.error(f"事务已回滚：{e}")
             raise
         else:
-            _commit_scope(conn, depth, owns_tx, sp_name)
+            _block_commit_if_poisoned(conn, depth, owns_tx, sp_name)
+            try:
+                _commit_scope(conn, depth, owns_tx, sp_name)
+            except Exception as commit_exc:
+                _mark_poisoned(conn, commit_exc)
+                raise
             logger.debug("事务提交成功")
     finally:
+        if depth <= 1:
+            _clear_poison(conn)
         _dec_depth(conn)
 
 

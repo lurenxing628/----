@@ -185,6 +185,34 @@ tags: [techdebt, startup, fallback, win7]
 ## 全量验证
 
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -p no:cacheprovider`
-  - 结果：`899 passed`。
+  - 结果：`911 passed`。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`
   - 结果：干净工作区通过，输出 `质量门禁通过`。
+
+## 对抗审查后追加修复
+
+- 这轮补开了 4 个只读对抗审查：
+  - endpoint 文件组完整性：无 blocker。
+  - database 迁移入口接管：发现底层补表 commit 失败仍会被吞掉。
+  - transaction helper 接管：发现内层 savepoint 回滚失败后，外层若捕获原始异常继续执行，仍可能提交不可信事务。
+  - Patch D / fix-note / 台账：无 blocker，确认 4 条 Win7 accepted risk 仍保留。
+- 已修复 database 阻断：
+  - `database_bootstrap.bootstrap_missing_tables_from_schema()` 在补齐缺失表后，如果 `conn.commit()` 失败，会记录错误并直接抛出。
+  - 这样 `migration_runner` 里的预检路径和真实迁移路径都不会把补表持久化失败当成“已继续”。
+  - 补充测试确认 `ensure_schema()` 会先经过 `database.py` wrapper，再委托 runner；也确认补表 commit 失败会向上冒出。
+- 已修复 transaction 阻断：
+  - savepoint 回滚或释放失败时，会把当前连接标记成“事务状态不可信”。
+  - 外层事务即使捕获了内层原始异常并继续执行，提交前也会被阻止，并尽力回滚外层事务。
+  - 原始业务异常仍会向外抛出；新增的不可信标记只用于防止外层继续提交已经不可靠的事务。
+- 追加定向验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/infrastructure/transaction.py core/infrastructure/database_bootstrap.py tests/test_transaction_boundary.py tests/test_database_migration_runner_delegation.py`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/test_transaction_boundary.py tests/regression_transaction_savepoint_nested.py tests/test_database_migration_runner_delegation.py -q -p no:cacheprovider`：`9 passed`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -k "database or migration or schema or backup" -p no:cacheprovider`：`35 passed, 876 deselected`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -k "transaction or savepoint or operation_logger" -p no:cacheprovider`：`6 passed, 905 deselected`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/regression_migration_failfast_no_backup_storm.py tests/regression_migration_outcome_partial_no_upgrade.py tests/regression_migration_outcome_skip_no_upgrade.py tests/regression_maintenance_window_mutex.py -q -p no:cacheprovider`：`4 passed`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`：`0 errors`，仍有 6 个既有 scheduler `__all__` warning。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：通过，`active_xfail_count=0`，`collected_count=911`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields && PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`complexity_count=18`，`silent_fallback_count=120`，`accepted_risk_count=4`。
+- Win7 状态不变：
+  - 当前仍未执行 Win7 真机 / 虚拟机复测。
+  - 4 条 Win7 accepted risk 继续保留，不能包装成已关闭。
