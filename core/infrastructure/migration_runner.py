@@ -19,6 +19,10 @@ from .migrations.common import MigrationOutcome, fallback_log
 ConnectionFactory = Callable[[str], sqlite3.Connection]
 
 
+class MigrationRollbackError(RuntimeError):
+    """数据库迁移失败后，恢复备份也失败时抛出。"""
+
+
 def preflight_migration_contract(
     db_path: str,
     *,
@@ -77,8 +81,17 @@ def migrate_with_backup(
                 logger=logger,
                 connection_factory=connection_factory,
             )
-        except Exception:
-            _rollback_from_backup(db_path, backup_path, logger=logger)
+        except Exception as migration_exc:
+            try:
+                _rollback_from_backup(db_path, backup_path, logger=logger)
+            except MigrationRollbackError as rollback_exc:
+                if logger:
+                    fallback_log(
+                        logger,
+                        "error",
+                        f"数据库迁移失败，且备份恢复失败；数据库状态不可信：migration={migration_exc}; rollback={rollback_exc}",
+                    )
+                raise MigrationRollbackError("数据库迁移失败，且备份恢复失败；数据库状态不可信") from rollback_exc
             raise
 
 
@@ -230,7 +243,10 @@ def _log_incomplete_migration(
 
 def _rollback_from_backup(db_path: str, backup_path: str, *, logger=None) -> None:
     if not backup_path or not os.path.exists(backup_path):
-        return
+        message = f"数据库迁移失败，但迁移前备份不存在，无法回滚（backup={backup_path}）"
+        if logger:
+            fallback_log(logger, "error", message)
+        raise MigrationRollbackError(message)
     try:
         restore_db_file_from_backup(backup_path, db_path, logger=logger)
         if logger:
@@ -238,6 +254,7 @@ def _rollback_from_backup(db_path: str, backup_path: str, *, logger=None) -> Non
     except Exception as exc:
         if logger:
             fallback_log(logger, "error", f"数据库迁移失败且回滚失败：{exc}（backup={backup_path}）")
+        raise MigrationRollbackError(f"数据库迁移失败且回滚失败：{exc}（backup={backup_path}）") from exc
 
 
 def _close_connection(conn, logger=None) -> None:

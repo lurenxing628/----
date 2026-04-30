@@ -179,3 +179,124 @@ def test_ensure_schema_initialization_rollback_failure_raises(monkeypatch, tmp_p
         database_mod.ensure_schema(str(tmp_path / "app.db"), schema_path=str(schema_path))
 
     assert "rollback failed" in str(exc_info.value.__cause__)
+
+
+def test_migrate_with_backup_raises_when_restore_fails(monkeypatch, tmp_path):
+    from core.infrastructure import backup as backup_mod
+    from core.infrastructure import migration_runner as runner_mod
+
+    db_path = tmp_path / "app.db"
+    db_path.write_text("db", encoding="utf-8")
+    backup_path = tmp_path / "before.db"
+    backup_path.write_text("backup", encoding="utf-8")
+
+    class _Window:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _BackupManager:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        def backup(self, suffix):
+            return str(backup_path)
+
+    monkeypatch.setattr(backup_mod, "maintenance_window", lambda *args, **kwargs: _Window())
+    monkeypatch.setattr(backup_mod, "BackupManager", _BackupManager)
+    monkeypatch.setattr(runner_mod, "_apply_migrations", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("migration fail")))
+    monkeypatch.setattr(
+        runner_mod,
+        "restore_db_file_from_backup",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("restore fail")),
+    )
+
+    with pytest.raises(runner_mod.MigrationRollbackError, match="数据库迁移失败，且备份恢复失败；数据库状态不可信") as exc_info:
+        runner_mod.migrate_with_backup(
+            str(db_path),
+            from_version=1,
+            to_version=2,
+            backup_dir=str(tmp_path / "backups"),
+            connection_factory=lambda path: sqlite3.connect(path),
+        )
+
+    assert isinstance(exc_info.value.__cause__, runner_mod.MigrationRollbackError)
+
+
+def test_migrate_with_backup_raises_when_backup_missing_after_migration_failure(monkeypatch, tmp_path):
+    from core.infrastructure import backup as backup_mod
+    from core.infrastructure import migration_runner as runner_mod
+
+    db_path = tmp_path / "app.db"
+    db_path.write_text("db", encoding="utf-8")
+    missing_backup = tmp_path / "missing_before.db"
+
+    class _Window:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _BackupManager:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        def backup(self, suffix):
+            return str(missing_backup)
+
+    monkeypatch.setattr(backup_mod, "maintenance_window", lambda *args, **kwargs: _Window())
+    monkeypatch.setattr(backup_mod, "BackupManager", _BackupManager)
+    monkeypatch.setattr(runner_mod, "_apply_migrations", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("migration fail")))
+
+    with pytest.raises(runner_mod.MigrationRollbackError, match="数据库迁移失败，且备份恢复失败；数据库状态不可信"):
+        runner_mod.migrate_with_backup(
+            str(db_path),
+            from_version=1,
+            to_version=2,
+            backup_dir=str(tmp_path / "backups"),
+            connection_factory=lambda path: sqlite3.connect(path),
+        )
+
+
+def test_migrate_with_backup_preserves_migration_error_when_restore_succeeds(monkeypatch, tmp_path):
+    from core.infrastructure import backup as backup_mod
+    from core.infrastructure import migration_runner as runner_mod
+
+    db_path = tmp_path / "app.db"
+    db_path.write_text("db", encoding="utf-8")
+    backup_path = tmp_path / "before.db"
+    backup_path.write_text("backup", encoding="utf-8")
+    restored = []
+
+    class _Window:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _BackupManager:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        def backup(self, suffix):
+            return str(backup_path)
+
+    monkeypatch.setattr(backup_mod, "maintenance_window", lambda *args, **kwargs: _Window())
+    monkeypatch.setattr(backup_mod, "BackupManager", _BackupManager)
+    monkeypatch.setattr(runner_mod, "_apply_migrations", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("migration fail")))
+    monkeypatch.setattr(runner_mod, "restore_db_file_from_backup", lambda *args, **kwargs: restored.append(args))
+
+    with pytest.raises(RuntimeError, match="migration fail"):
+        runner_mod.migrate_with_backup(
+            str(db_path),
+            from_version=1,
+            to_version=2,
+            backup_dir=str(tmp_path / "backups"),
+            connection_factory=lambda path: sqlite3.connect(path),
+        )
+
+    assert restored
