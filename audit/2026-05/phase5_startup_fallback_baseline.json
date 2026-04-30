@@ -1,0 +1,3001 @@
+{
+  "accepted_risks": [
+    {
+      "entry_ids": [
+        "fallback:web-bootstrap-launcher_network-_bind_ephemeral_port-239044e831d0",
+        "fallback:web-bootstrap-launcher_network-_bind_ephemeral_port-8fa92001c1f5",
+        "fallback:web-bootstrap-launcher_network-_can_bind-239044e831d0",
+        "fallback:web-bootstrap-launcher_network-_can_bind-63547b247253",
+        "fallback:web-bootstrap-launcher_network-_can_bind-afcde49b2e4c",
+        "fallback:web-bootstrap-launcher_network-pick_bind_host-84a584e3131a",
+        "fallback:web-bootstrap-launcher_network-pick_bind_host-afcde49b2e4c"
+      ],
+      "exit_condition": "形成统一的显式绑定/探测策略并完成 Win7 真机打包验收后移除",
+      "id": "risk:launcher-bind-host-port-win7",
+      "notes": "验证命令：python -m pytest tests/test_win7_launcher_runtime_paths.py -q；python -m pytest tests/regression_startup_host_portfile.py -q",
+      "owner": "SP03",
+      "reason": "Win7 / 打包环境下主机与端口探测能力受系统差异影响，当前保留现有兼容回退以避免误伤启动链。",
+      "review_after": "Win7 打包链下一次集中整治时复核"
+    },
+    {
+      "entry_ids": [
+        "fallback:web-bootstrap-launcher_processes-_kill_runtime_pid-63547b247253",
+        "fallback:web-bootstrap-launcher_processes-_kill_runtime_pid-63547b247253-x2",
+        "fallback:web-bootstrap-launcher_processes-_pid_exists-0ff38364cf59",
+        "fallback:web-bootstrap-launcher_processes-_pid_exists-63547b247253",
+        "fallback:web-bootstrap-launcher_processes-_pid_exists-63547b247253-x2",
+        "fallback:web-bootstrap-launcher_processes-_query_process_executable_path-ef8b1751694c",
+        "fallback:web-bootstrap-launcher_processes-_run_powershell_text-0c467efd4bb3",
+        "fallback:web-bootstrap-launcher_stop-_log_chrome_stop_failure-afcde49b2e4c",
+        "fallback:web-bootstrap-launcher_stop-_probe_runtime_health-63547b247253",
+        "fallback:web-bootstrap-launcher_stop-_request_runtime_shutdown-63547b247253"
+      ],
+      "exit_condition": "形成统一的进程探测/终止能力层并完成 Win7 真机停机验收后移除",
+      "id": "risk:launcher-process-probe-kill-win7",
+      "notes": "验证命令：python -m pytest tests/test_win7_launcher_runtime_paths.py -q；python -m pytest tests/regression_runtime_stop_cli.py -q",
+      "owner": "SP03",
+      "reason": "Win7 / 打包环境下进程探测、健康探测与终止路径依赖系统命令能力差异，当前保留兼容回退以维持停机链稳定。",
+      "review_after": "Win7 打包链下一次集中整治时复核"
+    },
+    {
+      "entry_ids": [
+        "fallback:web-bootstrap-launcher_contracts-__init__-dd275cad11bd",
+        "fallback:web-bootstrap-launcher_contracts-_create_new_runtime_lock-15b227835316",
+        "fallback:web-bootstrap-launcher_contracts-_create_new_runtime_lock-fef185cd8db6",
+        "fallback:web-bootstrap-launcher_contracts-_is_runtime_lock_active-f5471934c2b2",
+        "fallback:web-bootstrap-launcher_contracts-_normalize_runtime_contract_payload-9b32edb04e09",
+        "fallback:web-bootstrap-launcher_contracts-_normalize_runtime_contract_payload-fc7c013108cc",
+        "fallback:web-bootstrap-launcher_contracts-_read_key_value_file-f90f2cec10d3",
+        "fallback:web-bootstrap-launcher_contracts-_remove_stale_runtime_lock-208475c29681",
+        "fallback:web-bootstrap-launcher_contracts-_runtime_contract_log_dirs-2be0ebb52d21",
+        "fallback:web-bootstrap-launcher_contracts-clear_launch_error-fef185cd8db6",
+        "fallback:web-bootstrap-launcher_contracts-delete_runtime_contract_files-fef185cd8db6",
+        "fallback:web-bootstrap-launcher_contracts-read_runtime_contract-ef8b1751694c",
+        "fallback:web-bootstrap-launcher_contracts-read_runtime_lock-ea9c973a9bee",
+        "fallback:web-bootstrap-launcher_contracts-release_runtime_lock-f5471934c2b2",
+        "fallback:web-bootstrap-launcher_contracts-release_runtime_lock-fef185cd8db6",
+        "fallback:web-bootstrap-launcher_contracts-write_runtime_contract_file-afcde49b2e4c",
+        "fallback:web-bootstrap-launcher_contracts-write_runtime_contract_file-afcde49b2e4c-x2",
+        "fallback:web-bootstrap-launcher_contracts-write_runtime_host_port_files-afcde49b2e4c",
+        "fallback:web-bootstrap-launcher_contracts-write_runtime_host_port_files-afcde49b2e4c-x2",
+        "fallback:web-bootstrap-launcher_stop-_build_shutdown_url-f5471934c2b2",
+        "fallback:web-bootstrap-launcher_stop-_log_runtime_stop_failure-afcde49b2e4c"
+      ],
+      "exit_condition": "形成统一的运行锁/契约文件治理层，并完成 Win7 真机启动和停机验收后移除",
+      "id": "risk:launcher-runtime-lock-contract-win7",
+      "notes": "验证命令：python -m pytest tests/regression_runtime_lock_reloader_parent_skip.py -q；python -m pytest tests/regression_runtime_stop_cli.py -q；python -m pytest tests/test_win7_launcher_runtime_paths.py -q",
+      "owner": "SP03",
+      "reason": "Win7 / 打包环境下运行锁、契约文件和停止链需要兼容旧系统文件与进程行为，当前保留现有可见失败和保守清理边界。",
+      "review_after": "Win7 打包链下一次集中整治时复核"
+    },
+    {
+      "entry_ids": [
+        "fallback:web-bootstrap-launcher_paths-current_runtime_owner-de055705f123",
+        "fallback:web-bootstrap-launcher_paths-read_shared_data_root_from_registry-afcde49b2e4c",
+        "fallback:web-bootstrap-launcher_paths-read_shared_data_root_from_registry-de055705f123",
+        "fallback:web-bootstrap-launcher_paths-resolve_runtime_state_dir-de055705f123"
+      ],
+      "exit_condition": "形成统一的运行根目录/owner 解析策略并完成打包部署验收后移除",
+      "id": "risk:launcher-runtime-root-owner-win7",
+      "notes": "验证命令：python -m pytest tests/test_win7_launcher_runtime_paths.py -q；python -m pytest tests/regression_startup_host_portfile.py -q",
+      "owner": "SP03",
+      "reason": "Win7 / 打包环境下运行根目录、注册表与 owner 解析受部署方式影响，当前保留现有兼容回退以维持目录解析稳定。",
+      "review_after": "Win7 打包链下一次集中整治时复核"
+    },
+    {
+      "entry_ids": [
+        "fallback:web-ui_mode-safe_url_for-65c3d715b2e8"
+      ],
+      "exit_condition": "完成替代渲染桥接方案或明确维持现状的长期策略",
+      "id": "risk:ui-mode-render-bridge-observable-degrade",
+      "notes": "接受风险只引用主条目，不重复记录路径与分类。",
+      "owner": "SP09",
+      "reason": "渲染桥接需要保持页面可用性与可观测性，当前不在 SP02/SP03 内消除此类降级。",
+      "review_after": "SP09 完成后复核"
+    }
+  ],
+  "branch": "codex/techdebt-phase5-startup-fallbacks",
+  "fallback_entries": [
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9d9a10ba989c5f392269e69a03c6ae4cb208a9a5",
+      "id": "fallback:web-bootstrap-entrypoint-_write_launch_error_with_observability-9d9a10ba989c",
+      "legacy_swallow_hit": false,
+      "line_end": 114,
+      "line_start": 113,
+      "path": "web/bootstrap/entrypoint.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_write_launch_error_with_observability"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:65717f72cc8564fe2658050628f023bb88141ce9",
+      "id": "fallback:web-bootstrap-entrypoint-app_main-65717f72cc85",
+      "legacy_swallow_hit": false,
+      "line_end": 195,
+      "line_start": 191,
+      "path": "web/bootstrap/entrypoint.py",
+      "signature": {
+        "call_categories": [
+          "log:error"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:error",
+          "return:number:nonzero"
+        ],
+        "default_actions": [
+          "return:number:nonzero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "app_main"
+    },
+    {
+      "except_ordinal": 5,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:75e5d774e3db5bfd2a102d25212c7db502f36cf5",
+      "id": "fallback:web-bootstrap-entrypoint-app_main-75e5d774e3db",
+      "legacy_swallow_hit": false,
+      "line_end": 235,
+      "line_start": 231,
+      "path": "web/bootstrap/entrypoint.py",
+      "signature": {
+        "call_categories": [
+          "call:str",
+          "log:error"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:error",
+          "return:number:nonzero"
+        ],
+        "default_actions": [
+          "return:number:nonzero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "app_main"
+    },
+    {
+      "except_ordinal": 3,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:946f076d7b62be0861726da8c355b7d446306d94",
+      "id": "fallback:web-bootstrap-entrypoint-app_main-946f076d7b62",
+      "legacy_swallow_hit": false,
+      "line_end": 210,
+      "line_start": 208,
+      "path": "web/bootstrap/entrypoint.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:number:nonzero",
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "app_main"
+    },
+    {
+      "except_ordinal": 6,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9666cf133bf297724836e4fb30450c5903324ee0",
+      "id": "fallback:web-bootstrap-entrypoint-app_main-9666cf133bf2",
+      "legacy_swallow_hit": false,
+      "line_end": 253,
+      "line_start": 248,
+      "path": "web/bootstrap/entrypoint.py",
+      "signature": {
+        "call_categories": [
+          "call:get",
+          "log:error",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning",
+          "log:error",
+          "return:number:nonzero"
+        ],
+        "default_actions": [
+          "return:number:nonzero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "app_main"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9d9a10ba989c5f392269e69a03c6ae4cb208a9a5",
+      "id": "fallback:web-bootstrap-entrypoint-app_main-9d9a10ba989c",
+      "legacy_swallow_hit": false,
+      "line_end": 187,
+      "line_start": 186,
+      "path": "web/bootstrap/entrypoint.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "app_main"
+    },
+    {
+      "except_ordinal": 4,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9d9a10ba989c5f392269e69a03c6ae4cb208a9a5",
+      "id": "fallback:web-bootstrap-entrypoint-app_main-9d9a10ba989c-x4",
+      "legacy_swallow_hit": false,
+      "line_end": 221,
+      "line_start": 220,
+      "path": "web/bootstrap/entrypoint.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "app_main"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:42cf3c7f221e2bcafa3ca2f57a514825d0645f89",
+      "id": "fallback:web-bootstrap-factory-_close_db-42cf3c7f221e",
+      "legacy_swallow_hit": false,
+      "line_end": 397,
+      "line_start": 396,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [
+          "close"
+        ],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_close_db"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:239044e831d05f52b6b3a119b01fedc5057c2fa7",
+      "id": "fallback:web-bootstrap-factory-_is_exit_backup_enabled-239044e831d0",
+      "legacy_swallow_hit": true,
+      "line_end": 121,
+      "line_start": 120,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [
+          "close"
+        ],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "_is_exit_backup_enabled"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:98f40b3f5aea78f703856e59fa24b144b3b08ffb",
+      "id": "fallback:web-bootstrap-factory-_is_exit_backup_enabled-98f40b3f5aea",
+      "legacy_swallow_hit": false,
+      "line_end": 115,
+      "line_start": 113,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning",
+          "return:none"
+        ],
+        "default_actions": [
+          "nested_return:none",
+          "return:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_is_exit_backup_enabled"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:f8d66440ff863e5da8738a537817bceddc5dcfd7",
+      "id": "fallback:web-bootstrap-factory-_is_prefetch_req-f8d66440ff86",
+      "legacy_swallow_hit": false,
+      "line_end": 419,
+      "line_start": 415,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning",
+          "return:bool:false"
+        ],
+        "default_actions": [
+          "nested_return:bool:false",
+          "return:bool:false"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_is_prefetch_req"
+    },
+    {
+      "except_ordinal": 8,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:42cf3c7f221e2bcafa3ca2f57a514825d0645f89",
+      "id": "fallback:web-bootstrap-factory-_open_db-42cf3c7f221e",
+      "legacy_swallow_hit": false,
+      "line_end": 383,
+      "line_start": 376,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [
+          "close"
+        ],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_open_db"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:5bace2ad01555eb5e75a79d2acbc4e196fabe022",
+      "id": "fallback:web-bootstrap-factory-_open_db-5bace2ad0155",
+      "legacy_swallow_hit": false,
+      "line_end": 294,
+      "line_start": 292,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:attr:_aps_req_started:none",
+          "log:warning"
+        ],
+        "default_actions": [
+          "assign:none",
+          "nested_assign:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_open_db"
+    },
+    {
+      "except_ordinal": 6,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:7fedbc7e7e078b94b172417bf3dddbfd6b40ef67",
+      "id": "fallback:web-bootstrap-factory-_open_db-7fedbc7e7e07",
+      "legacy_swallow_hit": false,
+      "line_end": 364,
+      "line_start": 359,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "call:type",
+          "log:error"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:error"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_open_db"
+    },
+    {
+      "except_ordinal": 4,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9cb9bf4f44885b9f84c1c1fbefec445e5f4eb445",
+      "id": "fallback:web-bootstrap-factory-_open_db-9cb9bf4f4488",
+      "legacy_swallow_hit": false,
+      "line_end": 325,
+      "line_start": 316,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "call:render_minimal_error_page",
+          "log:error"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:error",
+          "return:tuple:nonempty"
+        ],
+        "default_actions": [
+          "return:tuple:nonempty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_open_db"
+    },
+    {
+      "except_ordinal": 5,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9cb9bf4f44885b9f84c1c1fbefec445e5f4eb445",
+      "id": "fallback:web-bootstrap-factory-_open_db-9cb9bf4f4488-x5",
+      "legacy_swallow_hit": false,
+      "line_end": 338,
+      "line_start": 329,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "call:render_minimal_error_page",
+          "log:error"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:error",
+          "return:tuple:nonempty"
+        ],
+        "default_actions": [
+          "return:tuple:nonempty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_open_db"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9d9a10ba989c5f392269e69a03c6ae4cb208a9a5",
+      "id": "fallback:web-bootstrap-factory-_open_db-9d9a10ba989c",
+      "legacy_swallow_hit": false,
+      "line_end": 305,
+      "line_start": 302,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_open_db"
+    },
+    {
+      "except_ordinal": 7,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:c34ff479022eeb0ceb1210a1b4b3e12d83f60365",
+      "id": "fallback:web-bootstrap-factory-_open_db-c34ff479022e",
+      "legacy_swallow_hit": false,
+      "line_end": 384,
+      "line_start": 372,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "cleanup:close",
+          "log:warning"
+        ],
+        "cleanup_actions": [
+          "close"
+        ],
+        "control_flow": [
+          "if",
+          "raise"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_open_db"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9d9a10ba989c5f392269e69a03c6ae4cb208a9a5",
+      "id": "fallback:web-bootstrap-factory-_perf_headers-9d9a10ba989c",
+      "legacy_swallow_hit": false,
+      "line_end": 430,
+      "line_start": 429,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_perf_headers"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:f8d66440ff863e5da8738a537817bceddc5dcfd7",
+      "id": "fallback:web-bootstrap-factory-_run_exit_backup-f8d66440ff86",
+      "legacy_swallow_hit": false,
+      "line_end": 143,
+      "line_start": 141,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning",
+          "return:bool:false"
+        ],
+        "default_actions": [
+          "nested_return:bool:false",
+          "return:bool:false"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_run_exit_backup"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:cf67154c41b4039ebf367bf946305b01bc66889d",
+      "id": "fallback:web-bootstrap-factory-_shutdown-cf67154c41b4",
+      "legacy_swallow_hit": false,
+      "line_end": 204,
+      "line_start": 203,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [
+          "shutdown"
+        ],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_shutdown"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9d9a10ba989c5f392269e69a03c6ae4cb208a9a5",
+      "id": "fallback:web-bootstrap-factory-create_app_core-9d9a10ba989c",
+      "legacy_swallow_hit": false,
+      "line_end": 271,
+      "line_start": 270,
+      "path": "web/bootstrap/factory.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "create_app_core"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:dd275cad11bde7c4f2d8f6f0c2319a5ccdb259d4",
+      "id": "fallback:web-bootstrap-launcher_contracts-__init__-dd275cad11bd",
+      "legacy_swallow_hit": false,
+      "line_end": 36,
+      "line_start": 35,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:attr:pid:number:zero"
+        ],
+        "default_actions": [
+          "assign:number:zero",
+          "nested_assign:number:zero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "__init__"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:15b227835316b13bc46e958d3a04ed1730c0f992",
+      "id": "fallback:web-bootstrap-launcher_contracts-_create_new_runtime_lock-15b227835316",
+      "legacy_swallow_hit": false,
+      "line_end": 147,
+      "line_start": 142,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [
+          "cleanup:remove"
+        ],
+        "cleanup_actions": [
+          "remove"
+        ],
+        "control_flow": [
+          "nested_try",
+          "raise"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "_create_new_runtime_lock"
+    },
+    {
+      "except_ordinal": 3,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:fef185cd8db6a8d7c88c037dee4f786d0bee4d47",
+      "id": "fallback:web-bootstrap-launcher_contracts-_create_new_runtime_lock-fef185cd8db6",
+      "legacy_swallow_hit": true,
+      "line_end": 146,
+      "line_start": 145,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [
+          "remove"
+        ],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "_create_new_runtime_lock"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:f5471934c2b2ea95061ab07da6696a2726652633",
+      "id": "fallback:web-bootstrap-launcher_contracts-_is_runtime_lock_active-f5471934c2b2",
+      "legacy_swallow_hit": false,
+      "line_end": 108,
+      "line_start": 107,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:number:zero"
+        ],
+        "default_actions": [
+          "assign:number:zero",
+          "nested_assign:number:zero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_is_runtime_lock_active"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:9b32edb04e093fd6e191c1ccd1f109be624095c3",
+      "id": "fallback:web-bootstrap-launcher_contracts-_normalize_runtime_contract_payload-9b32edb04e09",
+      "legacy_swallow_hit": false,
+      "line_end": 401,
+      "line_start": 400,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:item:item:number:zero"
+        ],
+        "default_actions": [
+          "assign:number:zero",
+          "nested_assign:number:zero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_normalize_runtime_contract_payload"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:fc7c013108cc286fbe997a4957d7e9cb9e2aa291",
+      "id": "fallback:web-bootstrap-launcher_contracts-_normalize_runtime_contract_payload-fc7c013108cc",
+      "legacy_swallow_hit": false,
+      "line_end": 394,
+      "line_start": 393,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:item:contract_version:number:zero"
+        ],
+        "default_actions": [
+          "assign:number:zero",
+          "nested_assign:number:zero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_normalize_runtime_contract_payload"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:f90f2cec10d35c4c7be56055f4f00a53fccd271c",
+      "id": "fallback:web-bootstrap-launcher_contracts-_read_key_value_file-f90f2cec10d3",
+      "legacy_swallow_hit": false,
+      "line_end": 72,
+      "line_start": 71,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:dict:empty"
+        ],
+        "default_actions": [
+          "nested_return:dict:empty",
+          "return:dict:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_read_key_value_file"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:208475c296814c629cc8928ff83c4d8d3004f5cd",
+      "id": "fallback:web-bootstrap-launcher_contracts-_remove_stale_runtime_lock-208475c29681",
+      "legacy_swallow_hit": false,
+      "line_end": 175,
+      "line_start": 174,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [
+          "call:RuntimeLockError"
+        ],
+        "cleanup_actions": [
+          "remove"
+        ],
+        "control_flow": [
+          "raise"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "_remove_stale_runtime_lock"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:2be0ebb52d217fbf282a0e0f39cf573b1d1fe665",
+      "id": "fallback:web-bootstrap-launcher_contracts-_runtime_contract_log_dirs-2be0ebb52d21",
+      "legacy_swallow_hit": false,
+      "line_end": 436,
+      "line_start": 435,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:name"
+        ],
+        "default_actions": [
+          "return:name"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_runtime_contract_log_dirs"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:fef185cd8db6a8d7c88c037dee4f786d0bee4d47",
+      "id": "fallback:web-bootstrap-launcher_contracts-clear_launch_error-fef185cd8db6",
+      "legacy_swallow_hit": true,
+      "line_end": 238,
+      "line_start": 237,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [
+          "remove"
+        ],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "clear_launch_error"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:fef185cd8db6a8d7c88c037dee4f786d0bee4d47",
+      "id": "fallback:web-bootstrap-launcher_contracts-delete_runtime_contract_files-fef185cd8db6",
+      "legacy_swallow_hit": true,
+      "line_end": 426,
+      "line_start": 425,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [
+          "remove"
+        ],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "delete_runtime_contract_files"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:ef8b1751694c627ac68ebdecd2e5dd2b19d7dc05",
+      "id": "fallback:web-bootstrap-launcher_contracts-read_runtime_contract-ef8b1751694c",
+      "legacy_swallow_hit": false,
+      "line_end": 384,
+      "line_start": 383,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:none"
+        ],
+        "default_actions": [
+          "nested_return:none",
+          "return:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "read_runtime_contract"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:ea9c973a9bee5b8add22a2450ca3d427f5933880",
+      "id": "fallback:web-bootstrap-launcher_contracts-read_runtime_lock-ea9c973a9bee",
+      "legacy_swallow_hit": false,
+      "line_end": 96,
+      "line_start": 95,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:item:pid:number:zero"
+        ],
+        "default_actions": [
+          "assign:number:zero",
+          "nested_assign:number:zero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "read_runtime_lock"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:f5471934c2b2ea95061ab07da6696a2726652633",
+      "id": "fallback:web-bootstrap-launcher_contracts-release_runtime_lock-f5471934c2b2",
+      "legacy_swallow_hit": false,
+      "line_end": 210,
+      "line_start": 209,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:number:zero"
+        ],
+        "default_actions": [
+          "assign:number:zero",
+          "nested_assign:number:zero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "release_runtime_lock"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:fef185cd8db6a8d7c88c037dee4f786d0bee4d47",
+      "id": "fallback:web-bootstrap-launcher_contracts-release_runtime_lock-fef185cd8db6",
+      "legacy_swallow_hit": true,
+      "line_end": 218,
+      "line_start": 217,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [
+          "remove"
+        ],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "release_runtime_lock"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-bootstrap-launcher_contracts-write_runtime_contract_file-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 358,
+      "line_start": 357,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "write_runtime_contract_file"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-bootstrap-launcher_contracts-write_runtime_contract_file-afcde49b2e4c-x2",
+      "legacy_swallow_hit": true,
+      "line_end": 363,
+      "line_start": 362,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "write_runtime_contract_file"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-bootstrap-launcher_contracts-write_runtime_host_port_files-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 261,
+      "line_start": 260,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "write_runtime_host_port_files"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-bootstrap-launcher_contracts-write_runtime_host_port_files-afcde49b2e4c-x2",
+      "legacy_swallow_hit": true,
+      "line_end": 269,
+      "line_start": 268,
+      "path": "web/bootstrap/launcher_contracts.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "write_runtime_host_port_files"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:239044e831d05f52b6b3a119b01fedc5057c2fa7",
+      "id": "fallback:web-bootstrap-launcher_network-_bind_ephemeral_port-239044e831d0",
+      "legacy_swallow_hit": true,
+      "line_end": 71,
+      "line_start": 70,
+      "path": "web/bootstrap/launcher_network.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [
+          "close"
+        ],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "_bind_ephemeral_port"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:8fa92001c1f564b2c3ff44c1fa976e51da2c4442",
+      "id": "fallback:web-bootstrap-launcher_network-_bind_ephemeral_port-8fa92001c1f5",
+      "legacy_swallow_hit": false,
+      "line_end": 66,
+      "line_start": 61,
+      "path": "web/bootstrap/launcher_network.py",
+      "signature": {
+        "call_categories": [
+          "call:bind",
+          "call:getsockname",
+          "call:int",
+          "call:socket",
+          "cleanup:close"
+        ],
+        "cleanup_actions": [
+          "close"
+        ],
+        "control_flow": [
+          "cleanup:close",
+          "assign:name:call:socket.socket",
+          "call:bind",
+          "assign:tuple:call:s.getsockname",
+          "return:tuple:nonempty"
+        ],
+        "default_actions": [
+          "return:tuple:nonempty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "_bind_ephemeral_port"
+    },
+    {
+      "except_ordinal": 3,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:239044e831d05f52b6b3a119b01fedc5057c2fa7",
+      "id": "fallback:web-bootstrap-launcher_network-_can_bind-239044e831d0",
+      "legacy_swallow_hit": true,
+      "line_end": 39,
+      "line_start": 38,
+      "path": "web/bootstrap/launcher_network.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [
+          "close"
+        ],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "_can_bind"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:63547b247253c3a2d2ff76a268acd669d2634d98",
+      "id": "fallback:web-bootstrap-launcher_network-_can_bind-63547b247253",
+      "legacy_swallow_hit": false,
+      "line_end": 34,
+      "line_start": 33,
+      "path": "web/bootstrap/launcher_network.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:bool:false"
+        ],
+        "default_actions": [
+          "nested_return:bool:false",
+          "return:bool:false"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_can_bind"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-bootstrap-launcher_network-_can_bind-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 30,
+      "line_start": 29,
+      "path": "web/bootstrap/launcher_network.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "_can_bind"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:84a584e3131a145225bdf5a3fbdd8d761f532e1c",
+      "id": "fallback:web-bootstrap-launcher_network-pick_bind_host-84a584e3131a",
+      "legacy_swallow_hit": false,
+      "line_end": 20,
+      "line_start": 14,
+      "path": "web/bootstrap/launcher_network.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "if",
+          "assign:name:string:text"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "pick_bind_host"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-bootstrap-launcher_network-pick_bind_host-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 19,
+      "line_start": 18,
+      "path": "web/bootstrap/launcher_network.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "pick_bind_host"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:de055705f123a3763c5656b0cad1d0b77e31728e",
+      "id": "fallback:web-bootstrap-launcher_paths-current_runtime_owner-de055705f123",
+      "legacy_swallow_hit": false,
+      "line_end": 43,
+      "line_start": 42,
+      "path": "web/bootstrap/launcher_paths.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:string:empty"
+        ],
+        "default_actions": [
+          "assign:string:empty",
+          "nested_assign:string:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "current_runtime_owner"
+    },
+    {
+      "except_ordinal": 3,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-bootstrap-launcher_paths-read_shared_data_root_from_registry-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 75,
+      "line_start": 74,
+      "path": "web/bootstrap/launcher_paths.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "read_shared_data_root_from_registry"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:de055705f123a3763c5656b0cad1d0b77e31728e",
+      "id": "fallback:web-bootstrap-launcher_paths-read_shared_data_root_from_registry-de055705f123",
+      "legacy_swallow_hit": false,
+      "line_end": 70,
+      "line_start": 69,
+      "path": "web/bootstrap/launcher_paths.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:string:empty"
+        ],
+        "default_actions": [
+          "assign:string:empty",
+          "nested_assign:string:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "read_shared_data_root_from_registry"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:de055705f123a3763c5656b0cad1d0b77e31728e",
+      "id": "fallback:web-bootstrap-launcher_paths-resolve_runtime_state_dir-de055705f123",
+      "legacy_swallow_hit": false,
+      "line_end": 117,
+      "line_start": 116,
+      "path": "web/bootstrap/launcher_paths.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:string:empty"
+        ],
+        "default_actions": [
+          "assign:string:empty",
+          "nested_assign:string:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "resolve_runtime_state_dir"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:63547b247253c3a2d2ff76a268acd669d2634d98",
+      "id": "fallback:web-bootstrap-launcher_processes-_kill_runtime_pid-63547b247253",
+      "legacy_swallow_hit": false,
+      "line_end": 128,
+      "line_start": 127,
+      "path": "web/bootstrap/launcher_processes.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:bool:false"
+        ],
+        "default_actions": [
+          "nested_return:bool:false",
+          "return:bool:false"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_kill_runtime_pid"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:63547b247253c3a2d2ff76a268acd669d2634d98",
+      "id": "fallback:web-bootstrap-launcher_processes-_kill_runtime_pid-63547b247253-x2",
+      "legacy_swallow_hit": false,
+      "line_end": 141,
+      "line_start": 140,
+      "path": "web/bootstrap/launcher_processes.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:bool:false"
+        ],
+        "default_actions": [
+          "nested_return:bool:false",
+          "return:bool:false"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_kill_runtime_pid"
+    },
+    {
+      "except_ordinal": 3,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:0ff38364cf59148b03a4148f27a44a7ebbbd5f4a",
+      "id": "fallback:web-bootstrap-launcher_processes-_pid_exists-0ff38364cf59",
+      "legacy_swallow_hit": false,
+      "line_end": 35,
+      "line_start": 34,
+      "path": "web/bootstrap/launcher_processes.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [
+          "kill"
+        ],
+        "control_flow": [
+          "return:bool:false"
+        ],
+        "default_actions": [
+          "nested_return:bool:false",
+          "return:bool:false"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "_pid_exists"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:63547b247253c3a2d2ff76a268acd669d2634d98",
+      "id": "fallback:web-bootstrap-launcher_processes-_pid_exists-63547b247253",
+      "legacy_swallow_hit": false,
+      "line_end": 12,
+      "line_start": 11,
+      "path": "web/bootstrap/launcher_processes.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:bool:false"
+        ],
+        "default_actions": [
+          "nested_return:bool:false",
+          "return:bool:false"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_pid_exists"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:63547b247253c3a2d2ff76a268acd669d2634d98",
+      "id": "fallback:web-bootstrap-launcher_processes-_pid_exists-63547b247253-x2",
+      "legacy_swallow_hit": false,
+      "line_end": 25,
+      "line_start": 24,
+      "path": "web/bootstrap/launcher_processes.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:bool:false"
+        ],
+        "default_actions": [
+          "nested_return:bool:false",
+          "return:bool:false"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_pid_exists"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:ef8b1751694c627ac68ebdecd2e5dd2b19d7dc05",
+      "id": "fallback:web-bootstrap-launcher_processes-_query_process_executable_path-ef8b1751694c",
+      "legacy_swallow_hit": false,
+      "line_end": 70,
+      "line_start": 69,
+      "path": "web/bootstrap/launcher_processes.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:none"
+        ],
+        "default_actions": [
+          "nested_return:none",
+          "return:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_query_process_executable_path"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:0c467efd4bb383285411c858fd448b30acaa118b",
+      "id": "fallback:web-bootstrap-launcher_processes-_run_powershell_text-0c467efd4bb3",
+      "legacy_swallow_hit": false,
+      "line_end": 58,
+      "line_start": 57,
+      "path": "web/bootstrap/launcher_processes.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:tuple:nonempty"
+        ],
+        "default_actions": [
+          "return:tuple:nonempty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_run_powershell_text"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:f5471934c2b2ea95061ab07da6696a2726652633",
+      "id": "fallback:web-bootstrap-launcher_stop-_build_shutdown_url-f5471934c2b2",
+      "legacy_swallow_hit": false,
+      "line_end": 45,
+      "line_start": 44,
+      "path": "web/bootstrap/launcher_stop.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:number:zero"
+        ],
+        "default_actions": [
+          "assign:number:zero",
+          "nested_assign:number:zero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_build_shutdown_url"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-bootstrap-launcher_stop-_log_chrome_stop_failure-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 209,
+      "line_start": 208,
+      "path": "web/bootstrap/launcher_stop.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "_log_chrome_stop_failure"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-bootstrap-launcher_stop-_log_runtime_stop_failure-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 486,
+      "line_start": 485,
+      "path": "web/bootstrap/launcher_stop.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "_log_runtime_stop_failure"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:63547b247253c3a2d2ff76a268acd669d2634d98",
+      "id": "fallback:web-bootstrap-launcher_stop-_probe_runtime_health-63547b247253",
+      "legacy_swallow_hit": false,
+      "line_end": 78,
+      "line_start": 77,
+      "path": "web/bootstrap/launcher_stop.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:bool:false"
+        ],
+        "default_actions": [
+          "nested_return:bool:false",
+          "return:bool:false"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_probe_runtime_health"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:e8f88fe64693530eeccb8f927fa074073e12b8e7",
+      "id": "fallback:web-bootstrap-launcher_stop-_read_port_file-e8f88fe64693",
+      "legacy_swallow_hit": false,
+      "line_end": 252,
+      "line_start": 251,
+      "path": "web/bootstrap/launcher_stop.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:number:zero"
+        ],
+        "default_actions": [
+          "nested_return:number:zero",
+          "return:number:zero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_read_port_file"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:c4587a2f6ba4611dbd1e909af0997aff67d1c68c",
+      "id": "fallback:web-bootstrap-launcher_stop-_read_text_file-c4587a2f6ba4",
+      "legacy_swallow_hit": false,
+      "line_end": 245,
+      "line_start": 244,
+      "path": "web/bootstrap/launcher_stop.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:string:empty"
+        ],
+        "default_actions": [
+          "nested_return:string:empty",
+          "return:string:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_read_text_file"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:63547b247253c3a2d2ff76a268acd669d2634d98",
+      "id": "fallback:web-bootstrap-launcher_stop-_request_runtime_shutdown-63547b247253",
+      "legacy_swallow_hit": false,
+      "line_end": 68,
+      "line_start": 67,
+      "path": "web/bootstrap/launcher_stop.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:bool:false"
+        ],
+        "default_actions": [
+          "nested_return:bool:false",
+          "return:bool:false"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_request_runtime_shutdown"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:e8f88fe64693530eeccb8f927fa074073e12b8e7",
+      "id": "fallback:web-bootstrap-launcher_stop-_safe_int-e8f88fe64693",
+      "legacy_swallow_hit": false,
+      "line_end": 275,
+      "line_start": 274,
+      "path": "web/bootstrap/launcher_stop.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:number:zero"
+        ],
+        "default_actions": [
+          "nested_return:number:zero",
+          "return:number:zero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_safe_int"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:cf9a2323275d7e5e12c5027d6c7f2c04323cb36a",
+      "id": "fallback:web-bootstrap-paths-runtime_base_dir-cf9a2323275d",
+      "legacy_swallow_hit": false,
+      "line_end": 37,
+      "line_start": 22,
+      "path": "web/bootstrap/paths.py",
+      "signature": {
+        "call_categories": [
+          "call:abspath",
+          "call:dirname",
+          "call:getattr",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "if",
+          "log:warning",
+          "return:name"
+        ],
+        "default_actions": [
+          "return:name"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "runtime_base_dir"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:f1d817567b87597c4b9a8410bef86fced722031c",
+      "id": "fallback:web-bootstrap-plugins-_build_plugin_config_reader-f1d817567b87",
+      "legacy_swallow_hit": false,
+      "line_end": 169,
+      "line_start": 160,
+      "path": "web/bootstrap/plugins.py",
+      "signature": {
+        "call_categories": [
+          "collector:add",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "collector:add",
+          "log:warning",
+          "return:none"
+        ],
+        "default_actions": [
+          "nested_return:none",
+          "return:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "collector",
+          "log"
+        ]
+      },
+      "symbol": "_build_plugin_config_reader"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:25e2037d98d6675d2c542b16387027df1cf1b2c2",
+      "id": "fallback:web-bootstrap-plugins-_reader-25e2037d98d6",
+      "legacy_swallow_hit": false,
+      "line_end": 188,
+      "line_start": 178,
+      "path": "web/bootstrap/plugins.py",
+      "signature": {
+        "call_categories": [
+          "collector:add",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:item:item:string:text",
+          "collector:add",
+          "log:warning",
+          "return:none"
+        ],
+        "default_actions": [
+          "nested_return:none",
+          "return:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "collector",
+          "log"
+        ]
+      },
+      "symbol": "_reader"
+    },
+    {
+      "except_ordinal": 4,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:239044e831d05f52b6b3a119b01fedc5057c2fa7",
+      "id": "fallback:web-bootstrap-plugins-bootstrap_plugins-239044e831d0",
+      "legacy_swallow_hit": true,
+      "line_end": 282,
+      "line_start": 281,
+      "path": "web/bootstrap/plugins.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [
+          "close"
+        ],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": []
+      },
+      "symbol": "bootstrap_plugins"
+    },
+    {
+      "except_ordinal": 3,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:5fd52da6cd06815e230f290c436505bee4280ee2",
+      "id": "fallback:web-bootstrap-plugins-bootstrap_plugins-5fd52da6cd06",
+      "legacy_swallow_hit": false,
+      "line_end": 277,
+      "line_start": 269,
+      "path": "web/bootstrap/plugins.py",
+      "signature": {
+        "call_categories": [
+          "collector:add"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:item:telemetry_persisted:bool:false",
+          "collector:add"
+        ],
+        "default_actions": [
+          "assign:bool:false",
+          "nested_assign:bool:false"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "collector",
+          "status_write"
+        ]
+      },
+      "symbol": "bootstrap_plugins"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:87762ab613285f47483e5fa69dc948f17f1cc43c",
+      "id": "fallback:web-bootstrap-plugins-bootstrap_plugins-87762ab61328",
+      "legacy_swallow_hit": false,
+      "line_end": 242,
+      "line_start": 233,
+      "path": "web/bootstrap/plugins.py",
+      "signature": {
+        "call_categories": [
+          "call:reset_plugin_state",
+          "collector:add",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "collector:add",
+          "log:warning",
+          "assign:name:call:reset_plugin_state"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "collector",
+          "log"
+        ]
+      },
+      "symbol": "bootstrap_plugins"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:a0dc913c7e14e7bcefa3b63ef9d3c0ea995729e8",
+      "id": "fallback:web-bootstrap-plugins-bootstrap_plugins-a0dc913c7e14",
+      "legacy_swallow_hit": false,
+      "line_end": 220,
+      "line_start": 211,
+      "path": "web/bootstrap/plugins.py",
+      "signature": {
+        "call_categories": [
+          "collector:add",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:string:text",
+          "collector:add",
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "collector",
+          "log"
+        ]
+      },
+      "symbol": "bootstrap_plugins"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "cleanup_best_effort",
+      "handler_fingerprint": "sha1:ade0de52e46db871286b2e6c482350e113d56ea6",
+      "id": "fallback:web-bootstrap-runtime_probe-delete_stale_runtime_files-ade0de52e46d",
+      "legacy_swallow_hit": false,
+      "line_end": 82,
+      "line_start": 81,
+      "path": "web/bootstrap/runtime_probe.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [
+          "remove"
+        ],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "cleanup_best_effort",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "delete_stale_runtime_files"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:ef8b1751694c627ac68ebdecd2e5dd2b19d7dc05",
+      "id": "fallback:web-bootstrap-runtime_probe-probe_health-ef8b1751694c",
+      "legacy_swallow_hit": false,
+      "line_end": 92,
+      "line_start": 91,
+      "path": "web/bootstrap/runtime_probe.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:none"
+        ],
+        "default_actions": [
+          "nested_return:none",
+          "return:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "probe_health"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:f5471934c2b2ea95061ab07da6696a2726652633",
+      "id": "fallback:web-bootstrap-runtime_probe-probe_health-f5471934c2b2",
+      "legacy_swallow_hit": false,
+      "line_end": 96,
+      "line_start": 95,
+      "path": "web/bootstrap/runtime_probe.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:number:zero"
+        ],
+        "default_actions": [
+          "assign:number:zero",
+          "nested_assign:number:zero"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "probe_health"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:ef8b1751694c627ac68ebdecd2e5dd2b19d7dc05",
+      "id": "fallback:web-bootstrap-runtime_probe-read_runtime_db_path-ef8b1751694c",
+      "legacy_swallow_hit": false,
+      "line_end": 67,
+      "line_start": 66,
+      "path": "web/bootstrap/runtime_probe.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:none"
+        ],
+        "default_actions": [
+          "nested_return:none",
+          "return:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "read_runtime_db_path"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:ef8b1751694c627ac68ebdecd2e5dd2b19d7dc05",
+      "id": "fallback:web-bootstrap-runtime_probe-read_runtime_host_port-ef8b1751694c",
+      "legacy_swallow_hit": false,
+      "line_end": 54,
+      "line_start": 53,
+      "path": "web/bootstrap/runtime_probe.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:none"
+        ],
+        "default_actions": [
+          "nested_return:none",
+          "return:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "read_runtime_host_port"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:899a791cfa489bde8dcd7781e7fe415e9e0b6c6e",
+      "id": "fallback:web-bootstrap-runtime_probe-resolve_healthy_endpoint-899a791cfa48",
+      "legacy_swallow_hit": false,
+      "line_end": 129,
+      "line_start": 126,
+      "path": "web/bootstrap/runtime_probe.py",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning",
+          "assign:name:string:empty",
+          "assign:name:number:zero"
+        ],
+        "default_actions": [
+          "assign:number:zero",
+          "assign:string:empty",
+          "nested_assign:number:zero",
+          "nested_assign:string:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "resolve_healthy_endpoint"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:7252c370f95cf5054bb009319929a51e99bc3aef",
+      "id": "fallback:web-bootstrap-security-ensure_secret_key-7252c370f95c",
+      "legacy_swallow_hit": false,
+      "line_end": 47,
+      "line_start": 46,
+      "path": "web/bootstrap/security.py",
+      "signature": {
+        "call_categories": [
+          "call:getattr",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "ensure_secret_key"
+    },
+    {
+      "except_ordinal": 3,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:7252c370f95cf5054bb009319929a51e99bc3aef",
+      "id": "fallback:web-bootstrap-security-ensure_secret_key-7252c370f95c-x3",
+      "legacy_swallow_hit": false,
+      "line_end": 60,
+      "line_start": 59,
+      "path": "web/bootstrap/security.py",
+      "signature": {
+        "call_categories": [
+          "call:getattr",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "ensure_secret_key"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:88df496a95020be3f75b34610bc3b833f7513592",
+      "id": "fallback:web-bootstrap-security-ensure_secret_key-88df496a9502",
+      "legacy_swallow_hit": false,
+      "line_end": 33,
+      "line_start": 26,
+      "path": "web/bootstrap/security.py",
+      "signature": {
+        "call_categories": [
+          "call:getattr",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:string:empty",
+          "log:warning"
+        ],
+        "default_actions": [
+          "assign:string:empty",
+          "nested_assign:string:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "ensure_secret_key"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:c4587a2f6ba4611dbd1e909af0997aff67d1c68c",
+      "id": "fallback:web-bootstrap-static_versioning-_mtime_version-c4587a2f6ba4",
+      "legacy_swallow_hit": false,
+      "line_end": 69,
+      "line_start": 68,
+      "path": "web/bootstrap/static_versioning.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:string:empty"
+        ],
+        "default_actions": [
+          "nested_return:string:empty",
+          "return:string:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_mtime_version"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-bootstrap-static_versioning-_versioned_url_for-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 86,
+      "line_start": 84,
+      "path": "web/bootstrap/static_versioning.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "_versioned_url_for"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-bootstrap-static_versioning-install_versioned_url_for-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 103,
+      "line_start": 102,
+      "path": "web/bootstrap/static_versioning.py",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "install_versioned_url_for"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:41345019157fd808292aa57ed9e0b1917537b937",
+      "id": "fallback:web-ui_mode-_describe_template_name-41345019157f",
+      "legacy_swallow_hit": false,
+      "line_end": 324,
+      "line_start": 323,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [
+          "call:str"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:call:str"
+        ],
+        "default_actions": [
+          "return:call:str"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_describe_template_name"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-ui_mode-_log_warning-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 50,
+      "line_start": 49,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "_log_warning"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:ef8b1751694c627ac68ebdecd2e5dd2b19d7dc05",
+      "id": "fallback:web-ui_mode-_normalize_relative_manual_src-ef8b1751694c",
+      "legacy_swallow_hit": false,
+      "line_end": 85,
+      "line_start": 84,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:none"
+        ],
+        "default_actions": [
+          "nested_return:none",
+          "return:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_normalize_relative_manual_src"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:bb5e647c8c88e5046f464ff4805f9fd7798b99cf",
+      "id": "fallback:web-ui_mode-_read_ui_mode_from_db-bb5e647c8c88",
+      "legacy_swallow_hit": false,
+      "line_end": 274,
+      "line_start": 272,
+      "path": "web/ui_mode.py",
+      "scope_tag": "startup_guard",
+      "signature": {
+        "call_categories": [
+          "call:_UiModeDbReadResult",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning",
+          "return:call:_UiModeDbReadResult"
+        ],
+        "default_actions": [
+          "return:call:_UiModeDbReadResult"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "_read_ui_mode_from_db"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:c4587a2f6ba4611dbd1e909af0997aff67d1c68c",
+      "id": "fallback:web-ui_mode-_resolve_manual_endpoint-c4587a2f6ba4",
+      "legacy_swallow_hit": false,
+      "line_end": 74,
+      "line_start": 73,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:string:empty"
+        ],
+        "default_actions": [
+          "nested_return:string:empty",
+          "return:string:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_resolve_manual_endpoint"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:485b9e7ec5d1e327e9d6d32005ad4d9eefa267bd",
+      "id": "fallback:web-ui_mode-_resolve_manual_src-485b9e7ec5d1",
+      "legacy_swallow_hit": false,
+      "line_end": 136,
+      "line_start": 135,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:string:text"
+        ],
+        "default_actions": [
+          "return:string:text"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_resolve_manual_src"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-ui_mode-_resolve_manual_src-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 132,
+      "line_start": 131,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "_resolve_manual_src"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:485b9e7ec5d1e327e9d6d32005ad4d9eefa267bd",
+      "id": "fallback:web-ui_mode-_resolve_template_source-485b9e7ec5d1",
+      "legacy_swallow_hit": false,
+      "line_end": 361,
+      "line_start": 360,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:string:text"
+        ],
+        "default_actions": [
+          "return:string:text"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_resolve_template_source"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-ui_mode-_resolve_template_url_for-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 419,
+      "line_start": 418,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "_resolve_template_url_for"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:ef8b1751694c627ac68ebdecd2e5dd2b19d7dc05",
+      "id": "fallback:web-ui_mode-_same_origin_absolute_manual_src-ef8b1751694c",
+      "legacy_swallow_hit": false,
+      "line_end": 101,
+      "line_start": 100,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "return:none"
+        ],
+        "default_actions": [
+          "nested_return:none",
+          "return:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_same_origin_absolute_manual_src"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-ui_mode-_warn_v2_render_fallback_once-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 345,
+      "line_start": 344,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "_warn_v2_render_fallback_once"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:de055705f123a3763c5656b0cad1d0b77e31728e",
+      "id": "fallback:web-ui_mode-_warn_v2_render_fallback_once-de055705f123",
+      "legacy_swallow_hit": false,
+      "line_end": 335,
+      "line_start": 334,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:string:empty"
+        ],
+        "default_actions": [
+          "assign:string:empty",
+          "nested_assign:string:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "_warn_v2_render_fallback_once"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9d9a10ba989c5f392269e69a03c6ae4cb208a9a5",
+      "id": "fallback:web-ui_mode-get_ui_mode-9d9a10ba989c",
+      "legacy_swallow_hit": false,
+      "line_end": 301,
+      "line_start": 300,
+      "path": "web/ui_mode.py",
+      "scope_tag": "startup_guard",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "get_ui_mode"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9d9a10ba989c5f392269e69a03c6ae4cb208a9a5",
+      "id": "fallback:web-ui_mode-init_ui_mode-9d9a10ba989c",
+      "legacy_swallow_hit": false,
+      "line_end": 228,
+      "line_start": 225,
+      "path": "web/ui_mode.py",
+      "scope_tag": "startup_guard",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "init_ui_mode"
+    },
+    {
+      "except_ordinal": 3,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:9d9a10ba989c5f392269e69a03c6ae4cb208a9a5",
+      "id": "fallback:web-ui_mode-init_ui_mode-9d9a10ba989c-x3",
+      "legacy_swallow_hit": false,
+      "line_end": 237,
+      "line_start": 236,
+      "path": "web/ui_mode.py",
+      "scope_tag": "startup_guard",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "init_ui_mode"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:a0d2b278ae6b20f7ee4c5345e338b00178278da4",
+      "id": "fallback:web-ui_mode-init_ui_mode-a0d2b278ae6b",
+      "legacy_swallow_hit": false,
+      "line_end": 215,
+      "line_start": 212,
+      "path": "web/ui_mode.py",
+      "scope_tag": "startup_guard",
+      "signature": {
+        "call_categories": [
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "log:warning",
+          "assign:item:item:none"
+        ],
+        "default_actions": [
+          "assign:none",
+          "nested_assign:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "init_ui_mode"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:86a2423a2e2071d5c283411912f86bf3d0954d82",
+      "id": "fallback:web-ui_mode-render_ui_template-86a2423a2e20",
+      "legacy_swallow_hit": false,
+      "line_end": 483,
+      "line_start": 475,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [
+          "call:_describe_template_name",
+          "call:getattr",
+          "call:has_request_context",
+          "call:str",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:ifexp",
+          "log:warning"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "render_ui_template"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-ui_mode-render_ui_template-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 437,
+      "line_start": 436,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "render_ui_template"
+    },
+    {
+      "except_ordinal": 3,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-ui_mode-render_ui_template-afcde49b2e4c-x3",
+      "legacy_swallow_hit": true,
+      "line_end": 509,
+      "line_start": 508,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "render_ui_template"
+    },
+    {
+      "except_ordinal": 3,
+      "fallback_kind": "observable_degrade",
+      "handler_fingerprint": "sha1:65c3d715b2e822b2f5a02068e3d0d9df304735c8",
+      "id": "fallback:web-ui_mode-safe_url_for-65c3d715b2e8",
+      "legacy_swallow_hit": false,
+      "line_end": 409,
+      "line_start": 402,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [
+          "call:getattr",
+          "log:warning"
+        ],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:string:empty",
+          "nested_try",
+          "log:warning",
+          "return:none"
+        ],
+        "default_actions": [
+          "assign:string:empty",
+          "nested_assign:string:empty",
+          "nested_return:none",
+          "return:none"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "observable_degrade",
+        "observable_channels": [
+          "log"
+        ]
+      },
+      "symbol": "safe_url_for"
+    },
+    {
+      "except_ordinal": 2,
+      "fallback_kind": "silent_swallow",
+      "handler_fingerprint": "sha1:afcde49b2e4c74e1108155515eb65b8c99d90f17",
+      "id": "fallback:web-ui_mode-safe_url_for-afcde49b2e4c",
+      "legacy_swallow_hit": true,
+      "line_end": 400,
+      "line_start": 399,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "pass"
+        ],
+        "default_actions": [],
+        "except_type": "Exception",
+        "fallback_kind": "silent_swallow",
+        "observable_channels": []
+      },
+      "symbol": "safe_url_for"
+    },
+    {
+      "except_ordinal": 1,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:de055705f123a3763c5656b0cad1d0b77e31728e",
+      "id": "fallback:web-ui_mode-safe_url_for-de055705f123",
+      "legacy_swallow_hit": false,
+      "line_end": 393,
+      "line_start": 392,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:string:empty"
+        ],
+        "default_actions": [
+          "assign:string:empty",
+          "nested_assign:string:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "safe_url_for"
+    },
+    {
+      "except_ordinal": 4,
+      "fallback_kind": "silent_default_fallback",
+      "handler_fingerprint": "sha1:de055705f123a3763c5656b0cad1d0b77e31728e",
+      "id": "fallback:web-ui_mode-safe_url_for-de055705f123-x4",
+      "legacy_swallow_hit": false,
+      "line_end": 407,
+      "line_start": 406,
+      "path": "web/ui_mode.py",
+      "scope_tag": "render_bridge",
+      "signature": {
+        "call_categories": [],
+        "cleanup_actions": [],
+        "control_flow": [
+          "assign:name:string:empty"
+        ],
+        "default_actions": [
+          "assign:string:empty",
+          "nested_assign:string:empty"
+        ],
+        "except_type": "Exception",
+        "fallback_kind": "silent_default_fallback",
+        "observable_channels": []
+      },
+      "symbol": "safe_url_for"
+    }
+  ],
+  "head": "ae4c4215ddff133227deb12962afbe6f37a92163",
+  "recorded_at": "2026-04-30T12:00:20+08:00",
+  "startup_scope_files": [
+    "web/bootstrap/__init__.py",
+    "web/bootstrap/entrypoint.py",
+    "web/bootstrap/factory.py",
+    "web/bootstrap/launcher.py",
+    "web/bootstrap/launcher_contracts.py",
+    "web/bootstrap/launcher_network.py",
+    "web/bootstrap/launcher_paths.py",
+    "web/bootstrap/launcher_processes.py",
+    "web/bootstrap/launcher_stop.py",
+    "web/bootstrap/paths.py",
+    "web/bootstrap/plugins.py",
+    "web/bootstrap/request_services.py",
+    "web/bootstrap/runtime_probe.py",
+    "web/bootstrap/security.py",
+    "web/bootstrap/static_versioning.py",
+    "web/ui_mode.py"
+  ],
+  "summary": {
+    "accepted_risk_count": 5,
+    "fallback_count": 109,
+    "fallback_kinds": {
+      "cleanup_best_effort": 17,
+      "observable_degrade": 35,
+      "silent_default_fallback": 39,
+      "silent_swallow": 18
+    },
+    "scope_tags": {
+      "": 86,
+      "render_bridge": 18,
+      "startup_guard": 5
+    }
+  },
+  "worktree_status": [
+    "## codex/techdebt-phase5-startup-fallbacks"
+  ]
+}

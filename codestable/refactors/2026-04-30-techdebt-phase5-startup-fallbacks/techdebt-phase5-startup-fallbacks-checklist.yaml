@@ -1,0 +1,52 @@
+doc_type: refactor-checklist
+refactor: 2026-04-30-techdebt-phase5-startup-fallbacks
+status: in-progress
+steps:
+  - id: phase5-baseline
+    title: 记录阶段 5 启动链 fallback 基线
+    status: done
+    exit_signal: 基线文件和 refactor 记录已创建，未改业务代码。
+  - id: startup-scan-scope
+    title: 更新 ui_mode 拆分后的启动链扫描范围
+    status: pending
+    exit_signal: 新拆文件被 fallback scanner 覆盖，startup_guard 和 render_bridge scope_tag 不混账。
+  - id: runtime-capabilities
+    title: 引入启动运行时能力结果模型
+    status: pending
+    exit_signal: CapabilityResult 和 available/degraded/unavailable 测试通过。
+  - id: launcher-fallbacks
+    title: 收敛 launcher fallback 为可观测结果
+    status: pending
+    exit_signal: paths/contracts/processes/stop/network/runtime_probe 定向测试通过。
+  - id: ui-mode-split
+    title: 拆分 web/ui_mode.py
+    status: pending
+    exit_signal: facade public API 不变，request/store/render/security 职责拆开，相关测试通过。
+  - id: accepted-risk-win7
+    title: 收口 accepted risk 和 Win7 复核记录
+    status: pending
+    exit_signal: 已消除风险删除，保留风险有 owner、review_after、exit_condition，Win7 复核状态写清。
+  - id: phase5-adversarial-review
+    title: 阶段 5 对抗审查
+    status: pending
+    exit_signal: 4 个 subagent 对 Chrome/profile、scanner、accepted risk、ui_mode API 审查无阻断。
+  - id: phase5-clean-gate
+    title: 运行阶段 5 clean quality gate
+    status: pending
+    exit_signal: scripts/run_quality_gate.py --require-clean-worktree 通过。
+checks:
+  - id: no-public-api-drift
+    title: web/ui_mode.py 和 launcher public API 不漂移
+    status: pending
+  - id: no-chrome-miskill
+    title: 普通 Chrome 不被误杀，无法确认身份时失败闭合
+    status: pending
+  - id: no-fallback-silent-growth
+    title: silent_swallow 和 silent_default_fallback 数量下降且不新增无解释回退
+    status: pending
+  - id: accepted-risk-owned
+    title: 保留 accepted risk 都有 owner、review_after 和 exit_condition
+    status: pending
+  - id: clean-quality-gate
+    title: 最终干净工作区质量门禁通过
+    status: pending
