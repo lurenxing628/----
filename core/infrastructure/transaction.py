@@ -55,10 +55,11 @@ def _owns_transaction(conn, depth: int) -> bool:
     if depth != 1:
         return False
     try:
-        return not bool(getattr(conn, "in_transaction", False))
-    except Exception:
-        # 防御：极少数连接实现可能没有该属性；此时按“自己负责提交”处理
-        return True
+        return not bool(conn.in_transaction)
+    except AttributeError as exc:
+        raise RuntimeError("事务连接缺少 in_transaction，无法安全判断事务所有权。") from exc
+    except Exception as exc:
+        raise RuntimeError("读取事务状态失败，无法安全判断事务所有权。") from exc
 
 
 def _savepoint_name(conn, depth: int) -> str:
@@ -166,12 +167,10 @@ class TransactionManager:
             depth = int(_depth_map().get(id(conn), 0) or 0)
 
             # 仅最外层需要判断“是否由本 TransactionManager 启动事务”
-            if depth == 1:
-                try:
-                    owns_tx = not bool(getattr(conn, "in_transaction", False))
-                except Exception:
-                    # 防御：极少数连接实现可能没有该属性；此时按“自己负责提交”处理
-                    owns_tx = True
+            try:
+                owns_tx = _owns_transaction(conn, depth)
+            except Exception:
+                raise
 
             if depth == 1 and owns_tx:
                 # 最外层且由我们负责事务边界：必须显式 BEGIN，避免最外层 SAVEPOINT 在 RELEASE 后已提交，

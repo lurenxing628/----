@@ -20,6 +20,7 @@ from .launcher_contracts import (
     read_runtime_contract,
     read_runtime_contract_result,
     read_runtime_lock,
+    read_runtime_lock_result,
     release_runtime_lock,
     write_launch_error,
     write_runtime_contract_file,
@@ -85,6 +86,7 @@ from .launcher_processes import (
     _run_powershell_text,
     runtime_pid_exists,
     runtime_pid_matches_executable,
+    runtime_pid_state,
 )
 from .launcher_stop import (
     _build_shutdown_url,
@@ -104,7 +106,13 @@ from .launcher_stop import (
 
 time = _stop.time
 
-_FACADE_RESULT_API = (BindProbeResult, _can_bind_result, read_runtime_contract_result, probe_runtime_health_result)
+_FACADE_RESULT_API = (
+    BindProbeResult,
+    _can_bind_result,
+    read_runtime_contract_result,
+    read_runtime_lock_result,
+    probe_runtime_health_result,
+)
 
 
 def resolve_shared_data_root(base_dir: str, *, frozen: Optional[bool] = None) -> str:
@@ -131,6 +139,7 @@ def _sync_launcher_hooks(*, include_chrome_hook: bool) -> None:
     _stop.read_runtime_contract = read_runtime_contract
     _stop.read_runtime_contract_result = read_runtime_contract_result
     _stop.read_runtime_lock = read_runtime_lock
+    _stop.read_runtime_lock_result = read_runtime_lock_result
     _stop.probe_runtime_health_result = probe_runtime_health_result
     _stop.default_chrome_profile_dir = default_chrome_profile_dir
     if include_chrome_hook:

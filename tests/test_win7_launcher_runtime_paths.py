@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import sys
 from pathlib import Path
@@ -34,6 +35,13 @@ def _import_launcher_processes():
         sys.path.insert(0, repo_root)
     sys.modules.pop("web.bootstrap.launcher_processes", None)
     return importlib.import_module("web.bootstrap.launcher_processes")
+
+
+def _import_launcher_lock_result():
+    repo_root = _repo_root()
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    return importlib.import_module("web.bootstrap.launcher_lock_result")
 
 
 def _import_factory():
@@ -155,6 +163,116 @@ def _write_runtime_lock_file(state_dir: Path, pid: int) -> Path:
     return lock_path
 
 
+def _assert_runtime_lock_error(callable_obj) -> None:
+    try:
+        callable_obj()
+    except Exception as exc:
+        if exc.__class__.__name__ == "RuntimeLockError":
+            return
+        raise
+    raise AssertionError("应抛出 RuntimeLockError")
+
+
+def test_read_runtime_lock_result_distinguishes_bad_lock_files(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    lock_mod = _import_launcher_lock_result()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir()
+    lock_path = state_dir / "aps_runtime.lock"
+
+    assert launcher.read_runtime_lock_result(str(state_dir)).status == "missing"
+
+    lock_path.write_text("", encoding="utf-8")
+    empty = launcher.read_runtime_lock_result(str(state_dir))
+    assert empty.status == "empty"
+    assert launcher.read_runtime_lock(str(state_dir)) is None
+
+    lock_path.write_text("owner=LOCALBOX\\alice\n", encoding="utf-8")
+    missing_pid = launcher.read_runtime_lock_result(str(state_dir))
+    assert missing_pid.status == "invalid"
+    assert missing_pid.reason == "missing_pid"
+
+    lock_path.write_text("pid=bad\nowner=LOCALBOX\\alice\n", encoding="utf-8")
+    invalid_pid = launcher.read_runtime_lock_result(str(state_dir))
+    assert invalid_pid.status == "invalid"
+    assert invalid_pid.reason == "invalid_pid"
+
+    real_open = open
+
+    def _boom_open(path, *args, **kwargs):
+        if str(path) == str(lock_path):
+            raise PermissionError("denied")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(lock_mod, "open", _boom_open, raising=False)
+    unreadable = launcher.read_runtime_lock_result(str(state_dir))
+    assert unreadable.status == "unreadable"
+
+
+def test_acquire_runtime_lock_fails_closed_for_empty_or_invalid_lock(tmp_path):
+    launcher = _import_launcher()
+    runtime_dir = tmp_path / "runtime"
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir()
+    lock_path = state_dir / "aps_runtime.lock"
+
+    lock_path.write_text("", encoding="utf-8")
+    _assert_runtime_lock_error(lambda: launcher.acquire_runtime_lock(str(runtime_dir), str(state_dir)))
+    assert lock_path.exists()
+
+    lock_path.write_text("pid=bad\nowner=LOCALBOX\\alice\n", encoding="utf-8")
+    _assert_runtime_lock_error(lambda: launcher.acquire_runtime_lock(str(runtime_dir), str(state_dir)))
+    assert lock_path.exists()
+
+
+def test_acquire_runtime_lock_fails_closed_when_lock_cannot_be_read(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    lock_mod = _import_launcher_lock_result()
+    runtime_dir = tmp_path / "runtime"
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir()
+    lock_path = _write_runtime_lock_file(state_dir, 12345)
+    real_open = open
+
+    def _boom_open(path, *args, **kwargs):
+        if str(path) == str(lock_path):
+            raise PermissionError("denied")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(lock_mod, "open", _boom_open, raising=False)
+
+    _assert_runtime_lock_error(lambda: launcher.acquire_runtime_lock(str(runtime_dir), str(state_dir)))
+    assert lock_path.exists()
+
+
+def test_mixed_invalid_runtime_lock_is_not_cleaned_by_acquire_release_or_stop(tmp_path):
+    launcher = _import_launcher()
+    runtime_dir = tmp_path / "runtime"
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir()
+    lock_path = state_dir / "aps_runtime.lock"
+    lock_path.write_text(
+        f"pid=999999\nowner=LOCALBOX\\alice\nexe_path={sys.executable}\nBROKEN_LINE\n",
+        encoding="utf-8",
+    )
+
+    result = launcher.read_runtime_lock_result(str(state_dir))
+    assert result.status == "invalid"
+
+    _assert_runtime_lock_error(lambda: launcher.acquire_runtime_lock(str(runtime_dir), str(state_dir)))
+    assert lock_path.exists()
+
+    launcher.release_runtime_lock(str(state_dir), expected_pid=999999)
+    assert lock_path.exists()
+
+    status = launcher._classify_runtime_state(str(state_dir))
+    assert status["lock_status"] == "invalid"
+    assert status["lock_active"] is True
+    assert status["state"] == "mixed"
+    assert launcher._runtime_stop_is_complete(status) is False
+    assert lock_path.exists()
+
+
 def test_release_runtime_lock_does_not_delete_when_expected_pid_invalid(tmp_path):
     launcher = _import_launcher()
     lock_path = _write_runtime_lock_file(tmp_path / "logs", 12345)
@@ -254,6 +372,20 @@ def test_new_probe_runtime_health_result_monkeypatch_is_used(monkeypatch, tmp_pa
     assert status["state"] == "active"
 
 
+def test_legacy_read_runtime_lock_none_monkeypatch_is_respected(monkeypatch, tmp_path):
+    launcher_stop = _import_launcher_stop()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir()
+    _write_runtime_lock_file(state_dir, 12345)
+
+    monkeypatch.setattr(launcher_stop, "read_runtime_lock", lambda path: None)
+
+    status = launcher_stop._classify_runtime_state(str(state_dir))
+
+    assert status["lock_status"] == "missing"
+    assert status["lock_active"] is False
+
+
 def test_stop_runtime_from_log_dir_returns_busy_when_contract_missing_but_health_ok(monkeypatch, tmp_path):
     launcher = _import_launcher()
     state_dir = tmp_path / "shared-data" / "logs"
@@ -304,13 +436,33 @@ def test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confi
     launcher = _import_launcher()
     state_dir = tmp_path / "shared-data" / "logs"
     state_dir.mkdir(parents=True)
+    custom_profile = tmp_path / "custom-profile"
     (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
     (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+    (state_dir / "aps_runtime.lock").write_text(
+        f"pid=999999\nowner=LOCALBOX\\alice\nexe_path={sys.executable}\n",
+        encoding="utf-8",
+    )
+    (state_dir / "aps_runtime.json").write_text(
+        json.dumps(
+            {
+                "contract_version": 1,
+                "pid": 999999,
+                "host": "127.0.0.1",
+                "port": 5000,
+                "shutdown_token": "token",
+                "exe_path": sys.executable,
+                "runtime_dir": str(tmp_path / "shared-data"),
+                "chrome_profile_dir": str(custom_profile),
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     calls = {}
 
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
     monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: False)
-    monkeypatch.setattr(launcher, "delete_runtime_contract_files", lambda path: calls.setdefault("delete", path))
 
     def _fake_stop(profile_dir: str, logger=None) -> bool:
         calls["chrome"] = profile_dir
@@ -319,8 +471,57 @@ def test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confi
     monkeypatch.setattr(launcher, "stop_aps_chrome_processes", _fake_stop)
 
     assert launcher.stop_runtime_from_dir(str(state_dir), stop_aps_chrome=True) == 1
-    assert calls["delete"] == os.path.abspath(str(state_dir))
-    assert calls["chrome"] == os.path.abspath(str(tmp_path / "shared-data" / "chrome109_profile"))
+    assert calls["chrome"] == os.path.abspath(str(custom_profile))
+    assert (state_dir / "aps_runtime.json").exists()
+    assert (state_dir / "aps_runtime.lock").exists()
+    assert (state_dir / "aps_host.txt").exists()
+    assert (state_dir / "aps_port.txt").exists()
+
+
+def test_stop_runtime_from_log_dir_cleans_files_after_chrome_cleanup_success(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "shared-data" / "logs"
+    state_dir.mkdir(parents=True)
+    custom_profile = tmp_path / "custom-profile"
+    (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+    (state_dir / "aps_runtime.lock").write_text(
+        f"pid=999999\nowner=LOCALBOX\\alice\nexe_path={sys.executable}\n",
+        encoding="utf-8",
+    )
+    (state_dir / "aps_runtime.json").write_text(
+        json.dumps(
+            {
+                "contract_version": 1,
+                "pid": 999999,
+                "host": "127.0.0.1",
+                "port": 5000,
+                "shutdown_token": "token",
+                "exe_path": sys.executable,
+                "runtime_dir": str(tmp_path / "shared-data"),
+                "chrome_profile_dir": str(custom_profile),
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    calls = []
+
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: False)
+
+    def _fake_stop(profile_dir: str, logger=None) -> bool:
+        calls.append(("chrome", profile_dir))
+        return True
+
+    monkeypatch.setattr(launcher, "stop_aps_chrome_processes", _fake_stop)
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), stop_aps_chrome=True) == 0
+    assert calls == [("chrome", os.path.abspath(str(custom_profile)))]
+    assert not (state_dir / "aps_runtime.json").exists()
+    assert not (state_dir / "aps_runtime.lock").exists()
+    assert not (state_dir / "aps_host.txt").exists()
+    assert not (state_dir / "aps_port.txt").exists()
 
 
 def test_stop_runtime_from_dir_waits_for_pid_exit_before_success(monkeypatch, tmp_path):
@@ -707,11 +908,13 @@ def test_launcher_facade_exports_runtime_contract_surface():
         "read_runtime_contract",
         "read_runtime_contract_result",
         "read_runtime_lock",
+        "read_runtime_lock_result",
         "release_runtime_lock",
         "resolve_prelaunch_log_dir",
         "resolve_runtime_state_paths",
         "resolve_shared_data_root",
         "runtime_pid_exists",
+        "runtime_pid_state",
         "runtime_pid_matches_executable",
         "stop_aps_chrome_processes",
         "stop_runtime_from_dir",

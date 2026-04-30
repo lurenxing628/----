@@ -40,6 +40,27 @@ def main() -> None:
         def close(self):
             return self._inner.close()
 
+    class _MissingStateConn:
+        def __init__(self, inner: sqlite3.Connection):
+            self._inner = inner
+
+        def execute(self, sql, params=()):
+            return self._inner.execute(sql, params)
+
+        def commit(self):
+            return self._inner.commit()
+
+        def rollback(self):
+            return self._inner.rollback()
+
+        def close(self):
+            return self._inner.close()
+
+    class _BrokenStateConn(_PatchableConn):
+        @property
+        def in_transaction(self):
+            raise RuntimeError("in_transaction boom")
+
     tmpdir = tempfile.mkdtemp(prefix="aps_regression_tx_savepoint_")
     db_path = os.path.join(tmpdir, "tx_savepoint.db")
     conn = sqlite3.connect(db_path)
@@ -146,6 +167,31 @@ def main() -> None:
         rows5 = [r[0] for r in conn.execute("SELECT val FROM t ORDER BY id").fetchall()]
         assert rows5 == [], f"outer commit 失败后应整体回滚，rows={rows5!r}"
 
+        # Case 6：事务归属判断失败时不能猜自己拥有事务，必须失败闭合。
+        broken_conn = _BrokenStateConn(conn)
+        tm_broken = TransactionManager(broken_conn)
+        try:
+            with tm_broken.transaction():
+                broken_conn.execute("INSERT INTO t (val) VALUES ('should_not_write')")
+            raise AssertionError("预期 in_transaction 读取失败时抛出异常")
+        except RuntimeError as e:
+            assert "无法安全判断事务所有权" in str(e), f"异常信息不匹配：{e!r}"
+
+        rows6 = [r[0] for r in conn.execute("SELECT val FROM t ORDER BY id").fetchall()]
+        assert rows6 == [], f"事务归属未知时不应写入数据，rows={rows6!r}"
+
+        missing_conn = _MissingStateConn(conn)
+        tm_missing = TransactionManager(missing_conn)
+        try:
+            with tm_missing.transaction():
+                missing_conn.execute("INSERT INTO t (val) VALUES ('missing_state_should_not_write')")
+            raise AssertionError("预期缺少 in_transaction 时抛出异常")
+        except RuntimeError as e:
+            assert "无法安全判断事务所有权" in str(e), f"异常信息不匹配：{e!r}"
+
+        rows7 = [r[0] for r in conn.execute("SELECT val FROM t ORDER BY id").fetchall()]
+        assert rows7 == [], f"事务状态属性缺失时不应写入数据，rows={rows7!r}"
+
         print("OK")
     finally:
         try:
@@ -156,4 +202,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -95,10 +95,16 @@ def _pid_exists(pid: int) -> bool:
     return bool(state)
 
 
-def runtime_pid_exists(pid: int) -> bool:
-    """公开只读探针：判断给定 pid 当前是否存在。"""
+def runtime_pid_state(pid: int) -> Optional[bool]:
+    """公开三态探针：True=存在，False=不存在，None=无法确认。"""
 
-    return _pid_exists(pid)
+    return _pid_state(pid)
+
+
+def runtime_pid_exists(pid: int) -> bool:
+    """公开兼容探针：仅用于展示；安全关键链路应使用 runtime_pid_state。"""
+
+    return runtime_pid_state(pid) is True
 
 
 def _run_powershell_text(script: str, timeout_s: float = 8.0) -> Tuple[Optional[int], str]:

@@ -1,7 +1,7 @@
 ---
 doc_type: refactor-fix-note
 refactor: 2026-04-30-techdebt-phase5-startup-fallbacks
-status: in-progress
+status: completed
 scope: 阶段 5 review 后的启动链补强
 tags: [techdebt, startup, fallback, win7]
 ---
@@ -29,10 +29,27 @@ tags: [techdebt, startup, fallback, win7]
   - `unreadable`：文件打不开或 JSON 损坏。
   - `invalid`：JSON 能读但字段、版本或类型不对。
   - `valid`：字段完整，可以用于停止链判断。
+- 新增 `web/bootstrap/launcher_lock_result.py`，让运行锁读取也分清：
+  - `missing`：锁文件不存在。
+  - `empty`：锁文件存在但还没有内容，按“可能正在写入”处理。
+  - `unreadable`：锁文件读不了。
+  - `invalid`：锁文件格式坏、缺 pid、pid 非法，或者夹杂无法解释的坏行。
+  - `valid`：锁文件完整，可以用于判断归属。
 - 拆出 `web/bootstrap/launcher_health.py` 和 `web/bootstrap/launcher_chrome.py`，让停止链文件重新低于 500 行，也让健康探测和 Chrome profile 停止更容易单独审查。
+- 拆出 `web/bootstrap/launcher_stop_state.py`，把停止链状态判断放进小模块，保证 `launcher_stop.py` 继续低于 500 行。
 - `release_runtime_lock()` 改为失败闭合：
   - `expected_pid="bad"`、`0`、负数、不匹配 pid 都不会删锁。
   - `expected_pid is None` 时只释放当前进程自己的锁。
+- `acquire_runtime_lock()` 和 `release_runtime_lock()` 对坏锁失败闭合：
+  - 空锁、读不了的锁、格式坏的锁，不会被当成“没有锁”或“陈旧锁”清理。
+  - 锁里同时有合法字段和坏行时，也按 `invalid` 处理，避免半坏文件被误删。
+- `stop_runtime_from_dir()` 的最终收尾顺序已调整：
+  - 先确认 APS Chrome 停止成功。
+  - Chrome 停止失败时保留 `aps_runtime.json`、`aps_runtime.lock`、host/port 等现场文件，方便重试和排查。
+  - Chrome 停止成功后才清理运行痕迹。
+- `TransactionManager.transaction()` 的事务归属判断改为失败闭合：
+  - `conn.in_transaction` 缺失或读取失败时直接抛错。
+  - 不再猜“当前上下文拥有事务”，避免误提交或误回滚外层事务。
 - 启动链关键路径不再直接用 `safe_log(None)` 当唯一可见渠道。
   - 停止链进入运行状态判断时，会把 `state_dir/runtime_dir` 写入进程探测上下文。
   - 进程枚举、PowerShell、进程路径确认和强杀失败会写入 `launcher.log`。
@@ -81,16 +98,22 @@ tags: [techdebt, startup, fallback, win7]
 
 ## 已验证命令
 
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_win7_launcher_runtime_paths.py tests/regression_runtime_contract_launcher.py tests/regression_runtime_probe_resolution.py tests/regression_runtime_lock_reloader_parent_skip.py tests/regression_runtime_stop_cli.py tests/test_launcher_observability.py tests/regression_transaction_savepoint_nested.py`
+  - 结果：`68 passed`。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_launcher_observability.py tests/test_win7_launcher_runtime_paths.py tests/regression_runtime_contract_launcher.py tests/regression_runtime_probe_resolution.py tests/regression_runtime_lock_reloader_parent_skip.py tests/regression_runtime_stop_cli.py tests/test_sync_debt_ledger.py tests/regression_quality_gate_scan_contract.py`
   - 结果：`142 passed`。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_no_silent_exception_swallow tests/test_sync_debt_ledger.py::test_refresh_auto_fields_rejects_silent_entry_when_except_ordinal_drifted --tb=short -ra`
   - 结果：`4 passed`。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_startup_silent_fallback_samples tests/test_architecture_fitness.py::test_no_silent_exception_swallow`
+  - 结果：`3 passed`。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check web/bootstrap tools tests`
+  - 结果：通过。
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core data web tests scripts tools`
   - 结果：通过。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`
   - 结果：`0 errors`，仍有 6 个既有 warning，位置在 `core/services/scheduler/__init__.py`，不属于本轮启动链改动。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`
-  - 结果：通过，`active_xfail_count=0`，`collected_count=883`，旧 5 条测试债仍为 fixed。
+  - 结果：通过，`active_xfail_count=0`，`collected_count=889`，旧 5 条测试债仍为 fixed。
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`
   - 结果：通过，`silent_fallback_count=135`，`accepted_risk_count=4`。
 
@@ -100,9 +123,10 @@ tags: [techdebt, startup, fallback, win7]
 - launcher 日志可见性初审发现 4 个 blocker；已修复后重新复审，无 blocker。
 - 台账 realign 初审发现 1 个 blocker；已修复后重新复审，无 blocker。
 - wrapper / monkeypatch / Python 3.8 兼容复审：无 blocker。
+- 运行锁结果化、Chrome 收尾顺序和事务失败闭合的最终复审：无 blocker。
 
 ## 全量验证
 
 - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests -q -p no:cacheprovider`
-  - 结果：`883 passed`。
+  - 结果：`889 passed`。
 - clean quality gate 需要在提交后用干净工作区执行，结果以本轮最终收尾说明为准。

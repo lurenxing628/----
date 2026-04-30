@@ -33,6 +33,16 @@ from .launcher_contract_result import (
 from .launcher_contract_result import (
     read_runtime_contract_result as read_runtime_contract_result,
 )
+from .launcher_lock_result import (
+    LOCK_STATUS_EMPTY,
+    LOCK_STATUS_INVALID,
+    LOCK_STATUS_MISSING,
+    LOCK_STATUS_UNREADABLE,
+    LOCK_STATUS_VALID,
+    RuntimeLockReadResult,
+    read_key_value_file,
+    read_runtime_lock_result,
+)
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import (
     RUNTIME_CONTRACT_VERSION,
@@ -90,43 +100,25 @@ def _write_key_value_file(path: str, data: Dict[str, Any]) -> None:
 
 
 def _read_key_value_file(path: str) -> Dict[str, str]:
-    if not os.path.exists(path):
-        return {}
-    data: Dict[str, str] = {}
-    try:
-        with open(path, encoding="utf-8") as f:
-            lines = f.readlines()
-    except (OSError, TypeError, ValueError) as exc:
-        launcher_log_warning(None, "读取运行时键值文件失败，已按空文件处理：path=%s error=%s", path, exc, state_dir=os.path.dirname(path))
-        return {}
-    for raw in lines:
-        line = str(raw or "").strip()
-        if not line or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key_s = str(key or "").strip()
-        if key_s:
-            data[key_s] = str(value or "").strip()
-    return data
+    return read_key_value_file(path)
 
 
 def read_runtime_lock(runtime_dir_or_state_dir: str) -> Optional[Dict[str, Any]]:
-    state_dir = resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir)
-    lock_path = runtime_lock_path(state_dir)
-    if not os.path.exists(lock_path):
-        return None
-    payload_raw = _read_key_value_file(lock_path)
-    if not payload_raw:
-        return None
-    payload: Dict[str, Any] = dict(payload_raw)
-    try:
-        payload["pid"] = int(payload.get("pid") or 0)
-    except (TypeError, ValueError) as exc:
-        launcher_log_warning(None, "运行时锁 pid 非法，已按失效锁处理：path=%s error=%s", lock_path, exc, state_dir=state_dir)
-        payload["pid"] = 0
-    payload["state_dir"] = state_dir
-    payload["path"] = lock_path
-    return payload
+    result = read_runtime_lock_result(runtime_dir_or_state_dir)
+    return result.payload if result.ok else None
+
+
+def _raise_uncertain_runtime_lock(result: RuntimeLockReadResult) -> None:
+    launcher_log_warning(
+        None,
+        "检测到运行时锁但无法确认归属，跳过自动清理：path=%s status=%s reason=%s error=%s",
+        result.path,
+        result.status,
+        result.reason,
+        result.error,
+        state_dir=result.state_dir,
+    )
+    raise RuntimeLockError("检测到运行时锁但无法确认归属，为避免重复启动或误删他人锁，请稍后重试。") from None
 
 
 def _is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str = "") -> bool:
@@ -238,16 +230,36 @@ def acquire_runtime_lock(
             payload["state_dir"] = state_dir
             payload["path"] = lock_path
             return payload
-        existing = read_runtime_lock(state_dir) or {}
+        existing_result = read_runtime_lock_result(state_dir)
+        if existing_result.status == LOCK_STATUS_MISSING:
+            continue
+        if existing_result.status in {LOCK_STATUS_EMPTY, LOCK_STATUS_UNREADABLE, LOCK_STATUS_INVALID}:
+            time.sleep(0.15)
+            existing_result = read_runtime_lock_result(state_dir)
+        if not existing_result.ok:
+            _raise_uncertain_runtime_lock(existing_result)
+        existing = existing_result.payload or {}
         _raise_if_runtime_lock_active(existing, owner_s, exe_path_s)
         _remove_stale_runtime_lock(lock_path)
     raise RuntimeLockError("创建运行时锁失败，请稍后重试。")
 
 
 def release_runtime_lock(runtime_dir_or_state_dir: str, expected_pid: Optional[int] = None) -> None:
-    existing = read_runtime_lock(runtime_dir_or_state_dir)
-    if not existing:
+    result = read_runtime_lock_result(runtime_dir_or_state_dir)
+    if result.status == LOCK_STATUS_MISSING:
         return
+    if not result.ok:
+        launcher_log_warning(
+            None,
+            "释放运行时锁时无法确认锁归属，跳过释放：path=%s status=%s reason=%s error=%s",
+            result.path,
+            result.status,
+            result.reason,
+            result.error,
+            state_dir=result.state_dir,
+        )
+        return
+    existing = result.payload or {}
     pid0 = int(existing.get("pid") or 0)
     state_dir = str(existing.get("state_dir") or resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir))
     if expected_pid is None:
