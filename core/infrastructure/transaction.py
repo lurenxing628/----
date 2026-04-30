@@ -41,10 +41,13 @@ def in_transaction_context(conn) -> bool:
 
     用途：避免在事务内执行隐式 commit()（例如 OperationLogger）。
     """
-    try:
-        return int(_depth_map().get(id(conn), 0) or 0) > 0
-    except Exception:
+    if conn is None:
         return False
+    try:
+        return _current_depth(conn) > 0
+    except Exception as exc:
+        logger.warning("读取事务上下文失败，按处于事务内处理：%s", exc)
+        return True
 
 
 def _current_depth(conn) -> int:
@@ -139,13 +142,34 @@ def _commit_scope(conn, depth: int, owns_tx: bool, sp_name: Optional[str]) -> No
         _commit_outer_transaction(conn)
 
 
+@contextmanager
+def _transaction_scope(conn):
+    _inc_depth(conn)
+    sp_name = None
+    try:
+        depth = _current_depth(conn)
+        owns_tx = _owns_transaction(conn, depth)
+        sp_name = _begin_scope(conn, depth, owns_tx)
+
+        try:
+            yield conn
+        except Exception as e:
+            _rollback_scope(conn, depth, owns_tx, sp_name)
+            logger.error(f"事务已回滚：{e}")
+            raise
+        else:
+            _commit_scope(conn, depth, owns_tx, sp_name)
+            logger.debug("事务提交成功")
+    finally:
+        _dec_depth(conn)
+
+
 class TransactionManager:
     """事务管理器（必须保留）。"""
 
     def __init__(self, db_connection):
         self.conn = db_connection
 
-    @contextmanager
     def transaction(self):
         """
         事务上下文管理器：成功提交、异常回滚，并支持“嵌套事务”。
@@ -158,82 +182,7 @@ class TransactionManager:
         - 若进入本上下文前连接已处于事务中（conn.in_transaction=True），则不在外层自动 commit/rollback，
           仅负责本层 SAVEPOINT 的 release/rollback（由外层事务边界负责提交/回滚）。
         """
-        conn = self.conn
-        _inc_depth(conn)
-        owns_tx = False
-        uses_savepoint = False
-        sp_name = None
-        try:
-            depth = int(_depth_map().get(id(conn), 0) or 0)
-
-            # 仅最外层需要判断“是否由本 TransactionManager 启动事务”
-            try:
-                owns_tx = _owns_transaction(conn, depth)
-            except Exception:
-                raise
-
-            if depth == 1 and owns_tx:
-                # 最外层且由我们负责事务边界：必须显式 BEGIN，避免最外层 SAVEPOINT 在 RELEASE 后已提交，
-                # 导致后续 commit() 再失败时来不及回滚。
-                conn.execute("BEGIN")
-            else:
-                sp_name = f"aps_tx_{id(conn)}_{depth}"
-                uses_savepoint = True
-                conn.execute(f"SAVEPOINT {sp_name}")
-
-            try:
-                yield conn
-            except Exception as e:
-                if uses_savepoint:
-                    # 回滚到本层 savepoint（不影响外层）
-                    try:
-                        conn.execute(f"ROLLBACK TO SAVEPOINT {sp_name}")
-                    except Exception as e2:
-                        logger.error(f"SAVEPOINT 回滚失败：{e2}")
-                    try:
-                        conn.execute(f"RELEASE SAVEPOINT {sp_name}")
-                    except Exception as e2:
-                        logger.error(f"SAVEPOINT 释放失败（回滚路径）：{e2}")
-                elif depth == 1 and owns_tx:
-                    # 最外层且由我们启动的事务：结束事务（避免悬挂在半事务状态）
-                    try:
-                        conn.rollback()
-                    except Exception:
-                        pass
-
-                logger.error(f"事务已回滚：{e}")
-                raise
-            else:
-                if uses_savepoint:
-                    # 正常路径：释放本层 savepoint
-                    try:
-                        conn.execute(f"RELEASE SAVEPOINT {sp_name}")
-                    except Exception as e:
-                        # RELEASE 失败时事务状态可能不确定：尽最大努力回滚本层并结束事务（若由我们启动）
-                        try:
-                            conn.execute(f"ROLLBACK TO SAVEPOINT {sp_name}")
-                        except Exception as e2:
-                            logger.error(f"SAVEPOINT 回滚失败（提交路径）：{e2}")
-                        try:
-                            conn.execute(f"RELEASE SAVEPOINT {sp_name}")
-                        except Exception as e2:
-                            logger.error(f"SAVEPOINT 释放失败（提交路径-回滚后）：{e2}")
-                        logger.error(f"SAVEPOINT 释放失败（提交路径）：{e}")
-                        raise
-
-                elif depth == 1 and owns_tx:
-                    try:
-                        conn.commit()
-                    except Exception as e:
-                        try:
-                            conn.rollback()
-                        except Exception:
-                            pass
-                        logger.error(f"事务提交失败：{e}")
-                        raise
-                logger.debug("事务提交成功")
-        finally:
-            _dec_depth(conn)
+        return _transaction_scope(self.conn)
 
 
 def transactional(func):
