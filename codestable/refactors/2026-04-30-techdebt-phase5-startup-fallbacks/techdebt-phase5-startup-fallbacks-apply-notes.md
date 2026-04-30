@@ -105,3 +105,39 @@ tags: [techdebt, startup, fallback, win7]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，silent_fallback_count=153。
 - 偏离：
   - 此小批只处理 paths/contracts；processes/stop/network/runtime_probe 按后续小批继续处理。
+
+## 步骤 4.2：收敛 processes/stop 运行时停止回退
+
+- 完成时间：2026-04-30
+- 改动文件：
+  - `web/bootstrap/launcher_processes.py`
+  - `web/bootstrap/launcher_stop.py`
+  - `web/bootstrap/launcher_contracts.py`
+  - `web/bootstrap/launcher.py`
+  - `tools/quality_gate_operations.py`
+  - `tools/quality_gate_shared.py`
+  - `tests/test_sync_debt_ledger.py`
+  - `tests/test_win7_launcher_runtime_paths.py`
+  - `开发文档/技术债务治理台账.md`
+- 改动内容：
+  - 新增 `_pid_state()`，把 pid 状态分成存在、不存在、未知；旧 `runtime_pid_exists()` 和 `_pid_exists()` 仍返回 bool，保持旧 public 口径。
+  - Windows `tasklist` 不可用、PowerShell/WMI/CIM 查询失败时不再被当作“没有进程”，内部停止链按未知处理，无法确认身份时失败闭合。
+  - `_is_runtime_lock_active()` 在 pid 状态未知时按“仍可能活跃”处理，避免把无法枚举误判成可以清理。
+  - runtime stop 失败时即使没有 logger，也会通过 `safe_log()` 打出 `runtime_stop_failed`、reason、pid、pid_match、endpoint 等原因。
+  - Chrome stop 失败日志改用 `safe_log()`，日志器自身失败时不再制造新的静默吞错。
+  - 强杀 runtime pid 仍必须先确认 `pid_match is True`；强杀命令失败只记录原因，最终仍以复查结果为准。
+  - `refresh-auto-fields` 支持 `_pid_exists` 到 `_pid_state` 的受控条目迁移，并能移除已经不再被扫描命中的静默回退条目，同时同步 accepted risk 引用。
+  - `_pid_state()` 拆成 pid 解析、Windows 枚举、POSIX 探测三个小 helper，避免新增高复杂度函数。
+  - 启动链样本点从已消除的 `_log_runtime_stop_failure` 静默吞错，改为 `_request_runtime_shutdown` 的可观测降级样本。
+- 扫描结果：
+  - raw fallback scanner：observable_degrade 64、cleanup_best_effort 17、silent_default_fallback 15、silent_swallow 11。
+  - 台账数量从 153 降到 151。
+- 已完成验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_win7_launcher_runtime_paths.py tests/regression_runtime_contract_launcher.py tests/regression_runtime_probe_resolution.py tests/regression_runtime_stop_cli.py tests/regression_runtime_lock_reloader_parent_skip.py tests/regression_entrypoint_meta_failure_visible.py`：52 passed。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_no_silent_exception_swallow tests/test_architecture_fitness.py::test_startup_silent_fallback_samples tests/regression_quality_gate_scan_contract.py`：18 passed。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check tools/quality_gate_operations.py tests/test_sync_debt_ledger.py web/bootstrap/launcher_processes.py web/bootstrap/launcher_stop.py web/bootstrap/launcher_contracts.py web/bootstrap/launcher.py tests/test_win7_launcher_runtime_paths.py`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold tests/test_win7_launcher_runtime_paths.py::test_windows_pid_state_unknown_when_tasklist_unavailable`：2 passed。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields`：通过，silent_fallback_count=151。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，silent_fallback_count=151。
+- 偏离：
+  - 此小批只处理 processes/stop；network/runtime_probe 按后续小批继续处理。

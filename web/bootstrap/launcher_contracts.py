@@ -25,7 +25,7 @@ from .launcher_paths import (
     runtime_log_mirror_dir,
     state_contract_paths,
 )
-from .launcher_processes import _pid_exists, _pid_matches_contract
+from .launcher_processes import _pid_matches_contract, _pid_state
 
 
 class RuntimeLockError(RuntimeError):
@@ -112,8 +112,14 @@ def _is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str
     except Exception as exc:
         safe_log(None, "warning", "运行时锁 pid 非法，已按非活跃处理：%s", exc)
         pid = 0
-    if pid <= 0 or not _pid_exists(pid):
+    if pid <= 0:
         return False
+    pid_state = _pid_state(pid)
+    if pid_state is False:
+        return False
+    if pid_state is None:
+        safe_log(None, "warning", "运行时锁 pid 状态无法确认，按仍可能活跃处理：pid=%s", pid)
+        return True
     exe_path = str(lock_payload.get("exe_path") or expected_exe_path or "").strip()
     if exe_path:
         pid_match = _pid_matches_contract(pid, exe_path)

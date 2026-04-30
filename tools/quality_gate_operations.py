@@ -44,6 +44,13 @@ from .quality_gate_shared import (
     slugify,
 )
 
+SILENT_REFRESH_SYMBOL_ALIASES = {
+    ("web/bootstrap/launcher_processes.py", "_pid_exists"): "_pid_state",
+    ("web/bootstrap/launcher_processes.py", "_parse_pid"): "_pid_state",
+    ("web/bootstrap/launcher_processes.py", "_posix_pid_state"): "_pid_state",
+    ("web/bootstrap/launcher_processes.py", "_windows_pid_state"): "_pid_state",
+}
+
 
 def refresh_migrate_inline_facts(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if ledger is None:
@@ -223,10 +230,10 @@ def _silent_group_alignment(
     old_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     new_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     for entry in silent_entries:
-        key = (str(entry.get("path") or ""), str(entry.get("symbol") or ""))
+        key = _silent_refresh_group_key(entry)
         old_groups.setdefault(key, []).append(dict(entry))
     for entry in scan_entries:
-        key = (str(entry.get("path") or ""), str(entry.get("symbol") or ""))
+        key = _silent_refresh_group_key(entry)
         new_groups.setdefault(key, []).append(dict(entry))
 
     aligned: Dict[str, Dict[str, Any]] = {}
@@ -241,6 +248,17 @@ def _silent_group_alignment(
             if old_id:
                 aligned[old_id] = dict(new_item)
     return aligned
+
+
+def _silent_refresh_group_key(entry: Dict[str, Any]) -> Tuple[str, str]:
+    path = str(entry.get("path") or "")
+    symbol = str(entry.get("symbol") or "")
+    return path, SILENT_REFRESH_SYMBOL_ALIASES.get((path, symbol), symbol)
+
+
+def _silent_scan_has_group(entry: Dict[str, Any], scan_entries: Sequence[Dict[str, Any]]) -> bool:
+    key = _silent_refresh_group_key(entry)
+    return any(_silent_refresh_group_key(scan_entry) == key for scan_entry in scan_entries)
 
 
 def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -289,10 +307,17 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
     silent_group_alignment = _silent_group_alignment(silent_entries, silent_scan_entries)
     refreshed_silent = []
     silent_id_replacements: Dict[str, str] = {}
+    removed_silent_ids: Set[str] = set()
     for entry in silent_entries:
         matched_entry = silent_group_alignment.get(str(entry.get("id") or ""))
         if matched_entry is None:
-            matched_entry = _resolve_silent_refresh_entry(entry, silent_scan)
+            try:
+                matched_entry = _resolve_silent_refresh_entry(entry, silent_scan)
+            except QualityGateError:
+                if _silent_scan_has_group(entry, silent_scan_entries):
+                    raise
+                removed_silent_ids.add(str(entry.get("id") or ""))
+                continue
         refreshed_entry = build_silent_entry(matched_entry, source=str(entry.get("source") or "baseline_scan"), existing=entry)
         old_id = str(entry.get("id") or "")
         new_id = str(refreshed_entry.get("id") or "")
@@ -300,14 +325,21 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
             silent_id_replacements[old_id] = new_id
         refreshed_silent.append(refreshed_entry)
 
-    if silent_id_replacements:
+    if silent_id_replacements or removed_silent_ids:
+        refreshed_risks = []
         for risk in cast(List[Dict[str, Any]], ledger.get("accepted_risks") or []):
             next_entry_ids = []
             for entry_id in list(risk.get("entry_ids") or []):
+                if str(entry_id) in removed_silent_ids:
+                    continue
                 next_id = silent_id_replacements.get(str(entry_id), str(entry_id))
                 if next_id not in next_entry_ids:
                     next_entry_ids.append(next_id)
+            if not next_entry_ids:
+                continue
             risk["entry_ids"] = next_entry_ids
+            refreshed_risks.append(risk)
+        ledger["accepted_risks"] = refreshed_risks
 
     ledger["oversize_allowlist"] = refreshed_oversize
     ledger["complexity_allowlist"] = refreshed_complexity

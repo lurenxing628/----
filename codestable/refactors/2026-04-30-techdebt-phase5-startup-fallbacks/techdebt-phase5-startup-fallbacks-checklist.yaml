@@ -17,7 +17,7 @@ steps:
   - id: launcher-fallbacks
     title: 收敛 launcher fallback 为可观测结果
     status: in-progress
-    exit_signal: paths/contracts 已完成第一小批；processes/stop/network/runtime_probe 待处理。
+    exit_signal: paths/contracts 与 processes/stop 已完成；network/runtime_probe 待处理。
   - id: ui-mode-split
     title: 拆分 web/ui_mode.py
     status: pending
@@ -40,7 +40,7 @@ checks:
     status: pending
   - id: no-chrome-miskill
     title: 普通 Chrome 不被误杀，无法确认身份时失败闭合
-    status: pending
+    status: in-progress
   - id: no-fallback-silent-growth
     title: silent_swallow 和 silent_default_fallback 数量下降且不新增无解释回退
     status: pending

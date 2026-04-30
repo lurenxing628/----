@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sys
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
+
+from core.infrastructure.logging import safe_log
 
 from .launcher_contracts import (
     _is_runtime_lock_active,
@@ -23,7 +24,7 @@ from .launcher_paths import (
     resolve_runtime_stop_context,
     state_contract_paths,
 )
-from .launcher_processes import _kill_runtime_pid, _pid_exists, _pid_matches_contract, _run_powershell_text
+from .launcher_processes import _kill_runtime_pid, _pid_exists, _pid_matches_contract, _pid_state, _run_powershell_text
 
 
 @dataclass(frozen=True)
@@ -41,7 +42,8 @@ def _build_shutdown_url(contract: Dict[str, Any]) -> Optional[str]:
     host = str(contract.get("host") or "").strip() or "127.0.0.1"
     try:
         port = int(contract.get("port") or 0)
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "运行时停止端口非法，无法构造关闭地址：port=%r error=%s", contract.get("port"), exc)
         port = 0
     if port <= 0:
         return None
@@ -63,18 +65,24 @@ def _request_runtime_shutdown(contract: Dict[str, Any], timeout_s: float = 3.0) 
         with urllib.request.urlopen(req, timeout=max(float(timeout_s), 0.5)) as resp:
             return int(getattr(resp, "status", 200)) < 400
     except urllib.error.HTTPError as e:
-        return int(getattr(e, "code", 500)) < 400
-    except Exception:
+        ok = int(getattr(e, "code", 500)) < 400
+        if not ok:
+            safe_log(None, "warning", "运行时关闭请求被拒绝：url=%s status=%s", url, getattr(e, "code", 500))
+        return ok
+    except Exception as exc:
+        safe_log(None, "warning", "运行时关闭请求失败：url=%s error=%s", url, exc)
         return False
 
 
-def _probe_runtime_health(host: str, port: int, timeout_s: float = 1.5) -> bool:
+def _probe_runtime_health(host: str, port: int, timeout_s: float = 1.5, *, log_failures: bool = False) -> bool:
     url = f"http://{str(host or '').strip() or '127.0.0.1'}:{int(port)}/system/health"
     req = urllib.request.Request(url, method="GET")
     try:
         with urllib.request.urlopen(req, timeout=max(float(timeout_s), 0.2)) as resp:
             payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
-    except Exception:
+    except Exception as exc:
+        if log_failures:
+            safe_log(None, "warning", "运行时健康探测失败：url=%s error=%s", url, exc)
         return False
     return (
         payload.get("app") == "aps"
@@ -86,7 +94,7 @@ def _probe_runtime_health(host: str, port: int, timeout_s: float = 1.5) -> bool:
 def probe_runtime_health(host: str, port: int, timeout_s: float = 1.5) -> bool:
     """公开只读探针：按运行时健康接口口径探测目标实例是否健康。"""
 
-    return _probe_runtime_health(host, port, timeout_s=timeout_s)
+    return _probe_runtime_health(host, port, timeout_s=timeout_s, log_failures=True)
 
 
 def _chrome_pid_query_script(profile_dir: str) -> str:
@@ -202,13 +210,7 @@ def _log_chrome_stop_failure(result: _StopChromeResult, *, logger: logging.Logge
         f"chrome_stop_failed status={result.status} profile={result.profile_dir} "
         f"pids={result.pids} failed_pids={result.failed_pids} remaining_pids={result.remaining_pids}"
     )
-    if logger is not None:
-        try:
-            logger.warning(message)
-        except Exception:
-            pass
-        return
-    print(message, file=sys.stderr)
+    safe_log(logger, "warning", message)
 
 
 def _stop_aps_chrome_if_requested(
@@ -241,14 +243,16 @@ def _read_text_file(path: str) -> str:
     try:
         with open(path, encoding="utf-8") as f:
             return (f.read() or "").strip()
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "读取运行时状态文件失败，已按空值处理：path=%s error=%s", path, exc)
         return ""
 
 
 def _read_port_file(path: str) -> int:
     try:
         return int(_read_text_file(path))
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "读取运行时端口文件失败，已按无效端口处理：path=%s error=%s", path, exc)
         return 0
 
 
@@ -258,11 +262,12 @@ def _runtime_identity(contract: Optional[Dict[str, Any]], lock_payload: Optional
     expected_exe_path = str((contract or {}).get("exe_path") or (lock_payload or {}).get("exe_path") or "").strip()
     pid = contract_pid if contract_pid > 0 else lock_pid
     pid_match = _runtime_pid_match(contract_pid, lock_pid, expected_exe_path)
+    pid_state = _pid_state(pid) if pid > 0 else False
     return {
         "contract_pid": contract_pid,
         "lock_pid": lock_pid,
         "pid": pid,
-        "pid_exists": bool(pid > 0 and _pid_exists(pid)),
+        "pid_exists": pid_state,
         "pid_match": pid_match,
         "expected_exe_path": expected_exe_path,
     }
@@ -271,7 +276,8 @@ def _runtime_identity(contract: Optional[Dict[str, Any]], lock_payload: Optional
 def _safe_int(value: Any) -> int:
     try:
         return int(value or 0)
-    except Exception:
+    except Exception as exc:
+        safe_log(None, "warning", "解析运行时整数失败，已按 0 处理：value=%r error=%s", value, exc)
         return 0
 
 
@@ -318,6 +324,8 @@ def _runtime_state_name(
     )
     if endpoint_up:
         return "mixed" if contract_mismatch else "active"
+    if contract_pid > 0 and identity.get("pid_exists") is None:
+        return "mixed"
     if contract_pid > 0 and bool(identity.get("pid_exists")) and identity.get("pid_match") is not False:
         return "mixed"
     if lock_active:
@@ -408,7 +416,10 @@ def _runtime_process_inactive(pid: int, pid_match_hint: Optional[bool] = None) -
     pid_i = int(pid_text)
     if pid_i <= 0 or pid_match_hint is False:
         return True
-    if not _pid_exists(pid_i):
+    pid_state = _pid_state(pid_i)
+    if pid_state is None:
+        return False
+    if not pid_state:
         return True
     return False
 
@@ -459,28 +470,27 @@ def _wait_for_runtime_stop(state_dir: str, deadline: float) -> Dict[str, Any]:
 def _try_force_kill_runtime(state_dir: str, status: Dict[str, Any]) -> Dict[str, Any]:
     if not _can_force_kill_runtime(status):
         return status
-    _ = _kill_runtime_pid(int(status.get("pid") or 0))
+    killed = _kill_runtime_pid(int(status.get("pid") or 0))
+    if not killed:
+        safe_log(None, "warning", "运行时强制停止命令未成功，继续等待最终复查：pid=%s", status.get("pid"))
     kill_deadline = time.time() + 6.0
     return _wait_for_runtime_stop(state_dir, kill_deadline)
 
 
 def _log_runtime_stop_failure(status: Dict[str, Any], *, shutdown_requested: bool, logger: logging.Logger | None) -> None:
     reason = _runtime_stop_failure_reason(status, shutdown_requested=shutdown_requested)
-    if logger is None:
-        return
-    try:
-        logger.warning(
-            "运行时停止失败：reason=%s state=%s shutdown_requested=%s pid=%s pid_exists=%s pid_match=%s host=%s port=%s endpoint_up=%s lock_active=%s",
-            reason,
-            status.get("state"),
-            shutdown_requested,
-            status.get("pid"),
-            status.get("pid_exists"),
-            status.get("pid_match"),
-            status.get("host"),
-            status.get("port"),
-            status.get("endpoint_up"),
-            status.get("lock_active"),
-        )
-    except Exception:
-        pass
+    safe_log(
+        logger,
+        "warning",
+        "runtime_stop_failed reason=%s state=%s shutdown_requested=%s pid=%s pid_exists=%s pid_match=%s host=%s port=%s endpoint_up=%s lock_active=%s",
+        reason,
+        status.get("state"),
+        shutdown_requested,
+        status.get("pid"),
+        status.get("pid_exists"),
+        status.get("pid_match"),
+        status.get("host"),
+        status.get("port"),
+        status.get("endpoint_up"),
+        status.get("lock_active"),
+    )

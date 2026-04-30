@@ -28,6 +28,14 @@ def _import_launcher_stop():
     return importlib.import_module("web.bootstrap.launcher_stop")
 
 
+def _import_launcher_processes():
+    repo_root = _repo_root()
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    sys.modules.pop("web.bootstrap.launcher_processes", None)
+    return importlib.import_module("web.bootstrap.launcher_processes")
+
+
 def _import_factory():
     repo_root = _repo_root()
     if repo_root not in sys.path:
@@ -240,6 +248,7 @@ def test_stop_runtime_from_dir_waits_for_pid_exit_before_success(monkeypatch, tm
         return next(pid_states)
 
     monkeypatch.setattr(launcher, "_pid_exists", _fake_pid_exists)
+    monkeypatch.setattr(launcher, "_pid_state", lambda pid: _fake_pid_exists(pid))
     monkeypatch.setattr(launcher, "_pid_matches_contract", lambda pid, expected_exe_path: True)
     monkeypatch.setattr(launcher, "_kill_runtime_pid", lambda pid: calls.setdefault("kill", pid) or False)
     monkeypatch.setattr(launcher.time, "sleep", lambda _seconds: None)
@@ -261,6 +270,20 @@ def test_stop_aps_chrome_processes_fails_closed_when_pid_list_unavailable(monkey
     launcher = _import_launcher()
     monkeypatch.setattr(launcher, "_list_aps_chrome_pids", lambda profile_dir: None)
     assert launcher.stop_aps_chrome_processes(r"C:\Users\alice\AppData\Local\APS\Chrome109Profile") is False
+
+
+def test_windows_pid_state_unknown_when_tasklist_unavailable(monkeypatch, capsys):
+    processes = _import_launcher_processes()
+    monkeypatch.setattr(processes.os, "name", "nt")
+
+    def _boom_run(*_args, **_kwargs):
+        raise FileNotFoundError("tasklist missing")
+
+    monkeypatch.setattr(processes.subprocess, "run", _boom_run)
+
+    assert processes._pid_state(43210) is None
+    assert processes._pid_exists(43210) is False
+    assert "运行时身份状态未知" in capsys.readouterr().err
 
 
 def test_stop_aps_chrome_processes_treats_already_gone_pid_as_success_after_final_recheck(monkeypatch):
@@ -500,6 +523,27 @@ def test_stop_runtime_from_dir_reports_chrome_stop_failure_reason_without_logger
 
     assert launcher.stop_runtime_from_dir(str(state_dir), stop_aps_chrome=True) == 1
     assert "chrome_stop" in capsys.readouterr().err
+
+
+def test_runtime_stop_failure_reports_reason_without_logger(capsys):
+    launcher_stop = _import_launcher_stop()
+    status = {
+        "state": "mixed",
+        "pid": 43210,
+        "pid_exists": None,
+        "pid_match": None,
+        "host": "127.0.0.1",
+        "port": 5000,
+        "endpoint_up": False,
+        "lock_active": True,
+    }
+
+    launcher_stop._log_runtime_stop_failure(status, shutdown_requested=False, logger=None)
+
+    stderr = capsys.readouterr().err
+    assert "runtime_stop_failed" in stderr
+    assert "mixed_state" in stderr
+    assert "pid_exists=None" in stderr
 
 
 def test_runtime_stop_cli_passes_stop_aps_chrome_flag():

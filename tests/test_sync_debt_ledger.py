@@ -524,6 +524,142 @@ def test_refresh_auto_fields_realigns_silent_entries_when_earlier_handler_left_s
     ]
 
 
+def test_refresh_auto_fields_realigns_silent_entries_when_symbol_was_split_for_state_result(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:pid-exists-old",
+                    "path": "web/bootstrap/launcher_processes.py",
+                    "symbol": "_pid_exists",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "startup baseline",
+                    "handler_fingerprint": "sha1:old-pid",
+                    "except_ordinal": 1,
+                    "line_start": 15,
+                    "line_end": 16,
+                    "fallback_kind": "silent_default_fallback",
+                    "source": "baseline_scan",
+                }
+            ],
+        },
+        "accepted_risks": [
+            {
+                "id": "risk:launcher-process-probe-kill-win7",
+                "entry_ids": ["fallback:pid-exists-old"],
+                "owner": "techdebt",
+                "reason": "Win7 现场复核前保留",
+                "review_after": "2026-05-31",
+                "exit_condition": "Win7 现场复核后删除。",
+            }
+        ],
+    }
+    scan_entry = {
+        "id": "fallback:pid-state-new",
+        "path": "web/bootstrap/launcher_processes.py",
+        "symbol": "_pid_state",
+        "handler_fingerprint": "sha1:new-pid",
+        "except_ordinal": 1,
+        "line_start": 27,
+        "line_end": 29,
+        "fallback_kind": "observable_degrade",
+    }
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    refreshed = module.refresh_auto_fields(ledger)
+
+    assert refreshed["silent_fallback"]["entries"][0]["id"] == "fallback:pid-state-new"
+    assert refreshed["silent_fallback"]["entries"][0]["symbol"] == "_pid_state"
+    assert refreshed["accepted_risks"][0]["entry_ids"] == ["fallback:pid-state-new"]
+
+
+def test_refresh_auto_fields_prunes_resolved_silent_entry_and_risk_reference(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:chrome-log-old",
+                    "path": "web/bootstrap/launcher_stop.py",
+                    "symbol": "_log_chrome_stop_failure",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "startup baseline",
+                    "handler_fingerprint": "sha1:old-log",
+                    "except_ordinal": 1,
+                    "line_start": 207,
+                    "line_end": 208,
+                    "fallback_kind": "silent_swallow",
+                    "source": "baseline_scan",
+                },
+                {
+                    "id": "fallback:still-open",
+                    "path": "web/bootstrap/launcher_stop.py",
+                    "symbol": "_request_runtime_shutdown",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "keep tracking",
+                    "last_verified_at": "2026-04-15T08:26:05+08:00",
+                    "notes": "startup baseline",
+                    "handler_fingerprint": "sha1:old-request",
+                    "except_ordinal": 1,
+                    "line_start": 60,
+                    "line_end": 61,
+                    "fallback_kind": "silent_default_fallback",
+                    "source": "baseline_scan",
+                },
+            ],
+        },
+        "accepted_risks": [
+            {
+                "id": "risk:launcher-process-probe-kill-win7",
+                "entry_ids": ["fallback:chrome-log-old", "fallback:still-open"],
+                "owner": "techdebt",
+                "reason": "Win7 现场复核前保留",
+                "review_after": "2026-05-31",
+                "exit_condition": "Win7 现场复核后删除。",
+            }
+        ],
+    }
+    scan_entry = {
+        "id": "fallback:still-open-new",
+        "path": "web/bootstrap/launcher_stop.py",
+        "symbol": "_request_runtime_shutdown",
+        "handler_fingerprint": "sha1:new-request",
+        "except_ordinal": 1,
+        "line_start": 72,
+        "line_end": 74,
+        "fallback_kind": "observable_degrade",
+    }
+
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    refreshed = module.refresh_auto_fields(ledger)
+
+    assert [entry["id"] for entry in refreshed["silent_fallback"]["entries"]] == ["fallback:still-open-new"]
+    assert refreshed["accepted_risks"][0]["entry_ids"] == ["fallback:still-open-new"]
+
+
 def test_refresh_auto_fields_prunes_resolved_complexity_entry(monkeypatch):
     module = _import_quality_gate_support()
     ledger = {

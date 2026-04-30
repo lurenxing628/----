@@ -77,6 +77,7 @@ from .launcher_processes import (
     _kill_runtime_pid,
     _pid_exists,
     _pid_matches_contract,
+    _pid_state,
     _query_process_executable_path,
     _run_powershell_text,
     runtime_pid_exists,
@@ -110,10 +111,11 @@ def _sync_launcher_hooks(*, include_chrome_hook: bool) -> None:
     _processes._pid_matches_contract = _pid_matches_contract
     _processes._kill_runtime_pid = _kill_runtime_pid
     _processes._run_powershell_text = _run_powershell_text
-    _contracts._pid_exists = _pid_exists
     _contracts._pid_matches_contract = _pid_matches_contract
+    _contracts._pid_state = _pid_state
     _stop._pid_exists = _pid_exists
     _stop._pid_matches_contract = _pid_matches_contract
+    _stop._pid_state = _pid_state
     _stop._kill_runtime_pid = _kill_runtime_pid
     _stop._run_powershell_text = _run_powershell_text
     _stop._probe_runtime_health = _probe_runtime_health
