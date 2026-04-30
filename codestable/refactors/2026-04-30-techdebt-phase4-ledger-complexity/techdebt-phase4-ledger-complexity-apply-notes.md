@@ -1,7 +1,7 @@
 ---
 doc_type: refactor-apply-notes
 refactor: 2026-04-30-techdebt-phase4-ledger-complexity
-status: in-progress
+status: completed
 tags: [techdebt, oversize, complexity, quality-gate]
 ---
 
@@ -114,3 +114,21 @@ tags: [techdebt, oversize, complexity, quality-gate]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：passed，active_xfail_count=0，fixed_count=5，collected_count=847。
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，oversize_count=2，complexity_count=20，silent_fallback_count=153。
 - 偏离：原计划中人员详情建议放到 `web/viewmodels`，但仓库架构测试禁止 viewmodel 直接导服务和 route helper；实际改为 `web/routes/personnel_detail_context.py`，避免分层越界。
+
+## 步骤 5：阶段 4 台账收口、对抗审查和 clean gate
+
+- 完成时间：2026-04-30
+- 台账收口结果：
+  - 阶段 4 基线：oversize_count=8，complexity_count=29，silent_fallback_count=153，test_debt_count=5，accepted_risk_count=5。
+  - 阶段 4 收口：oversize_count=2，complexity_count=20，silent_fallback_count=153，test_debt_count=5，accepted_risk_count=5。
+  - 台账通过 `scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields` 和 `scripts/sync_debt_ledger.py check` 受控刷新；未手改自动 JSON 块。
+- 对抗审查结果：
+  - public API 和导入路径审查：无阻断；scheduler summary、config field spec、v4 sanitizer、report calculations、route parser、system backup patch 路径和 scheduler Excel wrapper 均保持可导入。非阻断风险是仓库外如果依赖私有下划线 helper，证据不足。
+  - 行为等价和测试覆盖审查：无阻断；严格模式供应商兜底、Excel 模板诊断、人员详情上下文、系统备份恢复结果未发现行为漂移。非阻断风险是部分 4C 字段形状仍主要依赖旧回归测试兜住，系统恢复成功日志有轻微重复。
+  - 台账误关/漏关审查：无阻断；关闭的 6 个超长文件和 9 个复杂函数均由当前扫描值证明达标，未发现新增或漏登记，silent_fallback 身份未漂移。
+  - 基础设施迁移/备份/事务审查：无阻断；schema 版本、迁移顺序、预检、备份目录、失败回滚、维护窗口、嵌套事务和 v4 旧 patch 路径均通过核查。非阻断风险是 `migration_runner.py` 与 transaction helper 中有为后续拆分准备但当前主入口尚未完全接管的逻辑。
+- clean quality gate：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`：通过。
+- 偏离：
+  - 阶段 4 没有继续扩大到 `web/ui_mode.py` 和启动链 fallback；这两块留给阶段 5。
+  - 剩余 open 条目包括 `web/ui_mode.py`、`operator_machine_service.py` 以及部分历史复杂函数；本阶段目标是数量明显下降和关键路径收口，不把无关范围混进同一提交。

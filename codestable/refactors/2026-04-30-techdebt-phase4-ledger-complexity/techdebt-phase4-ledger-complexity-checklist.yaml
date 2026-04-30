@@ -1,6 +1,6 @@
 doc_type: refactor-checklist
 refactor: 2026-04-30-techdebt-phase4-ledger-complexity
-status: in-progress
+status: completed
 steps:
   - id: phase4-baseline
     title: 记录阶段 4/5 开工基线
@@ -20,25 +20,25 @@ steps:
     exit_signal: report、unit_excel、route_parser、part_service、人员详情、排产日历和系统备份已拆分；定向测试、ruff、pyright、full-test-debt 和台账检查通过，oversize 降到 2，complexity 降到 20。
   - id: phase4-ledger-review
     title: 刷新台账并做阶段 4 对抗审查
-    status: pending
-    exit_signal: 台账只关闭已达标条目，subagent 对抗审查无阻断。
+    status: done
+    exit_signal: 台账只关闭已达标条目；4 个 subagent 对 public API、行为等价、台账和基础设施做对抗审查，均无阻断问题。
   - id: phase4-clean-gate
     title: 运行阶段 4 clean quality gate
-    status: pending
+    status: done
     exit_signal: scripts/run_quality_gate.py --require-clean-worktree 通过。
 checks:
   - id: no-public-api-drift
     title: public API、导入路径和返回字段不漂移
-    status: pending
+    status: done
   - id: no-user-copy-change
     title: 不改用户可见文案
-    status: pending
+    status: done
   - id: no-new-fallback
     title: 不新增静默吞错或宽泛 fallback
-    status: pending
+    status: done
   - id: no-new-test-debt
     title: 不新增 full-test-debt
-    status: pending
+    status: done
   - id: clean-quality-gate
     title: 最终干净工作区质量门禁通过
-    status: pending
+    status: done
