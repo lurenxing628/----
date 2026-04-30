@@ -93,7 +93,6 @@ def build_schedule_detail_sql(
     *,
     where_clauses: Sequence[str],
     include_team_context: bool = False,
-    order_by: str = "s.start_time, s.id",
 ) -> str:
     if not where_clauses:
         raise ValueError("where_clauses is required")
@@ -108,5 +107,5 @@ def build_schedule_detail_sql(
         FROM Schedule s
         {joins_sql}
         WHERE {where_sql}
-        ORDER BY {order_by}
+        ORDER BY s.start_time, s.id
         """

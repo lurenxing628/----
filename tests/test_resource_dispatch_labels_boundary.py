@@ -23,6 +23,8 @@ def test_resource_dispatch_service_no_longer_owns_filter_label_helpers() -> None
     assert "_period_preset_label" not in source
     assert "_scope_type_label" not in source
     assert "_team_axis_label" not in source
+    assert "def build_export" not in source
+    assert "resource_dispatch_excel" not in source
 
 
 def test_resource_dispatch_support_filters_stay_raw() -> None:

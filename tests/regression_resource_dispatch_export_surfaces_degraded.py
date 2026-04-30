@@ -6,7 +6,9 @@ from pathlib import Path
 
 import openpyxl
 
+from core.services.scheduler.resource_dispatch_excel import build_resource_dispatch_workbook
 from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
+from web.viewmodels.scheduler_resource_dispatch import decorate_resource_dispatch_payload
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -64,13 +66,15 @@ def test_resource_dispatch_export_surfaces_degraded() -> None:
         )
         conn.commit()
 
-        buffer, _filename, payload = ResourceDispatchService(conn, logger=None, op_logger=None).build_export(
+        payload = ResourceDispatchService(conn, logger=None, op_logger=None).get_dispatch_payload(
             scope_type="operator",
             operator_id="OP001",
             period_preset="week",
             query_date="2026-03-02",
             version=1,
         )
+        payload = decorate_resource_dispatch_payload(payload)
+        buffer = build_resource_dispatch_workbook(payload)
         wb = openpyxl.load_workbook(io.BytesIO(buffer.getvalue()))
         summary = _summary_map(wb)
         assert summary.get("坏时间过滤数量") == "1"

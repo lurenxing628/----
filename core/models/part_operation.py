@@ -27,7 +27,7 @@ class PartOperation:
         return str(self.source or "").strip().lower() == SourceType.EXTERNAL.value
 
     def is_internal(self) -> bool:
-        return not self.is_external()
+        return str(self.source or "").strip().lower() == SourceType.INTERNAL.value
 
     def is_active(self) -> bool:
         return str(self.status or "").strip().lower() == PartOperationStatus.ACTIVE.value

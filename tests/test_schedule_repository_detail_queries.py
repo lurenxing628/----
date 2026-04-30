@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import inspect
 import sqlite3
 from typing import Any, Dict, List
 
+from data.repositories.schedule_detail_query import build_schedule_detail_sql
 from data.repositories.schedule_repo import ScheduleRepository
 
 COMMON_DETAIL_KEYS = {
@@ -154,6 +156,14 @@ def _repo() -> ScheduleRepository:
 
 def _ids(rows: List[Dict[str, Any]]) -> List[int]:
     return [int(row["schedule_id"]) for row in rows]
+
+
+def test_schedule_detail_sql_uses_fixed_order_by_contract() -> None:
+    signature = inspect.signature(build_schedule_detail_sql)
+
+    assert "order_by" not in signature.parameters
+    sql = " ".join(build_schedule_detail_sql(where_clauses=("s.version = ?",)).split())
+    assert "ORDER BY s.start_time, s.id" in sql
 
 
 def test_schedule_overlap_detail_query_keeps_row_shape_order_and_overlap_contract() -> None:

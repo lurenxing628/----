@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from core.models import BatchOperation, PartOperation, Schedule
 from core.models.enums import BatchOperationStatus, LockStatus, PartOperationStatus, SourceType
 
@@ -43,6 +45,14 @@ def test_batch_operation_status_predicates_cover_processing_and_defaults() -> No
     assert op.is_skipped()
 
 
+@pytest.mark.parametrize("source", ["legacy", "unknown", "bad", "", "   ", None])
+def test_batch_operation_unknown_source_is_not_internal_or_external(source: object) -> None:
+    op = BatchOperation(id=1, op_code="OP1", batch_id="B1", source=source)  # type: ignore[arg-type]
+
+    assert not op.is_external()
+    assert not op.is_internal()
+
+
 def test_part_operation_domain_predicates() -> None:
     op = PartOperation(
         id=1,
@@ -77,6 +87,14 @@ def test_part_operation_defaults_are_internal_active() -> None:
 
     op.status = " DELETED "
     assert op.is_deleted()
+
+
+@pytest.mark.parametrize("source", ["legacy", "unknown", "bad", "", "   ", None])
+def test_part_operation_unknown_source_is_not_internal_or_external(source: object) -> None:
+    op = PartOperation(id=1, part_no="P1", seq=1, source=source)  # type: ignore[arg-type]
+
+    assert not op.is_external()
+    assert not op.is_internal()
 
 
 def test_schedule_domain_predicates() -> None:

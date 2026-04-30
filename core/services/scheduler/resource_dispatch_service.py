@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.infrastructure.errors import ValidationError
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel import ResourceTeamService
 from core.services.personnel.operator_service import OperatorService
 from data.repositories import ScheduleRepository
 
-from .resource_dispatch_excel import build_resource_dispatch_workbook
 from .resource_dispatch_range import resolve_dispatch_range
 from .resource_dispatch_support import (
     build_dispatch_filters,
@@ -346,20 +345,3 @@ class ResourceDispatchService:
             machine_rows=payload["machine_rows"],
         )
         return payload
-
-    def build_export(self, **kwargs) -> Tuple[Any, str, Dict[str, Any]]:
-        payload = self.get_dispatch_payload(**kwargs)
-        if not payload.get("has_history"):
-            raise BusinessError(ErrorCode.NOT_FOUND, "暂无排产历史，无法导出资源排班。", details={"field": "version", "status": "no_history"})
-        buf = build_resource_dispatch_workbook(payload)
-        filters = payload.get("filters") or {}
-        filename = "资源排班"
-        if filters.get("scope_id"):
-            filename += f"_{filters['scope_id']}"
-        if filters.get("scope_type") == "team" and filters.get("team_axis"):
-            filename += f"_{filters['team_axis']}"
-        if filters.get("start_date") and filters.get("end_date"):
-            filename += f"_{filters['start_date']}_{filters['end_date']}"
-        if filters.get("version"):
-            filename += f"_v{filters['version']}"
-        return buf, f"{filename}.xlsx", payload
