@@ -17,6 +17,9 @@ def delete_runtime_contract_files_result_for_stop(
     if delete_runtime_contract_files is not default_delete_runtime_contract_files and (
         delete_runtime_contract_files_result is default_delete_runtime_contract_files_result
     ):
+        cleanup_result = default_delete_runtime_contract_files_result(state_dir)
+        if not cleanup_result.ok:
+            return cleanup_result
         try:
             delete_runtime_contract_files(state_dir)
         except Exception as exc:
@@ -36,12 +39,5 @@ def delete_runtime_contract_files_result_for_stop(
                 missing_paths=(),
                 failures=(RuntimeCleanupFailure(path=str(state_dir), reason="legacy_cleanup_failed", error=str(exc)),),
             )
-        return RuntimeCleanupResult(
-            state_dir=str(state_dir),
-            target_dirs=(str(state_dir),),
-            attempted_paths=(),
-            removed_paths=(),
-            missing_paths=(),
-            failures=(),
-        )
+        return cleanup_result
     return delete_runtime_contract_files_result(state_dir)

@@ -922,7 +922,7 @@ def test_refresh_auto_fields_prunes_resolved_silent_entry_and_risk_reference(mon
     assert refreshed["accepted_risks"][0]["entry_ids"] == ["fallback:still-open-new"]
 
 
-def test_refresh_auto_fields_prunes_fixed_silent_entry_without_realigning(monkeypatch):
+def test_refresh_auto_fields_prunes_fixed_silent_entry_when_scan_no_longer_matches(monkeypatch):
     module = _import_quality_gate_support()
     ledger = {
         "oversize_allowlist": [],
@@ -950,16 +950,47 @@ def test_refresh_auto_fields_prunes_fixed_silent_entry_without_realigning(monkey
                 }
             ],
         },
-        "accepted_risks": [
-            {
-                "id": "risk:fixed-old",
-                "entry_ids": ["fallback:fixed-old"],
-                "owner": "techdebt",
-                "reason": "旧风险",
-                "review_after": "2026-05-31",
-                "exit_condition": "fixed 后移除。",
-            }
-        ],
+        "accepted_risks": [],
+    }
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    refreshed = module.refresh_auto_fields(ledger)
+
+    assert refreshed["silent_fallback"]["entries"] == []
+    assert refreshed["accepted_risks"] == []
+
+
+def test_refresh_auto_fields_rejects_fixed_silent_entry_still_in_scan(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["core/infrastructure/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:fixed-old",
+                    "path": "core/infrastructure/database.py",
+                    "symbol": "ensure_schema",
+                    "status": "fixed",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "fixed entry should not be current",
+                    "last_verified_at": "2026-04-30T21:27:43+08:00",
+                    "notes": "已修复",
+                    "handler_fingerprint": "sha1:old-fixed",
+                    "handler_context_hash": "sha1:ctx-fixed",
+                    "except_ordinal": 3,
+                    "line_start": 136,
+                    "line_end": 137,
+                    "fallback_kind": "silent_swallow",
+                    "source": "migrated_from_architecture_fitness_counter",
+                }
+            ],
+        },
+        "accepted_risks": [],
     }
     scan_entry = {
         "id": "fallback:current-handler",
@@ -975,12 +1006,178 @@ def test_refresh_auto_fields_prunes_fixed_silent_entry_without_realigning(monkey
 
     refresh_globals = module.refresh_auto_fields.__globals__
     monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
-    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
 
-    refreshed = module.refresh_auto_fields(ledger)
+    with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
+        module.refresh_auto_fields(ledger)
 
-    assert refreshed["silent_fallback"]["entries"] == []
-    assert refreshed["accepted_risks"] == []
+
+def test_check_rejects_fixed_silent_entry_still_in_scan(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:fixed-startup",
+                    "path": "web/bootstrap/launcher_stop.py",
+                    "symbol": "_request_runtime_shutdown",
+                    "status": "fixed",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "fixed entry should not be current",
+                    "last_verified_at": "2026-04-30T21:27:43+08:00",
+                    "notes": "已修复",
+                    "handler_fingerprint": "sha1:fixed-startup",
+                    "handler_context_hash": "sha1:ctx-fixed-startup",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 11,
+                    "fallback_kind": "observable_degrade",
+                    "source": "baseline_scan",
+                    "scope_tag": "startup_guard",
+                }
+            ],
+        },
+        "accepted_risks": [],
+    }
+    scan_entry = {
+        "id": "fallback:fixed-startup",
+        "path": "web/bootstrap/launcher_stop.py",
+        "symbol": "_request_runtime_shutdown",
+        "handler_fingerprint": "sha1:fixed-startup",
+        "handler_context_hash": "sha1:ctx-fixed-startup",
+        "except_ordinal": 1,
+        "line_start": 10,
+        "line_end": 11,
+        "fallback_kind": "observable_degrade",
+        "scope_tag": "startup_guard",
+    }
+
+    check_globals = module.validate_ledger_against_current_scan.__globals__
+    monkeypatch.setitem(check_globals, "validate_ledger", lambda _ledger: None)
+    monkeypatch.setitem(check_globals, "validate_startup_samples", lambda: {"matched": 0})
+    monkeypatch.setitem(check_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+
+    with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
+        module.validate_ledger_against_current_scan(ledger)
+
+
+def test_scan_startup_baseline_rejects_fixed_silent_entry_still_in_scan(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:fixed-startup",
+                    "path": "web/bootstrap/launcher_stop.py",
+                    "symbol": "_request_runtime_shutdown",
+                    "status": "fixed",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "fixed entry should not be current",
+                    "last_verified_at": "2026-04-30T21:27:43+08:00",
+                    "notes": "已修复",
+                    "handler_fingerprint": "sha1:fixed-startup",
+                    "handler_context_hash": "sha1:ctx-fixed-startup",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 11,
+                    "fallback_kind": "observable_degrade",
+                    "source": "baseline_scan",
+                    "scope_tag": "startup_guard",
+                }
+            ],
+        },
+        "accepted_risks": [],
+    }
+    scan_entry = {
+        "id": "fallback:fixed-startup",
+        "path": "web/bootstrap/launcher_stop.py",
+        "symbol": "_request_runtime_shutdown",
+        "handler_fingerprint": "sha1:fixed-startup",
+        "handler_context_hash": "sha1:ctx-fixed-startup",
+        "except_ordinal": 1,
+        "line_start": 10,
+        "line_end": 11,
+        "fallback_kind": "observable_degrade",
+        "scope_tag": "startup_guard",
+    }
+
+    refresh_globals = module.refresh_scan_startup_baseline.__globals__
+    monkeypatch.setitem(refresh_globals, "validate_startup_samples", lambda: {"matched": 0})
+    monkeypatch.setitem(refresh_globals, "collect_startup_scope_files", lambda: ["web/bootstrap/launcher_stop.py"])
+    monkeypatch.setitem(refresh_globals, "scan_oversize_entries", lambda _paths: [])
+    monkeypatch.setitem(refresh_globals, "scan_complexity_entries", lambda _paths: [])
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+
+    with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
+        module.refresh_scan_startup_baseline(ledger)
+
+
+def test_migrate_inline_facts_rejects_fixed_silent_entry_still_in_scan(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["core/infrastructure/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:fixed-old",
+                    "path": "core/infrastructure/database.py",
+                    "symbol": "ensure_schema",
+                    "status": "fixed",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "fixed entry should not be current",
+                    "last_verified_at": "2026-04-30T21:27:43+08:00",
+                    "notes": "已修复",
+                    "handler_fingerprint": "sha1:fixed-old",
+                    "handler_context_hash": "sha1:ctx-fixed-old",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 11,
+                    "fallback_kind": "silent_swallow",
+                    "source": "migrated_from_architecture_fitness_counter",
+                }
+            ],
+        },
+        "accepted_risks": [],
+    }
+    scan_entry = {
+        "id": "fallback:fixed-old",
+        "path": "core/infrastructure/database.py",
+        "symbol": "ensure_schema",
+        "handler_fingerprint": "sha1:fixed-old",
+        "handler_context_hash": "sha1:ctx-fixed-old",
+        "except_ordinal": 1,
+        "line_start": 10,
+        "line_end": 11,
+        "fallback_kind": "silent_swallow",
+        "legacy_swallow_hit": True,
+    }
+
+    refresh_globals = module.refresh_migrate_inline_facts.__globals__
+    monkeypatch.setitem(
+        refresh_globals,
+        "load_sp02_facts_snapshot",
+        lambda: {
+            "legacy_inline_facts": {
+                "oversize_allowlist": [],
+                "complexity_allowlist": [],
+                "silent_fallback_counter": {"core/infrastructure/database.py:ensure_schema": 1},
+            }
+        },
+    )
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+
+    with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
+        module.refresh_migrate_inline_facts(ledger)
 
 
 def test_refresh_auto_fields_prunes_resolved_complexity_entry(monkeypatch):
@@ -1026,6 +1223,245 @@ def test_refresh_auto_fields_prunes_resolved_complexity_entry(monkeypatch):
     refreshed = module.refresh_auto_fields(ledger)
 
     assert refreshed["complexity_allowlist"] == []
+
+
+def test_refresh_auto_fields_rejects_fixed_oversize_entry_still_over_limit(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [
+            {
+                "id": "oversize:sample-large",
+                "path": "sample_large.py",
+                "symbol": None,
+                "status": "fixed",
+                "owner": "SP03",
+                "batch": "SP03",
+                "exit_condition": "文件行数降到限制以下",
+                "last_verified_at": "2026-04-30T21:27:43+08:00",
+                "current_value": 999,
+                "limit": 500,
+            }
+        ],
+        "complexity_allowlist": [],
+        "silent_fallback": {"scope": ["web/bootstrap/**/*.py"], "entries": []},
+        "accepted_risks": [],
+    }
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "read_text_file", lambda _path: "\n".join(["x"] * 501))
+
+    with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
+        module.refresh_auto_fields(ledger)
+
+
+def test_check_rejects_fixed_complexity_entry_still_over_threshold(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [
+            {
+                "id": "complexity:sample-too-complex",
+                "path": "sample.py",
+                "symbol": "too_complex",
+                "status": "fixed",
+                "owner": "SP03",
+                "batch": "SP03",
+                "exit_condition": "复杂度回落到阈值以下",
+                "last_verified_at": "2026-04-30T21:27:43+08:00",
+                "current_value": 16,
+                "threshold": 15,
+            }
+        ],
+        "silent_fallback": {"scope": ["web/bootstrap/**/*.py"], "entries": []},
+        "accepted_risks": [],
+    }
+
+    check_globals = module.validate_ledger_against_current_scan.__globals__
+    monkeypatch.setitem(check_globals, "validate_ledger", lambda _ledger: None)
+    monkeypatch.setitem(check_globals, "validate_startup_samples", lambda: {"matched": 0})
+    monkeypatch.setitem(
+        check_globals,
+        "complexity_scan_map",
+        lambda _paths: {"sample.py:too_complex": {"path": "sample.py", "symbol": "too_complex", "current_value": 16}},
+    )
+
+    with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
+        module.validate_ledger_against_current_scan(ledger)
+
+
+def test_set_entry_fields_rejects_fixed_oversize_entry_still_over_limit(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [
+            {
+                "id": "oversize:sample-large",
+                "path": "sample_large.py",
+                "symbol": None,
+                "status": "open",
+                "owner": "SP03",
+                "batch": "SP03",
+                "exit_condition": "文件行数降到限制以下",
+                "last_verified_at": "2026-04-30T21:27:43+08:00",
+                "current_value": 999,
+                "limit": 500,
+            }
+        ],
+        "complexity_allowlist": [],
+        "silent_fallback": {"scope": ["web/bootstrap/**/*.py"], "entries": []},
+        "accepted_risks": [],
+    }
+    set_globals = module.set_entry_fields.__globals__
+    monkeypatch.setitem(set_globals, "read_text_file", lambda _path: "\n".join(["x"] * 501))
+
+    with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
+        module.set_entry_fields(ledger, "oversize:sample-large", {"status": "fixed"})
+
+
+def test_set_entry_fields_rejects_fixed_silent_entry_still_in_scan(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:fixed-startup",
+                    "path": "web/bootstrap/launcher_stop.py",
+                    "symbol": "_request_runtime_shutdown",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "去除静默吞异常，或改为可观测降级并从本分类移出",
+                    "last_verified_at": "2026-04-30T21:27:43+08:00",
+                    "notes": "启动链基线冻结",
+                    "handler_fingerprint": "sha1:fixed-startup",
+                    "handler_context_hash": "sha1:ctx-fixed-startup",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 11,
+                    "fallback_kind": "observable_degrade",
+                    "source": "baseline_scan",
+                    "scope_tag": "startup_guard",
+                }
+            ],
+        },
+        "accepted_risks": [],
+    }
+    scan_entry = {
+        "id": "fallback:fixed-startup",
+        "path": "web/bootstrap/launcher_stop.py",
+        "symbol": "_request_runtime_shutdown",
+        "handler_fingerprint": "sha1:fixed-startup",
+        "handler_context_hash": "sha1:ctx-fixed-startup",
+        "except_ordinal": 1,
+        "line_start": 10,
+        "line_end": 11,
+        "fallback_kind": "observable_degrade",
+        "scope_tag": "startup_guard",
+    }
+    set_globals = module.set_entry_fields.__globals__
+    monkeypatch.setitem(set_globals, "scan_silent_fallback_entries", lambda _paths: [scan_entry])
+
+    with pytest.raises(module.QualityGateError, match="不能标记为 fixed"):
+        module.set_entry_fields(ledger, "fallback:fixed-startup", {"status": "fixed"})
+
+
+def test_refresh_auto_fields_rejects_auto_emptying_accepted_risk(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["core/infrastructure/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:fixed-old",
+                    "path": "core/infrastructure/database.py",
+                    "symbol": "ensure_schema",
+                    "status": "fixed",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "fixed entry should be pruned",
+                    "last_verified_at": "2026-04-30T21:27:43+08:00",
+                    "notes": "已修复",
+                    "handler_fingerprint": "sha1:old-fixed",
+                    "handler_context_hash": "sha1:ctx-fixed",
+                    "except_ordinal": 3,
+                    "line_start": 136,
+                    "line_end": 137,
+                    "fallback_kind": "silent_swallow",
+                    "source": "migrated_from_architecture_fitness_counter",
+                }
+            ],
+        },
+        "accepted_risks": [
+            {
+                "id": "risk:fixed-old",
+                "entry_ids": ["fallback:fixed-old"],
+                "owner": "techdebt",
+                "reason": "旧风险",
+                "review_after": "2026-05-31",
+                "exit_condition": "fixed 后显式删除风险。",
+            }
+        ],
+    }
+    refresh_globals = module.refresh_auto_fields.__globals__
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [])
+    monkeypatch.setitem(refresh_globals, "finalize_ledger_update", lambda current: current)
+
+    with pytest.raises(module.QualityGateError, match="显式 delete-risk"):
+        module.refresh_auto_fields(ledger)
+
+
+def test_scan_startup_baseline_rejects_auto_emptying_accepted_risk(monkeypatch):
+    module = _import_quality_gate_support()
+    ledger = {
+        "oversize_allowlist": [],
+        "complexity_allowlist": [],
+        "silent_fallback": {
+            "scope": ["web/bootstrap/**/*.py"],
+            "entries": [
+                {
+                    "id": "fallback:old-startup",
+                    "path": "web/bootstrap/launcher_stop.py",
+                    "symbol": "_request_runtime_shutdown",
+                    "status": "open",
+                    "owner": "SP03",
+                    "batch": "SP03",
+                    "exit_condition": "去除静默吞异常，或改为可观测降级并从本分类移出",
+                    "last_verified_at": "2026-04-30T21:27:43+08:00",
+                    "notes": "启动链基线冻结",
+                    "handler_fingerprint": "sha1:old-startup",
+                    "handler_context_hash": "sha1:ctx-old-startup",
+                    "except_ordinal": 1,
+                    "line_start": 10,
+                    "line_end": 11,
+                    "fallback_kind": "observable_degrade",
+                    "source": "baseline_scan",
+                    "scope_tag": "startup_guard",
+                }
+            ],
+        },
+        "accepted_risks": [
+            {
+                "id": "risk:old-startup",
+                "entry_ids": ["fallback:old-startup"],
+                "owner": "techdebt",
+                "reason": "旧风险",
+                "review_after": "2026-05-31",
+                "exit_condition": "显式删除风险。",
+            }
+        ],
+    }
+    refresh_globals = module.refresh_scan_startup_baseline.__globals__
+    monkeypatch.setitem(refresh_globals, "validate_startup_samples", lambda: {"matched": 0})
+    monkeypatch.setitem(refresh_globals, "collect_startup_scope_files", lambda: ["web/bootstrap/launcher_stop.py"])
+    monkeypatch.setitem(refresh_globals, "scan_oversize_entries", lambda _paths: [])
+    monkeypatch.setitem(refresh_globals, "scan_complexity_entries", lambda _paths: [])
+    monkeypatch.setitem(refresh_globals, "scan_silent_fallback_entries", lambda _paths: [])
+
+    with pytest.raises(module.QualityGateError, match="显式 delete-risk"):
+        module.refresh_scan_startup_baseline(ledger)
 
 
 def test_set_entry_fields_command_updates_manual_fields(monkeypatch, capsys):

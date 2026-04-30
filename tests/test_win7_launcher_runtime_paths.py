@@ -6,6 +6,7 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
 from flask import Flask
 
 
@@ -27,6 +28,22 @@ def _import_launcher_stop():
         sys.path.insert(0, repo_root)
     sys.modules.pop("web.bootstrap.launcher_stop", None)
     return importlib.import_module("web.bootstrap.launcher_stop")
+
+
+def _import_launcher_stop_cleanup():
+    repo_root = _repo_root()
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    sys.modules.pop("web.bootstrap.launcher_stop_cleanup", None)
+    return importlib.import_module("web.bootstrap.launcher_stop_cleanup")
+
+
+def _import_launcher_cleanup_result():
+    repo_root = _repo_root()
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    sys.modules.pop("web.bootstrap.launcher_cleanup_result", None)
+    return importlib.import_module("web.bootstrap.launcher_cleanup_result")
 
 
 def _import_launcher_processes():
@@ -430,6 +447,23 @@ def test_blocked_contract_state_is_not_stop_complete():
     assert launcher_stop._runtime_stop_is_complete({"state": state, "endpoint_up": False}) is False
 
 
+def test_endpoint_down_with_confirmed_contract_pid_is_mixed_not_complete():
+    launcher_stop = _import_launcher_stop()
+    identity = {"contract_pid": 43210, "pid_exists": True, "pid_match": True}
+
+    state = launcher_stop._runtime_state_name(
+        endpoint_up=False,
+        contract={"pid": 43210},
+        contract_status="valid",
+        identity=identity,
+        lock_active=False,
+        has_artifacts=True,
+    )
+
+    assert state == "mixed"
+    assert launcher_stop._runtime_stop_is_complete({"state": state, "endpoint_up": False}) is False
+
+
 def test_stop_runtime_keeps_artifacts_when_endpoint_files_unreadable(monkeypatch, tmp_path):
     launcher_stop = _import_launcher_stop()
     state_dir = tmp_path / "logs"
@@ -739,6 +773,45 @@ def test_stop_runtime_from_log_dir_uses_state_dir_and_parent_runtime_dir(monkeyp
     assert launcher.stop_runtime_from_dir(str(state_dir), stop_aps_chrome=True) == 0
     assert calls["delete"] == os.path.abspath(str(state_dir))
     assert calls["chrome"] == os.path.abspath(str(tmp_path / "shared-data" / "chrome109_profile"))
+    assert not (state_dir / "aps_host.txt").exists()
+    assert not (state_dir / "aps_port.txt").exists()
+
+
+def test_stop_runtime_legacy_cleanup_noop_still_cleans_files(monkeypatch, tmp_path):
+    launcher = _import_launcher()
+    state_dir = tmp_path / "shared-data" / "logs"
+    state_dir.mkdir(parents=True)
+    custom_profile = tmp_path / "custom-profile"
+    (state_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    (state_dir / "aps_port.txt").write_text("5000\n", encoding="utf-8")
+    (state_dir / "aps_runtime.json").write_text(
+        json.dumps(
+            {
+                "contract_version": 1,
+                "pid": 999999,
+                "host": "127.0.0.1",
+                "port": 5000,
+                "shutdown_token": "token",
+                "exe_path": sys.executable,
+                "runtime_dir": str(tmp_path / "shared-data"),
+                "chrome_profile_dir": str(custom_profile),
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(launcher, "_probe_runtime_health", lambda host, port, timeout_s=1.0: False)
+    monkeypatch.setattr(launcher, "delete_runtime_contract_files", lambda path: calls.append(path))
+    monkeypatch.setattr(launcher, "stop_aps_chrome_processes", lambda profile_dir, logger=None: True)
+
+    assert launcher.stop_runtime_from_dir(str(state_dir), stop_aps_chrome=True) == 0
+    assert calls == [os.path.abspath(str(state_dir))]
+    assert not (state_dir / "aps_runtime.json").exists()
+    assert not (state_dir / "aps_host.txt").exists()
+    assert not (state_dir / "aps_port.txt").exists()
 
 
 def test_stop_runtime_from_log_dir_fails_closed_when_chrome_cleanup_cannot_confirm(monkeypatch, tmp_path):
@@ -1223,15 +1296,23 @@ def test_wait_for_runtime_stop_rechecks_after_last_sleep(monkeypatch, tmp_path):
 def test_force_kill_runtime_requires_confirmed_pid_match(monkeypatch, tmp_path):
     launcher_stop = _import_launcher_stop()
     base_status = {
+        "contract_status": "valid",
         "contract": {"pid": 43210, "exe_path": sys.executable},
         "state": "active",
         "endpoint_up": True,
         "pid": 43210,
+        "pid_exists": True,
         "expected_exe_path": sys.executable,
     }
 
     assert launcher_stop._can_force_kill_runtime({**base_status, "pid_match": True}) is True
     assert launcher_stop._can_force_kill_runtime({**base_status, "pid_match": None}) is False
+    assert launcher_stop._can_force_kill_runtime({**base_status, "pid_match": False}) is False
+    assert launcher_stop._can_force_kill_runtime({**base_status, "pid_exists": False, "pid_match": True}) is False
+    assert launcher_stop._can_force_kill_runtime({**base_status, "pid_exists": None, "pid_match": True}) is False
+    assert launcher_stop._can_force_kill_runtime({**base_status, "contract_status": "invalid", "pid_match": True}) is False
+    assert launcher_stop._can_force_kill_runtime({**base_status, "pid": "bad", "pid_match": True}) is False
+    assert launcher_stop._can_force_kill_runtime({**base_status, "state": "mixed", "endpoint_up": False, "pid_match": True}) is True
 
     calls: list[int] = []
     status = {**base_status, "pid_match": None}
@@ -1243,6 +1324,125 @@ def test_force_kill_runtime_requires_confirmed_pid_match(monkeypatch, tmp_path):
     monkeypatch.setattr(launcher_stop, "_wait_for_runtime_stop", lambda state_dir, deadline: stopped_status)
     assert launcher_stop._try_force_kill_runtime(str(tmp_path), {**base_status, "pid_match": True}) == stopped_status
     assert calls == [43210]
+
+
+def test_stop_runtime_force_kills_mixed_endpoint_down_confirmed_pid(monkeypatch, tmp_path):
+    launcher_stop = _import_launcher_stop()
+    runtime_dir = tmp_path / "runtime"
+    state_dir = tmp_path / "runtime" / "logs"
+    mixed_status = {
+        "contract_status": "valid",
+        "contract": {"pid": 43210, "exe_path": sys.executable, "shutdown_token": "token"},
+        "state": "mixed",
+        "endpoint_up": False,
+        "pid": 43210,
+        "pid_exists": True,
+        "pid_match": True,
+        "state_dir": str(state_dir),
+    }
+    stopped_status = {**mixed_status, "state": "stale"}
+    wait_results = iter([mixed_status, stopped_status])
+    killed: list[int] = []
+    finalized: list[dict] = []
+
+    monkeypatch.setattr(launcher_stop, "_classify_runtime_state", lambda _state_dir: mixed_status)
+    monkeypatch.setattr(launcher_stop, "_runtime_stop_is_complete", lambda status: status.get("state") == "stale")
+    monkeypatch.setattr(launcher_stop, "_request_runtime_shutdown", lambda _contract, timeout_s=3.0: False)
+    monkeypatch.setattr(launcher_stop, "_wait_for_runtime_stop", lambda _state_dir, _deadline: next(wait_results))
+    monkeypatch.setattr(launcher_stop, "_kill_runtime_pid", lambda pid: killed.append(int(pid)) or True)
+
+    def _finalize(status, runtime_dir_abs, *, stop_aps_chrome, logger):
+        finalized.append({"status": status, "runtime_dir": runtime_dir_abs, "stop_aps_chrome": stop_aps_chrome})
+        return 0
+
+    monkeypatch.setattr(launcher_stop, "_finalize_stopped_runtime", _finalize)
+
+    assert launcher_stop.stop_runtime_from_dir(str(runtime_dir), timeout_s=0.1) == 0
+    assert killed == [43210]
+    assert finalized[0]["status"] is stopped_status
+    assert finalized[0]["runtime_dir"] == os.path.abspath(str(runtime_dir))
+
+
+def test_launcher_stop_safe_int_only_swallows_parse_errors(capsys):
+    launcher_stop = _import_launcher_stop()
+
+    assert launcher_stop._safe_int("123") == 123
+    assert launcher_stop._safe_int("bad") == 0
+    assert "解析运行时整数失败" in capsys.readouterr().err
+
+    class ExplodingInt:
+        def __int__(self):
+            raise RuntimeError("unexpected int failure")
+
+    with pytest.raises(RuntimeError, match="unexpected int failure"):
+        launcher_stop._safe_int(ExplodingInt())
+    with pytest.raises(OverflowError):
+        launcher_stop._safe_int(float("inf"))
+
+
+def test_legacy_cleanup_success_is_verified_by_result_cleanup(tmp_path):
+    cleanup = _import_launcher_stop_cleanup()
+    cleanup_result = _import_launcher_cleanup_result()
+    state_dir = tmp_path / "logs"
+    mirror_dir = tmp_path / "mirror-logs"
+    state_dir.mkdir()
+    mirror_dir.mkdir()
+    runtime_contract = state_dir / "aps_runtime.json"
+    mirror_host = mirror_dir / "aps_host.txt"
+    mirror_host.write_text("127.0.0.1\n", encoding="utf-8")
+    runtime_contract.write_text(
+        json.dumps({"contract_version": 1, "data_dirs": {"log_dir": str(mirror_dir)}}),
+        encoding="utf-8",
+    )
+    legacy_calls: list[str] = []
+
+    def _legacy_cleanup(path: str) -> None:
+        legacy_calls.append(path)
+        runtime_contract.unlink(missing_ok=True)
+
+    def _default_legacy_cleanup(_path: str) -> None:
+        raise AssertionError("default legacy cleanup should not be called")
+
+    result = cleanup.delete_runtime_contract_files_result_for_stop(
+        str(state_dir),
+        delete_runtime_contract_files=_legacy_cleanup,
+        delete_runtime_contract_files_result=cleanup_result.delete_runtime_contract_files_result,
+        default_delete_runtime_contract_files=_default_legacy_cleanup,
+        default_delete_runtime_contract_files_result=cleanup_result.delete_runtime_contract_files_result,
+    )
+
+    assert legacy_calls == [str(state_dir)]
+    assert result.ok is True
+    assert result.attempted_paths
+    assert str(runtime_contract) in result.removed_paths
+    assert str(mirror_host) in result.removed_paths
+    assert not runtime_contract.exists()
+    assert not mirror_host.exists()
+
+
+def test_legacy_cleanup_failure_returns_failure_result(tmp_path):
+    cleanup = _import_launcher_stop_cleanup()
+    cleanup_result = _import_launcher_cleanup_result()
+    state_dir = tmp_path / "logs"
+    state_dir.mkdir()
+
+    def _legacy_cleanup(_path: str) -> None:
+        raise RuntimeError("legacy failed")
+
+    def _default_legacy_cleanup(_path: str) -> None:
+        raise AssertionError("default legacy cleanup should not be called")
+
+    result = cleanup.delete_runtime_contract_files_result_for_stop(
+        str(state_dir),
+        delete_runtime_contract_files=_legacy_cleanup,
+        delete_runtime_contract_files_result=cleanup_result.delete_runtime_contract_files_result,
+        default_delete_runtime_contract_files=_default_legacy_cleanup,
+        default_delete_runtime_contract_files_result=cleanup_result.delete_runtime_contract_files_result,
+    )
+
+    assert result.ok is False
+    assert result.failures[0].reason == "legacy_cleanup_failed"
+    assert "legacy failed" in result.failures[0].error
 
 
 def test_stop_runtime_from_dir_reports_chrome_stop_failure_reason_without_logger(monkeypatch, tmp_path, capsys):

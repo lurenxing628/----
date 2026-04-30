@@ -242,6 +242,70 @@ tags: [techdebt, startup, fallback, win7]
   - 当前仍未执行 Win7 真机 / 虚拟机复测。
   - 4 条 Win7 accepted risk 继续保留，不能包装成已关闭。
 
+### 0a631dc 补丁后的对抗审查收口
+
+- 第二轮对抗审查发现并已补掉 4 个 blocker：
+  - cleanup 旧入口如果先删 `aps_runtime.json`，后续 result cleanup 可能失去镜像目录信息。
+  - 台账不应只拦 silent fallback 的假 fixed，超长文件 / 复杂度条目仍然当前命中时也不能标 `fixed`；refresh 也不能静默清空 accepted risk。
+  - 手工 `set-entry-fields --status fixed` 对 silent fallback 仍当前命中的条目没有拦截。
+  - `scan-startup-baseline` 仍可能自动删空 accepted risk。
+- cleanup 修正：
+  - 旧 `delete_runtime_contract_files()` 被替换、result 入口仍是默认入口时，停止链先跑默认 result cleanup。
+  - result cleanup 先读取契约并发现 runtime/logs 与 `data_dirs.log_dir` 镜像目录，再执行删除。
+  - 默认 result cleanup 成功后，才调用旧入口保持兼容；旧入口失败仍返回 `legacy_cleanup_failed`。
+  - 主链新增回归确认：旧入口 no-op 时，`stop_runtime_from_dir()` 仍会真的删除 `aps_runtime.json`、host、port 等文件。
+- 台账修正：
+  - `refresh-auto-fields`、`check`、`set-entry-fields`、`scan-startup-baseline`、`migrate-inline-facts` 都会拒绝仍超限的 oversize / complexity 条目标成 `fixed`。
+  - `refresh-auto-fields`、`check`、`set-entry-fields`、`scan-startup-baseline`、`migrate-inline-facts` 都会拒绝当前仍命中的 silent fallback 条目标成 `fixed`。
+  - `refresh-auto-fields` 和 `scan-startup-baseline` 如果会把某条 accepted risk 的 `entry_ids` 自动清空，会直接失败，要求先显式 `delete-risk`。
+- 第二轮定向验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_win7_launcher_runtime_paths.py tests/regression_runtime_contract_launcher.py tests/regression_runtime_stop_cli.py`：`78 passed`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_sync_debt_ledger.py`：`75 passed`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check web/bootstrap/launcher_stop.py web/bootstrap/launcher_stop_cleanup.py tools/quality_gate_operations.py tests/test_win7_launcher_runtime_paths.py tests/test_sync_debt_ledger.py`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pyright -p pyrightconfig.gate.json`：`0 errors`，仍有 6 个既有 scheduler `__all__` warning。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`：通过，`active_xfail_count=0`，`fixed_count=5`，`collected_count=934`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`silent_fallback_count=118`，`accepted_risk_count=4`。
+- 第二轮 cleanup 对抗复审：
+  - 未发现 blocker。
+  - 复审确认旧入口先删契约文件不再丢镜像目录，主链也覆盖旧入口 no-op。
+
+## 0a631dc 后 review 合并前补丁
+
+- 本轮按外部 review 的 A-D 范围做最小补丁，没有处理 UI render bridge、`safe_url_for()`、UI mode DB 读取这些中低风险观察项。
+- runtime stop 强杀判定已收紧到“能否安全杀这个 PID”：
+  - valid contract 才能强杀。
+  - `active` 和 `mixed` 都可以进入强杀兜底。
+  - 必须明确 `pid_exists is True` 且 `pid_match is True`。
+  - endpoint 健康不再是强杀前提，避免“端点挂了但进程还活着”无法处理。
+- cleanup legacy wrapper 已修正：
+  - 旧 `delete_runtime_contract_files()` 被 monkeypatch 且没报错后，不再直接造成功结果。
+  - 旧入口成功后必须再跑默认 result cleanup，补删残留并暴露删除失败。
+  - 旧入口报错仍返回 `legacy_cleanup_failed`，停止命令按失败处理。
+- `_safe_int()` 捕获范围已收窄：
+  - 只把 `TypeError` / `ValueError` 当成普通坏输入并按 0 处理。
+  - 自定义对象 `__int__` 抛出的运行期异常和 `OverflowError` 继续向外抛，不再伪装成缺 pid / 缺端口。
+- silent fallback 台账 fixed 语义已收紧：
+  - `refresh-auto-fields`、`check`、`scan-startup-baseline`、`migrate-inline-facts` 都会拒绝“当前扫描仍命中但 status=fixed”的 silent fallback 条目。
+  - 本轮不新增台账状态；仍存在的启动链 handler 继续保持 `open` 或通过 accepted risk 解释，不能标成 `fixed`。
+  - 当前真实台账里 silent fallback 条目仍都是 `open`；`fixed` 只存在于测试债务 `mode=fixed`。
+- 台账变化：
+  - `_safe_int` 旧 fallback 条目因代码修复后不再被扫描命中，通过 `refresh-auto-fields` 受控移除。
+  - `silent_fallback_count` 从 119 降到 118。
+  - `oversize_count=1`、`complexity_count=18`、`accepted_risk_count=4`、`test_debt_count=5` 不变。
+- 修前只读核实：
+  - runtime stop：确认提交版 P0 成立，当前补丁误杀风险可控。
+  - cleanup wrapper：确认提交版 no-op 伪成功成立，当前补丁是最小安全修法。
+  - `_safe_int`：确认 `except Exception` 过宽，补充锁定 `OverflowError` 和坏 pid 边界。
+  - 台账 fixed：确认真实台账没有 silent fallback fixed，并补齐旧刷新模式拦截。
+- 已完成定向验证：
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_win7_launcher_runtime_paths.py tests/regression_runtime_contract_launcher.py tests/regression_runtime_stop_cli.py`：`77 passed`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_sync_debt_ledger.py`：`69 passed`。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check web/bootstrap/launcher_stop.py web/bootstrap/launcher_stop_cleanup.py tools/quality_gate_operations.py tests/test_win7_launcher_runtime_paths.py tests/test_sync_debt_ledger.py`：通过。
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields && PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`：通过，`silent_fallback_count=118`，`accepted_risk_count=4`。
+- Win7 状态仍不变：
+  - 当前仍未执行 Win7 真机 / 虚拟机复测。
+  - 4 条 Win7 accepted risk 继续保留，不能包装成已关闭。
+
 ### 597178e 后最终台账和门禁修正
 
 - 台账刷新边界补强：

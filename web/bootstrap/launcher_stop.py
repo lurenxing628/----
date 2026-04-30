@@ -203,7 +203,7 @@ def _runtime_identity(contract: Optional[Dict[str, Any]], lock_payload: Optional
 def _safe_int(value: Any) -> int:
     try:
         return int(value or 0)
-    except Exception as exc:
+    except (TypeError, ValueError) as exc:
         launcher_log_warning(None, "解析运行时整数失败，已按 0 处理：value=%r error=%s", value, exc)
         return 0
 
@@ -358,18 +358,19 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
 
 
 def _can_force_kill_runtime(status: Dict[str, Any]) -> bool:
+    if str(status.get("contract_status") or "") != CONTRACT_STATUS_VALID:
+        return False
     contract = status.get("contract")
     if not isinstance(contract, dict):
         return False
-    if str(status.get("state") or "") != "active" or not bool(status.get("endpoint_up")):
+    if str(status.get("state") or "") not in {"active", "mixed"}:
         return False
     pid = _safe_int(status.get("pid"))
     if pid <= 0:
         return False
-    pid_match = status.get("pid_match")
-    if pid_match is True:
-        return True
-    return False
+    if status.get("pid_exists") is not True:
+        return False
+    return status.get("pid_match") is True
 
 
 def _runtime_stop_failure_reason(status: Dict[str, Any], *, shutdown_requested: bool) -> str:
