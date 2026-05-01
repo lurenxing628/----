@@ -442,7 +442,10 @@ def test_sp05_route_topology_and_compatibility_matrix() -> None:
         for node in root_entrypoint.body
         if isinstance(node, ast.ImportFrom) and node.level == 1
     }
-    assert root_import_modules == {"domains.scheduler", "domains.scheduler.scheduler_bp"}
+    assert root_import_modules == {
+        "domains.scheduler.scheduler_bp",
+        "domains.scheduler.scheduler_route_registrar",
+    }
     root_top_level_register_calls = [
         node
         for node in root_entrypoint.body
@@ -451,7 +454,7 @@ def test_sp05_route_topology_and_compatibility_matrix() -> None:
         and isinstance(node.value.func, ast.Name)
         and node.value.func.id == "register_scheduler_routes"
     ]
-    assert len(root_top_level_register_calls) == 1
+    assert root_top_level_register_calls == []
 
     scheduler_pages = ast.parse(
         (REPO_ROOT / "web/routes/domains/scheduler/scheduler_pages.py").read_text(encoding="utf-8")
@@ -521,23 +524,23 @@ def test_sp05_route_topology_and_compatibility_matrix() -> None:
     assert "register_scheduler_routes" in registrar_functions
 
 
-def test_sp05_route_wrapper_imports_force_fully_registered_scheduler_entrypoint() -> None:
+def test_sp05_route_wrapper_imports_only_requested_scheduler_leaf() -> None:
     _reset_scheduler_route_modules()
     for old_name, new_name in ROUTE_COMPAT_MODULES.items():
         payload = _import_module_isolation_probe(old_name)
         assert payload["resolved_name"] == new_name
-        assert payload["loaded_scheduler"] is True, old_name
-        assert payload["loaded_scheduler_pages"] is True, old_name
-        assert payload["loaded_scheduler_registrar"] is True, old_name
+        assert payload["loaded_scheduler"] is False, old_name
+        assert payload["loaded_scheduler_pages"] is False, old_name
+        assert payload["loaded_scheduler_registrar"] is False, old_name
 
 
-def test_sp05_behavior_compat_route_wrapper_imports_force_fully_registered_scheduler_entrypoint() -> None:
+def test_sp05_behavior_compat_route_wrapper_imports_only_requested_scheduler_leaf() -> None:
     _reset_scheduler_route_modules()
     payload = _import_module_isolation_probe("web.routes.scheduler_excel_batches")
     assert payload["resolved_name"] == "web.routes.scheduler_excel_batches"
-    assert payload["loaded_scheduler"] is True
-    assert payload["loaded_scheduler_pages"] is True
-    assert payload["loaded_scheduler_registrar"] is True
+    assert payload["loaded_scheduler"] is False
+    assert payload["loaded_scheduler_pages"] is False
+    assert payload["loaded_scheduler_registrar"] is False
 
 
 def test_sp05_scheduler_domain_package_import_stays_passive() -> None:

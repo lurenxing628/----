@@ -23,12 +23,11 @@ LEGACY_SCHEDULER_WRAPPERS = (
 
 
 @pytest.mark.parametrize("module_name", LEGACY_SCHEDULER_WRAPPERS)
-def test_legacy_scheduler_wrapper_remains_safe_when_registered_before_app_import(module_name: str) -> None:
+def test_legacy_scheduler_wrapper_import_stays_passive_before_app_import(module_name: str) -> None:
     probe = """
 import importlib
 import json
 import sys
-from flask import Flask
 
 target = sys.argv[1]
 scheduler_root = importlib.import_module("web.routes.scheduler")
@@ -41,13 +40,13 @@ def _wrapped_register():
 
 scheduler_root.register_scheduler_routes = _wrapped_register
 route_mod = importlib.import_module(target)
-app = Flask(__name__)
-app.register_blueprint(route_mod.bp, url_prefix="/scheduler")
+calls_after_wrapper = len(calls)
 app_mod = importlib.import_module("app")
 created = app_mod.create_app()
 print(json.dumps({
     "module": route_mod.__name__,
-    "register_calls": len(calls),
+    "register_calls_after_app": len(calls),
+    "register_calls_after_wrapper": calls_after_wrapper,
     "registered_blueprints": sorted(created.blueprints),
 }, sort_keys=True))
 """
@@ -65,11 +64,12 @@ print(json.dumps({
         assert payload["module"] == module_name
     else:
         assert payload["module"].startswith("web.routes.domains.scheduler.scheduler_")
-    assert payload["register_calls"] >= 1
+    assert payload["register_calls_after_wrapper"] == 0
+    assert payload["register_calls_after_app"] >= 1
     assert "scheduler" in payload["registered_blueprints"]
 
 
-def test_scheduler_root_bp_direct_registration_exposes_full_route_graph() -> None:
+def test_scheduler_root_bp_direct_registration_requires_explicit_route_registration() -> None:
     probe = """
 import importlib
 import json
@@ -77,6 +77,7 @@ from flask import Flask
 
 scheduler_root = importlib.import_module("web.routes.scheduler")
 app = Flask(__name__)
+scheduler_root.register_scheduler_routes()
 app.register_blueprint(scheduler_root.bp, url_prefix="/scheduler")
 routes_before_wrapper = sorted(str(rule) for rule in app.url_map.iter_rules() if str(rule).startswith("/scheduler"))
 importlib.import_module("web.routes.scheduler_run")

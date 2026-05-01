@@ -568,7 +568,7 @@ def test_scheduler_config_route_separates_saved_preset_and_runtime_state(monkeyp
     assert payload["config_hidden_warnings"]
 
 
-def test_scheduler_config_legacy_wrapper_force_loads_scheduler_registrar() -> None:
+def test_scheduler_config_legacy_wrapper_loads_only_scheduler_config_leaf() -> None:
     code = """
 import importlib
 import json
@@ -592,8 +592,8 @@ print(json.dumps({
     assert completed.returncode == 0, (completed.stdout, completed.stderr)
     payload = json.loads(completed.stdout.strip().splitlines()[-1])
     assert payload["module"] == "web.routes.domains.scheduler.scheduler_config"
-    assert payload["loaded_pages"] is True
-    assert payload["loaded_registrar"] is True
+    assert payload["loaded_pages"] is False
+    assert payload["loaded_registrar"] is False
 
 
 def test_scheduler_config_preset_apply_uses_effective_identity_in_flash(monkeypatch) -> None:
