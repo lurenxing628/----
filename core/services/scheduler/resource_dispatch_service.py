@@ -20,8 +20,6 @@ from .resource_dispatch_support import (
 from .schedule_history_query_service import ScheduleHistoryQueryService
 from .version_resolution import VersionResolution, require_selected_version, resolve_version_or_latest
 
-_VERSION_ERROR_MESSAGE = "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。"
-
 
 class ResourceDispatchService:
     def __init__(self, conn, logger=None, op_logger=None):
@@ -76,22 +74,6 @@ class ResourceDispatchService:
 
     def _list_versions(self, limit: int = 30) -> List[Dict[str, Any]]:
         return list(self.history_service.list_versions(limit=limit) or [])
-
-    def _normalize_strict_positive_version(self, value: Any, *, latest_version: int) -> Optional[int]:
-        if value is None:
-            latest = int(latest_version or 0)
-            return latest if latest > 0 else None
-        text = str(value).strip()
-        if not text or text.lower() == "latest":
-            latest = int(latest_version or 0)
-            return latest if latest > 0 else None
-        try:
-            version = int(text)
-        except Exception as exc:
-            raise ValidationError(_VERSION_ERROR_MESSAGE, field="version") from exc
-        if version <= 0:
-            raise ValidationError(_VERSION_ERROR_MESSAGE, field="version")
-        return version
 
     def _resolve_version(self, value: Any, *, latest_version: Optional[int] = None) -> VersionResolution:
         latest = self._latest_version() if latest_version is None else int(latest_version or 0)

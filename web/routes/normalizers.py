@@ -13,18 +13,12 @@ from core.services.common.normalization_matrix import (
     normalize_yes_no_narrow_value,
 )
 from core.services.scheduler.history_summary_parser import parse_result_summary_payload
-from core.services.scheduler.version_resolution import (
-    VERSION_ERROR_MESSAGE,
-    resolve_version_or_latest,
-)
 from web.viewmodels.scheduler_history_summary import (
     decorate_history_version_options as _decorate_history_version_options,
 )
 from web.viewmodels.scheduler_history_summary import (
     parse_state_from_result,
 )
-
-_VERSION_ERROR_MESSAGE = VERSION_ERROR_MESSAGE
 
 
 def _normalize_batch_priority(value: Any) -> str:
@@ -86,49 +80,6 @@ def _normalize_yesno(value: Any) -> str:
         default=YesNo.YES.value,
         unknown_policy="passthrough",
     )
-
-
-def default_version_to_latest(*, latest_version: int) -> int:
-    return int(latest_version or 0)
-
-
-def parse_explicit_version_or_latest(value: Any, *, latest_version: int, field: str = "version") -> int:
-    text = str(value or "").strip()
-    if not text:
-        raise ValidationError(_VERSION_ERROR_MESSAGE, field=field)
-    if text.lower() == "latest":
-        return default_version_to_latest(latest_version=latest_version)
-    try:
-        version = int(text)
-    except Exception as exc:
-        raise ValidationError(_VERSION_ERROR_MESSAGE, field=field) from exc
-    if version <= 0:
-        raise ValidationError(_VERSION_ERROR_MESSAGE, field=field)
-    return version
-
-
-def normalize_version_or_latest_fallback(value: Any, *, latest_version: int) -> int:
-    """
-    latest-fallback 合同：
-    - 空值/空字符串：回退到最新版本
-    - latest：显式表示最新版本
-    - 其他显式值：必须是正整数，否则报错
-    """
-    latest = default_version_to_latest(latest_version=latest_version)
-    if value is None:
-        return latest
-    text = str(value).strip()
-    if not text:
-        return latest
-    return parse_explicit_version_or_latest(text, latest_version=latest_version)
-
-
-def normalize_version_or_latest(value: Any, *, latest_version: int) -> int:
-    return normalize_version_or_latest_fallback(value, latest_version=latest_version)
-
-
-def resolve_route_version_or_latest(value: Any, *, latest_version: int, version_exists=None):
-    return resolve_version_or_latest(value, latest_version=latest_version, version_exists=version_exists)
 
 
 def parse_optional_version_int(value: Any, *, field: str = "version") -> Optional[int]:
