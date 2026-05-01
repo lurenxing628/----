@@ -15,8 +15,8 @@ from web.error_boundary import (
     json_error_response,
     user_visible_app_error_message,
 )
-from web.routes.normalizers import decorate_history_version_options
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_history_summary import decorate_history_version_options
 from web.viewmodels.scheduler_resource_dispatch import (
     build_resource_dispatch_filename,
     decorate_resource_dispatch_context,
@@ -206,10 +206,7 @@ def resource_dispatch_page():
         context = svc.build_page_context()
 
     context = dict(context)
-    context["versions"] = decorate_history_version_options(
-        context.get("versions") or [],
-        log_label="资源排班页",
-    )
+    context["versions"] = decorate_history_version_options(context.get("versions") or [])
     context = decorate_resource_dispatch_context(context)
     filters = context.get("filters") or {}
     export_url = None

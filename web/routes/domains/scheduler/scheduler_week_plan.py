@@ -11,10 +11,11 @@ from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
 from web.error_boundary import user_visible_app_error_message
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_history_summary import decorate_history_version_options
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
-from ...normalizers import _parse_result_summary_payload_with_meta, decorate_history_version_options
+from ...normalizers import _parse_result_summary_payload_with_meta
 from .scheduler_bp import (
     _surface_schedule_errors,
     _surface_schedule_warnings,
@@ -128,10 +129,7 @@ def week_plan_page():
     svc = services.gantt_service
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
 
-    versions = decorate_history_version_options(
-        services.schedule_history_query_service.list_versions(limit=30),
-        log_label="周计划页",
-    )
+    versions = decorate_history_version_options(services.schedule_history_query_service.list_versions(limit=30))
     data = svc.get_week_plan_rows(
         start_date=wr.week_start_date.isoformat(),
         end_date=wr.week_end_date.isoformat(),

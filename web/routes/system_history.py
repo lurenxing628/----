@@ -3,12 +3,12 @@ from __future__ import annotations
 from flask import request
 
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_history_summary import decorate_history_version_options
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from .domains.scheduler.scheduler_history_resolution import build_requested_history_resolution
 from .normalizers import (
     _parse_result_summary_payload_with_meta,
-    decorate_history_version_options,
     parse_optional_version_int,
 )
 from .pagination import paginate_rows, parse_page_args
@@ -23,7 +23,7 @@ def history_page():
     limit = _safe_int(request.args.get("limit"), field="limit", default=per_page, min_v=1, max_v=200)
 
     q = _get_schedule_history_query_service()
-    versions = decorate_history_version_options(q.list_versions(limit=30), log_label="排产历史页")
+    versions = decorate_history_version_options(q.list_versions(limit=30))
 
     selected = None
     selected_missing_message = None

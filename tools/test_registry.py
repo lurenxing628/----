@@ -31,6 +31,8 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/test_sp05_path_topology_contract.py",
     "tests/test_schedule_input_builder_strict_hours_and_ext_days.py",
     "tests/regression_scheduler_wrapper_import_order_contract.py",
+    "tests/test_history_summary_parser.py",
+    "tests/test_phase6_no_result_summary_route_parser.py",
     "tests/regression_schedule_orchestrator_contract.py",
     "tests/test_schedule_summary_observability.py",
     "tests/regression_sp06_no_duplicate_defs.py",

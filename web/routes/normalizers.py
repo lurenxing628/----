@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List, Optional
 
 from flask import current_app
@@ -13,9 +12,16 @@ from core.services.common.normalization_matrix import (
     normalize_ready_status_value,
     normalize_yes_no_narrow_value,
 )
+from core.services.scheduler.history_summary_parser import parse_result_summary_payload
 from core.services.scheduler.version_resolution import (
     VERSION_ERROR_MESSAGE,
     resolve_version_or_latest,
+)
+from web.viewmodels.scheduler_history_summary import (
+    decorate_history_version_options as _decorate_history_version_options,
+)
+from web.viewmodels.scheduler_history_summary import (
+    parse_state_from_result,
 )
 
 _VERSION_ERROR_MESSAGE = VERSION_ERROR_MESSAGE
@@ -151,53 +157,18 @@ def _log_result_summary_warning(*, log_label: str, version: Any, source: Optiona
 def _parse_result_summary_payload_with_meta(
     raw_summary: Any, *, version: Any, log_label: str, source: Optional[str] = None
 ) -> Dict[str, Any]:
-    state: Dict[str, Any] = {
-        "payload": None,
-        "parse_failed": False,
-        "user_message": None,
-        "reason": None,
-    }
-    if raw_summary is None or raw_summary == "":
-        state["reason"] = "missing"
-        return state
-    if isinstance(raw_summary, dict):
-        state["payload"] = raw_summary
-        state["reason"] = "dict"
-        return state
-    if isinstance(raw_summary, list):
-        _log_result_summary_warning(log_label=log_label, version=version, source=source, issue="结构不合法", detail="type=list")
-        state["parse_failed"] = True
-        state["reason"] = "invalid_structure"
-        state["user_message"] = "当前版本的排产摘要结构异常，页面仅展示基础历史信息。"
-        return state
-    if not isinstance(raw_summary, str):
+    result = parse_result_summary_payload(raw_summary)
+    state = parse_state_from_result(result)
+    if result.parse_failed:
+        issue = "解析失败" if result.reason == "json_decode_error" else "结构不合法"
+        detail = "error=JSONDecodeError" if result.reason == "json_decode_error" else f"type={result.raw_type}"
         _log_result_summary_warning(
             log_label=log_label,
             version=version,
             source=source,
-            issue="结构不合法",
-            detail=f"type={type(raw_summary).__name__}",
+            issue=issue,
+            detail=detail,
         )
-        state["parse_failed"] = True
-        state["reason"] = "invalid_structure"
-        state["user_message"] = "当前版本的排产摘要结构异常，页面仅展示基础历史信息。"
-        return state
-    try:
-        parsed = json.loads(str(raw_summary))
-    except Exception as exc:
-        _log_result_summary_warning(log_label=log_label, version=version, source=source, issue="解析失败", detail=f"error={exc.__class__.__name__}")
-        state["parse_failed"] = True
-        state["reason"] = "json_decode_error"
-        state["user_message"] = "当前版本的排产摘要解析失败，页面仅展示基础历史信息。"
-        return state
-    if not isinstance(parsed, dict):
-        _log_result_summary_warning(log_label=log_label, version=version, source=source, issue="结构不合法", detail=f"type={type(parsed).__name__}")
-        state["parse_failed"] = True
-        state["reason"] = "invalid_structure"
-        state["user_message"] = "当前版本的排产摘要结构异常，页面仅展示基础历史信息。"
-        return state
-    state["payload"] = parsed
-    state["reason"] = "json"
     return state
 
 
@@ -218,23 +189,12 @@ def decorate_history_version_options(
     log_label: str,
     source: str = "version_option",
 ) -> List[Dict[str, Any]]:
-    from web.viewmodels.scheduler_summary_display import build_summary_display_state
-
-    out: List[Dict[str, Any]] = []
-    for raw in list(versions or []):
-        row = dict(raw or {})
-        parse_state = _parse_result_summary_payload_with_meta(
+    decorated = _decorate_history_version_options(versions)
+    for row in decorated:
+        _parse_result_summary_payload_with_meta(
             row.get("result_summary"),
             version=row.get("version"),
             log_label=log_label,
             source=source,
         )
-        summary_payload = parse_state.get("payload")
-        display_state = build_summary_display_state(
-            summary_payload if isinstance(summary_payload, dict) else None,
-            result_status=row.get("result_status"),
-            parse_state=parse_state,
-        )
-        row["result_status_label"] = str(display_state.get("result_status_label") or "")
-        out.append(row)
-    return out
+    return decorated

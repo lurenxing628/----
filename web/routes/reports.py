@@ -11,8 +11,8 @@ from core.services.scheduler.version_resolution import (
     require_selected_version,
     resolve_version_or_latest,
 )
-from web.routes.normalizers import decorate_history_version_options
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_history_summary import decorate_history_version_options
 
 bp = Blueprint("reports", __name__)
 
@@ -139,7 +139,7 @@ def index():
 @bp.get("/overdue")
 def overdue_page():
     engine = ReportEngine(g.db)
-    versions = decorate_history_version_options(engine.list_versions(limit=30), log_label="超期报表页")
+    versions = decorate_history_version_options(engine.list_versions(limit=30))
     resolution = _page_version_or_latest(engine)
     version = resolution.selected_version
     rep = (
@@ -177,7 +177,7 @@ def overdue_export():
 @bp.get("/utilization")
 def utilization_page():
     engine = ReportEngine(g.db)
-    versions = decorate_history_version_options(engine.list_versions(limit=30), log_label="负荷报表页")
+    versions = decorate_history_version_options(engine.list_versions(limit=30))
     resolution = _page_version_or_latest(engine)
     version = resolution.selected_version
     start_date, end_date, date_source, _span = _page_date_range_or_version_span(
@@ -237,7 +237,7 @@ def utilization_export():
 @bp.get("/downtime")
 def downtime_page():
     engine = ReportEngine(g.db)
-    versions = decorate_history_version_options(engine.list_versions(limit=30), log_label="停机报表页")
+    versions = decorate_history_version_options(engine.list_versions(limit=30))
     resolution = _page_version_or_latest(engine)
     version = resolution.selected_version
     start_date, end_date, date_source, _span = _page_date_range_or_version_span(

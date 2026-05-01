@@ -7,11 +7,11 @@ from flask import g, request
 
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_analysis_vm import build_analysis_context, safe_int
+from web.viewmodels.scheduler_history_summary import decorate_history_version_options
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from ...normalizers import (
     _parse_result_summary_payload_with_meta,
-    decorate_history_version_options,
     resolve_route_version_or_latest,
 )
 from .scheduler_bp import bp
@@ -182,7 +182,7 @@ def analysis_page():
     version_resolution = selection.version_resolution
     selected_ver = selection.selected_version
     selected_item = selection.selected_item
-    versions = decorate_history_version_options(selection.versions, log_label="排产分析页")
+    versions = decorate_history_version_options(selection.versions)
 
     raw_hist = _load_recent_analysis_history(q)
     ctx = build_analysis_context(selected_ver=selected_ver, raw_hist=raw_hist, selected_item=selected_item)

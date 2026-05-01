@@ -7,9 +7,8 @@ from flask import current_app, g, jsonify, request, url_for
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError, error_response
 from web.error_boundary import json_error_response
 from web.ui_mode import render_ui_template as render_template
-from web.viewmodels.scheduler_summary_display import build_summary_display_state
+from web.viewmodels.scheduler_history_summary import build_history_summary_display, decorate_history_version_options
 
-from ...normalizers import _parse_result_summary_payload_with_meta, decorate_history_version_options
 from .scheduler_bp import bp
 
 
@@ -42,16 +41,9 @@ def _selected_version_result_status_label(services, version: Optional[int]) -> s
     selected = item.to_dict() if item and hasattr(item, "to_dict") else None
     if not selected:
         return ""
-    parse_state = _parse_result_summary_payload_with_meta(
-        selected.get("result_summary"),
-        version=version,
-        source="selected",
-        log_label="甘特图页",
-    )
-    display = build_summary_display_state(
-        parse_state.get("payload") if isinstance(parse_state.get("payload"), dict) else None,
+    display = build_history_summary_display(
+        raw_summary=selected.get("result_summary"),
         result_status=selected.get("result_status"),
-        parse_state=parse_state,
     )
     return str(display.get("result_status_label") or "")
 
@@ -82,10 +74,7 @@ def gantt_page():
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
     ver = version_resolution.selected_version
 
-    versions = decorate_history_version_options(
-        services.schedule_history_query_service.list_versions(limit=30),
-        log_label="甘特图页",
-    )
+    versions = decorate_history_version_options(services.schedule_history_query_service.list_versions(limit=30))
     selected_result_status_label = _selected_version_result_status_label(services, ver)
     return render_template(
         "scheduler/gantt.html",
