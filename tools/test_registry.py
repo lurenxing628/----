@@ -35,6 +35,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/test_scheduler_routes_still_registered_by_factory.py",
     "tests/test_history_summary_parser.py",
     "tests/test_phase6_no_result_summary_route_parser.py",
+    "tests/regression_scheduler_bp_result_summary_guard.py",
     "tests/test_version_resolution_contract.py",
     "tests/test_phase6_no_route_version_parser.py",
     "tests/test_evidence_audit_entrypoints.py",

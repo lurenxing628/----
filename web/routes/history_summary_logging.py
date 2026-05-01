@@ -4,6 +4,8 @@ from typing import Any, Dict, Optional
 
 from flask import current_app
 
+from web.viewmodels.scheduler_history_summary import parse_history_summary_state
+
 
 def log_history_summary_parse_warning(
     parse_state: Dict[str, Any],
@@ -32,4 +34,21 @@ def log_history_summary_parse_warning(
     current_app.logger.warning("%s result_summary %s（version=%s, %s）", log_label, issue, version, detail)
 
 
-__all__ = ["log_history_summary_parse_warning"]
+def log_history_version_option_parse_warnings(
+    versions: Any,
+    *,
+    log_label: str,
+    source: str = "version_option",
+) -> None:
+    for raw in list(versions or []):
+        row = dict(raw or {})
+        parse_state = parse_history_summary_state(row.get("result_summary"))
+        log_history_summary_parse_warning(
+            parse_state,
+            version=row.get("version"),
+            log_label=log_label,
+            source=source,
+        )
+
+
+__all__ = ["log_history_summary_parse_warning", "log_history_version_option_parse_warnings"]

@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from flask import Flask, g
 
 from core.services.scheduler.config_service import ConfigService
@@ -129,6 +130,17 @@ def test_scheduler_batches_route_reuses_shared_degraded_display_builder() -> Non
     assert "config_hidden_warnings" in display_state_source
     assert "current_config_state" in batches_viewmodel_source
     assert "runtime_config_state" not in route_source
+
+
+def test_scheduler_batches_latest_history_query_failure_is_not_swallowed() -> None:
+    import web.routes.scheduler_batches as route_mod
+
+    class _BrokenHistoryService:
+        def list_recent(self, limit=1):
+            raise RuntimeError("history query failed")
+
+    with pytest.raises(RuntimeError, match="history query failed"):
+        route_mod._load_latest_schedule_history_panel_inputs(_BrokenHistoryService())
 
 
 def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> None:

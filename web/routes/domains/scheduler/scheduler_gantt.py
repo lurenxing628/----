@@ -6,6 +6,10 @@ from flask import current_app, g, jsonify, request, url_for
 
 from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError, error_response
 from web.error_boundary import json_error_response
+from web.routes.history_summary_logging import (
+    log_history_summary_parse_warning,
+    log_history_version_option_parse_warnings,
+)
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_history_summary import build_history_summary_display, decorate_history_version_options
 
@@ -45,6 +49,12 @@ def _selected_version_result_status_label(services, version: Optional[int]) -> s
         raw_summary=selected.get("result_summary"),
         result_status=selected.get("result_status"),
     )
+    log_history_summary_parse_warning(
+        display.get("summary_parse_state") or {},
+        version=selected.get("version"),
+        source="selected",
+        log_label="甘特图页",
+    )
     return str(display.get("result_status_label") or "")
 
 
@@ -75,6 +85,7 @@ def gantt_page():
     ver = version_resolution.selected_version
 
     versions = decorate_history_version_options(services.schedule_history_query_service.list_versions(limit=30))
+    log_history_version_option_parse_warnings(versions, log_label="甘特图页")
     selected_result_status_label = _selected_version_result_status_label(services, ver)
     return render_template(
         "scheduler/gantt.html",

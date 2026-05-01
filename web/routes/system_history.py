@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from flask import request
 
-from web.routes.history_summary_logging import log_history_summary_parse_warning
+from web.routes.history_summary_logging import (
+    log_history_summary_parse_warning,
+    log_history_version_option_parse_warnings,
+)
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_history_summary import decorate_history_version_options, parse_history_summary_state
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
@@ -24,6 +27,7 @@ def history_page():
 
     q = _get_schedule_history_query_service()
     versions = decorate_history_version_options(q.list_versions(limit=30))
+    log_history_version_option_parse_warnings(versions, log_label="排产历史页")
 
     selected = None
     selected_missing_message = None

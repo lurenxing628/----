@@ -11,6 +11,7 @@ from core.services.scheduler.version_resolution import (
     require_selected_version,
     resolve_version_or_latest,
 )
+from web.routes.history_summary_logging import log_history_version_option_parse_warnings
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_history_summary import decorate_history_version_options
 
@@ -140,6 +141,7 @@ def index():
 def overdue_page():
     engine = ReportEngine(g.db)
     versions = decorate_history_version_options(engine.list_versions(limit=30))
+    log_history_version_option_parse_warnings(versions, log_label="报表页")
     resolution = _page_version_or_latest(engine)
     version = resolution.selected_version
     rep = (
@@ -178,6 +180,7 @@ def overdue_export():
 def utilization_page():
     engine = ReportEngine(g.db)
     versions = decorate_history_version_options(engine.list_versions(limit=30))
+    log_history_version_option_parse_warnings(versions, log_label="报表页")
     resolution = _page_version_or_latest(engine)
     version = resolution.selected_version
     start_date, end_date, date_source, _span = _page_date_range_or_version_span(
@@ -238,6 +241,7 @@ def utilization_export():
 def downtime_page():
     engine = ReportEngine(g.db)
     versions = decorate_history_version_options(engine.list_versions(limit=30))
+    log_history_version_option_parse_warnings(versions, log_label="报表页")
     resolution = _page_version_or_latest(engine)
     version = resolution.selected_version
     start_date, end_date, date_source, _span = _page_date_range_or_version_span(
