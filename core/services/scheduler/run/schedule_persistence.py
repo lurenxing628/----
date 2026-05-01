@@ -6,6 +6,8 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, cast
 from core.infrastructure.errors import ValidationError
 from core.models.enums import BatchOperationStatus, BatchStatus, SourceType, YesNo
 
+from .schedule_persistence_errors import raise_no_actionable_schedule_error
+
 _TERMINAL_OPERATION_STATUSES = frozenset((BatchOperationStatus.COMPLETED.value, BatchOperationStatus.SKIPPED.value))
 
 
@@ -84,89 +86,6 @@ def count_actionable_schedule_rows(results: List[Any], *, allowed_op_ids: Option
 
 def has_actionable_schedule_rows(results: List[Any], *, allowed_op_ids: Optional[Set[int]] = None) -> bool:
     return count_actionable_schedule_rows(results, allowed_op_ids=allowed_op_ids) > 0
-
-
-def _missing_internal_resource_samples(
-    operations: Optional[List[Any]],
-    missing_internal_resource_op_ids: Optional[Set[int]],
-) -> List[Dict[str, Any]]:
-    missing_ids: Set[int] = set()
-    for raw_op_id in set(missing_internal_resource_op_ids or set()):
-        try:
-            op_id = int(raw_op_id or 0)
-        except Exception:
-            continue
-        if op_id > 0:
-            missing_ids.add(op_id)
-    if not missing_ids:
-        return []
-    samples: List[Dict[str, Any]] = []
-    for op in sorted(
-        list(operations or []),
-        key=lambda item: (
-            str(getattr(item, "batch_id", "") or ""),
-            int(getattr(item, "seq", 0) or 0),
-            int(getattr(item, "id", 0) or 0),
-        ),
-    ):
-        op_id = int(getattr(op, "id", 0) or 0)
-        if op_id not in missing_ids:
-            continue
-        missing_fields: List[str] = []
-        if not str(getattr(op, "machine_id", "") or "").strip():
-            missing_fields.append("设备")
-        if not str(getattr(op, "operator_id", "") or "").strip():
-            missing_fields.append("人员")
-        samples.append(
-            {
-                "op_id": op_id,
-                "batch_id": str(getattr(op, "batch_id", "") or ""),
-                "op_code": str(getattr(op, "op_code", "") or ""),
-                "seq": int(getattr(op, "seq", 0) or 0),
-                "op_type_name": str(getattr(op, "op_type_name", "") or ""),
-                "missing_fields": missing_fields,
-            }
-        )
-    return samples
-
-
-def _format_missing_internal_resource_sample(samples: List[Dict[str, Any]]) -> str:
-    messages: List[str] = []
-    for item in samples[:10]:
-        label_parts = [
-            str(item.get("batch_id") or "").strip(),
-            f"工序{int(item.get('seq') or 0)}",
-            str(item.get("op_type_name") or "").strip(),
-        ]
-        label = " / ".join([part for part in label_parts if part])
-        missing_text = "、".join([str(field) for field in item.get("missing_fields") or []]) or "设备/人员"
-        messages.append(f"{label} 缺{missing_text}")
-    return "；".join(messages)
-
-
-def _raise_no_actionable_schedule_error(
-    validation_errors: Optional[List[str]] = None,
-    *,
-    operations: Optional[List[Any]] = None,
-    missing_internal_resource_op_ids: Optional[Set[int]] = None,
-) -> None:
-    exc = ValidationError("优化结果未生成有效可落库排程行", field="schedule")
-    exc.details = dict(exc.details or {})
-    exc.details["reason"] = "no_actionable_schedule_rows"
-    if validation_errors:
-        exc.details["validation_errors"] = list(validation_errors)
-    missing_samples = _missing_internal_resource_samples(operations, missing_internal_resource_op_ids)
-    if missing_samples:
-        total = len(missing_samples)
-        sample_text = _format_missing_internal_resource_sample(missing_samples)
-        suffix = f"；还有 {max(total - 10, 0)} 条未展示" if total > 10 else ""
-        exc.details["missing_internal_resource_count"] = int(total)
-        exc.details["missing_internal_resource_ops"] = missing_samples[:10]
-        exc.details["user_message"] = (
-            f"本次排产没有生成可保存结果，存在内部工序缺设备/人员："
-            f"{sample_text}{suffix}。请先到批次工序补充页补齐后重试。"
-        )
-    raise exc
 
 
 def _raise_invalid_schedule_rows_error(validation_errors: List[str]) -> None:
@@ -303,7 +222,7 @@ def build_validated_schedule_payload(
     if validation_errors and schedule_rows:
         _raise_invalid_schedule_rows_error(validation_errors)
     if not schedule_rows:
-        _raise_no_actionable_schedule_error(
+        raise_no_actionable_schedule_error(
             validation_errors,
             operations=operations,
             missing_internal_resource_op_ids=missing_internal_resource_op_ids,
@@ -486,7 +405,7 @@ def persist_schedule(
     time_cost_ms: int,
 ) -> None:
     if not validated_schedule_payload.schedule_rows:
-        _raise_no_actionable_schedule_error(
+        raise_no_actionable_schedule_error(
             validated_schedule_payload.validation_errors,
             operations=reschedulable_operations,
             missing_internal_resource_op_ids=missing_internal_resource_op_ids,
