@@ -10,12 +10,12 @@ from core.services.common.excel_audit import log_excel_export
 from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
 from web.error_boundary import user_visible_app_error_message
+from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.ui_mode import render_ui_template as render_template
-from web.viewmodels.scheduler_history_summary import decorate_history_version_options
+from web.viewmodels.scheduler_history_summary import decorate_history_version_options, parse_history_summary_state
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
-from ...normalizers import _parse_result_summary_payload_with_meta
 from .scheduler_bp import (
     _surface_schedule_errors,
     _surface_schedule_warnings,
@@ -54,8 +54,9 @@ def _load_selected_week_plan_summary(services, version: int):
     parse_state = {"payload": None, "parse_failed": False, "user_message": None, "reason": None}
     selected_summary = None
     if selected_history and selected_history.get("result_summary"):
-        parse_state = _parse_result_summary_payload_with_meta(
-            selected_history.get("result_summary"),
+        parse_state = parse_history_summary_state(selected_history.get("result_summary"))
+        log_history_summary_parse_warning(
+            parse_state,
             version=selected_history.get("version"),
             log_label="周计划页",
             source="selected",

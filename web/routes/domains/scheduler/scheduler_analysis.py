@@ -6,12 +6,12 @@ from typing import Any, Dict, List, Optional
 from flask import g, request
 
 from core.services.scheduler.version_resolution import resolve_version_or_latest
+from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_analysis_vm import build_analysis_context, safe_int
-from web.viewmodels.scheduler_history_summary import decorate_history_version_options
+from web.viewmodels.scheduler_history_summary import decorate_history_version_options, parse_history_summary_state
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
-from ...normalizers import _parse_result_summary_payload_with_meta
 from .scheduler_bp import bp
 from .scheduler_history_resolution import build_requested_history_resolution
 
@@ -29,8 +29,9 @@ def _parse_analysis_summary(row: Dict[str, Any], *, source: str) -> Dict[str, An
         "reason": None,
     }
     if parsed.get("result_summary"):
-        parsed["result_summary_parse_state"] = _parse_result_summary_payload_with_meta(
-            parsed.get("result_summary"),
+        parsed["result_summary_parse_state"] = parse_history_summary_state(parsed.get("result_summary"))
+        log_history_summary_parse_warning(
+            parsed["result_summary_parse_state"],
             version=parsed.get("version"),
             source=source,
             log_label="排产分析页",

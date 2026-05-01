@@ -115,7 +115,8 @@ def test_scheduler_batches_route_reuses_shared_degraded_display_builder() -> Non
     assert "build_scheduler_batches_page_view_model" in route_source
     assert "build_summary_display_state" in batches_viewmodel_source
     assert "get_scheduler_visible_config_field_metadata" in display_state_source
-    assert "_parse_result_summary_payload_with_meta" in route_source
+    assert "parse_history_summary_state" in route_source
+    assert "log_history_summary_parse_warning" in route_source
     assert "latest_summary_display" in batches_viewmodel_source
     assert "latest_other_degradation_messages" in batches_viewmodel_source
     assert 'page_metadata_for(["enforce_ready_default"])' not in route_source

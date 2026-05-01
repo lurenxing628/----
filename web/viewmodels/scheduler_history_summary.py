@@ -17,7 +17,9 @@ _PARSE_USER_MESSAGES = {
 
 def parse_state_from_result(result: ResultSummaryParseResult) -> Dict[str, Any]:
     user_message = _PARSE_USER_MESSAGES.get(result.reason) if result.parse_failed else None
-    return result.to_parse_state(user_message=user_message)
+    state = result.to_parse_state(user_message=user_message)
+    state["raw_type"] = result.raw_type
+    return state
 
 
 def parse_history_summary_state(raw_summary: Any) -> Dict[str, Any]:

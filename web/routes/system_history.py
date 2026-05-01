@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from flask import request
 
+from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.ui_mode import render_ui_template as render_template
-from web.viewmodels.scheduler_history_summary import decorate_history_version_options
+from web.viewmodels.scheduler_history_summary import decorate_history_version_options, parse_history_summary_state
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from .domains.scheduler.scheduler_history_resolution import build_requested_history_resolution
 from .normalizers import (
-    _parse_result_summary_payload_with_meta,
     parse_optional_version_int,
 )
 from .pagination import paginate_rows, parse_page_args
@@ -35,8 +35,9 @@ def history_page():
         item = q.get_by_version(ver)
         if item:
             selected = item.to_dict()
-            parse_state = _parse_result_summary_payload_with_meta(
-                selected.get("result_summary"),
+            parse_state = parse_history_summary_state(selected.get("result_summary"))
+            log_history_summary_parse_warning(
+                parse_state,
                 version=ver,
                 source="selected",
                 log_label="排产历史页",
@@ -53,8 +54,9 @@ def history_page():
 
     items = [x.to_dict() for x in q.list_recent(limit=limit)]
     for it in items:
-        parse_state = _parse_result_summary_payload_with_meta(
-            it.get("result_summary"),
+        parse_state = parse_history_summary_state(it.get("result_summary"))
+        log_history_summary_parse_warning(
+            parse_state,
             version=it.get("version"),
             source="list",
             log_label="排产历史页",

@@ -22,3 +22,17 @@ def test_history_summary_parser_does_not_swallow_unknown_exceptions() -> None:
     assert "except Exception" not in parser_source
     assert "JSONDecodeError" in parser_source
     assert "parse_result_summary_payload" in service_facade_source
+
+
+def test_result_summary_pages_use_history_summary_viewmodel() -> None:
+    page_paths = [
+        "web/routes/domains/scheduler/scheduler_analysis.py",
+        "web/routes/domains/scheduler/scheduler_batches.py",
+        "web/routes/domains/scheduler/scheduler_week_plan.py",
+        "web/routes/system_history.py",
+    ]
+    for page_path in page_paths:
+        source = Path(page_path).read_text(encoding="utf-8")
+
+        assert "_parse_result_summary_payload_with_meta" not in source
+        assert "parse_history_summary_state" in source
