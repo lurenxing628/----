@@ -470,6 +470,7 @@ pre {
     margin-bottom: 1.5rem;
 }
 .alert {
+    position: relative;
     padding: 1rem;
     border-radius: var(--radius-md);
     margin-bottom: 0.5rem;
@@ -489,6 +490,28 @@ pre {
     background-color: #fffbeb;
     border-color: #fef3c7;
     color: #92400e;
+}
+.flash-card {
+    padding-right: 3rem;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.flash-close {
+    position: absolute;
+    top: 50%;
+    right: 0.75rem;
+    transform: translateY(-50%);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 1.25rem;
+    line-height: 1;
+    opacity: 0.58;
+    padding: 0.25rem;
+}
+.flash-close:hover,
+.flash-close:focus {
+    opacity: 1;
 }
 
 /* Legacy V1 template compatibility layer (used in v2 base) */

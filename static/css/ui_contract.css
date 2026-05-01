@@ -1395,11 +1395,21 @@ button.toc-toggle:hover {
 
 /* 排产说明书悬浮按钮 */
 .floating-manual-wrapper {
-  position: fixed;
-  right: 24px;
-  bottom: 88px;
-  z-index: 9980;
-  max-width: calc(100vw - 32px);
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: flex-end;
+  max-width: 1200px;
+  margin: 0 auto 24px;
+  padding: 0 24px;
+}
+
+.sidebar .floating-manual-wrapper {
+  display: block;
+  flex: 0 0 auto;
+  max-width: none;
+  margin: 0 16px 16px;
+  padding: 0;
 }
 
 .floating-manual-btn {
@@ -1441,7 +1451,8 @@ button.toc-toggle:hover {
 
 .manual-popover {
   position: absolute;
-  right: 0;
+  left: 0;
+  right: auto;
   bottom: calc(100% + 12px);
   width: 320px;
   max-width: calc(100vw - 32px);
@@ -1455,6 +1466,11 @@ button.toc-toggle:hover {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   overflow-wrap: anywhere;
   animation: popoverSlideUp 0.2s ease;
+}
+
+.sidebar .manual-popover {
+  left: calc(100% + 12px);
+  bottom: 0;
 }
 
 .manual-popover[hidden] {
@@ -1537,9 +1553,9 @@ html[data-theme="dark"] .manual-popover .manual-popover__close:hover {
 
 @media (max-width: 640px) {
   .floating-manual-wrapper {
-    right: 16px;
-    bottom: 80px;
-    max-width: calc(100vw - 24px);
+    justify-content: flex-start;
+    margin-bottom: 16px;
+    padding: 0 16px;
   }
 
   .floating-manual-btn {

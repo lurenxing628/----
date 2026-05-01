@@ -2,7 +2,7 @@
 回归测试：系统使用说明页面级入口、悬浮速览 popover 结构、整本模式回退、页面模式上下文和下载链路。
 
 验证点：
-1) 代表页面在 v1 / v2 下都能看到右下角说明入口，并跳到 `?page=<endpoint>&src=...`。
+1) 代表页面在 v1 / v2 下都能看到不遮挡业务按钮的说明入口，并跳到 `?page=<endpoint>&src=...`。
 2) 有 help_card 的页面会在 HTML 中直接渲染速览 popover，关键提示片段仍从 page_manuals 事实源派生。
 3) 说明书页支持双模式：无 `page` 时整本模式；有 `page` 时页面模式。
 4) 页面模式下无论来源页是否属于 scheduler，都不显示排产子导航。
@@ -154,6 +154,12 @@ def main() -> None:
             _assert_contains(content, "floating-manual-btn", f"{ui_mode} 模式下复杂页面未显示悬浮说明入口：{endpoint}")
             _assert_contains(content, "本页说明", f"{ui_mode} 模式下说明入口文案未更新：{endpoint}")
             _assert_contains(content, expected_href_html, f"{ui_mode} 模式下说明入口链接不正确：{endpoint}")
+            if ui_mode == "v2":
+                sidebar_idx = content.find('class="sidebar"')
+                manual_idx = content.find("floating-manual-wrapper")
+                footnote_idx = content.find("sidebar-footnote")
+                if not (0 <= sidebar_idx < manual_idx < footnote_idx):
+                    raise RuntimeError(f"v2 模式下说明入口应渲染在侧边栏脚注前，避免覆盖主内容区：{endpoint}")
 
             if expect_help_card:
                 _assert_contains(content, 'data-manual-popover="1"', f"{ui_mode} 模式下缺少 popover 触发标记：{endpoint}")
@@ -354,6 +360,16 @@ def main() -> None:
     redirect_location = dirty_download_resp.headers.get("Location", "")
     _assert_not_contains(redirect_location, "evil.example", "下载失败回跳不应回写外部来源 src")
     _assert_not_contains(redirect_location, "unknown.endpoint", "下载失败回跳不应回写非法 page")
+
+    ui_contract_css = (Path(repo_root) / "static" / "css" / "ui_contract.css").read_text(encoding="utf-8")
+    _assert_contains(
+        ui_contract_css,
+        ".sidebar .floating-manual-wrapper",
+        "现代界面的说明入口应放在左侧导航栏，不应覆盖主内容区操作按钮",
+    )
+    _assert_contains(ui_contract_css, "position: relative;", "说明入口不应继续固定悬浮覆盖业务按钮")
+    _assert_contains(ui_contract_css, ".manual-popover", "说明速览弹窗样式缺失")
+    _assert_contains(ui_contract_css, "left: calc(100% + 12px);", "现代界面说明速览应从侧边栏向内容区展开")
 
     print("OK")
 
