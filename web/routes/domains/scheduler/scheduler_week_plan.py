@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
+from typing import Any, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
@@ -26,6 +27,7 @@ from .scheduler_bp import (
     bp,
 )
 from .scheduler_history_resolution import build_requested_history_resolution
+from .scheduler_user_messages import scheduler_user_visible_app_error_message
 
 
 def _get_int_arg(name: str, default: int = 0) -> int:
@@ -119,6 +121,29 @@ def _flash_simulate_summary(summary, summary_display) -> None:
         summary_display.get("errors_preview"),
         total=int(summary_display.get("error_total") or 0),
     )
+
+
+def _parse_schedule_anchor_date(value: Any) -> Optional[date]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    normalized = text.replace("/", "-").replace("T", " ")
+    date_part = normalized.split(" ", 1)[0].strip()
+    try:
+        return datetime.strptime(date_part, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _build_simulate_gantt_redirect_kwargs(summary: Any, *, start_dt: Any, version: int) -> dict:
+    summary_start = summary.get("start_time") if isinstance(summary, dict) else None
+    anchor = _parse_schedule_anchor_date(summary_start) or _parse_schedule_anchor_date(start_dt) or date.today()
+    return {
+        "view": "machine",
+        "start_date": anchor.isoformat(),
+        "end_date": (anchor + timedelta(days=6)).isoformat(),
+        "version": int(version),
+    }
 
 
 @bp.get("/week-plan")
@@ -286,11 +311,14 @@ def simulate_schedule():
         _flash_simulate_completion(version=ver, completion_status=completion_status)
         _flash_simulate_summary(summary, summary_display)
 
-        # 默认跳到“本周”甘特图（设备视图）
-        today = date.today().isoformat()
-        return redirect(url_for("scheduler.gantt_page", view="machine", week_start=today, offset=0, version=ver))
+        return redirect(
+            url_for(
+                "scheduler.gantt_page",
+                **_build_simulate_gantt_redirect_kwargs(summary, start_dt=start_dt, version=ver),
+            )
+        )
     except AppError as e:
-        flash(user_visible_app_error_message(e), "error")
+        flash(scheduler_user_visible_app_error_message(e), "error")
         return redirect(url_for("scheduler.batches_page"))
     except Exception:
         current_app.logger.exception("模拟排产失败")

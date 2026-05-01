@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlencode
 
 from flask import Flask, g, get_flashed_messages
 
@@ -112,6 +113,58 @@ def test_scheduler_simulate_surfaces_schedule_warnings() -> None:
         ), flashes
         assert any(cat == "warning" and "另有 1 条告警，请到系统历史查看。" in msg for cat, msg in flashes), flashes
         assert not any(cat == "warning" and msg == "第 6 条告警" for cat, msg in flashes), flashes
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_simulate_redirects_to_generated_schedule_start_range() -> None:
+    repo_root = str(REPO_ROOT)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_week_plan as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            return {
+                "version": 18,
+                "summary": {
+                    "start_time": "2026-05-04 08:00:00",
+                    "warnings": [],
+                },
+            }
+
+    captured = {}
+    old_url_for = route_mod.url_for
+
+    def _fake_url_for(endpoint, **kwargs):
+        captured["endpoint"] = endpoint
+        captured["kwargs"] = dict(kwargs)
+        return f"/{endpoint}?{urlencode(kwargs)}"
+
+    route_mod.url_for = _fake_url_for
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-simulate-gantt-redirect"
+        with app.test_request_context(
+            "/scheduler/simulate",
+            method="POST",
+            data={"batch_ids": ["B001"], "start_dt": "2026-06-01T08:00"},
+        ):
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            g.app_logger = app.logger
+            g.op_logger = None
+            resp = route_mod.simulate_schedule()
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert captured.get("endpoint") == "scheduler.gantt_page"
+        kwargs = captured.get("kwargs") or {}
+        assert kwargs.get("view") == "machine"
+        assert kwargs.get("start_date") == "2026-05-04"
+        assert kwargs.get("end_date") == "2026-05-10"
+        assert kwargs.get("version") == 18
+        assert "week_start" not in kwargs
     finally:
         route_mod.url_for = old_url_for
 

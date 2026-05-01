@@ -196,6 +196,71 @@ def test_scheduler_run_route_flashes_app_error_user_message() -> None:
         route_mod.url_for = old_url_for
 
 
+def test_scheduler_run_route_flashes_ready_error_without_generic_boundary() -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            raise ValidationError("以下批次未齐套，禁止排产：B-NO-001", field="齐套")
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-ready-error"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B-NO-001"]}):
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.headers["Location"] == "/scheduler.batches_page"
+        assert [msg for cat, msg in flashes if cat == "error"] == ["以下批次未齐套，禁止排产：B-NO-001"]
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_run_route_flashes_missing_resource_user_message() -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            exc = ValidationError("优化结果未生成有效可落库排程行", field="schedule")
+            exc.details = dict(exc.details or {})
+            exc.details["reason"] = "no_actionable_schedule_rows"
+            exc.details["user_message"] = (
+                "本次排产没有生成可保存结果，存在内部工序缺设备/人员："
+                "B-MISS-001 / 工序10 / 粗车 缺设备、人员。请先到批次工序补充页补齐后重试。"
+            )
+            raise exc
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-missing-resource-error"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B-MISS-001"]}):
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        error_messages = [msg for cat, msg in flashes if cat == "error"]
+        assert len(error_messages) == 1
+        assert "B-MISS-001 / 工序10 / 粗车 缺设备、人员" in error_messages[0]
+        assert "优化结果未生成有效可落库排程行" not in error_messages[0]
+    finally:
+        route_mod.url_for = old_url_for
+
+
 def test_scheduler_run_route_flashes_generic_message_for_unexpected_error() -> None:
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
