@@ -5,15 +5,16 @@ from typing import Any, Dict, List, Optional
 
 from flask import g, request
 
+from core.services.scheduler.version_resolution import resolve_version_or_latest
+from web.routes.history_summary_logging import (
+    log_history_summary_parse_warning,
+    log_history_version_option_parse_warnings,
+)
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_analysis_vm import build_analysis_context, safe_int
+from web.viewmodels.scheduler_history_summary import decorate_history_version_options, parse_history_summary_state
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
-from ...normalizers import (
-    _parse_result_summary_payload_with_meta,
-    decorate_history_version_options,
-    resolve_route_version_or_latest,
-)
 from .scheduler_bp import bp
 from .scheduler_history_resolution import build_requested_history_resolution
 
@@ -24,20 +25,16 @@ def _history_item_to_dict(item: Any) -> Dict[str, Any]:
 
 def _parse_analysis_summary(row: Dict[str, Any], *, source: str) -> Dict[str, Any]:
     parsed = dict(row or {})
-    parsed["result_summary_parse_state"] = {
-        "payload": None,
-        "parse_failed": False,
-        "user_message": None,
-        "reason": None,
-    }
-    if parsed.get("result_summary"):
-        parsed["result_summary_parse_state"] = _parse_result_summary_payload_with_meta(
-            parsed.get("result_summary"),
-            version=parsed.get("version"),
-            source=source,
-            log_label="排产分析页",
-        )
-        parsed["result_summary"] = parsed["result_summary_parse_state"].get("payload")
+    parse_state = parse_history_summary_state(parsed.get("result_summary"))
+    log_history_summary_parse_warning(
+        parse_state,
+        version=parsed.get("version"),
+        source=source,
+        log_label="排产分析页",
+    )
+    payload = parse_state.get("payload")
+    parsed["result_summary_parse_state"] = parse_state
+    parsed["result_summary"] = payload if isinstance(payload, dict) else None
     return parsed
 
 
@@ -110,10 +107,10 @@ def _select_analysis_version(
     is_latest = raw_text.lower() == "latest"
     if raw_missing or is_latest:
         latest_version = safe_int(history_query_service.get_latest_version(), default=0)
-        version_resolution = resolve_route_version_or_latest(raw_version, latest_version=latest_version)
+        version_resolution = resolve_version_or_latest(raw_version, latest_version=latest_version)
     else:
         latest_version = safe_int((versions[0] or {}).get("version"), default=0) if versions else 0
-        version_resolution = resolve_route_version_or_latest(
+        version_resolution = resolve_version_or_latest(
             raw_version,
             latest_version=latest_version,
             version_exists=lambda version: load_selected(int(version)) is not None,
@@ -182,7 +179,8 @@ def analysis_page():
     version_resolution = selection.version_resolution
     selected_ver = selection.selected_version
     selected_item = selection.selected_item
-    versions = decorate_history_version_options(selection.versions, log_label="排产分析页")
+    versions = decorate_history_version_options(selection.versions)
+    log_history_version_option_parse_warnings(versions, log_label="排产分析页")
 
     raw_hist = _load_recent_analysis_history(q)
     ctx = build_analysis_context(selected_ver=selected_ver, raw_hist=raw_hist, selected_item=selected_item)

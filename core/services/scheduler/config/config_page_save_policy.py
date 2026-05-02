@@ -159,7 +159,7 @@ class ConfigPageSavePolicy:
             field_items.append(f"{field_key}（{field_label}）" if field_label and field_label != field_key else field_key)
         field_list = "、".join(field_items)
         if field_list:
-            return f"{ACTIVE_PRESET_REASON_HIDDEN_REPAIR} 已回写：{field_list}。"
+            return f"{ACTIVE_PRESET_REASON_HIDDEN_REPAIR} 已同步保存：{field_list}。"
         return ACTIVE_PRESET_REASON_HIDDEN_REPAIR
 
     @staticmethod
@@ -190,9 +190,9 @@ class ConfigPageSavePolicy:
             "blocked_provenance_missing": "来源缺失",
         }.get(str(block_reason or "").strip(), "来源缺失")
         if field_list:
-            message = f"检测到隐藏配置退化，但因{reason_label}未自动修复：{field_list}。"
+            message = f"检测到平时不直接显示的设置需要复核，但因{reason_label}未自动修复：{field_list}。"
         else:
-            message = f"检测到隐藏配置退化，但因{reason_label}未自动修复。"
+            message = f"检测到平时不直接显示的设置需要复核，但因{reason_label}未自动修复。"
         return {
             "kind": "blocked_hidden",
             "fields": fields,

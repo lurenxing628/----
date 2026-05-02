@@ -49,6 +49,7 @@ def main() -> None:
 
     base_html = _read(os.path.join(repo_root, "templates", "base.html"))
     base_v2_html = _read(os.path.join(repo_root, "web_new_test", "templates", "base.html"))
+    style_v2_css = _read(os.path.join(repo_root, "web_new_test", "static", "css", "style.css"))
     gantt_html = _read(os.path.join(repo_root, "templates", "scheduler", "gantt.html"))
     personnel_html = _read(os.path.join(repo_root, "templates", "personnel", "list.html"))
     equipment_html = _read(os.path.join(repo_root, "templates", "equipment", "list.html"))
@@ -102,6 +103,10 @@ def main() -> None:
     ]
     _assert_in_order(base_html, expected, "templates/base.html 脚本应按约定顺序 defer 加载")
     _assert_in_order(base_v2_html, expected, "web_new_test/templates/base.html 脚本应按约定顺序 defer 加载")
+    _assert_contains(base_v2_html, "flash-card flash-{{ category }}", "v2 flash 横幅应复用可关闭的 flash-card 合同")
+    _assert_contains(base_v2_html, 'class="flash-close"', "v2 flash 横幅应提供关闭按钮，避免持续遮挡页面")
+    _assert_contains(style_v2_css, ".flash-close", "v2 样式应定义 flash 关闭按钮")
+    _assert_contains(style_v2_css, "padding-right: 3rem;", "v2 flash 横幅应为关闭按钮预留右侧空间")
 
     _assert_contains(gantt_html, 'role=\"alert\"', "gantt 错误区应具备 alert 语义")
     _assert_contains(gantt_html, 'aria-live=\"assertive\"', "gantt 错误区应具备 aria-live")
@@ -121,4 +126,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -103,7 +103,7 @@
                 <div class="table-actions">
                   <button type="submit" class="btn btn-primary btn-sm" form="mform_{{ loop.index0 }}">保存</button>
                   <form method="post" action="{{ url_for('material.materials_delete', material_id=m.material_id) }}"
-                        data-confirm="确认删除物料 {{ m.material_id }}？若被批次物料需求引用将删除失败/或级联删除。">
+                        data-confirm="确认删除物料 {{ m.material_id }}？若已被批次物料需求引用，删除可能失败；请先确认该物料是否仍在使用。">
                     <button type="submit" class="btn btn-danger btn-sm">删除</button>
                   </form>
                 </div>
@@ -115,4 +115,3 @@
     {% endif %}
   </div>
 {% endblock %}
-

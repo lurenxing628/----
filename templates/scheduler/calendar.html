@@ -32,7 +32,7 @@
       <div class="calendar-upsert-row">
         <div class="form-field wc-date-wrap">
           <label>日期</label>
-          <div class="inline-flex-wrap">
+          <div class="calendar-date-picker-row">
             <input id="wcDateInput" name="date" required placeholder="如：2026-03-13" class="w-140">
             {{ ui.button('选择', 'secondary', 'sm', type_attr='button', element_id='wcDatePickBtn') }}
           </div>
@@ -99,6 +99,7 @@
   <div class="card">
     <h3 class="section-title">已配置日历</h3>
     {% if rows and rows|length > 0 %}
+      <div class="aps-table-scroll">
       <table>
         <thead>
           <tr>
@@ -129,6 +130,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂无已配置的日历记录（排产时会自动按默认规则处理：工作日 8 小时，周末和假期不排产）。</div>
     {% endif %}

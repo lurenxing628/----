@@ -68,7 +68,7 @@
         <span class="info-sep">|</span>
         数量：<strong>{{ batch.quantity }}</strong>
         <span class="info-sep">|</span>
-        当前齐套状态：<strong>{{ batch.ready_status or '-' }}</strong>
+        当前齐套状态：<strong>{{ batch.ready_status_zh or '-' }}</strong>
         {% if batch.ready_date %}
           <span class="muted">（齐套日期：{{ batch.ready_date }}）</span>
         {% endif %}
@@ -95,7 +95,8 @@
             </div>
             <div class="form-field">
               <label for="batchMaterialRequiredQtyInput">需求数量</label>
-              <input id="batchMaterialRequiredQtyInput" name="required_qty" required type="number" min="0" step="0.01" placeholder="如：10" class="w-120">
+              <input id="batchMaterialRequiredQtyInput" name="required_qty" required type="number" min="0.000001" step="0.01" placeholder="如：10" class="w-120">
+              <div class="muted text-xs">必须大于 0。</div>
             </div>
             <div class="form-field">
               <label for="batchMaterialAvailableQtyInput">到料数量</label>
@@ -141,12 +142,12 @@
                 <td>{{ r.unit or '-' }}</td>
                 <td>
                   <input name="batch_id" value="{{ batch.batch_id }}" form="bmform_{{ loop.index0 }}" type="hidden">
-                  <input name="required_qty" value="{{ r.required_qty }}" form="bmform_{{ loop.index0 }}" type="number" min="0" step="0.01" class="w-110">
+                  <input name="required_qty" value="{{ r.required_qty }}" form="bmform_{{ loop.index0 }}" type="number" min="0.000001" step="0.01" class="w-110" title="需求数量必须大于 0">
                 </td>
                 <td>
                   <input name="available_qty" value="{{ r.available_qty }}" form="bmform_{{ loop.index0 }}" type="number" min="0" step="0.01" class="w-110">
                 </td>
-                <td>{{ r.ready_status or '-' }}</td>
+                <td>{{ r.ready_status_zh or '-' }}</td>
                 <td>
                   <div class="table-actions">
                     <button type="submit" form="bmform_{{ loop.index0 }}" class="btn btn-primary btn-sm">保存</button>
@@ -165,4 +166,3 @@
     </div>
   {% endif %}
 {% endblock %}
-

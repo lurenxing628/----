@@ -64,7 +64,7 @@ def main() -> None:
             code="calendar_load_failed",
             scope="gantt.calendar_days",
             field="calendar_days",
-            message="工作日历加载失败，已降级为空列表。",
+            message="工作日历加载失败，当前不显示假期/停工背景标注。",
             sample="RuntimeError",
         )
         return BuildOutcome.from_collector([], collector, empty_reason="calendar_load_failed")

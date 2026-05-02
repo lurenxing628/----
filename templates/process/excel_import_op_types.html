@@ -19,24 +19,26 @@
   <div class="card">
     <h3>当前工种数据</h3>
     {% if existing_list and existing_list|length > 0 %}
-      <table>
-        <thead>
-          <tr>
-            <th>工种编号</th>
-            <th>工种名称</th>
-            <th>归属</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in existing_list %}
+      <div class="aps-table-scroll">
+        <table>
+          <thead>
             <tr>
-              <td>{{ r["工种ID"] }}</td>
-              <td>{{ r["工种名称"] }}</td>
-              <td>{{ r["归属显示"] or '-' }}</td>
+              <th>工种编号</th>
+              <th>工种名称</th>
+              <th>归属</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for r in existing_list %}
+              <tr>
+                <td>{{ r["工种ID"] }}</td>
+                <td>{{ r["工种名称"] }}</td>
+                <td>{{ r["归属显示"] or '-' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
       <div class="muted">暂无数据（可先下载模板并导入）。</div>
     {% endif %}

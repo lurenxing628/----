@@ -6,14 +6,19 @@
       <div class="page-title-group"><h2 class="page-title">供应商配置</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">外协工种的默认供应商和交期设置。</p>
+    <p class="page-subtitle text-meta">
+      外协工种的供应商和默认周期设置。同一个工种建议只保留一个启用供应商；如果同时启用多个，系统会按供应商编号排序自动选最后一个，容易和预期不一致。
+    </p>
     {{ ui.process_nav('suppliers') }}
   </div>
 
   <div class="card">
     <h3>新增供应商</h3>
+    <div class="field-help">
+      默认周期必须填大于 0 的天数。若一个外协工种有多个启用供应商，请停用多余的供应商，或确认编号排序后系统会选到你想要的那一个。
+    </div>
     <form method="post" action="{{ url_for('process.create_supplier') }}">
-      <div class="form-row">
+      <div class="aps-form-grid">
         <div class="form-field">
           <label>供应商编号</label>
           <input name="supplier_id" required placeholder="如：S001">
@@ -43,11 +48,11 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field flex-1 min-w-240">
+        <div class="form-field aps-form-span-2">
           <label>备注</label>
           <input name="remark" placeholder="可选">
         </div>
-        <div>{{ ui.button('添加供应商', 'primary', 'md', type_attr='submit') }}</div>
+        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('添加供应商', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
@@ -66,6 +71,7 @@
       </div>
     {% endif %}
     {% if suppliers and suppliers|length > 0 %}
+      <div class="aps-table-scroll">
       <table>
         <thead>
           <tr>
@@ -106,9 +112,9 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂无供应商数据，可以在上方手动新增或通过 Excel 导入。</div>
     {% endif %}
   </div>
 {% endblock %}
-

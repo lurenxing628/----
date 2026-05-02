@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Sequence, Set
 
 from core.models.enums import SourceType, SupplierStatus
 from core.services.common.degradation import DegradationCollector
+from core.services.common.enum_normalizers import normalize_op_type_category, source_type_label, supplier_status_label
 
 from .template_validation import record_diagnostic
 
@@ -19,7 +20,8 @@ def build_op_types_rows(op_records: Sequence[Dict[str, Any]]) -> List[Dict[str, 
     op_types_rows: List[Dict[str, Any]] = []
     for idx, op_name in enumerate(sorted(op_type_states.keys()), start=1):
         cat = SourceType.INTERNAL.value if SourceType.INTERNAL.value in op_type_states[op_name] else SourceType.EXTERNAL.value
-        op_types_rows.append({"工种ID": f"OT{idx:03d}", "工种名称": op_name, "归属": cat})
+        cat_label = source_type_label(cat)
+        op_types_rows.append({"工种ID": f"OT{idx:03d}", "工种名称": op_name, "归属": cat_label})
     return op_types_rows
 
 
@@ -54,7 +56,7 @@ def _external_op_type_names(op_types_rows: Sequence[Dict[str, Any]]) -> List[str
     return [
         str(r.get("工种名称") or "")
         for r in op_types_rows
-        if str(r.get("归属") or "").strip() == SourceType.EXTERNAL.value and str(r.get("工种名称") or "")
+        if normalize_op_type_category(r.get("归属")) == SourceType.EXTERNAL.value and str(r.get("工种名称") or "")
     ]
 
 
@@ -73,7 +75,7 @@ def _supplier_row(
         "名称": f"外协-{op_name}",
         "对应工种": op_name,
         "默认周期": default_days,
-        "状态": SupplierStatus.ACTIVE.value,
+        "状态": supplier_status_label(SupplierStatus.ACTIVE.value),
         "备注": None,
     }
 
@@ -111,8 +113,8 @@ def _record_supplier_defaults(
         code="default_filled",
         scope="unit_excel.suppliers",
         field="状态",
-        message="外协供应商状态未提供，已默认补齐为 active。",
-        sample={"对应工种": op_name, "value": SupplierStatus.ACTIVE.value},
+        message="外协供应商状态未提供，已默认补齐为启用。",
+        sample={"对应工种": op_name, "value": supplier_status_label(SupplierStatus.ACTIVE.value)},
     )
     record_diagnostic(
         collector,

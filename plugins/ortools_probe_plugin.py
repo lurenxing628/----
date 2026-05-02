@@ -10,7 +10,7 @@
 """
 
 PLUGIN_ID = "ortools_probe"
-PLUGIN_NAME = "OR-Tools Probe"
+PLUGIN_NAME = "深度优化环境检测"
 PLUGIN_VERSION = "1.0"
 PLUGIN_DEFAULT_ENABLED = "no"
 
@@ -19,4 +19,3 @@ def register(registry):
     import ortools
 
     registry.register("dependency.ortools", {"version": getattr(ortools, "__version__", None)})
-

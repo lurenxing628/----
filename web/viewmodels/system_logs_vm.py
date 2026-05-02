@@ -15,7 +15,7 @@ _MODULE_LABELS = {
     "excel_demo": "Excel 演示",
     "material": "物料管理",
     "personnel": "人员管理",
-    "plugins": "插件管理",
+    "plugins": "扩展功能管理",
     "process": "工艺管理",
     "scheduler": "排产管理",
     "system": "系统管理",
@@ -56,7 +56,7 @@ _TARGET_TYPE_LABELS = {
     "part_operation": "零件工序",
     "part_operation_hours": "零件工序工时",
     "part_route": "工艺路线",
-    "plugin": "插件",
+    "plugin": "扩展功能",
     "resource_dispatch": "资源派工",
     "runtime": "运行环境",
     "schedule": "排程",
@@ -108,8 +108,8 @@ def _safe_load_detail_obj(detail_raw: Any) -> Optional[Dict[str, Any]]:
 def build_operation_log_view_rows(items: List[Any]) -> List[Dict[str, Any]]:
     """
     将 OperationLog model 列表转为模板可直接渲染的 dict rows：
-    - 展开 detail JSON 为 detail_obj（仅 dict 才展开）
-    - 解析失败/非 dict → detail_obj=None（模板会回退显示 detail 原文）
+    - 尝试把 detail 里的结构化排查信息展开成 detail_obj
+    - 解析失败或不是结构化内容时，detail_obj=None，模板只提示维护人员到日志中排查，不直接展示 detail 原文
     """
     out: List[Dict[str, Any]] = []
     for it in items or []:

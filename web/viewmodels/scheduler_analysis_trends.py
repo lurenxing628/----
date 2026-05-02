@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List, Optional, Tuple
+
+from core.models.scheduler_history_parser import parse_result_summary_payload
 
 
 def safe_float(v: Any, default: float = 0.0) -> float:
@@ -77,16 +78,8 @@ def score_key(score: Any) -> Tuple[float, ...]:
 def safe_load_json(value: Any) -> Dict[str, Any]:
     if isinstance(value, dict):
         return dict(value)
-    if value is None:
-        return {}
-    s = str(value).strip()
-    if not s:
-        return {}
-    try:
-        obj = json.loads(s)
-        return obj if isinstance(obj, dict) else {}
-    except Exception:
-        return {}
+    result = parse_result_summary_payload(value)
+    return dict(result.payload) if isinstance(result.payload, dict) else {}
 
 
 def metric_value(row: Dict[str, Any], key: str) -> float:

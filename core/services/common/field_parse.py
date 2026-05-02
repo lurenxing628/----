@@ -25,8 +25,8 @@ def _format_fallback_value(value: Any) -> str:
 def _minimum_violation_message(*, field: str, fallback: Any, min_value: Any, min_inclusive: bool) -> str:
     compare_text = "大于等于" if bool(min_inclusive) else "大于"
     return (
-        f"字段“{field}”数值低于最小值约束（要求{compare_text} {min_value}），"
-        f"已按兼容读取回退为 {_format_fallback_value(fallback)}。"
+        f"字段“{field}”数值太小（要求{compare_text} {min_value}），"
+        f"本次先按 {_format_fallback_value(fallback)} 处理，请检查后保存。"
     )
 
 

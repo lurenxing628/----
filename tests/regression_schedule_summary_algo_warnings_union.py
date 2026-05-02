@@ -86,13 +86,13 @@ def test_schedule_summary_prefers_freeze_meta_as_primary_fact_source() -> None:
         },
         algo_warnings=[
             "[freeze_window] legacy warning text that should not win",
-            "自动分配资源池构建失败，已降级为不自动分配（请查看日志）。",
+            "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员（请查看日志）。",
         ],
     )
 
     assert result_status == "success", result_status
     warnings = list(result_summary_obj.get("warnings") or [])
-    assert any("自动分配资源池构建失败" in item for item in warnings), warnings
+    assert any("自动分配设备人员所需资料不完整" in item for item in warnings), warnings
 
     algo = result_summary_obj.get("algo") or {}
     freeze_window = algo.get("freeze_window") or {}
@@ -100,9 +100,9 @@ def test_schedule_summary_prefers_freeze_meta_as_primary_fact_source() -> None:
     warning_pipeline = algo.get("warning_pipeline") or {}
 
     assert bool(freeze_window.get("degraded")), freeze_window
-    assert freeze_window.get("degradation_reason") == "冻结窗口约束已降级，本次排产未应用冻结窗口种子。"
+    assert freeze_window.get("degradation_reason") == "冻结窗口资料不完整，本次排产未使用冻结窗口。"
     assert bool(resource_pool.get("degraded")), resource_pool
-    assert resource_pool.get("degradation_reason") == "自动分配资源池构建失败，本次排产已降级为不自动分配资源。"
+    assert resource_pool.get("degradation_reason") == "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
     assert "pool boom" not in str(result_summary_obj), result_summary_obj
     assert bool(warning_pipeline.get("summary_merge_failed")), warning_pipeline
     assert warning_pipeline.get("summary_merge_error") == "summary_warnings_assignment_failed", warning_pipeline
@@ -124,10 +124,10 @@ def test_schedule_summary_keeps_narrow_freeze_warning_compat_when_meta_missing()
         freeze_meta=None,
         algo_warnings=[
             "[freeze_window] fallback warning path",
-            "自动分配资源池构建失败，已降级为不自动分配（请查看日志）。",
+            "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员（请查看日志）。",
         ],
     )
 
     freeze_window = ((result_summary_obj.get("algo") or {}).get("freeze_window") or {})
     assert bool(freeze_window.get("degraded")), freeze_window
-    assert freeze_window.get("degradation_reason") == "冻结窗口约束已降级，本次排产未应用冻结窗口种子。"
+    assert freeze_window.get("degradation_reason") == "冻结窗口资料不完整，本次排产未使用冻结窗口。"

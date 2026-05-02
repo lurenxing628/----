@@ -41,6 +41,20 @@
 </a>
 {% endmacro %}
 
+{% macro version_option_label(item, fallback='-') -%}
+{{ item.version_option_label or ('v' ~ item.version ~ ' · ' ~ (item.result_status_label or fallback)) }}
+{%- endmacro %}
+
+{% macro summary_item(label, value, desc=None, tone='') %}
+<div class="aps-summary-item {% if tone %}aps-summary-item-{{ tone }}{% endif %}">
+  <div class="aps-summary-label">{{ label }}</div>
+  <div class="aps-summary-value">{{ value if value is not none and value != '' else '-' }}</div>
+  {% if desc %}
+    <div class="aps-summary-desc">{{ desc }}</div>
+  {% endif %}
+</div>
+{% endmacro %}
+
 {% macro manual_entry_url(endpoint=None, src=None) -%}
 {{ get_manual_url(endpoint=endpoint, src=src) or '' }}
 {%- endmacro %}
@@ -64,7 +78,7 @@
   <strong>导入前先确认：</strong>
   <ul class="list-tight">
     <li>模板文件只支持 <code>.xlsx</code>，表头不要改。</li>
-    <li>系统只读取首个工作表（通常是 <code>Sheet1</code>），不要把有效数据挪到第二个工作表。</li>
+    <li>系统只读取第一个工作表，不要把有效数据挪到第二个工作表。</li>
     <li>先“上传并预览”，把错误行全部修完，再点“确认导入”。</li>
     <li>只要有 1 行是“错误”，整份文件都不会导入。</li>
     <li>导入完成后，建议再导出一次当前数据做复核。</li>

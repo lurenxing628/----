@@ -141,7 +141,7 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
     assert summary.get("empty_reason") is None
     assert len(data.get("calendar_rows") or []) == 1
     first_row = (data.get("detail_rows") or [])[0]
-    assert first_row.get("team_relation_label") == "跨班组借调"
+    assert first_row.get("team_relation_label") == "跨班组"
     assert first_row.get("is_overdue") is True
 
     resp_export = client.get(f"/scheduler/resource-dispatch/export?{query}")
@@ -183,7 +183,7 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
         "班组设备任务明细",
         "班组人员日历",
         "班组设备日历",
-        "跨班组借调",
+        "跨班组",
     ]
 
     resp_gantt = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&version=1")

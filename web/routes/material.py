@@ -6,6 +6,7 @@ from flask import Blueprint, current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError, ValidationError
 from core.models.enums import MaterialStatus
+from core.services.common.enum_normalizers import ready_status_label
 from web.ui_mode import render_ui_template as render_template
 
 from .pagination import paginate_rows, parse_page_args
@@ -119,16 +120,22 @@ def batch_materials_page():
     req_rows: List[Dict[str, Any]] = []
     if batch_id:
         req_rows = services.batch_material_service.list_for_batch(batch_id)
+        for row in req_rows:
+            row["ready_status_zh"] = ready_status_label(row.get("ready_status"))
 
     materials = services.material_service.list(status=MaterialStatus.ACTIVE.value)
     mat_options = [(m.material_id, f"{m.material_id} {m.name}".strip()) for m in materials]
+
+    batch_context = selected_batch.to_dict() if selected_batch else None
+    if batch_context:
+        batch_context["ready_status_zh"] = ready_status_label(batch_context.get("ready_status"))
 
     return render_template(
         "material/batch_materials.html",
         title="物料管理 - 批次物料需求",
         batch_id=batch_id,
         batch_options=batch_options,
-        batch=(selected_batch.to_dict() if selected_batch else None),
+        batch=batch_context,
         requirements=req_rows,
         material_options=mat_options,
         ready_summary=ready_summary,
@@ -190,4 +197,3 @@ def batch_material_delete(bm_id: int):
         current_app.logger.exception("删除批次物料需求失败（bm_id=%s, batch_id=%s）", bm_id, batch_id)
         flash("删除失败，请稍后重试。", "error")
     return redirect(url_for("material.batch_materials_page", batch_id=batch_id))
-

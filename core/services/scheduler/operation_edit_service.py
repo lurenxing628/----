@@ -68,7 +68,7 @@ def _ensure_internal_operation_editable(op: BatchOperation, *, op_id: Any) -> No
     if op.id is None:
         raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
     if not op.is_internal():
-        raise ValidationError("只能编辑内部工序的设备/人员/工时信息", field="source")
+        raise ValidationError("只能编辑自制工序的设备/人员/工时信息", field="source")
 
 
 def _validate_machine_available(svc, mc_id: Optional[str]) -> None:
@@ -183,7 +183,7 @@ def update_external_operation(
         raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
     op_id_int = int(op.id)
     if not op.is_external():
-        raise ValidationError("只能编辑外部工序的供应商/周期信息", field="source")
+        raise ValidationError("只能编辑外协工序的供应商/周期信息", field="source")
 
     supplier_provided = supplier_id is not None
     ext_days_provided = ext_days is not None
@@ -203,7 +203,7 @@ def update_external_operation(
             td = grp.total_days
             td_text = f"{td} 天" if td is not None else "（未设置）"
             raise ValidationError(
-                f"该外部工序属于“合并周期”外部组，不能逐道设置周期。请在工艺管理中设置该组的合并周期（当前：{td_text}）。",
+                f"该外协工序属于“合并周期”外协组，不能逐道设置周期。请在工艺管理中设置该组的合并周期（当前：{td_text}）。",
                 field="周期",
             )
         # merged：保持 ext_days 为 NULL，避免误导

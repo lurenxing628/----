@@ -381,17 +381,24 @@ def test_resource_dispatch_service_validation_errors_use_machine_field_keys() ->
 
 def test_resource_dispatch_service_version_latest_contract_matches_scheduler_routes() -> None:
     svc = object.__new__(ResourceDispatchService)
+    svc.history_service = type(
+        "_HistoryService",
+        (),
+        {
+            "get_by_version": lambda _self, version: {"version": version} if int(version) in {7, 9} else None,
+        },
+    )()
 
-    assert svc._normalize_strict_positive_version(None, latest_version=7) == 7
-    assert svc._normalize_strict_positive_version("", latest_version=7) == 7
-    assert svc._normalize_strict_positive_version("latest", latest_version=7) == 7
-    assert svc._normalize_strict_positive_version("LATEST", latest_version=7) == 7
-    assert svc._normalize_strict_positive_version("9", latest_version=7) == 9
-    assert svc._normalize_strict_positive_version("latest", latest_version=0) is None
+    assert svc._resolve_version(None, latest_version=7).selected_version == 7
+    assert svc._resolve_version("", latest_version=7).selected_version == 7
+    assert svc._resolve_version("latest", latest_version=7).selected_version == 7
+    assert svc._resolve_version("LATEST", latest_version=7).selected_version == 7
+    assert svc._resolve_version("9", latest_version=7).selected_version == 9
+    assert svc._resolve_version("latest", latest_version=0).selected_version is None
 
     for raw in ("abc", "0", "-1"):
         with pytest.raises(ValidationError):
-            svc._normalize_strict_positive_version(raw, latest_version=7)
+            svc._resolve_version(raw, latest_version=7)
 
 
 def test_resource_dispatch_service_no_history_latest_returns_empty_zero_version() -> None:

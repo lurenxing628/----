@@ -239,14 +239,14 @@ def test_config_service_current_config_state_hides_adjusted_raw_field_keys() -> 
         assert "legacyRuntimeBlock" not in str(current_config_state.get("label") or "")
         assert "secret" not in str(current_config_state.get("label") or "")
         assert "auto_assign_persist" not in str(current_config_state.get("label") or "")
-        assert "隐藏配置" in str(current_config_state.get("label") or "") or "配置字段" in str(
+        assert "平时不直接显示的设置" in str(current_config_state.get("label") or "") or "配置字段" in str(
             current_config_state.get("label") or ""
         )
         public_outcome = cfg_svc.save_page_config({}).to_public_outcome_dict()
         assert "legacy_runtime_block" not in str(public_outcome)
         assert "legacyRuntimeBlock" not in str(public_outcome)
         assert "secret" not in str(public_outcome)
-        assert "隐藏配置" in str(public_outcome)
+        assert "平时不直接显示的设置" in str(public_outcome)
     finally:
         conn.close()
 
@@ -709,12 +709,12 @@ def test_config_service_page_save_hidden_repair_keeps_named_preset_provenance() 
         assert current_config_state["baseline_source"] == "named"
         assert current_config_state["is_custom"] is False
         assert current_config_state["repair_notice"]["kind"] == "hidden"
-        assert "自动分配结果回写" in list(current_config_state["repair_notice"]["field_labels"] or [])
+        assert "保存系统补齐的设备和人员" in list(current_config_state["repair_notice"]["field_labels"] or [])
         assert "auto_assign_persist" not in str(current_config_state)
-        assert "自动分配结果回写" in str(current_config_state)
+        assert "保存系统补齐的设备和人员" in str(current_config_state)
         public_outcome = outcome.to_public_outcome_dict()
         assert "auto_assign_persist" not in str(public_outcome)
-        assert "自动分配结果回写" in str(public_outcome)
+        assert "保存系统补齐的设备和人员" in str(public_outcome)
     finally:
         conn.close()
 
@@ -972,7 +972,7 @@ def test_config_service_page_save_hidden_repair_blocks_adjusted_named_provenance
         assert "MAYBE" not in str(public_outcome)
         assert "auto_assign_persist" not in str(public_outcome)
         assert "来源缺失" not in str(public_outcome)
-        assert "自动分配结果回写" in str(public_outcome)
+        assert "保存系统补齐的设备和人员" in str(public_outcome)
         assert any(event.get("field") == "auto_assign_persist" for event in saved.effective_snapshot.degradation_events)
         assert cfg_svc.get("auto_assign_persist") == "MAYBE"
         assert cfg_svc.get_active_preset() == "legacy-shape"
@@ -1166,7 +1166,7 @@ def test_config_service_page_save_reports_bad_active_preset_meta_without_marking
         assert outcome["meta_parse_warnings"] == [
             {
                 "field": cfg_svc.ACTIVE_PRESET_META_KEY,
-                "message": "active_preset_meta 不是有效 JSON，已按历史来源信息继续显示。",
+                "message": "来源记录格式不正确，页面先按历史来源信息显示。",
             }
         ]
         assert outcome["degradation_events"] == []

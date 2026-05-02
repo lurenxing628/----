@@ -145,9 +145,9 @@ def normalize_op_type_category(value: Any) -> str:
     if not v:
         return SourceType.INTERNAL.value
 
-    if v in ("内部", "内"):
+    if v in ("内部", "内", "自制", "自做", "自己做", "内制"):
         return SourceType.INTERNAL.value
-    if v in ("外部", "外"):
+    if v in ("外部", "外", "外协", "外包"):
         return SourceType.EXTERNAL.value
 
     v_lower = v.lower()
@@ -159,9 +159,9 @@ def normalize_op_type_category(value: Any) -> str:
 def source_type_label(value: Any) -> str:
     v = normalize_op_type_category(value)
     if v == SourceType.INTERNAL.value:
-        return "内部"
+        return "自制"
     if v == SourceType.EXTERNAL.value:
-        return "外部"
+        return "外协"
     return "未知"
 
 

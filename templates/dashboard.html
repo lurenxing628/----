@@ -33,21 +33,17 @@
           'manual': '手动排产'
         } %}
       {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
-      <div class="info-line">
-        <span>时间：<strong>{{ latest_history.schedule_time }}</strong></span>
-        <span class="info-sep">|</span>
-        <span>方式：<strong>{{ strategy_zh.get(latest_history.strategy, latest_history.strategy or '-') }}</strong></span>
-        <span class="info-sep">|</span>
-        <span>结果：<strong>{{ status_zh.get(latest_history.result_status, latest_history.result_status or '-') }}</strong></span>
+      <div class="aps-summary-grid">
+        {{ ui.summary_item('时间', latest_history.schedule_time) }}
+        {{ ui.summary_item('方式', strategy_zh.get(latest_history.strategy, '未知排产方式')) }}
+        {{ ui.summary_item('结果', status_zh.get(latest_history.result_status, '结果状态未知')) }}
       </div>
       {% if latest_summary and latest_summary.algo and latest_summary.algo.metrics %}
         {% set m = latest_summary.algo.metrics %}
-        <div class="info-line muted" style="margin-top:6px;">
-          <span>拖期 {{ m.total_tardiness_hours or 0 }} 小时</span>
-          <span class="info-sep">|</span>
-          <span>总工期 {{ m.makespan_hours or 0 }} 小时</span>
-          <span class="info-sep">|</span>
-          <span>设备利用率 {{ ((m.machine_util_avg or 0) * 100)|round(1) }}%</span>
+        <div class="aps-summary-grid mt-2">
+          {{ ui.summary_item('拖期', (m.total_tardiness_hours or 0) ~ ' 小时') }}
+          {{ ui.summary_item('总工期', (m.makespan_hours or 0) ~ ' 小时') }}
+          {{ ui.summary_item('设备利用率', (((m.machine_util_avg or 0) * 100)|round(1)) ~ '%') }}
         </div>
       {% endif %}
     {% else %}
@@ -74,4 +70,3 @@
     </div>
   </div>
 {% endblock %}
-

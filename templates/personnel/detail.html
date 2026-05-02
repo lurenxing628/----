@@ -18,9 +18,7 @@
         <details class="debug-details muted">
           <summary>排查信息</summary>
           个人工作日历入口尚未启用。<br/>
-          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
-          处理：重启服务或重新打包升级。<br/>
-          日志：logs/aps.log、logs/aps_error.log。
+          当前入口暂不可用，请联系管理员更新系统或重启服务。
         </details>
       {% endif %}
       <span class="info-sep">|</span>
@@ -31,9 +29,7 @@
         <details class="debug-details muted">
           <summary>排查信息</summary>
           全局工作日历入口尚未启用。<br/>
-          常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
-          处理：重启服务或重新打包升级。<br/>
-          日志：logs/aps.log、logs/aps_error.log。
+          当前入口暂不可用，请联系管理员更新系统或重启服务。
         </details>
       {% endif %}
     </div>
@@ -97,8 +93,8 @@
         以下 {{ link_dirty_summary.row_count }} 条记录中有部分字段的旧格式已被系统自动修正；涉及字段：{{ link_dirty_summary.fields | join('、') }}。
       </div>
       <ul class="list-tight muted mt-2">
-        {% for field, reason in (link_dirty_summary.reasons or {}).items() %}
-          <li><code>{{ field }}</code>：{{ reason }}</li>
+        {% for item in (link_dirty_summary.reason_items or []) %}
+          <li>{{ item.label }}：{{ item.reason }}</li>
         {% endfor %}
       </ul>
     {% endif %}

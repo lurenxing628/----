@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from flask import Blueprint, g
 
+from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.ui_mode import render_ui_template as render_template
-
-from .normalizers import _parse_result_summary_payload
+from web.viewmodels.scheduler_history_summary import parse_history_summary_state
 
 bp = Blueprint("dashboard", __name__)
 
@@ -21,11 +21,16 @@ def index():
 
     recent = history_q.list_recent(limit=1)
     latest = recent[0] if recent else None
-    latest_summary = None
-    if latest and latest.result_summary:
-        latest_summary = _parse_result_summary_payload(
-            latest.result_summary, version=getattr(latest, "version", None), log_label="首页"
-        )
+    latest_summary_parse_state = parse_history_summary_state(
+        getattr(latest, "result_summary", None) if latest is not None else None
+    )
+    log_history_summary_parse_warning(
+        latest_summary_parse_state,
+        version=getattr(latest, "version", None) if latest is not None else None,
+        log_label="首页",
+    )
+    latest_payload = latest_summary_parse_state.get("payload")
+    latest_summary = latest_payload if isinstance(latest_payload, dict) else None
 
     if isinstance(latest_summary, dict):
         overdue_payload = latest_summary.get("overdue_batches", {})

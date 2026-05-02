@@ -135,8 +135,9 @@ def _template_missing_outcome(
     ctx: _LookupContext,
 ) -> TemplateGroupLookupOutcome:
     message = (
-        f"外协工序 {ctx.op_code} 缺少模板工序"
-        f"（batch={ctx.batch_id}, part={ctx.part_no or '?'}，seq={ctx.seq}），组合并语义已退化。"
+        f"外协工序 {ctx.op_code} 没找到零件工艺模板里的对应工序"
+        f"（批次={ctx.batch_id}, 图号={ctx.part_no or '?'}，工序号={ctx.seq}），"
+        "本次先按单道外协周期排产。请到零件工艺里补齐模板后再重新排产。"
     )
     if strict_mode:
         raise ValidationError(message, field="template")
@@ -161,6 +162,14 @@ def _template_status(tmpl: PartOperation) -> str:
     )
 
 
+def _template_status_label(status: str) -> str:
+    labels = {
+        PartOperationStatus.ACTIVE.value: "可用",
+        PartOperationStatus.DELETED.value: "已删除",
+    }
+    return labels.get(str(status or "").strip().lower(), "未知")
+
+
 def _template_unavailable_outcome(
     *,
     strict_mode: bool,
@@ -169,8 +178,8 @@ def _template_unavailable_outcome(
     status: str,
 ) -> TemplateGroupLookupOutcome:
     message = (
-        f"外协工序 {ctx.op_code} 的模板工序不可用（batch={ctx.batch_id}, part={ctx.part_no or '?'}，"
-        f"seq={ctx.seq}, status={status or '?'}），组合并语义已退化。"
+        f"外协工序 {ctx.op_code} 在零件工艺模板里的对应工序不可用（批次={ctx.batch_id}, 图号={ctx.part_no or '?'}，"
+        f"工序号={ctx.seq}，当前状态：{_template_status_label(status)}），本次先按单道外协周期排产。请检查零件工艺模板后重试。"
     )
     if strict_mode:
         raise ValidationError(message, field="template")
@@ -204,8 +213,9 @@ def _external_group_invalid_outcome(
     sample: str,
 ) -> TemplateGroupLookupOutcome:
     message = (
-        f"外协工序 {ctx.op_code} 引用的外部组 {ext_group_id} 不可用于当前模板"
-        f"（batch={ctx.batch_id}, part={ctx.part_no or '?'}, seq={ctx.seq}，原因：{reason}），组合并语义已退化。"
+        f"外协工序 {ctx.op_code} 的组合周期资料和当前零件工艺对不上"
+        f"（批次={ctx.batch_id}, 图号={ctx.part_no or '?'}, 工序号={ctx.seq}，原因：{reason}），"
+        "本次先按单道外协周期排产。请检查零件工艺里的外协组合设置后重试。"
     )
     if strict_mode:
         raise ValidationError(message, field="ext_group_id")
@@ -228,8 +238,8 @@ def _external_group_missing_outcome(
     ext_group_id: str,
 ) -> TemplateGroupLookupOutcome:
     message = (
-        f"外协工序 {ctx.op_code} 引用的外部组 {ext_group_id} 不存在"
-        f"（batch={ctx.batch_id}, seq={ctx.seq}），组合并语义已退化。"
+        f"外协工序 {ctx.op_code} 找不到对应的组合周期资料"
+        f"（批次={ctx.batch_id}, 工序号={ctx.seq}），本次先按单道外协周期排产。请检查零件工艺里的外协组合设置后重试。"
     )
     if strict_mode:
         raise ValidationError(message, field="ext_group_id")
@@ -282,7 +292,7 @@ def _external_group_violation(
     group_part_no = str(getattr(grp, "part_no", "") or "").strip()
     if group_part_no != ctx.part_no:
         return _ExternalGroupViolation(
-            reason=f"外部组图号为 {group_part_no or '?'}",
+            reason=f"外协组合资料对应的图号为 {group_part_no or '?'}",
             sample=(
                 f"batch_id={ctx.batch_id},part_no={ctx.part_no or '?'},"
                 f"ext_group_id={ext_group_id},group_part_no={group_part_no or '?'}"
@@ -294,7 +304,7 @@ def _external_group_violation(
         return None
     range_sample = "?" if seq_bounds is None else f"{seq_bounds[0]}..{seq_bounds[1]}"
     return _ExternalGroupViolation(
-        reason=f"工序号不在外部组范围 {range_sample} 内",
+        reason=f"工序号不在外协组合包含的范围 {range_sample} 内",
         sample=f"batch_id={ctx.batch_id},ext_group_id={ext_group_id},seq={ctx.seq},group_range={range_sample}",
     )
 

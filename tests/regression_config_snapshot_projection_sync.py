@@ -93,7 +93,7 @@ def test_service_snapshot_preserves_model_runtime_degradation_events() -> None:
         "code": "invalid_choice",
         "scope": "scheduler.runtime_config",
         "field": "dispatch_mode",
-        "message": "字段“dispatch_mode”取值不合法，已按兼容读取回退。",
+        "message": "字段“dispatch_mode”取值不正确，本次先按安全值处理。",
         "count": 2,
         "sample": "'bad'",
     }

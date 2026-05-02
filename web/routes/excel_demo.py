@@ -77,9 +77,9 @@ def _validate_operator_row(row: Dict[str, Any]) -> Optional[str]:
 
     st = normalize_operator_status(row.get("状态"))
     if not st:
-        return "“状态”不能为空，请填写：在岗 或 停用；也兼容英文标准值 active/inactive。"
+        return "“状态”不能为空，请填写：在岗 或 停用。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文。"
     if st not in (OperatorStatus.ACTIVE.value, OperatorStatus.INACTIVE.value):
-        return "“状态”不合法，可填写：在岗 / 停用；也兼容英文标准值 active/inactive。"
+        return "“状态”不合法，可填写：在岗 / 停用。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文。"
     row["状态"] = st
     return None
 

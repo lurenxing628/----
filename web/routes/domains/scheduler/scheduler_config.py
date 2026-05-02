@@ -100,7 +100,7 @@ def _normalize_scheduler_manual_args(raw_src: Optional[str], raw_page: Optional[
     safe_page = raw_page if bundle else None
     page_warning = None
     if raw_page and safe_page is None:
-        page_warning = f"未找到页面说明：{raw_page}，已回退到整本说明。"
+        page_warning = f"未找到页面说明：{raw_page}，已改为打开整本说明。"
     return safe_src, safe_page, bundle, page_warning
 
 
@@ -126,7 +126,7 @@ def _load_manual_text_and_mtime(manual_path: Optional[str], candidates: List[str
             except Exception:
                 g._aps_scheduler_manual_warning_status = "log_warning_failed"
             return (
-                "运行配置缺失：BASE_DIR 未配置，无法定位 scheduler_manual.md。请联系管理员。",
+                "系统找不到使用说明文件，请联系管理员检查软件安装目录。",
                 None,
             )
 
@@ -276,7 +276,7 @@ def config_manual_download():
     manual_path, candidates = _resolve_scheduler_manual_md_path()
     if not manual_path:
         if not candidates:
-            flash("运行配置缺失：BASE_DIR 未配置，无法定位 scheduler_manual.md。", "error")
+            flash("系统找不到使用说明文件，请联系管理员检查软件安装目录。", "error")
             return redirect(_build_manual_page_url(safe_src, safe_page))
         flash("说明书文件不存在，无法下载。", "error")
         return redirect(_build_manual_page_url(safe_src, safe_page))

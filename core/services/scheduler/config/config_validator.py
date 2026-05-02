@@ -21,8 +21,8 @@ def _emit_number_below_minimum(
         code="number_below_minimum",
         scope="config_validator.preset",
         field=key,
-        message=f"字段“{key}”数值低于最小值约束，已按兼容读取回退为 {fallback}。",
-        sample=repr(raw_value),
+        message=f"“{key}”数字太小，本次先按默认值 {fallback} 处理。",
+        sample=str(raw_value or ""),
     )
 
 

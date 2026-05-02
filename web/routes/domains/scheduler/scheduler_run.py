@@ -5,7 +5,6 @@ from typing import Optional, Sequence, cast
 from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
-from web.error_boundary import user_visible_app_error_message
 from web.viewmodels.scheduler_run_view_result import RunScheduleViewResult, build_run_schedule_view_result
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
@@ -15,6 +14,7 @@ from .scheduler_bp import (
     _surface_secondary_degradation_messages,
     bp,
 )
+from .scheduler_user_messages import scheduler_user_visible_app_error_message
 
 
 def _parse_optional_checkbox_flag(name: str):
@@ -67,7 +67,7 @@ def run_schedule():
         )
         _flash_run_schedule_view_result(build_run_schedule_view_result(result))
     except AppError as e:
-        flash(user_visible_app_error_message(e), "error")
+        flash(scheduler_user_visible_app_error_message(e), "error")
     except Exception:
         current_app.logger.exception("排产执行失败")
         flash("排产失败，请稍后重试或联系管理员。", "error")

@@ -136,7 +136,7 @@ def excel_supplier_preview():
 
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
         if is_blank_value(row.get("供应商ID")):
-            return "“供应商ID”不能为空"
+            return "“供应商编号（模板列名：供应商ID）”不能为空"
         if is_blank_value(row.get("名称")):
             return "“名称”不能为空"
 
@@ -148,7 +148,7 @@ def excel_supplier_preview():
         if "状态" in row:
             row["状态"] = _normalize_supplier_status(row.get("状态"))
             if row["状态"] not in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
-                return "“状态”不合法，可填写：启用 / 停用 / 在用 / 正常 / 禁用；也兼容英文标准值 active/inactive。"
+                return "“状态”不合法，可填写：启用 / 停用 / 在用 / 正常 / 禁用。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文。"
 
         # 工种可选（允许 id 或 名称），预览阶段标准化为“名称”
         try:
@@ -226,7 +226,7 @@ def excel_supplier_confirm():
         )
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
         if is_blank_value(row.get("供应商ID")):
-            return "“供应商ID”不能为空"
+            return "“供应商编号（模板列名：供应商ID）”不能为空"
         if is_blank_value(row.get("名称")):
             return "“名称”不能为空"
         default_days_error = _normalize_supplier_default_days(row)
@@ -235,7 +235,7 @@ def excel_supplier_confirm():
         if "状态" in row:
             row["状态"] = _normalize_supplier_status(row.get("状态"))
             if row["状态"] not in (SupplierStatus.ACTIVE.value, SupplierStatus.INACTIVE.value):
-                return "“状态”不合法，可填写：启用 / 停用 / 在用 / 正常 / 禁用；也兼容英文标准值 active/inactive。"
+                return "“状态”不合法，可填写：启用 / 停用 / 在用 / 正常 / 禁用。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文。"
         try:
             name = _resolve_op_type_name(row.get("对应工种"), op_type_svc=op_type_svc)
             row["对应工种"] = name

@@ -10,17 +10,17 @@
     <details class="muted">
       <summary>恢复说明</summary>
       <ul class="list-tight">
-        <li>恢复会覆盖当前数据库文件。</li>
-        <li>恢复前系统会自动生成一份"恢复前自动备份"，便于回退。</li>
+        <li>恢复会覆盖当前系统数据。</li>
+        <li>恢复前系统会自动生成一份"恢复前自动备份"，方便发现问题后回到恢复前。</li>
       </ul>
     </details>
     {% if settings and settings.dirty_fields %}
       <div class="warning mt-2">
-        以下系统配置字段的值格式较旧，已被系统自动修正：{{ settings.dirty_fields | join('、') }}。
+        以下系统配置格式较旧，系统已先按能识别的值处理，请检查后保存：{{ (settings.dirty_field_labels or settings.dirty_fields) | join('、') }}。
       </div>
       <ul class="list-tight muted mt-2">
-        {% for field in settings.dirty_fields %}
-          <li><code>{{ field }}</code>：{{ settings.dirty_reasons.get(field) or '旧格式已被自动修正。' }}</li>
+        {% for item in (settings.dirty_reason_items or []) %}
+          <li>{{ item.label }}：{{ item.reason }}</li>
         {% endfor %}
       </ul>
     {% endif %}
@@ -28,7 +28,7 @@
 
   <div class="card">
     <h3>备份列表</h3>
-    <div class="inline-flex-wrap mb-3">
+    <div class="aps-form-actions mb-3">
       <form method="post" action="{{ url_for('system.backup_create') }}" class="d-inline-block">
         {{ ui.button('手动备份', 'primary', 'md', type_attr='submit') }}
       </form>
@@ -45,6 +45,7 @@
     {% if not backups %}
       <p class="muted">暂无备份文件。你可以先点击“手动备份”。</p>
     {% else %}
+      <div class="aps-table-scroll">
       <table class="table-sticky">
         <thead>
           <tr>
@@ -69,7 +70,7 @@
               <td>
                 <div class="table-actions">
                   <form method="post" action="{{ url_for('system.backup_restore') }}"
-                        data-confirm="确认从该备份恢复数据库？恢复会覆盖当前数据。">
+                        data-confirm="确认恢复这份备份？恢复会覆盖当前数据。">
                     <input type="hidden" name="filename" value="{{ b.filename }}">
                     {{ ui.button('恢复', 'secondary', 'sm', type_attr='submit') }}
                   </form>
@@ -84,19 +85,20 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% endif %}
   </div>
 
   <div class="card">
-    <h3>自动任务设置</h3>
+    <h3>自动备份与自动清理（有人访问系统时才检查）</h3>
     <details class="muted">
       <summary>运行机制说明</summary>
       <ul class="list-tight">
-        <li>为避免后台线程占用资源，自动备份/自动清理备份会在“有请求访问系统时”按间隔检查并执行。</li>
-        <li>“自动备份”开关同时控制两类行为：按请求触发的自动备份（文件后缀 <code>_auto.db</code>）和程序正常退出时的退出备份（文件后缀 <code>_exit.db</code>）。</li>
-        <li>内部有节流（不会每次请求都执行）。</li>
+        <li>这里不是后台一直定时运行。系统会在有人打开页面或操作系统时，顺手检查有没有到设置的间隔；到了才执行。</li>
+        <li>“自动备份”开关同时控制访问系统时的自动备份，以及程序正常退出时的退出备份。</li>
+        <li>为了避免频繁执行，系统不会每次打开页面都备份或清理。</li>
         {% if maintenance_limits %}
-          <li>单次自动清理最多删除 {{ maintenance_limits.max_backup_delete_per_run }} 个备份文件（避免一次请求删太多）。</li>
+          <li>单次自动清理最多删除 {{ maintenance_limits.max_backup_delete_per_run }} 个备份文件，避免一次删太多。</li>
         {% endif %}
       </ul>
     </details>
@@ -105,67 +107,82 @@
     {% set st_bc = job_state.auto_backup_cleanup if job_state else None %}
 
     <form method="post" action="{{ url_for('system.backup_settings') }}">
-      <div class="inline-flex-wrap items-end gap-12">
-        <div class="flex-1 min-w-320">
-          <div class="font-semibold">自动备份</div>
-          <label>
+      <div class="aps-form-grid">
+        <div class="aps-summary-item aps-form-span-2">
+          <div class="aps-summary-label">自动备份</div>
+          <label class="mt-2 d-inline-block">
             <input type="checkbox" name="auto_backup_enabled" {{ 'checked' if settings and settings.auto_backup_enabled=='yes' else '' }}>
             启用
           </label>
-          <div class="muted mt-2">
-            启用后，会在请求触发的自动备份与程序正常退出时共用同一开关。
+          <div class="aps-summary-desc">
+            启用后，系统会在有人访问时按间隔检查是否需要备份；程序正常退出时也会按同一个开关生成退出备份。
           </div>
-          <div class="muted mt-2">
-            间隔（分钟）：
-            <input type="number" min="1" max="1440" step="1" name="auto_backup_interval_minutes" value="{{ settings.auto_backup_interval_minutes if settings else '60' }}" class="w-120">
-            <span class="ml-2">上次执行：
+          <div class="aps-form-grid mt-2">
+            <div class="form-field">
+              <label>间隔（分钟）</label>
+              <input type="number" min="1" max="1440" step="1" name="auto_backup_interval_minutes" value="{{ settings.auto_backup_interval_minutes if settings else '60' }}">
+            </div>
+            <div class="form-field">
+              <label>上次执行</label>
+              <div class="readonly-value">
               {% if st_ab and st_ab.last_run_state == 'invalid' %}
-                时间损坏（原始值：{{ st_ab.last_run_raw or '-' }}）
+                上次执行时间记录异常，系统会在下次执行后重新记录。
               {% elif st_ab and st_ab.last_run_time %}
                 {{ st_ab.last_run_time }}
               {% else %}
                 -
               {% endif %}
-            </span>
+              </div>
+            </div>
           </div>
           {% if st_ab and st_ab.last_run_detail_obj %}
             <details class="muted mt-2">
               <summary>上次结果</summary>
-              <pre class="pre-scroll-sm">{{ st_ab.last_run_detail_obj | tojson_zh(2) }}</pre>
+              <div>系统已记录上次执行结果；详细内容请让维护人员查看日志。</div>
             </details>
           {% endif %}
         </div>
 
-        <div class="flex-1 min-w-360">
-          <div class="font-semibold">自动清理备份（保留策略）</div>
-          <label>
+        <div class="aps-summary-item aps-form-span-2">
+          <div class="aps-summary-label">自动清理备份</div>
+          <label class="mt-2 d-inline-block">
             <input type="checkbox" name="auto_backup_cleanup_enabled" {{ 'checked' if settings and settings.auto_backup_cleanup_enabled=='yes' else '' }}>
             启用
           </label>
-          <div class="muted mt-2">
-            保留天数：
-            <input type="number" min="1" max="365" step="1" name="auto_backup_keep_days" value="{{ settings.auto_backup_keep_days if settings else keep_days }}" class="w-120">
-            <span class="ml-3">间隔（分钟）：</span>
-            <input type="number" min="1" max="1440" step="1" name="auto_backup_cleanup_interval_minutes" value="{{ settings.auto_backup_cleanup_interval_minutes if settings else '1440' }}" class="w-120">
-            <span class="ml-2">上次执行：
+          <div class="aps-summary-desc">
+            启用后，系统会按保留天数清理旧备份；只会按你设置的间隔检查，不会每次访问都删除。
+          </div>
+          <div class="aps-form-grid mt-2">
+            <div class="form-field">
+              <label>保留天数</label>
+              <input type="number" min="1" max="365" step="1" name="auto_backup_keep_days" value="{{ settings.auto_backup_keep_days if settings else keep_days }}">
+            </div>
+            <div class="form-field">
+              <label>间隔（分钟）</label>
+              <input type="number" min="1" max="1440" step="1" name="auto_backup_cleanup_interval_minutes" value="{{ settings.auto_backup_cleanup_interval_minutes if settings else '1440' }}">
+            </div>
+            <div class="form-field aps-form-span-2">
+              <label>上次执行</label>
+              <div class="readonly-value">
               {% if st_bc and st_bc.last_run_state == 'invalid' %}
-                时间损坏（原始值：{{ st_bc.last_run_raw or '-' }}）
+                上次执行时间记录异常，系统会在下次执行后重新记录。
               {% elif st_bc and st_bc.last_run_time %}
                 {{ st_bc.last_run_time }}
               {% else %}
                 -
               {% endif %}
-            </span>
+              </div>
+            </div>
           </div>
           {% if st_bc and st_bc.last_run_detail_obj %}
             <details class="muted mt-2">
               <summary>上次结果</summary>
-              <pre class="pre-scroll-sm">{{ st_bc.last_run_detail_obj | tojson_zh(2) }}</pre>
+              <div>系统已记录上次执行结果；详细内容请让维护人员查看日志。</div>
             </details>
           {% endif %}
         </div>
 
-        <div class="ml-auto">
+        <div class="aps-form-actions aps-form-span-all">
           {{ ui.button('保存设置', 'primary', 'md', type_attr='submit') }}
         </div>
       </div>
@@ -173,75 +190,77 @@
   </div>
 
   <div class="card">
-    <h3>可选插件/可选依赖状态</h3>
+    <h3>扩展功能状态</h3>
     <details class="muted">
-      <summary>说明（高级）</summary>
+      <summary>扩展功能说明</summary>
       <ul class="list-tight">
-        <li>插件来自交付目录下的 <code>plugins/</code>。</li>
-        <li>可选依赖可投放到 <code>vendor/</code> 并在启动时注入 <code>sys.path</code>。</li>
-        <li>修改插件开关后需重启应用才能生效。</li>
+        <li>扩展功能来自系统随包交付的扩展功能文件夹。</li>
+        <li>如果扩展功能缺文件或版本不匹配，系统会在这里显示原因。</li>
+        <li>保存后只是记住开关，下次重启软件才会真正按新开关加载。</li>
       </ul>
     </details>
     {% if plugin_status %}
       <div class="muted mt-2">
         加载时间：{{ plugin_status.loaded_at or '-' }}<br/>
-        插件目录：<code>{{ plugin_status.plugins_dir or '-' }}</code><br/>
         配置来源：
         {% if plugin_status.config_source == 'config' %}
           全部来自系统配置
         {% elif plugin_status.config_source == 'mixed' %}
           部分来自系统配置，部分按默认开关运行
         {% elif plugin_status.config_source == 'default_due_to_db_unavailable' %}
-          数据库连接失败，当前按默认开关运行
+          扩展功能设置暂时读取不到，系统已先按默认设置运行
         {% elif plugin_status.config_source == 'default_due_to_config_reader_failed' %}
-          配置读取器初始化失败，当前按默认开关运行
+          扩展功能设置暂时读取不到，系统已先按默认设置运行
         {% elif plugin_status.config_source == 'default_due_to_config_read_failed' %}
-          配置读取失败，当前按默认开关运行
+          扩展功能设置暂时读取不到，系统已先按默认设置运行
         {% else %}
           当前按默认开关运行
-        {% endif %}<br/>
-        依赖路径：
-        {% if plugin_status.vendor_paths %}
-          <ul class="list-tight">
-            {% for p in plugin_status.vendor_paths %}
-              <li><code>{{ p }}</code></li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <span>-</span>
         {% endif %}
+        <details class="debug-details mt-1">
+          <summary>给维护人员看的信息</summary>
+          <div>扩展功能文件位置已记录在系统日志中，需要排查时请从日志查看。</div>
+        </details>
       </div>
 
       {% if plugin_status.degraded %}
-        <div class="warning mt-2">插件启动时出现了问题，请先检查下列异常记录。</div>
+        <div class="warning mt-2">扩展功能启动时出现了问题，请先看下面的中文原因；仍看不懂时再让管理员查看问题编号。</div>
         <ul class="list-tight muted mt-2">
           {% for event in plugin_status.degradation_events or [] %}
-            <li><code>{{ event.code }}</code>：{{ event.message }}</li>
+            <li>
+              {{ event.message }}
+              <details class="debug-details text-xs">
+                <summary>给维护人员看的信息</summary>
+                问题编号已记录，请联系维护人员查看日志。
+              </details>
+            </li>
           {% endfor %}
         </ul>
       {% endif %}
 
       <div class="muted mt-2">
-        已注册能力：{{ (plugin_status.registry.capabilities | length) if plugin_status.registry and plugin_status.registry.capabilities else 0 }}
+        已发现的可用功能：{{ (plugin_status.registry.capabilities | length) if plugin_status.registry and plugin_status.registry.capabilities else 0 }}
       </div>
       <div class="muted mt-1">
-        留痕状态：
+        系统记录：
         {% if plugin_status.telemetry_persisted is sameas true %}
-          已写入
+          已记录
         {% elif plugin_status.telemetry_persisted is sameas false %}
-          写入失败
+          记录失败，请联系维护人员查看日志
         {% else %}
           -
         {% endif %}
       </div>
       {% if plugin_status.conflicted_capabilities and (plugin_status.conflicted_capabilities | length) > 0 %}
         <div class="muted mt-1">
-          冲突能力：
+          扩展功能冲突：
           <ul class="list-tight">
             {% for item in plugin_status.conflicted_capabilities %}
               <li>
-                <code>{{ item.capability or '-' }}</code>
-                保留 {{ item.kept_plugin_id or '-' }}，拒绝 {{ item.rejected_plugin_id or '-' }}
+                有两个扩展功能想处理同一类事情，系统已保留一个，另一个没有启用。
+                <details class="debug-details text-xs">
+                  <summary>给维护人员看的信息</summary>
+                  冲突细节已记录在系统日志中，需要排查时请从日志查看。
+                </details>
               </li>
             {% endfor %}
           </ul>
@@ -249,20 +268,27 @@
       {% endif %}
 
       {% if plugin_status.statuses and (plugin_status.statuses | length) > 0 %}
-        <table class="mt-3 table-sticky">
+        <div class="aps-table-scroll mt-3">
+        <table class="table-sticky">
           <thead>
             <tr>
-              <th class="w-200">插件</th>
+              <th class="w-200">扩展功能</th>
               <th class="w-140">版本</th>
               <th class="w-120">开关</th>
               <th class="w-120">已加载</th>
-              <th>能力/错误</th>
+              <th>可用功能 / 问题说明</th>
             </tr>
           </thead>
           <tbody>
             {% for s in plugin_status.statuses %}
               <tr>
-                <td><code>{{ s.plugin_id }}</code><br/><span class="muted">{{ s.name }}</span></td>
+                <td>
+                  {{ s.name or '未命名扩展功能' }}
+                  <details class="debug-details text-xs muted">
+                    <summary>给维护人员看的信息</summary>
+                    扩展功能编号已记录在系统日志中，需要排查时请从日志查看。
+                  </details>
+                </td>
                 <td>{{ s.version or '-' }}</td>
                 <td>
                   <form method="post" action="{{ url_for('system.plugin_toggle') }}">
@@ -273,39 +299,47 @@
                     </label>
                     {{ ui.button('保存', 'secondary', 'sm', type_attr='submit', class='ml-2') }}
                     <div class="muted mt-1">
-                      当前来源：
+                      保存后重启软件才会真正生效。<br/>
+                      当前开关依据：
                       {% if s.enabled_source == 'config' %}
                         系统配置
                       {% elif s.enabled_source == 'default_due_to_db_unavailable' %}
-                        默认开关（数据库连接失败）
+                        默认开关（扩展功能设置暂时读取不到）
                       {% elif s.enabled_source == 'default_due_to_config_reader_failed' %}
-                        默认开关（配置读取器初始化失败）
+                        默认开关（扩展功能设置暂时读取不到）
                       {% elif s.enabled_source == 'default_due_to_config_read_failed' %}
-                        默认开关（配置读取失败）
+                        默认开关（扩展功能设置暂时读取不到）
                       {% else %}
                         默认开关
                       {% endif %}
                     </div>
                   </form>
                 </td>
-                <td>{{ s.loaded }}</td>
+                <td>{{ '已加载' if s.loaded == 'yes' else '未加载' }}</td>
                 <td>
                   {% if s.error %}
                     <div class="muted max-w-520">{{ s.error }}</div>
                   {% else %}
-                    <span class="muted">已注册能力：</span>
-                    {{ s.capabilities | join(', ') if s.capabilities else '-' }}
+                    <span class="muted">已准备好的功能：</span>
+                    {{ (s.capabilities | length) if s.capabilities else 0 }} 项
+                    {% if s.capabilities %}
+                      <details class="debug-details text-xs muted">
+                        <summary>给维护人员看的信息</summary>
+                        已准备好的功能明细已记录在系统日志中。
+                      </details>
+                    {% endif %}
                   {% endif %}
                 </td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
+        </div>
       {% else %}
-        <div class="muted mt-2">未发现插件文件（plugins/ 下无可加载的 *.py）。</div>
+        <div class="muted mt-2">未发现扩展功能文件。</div>
       {% endif %}
     {% else %}
-      <div class="muted">插件状态未加载。</div>
+      <div class="muted">扩展功能状态未加载。</div>
     {% endif %}
   </div>
 

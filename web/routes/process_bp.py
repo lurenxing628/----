@@ -21,8 +21,8 @@ def _merge_mode_zh(value: str) -> str:
 
 def _source_zh(value: str) -> str:
     if value == SourceType.EXTERNAL.value:
-        return "外部"
-    return "内部"
+        return "外协"
+    return "自制"
 
 
 def _safe_float(value: Any, field: str) -> Optional[float]:
@@ -47,4 +47,3 @@ def _ensure_unique_ids(rows: List[Dict[str, Any]], id_column: str) -> None:
 
 def _read_uploaded_xlsx(file_storage) -> List[Dict[str, Any]]:
     return read_uploaded_xlsx(file_storage)
-

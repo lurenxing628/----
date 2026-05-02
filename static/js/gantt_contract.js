@@ -360,7 +360,7 @@
       "关键链口径：关键链按全版本排程计算（不随周窗口截断）；综合工艺前驱与资源前驱（设备/人员）选取控制前驱回溯得到。",
     ];
     if (unavailableMessage) {
-      items.push("关键链降级：" + unavailableMessage);
+      items.push("关键链暂不可用：" + unavailableMessage);
     }
     return items;
   }

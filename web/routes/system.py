@@ -6,7 +6,7 @@
 - `system_utils.py`：纯工具函数（安全跳转、时间解析、备份文件名校验等）
 - `system_ui_mode.py`：UI 模式切换
 - `system_backup.py`：备份/恢复相关页面与操作
-- `system_plugins.py`：插件开关
+- `system_plugins.py`：扩展功能开关
 - `system_logs.py`：操作日志查询/清理
 - `system_history.py`：排产历史查询
 """
@@ -24,4 +24,3 @@ from . import system_ui_mode as _ui_mode  # noqa: F401
 from .system_bp import bp
 
 __all__ = ["bp"]
-

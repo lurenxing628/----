@@ -82,7 +82,7 @@ def _build_source_xlsx(path: str) -> None:
                 15,
             ]
         )
-        # P002：seq=5 外协，但同名“数车”在 P001 内部出现，需自动改名为“数车（外协）”
+    # P002：seq=5 外协，但同名“数车”在 P001 自制工序出现，需自动改名为“数车（外协）”
         ws.append(
             [
                 "P002",
@@ -179,13 +179,13 @@ def main() -> None:
     assert converted.suppliers_rows, "供应商配置输出为空"
     for row in converted.suppliers_rows:
         assert set(row.keys()) == {"供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"}, f"供应商配置列不符合预期：{row.keys()}"
-        assert row["状态"] == "active", f"供应商默认状态异常：{row!r}"
+        assert row["状态"] == "启用", f"供应商默认状态异常：{row!r}"
         assert row["备注"] is None, f"供应商默认备注异常：{row!r}"
 
-    # 4) 工种冲突自动改名：同名 internal/external 并存时，外协侧加“（外协）”
+    # 4) 工种冲突自动改名：同名自制/外协并存时，外协侧加“（外协）”
     op_types = {r["工种名称"]: r["归属"] for r in converted.op_types_rows}
-    assert op_types.get("数车") == "internal", f"数车归属异常：{op_types.get('数车')!r}"
-    assert op_types.get("数车（外协）") == "external", f"数车（外协）归属异常：{op_types.get('数车（外协）')!r}"
+    assert op_types.get("数车") == "自制", f"数车归属异常：{op_types.get('数车')!r}"
+    assert op_types.get("数车（外协）") == "外协", f"数车（外协）归属异常：{op_types.get('数车（外协）')!r}"
 
     # 5) 工步时间累计成工序工时（单位：小时）
     hours_map = {(r["图号"], int(r["工序"])): (float(r["换型时间(h)"]), float(r["单件工时(h)"])) for r in converted.part_operation_hours_rows}
@@ -241,4 +241,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -10,12 +10,17 @@
         {{ ui.link_button('导出工作日历.xlsx', export_url, 'secondary', 'md') }}
       </div>
     </div>
-    <p class="page-subtitle text-meta">支持：下载模板 → 上传预览 → 确认导入 → 导出。提示信息尽量中文，便于排查。</p>
+    <p class="page-subtitle text-meta">
+      支持：下载模板 → 上传预览 → 确认导入 → 导出。类型可填“工作日、假期、周末、节假日”，周末和节假日会按假期处理。
+    </p>
+    <div class="field-help">
+      空值规则：可用工时不填时，工作日按 8 小时、假期按 0 小时；效率不填时，工作日按 1.0，假期按排产参数里的“假期工作效率”；允许普通件、允许急件不填时按“是”处理。
+    </div>
     {{ ui.scheduler_nav('excel_calendar') }}
     {% if holiday_default_efficiency_degraded and holiday_default_efficiency_warning %}
       <div class="alert alert-warning scheduler-config-degraded-summary">{{ holiday_default_efficiency_warning }}</div>
     {% endif %}
-    <div class="field-help">导出会写入操作留痕。</div>
+    <div class="field-help">导出会写入操作记录，方便以后追查是谁导出的。</div>
   </div>
 
   {% include "components/excel_import.html" with context %}
@@ -23,32 +28,34 @@
   <div class="card">
     <h3 class="section-title">当前日历数据</h3>
     {% if existing_list and existing_list|length > 0 %}
-      <table>
-        <thead>
-          <tr>
-            <th class="w-140">日期</th>
-            <th class="w-120">类型</th>
-            <th class="w-120">可用工时</th>
-            <th class="w-120">效率</th>
-            <th class="w-140">允许普通件</th>
-            <th class="w-140">允许急件</th>
-            <th>说明</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in existing_list %}
+      <div class="aps-table-scroll">
+        <table>
+          <thead>
             <tr>
-              <td>{{ r["日期"] }}</td>
-              <td>{{ r["类型显示"] or '-' }}</td>
-              <td>{{ r["可用工时"] }}</td>
-              <td>{{ r["效率"] }}</td>
-              <td>{{ r["允许普通件显示"] or '-' }}</td>
-              <td>{{ r["允许急件显示"] or '-' }}</td>
-              <td>{% if r["说明"] %}{{ r["说明"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
+              <th class="w-140">日期</th>
+              <th class="w-120">类型</th>
+              <th class="w-120">可用工时</th>
+              <th class="w-120">效率</th>
+              <th class="w-140">允许普通件</th>
+              <th class="w-140">允许急件</th>
+              <th>说明</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for r in existing_list %}
+              <tr>
+                <td>{{ r["日期"] }}</td>
+                <td>{{ r["类型显示"] or '-' }}</td>
+                <td>{{ r["可用工时"] }}</td>
+                <td>{{ r["效率"] }}</td>
+                <td>{{ r["允许普通件显示"] or '-' }}</td>
+                <td>{{ r["允许急件显示"] or '-' }}</td>
+                <td>{% if r["说明"] %}{{ r["说明"] }}{% else %}<span class="muted">-</span>{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
       <div class="muted">暂无已配置的日历记录（排产时会自动按默认规则处理）。</div>
     {% endif %}

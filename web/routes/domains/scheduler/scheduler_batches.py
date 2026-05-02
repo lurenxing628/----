@@ -8,6 +8,7 @@ from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
 from web.error_boundary import user_visible_app_error_message
+from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_batches_page import (
     build_batch_rows,
@@ -15,10 +16,10 @@ from web.viewmodels.scheduler_batches_page import (
     build_latest_schedule_history_panel_state,
     build_scheduler_batches_page_view_model,
 )
+from web.viewmodels.scheduler_history_summary import parse_history_summary_state
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
 from ...navigation_utils import _safe_next_url
-from ...normalizers import _parse_result_summary_payload_with_meta
 from ...pagination import paginate_rows, parse_page_args
 from .scheduler_bp import (
     _batch_status_zh,
@@ -36,30 +37,19 @@ if TYPE_CHECKING:
     from core.services.scheduler import BatchService
 
 
-def _empty_latest_summary_parse_state() -> Dict[str, Any]:
-    return {"payload": None, "parse_failed": False, "user_message": None, "reason": None}
-
-
 def _load_latest_schedule_history_panel_inputs(
     hist_q: Any,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Dict[str, Any]]:
-    latest_history = None
-    latest_summary = None
-    latest_summary_parse_state = _empty_latest_summary_parse_state()
-    try:
-        items = hist_q.list_recent(limit=1)
-        latest_history = items[0].to_dict() if items else None
-    except Exception:
-        current_app.logger.exception("排产页读取最近一次排产历史失败")
-        latest_history = None
-        latest_summary = None
-    if latest_history and latest_history.get("result_summary"):
-        latest_summary_parse_state = _parse_result_summary_payload_with_meta(
-            latest_history.get("result_summary"),
-            version=latest_history.get("version"),
-            log_label="排产页",
-        )
-        latest_summary = latest_summary_parse_state.get("payload")
+    items = hist_q.list_recent(limit=1)
+    latest_history = items[0].to_dict() if items else None
+    latest_summary_parse_state = parse_history_summary_state((latest_history or {}).get("result_summary"))
+    log_history_summary_parse_warning(
+        latest_summary_parse_state,
+        version=(latest_history or {}).get("version"),
+        log_label="排产页",
+    )
+    latest_payload = latest_summary_parse_state.get("payload")
+    latest_summary = latest_payload if isinstance(latest_payload, dict) else None
     return latest_history, latest_summary, latest_summary_parse_state
 
 

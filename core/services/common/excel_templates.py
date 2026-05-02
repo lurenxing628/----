@@ -328,10 +328,10 @@ def get_default_templates() -> List[Dict[str, Any]]:
         {
             "filename": "工种配置.xlsx",
             "headers": ["工种ID", "工种名称", "归属"],
-            "sample_rows": [["OT001", "数车", "内部"], ["OT002", "标印", "外部"]],
+            "sample_rows": [["OT001", "数车", "自制"], ["OT002", "标印", "外协"]],
             "format_spec": {
                 "text_cols": [0, 1],
-                "enum_cols": {2: ["内部", "外部"]},
+                "enum_cols": {2: ["自制", "外协"]},
                 "column_widths": {0: 14, 1: 16, 2: 12},
             },
         },

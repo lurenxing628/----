@@ -110,7 +110,7 @@ def _resolve_internal_resources(
         return machine_id, operator_id
     if not auto_assign_enabled or resource_pool is None:
         increment_counter(algo_stats, "internal_missing_resource_without_auto_assign_count")
-        errors.append(f"内部工序未补全资源，无法排产：工序 {getattr(op, 'op_code', '-') or '-'}（machine_id/operator_id 必填）")
+        errors.append(f"自制工序未补全设备或人员，无法排产：工序 {getattr(op, 'op_code', '-') or '-'}")
         return "", ""
 
     increment_counter(algo_stats, "internal_auto_assign_attempt_count")
@@ -132,7 +132,7 @@ def _resolve_internal_resources(
         increment_counter(algo_stats, "internal_auto_assign_success_count")
         return normalize_text_id(chosen[0]), normalize_text_id(chosen[1])
     increment_counter(algo_stats, "internal_auto_assign_failed_count")
-    errors.append(f"内部工序未补全资源，且自动分配失败：工序 {getattr(op, 'op_code', '-') or '-'}")
+    errors.append(f"自制工序未补全设备或人员，而且系统自动分配也失败了：工序 {getattr(op, 'op_code', '-') or '-'}")
     return "", ""
 
 
@@ -183,7 +183,7 @@ def _estimate_internal(
 def _window_blocked_error(*, op: Any, batch_id: str, end_time: datetime, end_dt_exclusive: Optional[datetime]) -> str:
     deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d") if end_dt_exclusive else "-"
     return (
-        f"排产窗口截止到 {deadline}：内部工序 {getattr(op, 'op_code', '-') or '-'}"
+        f"排产窗口截止到 {deadline}：自制工序 {getattr(op, 'op_code', '-') or '-'}"
         f"（批次 {batch_id}）预计完工 {end_time.strftime('%Y-%m-%d %H:%M')} 超出窗口"
     )
 

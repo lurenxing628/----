@@ -323,9 +323,9 @@ def test_batches_page_renders_config_degraded_public_messages(tmp_path, monkeypa
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "当前配置存在可见兼容修补：" in body
-    assert "当前还有内部配置项存在兼容修补：" in body
-    assert "自动分配结果回写" in body
+    assert "当前配置有需要复核的修正项：" in body
+    assert "还有一些平时不直接显示的设置需要检查，请按下面提示处理：" in body
+    assert "保存系统补齐的设备和人员" in body
     assert "auto_assign_persist" not in body
 
 
@@ -337,7 +337,7 @@ def test_batches_page_without_latest_history_renders_empty_history_message(tmp_p
 
     assert response.status_code == 200
     assert "还没有排过产，排产后这里会显示结果。" in body
-    assert "版本：<strong>v" not in body
+    assert 'aps-summary-value">v' not in body
 
 
 def test_batches_page_latest_summary_parse_failed_renders_history_and_warning(tmp_path, monkeypatch) -> None:
@@ -348,7 +348,9 @@ def test_batches_page_latest_summary_parse_failed_renders_history_and_warning(tm
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "版本：<strong>v7</strong>" in body
+    assert "最近一次排产快照" in body
+    assert 'aps-summary-label">版本' in body
+    assert 'aps-summary-value">v7' in body
     assert "还没有排过产" not in body
     assert "当前版本的排产摘要解析失败，页面仅展示基础历史信息。" in body
     assert "{invalid json" not in body
@@ -381,9 +383,13 @@ def test_batches_page_latest_algo_config_snapshot_renders_public_snapshot_state(
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "版本：<strong>v8</strong>" in body
-    assert "目标：最少超期" in body
-    assert "自动回写资源：<strong>已启用</strong>" in body
+    assert "最近一次排产快照" in body
+    assert 'aps-summary-label">版本' in body
+    assert 'aps-summary-value">v8' in body
+    assert "排产方式" in body
+    assert "优先级优先" in body
+    assert "保存系统补齐的设备和人员" in body
+    assert 'aps-summary-value">已启用' in body
 
 
 def test_scheduler_batches_route_uses_page_view_model(tmp_path, monkeypatch) -> None:

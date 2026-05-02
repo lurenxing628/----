@@ -72,7 +72,7 @@ class ReportEngine:
     def _raise_export_need_async(self, *, report_name: str, decision: ReportExportDecision) -> None:
         raise AppError(
             code=ErrorCode.VALIDATION_ERROR,
-            message=f"{report_name}导出范围过大（预估 {int(decision.estimated_rows)} 行），请缩小范围后重试，或改走后台导出。",
+            message=f"{report_name}导出范围过大（预估 {int(decision.estimated_rows)} 行），请缩小筛选范围后重试。",
             details={
                 "field": "导出范围",
                 "mode": decision.mode,
@@ -169,6 +169,8 @@ class ReportEngine:
     def export_overdue_xlsx(self, version: int) -> ReportExport:
         rep = self.overdue_batches(version)
         items = list(rep.get("items") or [])
+        if not items:
+            raise ValidationError("当前版本没有可导出的超期结果，请换一个排产版本后再试。", field="导出")
         return self._build_xlsx_export(
             report_name="超期清单",
             filename=f"超期清单_v{int(rep['version'])}.xlsx",
@@ -218,6 +220,8 @@ class ReportEngine:
         rep = self.utilization(version, start_date, end_date)
         machines = list(rep.get("machines") or [])
         operators = list(rep.get("operators") or [])
+        if not machines and not operators:
+            raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")
         return self._build_xlsx_export(
             report_name="资源负荷与利用率",
             filename=f"资源负荷与利用率_v{int(rep['version'])}_{rep['start_date']}_to_{rep['end_date']}.xlsx",
@@ -261,6 +265,8 @@ class ReportEngine:
     def export_downtime_impact_xlsx(self, version: int, start_date: Any, end_date: Any) -> ReportExport:
         rep = self.downtime_impact(version, start_date, end_date)
         machines = list(rep.get("machines") or [])
+        if not machines:
+            raise ValidationError("暂无数据，不能导出。请调整版本或日期范围后再试。", field="导出")
         return self._build_xlsx_export(
             report_name="停机影响统计",
             filename=f"停机影响统计_v{int(rep['version'])}_{rep['start_date']}_to_{rep['end_date']}.xlsx",

@@ -23,14 +23,14 @@ def main() -> None:
         code="invalid_number",
         scope="config",
         field="priority_weight",
-        message="字段“priority_weight”历史数值无效，已按兼容读取回退为 0.4。",
+        message="字段“优先级重要程度”历史数值无效，本次先按 0.4 处理，请检查后保存。",
         count=2,
     )
     collector.add(
         code="invalid_due_date",
         scope="gantt",
         field="due_date",
-        message="字段“due_date”历史日期无效，已按兼容读取回退为 空值。",
+        message="字段“交期”历史日期无效，本次先留空，请检查后保存。",
     )
 
     outcome = BuildOutcome.from_collector(

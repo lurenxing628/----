@@ -59,7 +59,7 @@ def validate_calendar_import_row(row: Dict[str, Any], *, holiday_default_efficie
 
     row["类型"] = _normalize_day_type(row.get("类型"))
     if row["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
-        return "“类型”不合法，可填写：工作日 / 假期 / 周末 / 节假日；也兼容英文标准值 workday/holiday。"
+        return "“类型”不合法，可填写：工作日 / 假期 / 周末 / 节假日。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
 
     hours_error = _apply_shift_hours(row)
     if hours_error:
@@ -103,8 +103,8 @@ def _apply_efficiency(row: Dict[str, Any], *, holiday_default_efficiency: float)
 def _apply_yes_no_flags(row: Dict[str, Any]) -> Optional[str]:
     row["允许普通件"] = _normalize_yesno(row.get("允许普通件"))
     if row["允许普通件"] not in YESNO_VALUES:
-        return "“允许普通件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
+        return "“允许普通件”不合法，可填写：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
     row["允许急件"] = _normalize_yesno(row.get("允许急件"))
     if row["允许急件"] not in YESNO_VALUES:
-        return "“允许急件”不合法，可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0。"
+        return "“允许急件”不合法，可填写：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
     return None

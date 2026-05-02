@@ -68,10 +68,12 @@ def main() -> None:
     assert expected_dirty.issubset(dirty_fields), data
 
     dirty_reasons = dict(data.get("dirty_reasons") or {})
-    assert "兼容归一为 yes" in str(dirty_reasons.get("auto_backup_enabled") or ""), dirty_reasons
-    assert "已钳制为 1" in str(dirty_reasons.get("auto_backup_interval_minutes") or ""), dirty_reasons
-    assert "已钳制为 365" in str(dirty_reasons.get("auto_backup_keep_days") or ""), dirty_reasons
-    assert "已回退为 60" in str(dirty_reasons.get("auto_log_cleanup_interval_minutes") or ""), dirty_reasons
+    assert "这个开关保存的是旧写法，本次先按“启用”处理" in str(
+        dirty_reasons.get("auto_backup_enabled") or ""
+    ), dirty_reasons
+    assert "本次先按最小值 1 处理" in str(dirty_reasons.get("auto_backup_interval_minutes") or ""), dirty_reasons
+    assert "本次先按最大值 365 处理" in str(dirty_reasons.get("auto_backup_keep_days") or ""), dirty_reasons
+    assert "本次先按 60 处理" in str(dirty_reasons.get("auto_log_cleanup_interval_minutes") or ""), dirty_reasons
 
     print("OK")
 

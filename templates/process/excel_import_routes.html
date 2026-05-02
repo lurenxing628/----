@@ -7,7 +7,7 @@
       <div class="page-actions page-actions-context"></div>
     </div>
     <p class="page-subtitle text-meta">
-      导入确认后，会对每条“工艺路线字符串”执行解析并生成零件工序模板和外部工序组。
+      导入确认后，会对每条“工艺路线字符串”执行解析并生成零件工序模板和外协工序组。
       解析失败的行会统计为错误，不会写入模板。
     </p>
     {{ ui.process_nav('excel_routes') }}
@@ -22,6 +22,7 @@
   <div class="card">
     <h3>当前零件数据</h3>
     {% if existing_list and existing_list|length > 0 %}
+      <div class="aps-table-scroll">
       <table>
         <thead>
           <tr>
@@ -40,6 +41,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">还没有数据，可以先下载模板再导入。</div>
     {% endif %}
@@ -47,4 +49,3 @@
 
   <script src="{{ url_for('static', filename='js/excel_handler.js') }}" defer></script>
 {% endblock %}
-

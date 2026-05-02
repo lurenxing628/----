@@ -172,10 +172,10 @@ def test_route_parser_treats_inactive_only_supplier_as_missing_supplier() -> Non
     assert relaxed.status == ParseStatus.PARTIAL
     assert relaxed.operations[0].supplier_id is None
     assert relaxed.operations[0].default_days == 1.0
-    assert any("未找到供应商配置" in str(msg) for msg in relaxed.warnings)
+    assert any("没有找到可用的外协供应商" in str(msg) for msg in relaxed.warnings)
 
     assert strict.status == ParseStatus.FAILED
-    assert any("未找到供应商配置" in str(msg) for msg in strict.errors)
+    assert any("没有可用的外协供应商" in str(msg) for msg in strict.errors)
 
 
 def test_route_parser_ignores_stale_issue_from_non_effective_supplier() -> None:

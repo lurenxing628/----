@@ -6,6 +6,8 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, cast
 from core.infrastructure.errors import ValidationError
 from core.models.enums import BatchOperationStatus, BatchStatus, SourceType, YesNo
 
+from .schedule_persistence_errors import raise_no_actionable_schedule_error
+
 _TERMINAL_OPERATION_STATUSES = frozenset((BatchOperationStatus.COMPLETED.value, BatchOperationStatus.SKIPPED.value))
 
 
@@ -86,17 +88,8 @@ def has_actionable_schedule_rows(results: List[Any], *, allowed_op_ids: Optional
     return count_actionable_schedule_rows(results, allowed_op_ids=allowed_op_ids) > 0
 
 
-def _raise_no_actionable_schedule_error(validation_errors: Optional[List[str]] = None) -> None:
-    exc = ValidationError("优化结果未生成有效可落库排程行", field="schedule")
-    exc.details = dict(exc.details or {})
-    exc.details["reason"] = "no_actionable_schedule_rows"
-    if validation_errors:
-        exc.details["validation_errors"] = list(validation_errors)
-    raise exc
-
-
 def _raise_invalid_schedule_rows_error(validation_errors: List[str]) -> None:
-    exc = ValidationError("optimizer returned invalid in-scope schedule rows", field="schedule_results")
+    exc = ValidationError("优化结果里有不合法的排程记录，已拒绝写入。", field="schedule_results")
     exc.details = dict(exc.details or {})
     exc.details["reason"] = "invalid_schedule_rows"
     exc.details["validation_errors"] = list(validation_errors)
@@ -148,13 +141,13 @@ def _build_validated_schedule_row(
 ) -> Tuple[Optional[ValidatedScheduleRow], Optional[int], Optional[str]]:
     identity = _result_identity(result, index=index)
     if result is None:
-        return None, None, f"{identity}: result is None"
+        return None, None, f"{identity}: 排产结果为空"
     try:
         op_id = int(getattr(result, "op_id", 0) or 0)
     except Exception:
-        return None, None, f"{identity}: invalid op_id"
+        return None, None, f"{identity}: 工序编号不合法"
     if op_id <= 0:
-        return None, None, f"{identity}: op_id must be positive"
+        return None, None, f"{identity}: 工序编号必须大于 0"
     if allowed_op_ids is not None and op_id not in allowed_op_ids:
         return None, int(op_id), None
 
@@ -188,6 +181,8 @@ def build_validated_schedule_payload(
     results: List[Any],
     *,
     allowed_op_ids: Optional[Set[int]] = None,
+    operations: Optional[List[Any]] = None,
+    missing_internal_resource_op_ids: Optional[Set[int]] = None,
 ) -> ValidatedSchedulePayload:
     schedule_rows: List[ValidatedScheduleRow] = []
     scheduled_op_ids: Set[int] = set()
@@ -227,7 +222,11 @@ def build_validated_schedule_payload(
     if validation_errors and schedule_rows:
         _raise_invalid_schedule_rows_error(validation_errors)
     if not schedule_rows:
-        _raise_no_actionable_schedule_error(validation_errors)
+        raise_no_actionable_schedule_error(
+            validation_errors,
+            operations=operations,
+            missing_internal_resource_op_ids=missing_internal_resource_op_ids,
+        )
 
     return ValidatedSchedulePayload(
         schedule_rows=schedule_rows,
@@ -406,7 +405,11 @@ def persist_schedule(
     time_cost_ms: int,
 ) -> None:
     if not validated_schedule_payload.schedule_rows:
-        _raise_no_actionable_schedule_error(validated_schedule_payload.validation_errors)
+        raise_no_actionable_schedule_error(
+            validated_schedule_payload.validation_errors,
+            operations=reschedulable_operations,
+            missing_internal_resource_op_ids=missing_internal_resource_op_ids,
+        )
 
     schedule_rows = validated_schedule_payload.to_repo_rows(
         svc,

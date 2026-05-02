@@ -11,16 +11,16 @@
 
     {% if details %}
       {% if details is mapping and details.get("field") and details|length == 1 and not field_label %}
-        <p class="muted"><strong>相关字段：</strong>{{ field_label or details.get("field") }}</p>
+        <p class="muted"><strong>相关字段：</strong>请查看上方提示。</p>
       {% elif details is string %}
         <h3>详细信息</h3>
-        <pre>{{ details }}</pre>
+        <p class="muted">{{ details }}</p>
       {% else %}
         <h3>详细信息</h3>
-        <pre>{{ details | tojson_zh(2) }}</pre>
+        <p class="muted">系统已记录更详细的信息，请联系维护人员查看日志。</p>
       {% endif %}
     {% endif %}
 
-    <p class="muted">如果问题反复出现，请联系管理员查看运行日志（`logs` 目录下的日志文件）进行排查。</p>
+    <p class="muted">如果问题反复出现，请联系维护人员查看运行日志。</p>
   </div>
 {% endblock %}

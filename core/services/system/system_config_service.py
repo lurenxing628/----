@@ -8,14 +8,31 @@ from core.infrastructure.transaction import TransactionManager
 from core.services.common.enum_normalizers import normalize_yes_no_wide
 from data.repositories import SystemConfigRepository
 
+_DIRTY_FIELD_LABELS = {
+    "auto_backup_enabled": "自动备份开关",
+    "auto_backup_interval_minutes": "自动备份间隔",
+    "auto_backup_cleanup_enabled": "自动清理备份开关",
+    "auto_backup_keep_days": "备份保留天数",
+    "auto_backup_cleanup_interval_minutes": "自动清理备份间隔",
+    "auto_log_cleanup_enabled": "自动清理日志开关",
+    "auto_log_cleanup_keep_days": "日志保留天数",
+    "auto_log_cleanup_interval_minutes": "自动清理日志间隔",
+}
+
+
+def _dirty_field_label(field: str) -> str:
+    return _DIRTY_FIELD_LABELS.get(str(field or "").strip(), str(field or "").strip())
+
 
 def _normalize_yes_no(value: Any) -> str:
     """
-    统一把输入规范到 yes/no：
-    - HTML checkbox：on/None
-    - 常见布尔：true/false/1/0
+    统一把页面开关规范成系统内部保存值。
     """
     return normalize_yes_no_wide(value, default="no", unknown_policy="no")
+
+
+def _switch_value_label(value: Any) -> str:
+    return "启用" if str(value or "").strip().lower() == "yes" else "关闭"
 
 
 def _parse_int(value: Any, field: str, min_v: int, max_v: int) -> int:
@@ -45,6 +62,7 @@ class SystemConfigSnapshot:
     dirty_reasons: Dict[str, str]
 
     def to_dict(self) -> Dict[str, Any]:
+        dirty_reasons = dict(self.dirty_reasons or {})
         return {
             "auto_backup_enabled": self.auto_backup_enabled,
             "auto_backup_interval_minutes": int(self.auto_backup_interval_minutes),
@@ -55,7 +73,12 @@ class SystemConfigSnapshot:
             "auto_log_cleanup_keep_days": int(self.auto_log_cleanup_keep_days),
             "auto_log_cleanup_interval_minutes": int(self.auto_log_cleanup_interval_minutes),
             "dirty_fields": list(self.dirty_fields or []),
-            "dirty_reasons": dict(self.dirty_reasons or {}),
+            "dirty_field_labels": [_dirty_field_label(field) for field in list(self.dirty_fields or [])],
+            "dirty_reasons": dirty_reasons,
+            "dirty_reason_items": [
+                {"field": field, "label": _dirty_field_label(field), "reason": dirty_reasons.get(field) or "旧格式已自动整理，请检查后保存。"}
+                for field in list(self.dirty_fields or [])
+            ],
         }
 
 
@@ -65,7 +88,7 @@ class SystemConfigService:
 
     说明：
     - 这里的配置用于 /system 页面（自动备份/自动清理等），不与 ScheduleConfig 混用。
-    - 默认值以“保守”为原则：自动任务默认关闭（enabled=no）。
+    - 默认值以“保守”为原则：自动任务默认关闭。
     """
 
     # 合理范围（避免过度占用性能）
@@ -98,9 +121,9 @@ class SystemConfigService:
             normalized = _normalize_yes_no(raw)
             raw_text = "" if raw is None else str(raw).strip()
             if raw_text and raw_text.lower() not in {"yes", "no"}:
-                _mark_dirty(key, f"原始值 {raw_text!r} 已兼容归一为 {normalized}。")
+                _mark_dirty(key, f"这个开关保存的是旧写法，本次先按“{_switch_value_label(normalized)}”处理。")
             elif raw is not None and not raw_text:
-                _mark_dirty(key, f"原始值为空，已按 {normalized} 兼容读取。")
+                _mark_dirty(key, f"这个开关保存为空，本次先按“{_switch_value_label(normalized)}”处理。")
             return normalized
 
         def _get_int(key: str, default: int, min_v: int, max_v: int) -> int:
@@ -109,18 +132,18 @@ class SystemConfigService:
                 return int(default)
             raw_text = str(raw).strip()
             if raw_text == "":
-                _mark_dirty(key, f"原始值为空，已回退为 {default}。")
+                _mark_dirty(key, f"这个数字保存为空，本次先按 {default} 处理。")
                 return int(default)
             try:
                 v = int(raw_text)
             except Exception:
-                _mark_dirty(key, f"原始值 {raw_text!r} 不是整数，已回退为 {default}。")
+                _mark_dirty(key, f"这个数字不是整数，本次先按 {default} 处理。")
                 return int(default)
             if v < min_v:
-                _mark_dirty(key, f"原始值 {raw_text!r} 小于最小值 {min_v}，已钳制为 {min_v}。")
+                _mark_dirty(key, f"这个数字小于允许范围，本次先按最小值 {min_v} 处理。")
                 return int(min_v)
             if v > max_v:
-                _mark_dirty(key, f"原始值 {raw_text!r} 大于最大值 {max_v}，已钳制为 {max_v}。")
+                _mark_dirty(key, f"这个数字大于允许范围，本次先按最大值 {max_v} 处理。")
                 return int(max_v)
             return int(v)
 
@@ -151,14 +174,14 @@ class SystemConfigService:
 
         # 自动任务默认关闭；但保留策略给一个默认值（便于用户一键开启）
         defaults: Dict[str, Tuple[str, str]] = {
-            "auto_backup_enabled": ("no", "自动备份（按请求触发；正常退出时也受此开关控制）是否启用：yes/no"),
-            "auto_backup_interval_minutes": ("60", "自动备份（按请求触发）触发间隔（分钟）"),
-            "auto_backup_cleanup_enabled": ("no", "自动清理备份（按请求触发）是否启用：yes/no"),
+            "auto_backup_enabled": ("no", "自动备份开关：启用后，有人访问系统时会按间隔检查；程序正常退出时也会受这个开关控制。"),
+            "auto_backup_interval_minutes": ("60", "自动备份检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要备份。"),
+            "auto_backup_cleanup_enabled": ("no", "自动清理过期备份开关：启用后，有人访问系统时会按保留天数清理旧备份。"),
             "auto_backup_keep_days": (str(int(backup_keep_days_default)), "备份保留天数（自动清理策略）"),
-            "auto_backup_cleanup_interval_minutes": ("1440", "自动清理备份触发间隔（分钟）"),
-            "auto_log_cleanup_enabled": ("no", "自动清理操作日志（按请求触发）是否启用：yes/no"),
+            "auto_backup_cleanup_interval_minutes": ("1440", "自动清理备份检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要清理。"),
+            "auto_log_cleanup_enabled": ("no", "自动清理操作日志开关：启用后，有人访问系统时会按保留天数清理旧日志。"),
             "auto_log_cleanup_keep_days": ("30", "操作日志保留天数（自动清理策略）"),
-            "auto_log_cleanup_interval_minutes": ("60", "自动清理操作日志触发间隔（分钟）"),
+            "auto_log_cleanup_interval_minutes": ("60", "自动清理操作日志检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要清理。"),
         }
 
         to_set = [(k, v, d) for k, (v, d) in defaults.items() if k not in existing]
@@ -208,11 +231,15 @@ class SystemConfigService:
             max_v=self.MAX_INTERVAL_MINUTES,
         )
         with self.tx.transaction():
-            self.repo.set("auto_backup_enabled", enabled, description="自动备份（按请求触发；正常退出时也受此开关控制）是否启用：yes/no")
-            self.repo.set("auto_backup_interval_minutes", str(interval), description="自动备份（按请求触发）触发间隔（分钟）")
-            self.repo.set("auto_backup_cleanup_enabled", cleanup_enabled, description="自动清理备份（按请求触发）是否启用：yes/no")
+            self.repo.set("auto_backup_enabled", enabled, description="自动备份开关：启用后，有人访问系统时会按间隔检查；程序正常退出时也会受这个开关控制。")
+            self.repo.set("auto_backup_interval_minutes", str(interval), description="自动备份检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要备份。")
+            self.repo.set("auto_backup_cleanup_enabled", cleanup_enabled, description="自动清理过期备份开关：启用后，有人访问系统时会按保留天数清理旧备份。")
             self.repo.set("auto_backup_keep_days", str(keep_days), description="备份保留天数（自动清理策略）")
-            self.repo.set("auto_backup_cleanup_interval_minutes", str(cleanup_interval), description="自动清理备份触发间隔（分钟）")
+            self.repo.set(
+                "auto_backup_cleanup_interval_minutes",
+                str(cleanup_interval),
+                description="自动清理备份检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要清理。",
+            )
 
     def update_logs_settings(self, auto_log_cleanup_enabled: Any, auto_log_cleanup_keep_days: Any, auto_log_cleanup_interval_minutes: Any) -> None:
         enabled = _normalize_yes_no(auto_log_cleanup_enabled)
@@ -224,7 +251,6 @@ class SystemConfigService:
             max_v=self.MAX_INTERVAL_MINUTES,
         )
         with self.tx.transaction():
-            self.repo.set("auto_log_cleanup_enabled", enabled, description="自动清理操作日志（按请求触发）是否启用：yes/no")
+            self.repo.set("auto_log_cleanup_enabled", enabled, description="自动清理操作日志开关：启用后，有人访问系统时会按保留天数清理旧日志。")
             self.repo.set("auto_log_cleanup_keep_days", str(keep_days), description="操作日志保留天数（自动清理策略）")
-            self.repo.set("auto_log_cleanup_interval_minutes", str(interval), description="自动清理操作日志触发间隔（分钟）")
-
+            self.repo.set("auto_log_cleanup_interval_minutes", str(interval), description="自动清理操作日志检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要清理。")

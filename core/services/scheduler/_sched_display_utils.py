@@ -63,12 +63,12 @@ def display_operator(operator_id: Optional[str], operator_name: Optional[str]) -
 def bad_time_row_sample(row: Dict[str, Any]) -> Optional[str]:
     parts: List[str] = []
     if row.get("schedule_id") is not None:
-        parts.append(f"schedule_id={row.get('schedule_id')}")
+        parts.append(f"排程记录编号={row.get('schedule_id')}")
     if row.get("op_id") is not None:
-        parts.append(f"op_id={row.get('op_id')}")
+        parts.append(f"工序编号={row.get('op_id')}")
     batch_id = str(row.get("batch_id") or "").strip()
     if batch_id:
-        parts.append(f"batch_id={batch_id}")
+        parts.append(f"批次号={batch_id}")
     if row.get("start_time") is not None:
         parts.append(f"start_time={row.get('start_time')}")
     if row.get("end_time") is not None:

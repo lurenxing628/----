@@ -149,25 +149,17 @@
 
   <div class="card">
     <h3 class="section-title">常用方案</h3>
-    <div class="muted">
-      已选方案（基线）：
-      <strong>{{ current_config_state.baseline_label if current_config_state else ('自定义' if not active_preset or active_preset == 'custom' else active_preset) }}</strong>
-    </div>
+    <div class="aps-summary-grid">
+      {{ ui.summary_item('已选方案', current_config_state.baseline_label if current_config_state else ('自定义' if not active_preset or active_preset == 'custom' else active_preset), '这是当前设置对照的方案。') }}
     {% if current_config_state %}
-      <div class="muted mt-1">
-        当前运行配置：
-        <strong>{{ current_config_state.status_label }}</strong>
-        <span class="meta-sep">｜</span>
-        {{ current_config_state.label }}
-      </div>
+      {{ ui.summary_item('当前运行配置', current_config_state.status_label, current_config_state.label) }}
       {% if current_config_state.repair_notices %}
-        <ul class="muted scheduler-config-repair-notices">
+        <ul class="muted scheduler-config-repair-notices aps-form-span-all">
           {% for notice in current_config_state.repair_notices %}
             <li>
               {{ notice.message or current_config_state.label }}
               {% if notice.field_labels %}
-                <span class="meta-sep">|</span>
-                涉及字段：{{ notice.field_labels|join('、') }}
+                <div class="aps-summary-desc mt-1">涉及字段：{{ notice.field_labels|join('、') }}</div>
               {% endif %}
             </li>
           {% endfor %}
@@ -175,12 +167,9 @@
       {% endif %}
     {% endif %}
     {% if auto_assign_persist_state %}
-      <div class="muted mt-1">
-        自动回写资源：<strong>{{ auto_assign_persist_state.label }}</strong>
-        <span class="meta-sep">|</span>
-        {{ auto_assign_persist_state.description }}
-      </div>
+      {{ ui.summary_item('保存系统补齐的设备和人员', auto_assign_persist_state.label, auto_assign_persist_state.description) }}
     {% endif %}
+    </div>
 
     {% set preset_apply_url = safe_url_for('scheduler.preset_apply') %}
     {% set preset_save_url = safe_url_for('scheduler.preset_save') %}
@@ -192,48 +181,52 @@
     {% if missing_preset_endpoints %}
       <div class="muted mt-3">部分方案操作需要更新版本后使用，请重启系统。</div>
       <details class="debug-details muted">
-        <summary>排查信息</summary>
+        <summary>给维护人员看的信息</summary>
         部分方案操作入口尚未启用。<br/>
-        常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
-        处理：重启服务或重新打包升级。<br/>
-        日志：logs/aps.log、logs/aps_error.log。
+        当前入口暂不可用，请联系管理员更新系统或重启服务。
       </details>
     {% endif %}
 
-    <div class="inline-flex-wrap items-end mt-3">
+    <div class="aps-settings-grid mt-3">
       {% if preset_apply_url %}
-        <form method="post" action="{{ preset_apply_url }}" class="inline-flex-wrap">
+        <form method="post" action="{{ preset_apply_url }}" class="aps-filter-bar">
           <input type="hidden" name="next" value="{{ request.full_path }}">
-          <label class="muted">切换方案</label>
-          <select name="preset_name" data-auto-submit="1">
-            <option value="custom" {% if not active_preset or active_preset == 'custom' %}selected{% endif %}>当前手动设置</option>
-            {% for p in presets or [] %}
-              <option value="{{ p.name }}" {% if active_preset == p.name %}selected{% endif %}>{{ p.name }}</option>
-            {% endfor %}
-          </select>
+          <div class="form-field">
+            <label>切换方案</label>
+            <select name="preset_name" data-auto-submit="1" class="w-220">
+              <option value="custom" {% if not active_preset or active_preset == 'custom' %}selected{% endif %}>当前手动设置</option>
+              {% for p in presets or [] %}
+                <option value="{{ p.name }}" {% if active_preset == p.name %}selected{% endif %}>{{ p.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
         </form>
       {% endif %}
 
       {% if preset_save_url %}
-        <form method="post" action="{{ preset_save_url }}" class="inline-flex-wrap items-center" data-confirm="将当前高级设置保存为新模板，确定？">
-          <label class="muted">保存为新方案</label>
-          <input name="preset_name" placeholder="输入方案名称" class="w-220">
-          {{ ui.button('保存为方案', 'secondary', 'md', type_attr='submit') }}
+        <form method="post" action="{{ preset_save_url }}" class="aps-filter-bar" data-confirm="将当前高级设置保存为新模板，确定？">
+          <div class="form-field">
+            <label>保存为新方案</label>
+            <input name="preset_name" placeholder="输入方案名称" class="w-220">
+          </div>
+          <div class="aps-form-actions aps-form-actions-end">{{ ui.button('保存为方案', 'secondary', 'md', type_attr='submit') }}</div>
         </form>
       {% endif %}
 
       {% if preset_delete_url %}
-        <form method="post" action="{{ preset_delete_url }}" class="inline-flex-wrap items-center" data-confirm="确定删除该模板吗？">
-          <label class="muted">删除方案</label>
-          <select name="preset_name">
-            <option value="">（请选择）</option>
-            {% for p in presets or [] %}
-              {% if p.name not in (builtin_presets or []) %}
-                <option value="{{ p.name }}">{{ p.name }}</option>
-              {% endif %}
-            {% endfor %}
-          </select>
-          {{ ui.button('删除', 'danger', 'md', type_attr='submit') }}
+        <form method="post" action="{{ preset_delete_url }}" class="aps-filter-bar" data-confirm="确定删除该模板吗？">
+          <div class="form-field">
+            <label>删除方案</label>
+            <select name="preset_name" class="w-180">
+              <option value="">（请选择）</option>
+              {% for p in presets or [] %}
+                {% if p.name not in (builtin_presets or []) %}
+                  <option value="{{ p.name }}">{{ p.name }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          <div class="aps-form-actions aps-form-actions-end">{{ ui.button('删除', 'danger', 'md', type_attr='submit') }}</div>
         </form>
       {% endif %}
     </div>
@@ -248,17 +241,17 @@
         {% if metadata %}
           {% set _ = degraded_field_labels.append(metadata.label) %}
         {% else %}
-          {% set _ = degraded_field_labels.append(field_key) %}
+          {% set _ = degraded_field_labels.append('未命名设置项') %}
         {% endif %}
       {% endfor %}
       {% if degraded_field_labels %}
         <div class="flash-card flash-warning scheduler-config-degraded-summary" role="alert" aria-live="polite">
-          当前配置中有 {{ degraded_field_labels|join('、') }} 使用了兼容显示值，请保存后修复。
+          当前配置中有 {{ degraded_field_labels|join('、') }} 来自旧数据或格式不标准，请检查后保存一次。
         </div>
       {% endif %}
       {% if config_hidden_warnings %}
         <div class="flash-card flash-warning scheduler-config-degraded-summary" role="alert" aria-live="polite">
-          <div>当前还有内部配置项存在兼容修补：</div>
+          <div>还有一些平时不直接显示的设置需要检查，请按下面提示处理：</div>
           <ul class="list-tight mt-1">
             {% for item in config_hidden_warnings %}
               <li>{{ item }}</li>
@@ -300,14 +293,14 @@
         <div class="scheduler-config-field">
           <label>{{ priority_weight_meta.label }}</label>
           <input name="priority_weight" value="{{ cfg.priority_weight }}">
-          <div class="scheduler-config-hint">{{ priority_weight_meta.hint or '可填 0.4 或 40' }}</div>
+          <div class="scheduler-config-hint">{{ priority_weight_meta.hint or '可以填 0 到 1 的小数；也可以填百分比，比如 40 表示 40%。数值越大，越优先照顾急件和特急件。' }}</div>
           {{ render_config_field_warning("priority_weight") }}
         </div>
 
         <div class="scheduler-config-field">
           <label>{{ due_weight_meta.label }}</label>
           <input name="due_weight" value="{{ cfg.due_weight }}">
-          <div class="scheduler-config-hint">{{ due_weight_meta.hint or '可填 0.5 或 50' }}</div>
+          <div class="scheduler-config-hint">{{ due_weight_meta.hint or '可以填 0 到 1 的小数；也可以填百分比，比如 50 表示 50%。数值越大，越优先照顾交期更近的批次。' }}</div>
           {{ render_config_field_warning("due_weight") }}
         </div>
 
@@ -335,7 +328,7 @@
         <div class="scheduler-config-field">
           <label>{{ time_budget_seconds_meta.label }}</label>
           <input name="time_budget_seconds" value="{{ cfg.time_budget_seconds }}">
-          <div class="scheduler-config-hint">{{ time_budget_seconds_meta.hint or '精细计算模式下，系统会在这段时间内搜索更合适的方案。' }}</div>
+          <div class="scheduler-config-hint">{{ time_budget_seconds_meta.hint or '精细计算时，系统最多在这段时间内尝试更多排法。填的是秒数，例如 20 表示最多算 20 秒。' }}</div>
           {{ render_config_field_warning("time_budget_seconds") }}
         </div>
 
@@ -409,7 +402,7 @@
             <input type="checkbox" name="ortools_enabled" value="yes" {{ 'checked' if cfg.ortools_enabled == 'yes' else '' }}>
             <span class="scheduler-config-switch-copy">
               <span class="scheduler-config-switch-title">{{ ortools_enabled_meta.label }}</span>
-              <span class="scheduler-config-switch-desc">{{ ortools_enabled_meta.hint or '精细计算时用额外组件搜索更优起点。' }}</span>
+              <span class="scheduler-config-switch-desc">{{ ortools_enabled_meta.hint or '只在精细计算时生效；系统会多花几秒尝试找更好的排法，优化目标就是当前页面选择的目标。' }} 不保证每次一定更好，但会在限定秒数内停下。</span>
             </span>
           </label>
           <input type="hidden" name="ortools_enabled" value="no">

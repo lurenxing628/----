@@ -3,7 +3,7 @@
 
 包含：
 - 系统配置（SystemConfig）
-- 自动任务（按请求触发的自动备份/自动清理）
+- 自动任务（有人访问系统时检查的自动备份/自动清理）
 """
 
 from __future__ import annotations
@@ -19,4 +19,3 @@ __all__ = [
     "OperationLogService",
     "SystemJobStateQueryService",
 ]
-

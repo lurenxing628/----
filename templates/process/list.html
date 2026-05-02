@@ -13,7 +13,7 @@
   <div class="card">
     <h3>新增零件</h3>
     <form method="post" action="{{ url_for('process.create_part') }}">
-      <div class="form-row">
+      <div class="aps-form-grid">
         <div class="form-field">
           <label for="partNoInput">图号</label>
           <input id="partNoInput" name="part_no" required placeholder="如：A1234">
@@ -22,22 +22,22 @@
           <label for="partNameInput">名称</label>
           <input id="partNameInput" name="part_name" required placeholder="如：壳体-大">
         </div>
-        <div class="form-field flex-1 min-w-320">
+        <div class="form-field aps-form-span-2">
           <label for="routeRawInput">工艺路线字符串（可选，填写后会尝试自动解析）</label>
           <input id="routeRawInput" name="route_raw" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
         </div>
-        <div class="form-field flex-1 min-w-200">
+        <div class="form-field">
           <label for="partRemarkInput">备注</label>
           <input id="partRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div class="form-field min-w-260">
+        <div class="form-field aps-form-span-all">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
-            严格校验
+            发现问题就停止创建工艺路线
           </label>
-          <div class="muted text-xs">开启后，如果工艺路线中有系统不认识的工种、找不到对应的供应商、或供应商的默认周期填写无效，将直接报错并拒绝创建，不会自动跳过。</div>
+          <div class="muted text-xs aps-help-note">勾选后：工艺路线里有不认识的工种、没有启用的外协供应商，或外协周期无效时，会直接提示错误并停止创建。不勾选：零件会先保存；能确认的工序会继续处理，缺少外协周期这类可补项本次会先按 1 天记录，并在页面提醒你后续补正。</div>
         </div>
-        <div>{{ ui.button('添加零件', 'primary', 'md', type_attr='submit') }}</div>
+        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('添加零件', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
@@ -47,10 +47,10 @@
     <div class="muted mb-2">
       批量操作：可批量删除零件。若零件已被批次引用，将禁止删除（避免影响已有的排产数据）。
     </div>
-    <div class="form-row mb-2">
+    <div class="aps-search-row mb-2">
       <div class="form-field">
         <label for="partsSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索</label>
-        <input id="partsSearchInput" data-table-search="partsTable" placeholder="输入图号、名称..." aria-label="搜索零件，输入图号或名称关键词" class="w-260">
+        <input id="partsSearchInput" data-table-search="partsTable" placeholder="输入图号、名称..." aria-label="搜索零件，输入图号或名称关键词">
       </div>
     </div>
     <form id="bulkForm" method="post" action="{{ url_for('process.bulk_delete_parts') }}"></form>
@@ -66,8 +66,8 @@
       </div>
     {% endif %}
     {% if parts and parts|length > 0 %}
-      <div class="overflow-x-auto">
-      <table id="partsTable" class="table-sticky table-layout-fixed" data-col-resize="1">
+      <div class="aps-table-scroll">
+      <table id="partsTable" class="table-sticky table-layout-fixed" data-col-resize="1" data-table-key="v2_partsTable">
         <thead>
           <tr>
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选零件"></th>
@@ -118,4 +118,3 @@
     {% endif %}
   </div>
 {% endblock %}
-

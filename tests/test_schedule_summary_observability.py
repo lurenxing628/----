@@ -76,7 +76,7 @@ def test_dashboard_logs_warning_when_latest_result_summary_is_invalid(tmp_path, 
     resp = client.get("/")
 
     assert resp.status_code == 200
-    assert any("首页 result_summary 解析失败（version=1" in item for item in warnings)
+    assert any("首页 排产摘要 解析失败（version=1" in item for item in warnings)
 
 
 
@@ -90,9 +90,11 @@ def test_scheduler_batches_keeps_latest_history_when_summary_is_invalid(tmp_path
     body = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
-    assert "版本：<strong>v2</strong>" in body
+    assert "最近一次排产快照" in body
+    assert 'aps-summary-label">版本' in body
+    assert 'aps-summary-value">v2' in body
     assert "还没有排过产" not in body
-    assert any("排产页 result_summary 解析失败（version=2" in item for item in warnings)
+    assert any("排产页 排产摘要 解析失败（version=2" in item for item in warnings)
 
 
 
@@ -109,8 +111,8 @@ def test_system_history_logs_warning_for_selected_and_list_summary_parse_failure
     assert resp.status_code == 200
     assert "版本详情：v3" in body
     assert "最近排产记录" in body
-    assert any("排产历史页 result_summary 解析失败（version=3, source=selected" in item for item in warnings)
-    assert any("排产历史页 result_summary 解析失败（version=4, source=list" in item for item in warnings)
+    assert any("排产历史页 排产摘要 解析失败（version=3, source=selected" in item for item in warnings)
+    assert any("排产历史页 排产摘要 解析失败（version=4, source=list" in item for item in warnings)
 
 
 
@@ -123,8 +125,8 @@ def test_scheduler_analysis_logs_warning_for_selected_and_trend_summary_parse_fa
     resp = client.get("/scheduler/analysis?version=5")
 
     assert resp.status_code == 200
-    assert any("排产分析页 result_summary 解析失败（version=5, source=selected" in item for item in warnings)
-    assert any("排产分析页 result_summary 解析失败（version=5, source=trend" in item for item in warnings)
+    assert any("排产分析页 排产摘要 解析失败（version=5, source=selected" in item for item in warnings)
+    assert any("排产分析页 排产摘要 解析失败（version=5, source=trend" in item for item in warnings)
 
 
 def test_dashboard_accepts_preparsed_result_summary_dict(tmp_path, monkeypatch) -> None:
@@ -255,7 +257,7 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
         "degraded_success": True,
         "degraded_causes": ["merge_context_degraded"],
         "degradation_events": [
-            {"code": "merge_context_degraded", "message": "组合并上下文缺失，已降级。", "count": 1},
+            {"code": "merge_context_degraded", "message": "组合并资料不完整，本次按可确认内容继续。", "count": 1},
             {"code": "invalid_due_date", "message": "发现 2 个批次交期非法，已按空交期处理。", "count": 2},
             {"code": "ortools_warmstart_failed", "message": "OR-Tools 预热失败，已回退常规求解。", "count": 1},
         ],
@@ -356,9 +358,9 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
     assert ctx["latest_auto_assign_persist_state"]["value"] == "unknown"
     assert ctx["latest_auto_assign_persist_state"]["enabled"] is None
     assert ctx["latest_summary_display"]["primary_degradation"]["details"] == [
-        "组合并语义已降级",
-        "交期数据已降级（2）",
-        "预热已降级",
+        "组合并资料不完整",
+        "交期数据无法使用（2）",
+        "优化起点不可用",
     ]
     assert ctx["latest_other_degradation_messages"] == []
 

@@ -110,9 +110,9 @@ def make_new_summary() -> Dict[str, Any]:
         "unscheduled_batch_count": 3,
         "warnings": [
             "冻结窗口存在跳批风险",
-            "停机区间加载失败，已按默认能力继续",
+            "停机区间加载失败，本次先按常规能力继续",
             "存在 1 个批次未命中首选技能",
-            "另有告警需要在系统历史查看",
+            "另有提醒需要在系统历史查看",
         ],
         "algo": {
             "mode": "improve",
@@ -286,7 +286,7 @@ def main() -> None:
     assert "停机避让约束已降级" not in old_html, "旧 summary 不应展示停机降级提示"
     assert "冻结窗口约束已降级" not in old_html, "旧 summary 不应展示冻结窗口降级提示"
     assert "-/-" not in old_html, "旧 summary 缺少派工规则时不应展示 -/-"
-    assert "当前版本摘要缺少部分分析字段" in old_html, "旧 summary 应展示中文兼容提示"
+    assert "这个历史版本缺少新的分析字段，页面只展示能确认的内容。" in old_html, "旧 summary 应展示中文兼容提示"
     assert "优化对比指标" in old_html, "旧 summary 兼容提示应展示中文字段名"
     assert "评分顺序" in old_html, "旧 summary 兼容提示应展示中文字段名"
     assert "comparison_metric" not in old_html, "旧 summary 不应暴露内部字段 comparison_metric"
@@ -322,7 +322,7 @@ def main() -> None:
     freeze_display = new_ctx.get("freeze_display") or {}
     assert bool(freeze_display.get("enabled")), "冻结摘要应识别 yes 字符串为启用"
     assert freeze_display.get("state") == "degraded", "冻结摘要状态错误"
-    assert freeze_display.get("state_label") == "已降级", "冻结摘要中文状态错误"
+    assert freeze_display.get("state_label") == "部分未生效", "冻结摘要中文状态错误"
     assert bool(freeze_display.get("degraded")), "冻结摘要降级标记错误"
     assert int(freeze_display.get("frozen_op_count") or 0) == 4, "冻结工序数错误"
     assert int(freeze_display.get("frozen_batch_count") or 0) == 7, "冻结批次数错误"
@@ -333,25 +333,25 @@ def main() -> None:
     assert any(item.get("code") == "freeze_window_degraded" for item in summary_degradation_messages), summary_degradation_messages
 
     new_html = render_analysis_html(app, render_template, version=2, selected=new_selected, ctx=new_ctx)
-    assert "当前展示为裁剪后摘要" in new_html, "未展示 summary_truncated 提示"
+    assert "本次结果数据量较大" in new_html, "未展示 summary_truncated 提示"
     assert "600000" in new_html, "未展示 original_size_bytes"
-    assert "告警：4 条" in new_html, "未展示 warning_total"
+    assert "提醒：4 条" in new_html, "未展示 warning_total"
     assert "冻结窗口存在跳批风险" in new_html, "未展示 warnings_preview"
-    assert "停机区间加载失败，已按默认能力继续" in new_html, "未展示第二条 warnings_preview"
+    assert "停机区间加载失败，本次先按常规能力继续" in new_html, "未展示第二条 warnings_preview"
     assert "存在 1 个批次未命中首选技能" in new_html, "未展示第三条 warnings_preview"
-    assert "另有 1 条告警，请到系统历史查看。" in new_html, "未展示 warning_hidden_count"
-    assert "另有告警需要在系统历史查看" not in new_html, "第 4 条 warning 不应出现在 preview 中"
-    assert "停机避让约束已降级" in new_html, "未展示停机降级提示"
+    assert "另有 1 条提醒，请到系统历史查看。" in new_html, "未展示 warning_hidden_count"
+    assert "另有提醒需要在系统历史查看" not in new_html, "第 4 条 warning 不应出现在 preview 中"
+    assert "停机时间资料不完整" in new_html, "未展示停机提示"
     assert "停机区间加载失败" in new_html, "未展示停机降级原因"
-    assert "冻结窗口约束已降级" in new_html, "未展示冻结窗口降级提示"
+    assert "冻结窗口资料不完整" in new_html, "未展示冻结窗口提示"
     assert "【冻结窗口】跳过批次 B001" not in new_html, "不应展示冻结窗口内部降级明细"
     assert 'stat-card-label">数据异常批次数</div>' in new_html, "未展示数据异常卡片"
     assert 'stat-card-label">未排批次数</div>' in new_html, "未展示未排批次卡片"
     assert "对比上一版：-3" in new_html, "未展示数据异常对比差值"
     assert "对比上一版：-5" in new_html, "未展示未排批次对比差值"
-    assert "当前状态：已降级" in new_html, "未展示冻结状态标签"
-    assert "冻结工序数：4" in new_html, "未展示冻结工序数"
-    assert "冻结批次数：7" in new_html, "未展示冻结批次数"
+    assert "当前状态" in new_html and "部分未生效" in new_html, "未展示冻结状态标签"
+    assert "冻结工序数" in new_html and '<div class="aps-summary-value">4</div>' in new_html, "未展示冻结工序数"
+    assert "冻结批次数" in new_html and '<div class="aps-summary-value">7</div>' in new_html, "未展示冻结批次数"
     assert "示例批次：B001、B002、B003、B004、B005" in new_html, "未展示冻结示例批次"
     assert "及其他 2 个…" in new_html, "未展示冻结示例批次剩余数量"
     assert "排序策略" in new_html, "attempts 表头未更正为排序策略"

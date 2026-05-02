@@ -94,7 +94,7 @@ def active_preset_meta_parse_warning(value: Any, *, field: str) -> Optional[Dict
     except Exception:
         return {
             "field": field,
-            "message": f"{field} 不是有效 JSON，已按历史来源信息继续显示。",
+            "message": "来源记录格式不正确，页面先按历史来源信息显示。",
         }
     return None
 

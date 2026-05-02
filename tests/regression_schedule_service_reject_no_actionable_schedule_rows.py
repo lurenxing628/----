@@ -115,9 +115,18 @@ def test_schedule_service_rejects_no_actionable_schedule_rows(monkeypatch) -> No
         with pytest.raises(ValidationError) as exc_info:
             svc.run_schedule(batch_ids=["B_NOACT"], start_dt="2026-03-02 08:00:00", simulate=False, enforce_ready=True)
 
-        assert "有效可落库排程行" in _message(exc_info.value)
+        assert "本次排产没有生成可保存的结果" in _message(exc_info.value)
+        assert "有效可落库排程行" not in _message(exc_info.value)
         details = getattr(exc_info.value, "details", None) or {}
         assert details.get("reason") == "no_actionable_schedule_rows"
+        assert details.get("missing_internal_resource_count") == 1
+        missing_ops = list(details.get("missing_internal_resource_ops") or [])
+        assert missing_ops, details
+        assert missing_ops[0]["batch_id"] == "B_NOACT"
+        assert missing_ops[0]["seq"] == 10
+        assert missing_ops[0]["op_type_name"] == "工序A"
+        assert missing_ops[0]["missing_fields"] == ["设备", "人员"]
+        assert "B_NOACT / 工序10 / 工序A 缺设备、人员" in str(details.get("user_message") or "")
 
         schedule_count = int(conn.execute("SELECT COUNT(1) AS cnt FROM Schedule").fetchone()["cnt"] or 0)
         history_count = int(conn.execute("SELECT COUNT(1) AS cnt FROM ScheduleHistory").fetchone()["cnt"] or 0)

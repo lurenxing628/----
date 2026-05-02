@@ -46,7 +46,7 @@ class MaterialService:
     def get(self, material_id: str) -> Material:
         mid = self._norm_text(material_id)
         if not mid:
-            raise ValidationError("“物料ID”不能为空", field="material_id")
+            raise ValidationError("“物料编号”不能为空", field="material_id")
         m = self.repo.get(mid)
         if not m:
             raise BusinessError(ErrorCode.NOT_FOUND, f"物料“{mid}”不存在")
@@ -55,7 +55,7 @@ class MaterialService:
     def create(self, material_id: Any, name: Any, spec: Any = None, unit: Any = None, stock_qty: Any = 0, status: Any = MaterialStatus.ACTIVE.value, remark: Any = None) -> Material:
         mid = self._norm_text(material_id)
         if not mid:
-            raise ValidationError("“物料ID”不能为空", field="material_id")
+            raise ValidationError("“物料编号”不能为空", field="material_id")
         nm = self._norm_text(name)
         if not nm:
             raise ValidationError("“物料名称”不能为空", field="name")
@@ -85,7 +85,7 @@ class MaterialService:
     def update(self, material_id: str, *, name: Any = None, spec: Any = None, unit: Any = None, stock_qty: Any = None, status: Any = None, remark: Any = None) -> None:
         mid = self._norm_text(material_id)
         if not mid:
-            raise ValidationError("“物料ID”不能为空", field="material_id")
+            raise ValidationError("“物料编号”不能为空", field="material_id")
         if not self.repo.exists(mid):
             raise BusinessError(ErrorCode.NOT_FOUND, f"物料“{mid}”不存在")
 
@@ -123,11 +123,10 @@ class MaterialService:
     def delete(self, material_id: str) -> None:
         mid = self._norm_text(material_id)
         if not mid:
-            raise ValidationError("“物料ID”不能为空", field="material_id")
+            raise ValidationError("“物料编号”不能为空", field="material_id")
         if not self.repo.exists(mid):
             return
         with self.tx.transaction():
             self.repo.delete(mid)
             if self.op_logger is not None:
                 self.op_logger.info(module="material", action="delete", target_type="material", target_id=mid, detail={"material_id": mid})
-

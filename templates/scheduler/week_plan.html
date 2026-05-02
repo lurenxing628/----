@@ -23,16 +23,15 @@
         {% endif %}
       </div>
     </div>
-    <p class="meta-inline text-meta">
-      周范围：<strong>{{ week_start }}</strong> ～ <strong>{{ week_end }}</strong>
-      <span class="meta-sep">｜</span>
-      版本：<strong>{{ version if version is not none else '暂无版本' }}</strong>
-    </p>
+    <div class="aps-summary-grid mt-2">
+      {{ ui.summary_item('周范围', week_start ~ ' ～ ' ~ week_end) }}
+      {{ ui.summary_item('版本', ('v' ~ version) if version is not none else '暂无版本') }}
+    </div>
     {{ ui.scheduler_nav('week_plan') }}
   </div>
 
   <div class="card">
-    <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" class="form-row">
+    <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" class="aps-form-grid">
       <div class="form-field">
         <label>排产区间（起）</label>
         <input type="date" name="start_date" value="{{ start_date }}" class="w-160">
@@ -48,10 +47,10 @@
       <div class="form-field">
         <label>版本</label>
         {% if versions and versions|length > 0 %}
-          <select name="version" class="w-260">
+          <select name="version" class="w-140">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
-                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ v.result_status_label or status_zh.get(v.result_status, v.result_status or '-') }}）
+                {{ ui.version_option_label(v, status_zh.get(v.result_status, v.result_status or '-')) }}
               </option>
             {% endfor %}
           </select>
@@ -59,7 +58,7 @@
           <input name="version" value="{{ version or '' }}" class="w-160">
         {% endif %}
       </div>
-      <div>
+      <div class="aps-form-actions aps-form-actions-end">
         {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
       </div>
       <div class="flex-1"></div>
@@ -81,13 +80,12 @@
 
   {% if selected_history %}
     <div class="card">
-      <h3 class="section-title">所选版本摘要：v{{ selected_history.version }}</h3>
-      <div class="meta-inline text-meta">
-        时间：<strong>{{ selected_history.schedule_time or '-' }}</strong>
-        <span class="meta-sep">｜</span>
-        方式：<strong>{{ strategy_zh.get(selected_history.strategy, selected_history.strategy or '-') }}</strong>
-        <span class="meta-sep">｜</span>
-        结果：<strong>{{ selected_summary_display.result_status_label or status_zh.get(selected_history.result_status, selected_history.result_status or '-') }}</strong>
+      <h3 class="section-title">所选版本摘要</h3>
+      <div class="aps-summary-grid">
+        {{ ui.summary_item('版本', 'v' ~ selected_history.version) }}
+        {{ ui.summary_item('时间', selected_history.schedule_time or '-') }}
+        {{ ui.summary_item('排产方式', selected_history.strategy_label or strategy_zh.get(selected_history.strategy, selected_history.strategy or '-')) }}
+        {{ ui.summary_item('结果', selected_summary_display.result_status_label or status_zh.get(selected_history.result_status, selected_history.result_status or '-')) }}
       </div>
       {% if selected_summary_display.summary_parse_state.parse_failed %}
         <div class="flash-card flash-warning mt-2">
@@ -108,11 +106,11 @@
       {% endif %}
       {% if selected_summary_display.display_secondary_degradation_messages %}
         <div class="flash-card flash-warning mt-2">
-          <div>详细降级原因</div>
+          <div>详细处理提示</div>
           <ul class="list-tight mt-1">
             {% for item in selected_summary_display.display_secondary_degradation_messages %}
               <li>
-                <strong>{{ item.label or item.code or '降级' }}</strong>
+                <strong>{{ item.label or item.code or '提示' }}</strong>
                 {% if item.message %}：{{ item.message }}{% endif %}
               </li>
             {% endfor %}
@@ -121,12 +119,12 @@
       {% endif %}
       {% if selected_summary_display.warning_pipeline_display %}
         <div class="flash-card flash-warning mt-2">
-          <div>摘要告警合并状态：{{ '已降级' if selected_summary_display.warning_pipeline_display.summary_merge_failed else '已记录' }}</div>
+          <div>排产提醒整理状态：{{ '未完整整理' if selected_summary_display.warning_pipeline_display.summary_merge_failed else '已记录' }}</div>
           {% if selected_summary_display.warning_pipeline_display.algo_warning_count is not none %}
-            <div class="muted text-xs mt-1">算法告警：{{ selected_summary_display.warning_pipeline_display.algo_warning_count }} 条</div>
+            <div class="muted text-xs mt-1">排产提醒：{{ selected_summary_display.warning_pipeline_display.algo_warning_count }} 条</div>
           {% endif %}
           {% if selected_summary_display.warning_pipeline_display.summary_warning_count is not none %}
-            <div class="muted text-xs">摘要告警：{{ selected_summary_display.warning_pipeline_display.summary_warning_count }} 条</div>
+            <div class="muted text-xs">结果提醒：{{ selected_summary_display.warning_pipeline_display.summary_warning_count }} 条</div>
           {% endif %}
           {% if selected_summary_display.warning_pipeline_display.note %}
             <div class="muted text-xs">{{ selected_summary_display.warning_pipeline_display.note }}</div>
@@ -135,14 +133,14 @@
       {% endif %}
       {% if selected_summary_display.warning_total %}
         <div class="flash-card flash-warning mt-2">
-          <div>告警：{{ selected_summary_display.warning_total }} 条</div>
+          <div>提醒：{{ selected_summary_display.warning_total }} 条</div>
           <ul class="list-tight mt-1">
             {% for item in selected_summary_display.warnings_preview %}
               <li>{{ item }}</li>
             {% endfor %}
           </ul>
           {% if selected_summary_display.warning_hidden_count > 0 %}
-            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条告警，请到系统历史查看。</div>
+            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条提醒，请到系统历史查看。</div>
           {% endif %}
         </div>
       {% endif %}
@@ -168,32 +166,34 @@
       <div class="flash-card flash-warning mb-2">{{ degradation_message }}</div>
     {% endif %}
     {% if preview_rows and preview_rows|length > 0 %}
-      <table>
-        <thead>
-          <tr>
-            <th class="w-120">日期</th>
-            <th class="w-120">批次号</th>
-            <th class="w-140">图号</th>
-            <th class="w-80">工序</th>
-            <th>设备</th>
-            <th>人员</th>
-            <th class="w-140">时段</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in preview_rows %}
+      <div class="aps-table-scroll">
+        <table>
+          <thead>
             <tr>
-              <td>{{ r['日期'] }}</td>
-              <td>{{ r['批次号'] }}</td>
-              <td>{{ r['图号'] }}</td>
-              <td>{{ r['工序'] }}</td>
-              <td>{{ r['设备'] }}</td>
-              <td>{{ r['人员'] }}</td>
-              <td>{{ r['时段'] }}</td>
+              <th class="w-120">日期</th>
+              <th class="w-120">批次号</th>
+              <th class="w-140">图号</th>
+              <th class="w-80">工序</th>
+              <th>设备</th>
+              <th>人员</th>
+              <th class="w-140">时段</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for r in preview_rows %}
+              <tr>
+                <td>{{ r['日期'] }}</td>
+                <td>{{ r['批次号'] }}</td>
+                <td>{{ r['图号'] }}</td>
+                <td>{{ r['工序'] }}</td>
+                <td>{{ r['设备'] }}</td>
+                <td>{{ r['人员'] }}</td>
+                <td>{{ r['时段'] }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
       <div class="muted">{{ empty_message }}</div>
     {% endif %}

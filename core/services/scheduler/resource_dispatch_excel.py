@@ -171,13 +171,13 @@ def _summary_pairs(payload: Dict[str, Any]) -> List[List[Any]]:
         ["总工时（小时）", summary.get("total_hours") or 0],
         ["跨天任务", summary.get("cross_day_count") or 0],
         ["超期批次任务", summary.get("overdue_count") or 0],
-        ["外协/未分配", summary.get("external_count") or 0],
-        ["跨班组借调", summary.get("cross_team_count") or 0],
-        ["数据退化", _yes_no_label(summary.get("degraded"))],
-        ["退化空结果", _yes_no_label(bool(summary.get("empty_reason")))],
-        ["退化空结果原因", _empty_reason_text(summary.get("empty_reason"))],
+        ["外协未分配", summary.get("external_count") or 0],
+        ["跨班组", summary.get("cross_team_count") or 0],
+        ["数据不完整", _yes_no_label(summary.get("degraded"))],
+        ["空结果说明", _yes_no_label(bool(summary.get("empty_reason")))],
+        ["空结果原因", _empty_reason_text(summary.get("empty_reason"))],
         ["坏时间过滤数量", int(counters.get("bad_time_row_skipped") or 0)],
-        ["退化事件", _degradation_message_text(summary)],
+        ["处理提示", _degradation_message_text(summary)],
         ["超期标记说明", overdue_markers_message],
     ]
 
@@ -221,7 +221,7 @@ def _write_team_scope_sheets(wb: Workbook, payload: Dict[str, Any]) -> None:
     )
     cross_team_rows = list(payload.get("cross_team_rows") or [])
     if cross_team_rows:
-        _write_detail_sheet(wb, "跨班组借调", cross_team_rows)
+        _write_detail_sheet(wb, "跨班组", cross_team_rows)
 
 
 def _write_resource_scope_sheets(wb: Workbook, payload: Dict[str, Any]) -> None:

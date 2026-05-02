@@ -90,6 +90,7 @@
                     Excel 演示
                 </a>
             </nav>
+            {{ ui.floating_manual_button() }}
             <div class="sidebar-footnote">
                 Win7 单机版<br>离线运行
             </div>
@@ -149,8 +150,14 @@
                     {% with messages = get_flashed_messages(with_categories=true) %}
                         {% if messages %}
                             {% for category, message in messages %}
-                                <div class="alert alert-{{ 'error' if category == 'error' else 'success' if category == 'success' else 'warning' }}">
+                                <div
+                                    class="flash-card flash-{{ category }} alert alert-{{ 'error' if category == 'error' else 'success' if category == 'success' else 'warning' }}"
+                                    data-flash="{{ category }}"
+                                    role="alert"
+                                    aria-live="assertive"
+                                >
                                     {{ message }}
+                                    <button type="button" class="flash-close" aria-label="关闭">&times;</button>
                                 </div>
                             {% endfor %}
                         {% endif %}
@@ -162,7 +169,6 @@
         </div>
     </div>
 
-    {{ ui.floating_manual_button() }}
     <div id="aps-toast-container" aria-live="polite"></div>
     <script src="{{ url_for('static', filename='js/common.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/common_manual_popover.js') }}" defer></script>

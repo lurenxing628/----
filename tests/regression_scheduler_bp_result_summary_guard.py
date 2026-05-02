@@ -2,48 +2,55 @@ from __future__ import annotations
 
 from flask import Flask
 
-import web.routes.normalizers as route_mod
+from web.routes.history_summary_logging import (
+    log_history_summary_parse_warning,
+    log_history_version_option_parse_warnings,
+)
+from web.viewmodels.scheduler_history_summary import parse_history_summary_state
 
 
-def test_parse_result_summary_payload_accepts_dict_and_json_object(monkeypatch) -> None:
-    app = Flask(__name__)
+def _capture_warnings(app: Flask, monkeypatch):
     warnings = []
 
     def _fake_warning(message, *args, **kwargs):
         warnings.append(message % args if args else str(message))
 
     monkeypatch.setattr(app.logger, "warning", _fake_warning)
+    return warnings
+
+
+def test_history_summary_viewmodel_accepts_dict_and_json_object(monkeypatch) -> None:
+    app = Flask(__name__)
+    warnings = _capture_warnings(app, monkeypatch)
 
     with app.app_context():
         payload = {"algo": {"metrics": {"overdue_count": 1}}}
-        assert route_mod._parse_result_summary_payload(payload, version=7, log_label="排产历史", source="history") == payload
-        assert (
-            route_mod._parse_result_summary_payload(
-                '{"algo": {"metrics": {"overdue_count": 1}}}', version=7, log_label="排产历史", source="history"
-            )
-            == payload
-        )
+        dict_state = parse_history_summary_state(payload)
+        json_state = parse_history_summary_state('{"algo": {"metrics": {"overdue_count": 1}}}')
 
+        log_history_summary_parse_warning(dict_state, version=7, log_label="排产历史", source="history")
+        log_history_summary_parse_warning(json_state, version=7, log_label="排产历史", source="history")
+
+    assert dict_state["payload"] == payload
+    assert dict_state["reason"] == "dict"
+    assert dict_state["parse_failed"] is False
+    assert json_state["payload"] == payload
+    assert json_state["reason"] == "json"
+    assert json_state["parse_failed"] is False
     assert warnings == []
 
 
-def test_parse_result_summary_payload_rejects_non_dict_payloads_and_logs_warning(monkeypatch) -> None:
+def test_history_summary_logging_reports_non_dict_payloads(monkeypatch) -> None:
     app = Flask(__name__)
-    warnings = []
-
-    def _fake_warning(message, *args, **kwargs):
-        warnings.append(message % args if args else str(message))
-
-    monkeypatch.setattr(app.logger, "warning", _fake_warning)
+    warnings = _capture_warnings(app, monkeypatch)
 
     with app.app_context():
-        assert route_mod._parse_result_summary_payload("123", version=7, log_label="排产历史", source="history") is None
-        assert route_mod._parse_result_summary_payload("null", version=7, log_label="排产历史", source="history") is None
-        assert route_mod._parse_result_summary_payload('"text"', version=7, log_label="排产历史", source="history") is None
-        assert route_mod._parse_result_summary_payload("[]", version=7, log_label="排产历史", source="history") is None
-        assert route_mod._parse_result_summary_payload([], version=7, log_label="排产历史", source="history") is None
-        assert route_mod._parse_result_summary_payload(0, version=7, log_label="排产历史", source="history") is None
-        assert route_mod._parse_result_summary_payload(False, version=7, log_label="排产历史", source="history") is None
+        for raw in ("123", "null", '"text"', "[]", [], 0, False):
+            state = parse_history_summary_state(raw)
+            assert state["payload"] is None
+            assert state["parse_failed"] is True
+            assert state["reason"] == "invalid_structure"
+            log_history_summary_parse_warning(state, version=7, log_label="排产历史", source="history")
 
     assert len(warnings) == 7
     assert all("result_summary 结构不合法" in message for message in warnings)
@@ -54,20 +61,42 @@ def test_parse_result_summary_payload_rejects_non_dict_payloads_and_logs_warning
     assert any("type=bool" in message for message in warnings)
 
 
-
-def test_parse_result_summary_payload_blank_string_short_circuits_but_whitespace_still_logs_parse_failure(monkeypatch) -> None:
+def test_history_summary_logging_keeps_missing_quiet_but_reports_bad_whitespace(monkeypatch) -> None:
     app = Flask(__name__)
-    warnings = []
-
-    def _fake_warning(message, *args, **kwargs):
-        warnings.append(message % args if args else str(message))
-
-    monkeypatch.setattr(app.logger, "warning", _fake_warning)
+    warnings = _capture_warnings(app, monkeypatch)
 
     with app.app_context():
-        assert route_mod._parse_result_summary_payload("", version=7, log_label="排产历史", source="history") is None
-        assert route_mod._parse_result_summary_payload("   ", version=7, log_label="排产历史", source="history") is None
+        missing_state = parse_history_summary_state("")
+        bad_json_state = parse_history_summary_state("   ")
+
+        assert missing_state["payload"] is None
+        assert missing_state["parse_failed"] is False
+        assert missing_state["reason"] == "missing"
+        log_history_summary_parse_warning(missing_state, version=7, log_label="排产历史", source="history")
+
+        assert bad_json_state["payload"] is None
+        assert bad_json_state["parse_failed"] is True
+        assert bad_json_state["reason"] == "json_decode_error"
+        log_history_summary_parse_warning(bad_json_state, version=7, log_label="排产历史", source="history")
 
     assert len(warnings) == 1
     assert "result_summary 解析失败" in warnings[0]
+    assert "JSONDecodeError" in warnings[0]
+
+
+def test_history_version_option_logging_reports_bad_summary(monkeypatch) -> None:
+    app = Flask(__name__)
+    warnings = _capture_warnings(app, monkeypatch)
+
+    with app.app_context():
+        log_history_version_option_parse_warnings(
+            [
+                {"version": 8, "result_summary": "{bad json"},
+                {"version": 9, "result_summary": ""},
+            ],
+            log_label="排产历史",
+        )
+
+    assert len(warnings) == 1
+    assert "排产历史 result_summary 解析失败（version=8, source=version_option" in warnings[0]
     assert "JSONDecodeError" in warnings[0]

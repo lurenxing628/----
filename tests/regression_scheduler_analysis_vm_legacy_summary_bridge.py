@@ -81,8 +81,8 @@ def test_build_summary_display_state_bridges_legacy_degraded_causes_when_events_
 
     assert display["primary_degradation"] is not None
     details = list(display["primary_degradation"]["details"] or [])
-    assert any("资源池构建已降级" in item for item in details), details
-    assert any("组合并语义已降级" in item for item in details), details
+    assert any("资源池资料不完整" in item for item in details), details
+    assert any("组合并资料不完整" in item for item in details), details
     secondary = list(display["secondary_degradation_messages"] or [])
     assert any(str(item.get("code") or "") == "resource_pool_degraded" for item in secondary), secondary
 

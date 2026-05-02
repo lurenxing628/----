@@ -9,54 +9,45 @@
       <div class="page-actions page-actions-context">
         {{ ui.link_button('返回批次管理', url_for('scheduler.batches_manage_page'), 'secondary', 'md') }}
         <form method="post" action="{{ url_for('scheduler.delete_batch', batch_id=batch.batch_id) }}" class="d-inline"
-              data-confirm="确定删除批次 {{ batch.batch_id }} 吗？将级联删除批次工序与排程记录（若存在）。">
+              data-confirm="确定删除批次 {{ batch.batch_id }} 吗？会同时删除这个批次下面的工序和排程记录（如果有）。">
           {{ ui.button('删除批次', 'danger', 'md', type_attr='submit') }}
         </form>
       </div>
     </div>
-    <p class="meta-inline text-meta">
-      图号：<strong>{{ batch.part_no }}</strong>
-      {% if batch.part_name %}<span>（{{ batch.part_name }}）</span>{% endif %}
-      <span class="meta-sep">｜</span>
-      数量：<strong>{{ batch.quantity }}</strong>
-      <span class="meta-sep">｜</span>
-      交期：{% if batch.due_date %}<strong>{{ batch.due_date }}</strong>{% else %}<span>-</span>{% endif %}
-      <span class="meta-sep">｜</span>
-      优先级：<strong>{{ priority_zh }}</strong>
-      <span class="meta-sep">｜</span>
-      齐套：<strong>{{ ready_status_zh }}</strong>
-      {% if batch.ready_date %}
-        <span>（齐套日期：<strong>{{ batch.ready_date }}</strong>）</span>
-      {% endif %}
-      <span class="meta-sep">｜</span>
-      状态：<strong>{{ batch_status_zh }}</strong>
-    </p>
+    <div class="aps-summary-grid">
+      {{ ui.summary_item('图号', batch.part_no, batch.part_name if batch.part_name else none) }}
+      {{ ui.summary_item('数量', batch.quantity) }}
+      {{ ui.summary_item('交期', batch.due_date if batch.due_date else '-') }}
+      {{ ui.summary_item('优先级', priority_zh) }}
+      {{ ui.summary_item('齐套', ready_status_zh, ('齐套日期：' ~ batch.ready_date) if batch.ready_date else none) }}
+      {{ ui.summary_item('状态', batch_status_zh) }}
+    </div>
     {{ ui.scheduler_nav('batches_manage') }}
   </div>
 
   <div class="card">
     <h3 class="section-title">批次工序（可编辑补充）</h3>
     <p class="text-meta">
-      提示：内部工序需补充“设备/人员/工时”；外部工序需补充“供应商/周期”。若外部工序属于“合并周期”外部组，将禁止逐道设置周期，并提示到工艺管理中配置。
+      提示：自制工序需补充“设备/人员/工时”；外协工序需补充“供应商/周期”。若外协工序属于“合并周期”外协组，将禁止逐道设置周期，并提示到工艺管理中配置。
       <br/>
-      约束：内部工序的“设备/人员”选择受【人员-设备关联】限制（双向联动）。若下拉无可选项，请先到【人员管理】或【设备管理】维护“可操作关系”。
+      约束：自制工序的“设备/人员”选择受【人员-设备关联】限制（双向联动）。若下拉无可选项，请先到【人员管理】或【设备管理】维护“可操作关系”。
     </p>
     <div class="mt-2">
       <form method="post" action="{{ url_for('scheduler.generate_ops', batch_id=batch.batch_id) }}"
             data-confirm="将根据当前零件工序模板重建该批次工序（会清空已填写的设备/人员/工时/周期等补充信息）。确定继续？">
         <label class="d-inline-block mr-3">
           <input type="checkbox" name="strict_mode" value="yes">
-          严格校验工艺路线
+          发现问题就停止重建
         </label>
         {{ ui.button('从零件模板重建工序（会覆盖补充信息）', 'secondary', 'md', type_attr='submit') }}
         <span class="muted">用于模板变更后同步（会清空已填写的设备/人员/工时/周期等补充信息）</span>
-        <div class="muted text-xs mt-2">只在零件还没有工序模板、需要根据工艺路线自动生成模板时起作用：如果遇到系统不认识的工种、找不到供应商、或供应商默认周期无效，将直接报错并拒绝重建。</div>
+        <div class="muted text-xs mt-2">只在这个批次需要按零件工艺路线补建工序时生效。勾选后：资料不完整就停止重建并提示原因。不勾选：能确认的工序会继续处理；缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，批次和图号这类必须先改好的问题仍然会报错。</div>
       </form>
     </div>
 
     {% if operations and operations|length > 0 %}
-      <div class="overflow-x-auto">
-      <table id="batchOpsTable" class="mt-3 table-sticky-col table-layout-fixed" data-col-resize="1">
+      <div class="aps-table-scroll">
+      <table id="batchOpsTable" class="mt-3 table-sticky-col table-layout-fixed" data-col-resize="1" data-table-key="v2_batchOpsTable">
         <thead>
           <tr>
             <th class="w-140">工序编码</th>
@@ -80,7 +71,7 @@
               <td>{{ op.seq }}</td>
               <td>{{ op.op_type_name }}</td>
               <td>
-                {% if src == 'internal' %}内部{% else %}外部{% endif %}
+                {% if src == 'internal' %}自制{% else %}外协{% endif %}
               </td>
               <td>
                 {% if src == 'internal' %}
@@ -96,7 +87,7 @@
                           {% endif %}
                         {% endfor %}
                         {% if not ns.found %}
-                          <!-- 懒加载模式下的“已删除资源”兜底项：用于回显已选值，且便于前端识别与保留 -->
+                          <!-- 下拉完整选项尚未加载时，用这项显示当前已选的已删除资源，便于前端识别与保留 -->
                           <option value="{{ op.machine_id }}" selected disabled data-static-disabled="1" data-orphan="1">{{ op.machine_id }}（已删除）</option>
                         {% endif %}
                       {% endif %}
@@ -132,7 +123,7 @@
                           {% endif %}
                         {% endfor %}
                         {% if not ns.found %}
-                          <!-- 懒加载模式下的“已删除资源”兜底项：用于回显已选值，且便于前端识别与保留 -->
+                          <!-- 下拉完整选项尚未加载时，用这项显示当前已选的已删除资源，便于前端识别与保留 -->
                           <option value="{{ op.operator_id }}" selected disabled data-static-disabled="1" data-orphan="1">{{ op.operator_id }}（已删除）</option>
                         {% endif %}
                       {% endif %}

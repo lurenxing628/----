@@ -11,7 +11,7 @@ from .config_snapshot import ScheduleConfigSnapshot
 PUBLIC_OUTCOME_HIDDEN_SNAPSHOT_FIELDS = {"auto_assign_persist"}
 PUBLIC_FIELD_LABEL_OVERRIDES = {
     "active_preset_meta": "方案来源记录",
-    "auto_assign_persist": "自动分配结果回写",
+    "auto_assign_persist": "保存系统补齐的设备和人员",
     "preset": "方案数据",
     "preset_name": "方案名称",
 }
@@ -24,7 +24,7 @@ PUBLIC_HIDDEN_BLOCK_REASON_LABELS = {
 }
 PUBLIC_STATUS_LABELS = {
     "blocked_hidden_repair": "部分配置未自动修复",
-    "repaired_hidden": "后台设置已修复",
+    "repaired_hidden": "平时不直接显示的设置已修复",
     "saved": "配置已保存",
     "unchanged": "配置未变化",
 }
@@ -33,13 +33,13 @@ PUBLIC_STATUS_LABELS = {
 def public_config_field_label(field: str) -> str:
     normalized = str(field or "").strip()
     if not normalized:
-        return "隐藏配置"
+        return "平时不直接显示的设置"
     if normalized in PUBLIC_FIELD_LABEL_OVERRIDES:
         return PUBLIC_FIELD_LABEL_OVERRIDES[normalized]
     if has_config_field(normalized):
         label = str(field_label_for(normalized) or "").strip()
         return label if label and label != normalized else "配置字段"
-    return "隐藏配置"
+    return "平时不直接显示的设置"
 
 
 def public_config_field_labels(fields: Sequence[str]) -> List[str]:
@@ -62,14 +62,14 @@ def public_config_notice(notice: Dict[str, Any]) -> Dict[str, Any]:
     kind = str(notice.get("kind") or "").strip()
     labels = public_config_field_labels([str(field) for field in list(notice.get("fields") or [])])
     if kind == "blocked_hidden":
-        label_text = "、".join(labels or ["隐藏配置"])
+        label_text = "、".join(labels or ["平时不直接显示的设置"])
         reason_label = public_hidden_block_reason_label(notice.get("block_reason")) or "来源缺失"
-        message = f"检测到后台设置“{label_text}”需要保存修复，但因{reason_label}未自动修复。"
+        message = f"检测到平时不直接显示的设置“{label_text}”需要保存修复，但因{reason_label}未自动修复。"
     elif kind == "hidden":
-        label_text = "、".join(labels or ["隐藏配置"])
-        message = f"后台设置“{label_text}”已按当前表单值回写。"
+        label_text = "、".join(labels or ["平时不直接显示的设置"])
+        message = f"平时不直接显示的设置“{label_text}”已按当前表单内容同步保存。"
     elif kind == "visible":
-        message = "页面展示的兼容回退值已被显式保存，当前运行配置已转为自定义。"
+        message = "页面展示中的修正项已保存，当前运行配置已转为自定义。"
     elif kind == "none":
         message = None
     else:
@@ -93,8 +93,12 @@ def public_active_preset_reason(value: Any) -> Optional[str]:
         return None
     if "涉及字段：" in reason:
         return public_adjusted_reason_label(reason)
-    if "兼容修补已回写隐藏配置项" in reason:
-        return "后台设置已按当前表单值回写。"
+    if "页面上看不到的设置" in reason or "后台保存的设置" in reason or "后台设置已按当前表单值回写" in reason or "平时不直接显示的设置" in reason:
+        return (
+            reason.replace("页面上看不到的设置", "平时不直接显示的设置")
+            .replace("后台保存的设置", "平时不直接显示的设置")
+            .replace("后台设置已按当前表单值回写", "平时不直接显示的设置已按当前表单内容同步保存")
+        )
     if "_" in reason:
         return "配置来源状态已更新。"
     return reason

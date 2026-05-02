@@ -6,14 +6,16 @@
       <div class="page-title-group"><h2 class="page-title">工种配置</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">用于标记每道工序是自己做（内部）还是外协加工（外部）。没有配置过的工种会默认当作外协工序处理。</p>
+    <p class="page-subtitle text-meta">
+      用于标记每道工序是自己做（自制）还是交给供应商做（外协）。添加零件或导入工艺路线时，如果没有勾选“发现问题就停下”，没配置过的工种会先按外协处理并提示你补；勾选后会直接报错，要求先补工种。
+    </p>
     {{ ui.process_nav('op_types') }}
   </div>
 
   <div class="card">
     <h3>新增工种</h3>
     <form method="post" action="{{ url_for('process.create_op_type') }}">
-      <div class="form-row">
+      <div class="aps-form-grid">
         <div class="form-field">
           <label>工种编号</label>
           <input name="op_type_id" required placeholder="如：OT001">
@@ -25,15 +27,15 @@
         <div class="form-field">
           <label>归属</label>
           <select name="category">
-            <option value="internal">内部</option>
-            <option value="external">外部</option>
+            <option value="internal">自制</option>
+            <option value="external">外协</option>
           </select>
         </div>
-        <div class="form-field flex-1 min-w-240">
+        <div class="form-field">
           <label>备注</label>
           <input name="remark" placeholder="可选">
         </div>
-        <div>{{ ui.button('添加工种', 'primary', 'md', type_attr='submit') }}</div>
+        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('添加工种', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
@@ -52,6 +54,7 @@
       </div>
     {% endif %}
     {% if op_types and op_types|length > 0 %}
+      <div class="aps-table-scroll">
       <table>
         <thead>
           <tr>
@@ -67,7 +70,7 @@
             <tr>
               <td><a href="{{ url_for('process.op_type_detail', op_type_id=r.op_type_id) }}">{{ r.op_type_id }}</a></td>
               <td>{{ r.name }}</td>
-              <td>{{ '内部' if r.category=='internal' else '外部' }}</td>
+              <td>{{ '自制' if r.category=='internal' else '外协' }}</td>
               <td>{{ r.remark or '-' }}</td>
               <td>
                 <div class="table-actions">
@@ -82,9 +85,9 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂无工种数据，可以在上方手动新增或通过 Excel 导入。</div>
     {% endif %}
   </div>
 {% endblock %}
-

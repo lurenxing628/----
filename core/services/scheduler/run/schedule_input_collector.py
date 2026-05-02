@@ -82,7 +82,7 @@ def _normalize_schedule_window(svc: Any, *, start_dt: Any, end_date: Any) -> tup
         start_dt_norm = svc._normalize_datetime(start_dt)
         if start_dt_norm is None:
             raise ValidationError(
-                "start_dt 格式不合法（允许：YYYY-MM-DD / YYYY-MM-DD HH:MM(:SS)）",
+                "开始时间格式不合法（允许：YYYY-MM-DD / YYYY-MM-DD HH:MM(:SS)）",
                 field="start_dt",
             )
     else:
@@ -93,10 +93,10 @@ def _normalize_schedule_window(svc: Any, *, start_dt: Any, end_date: Any) -> tup
     if end_date is not None and str(end_date).strip() != "":
         end_dt = svc._normalize_datetime(end_date)
         if not end_dt:
-            raise ValidationError("end_date 格式不合法（期望：YYYY-MM-DD）", field="end_date")
+            raise ValidationError("结束日期格式不合法（期望：YYYY-MM-DD）", field="end_date")
         end_date_norm = end_dt.date()
         if end_date_norm < start_dt_norm.date():
-            raise ValidationError("end_date 不能早于 start_dt 所在日期", field="end_date")
+            raise ValidationError("结束日期不能早于开始时间所在日期", field="end_date")
 
     return start_dt_norm, end_date_norm
 
@@ -124,7 +124,7 @@ def _load_batches_and_operations(svc: Any, normalized_batch_ids: List[str]) -> t
 
     if blocked_batch_ids:
         sample = "，".join(blocked_batch_ids[:20])
-        raise ValidationError(f"以下批次状态不允许排产（completed/cancelled）：{sample}", field="批次")
+        raise ValidationError(f"以下批次状态不允许排产（已完成/已取消）：{sample}", field="批次")
 
     return batches, operations
 
@@ -173,7 +173,7 @@ def _ensure_ready_batches(svc: Any, batches: Dict[str, Batch]) -> None:
     ]
     if not_ready:
         sample = "，".join(not_ready[:20])
-        raise ValidationError(f"以下批次未齐套（ready_status!=yes），禁止排产：{sample}", field="齐套")
+        raise ValidationError(f"以下批次未齐套，禁止排产：{sample}", field="齐套")
 
 
 def collect_schedule_run_input(

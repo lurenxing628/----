@@ -37,7 +37,7 @@ class ResourceTeamService:
 
         if not allow_partial:
             if not tid:
-                raise ValidationError("班组ID不能为空", field="班组ID")
+                raise ValidationError("班组编号不能为空", field="班组ID")
             if not tname:
                 raise ValidationError("班组名称不能为空", field="班组名称")
             if not tstatus:
@@ -76,7 +76,7 @@ class ResourceTeamService:
     def get(self, team_id: str) -> ResourceTeam:
         tid, _, _ = self._validate_fields(team_id, None, None, allow_partial=True)
         if not tid:
-            raise ValidationError("班组ID不能为空", field="班组ID")
+            raise ValidationError("班组编号不能为空", field="班组ID")
         return self._get_or_raise(tid)
 
     def get_optional(self, team_id: Any) -> Optional[ResourceTeam]:
@@ -112,7 +112,7 @@ class ResourceTeamService:
     def get_usage_counts(self, team_id: Any) -> Dict[str, int]:
         tid, _, _ = self._validate_fields(team_id, None, None, allow_partial=True)
         if not tid:
-            raise ValidationError("班组ID不能为空", field="班组ID")
+            raise ValidationError("班组编号不能为空", field="班组ID")
         return {
             "operator_count": self.repo.count_operator_refs(tid),
             "machine_count": self.repo.count_machine_refs(tid),
@@ -127,13 +127,13 @@ class ResourceTeamService:
     ) -> ResourceTeam:
         tid, tname, tstatus = self._validate_fields(team_id, name, status)
         if tid is None:
-            raise ValidationError("鐝粍ID涓嶈兘涓虹┖", field="鐝粍ID")
+            raise ValidationError("班组编号不能为空", field="班组ID")
         if tname is None:
-            raise ValidationError("鐝粍鍚嶇О涓嶈兘涓虹┖", field="鐝粍鍚嶇О")
+            raise ValidationError("班组名称不能为空", field="班组名称")
         tremark = self._normalize_text(remark)
 
         if self.repo.exists(tid):
-            raise BusinessError(ErrorCode.TEAM_ALREADY_EXISTS, f"班组ID{tid}已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.TEAM_ALREADY_EXISTS, f"班组编号“{tid}”已存在，不能重复添加。")
         existing = self.repo.get_by_name(tname)
         if existing:
             raise BusinessError(ErrorCode.TEAM_ALREADY_EXISTS, f"班组名称{tname}已存在，不能重复添加。")
@@ -158,7 +158,7 @@ class ResourceTeamService:
     ) -> ResourceTeam:
         tid, tname, tstatus = self._validate_fields(team_id, name, status, allow_partial=True)
         if not tid:
-            raise ValidationError("班组ID不能为空", field="班组ID")
+            raise ValidationError("班组编号不能为空", field="班组ID")
         self._get_or_raise(tid)
 
         updates: Dict[str, Any] = {}
@@ -181,7 +181,7 @@ class ResourceTeamService:
     def delete(self, team_id: Any) -> None:
         tid, _, _ = self._validate_fields(team_id, None, None, allow_partial=True)
         if not tid:
-            raise ValidationError("班组ID不能为空", field="班组ID")
+            raise ValidationError("班组编号不能为空", field="班组ID")
         self._get_or_raise(tid)
 
         counts = self.get_usage_counts(tid)

@@ -49,14 +49,14 @@ class OpTypeExcelImportService:
             data = getattr(pr, "data", None) or {}
             ot_id = to_str_or_blank(data.get("工种ID"))
             if not ot_id:
-                raise ValidationError("“工种ID”不能为空", field="工种ID")
+                raise ValidationError("“工种编号（模板列名：工种ID）”不能为空", field="工种ID")
             name = to_str_or_blank(data.get("工种名称"))
             if not name:
                 raise ValidationError("“工种名称”不能为空", field="工种名称")
 
             cat = normalize_op_type_category(data.get("归属"))
             if cat not in SOURCE_TYPE_VALUES:
-                raise ValidationError("“归属”不合法，可填写：内部 / 外部；也兼容英文标准值 internal/external。", field="归属")
+                raise ValidationError("“归属”不合法，请填写“自制”或“外协”。如果以前的文件写过旧叫法，系统会尽量按自制或外协读取；新文件请直接写“自制”或“外协”。", field="归属")
             if existed:
                 self.svc.update(ot_id, name=name, category=cat)
             else:

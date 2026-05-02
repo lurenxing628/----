@@ -24,35 +24,35 @@ def duplicate_seq_warning(seq: int) -> str:
 
 
 def strict_unknown_op_error(op_type_name: str) -> str:
-    return f"工种“{op_type_name}”未在系统中配置，严格模式已拒绝默认标记为外部工序"
+    return f"工种“{op_type_name}”还没有在系统里配置。当前要求先把工种资料补完整，请先补工种后再导入或创建。"
 
 
 def relaxed_unknown_op_warning(op_type_name: str) -> str:
-    return f"工种“{op_type_name}”未在系统中配置，已默认标记为外部工序"
+    return f"工种“{op_type_name}”还没有在系统里配置，本次先按外协工序处理。请尽快补好工种配置。"
 
 
 def strict_missing_supplier_error(op_type_name: str) -> str:
-    return f"工种“{op_type_name}”未找到供应商配置，严格模式已拒绝按默认 1.0 天初始化外协周期"
+    return f"工种“{op_type_name}”没有可用的外协供应商。当前要求先把外协供应商和周期补完整，请补好后再继续。"
 
 
 def relaxed_missing_supplier_warning(op_type_name: str) -> str:
-    return f"工种“{op_type_name}”未找到供应商配置，已按默认 1.0 天初始化外协周期"
+    return f"工种“{op_type_name}”没有找到可用的外协供应商，本次会先按 1 天安排。建议补好供应商和周期。"
 
 
 def supplier_missing_days_warning(supplier_id: str, op_type_name: str) -> str:
-    return f"供应商“{supplier_id}”未配置默认周期，工种“{op_type_name}”已按 1.0 天处理"
+    return f"供应商“{supplier_id}”没有填写默认周期，工种“{op_type_name}”本次会先按 1 天安排。请补成真实周期。"
 
 
 def supplier_blank_days_warning(supplier_id: str, op_type_name: str) -> str:
-    return f"供应商“{supplier_id}”默认周期为空，工种“{op_type_name}”已按 1.0 天处理"
+    return f"供应商“{supplier_id}”的默认周期为空，工种“{op_type_name}”本次会先按 1 天安排。请补成真实周期。"
 
 
 def supplier_unparseable_days_warning(supplier_id: str, op_type_name: str) -> str:
-    return f"供应商“{supplier_id}”默认周期无法解析，工种“{op_type_name}”已按 1.0 天处理"
+    return f"供应商“{supplier_id}”的默认周期格式不正确，工种“{op_type_name}”本次会先按 1 天安排。请补成真实周期。"
 
 
 def supplier_invalid_days_warning(supplier_id: str, op_type_name: str) -> str:
-    return f"供应商“{supplier_id}”默认周期无效，工种“{op_type_name}”已按 1.0 天处理"
+    return f"供应商“{supplier_id}”的默认周期必须大于 0，工种“{op_type_name}”本次会先按 1 天安排。请补成真实周期。"
 
 
 def strict_supplier_issue_messages(issue_messages: List[str], *, op_type_name: str) -> List[str]:
@@ -61,7 +61,13 @@ def strict_supplier_issue_messages(issue_messages: List[str], *, op_type_name: s
         text = str(raw_msg or "").strip()
         if not text:
             continue
-        out.append(text.replace("已按 1.0 天处理", "严格模式已拒绝按 1.0 天处理"))
+        out.append(
+            text.replace("先临时按 1 天处理", "当前不能先按 1 天继续，请先把这个周期补正确")
+            .replace("已按 1.0 天处理", "当前不能先按 1 天继续，请先把这个周期补正确")
+            .replace("会暂按 1 天安排。请补成真实周期。", "当前不能先按 1 天继续，请先把这个周期补正确。")
+            .replace("本次会先按 1 天安排。请补成真实周期。", "当前不能先按 1 天继续，请先把这个周期补正确。")
+            .replace("本次会先按 1 天安排。建议补好供应商和周期。", "当前不能先按 1 天继续，请先补供应商和周期后再继续。")
+        )
     if out:
         return out
-    return [f"工种“{op_type_name}”供应商默认周期配置无效，严格模式已拒绝按 1.0 天处理"]
+    return [f"工种“{op_type_name}”的外协周期不正确。当前不能继续导入，请先补正确后再继续。"]

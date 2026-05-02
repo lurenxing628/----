@@ -65,7 +65,7 @@ def test_run_schedule_view_result_builds_failed_headline_and_overdue_sample() ->
 
 
 def test_run_schedule_view_result_surfaces_public_degradation_warning_and_errors() -> None:
-    duplicate_warning = "自动分配资源池构建失败，本次排产已降级为不自动分配资源。"
+    duplicate_warning = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
     result = {
         "version": 13,
         "result_status": "partial",
@@ -100,10 +100,10 @@ def test_run_schedule_view_result_surfaces_public_degradation_warning_and_errors
     assert view_result.headline_category == "warning"
     assert view_result.primary_degradation_message is not None
     assert "本次排产部分完成" in view_result.primary_degradation_message
-    assert "资源池构建已降级" in view_result.primary_degradation_message
+    assert "资源池资料不完整" in view_result.primary_degradation_message
     assert "resource_pool_degraded" not in view_result.primary_degradation_message
     assert view_result.warning_messages == [duplicate_warning]
-    assert view_result.error_preview == ["排程执行出现异常，请查看系统日志。"]
+    assert view_result.error_preview == ["排产执行遇到问题，请联系管理员查看日志。"]
     assert view_result.error_total == 4
 
 
@@ -192,6 +192,71 @@ def test_scheduler_run_route_flashes_app_error_user_message() -> None:
         assert [msg for cat, msg in flashes if cat == "error"] == ["所选批次没有可重排工序，本次未执行排产。"]
         assert not any("排产完成" in msg for _cat, msg in flashes), flashes
         assert not any("[1001]" in msg or "ValidationError" in msg or "field" in msg for _cat, msg in flashes), flashes
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_run_route_flashes_ready_error_without_generic_boundary() -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            raise ValidationError("以下批次未齐套，禁止排产：B-NO-001", field="齐套")
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-ready-error"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B-NO-001"]}):
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        assert resp.headers["Location"] == "/scheduler.batches_page"
+        assert [msg for cat, msg in flashes if cat == "error"] == ["以下批次未齐套，禁止排产：B-NO-001"]
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def test_scheduler_run_route_flashes_missing_resource_user_message() -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    _reset_scheduler_route_modules()
+
+    import web.routes.scheduler_run as route_mod
+
+    class _StubScheduleService:
+        def run_schedule(self, **_kwargs):
+            exc = ValidationError("优化结果未生成有效可落库排程行", field="schedule")
+            exc.details = dict(exc.details or {})
+            exc.details["reason"] = "no_actionable_schedule_rows"
+            exc.details["user_message"] = (
+                "本次排产没有生成可保存结果，存在内部工序缺设备/人员："
+                "B-MISS-001 / 工序10 / 粗车 缺设备、人员。请先到批次工序补充页补齐后重试。"
+            )
+            raise exc
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-missing-resource-error"
+        with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B-MISS-001"]}):
+            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
+            resp = route_mod.run_schedule()
+            flashes = get_flashed_messages(with_categories=True)
+
+        assert getattr(resp, "status_code", 0) in (301, 302)
+        error_messages = [msg for cat, msg in flashes if cat == "error"]
+        assert len(error_messages) == 1
+        assert "B-MISS-001 / 工序10 / 粗车 缺设备、人员" in error_messages[0]
+        assert "优化结果未生成有效可落库排程行" not in error_messages[0]
     finally:
         route_mod.url_for = old_url_for
 

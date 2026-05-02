@@ -321,7 +321,7 @@ def estimate_internal_slot(
         shift_count += 1
         if shift_count > max_shifts:
             raise RuntimeError(
-                f"内部工序避让超出显式上界：machine_id={machine_id!r} operator_id={operator_id!r} max_shifts={max_shifts}"
+                f"自制工序避让超出显式上界：machine_id={machine_id!r} operator_id={operator_id!r} max_shifts={max_shifts}"
             )
         earliest = _shifted_start(calendar, earliest=earliest, shift_to=shift_to, priority=priority, operator_id=operator_id)
         abort_result = _abort_after_result(

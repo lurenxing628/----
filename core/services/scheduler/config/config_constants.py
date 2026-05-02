@@ -26,13 +26,13 @@ BUILTIN_PRESET_NAMES = (
 
 ACTIVE_PRESET_REASON_MANUAL = "已手工修改排产配置。"
 ACTIVE_PRESET_REASON_CUSTOM_SELECTED = "当前以手动设置为准。"
-ACTIVE_PRESET_REASON_PRESET_ADJUSTED = "方案应用时发生规范化或修补，当前运行配置与所选方案存在差异。"
+ACTIVE_PRESET_REASON_PRESET_ADJUSTED = "方案应用时有些设置不能直接使用，系统已改成可保存的默认值，当前运行配置与所选方案存在差异。"
 ACTIVE_PRESET_REASON_PRESET_MISMATCH = "方案写入后的实际配置与目标方案不一致，当前运行配置与所选方案存在差异。"
 ACTIVE_PRESET_REASON_PRESET_DELETED = "当前方案已删除，现有配置已保留为自定义。"
 ACTIVE_PRESET_REASON_BASELINE_MISMATCH = "当前配置与内置默认方案不一致。"
-ACTIVE_PRESET_REASON_BASELINE_DEGRADED = "历史配置存在兼容修补，已按自定义配置处理。"
-ACTIVE_PRESET_REASON_HIDDEN_REPAIR = "兼容修补已回写隐藏配置项。"
-ACTIVE_PRESET_REASON_VISIBLE_REPAIR = "页面展示的兼容回退值已被显式保存，当前运行配置已转为自定义。"
+ACTIVE_PRESET_REASON_BASELINE_DEGRADED = "历史配置中有需要复核的设置，已按自定义配置处理。"
+ACTIVE_PRESET_REASON_HIDDEN_REPAIR = "系统发现有一项平时不直接显示的排产设置和当前表单不一致，已按本页填写内容同步保存。"
+ACTIVE_PRESET_REASON_VISIBLE_REPAIR = "页面展示中的修正项已保存，当前运行配置已转为自定义。"
 
 DEFAULT_SORT_STRATEGY = str(default_for("sort_strategy"))
 DEFAULT_PRIORITY_WEIGHT = float(default_for("priority_weight"))

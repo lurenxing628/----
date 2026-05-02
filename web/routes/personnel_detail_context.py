@@ -10,6 +10,15 @@ from core.services.personnel.operator_machine_query_service import OperatorMachi
 from web.routes.personnel_bp import _machine_status_zh, _operator_status_zh
 from web.routes.team_view_helpers import build_team_name_map, load_team_options
 
+_DIRTY_LINK_FIELD_LABELS = {
+    "skill_level": "技能等级",
+    "is_primary": "主操设备",
+}
+
+
+def _dirty_link_field_label(field: str) -> str:
+    return _DIRTY_LINK_FIELD_LABELS.get(str(field or "").strip(), str(field or "").strip())
+
 
 def build_personnel_detail_context(db, operator_id: str, *, op_logger=None) -> Dict[str, Any]:
     op_svc = OperatorService(db, op_logger=op_logger)
@@ -103,6 +112,10 @@ def _build_link_dirty_summary(linked_machines: List[Dict[str, Any]]) -> Dict[str
                 dirty_link_reasons[str(field)] = str(reason)
     return {
         "row_count": int(len(dirty_link_rows)),
-        "fields": dirty_link_fields,
+        "fields": [_dirty_link_field_label(field) for field in dirty_link_fields],
         "reasons": dirty_link_reasons,
+        "reason_items": [
+            {"field": field, "label": _dirty_link_field_label(field), "reason": dirty_link_reasons.get(field) or ""}
+            for field in dirty_link_fields
+        ],
     }

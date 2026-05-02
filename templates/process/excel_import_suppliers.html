@@ -6,7 +6,7 @@
       <div class="page-title-group"><h2 class="page-title">供应商配置（Excel）</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">支持：下载模板 → 上传预览 → 确认导入 → 导出。外部工序解析时可按工种自动匹配默认供应商与默认周期。</p>
+    <p class="page-subtitle text-meta">支持：下载模板 → 上传预览 → 确认导入 → 导出。外协工序解析时可按工种自动匹配默认供应商与默认周期。</p>
     {{ ui.process_nav('excel_suppliers') }}
     <div class="mt-2">
       {{ ui.link_button('导出当前数据（供应商配置.xlsx）', export_url, 'secondary', 'md') }}
@@ -19,30 +19,32 @@
   <div class="card">
     <h3>当前供应商数据</h3>
     {% if existing_list and existing_list|length > 0 %}
-      <table>
-        <thead>
-          <tr>
-            <th>供应商编号</th>
-            <th>名称</th>
-            <th>对应工种</th>
-            <th>默认周期</th>
-            <th>状态</th>
-            <th>备注</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in existing_list %}
+      <div class="aps-table-scroll">
+        <table>
+          <thead>
             <tr>
-              <td>{{ r["供应商ID"] }}</td>
-              <td>{{ r["名称"] }}</td>
-              <td>{{ r["对应工种"] or '-' }}</td>
-              <td>{{ r["默认周期"] }}</td>
-              <td>{{ r["状态显示"] or '-' }}</td>
-              <td>{{ r["备注"] or '-' }}</td>
+              <th>供应商编号</th>
+              <th>名称</th>
+              <th>对应工种</th>
+              <th>默认周期</th>
+              <th>状态</th>
+              <th>备注</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for r in existing_list %}
+              <tr>
+                <td>{{ r["供应商ID"] }}</td>
+                <td>{{ r["名称"] }}</td>
+                <td>{{ r["对应工种"] or '-' }}</td>
+                <td>{{ r["默认周期"] }}</td>
+                <td>{{ r["状态显示"] or '-' }}</td>
+                <td>{{ r["备注"] or '-' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
       <div class="muted">暂无数据（可先下载模板并导入）。</div>
     {% endif %}

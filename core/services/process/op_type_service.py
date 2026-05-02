@@ -40,14 +40,14 @@ class OpTypeService:
 
         if not allow_partial:
             if not ot_id:
-                raise ValidationError("“工种ID”不能为空", field="工种ID")
+                raise ValidationError("“工种编号”不能为空", field="工种ID")
             if not ot_name:
                 raise ValidationError("“工种名称”不能为空", field="工种名称")
             if not ot_category:
                 ot_category = SourceType.INTERNAL.value
 
         if ot_category is not None and ot_category not in SOURCE_TYPE_VALUES:
-            raise ValidationError("“归属”不正确，请选择：内部 / 外部。", field="归属")
+            raise ValidationError("“归属”不正确，请选择：自制 / 外协。", field="归属")
 
         return ot_id, ot_name, ot_category
 
@@ -68,7 +68,7 @@ class OpTypeService:
     def get(self, op_type_id: str) -> OpType:
         ot_id, _, _ = self._validate_fields(op_type_id, None, None, allow_partial=True)
         if not ot_id:
-            raise ValidationError("“工种ID”不能为空", field="工种ID")
+            raise ValidationError("“工种编号”不能为空", field="工种ID")
         return self._get_or_raise(ot_id)
 
     def get_optional(self, op_type_id: Any) -> Optional[OpType]:
@@ -98,13 +98,13 @@ class OpTypeService:
     def create(self, op_type_id: Any, name: Any, category: Any = SourceType.INTERNAL.value, remark: Any = None) -> OpType:
         ot_id, ot_name, ot_category = self._validate_fields(op_type_id, name, category)
         if ot_id is None:
-            raise ValidationError("“工种ID”不能为空", field="工种ID")
+            raise ValidationError("“工种编号”不能为空", field="工种ID")
         if ot_name is None:
             raise ValidationError("“工种名称”不能为空", field="工种名称")
         ot_remark = self._normalize_text(remark)
 
         if self.repo.get(ot_id):
-            raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"工种ID“{ot_id}”已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"工种编号“{ot_id}”已存在，不能重复添加。")
         if self.repo.get_by_name(ot_name):
             raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"工种名称“{ot_name}”已存在，不能重复添加。")
 
@@ -115,7 +115,7 @@ class OpTypeService:
     def update(self, op_type_id: Any, name: Any = None, category: Any = None, remark: Any = None) -> OpType:
         ot_id, ot_name, ot_category = self._validate_fields(op_type_id, name, category, allow_partial=True)
         if not ot_id:
-            raise ValidationError("“工种ID”不能为空", field="工种ID")
+            raise ValidationError("“工种编号”不能为空", field="工种ID")
         self._get_or_raise(ot_id)
 
         updates: Dict[str, Any] = {}
@@ -139,18 +139,18 @@ class OpTypeService:
     def delete(self, op_type_id: Any) -> None:
         ot_id, _, _ = self._validate_fields(op_type_id, None, None, allow_partial=True)
         if not ot_id:
-            raise ValidationError("“工种ID”不能为空", field="工种ID")
+            raise ValidationError("“工种编号”不能为空", field="工种ID")
         self._get_or_raise(ot_id)
 
         # 若被引用，禁止删除（避免断链）
         if self.repo.has_machine_reference(ot_id):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被设备引用，不能删除。建议改为外部/内部归属或调整引用后再试。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被设备引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
         if self.repo.has_supplier_reference(ot_id):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被供应商引用，不能删除。建议改为外部/内部归属或调整引用后再试。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被供应商引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
         if self.repo.has_part_operation_reference(ot_id):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被零件工序模板引用，不能删除。建议改为外部/内部归属或调整引用后再试。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被零件工序模板引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
         if self.repo.has_batch_operation_reference(ot_id):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被批次工序引用，不能删除。建议改为外部/内部归属或调整引用后再试。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被批次工序引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
 
         with self.tx_manager.transaction():
             self.repo.delete(ot_id)

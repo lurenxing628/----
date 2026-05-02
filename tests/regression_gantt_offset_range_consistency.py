@@ -91,7 +91,7 @@ def main() -> None:
 
     # 兼容 has_history=false：页面不输出 data-start/end 时，必须给出明确提示。
     if not (attrs["start_date"] and attrs["end_date"]):
-        _assert_true("当前数据库暂无排产版本" in html, "无历史版本场景缺少提示文案")
+        _assert_true("系统里还没有排产版本" in html, "无历史版本场景缺少提示文案")
 
     # 兼容旧前端行为：即使把 start/end + offset 一并发送，也不能出现区间二次偏移。
     old_style_query = dict(base_query)

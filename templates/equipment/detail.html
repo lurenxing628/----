@@ -173,7 +173,15 @@
               <td>{{ d.id }}</td>
               <td>{{ d.start_time }}</td>
               <td>{{ d.end_time }}</td>
-              <td>{{ d.reason_code or '-' }}</td>
+              <td>
+                {% set ns = namespace(reason_label=d.reason_code or '-') %}
+                {% for v, label in downtime_reason_options %}
+                  {% if v == d.reason_code %}
+                    {% set ns.reason_label = label %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.reason_label }}
+              </td>
               <td>{{ d.reason_detail or '-' }}</td>
               <td>
                 <form method="post" action="{{ url_for('equipment.cancel_downtime', machine_id=machine.machine_id, downtime_id=d.id) }}">

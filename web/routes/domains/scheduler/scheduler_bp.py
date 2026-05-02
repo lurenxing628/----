@@ -49,7 +49,7 @@ def _surface_schedule_warnings(messages: object, *, limit: int = 5) -> None:
         flash(item, "warning")
     remaining = len(warnings) - len(shown)
     if remaining > 0:
-        flash(f"另有 {remaining} 条告警，请到系统历史查看。", "warning")
+        flash(f"另有 {remaining} 条提醒，请到系统历史查看。", "warning")
 
 
 def _surface_schedule_errors(messages: Optional[Sequence[str]], *, total: Optional[int] = None, limit: int = 5) -> None:
@@ -95,4 +95,4 @@ def _surface_secondary_degradation_messages(
         flash(item, "warning")
     remaining = len(normalized) - len(shown)
     if remaining > 0:
-        flash(f"另有 {remaining} 条降级说明，请到系统历史查看。", "warning")
+        flash(f"另有 {remaining} 条处理提示，请到系统历史查看。", "warning")

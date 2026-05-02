@@ -175,17 +175,17 @@ def _record_seed_counters(algo_stats: Any, counters: Dict[str, int]) -> None:
 def _seed_warnings(counters: Dict[str, int], dup_samples: List[str]) -> List[str]:
     warnings: List[str] = []
     if counters["backfilled"]:
-        warnings.append(f"seed_results 存在 {counters['backfilled']} 条 op_id<=0 的记录，已按 op_code/batch_id+seq 回填 op_id 以避免重复排产。")
+        warnings.append(f"沿用旧排产结果时发现 {counters['backfilled']} 条工序编号缺失或不合法的记录，已按工序代码、批次号和工序号补回工序编号，避免重复排产。")
     if counters["dropped_invalid"]:
-        warnings.append(f"seed_results 存在 {counters['dropped_invalid']} 条 op_id 缺失或不合法且无法匹配的记录，已忽略（避免重复统计/排产）。")
+        warnings.append(f"沿用旧排产结果时发现 {counters['dropped_invalid']} 条工序编号缺失或不合法且无法匹配的记录，系统已忽略这些记录，避免重复统计或重复排产。")
     if counters["dropped_bad_time_order"]:
-        warnings.append(f"seed_results 存在 {counters['dropped_bad_time_order']} 条 start_time>=end_time 的记录，已忽略（避免冻结窗口/资源占用异常）。")
+        warnings.append(f"沿用旧排产结果时发现 {counters['dropped_bad_time_order']} 条开始时间不早于结束时间的记录，系统已忽略这些记录，避免锁定近期排程或资源占用异常。")
     if counters["dropped_bad_time_incomparable"]:
-        warnings.append(f"seed_results 存在 {counters['dropped_bad_time_incomparable']} 条时间无法比较的记录，已忽略（避免冻结窗口/资源占用异常）。")
+        warnings.append(f"沿用旧排产结果时发现 {counters['dropped_bad_time_incomparable']} 条时间无法比较的记录，系统已忽略这些记录，避免锁定近期排程或资源占用异常。")
     if counters["dropped_dup"]:
         sample = ", ".join([x for x in dup_samples if x][:5])
         warnings.append(
-            f"seed_results 存在 {counters['dropped_dup']} 条重复 op_id 的记录，已按 op_id 去重（保留首条）"
-            f"{('（示例 op_id=' + sample + '）') if sample else ''}。"
+            f"沿用旧排产结果时发现 {counters['dropped_dup']} 条重复工序编号的记录，已按工序编号去重（保留首条）"
+            f"{('（示例工序编号：' + sample + '）') if sample else ''}。"
         )
     return warnings

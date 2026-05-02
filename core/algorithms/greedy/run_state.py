@@ -105,14 +105,14 @@ class ScheduleRunState:
         if self.missing_seed_machine_count:
             sample = ", ".join([x for x in self.missing_seed_machine_samples if x and x != "?"][:5])
             warnings.append(
-                f"seed_results 内部工序缺少 machine_id：{self.missing_seed_machine_count} 条"
-                f"{('（示例 op_id=' + sample + '）') if sample else ''}；已按可用字段占用时间线，但这些 seed 无法冻结设备资源。"
+                f"沿用旧排产结果时发现自制工序缺少设备：{self.missing_seed_machine_count} 条"
+                f"{('（示例工序编号：' + sample + '）') if sample else ''}。系统已尽量沿用可确认的时间安排，但这些工序不能锁定设备资源。"
             )
         if self.missing_seed_operator_count:
             sample = ", ".join([x for x in self.missing_seed_operator_samples if x and x != "?"][:5])
             warnings.append(
-                f"seed_results 内部工序缺少 operator_id：{self.missing_seed_operator_count} 条"
-                f"{('（示例 op_id=' + sample + '）') if sample else ''}；已按可用字段占用时间线，但这些 seed 无法冻结人员资源。"
+                f"沿用旧排产结果时发现自制工序缺少人员：{self.missing_seed_operator_count} 条"
+                f"{('（示例工序编号：' + sample + '）') if sample else ''}。系统已尽量沿用可确认的时间安排，但这些工序不能锁定人员资源。"
             )
         return warnings
 

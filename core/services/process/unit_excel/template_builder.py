@@ -192,7 +192,7 @@ class UnitTemplateBuilder:
                     code="compatible_row",
                     scope="unit_excel.step_record",
                     field="step_text",
-                    message="存在兼容行，已按读侧兼容规则继续转换。",
+                    message="发现旧格式行，系统已按旧文件的写法识别并继续转换。",
                     sample={
                         "part_no": ctx.part_no,
                         "machine_id": rec.machine_id,

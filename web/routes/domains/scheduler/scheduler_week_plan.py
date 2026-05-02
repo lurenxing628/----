@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
+from typing import Any, Optional
 
 from flask import current_app, flash, g, redirect, request, send_file, url_for
 
@@ -10,11 +11,15 @@ from core.services.common.excel_audit import log_excel_export
 from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
 from web.error_boundary import user_visible_app_error_message
+from web.routes.history_summary_logging import (
+    log_history_summary_parse_warning,
+    log_history_version_option_parse_warnings,
+)
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.scheduler_history_summary import decorate_history_version_options, parse_history_summary_state
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
 from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
-from ...normalizers import _parse_result_summary_payload_with_meta, decorate_history_version_options
 from .scheduler_bp import (
     _surface_schedule_errors,
     _surface_schedule_warnings,
@@ -22,6 +27,7 @@ from .scheduler_bp import (
     bp,
 )
 from .scheduler_history_resolution import build_requested_history_resolution
+from .scheduler_user_messages import scheduler_user_visible_app_error_message
 
 
 def _get_int_arg(name: str, default: int = 0) -> int:
@@ -30,7 +36,7 @@ def _get_int_arg(name: str, default: int = 0) -> int:
         return int(default)
     try:
         return int(str(raw).strip())
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         raise ValidationError(f"{name} 不合法（期望整数）", field=name) from e
 
 
@@ -50,16 +56,15 @@ def _parse_optional_checkbox_flag(name: str):
 def _load_selected_week_plan_summary(services, version: int):
     selected_history_item = services.schedule_history_query_service.get_by_version(version)
     selected_history = selected_history_item.to_dict() if hasattr(selected_history_item, "to_dict") else None
-    parse_state = {"payload": None, "parse_failed": False, "user_message": None, "reason": None}
-    selected_summary = None
-    if selected_history and selected_history.get("result_summary"):
-        parse_state = _parse_result_summary_payload_with_meta(
-            selected_history.get("result_summary"),
-            version=selected_history.get("version"),
-            log_label="周计划页",
-            source="selected",
-        )
-        selected_summary = parse_state.get("payload")
+    parse_state = parse_history_summary_state((selected_history or {}).get("result_summary"))
+    log_history_summary_parse_warning(
+        parse_state,
+        version=(selected_history or {}).get("version"),
+        log_label="周计划页",
+        source="selected",
+    )
+    payload = parse_state.get("payload")
+    selected_summary = payload if isinstance(payload, dict) else None
     summary_display = build_summary_display_state(
         selected_summary if isinstance(selected_summary, dict) else None,
         result_status=(selected_history or {}).get("result_status"),
@@ -118,6 +123,29 @@ def _flash_simulate_summary(summary, summary_display) -> None:
     )
 
 
+def _parse_schedule_anchor_date(value: Any) -> Optional[date]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    normalized = text.replace("/", "-").replace("T", " ")
+    date_part = normalized.split(" ", 1)[0].strip()
+    try:
+        return datetime.strptime(date_part, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _build_simulate_gantt_redirect_kwargs(summary: Any, *, start_dt: Any, version: int) -> dict:
+    summary_start = summary.get("start_time") if isinstance(summary, dict) else None
+    anchor = _parse_schedule_anchor_date(summary_start) or _parse_schedule_anchor_date(start_dt) or date.today()
+    return {
+        "view": "machine",
+        "start_date": anchor.isoformat(),
+        "end_date": (anchor + timedelta(days=6)).isoformat(),
+        "version": int(version),
+    }
+
+
 @bp.get("/week-plan")
 def week_plan_page():
     week_start = (request.args.get("week_start") or "").strip() or None
@@ -128,10 +156,8 @@ def week_plan_page():
     svc = services.gantt_service
     wr = svc.resolve_week_range(week_start=week_start, offset_weeks=offset, start_date=start_date, end_date=end_date)
 
-    versions = decorate_history_version_options(
-        services.schedule_history_query_service.list_versions(limit=30),
-        log_label="周计划页",
-    )
+    versions = decorate_history_version_options(services.schedule_history_query_service.list_versions(limit=30))
+    log_history_version_option_parse_warnings(versions, log_label="周计划页")
     data = svc.get_week_plan_rows(
         start_date=wr.week_start_date.isoformat(),
         end_date=wr.week_end_date.isoformat(),
@@ -285,11 +311,14 @@ def simulate_schedule():
         _flash_simulate_completion(version=ver, completion_status=completion_status)
         _flash_simulate_summary(summary, summary_display)
 
-        # 默认跳到“本周”甘特图（设备视图）
-        today = date.today().isoformat()
-        return redirect(url_for("scheduler.gantt_page", view="machine", week_start=today, offset=0, version=ver))
+        return redirect(
+            url_for(
+                "scheduler.gantt_page",
+                **_build_simulate_gantt_redirect_kwargs(summary, start_dt=start_dt, version=ver),
+            )
+        )
     except AppError as e:
-        flash(user_visible_app_error_message(e), "error")
+        flash(scheduler_user_visible_app_error_message(e), "error")
         return redirect(url_for("scheduler.batches_page"))
     except Exception:
         current_app.logger.exception("模拟排产失败")

@@ -13,7 +13,7 @@
 """
 
 PLUGIN_ID = "pandas_excel_backend"
-PLUGIN_NAME = "Pandas Excel Backend"
+PLUGIN_NAME = "Excel 高速读取组件"
 PLUGIN_VERSION = "1.0"
 PLUGIN_DEFAULT_ENABLED = "no"
 
@@ -48,4 +48,3 @@ def register(registry):
     from core.services.common.pandas_backend import PandasBackend
 
     registry.register("excel_backend.pandas", lambda: PandasBackend())
-

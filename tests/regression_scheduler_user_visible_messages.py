@@ -94,7 +94,7 @@ def test_schedule_params_snapshot_degradation_warning_does_not_echo_raw_value() 
 
     assert result.strategy == SortStrategy.PRIORITY_FIRST
     assert result.warnings
-    assert any("配置字段已按兼容值标准化" in item for item in result.warnings), result.warnings
+    assert any("排序策略：部分选项填得不对，本次先按默认值处理。" in item for item in result.warnings), result.warnings
     assert "BAD_MODE_SECRET" not in str(result.warnings)
 
 
@@ -113,7 +113,7 @@ def test_schedule_params_weighted_override_warning_does_not_echo_raw_value() -> 
 
     assert result.used_params["priority_weight"] == 0.4
     assert result.warnings
-    assert any("数值字段已按兼容值标准化" in item for item in result.warnings), result.warnings
+    assert any("优先级权重：部分数字填得不对，本次先按默认值处理。" in item for item in result.warnings), result.warnings
     assert "BAD_PRIORITY_SECRET" not in str(result.warnings)
     assert "优先级权重" in str(result.warnings)
     assert "priority_weight" not in str(result.warnings)
@@ -150,20 +150,22 @@ def test_schedule_params_validation_message_uses_chinese_field_label() -> None:
 
 
 def test_scheduler_version_validation_message_is_user_facing_chinese(tmp_path, monkeypatch) -> None:
+    from core.services.scheduler.version_resolution import VERSION_ERROR_MESSAGE
+
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
     analysis_resp = client.get("/scheduler/analysis?version=abc")
     analysis_html = analysis_resp.get_data(as_text=True)
     assert analysis_resp.status_code == 400
-    assert "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。" in analysis_html
+    assert VERSION_ERROR_MESSAGE in analysis_html
     assert "version 不合法" not in analysis_html
     assert "期望整数" not in analysis_html
 
     gantt_resp = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&version=0")
     gantt_payload = gantt_resp.get_json()
     assert gantt_resp.status_code == 400
-    assert gantt_payload["error"]["message"] == "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。"
+    assert gantt_payload["error"]["message"] == VERSION_ERROR_MESSAGE
     assert "期望整数" not in gantt_payload["error"]["message"]
 
 
@@ -209,9 +211,9 @@ def test_scheduler_run_degraded_success_message_is_user_facing_chinese() -> None
 
     assert "primary_degradation" in route_source
     assert "degraded_success" not in route_source
-    assert "本次排产已成功，但存在内部降级/兼容修补。" in presenter_source
-    assert "本次排产部分完成，且存在内部降级/兼容修补。" in presenter_source
-    assert "本次排产失败，且存在内部降级/兼容修补。" in presenter_source
+    assert "本次排产已成功，但有些数据或设置需要复核，系统先按能确认的内容继续。" in presenter_source
+    assert "本次排产部分完成，并且有些数据或设置需要复核，系统先按能确认的内容继续。" in presenter_source
+    assert "本次排产失败，并且有些数据或设置需要复核，系统先按能确认的内容继续。" in presenter_source
 
 
 class _SummaryStubSvc:
@@ -327,8 +329,8 @@ def test_schedule_summary_top_level_degraded_causes_include_business_degradation
     assert "resource_pool_degraded" in causes, causes
     assert "summary_merge_failed" in causes, causes
     assert warning_pipeline.get("summary_merge_error") == "summary_warnings_assignment_failed", warning_pipeline
-    assert resource_pool.get("degradation_reason") == "自动分配资源池构建失败，本次排产已降级为不自动分配资源。"
-    assert downtime_avoid.get("degradation_reason") == "停机区间加载失败，本次排产已降级为忽略停机约束。"
+    assert resource_pool.get("degradation_reason") == "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
+    assert downtime_avoid.get("degradation_reason") == "停机区间加载失败，本次排产先不使用停机约束。"
     summary_merge_event = next(evt for evt in events if str(evt.get("code") or "") == "summary_merge_failed")
     assert "summary.warnings broken" not in str(summary_merge_event.get("message") or ""), summary_merge_event
     assert "pool degraded" not in str(result_summary_obj), result_summary_obj
@@ -399,7 +401,7 @@ def test_public_degradation_events_do_not_expose_raw_internal_fields() -> None:
     assert events == [
         {
             "code": "scheduler_degradation",
-            "message": "排产摘要存在可见退化。",
+            "message": "排产摘要里有需要注意的提示。",
             "count": 2,
         }
     ]
@@ -423,7 +425,7 @@ def test_public_degradation_events_aggregate_by_public_code() -> None:
     assert events == [
         {
             "code": "plugin_bootstrap_config_read_failed",
-            "message": "插件配置读取失败，当前按默认开关运行。",
+            "message": "扩展功能设置读取失败，当前按默认开关运行。",
             "count": 3,
         }
     ]
@@ -431,13 +433,13 @@ def test_public_degradation_events_aggregate_by_public_code() -> None:
 
 def test_summary_display_secondary_degradation_does_not_promote_raw_message_after_dedupe() -> None:
     primary_degradation = {
-        "details": ["资源池构建已降级"],
-        "detail_keys": [("resource_pool_degraded", "资源池构建已降级", 1)],
+        "details": ["资源池资料不完整"],
+        "detail_keys": [("resource_pool_degraded", "资源池资料不完整", 1)],
     }
     secondary = [
         {
             "code": "resource_pool_degraded",
-            "label": "资源池构建已降级",
+            "label": "资源池资料不完整",
             "message": "Traceback: database connection string leaked",
             "count": 1,
         }
@@ -467,9 +469,9 @@ def test_summary_display_unknown_degradation_and_errors_do_not_echo_raw_messages
         result_status="partial",
     )
 
-    assert display["primary_degradation"]["details"] == ["排产摘要存在可见退化"]
-    assert display["secondary_degradation_messages"][0]["message"] == "排产摘要存在可见退化。"
-    assert display["errors_preview"] == ["排程执行出现异常，请查看系统日志。"]
+    assert display["primary_degradation"]["details"] == ["排产摘要里有需要注意的提示"]
+    assert display["secondary_degradation_messages"][0]["message"] == "排产摘要里有需要注意的提示。"
+    assert display["errors_preview"] == ["排产执行遇到问题，请联系管理员查看日志。"]
     assert "sqlite" not in str(display["primary_degradation"])
     assert "/tmp/private.db" not in str(display["secondary_degradation_messages"])
     assert "password leaked" not in str(display["errors_preview"])
@@ -496,13 +498,13 @@ def test_summary_display_warnings_preview_filters_historical_raw_warnings() -> N
 
 def test_summary_display_freeze_secondary_requires_public_allowlist_message() -> None:
     primary_degradation = {
-        "details": ["冻结窗口约束已降级"],
-        "detail_keys": [("freeze_window_degraded", "冻结窗口约束已降级", 1)],
+        "details": ["冻结窗口资料不完整"],
+        "detail_keys": [("freeze_window_degraded", "冻结窗口资料不完整", 1)],
     }
     secondary = [
         {
             "code": "freeze_window_degraded",
-            "label": "冻结窗口约束已降级",
+            "label": "冻结窗口资料不完整",
             "message": "冻结窗口处理失败：sqlite OperationalError: /tmp/private.db locked",
             "count": 1,
         }
@@ -580,7 +582,7 @@ def test_schedule_summary_freeze_degradation_reason_is_public_message() -> None:
     )
 
     freeze_window = (result_summary_obj.get("algo") or {}).get("freeze_window") or {}
-    assert freeze_window.get("degradation_reason") == "冻结窗口约束已降级，本次排产未应用冻结窗口种子。"
+    assert freeze_window.get("degradation_reason") == "冻结窗口资料不完整，本次排产未使用冻结窗口。"
     assert "sqlite" not in str(result_summary_obj)
     assert "/tmp/private.db" not in str(result_summary_obj)
 

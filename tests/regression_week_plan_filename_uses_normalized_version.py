@@ -51,19 +51,25 @@ def test_week_plan_filename_uses_normalized_version(tmp_path, monkeypatch) -> No
 
     page_default = client.get("/scheduler/week-plan?week_start=2026-03-02")
     assert page_default.status_code == 200
-    assert "版本：<strong>7</strong>" in page_default.get_data(as_text=True)
+    default_html = page_default.get_data(as_text=True)
+    assert "所选版本摘要" in default_html
+    assert 'aps-summary-label">版本' in default_html
+    assert 'aps-summary-value">v7' in default_html
 
     page_latest = client.get("/scheduler/week-plan?week_start=2026-03-02&version=latest")
     assert page_latest.status_code == 200
-    assert "版本：<strong>7</strong>" in page_latest.get_data(as_text=True)
+    latest_html = page_latest.get_data(as_text=True)
+    assert "所选版本摘要" in latest_html
+    assert 'aps-summary-label">版本' in latest_html
+    assert 'aps-summary-value">v7' in latest_html
 
     page_invalid = client.get("/scheduler/week-plan?week_start=2026-03-02&version=abc")
     assert page_invalid.status_code == 400
-    assert "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。" in page_invalid.get_data(as_text=True)
+    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in page_invalid.get_data(as_text=True)
 
     page_zero = client.get("/scheduler/week-plan?week_start=2026-03-02&version=0")
     assert page_zero.status_code == 400
-    assert "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。" in page_zero.get_data(as_text=True)
+    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in page_zero.get_data(as_text=True)
 
     resp_default = client.get("/scheduler/week-plan/export?week_start=2026-03-02")
     assert resp_default.status_code == 200
@@ -77,11 +83,11 @@ def test_week_plan_filename_uses_normalized_version(tmp_path, monkeypatch) -> No
 
     resp_invalid = client.get("/scheduler/week-plan/export?week_start=2026-03-02&version=abc", follow_redirects=True)
     assert resp_invalid.status_code == 200
-    assert "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。" in resp_invalid.get_data(as_text=True)
+    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in resp_invalid.get_data(as_text=True)
 
     resp_zero = client.get("/scheduler/week-plan/export?week_start=2026-03-02&version=0", follow_redirects=True)
     assert resp_zero.status_code == 200
-    assert "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。" in resp_zero.get_data(as_text=True)
+    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in resp_zero.get_data(as_text=True)
 
 
 def test_week_plan_no_history_page_empty_and_export_404(tmp_path, monkeypatch) -> None:
@@ -92,8 +98,8 @@ def test_week_plan_no_history_page_empty_and_export_404(tmp_path, monkeypatch) -
     page_html = page_resp.get_data(as_text=True)
     assert page_resp.status_code == 200
     assert "暂无版本" in page_html
-    assert "版本：<strong>1</strong>" not in page_html
-    assert "版本：<strong>0</strong>" not in page_html
+    assert 'aps-summary-value">v1' not in page_html
+    assert 'aps-summary-value">v0' not in page_html
 
     export_resp = client.get("/scheduler/week-plan/export?week_start=2026-03-02")
     assert export_resp.status_code == 404

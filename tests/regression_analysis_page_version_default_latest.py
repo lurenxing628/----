@@ -56,16 +56,22 @@ def test_analysis_page_version_default_latest(tmp_path, monkeypatch) -> None:
 
     resp = client.get("/scheduler/analysis")
     assert resp.status_code == 200
-    assert "版本概览：v7" in resp.get_data(as_text=True)
+    html = resp.get_data(as_text=True)
+    assert "版本概览" in html
+    assert 'aps-summary-label">版本' in html
+    assert 'aps-summary-value">v7' in html
 
     resp_latest = client.get("/scheduler/analysis?version=latest")
     assert resp_latest.status_code == 200
-    assert "版本概览：v7" in resp_latest.get_data(as_text=True)
+    latest_html = resp_latest.get_data(as_text=True)
+    assert "版本概览" in latest_html
+    assert 'aps-summary-label">版本' in latest_html
+    assert 'aps-summary-value">v7' in latest_html
 
     resp_invalid = client.get("/scheduler/analysis?version=abc")
     invalid_html = resp_invalid.get_data(as_text=True)
     assert resp_invalid.status_code == 400
-    assert "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。" in invalid_html
+    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in invalid_html
     assert "version 不合法" not in invalid_html
     assert "期望整数" not in invalid_html
 
@@ -79,7 +85,7 @@ def test_analysis_missing_version_keeps_trends_visible_without_fake_selected(tmp
 
     assert response.status_code == 200
     assert "v999 无对应排产历史" in html
-    assert "版本概览：v999" not in html
+    assert 'aps-summary-value">v999' not in html
     assert 'value="999"' not in html
     assert "版本趋势（最近 1 个有指标的版本）" in html
 
@@ -97,7 +103,8 @@ def test_analysis_version_dropdown_uses_completion_status_label(tmp_path, monkey
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert html.count("模拟排产 / 部分成功") >= 2
+    assert "模拟排产 / 部分成功" in html
+    assert "v7 · 部分成功" in html
 
 
 def test_analysis_page_shows_degraded_freeze_window_when_config_defaults_to_disabled(tmp_path, monkeypatch) -> None:
@@ -138,7 +145,7 @@ def test_analysis_page_shows_degraded_freeze_window_when_config_defaults_to_disa
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "冻结窗口：已降级" in html
-    assert "当前状态：已降级" in html
-    assert "冻结窗口约束已降级" in html
+    assert "冻结窗口" in html and "部分未生效" in html
+    assert "当前状态" in html and "部分未生效" in html
+    assert "冻结窗口资料不完整" in html
     assert "冻结窗口：未启用" not in html

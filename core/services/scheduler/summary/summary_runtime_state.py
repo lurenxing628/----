@@ -246,9 +246,9 @@ def _merge_fallback_warnings(all_warnings: List[str], fallback_state: FallbackSt
     legacy_count = int(fallback_state.legacy_external_days_defaulted_count)
     warmstart_count = int(fallback_state.ortools_warmstart_failed_count)
     if legacy_count > 0:
-        all_warnings = _merge_warning_lists(all_warnings, [f"存在 {legacy_count} 道外协工序使用了历史兼容周期 1.0 天。"])
+        all_warnings = _merge_warning_lists(all_warnings, [f"有 {legacy_count} 道外协工序缺少可用周期，本次先按 1 天计算。"])
     if warmstart_count > 0:
-        all_warnings = _merge_warning_lists(all_warnings, ["OR-Tools 预热失败，已回退到常规求解路径。"])
+        all_warnings = _merge_warning_lists(all_warnings, ["深度优化启动失败，系统已改用普通计算方式继续排产。"])
     return all_warnings
 
 

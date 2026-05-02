@@ -65,7 +65,7 @@ class SupplierExcelImportService:
             data = getattr(pr, "data", None) or {}
             sid = to_str_or_blank(data.get("供应商ID"))
             if not sid:
-                raise ValidationError("“供应商ID”不能为空", field="供应商ID")
+                raise ValidationError("“供应商编号（模板列名：供应商ID）”不能为空", field="供应商ID")
             name = to_str_or_blank(data.get("名称"))
             if not name:
                 raise ValidationError("“名称”不能为空", field="名称")
@@ -82,7 +82,7 @@ class SupplierExcelImportService:
             if "状态" in data or not existed:
                 status = self._normalize_supplier_status_for_excel(data.get("状态"))
                 if status not in SUPPLIER_STATUS_VALUES:
-                    raise ValidationError("“状态”不合法，可填写：启用 / 停用；也兼容英文标准值 active/inactive。", field="状态")
+                    raise ValidationError("“状态”不合法，可填写：启用 / 停用。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文。", field="状态")
                 payload["status"] = status
             if "备注" in data or not existed:
                 payload["remark"] = normalize_text(data.get("备注"))

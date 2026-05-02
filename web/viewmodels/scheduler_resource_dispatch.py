@@ -78,13 +78,13 @@ def _display_machine(machine_id: Any, machine_name: Any, supplier_name: Any = No
     if machine_id_text:
         return f"{machine_id_text} {_text(machine_name)}".strip()
     supplier_text = _text(supplier_name)
-    return f"外协 {supplier_text}".strip() if supplier_text else "外协/未分配"
+    return f"外协供应商：{supplier_text}".strip() if supplier_text else "外协未分配"
 
 
 def _display_operator(operator_id: Any, operator_name: Any) -> str:
     operator_id_text = _text(operator_id)
     if not operator_id_text:
-        return "外协/未分配"
+        return "外协未分配"
     return f"{operator_id_text} {_text(operator_name)}".strip()
 
 
@@ -94,7 +94,7 @@ def _team_relation_label(current_team_id: Any, counterpart_team_id: Any) -> str:
     if current and counterpart:
         if current == counterpart:
             return "同班组"
-        return "跨班组借调"
+        return "跨班组"
     return "班组归属未维护"
 
 

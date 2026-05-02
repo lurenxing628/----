@@ -247,6 +247,8 @@ def orchestrate_schedule_run(
     validated_schedule_payload = build_validated_schedule_payload(
         optimizer_outcome.results,
         allowed_op_ids=set(schedule_input.reschedulable_op_ids),
+        operations=list(schedule_input.reschedulable_operations or []),
+        missing_internal_resource_op_ids=set(schedule_input.missing_internal_resource_op_ids or set()),
     )
 
     warning_merge_status = _merge_summary_warnings(

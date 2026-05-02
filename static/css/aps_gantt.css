@@ -258,6 +258,22 @@
   border-radius: 999px;
   background: #ffffff;
 }
+.aps-gantt-legend .aps-legend-summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+}
+.aps-gantt-legend .aps-legend-summary-label {
+  color: #64748b;
+}
+.aps-gantt-legend .aps-legend-summary-value {
+  color: #0f172a;
+  font-weight: 700;
+}
 .aps-gantt-legend .aps-legend-chip {
   width: 12px;
   height: 12px;
@@ -383,6 +399,13 @@ html[data-theme="dark"] .aps-gantt-legend .aps-legend-item {
   background: var(--ui-card-bg, #1e293b);
   color: var(--ui-text, #f1f5f9);
 }
+html[data-theme="dark"] .aps-gantt-legend .aps-legend-summary {
+  border-color: var(--ui-border, #334155);
+  background: var(--ui-card-bg, #1e293b);
+}
+html[data-theme="dark"] .aps-gantt-legend .aps-legend-summary-value {
+  color: var(--ui-text, #f1f5f9);
+}
 
 html[data-theme="dark"] .aps-gantt-help {
   border-color: var(--ui-border, #334155);
@@ -391,4 +414,3 @@ html[data-theme="dark"] .aps-gantt-help {
 html[data-theme="dark"] .aps-gantt-help summary {
   color: var(--ui-text, #f1f5f9);
 }
-

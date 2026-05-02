@@ -54,7 +54,7 @@ def _handle_missing_value(
         code="missing_required",
         scope=scope,
         field=field_name,
-        message=f"字段“{field_name}”缺失，已按兼容读取回退为 {fallback}。",
+        message=f"缺少“{field_name}”配置，本次先按默认值 {fallback} 处理。",
         sample=None,
     )
     return fallback
@@ -72,8 +72,8 @@ def _record_blank_choice_degradation(
         code="blank_required",
         scope=scope,
         field=field_name,
-        message=f"字段“{field_name}”为空，已按兼容读取回退为 {fallback}。",
-        sample=repr(raw_value),
+        message=f"“{field_name}”没有填写，本次先按默认值 {fallback} 处理。",
+        sample=None,
     )
 
 
@@ -91,10 +91,10 @@ def _record_invalid_choice_degradation(
         scope=scope,
         field=field_name,
         message=(
-            f"字段“{field_name}”取值不合法（当前值：{raw_value!r}，允许值：{_format_choice_allow_text(valid_values)}），"
-            f"已按兼容读取回退为 {fallback}。"
+            f"“{field_name}”填写不正确（当前值：{raw_value}，可选值：{_format_choice_allow_text(valid_values)}），"
+            f"本次先按默认值 {fallback} 处理。"
         ),
-        sample=repr(raw_value),
+        sample=str(raw_value or ""),
     )
 
 
@@ -140,7 +140,7 @@ def _choice_with_degradation(
     if normalized_valid and text not in normalized_valid:
         if strict_mode:
             raise ValidationError(
-                f"“{field_name}”取值不合法：{raw_value!r}（允许值：{_format_choice_allow_text(normalized_valid)}）",
+                f"“{field_name}”填写不正确：{raw_value}（可填写：{_format_choice_allow_text(normalized_valid)}）",
                 field=field_name,
             )
         _record_invalid_choice_degradation(
@@ -193,7 +193,7 @@ def _yes_no_with_degradation(
         return normalized_default
     if text not in true_vals and text not in false_vals:
         if strict_mode:
-            raise ValidationError(f"“{field_name}”取值不合法：{raw_value!r}（允许值：yes / no）", field=field_name)
+            raise ValidationError(f"“{field_name}”填写不正确：{raw_value}（请填写：是 / 否）", field=field_name)
         _record_invalid_choice_degradation(
             collector,
             scope=scope,

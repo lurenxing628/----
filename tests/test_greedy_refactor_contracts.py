@@ -354,7 +354,7 @@ def test_seed_backfill_preserves_original_object_source_and_dynamic_attributes()
     assert seed_result.source == ""
     assert seed_result.extra_marker == "kept"  # type: ignore[attr-defined]
     assert stats["fallback_counts"]["seed_op_id_backfilled_count"] == 1
-    assert warnings and "回填 op_id" in warnings[0]
+    assert warnings and "补回工序编号" in warnings[0]
 
 
 def test_seed_bad_time_reasons_are_separated() -> None:
@@ -404,7 +404,7 @@ def test_seed_bad_time_reasons_are_separated() -> None:
     assert fallback_counts["seed_bad_time_order_dropped_count"] == 1
     assert fallback_counts["seed_bad_time_incomparable_dropped_count"] == 1
     assert fallback_counts["seed_bad_time_dropped_count"] == 2
-    assert any("start_time>=end_time" in warning for warning in warnings)
+    assert any("开始时间不早于结束时间" in warning for warning in warnings)
     assert any("时间无法比较" in warning for warning in warnings)
 
 

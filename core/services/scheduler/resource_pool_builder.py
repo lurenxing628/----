@@ -232,7 +232,7 @@ def load_machine_downtimes(
             meta["downtime_load_ok"] = False
             meta["downtime_load_error"] = DOWNTIME_LOAD_FAILED_MESSAGE
         _append_warning(warnings, f"【停机】{DOWNTIME_LOAD_FAILED_MESSAGE}")
-        _warn_service_logger(svc, f"停机区间加载失败，已降级为忽略停机约束：{e}", exc_info=True)
+        _warn_service_logger(svc, f"停机区间加载失败，本次先不使用停机约束：{e}", exc_info=True)
         return downtime_map
 
     downtime_map, partial_fail_mids = _load_downtime_intervals_for_machines(
@@ -240,14 +240,14 @@ def load_machine_downtimes(
         dt_repo=dt_repo,
         machine_ids=machine_ids,
         start_str=start_str,
-        failure_log_template="停机区间加载部分失败，设备 {mid} 已降级为忽略停机约束：{error}",
+        failure_log_template="停机区间加载部分失败，设备 {mid} 本次先不使用停机约束：{error}",
     )
 
     if partial_fail_mids:
         msg, sample = _partial_failure_message(
             label="部分设备停机区间加载失败",
             failed_mids=partial_fail_mids,
-            suffix="这些设备已降级为忽略停机约束",
+            suffix="这些设备本次先不使用停机约束",
         )
         _record_load_meta_partial(meta, msg=msg, sample=sample, count=len(partial_fail_mids))
         _append_warning(warnings, f"【停机】{msg}")
@@ -317,9 +317,9 @@ def build_resource_pool(
         if meta is not None:
             meta["resource_pool_build_ok"] = False
             meta["resource_pool_build_error"] = RESOURCE_POOL_BUILD_FAILED_MESSAGE
-        # 不阻断排产：自动分配降级为关闭，但要让用户/日志可观测
-        warnings.append("自动分配资源池构建失败，已降级为不自动分配（请查看日志）。")
-        _warn_service_logger(svc, f"自动分配资源池构建失败，已降级为不自动分配：{e}")
+        # 不阻断排产：本次先不自动分配，但要让用户/日志可观测。
+        warnings.append("自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员（请查看日志）。")
+        _warn_service_logger(svc, f"自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员：{e}")
 
     return resource_pool, warnings
 

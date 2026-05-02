@@ -13,7 +13,7 @@
   <div class="card">
     <h3>基本信息</h3>
     <form method="post" action="{{ url_for('process.update_op_type', op_type_id=op_type.op_type_id) }}">
-      <div class="form-row">
+      <div class="aps-form-grid">
         <div class="form-field">
           <label>工种编号</label>
           <input value="{{ op_type.op_type_id }}" disabled>
@@ -25,17 +25,16 @@
         <div class="form-field">
           <label>归属</label>
           <select name="category">
-            <option value="internal" {% if op_type.category=='internal' %}selected{% endif %}>内部</option>
-            <option value="external" {% if op_type.category=='external' %}selected{% endif %}>外部</option>
+            <option value="internal" {% if op_type.category=='internal' %}selected{% endif %}>自制</option>
+            <option value="external" {% if op_type.category=='external' %}selected{% endif %}>外协</option>
           </select>
         </div>
-        <div class="form-field flex-1 min-w-240">
+        <div class="form-field aps-form-span-2">
           <label>备注</label>
           <input name="remark" value="{{ op_type.remark or '' }}">
         </div>
-        <div>{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
+        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
 {% endblock %}
-

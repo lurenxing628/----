@@ -84,14 +84,16 @@ def main() -> None:
             assert "ext_days" in msg, f"内部日志应保留目标字段便于诊断：{msg!r}"
             assert "compatible mode fallback" in msg, f"内部日志应保留兼容回退诊断：{msg!r}"
 
-            user_matched = [text for text in user_warnings if f"外部工序 {seq}" in text]
+            user_matched = [text for text in user_warnings if f"外协工序 {seq}" in text]
             assert user_matched, f"未找到 seq={seq} 的用户提示：{user_warnings!r}"
             user_msg = user_matched[0]
             assert "raw=" not in user_msg, f"用户提示不应暴露原始输入：{user_msg!r}"
             assert "ext_days" not in user_msg, f"用户提示不应暴露内部字段：{user_msg!r}"
             assert "compatible mode" not in user_msg, f"用户提示不应暴露英文兼容模式：{user_msg!r}"
-            assert "兼容模式" in user_msg, f"用户提示未标识兼容模式：{user_msg!r}"
-            assert "1.0 天回退" in user_msg, f"用户提示未说明按 1.0 天回退：{user_msg!r}"
+            assert "兼容模式" not in user_msg, f"用户提示不应使用偏技术的话：{user_msg!r}"
+            assert "1.0 天回退" not in user_msg, f"用户提示不应使用偏技术的话：{user_msg!r}"
+            assert "本次会先按 1 天记录" in user_msg, f"用户提示未说明处理方式：{user_msg!r}"
+            assert "请尽快补成真实周期" in user_msg, f"用户提示未告诉用户下一步该补什么：{user_msg!r}"
 
         print("OK")
     finally:

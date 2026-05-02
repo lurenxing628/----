@@ -58,7 +58,7 @@ def _validate_route_row(part_svc: PartService, row: Dict[str, Any], *, strict_mo
             sample = [str(msg) for msg in (getattr(result, "errors", None) or []) if str(msg).strip()]
             if sample:
                 return "；".join(sample[:3])
-            return "工艺路线严格解析失败"
+            return "工艺路线校验失败，请检查工序号、工种名称和供应商资料。"
     return None
 
 
@@ -128,8 +128,8 @@ def _render_excel_routes_page(
         export_url=url_for("process.excel_routes_export"),
         strict_mode_supported=True,
         strict_mode=bool(strict_mode),
-        strict_mode_label="严格模式：拒绝隐式 1.0 天回退",
-        strict_mode_help="开启后，缺供应商映射、供应商 default_days 无效/为空、未知工种等不再按兼容逻辑回退，而是直接标记该行为错误。",
+        strict_mode_label="发现问题就停下",
+        strict_mode_help="勾选后：资料不完整就停下，并告诉你哪一行、哪一项要补。不勾选：能确认的数据会继续处理，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正；但图号为空、格式错误这类必须先改好的问题仍然会报错。",
     )
 
 
@@ -260,6 +260,8 @@ def excel_routes_confirm():
     tx = TransactionManager(g.db)
     new_count = update_count = skip_count = error_count = 0
     errors_sample: List[Dict[str, Any]] = []
+    route_warnings_sample: List[Dict[str, Any]] = []
+    route_warning_total = 0
 
     with tx.transaction():
         if mode == ImportMode.REPLACE:
@@ -300,7 +302,21 @@ def excel_routes_confirm():
 
             try:
                 existed = pn in existing
-                part_svc.upsert_and_parse_no_tx(part_no=pn, part_name=name, route_raw=route_raw, strict_mode=strict_mode)
+                parse_result = part_svc.upsert_and_parse_no_tx(
+                    part_no=pn,
+                    part_name=name,
+                    route_raw=route_raw,
+                    strict_mode=strict_mode,
+                )
+                for warning in getattr(parse_result, "warnings", None) or []:
+                    route_warning_total += 1
+                    if len(route_warnings_sample) < 5:
+                        route_warnings_sample.append(
+                            {
+                                "row": getattr(pr, "source_row_num", None) or pr.row_num,
+                                "message": str(warning),
+                            }
+                        )
                 if existed:
                     update_count += 1
                 else:
@@ -345,6 +361,11 @@ def excel_routes_confirm():
         error_count=error_count,
         errors_sample=errors_sample,
     )
+    if route_warnings_sample:
+        warning_text = "；".join(f"第 {item['row']} 行：{item['message']}" for item in route_warnings_sample)
+        if route_warning_total > len(route_warnings_sample):
+            warning_text += f"；还有 {route_warning_total - len(route_warnings_sample)} 条提示未显示"
+        flash(f"导入完成，但有些工艺路线先按临时规则处理：{warning_text}。请补齐资料后重新导入，或让系统重新检查工艺路线。", "warning")
     return redirect(url_for("process.excel_routes_page"))
 
 

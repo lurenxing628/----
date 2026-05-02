@@ -58,29 +58,35 @@ def _assert_selected_latest(html: str, version: int) -> None:
 
 
 def test_reports_page_version_default_latest(tmp_path, monkeypatch) -> None:
+    from core.services.scheduler.version_resolution import VERSION_ERROR_MESSAGE
+
     app = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
 
     overdue_html = client.get("/reports/overdue").get_data(as_text=True)
     _assert_selected_latest(overdue_html, 7)
-    assert "模拟排产 / 部分成功" in overdue_html
+    assert "v7 · 部分成功" in overdue_html
     assert "模拟排产）" not in overdue_html
+    assert "aps-disabled-button" in overdue_html
+    assert "当前版本没有可导出的超期结果，请换一个排产版本后再试。" in overdue_html
 
     overdue_latest_html = client.get("/reports/overdue?version=latest").get_data(as_text=True)
     _assert_selected_latest(overdue_latest_html, 7)
 
     utilization_html = client.get("/reports/utilization").get_data(as_text=True)
     _assert_selected_latest(utilization_html, 7)
-    assert "模拟排产 / 部分成功" in utilization_html
+    assert "v7 · 部分成功" in utilization_html
+    assert "aps-disabled-button" in utilization_html
 
     downtime_html = client.get("/reports/downtime?version=latest").get_data(as_text=True)
     _assert_selected_latest(downtime_html, 7)
-    assert "模拟排产 / 部分成功" in downtime_html
+    assert "v7 · 部分成功" in downtime_html
+    assert "aps-disabled-button" in downtime_html
 
     invalid_resp = client.get("/reports/overdue?version=abc")
     invalid_html = invalid_resp.get_data(as_text=True)
     assert invalid_resp.status_code == 400
-    assert "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。" in invalid_html
+    assert VERSION_ERROR_MESSAGE in invalid_html
     assert "version 不合法" not in invalid_html
 
     missing_resp = client.get("/reports/overdue?version=999")

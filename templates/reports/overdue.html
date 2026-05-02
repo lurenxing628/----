@@ -10,9 +10,7 @@
       <div class="page-actions page-actions-context"></div>
     </div>
     <p class="muted">
-      查看哪些批次超过了交货日期：
-      - 已排程逾期：完工时间晚于交期
-      - 未排程逾期：截至当前时间仍未完工且已超过交期
+      查看哪些批次已经超过交货日期。已排产超期：排完后的完工时间晚于交期；未排产超期：到现在还没完工，也已经过了交期。
     </p>
     {{ ui.reports_nav('overdue') }}
   </div>
@@ -20,13 +18,13 @@
   <div class="card">
     <h3>筛选</h3>
     <form method="get" action="{{ url_for('reports.overdue_page') }}">
-      <div class="form-row">
+      <div class="aps-filter-bar">
         <div class="form-field">
           <label>排产版本</label>
-          <select name="version" style="min-width:220px;">
+          <select name="version" class="w-160">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
-                v{{ it.version }}（{{ it.schedule_time }} / {{ it.result_status_label or status_zh.get(it.result_status, it.result_status or '-') }}）
+                {{ ui.version_option_label(it, status_zh.get(it.result_status, '结果状态未知')) }}
               </option>
             {% endfor %}
           </select>
@@ -34,12 +32,13 @@
             <div class="muted" style="margin-top:6px;">暂无排产历史，请先执行排产后再查看报表。</div>
           {% endif %}
         </div>
-        <div>
-          <button type="submit">查询</button>
+        <div class="aps-form-actions">
+          {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
           {% if rows %}
-            <a style="margin-left:10px;" href="{{ url_for('reports.overdue_export', version=version) }}">导出 Excel</a>
+            {{ ui.link_button('导出 Excel', url_for('reports.overdue_export', version=version), 'secondary', 'md') }}
           {% else %}
-            <span class="muted" style="margin-left:10px;" title="暂无数据，无法导出">导出 Excel</span>
+            {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
+            <span class="aps-export-note">当前版本没有可导出的超期结果，请换一个排产版本后再试。</span>
           {% endif %}
         </div>
       </div>
@@ -60,7 +59,7 @@
         <div class="muted">当前无超期批次。</div>
       {% endif %}
     {% else %}
-      <div class="overflow-x-auto">
+      <div class="aps-table-scroll">
       <table id="overdueTable" class="table-sticky table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>

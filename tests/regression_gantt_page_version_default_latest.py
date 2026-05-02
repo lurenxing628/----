@@ -99,13 +99,13 @@ def test_gantt_page_version_default_latest(tmp_path, monkeypatch) -> None:
     invalid_page_resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=0")
     invalid_page_html = invalid_page_resp.get_data(as_text=True)
     assert invalid_page_resp.status_code == 400
-    assert "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。" in invalid_page_html
+    assert "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。" in invalid_page_html
 
     invalid_data_resp = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&version=-1")
     invalid_payload = invalid_data_resp.get_json()
     assert invalid_data_resp.status_code == 400
     assert invalid_payload["success"] is False
-    assert invalid_payload["error"]["message"] == "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。"
+    assert invalid_payload["error"]["message"] == "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。"
 
     missing_page_resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=999")
     missing_page_html = missing_page_resp.get_data(as_text=True)
@@ -156,7 +156,7 @@ def test_gantt_page_selected_version_label_includes_simulated_completion_status(
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "模拟排产 / 部分成功" in html
+    assert "v7 · 部分成功" in html
 
 
 def test_gantt_page_non_selected_version_option_uses_completion_status_label(tmp_path, monkeypatch) -> None:
@@ -180,7 +180,7 @@ def test_gantt_page_non_selected_version_option_uses_completion_status_label(tmp
 
     assert response.status_code == 200
     assert "v6" in html
-    assert "模拟排产 / 部分成功" in html
+    assert "v6 · 部分成功" in html
 
 
 def test_gantt_data_uses_app_error_http_mapping(tmp_path, monkeypatch) -> None:

@@ -42,19 +42,19 @@ def _format_config_display_value(field: str, value: Any, *, config_field_metadat
 
 def public_hidden_config_warning(field: str) -> str:
     label = ConfigService.public_config_field_label(field)
-    return f"后台设置“{label}”当前需要保存修复；系统已按兼容配置继续运行。"
+    return f"平时不直接显示的设置“{label}”需要重新确认；系统暂时按当前可用配置继续运行。"
 
 
 def public_hidden_repair_notice(fields: List[str], *, blocked: bool) -> str:
-    labels = ConfigService.public_config_field_labels(fields) or ["隐藏配置"]
+    labels = ConfigService.public_config_field_labels(fields) or ["未命名设置项"]
     label_text = "、".join(labels)
     if blocked:
-        return f"检测到后台设置“{label_text}”需要保存修复，但因来源缺失未自动修复。"
-    return f"后台设置“{label_text}”已按当前表单值回写。"
+        return f"检测到平时不直接显示的设置“{label_text}”需要重新确认，但系统不知道它原来来自哪里，不能自动帮你改。请检查后手动保存一次。"
+    return f"平时不直接显示的设置“{label_text}”已按当前页面内容一起保存。"
 
 
 def public_meta_parse_warning() -> str:
-    return "方案来源记录暂时无法解析，已按历史来源信息继续显示。"
+    return "系统看不懂这份方案的来源记录，暂时按旧记录继续显示；建议检查后重新保存。"
 
 
 def build_config_degraded_display_state(
@@ -81,7 +81,7 @@ def build_config_degraded_display_state(
                 getattr(cfg, field, ""),
                 config_field_metadata=config_field_metadata,
             )
-            fallback_note = f"当前页面暂按“{display_value}”显示兼容值，请保存修复。"
+            fallback_note = f"当前页面先按“{display_value}”展示，请检查后保存一次。"
             warnings[field] = f"{label} 当前配置无效，{fallback_note}"
             degraded_fields.append(field)
             continue
@@ -96,20 +96,20 @@ def build_auto_assign_persist_display_state(value: Any) -> Dict[str, Any]:
             "enabled": True,
             "value": "yes",
             "label": "已启用",
-            "description": "自动分配得到的设备/人员会回写到工序。",
+            "description": "系统帮你补上的设备和人员会保存回这道工序，下次排产还能继续用。",
         }
     if normalized == "no":
         return {
             "enabled": False,
             "value": "no",
             "label": "已关闭",
-            "description": "自动分配只参与本次排产结果，不回写到工序。",
+            "description": "系统帮你补上的设备和人员只用于本次结果，不改工序原来的资料。",
         }
     return {
         "enabled": None,
         "value": "unknown",
         "label": "未记录",
-        "description": "该次排产快照未记录自动回写资源状态。",
+        "description": "这次排产没有记录是否保存系统补上的设备和人员。",
     }
 
 

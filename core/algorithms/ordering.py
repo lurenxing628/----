@@ -31,9 +31,9 @@ def build_normalized_batches_map(batches: Optional[Dict[str, Any]], *, warnings:
     for raw_key, batch in (batches or {}).items():
         batch_id = resolve_batch_sort_batch_id(raw_key, batch)
         if not batch_id:
-            raise ValidationError(f"批次ID不能为空：key={raw_key!r}", field="batch_id")
+            raise ValidationError(f"批次号不能为空：来源值={raw_key!r}", field="batch_id")
         if batch_id in normalized:
-            raise ValidationError(f"批次ID重复：{batch_id!r}", field="batch_id")
+            raise ValidationError(f"批次号重复：{batch_id!r}", field="batch_id")
         normalized[batch_id] = batch
     return normalized
 
@@ -46,7 +46,7 @@ def normalize_batch_order_override(batch_order_override: Optional[List[Any]], ba
     for item in batch_order_override:
         batch_id = normalize_text_id(item)
         if not batch_id:
-            raise ValidationError("批次顺序覆盖中存在空批次ID", field="batch_order_override")
+            raise ValidationError("批次顺序里存在空的批次号", field="batch_order_override")
         if batch_id not in batches:
             raise ValidationError(f"批次顺序覆盖引用了不存在的批次：{batch_id}", field="batch_order_override")
         if batch_id in seen:
@@ -84,7 +84,7 @@ def build_batch_sort_inputs(
     for batch_key, batch in (batches or {}).items():
         batch_id = resolve_batch_sort_batch_id(batch_key, batch)
         if not batch_id:
-            raise ValidationError(f"批次ID不能为空：key={batch_key!r}", field="batch_id")
+            raise ValidationError(f"批次号不能为空：来源值={batch_key!r}", field="batch_id")
         batch_for_sort.append(
             BatchForSort(
                 batch_id=batch_id,

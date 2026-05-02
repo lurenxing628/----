@@ -1,0 +1,3 @@
+2026-05-02 14:50:22 [WARNING] 清理历史启动错误文件失败，已继续启动：clear boom
+2026-05-02 14:50:22 [WARNING] 应用启动失败：app boom，但写入启动错误文件失败：launch file boom
+2026-05-02 14:50:22 [WARNING] 获取运行时锁失败：lock boom，但写入启动错误文件失败：launch file boom

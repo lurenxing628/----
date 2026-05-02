@@ -40,17 +40,17 @@ def coerce_external_default_days(
         safe_warning(logger, message)
 
     if raw_default_days is None or (isinstance(raw_default_days, str) and raw_default_days.strip() == ""):
-        _warn(f"外部工序 {seq}（{op_type_name}）缺少默认周期，保存模板时已按 1.0 天写入外协周期")
+        _warn(f"外协工序 {seq}（{op_type_name}）缺少默认周期，本次会先按 1 天记录，请补成真实周期。")
         return 1.0, True
 
     try:
         parsed_days = float(raw_default_days)
     except Exception:
-        _warn(f"外部工序 {seq}（{op_type_name}）默认周期无法解析，保存模板时已按 1.0 天写入外协周期")
+        _warn(f"外协工序 {seq}（{op_type_name}）默认周期格式不正确，本次会先按 1 天记录，请补成真实周期。")
         return 1.0, True
 
     if not math.isfinite(parsed_days) or parsed_days <= 0:
-        _warn(f"外部工序 {seq}（{op_type_name}）默认周期无效，保存模板时已按 1.0 天写入外协周期")
+        _warn(f"外协工序 {seq}（{op_type_name}）默认周期必须大于 0，本次会先按 1 天记录，请补成真实周期。")
         return 1.0, True
 
     return float(parsed_days), False
@@ -63,7 +63,7 @@ def operation_source_or_raise(op: Any) -> str:
 
     seq = getattr(op, "seq", None)
     seq_label = f"工序 {seq}" if seq not in (None, "") else "工序"
-    raise ValidationError(f"{seq_label}来源无效，只能是 internal 或 external", field="source")
+    raise ValidationError(f"{seq_label}归属无效，只能是自制或外协", field="source")
 
 
 def save_template_no_tx(
