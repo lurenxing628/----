@@ -7,9 +7,9 @@
       <div class="page-actions page-actions-context"></div>
     </div>
     <p class="page-subtitle text-meta">
-      本页面用于批量更新工艺模板中的内部工序工时。
+      本页面用于批量更新工艺模板中的自制工序工时。
       导入后，创建批次时会自动复制这些工时，排产将按「换型 + 单件 × 数量」计算时长。
-      其中“追加”仅用于补齐空工时（换型工时和单件工时均为 0 的工序），已维护工时会跳过。
+      选择“追加”时，只会补那些换型工时和单件工时都还是 0 的工序；已经填过工时的工序不会被改。
     </p>
     {{ ui.process_nav('excel_part_op_hours') }}
     <div class="mt-2">
@@ -21,36 +21,38 @@
   {% include "components/excel_import.html" with context %}
 
   <div class="card">
-    <h3>当前工序工时（仅内部工序）</h3>
+    <h3>当前工序工时（仅自制工序）</h3>
     {% if existing_list and existing_list|length > 0 %}
-      <table>
-        <thead>
-          <tr>
-            <th>图号</th>
-            <th>工序</th>
-            <th>工种</th>
-            <th>归属</th>
-            <th>换型时间（小时）</th>
-            <th>单件工时（小时）</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in existing_list %}
-            {% if r["归属"] == "internal" %}
+      <div class="aps-table-scroll">
+        <table>
+          <thead>
             <tr>
-              <td>{{ r["图号"] }}</td>
-              <td>{{ r["工序"] }}</td>
-              <td>{{ r["工种"] or '-' }}</td>
-	              <td>{{ r["归属显示"] or '-' }}</td>
-              <td>{{ r["换型时间(h)"] }}</td>
-              <td>{{ r["单件工时(h)"] }}</td>
+              <th>图号</th>
+              <th>工序</th>
+              <th>工种</th>
+              <th>归属</th>
+              <th>换型时间（小时）</th>
+              <th>单件工时（小时）</th>
             </tr>
-            {% endif %}
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for r in existing_list %}
+              {% if r["归属"] == "internal" %}
+                <tr>
+                  <td>{{ r["图号"] }}</td>
+                  <td>{{ r["工序"] }}</td>
+                  <td>{{ r["工种"] or '-' }}</td>
+                  <td>{{ r["归属显示"] or '-' }}</td>
+                  <td>{{ r["换型时间(h)"] }}</td>
+                  <td>{{ r["单件工时(h)"] }}</td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
-      <div class="muted">暂无内部工序数据（可先导入工艺路线并解析生成模板）。</div>
+      <div class="muted">暂无自制工序数据（可先导入工艺路线并解析生成模板）。</div>
     {% endif %}
   </div>
 

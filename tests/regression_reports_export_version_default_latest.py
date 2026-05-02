@@ -25,11 +25,25 @@ def _assert_xlsx(resp, name: str, expect_version: int) -> None:
 
 
 def _assert_invalid_version(resp, name: str) -> None:
+    from core.services.scheduler.version_resolution import VERSION_ERROR_MESSAGE
+
     if resp.status_code != 400:
         raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 400")
     body = resp.get_data(as_text=True)
-    if "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。" not in body:
+    if VERSION_ERROR_MESSAGE not in body:
         raise RuntimeError(f"{name} 未返回统一版本错误文案：{body[:200]!r}")
+
+
+def _assert_empty_export(resp, name: str) -> None:
+    if resp.status_code != 400:
+        raise RuntimeError(f"{name} 返回 {resp.status_code}，期望 400")
+    body = resp.get_data(as_text=True)
+    if "overdue" in name:
+        expected = "当前版本没有可导出的超期结果，请换一个排产版本后再试。"
+    else:
+        expected = "暂无数据，不能导出。请调整版本或日期范围后再试。"
+    if expected not in body:
+        raise RuntimeError(f"{name} 未返回空数据不可导出提示：{body[:200]!r}")
 
 
 def main() -> None:
@@ -82,27 +96,24 @@ def main() -> None:
     ed = "2026-01-07"
 
     # 1) overdue/export
-    _assert_xlsx(client.get("/reports/overdue/export"), "GET /reports/overdue/export（missing version）", 7)
-    _assert_xlsx(client.get("/reports/overdue/export?version="), "GET /reports/overdue/export（empty version）", 7)
-    _assert_xlsx(client.get("/reports/overdue/export?version=latest"), "GET /reports/overdue/export（version=latest）", 7)
+    _assert_empty_export(client.get("/reports/overdue/export"), "GET /reports/overdue/export（missing version）")
+    _assert_empty_export(client.get("/reports/overdue/export?version="), "GET /reports/overdue/export（empty version）")
+    _assert_empty_export(client.get("/reports/overdue/export?version=latest"), "GET /reports/overdue/export（version=latest）")
     _assert_invalid_version(client.get("/reports/overdue/export?version=abc"), "GET /reports/overdue/export（invalid version）")
     _assert_invalid_version(client.get("/reports/overdue/export?version=0"), "GET /reports/overdue/export（version=0）")
 
     # 2) utilization/export（需要 start/end）
-    _assert_xlsx(
+    _assert_empty_export(
         client.get(f"/reports/utilization/export?start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（missing version）",
-        7,
     )
-    _assert_xlsx(
+    _assert_empty_export(
         client.get(f"/reports/utilization/export?version=&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（empty version）",
-        7,
     )
-    _assert_xlsx(
+    _assert_empty_export(
         client.get(f"/reports/utilization/export?version=latest&start_date={sd}&end_date={ed}"),
         "GET /reports/utilization/export（version=latest）",
-        7,
     )
     _assert_invalid_version(
         client.get(f"/reports/utilization/export?version=abc&start_date={sd}&end_date={ed}"),
@@ -114,20 +125,17 @@ def main() -> None:
     )
 
     # 3) downtime/export（需要 start/end）
-    _assert_xlsx(
+    _assert_empty_export(
         client.get(f"/reports/downtime/export?start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（missing version）",
-        7,
     )
-    _assert_xlsx(
+    _assert_empty_export(
         client.get(f"/reports/downtime/export?version=&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（empty version）",
-        7,
     )
-    _assert_xlsx(
+    _assert_empty_export(
         client.get(f"/reports/downtime/export?version=latest&start_date={sd}&end_date={ed}"),
         "GET /reports/downtime/export（version=latest）",
-        7,
     )
     _assert_invalid_version(
         client.get(f"/reports/downtime/export?version=abc&start_date={sd}&end_date={ed}"),

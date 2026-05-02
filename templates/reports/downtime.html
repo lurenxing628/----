@@ -16,13 +16,13 @@
   <div class="card">
     <h3>筛选</h3>
     <form method="get" action="{{ url_for('reports.downtime_page') }}">
-      <div class="form-row">
+      <div class="aps-filter-bar">
         <div class="form-field">
           <label>排产版本</label>
-          <select name="version" style="min-width:220px;">
+          <select name="version" class="w-160">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
-                v{{ it.version }}（{{ it.schedule_time }} / {{ it.result_status_label or status_zh.get(it.result_status, it.result_status or '-') }}）
+                {{ ui.version_option_label(it, status_zh.get(it.result_status, '结果状态未知')) }}
               </option>
             {% endfor %}
           </select>
@@ -32,18 +32,19 @@
         </div>
         <div class="form-field">
           <label>开始日期</label>
-          <input type="date" name="start_date" value="{{ start_date }}" style="width:140px;">
+          <input type="date" name="start_date" value="{{ start_date }}" class="w-160">
         </div>
         <div class="form-field">
           <label>结束日期</label>
-          <input type="date" name="end_date" value="{{ end_date }}" style="width:140px;">
+          <input type="date" name="end_date" value="{{ end_date }}" class="w-160">
         </div>
-        <div>
-          <button type="submit">查询</button>
+        <div class="aps-form-actions">
+          {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
           {% if rows %}
-            <a style="margin-left:10px;" href="{{ url_for('reports.downtime_export', version=version, start_date=start_date, end_date=end_date) }}">导出 Excel</a>
+            {{ ui.link_button('导出 Excel', url_for('reports.downtime_export', version=version, start_date=start_date, end_date=end_date), 'secondary', 'md') }}
           {% else %}
-            <span class="muted" style="margin-left:10px;" title="暂无数据，无法导出">导出 Excel</span>
+            {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
+            <span class="aps-export-note">当前版本和日期范围内没有可导出的结果。请换一个排产版本或调整日期后再试。</span>
           {% endif %}
         </div>
       </div>
@@ -65,22 +66,22 @@
       {% if empty_reason == "no_history" %}
         <div class="muted">暂无排产历史，当前无法统计停机影响。</div>
       {% elif empty_reason == "no_data_in_query_range" %}
-        <div class="muted">当前筛选日期范围内没有停机或排程重叠数据，请调整日期或版本。</div>
+        <div class="muted">当前筛选日期范围内没有停机记录，请调整日期或版本。</div>
       {% elif empty_reason == "no_data_in_version_span" %}
-        <div class="muted">所选版本的排程范围内没有停机或排程重叠数据，请切换版本或调整日期。</div>
+        <div class="muted">所选版本的排程范围内没有停机记录，请切换版本或调整日期。</div>
       {% elif empty_reason == "no_data_default_7d" %}
-        <div class="muted">最近 7 天内没有停机或排程重叠数据，请调整日期范围。</div>
+        <div class="muted">最近 7 天内没有停机记录，请调整日期范围。</div>
       {% else %}
-        <div class="muted">当前范围内没有停机或排程重叠数据。</div>
+        <div class="muted">当前范围内没有停机记录。</div>
       {% endif %}
     {% else %}
-      <div class="overflow-x-auto">
+      <div class="aps-table-scroll">
       <table id="downtimeTable" class="table-sticky table-layout-fixed" data-col-resize="1">
         <thead>
           <tr>
             <th style="width:140px;">设备编号</th>
             <th>设备名称</th>
-            <th style="width:140px;" class="text-right">停机(小时)</th>
+            <th style="width:140px;" class="text-right">停机时长(小时)</th>
             <th style="width:120px;" class="text-right">停机次数</th>
             <th style="width:160px;" class="text-right">与排程重叠(小时)</th>
             <th style="width:120px;" class="text-right">重叠次数</th>

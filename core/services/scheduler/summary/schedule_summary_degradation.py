@@ -278,7 +278,7 @@ def _summary_degradation_state(
         scope="schedule.summary.config_snapshot",
         field="config_snapshot",
         message=None,
-        default_message="配置快照存在兼容回退，摘要已按标准化配置生成。",
+        default_message="配置中有已按安全取值处理的设置，摘要已按处理后的配置生成。",
     )
     _add_input_events(collector, input_state)
     _add_state_event(
@@ -288,7 +288,7 @@ def _summary_degradation_state(
         scope="schedule.summary.input_contract",
         field="input_contract",
         message=None,
-        default_message="输入构建存在兼容回退，摘要已按兼容结果继续生成。",
+        default_message="排产输入里有已按安全取值处理的数据，摘要已按处理后的数据生成。",
     )
     _add_counted_event(
         collector,
@@ -305,7 +305,7 @@ def _summary_degradation_state(
         code="legacy_external_days_defaulted",
         scope="greedy.external",
         field="ext_days",
-        message="历史外协周期缺失或不合法，已按 1.0 天兼容读取。",
+        message="部分外协周期缺失或不合法，本次先按 1 天计算。",
     )
     _add_counted_event(
         collector,
@@ -313,7 +313,7 @@ def _summary_degradation_state(
         code="ortools_warmstart_failed",
         scope="optimizer.warmstart",
         field="ortools_enabled",
-        message="OR-Tools 预热失败，已回退到常规求解路径。",
+        message="深度优化启动失败，系统已改用普通计算方式继续排产。",
     )
     _add_state_event(
         collector,
@@ -322,7 +322,7 @@ def _summary_degradation_state(
         scope="schedule.summary.freeze_window",
         field="freeze_window",
         message=_optional_text(freeze_state.get("degradation_reason")),
-        default_message="冻结窗口约束已降级。",
+        default_message="冻结窗口资料不完整，本次排产未使用冻结窗口。",
     )
     _add_state_event(
         collector,
@@ -331,7 +331,7 @@ def _summary_degradation_state(
         scope="schedule.summary.downtime_avoid",
         field="downtime_avoid",
         message=_optional_text(downtime_state.get("downtime_degradation_reason")),
-        default_message="停机避让约束已降级。",
+        default_message="停机时间资料不完整，本次先按可用数据继续。",
     )
     _add_state_event(
         collector,
@@ -340,7 +340,7 @@ def _summary_degradation_state(
         scope="schedule.summary.resource_pool",
         field="resource_pool",
         message=resource_pool_degradation_reason,
-        default_message="自动分配资源池构建已降级。",
+        default_message="资源池资料不完整，本次先按可用资源继续。",
     )
     _add_state_event(
         collector,
@@ -349,7 +349,7 @@ def _summary_degradation_state(
         scope="schedule.summary.merge_context",
         field="warnings",
         message=None,
-        default_message="组合并语义已退化，摘要已按兼容路径继续生成。",
+        default_message="组合并资料不完整，摘要已按可确认内容继续生成。",
     )
     _add_state_event(
         collector,
@@ -358,7 +358,7 @@ def _summary_degradation_state(
         scope="schedule.summary.warning_pipeline",
         field="warnings",
         message=None,
-        default_message="排产摘要告警合并失败，已保留降级标记。",
+        default_message="排产提示没有完整整理，已保留能确认的提示。",
     )
     return {"events": degradation_events_to_dicts(collector.to_list()), "counters": collector.to_counters()}
 
@@ -386,7 +386,7 @@ def _downtime_reason(
 ) -> Optional[str]:
     if load_partial_fail_count > 0:
         return _partial_fail_reason(
-            "部分设备停机区间加载失败", load_partial_fail_count, load_partial_fail_machines_sample, "这些设备已降级为忽略停机约束"
+            "部分设备停机区间加载失败", load_partial_fail_count, load_partial_fail_machines_sample, "这些设备本次先不使用停机约束"
         )
     if load_failed:
         return DOWNTIME_LOAD_FAILED_MESSAGE

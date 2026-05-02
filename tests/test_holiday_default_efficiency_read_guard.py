@@ -290,13 +290,13 @@ def test_scheduler_config_page_renders_auto_assign_persist_visibility_in_v1_and_
     resp_v1 = client.get("/scheduler/config", headers={"Cookie": "aps_ui_mode=v1"})
     body_v1 = resp_v1.get_data(as_text=True)
     assert resp_v1.status_code == 200
-    assert "自动回写资源" in body_v1
+    assert "保存系统补齐的设备和人员" in body_v1
     assert "已关闭" in body_v1
 
     resp_v2 = client.get("/scheduler/config", headers={"Cookie": "aps_ui_mode=v2"})
     body_v2 = resp_v2.get_data(as_text=True)
     assert resp_v2.status_code == 200
-    assert "自动回写资源" in body_v2
+    assert "保存系统补齐的设备和人员" in body_v2
     assert "已关闭" in body_v2
 
 

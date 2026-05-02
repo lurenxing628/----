@@ -28,37 +28,35 @@
     <div class="muted mb-2">切换后排产参数会立刻变化。</div>
     {% set preset_apply_url = safe_url_for('scheduler.preset_apply') %}
     {% if preset_apply_url %}
-      <form method="post" action="{{ preset_apply_url }}" class="form-row">
+      <form method="post" action="{{ preset_apply_url }}" class="aps-filter-bar">
         <input type="hidden" name="next" value="{{ request.full_path }}">
-        <label class="muted" for="schedulerPresetSelect">方案</label>
-        <select id="schedulerPresetSelect" name="preset_name" data-auto-submit="1">
-          <option value="custom" {% if not active_preset or active_preset == 'custom' %}selected{% endif %}>自定义（以高级设置为准）</option>
-          {% for p in presets or [] %}
-            <option value="{{ p.name }}" {% if active_preset == p.name %}selected{% endif %}>{{ p.name }}</option>
-          {% endfor %}
-        </select>
+        <div class="form-field">
+          <label for="schedulerPresetSelect">方案</label>
+          <select id="schedulerPresetSelect" name="preset_name" data-auto-submit="1" class="w-260">
+            <option value="custom" {% if not active_preset or active_preset == 'custom' %}selected{% endif %}>自定义（以高级设置为准）</option>
+            {% for p in presets or [] %}
+              <option value="{{ p.name }}" {% if active_preset == p.name %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
         {% set config_url = safe_url_for('scheduler.config_page') %}
         {% if config_url %}
-          {{ ui.link_button('管理模板/高级设置', config_url, 'secondary', 'sm') }}
+          <div class="aps-form-actions aps-form-actions-end">{{ ui.link_button('管理模板/高级设置', config_url, 'secondary', 'md') }}</div>
         {% else %}
-          <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
+          <span class="muted">这个入口还没加载出来，请先重启系统；如果重启后还没有，请让管理员检查安装版本。</span>
           <details class="debug-details muted">
-            <summary>排查信息</summary>
+            <summary>给维护人员看的信息</summary>
             高级设置入口尚未启用。<br/>
-            常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
-            处理：重启服务或重新打包升级。<br/>
-            日志：logs/aps.log、logs/aps_error.log。
+            当前入口暂不可用，请联系管理员更新系统或重启服务。
           </details>
         {% endif %}
       </form>
     {% else %}
-      <div class="muted">该功能需要更新版本后使用，请重启系统。</div>
+      <div class="muted">这个入口还没加载出来，请先重启系统；如果重启后还没有，请让管理员检查安装版本。</div>
       <details class="debug-details muted">
-        <summary>排查信息</summary>
+        <summary>给维护人员看的信息</summary>
         方案应用入口尚未启用。<br/>
-        常见原因：运行旧版本 / 修改后未重启 / 重新打包未包含最新代码。<br/>
-        处理：重启服务或重新打包升级。<br/>
-        日志：logs/aps.log、logs/aps_error.log。
+        当前入口暂不可用，请联系管理员更新系统或重启服务。
       </details>
     {% endif %}
   </div>
@@ -66,25 +64,17 @@
   <div class="card">
     <h3 class="section-title">当前配置状态</h3>
     <div class="scheduler-current-config-summary">
-      <div class="muted">
-        已选方案（基线）：
-        <strong>{{ current_config_state.baseline_label if current_config_state else ('自定义' if not active_preset or active_preset == 'custom' else active_preset) }}</strong>
-      </div>
+      <div class="aps-summary-grid">
+        {{ ui.summary_item('已选方案', current_config_state.baseline_label if current_config_state else ('自定义' if not active_preset or active_preset == 'custom' else active_preset), '这是当前设置对照的方案。') }}
       {% if current_config_state %}
-        <div class="muted mt-1">
-          当前运行配置：
-          <strong>{{ current_config_state.status_label }}</strong>
-          <span class="meta-sep">｜</span>
-          {{ current_config_state.label }}
-        </div>
+        {{ ui.summary_item('当前运行配置', current_config_state.status_label, current_config_state.label) }}
         {% if current_config_state.repair_notices %}
-          <ul class="muted mt-2 list-tight">
+          <ul class="muted mt-2 list-tight aps-form-span-all">
             {% for notice in current_config_state.repair_notices %}
               <li>
                 {{ notice.message or current_config_state.label }}
                 {% if notice.field_labels %}
-                  <span class="meta-sep">|</span>
-                  涉及字段：{{ notice.field_labels|join('、') }}
+                  <div class="aps-summary-desc mt-1">涉及字段：{{ notice.field_labels|join('、') }}</div>
                 {% endif %}
               </li>
             {% endfor %}
@@ -92,15 +82,12 @@
         {% endif %}
       {% endif %}
       {% if current_auto_assign_persist_state %}
-        <div class="muted mt-1">
-          自动回写资源：<strong>{{ current_auto_assign_persist_state.label }}</strong>
-          <span class="meta-sep">|</span>
-          {{ current_auto_assign_persist_state.description }}
-        </div>
+        {{ ui.summary_item('保存系统补齐的设备和人员', current_auto_assign_persist_state.label, current_auto_assign_persist_state.description) }}
       {% endif %}
+      </div>
       {% if config_degraded_field_labels %}
         <div class="flash-card flash-warning mt-2 scheduler-config-degraded-summary">
-          <div>当前配置存在可见兼容修补：</div>
+          <div>当前配置有需要复核的修正项：</div>
           <ul class="list-tight mt-1">
             {% for item in config_degraded_field_labels %}
               <li>{{ item }}</li>
@@ -110,7 +97,7 @@
       {% endif %}
       {% if config_hidden_warnings %}
         <div class="flash-card flash-warning mt-2 scheduler-config-degraded-summary">
-          <div>当前还有内部配置项存在兼容修补：</div>
+          <div>还有一些平时不直接显示的设置需要检查，请按下面提示处理：</div>
           <ul class="list-tight mt-1">
             {% for item in config_hidden_warnings %}
               <li>{{ item }}</li>
@@ -124,20 +111,18 @@
   <div class="card">
     <h3 class="section-title">最近一次排产快照</h3>
     {% if latest_history %}
-      <div class="info-line">
-        <span>时间：<strong>{{ latest_history.schedule_time }}</strong></span>
-        <span class="info-sep">|</span>
-        <span>版本：<strong>v{{ latest_history.version }}</strong></span>
-        <span class="info-sep">|</span>
-        <span>方式：<strong>{{ strategy_zh.get(latest_history.strategy, latest_history.strategy or '-') }}</strong></span>
-        <span class="info-sep">|</span>
-        <span>结果：<strong>{{ latest_summary_display.result_status_label or '-' }}</strong></span>
+      <div class="aps-summary-grid">
+        {{ ui.summary_item('版本', 'v' ~ latest_history.version) }}
+        {{ ui.summary_item('时间', latest_history.schedule_time) }}
+        {{ ui.summary_item('排产方式', strategy_zh.get(latest_history.strategy, latest_history.strategy or '-')) }}
+        {{ ui.summary_item('结果', latest_summary_display.result_status_label or '-') }}
+        {% if latest_summary and latest_summary.overdue_batches %}
+          {{ ui.summary_item('超期数量', (latest_summary.overdue_batches.count or 0) ~ ' 个') }}
+        {% endif %}
+        {% if latest_auto_assign_persist_state %}
+          {{ ui.summary_item('保存系统补齐的设备和人员', latest_auto_assign_persist_state.label, latest_auto_assign_persist_state.description) }}
+        {% endif %}
       </div>
-      {% if latest_summary and latest_summary.overdue_batches %}
-        <div class="muted mt-2">
-          超期：{{ latest_summary.overdue_batches.count or 0 }} 个
-        </div>
-      {% endif %}
       {% if latest_summary_display.primary_degradation %}
         <div class="flash-card flash-warning mt-2 scheduler-run-degraded-summary">
           <div>{{ latest_summary_display.primary_degradation.message }}</div>
@@ -157,7 +142,7 @@
       {% endif %}
       {% if latest_other_degradation_messages %}
         <div class="flash-card flash-warning mt-2 scheduler-run-other-degradation-summary">
-          <div>其他结构化降级事件：</div>
+          <div>其他需要注意的排产提示：</div>
           <ul class="list-tight mt-1">
             {% for item in latest_other_degradation_messages %}
               <li>
@@ -168,38 +153,30 @@
           </ul>
         </div>
       {% endif %}
-      {% if latest_auto_assign_persist_state %}
-        <div class="muted mt-2">
-          自动回写资源：<strong>{{ latest_auto_assign_persist_state.label }}</strong>
-          <span class="info-sep">|</span>
-          {{ latest_auto_assign_persist_state.description }}
-        </div>
-      {% endif %}
       {% if latest_warning_total %}
         <div class="flash-card flash-warning mt-2">
-          <div>告警：{{ latest_warning_total }} 条</div>
+          <div>提醒：{{ latest_warning_total }} 条</div>
           <ul class="list-tight mt-1">
             {% for item in latest_warning_preview %}
               <li>{{ item }}</li>
             {% endfor %}
           </ul>
           {% if latest_warning_hidden_count > 0 %}
-            <div class="muted text-xs">另有 {{ latest_warning_hidden_count }} 条告警，请到系统历史查看。</div>
+            <div class="muted text-xs">另有 {{ latest_warning_hidden_count }} 条提醒，请到系统历史查看。</div>
           {% endif %}
         </div>
       {% endif %}
       {% if latest_summary and latest_summary.algo and latest_summary.algo.metrics %}
         {% set algo = latest_summary.algo %}
         {% set m = algo.metrics %}
-        <div class="muted mt-2">
-          指标：拖期 {{ m.total_tardiness_hours or 0 }} 小时，
-          加权拖期 {{ m.weighted_tardiness_hours or 0 }} 小时，
-          总工期 {{ m.makespan_hours or 0 }} 小时，
-          换型 {{ m.changeover_count or 0 }} 次
-          <span class="info-sep">|</span>
-          设备利用率 {{ ((m.machine_util_avg or 0) * 100) | round(2) }}%
-          <span class="info-sep">|</span>
-          模式：{{ mode_zh.get(algo.mode, algo.mode or '-') }}，目标：{{ latest_objective_label }}
+        <div class="aps-summary-grid mt-2">
+          {{ ui.summary_item('拖期', (m.total_tardiness_hours or 0) ~ ' 小时') }}
+          {{ ui.summary_item('加权拖期', (m.weighted_tardiness_hours or 0) ~ ' 小时') }}
+          {{ ui.summary_item('总工期', (m.makespan_hours or 0) ~ ' 小时') }}
+          {{ ui.summary_item('换型', (m.changeover_count or 0) ~ ' 次') }}
+          {{ ui.summary_item('设备利用率', (((m.machine_util_avg or 0) * 100) | round(2)) ~ '%') }}
+          {{ ui.summary_item('模式', mode_zh.get(algo.mode, algo.mode or '-')) }}
+          {{ ui.summary_item('目标', latest_objective_label) }}
         </div>
       {% endif %}
       {% if latest_summary_display.error_total %}
@@ -223,7 +200,7 @@
   <div class="card">
     <h3 class="section-title">批次列表</h3>
     <form method="get" action="{{ url_for('scheduler.batches_page') }}" class="mb-2">
-      <div class="form-row">
+      <div class="aps-filter-bar">
         <div class="form-field">
           <label for="schedulerBatchesStatusFilter">状态</label>
           <select id="schedulerBatchesStatusFilter" name="status">
@@ -244,7 +221,7 @@
             <option value="no" {% if only_ready=='no' %}selected{% endif %}>未齐套</option>
           </select>
         </div>
-        <div>
+        <div class="aps-form-actions aps-form-actions-end">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
         </div>
       </div>
@@ -265,20 +242,20 @@
     {% if batches and batches|length > 0 %}
       {% for r in batches %}
         <form id="batchDeleteForm_{{ loop.index0 }}" method="post" action="{{ url_for('scheduler.delete_batch', batch_id=r.batch_id) }}" class="d-none"
-              data-confirm="确定删除批次 {{ r.batch_id }} 吗？将级联删除批次工序与排程记录（若存在）。">
+              data-confirm="确认删除该批次 {{ r.batch_id }} 吗？会同时删除这个批次下面的工序和排程记录（如果有）。">
           <input type="hidden" name="next" value="{{ request.full_path }}">
         </form>
       {% endfor %}
-      <div class="form-row mb-2">
+      <div class="aps-search-row mb-2">
         <div class="form-field">
           <label for="schedulerBatchesSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索批次</label>
-          <input id="schedulerBatchesSearchInput" data-table-search="batchesTable" placeholder="输入批次号、图号..." class="w-260">
+          <input id="schedulerBatchesSearchInput" data-table-search="batchesTable" placeholder="输入批次号、图号...">
         </div>
-        <span class="muted text-xs">仅当前页排序</span>
+        <span class="muted text-xs aps-export-note">仅当前页排序</span>
       </div>
       <form id="jsRunScheduleForm" method="post" action="{{ url_for('scheduler.run_schedule') }}">
-        <div class="overflow-x-auto">
-        <table id="batchesTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1" data-col-resize="1">
+        <div class="aps-table-scroll">
+        <table id="batchesTable" data-table-key="v2_batchesTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1" data-col-resize="1">
         <thead>
           <tr>
             <th class="w-60">
@@ -328,7 +305,7 @@
         </div>
 
         {% if status == 'pending' %}
-          <div class="form-row mt-3">
+          <div class="aps-form-grid mt-3">
             <div class="form-field">
               <label class="muted" for="schedulerStartDtInput">排产开始时间（默认明天 08:00）</label>
               <input id="schedulerStartDtInput" type="datetime-local" name="start_dt" value="{{ (default_start_dt or '')|replace(' ', 'T') }}" class="w-220">
@@ -348,14 +325,14 @@
                 </div>
               {% endif %}
             </div>
-            <div class="form-field min-w-320">
+            <div class="form-field aps-form-span-2">
               <label class="muted">
                 <input type="checkbox" name="strict_mode" value="yes">
-                严格校验排产参数
+                发现参数问题就停止排产
               </label>
-              <div class="muted text-xs">仅对“派工方式”“智能派工策略”“自动分配设备人员”这几项设置生效：开启后，如果填写了无效的值，将直接报错并拒绝排产，不会自动使用默认值替代。</div>
+              <div class="muted text-xs aps-help-note">勾选后：派工方式、智能派工策略、自动分配设备人员这几项如果配置不合法，会直接停止排产并提示原因。不勾选：系统会按页面提示的安全取值继续排产，并告诉你哪些设置需要重新保存。</div>
             </div>
-            <div class="muted flex-1 min-w-240">
+            <div class="muted aps-form-span-2">
               设置截止日期后，若无法在期限内完成，系统会提示排产失败。
             </div>
           </div>

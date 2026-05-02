@@ -128,7 +128,7 @@ def test_resource_dispatch_payload_decorates_detail_tasks_and_calendar_text() ->
 
     assert row["current_resource_label"] == "OP001 张三"
     assert row["counterpart_resource_label"] == "MC001 数控车床1"
-    assert row["team_relation_label"] == "跨班组借调"
+    assert row["team_relation_label"] == "跨班组"
     assert task["name"] == "OP10 MC001 数控车床1"
     assert task["meta"]["counterpart_resource_label"] == "MC001 数控车床1"
     assert calendar_row["scope_label"] == "OP001 张三"
@@ -158,8 +158,8 @@ def test_resource_dispatch_payload_labels_external_and_unassigned_resources() ->
 
     out = decorate_resource_dispatch_payload(payload)
 
-    assert out["detail_rows"][0]["counterpart_resource_label"] == "外协 外协供应商"
-    assert out["detail_rows"][1]["counterpart_resource_label"] == "外协/未分配"
+    assert out["detail_rows"][0]["counterpart_resource_label"] == "外协供应商：外协供应商"
+    assert out["detail_rows"][1]["counterpart_resource_label"] == "外协未分配"
 
 
 def test_resource_dispatch_payload_decorates_task_without_meta() -> None:

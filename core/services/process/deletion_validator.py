@@ -16,7 +16,7 @@ class ValidationResult(Enum):
 @dataclass
 class Operation:
     seq: int
-    source: str  # internal/external
+    source: str  # 自制/外协
     status: str = PartOperationStatus.ACTIVE.value
 
 
@@ -32,20 +32,20 @@ class DeletionCheckResult:
 
 class DeletionValidator:
     """
-    外部工序删除验证器（按开发文档 8.x 规则保留）。
+    外协工序删除验证器（按开发文档 8.x 规则保留）。
 
     规则总结：
-    - 首部连续外部工序：可删
-    - 尾部连续外部工序：可删
-    - 中间外部工序（含中间连续外部组）：不可删
+    - 首部连续外协工序：可删
+    - 尾部连续外协工序：可删
+    - 中间外协工序（含中间连续外协组）：不可删
     """
 
     @staticmethod
     def _norm_source(value: str) -> str:
         """
-        将 source 规范化为 internal/external。
+        将 source 规范化为系统内部使用的工序来源值。
         - 大小写/空格容错
-        - 未知值保持为空，由上层拒绝删除，避免把异常来源误当成内部或外部工序
+        - 未知值保持为空，由上层拒绝删除，避免把异常来源误当成自制或外协工序
         """
         v = str(value or "").strip().lower()
         if v in (SourceType.INTERNAL.value, SourceType.EXTERNAL.value):
@@ -89,7 +89,7 @@ class DeletionValidator:
             return DeletionCheckResult(
                 result=ValidationResult.WARNING,
                 can_delete=True,
-                message="删除后将没有内部工序，确定继续？",
+                message="删除后将没有自制工序，确定继续？",
             )
         if len(internal_ops) == 1:
             return DeletionCheckResult(result=ValidationResult.ALLOWED, can_delete=True, message="可以删除")
@@ -102,7 +102,7 @@ class DeletionValidator:
                 result=ValidationResult.DENIED,
                 can_delete=False,
                 message=(
-                    f"无法删除：工序 {left_seq} 和 {right_seq} 之间存在未删除的外部工序 {between_seqs}，"
+                    f"无法删除：工序 {left_seq} 和 {right_seq} 之间还有未删除的外协工序 {between_seqs}，"
                     f"删除后会导致工艺断档。如需删除，请一并删除这些工序。"
                 ),
                 affected_ops=between_seqs,
@@ -142,7 +142,7 @@ class DeletionValidator:
                 return DeletionCheckResult(
                     result=ValidationResult.DENIED,
                     can_delete=False,
-                    message=f"工序 {seq} 是内部工序，不能删除。只能删除外部工序。",
+                    message=f"工序 {seq} 是自制工序，不能删除。这里只能删除外协工序。",
                 )
         return None
 
@@ -184,7 +184,7 @@ class DeletionValidator:
 
     def get_deletion_groups(self, operations: List[Operation]) -> List[List[int]]:
         """
-        获取可删除的外部工序组（首部连续外部组、尾部连续外部组）。
+        获取可删除的外协工序组（首部连续外协组、尾部连续外协组）。
         """
         active_ops = sorted(
             [op for op in (operations or []) if self._norm_status(op.status) == PartOperationStatus.ACTIVE.value],
@@ -197,7 +197,7 @@ class DeletionValidator:
 
         groups: List[List[int]] = []
 
-        # 首部连续外部组
+        # 首部连续外协组
         head_group: List[int] = []
         for op in active_ops:
             if self._norm_source(op.source) == SourceType.EXTERNAL.value:
@@ -207,7 +207,7 @@ class DeletionValidator:
         if head_group:
             groups.append(head_group)
 
-        # 尾部连续外部组
+        # 尾部连续外协组
         tail_group: List[int] = []
         for op in reversed(active_ops):
             if self._norm_source(op.source) == SourceType.EXTERNAL.value:

@@ -45,14 +45,14 @@
 
   function sourceLabel(value) {
     const v = trim(value);
-    if (v === "internal") return "内制";
+    if (v === "internal") return "自制";
     if (v === "external") return "外协";
     return v || "-";
   }
 
   function relationBadge(label) {
     const v = trim(label);
-    if (v === "跨班组借调") return badge(v, "update");
+    if (v === "跨班组") return badge(v, "update");
     if (v === "同班组") return badge(v, "new");
     if (v) return badge(v, "skip");
     return '<span class="muted">-</span>';
@@ -130,7 +130,8 @@
     $("rdSummaryTotalTasks").textContent = text(data.total_tasks || 0);
     $("rdSummaryTotalHours").textContent = text(data.total_hours || 0);
     $("rdSummaryOverdue").textContent = text(data.overdue_count || 0);
-    $("rdSummaryCrossTeamExternal").textContent = text(data.cross_team_count || 0) + " / " + text(data.external_count || 0);
+    $("rdSummaryCrossTeam").textContent = text(data.cross_team_count || 0);
+    $("rdSummaryExternal").textContent = text(data.external_count || 0);
     $("rdSummaryCrossDay").textContent = text(data.cross_day_count || 0);
   }
 
@@ -178,13 +179,13 @@
     if (!isTeam) {
       if (operatorBody) operatorBody.innerHTML = buildDetailRowsHtml([], "暂无数据。");
       if (machineBody) machineBody.innerHTML = buildDetailRowsHtml([], "暂无数据。");
-      if (crossBody) crossBody.innerHTML = buildDetailRowsHtml([], "暂无跨班组借调任务。");
+      if (crossBody) crossBody.innerHTML = buildDetailRowsHtml([], "暂无跨班组任务。");
       show(crossWrap, false);
       return;
     }
     if (operatorBody) operatorBody.innerHTML = buildDetailRowsHtml(data.operator_rows || [], "暂无班组人员任务。");
     if (machineBody) machineBody.innerHTML = buildDetailRowsHtml(data.machine_rows || [], "暂无班组设备任务。");
-    if (crossBody) crossBody.innerHTML = buildDetailRowsHtml(data.cross_team_rows || [], "暂无跨班组借调任务。");
+    if (crossBody) crossBody.innerHTML = buildDetailRowsHtml(data.cross_team_rows || [], "暂无跨班组任务。");
     show(crossWrap, Array.isArray(data.cross_team_rows) && data.cross_team_rows.length > 0);
   }
 
@@ -358,7 +359,7 @@
       if (message) {
         parts.push(escapeHtml(message));
       } else if (code) {
-        parts.push("未知退化提示");
+        parts.push("有一条排班提示没有完整说明");
       }
       if (count > 1) {
         parts.push("×" + escapeHtml(count));

@@ -79,7 +79,7 @@ class MachineDowntimeService:
         try:
             did = int(downtime_id)
         except Exception as e:
-            raise ValidationError("停机记录 ID 不合法", field="downtime_id") from e
+            raise ValidationError("停机记录编号不合法", field="downtime_id") from e
         d = self.repo.get(did)
         if not d:
             raise BusinessError(ErrorCode.NOT_FOUND, f"停机记录（ID={did}）不存在")
@@ -176,12 +176,12 @@ class MachineDowntimeService:
 
         if stype == "machine":
             if not sval:
-                raise ValidationError("scope_value 不能为空（machine 模式）", field="scope_value")
+                raise ValidationError("请选择要停机的设备。", field="停机范围")
             self._ensure_machine_exists(sval)
             target_machine_ids = [sval]
         elif stype == "category":
             if not sval:
-                raise ValidationError("scope_value 不能为空（category 模式）", field="scope_value")
+                raise ValidationError("请选择要停机的设备类别。", field="停机范围")
             ms = self.machine_repo.list(status=MachineStatus.ACTIVE.value if only_active_machines else None, category=sval)
             target_machine_ids = [m.machine_id for m in ms]
         else:
@@ -237,7 +237,7 @@ class MachineDowntimeService:
             return
 
         if d.id is None:
-            raise BusinessError(ErrorCode.NOT_FOUND, "停机记录 ID 缺失，无法执行取消。")
+            raise BusinessError(ErrorCode.NOT_FOUND, "停机记录编号缺失，无法执行取消。")
 
         with self.tx_manager.transaction():
             self.repo.cancel(int(d.id))

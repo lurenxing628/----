@@ -446,7 +446,7 @@ def resolve_schedule_params(
     auto_assign_enabled = _resolve_auto_assign_enabled(snapshot_value=_snapshot_value)
 
     if auto_assign_enabled and resource_pool is None:
-        warnings.append("自动分配已启用，但资源池缺失，内部工序无法自动分配设备或人员。")
+        warnings.append("自动分配已启用，但可用设备或人员资料缺失，自制工序无法自动分配设备或人员。")
 
     used_params["dispatch_mode"] = dispatch_mode_key
     used_params["dispatch_rule"] = dispatch_rule_enum.value

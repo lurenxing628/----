@@ -85,7 +85,7 @@ class CalendarAdmin:
             return normalize_yes_no_narrow_value(value, default=YesNo.YES.value, unknown_policy="raise")
         except Exception as e:
             raise ValidationError(
-                f"“{field}”不正确，请选择：是 / 否；也兼容英文标准值 yes/no、true/false、1/0。",
+                f"“{field}”不正确，请选择：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。",
                 field=field,
             ) from e
 

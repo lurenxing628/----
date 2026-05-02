@@ -307,12 +307,12 @@ class BackupManager:
                             rows = dest.execute("PRAGMA integrity_check").fetchall() or []
                         except Exception as e:
                             # 校验执行失败：不阻断备份，但记录 warning 便于排障
-                            fallback_log(self.logger, "warning", f"备份 integrity_check 执行失败（已忽略）：{e}")
+                            fallback_log(self.logger, "warning", f"备份后的数据库完整性检查执行失败（已忽略）：{e}")
                         else:
                             msg0 = str((rows[0][0] if rows else "") or "").strip().lower()
                             if msg0 != "ok":
-                                fallback_log(self.logger, "error", f"备份 integrity_check 未通过：{rows}")
-                                raise RuntimeError(f"backup integrity_check failed: {rows}")
+                                fallback_log(self.logger, "error", f"备份后的数据库完整性检查未通过：{rows}")
+                                raise RuntimeError(f"备份后的数据库完整性检查失败：{rows}")
                 os.replace(tmp_path, backup_path)
                 fallback_log(self.logger, "info", f"数据库已备份：{backup_path}")
                 return backup_path

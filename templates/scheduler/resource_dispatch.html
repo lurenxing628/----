@@ -30,27 +30,27 @@
     <div class="page-header">
       <div class="page-title-group">
         <h2 class="page-title">资源排班中心</h2>
-        <div class="meta-inline text-meta">
-          {% if has_history and can_query %}
-            查询对象：<strong>{{ filters.scope_label }}</strong>
+        {% if has_history and can_query %}
+          <div class="aps-summary-grid mt-2">
+            {{ ui.summary_item('查询对象', filters.scope_label) }}
             {% if filters.scope_type == 'team' %}
-              <span class="meta-sep">｜</span>
-              班组轴：<strong>{{ filters.team_axis_label }}</strong>
+              {{ ui.summary_item('班组轴', filters.team_axis_label) }}
             {% endif %}
-            <span class="meta-sep">｜</span>
-            区间：<strong>{{ filters.start_date }}</strong> ～ <strong>{{ filters.end_date }}</strong>
-            <span class="meta-sep">｜</span>
-            版本：<strong>v{{ filters.version }}</strong>
-          {% elif has_history %}
-            请选择单人、单机或班组后再查询排班任务。
-          {% else %}
-            当前暂无排产历史，请先执行排产。
-          {% endif %}
-        </div>
+            {{ ui.summary_item('区间', filters.start_date ~ ' ～ ' ~ filters.end_date) }}
+            {{ ui.summary_item('版本', 'v' ~ filters.version) }}
+          </div>
+        {% elif has_history %}
+          <p class="text-meta mt-1">请选择单人、单机或班组后再查询排班任务。</p>
+        {% else %}
+          <p class="text-meta mt-1">当前暂无排产历史，请先执行排产。</p>
+        {% endif %}
       </div>
       <div class="page-actions page-actions-context">
         {% if export_url %}
           {{ ui.link_button('导出资源排班.xlsx', export_url, 'secondary', 'md', 'download') }}
+        {% else %}
+          {{ ui.button('导出资源排班.xlsx', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
+          <span class="aps-export-note">暂无数据，不能导出。</span>
         {% endif %}
       </div>
     </div>
@@ -58,7 +58,13 @@
   </div>
 
   <div class="card">
-    <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="inline-flex-wrap items-end">
+    {% set selected_version_row = namespace(item=None) %}
+    {% for item in versions or [] %}
+      {% if item.version == filters.version %}
+        {% set selected_version_row.item = item %}
+      {% endif %}
+    {% endfor %}
+    <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-form-grid">
       <div class="form-field">
         <label>视角</label>
         <select name="scope_type" id="rdScopeType" class="w-140">
@@ -124,10 +130,10 @@
       <div class="form-field">
         <label>版本</label>
         {% if versions and versions|length > 0 %}
-          <select name="version" class="w-280">
+          <select name="version" class="w-140">
             {% for v in versions %}
               <option value="{{ v.version }}" {% if v.version == filters.version %}selected{% endif %}>
-                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ v.result_status_label or status_zh.get(v.result_status, v.result_status or '-') }}）
+                {{ ui.version_option_label(v, status_zh.get(v.result_status, '结果状态未知')) }}
               </option>
             {% endfor %}
           </select>
@@ -135,13 +141,21 @@
           <input name="version" value="{{ filters.version or '' }}" class="w-160">
         {% endif %}
       </div>
-      <div class="inline-flex-wrap">
+      <div class="aps-form-actions aps-form-actions-end">
         {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
         {{ ui.link_button('重置', url_for('scheduler.resource_dispatch_page'), 'secondary', 'md') }}
       </div>
     </form>
+    {% if selected_version_row.item %}
+      <div class="aps-summary-grid aps-version-summary">
+        {{ ui.summary_item('版本', 'v' ~ selected_version_row.item.version) }}
+        {{ ui.summary_item('时间', selected_version_row.item.schedule_time) }}
+        {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
+        {{ ui.summary_item('结果', selected_version_row.item.result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
+      </div>
+    {% endif %}
     {% if not has_history %}
-      <div class="error mt-2" role="alert" aria-live="assertive">当前数据库暂无排产版本。请先在【执行排产】页面生成排产结果。</div>
+      <div class="error mt-2" role="alert" aria-live="assertive">系统里还没有排产版本。请先在【执行排产】页面生成排产结果。</div>
     {% elif not can_query %}
       <div class="muted mt-2">请选择单人、单机或班组后点击“查询”。</div>
     {% else %}
@@ -164,8 +178,12 @@
         <div class="stat-card-value danger" id="rdSummaryOverdue">--</div>
       </div>
       <div class="stat-card type-info">
-        <div class="stat-card-label">跨班组 / 外协未分配</div>
-        <div class="stat-card-value" id="rdSummaryCrossTeamExternal">--</div>
+        <div class="stat-card-label">跨班组</div>
+        <div class="stat-card-value" id="rdSummaryCrossTeam">--</div>
+      </div>
+      <div class="stat-card type-info">
+        <div class="stat-card-label">外协未分配</div>
+        <div class="stat-card-value" id="rdSummaryExternal">--</div>
       </div>
       <div class="stat-card type-info">
         <div class="stat-card-label">跨天任务</div>
@@ -179,18 +197,17 @@
   </div>
 
   <div id="rdDegradationSummary" class="card flash-card flash-warning is-hidden" role="alert" aria-live="polite">
-    <div>当前结果包含结构化降级信息：</div>
+    <div>当前结果有需要注意的提示：</div>
     <ul id="rdDegradationList" class="list-tight mt-1"></ul>
   </div>
 
   <div id="rdResultCard" class="card {% if not has_history or not can_query %}is-hidden{% endif %}">
-    <div class="inline-flex-wrap items-end">
-      <div class="inline-flex-wrap" id="rdTabBar">
+    <div class="aps-filter-bar">
+      <div class="aps-form-actions" id="rdTabBar">
         {{ ui.button('任务明细', 'primary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabDetail') }}
         {{ ui.button('日历矩阵', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabCalendar') }}
         {{ ui.button('甘特图', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabGantt') }}
       </div>
-      <div class="flex-1"></div>
       <div class="form-field" id="rdGanttModeField">
         <label>甘特粒度</label>
         <select id="rdGanttMode" class="w-140">
@@ -205,7 +222,7 @@
     <div id="rdEmpty" class="muted is-hidden mt-2"></div>
 
     <div id="rdDetailPanel" class="mt-3">
-      <div class="table-scroll">
+      <div class="aps-table-scroll">
         <table class="table-sticky table-layout-fixed">
           <thead>
             <tr>
@@ -231,7 +248,7 @@
     </div>
 
     <div id="rdCalendarPanel" class="mt-3 is-hidden">
-      <div class="table-scroll" id="rdCalendarWrap"></div>
+      <div class="aps-table-scroll" id="rdCalendarWrap"></div>
     </div>
 
     <div id="rdGanttPanel" class="mt-3 is-hidden">
@@ -240,7 +257,7 @@
 
     <div id="rdTeamBlocks" class="mt-3 is-hidden">
       <h3>班组人员任务</h3>
-      <div class="table-scroll">
+      <div class="aps-table-scroll">
         <table class="table-sticky table-layout-fixed">
           <thead>
             <tr>
@@ -265,7 +282,7 @@
       </div>
 
       <h3 class="mt-3">班组设备任务</h3>
-      <div class="table-scroll">
+      <div class="aps-table-scroll">
         <table class="table-sticky table-layout-fixed">
           <thead>
             <tr>
@@ -290,8 +307,8 @@
       </div>
 
       <div id="rdTeamCrossWrap" class="is-hidden">
-        <h3 class="mt-3">跨班组借调</h3>
-        <div class="table-scroll">
+        <h3 class="mt-3">跨班组</h3>
+        <div class="aps-table-scroll">
           <table class="table-sticky table-layout-fixed">
             <thead>
               <tr>
@@ -309,7 +326,7 @@
             </thead>
             <tbody id="rdTeamCrossBody">
               <tr>
-                <td colspan="10" class="muted">暂无跨班组借调任务。</td>
+                <td colspan="10" class="muted">暂无跨班组任务。</td>
               </tr>
             </tbody>
           </table>

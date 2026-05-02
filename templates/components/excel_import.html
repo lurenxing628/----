@@ -18,9 +18,10 @@
       <strong>导入前先确认：</strong>
       <ul class="list-tight">
         <li>模板文件只支持 <code>.xlsx</code>，表头不要改。</li>
-        <li>系统只读取首个工作表（通常是 <code>Sheet1</code>），不要把有效数据挪到第二个工作表。</li>
+        <li>系统只读取第一个工作表，不要把有效数据挪到第二个工作表。</li>
         <li>先“上传并预览”，把错误行全部修完，再点“确认导入”。</li>
-        <li>只要有 1 行是“错误”，整份文件都不会导入。</li>
+        <li>预览阶段还有错误时，不能确认导入。</li>
+        <li>确认导入时，如果个别行临时写入失败，系统可能会先写入成功的行，并把失败的行单独提示出来。</li>
         <li>导入完成后，建议再导出一次当前数据做复核。</li>
         <li>单次上传文件大小不超过 16MB。</li>
       </ul>
@@ -36,38 +37,44 @@
   </div>
 
   <form action="{{ preview_url }}" method="post" enctype="multipart/form-data">
-    <div class="mb-3">
-      <label for="excelImportMode">导入模式：</label>
-      <select id="excelImportMode" name="mode">
-        {% for opt in selected_mode_options %}
-          {% if ui is defined %}
-            {% set opt_value = ui.excel_import_option_value(opt) | trim %}
-            {% set opt_label = ui.excel_import_option_label(opt) | trim %}
-          {% else %}
-            {% set opt_value = opt.value if opt is mapping else opt[0] %}
-            {% set opt_label = opt.label if opt is mapping else opt[1] %}
-          {% endif %}
-          <option value="{{ opt_value }}" {% if mode==opt_value %}selected{% endif %}>{{ opt_label }}</option>
-        {% endfor %}
-      </select>
+    <div class="aps-filter-bar mb-3">
+      <div class="form-field">
+        <label for="excelImportMode">导入模式</label>
+        <select id="excelImportMode" name="mode">
+          {% for opt in selected_mode_options %}
+            {% if ui is defined %}
+              {% set opt_value = ui.excel_import_option_value(opt) | trim %}
+              {% set opt_label = ui.excel_import_option_label(opt) | trim %}
+            {% else %}
+              {% set opt_value = opt.value if opt is mapping else opt[0] %}
+              {% set opt_label = opt.label if opt is mapping else opt[1] %}
+            {% endif %}
+            <option value="{{ opt_value }}" {% if mode==opt_value %}selected{% endif %}>{{ opt_label }}</option>
+          {% endfor %}
+        </select>
+      </div>
     </div>
     {% if strict_mode_supported %}
-      <div class="mb-3">
+      <div class="mb-3 aps-help-note">
         <label>
           <input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}>
-          {{ strict_mode_label or '严格校验' }}
+          {{ strict_mode_label or '发现问题就停下' }}
         </label>
-        <div class="muted text-xs">{{ strict_mode_help or '开启后，遇到数据问题会直接报错提示，不会自动跳过或使用默认值替代。' }}</div>
+        <div class="muted text-xs">{{ strict_mode_help or '勾选后：资料不完整就停下，并告诉你哪一行、哪一项要补。不勾选：能确认的数据会继续处理；但必填项为空、格式错误这类必须先改好的问题仍然会报错。' }}</div>
       </div>
     {% endif %}
-    <div class="mb-3">
-      <label for="excelImportFile" class="muted">选择文件：</label>
-      <input id="excelImportFile" type="file" name="file" accept=".xlsx" required>
-      {% if ui is defined %}
-        {{ ui.button('上传并预览', 'primary', 'md', type_attr='submit') }}
-      {% else %}
-        <button type="submit" class="btn btn-primary btn-md">上传并预览</button>
-      {% endif %}
+    <div class="aps-filter-bar mb-3">
+      <div class="form-field min-w-320">
+        <label for="excelImportFile" class="muted">选择文件</label>
+        <input id="excelImportFile" type="file" name="file" accept=".xlsx" required>
+      </div>
+      <div class="aps-form-actions aps-form-actions-end">
+        {% if ui is defined %}
+          {{ ui.button('上传并预览', 'primary', 'md', type_attr='submit') }}
+        {% else %}
+          <button type="submit" class="btn btn-primary btn-md">上传并预览</button>
+        {% endif %}
+      </div>
     </div>
     <div class="muted">
       提示：如果上传失败，请确认 Excel 文件未被其他程序占用后重试。
@@ -80,6 +87,7 @@
     <h3>导入预览</h3>
     <p class="muted">行号对应 Excel 中的实际行数。</p>
 
+    <div class="aps-table-scroll">
     <table>
       <thead>
         <tr>
@@ -122,6 +130,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
 
     <form action="{{ confirm_url }}" method="post" class="mt-3">
       <input type="hidden" name="mode" value="{{ mode }}">
@@ -132,9 +141,9 @@
       {% endif %}
       <textarea name="raw_rows_json" class="d-none">{{ raw_rows_json }}</textarea>
       {% if ui is defined %}
-        {{ ui.button('确认导入（写入数据库）', 'primary', 'md', type_attr='submit') }}
+        {{ ui.button('确认导入（保存到系统）', 'primary', 'md', type_attr='submit') }}
       {% else %}
-        <button type="submit" class="btn btn-primary btn-md">确认导入（写入数据库）</button>
+        <button type="submit" class="btn btn-primary btn-md">确认导入（保存到系统）</button>
       {% endif %}
     </form>
   </div>

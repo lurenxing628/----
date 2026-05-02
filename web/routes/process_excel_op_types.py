@@ -93,7 +93,7 @@ def _build_op_type_row_validator(
     def validate_row(row: Dict[str, Any]) -> Optional[str]:
         ot_id = normalize_text(row.get("工种ID")) or ""
         if not ot_id:
-            return "“工种ID”不能为空"
+            return "“工种编号（模板列名：工种ID）”不能为空"
         row["工种ID"] = ot_id
 
         name = _normalize_op_type_name(row.get("工种名称"))
@@ -103,7 +103,7 @@ def _build_op_type_row_validator(
 
         cat = _normalize_op_type_category(row.get("归属"))
         if cat not in SOURCE_TYPE_VALUES:
-            return "“归属”不合法，可填写：内部 / 外部 / 内 / 外；也兼容英文标准值 internal/external。"
+            return "“归属”不合法，请填写中文：自制、外协。以前的 Excel 如果写过“内部、外部、内、外”，系统会尽量按自制或外协读取；新文件请直接写“自制”或“外协”。"
         row["归属"] = cat
 
         if int(name_counts.get(name, 0) or 0) > 1:
@@ -111,7 +111,7 @@ def _build_op_type_row_validator(
 
         existing_owner_id = existing_name_to_id.get(name)
         if existing_owner_id and existing_owner_id != ot_id:
-            return f"工种名称“{name}”已被工种ID“{existing_owner_id}”占用，名称必须唯一。"
+            return f"工种名称“{name}”已被工种编号“{existing_owner_id}”使用，名称不能重复。"
 
         return None
 

@@ -124,7 +124,7 @@ def _load_batches_and_operations(svc: Any, normalized_batch_ids: List[str]) -> t
 
     if blocked_batch_ids:
         sample = "，".join(blocked_batch_ids[:20])
-        raise ValidationError(f"以下批次状态不允许排产（completed/cancelled）：{sample}", field="批次")
+        raise ValidationError(f"以下批次状态不允许排产（已完成/已取消）：{sample}", field="批次")
 
     return batches, operations
 

@@ -89,7 +89,7 @@ def has_actionable_schedule_rows(results: List[Any], *, allowed_op_ids: Optional
 
 
 def _raise_invalid_schedule_rows_error(validation_errors: List[str]) -> None:
-    exc = ValidationError("optimizer returned invalid in-scope schedule rows", field="schedule_results")
+    exc = ValidationError("优化结果里有不合法的排程记录，已拒绝写入。", field="schedule_results")
     exc.details = dict(exc.details or {})
     exc.details["reason"] = "invalid_schedule_rows"
     exc.details["validation_errors"] = list(validation_errors)
@@ -141,13 +141,13 @@ def _build_validated_schedule_row(
 ) -> Tuple[Optional[ValidatedScheduleRow], Optional[int], Optional[str]]:
     identity = _result_identity(result, index=index)
     if result is None:
-        return None, None, f"{identity}: result is None"
+        return None, None, f"{identity}: 排产结果为空"
     try:
         op_id = int(getattr(result, "op_id", 0) or 0)
     except Exception:
-        return None, None, f"{identity}: invalid op_id"
+        return None, None, f"{identity}: 工序编号不合法"
     if op_id <= 0:
-        return None, None, f"{identity}: op_id must be positive"
+        return None, None, f"{identity}: 工序编号必须大于 0"
     if allowed_op_ids is not None and op_id not in allowed_op_ids:
         return None, int(op_id), None
 

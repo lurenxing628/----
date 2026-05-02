@@ -86,7 +86,7 @@ def raise_no_actionable_schedule_error(
     operations: Optional[List[Any]] = None,
     missing_internal_resource_op_ids: Optional[Set[int]] = None,
 ) -> None:
-    exc = ValidationError("优化结果未生成有效可落库排程行", field="schedule")
+    exc = ValidationError("本次排产没有生成可保存的结果，系统没有写入新排产。请检查批次是否有可排工序、设备和人员是否已补齐。", field="排产结果")
     exc.details = dict(exc.details or {})
     exc.details["reason"] = "no_actionable_schedule_rows"
     if validation_errors:
@@ -100,7 +100,7 @@ def raise_no_actionable_schedule_error(
         exc.details["missing_internal_resource_count"] = int(total)
         exc.details["missing_internal_resource_ops"] = missing_samples[:10]
         exc.details["user_message"] = (
-            f"本次排产没有生成可保存结果，存在内部工序缺设备/人员："
+            f"本次排产没有生成可保存结果，存在自制工序缺设备/人员："
             f"{sample_text}{suffix}。请先到批次工序补充页补齐后重试。"
         )
     raise exc

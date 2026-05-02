@@ -194,22 +194,22 @@ input[type="submit"]:disabled {
   box-shadow: none;
 }
 
-button[type="submit"],
-input[type="submit"] {
+button[type="submit"]:not(.btn),
+input[type="submit"]:not(.btn) {
   background: var(--aps-primary);
   border-color: var(--aps-primary);
   color: #ffffff;
   box-shadow: 0 1px 2px 0 rgb(37 99 235 / 0.3);
 }
 
-button[type="submit"]:hover,
-input[type="submit"]:hover {
+button[type="submit"]:not(.btn):hover,
+input[type="submit"]:not(.btn):hover {
   background: var(--aps-primary-hover);
   border-color: var(--aps-primary-hover);
 }
 
-button[type="submit"]:active,
-input[type="submit"]:active {
+button[type="submit"]:not(.btn):active,
+input[type="submit"]:not(.btn):active {
   background: #1e40af;
   box-shadow: inset 0 1px 3px rgb(0 0 0 / 0.2);
 }

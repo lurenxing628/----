@@ -127,13 +127,17 @@
       var notice = document.createElement("div");
       notice.className = "flash-card flash-warning alert alert-warning";
       notice.innerHTML = '检测到未保存的草稿。'
-        + ' <button type="button" class="btn btn-sm btn-secondary" data-draft-action="restore">恢复草稿</button>'
-        + ' <button type="button" class="btn btn-sm btn-ghost" data-draft-action="clear">清除</button>';
+        + ' <span class="aps-draft-actions">'
+        + '<button type="button" class="btn btn-sm btn-secondary" data-draft-action="restore">恢复草稿</button>'
+        + '<button type="button" class="btn btn-sm btn-ghost" data-draft-action="clear">清除</button>'
+        + '<button type="button" class="btn btn-sm btn-ghost" data-draft-action="close" data-draft-notice-close="1" title="只关闭提示，不删除草稿">关闭</button>'
+        + '</span>';
       if (form.parentNode) {
         form.parentNode.insertBefore(notice, form);
       }
       var restoreBtn = notice.querySelector('[data-draft-action="restore"]');
       var clearBtn = notice.querySelector('[data-draft-action="clear"]');
+      var closeBtn = notice.querySelector('[data-draft-action="close"]');
       if (restoreBtn) {
         restoreBtn.addEventListener("click", function () {
           restoreForm(form, saved);
@@ -161,7 +165,13 @@
           }
         });
       }
+      if (closeBtn) {
+        closeBtn.addEventListener("click", function () {
+          if (notice.parentNode) {
+            notice.parentNode.removeChild(notice);
+          }
+        });
+      }
     }
   });
 })();
-

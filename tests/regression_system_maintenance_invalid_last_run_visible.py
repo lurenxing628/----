@@ -62,7 +62,7 @@ def main() -> None:
     _assert_status(resp, "GET /system/logs")
     html = resp.data.decode("utf-8", errors="ignore")
 
-    assert "时间损坏（原始值：坏时间戳）" in html, html
+    assert "上次执行时间记录异常，系统会在下次执行后重新记录。" in html, html
 
     print("OK")
 

@@ -43,7 +43,7 @@ class ParsedOperation:
 
     seq: int  # 工序号
     op_type_name: str  # 工种名称
-    source: str  # internal/external
+    source: str  # 内部/外协
     op_type_id: Optional[str] = None
     supplier_id: Optional[str] = None
     default_days: Optional[float] = None  # 外部工序默认周期（用于初始化 ext_days）

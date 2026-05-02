@@ -140,7 +140,7 @@ def _score_internal_candidate(
         resource_pool=resource_pool,
     )
     if not machine_id or not operator_id:
-        raise ValidationError(f"SGS 评分阶段缺少内部工序资源：op_id={meta['op_id']!r}", field="resource")
+        raise ValidationError(f"智能派工计算时发现自制工序缺少设备或人员：工序编号={meta['op_id']!r}", field="resource")
     estimate = _estimate_scoring_slot(ctx, state, op, batch, meta, machine_id, operator_id, end_dt_exclusive, machine_downtimes, total_hours, estimate_slot=estimate_slot)
     return _dispatch_key(
         dispatch_key_builder=dispatch_key_builder,

@@ -21,7 +21,7 @@
   <div class="card">
     <h3 class="section-title">导入选项</h3>
     <p class="text-meta">
-      “自动生成/重建工序”会根据零件工序模板生成批次工序（会覆盖已补充的设备/人员/工时/外协周期等信息）。
+      “自动生成/重建工序”会在确认导入时，根据零件工序模板生成批次工序；已有批次工序会被重建，原来手工补过的设备、人员、工时和外协周期也会被新模板覆盖。
     </p>
     {% set can_confirm = raw_rows_json and (raw_rows_json | trim) %}
     <form action="{{ confirm_url }}" method="post" class="mt-2">
@@ -45,16 +45,16 @@
         <label class="d-block mt-2">
           <input type="checkbox" value="yes" {% if strict_mode %}checked{% endif %} disabled>
           {% if strict_mode %}
-            {{ strict_mode_label or '严格校验' }}：确认导入时，遇到数据问题会直接报错
+            {{ strict_mode_label or '发现问题就停下' }}：资料不完整就停下，并告诉你哪一行、哪里要补
           {% else %}
-            {{ strict_mode_label or '严格校验' }}：确认导入时，遇到数据问题会自动跳过或使用默认值
+            {{ strict_mode_label or '发现问题就停下' }}：能确认的数据会继续导入，真正错误的数据仍会报错
           {% endif %}
         </label>
-        <div class="muted">{{ strict_mode_help or '开启后，遇到数据问题会直接报错提示，不会自动跳过或使用默认值替代。' }}</div>
+        <div class="muted">{{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续导入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}</div>
       {% endif %}
       <div class="muted">如需切换上述选项，请重新上传并预览。</div>
       <div class="mt-2">
-        {{ ui.button('确认导入（写入数据库）', 'primary', 'md', type_attr='submit', disabled=(not can_confirm)) }}
+        {{ ui.button('确认导入（保存到系统）', 'primary', 'md', type_attr='submit', disabled=(not can_confirm)) }}
         <span class="muted">（请先“上传并预览”，再确认导入）</span>
       </div>
     </form>
@@ -67,29 +67,39 @@
       {{ ui.link_button('下载模板', template_download_url, 'secondary', 'md', target='_blank') }}
     </div>
     <form action="{{ preview_url }}" method="post" enctype="multipart/form-data">
-      <div class="mb-3">
-        <label>导入模式：</label>
-        <select name="mode">
-          <option value="overwrite" {% if mode=='overwrite' %}selected{% endif %}>覆盖（相同批次号更新）</option>
-          <option value="append" {% if mode=='append' %}selected{% endif %}>追加（已存在则跳过）</option>
-          <option value="replace" {% if mode=='replace' %}selected{% endif %}>替换（清空后导入）</option>
-        </select>
+      <div class="aps-filter-bar mb-3">
+        <div class="form-field">
+          <label>导入模式</label>
+          <select name="mode">
+            <option value="overwrite" {% if mode=='overwrite' %}selected{% endif %}>覆盖（相同批次号更新）</option>
+            <option value="append" {% if mode=='append' %}selected{% endif %}>追加（已存在则跳过）</option>
+            <option value="replace" {% if mode=='replace' %}selected{% endif %}>替换（清空后导入）</option>
+          </select>
+        </div>
       </div>
-      <div class="mb-3">
+      <div class="mb-3 aps-help-note">
         <label>
           <input type="checkbox" name="auto_generate_ops" value="1" {% if auto_generate_ops %}checked{% endif %}>
-          预览和确认都按“自动从模板生成/重建批次工序”执行（推荐）
+          确认导入时自动从模板生成/重建批次工序（推荐）
         </label>
+        <div class="muted text-xs">
+          预览会先检查批次字段，并记录当时的零件工艺资料；确认前如果工艺资料变了，系统会要求重新预览，避免用旧检查结果写入新数据。
+        </div>
       </div>
       {% if strict_mode_supported %}
         <div class="mb-3">
-          <label><input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}> {{ strict_mode_label or '严格校验' }}</label>
-          <div class="muted text-xs">{{ strict_mode_help or '开启后，遇到数据问题会直接报错提示，不会自动跳过或使用默认值替代。' }}</div>
+          <label><input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}> {{ strict_mode_label or '发现问题就停下' }}</label>
+          <div class="muted text-xs">{{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续导入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}</div>
         </div>
       {% endif %}
-      <div class="mb-3 inline-flex-wrap">
-        <input type="file" name="file" accept=".xlsx" required>
-        {{ ui.button('上传并预览', 'primary', 'md', type_attr='submit') }}
+      <div class="aps-filter-bar">
+        <div class="form-field">
+          <label>选择文件</label>
+          <input type="file" name="file" accept=".xlsx" required>
+        </div>
+        <div class="aps-form-actions aps-form-actions-end">
+          {{ ui.button('上传并预览', 'primary', 'md', type_attr='submit') }}
+        </div>
       </div>
       <div class="muted">
         常见问题：如果提示“读取失败/被占用”，请先关闭 Excel 后重试。
@@ -101,6 +111,7 @@
     <div class="card">
       <h3 class="section-title">导入预览</h3>
       <p class="text-meta">提示：行号对应 Excel 中的真实行号（标题行+1）。</p>
+      <div class="aps-table-scroll">
       <table>
         <thead>
           <tr>
@@ -137,6 +148,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
       <div class="muted mt-2">
         预览完成后，请回到页面顶部“导入选项”处点击“确认导入”。
       </div>
@@ -146,6 +158,7 @@
   <div class="card">
     <h3 class="section-title">当前批次数据</h3>
     {% if existing_list and existing_list|length > 0 %}
+      <div class="aps-table-scroll">
       <table>
         <thead>
           <tr>
@@ -174,6 +187,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂无数据（可先下载模板并导入）。</div>
     {% endif %}

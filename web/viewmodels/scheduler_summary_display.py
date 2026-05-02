@@ -54,7 +54,7 @@ def _public_error_messages(value: Any) -> List[str]:
         return []
     out: List[str] = []
     for _item in raw_errors:
-        message = "排程执行出现异常，请查看系统日志。"
+        message = "排产执行遇到问题，请联系管理员查看日志。"
         if message not in out:
             out.append(message)
     return out
@@ -207,8 +207,8 @@ def _build_warning_pipeline_display(summary: Dict[str, Any]) -> Optional[Dict[st
             return None
         return {
             "source": "warning_pipeline",
-            "message": "摘要告警合并已降级。",
-            "note": "摘要告警未能完整合并到历史摘要。",
+            "message": "排产提示没有完整整理。",
+            "note": "部分排产提示没有完整写入历史摘要。",
             "summary_merge_failed": True,
             "summary_merge_error": public_summary_merge_error_code(warning_pipeline.get("summary_merge_error")),
             "algo_warning_count": _safe_int_or_none(warning_pipeline.get("algo_warning_count")),
@@ -220,8 +220,8 @@ def _build_warning_pipeline_display(summary: Dict[str, Any]) -> Optional[Dict[st
 
     return {
         "source": "legacy_degraded_causes",
-        "message": "摘要告警合并已降级。",
-        "note": "历史摘要未记录 warning pipeline 明细。",
+        "message": "排产提示没有完整整理。",
+        "note": "历史摘要未记录提示整理明细。",
         "summary_merge_failed": True,
         "summary_merge_error": None,
         "algo_warning_count": None,

@@ -16,12 +16,12 @@ def _read(rel_path: str) -> str:
 def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
     expected_holiday_hint = "假期也安排生产且未单独填写效率时，系统会使用这里的效率值；请输入大于 0 的数字。"
     expected_batch_manage_hint = (
-        "只在零件还没有工序模板、需要根据工艺路线自动生成模板时起作用："
-        "如果遇到系统不认识的工种、找不到供应商、或供应商默认周期无效，将直接报错并拒绝创建。"
+        "只在零件还没有工序模板、需要按工艺路线补建工序时生效。勾选后：资料不完整就停止创建并提示原因。"
+        "不勾选：能确认的工序会继续处理；缺少外协周期时，本次会先按 1 天记录并提醒你补成真实周期，批次号、图号、数量这些必填项有问题仍然会报错。"
     )
     expected_batch_schedule_hint = (
-        "仅对“派工方式”“智能派工策略”“自动分配设备人员”这几项设置生效："
-        "开启后，如果填写了无效的值，将直接报错并拒绝排产，不会自动使用默认值替代。"
+        "勾选后：派工方式、智能派工策略、自动分配设备人员这几项如果配置不合法，会直接停止排产并提示原因。"
+        "不勾选：系统会按页面提示的安全取值继续排产，并告诉你哪些设置需要重新保存。"
     )
 
     for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
@@ -70,14 +70,14 @@ def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> No
 
     logs = _read("templates/system/logs.html")
     assert "按英文值筛选" not in logs
-    assert "可输入模块名称或代码" in logs
-    assert "可输入动作名称或代码" in logs
+    assert "如：排产、备份、设备" in logs
+    assert "如：新增、导入、删除" in logs
     assert "<code>{{ r.module }}</code>" not in logs
     assert "<code>{{ r.action }}</code>" not in logs
     assert "{{ r.module_label }}" in logs
     assert "{{ r.action_label }}" in logs
-    assert "{{ r.module }}" in logs
-    assert "{{ r.action }}" in logs
+    assert "{{ r.module }}" not in logs
+    assert "{{ r.action }}" not in logs
     assert 'title="{{ r.module }}"' not in logs
     assert 'title="{{ r.action }}"' not in logs
     assert 'title="{{ r.target_type }}"' not in logs
@@ -221,19 +221,18 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
     )
 
     expected_alias_phrases = (
-        "兼容英文标准值 `active`/`inactive`",
-        "兼容英文标准值 `active`/`inactive`/`maintain`",
-        "兼容英文标准值 `internal`/`external`",
-        "兼容英文标准值 `beginner`/`normal`/`expert`",
-        "兼容英文标准值 `yes`/`no`",
-        "兼容英文标准值 `yes`/`no`、`true`/`false`、`on`/`off`",
-        "兼容英文标准值 `normal`/`urgent`/`critical`",
-        "兼容英文标准值 `yes`/`no`/`partial`",
-        "兼容英文标准值 `workday`/`holiday`",
-        "兼容英文标准值 `true`/`false`",
+        "以前的 Excel 如果写过英文或旧说法，系统会尽量按中文意思读取；新文件请直接填中文",
+        "以前文件里写过 `新手/一般/中级/高级/专家` 的，系统会尽量读懂",
+        "以前文件里写过 `1`/`0` 的，系统会尽量读懂",
+        "新文件请按这些中文选项填写",
+        "新文件请填中文",
     )
     for phrase in expected_alias_phrases:
         assert phrase in manual_sources
+    assert "归属可填：自制 / 外协。新文件请只填这两个中文选项" in manual_sources
+    assert "兼容英文标准值" not in manual_sources
+    assert "internal` / `external" not in manual_sources
+    assert "兼容英文标准值 `internal`/`external`" not in manual_sources
 
     assert normalize_operator_status("active") == OperatorStatus.ACTIVE.value
     assert normalize_operator_status("inactive") == OperatorStatus.INACTIVE.value
@@ -261,9 +260,9 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
     assert normalize_calendar_day_type_value("weekend") == CalendarDayType.HOLIDAY.value
 
     static_manual = _read("static/docs/scheduler_manual.md")
-    assert "根据工艺路线字符串自动补建模板" in static_manual
+    assert "需要按工艺路线补建工序" in static_manual
     assert "route_raw 自动补建模板" not in static_manual
-    assert "排产方案、智能派工策略、自动分配设备人员" in static_manual
+    assert "排产方式、智能派工策略、自动分配设备人员" in static_manual
     assert "dispatch_mode / dispatch_rule / auto_assign_enabled" not in static_manual
 
 
@@ -479,13 +478,13 @@ def test_import_errors_present_chinese_first_and_english_as_compatible_aliases()
     assert "允许：yes/no/true/false/1/0；或中文" not in sources
     assert "允许：internal / external；或中文" not in sources
     assert "允许：active / inactive；或中文" not in sources
-    assert "可填写：普通 / 急件 / 特急；也兼容英文标准值 normal/urgent/critical" in sources
-    assert "可填写：齐套 / 未齐套 / 部分齐套 / 是 / 否；也兼容英文标准值 yes/no/partial" in sources
-    assert "可填写：工作日 / 假期 / 周末 / 节假日；也兼容英文标准值 workday/holiday" in sources
-    assert "可填写：是 / 否；也兼容英文标准值 yes/no/true/false/1/0" in sources
-    assert "可填写：内部 / 外部 / 内 / 外；也兼容英文标准值 internal/external" in sources
-    assert "可填写：启用 / 停用 / 在用 / 正常 / 禁用；也兼容英文标准值 active/inactive" in sources
-    assert "也兼容英文标准值 yes/no、true/false、1/0、on/off" in sources
+    assert "可填写：普通 / 急件 / 特急。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
+    assert "可填写：齐套 / 未齐套 / 部分齐套 / 是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
+    assert "可填写：工作日 / 假期 / 周末 / 节假日。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
+    assert "可填写：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
+    assert "请填写中文：自制、外协。以前的 Excel 如果写过“内部、外部、内、外”，系统会尽量按自制或外协读取" in sources
+    assert "可填写：启用 / 停用 / 在用 / 正常 / 禁用。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文" in sources
+    assert "以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
 
 
 def test_excel_exports_use_chinese_labels_for_enum_columns() -> None:
@@ -524,19 +523,23 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
     assert "间隔(分)" not in gantt_render
 
     resource_dispatch = _read("static/js/resource_dispatch.js")
-    assert "未知退化提示" in resource_dispatch
+    assert "有一条排班提示没有完整说明" in resource_dispatch
     assert "parts.push(escapeHtml(code));" not in resource_dispatch
 
 
 def test_process_and_scheduler_errors_use_chinese_terms() -> None:
-    route_parser = _read("core/services/process/route_parser.py")
-    assert "严格模式已拒绝" in route_parser
+    route_parser = _read("core/services/process/route_parser_errors.py")
+    assert "已开启严格校验" not in route_parser
+    assert "当前要求先把工种资料补完整" in route_parser
+    assert "严格模式已拒绝" not in route_parser
     assert "strict_mode 已拒绝" not in route_parser
     assert "默认周期无法解析（{raw_default_days!r}）" not in route_parser
     assert "默认周期无效（{raw_default_days!r}）" not in route_parser
 
     external_group_service = _read("core/services/process/external_group_service.py")
-    assert "兼容模式已按 1.0 天回退" in external_group_service
+    assert "系统先临时按 1 天保存" not in external_group_service
+    assert "周期输入无效，本次会先按 1 天记录，请尽快补成真实周期。" in external_group_service
+    assert "compatible mode" not in external_group_service.split("user_warning_text", 1)[-1]
     assert "append_unique_text_messages(user_warnings, user_warning_text)" in external_group_service
     assert "safe_warning(self.logger, log_warning_text)" in external_group_service
 
@@ -547,7 +550,7 @@ def test_process_and_scheduler_errors_use_chinese_terms() -> None:
 
 def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
     analysis_vm = _read("web/viewmodels/scheduler_analysis_vm.py")
-    assert "当前版本摘要缺少部分分析字段" in analysis_vm
+    assert "这个历史版本缺少新的分析字段，页面只展示能确认的内容。" in analysis_vm
     assert "新 schema 字段" not in analysis_vm
     assert '"comparison_metric": "优化对比指标"' in analysis_vm
     assert '"best_score_schema": "评分顺序"' in analysis_vm
@@ -606,12 +609,12 @@ def test_reports_and_v2_batch_templates_match_public_manual_contracts() -> None:
         (
             "core/services/process/op_type_service.py",
             ("鈥", "宸ョ"),
-            ("“工种ID”不能为空", "“工种名称”不能为空"),
+            ("“工种编号”不能为空", "“工种名称”不能为空"),
         ),
         (
             "core/services/equipment/machine_downtime_service.py",
             ("鍋滄満",),
-            ("停机记录 ID 缺失，无法执行取消。",),
+            ("停机记录编号缺失，无法执行取消。",),
         ),
     ),
 )

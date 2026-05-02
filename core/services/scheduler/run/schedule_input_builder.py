@@ -86,7 +86,7 @@ def _merged_total_days(
             code="invalid_number",
             scope=scope,
             field="ext_group_total_days",
-            message=f"外协工序 {op_code} 的组合并周期无效，组合并语义已退化为逐道外协周期。",
+            message=f"外协工序 {op_code} 的合并外协周期无效，本次先按单道外协周期继续。",
             sample=repr(raw_value),
         )
         return None

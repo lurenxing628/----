@@ -15,7 +15,7 @@
   <div class="card">
     <h3>零件信息</h3>
     <form method="post" action="{{ url_for('process.update_part', part_no=part.part_no) }}">
-      <div class="form-row">
+      <div class="aps-form-grid">
         <div class="form-field">
           <label>图号</label>
           <input value="{{ part.part_no }}" disabled>
@@ -24,34 +24,34 @@
           <label>名称</label>
           <input name="part_name" required value="{{ part.part_name }}">
         </div>
-        <div class="form-field flex-1 min-w-360">
-          <label>原始工艺路线字符串</label>
+        <div class="form-field aps-form-span-2">
+          <label>工艺路线文本</label>
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
           <div class="muted text-xs">提示：可包含空格/逗号/顿号/破折号等分隔符；解析时会统一处理。</div>
         </div>
-        <div class="form-field flex-1 min-w-220">
+        <div class="form-field">
           <label>备注</label>
           <input name="remark" value="{{ part.remark or '' }}" placeholder="可选">
         </div>
-        <div>{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
+        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
 
     <form method="post" action="{{ url_for('process.reparse_part', part_no=part.part_no) }}" class="mt-3">
-      <div class="form-row">
-        <div class="form-field flex-1 min-w-320">
-          <label>用于解析的工艺路线字符串</label>
+      <div class="aps-form-grid">
+        <div class="form-field aps-form-span-2">
+          <label>用于解析的工艺路线文本</label>
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
           <div class="muted">重新解析会覆盖现有工序模板；如果解析失败，已有数据不会被改动。</div>
         </div>
-        <div class="form-field min-w-260">
+        <div class="form-field aps-form-span-all">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
-            严格校验
+            发现问题就停止解析工艺路线
           </label>
-          <div class="muted text-xs">开启后，如果找不到对应供应商、供应商默认周期填写无效、或有系统不认识的工种，将直接报错并拒绝解析，不会自动跳过。</div>
+          <div class="muted text-xs aps-help-note">勾选后：工艺路线里有不认识的工种、没有启用的外协供应商，或外协周期无效时，会直接提示错误并停止解析。不勾选：能确认的工序会继续处理；缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，空路线、格式完全不对这类必须先改好的问题仍然会报错。</div>
         </div>
-        <div>{{ ui.button('重新解析（覆盖工序模板）', 'secondary', 'md', type_attr='submit') }}</div>
+        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('重新解析（覆盖工序模板）', 'secondary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
@@ -59,7 +59,7 @@
   <div class="card">
     <h3>解析概况</h3>
       <div class="muted">
-      共 {{ total_count }} 道工序（内部 {{ internal_count }}，外部 {{ external_count }}）。
+      共 {{ total_count }} 道工序（自制 {{ internal_count }}，外协 {{ external_count }}）。
       {% if total_count == 0 %}
         <div class="muted">提示：如果还未解析，请在上方填写工艺路线并点击“重新解析”。</div>
       {% endif %}
@@ -67,8 +67,9 @@
   </div>
 
   <div class="card">
-    <h3>工序列表（内部/外部区分）</h3>
+    <h3>工序列表（自制/外协区分）</h3>
     {% if active_operations and active_operations|length > 0 %}
+      <div class="aps-table-scroll">
       <table>
         <thead>
           <tr>
@@ -88,7 +89,7 @@
               <td>
                 {% if op.source == 'internal' %}
                   <form method="post" action="{{ url_for('process.update_internal_hours', part_no=part.part_no, seq=op.seq) }}">
-                    <div class="form-row">
+                    <div class="aps-form-grid">
                       <div class="form-field">
                         <label class="muted">换型（小时）</label>
                         <input name="setup_hours" class="w-90" value="{{ op.setup_hours or 0 }}">
@@ -111,8 +112,10 @@
                   {% set s = suppliers_map.get(op.supplier_id) %}
                   <div class="muted text-xs">
                     供应商：{{ (s.name if s else '-') }}
-                    {% if op.ext_group_id %}｜组：{{ op.ext_group_id }}{% endif %}
                   </div>
+                  {% if op.ext_group_id %}
+                    <div class="muted text-xs">外协组：{{ op.ext_group_id }}</div>
+                  {% endif %}
                   <div class="muted text-xs">
                     周期：{% if op.ext_days is not none %}{{ op.ext_days }} 天{% else %}-{% endif %}
                   </div>
@@ -124,8 +127,9 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
       <div class="muted mt-2">
-        颜色标记：蓝色=内部工序，橙色=外部工序（外协）。
+        颜色标记：蓝色=自制工序，橙色=外协工序。
       </div>
     {% else %}
       <div class="muted">暂无工序模板。</div>
@@ -139,10 +143,10 @@
         {% set gid = g.group_id %}
         {% set gops = ops_by_group.get(gid) or [] %}
         <div class="group-box">
-          <div class="inline-flex-wrap">
+          <div class="aps-filter-bar">
             <div>
-              <strong>外部工序组：</strong>{{ gid }}（{{ g.start_seq }} - {{ g.end_seq }}）
-              <span class="muted">｜模式：{{ merge_mode_zh(g.merge_mode) }}</span>
+              <strong>外协工序组：</strong>{{ gid }}（{{ g.start_seq }} - {{ g.end_seq }}）
+              <div class="muted text-xs mt-1">模式：{{ merge_mode_zh(g.merge_mode) }}</div>
             </div>
             <div>
               {% if gid in deletable_group_ids %}
@@ -156,7 +160,7 @@
           </div>
 
           <form method="post" action="{{ url_for('process.set_group_mode', part_no=part.part_no, group_id=gid) }}" class="mt-3">
-            <div class="form-row">
+            <div class="aps-form-grid">
               <div class="form-field">
                 <label>周期模式</label>
                 <select name="merge_mode">
@@ -164,7 +168,7 @@
                   <option value="merged" {% if g.merge_mode=='merged' %}selected{% endif %}>合并设置</option>
                 </select>
               </div>
-              <div class="form-field flex-1 min-w-240">
+              <div class="form-field aps-form-span-2">
                 <label>合计周期（天，仅合并设置使用）</label>
                 <input name="total_days" value="{{ g.total_days if g.total_days is not none else '' }}" placeholder="如：3">
                 <div class="muted">提示：选择"合并设置"后，整组只按这里填的合计周期计算，下面每道工序的单独周期不再生效；选择"分别设置"时，这里的合计周期不生效，按下面每道工序各自的周期计算。</div>
@@ -172,16 +176,17 @@
               <div class="form-field min-w-260">
                 <label>
                   <input type="checkbox" name="strict_mode" value="yes">
-                  严格校验
+                  发现问题就停止保存外协周期
                 </label>
-                <div class="muted text-xs">选择"分别设置"时，如果某道工序的外协周期填写为空、不是数字、或小于等于 0，将直接报错，不会自动按 1 天处理。</div>
+                <div class="muted text-xs aps-help-note">勾选后：分别设置时，每道外协工序都必须填正确周期，填空、不是数字或小于等于 0 会直接报错。不勾选：系统会继续保存，并把没填好的外协周期先按 1 天记录，同时提醒你补成真实周期。</div>
               </div>
-              <div>
-                {{ ui.button('保存外部组设置', 'primary', 'md', type_attr='submit') }}
+              <div class="aps-form-actions aps-form-actions-end">
+                {{ ui.button('保存外协组设置', 'primary', 'md', type_attr='submit') }}
               </div>
             </div>
 
             {% if gops and gops|length > 0 %}
+              <div class="aps-table-scroll">
               <table class="mt-3">
                 <thead>
                   <tr>
@@ -203,21 +208,22 @@
                         {% if g.merge_mode == 'merged' %}
                           当前为"合并设置"：这里的周期不生效，以上方填写的合计周期为准。
                         {% else %}
-                          当前为分别设置：每道外部工序单独计时。
+                          当前为分别设置：每道外协工序单独计时。
                         {% endif %}
                       </td>
                     </tr>
                   {% endfor %}
                 </tbody>
               </table>
+              </div>
             {% else %}
-              <div class="muted mt-2">该组暂无外部工序。</div>
+              <div class="muted mt-2">该组暂无外协工序。</div>
             {% endif %}
           </form>
         </div>
       {% endfor %}
     {% else %}
-      <div class="muted">暂无外部工序组（当前模板中没有连续外部工序）。</div>
+      <div class="muted">暂无外协工序组（当前模板中没有连续外协工序）。</div>
     {% endif %}
   </div>
 {% endblock %}

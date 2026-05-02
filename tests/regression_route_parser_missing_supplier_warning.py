@@ -55,13 +55,15 @@ def main() -> None:
     )
     result = parser.parse("5表处理", part_no="P_NO_SUP")
 
-    assert result.status in (ParseStatus.PARTIAL, ParseStatus.PARTIAL.value), f"缺供应商映射应返回 PARTIAL：{result.status!r}"
+    assert result.status in (ParseStatus.PARTIAL, ParseStatus.PARTIAL.value), f"缺可用外协供应商应返回 PARTIAL：{result.status!r}"
     assert len(result.operations or []) == 1, f"外部工序解析数量异常：{result.operations!r}"
 
     op = result.operations[0]
     assert str(op.source or "").strip().lower() == "external", f"工序来源异常：{op.source!r}"
-    assert abs(float(op.default_days or 0.0) - 1.0) < 1e-9, f"默认周期未回退为 1.0：{op.default_days!r}"
-    assert any("未找到供应商配置" in str(msg) for msg in (result.warnings or [])), f"未透出缺供应商 warning：{result.warnings!r}"
+    assert abs(float(op.default_days or 0.0) - 1.0) < 1e-9, f"默认周期未临时按 1 天处理：{op.default_days!r}"
+    assert any("没有找到可用的外协供应商" in str(msg) for msg in (result.warnings or [])), (
+        f"未透出缺供应商 warning：{result.warnings!r}"
+    )
 
     print("OK")
 

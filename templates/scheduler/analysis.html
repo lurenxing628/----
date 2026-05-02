@@ -28,22 +28,22 @@
       </div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">查看各版本排产效果和优化过程（Win7 无网可用）。</p>
+    <p class="page-subtitle text-meta">查看每次排产的结果、对比和计算过程。本系统离线也能使用。</p>
     {{ ui.scheduler_nav('analysis') }}
   </div>
 
   <div class="card">
-    <form method="get" action="{{ url_for('scheduler.analysis_page') }}" class="form-row toolbar-actions-inline toolbar-actions-nowrap">
+    <form method="get" action="{{ url_for('scheduler.analysis_page') }}" class="aps-filter-bar">
       <div class="form-field">
         <label>选择版本</label>
         {% if versions and versions|length > 0 %}
-          <select name="version" class="min-w-260">
+          <select name="version" class="w-140">
             {% if selected_history_resolution and selected_history_resolution.history_missing %}
               <option value="" selected disabled>v{{ selected_history_resolution.requested_version }}（不存在）</option>
             {% endif %}
             {% for v in versions %}
               <option value="{{ v.version }}" {% if selected and (selected.version|int)==(v.version|int) %}selected{% endif %}>
-                v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ v.result_status_label or status_zh.get(v.result_status, v.result_status or '-') }}）
+                {{ ui.version_option_label(v, status_zh.get(v.result_status, '结果状态未知')) }}
               </option>
             {% endfor %}
           </select>
@@ -51,7 +51,7 @@
           <span class="muted">暂无排产历史（请先执行一次排产/模拟）。</span>
         {% endif %}
       </div>
-      <div>
+      <div class="aps-form-actions aps-form-actions-end">
         {{ ui.button('加载', 'primary', 'md', type_attr='submit') }}
       </div>
       {% if selected %}
@@ -71,32 +71,27 @@
 
   {% if selected %}
     <div class="card">
-      <h3 class="section-title">版本概览：v{{ selected.version }}</h3>
-      <div class="meta-inline text-meta">
-        时间：<strong>{{ selected.schedule_time }}</strong>
-        <span class="meta-sep">｜</span>
-        方式：<strong>{{ strategy_zh.get(selected.strategy, selected.strategy or '-') }}</strong>
-        <span class="meta-sep">｜</span>
-        状态：<strong>{{ selected_summary_display.result_status_label or status_zh.get(selected.result_status, selected.result_status or '-') }}</strong>
-        <span class="meta-sep">｜</span>
-        创建人：{{ selected.created_by or '-' }}
+      <h3 class="section-title">版本概览</h3>
+      <div class="aps-summary-grid">
+        {{ ui.summary_item('版本', 'v' ~ selected.version) }}
+        {{ ui.summary_item('时间', selected.schedule_time) }}
+        {{ ui.summary_item('排产方式', selected.strategy_label or strategy_zh.get(selected.strategy, '未知排产方式')) }}
+        {{ ui.summary_item('状态', selected_summary_display.result_status_label or status_zh.get(selected.result_status, '结果状态未知')) }}
+        {{ ui.summary_item('创建人', selected.created_by or '-') }}
       </div>
 
       {% set algo = (selected_summary.algo if selected_summary and selected_summary.algo else {}) %}
-      <div class="meta-inline text-meta mt-2">
-        模式：<strong>{{ mode_zh.get(algo.mode, algo.mode or '-') }}</strong>
-        <span class="meta-sep">｜</span>
-        优化目标：<strong>{{ algo_objective_label }}</strong>
-        <span class="meta-sep">｜</span>
-        计算时间上限：<strong>{{ algo.time_budget_seconds or '-' }}</strong> 秒
-        <span class="meta-sep">｜</span>
-        实际用时：<strong>{{ selected_summary.time_cost_ms if selected_summary else '-' }}</strong> 毫秒
+      <div class="aps-summary-grid">
+        {{ ui.summary_item('计算模式', mode_zh.get(algo.mode, algo.mode or '-')) }}
+        {{ ui.summary_item('优化目标', algo_objective_label) }}
+        {{ ui.summary_item('计算时间上限', (algo.time_budget_seconds or '-') ~ ' 秒') }}
+        {{ ui.summary_item('实际用时', (selected_summary.time_cost_ms if selected_summary else '-') ~ ' 毫秒') }}
       </div>
       {% if best_score_schema_display %}
         <div class="muted mt-2">
           评分顺序：
           {% for item in best_score_schema_display %}
-            {{ item.get('display_label') or item.get('label') or item.get('key') }}{% if not loop.last %} → {% endif %}
+            {{ item.get('display_label') or item.get('label') or '未命名评分项' }}{% if not loop.last %} → {% endif %}
           {% endfor %}
         </div>
       {% endif %}
@@ -110,18 +105,16 @@
       {% endif %}
       {% if algo and algo.config_snapshot %}
         <details class="mt-2">
-          <summary>本次配置快照</summary>
-          <div class="muted mt-2">
+          <summary>本次排产实际使用的设置</summary>
+          <div class="aps-summary-grid mt-2">
             {% set snapshot_sort_strategy = algo.config_snapshot.get('sort_strategy', '-') %}
             {% set snapshot_dispatch_mode = algo.config_snapshot.get('dispatch_mode') %}
             {% set snapshot_dispatch_rule = algo.config_snapshot.get('dispatch_rule') %}
-            排序：{{ strategy_zh.get(snapshot_sort_strategy, snapshot_sort_strategy or '-') }}
-            <span class="meta-sep">｜</span>
-            派工：{{ dispatch_mode_zh.get(snapshot_dispatch_mode, snapshot_dispatch_mode or '-') }}{% if snapshot_dispatch_rule %} / {{ dispatch_rule_zh.get(snapshot_dispatch_rule, snapshot_dispatch_rule) }}{% endif %}
-            <span class="meta-sep">｜</span>
-            目标：{{ algo_config_snapshot_objective_label }}
-            <span class="meta-sep">｜</span>
-            时间预算：{{ algo.config_snapshot.get('time_budget_seconds', '-') }} 秒
+            {{ ui.summary_item('排序', strategy_zh.get(snapshot_sort_strategy, '未知排产方式')) }}
+            {{ ui.summary_item('派工方式', dispatch_mode_zh.get(snapshot_dispatch_mode, '未知派工方式')) }}
+            {{ ui.summary_item('派工规则', dispatch_rule_zh.get(snapshot_dispatch_rule, '未知派工规则')) }}
+            {{ ui.summary_item('目标', algo_config_snapshot_objective_label) }}
+            {{ ui.summary_item('时间预算', algo.config_snapshot.get('time_budget_seconds', '-') ~ ' 秒') }}
           </div>
         </details>
       {% endif %}
@@ -154,14 +147,14 @@
       {% endif %}
       {% if selected_summary_display.warning_total %}
         <div class="flash-card flash-warning mt-2">
-          <div>告警：{{ selected_summary_display.warning_total }} 条</div>
+          <div>提醒：{{ selected_summary_display.warning_total }} 条</div>
           <ul class="list-tight mt-1">
             {% for item in selected_summary_display.warnings_preview %}
               <li>{{ item }}</li>
             {% endfor %}
           </ul>
           {% if selected_summary_display.warning_hidden_count > 0 %}
-            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条告警，请到系统历史查看。</div>
+            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条提醒，请到系统历史查看。</div>
           {% endif %}
         </div>
       {% endif %}
@@ -179,21 +172,16 @@
         </div>
       {% endif %}
       {% if freeze_display %}
-        <div class="muted mt-2">
+        <div class="aps-summary-grid mt-2">
           {% if freeze_display.state == 'disabled' %}
-            冻结窗口：未启用
+            {{ ui.summary_item('冻结窗口', '未启用') }}
           {% else %}
-            冻结窗口：{{ '已启用' if freeze_display.enabled else freeze_display.state_label }}
-            <span class="meta-sep">｜</span>
-            当前状态：{{ freeze_display.state_label }}
-            <span class="meta-sep">｜</span>
-            锁定天数：{{ freeze_display.days }} 天
-            <span class="meta-sep">｜</span>
-            实际生效：{{ '是' if freeze_display.applied else '否' }}
-            <span class="meta-sep">｜</span>
-            冻结工序数：{{ freeze_display.frozen_op_count }}
-            <span class="meta-sep">｜</span>
-            冻结批次数：{{ freeze_display.frozen_batch_count }}
+            {{ ui.summary_item('冻结窗口', '已启用' if freeze_display.enabled else freeze_display.state_label) }}
+            {{ ui.summary_item('当前状态', freeze_display.state_label) }}
+            {{ ui.summary_item('锁定天数', freeze_display.days ~ ' 天') }}
+            {{ ui.summary_item('实际生效', '是' if freeze_display.applied else '否') }}
+            {{ ui.summary_item('冻结工序数', freeze_display.frozen_op_count) }}
+            {{ ui.summary_item('冻结批次数', freeze_display.frozen_batch_count) }}
           {% endif %}
         </div>
         {% if freeze_display.state != 'disabled' and freeze_display.sample_batches %}
@@ -257,12 +245,14 @@
           <div class="stat-card type-primary">
             <div class="stat-card-label">设备平均利用率</div>
             <div class="stat-card-value primary">{{ (m.get('machine_util_avg', 0) * 100)|round(2) }}%</div>
-            <div class="stat-card-delta">已用 {{ m.get('machine_used_count', 0) }} 台｜负载均衡 {{ (m.get('machine_load_cv') or 0)|round(2) }}</div>
+            <div class="stat-card-delta">已用 {{ m.get('machine_used_count', 0) }} 台</div>
+            <div class="stat-card-delta">任务分配均匀程度 {{ (m.get('machine_load_cv') or 0)|round(2) }}，越小越均匀</div>
           </div>
           <div class="stat-card type-success">
             <div class="stat-card-label">人员平均利用率</div>
             <div class="stat-card-value success">{{ (m.get('operator_util_avg', 0) * 100)|round(2) }}%</div>
-            <div class="stat-card-delta">已用 {{ m.get('operator_used_count', 0) }} 人｜负载均衡 {{ (m.get('operator_load_cv') or 0)|round(2) }}</div>
+            <div class="stat-card-delta">已用 {{ m.get('operator_used_count', 0) }} 人</div>
+            <div class="stat-card-delta">任务分配均匀程度 {{ (m.get('operator_load_cv') or 0)|round(2) }}，越小越均匀</div>
           </div>
         </div>
         <div class="muted mt-2">
@@ -288,14 +278,17 @@
 
     {% if selected_summary and selected_summary.get('summary_truncated') %}
       <div class="flash-card flash-warning">
-        当前展示为裁剪后摘要（原始 {{ selected_summary.get('original_size_bytes', 0) }} 字节），尝试方案、优化曲线、超期明细可能不完整。
+        本次结果数据量较大，页面只显示重点内容；尝试方案、优化曲线、超期明细可能不完整。
+        {% if selected_summary.get('original_size_bytes') %}
+          原始结果大小约 {{ selected_summary.get('original_size_bytes') }} 字节。
+        {% endif %}
       </div>
     {% endif %}
 
     <div class="card">
       <h3 class="section-title">优化过程</h3>
       {% if trace_chart %}
-        <div class="svg-title">优化曲线（横轴=用时，纵轴=目标值）</div>
+        <div class="svg-title">计算过程曲线（横轴=用时，纵轴=方案评分，越低越好）</div>
         <div class="svg-wrap">
           <svg viewBox="0 0 {{ trace_chart.width }} {{ trace_chart.height }}" width="100%" height="{{ trace_chart.height }}">
             <polyline points="{{ trace_chart.points }}" fill="none" stroke="#1565c0" stroke-width="2"></polyline>
@@ -305,8 +298,8 @@
         <div class="muted">最小 {{ trace_chart.y_min|round(4) }} / 最大 {{ trace_chart.y_max|round(4) }}</div>
       {% endif %}
       {% if attempts and attempts|length > 0 %}
-        <div class="overflow-x-auto">
-        <table id="analysisAttemptsTable" class="table-sticky table-layout-fixed" data-col-resize="1">
+        <div class="aps-table-scroll">
+        <table id="analysisAttemptsTable" class="table-sticky table-layout-fixed" data-col-resize="1" data-table-key="v2_analysisAttemptsTable">
           <thead>
             <tr>
               <th>排序</th>
@@ -325,11 +318,11 @@
               <tr>
                 <td>{{ loop.index }}</td>
                 <td>{{ r.display_tag or '方案来源未知' }}</td>
-                <td>{{ strategy_zh.get(r.strategy, r.strategy or '-') }}</td>
+                <td>{{ strategy_zh.get(r.strategy, '未知排产方式') }}</td>
                 {% set row_dispatch_mode = r.dispatch_mode %}
                 {% set row_dispatch_rule = r.dispatch_rule %}
                 <td>
-                  {{ dispatch_mode_zh.get(row_dispatch_mode, row_dispatch_mode or '-') }}{% if row_dispatch_rule %} / {{ dispatch_rule_zh.get(row_dispatch_rule, row_dispatch_rule) }}{% endif %}
+                  {{ dispatch_mode_zh.get(row_dispatch_mode, '未知派工方式') }}{% if row_dispatch_rule %} / {{ dispatch_rule_zh.get(row_dispatch_rule, '未知派工规则') }}{% endif %}
                 </td>
                 <td>{{ r.failed_ops }}</td>
                 <td>
@@ -354,7 +347,7 @@
         </table>
         </div>
         <div class="muted mt-2">
-          注：这里展示的是采样过程，最终结果以当前版本汇总为准。
+          注：这里展示的是系统尝试过的一部分排产方案，最终结果以当前版本汇总为准。
         </div>
       {% else %}
         <div class="muted">该版本未记录优化过程（可能是快速模式或旧版本）。</div>
@@ -439,7 +432,7 @@
         {% endif %}
 
         {% if trend_charts.machine_util %}
-          <div class="svg-title">设备平均利用率（0~1）</div>
+          <div class="svg-title">设备平均利用率（1 表示 100%）</div>
           <div class="svg-wrap">
             <svg viewBox="0 0 {{ trend_charts.machine_util.width }} {{ trend_charts.machine_util.height }}" width="100%" height="{{ trend_charts.machine_util.height }}">
               <polyline points="{{ trend_charts.machine_util.points }}" fill="none" stroke="#3949ab" stroke-width="2"></polyline>

@@ -80,7 +80,7 @@ def create_downtime(machine_id: str):
         reason_code=reason_code,
         reason_detail=reason_detail,
     )
-    flash(f"已新增停机计划（ID={d.id}）。", "success")
+    flash(f"已新增停机计划（编号：{d.id}）。", "success")
     return redirect(url_for("equipment.detail_page", machine_id=machine_id))
 
 
@@ -90,4 +90,3 @@ def cancel_downtime(machine_id: str, downtime_id: int):
     svc.cancel(downtime_id=downtime_id, machine_id=machine_id)
     flash("已取消停机计划。", "success")
     return redirect(url_for("equipment.detail_page", machine_id=machine_id))
-

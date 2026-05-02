@@ -12,7 +12,7 @@ def test_new_ui_strict_mode_controls_present() -> None:
     ):
         batches_tpl = (REPO_ROOT / rel_path).read_text(encoding="utf-8")
         assert 'name="strict_mode"' in batches_tpl
-        assert "严格校验排产参数" in batches_tpl
+        assert "发现参数问题就停止排产" in batches_tpl
 
     for rel_path in (
         "templates/scheduler/batches_manage.html",
@@ -20,4 +20,4 @@ def test_new_ui_strict_mode_controls_present() -> None:
     ):
         manage_tpl = (REPO_ROOT / rel_path).read_text(encoding="utf-8")
         assert 'name="strict_mode"' in manage_tpl
-        assert "严格校验工艺路线" in manage_tpl
+        assert "发现问题就停止创建工艺路线" in manage_tpl

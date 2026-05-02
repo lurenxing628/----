@@ -17,28 +17,28 @@
       <div class="page-title-group"><h2 class="page-title">系统管理 - 排产历史</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">查看历史版本和排产结果摘要。</p>
+    <p class="page-subtitle text-meta">这里主要看每次排产留下的版本、结果和摘要。想看每道工序排在哪天、哪台设备、哪个人员，请去甘特图、周计划或资源排班页面。</p>
     {{ ui.system_nav('history') }}
 
     <form method="get" action="{{ url_for('system.history_page') }}">
-      <div class="inline-flex-wrap items-end gap-10">
-        <div>
-          <div class="muted">选择版本</div>
+      <div class="aps-filter-bar">
+        <div class="form-field">
+          <label>选择版本</label>
           <select name="version" class="w-160">
             <option value="">（不选择）</option>
             {% for v in versions %}
               {% set vv = v.version %}
               <option value="{{ vv }}" {{ 'selected' if filters.version and (filters.version ~ '') == (vv ~ '') else '' }}>
-                v{{ vv }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ v.result_status_label or status_zh.get(v.result_status, v.result_status or '-') }}）
+                {{ ui.version_option_label(v, status_zh.get(v.result_status, '结果状态未知')) }}
               </option>
             {% endfor %}
           </select>
         </div>
-        <div>
-          <div class="muted">最近记录条数</div>
+        <div class="form-field">
+          <label>最近记录条数</label>
           <input name="limit" value="{{ filters.limit }}" class="w-80">
         </div>
-        <div class="inline-flex-wrap">
+        <div class="aps-form-actions">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
           {{ ui.link_button('重置', url_for('system.history_page'), 'secondary', 'sm') }}
         </div>
@@ -55,14 +55,15 @@
   {% if selected %}
     <div class="card">
       <h3>版本详情：v{{ selected.version }}</h3>
-      <p class="muted">
-        时间：{{ selected.schedule_time }}；
-        方式：{{ strategy_zh.get(selected.strategy, selected.strategy or '-') }}；
-        批次：{{ selected.batch_count }}；
-        工序：{{ selected.op_count }}；
-        状态：{{ selected_summary_display.result_status_label or status_zh.get(selected.result_status, selected.result_status or '-') }}；
-        创建人：{{ selected.created_by or '-' }}
-      </p>
+      <div class="aps-summary-grid aps-version-summary">
+        {{ ui.summary_item('版本', 'v' ~ selected.version) }}
+        {{ ui.summary_item('时间', selected.schedule_time) }}
+        {{ ui.summary_item('排产方式', strategy_zh.get(selected.strategy, '未知排产方式')) }}
+        {{ ui.summary_item('结果', selected_summary_display.result_status_label or status_zh.get(selected.result_status, '结果状态未知')) }}
+        {{ ui.summary_item('批次', selected.batch_count) }}
+        {{ ui.summary_item('工序', selected.op_count) }}
+        {{ ui.summary_item('创建人', selected.created_by or '-') }}
+      </div>
       {% if selected_summary_display.summary_parse_state.parse_failed %}
         <div class="flash-card flash-warning mt-2">
           {{ selected_summary_display.summary_parse_state.user_message }}
@@ -82,11 +83,11 @@
       {% endif %}
       {% if selected_summary_display.display_secondary_degradation_messages %}
         <div class="flash-card flash-warning mt-2">
-          <div>详细降级原因</div>
+          <div>详细处理提示</div>
           <ul class="list-tight mt-1">
             {% for item in selected_summary_display.display_secondary_degradation_messages %}
               <li>
-                <strong>{{ item.label or item.code or '降级' }}</strong>
+                <strong>{{ item.label or item.code or '提示' }}</strong>
                 {% if item.message %}：{{ item.message }}{% endif %}
               </li>
             {% endfor %}
@@ -95,12 +96,12 @@
       {% endif %}
       {% if selected_summary_display.warning_pipeline_display %}
         <div class="flash-card flash-warning mt-2">
-          <div>摘要告警合并状态：{{ '已降级' if selected_summary_display.warning_pipeline_display.summary_merge_failed else '已记录' }}</div>
+          <div>排产提醒整理状态：{{ '未完整整理' if selected_summary_display.warning_pipeline_display.summary_merge_failed else '已记录' }}</div>
           {% if selected_summary_display.warning_pipeline_display.algo_warning_count is not none %}
-            <div class="muted text-xs mt-1">算法告警：{{ selected_summary_display.warning_pipeline_display.algo_warning_count }} 条</div>
+            <div class="muted text-xs mt-1">排产提醒：{{ selected_summary_display.warning_pipeline_display.algo_warning_count }} 条</div>
           {% endif %}
           {% if selected_summary_display.warning_pipeline_display.summary_warning_count is not none %}
-            <div class="muted text-xs">摘要告警：{{ selected_summary_display.warning_pipeline_display.summary_warning_count }} 条</div>
+            <div class="muted text-xs">结果提醒：{{ selected_summary_display.warning_pipeline_display.summary_warning_count }} 条</div>
           {% endif %}
           {% if selected_summary_display.warning_pipeline_display.note %}
             <div class="muted text-xs">{{ selected_summary_display.warning_pipeline_display.note }}</div>
@@ -109,14 +110,14 @@
       {% endif %}
       {% if selected_summary_display.warning_total %}
         <div class="flash-card flash-warning mt-2">
-          <div>告警：{{ selected_summary_display.warning_total }} 条</div>
+          <div>提醒：{{ selected_summary_display.warning_total }} 条</div>
           <ul class="list-tight mt-1">
             {% for item in selected_summary_display.warnings_preview %}
               <li>{{ item }}</li>
             {% endfor %}
           </ul>
           {% if selected_summary_display.warning_hidden_count > 0 %}
-            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条告警未在当前详情中展开。</div>
+            <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条提醒未在当前详情中展开。</div>
           {% endif %}
         </div>
       {% endif %}
@@ -134,7 +135,7 @@
         </div>
       {% endif %}
       {% if selected_summary or selected.result_summary %}
-        <p class="muted mt-2">摘要已加载；页面仅展示公开摘要、告警和降级提示。</p>
+        <p class="muted mt-2">摘要已加载；页面仅展示公开摘要、提醒和处理提示。</p>
       {% else %}
         <p class="muted">该记录没有摘要信息。</p>
       {% endif %}
@@ -158,6 +159,7 @@
     {% if not items %}
       <p class="muted">暂无排产历史记录，请先到排产调度页面执行一次排产。</p>
     {% else %}
+      <div class="aps-table-scroll">
       <table class="table-sticky">
         <thead>
           <tr>
@@ -167,7 +169,7 @@
             <th>方式</th>
             <th>批次/工序</th>
             <th>结果</th>
-            <th>摘要（截断）</th>
+            <th>摘要与提示</th>
           </tr>
         </thead>
         <tbody>
@@ -176,9 +178,9 @@
               <td>{{ r.id }}</td>
               <td>{{ r.schedule_time }}</td>
               <td>v{{ r.version }}</td>
-              <td>{{ strategy_zh.get(r.strategy, r.strategy or '-') }}</td>
+              <td>{{ strategy_zh.get(r.strategy, '未知排产方式') }}</td>
               <td>{{ r.batch_count }} / {{ r.op_count }}</td>
-              <td>{{ r.result_summary_display.result_status_label if r.result_summary_display else status_zh.get(r.result_status, r.result_status or '-') }}</td>
+              <td>{{ r.result_summary_display.result_status_label if r.result_summary_display else status_zh.get(r.result_status, '结果状态未知') }}</td>
               <td>
                 {% if r.result_summary_display.summary_parse_state.parse_failed %}
                   <div class="muted">{{ r.result_summary_display.summary_parse_state.user_message }}</div>
@@ -190,14 +192,14 @@
                   <ul class="list-tight mt-1">
                     {% for item in r.result_summary_display.display_secondary_degradation_messages %}
                       <li>
-                        <strong>{{ item.label or item.code or '降级' }}</strong>
+                        <strong>{{ item.label or item.code or '提示' }}</strong>
                         {% if item.message %}：{{ item.message }}{% endif %}
                       </li>
                     {% endfor %}
                   </ul>
                 {% endif %}
                 {% if r.result_summary_display.warning_total %}
-                  <div class="muted">告警 {{ r.result_summary_display.warning_total }} 条</div>
+                  <div class="muted">提醒 {{ r.result_summary_display.warning_total }} 条</div>
                 {% endif %}
                 {% if r.result_summary_display.error_total %}
                   <div class="muted">错误 {{ r.result_summary_display.error_total }} 条</div>
@@ -212,6 +214,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% endif %}
   </div>
 {% endblock %}

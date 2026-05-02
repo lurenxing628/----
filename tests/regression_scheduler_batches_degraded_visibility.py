@@ -133,6 +133,9 @@ def test_scheduler_batches_route_reuses_shared_degraded_display_builder() -> Non
 
 
 def test_scheduler_batches_latest_history_query_failure_is_not_swallowed() -> None:
+    for name in list(sys.modules):
+        if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
+            sys.modules.pop(name, None)
     import web.routes.scheduler_batches as route_mod
 
     class _BrokenHistoryService:
@@ -216,7 +219,7 @@ def test_build_summary_display_state_dedupes_counted_primary_degradation_from_se
     )
 
     assert display["primary_degradation"] is not None
-    assert display["primary_degradation"]["details"] == ["\u8d44\u6e90\u6c60\u6784\u5efa\u5df2\u964d\u7ea7\uff082\uff09"]
+    assert display["primary_degradation"]["details"] == ["\u8d44\u6e90\u6c60\u8d44\u6599\u4e0d\u5b8c\u6574\uff082\uff09"]
     assert list(display.get("display_secondary_degradation_messages") or []) == []
 
 
@@ -309,7 +312,7 @@ def test_scheduler_batches_page_renders_provenance_and_hidden_degraded_html(tmp_
     assert "当前配置状态" in body
     assert "基线未记录" in body
     assert "当前运行配置缺少基线记录，无法确认与任何方案的一致性；请显式保存或重新应用方案。" in body
-    assert "当前配置存在可见兼容修补：" in body
-    assert "当前还有内部配置项存在兼容修补：" in body
-    assert "自动分配结果回写" in body
+    assert "当前配置有需要复核的修正项：" in body
+    assert "还有一些平时不直接显示的设置需要检查，请按下面提示处理：" in body
+    assert "保存系统补齐的设备和人员" in body
     assert "auto_assign_persist" not in body

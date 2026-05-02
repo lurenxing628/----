@@ -40,7 +40,7 @@ def _surface_route_warnings(messages: object, *, limit: int = 5) -> None:
     for item in shown:
         flash(item, "warning")
     if len(normalized) > len(shown):
-        flash(f"另有 {len(normalized) - len(shown)} 条告警，请按需重试或查看日志。", "warning")
+        flash(f"另有 {len(normalized) - len(shown)} 条提醒，请按需重试或查看日志。", "warning")
 
 
 def _build_ops_by_group(active_ops: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
@@ -195,7 +195,7 @@ def bulk_delete_parts():
         except Exception:
             current_app.logger.exception("批量删除零件失败（part_no=%s）", pn)
             failed.append(str(pn))
-            failed_details.append(f"{pn}: 内部错误，请查看日志")
+            failed_details.append(f"{pn}: 系统处理失败，请联系管理员查看日志")
             continue
 
     flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
@@ -219,9 +219,9 @@ def reparse_part(part_no: str):
         return redirect(url_for("process.part_detail", part_no=part_no))
     ms = int((time.time() - start) * 1000)
 
-    warn_text = f"，警告 {len(result.warnings)} 条" if result.warnings else ""
+    warn_text = f"，提醒 {len(result.warnings)} 条" if result.warnings else ""
     flash(
-        f"工艺路线解析完成：共 {result.stats.get('total', 0)} 道工序（内部 {result.stats.get(SourceType.INTERNAL.value, 0)}，外部 {result.stats.get(SourceType.EXTERNAL.value, 0)}）{warn_text}。耗时 {ms} ms。",
+        f"工艺路线解析完成：共 {result.stats.get('total', 0)} 道工序（自制 {result.stats.get(SourceType.INTERNAL.value, 0)}，外协 {result.stats.get(SourceType.EXTERNAL.value, 0)}）{warn_text}。耗时 {ms} ms。",
         "success",
     )
     _surface_route_warnings(result.warnings, limit=5)
@@ -265,7 +265,7 @@ def set_group_mode(part_no: str, group_id: str):
             strict_mode=strict_mode,
             user_warnings=user_warnings,
         )
-        flash(f"外部工序组周期模式已更新：{_merge_mode_zh(merge_mode)}。", "success")
+        flash(f"外协工序组周期模式已更新：{_merge_mode_zh(merge_mode)}。", "success")
         _surface_route_warnings(user_warnings, limit=5)
     except AppError as e:
         flash(e.message, "error")
@@ -276,6 +276,5 @@ def set_group_mode(part_no: str, group_id: str):
 def delete_group(part_no: str, group_id: str):
     svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
     result = svc.delete_external_group(part_no=part_no, group_id=group_id)
-    flash(f"已删除外部工序组：{group_id}（{result.get('message')}）", "success")
+    flash(f"已删除外协工序组：{group_id}（{result.get('message')}）", "success")
     return redirect(url_for("process.part_detail", part_no=part_no))
-

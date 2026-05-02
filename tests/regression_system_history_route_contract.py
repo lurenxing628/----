@@ -113,11 +113,11 @@ def _build_real_app(tmp_path, monkeypatch, *, summary_obj, result_status: str = 
 
 def test_system_history_route_uses_request_services(monkeypatch) -> None:
     summary = {
-        "warnings": ["资源池已降级"],
+        "warnings": ["资源池资料不完整，本次已按可用资源继续"],
         "degradation_events": [
             {
                 "code": "resource_pool_degraded",
-                "message": "自动分配资源池构建失败，本次排产已降级为不自动分配资源。",
+                "message": "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。",
                 "count": 1,
             }
         ],
@@ -135,13 +135,15 @@ def test_system_history_route_uses_request_services(monkeypatch) -> None:
     assert payload["selected"]["version"] == 3
     assert payload["selected_summary"] == summary
     assert payload["selected_summary_display"]["warning_total"] == 1
-    assert payload["selected_summary_display"]["warnings_preview"] == ["资源池已降级"]
+    assert payload["selected_summary_display"]["warnings_preview"] == ["资源池资料不完整，本次已按可用资源继续"]
     assert payload["selected_summary_display"]["warning_hidden_count"] == 0
-    assert payload["selected_summary_display"]["primary_degradation"]["details"] == ["资源池构建已降级"]
+    assert payload["selected_summary_display"]["primary_degradation"]["details"] == ["资源池资料不完整"]
     assert payload["selected_summary_display"]["secondary_degradation_messages"][0]["code"] == "resource_pool_degraded"
     assert payload["items"][0]["result_summary_obj"] == summary
     assert payload["items"][0]["result_summary_display"]["warning_total"] == 1
-    assert payload["items"][0]["result_summary_display"]["warnings_preview"] == ["资源池已降级"]
+    assert payload["items"][0]["result_summary_display"]["warnings_preview"] == [
+        "资源池资料不完整，本次已按可用资源继续"
+    ]
     assert payload["items"][0]["result_summary_display"]["secondary_degradation_messages"][0]["code"] == "resource_pool_degraded"
     assert history_service.version_limits == [30]
     assert history_service.version_queries == [3]
@@ -150,7 +152,7 @@ def test_system_history_route_uses_request_services(monkeypatch) -> None:
 
 def test_system_history_route_exposes_warning_pipeline_display(monkeypatch) -> None:
     summary = {
-        "warnings": ["资源池已降级"],
+        "warnings": ["资源池资料不完整，本次已按可用资源继续"],
         "degraded_causes": ["summary_merge_failed"],
         "degradation_events": [{"code": "summary_merge_failed", "message": "", "count": 1}],
         "algo": {
@@ -175,8 +177,8 @@ def test_system_history_route_exposes_warning_pipeline_display(monkeypatch) -> N
     assert response.status_code == 200
     assert payload["selected_summary_display"]["warning_pipeline_display"] == {
         "source": "warning_pipeline",
-        "message": "摘要告警合并已降级。",
-        "note": "摘要告警未能完整合并到历史摘要。",
+        "message": "排产提示没有完整整理。",
+        "note": "部分排产提示没有完整写入历史摘要。",
         "summary_merge_failed": True,
         "summary_merge_error": "summary_warnings_assignment_failed",
         "algo_warning_count": 2,
@@ -238,7 +240,7 @@ def test_system_history_route_rejects_non_integer_version(monkeypatch) -> None:
 
 def test_system_history_page_renders_warning_pipeline_guard_html(tmp_path, monkeypatch) -> None:
     summary = {
-        "warnings": ["资源池已降级"],
+        "warnings": ["资源池资料不完整，本次已按可用资源继续"],
         "degraded_causes": ["summary_merge_failed"],
         "degradation_events": [{"code": "summary_merge_failed", "message": "", "count": 1}],
         "algo": {
@@ -258,13 +260,13 @@ def test_system_history_page_renders_warning_pipeline_guard_html(tmp_path, monke
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "摘要告警合并状态：已降级" in html
-    assert "算法告警：2 条" in html
-    assert "摘要告警：0 条" in html
-    assert "摘要告警未能完整合并到历史摘要。" in html
-    assert html.count("算法告警：2 条") == 1
+    assert "排产提醒整理状态：未完整整理" in html
+    assert "排产提醒：2 条" in html
+    assert "结果提醒：0 条" in html
+    assert "部分排产提示没有完整写入历史摘要。" in html
+    assert html.count("排产提醒：2 条") == 1
     assert "告警 1 条" in html
-    assert "摘要已加载；页面仅展示公开摘要、告警和降级提示。" in html
+    assert "摘要已加载；页面仅展示公开摘要、告警和处理提示。" in html
     assert "调试详情：原始摘要" not in html
     assert "summary_warnings_assignment_failed" not in html
     assert "INTERNAL_RESULT_SUMMARY_SECRET" not in html
@@ -296,4 +298,5 @@ def test_system_history_version_dropdown_uses_completion_status_label(tmp_path, 
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert html.count("模拟排产 / 部分成功") >= 3
+    assert html.count("模拟排产 / 部分成功") >= 2
+    assert "v3 · 部分成功" in html

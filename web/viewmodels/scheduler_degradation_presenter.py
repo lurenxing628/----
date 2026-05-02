@@ -8,18 +8,18 @@ from core.models.scheduler_degradation_messages import (
 )
 
 _SUMMARY_DEGRADATION_LABELS = {
-    "config_fallback": "\u914d\u7f6e\u5feb\u7167\u5df2\u6309\u517c\u5bb9\u8def\u5f84\u6807\u51c6\u5316",
-    "input_fallback": "\u8f93\u5165\u6784\u5efa\u5df2\u6309\u517c\u5bb9\u8def\u5f84\u7ee7\u7eed\u751f\u6210",
-    "freeze_window_degraded": "\u51bb\u7ed3\u7a97\u53e3\u7ea6\u675f\u5df2\u964d\u7ea7",
-    "downtime_avoid_degraded": "\u505c\u673a\u907f\u8ba9\u7ea6\u675f\u5df2\u964d\u7ea7",
-    "resource_pool_degraded": "\u8d44\u6e90\u6c60\u6784\u5efa\u5df2\u964d\u7ea7",
-    "invalid_due_date": "\u4ea4\u671f\u6570\u636e\u5df2\u964d\u7ea7",
-    "legacy_external_days_defaulted": "\u5386\u53f2\u5916\u534f\u5468\u671f\u5df2\u517c\u5bb9\u56de\u9000",
-    "ortools_warmstart_failed": "\u9884\u70ed\u5df2\u964d\u7ea7",
-    "template_missing": "\u7ec4\u5408\u5408\u540c\u6a21\u677f\u4e0a\u4e0b\u6587\u5df2\u964d\u7ea7",
-    "external_group_missing": "\u7ec4\u5408\u5e76\u5916\u90e8\u7ec4\u4e0a\u4e0b\u6587\u5df2\u964d\u7ea7",
-    "merge_context_degraded": "\u7ec4\u5408\u5e76\u8bed\u4e49\u5df2\u964d\u7ea7",
-    "summary_merge_failed": "\u6458\u8981\u544a\u8b66\u5408\u5e76\u5df2\u964d\u7ea7",
+    "config_fallback": "配置中有已按安全取值处理的设置",
+    "input_fallback": "排产输入里有已按安全取值处理的数据",
+    "freeze_window_degraded": "冻结窗口资料不完整",
+    "downtime_avoid_degraded": "停机时间资料不完整",
+    "resource_pool_degraded": "资源池资料不完整",
+    "invalid_due_date": "交期数据无法使用",
+    "legacy_external_days_defaulted": "部分外协周期先按 1 天计算",
+    "ortools_warmstart_failed": "深度优化没有拿到可用的起始方案，已继续使用普通计算结果",
+    "template_missing": "组合合同模板资料不完整",
+    "external_group_missing": "组合并外协组资料不完整",
+    "merge_context_degraded": "组合并资料不完整",
+    "summary_merge_failed": "部分排产提示没有整理完整，请到排产历史或日志查看详情",
 }
 
 
@@ -34,7 +34,7 @@ def _degradation_label_for(*, code: str, message: str) -> str:
     label = _SUMMARY_DEGRADATION_LABELS.get(code)
     if label:
         return label
-    return "\u6392\u4ea7\u6458\u8981\u5b58\u5728\u53ef\u89c1\u9000\u5316"
+    return "排产摘要里有需要注意的提示"
 
 
 def _public_message_for_event(*, code: str, message: str) -> str:
@@ -92,16 +92,16 @@ def _primary_degradation_message(*, result_state: Dict[str, Any]) -> str:
     status = str(result_state.get("outcome_status") or "success").strip().lower()
     if bool(result_state.get("is_simulated")):
         return {
-            "success": "本次模拟排产已完成，但存在内部降级/兼容修补。",
-            "partial": "本次模拟排产部分完成，且存在内部降级/兼容修补。",
-            "failed": "本次模拟排产失败，且存在内部降级/兼容修补。",
-            "unknown": "本次模拟排产完成状态未记录，且存在内部降级/兼容修补。",
+            "success": "本次模拟排产已完成，但有些数据或设置需要复核，系统先按能确认的内容继续。",
+            "partial": "本次模拟排产部分完成，并且有些数据或设置需要复核，系统先按能确认的内容继续。",
+            "failed": "本次模拟排产失败，并且有些数据或设置需要复核，系统先按能确认的内容继续。",
+            "unknown": "本次模拟排产完成状态未记录，并且有些数据或设置需要复核，系统先按能确认的内容继续。",
         }[status]
     return {
-        "success": "本次排产已成功，但存在内部降级/兼容修补。",
-        "partial": "本次排产部分完成，且存在内部降级/兼容修补。",
-        "failed": "本次排产失败，且存在内部降级/兼容修补。",
-        "unknown": "本次排产完成状态未记录，且存在内部降级/兼容修补。",
+        "success": "本次排产已成功，但有些数据或设置需要复核，系统先按能确认的内容继续。",
+        "partial": "本次排产部分完成，并且有些数据或设置需要复核，系统先按能确认的内容继续。",
+        "failed": "本次排产失败，并且有些数据或设置需要复核，系统先按能确认的内容继续。",
+        "unknown": "本次排产完成状态未记录，并且有些数据或设置需要复核，系统先按能确认的内容继续。",
     }[status]
 
 

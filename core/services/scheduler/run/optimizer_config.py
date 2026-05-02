@@ -19,7 +19,7 @@ _FIELD_LABELS = {
     "dispatch_rule": "派工规则",
     "objective": "优化目标",
     "algo_mode": "计算模式",
-    "seed_results": "种子排产结果",
+    "seed_results": "已有排产记录",
 }
 
 

@@ -69,7 +69,7 @@ class SupplierService:
 
         if not allow_partial:
             if not sid:
-                raise ValidationError("“供应商ID”不能为空", field="供应商ID")
+                raise ValidationError("“供应商编号”不能为空", field="供应商ID")
             if not sname:
                 raise ValidationError("“名称”不能为空", field="名称")
             if sstatus is None:
@@ -101,7 +101,7 @@ class SupplierService:
     def get(self, supplier_id: str) -> Supplier:
         sid, _, _, _ = self._validate_fields(supplier_id, None, None, None, allow_partial=True)
         if not sid:
-            raise ValidationError("“供应商ID”不能为空", field="供应商ID")
+            raise ValidationError("“供应商编号”不能为空", field="供应商ID")
         return self._get_or_raise(sid)
 
     def get_optional(self, supplier_id: Any) -> Optional[Supplier]:
@@ -124,14 +124,14 @@ class SupplierService:
     ) -> Supplier:
         sid, sname, sdays, sstatus = self._validate_fields(supplier_id, name, default_days, status)
         if not sid:
-            raise ValidationError("“供应商ID”不能为空", field="供应商ID")
+            raise ValidationError("“供应商编号”不能为空", field="供应商ID")
         if sdays is None:
             raise ValidationError("“默认周期”不能为空", field="默认周期")
         op_type_id = self._resolve_op_type_id(op_type_value) if op_type_value is not None else None
         sremark = self._normalize_text(remark)
 
         if self.repo.get(sid):
-            raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"供应商ID“{sid}”已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"供应商编号“{sid}”已存在，不能重复添加。")
 
         with self.tx_manager.transaction():
             self.repo.create(
@@ -157,7 +157,7 @@ class SupplierService:
     ) -> Supplier:
         sid, sname, sdays, sstatus = self._validate_fields(supplier_id, name, default_days, status, allow_partial=True)
         if not sid:
-            raise ValidationError("“供应商ID”不能为空", field="供应商ID")
+            raise ValidationError("“供应商编号”不能为空", field="供应商ID")
         self._get_or_raise(sid)
 
         updates: Dict[str, Any] = {}
@@ -184,7 +184,7 @@ class SupplierService:
     def delete(self, supplier_id: Any) -> None:
         sid, _, _, _ = self._validate_fields(supplier_id, None, None, None, allow_partial=True)
         if not sid:
-            raise ValidationError("“供应商ID”不能为空", field="供应商ID")
+            raise ValidationError("“供应商编号”不能为空", field="供应商ID")
         self._get_or_raise(sid)
 
         # 若被引用，则禁止删除（模板/批次工序）
@@ -193,7 +193,7 @@ class SupplierService:
         if self.repo.has_batch_operation_reference(sid):
             raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被批次工序引用，不能删除。建议改为“停用”。")
         if self.repo.has_external_group_reference(sid):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被外部工序组引用，不能删除。建议改为“停用”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被外协工序组引用，不能删除。建议改为“停用”。")
 
         with self.tx_manager.transaction():
             self.repo.delete(sid)
@@ -236,4 +236,4 @@ class SupplierService:
         if self.repo.has_any_batch_operation_reference():
             raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有批次工序引用了供应商，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
         if self.repo.has_any_external_group_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有外部工序组绑定了供应商，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有外协工序组绑定了供应商，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")

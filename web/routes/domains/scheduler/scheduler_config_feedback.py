@@ -76,8 +76,8 @@ def _flash_preset_apply_feedback(applied: Dict[str, Any]) -> None:
     if status == "adjusted" and adjusted_fields:
         sample = "、".join(ConfigService.public_config_field_labels([str(field) for field in adjusted_fields[:5]]))
         flash(
-            f"方案已应用为：{effective or applied.get('requested_preset')}，但当前运行配置已被规范化，实际生效值与方案内容不完全一致。"
-            + (f" 涉及字段：{sample}。" if sample else ""),
+            f"方案已应用为：{effective or applied.get('requested_preset')}，但其中几项设置不能直接使用，系统已改成可保存的默认值。"
+            + (f" 请检查这些设置：{sample}。" if sample else ""),
             "warning",
         )
         return
@@ -97,7 +97,7 @@ def _config_save_primary_flash(outcome: Any) -> Optional[Tuple[str, str]]:
         return "排产策略配置已保存。", "success"
     if _config_save_outcome_fields(outcome, "visible_repaired_fields"):
         return (
-            "检测到页面字段兼容回退，已按当前表单值显式保存为自定义配置。",
+            "页面字段已按当前可保存取值更新，并保存为自定义配置。",
             "warning",
         )
     if _config_save_outcome_fields(outcome, "hidden_repaired_fields"):

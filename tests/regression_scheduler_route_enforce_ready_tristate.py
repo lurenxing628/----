@@ -106,7 +106,7 @@ def main() -> None:
     with open(tpl_path, "r", encoding="utf-8") as f:
         tpl = f.read()
     assert 'name="strict_mode"' in tpl, "batches.html 缺少 strict_mode 入口"
-    assert "严格校验排产参数" in tpl, "batches.html 缺少 strict_mode 文案"
+    assert "发现参数问题就停止排产" in tpl, "batches.html 缺少 strict_mode 文案"
 
     print("OK")
 

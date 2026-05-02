@@ -12,7 +12,7 @@ from data.repositories import ExternalGroupRepository, PartOperationRepository
 
 
 class ExternalGroupService:
-    """外部工序组服务（ExternalGroups）。"""
+    """外协工序组服务（ExternalGroups）。"""
 
     def __init__(self, conn, logger=None, op_logger=None):
         self.conn = conn
@@ -38,7 +38,7 @@ class ExternalGroupService:
     def _get_group_or_raise(self, group_id: str):
         g = self.group_repo.get(group_id)
         if not g:
-            raise BusinessError(ErrorCode.EXTERNAL_GROUP_ERROR, f"外部工序组“{group_id}”不存在")
+            raise BusinessError(ErrorCode.EXTERNAL_GROUP_ERROR, f"外协工序组“{group_id}”不存在")
         return g
 
     def list_by_part(self, part_no: str) -> List[ExternalGroup]:
@@ -134,14 +134,14 @@ class ExternalGroupService:
                 op_type_name = normalize_text(getattr(op, "op_type_name", None)) or f"seq={seq}"
                 if strict_mode:
                     raise ValidationError(
-                        f"外部工序 {seq}（{op_type_name}）周期必须大于 0；严格模式已拒绝按 1.0 天回退",
+                        f"外协工序 {seq}（{op_type_name}）的周期必须大于 0。请先填正确后再保存。",
                         field=f"ext_days_{seq}",
                     )
                 log_warning_text = (
-                    f"外部工序 {seq}（{op_type_name}）ext_days 无效，"
-                    f"raw={d!r}，compatible mode fallback to 1.0 day"
+                    f"外协工序 {seq}（{op_type_name}）周期无效，"
+                    f"原始周期={d!r}，兼容读取时先按 1.0 天处理"
                 )
-                user_warning_text = f"外部工序 {seq}（{op_type_name}）周期输入无效，兼容模式已按 1.0 天回退。"
+                user_warning_text = f"外协工序 {seq}（{op_type_name}）周期输入无效，本次会先按 1 天记录，请尽快补成真实周期。"
                 safe_warning(self.logger, log_warning_text)
                 append_unique_text_messages(user_warnings, user_warning_text)
                 dv = 1.0
@@ -165,7 +165,7 @@ class ExternalGroupService:
         """
         gid = self._normalize_text(group_id)
         if not gid:
-            raise ValidationError("缺少外部工序组ID", field="group_id")
+            raise ValidationError("缺少外协工序组编号", field="group_id")
 
         mode = (self._normalize_text(merge_mode) or MergeMode.SEPARATE.value).strip().lower()
         if mode not in MERGE_MODE_VALUES:

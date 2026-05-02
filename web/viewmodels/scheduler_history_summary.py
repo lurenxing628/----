@@ -14,6 +14,30 @@ _PARSE_USER_MESSAGES = {
     "invalid_structure": "当前版本的排产摘要结构异常，页面仅展示基础历史信息。",
 }
 
+_STRATEGY_LABELS = {
+    "priority_first": "优先级优先",
+    "due_date_first": "交期优先",
+    "weighted": "综合优先级和交期",
+    "fifo": "先进先出",
+    "improve": "优化排产",
+    "greedy": "快速排产",
+    "manual": "手动排产",
+}
+
+_VERSION_OPTION_STATUS_LABELS = {
+    "success": "成功",
+    "partial": "部分成功",
+    "failed": "失败",
+    "unknown": "状态未知",
+}
+
+
+def strategy_display_label(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "-"
+    return _STRATEGY_LABELS.get(raw, "未知排产策略")
+
 
 def parse_state_from_result(result: ResultSummaryParseResult) -> Dict[str, Any]:
     user_message = _PARSE_USER_MESSAGES.get(result.reason) if result.parse_failed else None
@@ -44,6 +68,12 @@ def decorate_history_version_options(versions: Any) -> List[Dict[str, Any]]:
             parse_state=parse_state,
         )
         row["result_status_label"] = str(display_state.get("result_status_label") or "")
+        row["strategy_label"] = strategy_display_label(row.get("strategy"))
+        version_text = str(row.get("version") or "").strip()
+        result_state = display_state.get("result_state") if isinstance(display_state, dict) else None
+        outcome_status = str((result_state or {}).get("outcome_status") or "").strip()
+        result_text = _VERSION_OPTION_STATUS_LABELS.get(outcome_status) or row["result_status_label"] or "-"
+        row["version_option_label"] = f"v{version_text} · {result_text}" if version_text else result_text
         out.append(row)
     return out
 
@@ -68,4 +98,5 @@ __all__ = [
     "parse_history_summary_state",
     "parse_state_from_result",
     "parsed_history_summary_payload",
+    "strategy_display_label",
 ]

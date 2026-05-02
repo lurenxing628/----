@@ -53,7 +53,7 @@ class BatchMaterialService:
         if not bid:
             raise ValidationError("“批次号”不能为空", field="batch_id")
         if not mid:
-            raise ValidationError("“物料ID”不能为空", field="material_id")
+            raise ValidationError("“物料编号”不能为空", field="material_id")
         if not self.batch_repo.get(bid):
             raise BusinessError(ErrorCode.BATCH_NOT_FOUND, f"批次“{bid}”不存在")
         if not self.mat_repo.get(mid):
@@ -82,10 +82,10 @@ class BatchMaterialService:
         try:
             bid_int = int(str(bm_id).strip())
         except Exception as e:
-            raise ValidationError("“ID”不合法", field="id") from e
+            raise ValidationError("记录编号不合法", field="id") from e
         bm = self.repo.get(bid_int)
         if not bm:
-            raise BusinessError(ErrorCode.NOT_FOUND, f"批次物料记录不存在：ID={bid_int}")
+            raise BusinessError(ErrorCode.NOT_FOUND, f"批次物料记录不存在：编号 {bid_int}")
 
         req = bm.required_qty
         avail = bm.available_qty
@@ -111,7 +111,7 @@ class BatchMaterialService:
         try:
             bid_int = int(str(bm_id).strip())
         except Exception as e:
-            raise ValidationError("“ID”不合法", field="id") from e
+            raise ValidationError("记录编号不合法", field="id") from e
         bm = self.repo.get(bid_int)
         if not bm:
             return
@@ -165,4 +165,3 @@ class BatchMaterialService:
         if ready_status == "":
             return
         self.batch_repo.update(bid, {"ready_status": ready_status, "ready_date": ready_date})
-

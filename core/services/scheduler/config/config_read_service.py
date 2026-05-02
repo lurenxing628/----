@@ -112,7 +112,7 @@ class ConfigReadService:
         )
         if not degraded:
             return value, False, None
-        safe_warning(logger if logger is not None else self.uow.logger, f"{consumer}读取假期工作效率配置失败，暂按默认值展示：{value:g}")
+        safe_warning(logger if logger is not None else self.uow.logger, f"{consumer}读取假期工作效率配置失败，页面先按默认值展示：{value:g}")
         return value, True, HOLIDAY_DEFAULT_EFFICIENCY_PAGE_WARNING_TEMPLATE.format(value=value)
 
     @staticmethod
@@ -295,13 +295,13 @@ class ConfigReadService:
             if is_custom:
                 return (
                     "degraded",
-                    "存在兼容修补",
-                    "当前运行配置存在兼容修补，但仍以手动设置为准；请保存后修复。",
+                    "需要复核",
+                    "当前运行配置有需要复核的设置，但仍以手动设置为准；请检查后保存一次。",
                 )
             return (
                 "degraded",
-                "存在兼容修补",
-                f"当前运行配置存在兼容修补，不能视为与“{baseline_label}”完全一致；请保存后修复。",
+                "需要复核",
+                f"当前运行配置有需要复核的设置，不能视为与“{baseline_label}”完全一致；请检查后保存一次。",
             )
         if is_custom or cls.current_config_manual_reason(reason):
             return (

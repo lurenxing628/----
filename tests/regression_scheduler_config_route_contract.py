@@ -163,8 +163,8 @@ class _ConfigServiceStub:
             "active_preset_reason_missing": False,
             "current_config_state": {
                 "state": "degraded" if degraded else "custom",
-                "status_label": "存在兼容修补" if degraded else "手动设置",
-                "label": "当前运行配置存在兼容修补，不能视为与“默认-稳定”完全一致；请保存后修复。" if degraded else "当前以手动设置为准。",
+                "status_label": "需要复核" if degraded else "手动设置",
+                "label": "当前运行配置有需要复核的设置，不能视为与“默认-稳定”完全一致；请保存后修复。" if degraded else "当前以手动设置为准。",
                 "baseline_label": "默认-稳定",
                 "baseline_source": "builtin",
                 "baseline_key": "默认-稳定",
@@ -322,7 +322,7 @@ def test_scheduler_config_post_surfaces_hidden_repair_notice(monkeypatch) -> Non
     with client.session_transaction() as session:
         flashes = list(session.get("_flashes") or [])
     warning_messages = [str(message) for category, message in flashes if category == "warning"]
-    assert any("自动分配结果回写" in message for message in warning_messages), flashes
+    assert any("保存系统补齐的设备和人员" in message for message in warning_messages), flashes
     assert not any("保存为自定义配置" in message for message in warning_messages), flashes
     assert not any("auto_assign_persist" in message for message in warning_messages), flashes
     assert not any(category == "success" and "\u5df2\u4fdd\u5b58" in str(message) for category, message in flashes), flashes
@@ -340,7 +340,7 @@ def test_scheduler_config_visible_degradation_warning_hides_raw_event_message() 
             {
                 "code": "invalid_choice",
                 "field": "sort_strategy",
-                "message": "sort_strategy 取值不合法（当前值：'SECRET_BAD_MODE'，允许值：priority_first），已按兼容读取回退。",
+                "message": "sort_strategy 取值不正确（当前值：'SECRET_BAD_MODE'，可选值：priority_first），本次先按安全值处理。",
                 "sample": "SECRET_BAD_MODE",
             },
         ),
@@ -386,7 +386,8 @@ def test_scheduler_config_post_surfaces_blocked_hidden_repair_notice(monkeypatch
     assert response.status_code in (301, 302)
     with client.session_transaction() as session:
         flashes = list(session.get("_flashes") or [])
-    assert any(category == "warning" and "\u6765\u6e90\u7f3a\u5931" in str(message) for category, message in flashes), flashes
+    assert any(category == "warning" and "平时不直接显示的设置" in str(message) for category, message in flashes), flashes
+    assert any(category == "warning" and "不能自动帮你改" in str(message) for category, message in flashes), flashes
     assert not any(category == "warning" and "auto_assign_persist" in str(message) for category, message in flashes), flashes
     assert not any(category == "success" and "\u5df2\u4fdd\u5b58" in str(message) for category, message in flashes), flashes
 
@@ -402,7 +403,7 @@ def test_scheduler_config_post_mixed_visible_change_and_blocked_hidden_repair_do
             {
                 "kind": "blocked_hidden",
                 "fields": ["auto_assign_persist"],
-                "message": "检测到隐藏配置退化，但因来源缺失未自动修复：auto_assign_persist。",
+                "message": "检测到平时不直接显示的设置需要复核，但因来源缺失未自动修复：保存系统补齐的设备和人员。",
             }
         ],
         active_preset_after="custom",
@@ -416,7 +417,8 @@ def test_scheduler_config_post_mixed_visible_change_and_blocked_hidden_repair_do
     assert response.status_code in (301, 302)
     with client.session_transaction() as session:
         flashes = list(session.get("_flashes") or [])
-    assert any(category == "warning" and "来源缺失" in str(message) for category, message in flashes), flashes
+    assert any(category == "warning" and "平时不直接显示的设置" in str(message) for category, message in flashes), flashes
+    assert any(category == "warning" and "不能自动帮你改" in str(message) for category, message in flashes), flashes
     assert not any(category == "success" for category, _message in flashes), flashes
     assert "auto_assign_persist" not in str(flashes)
 
@@ -446,7 +448,7 @@ def test_scheduler_config_post_surfaces_active_preset_meta_parse_warning(monkeyp
     assert response.status_code in (301, 302)
     with client.session_transaction() as session:
         flashes = list(session.get("_flashes") or [])
-    assert any(category == "warning" and "方案来源记录" in str(message) for category, message in flashes), flashes
+    assert any(category == "warning" and "系统看不懂这份方案的来源记录" in str(message) for category, message in flashes), flashes
     assert not any(category == "warning" and "active_preset_meta" in str(message) for category, message in flashes), flashes
 
 
@@ -603,7 +605,7 @@ def test_scheduler_config_preset_apply_uses_effective_identity_in_flash(monkeypa
         "effective_active_preset": "旧方案",
         "status": "adjusted",
         "adjusted_fields": ["auto_assign_persist"],
-        "reason": "方案应用时发生规范化或修补，当前运行配置与所选方案存在差异。",
+        "reason": "方案应用时有些设置不能直接使用，系统已改成可保存的默认值，当前运行配置与所选方案存在差异。",
         "error_field": None,
         "error_message": None,
     }
@@ -619,7 +621,7 @@ def test_scheduler_config_preset_apply_uses_effective_identity_in_flash(monkeypa
     assert response.status_code in (301, 302)
     with client.session_transaction() as session:
         flashes = list(session.get("_flashes") or [])
-    assert any("当前运行配置已被规范化" in str(message) for _category, message in flashes), flashes
+    assert any("其中几项设置不能直接使用" in str(message) for _category, message in flashes), flashes
     assert any("旧方案" in str(message) for _category, message in flashes), flashes
 
 
@@ -630,7 +632,7 @@ def test_scheduler_config_preset_apply_adjusted_flash_hides_unknown_raw_field(mo
         "effective_active_preset": "旧方案",
         "status": "adjusted",
         "adjusted_fields": ["legacy_runtime_block", "legacyRuntimeBlock", "secret", "auto_assign_persist"],
-        "reason": "方案应用时发生规范化或修补，当前运行配置与所选方案存在差异。",
+        "reason": "方案应用时有些设置不能直接使用，系统已改成可保存的默认值，当前运行配置与所选方案存在差异。",
         "error_field": None,
         "error_message": None,
     }
@@ -647,12 +649,12 @@ def test_scheduler_config_preset_apply_adjusted_flash_hides_unknown_raw_field(mo
     with client.session_transaction() as session:
         flashes = list(session.get("_flashes") or [])
     text = str(flashes)
-    assert "当前运行配置已被规范化" in text
+    assert "其中几项设置不能直接使用" in text
     assert "legacy_runtime_block" not in text
     assert "legacyRuntimeBlock" not in text
     assert "secret" not in text
     assert "auto_assign_persist" not in text
-    assert "隐藏配置" in text
+    assert "平时不直接显示的设置" in text
 
 
 def test_scheduler_config_preset_apply_surfaces_rejected_validation_failure(monkeypatch) -> None:
@@ -787,7 +789,7 @@ def test_scheduler_config_page_exposes_hidden_degraded_warning_summary(monkeypat
             "code": "invalid_choice",
             "scope": "scheduler.config_snapshot",
             "field": "auto_assign_persist",
-            "message": "字段“auto_assign_persist”取值不合法，已按兼容读取回退为 yes。",
+            "message": "字段“auto_assign_persist”取值不正确，本次先按安全值 yes 处理。",
             "count": 1,
         },
     )
@@ -800,7 +802,7 @@ def test_scheduler_config_page_exposes_hidden_degraded_warning_summary(monkeypat
     assert response.status_code == 200
     assert payload["config_hidden_warnings"]
     hidden_text = "\n".join(str(item) for item in payload["config_hidden_warnings"])
-    assert "自动分配结果回写" in hidden_text
+    assert "保存系统补齐的设备和人员" in hidden_text
     assert "auto_assign_persist" not in hidden_text
     assert "yes" not in hidden_text
 
@@ -932,9 +934,9 @@ def test_scheduler_config_page_renders_provenance_and_hidden_degraded_html(tmp_p
     assert "基线未记录" in body
     assert "当前运行配置缺少基线记录，无法确认与任何方案的一致性；请显式保存或重新应用方案。" in body
     assert "当前配置中有" in body
-    assert "使用了兼容显示值，请保存后修复。" in body
-    assert "当前还有内部配置项存在兼容修补：" in body
-    assert "自动分配结果回写" in body
+    assert "来自旧数据或格式不标准，请检查后保存一次。" in body
+    assert "平时不直接显示的设置“保存系统补齐的设备和人员”需要重新确认" in body
+    assert "保存系统补齐的设备和人员" in body
     assert "auto_assign_persist" not in body
 
 

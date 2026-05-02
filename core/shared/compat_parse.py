@@ -59,6 +59,7 @@ def _format_fallback_value(value: Any) -> str:
 
 
 def _compat_message(code: str, *, field: str, fallback: Any) -> str:
+    fallback_text = _format_fallback_value(fallback)
     prefixes = {
         "blank_required": f"字段“{field}”为空",
         "invalid_number": f"字段“{field}”历史数值无效",
@@ -68,7 +69,11 @@ def _compat_message(code: str, *, field: str, fallback: Any) -> str:
         "bad_time_row_skipped": f"字段“{field}”历史时间值无效",
     }
     prefix = prefixes.get(code, f"字段“{field}”历史值无效")
-    return f"{prefix}，已按兼容读取回退为 {_format_fallback_value(fallback)}。"
+    if code == "legacy_external_days_defaulted":
+        return f"{prefix}，本次先按 {fallback_text} 天计算，请补上真实周期。"
+    if fallback is None:
+        return f"{prefix}，本次先留空，请检查后保存。"
+    return f"{prefix}，本次先按 {fallback_text} 处理，请检查后保存。"
 
 
 def _emit_event(

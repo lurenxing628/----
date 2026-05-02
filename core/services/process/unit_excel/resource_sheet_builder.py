@@ -67,8 +67,8 @@ def build_operator_machine_rows(
             code="default_filled",
             scope="unit_excel.operator_machine",
             field="技能等级",
-            message="人员设备关联缺少技能等级，已默认补齐为 normal。",
-            sample={"工号": op_id, "设备编号": machine_id, "value": "normal"},
+            message="人员设备关联缺少技能等级，已默认补齐为“普通”。",
+            sample={"工号": op_id, "设备编号": machine_id, "value": "普通"},
         )
         record_diagnostic(
             collector,
@@ -76,8 +76,8 @@ def build_operator_machine_rows(
             code="default_filled",
             scope="unit_excel.operator_machine",
             field="主操设备",
-            message="人员设备关联缺少主操标记，已默认补齐为 no。",
-            sample={"工号": op_id, "设备编号": machine_id, "value": YesNo.NO.value},
+            message="人员设备关联缺少主操标记，已默认补齐为“否”。",
+            sample={"工号": op_id, "设备编号": machine_id, "value": "否"},
         )
         rows.append({"工号": op_id, "设备编号": machine_id, "技能等级": "normal", "主操设备": YesNo.NO.value})
     return rows

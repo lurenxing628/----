@@ -35,7 +35,7 @@ def _get_bool_arg(name: str, default: bool = False) -> bool:
         return True
     if v in ("0", "false", "no", "n", "off", ""):
         return False
-    raise ValidationError(f"{name} 不合法（期望布尔值）", field=name)
+    raise ValidationError(f"{name} 不合法（这里期望填写是或否）", field=name)
 
 
 def _selected_version_result_status_label(services, version: Optional[int]) -> str:

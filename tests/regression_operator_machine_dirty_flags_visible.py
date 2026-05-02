@@ -67,14 +67,14 @@ def main() -> None:
     row_invalid = next((item for item in rows if item.get("operator_id") == "OP200" and item.get("machine_id") == "MC200"), None)
     assert row_invalid is not None, rows
     assert set(row_invalid.get("dirty_fields") or []) == {"skill_level", "is_primary"}, row_invalid
-    assert "历史技能等级 'skilled' 已兼容归一为 expert。" == str((row_invalid.get("dirty_reasons") or {}).get("skill_level") or ""), row_invalid
-    assert "历史主操标记 'off' 已兼容归一为 no。" == str((row_invalid.get("dirty_reasons") or {}).get("is_primary") or ""), row_invalid
+    assert "历史技能等级写法较旧，系统已先按能识别的中文选项处理。" == str((row_invalid.get("dirty_reasons") or {}).get("skill_level") or ""), row_invalid
+    assert "历史主操标记写法较旧，系统已先按“否”处理。" == str((row_invalid.get("dirty_reasons") or {}).get("is_primary") or ""), row_invalid
 
     row_blank = next((item for item in rows if item.get("operator_id") == "OP200" and item.get("machine_id") == "MC201"), None)
     assert row_blank is not None, rows
     assert set(row_blank.get("dirty_fields") or []) == {"skill_level", "is_primary"}, row_blank
-    assert "历史技能等级为空，已兼容归一为 normal。" == str((row_blank.get("dirty_reasons") or {}).get("skill_level") or ""), row_blank
-    assert "历史主操标记为空，已兼容归一为 no。" == str((row_blank.get("dirty_reasons") or {}).get("is_primary") or ""), row_blank
+    assert "历史技能等级为空，系统已先按“普通”处理。" == str((row_blank.get("dirty_reasons") or {}).get("skill_level") or ""), row_blank
+    assert "历史主操标记为空，系统已先按“否”处理。" == str((row_blank.get("dirty_reasons") or {}).get("is_primary") or ""), row_blank
 
     app_mod = importlib.import_module("app")
     app = app_mod.create_app()
@@ -86,12 +86,12 @@ def main() -> None:
 
     assert "以下 2 条记录中有部分字段的旧格式已被系统自动修正" in html, html
     assert "涉及字段：" in html, html
-    assert "skill_level" in html, html
-    assert "is_primary" in html, html
-    assert "旧格式已自动修正：历史技能等级 &#39;skilled&#39; 已兼容归一为 expert。" in html, html
-    assert "旧格式已自动修正：历史主操标记 &#39;off&#39; 已兼容归一为 no。" in html, html
-    assert "旧格式已自动修正：历史技能等级为空，已兼容归一为 normal。" in html, html
-    assert "旧格式已自动修正：历史主操标记为空，已兼容归一为 no。" in html, html
+    assert "技能等级" in html, html
+    assert "主操设备" in html, html
+    assert "旧格式已自动修正：历史技能等级写法较旧，系统已先按能识别的中文选项处理。" in html, html
+    assert "旧格式已自动修正：历史主操标记写法较旧，系统已先按“否”处理。" in html, html
+    assert "旧格式已自动修正：历史技能等级为空，系统已先按“普通”处理。" in html, html
+    assert "旧格式已自动修正：历史主操标记为空，系统已先按“否”处理。" in html, html
 
     print("OK")
 

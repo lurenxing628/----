@@ -1,0 +1,104 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]: APS 智能排产
+    - navigation [ref=e5]:
+      - link "首页" [ref=e6] [cursor=pointer]:
+        - /url: /
+      - link "排产调度" [ref=e7] [cursor=pointer]:
+        - /url: /scheduler/
+      - link "工艺管理" [ref=e8] [cursor=pointer]:
+        - /url: /process/
+      - link "人员管理" [ref=e9] [cursor=pointer]:
+        - /url: /personnel/
+      - link "设备管理" [ref=e10] [cursor=pointer]:
+        - /url: /equipment/
+      - link "物料管理" [ref=e11] [cursor=pointer]:
+        - /url: /material/materials
+      - link "统计报表" [ref=e12] [cursor=pointer]:
+        - /url: /reports/
+      - link "系统管理" [ref=e13] [cursor=pointer]:
+        - /url: /system/backup
+      - link "Excel 演示" [ref=e14] [cursor=pointer]:
+        - /url: /excel-demo/
+    - link "查看本页说明" [ref=e16] [cursor=pointer]:
+      - /url: /scheduler/config/manual?page=personnel.list_page&src=/personnel/?
+      - img [ref=e17]
+      - generic [ref=e20]: 本页说明
+    - generic [ref=e21]:
+      - text: Win7 单机版
+      - text: 离线运行
+  - generic [ref=e22]:
+    - banner [ref=e23]:
+      - heading "人员管理" [level=2] [ref=e24]
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - generic [ref=e27]: 界面
+          - group "界面模式" [ref=e28]:
+            - button "经典" [ref=e29] [cursor=pointer]
+            - button "现代" [pressed] [ref=e30] [cursor=pointer]
+        - button "切换表格密度（当前：标准）" [ref=e31] [cursor=pointer]: 密度：标准
+        - switch "切换护眼模式" [ref=e32] [cursor=pointer]:
+          - generic [ref=e35]: 护眼关
+    - main [ref=e36]:
+      - generic [ref=e37]:
+        - heading "人员管理" [level=2] [ref=e40]
+        - paragraph [ref=e41]: 管理操作员及其可操作的设备。
+        - generic [ref=e42]:
+          - link "人员管理" [ref=e43] [cursor=pointer]:
+            - /url: /personnel/
+            - generic [ref=e44]: 人员管理
+          - link "班组管理" [ref=e45] [cursor=pointer]:
+            - /url: /personnel/teams
+            - generic [ref=e46]: 班组管理
+          - link "人员基本信息（Excel）" [ref=e47] [cursor=pointer]:
+            - /url: /personnel/excel/operators
+            - generic [ref=e48]: 人员基本信息（Excel）
+          - link "人员设备关联（Excel）" [ref=e49] [cursor=pointer]:
+            - /url: /personnel/excel/links
+            - generic [ref=e50]: 人员设备关联（Excel）
+          - link "人员专属工作日历（Excel）" [ref=e51] [cursor=pointer]:
+            - /url: /personnel/excel/operator_calendar
+            - generic [ref=e52]: 人员专属工作日历（Excel）
+      - generic [ref=e53]:
+        - heading "新增人员" [level=3] [ref=e54]
+        - generic [ref=e56]:
+          - generic [ref=e57]:
+            - generic [ref=e58]: 工号
+            - textbox "工号" [ref=e59]:
+              - /placeholder: 如：OP001
+          - generic [ref=e60]:
+            - generic [ref=e61]: 姓名
+            - textbox "姓名" [ref=e62]:
+              - /placeholder: 如：张三
+          - generic [ref=e63]:
+            - generic [ref=e64]: 状态
+            - combobox "状态" [ref=e65]:
+              - option "在岗" [selected]
+              - option "停用/休假"
+          - generic [ref=e66]:
+            - generic [ref=e67]: 班组
+            - combobox "班组" [ref=e68]:
+              - option "（未设置）" [selected]
+          - generic [ref=e69]:
+            - generic [ref=e70]: 备注
+            - textbox "备注" [ref=e71]:
+              - /placeholder: 可选
+          - button "添加人员" [ref=e73] [cursor=pointer]:
+            - generic [ref=e74]: 添加人员
+      - generic [ref=e75]:
+        - heading "人员列表" [level=3] [ref=e76]
+        - generic [ref=e77]: 批量操作：可批量停用/启用/删除。若人员已被批次工序或排程引用，将禁止删除（请改为停用）。
+        - generic [ref=e78]:
+          - generic [ref=e79]:
+            - generic [ref=e80]: 班组筛选
+            - combobox "班组筛选" [ref=e81]:
+              - option "（全部班组）" [selected]
+          - button "筛选" [ref=e83] [cursor=pointer]:
+            - generic [ref=e84]: 筛选
+        - generic [ref=e86]:
+          - generic [ref=e87]:
+            - img [ref=e88]
+            - text: 搜索
+          - textbox "搜索人员，输入工号或姓名关键词" [ref=e90]:
+            - /placeholder: 输入工号、姓名...
+        - generic [ref=e91]: 暂无人员信息，可以手动新增或通过 Excel 导入。

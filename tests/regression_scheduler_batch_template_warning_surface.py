@@ -101,7 +101,7 @@ def test_scheduler_batch_template_warning_surface(tmp_path, monkeypatch) -> None
 
         assert any(cat == "success" and "已创建批次并生成工序：B_WARN" in msg for cat, msg in flashes), flashes
         assert any(
-            cat == "warning" and "工种“表处理”未找到供应商配置，已按默认 1.0 天初始化外协周期" in msg
+            cat == "warning" and "工种“表处理”没有找到可用的外协供应商，本次会先按 1 天安排。建议补好供应商和周期。" in msg
             for cat, msg in flashes
         ), flashes
 
@@ -174,7 +174,7 @@ def test_scheduler_excel_batch_confirm_surfaces_warnings_with_limit(tmp_path, mo
         assert "第 1 条告警" in body
         assert "第 2 条告警" in body
         assert "第 3 条告警" in body
-        assert "另有 2 条告警，请到系统历史查看。" in body
+        assert "另有 2 条提醒，请到系统历史查看。" in body
         assert "第 4 条告警" not in body
         assert "第 5 条告警" not in body
     finally:

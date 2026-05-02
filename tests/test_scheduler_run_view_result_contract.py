@@ -65,7 +65,7 @@ def test_run_schedule_view_result_builds_failed_headline_and_overdue_sample() ->
 
 
 def test_run_schedule_view_result_surfaces_public_degradation_warning_and_errors() -> None:
-    duplicate_warning = "自动分配资源池构建失败，本次排产已降级为不自动分配资源。"
+    duplicate_warning = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
     result = {
         "version": 13,
         "result_status": "partial",
@@ -100,10 +100,10 @@ def test_run_schedule_view_result_surfaces_public_degradation_warning_and_errors
     assert view_result.headline_category == "warning"
     assert view_result.primary_degradation_message is not None
     assert "本次排产部分完成" in view_result.primary_degradation_message
-    assert "资源池构建已降级" in view_result.primary_degradation_message
+    assert "资源池资料不完整" in view_result.primary_degradation_message
     assert "resource_pool_degraded" not in view_result.primary_degradation_message
     assert view_result.warning_messages == [duplicate_warning]
-    assert view_result.error_preview == ["排程执行出现异常，请查看系统日志。"]
+    assert view_result.error_preview == ["排产执行遇到问题，请联系管理员查看日志。"]
     assert view_result.error_total == 4
 
 

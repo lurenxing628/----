@@ -75,7 +75,7 @@ def _record_plugin_status_failures(status: Optional[Dict[str, Any]], collector: 
             code="plugin_bootstrap_load_failed",
             scope="plugins.bootstrap",
             field=f"plugin.{plugin_id}",
-            message="插件加载失败，请查看系统日志。",
+            message="扩展功能加载失败，请查看系统日志。",
         )
 
 
@@ -99,7 +99,7 @@ def _public_plugin_status_row(row: Dict[str, Any], source: str) -> Dict[str, Any
     public_row = dict(row or {})
     public_row["enabled_source"] = source
     if str(public_row.get("error") or "").strip():
-        public_row["error"] = "插件加载失败，请查看系统日志。"
+        public_row["error"] = "扩展功能加载失败，请查看系统日志。"
     return public_row
 
 
@@ -162,10 +162,10 @@ def _build_plugin_config_reader(
             code="plugin_bootstrap_config_reader_failed",
             scope="plugins.bootstrap",
             field="plugin.enabled",
-            message="插件配置读取器初始化失败，当前按默认开关运行。",
+            message="扩展功能设置读取器初始化失败，当前按默认开关运行。",
             sample=exc.__class__.__name__,
         )
-        safe_log(logger, "warning", "插件配置读取器初始化失败，当前按默认开关运行：%s", exc)
+        safe_log(logger, "warning", "扩展功能设置读取器初始化失败，当前按默认开关运行：%s", exc)
         return None
 
     enabled_source_map: Dict[str, str] = {}
@@ -181,10 +181,10 @@ def _build_plugin_config_reader(
                 code="plugin_bootstrap_config_read_failed",
                 scope="plugins.bootstrap",
                 field=key,
-                message=f"读取插件配置失败，插件 {plugin_key or '-'} 当前按默认开关运行。",
+                message=f"读取扩展功能设置失败，扩展功能 {plugin_key or '-'} 当前按默认开关运行。",
                 sample=exc.__class__.__name__,
             )
-            safe_log(logger, "warning", "读取插件配置失败，当前按默认开关运行：key=%s err=%s", key, exc)
+            safe_log(logger, "warning", "读取扩展功能设置失败，当前按默认开关运行：key=%s err=%s", key, exc)
             return None
 
         enabled_source_map[plugin_key] = "config" if value is not None else "default"
@@ -214,10 +214,10 @@ def bootstrap_plugins(base_dir: str, database_path: str, *, logger: Optional[log
             code="plugin_bootstrap_db_unavailable",
             scope="plugins.bootstrap",
             field="database_path",
-            message="插件启动无法连接系统配置库，当前按默认开关运行。",
+            message="扩展功能启动时无法连接系统配置库，当前按默认开关运行。",
             sample=exc.__class__.__name__,
         )
-        safe_log(logger, "warning", "打开数据库连接失败，插件加载将按默认开关运行：%s", exc)
+        safe_log(logger, "warning", "打开数据库连接失败，扩展功能加载将按默认开关运行：%s", exc)
 
     config_reader = _build_plugin_config_reader(conn0, logger=logger, collector=collector)
     if config_reader is None and default_enabled_source == "default":
@@ -235,10 +235,10 @@ def bootstrap_plugins(base_dir: str, database_path: str, *, logger: Optional[log
             code="plugin_bootstrap_load_failed",
             scope="plugins.bootstrap",
             field="plugins",
-            message="插件加载失败，请查看系统日志。",
+            message="扩展功能加载失败，请查看系统日志。",
             sample=exc.__class__.__name__,
         )
-        safe_log(logger, "error", "插件加载失败（已忽略，启动继续）：%s", exc)
+        safe_log(logger, "error", "扩展功能加载失败（已忽略，启动继续）：%s", exc)
         plugin_status = reset_plugin_state(base_dir)
 
     plugin_status = _apply_enabled_sources(
@@ -264,7 +264,7 @@ def bootstrap_plugins(base_dir: str, database_path: str, *, logger: Optional[log
                     code="plugin_bootstrap_telemetry_failed",
                     scope="plugins.bootstrap",
                     field="telemetry",
-                    message="插件启动留痕写入 OperationLogs 失败。",
+                    message="扩展功能启动记录写入操作日志失败。",
                 )
         except Exception as exc:
             plugin_status["telemetry_persisted"] = False
@@ -272,7 +272,7 @@ def bootstrap_plugins(base_dir: str, database_path: str, *, logger: Optional[log
                 code="plugin_bootstrap_telemetry_failed",
                 scope="plugins.bootstrap",
                 field="telemetry",
-                message="插件启动留痕写入 OperationLogs 异常。",
+                message="扩展功能启动记录写入操作日志异常。",
                 sample=exc.__class__.__name__,
             )
         finally:

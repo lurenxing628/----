@@ -41,7 +41,7 @@ _EXTRA_CARD_SPECS = (
 _FREEZE_STATE_LABELS = {
     "disabled": "未启用",
     "active": "已生效",
-    "degraded": "已降级",
+    "degraded": "部分未生效",
 }
 
 _COMPAT_FALLBACK_FIELD_LABELS = {
@@ -176,7 +176,7 @@ def _compat_fallback_state(selected_summary: Optional[Dict[str, Any]]) -> Dict[s
         "used": True,
         "missing_fields": missing_fields,
         "missing_field_labels": [_COMPAT_FALLBACK_FIELD_LABELS.get(field, "分析字段") for field in missing_fields],
-        "message": "当前版本摘要缺少部分分析字段，页面已按旧版本数据继续展示。",
+        "message": "这个历史版本缺少新的分析字段，页面只展示能确认的内容。",
     }
 
 

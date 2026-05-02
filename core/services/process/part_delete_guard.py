@@ -25,7 +25,7 @@ class PartDeleteGuard:
     def delete_external_group(self, *, part_no: str, group_id: str) -> Dict[str, Any]:
         group = self.group_repo.get(group_id)
         if not group or group.part_no != part_no:
-            raise BusinessError(ErrorCode.EXTERNAL_GROUP_ERROR, "外部工序组不存在或不属于该零件")
+            raise BusinessError(ErrorCode.EXTERNAL_GROUP_ERROR, "外协工序组不存在或不属于该零件")
 
         ops = self.op_repo.list_by_part(part_no, include_deleted=False)
         to_delete = self._active_external_group_seqs(ops, group_id)
@@ -34,7 +34,7 @@ class PartDeleteGuard:
         if not any(sorted(group_seqs) == sorted(to_delete) for group_seqs in deletable_groups):
             raise BusinessError(
                 ErrorCode.OPERATION_DELETE_DENIED,
-                "不允许删除：仅首部/尾部连续外部工序组可删除，中间外部组不可删除。",
+                "不允许删除：只能删除开头或结尾连续的外协工序组，中间外协组不能单独删除。",
                 details={"to_delete": to_delete, "deletable_groups": deletable_groups},
             )
 

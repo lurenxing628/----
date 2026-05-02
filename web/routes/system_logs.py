@@ -96,25 +96,25 @@ def logs_settings():
 def logs_delete():
     raw = (request.form.get("log_id") or "").strip()
     if not raw:
-        flash("缺少 log_id。", "error")
+        flash("缺少日志编号。", "error")
         return redirect(url_for("system.logs_page"))
     try:
         log_id = int(raw)
     except Exception:
-        flash("log_id 不合法（期望正整数）。", "error")
+        flash("日志编号不合法，请填写正整数。", "error")
         return redirect(url_for("system.logs_page"))
     if log_id <= 0 or log_id > 10**12:
-        flash("log_id 不合法（期望正整数）。", "error")
+        flash("日志编号不合法，请填写正整数。", "error")
         return redirect(url_for("system.logs_page"))
 
     svc = _get_operation_log_service()
     deleted = svc.delete_by_id(int(log_id))
 
     if deleted <= 0:
-        flash(f"未找到日志：ID={log_id}", "warning")
+        flash(f"未找到日志：编号 {log_id}", "warning")
         return redirect(url_for("system.logs_page"))
 
-    flash(f"已删除日志：ID={log_id}", "success")
+    flash(f"已删除日志：编号 {log_id}", "success")
     return redirect(url_for("system.logs_page"))
 
 

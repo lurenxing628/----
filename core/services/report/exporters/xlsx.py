@@ -68,11 +68,11 @@ def _utilization_percent(value: Any) -> Any:
 def export_overdue_xlsx(items: List[Dict[str, Any]], *, write_only: bool = False) -> BinaryIO:
     wb = openpyxl.Workbook(write_only=write_only)
     try:
-        ws = wb.create_sheet("overdue") if write_only else wb.active
+        ws = wb.create_sheet("超期清单") if write_only else wb.active
         if ws is None:
-            raise RuntimeError("无法创建 overdue 工作表")
+            raise RuntimeError("无法创建超期清单工作表")
         if not write_only:
-            ws.title = "overdue"
+            ws.title = "超期清单"
             _append_row(ws, ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"])
             for it in items:
                 _append_row(
@@ -132,7 +132,7 @@ def export_utilization_xlsx(
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         if write_only:
-            ws1 = wb.create_sheet("machines")
+            ws1 = wb.create_sheet("设备负荷")
             _append_write_only_row(ws1, ["设备编号", "设备名称", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"], is_header=True)
             for r in machines:
                 _append_write_only_row(
@@ -147,7 +147,7 @@ def export_utilization_xlsx(
                     ],
                 )
 
-            ws2 = wb.create_sheet("operators")
+            ws2 = wb.create_sheet("人员负荷")
             _append_write_only_row(ws2, ["工号", "姓名", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"], is_header=True)
             for r in operators:
                 _append_write_only_row(
@@ -164,8 +164,8 @@ def export_utilization_xlsx(
         else:
             ws1 = wb.active
             if ws1 is None:
-                raise RuntimeError("无法创建 machines 工作表")
-            ws1.title = "machines"
+                raise RuntimeError("无法创建设备负荷工作表")
+            ws1.title = "设备负荷"
             _append_row(ws1, ["设备编号", "设备名称", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"])
             for r in machines:
                 _append_row(
@@ -181,7 +181,7 @@ def export_utilization_xlsx(
                 )
             _format_sheet(ws1)
 
-            ws2 = wb.create_sheet("operators")
+            ws2 = wb.create_sheet("人员负荷")
             _append_row(ws2, ["工号", "姓名", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"])
             for r in operators:
                 _append_row(
@@ -211,11 +211,11 @@ def export_utilization_xlsx(
 def export_downtime_impact_xlsx(machines: List[Dict[str, Any]], *, write_only: bool = False) -> BinaryIO:
     wb = openpyxl.Workbook(write_only=write_only)
     try:
-        ws = wb.create_sheet("downtime") if write_only else wb.active
+        ws = wb.create_sheet("停机影响") if write_only else wb.active
         if ws is None:
-            raise RuntimeError("无法创建 downtime 工作表")
+            raise RuntimeError("无法创建停机影响工作表")
         if not write_only:
-            ws.title = "downtime"
+            ws.title = "停机影响"
             _append_row(ws, ["设备编号", "设备名称", "停机时长(小时)", "停机次数", "与排程重叠(小时)", "重叠次数"])
             for r in machines:
                 _append_row(

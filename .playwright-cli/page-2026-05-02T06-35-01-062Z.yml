@@ -1,0 +1,85 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]: APS 智能排产
+    - navigation [ref=e5]:
+      - link "首页" [ref=e6] [cursor=pointer]:
+        - /url: /
+      - link "排产调度" [ref=e7] [cursor=pointer]:
+        - /url: /scheduler/
+      - link "工艺管理" [ref=e8] [cursor=pointer]:
+        - /url: /process/
+      - link "人员管理" [ref=e9] [cursor=pointer]:
+        - /url: /personnel/
+      - link "设备管理" [ref=e10] [cursor=pointer]:
+        - /url: /equipment/
+      - link "物料管理" [ref=e11] [cursor=pointer]:
+        - /url: /material/materials
+      - link "统计报表" [ref=e12] [cursor=pointer]:
+        - /url: /reports/
+      - link "系统管理" [ref=e13] [cursor=pointer]:
+        - /url: /system/backup
+      - link "Excel 演示" [ref=e14] [cursor=pointer]:
+        - /url: /excel-demo/
+    - generic [ref=e15]:
+      - text: Win7 单机版
+      - text: 离线运行
+  - generic [ref=e16]:
+    - banner [ref=e17]:
+      - heading "首页" [level=2] [ref=e18]
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - generic [ref=e21]: 界面
+          - group "界面模式" [ref=e22]:
+            - button "经典" [ref=e23] [cursor=pointer]
+            - button "现代" [pressed] [ref=e24] [cursor=pointer]
+        - button "切换表格密度（当前：标准）" [ref=e25] [cursor=pointer]: 密度：标准
+        - switch "切换护眼模式" [ref=e26] [cursor=pointer]:
+          - generic [ref=e29]: 护眼关
+    - main [ref=e30]:
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - generic [ref=e33]: 待排批次
+          - generic [ref=e34]: "0"
+        - generic [ref=e35]:
+          - generic [ref=e36]: 已排批次
+          - generic [ref=e37]: "0"
+        - generic [ref=e38]:
+          - generic [ref=e39]: 超期批次
+          - generic [ref=e40]: "0"
+        - generic [ref=e41]:
+          - generic [ref=e42]: 最近排产版本
+          - generic [ref=e43]: "--"
+      - generic [ref=e44]:
+        - heading "最近排产" [level=3] [ref=e45]
+        - generic [ref=e46]: 还没有排产记录，排产后这里会显示结果。
+      - generic [ref=e47]:
+        - heading "快捷操作" [level=3] [ref=e48]
+        - generic [ref=e49]:
+          - link "去排产" [ref=e50] [cursor=pointer]:
+            - /url: /scheduler/
+            - img [ref=e51]
+            - generic [ref=e53]: 去排产
+          - link "批次管理" [ref=e54] [cursor=pointer]:
+            - /url: /scheduler/batches
+            - img [ref=e55]
+            - generic [ref=e57]: 批次管理
+          - link "导入批次" [ref=e58] [cursor=pointer]:
+            - /url: /scheduler/excel/batches
+            - img [ref=e59]
+            - generic [ref=e61]: 导入批次
+          - link "资源排班" [ref=e62] [cursor=pointer]:
+            - /url: /scheduler/resource-dispatch
+            - img [ref=e63]
+            - generic [ref=e65]: 资源排班
+          - link "甘特图" [ref=e66] [cursor=pointer]:
+            - /url: /scheduler/gantt?view=machine
+            - img [ref=e67]
+            - generic [ref=e69]: 甘特图
+          - link "周计划" [ref=e70] [cursor=pointer]:
+            - /url: /scheduler/week-plan
+            - img [ref=e71]
+            - generic [ref=e73]: 周计划
+          - link "报表" [ref=e74] [cursor=pointer]:
+            - /url: /reports/
+            - img [ref=e75]
+            - generic [ref=e77]: 报表

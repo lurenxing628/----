@@ -345,7 +345,7 @@ def main() -> None:
     assert dict_algo.get("downtime_avoid") == {
         "loaded_ok": True,
         "degraded": True,
-        "degradation_reason": "停机区间扩展加载失败，候选设备可能未覆盖停机约束。",
+        "degradation_reason": "停机区间扩展加载失败，部分候选设备可能还没有避开停机时间。",
         "extend_attempted": True,
         "load_partial_fail_count": 0,
         "load_partial_fail_machines_sample": [],
@@ -359,7 +359,7 @@ def main() -> None:
         "enabled": "yes",
         "attempted": True,
         "degraded": True,
-        "degradation_reason": "自动分配资源池构建失败，本次排产已降级为不自动分配资源。",
+        "degradation_reason": "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。",
     }, f"dict cfg resource_pool 摘要错误：{dict_algo.get('resource_pool')!r}"
     assert dict_algo == object_algo, "dict cfg 与 object cfg 的 summary 摘要不一致"
 

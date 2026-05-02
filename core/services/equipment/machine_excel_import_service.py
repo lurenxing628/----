@@ -75,9 +75,9 @@ class MachineExcelImportService:
 
             status = self._normalize_machine_status_for_excel(data.get("状态"))
             if not status:
-                raise ValidationError("状态不能为空，请填写：可用 / 停用 / 维修；也兼容英文标准值 active/inactive/maintain。", field="状态")
+                raise ValidationError("状态不能为空，请填写：可用 / 停用 / 维修。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文。", field="状态")
             if status not in MACHINE_STATUS_VALUES:
-                raise ValidationError("状态不合法，可填写：可用 / 停用 / 维修；也兼容英文标准值 active/inactive/maintain。", field="状态")
+                raise ValidationError("状态不合法，可填写：可用 / 停用 / 维修。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文。", field="状态")
 
             payload: Dict[str, Any] = {
                 "name": name,

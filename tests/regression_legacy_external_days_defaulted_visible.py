@@ -127,7 +127,7 @@ def main() -> None:
     assert int(degradation_counters.get("legacy_external_days_defaulted") or 0) == 1, degradation_counters
 
     warnings = list(result_summary_obj.get("warnings") or [])
-    assert any("历史兼容周期 1.0 天" in w for w in warnings), warnings
+    assert any("本次先按 1 天计算" in w for w in warnings), warnings
 
     print("OK")
 

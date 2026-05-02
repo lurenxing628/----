@@ -8,13 +8,12 @@
       </div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="muted">基于当前数据库数据生成统计报表，支持导出 Excel。</p>
+    <p class="muted">这些报表主要根据排产历史版本来统计。请先完成一次排产；如果当前版本或日期范围没有结果，页面会显示为空，也不会导出空 Excel。</p>
     {{ ui.reports_nav('index') }}
     {% if has_history %}
-      <div class="muted mt-2">
-        当前最新排产版本：<strong>v{{ latest_version.version }}</strong>
-        <span class="info-sep">|</span>
-        超期批次：<strong>{{ overdue_count }}</strong> 个
+      <div class="aps-summary-grid">
+        {{ ui.summary_item('最新排产版本', 'v' ~ latest_version.version) }}
+        {{ ui.summary_item('超期批次', overdue_count ~ ' 个') }}
       </div>
     {% else %}
       <div class="muted mt-2">暂无排产历史，请先执行排产后再查看报表。</div>
@@ -36,7 +35,7 @@
 
   <div class="card">
     <h3>报表总览</h3>
-    <div class="muted mb-2">选择报表类型查看详细数据，支持导出 Excel。</div>
+    <div class="muted mb-2">选择报表类型查看详细数据。有可导出的结果时，页面会提供 Excel 导出按钮。</div>
     <div class="nav-grid">
       <a href="{{ url_for('reports.overdue_page') }}" class="nav-card">
         <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-warn"/></svg> 超期清单</div>
@@ -53,4 +52,3 @@
     </div>
   </div>
 {% endblock %}
-

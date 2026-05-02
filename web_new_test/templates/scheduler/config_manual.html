@@ -14,7 +14,7 @@
           {{ ui.link_button('查看完整原文对应章节', full_manual_section_url, 'secondary', 'md') }}
         {% endif %}
         {% if download_url %}
-          {{ ui.link_button(download_button_label or '下载说明书原文', download_url, 'secondary', 'md') }}
+          {{ ui.link_button(download_button_label or ('下载整本说明书' if manual_mode == 'page' else '下载说明书原文'), download_url, 'secondary', 'md') }}
         {% endif %}
       </div>
     </div>
@@ -31,22 +31,22 @@
   </div>
 
   <div class="card p-card-tight">
-    <div class="inline-flex-wrap items-center">
+    <div class="aps-summary-grid">
       {% if manual_mode == 'page' and current_manual %}
-        <span class="muted">当前页面主题：{{ current_manual['title'] }}</span>
+        {{ ui.summary_item('当前页面主题', current_manual['title']) }}
         {% if current_manual['full_manual_label'] %}
-          <span class="muted">对应整本章节：{{ current_manual['full_manual_label'] }}</span>
+          {{ ui.summary_item('对应整本章节', current_manual['full_manual_label']) }}
         {% endif %}
         {% if related_manuals %}
-          <span class="muted">相关模块：{{ related_manuals | length }} 个</span>
+          {{ ui.summary_item('相关模块', (related_manuals | length) ~ ' 个') }}
         {% endif %}
       {% endif %}
       {% if not download_url %}
-        <span class="muted">下载：不可用（说明书文件缺失）</span>
+        {{ ui.summary_item('下载', '不可用', '说明书文件不存在，暂时不能下载。') }}
       {% endif %}
 
       {% if manual_mtime %}
-        <span class="muted">{% if manual_mode == 'page' %}整本说明书更新时间：{% else %}更新时间：{% endif %}{{ manual_mtime }}</span>
+        {{ ui.summary_item('更新时间' if manual_mode != 'page' else '整本说明书更新时间', manual_mtime) }}
       {% endif %}
     </div>
   </div>

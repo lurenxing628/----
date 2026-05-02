@@ -1,0 +1,112 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]: APS 智能排产
+    - navigation [ref=e5]:
+      - link "首页" [ref=e6] [cursor=pointer]:
+        - /url: /
+      - link "排产调度" [ref=e7] [cursor=pointer]:
+        - /url: /scheduler/
+      - link "工艺管理" [ref=e8] [cursor=pointer]:
+        - /url: /process/
+      - link "人员管理" [ref=e9] [cursor=pointer]:
+        - /url: /personnel/
+      - link "设备管理" [ref=e10] [cursor=pointer]:
+        - /url: /equipment/
+      - link "物料管理" [ref=e11] [cursor=pointer]:
+        - /url: /material/materials
+      - link "统计报表" [ref=e12] [cursor=pointer]:
+        - /url: /reports/
+      - link "系统管理" [ref=e13] [cursor=pointer]:
+        - /url: /system/backup
+      - link "Excel 演示" [ref=e14] [cursor=pointer]:
+        - /url: /excel-demo/
+    - link "查看本页说明" [ref=e16] [cursor=pointer]:
+      - /url: /scheduler/config/manual?page=personnel.detail_page&src=/personnel/OPQA1?
+      - img [ref=e17]
+      - generic [ref=e20]: 本页说明
+    - generic [ref=e21]:
+      - text: Win7 单机版
+      - text: 离线运行
+  - generic [ref=e22]:
+    - banner [ref=e23]:
+      - heading "人员详情 - OPQA1 复验人员" [level=2] [ref=e24]
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - generic [ref=e27]: 界面
+          - group "界面模式" [ref=e28]:
+            - button "经典" [ref=e29] [cursor=pointer]
+            - button "现代" [pressed] [ref=e30] [cursor=pointer]
+        - button "切换表格密度（当前：标准）" [ref=e31] [cursor=pointer]: 密度：标准
+        - switch "切换护眼模式" [ref=e32] [cursor=pointer]:
+          - generic [ref=e35]: 护眼关
+    - main [ref=e36]:
+      - alert [ref=e38]:
+        - text: 已创建人员：OPQA1 复验人员
+        - button "关闭" [ref=e39] [cursor=pointer]: ×
+      - generic [ref=e40]:
+        - heading "人员详情" [level=2] [ref=e43]
+        - paragraph [ref=e44]:
+          - text: 工号：
+          - strong [ref=e45]: OPQA1
+          - text: 姓名：
+          - strong [ref=e46]: 复验人员
+          - text: 班组：
+          - strong [ref=e47]: 未设置
+        - generic [ref=e48]:
+          - link "人员管理" [ref=e49] [cursor=pointer]:
+            - /url: /personnel/
+            - generic [ref=e50]: 人员管理
+          - link "班组管理" [ref=e51] [cursor=pointer]:
+            - /url: /personnel/teams
+            - generic [ref=e52]: 班组管理
+          - link "人员基本信息（Excel）" [ref=e53] [cursor=pointer]:
+            - /url: /personnel/excel/operators
+            - generic [ref=e54]: 人员基本信息（Excel）
+          - link "人员设备关联（Excel）" [ref=e55] [cursor=pointer]:
+            - /url: /personnel/excel/links
+            - generic [ref=e56]: 人员设备关联（Excel）
+          - link "人员专属工作日历（Excel）" [ref=e57] [cursor=pointer]:
+            - /url: /personnel/excel/operator_calendar
+            - generic [ref=e58]: 人员专属工作日历（Excel）
+        - generic [ref=e59]:
+          - link "个人工作日历" [ref=e60] [cursor=pointer]:
+            - /url: /personnel/OPQA1/calendar
+            - generic [ref=e61]: 个人工作日历
+          - link "全局工作日历" [ref=e62] [cursor=pointer]:
+            - /url: /scheduler/calendar
+            - generic [ref=e63]: 全局工作日历
+        - generic [ref=e64]: 为个别人员设置特殊的工作/休息日（如请假、加班）。
+      - generic [ref=e65]:
+        - heading "基本信息" [level=3] [ref=e66]
+        - generic [ref=e68]:
+          - generic [ref=e69]:
+            - generic [ref=e70]: 工号
+            - textbox [disabled] [ref=e71]: OPQA1
+          - generic [ref=e72]:
+            - generic [ref=e73]: 姓名
+            - textbox [ref=e74]: 复验人员
+          - generic [ref=e75]:
+            - generic [ref=e76]: 状态
+            - combobox [ref=e77]:
+              - option "在岗" [selected]
+              - option "停用/休假"
+          - generic [ref=e78]:
+            - generic [ref=e79]: 班组
+            - combobox [ref=e80]:
+              - option "（未设置）" [selected]
+          - generic [ref=e81]:
+            - generic [ref=e82]: 备注
+            - textbox [ref=e83]
+          - generic [ref=e84]:
+            - button "保存" [ref=e85] [cursor=pointer]:
+              - generic [ref=e86]: 保存
+            - link "返回列表" [ref=e87] [cursor=pointer]:
+              - /url: /personnel/
+              - generic [ref=e88]: 返回列表
+      - generic [ref=e89]:
+        - heading "可操作设备" [level=3] [ref=e90]
+        - paragraph [ref=e91]: 设置该人员可以操作哪些设备。 可选字段：技能等级（初级/普通/熟练）与主操设备（同一人员仅允许 1 台主操设备）。
+        - generic [ref=e92]: 暂无关联设备。
+        - separator [ref=e93]
+        - heading "添加设备关联" [level=4] [ref=e94]
+        - generic [ref=e95]: 暂无可选设备（可能尚未维护设备信息，或已全部关联）。

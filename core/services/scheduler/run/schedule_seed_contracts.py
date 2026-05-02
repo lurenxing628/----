@@ -9,7 +9,7 @@ from core.infrastructure.errors import ValidationError
 
 
 def _raise_invalid_seed_results_error(*, invalid_seed_count: int, invalid_seed_samples: List[Dict[str, Any]]) -> None:
-    exc = ValidationError("种子排产结果中包含无效记录。", field="seed_results")
+    exc = ValidationError("本次排产引用的已有排产记录有问题，系统已停止排产，没有写入新结果。请刷新排产数据后重试。", field="已有排产记录")
     exc.details = dict(exc.details or {})
     exc.details["reason"] = "invalid_seed_results"
     exc.details["invalid_seed_count"] = int(invalid_seed_count)
@@ -34,19 +34,19 @@ def _coerce_seed_time_range(item: Dict[str, Any], *, idx: int) -> Tuple[Any, Any
     start_time = item.get("start_time")
     end_time = item.get("end_time")
     if start_time is None or end_time is None:
-        raise TypeError(f"第 {idx + 1} 条种子排产结果缺少开始时间或结束时间。")
+        raise TypeError(f"第 {idx + 1} 条已有排产记录缺少开始时间或结束时间。")
     try:
         valid_time_range = start_time < end_time
     except Exception as exc:
-        raise TypeError(f"第 {idx + 1} 条种子排产结果的时间区间无效：{exc}") from exc
+        raise TypeError(f"第 {idx + 1} 条已有排产记录的时间区间不正确。") from exc
     if not valid_time_range:
-        raise TypeError(f"第 {idx + 1} 条种子排产结果的开始时间必须早于结束时间。")
+        raise TypeError(f"第 {idx + 1} 条已有排产记录的开始时间必须早于结束时间。")
     return start_time, end_time
 
 
 def coerce_seed_result_item(item: Any, *, idx: int) -> ScheduleResult:
     if not isinstance(item, dict):
-        raise TypeError(f"第 {idx + 1} 条种子排产结果不是字典（实际类型：{type(item).__name__}）。")
+        raise TypeError(f"第 {idx + 1} 条已有排产记录格式不正确。")
     start_time, end_time = _coerce_seed_time_range(item, idx=idx)
     return ScheduleResult(
         op_id=int(item.get("op_id") or 0),

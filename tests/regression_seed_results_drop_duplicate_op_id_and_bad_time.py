@@ -150,10 +150,10 @@ def main() -> None:
     assert summary.scheduled_ops == 2, f"scheduled_ops 应为 2，实际 {summary.scheduled_ops}"
     assert summary.failed_ops == 0, f"failed_ops 应为 0，实际 {summary.failed_ops}"
 
-    # warnings 应可观测（至少包含“重复 op_id”和“start_time>=end_time”）
+    # warnings 应可观测（至少包含“重复工序编号”和“开始时间不早于结束时间”）
     warn_text = "\n".join([str(x) for x in (summary.warnings or [])])
-    assert "重复 op_id" in warn_text, f"应提示重复 seed，warnings={summary.warnings}"
-    assert "start_time>=end_time" in warn_text, f"应提示坏时间 seed，warnings={summary.warnings}"
+    assert "重复工序编号" in warn_text, f"应提示重复旧排产记录，warnings={summary.warnings}"
+    assert "开始时间不早于结束时间" in warn_text, f"应提示坏时间旧排产记录，warnings={summary.warnings}"
 
     # op2 应不早于 seed_end（确保 seed_end 推进了 batch_progress）
     op2_res = next((r for r in results if int(r.op_id) == 2), None)
@@ -165,4 +165,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

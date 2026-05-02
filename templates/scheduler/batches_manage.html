@@ -15,7 +15,7 @@
   <div class="card">
     <h3 class="section-title">新增批次</h3>
     <form method="post" action="{{ url_for('scheduler.create_batch') }}">
-      <div class="form-row">
+      <div class="aps-form-grid">
         <div class="form-field">
           <label for="batchManageBatchIdInput">批次号</label>
           <input id="batchManageBatchIdInput" name="batch_id" required placeholder="如：B001">
@@ -57,18 +57,18 @@
           <label for="batchManageReadyDateInput">齐套日期（可选）</label>
           <input id="batchManageReadyDateInput" type="date" name="ready_date" class="w-160">
         </div>
-        <div class="form-field flex-1 min-w-220">
+        <div class="form-field aps-form-span-2">
           <label for="batchManageRemarkInput">备注</label>
           <input id="batchManageRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div class="form-field min-w-280">
+        <div class="form-field aps-form-span-all">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
-            严格校验工艺路线
+            发现问题就停止创建工艺路线
           </label>
-          <div class="muted text-xs">只在零件还没有工序模板、需要根据工艺路线自动生成模板时起作用：如果遇到系统不认识的工种、找不到供应商、或供应商默认周期无效，将直接报错并拒绝创建。</div>
+          <div class="muted text-xs aps-help-note">只在零件还没有工序模板、需要按工艺路线补建工序时生效。勾选后：资料不完整就停止创建并提示原因。不勾选：能确认的工序会继续处理；缺少外协周期时，本次会先按 1 天记录并提醒你补成真实周期，批次号、图号、数量这些必填项有问题仍然会报错。</div>
         </div>
-        <div>{{ ui.button('创建批次', 'primary', 'md', type_attr='submit') }}</div>
+        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('创建批次', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
@@ -76,7 +76,7 @@
   <div class="card">
     <h3 class="section-title">批次列表</h3>
     <form method="get" action="{{ url_for('scheduler.batches_manage_page') }}" class="mb-2">
-      <div class="form-row">
+      <div class="aps-filter-bar">
         <div class="form-field">
           <label for="batchManageStatusFilter">状态</label>
           <select id="batchManageStatusFilter" name="status">
@@ -97,7 +97,7 @@
             <option value="no" {% if only_ready=='no' %}selected{% endif %}>未齐套</option>
           </select>
         </div>
-        <div>{{ ui.button('查询', 'primary', 'md', type_attr='submit') }}</div>
+        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('查询', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
 
@@ -116,20 +116,20 @@
     {% if batches and batches|length > 0 %}
       {% for r in batches %}
         <form id="batchManageDeleteForm_{{ loop.index0 }}" method="post" action="{{ url_for('scheduler.delete_batch', batch_id=r.batch_id) }}" class="d-none"
-              data-confirm="确定删除批次 {{ r.batch_id }} 吗？将级联删除批次工序与排程记录（若存在）。">
+              data-confirm="确认删除该批次 {{ r.batch_id }} 吗？会同时删除这个批次下面的工序和排程记录（如果有）。">
           <input type="hidden" name="next" value="{{ request.full_path }}">
         </form>
       {% endfor %}
-      <div class="form-row mb-2">
+      <div class="aps-search-row mb-2">
         <div class="form-field">
           <label for="batchesManageSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索批次</label>
-          <input id="batchesManageSearchInput" data-table-search="batchesManageTable" placeholder="输入批次号、图号..." class="w-260">
+          <input id="batchesManageSearchInput" data-table-search="batchesManageTable" placeholder="输入批次号、图号...">
         </div>
-        <span class="muted text-xs">仅当前页排序</span>
+        <span class="muted text-xs aps-export-note">仅当前页排序</span>
       </div>
       <form method="post" action="{{ url_for('scheduler.bulk_update_batches') }}">
-        <div class="overflow-x-auto">
-        <table id="batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1" data-col-resize="1">
+        <div class="aps-table-scroll">
+        <table id="batchesManageTable" data-table-key="v2_batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1" data-col-resize="1">
           <thead>
             <tr>
               <th class="w-60"><input type="checkbox" class="js-select-all" title="全选"></th>
@@ -170,14 +170,14 @@
 
         <div class="action-bar mt-3">
           {{ ui.button('复制所选批次', 'secondary', 'md', type_attr='submit', formaction=url_for('scheduler.bulk_copy_batches'), confirm='将把所选批次逐个复制一份（批次号末尾数字自动 +1，其它尽量保持一致）。确定继续？') }}
-          {{ ui.button('删除所选批次', 'danger', 'md', type_attr='submit', formaction=url_for('scheduler.bulk_delete_batches'), confirm='确定删除所选批次吗？将级联删除批次工序与排程记录（若存在）。') }}
+          {{ ui.button('删除所选批次', 'danger', 'md', type_attr='submit', formaction=url_for('scheduler.bulk_delete_batches'), confirm='确定删除所选批次吗？会同时删除这些批次下面的工序和排程记录（如果有）。') }}
           {{ ui.button('批量修改', 'primary', 'md', type_attr='submit', confirm='确定批量修改所选批次吗？仅会修改你填写的字段。') }}
           <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
         </div>
 
-        <div class="form-row mt-3">
+        <div class="aps-form-grid mt-3">
           <div class="form-field">
-            <label class="muted" for="batchManageBulkPriorityInput">批量优先级（可选）</label>
+            <label for="batchManageBulkPriorityInput">批量优先级（可选）</label>
             <select id="batchManageBulkPriorityInput" name="bulk_priority">
               <option value="">（不修改）</option>
               <option value="normal">普通</option>
@@ -186,11 +186,11 @@
             </select>
           </div>
           <div class="form-field">
-            <label class="muted" for="batchManageBulkDueDateInput">批量交期（可选）</label>
-            <input id="batchManageBulkDueDateInput" type="date" name="bulk_due_date" class="w-160">
+            <label for="batchManageBulkDueDateInput">批量交期（可选）</label>
+            <input id="batchManageBulkDueDateInput" type="date" name="bulk_due_date">
           </div>
-          <div class="form-field flex-1 min-w-220">
-            <label class="muted" for="batchManageBulkRemarkInput">批量备注（可选）</label>
+          <div class="form-field aps-form-span-2">
+            <label for="batchManageBulkRemarkInput">批量备注（可选）</label>
             <input id="batchManageBulkRemarkInput" name="bulk_remark" placeholder="填写则覆盖备注（留空则不修改）">
           </div>
         </div>
@@ -200,4 +200,3 @@
     {% endif %}
   </div>
 {% endblock %}
-

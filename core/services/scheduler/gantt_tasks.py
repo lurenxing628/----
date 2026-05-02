@@ -45,7 +45,7 @@ def build_calendar_days(conn, *, wr: WeekRange, logger=None, op_logger=None) -> 
 
     说明：
     - 使用 CalendarService.get()：兼容“未配置则按周末默认假期”的规则，也兼容调休补班（手工将周末配成 workday）
-    - 任意异常返回空数组（避免甘特图整页 500），并透出统一退化事件
+    - 任意异常返回空数组（避免甘特图整页 500），并透出统一提示
     """
     calendar_days: List[Dict[str, Any]] = []
     collector = DegradationCollector()
@@ -86,7 +86,7 @@ def build_calendar_days(conn, *, wr: WeekRange, logger=None, op_logger=None) -> 
             code="calendar_load_failed",
             scope="gantt.calendar_days",
             field="calendar_days",
-            message="工作日历加载失败，已降级为空列表。",
+            message="工作日历加载失败，当前不显示假期/停工背景标注。",
             sample=exc.__class__.__name__,
         )
         return BuildOutcome.from_collector(calendar_days, collector, empty_reason=_CALENDAR_LOAD_EMPTY_REASON)

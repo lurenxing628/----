@@ -124,7 +124,7 @@ def test_build_resource_pool_failure_sets_public_warning_and_meta() -> None:
     assert meta["resource_pool_attempted"] is True
     assert meta["resource_pool_build_ok"] is False
     assert meta["resource_pool_build_error"] == builder_mod.RESOURCE_POOL_BUILD_FAILED_MESSAGE
-    assert warnings == ["自动分配资源池构建失败，已降级为不自动分配（请查看日志）。"]
+    assert warnings == ["自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员（请查看日志）。"]
 
 
 def test_load_machine_downtimes_success_sorts_intervals_and_sets_meta_ok(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -193,7 +193,7 @@ def test_load_machine_downtimes_partial_failure_preserves_successful_machine(mon
     assert "MC_OK" in downtime_map
     assert "MC_BAD" not in downtime_map
     assert meta["downtime_load_ok"] is False
-    expected_error = "部分设备停机区间加载失败（1 台，如：MC_BAD），这些设备已降级为忽略停机约束"
+    expected_error = "部分设备停机区间加载失败（1 台，如：MC_BAD），这些设备本次先不使用停机约束"
     assert meta["downtime_load_error"] == expected_error
     assert meta["downtime_partial_fail_count"] == 1
     assert meta["downtime_partial_fail_machines_sample"] == ["MC_BAD"]
@@ -216,7 +216,7 @@ def test_load_machine_downtimes_all_query_failures_use_partial_contract(monkeypa
         meta=meta,
     )
 
-    expected_error = "部分设备停机区间加载失败（2 台，如：MC_A、MC_B），这些设备已降级为忽略停机约束"
+    expected_error = "部分设备停机区间加载失败（2 台，如：MC_A、MC_B），这些设备本次先不使用停机约束"
     assert downtime_map == {}
     assert meta["downtime_load_ok"] is False
     assert meta["downtime_load_error"] == expected_error

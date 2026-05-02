@@ -153,6 +153,19 @@
       it.appendChild(tx);
       return it;
     }
+    function summaryItem(label, value) {
+      const it = document.createElement("span");
+      it.className = "aps-legend-summary";
+      const k = document.createElement("span");
+      k.className = "aps-legend-summary-label";
+      k.textContent = label;
+      const v = document.createElement("span");
+      v.className = "aps-legend-summary-value";
+      v.textContent = value;
+      it.appendChild(k);
+      it.appendChild(v);
+      return it;
+    }
     function modeText() {
       if (state.ui.colorMode === "batch") return "按批次";
       if (state.ui.colorMode === "priority") return "按优先级";
@@ -198,7 +211,7 @@
     const ccUnavailable = !!(state.critical && state.critical.available === false);
     const ccCacheText = ccUnavailable
       ? "不可用"
-      : ((state.critical && state.critical.cache_hit === true) ? "命中" : "未命中");
+      : ((state.critical && state.critical.cache_hit === true) ? "已准备好" : "正在重新计算");
     const batchSamples = state.ui.colorMode === "batch" ? sampleBatchIds(3) : [];
     const calendarPayload = {
       degradationEvents: state.degradationEvents,
@@ -230,10 +243,15 @@
 
     // Row 1: summary
     const r1 = row();
-    const summary = document.createElement("span");
     const vmZh = {"Day": "日", "Week": "周", "Month": "月"}[state.ui.viewMode] || "日";
-    summary.textContent = `显示 ${state.filteredTasks.length}/${state.allTasks.length}｜视图 ${vmZh}｜配色 ${modeText()}｜箭头 ${arrowText()}｜关键链（全版本/本窗口可见）${ccTotal}/${ccVisible}｜完工 ${makespanEnd}｜${ccStatusText}｜关键链缓存 ${ccCacheText}`;
-    r1.appendChild(summary);
+    r1.appendChild(summaryItem("显示", `${state.filteredTasks.length}/${state.allTasks.length}`));
+    r1.appendChild(summaryItem("视图", vmZh));
+    r1.appendChild(summaryItem("配色", modeText()));
+    r1.appendChild(summaryItem("箭头", arrowText()));
+    r1.appendChild(summaryItem("关键链", `${ccTotal}/${ccVisible}`));
+    r1.appendChild(summaryItem("完工", makespanEnd));
+    r1.appendChild(summaryItem("状态", ccStatusText));
+    r1.appendChild(summaryItem("关键链数据", ccCacheText));
     el.appendChild(r1);
 
     // Row 2: color legend
@@ -250,7 +268,7 @@
       r2.appendChild(item("急件", { background: colorForPriority("urgent") }));
       r2.appendChild(item("特急", { background: colorForPriority("critical") }));
     } else if (state.ui.colorMode === "source") {
-      r2.appendChild(item("内制", { background: colorForSource("internal") }));
+      r2.appendChild(item("自制", { background: colorForSource("internal") }));
       r2.appendChild(item("外协", { background: colorForSource("external") }));
     } else {
       r2.appendChild(item("未开始", { background: colorForStatusKey("pending") }));
@@ -869,14 +887,19 @@
           `<div class="subtitle">工序：${seqText}（${opTypeText}）</div>`,
           `<div class="subtitle">设备：${machineText}</div>`,
           `<div class="subtitle">人员：${operatorText}</div>`,
-          `<div class="subtitle">来源：${sourceText}｜状态：${statusText}</div>`,
-          `<div class="subtitle">优先级：${priorityText}｜交期：${dueText}</div>`,
-          `<div class="subtitle">关键链：${ccStatusText}｜超期：${meta.is_overdue ? "是" : "否"}</div>`,
-          `<div class="subtitle">关键链前驱：${ccFromText}｜类型：${ccTypeText}｜间隔（分钟）：${ccGapText}</div>`,
+          `<div class="subtitle">来源：${sourceText}</div>`,
+          `<div class="subtitle">状态：${statusText}</div>`,
+          `<div class="subtitle">优先级：${priorityText}</div>`,
+          `<div class="subtitle">交期：${dueText}</div>`,
+          `<div class="subtitle">关键链：${ccStatusText}</div>`,
+          `<div class="subtitle">超期：${meta.is_overdue ? "是" : "否"}</div>`,
+          `<div class="subtitle">关键链前驱：${ccFromText}</div>`,
+          `<div class="subtitle">类型：${ccTypeText}</div>`,
+          `<div class="subtitle">间隔（分钟）：${ccGapText}</div>`,
           `<div class="subtitle">关键链依据：${ccReasonText}</div>`,
         ];
         if (ccUnavailableText) {
-          lines.push(`<div class="subtitle">关键链降级：${ccUnavailableText}</div>`);
+          lines.push(`<div class="subtitle">关键链暂不可用：${ccUnavailableText}</div>`);
         }
         return lines.join("") + `<div class="pointer"></div>`;
       },

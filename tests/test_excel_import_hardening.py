@@ -361,7 +361,7 @@ def test_op_type_preview_and_confirm_reject_duplicate_name_conflict(tmp_path, mo
 
     preview_html = preview_resp.get_data(as_text=True)
     assert preview_resp.status_code == 200
-    assert "工种名称“数车”已被工种ID“OT001”占用，名称必须唯一。" in preview_html
+    assert "工种名称“数车”已被工种编号“OT001”使用，名称不能重复。" in preview_html
 
     raw_rows_json = _extract_raw_rows_json(preview_html)
     preview_baseline = _extract_hidden_input(preview_html, "preview_baseline")

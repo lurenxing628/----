@@ -50,7 +50,7 @@ class MaintenanceResult:
 
 class SystemMaintenanceService:
     """
-    系统维护（按请求触发）。
+    系统维护（有人访问系统时检查）。
 
     目标：
     - 分钟级自动备份
@@ -162,7 +162,7 @@ class SystemMaintenanceService:
         return MaintenanceResult(ran_any=ran_any, details=details)
 
     # -------------------------
-    # Internal helpers
+    # 内部辅助方法
     # -------------------------
     @classmethod
     def _is_due(cls, job_repo: SystemJobStateRepository, job_key: str, now: datetime, interval_minutes: int) -> Tuple[bool, Optional[str], str, Optional[str]]:
@@ -176,4 +176,3 @@ class SystemMaintenanceService:
     @classmethod
     def reset_throttle_for_tests(cls) -> None:
         MaintenanceThrottle.reset()
-

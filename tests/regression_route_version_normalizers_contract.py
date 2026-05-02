@@ -32,7 +32,7 @@ def test_core_version_resolution_rejects_invalid_explicit_values(raw: str) -> No
         resolve_version_or_latest(raw, latest_version=7)
 
     assert exc_info.value.field == "version"
-    assert exc_info.value.message == "版本参数不合法，请填写正整数版本号，或使用 latest 表示最新版本。"
+    assert exc_info.value.message == "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。"
 
 
 @pytest.mark.parametrize(

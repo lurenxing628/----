@@ -26,14 +26,9 @@
     <div class="page-header">
       <div class="page-title-group">
         <h2 class="page-title">甘特图（{{ '设备视图' if view=='machine' else '人员视图' }}）</h2>
-        <div class="meta-inline text-meta">
-          显示范围：<strong>{{ week_start }}</strong> ～ <strong>{{ week_end }}</strong>
-          <span class="meta-sep">｜</span>
-          {% if version is not none %}
-            <strong>第 {{ version }} 版</strong>
-          {% else %}
-            <strong>暂无排产版本</strong>
-          {% endif %}
+        <div class="aps-summary-grid mt-2">
+          {{ ui.summary_item('显示范围', week_start ~ ' ～ ' ~ week_end) }}
+          {{ ui.summary_item('版本', ('第 ' ~ version ~ ' 版') if version is not none else '暂无排产版本') }}
         </div>
       </div>
       <div class="page-actions page-actions-context"></div>
@@ -42,10 +37,16 @@
   </div>
 
   <div class="card">
-    <div class="inline-flex-wrap">
+    {% set selected_version_row = namespace(item=None) %}
+    {% for item in versions or [] %}
+      {% if item.version == version %}
+        {% set selected_version_row.item = item %}
+      {% endif %}
+    {% endfor %}
+    <div class="aps-form-grid">
       <div class="form-field">
         <label>视图</label>
-        <div class="inline-flex-wrap">
+        <div class="aps-form-actions">
           {% if view == 'machine' %}
             {{ ui.link_button('设备视图', url_for('scheduler.gantt_page', view='machine', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date), 'primary', 'sm') }}
             {{ ui.link_button('人员视图', url_for('scheduler.gantt_page', view='operator', week_start=base_week_start, offset=offset, version=version, start_date=base_start_date, end_date=base_end_date), 'secondary', 'sm') }}
@@ -58,7 +59,7 @@
 
       <div class="form-field">
         <label>周切换</label>
-        <div class="inline-flex-wrap">
+        <div class="aps-form-actions">
           {{ ui.link_button('上周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset-1, version=version), 'secondary', 'sm') }}
           {{ ui.link_button('回到本周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=0, version=version), 'secondary', 'sm') }}
           {{ ui.link_button('下周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset+1, version=version), 'secondary', 'sm') }}
@@ -66,7 +67,7 @@
       </div>
 
       <div>
-        <form method="get" action="{{ url_for('scheduler.gantt_page') }}" class="inline-flex-wrap items-end">
+        <form method="get" action="{{ url_for('scheduler.gantt_page') }}" class="aps-form-grid">
           <input type="hidden" name="view" value="{{ view }}">
           <div class="form-field">
             <label>排产区间（起）</label>
@@ -83,11 +84,11 @@
           <div class="form-field">
             <label>版本</label>
             {% if versions and versions|length > 0 %}
-              <select name="version" class="w-240">
+              <select name="version" class="w-140">
                 {% for v in versions %}
                   <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
-                    {% set option_status_label = v.result_status_label or (selected_result_status_label if v.version == version and selected_result_status_label else status_zh.get(v.result_status, v.result_status or '-')) %}
-                    v{{ v.version }}（{{ v.schedule_time }} / {{ strategy_zh.get(v.strategy, v.strategy or '-') }} / {{ option_status_label }}）
+                    {% set option_status_label = v.result_status_label or (selected_result_status_label if v.version == version and selected_result_status_label else status_zh.get(v.result_status, '结果状态未知')) %}
+                    {{ ui.version_option_label(v, option_status_label) }}
                   </option>
                 {% endfor %}
               </select>
@@ -95,8 +96,16 @@
               <input name="version" value="{{ version or '' }}" class="w-160">
             {% endif %}
           </div>
-          <div>{{ ui.button('加载', 'primary', 'md', type_attr='submit') }}</div>
+          <div class="aps-form-actions aps-form-actions-end">{{ ui.button('加载', 'primary', 'md', type_attr='submit') }}</div>
         </form>
+        {% if selected_version_row.item %}
+          <div class="aps-summary-grid aps-version-summary">
+            {{ ui.summary_item('版本', 'v' ~ selected_version_row.item.version) }}
+            {{ ui.summary_item('时间', selected_version_row.item.schedule_time) }}
+            {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
+            {{ ui.summary_item('结果', selected_version_row.item.result_status_label or selected_result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
+          </div>
+        {% endif %}
         {% if not versions or versions|length == 0 %}
           <div class="muted mt-2">还没有排产记录，先去排产页面执行一次吧。</div>
         {% endif %}
@@ -107,7 +116,7 @@
       若看不到条形，请先在【排产调度】执行排产生成排程数据。
     </p>
     <div id="ganttOverdueWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite">
-      超期标记可能不完整，请稍后重试或查看系统历史。
+      有些超期红框可能暂时没标出来，排程数据本身还在。请刷新后重试，或到系统管理里的排产历史查看原因。
     </div>
     <div id="ganttDegradationWarning" class="flash-card flash-warning mt-3 is-hidden" role="alert" aria-live="polite">
       工作日历加载失败，当前不显示假期/停工背景标注。
@@ -129,7 +138,7 @@
           <select id="ganttColorMode" class="w-180">
             <option value="batch" selected>按批次</option>
             <option value="priority">按优先级</option>
-            <option value="source">按来源（内制/外协）</option>
+            <option value="source">按归属（自制/外协）</option>
             <option value="status">按工序状态</option>
           </select>
         </div>
@@ -176,10 +185,10 @@
   <div class="card">
     {% if not has_history %}
       <div class="error" role="alert" aria-live="assertive">
-        当前数据库暂无排产版本。请先在【排产调度】执行一次排产，然后再查看甘特图。
+        系统里还没有排产版本。请先在【排产调度】执行一次排产，然后再查看甘特图。
       </div>
     {% else %}
-      <div id="ganttEmpty" class="muted is-hidden">暂无排程数据（该周/该版本）。</div>
+      <div id="ganttEmpty" class="muted is-hidden">这个星期、这个版本没有可显示的排程。可以换一周或换一个版本看看。</div>
       <div id="ganttError" class="error is-hidden" role="alert" aria-live="assertive"></div>
       <div
         id="gantt"

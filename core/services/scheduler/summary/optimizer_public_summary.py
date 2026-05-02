@@ -34,7 +34,7 @@ def _source_label(attempt: Dict[str, Any]) -> str:
     if raw_tag.startswith("start:"):
         return "多起点方案"
     if raw_tag.startswith("ortools:"):
-        return "OR-Tools 起点"
+        return "深度优化起点"
     if raw_tag.startswith("local:"):
         return "局部搜索"
     return ""

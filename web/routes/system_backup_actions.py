@@ -45,7 +45,7 @@ def run_backup_restore(
 
     logger.info("数据库恢复流程完成：%s", filename)
     return RestoreBackupOutcome(
-        message=f"已从备份恢复并完成结构校验：{filename}。建议刷新页面/重新打开浏览器以加载最新数据。",
+        message=f"已从备份恢复，并确认数据表可以正常使用：{filename}。建议刷新页面或重新打开浏览器以加载最新数据。",
         category="success",
         result=result,
     )
@@ -79,10 +79,10 @@ def _verify_restored_database(
             )
         logger.exception("恢复后 ensure_schema 失败")
         return result, RestoreBackupOutcome(
-            message="数据库文件已恢复，但后续结构检查失败，请查看日志后再继续使用。",
+            message="数据库文件已恢复，但数据表检查没有通过。请先联系管理员排查后再继续使用。",
             category="error",
         )
-    return replace(result, code="verified", message=f"数据库文件已恢复并完成结构校验：{filename}"), None
+    return replace(result, code="verified", message=f"数据库文件已恢复，并确认数据表可以正常使用：{filename}"), None
 
 
 def _rollback_after_verify_failure(
