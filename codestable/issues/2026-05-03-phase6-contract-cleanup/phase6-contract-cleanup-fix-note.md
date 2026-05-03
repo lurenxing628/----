@@ -2,7 +2,7 @@
 doc_type: issue-fix
 issue: 2026-05-03-phase6-contract-cleanup
 status: completed
-clean_proof_status: pending_final_clean_proof
+clean_proof_status: passed
 path: fast-track
 fix_date: 2026-05-03
 tags: [contract, regression, scheduler, reports, plugins, python38]
@@ -62,8 +62,12 @@ tags: [contract, regression, scheduler, reports, plugins, python38]
 
 - 门禁点名的 10 条失败测试：`10 passed`。
 
-补充修复提交后，需要在干净工作区再跑一次最终总门禁：
+补充修复提交后，已在干净工作区运行最终总门禁：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree
 ```
+
+结果：`质量门禁通过`。
+
+最终总门禁过程中还发现技术债台账里 2 条已登记复杂度旧债的扫描值过期：`excel_routes_confirm` 当前扫描值为 27，`_sanitize_batch_dates` 当前扫描值为 20。已只同步台账里的当前扫描值和验证时间，没有新增白名单，也没有登记临时债。
