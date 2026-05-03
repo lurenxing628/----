@@ -153,7 +153,7 @@ def _build_validator(meta_all: Dict[str, Dict[str, Any]]):
         if not meta:
             return f"工序不存在：图号={part_no} 工序={seq}"
         if to_str_or_blank(meta.get("归属")).lower() != SourceType.INTERNAL.value:
-            return f"仅支持自制工序导入工时：图号={part_no} 工序={seq}"
+            return f"仅支持内部工序导入工时：图号={part_no} 工序={seq}"
         return None
 
     return _validate_row

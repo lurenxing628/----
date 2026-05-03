@@ -204,9 +204,9 @@ def _record_ortools_failure(*, optimizer_algo_stats: Optional[Dict[str, Any]], s
     tb = traceback.format_exc(limit=10)
     # 尽量带堆栈（便于定位依赖缺失/配置错误等）；若 logger 不支持 exc_info 参数则回退为拼接文本。
     try:
-        logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{exc}", exc_info=True)
+        logger.warning(f"OR-Tools 预热失败（已忽略）：{exc}", exc_info=True)
     except TypeError:
-        logger.warning(f"OR-Tools 高质量起点失败（已忽略）：{exc}\n{tb}")
+        logger.warning(f"OR-Tools 预热失败（已忽略）：{exc}\n{tb}")
 
 
 def _run_ortools_warmstart(

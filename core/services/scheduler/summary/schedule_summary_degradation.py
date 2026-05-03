@@ -313,7 +313,7 @@ def _summary_degradation_state(
         code="ortools_warmstart_failed",
         scope="optimizer.warmstart",
         field="ortools_enabled",
-        message="深度优化启动失败，系统已改用普通计算方式继续排产。",
+        message="OR-Tools 预热失败，系统已改用普通计算方式继续排产。",
     )
     _add_state_event(
         collector,

@@ -370,7 +370,7 @@ class PartService:
         if not op or not op.is_active():
             raise BusinessError(ErrorCode.NOT_FOUND, f"工序 {s} 不存在或已删除")
         if not op.is_internal():
-            raise ValidationError("只能编辑自制工序工时", field="工序")
+            raise ValidationError("只能编辑内部工序工时", field="工序")
 
         with self.tx_manager.transaction():
             self.op_repo.update(pn, s, {"setup_hours": float(sh), "unit_hours": float(uh)})

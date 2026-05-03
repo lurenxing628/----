@@ -32,7 +32,7 @@ def relaxed_unknown_op_warning(op_type_name: str) -> str:
 
 
 def strict_missing_supplier_error(op_type_name: str) -> str:
-    return f"工种“{op_type_name}”没有可用的外协供应商。当前要求先把外协供应商和周期补完整，请补好后再继续。"
+    return f"外协工序“{op_type_name}”没有可用的外协供应商。已开启严格校验，请先补外协供应商和周期后再继续。"
 
 
 def relaxed_missing_supplier_warning(op_type_name: str) -> str:
@@ -52,7 +52,7 @@ def supplier_unparseable_days_warning(supplier_id: str, op_type_name: str) -> st
 
 
 def supplier_invalid_days_warning(supplier_id: str, op_type_name: str) -> str:
-    return f"供应商“{supplier_id}”的默认周期必须大于 0，工种“{op_type_name}”本次会先按 1 天安排。请补成真实周期。"
+    return f"供应商“{supplier_id}”的默认周期无效（必须大于 0），工种“{op_type_name}”本次会先按 1 天安排。请补成真实周期。"
 
 
 def strict_supplier_issue_messages(issue_messages: List[str], *, op_type_name: str) -> List[str]:
@@ -61,13 +61,17 @@ def strict_supplier_issue_messages(issue_messages: List[str], *, op_type_name: s
         text = str(raw_msg or "").strip()
         if not text:
             continue
-        out.append(
-            text.replace("先临时按 1 天处理", "当前不能先按 1 天继续，请先把这个周期补正确")
-            .replace("已按 1.0 天处理", "当前不能先按 1 天继续，请先把这个周期补正确")
-            .replace("会暂按 1 天安排。请补成真实周期。", "当前不能先按 1 天继续，请先把这个周期补正确。")
-            .replace("本次会先按 1 天安排。请补成真实周期。", "当前不能先按 1 天继续，请先把这个周期补正确。")
-            .replace("本次会先按 1 天安排。建议补好供应商和周期。", "当前不能先按 1 天继续，请先补供应商和周期后再继续。")
+        clean = (
+            text.rstrip("。")
+            .replace("先临时按 1 天处理", "")
+            .replace("已按 1.0 天处理", "")
+            .replace("会暂按 1 天安排", "")
+            .replace("本次会先按 1 天安排", "")
+            .replace("请补成真实周期", "")
+            .replace("建议补好供应商和周期", "")
+            .rstrip("，；。 ")
         )
+        out.append(f"{clean}。已开启严格校验，请先把这个周期补正确。")
     if out:
         return out
     return [f"工种“{op_type_name}”的外协周期不正确。当前不能继续导入，请先补正确后再继续。"]
