@@ -10,7 +10,7 @@
         <div class="nav-card-desc">{{ card.desc }}</div>
         <div class="action-bar-flat mt-3">
           {% for action in card.actions %}
-            {{ ui.link_button(action.label, action.href, action.button_type, 'sm', target=action.target) }}
+            {{ ui.link_button(action.label, url_for(action.endpoint), action.button_type, 'sm', target=action.target) }}
           {% endfor %}
         </div>
       </div>
