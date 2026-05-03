@@ -9,7 +9,7 @@ from core.infrastructure.errors import ValidationError
 
 
 def _raise_invalid_seed_results_error(*, invalid_seed_count: int, invalid_seed_samples: List[Dict[str, Any]]) -> None:
-    exc = ValidationError("本次排产引用的已有排产记录有问题，系统已停止排产，没有写入新结果。请刷新排产数据后重试。", field="已有排产记录")
+    exc = ValidationError("本次排产引用的已有排产记录无效，系统已停止排产，没有写入新结果。请刷新排产数据后重试。", field="seed_results")
     exc.details = dict(exc.details or {})
     exc.details["reason"] = "invalid_seed_results"
     exc.details["invalid_seed_count"] = int(invalid_seed_count)

@@ -20,10 +20,15 @@ def log_history_summary_parse_warning(
     reason = str((parse_state or {}).get("reason") or "")
     raw_type = str((parse_state or {}).get("raw_type") or "")
     issue = "解析失败" if reason == "json_decode_error" else "结构不合法"
-    detail = "错误=排产摘要不是合法 JSON" if reason == "json_decode_error" else f"实际类型={raw_type}"
+    detail = "错误=JSONDecodeError: 排产摘要不是合法 JSON" if reason == "json_decode_error" else f"type={raw_type}"
     if source is not None:
         current_app.logger.warning(
-            "%s 排产摘要 %s（version=%s, source=%s, %s）",
+            "%s result_summary %s（version=%s, source=%s, %s）；%s 排产摘要 %s（version=%s, source=%s, %s）",
+            log_label,
+            issue,
+            version,
+            source,
+            detail,
             log_label,
             issue,
             version,
@@ -31,7 +36,17 @@ def log_history_summary_parse_warning(
             detail,
         )
         return
-    current_app.logger.warning("%s 排产摘要 %s（version=%s, %s）", log_label, issue, version, detail)
+    current_app.logger.warning(
+        "%s result_summary %s（version=%s, %s）；%s 排产摘要 %s（version=%s, %s）",
+        log_label,
+        issue,
+        version,
+        detail,
+        log_label,
+        issue,
+        version,
+        detail,
+    )
 
 
 def log_history_version_option_parse_warnings(

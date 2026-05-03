@@ -248,7 +248,7 @@
     r1.appendChild(summaryItem("视图", vmZh));
     r1.appendChild(summaryItem("配色", modeText()));
     r1.appendChild(summaryItem("箭头", arrowText()));
-    r1.appendChild(summaryItem("关键链", `${ccTotal}/${ccVisible}`));
+    r1.appendChild(summaryItem("关键链（全版本/本窗口可见）", `${ccTotal}/${ccVisible}`));
     r1.appendChild(summaryItem("完工", makespanEnd));
     r1.appendChild(summaryItem("状态", ccStatusText));
     r1.appendChild(summaryItem("关键链数据", ccCacheText));
