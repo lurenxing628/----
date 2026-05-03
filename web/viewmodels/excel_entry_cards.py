@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Literal, Optional, Tuple
 
-from flask import url_for
-
 ButtonType = Literal["primary", "secondary", "danger", "success", "ghost"]
 
 
@@ -31,7 +29,7 @@ def _resolve_cards(specs: Tuple[ExcelCardSpec, ...]) -> List[Dict[str, object]]:
             "actions": [
                 {
                     "label": action.label,
-                    "href": url_for(action.endpoint),
+                    "endpoint": action.endpoint,
                     "button_type": action.button_type,
                     "target": action.target,
                 }
