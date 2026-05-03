@@ -96,26 +96,44 @@ def _build_available_machines(links: List[Dict[str, Any]], machines: Dict[str, A
 
 
 def _build_link_dirty_summary(linked_machines: List[Dict[str, Any]]) -> Dict[str, Any]:
-    dirty_link_rows = [machine for machine in linked_machines if bool(machine.get("dirty_fields"))]
-    dirty_link_fields = sorted(
-        {
-            str(field).strip()
-            for row in dirty_link_rows
-            for field in list(row.get("dirty_fields") or [])
-            if str(field).strip()
-        }
-    )
-    dirty_link_reasons: Dict[str, str] = {}
-    for row in dirty_link_rows:
-        for field, reason in dict(row.get("dirty_reasons") or {}).items():
-            if field not in dirty_link_reasons and str(reason or "").strip():
-                dirty_link_reasons[str(field)] = str(reason)
+    dirty_link_rows = _dirty_link_rows(linked_machines)
+    dirty_link_fields = _dirty_link_fields(dirty_link_rows)
+    dirty_link_reasons = _dirty_link_reasons(dirty_link_rows)
     return {
         "row_count": int(len(dirty_link_rows)),
         "fields": [_dirty_link_field_label(field) for field in dirty_link_fields],
         "reasons": dirty_link_reasons,
-        "reason_items": [
-            {"field": field, "label": _dirty_link_field_label(field), "reason": dirty_link_reasons.get(field) or ""}
-            for field in dirty_link_fields
-        ],
+        "reason_items": _dirty_link_reason_items(dirty_link_fields, dirty_link_reasons),
     }
+
+
+def _dirty_link_rows(linked_machines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [machine for machine in linked_machines if bool(machine.get("dirty_fields"))]
+
+
+def _dirty_link_fields(dirty_link_rows: List[Dict[str, Any]]) -> List[str]:
+    fields = {
+        str(field).strip()
+        for row in dirty_link_rows
+        for field in list(row.get("dirty_fields") or [])
+        if str(field).strip()
+    }
+    return sorted(fields)
+
+
+def _dirty_link_reasons(dirty_link_rows: List[Dict[str, Any]]) -> Dict[str, str]:
+    reasons: Dict[str, str] = {}
+    for row in dirty_link_rows:
+        for field, reason in dict(row.get("dirty_reasons") or {}).items():
+            normalized_field = str(field).strip()
+            normalized_reason = str(reason or "").strip()
+            if normalized_field and normalized_field not in reasons and normalized_reason:
+                reasons[normalized_field] = normalized_reason
+    return reasons
+
+
+def _dirty_link_reason_items(dirty_link_fields: List[str], dirty_link_reasons: Dict[str, str]) -> List[Dict[str, Any]]:
+    return [
+        {"field": field, "label": _dirty_link_field_label(field), "reason": dirty_link_reasons.get(field) or ""}
+        for field in dirty_link_fields
+    ]
