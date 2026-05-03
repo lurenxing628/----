@@ -210,7 +210,7 @@ def _render_excel_part_op_hours_page(
 ):
     return render_template(
         "process/excel_import_part_operation_hours.html",
-        title="零件工序工时 - Excel 导入/导出",
+        title="批量维护零件工序工时",
         existing_list=existing_list,
         preview_rows=preview_rows,
         raw_rows_json=raw_rows_json,
@@ -221,6 +221,8 @@ def _render_excel_part_op_hours_page(
         confirm_url=url_for("process.excel_part_op_hours_confirm"),
         template_download_url=url_for("process.excel_part_op_hours_template"),
         export_url=url_for("process.excel_part_op_hours_export"),
+        back_url=url_for("process.list_parts"),
+        back_label="返回零件工艺模板",
         mode_options=_part_op_hours_mode_options(),
     )
 

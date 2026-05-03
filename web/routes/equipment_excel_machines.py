@@ -124,7 +124,7 @@ def _render_excel_machine_page(
         )
     return render_template(
         "equipment/excel_import_machine.html",
-        title="设备信息 - Excel 导入/导出",
+        title="批量维护设备信息",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(preview_rows, {"状态": machine_status_label}),
         raw_rows_json=raw_rows_json,
@@ -135,6 +135,8 @@ def _render_excel_machine_page(
         confirm_url=url_for("equipment.excel_machine_confirm"),
         template_download_url=url_for("equipment.excel_machine_template"),
         export_url=url_for("equipment.excel_machine_export"),
+        back_url=url_for("equipment.list_page"),
+        back_label="返回设备管理",
     )
 
 

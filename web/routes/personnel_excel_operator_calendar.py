@@ -110,7 +110,7 @@ def _render_excel_operator_calendar_page(
 ):
     return render_template(
         "personnel/excel_import_operator_calendar.html",
-        title="人员专属工作日历 - Excel 导入/导出",
+        title="批量维护人员专属工作日历",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(
             preview_rows,
@@ -124,6 +124,8 @@ def _render_excel_operator_calendar_page(
         confirm_url=url_for("personnel.excel_operator_calendar_confirm"),
         template_download_url=url_for("personnel.excel_operator_calendar_template"),
         export_url=url_for("personnel.excel_operator_calendar_export"),
+        back_url=url_for("personnel.list_page"),
+        back_label="返回人员管理",
     )
 
 

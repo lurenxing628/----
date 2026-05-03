@@ -99,7 +99,7 @@ def _render_excel_batches_page(
 ):
     return render_template(
         "scheduler/excel_import_batches.html",
-        title="批次信息 - Excel 导入/导出",
+        title="批量维护批次信息",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(
             preview_rows,
@@ -118,6 +118,8 @@ def _render_excel_batches_page(
         confirm_url=url_for("scheduler.excel_batches_confirm"),
         template_download_url=url_for("scheduler.excel_batches_template"),
         export_url=url_for("scheduler.excel_batches_export"),
+        back_url=url_for("scheduler.batches_manage_page"),
+        back_label="返回批次管理",
     )
 
 

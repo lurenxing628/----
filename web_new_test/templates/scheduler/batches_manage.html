@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
+{% import "components/excel_action_cards.html" as excel_cards_ui %}
 {% block content %}
   <div class="card">
     <div class="page-header">
@@ -11,6 +12,13 @@
     </p>
     {{ ui.scheduler_nav('batches_manage') }}
   </div>
+
+  {{ excel_cards_ui.action_cards(
+    '批量维护',
+    '批量导入/导出批次信息；手工新增继续使用下方表单。',
+    excel_cards,
+    ui
+  ) }}
 
   <div class="card">
     <h3 class="section-title">新增批次</h3>

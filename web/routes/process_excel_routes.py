@@ -115,7 +115,7 @@ def _render_excel_routes_page(
 ):
     return render_template(
         "process/excel_import_routes.html",
-        title="零件工艺路线 - Excel 导入/导出",
+        title="批量维护零件工艺路线",
         existing_list=list(existing.values()),
         preview_rows=preview_rows,
         raw_rows_json=raw_rows_json,
@@ -126,6 +126,8 @@ def _render_excel_routes_page(
         confirm_url=url_for("process.excel_routes_confirm"),
         template_download_url=url_for("process.excel_routes_template"),
         export_url=url_for("process.excel_routes_export"),
+        back_url=url_for("process.list_parts"),
+        back_label="返回零件工艺模板",
         strict_mode_supported=True,
         strict_mode=bool(strict_mode),
         strict_mode_label="发现问题就停下",

@@ -11,6 +11,7 @@ from core.services.equipment import MachineService
 from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.excel_entry_cards import personnel_excel_cards
 
 from .pagination import paginate_rows, parse_page_args
 from .personnel_bp import _machine_status_zh, _operator_status_zh, bp
@@ -81,6 +82,7 @@ def list_page():
         selected_team_id=selected_team_id,
         status_options=[(OperatorStatus.ACTIVE.value, "在岗"), (OperatorStatus.INACTIVE.value, "停用/休假")],
         pager=pager,
+        excel_cards=personnel_excel_cards(),
     )
 
 

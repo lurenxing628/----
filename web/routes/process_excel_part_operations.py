@@ -22,8 +22,10 @@ from .process_bp import bp
 def excel_part_ops_page():
     return render_template(
         "process/excel_part_ops_export.html",
-        title="零件工序模板 - Excel 导出",
+        title="导出零件工序模板",
         export_url=url_for("process.excel_part_ops_export"),
+        back_url=url_for("process.list_parts"),
+        back_label="返回零件工艺模板",
     )
 
 

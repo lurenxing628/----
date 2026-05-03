@@ -10,6 +10,7 @@ from core.infrastructure.errors import AppError
 from web.error_boundary import user_visible_app_error_message
 from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.excel_entry_cards import scheduler_batch_excel_cards
 from web.viewmodels.scheduler_batches_page import (
     build_batch_rows,
     build_batches_filter_state,
@@ -146,6 +147,7 @@ def batches_manage_page():
         only_ready=only_ready,
         part_options=part_options,
         pager=pager,
+        excel_cards=scheduler_batch_excel_cards(),
     )
 
 

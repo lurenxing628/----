@@ -5,6 +5,7 @@ from flask import flash, g, redirect, request, url_for
 from core.models.enums import SourceType
 from core.services.process import OpTypeService
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.excel_entry_cards import process_op_type_excel_cards
 
 from .pagination import paginate_rows, parse_page_args
 from .process_bp import bp
@@ -20,7 +21,13 @@ def op_types_page():
     svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     rows = [x.to_dict() for x in svc.list()]
     rows, pager = paginate_rows(rows, page, per_page)
-    return render_template("process/op_types_list.html", title="工种配置", op_types=rows, pager=pager)
+    return render_template(
+        "process/op_types_list.html",
+        title="工种配置",
+        op_types=rows,
+        pager=pager,
+        excel_cards=process_op_type_excel_cards(),
+    )
 
 
 @bp.post("/op-types/create")
@@ -59,4 +66,3 @@ def delete_op_type(op_type_id: str):
     svc.delete(op_type_id)
     flash("已删除工种。", "success")
     return redirect(url_for("process.op_types_page"))
-

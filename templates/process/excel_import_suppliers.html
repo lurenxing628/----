@@ -3,11 +3,13 @@
 {% block content %}
   <div class="card">
     <div class="page-header">
-      <div class="page-title-group"><h2 class="page-title">供应商配置（Excel）</h2></div>
-      <div class="page-actions page-actions-context"></div>
+      <div class="page-title-group"><h2 class="page-title">批量维护供应商配置</h2></div>
+      <div class="page-actions page-actions-context">
+        {{ ui.link_button(back_label, back_url, 'secondary', 'md') }}
+      </div>
     </div>
     <p class="page-subtitle text-meta">支持：下载模板 → 上传预览 → 确认导入 → 导出。外协工序解析时可按工种自动匹配默认供应商与默认周期。</p>
-    {{ ui.process_nav('excel_suppliers') }}
+    {{ ui.process_nav('suppliers') }}
     <div class="mt-2">
       {{ ui.link_button('导出当前数据（供应商配置.xlsx）', export_url, 'secondary', 'md') }}
       <span class="muted">（导入/导出会写入操作留痕）</span>

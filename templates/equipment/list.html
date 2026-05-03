@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
+{% import "components/excel_action_cards.html" as excel_cards_ui %}
 {% block content %}
   <div class="card">
     <div class="page-header">
@@ -9,6 +10,13 @@
     <p class="page-subtitle text-meta">管理设备信息和可操作人员。</p>
     {{ ui.equipment_nav('list') }}
   </div>
+
+  {{ excel_cards_ui.action_cards(
+    '批量维护',
+    '批量导入/导出设备信息和设备人员关联；手工新增继续使用下方表单。',
+    excel_cards,
+    ui
+  ) }}
 
   <div class="card">
     <h3>新增设备</h3>

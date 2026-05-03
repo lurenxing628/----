@@ -14,6 +14,7 @@ from core.services.personnel import OperatorMachineService, OperatorService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 from core.services.process import OpTypeService
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.excel_entry_cards import equipment_excel_cards
 
 from .equipment_bp import _machine_status_zh, _operator_status_zh, bp
 from .pagination import paginate_rows, parse_page_args
@@ -164,6 +165,7 @@ def list_page():
         ],
         downtime_overlay_degraded=downtime_overlay_degraded,
         pager=pager,
+        excel_cards=equipment_excel_cards(),
     )
 
 
