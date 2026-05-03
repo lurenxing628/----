@@ -35,7 +35,7 @@ _PUBLIC_EVENT_MESSAGES = {
     "plugin_bootstrap_db_unavailable": "扩展功能设置暂时读不到，当前按默认开关运行。",
     "plugin_bootstrap_config_reader_failed": "扩展功能设置读取器初始化失败，当前按默认开关运行。",
     "plugin_bootstrap_config_read_failed": "扩展功能设置读取失败，当前按默认开关运行。",
-    "plugin_bootstrap_load_failed": "扩展功能加载失败，请查看系统日志。",
+    "plugin_bootstrap_load_failed": "插件加载失败，请查看系统日志。",
     "plugin_bootstrap_status_snapshot_failed": "扩展功能状态读取失败，当前仅展示可用的状态。",
     "plugin_bootstrap_telemetry_failed": "扩展功能启动记录写入失败，请查看系统日志。",
 }

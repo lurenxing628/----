@@ -75,7 +75,7 @@ def _record_plugin_status_failures(status: Optional[Dict[str, Any]], collector: 
             code="plugin_bootstrap_load_failed",
             scope="plugins.bootstrap",
             field=f"plugin.{plugin_id}",
-            message="扩展功能加载失败，请查看系统日志。",
+            message="插件加载失败，请查看系统日志。",
         )
 
 
@@ -99,7 +99,7 @@ def _public_plugin_status_row(row: Dict[str, Any], source: str) -> Dict[str, Any
     public_row = dict(row or {})
     public_row["enabled_source"] = source
     if str(public_row.get("error") or "").strip():
-        public_row["error"] = "扩展功能加载失败，请查看系统日志。"
+        public_row["error"] = "插件加载失败，请查看系统日志。"
     return public_row
 
 
@@ -235,7 +235,7 @@ def bootstrap_plugins(base_dir: str, database_path: str, *, logger: Optional[log
             code="plugin_bootstrap_load_failed",
             scope="plugins.bootstrap",
             field="plugins",
-            message="扩展功能加载失败，请查看系统日志。",
+            message="插件加载失败，请查看系统日志。",
             sample=exc.__class__.__name__,
         )
         safe_log(logger, "error", "扩展功能加载失败（已忽略，启动继续）：%s", exc)

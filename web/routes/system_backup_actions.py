@@ -45,7 +45,7 @@ def run_backup_restore(
 
     logger.info("数据库恢复流程完成：%s", filename)
     return RestoreBackupOutcome(
-        message=f"已从备份恢复，并确认数据表可以正常使用：{filename}。建议刷新页面或重新打开浏览器以加载最新数据。",
+        message=f"已从备份恢复并完成结构校验：{filename}。建议刷新页面/重新打开浏览器以加载最新数据。",
         category="success",
         result=result,
     )

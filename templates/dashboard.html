@@ -59,7 +59,7 @@
       {{ ui.link_button('导入批次', url_for('scheduler.excel_batches_page'), 'secondary', 'md', 'excel') }}
       {% set resource_dispatch_url = safe_url_for('scheduler.resource_dispatch_page') %}
       {% if resource_dispatch_url %}
-        {{ ui.link_button('资源排班', resource_dispatch_url, 'secondary', 'md', 'chart') }}
+        {{ ui.link_button('资源排班中心', resource_dispatch_url, 'secondary', 'md', 'chart') }}
       {% endif %}
       {% set gantt_url = safe_url_for('scheduler.gantt_page', view='machine') %}
       {% if gantt_url %}
