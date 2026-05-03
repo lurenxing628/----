@@ -72,7 +72,7 @@ class ReportEngine:
     def _raise_export_need_async(self, *, report_name: str, decision: ReportExportDecision) -> None:
         raise AppError(
             code=ErrorCode.VALIDATION_ERROR,
-            message=f"{report_name}导出范围过大（预估 {int(decision.estimated_rows)} 行），请缩小筛选范围后重试。",
+            message=f"{report_name}导出范围过大（预估 {int(decision.estimated_rows)} 行），请缩小范围后重试，或改走后台导出。",
             details={
                 "field": "导出范围",
                 "mode": decision.mode,

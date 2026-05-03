@@ -241,7 +241,7 @@
         已发现的可用功能：{{ (plugin_status.registry.capabilities | length) if plugin_status.registry and plugin_status.registry.capabilities else 0 }}
       </div>
       <div class="muted mt-1">
-        系统记录：
+        留痕状态：
         {% if plugin_status.telemetry_persisted is sameas true %}
           已记录
         {% elif plugin_status.telemetry_persisted is sameas false %}
@@ -252,7 +252,7 @@
       </div>
       {% if plugin_status.conflicted_capabilities and (plugin_status.conflicted_capabilities | length) > 0 %}
         <div class="muted mt-1">
-          扩展功能冲突：
+          冲突能力：
           <ul class="list-tight">
             {% for item in plugin_status.conflicted_capabilities %}
               <li>

@@ -202,7 +202,7 @@ def bulk_delete_parts():
         except Exception:
             current_app.logger.exception("批量删除零件失败（part_no=%s）", pn)
             failed.append(str(pn))
-            failed_details.append(f"{pn}: 系统处理失败，请联系管理员查看日志")
+            failed_details.append(f"{pn}: 内部错误，请查看日志")
             continue
 
     flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
