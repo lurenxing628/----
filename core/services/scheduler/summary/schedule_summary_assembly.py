@@ -111,7 +111,7 @@ def _build_overdue_items(
 
     if invalid_due_count > 0:
         sample_ids = "，".join(invalid_due_ids_sample[:10])
-        message = f"存在 {invalid_due_count} 个批次交期格式不合法，已忽略超期判断（示例批次：{sample_ids}）"
+        message = f"存在 {invalid_due_count} 个批次 due_date 格式不合法，已忽略超期判断（示例批次：{sample_ids}）"
         warning_appended = append_summary_warning_fn(summary, message)
         logger = getattr(svc, "logger", None)
         if logger is not None:

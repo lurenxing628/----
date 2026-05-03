@@ -138,8 +138,10 @@ class ExternalGroupService:
                         field=f"ext_days_{seq}",
                     )
                 log_warning_text = (
-                    f"外协工序 {seq}（{op_type_name}）周期无效，"
-                    f"原始周期={d!r}，兼容读取时先按 1.0 天处理"
+                    "external group compatible mode fallback: "
+                    f"外部工序 {seq}（{op_type_name}） "
+                    f"field=ext_days raw={d!r} fallback=1.0 "
+                    f"part_no={op.part_no} group_id={group_id}"
                 )
                 user_warning_text = f"外协工序 {seq}（{op_type_name}）周期输入无效，本次会先按 1 天记录，请尽快补成真实周期。"
                 safe_warning(self.logger, log_warning_text)

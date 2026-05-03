@@ -126,7 +126,7 @@ def _load_manual_text_and_mtime(manual_path: Optional[str], candidates: List[str
             except Exception:
                 g._aps_scheduler_manual_warning_status = "log_warning_failed"
             return (
-                "系统找不到使用说明文件，请联系管理员检查软件安装目录。",
+                "系统找不到使用说明文件：BASE_DIR 未配置或为空，请联系管理员检查软件安装目录。",
                 None,
             )
 
@@ -276,7 +276,7 @@ def config_manual_download():
     manual_path, candidates = _resolve_scheduler_manual_md_path()
     if not manual_path:
         if not candidates:
-            flash("系统找不到使用说明文件，请联系管理员检查软件安装目录。", "error")
+            flash("系统找不到使用说明文件：BASE_DIR 未配置或为空，请联系管理员检查软件安装目录。", "error")
             return redirect(_build_manual_page_url(safe_src, safe_page))
         flash("说明书文件不存在，无法下载。", "error")
         return redirect(_build_manual_page_url(safe_src, safe_page))

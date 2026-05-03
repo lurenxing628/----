@@ -68,7 +68,7 @@ def _ensure_internal_operation_editable(op: BatchOperation, *, op_id: Any) -> No
     if op.id is None:
         raise BusinessError(ErrorCode.NOT_FOUND, f"批次工序（ID={op_id}）不存在")
     if not op.is_internal():
-        raise ValidationError("只能编辑自制工序的设备/人员/工时信息", field="source")
+        raise ValidationError("只能编辑内部工序的设备/人员/工时信息", field="source")
 
 
 def _validate_machine_available(svc, mc_id: Optional[str]) -> None:

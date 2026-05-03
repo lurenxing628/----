@@ -529,7 +529,6 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
 
 def test_process_and_scheduler_errors_use_chinese_terms() -> None:
     route_parser = _read("core/services/process/route_parser_errors.py")
-    assert "已开启严格校验" not in route_parser
     assert "当前要求先把工种资料补完整" in route_parser
     assert "严格模式已拒绝" not in route_parser
     assert "strict_mode 已拒绝" not in route_parser

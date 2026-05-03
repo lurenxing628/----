@@ -15,7 +15,7 @@ _SUMMARY_DEGRADATION_LABELS = {
     "resource_pool_degraded": "资源池资料不完整",
     "invalid_due_date": "交期数据无法使用",
     "legacy_external_days_defaulted": "部分外协周期先按 1 天计算",
-    "ortools_warmstart_failed": "深度优化没有拿到可用的起始方案，已继续使用普通计算结果",
+    "ortools_warmstart_failed": "优化起点不可用",
     "template_missing": "组合合同模板资料不完整",
     "external_group_missing": "组合并外协组资料不完整",
     "merge_context_degraded": "组合并资料不完整",

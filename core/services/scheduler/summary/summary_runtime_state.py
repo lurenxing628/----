@@ -248,7 +248,7 @@ def _merge_fallback_warnings(all_warnings: List[str], fallback_state: FallbackSt
     if legacy_count > 0:
         all_warnings = _merge_warning_lists(all_warnings, [f"有 {legacy_count} 道外协工序缺少可用周期，本次先按 1 天计算。"])
     if warmstart_count > 0:
-        all_warnings = _merge_warning_lists(all_warnings, ["深度优化启动失败，系统已改用普通计算方式继续排产。"])
+        all_warnings = _merge_warning_lists(all_warnings, ["OR-Tools 预热失败，系统已改用普通计算方式继续排产。"])
     return all_warnings
 
 

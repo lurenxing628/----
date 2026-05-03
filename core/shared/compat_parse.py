@@ -89,7 +89,7 @@ def _emit_event(
         code=code,
         scope=scope,
         field=policy.field,
-        message=_compat_message(code, field=policy.field, fallback=fallback),
+        message=f"兼容读取：{_compat_message(code, field=policy.field, fallback=fallback)}",
         sample=repr(raw_value),
     )
 

@@ -132,7 +132,7 @@ def _resolve_internal_resources(
         increment_counter(algo_stats, "internal_auto_assign_success_count")
         return normalize_text_id(chosen[0]), normalize_text_id(chosen[1])
     increment_counter(algo_stats, "internal_auto_assign_failed_count")
-    errors.append(f"自制工序未补全设备或人员，而且系统自动分配也失败了：工序 {getattr(op, 'op_code', '-') or '-'}")
+    errors.append(f"自制工序未补全设备或人员，而且系统自动分配失败：工序 {getattr(op, 'op_code', '-') or '-'}")
     return "", ""
 
 
