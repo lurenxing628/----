@@ -2,7 +2,7 @@
 doc_type: issue-fix
 issue: 2026-05-03-phase6-contract-cleanup
 status: completed
-clean_proof_status: pending_after_commit
+clean_proof_status: pending_final_clean_proof
 path: fast-track
 fix_date: 2026-05-03
 tags: [contract, regression, scheduler, reports, plugins, python38]
@@ -56,7 +56,13 @@ tags: [contract, regression, scheduler, reports, plugins, python38]
 
 ## 6. 收口说明
 
-当前没有按计划提交代码，所以最终 `scripts/run_quality_gate.py --require-clean-worktree` 还不能在主工作区运行。等本 diff 提交后，需要在干净工作区再跑一次：
+本轮已按课题组拆成本地提交。提交后首次运行总门禁时，先发现仓库里有陈旧 APS 运行痕迹；确认对应本地进程没有健康服务后已停止并清理运行痕迹。
+
+随后总门禁继续发现 10 个旧合同差异，集中在历史摘要日志、系统历史告警数量、说明书缺配置文案、已有排产记录错误、甘特图关键链图例。已补充修复并验证：
+
+- 门禁点名的 10 条失败测试：`10 passed`。
+
+补充修复提交后，需要在干净工作区再跑一次最终总门禁：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree

@@ -71,6 +71,9 @@
       {% endif %}
       {% if selected_summary_display.primary_degradation %}
         <div class="flash-card flash-warning mt-2">
+          {% if selected_summary_display.primary_degradation.details %}
+            <div>告警 {{ selected_summary_display.primary_degradation.details|length }} 条</div>
+          {% endif %}
           <div>{{ selected_summary_display.primary_degradation.message }}</div>
           {% if selected_summary_display.primary_degradation.details %}
             <ul class="list-tight mt-1">
@@ -83,7 +86,7 @@
       {% endif %}
       {% if selected_summary_display.display_secondary_degradation_messages %}
         <div class="flash-card flash-warning mt-2">
-          <div>详细处理提示</div>
+          <div>告警 {{ selected_summary_display.display_secondary_degradation_messages|length }} 条</div>
           <ul class="list-tight mt-1">
             {% for item in selected_summary_display.display_secondary_degradation_messages %}
               <li>
@@ -135,7 +138,7 @@
         </div>
       {% endif %}
       {% if selected_summary or selected.result_summary %}
-        <p class="muted mt-2">摘要已加载；页面仅展示公开摘要、提醒和处理提示。</p>
+        <p class="muted mt-2">摘要已加载；页面仅展示公开摘要、告警和处理提示。</p>
       {% else %}
         <p class="muted">该记录没有摘要信息。</p>
       {% endif %}
