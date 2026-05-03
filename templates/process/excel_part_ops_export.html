@@ -3,15 +3,16 @@
 {% block content %}
   <div class="card">
     <div class="page-header">
-      <div class="page-title-group"><h2 class="page-title">零件工序模板（Excel 导出）</h2></div>
-      <div class="page-actions page-actions-context"></div>
+      <div class="page-title-group"><h2 class="page-title">导出零件工序模板</h2></div>
+      <div class="page-actions page-actions-context">
+        {{ ui.link_button(back_label, back_url, 'secondary', 'md') }}
+      </div>
     </div>
     <p class="page-subtitle text-meta">导出当前系统中的零件工序模板。外协工序在合并模式下会导出合计周期（天）。</p>
-    {{ ui.process_nav('excel_part_ops') }}
+    {{ ui.process_nav('parts') }}
     <div class="mt-2">
       {{ ui.link_button('导出（零件工序模板.xlsx）', export_url, 'secondary', 'md') }}
       <span class="muted">（导出会写入操作留痕）</span>
     </div>
   </div>
 {% endblock %}
-

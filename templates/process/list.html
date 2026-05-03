@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
+{% import "components/excel_action_cards.html" as excel_cards_ui %}
 {% block content %}
   <div class="card">
     <div class="page-header">
@@ -9,6 +10,13 @@
     <p class="page-subtitle text-meta">管理零件工艺路线、工序模板、工种和供应商配置。</p>
     {{ ui.process_nav('parts') }}
   </div>
+
+  {{ excel_cards_ui.action_cards(
+    '批量维护',
+    '批量导入/导出集中在这里；手工新增零件继续使用下方表单。',
+    excel_cards,
+    ui
+  ) }}
 
   <div class="card">
     <h3>新增零件</h3>

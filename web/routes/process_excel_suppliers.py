@@ -49,7 +49,7 @@ def _render_excel_supplier_page(
 ):
     return render_template(
         "process/excel_import_suppliers.html",
-        title="供应商配置 - Excel 导入/导出",
+        title="批量维护供应商配置",
         existing_list=list(existing.values()),
         preview_rows=project_preview_rows_for_display(preview_rows, {"状态": supplier_status_label}),
         raw_rows_json=raw_rows_json,
@@ -60,6 +60,8 @@ def _render_excel_supplier_page(
         confirm_url=url_for("process.excel_supplier_confirm"),
         template_download_url=url_for("process.excel_supplier_template"),
         export_url=url_for("process.excel_supplier_export"),
+        back_url=url_for("process.suppliers_page"),
+        back_label="返回供应商配置",
     )
 
 

@@ -9,6 +9,7 @@ from core.infrastructure.errors import AppError
 from core.models.enums import MergeMode, PartOperationStatus, SourceType, YesNo
 from core.services.process import ExternalGroupService, PartService, SupplierService
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.excel_entry_cards import process_parts_excel_cards
 
 from .excel_utils import strict_mode_enabled as _strict_mode_enabled
 from .pagination import paginate_rows, parse_page_args
@@ -78,7 +79,13 @@ def list_parts():
         )
 
     view_rows, pager = paginate_rows(view_rows, page, per_page)
-    return render_template("process/list.html", title="工艺管理", parts=view_rows, pager=pager)
+    return render_template(
+        "process/list.html",
+        title="工艺管理",
+        parts=view_rows,
+        pager=pager,
+        excel_cards=process_parts_excel_cards(),
+    )
 
 
 @bp.post("/parts/create")

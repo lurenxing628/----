@@ -4,9 +4,10 @@
   <div class="card">
     <div class="page-header">
       <div class="page-title-group">
-        <h2 class="page-title">批次信息（Excel）</h2>
+        <h2 class="page-title">批量维护批次信息</h2>
       </div>
       <div class="page-actions page-actions-context">
+        {{ ui.link_button(back_label, back_url, 'secondary', 'md') }}
         {{ ui.link_button('导出批次信息.xlsx', export_url, 'secondary', 'md') }}
       </div>
     </div>
@@ -14,7 +15,7 @@
       支持：下载模板 → 上传预览 → 确认导入 → 导出。
       预览阶段会标注 新增/更新/错误 等状态，提示信息尽量中文，便于排查。
     </p>
-    {{ ui.scheduler_nav('excel_batches') }}
+    {{ ui.scheduler_nav('batches_manage') }}
     <div class="field-help">导出会写入操作留痕。</div>
   </div>
 

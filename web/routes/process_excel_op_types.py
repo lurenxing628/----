@@ -48,7 +48,7 @@ def _render_excel_op_type_page(
 ):
     return render_template(
         "process/excel_import_op_types.html",
-        title="工种配置 - Excel 导入/导出",
+        title="批量维护工种配置",
         existing_list=list(existing.values()),
         preview_rows=project_preview_rows_for_display(preview_rows, {"归属": source_type_label}),
         raw_rows_json=raw_rows_json,
@@ -59,6 +59,8 @@ def _render_excel_op_type_page(
         confirm_url=url_for("process.excel_op_type_confirm"),
         template_download_url=url_for("process.excel_op_type_template"),
         export_url=url_for("process.excel_op_type_export"),
+        back_url=url_for("process.op_types_page"),
+        back_label="返回工种配置",
     )
 
 

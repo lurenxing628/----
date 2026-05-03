@@ -81,7 +81,7 @@ def _render_excel_link_page(
 ):
     return render_template(
         "equipment/excel_import_machine_operator.html",
-        title="设备人员关联 - Excel 导入/导出",
+        title="批量维护设备人员关联",
         existing_list=existing_list,
         preview_rows=preview_rows,
         raw_rows_json=raw_rows_json,
@@ -92,6 +92,8 @@ def _render_excel_link_page(
         confirm_url=url_for("equipment.excel_link_confirm"),
         template_download_url=url_for("equipment.excel_link_template"),
         export_url=url_for("equipment.excel_link_export"),
+        back_url=url_for("equipment.list_page"),
+        back_label="返回设备管理",
     )
 
 

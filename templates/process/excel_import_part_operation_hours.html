@@ -3,15 +3,17 @@
 {% block content %}
   <div class="card">
     <div class="page-header">
-      <div class="page-title-group"><h2 class="page-title">零件工序工时（Excel）</h2></div>
-      <div class="page-actions page-actions-context"></div>
+      <div class="page-title-group"><h2 class="page-title">批量维护零件工序工时</h2></div>
+      <div class="page-actions page-actions-context">
+        {{ ui.link_button(back_label, back_url, 'secondary', 'md') }}
+      </div>
     </div>
     <p class="page-subtitle text-meta">
       本页面用于批量更新工艺模板中的自制工序工时。
       导入后，创建批次时会自动复制这些工时，排产将按「换型 + 单件 × 数量」计算时长。
       选择“追加”时，只会补那些换型工时和单件工时都还是 0 的工序；已经填过工时的工序不会被改。
     </p>
-    {{ ui.process_nav('excel_part_op_hours') }}
+    {{ ui.process_nav('parts') }}
     <div class="mt-2">
       {{ ui.link_button('导出当前数据（零件工序工时.xlsx）', export_url, 'secondary', 'md') }}
       <span class="muted">（导入/导出会写入操作留痕）</span>

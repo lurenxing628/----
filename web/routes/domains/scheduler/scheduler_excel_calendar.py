@@ -85,7 +85,7 @@ def _render_excel_calendar_page(
 ):
     return render_template(
         "scheduler/excel_import_calendar.html",
-        title="工作日历 - Excel 导入/导出",
+        title="批量维护工作日历",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(
             preview_rows,
@@ -99,6 +99,8 @@ def _render_excel_calendar_page(
         confirm_url=url_for("scheduler.excel_calendar_confirm"),
         template_download_url=url_for("scheduler.excel_calendar_template"),
         export_url=url_for("scheduler.excel_calendar_export"),
+        back_url=url_for("scheduler.calendar_page"),
+        back_label="返回工作日历配置",
         holiday_default_efficiency=holiday_default_efficiency,
         holiday_default_efficiency_degraded=bool(holiday_default_efficiency_degraded),
         holiday_default_efficiency_warning=holiday_default_efficiency_warning,

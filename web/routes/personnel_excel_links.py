@@ -93,7 +93,7 @@ def _render_excel_link_page(
 ):
     return render_template(
         "personnel/excel_import_operator_machine.html",
-        title="人员设备关联 - Excel 导入/导出",
+        title="批量维护人员设备关联",
         existing_list=existing_list,
         preview_rows=preview_rows,
         raw_rows_json=raw_rows_json,
@@ -104,6 +104,8 @@ def _render_excel_link_page(
         confirm_url=url_for("personnel.excel_link_confirm"),
         template_download_url=url_for("personnel.excel_link_template"),
         export_url=url_for("personnel.excel_link_export"),
+        back_url=url_for("personnel.list_page"),
+        back_label="返回人员管理",
     )
 
 

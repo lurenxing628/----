@@ -72,7 +72,7 @@ def _render_excel_operator_page(
         )
     return render_template(
         "personnel/excel_import_operator.html",
-        title="人员基本信息 - Excel 导入/导出",
+        title="批量维护人员基本信息",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(preview_rows, {"状态": operator_status_label}),
         raw_rows_json=raw_rows_json,
@@ -83,6 +83,8 @@ def _render_excel_operator_page(
         confirm_url=url_for("personnel.excel_operator_confirm"),
         template_download_url=url_for("personnel.excel_operator_template"),
         export_url=url_for("personnel.excel_operator_export"),
+        back_url=url_for("personnel.list_page"),
+        back_label="返回人员管理",
     )
 
 

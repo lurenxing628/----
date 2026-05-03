@@ -1,0 +1,20 @@
+{% macro action_cards(title, subtitle, cards, ui) %}
+<div class="card">
+  <h3>{{ title }}</h3>
+  <p class="muted">{{ subtitle }}</p>
+
+  <div class="nav-grid">
+    {% for card in cards %}
+      <div class="nav-card">
+        <div class="nav-card-title">{{ card.title }}</div>
+        <div class="nav-card-desc">{{ card.desc }}</div>
+        <div class="action-bar-flat mt-3">
+          {% for action in card.actions %}
+            {{ ui.link_button(action.label, action.href, action.button_type, 'sm', target=action.target) }}
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}

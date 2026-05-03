@@ -5,6 +5,7 @@ from flask import flash, g, redirect, request, url_for
 from core.models.enums import SupplierStatus
 from core.services.process import OpTypeService, SupplierService
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.excel_entry_cards import process_supplier_excel_cards
 
 from .pagination import paginate_rows, parse_page_args
 from .process_bp import bp
@@ -47,6 +48,7 @@ def suppliers_page():
         op_type_options=op_type_options,
         status_options=[(SupplierStatus.ACTIVE.value, "启用"), (SupplierStatus.INACTIVE.value, "停用")],
         pager=pager,
+        excel_cards=process_supplier_excel_cards(),
     )
 
 
@@ -118,4 +120,3 @@ def delete_supplier(supplier_id: str):
     svc.delete(supplier_id)
     flash("已删除供应商。", "success")
     return redirect(url_for("process.suppliers_page"))
-
