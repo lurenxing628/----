@@ -44,9 +44,19 @@ def main() -> None:
         "ui_contract.css 缺少 fixed 表格省略号契约（.table-layout-fixed th/td overflow hidden + ellipsis + nowrap）",
     )
 
+    # 3) Excel 预览详情默认折叠，展开后也不能把整页撑宽
+    _assert_regex(
+        css,
+        r"\.aps-row-detail\s+pre\s*\{"
+        r"[^}]*max-width\s*:\s*100%\s*;"
+        r"[^}]*overflow\s*:\s*auto\s*;"
+        r"[^}]*white-space\s*:\s*pre-wrap\s*;"
+        r"[^}]*overflow-wrap\s*:\s*anywhere\s*;",
+        "ui_contract.css 缺少 Excel 预览详情防撑宽契约（.aps-row-detail pre）",
+    )
+
     print("OK")
 
 
 if __name__ == "__main__":
     main()
-

@@ -46,7 +46,7 @@ def test_parse_history_summary_state_keeps_existing_user_message_for_parse_failu
 
     assert state["parse_failed"] is True
     assert state["reason"] == "json_decode_error"
-    assert state["user_message"] == "当前版本的排产摘要解析失败，页面仅展示基础历史信息。"
+    assert state["user_message"] == "当前版本的排产摘要读取失败，页面仅展示基础历史信息。"
 
 
 def test_decorate_history_version_options_preserves_status_label_contract() -> None:

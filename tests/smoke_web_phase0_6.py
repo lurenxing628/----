@@ -247,8 +247,8 @@ def main():
     )
     _assert_status(lines, "POST /scheduler/excel/batches/preview", resp, 200)
     html = resp.data.decode("utf-8", errors="ignore")
-    if "导入预览" not in html and "预览" not in html:
-        raise RuntimeError("批次 Excel 预览页面未包含预览内容")
+    if "检查结果" not in html:
+        raise RuntimeError("批次 Excel 检查页面未包含检查内容")
     resp2 = client.post(
         "/scheduler/excel/batches/confirm",
         data=build_confirm_payload(
@@ -514,4 +514,3 @@ if __name__ == "__main__":
             print("FAIL")
             print(report_path)
         raise
-

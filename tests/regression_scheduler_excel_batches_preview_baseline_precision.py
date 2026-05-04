@@ -163,7 +163,7 @@ def test_scheduler_excel_batches_unrelated_part_change_does_not_force_repreview(
 
     confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="0")
 
-    assert "需重新预览" not in confirm_html
+    assert "请重新上传 Excel 并检查" not in confirm_html
     _assert_batch_present(db_path, "B_SCOPE_OK")
 
 
@@ -214,7 +214,7 @@ def test_scheduler_excel_batches_autobuild_supplier_default_days_drift_requires_
 
     confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="1")
 
-    assert "需重新预览" in confirm_html
+    assert "请重新上传 Excel 并检查" in confirm_html
     _assert_batch_absent(db_path, "B_PARSE_REVIEW")
 
 
@@ -266,7 +266,7 @@ def test_scheduler_excel_batches_autobuild_non_effective_supplier_change_does_no
 
     confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="1")
 
-    assert "需重新预览" not in confirm_html
+    assert "请重新上传 Excel 并检查" not in confirm_html
     _assert_batch_present(db_path, "B_PARSE_SECONDARY_OK")
 
 
@@ -317,5 +317,5 @@ def test_scheduler_excel_batches_autobuild_supplier_status_change_requires_repre
 
     confirm_html = _confirm_batches(client, preview_html, auto_generate_ops="1")
 
-    assert "需重新预览" in confirm_html
+    assert "请重新上传 Excel 并检查" in confirm_html
     _assert_batch_absent(db_path, "B_PARSE_STATUS_OK")

@@ -114,14 +114,14 @@ def test_scheduler_resource_dispatch_page_data_export_and_dashboard_entry(tmp_pa
     resp_dashboard_v2 = client.get("/")
     _assert_status(resp_dashboard_v2, "GET / (v2)")
     html_dashboard_v2 = resp_dashboard_v2.data.decode("utf-8", errors="ignore")
-    assert "资源排班中心" in html_dashboard_v2
+    assert "资源排班" in html_dashboard_v2
 
     query = "scope_type=operator&operator_id=OP001&period_preset=week&query_date=2026-03-02&version=1"
 
     resp_page = client.get(f"/scheduler/resource-dispatch?{query}")
     _assert_status(resp_page, "GET /scheduler/resource-dispatch")
     html_page = resp_page.data.decode("utf-8", errors="ignore")
-    assert "资源排班中心" in html_page
+    assert "资源排班" in html_page
     assert 'id="rdPage"' in html_page
     assert "导出资源排班.xlsx" in html_page
     assert '<option value="team"' in html_page

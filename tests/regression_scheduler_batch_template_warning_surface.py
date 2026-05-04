@@ -170,7 +170,7 @@ def test_scheduler_excel_batch_confirm_surfaces_warnings_with_limit(tmp_path, mo
 
         body = confirm_resp.get_data(as_text=True)
         assert confirm_resp.status_code == 200
-        assert "已自动从模板生成/重建工序" in body
+        assert "已按模板自动生成批次工序" in body
         assert "第 1 条告警" in body
         assert "第 2 条告警" in body
         assert "第 3 条告警" in body

@@ -58,7 +58,7 @@ def test_process_create_part_surfaces_autoparse_failure(tmp_path, monkeypatch) -
             flashes = list(sess.get("_flashes") or [])
 
         assert any(cat == "success" and "已创建零件：P_BAD 坏路线件" in msg for cat, msg in flashes), flashes
-        assert any(cat == "warning" and "零件已创建，但工序模板未成功生成" in msg for cat, msg in flashes), flashes
+        assert any(cat == "warning" and "零件已创建，但工序清单未成功生成" in msg for cat, msg in flashes), flashes
 
         part_row = conn.execute(
             "SELECT part_no, route_parsed FROM Parts WHERE part_no=?",

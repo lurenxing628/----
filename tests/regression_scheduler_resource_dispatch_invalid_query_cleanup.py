@@ -258,7 +258,7 @@ def test_resource_dispatch_mixed_invalid_filters_settle_without_500(tmp_path, mo
 
     assert resp.status_code == 200
     html = resp.data.decode("utf-8", errors="ignore")
-    assert "资源排班中心" in html
+    assert "资源排班" in html
     assert "id=\"rdPage\"" in html
     assert "query_date格式不正确" not in html
     assert "查询日期填写不正确，请检查后重试。" in html

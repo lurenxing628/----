@@ -89,8 +89,8 @@ def _confirm_excel(client, url: str, mode: str, filename: str, raw_rows_json: st
 
 
 def _assert_need_repreview(case_name: str, html: str) -> None:
-    if "需重新预览" not in html:
-        raise RuntimeError(f"{case_name} 未提示“需重新预览”")
+    if "请重新上传 Excel 并检查" not in html:
+        raise RuntimeError(f"{case_name} 未提示“请重新上传 Excel 并检查”")
 
 
 def main() -> None:

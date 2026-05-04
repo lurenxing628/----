@@ -159,8 +159,8 @@ def main() -> None:
     )
     _assert_status("batches confirm", resp2, 200)
     html2 = resp2.data.decode("utf-8", errors="ignore")
-    if "需重新预览" not in html2:
-        raise RuntimeError("批次确认未提示“需重新预览”")
+    if "请重新上传 Excel 并检查" not in html2:
+        raise RuntimeError("批次确认未提示“请重新上传 Excel 并检查”")
 
     conn = get_connection(test_db)
     try:
@@ -234,8 +234,8 @@ def main() -> None:
     )
     _assert_status("operator_calendar confirm", resp4, 200)
     html4 = resp4.data.decode("utf-8", errors="ignore")
-    if "需重新预览" not in html4:
-        raise RuntimeError("人员日历确认未提示“需重新预览”")
+    if "请重新上传 Excel 并检查" not in html4:
+        raise RuntimeError("人员日历确认未提示“请重新上传 Excel 并检查”")
 
     conn = get_connection(test_db)
     try:
@@ -309,8 +309,8 @@ def main() -> None:
     )
     _assert_status("calendar confirm", resp6, 200)
     html6 = resp6.data.decode("utf-8", errors="ignore")
-    if "需重新预览" not in html6:
-        raise RuntimeError("工作日历确认未提示“需重新预览”")
+    if "请重新上传 Excel 并检查" not in html6:
+        raise RuntimeError("工作日历确认未提示“请重新上传 Excel 并检查”")
 
     # ---------------------------------------------------------
     # 4) 设备信息：preview 后并发写同主键，confirm 应拒绝并提示重新预览
@@ -357,8 +357,8 @@ def main() -> None:
     )
     _assert_status("machines confirm", resp8, 200)
     html8 = resp8.data.decode("utf-8", errors="ignore")
-    if "需重新预览" not in html8:
-        raise RuntimeError("设备确认未提示“需重新预览”")
+    if "请重新上传 Excel 并检查" not in html8:
+        raise RuntimeError("设备确认未提示“请重新上传 Excel 并检查”")
 
     conn = get_connection(test_db)
     try:
@@ -421,8 +421,8 @@ def main() -> None:
     )
     _assert_status("equipment links confirm", resp10, 200)
     html10 = resp10.data.decode("utf-8", errors="ignore")
-    if "需重新预览" not in html10:
-        raise RuntimeError("设备人员关联确认未提示“需重新预览”")
+    if "请重新上传 Excel 并检查" not in html10:
+        raise RuntimeError("设备人员关联确认未提示“请重新上传 Excel 并检查”")
 
     conn = get_connection(test_db)
     try:

@@ -208,8 +208,8 @@ def main():
     )
     _assert_status(lines, "POST /equipment/excel/machines/preview", resp, 200)
     html = resp.data.decode("utf-8", errors="ignore")
-    if "导入预览" not in html:
-        raise RuntimeError("设备 Excel 预览页面未包含“导入预览”")
+    if "检查结果" not in html:
+        raise RuntimeError("设备 Excel 检查页面未包含“检查结果”")
     raw_rows_json = _extract_raw_rows_json(html)
     preview_baseline = _require_preview_baseline(html, "machines")
 
@@ -309,8 +309,8 @@ def main():
     )
     _assert_status(lines, "POST /personnel/excel/operators/preview", resp, 200)
     html = resp.data.decode("utf-8", errors="ignore")
-    if "导入预览" not in html:
-        raise RuntimeError("人员 Excel 预览页面未包含“导入预览”")
+    if "检查结果" not in html:
+        raise RuntimeError("人员 Excel 检查页面未包含“检查结果”")
     raw_rows_json = _extract_raw_rows_json(html)
     preview_baseline = _require_preview_baseline(html, "operators")
 
@@ -612,4 +612,3 @@ if __name__ == "__main__":
             print("FAIL")
             print(report_path)
         raise
-

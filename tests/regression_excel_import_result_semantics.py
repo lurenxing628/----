@@ -165,7 +165,7 @@ def _assert_skip_semantics(case_name: str, html: str, *, expect_auto_suffix: boo
         )
     if "alert alert-success" not in html:
         raise RuntimeError(f"{case_name} 未渲染 success 提示")
-    if expect_auto_suffix and "已自动从模板生成/重建工序" not in html:
+    if expect_auto_suffix and "已按模板自动生成批次工序" not in html:
         raise RuntimeError(f"{case_name} 未保留 auto_generate_ops 提示后缀")
 
 

@@ -164,8 +164,8 @@ def main() -> None:
     )
     _assert_status("POST /scheduler/excel/batches/confirm", confirm_resp, 200)
     confirm_html = confirm_resp.data.decode("utf-8", errors="ignore")
-    if "需重新预览" not in confirm_html:
-        raise RuntimeError("strict_mode 漂移后确认导入未提示“需重新预览”")
+    if "请重新上传 Excel 并检查" not in confirm_html:
+        raise RuntimeError("strict_mode 漂移后确认导入未提示“请重新上传 Excel 并检查”")
 
     conn = get_connection(test_db)
     try:

@@ -352,7 +352,7 @@ def test_batches_page_latest_summary_parse_failed_renders_history_and_warning(tm
     assert 'aps-summary-label">版本' in body
     assert 'aps-summary-value">v7' in body
     assert "还没有排过产" not in body
-    assert "当前版本的排产摘要解析失败，页面仅展示基础历史信息。" in body
+    assert "当前版本的排产摘要读取失败，页面仅展示基础历史信息。" in body
     assert "{invalid json" not in body
 
 

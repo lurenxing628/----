@@ -330,8 +330,8 @@ def main():
         raise RuntimeError("预览接口返回非 200")
 
     html = resp.data.decode("utf-8", errors="ignore")
-    if "导入预览" not in html:
-        raise RuntimeError("预览页面未包含“导入预览”字样（可能渲染失败）")
+    if "检查结果" not in html:
+        raise RuntimeError("检查页面未包含“检查结果”字样（可能渲染失败）")
 
     m = re.search(r'<textarea name=\"raw_rows_json\"[^>]*>(.*?)</textarea>', html, re.S)
     if not m:
@@ -447,4 +447,3 @@ if __name__ == "__main__":
             print("FAIL")
             print(report_path)
         raise
-

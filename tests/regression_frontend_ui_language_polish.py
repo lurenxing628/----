@@ -16,8 +16,8 @@ def _read(rel_path: str) -> str:
 def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
     expected_holiday_hint = "假期也安排生产且未单独填写效率时，系统会使用这里的效率值；请输入大于 0 的数字。"
     expected_batch_manage_hint = (
-        "只在零件还没有工序模板、需要按工艺路线补建工序时生效。勾选后：资料不完整就停止创建并提示原因。"
-        "不勾选：能确认的工序会继续处理；缺少外协周期时，本次会先按 1 天记录并提醒你补成真实周期，批次号、图号、数量这些必填项有问题仍然会报错。"
+        "只在批次需要按零件路线生成工序时生效。勾选后：缺工种、缺供应商或外协周期不正确时，会停止创建并提示原因。"
+        "不勾选：能确认的工序会先生成；缺少外协周期时会先按 1 天记录并提醒补正。"
     )
     expected_batch_schedule_hint = (
         "勾选后：派工方式、智能派工策略、自动分配设备人员这几项如果配置不合法，会直接停止排产并提示原因。"
@@ -260,7 +260,8 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
     assert normalize_calendar_day_type_value("weekend") == CalendarDayType.HOLIDAY.value
 
     static_manual = _read("static/docs/scheduler_manual.md")
-    assert "需要按工艺路线补建工序" in static_manual
+    assert "资料不完整就停下" in static_manual
+    assert "缺工种、缺供应商或外协周期不正确" in static_manual
     assert "route_raw 自动补建模板" not in static_manual
     assert "排产方式、智能派工策略、自动分配设备人员" in static_manual
     assert "dispatch_mode / dispatch_rule / auto_assign_enabled" not in static_manual
@@ -543,7 +544,8 @@ def test_process_and_scheduler_errors_use_chinese_terms() -> None:
     assert "safe_warning(self.logger, log_warning_text)" in external_group_service
 
     batch_template_ops = _read("core/services/scheduler/batch_template_ops.py")
-    assert "不支持严格模式" in batch_template_ops
+    assert "不支持“资料不完整就停下”" in batch_template_ops
+    assert "不支持严格模式" not in batch_template_ops
     assert "不支持 strict_mode" not in batch_template_ops
 
 

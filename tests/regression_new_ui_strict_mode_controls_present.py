@@ -20,4 +20,4 @@ def test_new_ui_strict_mode_controls_present() -> None:
     ):
         manage_tpl = (REPO_ROOT / rel_path).read_text(encoding="utf-8")
         assert 'name="strict_mode"' in manage_tpl
-        assert "发现问题就停止创建工艺路线" in manage_tpl
+        assert "资料不完整就停下" in manage_tpl
