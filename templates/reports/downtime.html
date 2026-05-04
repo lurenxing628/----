@@ -51,7 +51,7 @@
       {{ ui.summary_item('停机时长', (downtime_summary.downtime_hours if downtime_summary else 0) ~ ' 小时') }}
       {{ ui.summary_item('与排程重叠', (downtime_summary.schedule_overlap_hours if downtime_summary else 0) ~ ' 小时') }}
     </div>
-    <div class="aps-filter-note aps-report-date-source">日期来源：{{ date_source_label }}</div>
+    <div class="aps-filter-note aps-report-date-source">日期来源：{{ date_source_label }}。</div>
   </div>
 
   <div class="card">

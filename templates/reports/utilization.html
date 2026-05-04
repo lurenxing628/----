@@ -49,7 +49,7 @@
       {% set date_source_label = '已按所选版本的排程范围自动带入日期' if date_source == 'version_span' else ('未识别到该版本的排程范围，已自动显示最近 7 天' if date_source == 'default_7d' else '已按你填写的日期范围查询') %}
       {{ ui.summary_item('单资源可用工时', capacity_hours ~ ' 小时') }}
     </div>
-    <div class="aps-filter-note aps-report-date-source">日期来源：{{ date_source_label }}</div>
+    <div class="aps-filter-note aps-report-date-source">日期来源：{{ date_source_label }}。</div>
   </div>
 
   <div class="card">
