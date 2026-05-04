@@ -113,7 +113,7 @@
                 <div class="table-actions">
                   {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='linkform_' ~ loop.index0) }}
                   <form method="post" action="{{ url_for('equipment.remove_link', machine_id=machine.machine_id) }}"
-                        data-confirm="确认解除该关联？">
+                        data-confirm="确认解除这条设备人员关系吗？只解除关系，不删除设备，也不删除人员。">
                     <input type="hidden" name="operator_id" value="{{ op.operator_id }}">
                     {{ ui.button('解除关联', 'danger', 'sm', type_attr='submit') }}
                   </form>

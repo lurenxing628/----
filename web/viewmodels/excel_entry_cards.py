@@ -44,26 +44,26 @@ def process_parts_excel_cards() -> List[Dict[str, object]]:
     return _resolve_cards(
         (
             ExcelCardSpec(
-                title="零件工艺路线",
-                desc="批量维护图号、名称和工艺路线字符串；确认导入后会解析生成零件工序模板和外协工序组。",
+                title="批量维护路线文字",
+                desc="把图号、名称和路线文字从 Excel 导入，系统会生成零件工序清单。",
                 actions=(
-                    ExcelActionSpec("导入/导出", "process.excel_routes_page", "primary"),
+                    ExcelActionSpec("导入/导出路线", "process.excel_routes_page", "primary"),
                     ExcelActionSpec("导出当前路线", "process.excel_routes_export", "secondary"),
                 ),
             ),
             ExcelCardSpec(
-                title="零件工序工时",
-                desc="批量维护已有自制工序的换型时间和单件工时；追加模式只补齐空工时。",
+                title="批量维护工序工时",
+                desc="维护自制工序的换型时间和单件工时；可选择只补空工时。",
                 actions=(
-                    ExcelActionSpec("导入/导出", "process.excel_part_op_hours_page", "primary"),
+                    ExcelActionSpec("导入/导出工时", "process.excel_part_op_hours_page", "primary"),
                     ExcelActionSpec("导出当前工时", "process.excel_part_op_hours_export", "secondary"),
                 ),
             ),
             ExcelCardSpec(
-                title="零件工序模板",
-                desc="导出当前工序模板，用于复核工序、归属、供应商和外协周期。",
+                title="导出工序清单",
+                desc="导出当前零件工序、归属、供应商和外协周期，用于复核。",
                 actions=(
-                    ExcelActionSpec("导出工序模板", "process.excel_part_ops_export", "secondary"),
+                    ExcelActionSpec("导出工序清单", "process.excel_part_ops_export", "secondary"),
                 ),
             ),
         )
@@ -74,10 +74,10 @@ def process_op_type_excel_cards() -> List[Dict[str, object]]:
     return _resolve_cards(
         (
             ExcelCardSpec(
-                title="工种配置",
-                desc="批量维护工种编号、工种名称和归属；用于工艺路线解析时判断自制或外协。",
+                title="批量维护工种",
+                desc="维护工种编号、名称和自制/外协归属，供路线生成工序时使用。",
                 actions=(
-                    ExcelActionSpec("导入/导出", "process.excel_op_type_page", "primary"),
+                    ExcelActionSpec("导入/导出工种", "process.excel_op_type_page", "primary"),
                     ExcelActionSpec("导出当前工种", "process.excel_op_type_export", "secondary"),
                 ),
             ),
@@ -89,10 +89,10 @@ def process_supplier_excel_cards() -> List[Dict[str, object]]:
     return _resolve_cards(
         (
             ExcelCardSpec(
-                title="供应商配置",
-                desc="批量维护外协供应商、默认周期、状态和对应工种；用于外协工序自动匹配。",
+                title="批量维护供应商",
+                desc="维护外协供应商、默认周期、状态和对应工种。",
                 actions=(
-                    ExcelActionSpec("导入/导出", "process.excel_supplier_page", "primary"),
+                    ExcelActionSpec("导入/导出供应商", "process.excel_supplier_page", "primary"),
                     ExcelActionSpec("导出当前供应商", "process.excel_supplier_export", "secondary"),
                 ),
             ),
@@ -104,19 +104,19 @@ def equipment_excel_cards() -> List[Dict[str, object]]:
     return _resolve_cards(
         (
             ExcelCardSpec(
-                title="设备信息",
+                title="批量维护设备",
                 desc="批量维护设备编号、设备名称、工种、班组和状态。",
                 actions=(
-                    ExcelActionSpec("导入/导出", "equipment.excel_machine_page", "primary"),
+                    ExcelActionSpec("导入/导出设备", "equipment.excel_machine_page", "primary"),
                     ExcelActionSpec("导出当前设备", "equipment.excel_machine_export", "secondary"),
                 ),
             ),
             ExcelCardSpec(
-                title="设备人员关联",
-                desc="按设备视角批量维护可操作人员、技能等级和主操设备。",
+                title="批量维护设备人员关系",
+                desc="维护每台设备可由哪些人员操作，以及技能等级和主操设备。",
                 actions=(
-                    ExcelActionSpec("导入/导出", "equipment.excel_link_page", "primary"),
-                    ExcelActionSpec("导出当前关联", "equipment.excel_link_export", "secondary"),
+                    ExcelActionSpec("导入/导出关系", "equipment.excel_link_page", "primary"),
+                    ExcelActionSpec("导出当前关系", "equipment.excel_link_export", "secondary"),
                 ),
             ),
         )
@@ -127,26 +127,26 @@ def personnel_excel_cards() -> List[Dict[str, object]]:
     return _resolve_cards(
         (
             ExcelCardSpec(
-                title="人员基本信息",
+                title="批量维护人员",
                 desc="批量维护工号、姓名、状态、班组和备注。",
                 actions=(
-                    ExcelActionSpec("导入/导出", "personnel.excel_operator_page", "primary"),
+                    ExcelActionSpec("导入/导出人员", "personnel.excel_operator_page", "primary"),
                     ExcelActionSpec("导出当前人员", "personnel.excel_operator_export", "secondary"),
                 ),
             ),
             ExcelCardSpec(
-                title="人员设备关联",
-                desc="按人员视角批量维护可操作设备、技能等级和主操设备。",
+                title="批量维护人员设备关系",
+                desc="维护每个人员可以操作哪些设备，以及技能等级和主操设备。",
                 actions=(
-                    ExcelActionSpec("导入/导出", "personnel.excel_link_page", "primary"),
-                    ExcelActionSpec("导出当前关联", "personnel.excel_link_export", "secondary"),
+                    ExcelActionSpec("导入/导出关系", "personnel.excel_link_page", "primary"),
+                    ExcelActionSpec("导出当前关系", "personnel.excel_link_export", "secondary"),
                 ),
             ),
             ExcelCardSpec(
-                title="人员专属工作日历",
-                desc="批量维护个人请假、加班、轮班等日历覆盖规则。",
+                title="批量维护个人日历",
+                desc="维护请假、加班、轮班等个人工作日历。",
                 actions=(
-                    ExcelActionSpec("导入/导出", "personnel.excel_operator_calendar_page", "primary"),
+                    ExcelActionSpec("导入/导出个人日历", "personnel.excel_operator_calendar_page", "primary"),
                     ExcelActionSpec("导出当前个人日历", "personnel.excel_operator_calendar_export", "secondary"),
                 ),
             ),
@@ -158,10 +158,10 @@ def scheduler_batch_excel_cards() -> List[Dict[str, object]]:
     return _resolve_cards(
         (
             ExcelCardSpec(
-                title="批次信息",
-                desc="批量维护批次号、图号、数量、交期、优先级、齐套状态；确认导入时可自动生成或重建批次工序。",
+                title="批量维护批次",
+                desc="适合 Excel 下发计划、整批新增或更新批次；导入后可自动生成批次工序。",
                 actions=(
-                    ExcelActionSpec("导入/导出", "scheduler.excel_batches_page", "primary"),
+                    ExcelActionSpec("导入/导出批次", "scheduler.excel_batches_page", "primary"),
                     ExcelActionSpec("导出当前批次", "scheduler.excel_batches_export", "secondary"),
                 ),
             ),

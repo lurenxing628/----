@@ -6,7 +6,7 @@ from .page_manuals_common import _card, _section, _topic
 
 SCHEDULER_TOPICS: Dict[str, Dict[str, Any]] = {
     "excel_batches": _topic(
-        title="批次信息（Excel）",
+        title="批量维护批次",
         summary="批量导入批次主数据，重点是图号、数量、交期、优先级和齐套信息是否完整。",
         full_manual_anchor="#1-510批次信息排产核心",
         help_card=_card(
@@ -18,7 +18,7 @@ SCHEDULER_TOPICS: Dict[str, Dict[str, Any]] = {
             "优先级可填：普通 / 急件 / 特急 / 急。新文件请按这些中文选项填写；不填默认普通。",
             "齐套可填：齐套 / 未齐套 / 部分齐套 / 是 / 否。新文件请按这些中文选项填写；不填默认齐套。",
             "齐套日期填了的话，系统在此日期之前不会安排该批次开工。",
-            "替换模式会清空全部批次和排程记录（不可恢复！），用之前务必先手动备份。",
+            "选择“清空本类数据后重导”会清空全部批次和排程记录（不可恢复！），用之前务必先手动备份。",
         ),
         sections=[
             _section("导入前准备", "{{excel_common_flow}}\n\n{{excel_import_modes}}\n\n{{excel_date_format}}\n\n{{excel_format_warning}}"),
@@ -49,7 +49,7 @@ SCHEDULER_TOPICS: Dict[str, Dict[str, Any]] = {
         related_manual_ids=["scheduler_batches", "scheduler_batch_detail", "material_batch", "process_parts"],
     ),
     "excel_calendar": _topic(
-        title="工作日历（Excel）",
+        title="批量维护工作日历",
         summary="批量维护全局工作日历，适合导入节假日、周末加班和临时效率调整。",
         full_manual_anchor="#1-58工作日历",
         help_card=_card(
@@ -106,7 +106,7 @@ SCHEDULER_TOPICS: Dict[str, Dict[str, Any]] = {
                 "进入前先准备什么",
                 "\n".join(
                     [
-                        "- 批次主数据、工序模板、设备、人员、日历和必要的物料约束都应准备好。",
+                        "- 批次主数据、工序清单、设备、人员、日历和必要的物料约束都应准备好。",
                         "- 若要比较不同参数方案，先确认高级设置中的方案是否已调整完毕。",
                     ]
                 ),
@@ -177,7 +177,7 @@ SCHEDULER_TOPICS: Dict[str, Dict[str, Any]] = {
         help_card=_card(
             "批次工序不完整就排不出正确结果",
             "导入批次后，如果工序工时或外协信息不全，来这里补。",
-            "批次级修改会覆盖模板默认值，先想清楚这是个例还是模板该改。",
+            "批次级修改会优先使用本批次自己的设置，先想清楚这是个例还是模板该改。",
             "补完后回到执行排产页重新算版本验证效果。",
         ),
         sections=[
@@ -195,7 +195,7 @@ SCHEDULER_TOPICS: Dict[str, Dict[str, Any]] = {
                 "\n".join(
                     [
                         "- 先确认该批次对应的零件模板是否正确、工时是否完整。",
-                        "- 批次级改动会覆盖模板默认值，所以修改前要明确这是“特例”还是“通用规则”问题。",
+                        "- 批次级改动会优先使用本批次自己的设置，所以修改前要明确这是“特例”还是“通用规则”问题。",
                     ]
                 ),
             ),
@@ -366,11 +366,11 @@ SCHEDULER_TOPICS: Dict[str, Dict[str, Any]] = {
         related_manual_ids=["scheduler_dispatch", "scheduler_analysis", "scheduler_week_plan", "scheduler_batches_manage"],
     ),
     "scheduler_dispatch": _topic(
-        title="资源排班中心",
-        summary="资源排班中心用来从人员、设备或班组视角查看任务排布，是甘特图之外更偏运营调度的观察页。",
+        title="资源排班",
+        summary="资源排班用来从人员、设备或班组视角查看任务排布，是甘特图之外更偏运营调度的观察页。",
         full_manual_anchor="#6-6资源排班中心",
         help_card=_card(
-            "资源排班中心怎么用最快",
+            "资源排班怎么用最快",
             "先选视角（人员 / 设备 / 班组），再选时间范围和版本。",
             "班组视角下还要再选按人员还是按设备展开；这个轴只影响日历矩阵和甘特图展开方式。",
             "查询后可在任务明细、日历矩阵、甘特图三种视图之间切换。",
@@ -400,7 +400,7 @@ SCHEDULER_TOPICS: Dict[str, Dict[str, Any]] = {
                 "\n".join(
                     [
                         "- 甘特图更适合看单条时间轴与工序先后。",
-                        "- 资源排班中心更适合看资源负荷、矩阵分布和班组调配。",
+                        "- 资源排班更适合看资源负荷、矩阵分布和班组调配。",
                     ]
                 ),
             ),
@@ -446,7 +446,7 @@ SCHEDULER_TOPICS: Dict[str, Dict[str, Any]] = {
                 "\n".join(
                     [
                         "- 如果交期差，优先回到高级设置或批次选择策略调整。",
-                        "- 如果资源冲突明显，再去甘特图和资源排班中心定位具体瓶颈。",
+                        "- 如果资源冲突明显，再去甘特图和资源排班定位具体瓶颈。",
                     ]
                 ),
             ),

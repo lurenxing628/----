@@ -4,7 +4,7 @@
   <div class="card">
     <div class="page-header">
       <div class="page-title-group">
-        <h2 class="page-title">批量维护批次信息</h2>
+        <h2 class="page-title">批量维护批次</h2>
       </div>
       <div class="page-actions page-actions-context">
         {{ ui.link_button(back_label, back_url, 'secondary', 'md') }}
@@ -12,8 +12,8 @@
       </div>
     </div>
     <p class="page-subtitle text-meta">
-      支持：下载模板 → 上传预览 → 确认导入 → 导出。
-      预览阶段会标注 新增/更新/错误 等状态，提示信息尽量中文，便于排查。
+      支持：下载模板 → 上传 Excel 并检查 → 确认写入系统 → 导出。
+      检查阶段会标注新增、更新、错误等结果，提示信息尽量中文，便于排查。
     </p>
     {{ ui.scheduler_nav('batches_manage') }}
     <div class="field-help">导出会写入操作留痕。</div>
@@ -22,7 +22,7 @@
   <div class="card">
     <h3 class="section-title">导入选项</h3>
     <p class="text-meta">
-      “自动生成/重建工序”会在确认导入时，根据零件工序模板生成批次工序；已有批次工序会被重建，原来手工补过的设备、人员、工时和外协周期也会被新模板覆盖。
+      “导入后自动生成批次工序”会在确认写入时，根据零件工艺模板生成批次工序；已有批次工序会刷新，原来手工补过的设备、人员、工时和外协周期也会按新模板重新写入。
     </p>
     {% set can_confirm = raw_rows_json and (raw_rows_json | trim) %}
     <form action="{{ confirm_url }}" method="post" class="mt-2">
@@ -37,9 +37,9 @@
       <label>
         <input type="checkbox" value="1" {% if auto_generate_ops %}checked{% endif %} disabled>
         {% if auto_generate_ops %}
-          确认导入时会自动从模板生成/重建批次工序
+          确认写入时会按模板自动生成批次工序
         {% else %}
-          确认导入时不会自动从模板生成/重建批次工序
+          确认写入时不会自动生成批次工序
         {% endif %}
       </label>
       {% if strict_mode_supported %}
@@ -48,22 +48,22 @@
           {% if strict_mode %}
             {{ strict_mode_label or '发现问题就停下' }}：资料不完整就停下，并告诉你哪一行、哪里要补
           {% else %}
-            {{ strict_mode_label or '发现问题就停下' }}：能确认的数据会继续导入，真正错误的数据仍会报错
+            {{ strict_mode_label or '发现问题就停下' }}：能确认的数据会继续写入，真正错误的数据仍会报错
           {% endif %}
         </label>
-        <div class="muted">{{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续导入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}</div>
+        <div class="muted">{{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续写入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}</div>
       {% endif %}
-      <div class="muted">如需切换上述选项，请重新上传并预览。</div>
+      <div class="muted">如需切换上述选项，请重新上传 Excel 并检查。</div>
       <div class="mt-2">
-        {{ ui.button('确认导入（保存到系统）', 'primary', 'md', type_attr='submit', disabled=(not can_confirm)) }}
-        <span class="muted">（请先“上传并预览”，再确认导入）</span>
+        {{ ui.button('确认写入系统', 'primary', 'md', type_attr='submit', disabled=(not can_confirm)) }}
+        <span class="muted">（请先“上传 Excel 并检查”，再确认写入）</span>
       </div>
     </form>
   </div>
 
-  {# 复用通用导入组件：预览按钮仍走 preview_url；确认导入我们上面自定义了，以支持 auto_generate_ops #}
+  {# 复用通用导入组件的检查链路：按钮仍走 preview_url；确认写入我们上面自定义了，以支持 auto_generate_ops #}
   <div class="card">
-    <h3 class="section-title">上传并预览</h3>
+    <h3 class="section-title">上传 Excel 并检查</h3>
     <div class="mb-3">
       {{ ui.link_button('下载模板', template_download_url, 'secondary', 'md', target='_blank') }}
     </div>
@@ -72,25 +72,25 @@
         <div class="form-field">
           <label>导入模式</label>
           <select name="mode">
-            <option value="overwrite" {% if mode=='overwrite' %}selected{% endif %}>覆盖（相同批次号更新）</option>
-            <option value="append" {% if mode=='append' %}selected{% endif %}>追加（已存在则跳过）</option>
-            <option value="replace" {% if mode=='replace' %}selected{% endif %}>替换（清空后导入）</option>
+            <option value="overwrite" {% if mode=='overwrite' %}selected{% endif %}>更新已有，新增缺少</option>
+            <option value="append" {% if mode=='append' %}selected{% endif %}>只导入新编号</option>
+            <option value="replace" {% if mode=='replace' %}selected{% endif %}>清空本类数据后重导</option>
           </select>
         </div>
       </div>
       <div class="mb-3 aps-help-note">
         <label>
           <input type="checkbox" name="auto_generate_ops" value="1" {% if auto_generate_ops %}checked{% endif %}>
-          确认导入时自动从模板生成/重建批次工序（推荐）
+          导入后自动生成批次工序（推荐）
         </label>
         <div class="muted text-xs">
-          预览会先检查批次字段，并记录当时的零件工艺资料；确认前如果工艺资料变了，系统会要求重新预览，避免用旧检查结果写入新数据。
+          检查会先核对批次字段，并记录当时的零件工艺资料；确认前如果工艺资料变了，系统会要求重新检查，避免用旧检查结果写入新数据。
         </div>
       </div>
       {% if strict_mode_supported %}
         <div class="mb-3">
           <label><input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}> {{ strict_mode_label or '发现问题就停下' }}</label>
-          <div class="muted text-xs">{{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续导入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}</div>
+          <div class="muted text-xs">{{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续写入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}</div>
         </div>
       {% endif %}
       <div class="aps-filter-bar">
@@ -99,7 +99,7 @@
           <input type="file" name="file" accept=".xlsx" required>
         </div>
         <div class="aps-form-actions aps-form-actions-end">
-          {{ ui.button('上传并预览', 'primary', 'md', type_attr='submit') }}
+          {{ ui.button('上传 Excel 并检查', 'primary', 'md', type_attr='submit') }}
         </div>
       </div>
       <div class="muted">
@@ -110,17 +110,16 @@
 
   {% if preview_rows %}
     <div class="card">
-      <h3 class="section-title">导入预览</h3>
+      <h3 class="section-title">检查结果</h3>
       <p class="text-meta">提示：行号对应 Excel 中的真实行号（标题行+1）。</p>
       <div class="aps-table-scroll">
       <table>
         <thead>
           <tr>
             <th class="w-90">行号</th>
-            <th class="w-120">状态</th>
-            <th class="w-260">提示</th>
-            <th>数据</th>
-            <th>变更字段</th>
+            <th class="w-120">结果</th>
+            <th class="w-260">问题或说明</th>
+            <th>详情</th>
           </tr>
         </thead>
         <tbody>
@@ -137,13 +136,19 @@
                 {% if r.status.value == 'error' %}<span class="badge badge-error">错误</span>{% endif %}
               </td>
               <td class="{{ 'error' if r.status.value == 'error' else '' }}">{{ r.message }}</td>
-              <td><pre>{{ preview_display_data | tojson_zh(2) }}</pre></td>
               <td>
-                {% if preview_display_changes %}
-                  <pre>{{ preview_display_changes | tojson_zh(2) }}</pre>
-                {% else %}
-                  <span class="muted">-</span>
-                {% endif %}
+                <details class="aps-row-detail">
+                  <summary>查看数据</summary>
+                  <div class="aps-row-detail-body">
+                    <div class="text-xs font-semibold">本行数据</div>
+                    <pre>{{ preview_display_data | tojson_zh(2) }}</pre>
+
+                    {% if preview_display_changes %}
+                      <div class="text-xs font-semibold">变更字段</div>
+                      <pre>{{ preview_display_changes | tojson_zh(2) }}</pre>
+                    {% endif %}
+                  </div>
+                </details>
               </td>
             </tr>
           {% endfor %}
@@ -151,7 +156,7 @@
       </table>
       </div>
       <div class="muted mt-2">
-        预览完成后，请回到页面顶部“导入选项”处点击“确认导入”。
+        检查完成后，请回到页面顶部“导入选项”处点击“确认写入系统”。
       </div>
     </div>
   {% endif %}

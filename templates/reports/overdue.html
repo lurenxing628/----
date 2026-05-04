@@ -2,54 +2,51 @@
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group">
-        <h2 class="page-title">报表 - 超期清单</h2>
-      </div>
-      <div class="page-actions page-actions-context"></div>
-    </div>
-    <p class="muted">
-      查看哪些批次已经超过交货日期。已排产超期：排完后的完工时间晚于交期；未排产超期：到现在还没完工，也已经过了交期。
-    </p>
-    {{ ui.reports_nav('overdue') }}
-  </div>
+  {{ ui.aps_page_hero(
+    '报表 - 超期清单',
+    '查看哪些批次已经超过交货日期。已排产超期是完工时间晚于交期；未排产超期是到现在还没完工，也已经过了交期。',
+    nav_html=ui.reports_nav('overdue')
+  ) }}
 
-  <div class="card">
-    <h3>筛选</h3>
+  <div class="card aps-report-filter-card">
+    {{ ui.aps_card_header('筛选', '选择排产版本后查看超期批次，需要时导出 Excel。') }}
     <form method="get" action="{{ url_for('reports.overdue_page') }}">
-      <div class="aps-filter-bar">
-        <div class="form-field">
+      <div class="aps-report-filter-grid aps-report-filter-grid--single">
+        <div class="form-field aps-report-version-field">
           <label>排产版本</label>
-          <select name="version" class="w-160">
+          <select name="version">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
                 {{ ui.version_option_label(it, status_zh.get(it.result_status, '结果状态未知')) }}
               </option>
             {% endfor %}
           </select>
-          {% if not has_history %}
-            <div class="muted" style="margin-top:6px;">暂无排产历史，请先执行排产后再查看报表。</div>
-          {% endif %}
         </div>
-        <div class="aps-form-actions">
+        <div class="aps-form-actions aps-report-actions">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
           {% if rows %}
             {{ ui.link_button('导出 Excel', url_for('reports.overdue_export', version=version), 'secondary', 'md') }}
           {% else %}
             {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
-            <span class="aps-export-note">当前版本没有可导出的超期结果，请换一个排产版本后再试。</span>
           {% endif %}
         </div>
+        {% if not has_history %}
+          <div class="aps-filter-note">暂无排产历史，请先执行排产后再查看报表。</div>
+        {% elif not rows %}
+          <div class="aps-filter-note">当前版本没有可导出的超期结果，请换一个排产版本后再试。</div>
+        {% endif %}
       </div>
     </form>
   </div>
 
   <div class="card">
-    <h3>
-      结果（总 {{ count }}；已排程 {{ scheduled_count }}；未排程 {{ unscheduled_count }}
-      {% if as_of_time %}；截至 {{ as_of_time }}{% endif %}）
-    </h3>
+    <h3 class="section-title">结果明细</h3>
+    <div class="aps-result-summary-grid">
+      {{ ui.summary_item('总数', count ~ ' 个') }}
+      {{ ui.summary_item('已排程', scheduled_count ~ ' 个') }}
+      {{ ui.summary_item('未排程', unscheduled_count ~ ' 个') }}
+      {{ ui.summary_item('截至时间', as_of_time if as_of_time else '-') }}
+    </div>
     {% if not rows %}
       {% if empty_reason == "no_history" %}
         <div class="muted">暂无排产历史，当前无法生成超期清单。</div>

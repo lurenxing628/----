@@ -151,7 +151,7 @@ def confirm():
 
     existing = _fetch_existing_operators(g.db)
     if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, mode=mode, id_column="工号"):
-        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_demo_page(
             existing=existing,
             preview_rows=None,

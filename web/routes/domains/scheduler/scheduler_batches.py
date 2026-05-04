@@ -369,7 +369,7 @@ def generate_ops(batch_id: str):
             strict_mode=strict_mode,
         )
         cnt = len(batch_svc.list_operations(b.batch_id))
-        flash(f"已重建批次工序：共 {cnt} 道工序。", "success")
+        flash(f"已刷新本批次工序：共 {cnt} 道工序。", "success")
         _surface_schedule_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
     except AppError as e:
         flash(user_visible_app_error_message(e), "error")

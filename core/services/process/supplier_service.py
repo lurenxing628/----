@@ -187,9 +187,9 @@ class SupplierService:
             raise ValidationError("“供应商编号”不能为空", field="供应商ID")
         self._get_or_raise(sid)
 
-        # 若被引用，则禁止删除（模板/批次工序）
+        # 若被引用，则禁止删除（零件工序清单/批次工序）
         if self.repo.has_part_operation_reference(sid):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被零件工序模板引用，不能删除。建议改为“停用”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被零件工序清单引用，不能删除。建议改为“停用”。")
         if self.repo.has_batch_operation_reference(sid):
             raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被批次工序引用，不能删除。建议改为“停用”。")
         if self.repo.has_external_group_reference(sid):
@@ -229,11 +229,11 @@ class SupplierService:
     def ensure_replace_allowed(self) -> None:
         """
         REPLACE（清空后导入）保护：
-        若已被零件模板/批次工序/外部组引用，则禁止清空。
+        若已被零件工序清单/批次工序/外部组引用，则禁止清空。
         """
         if self.repo.has_any_part_operation_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有零件工序模板引用了供应商，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有零件工序清单引用了供应商，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
         if self.repo.has_any_batch_operation_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有批次工序引用了供应商，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有批次工序引用了供应商，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
         if self.repo.has_any_external_group_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有外协工序组绑定了供应商，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有外协工序组绑定了供应商，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")

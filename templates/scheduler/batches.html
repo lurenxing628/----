@@ -12,27 +12,22 @@
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
   {% set mode_zh = {'improve': '优化模式', 'greedy': '快速模式', 'single': '单次排产'} %}
-<div class="card">
-    <div class="page-header">
-      <div class="page-title-group">
-        <h2 class="page-title">排产调度</h2>
-      </div>
-      <div class="page-actions page-actions-context"></div>
-    </div>
-    <p class="page-subtitle text-meta">筛选查看批次状态。新增和编辑批次请到「批次管理」。</p>
-    {{ ui.scheduler_nav('batches') }}
-  </div>
+  {{ ui.aps_page_hero(
+    '排产调度',
+    '筛选查看批次状态，执行排产，并进入批次管理维护批次。',
+    nav_html=ui.scheduler_nav('batches')
+  ) }}
 
-  <div class="card">
+  <div class="card aps-scheduler-filter-card">
     <h3 class="section-title">常用方案（模板）</h3>
     <div class="muted mb-2">切换后排产参数会立刻变化。</div>
     {% set preset_apply_url = safe_url_for('scheduler.preset_apply') %}
     {% if preset_apply_url %}
-      <form method="post" action="{{ preset_apply_url }}" class="aps-filter-bar">
+      <form method="post" action="{{ preset_apply_url }}" class="aps-scheduler-filter-grid">
         <input type="hidden" name="next" value="{{ request.full_path }}">
-        <div class="form-field">
+        <div class="form-field aps-scheduler-filter-wide">
           <label for="schedulerPresetSelect">方案</label>
-          <select id="schedulerPresetSelect" name="preset_name" data-auto-submit="1" class="w-260">
+          <select id="schedulerPresetSelect" name="preset_name" data-auto-submit="1">
             <option value="custom" {% if not active_preset or active_preset == 'custom' %}selected{% endif %}>自定义（以高级设置为准）</option>
             {% for p in presets or [] %}
               <option value="{{ p.name }}" {% if active_preset == p.name %}selected{% endif %}>{{ p.name }}</option>
@@ -41,7 +36,7 @@
         </div>
         {% set config_url = safe_url_for('scheduler.config_page') %}
         {% if config_url %}
-          <div class="aps-form-actions aps-form-actions-end">{{ ui.link_button('管理模板/高级设置', config_url, 'secondary', 'md') }}</div>
+          <div class="aps-scheduler-filter-actions">{{ ui.link_button('管理模板/高级设置', config_url, 'secondary', 'md') }}</div>
         {% else %}
           <span class="muted">这个入口还没加载出来，请先重启系统；如果重启后还没有，请让管理员检查安装版本。</span>
           <details class="debug-details muted">
@@ -61,7 +56,7 @@
     {% endif %}
   </div>
 
-  <div class="card">
+  <div class="card aps-scheduler-filter-card">
     <h3 class="section-title">当前配置状态</h3>
     <div class="scheduler-current-config-summary">
       <div class="aps-summary-grid">
@@ -200,7 +195,7 @@
   <div class="card">
     <h3 class="section-title">批次列表</h3>
     <form method="get" action="{{ url_for('scheduler.batches_page') }}" class="mb-2">
-      <div class="aps-filter-bar">
+      <div class="aps-scheduler-filter-grid">
         <div class="form-field">
           <label for="schedulerBatchesStatusFilter">状态</label>
           <select id="schedulerBatchesStatusFilter" name="status">
@@ -221,7 +216,7 @@
             <option value="no" {% if only_ready=='no' %}selected{% endif %}>未齐套</option>
           </select>
         </div>
-        <div class="aps-form-actions aps-form-actions-end">
+        <div class="aps-scheduler-filter-actions">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
         </div>
       </div>
@@ -254,6 +249,52 @@
         <span class="muted text-xs aps-export-note">仅当前页排序</span>
       </div>
       <form id="jsRunScheduleForm" method="post" action="{{ url_for('scheduler.run_schedule') }}">
+        {% if status == 'pending' %}
+          <div class="aps-run-panel">
+            <div class="aps-run-panel-header">
+              <div>
+                <h4 class="aps-run-panel-title">排产操作</h4>
+                <p class="aps-run-panel-desc">先勾选下方待排批次，再执行排产。</p>
+              </div>
+              <span class="aps-action-card-status">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
+            </div>
+            <div class="aps-run-panel-grid">
+              <div class="form-field">
+                <label for="schedulerStartDtInput">排产开始时间（默认明天 08:00）</label>
+                <input id="schedulerStartDtInput" type="datetime-local" name="start_dt" value="{{ (default_start_dt or '')|replace(' ', 'T') }}">
+              </div>
+              <div class="form-field">
+                <label for="schedulerEndDateInput">排产截止日期（可选）</label>
+                <input id="schedulerEndDateInput" type="date" name="end_date">
+              </div>
+              <div>
+                <label class="muted">
+                  <input type="checkbox" name="enforce_ready" {{ 'checked' if cfg.enforce_ready_default=='yes' else '' }}>
+                  启用齐套约束（未齐套禁止排产）
+                </label>
+                {% if config_field_warnings.get('enforce_ready_default') %}
+                  <div class="muted text-xs mt-1 scheduler-config-field-warning">
+                    {{ config_field_warnings.get('enforce_ready_default') }}
+                  </div>
+                {% endif %}
+              </div>
+              <div>
+                <label class="muted">
+                  <input type="checkbox" name="strict_mode" value="yes">
+                  发现参数问题就停止排产
+                </label>
+                <div class="muted text-xs aps-help-note">勾选后：派工方式、智能派工策略、自动分配设备人员这几项如果配置不合法，会直接停止排产并提示原因。不勾选：系统会按页面提示的安全取值继续排产，并告诉你哪些设置需要重新保存。</div>
+              </div>
+            </div>
+            <div class="aps-run-panel-actions">
+              {{ ui.button('执行排产', 'primary', 'md', type_attr='submit') }}
+              {{ ui.button('模拟排产（插单模拟）', 'success', 'md', type_attr='submit', formaction=url_for('scheduler.simulate_schedule'), confirm='将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？') }}
+            </div>
+            <div class="aps-action-card-note">
+              设置截止日期后，若无法在期限内完成，系统会提示排产失败。工序的设备、人员、工时必须填写完整，否则排产会失败。
+            </div>
+          </div>
+        {% endif %}
         <div class="aps-table-scroll">
         <table id="batchesTable" data-table-key="v2_batchesTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1" data-col-resize="1">
         <thead>
@@ -304,47 +345,29 @@
       </table>
         </div>
 
-        {% if status == 'pending' %}
-          <div class="aps-form-grid mt-3">
-            <div class="form-field">
-              <label class="muted" for="schedulerStartDtInput">排产开始时间（默认明天 08:00）</label>
-              <input id="schedulerStartDtInput" type="datetime-local" name="start_dt" value="{{ (default_start_dt or '')|replace(' ', 'T') }}" class="w-220">
-            </div>
-            <div class="form-field">
-              <label class="muted" for="schedulerEndDateInput">排产截止日期（可选）</label>
-              <input id="schedulerEndDateInput" type="date" name="end_date" class="w-180">
-            </div>
-            <div>
-              <label class="muted">
-                <input type="checkbox" name="enforce_ready" {{ 'checked' if cfg.enforce_ready_default=='yes' else '' }}>
-                启用齐套约束（未齐套禁止排产）
-              </label>
-              {% if config_field_warnings.get('enforce_ready_default') %}
-                <div class="muted text-xs mt-1 scheduler-config-field-warning">
-                  {{ config_field_warnings.get('enforce_ready_default') }}
-                </div>
-              {% endif %}
-            </div>
-            <div class="form-field aps-form-span-2">
-              <label class="muted">
-                <input type="checkbox" name="strict_mode" value="yes">
-                发现参数问题就停止排产
-              </label>
-              <div class="muted text-xs aps-help-note">勾选后：派工方式、智能派工策略、自动分配设备人员这几项如果配置不合法，会直接停止排产并提示原因。不勾选：系统会按页面提示的安全取值继续排产，并告诉你哪些设置需要重新保存。</div>
-            </div>
-            <div class="muted aps-form-span-2">
-              设置截止日期后，若无法在期限内完成，系统会提示排产失败。
-            </div>
-          </div>
-          <div class="action-bar mt-3">
-            {{ ui.button('执行排产', 'primary', 'md', type_attr='submit') }}
-            {{ ui.button('模拟排产（插单模拟）', 'success', 'md', type_attr='submit', formaction=url_for('scheduler.simulate_schedule'), confirm='将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？') }}
-            <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
-            <span class="muted">工序的设备、人员、工时必须填写完整，否则排产会失败。</span>
-          </div>
-        {% endif %}
       </form>
     {% else %}
+      {% if status == 'pending' %}
+        <form id="jsRunScheduleForm" method="post" action="{{ url_for('scheduler.run_schedule') }}">
+          <div class="aps-run-panel">
+            <div class="aps-run-panel-header">
+              <div>
+                <h4 class="aps-run-panel-title">排产操作</h4>
+                <p class="aps-run-panel-desc">当前没有可勾选的待排批次。先到批次管理新增或导入批次，再回到这里执行排产。</p>
+              </div>
+              <span class="aps-action-card-status">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
+            </div>
+            <div class="aps-run-panel-actions">
+              {{ ui.button('执行排产', 'primary', 'md', type_attr='button', disabled=True) }}
+              {{ ui.button('模拟排产（插单模拟）', 'success', 'md', type_attr='button', disabled=True) }}
+              {{ ui.link_button('去批次管理', url_for('scheduler.batches_manage_page'), 'secondary', 'md') }}
+            </div>
+            <div class="aps-action-card-note">
+              排产前需要先准备待排批次，并补齐批次工序里的设备、人员和工时。
+            </div>
+          </div>
+        </form>
+      {% endif %}
       <div class="muted">当前筛选条件下暂无批次数据，可以调整状态或齐套条件，也可以到批次管理手动新增或通过 Excel 导入。</div>
     {% endif %}
   </div>

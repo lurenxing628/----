@@ -2,66 +2,60 @@
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group">
-        <h2 class="page-title">报表 - 停机影响统计</h2>
-      </div>
-      <div class="page-actions page-actions-context"></div>
-    </div>
-    <p class="muted">查看各设备的停机时长、停机次数，以及是否和排产任务冲突。</p>
-    {{ ui.reports_nav('downtime') }}
-  </div>
+  {{ ui.aps_page_hero(
+    '报表 - 停机影响统计',
+    '查看各设备在指定日期范围内的停机时长、停机次数，以及是否和排产任务冲突。',
+    nav_html=ui.reports_nav('downtime')
+  ) }}
 
-  <div class="card">
-    <h3>筛选</h3>
+  <div class="card aps-report-filter-card">
+    {{ ui.aps_card_header('筛选', '选择排产版本和日期范围后查看停机影响，需要时导出 Excel。') }}
     <form method="get" action="{{ url_for('reports.downtime_page') }}">
-      <div class="aps-filter-bar">
-        <div class="form-field">
+      <div class="aps-report-filter-grid">
+        <div class="form-field aps-report-version-field">
           <label>排产版本</label>
-          <select name="version" class="w-160">
+          <select name="version">
             {% for it in versions %}
               <option value="{{ it.version }}" {% if version == it.version %}selected{% endif %}>
                 {{ ui.version_option_label(it, status_zh.get(it.result_status, '结果状态未知')) }}
               </option>
             {% endfor %}
           </select>
-          {% if not has_history %}
-            <div class="muted" style="margin-top:6px;">暂无排产历史，请先执行排产后再查看报表。</div>
-          {% endif %}
         </div>
-        <div class="form-field">
+        <div class="form-field aps-report-start-date">
           <label>开始日期</label>
-          <input type="date" name="start_date" value="{{ start_date }}" class="w-160">
+          <input type="date" name="start_date" value="{{ start_date }}">
         </div>
-        <div class="form-field">
+        <div class="form-field aps-report-end-date">
           <label>结束日期</label>
-          <input type="date" name="end_date" value="{{ end_date }}" class="w-160">
+          <input type="date" name="end_date" value="{{ end_date }}">
         </div>
-        <div class="aps-form-actions">
+        <div class="aps-form-actions aps-report-actions">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
           {% if rows %}
             {{ ui.link_button('导出 Excel', url_for('reports.downtime_export', version=version, start_date=start_date, end_date=end_date), 'secondary', 'md') }}
           {% else %}
             {{ ui.button('导出 Excel', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
-            <span class="aps-export-note">当前版本和日期范围内没有可导出的结果。请换一个排产版本或调整日期后再试。</span>
           {% endif %}
         </div>
+        {% if not has_history %}
+          <div class="aps-filter-note">暂无排产历史，请先执行排产后再查看报表。</div>
+        {% elif not rows %}
+          <div class="aps-filter-note">当前版本和日期范围内没有可导出的结果。请换一个排产版本或调整日期后再试。</div>
+        {% endif %}
       </div>
     </form>
-    <div class="muted" style="margin-top:6px;">
-      {% if date_source == "version_span" %}
-        已按所选版本的排程范围自动带入日期。
-      {% elif date_source == "default_7d" %}
-        未识别到该版本的排程范围，已自动显示最近 7 天。
-      {% elif date_source == "query" %}
-        已按你填写的日期范围查询。
-      {% endif %}
+    <div class="aps-result-summary-grid mt-3">
+      {% set date_source_label = '已按所选版本的排程范围自动带入日期' if date_source == 'version_span' else ('未识别到该版本的排程范围，已自动显示最近 7 天' if date_source == 'default_7d' else '已按你填写的日期范围查询') %}
+      {{ ui.summary_item('涉及设备', (downtime_summary.machine_count if downtime_summary else 0) ~ ' 台') }}
+      {{ ui.summary_item('停机时长', (downtime_summary.downtime_hours if downtime_summary else 0) ~ ' 小时') }}
+      {{ ui.summary_item('与排程重叠', (downtime_summary.schedule_overlap_hours if downtime_summary else 0) ~ ' 小时') }}
     </div>
+    <div class="aps-filter-note aps-report-date-source">日期来源：{{ date_source_label }}</div>
   </div>
 
   <div class="card">
-    <h3>结果</h3>
+    <h3 class="section-title">结果明细</h3>
     {% if not rows %}
       {% if empty_reason == "no_history" %}
         <div class="muted">暂无排产历史，当前无法统计停机影响。</div>

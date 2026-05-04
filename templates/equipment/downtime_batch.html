@@ -1,23 +1,17 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group"><h2 class="page-title">批量停机计划</h2></div>
-      <div class="page-actions page-actions-context"></div>
-    </div>
-    <p class="page-subtitle text-meta">
-      为设备安排停机时间。可以按单台、按类别或全部设备设置。
-      系统会将停机范围按设备逐条展开保存，确保每台设备都有对应的停机记录。
-    </p>
-    {{ ui.equipment_nav('downtime_batch') }}
-  </div>
+  {{ ui.aps_page_hero(
+    '批量停机计划',
+    '为设备安排停机时间，可以按单台、按类别或全部设备设置；系统会按设备逐条保存停机记录。',
+    nav_html=ui.equipment_nav('downtime_batch')
+  ) }}
 
-  <div class="card">
-    <h3>创建停机区间</h3>
+  <div class="card aps-downtime-form-card">
+    {{ ui.aps_card_header('创建停机区间', '选择停机范围、时间和原因后创建记录。') }}
     <form method="post" action="{{ url_for('equipment.downtime_batch_create') }}">
-      <div class="form-row">
-        <div class="form-field min-w-260">
+      <div class="aps-downtime-form-grid">
+        <div class="form-field aps-downtime-scope-type">
           <label>范围</label>
           <select name="scope_type" id="scopeType">
             <option value="machine">单台设备</option>
@@ -25,7 +19,7 @@
             <option value="all">全部设备</option>
           </select>
         </div>
-        <div id="scopeMachine" class="form-field min-w-320">
+        <div id="scopeMachine" class="form-field aps-downtime-scope-value">
           <label>选择设备</label>
           <select name="scope_value" id="scopeValueMachine">
             {% for mid, label in machine_options %}
@@ -33,7 +27,7 @@
             {% endfor %}
           </select>
         </div>
-        <div id="scopeCategory" class="form-field d-none min-w-220">
+        <div id="scopeCategory" class="form-field d-none aps-downtime-scope-value">
           <label>选择类别</label>
           <select name="scope_value" id="scopeValueCategory">
             {% if categories and categories|length > 0 %}
@@ -45,15 +39,15 @@
             {% endif %}
           </select>
         </div>
-        <div class="form-field">
+        <div class="form-field aps-downtime-start">
           <label>开始时间</label>
-          <input name="start_time" required placeholder="如：2026-01-22 08:00" class="min-w-220">
+          <input name="start_time" required placeholder="如：2026-01-22 08:00">
         </div>
-        <div class="form-field">
+        <div class="form-field aps-downtime-end">
           <label>结束时间</label>
-          <input name="end_time" required placeholder="如：2026-01-22 12:00" class="min-w-220">
+          <input name="end_time" required placeholder="如：2026-01-22 12:00">
         </div>
-        <div class="form-field">
+        <div class="form-field aps-downtime-reason">
           <label>停机原因</label>
           <select name="reason_code">
             {% for v, label in reason_options %}
@@ -61,11 +55,11 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field flex-1 min-w-240">
+        <div class="form-field aps-downtime-detail">
           <label>原因备注（可选）</label>
           <input name="reason_detail" placeholder="可选：更具体的停机原因说明">
         </div>
-        <div>{{ ui.button('创建', 'primary', 'md', type_attr='submit') }}</div>
+        <div class="aps-downtime-actions">{{ ui.button('创建', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>
@@ -78,4 +72,3 @@
 
   <script src="{{ url_for('static', filename='js/downtime_batch.js') }}" defer></script>
 {% endblock %}
-

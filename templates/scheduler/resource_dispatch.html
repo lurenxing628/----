@@ -26,36 +26,20 @@
     data-export-url="{{ export_url or '' }}"
   >
 
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group">
-        <h2 class="page-title">资源排班中心</h2>
-        {% if has_history and can_query %}
-          <div class="aps-summary-grid mt-2">
-            {{ ui.summary_item('查询对象', filters.scope_label) }}
-            {% if filters.scope_type == 'team' %}
-              {{ ui.summary_item('班组轴', filters.team_axis_label) }}
-            {% endif %}
-            {{ ui.summary_item('区间', filters.start_date ~ ' ～ ' ~ filters.end_date) }}
-            {{ ui.summary_item('版本', 'v' ~ filters.version) }}
-          </div>
-        {% elif has_history %}
-          <p class="text-meta mt-1">请选择单人、单机或班组后再查询排班任务。</p>
-        {% else %}
-          <p class="text-meta mt-1">当前暂无排产历史，请先执行排产。</p>
-        {% endif %}
-      </div>
-      <div class="page-actions page-actions-context">
-        {% if export_url %}
-          {{ ui.link_button('导出资源排班.xlsx', export_url, 'secondary', 'md', 'download') }}
-        {% else %}
-          {{ ui.button('导出资源排班.xlsx', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
-          <span class="aps-export-note">暂无数据，不能导出。</span>
-        {% endif %}
-      </div>
-    </div>
-    {{ ui.scheduler_nav('resource_dispatch') }}
-  </div>
+  {% set resource_dispatch_actions %}
+    {{ ui.link_button('去执行排产', url_for('scheduler.batches_page'), 'primary', 'md') }}
+    {% if export_url %}
+      {{ ui.link_button('导出资源排班.xlsx', export_url, 'secondary', 'md', 'download') }}
+    {% else %}
+      {{ ui.button('导出资源排班.xlsx', 'secondary', 'md', type_attr='button', disabled=True, class='aps-disabled-button') }}
+    {% endif %}
+  {% endset %}
+  {{ ui.aps_page_hero(
+    '资源排班',
+    '按人员、设备或班组查看排产任务，适合检查某个资源在一周或一月内的工作安排。',
+    actions_html=resource_dispatch_actions,
+    nav_html=ui.scheduler_nav('resource_dispatch')
+  ) }}
 
   <div class="card">
     {% set selected_version_row = namespace(item=None) %}
@@ -64,6 +48,15 @@
         {% set selected_version_row.item = item %}
       {% endif %}
     {% endfor %}
+    {{ ui.aps_card_header('查询条件', '选择视角、资源、区间和版本。') }}
+    {% if has_history and can_query %}
+      {{ ui.aps_context_bar([
+        {'label': '查询对象', 'value': filters.scope_label},
+        {'label': '班组轴', 'value': filters.team_axis_label if filters.scope_type == 'team' else None},
+        {'label': '区间', 'value': filters.start_date ~ ' ～ ' ~ filters.end_date},
+        {'label': '版本', 'value': 'v' ~ filters.version}
+      ]) }}
+    {% endif %}
     <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-form-grid">
       <div class="form-field">
         <label>视角</label>
@@ -160,6 +153,9 @@
       <div class="muted mt-2">请选择单人、单机或班组后点击“查询”。</div>
     {% else %}
       <div class="text-meta mt-2">支持按周、按月和自定义区间查看单人、单机与班组排班，跨天任务会在日历矩阵中按自然日拆分展示。</div>
+    {% endif %}
+    {% if not export_url %}
+      <div class="aps-export-note mt-2">当前查询暂无可导出的数据。</div>
     {% endif %}
   </div>
 

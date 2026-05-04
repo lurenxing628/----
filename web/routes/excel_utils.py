@@ -94,7 +94,7 @@ def parse_preview_rows_json(raw_rows_json: str) -> List[Dict[str, Any]]:
             raise ValueError("rows not list")
         return rows
     except Exception as e:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
+        raise ValidationError("检查数据解析失败，请重新上传 Excel 并检查。") from e
 
 
 def encode_preview_rows_payload(raw_rows_json: Optional[str]) -> Optional[str]:
@@ -113,7 +113,7 @@ def decode_preview_rows_payload(raw_rows_json: str) -> str:
     try:
         return base64.urlsafe_b64decode(encoded.encode("ascii")).decode("utf-8")
     except Exception as e:
-        raise ValidationError("预览数据解析失败，请重新上传并预览。") from e
+        raise ValidationError("检查数据解析失败，请重新上传 Excel 并检查。") from e
 
 
 def _extract_error_rows(preview_rows: List[Any]) -> List[Any]:
@@ -138,10 +138,10 @@ def load_confirm_payload(
     preview_baseline: Optional[str],
 ) -> ConfirmPayload:
     if not raw_rows_json:
-        raise ValidationError("缺少预览数据，请重新上传并预览后再确认导入。")
+        raise ValidationError("缺少检查数据，请重新上传 Excel 并检查后再确认写入。")
     token = str(preview_baseline or "").strip()
     if not token:
-        raise ValidationError("缺少预览基线，请重新上传并预览后再确认导入。")
+        raise ValidationError("缺少检查基线，请重新上传 Excel 并检查后再确认写入。")
     return ConfirmPayload(rows=parse_preview_rows_json(raw_rows_json), preview_baseline=token)
 
 
@@ -210,7 +210,7 @@ def collect_error_rows(preview_rows: List[Any]) -> List[Any]:
 
 
 def build_error_rows_message(error_rows: List[Any]) -> str:
-    message = f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新预览并确认。"
+    message = f"导入被拒绝：Excel 存在 {len(error_rows)} 行错误。请修正后重新上传 Excel 并检查。"
     sample = _format_error_sample(error_rows)
     if sample:
         message += f"错误示例：{sample}"

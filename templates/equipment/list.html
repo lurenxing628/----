@@ -2,18 +2,20 @@
 {% import "components/ui_macros.html" as ui %}
 {% import "components/excel_action_cards.html" as excel_cards_ui %}
 {% block content %}
-  <div class="card">
+  <div class="card aps-page-hero">
     <div class="page-header">
       <div class="page-title-group"><h2 class="page-title">设备管理</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">管理设备信息和可操作人员。</p>
+    <p class="aps-page-purpose">
+      <strong>本页用于：</strong>维护可排产设备、设备状态、所属工种、班组和可操作人员。
+    </p>
     {{ ui.equipment_nav('list') }}
   </div>
 
   {{ excel_cards_ui.action_cards(
     '批量维护',
-    '批量导入/导出设备信息和设备人员关联；手工新增继续使用下方表单。',
+    '适合整批维护设备清单和设备人员关系。',
     excel_cards,
     ui
   ) }}

@@ -49,7 +49,7 @@ def _render_excel_supplier_page(
 ):
     return render_template(
         "process/excel_import_suppliers.html",
-        title="批量维护供应商配置",
+        title="批量维护供应商",
         existing_list=list(existing.values()),
         preview_rows=project_preview_rows_for_display(preview_rows, {"状态": supplier_status_label}),
         raw_rows_json=raw_rows_json,
@@ -217,7 +217,7 @@ def excel_supplier_confirm():
         id_column="供应商ID",
         extra_state=_supplier_op_type_snapshot(op_type_svc),
     ):
-        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_supplier_page(
             existing=existing,
             preview_rows=None,

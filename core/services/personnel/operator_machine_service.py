@@ -175,13 +175,13 @@ class OperatorMachineService:
     def _decide_preview_row(self, *, row: Dict[str, Any], row_num: int, mode: ImportMode, key: str, existing_map: Dict[str, Dict[str, str]], has_skill_col: bool, has_primary_col: bool, skill_norm: Optional[str], primary_norm: Optional[str]) -> ImportPreviewRow:
         exists = key in existing_map
         if mode == ImportMode.REPLACE:
-            return ImportPreviewRow(row_num=row_num, status=RowStatus.NEW, data=row, message="替换模式：将写入关联")
+            return ImportPreviewRow(row_num=row_num, status=RowStatus.NEW, data=row, message="清空本类数据后重导：将写入关联")
         if not exists:
             return ImportPreviewRow(row_num=row_num, status=RowStatus.NEW, data=row, message="新增关联")
         if mode == ImportMode.APPEND:
-            return ImportPreviewRow(row_num=row_num, status=RowStatus.SKIP, data=row, message="已存在，按“追加”模式将跳过")
+            return ImportPreviewRow(row_num=row_num, status=RowStatus.SKIP, data=row, message="已存在，选择“只导入新编号”时会跳过")
         if not has_skill_col and not has_primary_col:
-            return ImportPreviewRow(row_num=row_num, status=RowStatus.UNCHANGED, data=row, message="已存在（覆盖模式下保持不变）")
+            return ImportPreviewRow(row_num=row_num, status=RowStatus.UNCHANGED, data=row, message="已存在，本次没有需要修改的字段")
         return self._build_overwrite_preview_for_existing(row=row, row_num=row_num, key=key, existing_map=existing_map, has_skill_col=has_skill_col, has_primary_col=has_primary_col, skill_norm=skill_norm, primary_norm=primary_norm)
 
     def _preview_one_row(self, *, row: Dict[str, Any], row_num: int, mode: ImportMode, has_skill_col: bool, has_primary_col: bool, existing_map: Dict[str, Dict[str, str]], seen_in_file: Set[str]) -> ImportPreviewRow:
@@ -502,4 +502,3 @@ class OperatorMachineService:
             "error_count": error_count,
             "errors_sample": errors_sample,
         }
-

@@ -124,7 +124,7 @@ def _render_excel_machine_page(
         )
     return render_template(
         "equipment/excel_import_machine.html",
-        title="批量维护设备信息",
+        title="批量维护设备",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(preview_rows, {"状态": machine_status_label}),
         raw_rows_json=raw_rows_json,
@@ -266,7 +266,7 @@ def excel_machine_confirm():
         id_column="设备编号",
         extra_state=_machine_reference_snapshot(op_type_svc=op_type_svc, team_svc=team_svc),
     ):
-        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_machine_page(
             existing=existing,
             preview_rows=None,

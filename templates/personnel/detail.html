@@ -8,36 +8,13 @@
     </div>
     <p class="page-subtitle text-meta">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong>　班组：<strong>{{ operator_team_name or '未设置' }}</strong></p>
     {{ ui.personnel_nav('list') }}
-    {% set op_cal_url = safe_url_for('personnel.operator_calendar_page', operator_id=operator.operator_id) %}
-    {% set global_cal_url = safe_url_for('scheduler.calendar_page') %}
     <div class="info-line mt-2">
-      {% if op_cal_url %}
-        {{ ui.link_button('个人工作日历', op_cal_url, 'secondary', 'sm') }}
-      {% else %}
-        <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
-        <details class="debug-details muted">
-          <summary>排查信息</summary>
-          个人工作日历入口尚未启用。<br/>
-          当前入口暂不可用，请联系管理员更新系统或重启服务。
-        </details>
-      {% endif %}
+      {{ ui.link_button('个人工作日历', url_for('personnel.operator_calendar_page', operator_id=operator.operator_id), 'secondary', 'sm') }}
       <span class="info-sep">|</span>
-      {% if global_cal_url %}
-        {{ ui.link_button('全局工作日历', global_cal_url, 'secondary', 'sm') }}
-      {% else %}
-        <span class="muted">该功能需要更新版本后使用，请重启系统。</span>
-        <details class="debug-details muted">
-          <summary>排查信息</summary>
-          全局工作日历入口尚未启用。<br/>
-          当前入口暂不可用，请联系管理员更新系统或重启服务。
-        </details>
-      {% endif %}
+      {{ ui.link_button('全局工作日历', url_for('scheduler.calendar_page'), 'secondary', 'sm') }}
     </div>
     <div class="muted mt-2">
       为个别人员设置特殊的工作/休息日（如请假、加班）。
-      {% if not op_cal_url %}
-        <span class="muted">（当前运行版本缺少该入口）</span>
-      {% endif %}
     </div>
   </div>
 
@@ -147,7 +124,7 @@
                 <div class="table-actions">
                   {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='linkform_' ~ loop.index0) }}
                   <form method="post" action="{{ url_for('personnel.remove_link', operator_id=operator.operator_id) }}"
-                        data-confirm="确认解除该关联？">
+                        data-confirm="确认解除这条设备人员关系吗？只解除关系，不删除设备，也不删除人员。">
                     <input type="hidden" name="machine_id" value="{{ m.machine_id }}">
                     {{ ui.button('解除关联', 'danger', 'sm', type_attr='submit') }}
                   </form>

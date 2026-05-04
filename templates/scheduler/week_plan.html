@@ -12,25 +12,25 @@
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
 
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group">
-        <h2 class="page-title">周计划（导出）</h2>
-      </div>
-      <div class="page-actions page-actions-context">
-        {% if export_url %}
-          {{ ui.link_button('导出周计划表.xlsx', export_url, 'secondary', 'md') }}
-        {% endif %}
-      </div>
-    </div>
-    <div class="aps-summary-grid mt-2">
-      {{ ui.summary_item('周范围', week_start ~ ' ～ ' ~ week_end) }}
-      {{ ui.summary_item('版本', ('v' ~ version) if version is not none else '暂无版本') }}
-    </div>
-    {{ ui.scheduler_nav('week_plan') }}
-  </div>
+  {% set week_plan_actions %}
+    {{ ui.link_button('去执行排产', url_for('scheduler.batches_page'), 'primary', 'md') }}
+    {% if export_url %}
+      {{ ui.link_button('导出周计划表.xlsx', export_url, 'secondary', 'md') }}
+    {% endif %}
+  {% endset %}
+  {{ ui.aps_page_hero(
+    '周计划（导出）',
+    '查看并导出一周内的排产计划，适合给生产现场复核每日任务。',
+    actions_html=week_plan_actions,
+    nav_html=ui.scheduler_nav('week_plan')
+  ) }}
 
   <div class="card">
+    {{ ui.aps_card_header('查询与导出', '选择周范围和版本后查看预览，需要时导出当前周计划。') }}
+    {{ ui.aps_context_bar([
+      {'label': '周范围', 'value': week_start ~ ' ～ ' ~ week_end},
+      {'label': '版本', 'value': (('v' ~ version) if version is not none else '暂无版本')}
+    ]) }}
     <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" class="aps-form-grid">
       <div class="form-field">
         <label>排产区间（起）</label>

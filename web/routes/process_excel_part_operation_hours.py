@@ -39,8 +39,8 @@ from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
 
 _PART_OP_HOURS_MODE_OPTIONS: List[Dict[str, str]] = [
-    {"value": ImportMode.OVERWRITE.value, "label": "覆盖（相同编号更新）"},
-    {"value": ImportMode.APPEND.value, "label": "追加（仅补齐空工时）"},
+    {"value": ImportMode.OVERWRITE.value, "label": "更新已有工时"},
+    {"value": ImportMode.APPEND.value, "label": "只补空工时"},
 ]
 
 
@@ -196,7 +196,9 @@ def _rewrite_append_preview_rows(preview_rows: List[Any], mode: ImportMode) -> N
     for pr in preview_rows:
         if pr.status == RowStatus.NEW:
             pr.status = RowStatus.UPDATE
-            pr.message = "工时为空，按“追加”模式将补齐"
+            pr.message = "工时为空，选择“只补空工时”时会补齐"
+        elif pr.status == RowStatus.SKIP:
+            pr.message = "已存在，选择“只补空工时”时会跳过"
 
 
 def _render_excel_part_op_hours_page(
@@ -210,7 +212,7 @@ def _render_excel_part_op_hours_page(
 ):
     return render_template(
         "process/excel_import_part_operation_hours.html",
-        title="批量维护零件工序工时",
+        title="批量维护工序工时",
         existing_list=existing_list,
         preview_rows=preview_rows,
         raw_rows_json=raw_rows_json,
@@ -245,7 +247,7 @@ def excel_part_op_hours_preview():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     if mode == ImportMode.REPLACE:
-        raise ValidationError("该页面不支持“替换（清空后导入）”，请使用“覆盖”或“追加”。", field="mode")
+        raise ValidationError("该页面不支持“清空本类数据后重导”，请使用“更新已有工时”或“只补空工时”。", field="mode")
 
     file = request.files.get("file")
     if not file or not file.filename:
@@ -301,7 +303,7 @@ def excel_part_op_hours_confirm():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     if mode == ImportMode.REPLACE:
-        raise ValidationError("该页面不支持“替换（清空后导入）”，请使用“覆盖”或“追加”。", field="mode")
+        raise ValidationError("该页面不支持“清空本类数据后重导”，请使用“更新已有工时”或“只补空工时”。", field="mode")
 
     filename = request.form.get("filename") or "unknown.xlsx"
     payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
@@ -320,7 +322,7 @@ def excel_part_op_hours_confirm():
         id_column="__row_id__",
         extra_state=_build_part_op_hours_extra_state(meta_all),
     ):
-        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_part_op_hours_page(
             existing_list=existing_list,
             preview_rows=None,

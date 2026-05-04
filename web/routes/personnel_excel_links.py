@@ -93,7 +93,7 @@ def _render_excel_link_page(
 ):
     return render_template(
         "personnel/excel_import_operator_machine.html",
-        title="批量维护人员设备关联",
+        title="批量维护人员设备关系",
         existing_list=existing_list,
         preview_rows=preview_rows,
         raw_rows_json=raw_rows_json,
@@ -182,7 +182,7 @@ def excel_link_confirm():
         id_column="工号|设备编号",
         extra_state=_operator_machine_reference_snapshot(),
     ):
-        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_link_page(
             existing_list=existing_list,
             preview_rows=None,

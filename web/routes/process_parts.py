@@ -141,7 +141,7 @@ def part_detail(part_no: str):
 
     return render_template(
         "process/detail.html",
-        title=f"工序模板 - {part.get('part_no')} {part.get('part_name')}",
+        title=f"零件工艺模板 - {part.get('part_no')} {part.get('part_name')}",
         part=part,
         operations=ops,
         active_operations=active_ops,

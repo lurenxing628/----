@@ -2,18 +2,20 @@
 {% import "components/ui_macros.html" as ui %}
 {% import "components/excel_action_cards.html" as excel_cards_ui %}
 {% block content %}
-  <div class="card">
+  <div class="card aps-page-hero">
     <div class="page-header">
-      <div class="page-title-group"><h2 class="page-title">工艺管理</h2></div>
+      <div class="page-title-group"><h2 class="page-title">零件工艺模板</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">管理零件工艺路线、工序模板、工种和供应商配置。</p>
+    <p class="aps-page-purpose">
+      <strong>本页用于：</strong>维护图号、路线文字和工序清单，批次创建时会按这里生成工序。
+    </p>
     {{ ui.process_nav('parts') }}
   </div>
 
   {{ excel_cards_ui.action_cards(
     '批量维护',
-    '批量导入/导出集中在这里；手工新增零件继续使用下方表单。',
+    '适合 Excel 下发或整批复核；手工新增继续使用下方表单。',
     excel_cards,
     ui
   ) }}
@@ -31,7 +33,7 @@
           <input id="partNameInput" name="part_name" required placeholder="如：壳体-大">
         </div>
         <div class="form-field aps-form-span-2">
-          <label for="routeRawInput">工艺路线字符串（可选，填写后会尝试自动解析）</label>
+          <label for="routeRawInput">路线文字（可选，填写后会尝试生成工序清单）</label>
           <input id="routeRawInput" name="route_raw" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
         </div>
         <div class="form-field">
@@ -41,9 +43,9 @@
         <div class="form-field aps-form-span-all">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
-            发现问题就停止创建工艺路线
+            资料不完整就停下
           </label>
-          <div class="muted text-xs aps-help-note">勾选后：工艺路线里有不认识的工种、没有启用的外协供应商，或外协周期无效时，会直接提示错误并停止创建。不勾选：零件会先保存；能确认的工序会继续处理，缺少外协周期这类可补项本次会先按 1 天记录，并在页面提醒你后续补正。</div>
+          <div class="muted text-xs aps-help-note">勾选后：路线文字里有不认识的工种、没有启用的外协供应商，或外协周期无效时，会直接提示错误并停止创建。不勾选：零件会先保存；能确认的工序会继续处理，缺少外协周期这类可补项本次会先按 1 天记录，并在页面提醒你后续补正。</div>
         </div>
         <div class="aps-form-actions aps-form-actions-end">{{ ui.button('添加零件', 'primary', 'md', type_attr='submit') }}</div>
       </div>
@@ -81,8 +83,8 @@
             <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选零件"></th>
             <th class="w-140">图号</th>
             <th class="w-220">名称</th>
-            <th>工艺路线</th>
-            <th class="w-120">解析状态</th>
+            <th>路线文字</th>
+            <th class="w-120">工序清单</th>
             <th class="w-160">操作</th>
           </tr>
         </thead>

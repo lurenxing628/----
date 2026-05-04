@@ -3,7 +3,7 @@
 {% block content %}
   <div class="card">
     <div class="page-header">
-      <div class="page-title-group"><h2 class="page-title">批量维护零件工序工时</h2></div>
+      <div class="page-title-group"><h2 class="page-title">批量维护工序工时</h2></div>
       <div class="page-actions page-actions-context">
         {{ ui.link_button(back_label, back_url, 'secondary', 'md') }}
       </div>
@@ -11,7 +11,7 @@
     <p class="page-subtitle text-meta">
       本页面用于批量更新工艺模板中的自制工序工时。
       导入后，创建批次时会自动复制这些工时，排产将按「换型 + 单件 × 数量」计算时长。
-      选择“追加”时，只会补那些换型工时和单件工时都还是 0 的工序；已经填过工时的工序不会被改。
+      选择“只补空工时”时，只会补那些换型工时和单件工时都还是 0 的工序；已经填过工时的工序不会被改。
     </p>
     {{ ui.process_nav('parts') }}
     <div class="mt-2">
@@ -54,7 +54,7 @@
         </table>
       </div>
     {% else %}
-      <div class="muted">暂无自制工序数据（可先导入工艺路线并解析生成模板）。</div>
+      <div class="muted">暂无自制工序数据（可先导入路线文字，生成工序清单）。</div>
     {% endif %}
   </div>
 

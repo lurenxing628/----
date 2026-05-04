@@ -2,13 +2,13 @@
 {% import "components/ui_macros.html" as ui %}
 {% import "components/excel_action_cards.html" as excel_cards_ui %}
 {% block content %}
-  <div class="card">
+  <div class="card aps-page-hero">
     <div class="page-header">
       <div class="page-title-group"><h2 class="page-title">供应商配置</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">
-      外协工种的供应商和默认周期设置。同一个工种建议只保留一个启用供应商；如果同时启用多个，系统会按供应商编号排序自动选最后一个，容易和预期不一致。
+    <p class="aps-page-purpose aps-copy-measure">
+      <strong>本页用于：</strong>维护外协供应商、默认周期、状态和对应工种。
     </p>
     {{ ui.process_nav('suppliers') }}
   </div>

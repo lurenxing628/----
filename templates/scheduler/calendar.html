@@ -4,22 +4,16 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/calendar_picker.css') }}">
 {% endblock %}
 {% block content %}
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group">
-        <h2 class="page-title">工作日历配置</h2>
-      </div>
-      <div class="page-actions page-actions-context">
-        {{ ui.link_button('导入/导出工作日历', url_for('scheduler.excel_calendar_page'), 'secondary', 'md') }}
-      </div>
-    </div>
-    <p class="page-subtitle text-meta">
-      设置排产时使用的工作时间、效率和可排产优先级。
-      未配置日期会按默认规则处理（工作日 8 小时；周末/假期默认不排产）。
-      也可以在这里配置调休或加班。
-    </p>
-    {{ ui.scheduler_nav('calendar') }}
-  </div>
+  {% set calendar_actions %}
+    {{ ui.link_button('去执行排产', url_for('scheduler.batches_page'), 'primary', 'md') }}
+    {{ ui.link_button('导入/导出工作日历', url_for('scheduler.excel_calendar_page'), 'secondary', 'md') }}
+  {% endset %}
+  {{ ui.aps_page_hero(
+    '工作日历配置',
+    '设置排产时使用的工作时间、效率和可排产优先级；未配置日期会按默认规则处理，也可以在这里配置调休或加班。',
+    actions_html=calendar_actions,
+    nav_html=ui.scheduler_nav('calendar')
+  ) }}
 
   <div class="card wc-card-allow-overflow">
     <h3 class="section-title">新增 / 更新某一天</h3>
@@ -29,10 +23,10 @@
       </div>
     {% endif %}
     <form method="post" action="{{ url_for('scheduler.calendar_upsert') }}">
-      <div class="calendar-upsert-row">
-        <div class="form-field wc-date-wrap">
+      <div class="aps-calendar-form-grid">
+        <div class="form-field wc-date-wrap aps-calendar-date-field">
           <label>日期</label>
-          <div class="calendar-date-picker-row">
+          <div class="aps-date-picker-field">
             <input id="wcDateInput" name="date" required placeholder="如：2026-03-13" class="w-140">
             {{ ui.button('选择', 'secondary', 'sm', type_attr='button', element_id='wcDatePickBtn') }}
           </div>
@@ -48,50 +42,50 @@
             <div class="wc-cal-foot muted">已配置日期会高亮；周末会单独标识。</div>
           </div>
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-day-type">
           <label>类型</label>
           <select name="day_type" class="w-100">
             <option value="workday">工作日</option>
             <option value="holiday">假期</option>
           </select>
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-start">
           <label>班次开始</label>
           <input type="time" name="shift_start" value="08:00" class="w-120">
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-end">
           <label>班次结束（可选）</label>
           <input type="time" name="shift_end" class="w-120">
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-hours">
           <label>可用工时（小时）</label>
           <input name="shift_hours" placeholder="如：8" class="w-100">
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-efficiency">
           <label>效率（大于 0）</label>
           <input name="efficiency" placeholder="如：1.0" class="w-100">
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-allow-normal">
           <label>允许普通件</label>
           <select name="allow_normal" class="w-100">
             <option value="yes">是</option>
             <option value="no">否</option>
           </select>
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-allow-urgent">
           <label>允许急件/特急</label>
           <select name="allow_urgent" class="w-100">
             <option value="yes">是</option>
             <option value="no">否</option>
           </select>
         </div>
-        <div class="form-field calendar-upsert-remark">
+        <div class="form-field aps-calendar-remark">
           <label>说明</label>
           <input name="remark" placeholder="可选">
         </div>
-        <div class="calendar-upsert-submit">
-          {{ ui.button('保存', 'primary', 'sm', type_attr='submit') }}
-        </div>
+      </div>
+      <div class="aps-calendar-actions">
+        {{ ui.button('保存', 'primary', 'md', type_attr='submit') }}
       </div>
     </form>
   </div>

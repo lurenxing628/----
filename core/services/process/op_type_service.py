@@ -148,7 +148,7 @@ class OpTypeService:
         if self.repo.has_supplier_reference(ot_id):
             raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被供应商引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
         if self.repo.has_part_operation_reference(ot_id):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被零件工序模板引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被零件工序清单引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
         if self.repo.has_batch_operation_reference(ot_id):
             raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被批次工序引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
 
@@ -172,13 +172,13 @@ class OpTypeService:
     def ensure_replace_allowed(self) -> None:
         """
         REPLACE（清空后导入）保护：
-        若已被设备/供应商/工艺模板/批次工序引用，则禁止清空。
+        若已被设备/供应商/工序清单/批次工序引用，则禁止清空。
         """
         if self.repo.has_any_machine_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有设备引用了工种，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有设备引用了工种，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
         if self.repo.has_any_supplier_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有供应商绑定了工种，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有供应商绑定了工种，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
         if self.repo.has_any_part_operation_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有零件工序模板引用了工种，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有零件工序清单引用了工种，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
         if self.repo.has_any_batch_operation_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有批次工序引用了工种，不能执行“替换（清空后导入）”。请先解除引用或改用“覆盖/追加”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有批次工序引用了工种，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")

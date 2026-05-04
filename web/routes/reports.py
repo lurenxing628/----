@@ -117,6 +117,16 @@ def _with_utilization_percent(rows):
     return out
 
 
+def _sum_report_number(rows, key: str) -> float:
+    total = 0.0
+    for row in rows or []:
+        try:
+            total += float((row or {}).get(key) or 0)
+        except Exception:
+            continue
+    return round(total, 2)
+
+
 @bp.get("/")
 def index():
     engine = ReportEngine(g.db)
@@ -256,9 +266,17 @@ def downtime_page():
         if version is not None
         else {"version": None, "start_date": start_date, "end_date": end_date, "machines": []}
     )
+    downtime_rows = list(rep.get("machines") or [])
+    downtime_summary = {
+        "machine_count": len(downtime_rows),
+        "downtime_hours": _sum_report_number(downtime_rows, "downtime_hours"),
+        "downtime_count": int(_sum_report_number(downtime_rows, "downtime_count")),
+        "schedule_overlap_hours": _sum_report_number(downtime_rows, "schedule_overlap_hours"),
+        "schedule_overlap_count": int(_sum_report_number(downtime_rows, "schedule_overlap_count")),
+    }
     has_history = bool(versions)
     empty_reason = None
-    if not rep.get("machines"):
+    if not downtime_rows:
         if not has_history:
             empty_reason = "no_history"
         elif date_source == "default_7d":
@@ -274,7 +292,8 @@ def downtime_page():
         version=rep.get("version"),
         start_date=rep["start_date"],
         end_date=rep["end_date"],
-        rows=rep["machines"],
+        rows=downtime_rows,
+        downtime_summary=downtime_summary,
         date_source=date_source,
         has_history=has_history,
         empty_reason=empty_reason,

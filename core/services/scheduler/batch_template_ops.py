@@ -33,7 +33,7 @@ def invoke_template_resolver(svc, part_no: str, part_name: str, route_raw: str, 
         if strict_mode:
             raise BusinessError(
                 ErrorCode.ROUTE_PARSE_ERROR,
-                "当前模板解析器版本过旧，不支持严格模式，请升级解析器后重试。",
+                "当前工艺路线处理组件版本过旧，不支持“资料不完整就停下”，请升级系统后重试。",
                 details={"reason": "strict_mode_unsupported"},
                 cause=exc,
             ) from exc
@@ -48,7 +48,7 @@ def invoke_template_resolver(svc, part_no: str, part_name: str, route_raw: str, 
     if strict_mode:
         raise BusinessError(
             ErrorCode.ROUTE_PARSE_ERROR,
-            "当前模板解析器版本过旧，不支持严格模式，请升级解析器后重试。",
+            "当前工艺路线处理组件版本过旧，不支持“资料不完整就停下”，请升级系统后重试。",
             details={"reason": "strict_mode_unsupported"},
         )
     return resolver(part_no, part_name, route_raw, no_tx)
@@ -104,7 +104,7 @@ def ensure_template_ops_in_tx(
                 raise
             raise BusinessError(
                 ErrorCode.ROUTE_PARSE_ERROR,
-                "该零件尚未生成工序模板，且自动解析失败。请到【工艺管理-工序模板】中检查工艺路线并重新解析。",
+                "该零件尚未生成工序清单，且系统无法按路线文字生成。请到【工艺管理-零件工艺模板】中检查路线文字，并重新生成工序清单。",
                 cause=exc,
             ) from exc
         append_unique_text_messages(svc._user_visible_warnings, getattr(parse_result, "warnings", None))
@@ -113,7 +113,7 @@ def ensure_template_ops_in_tx(
     if not template_ops:
         raise BusinessError(
             ErrorCode.ROUTE_PARSE_ERROR,
-            "该零件尚未生成工序模板，无法创建批次工序。请先在【工艺管理-工序模板】中解析工艺路线并保存模板。",
+            "该零件尚未生成工序清单，无法创建批次工序。请先在【工艺管理-零件工艺模板】中维护路线文字，并生成工序清单。",
         )
     return template_ops
 

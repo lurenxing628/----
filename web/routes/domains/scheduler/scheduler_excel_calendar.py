@@ -243,7 +243,7 @@ def excel_calendar_confirm():
         id_column="日期",
         extra_state=calendar_baseline_extra_state(holiday_default_efficiency=hde_value),
     ):
-        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_calendar_page(
             existing_list=existing_list,
             preview_rows=None,

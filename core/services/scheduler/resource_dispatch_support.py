@@ -40,7 +40,7 @@ def extract_overdue_batch_ids_with_meta(result_summary: Any) -> Dict[str, Any]:
         payload = result_summary if isinstance(result_summary, dict) else json.loads(result_summary or "{}")
     except Exception as exc:
         meta["degraded"] = True
-        meta["message"] = "排产摘要解析失败，超期统计和标记可能不完整。"
+        meta["message"] = "排产摘要读取失败，超期统计和标记可能不完整。"
         meta["reason"] = f"result_summary_json:{exc.__class__.__name__}"
         return meta
     overdue = payload.get("overdue_batches")

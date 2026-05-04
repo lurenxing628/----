@@ -187,7 +187,7 @@ PERSONNEL_TOPICS: Dict[str, Dict[str, Any]] = {
             "工号会被人员设备关联和个人日历引用，导入后尽量别频繁改。",
             "建议导入顺序：先人员和设备 → 再人员设备关联 → 最后个人日历。",
             "编号类字段（工号）建议在 Excel 中设为文本格式填写，避免前导零丢失。",
-            "替换模式下如有排产数据引用了人员，系统会拒绝替换，改用覆盖即可。",
+            "“清空本类数据后重导”模式下如有排产数据引用了人员，系统会拒绝清空重导，改用“更新已有，新增缺少”即可。",
         ),
         sections=[
             _section("导入前准备", "{{excel_common_flow}}\n\n{{excel_import_modes}}\n\n{{excel_format_warning}}"),
@@ -209,7 +209,7 @@ PERSONNEL_TOPICS: Dict[str, Dict[str, Any]] = {
                 "\n".join(
                     [
                         "- 工号一旦变更，会影响人员设备关联、个人工作日历和历史排程识别。",
-                        "- 替换模式风险较高，如果系统中已有排产结果引用人员，通常应优先选择覆盖。",
+                        "- “清空本类数据后重导”模式风险较高，如果系统中已有排产结果引用人员，通常应优先选择“更新已有，新增缺少”。",
                     ]
                 ),
             ),
@@ -255,11 +255,11 @@ PERSONNEL_TOPICS: Dict[str, Dict[str, Any]] = {
         related_manual_ids=["excel_personnel", "excel_equipment", "equipment_management"],
     ),
     "excel_personnel_calendar": _topic(
-        title="人员专属工作日历（Excel）",
+        title="批量维护个人日历",
         summary="批量维护个人级别的日历差异，适合请假、调休、加班和特殊班次集中导入。",
-        full_manual_anchor="#1-59人员专属工作日历",
+        full_manual_anchor="#1-59个人工作日历",
         help_card=_card(
-            "人员专属工作日历——填写速查",
+            "个人工作日历——填写速查",
             "列：工号(必填)、日期(必填)、类型（建议填写）、班次开始、班次结束、可用工时、效率、允许普通件、允许急件、说明。",
             "日期格式：2026-04-15 或 2026/04/15，Excel日期单元格也能识别；同一人同一天不能重复。",
             "类型建议填：工作日 / 假期。以前写过周末 / 节假日的，系统会按假期理解；留空会按工作日处理。",

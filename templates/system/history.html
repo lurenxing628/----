@@ -12,19 +12,19 @@
     } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
 
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group"><h2 class="page-title">系统管理 - 排产历史</h2></div>
-      <div class="page-actions page-actions-context"></div>
-    </div>
-    <p class="page-subtitle text-meta">这里主要看每次排产留下的版本、结果和摘要。想看每道工序排在哪天、哪台设备、哪个人员，请去甘特图、周计划或资源排班页面。</p>
-    {{ ui.system_nav('history') }}
+  {{ ui.aps_page_hero(
+    '系统管理 - 排产历史',
+    '查看每次排产留下的版本、结果和摘要；想看每道工序排在哪天、哪台设备、哪个人员，请去甘特图、周计划或资源排班页面。',
+    nav_html=ui.system_nav('history')
+  ) }}
 
+  <div class="card">
+    {{ ui.aps_card_header('筛选历史', '选择排产版本或最近记录条数。') }}
     <form method="get" action="{{ url_for('system.history_page') }}">
-      <div class="aps-filter-bar">
-        <div class="form-field">
+      <div class="aps-filter-grid">
+        <div class="form-field aps-filter-field-wide">
           <label>选择版本</label>
-          <select name="version" class="w-160">
+          <select name="version">
             <option value="">（不选择）</option>
             {% for v in versions %}
               {% set vv = v.version %}
@@ -34,11 +34,11 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field">
+        <div class="form-field aps-filter-field-small">
           <label>最近记录条数</label>
-          <input name="limit" value="{{ filters.limit }}" class="w-80">
+          <input name="limit" value="{{ filters.limit }}">
         </div>
-        <div class="aps-form-actions">
+        <div class="aps-form-actions aps-form-actions-end aps-filter-actions-compact">
           {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
           {{ ui.link_button('重置', url_for('system.history_page'), 'secondary', 'sm') }}
         </div>

@@ -1,19 +1,11 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group">
-        <h2 class="page-title">物料管理 - 批次物料需求（齐套判定）</h2>
-      </div>
-      <div class="page-actions page-actions-context"></div>
-    </div>
-    <p class="page-subtitle text-meta">
-      设置批次所需物料及到货情况，系统会自动更新齐套状态。
-      若某批次没有任何物料需求行，系统不会接管齐套状态（保留人工/Excel 值）。
-    </p>
-    {{ ui.material_nav('batch_materials') }}
-  </div>
+  {{ ui.aps_page_hero(
+    '物料管理 - 批次物料需求（齐套判定）',
+    '设置批次所需物料及到货情况，系统会自动更新齐套状态；没有物料需求行的批次会保留人工或 Excel 的齐套值。',
+    nav_html=ui.material_nav('batch_materials')
+  ) }}
 
   <div class="card">
     <h3 class="section-title">选择批次</h3>

@@ -110,7 +110,7 @@ def _render_excel_operator_calendar_page(
 ):
     return render_template(
         "personnel/excel_import_operator_calendar.html",
-        title="批量维护人员专属工作日历",
+        title="批量维护个人日历",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(
             preview_rows,
@@ -293,7 +293,7 @@ def excel_operator_calendar_confirm():
             operator_ids=operator_ids,
         ),
     ):
-        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_operator_calendar_page(
             existing_list=existing_list,
             preview_rows=None,

@@ -1,14 +1,14 @@
 {% macro action_cards(title, subtitle, cards, ui) %}
 <div class="card">
   <h3>{{ title }}</h3>
-  <p class="muted">{{ subtitle }}</p>
+  <p class="muted aps-copy-measure">{{ subtitle }}</p>
 
-  <div class="nav-grid">
+  <div class="aps-action-card-grid">
     {% for card in cards %}
-      <div class="nav-card">
-        <div class="nav-card-title">{{ card.title }}</div>
-        <div class="nav-card-desc">{{ card.desc }}</div>
-        <div class="action-bar-flat mt-3">
+      <div class="aps-action-card">
+        <div class="aps-action-card-title">{{ card.title }}</div>
+        <div class="aps-action-card-desc">{{ card.desc }}</div>
+        <div class="aps-action-card-actions aps-excel-card-actions">
           {% for action in card.actions %}
             {{ ui.link_button(action.label, url_for(action.endpoint), action.button_type, 'sm', target=action.target) }}
           {% endfor %}

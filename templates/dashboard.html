@@ -52,21 +52,36 @@
   </div>
 
   <div class="card">
-    <h3>快捷操作</h3>
-    <div class="action-bar-flat">
-      {{ ui.link_button('去排产', url_for('scheduler.batches_page'), 'primary', 'md', 'schedule') }}
-      {{ ui.link_button('批次管理', url_for('scheduler.batches_manage_page'), 'secondary', 'md', 'schedule') }}
-      {{ ui.link_button('导入批次', url_for('scheduler.excel_batches_page'), 'secondary', 'md', 'excel') }}
-      {% set resource_dispatch_url = safe_url_for('scheduler.resource_dispatch_page') %}
-      {% if resource_dispatch_url %}
-        {{ ui.link_button('资源排班中心', resource_dispatch_url, 'secondary', 'md', 'chart') }}
-      {% endif %}
-      {% set gantt_url = safe_url_for('scheduler.gantt_page', view='machine') %}
-      {% if gantt_url %}
-        {{ ui.link_button('甘特图', gantt_url, 'secondary', 'md', 'chart') }}
-      {% endif %}
-      {{ ui.link_button('周计划', url_for('scheduler.week_plan_page'), 'secondary', 'md', 'download') }}
-      {{ ui.link_button('报表', url_for('reports.index'), 'secondary', 'md', 'chart') }}
+    <h3>常用工作区</h3>
+    <div class="aps-workspace-grid">
+      <div class="aps-workspace-group">
+        <div class="aps-workspace-title">排产作业</div>
+        <div class="aps-workspace-actions">
+          {{ ui.link_button('执行排产', url_for('scheduler.batches_page'), 'primary', 'md') }}
+          {{ ui.link_button('批次管理', url_for('scheduler.batches_manage_page'), 'secondary', 'md') }}
+          {{ ui.link_button('设备甘特图', url_for('scheduler.gantt_page', view='machine'), 'secondary', 'md') }}
+          {{ ui.link_button('资源排班', url_for('scheduler.resource_dispatch_page'), 'secondary', 'md') }}
+        </div>
+      </div>
+
+      <div class="aps-workspace-group">
+        <div class="aps-workspace-title">基础资料</div>
+        <div class="aps-workspace-actions">
+          {{ ui.link_button('工艺模板', url_for('process.list_parts'), 'secondary', 'md') }}
+          {{ ui.link_button('设备管理', url_for('equipment.list_page'), 'secondary', 'md') }}
+          {{ ui.link_button('人员管理', url_for('personnel.list_page'), 'secondary', 'md') }}
+          {{ ui.link_button('工作日历', url_for('scheduler.calendar_page'), 'secondary', 'md') }}
+        </div>
+      </div>
+
+      <div class="aps-workspace-group">
+        <div class="aps-workspace-title">分析复盘</div>
+        <div class="aps-workspace-actions">
+          {{ ui.link_button('报表中心', url_for('reports.index'), 'secondary', 'md') }}
+          {{ ui.link_button('周计划', url_for('scheduler.week_plan_page'), 'secondary', 'md') }}
+          {{ ui.link_button('排产历史', url_for('system.history_page'), 'secondary', 'md') }}
+        </div>
+      </div>
     </div>
   </div>
 {% endblock %}

@@ -199,11 +199,11 @@ def resource_dispatch_page():
         flash(user_visible_app_error_message(exc), "error")
         context = svc.build_page_context()
     except Exception:
-        current_app.logger.exception("加载资源排班中心页面失败")
+        current_app.logger.exception("加载资源排班页面失败")
         if request.args:
-            flash("加载资源排班中心页面失败，请稍后重试。", "error")
+            flash("加载资源排班页面失败，请稍后重试。", "error")
             return redirect(url_for("scheduler.resource_dispatch_page"))
-        flash("加载资源排班中心页面失败，请稍后重试。", "error")
+        flash("加载资源排班页面失败，请稍后重试。", "error")
         context = svc.build_page_context()
 
     context = dict(context)
@@ -217,7 +217,7 @@ def resource_dispatch_page():
 
     return render_template(
         "scheduler/resource_dispatch.html",
-        title="资源排班中心",
+        title="资源排班",
         data_url=url_for("scheduler.resource_dispatch_data"),
         export_url=export_url,
         **context,

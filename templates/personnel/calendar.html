@@ -5,33 +5,25 @@
 {% endblock %}
 
 {% block content %}
+  {% set calendar_actions %}
+    {{ ui.link_button('全局工作日历', url_for('scheduler.calendar_page'), 'secondary', 'md') }}
+    {{ ui.link_button('返回人员详情', url_for('personnel.detail_page', operator_id=operator.operator_id), 'secondary', 'md') }}
+  {% endset %}
+  {{ ui.aps_page_hero(
+    '个人工作日历',
+    '设置个人的特殊工作日，例如请假、加班、轮班；这些日期会优先于全局工作日历。',
+    actions_html=calendar_actions,
+    nav_html=ui.personnel_nav('list')
+  ) }}
+
   <div class="card">
-    <div class="page-header">
-      <div class="page-title-group"><h2 class="page-title">个人工作日历</h2></div>
-      <div class="page-actions page-actions-context"></div>
-    </div>
-    <p class="page-subtitle text-meta">工号：<strong>{{ operator.operator_id }}</strong>　姓名：<strong>{{ operator.name }}</strong></p>
-    <p class="text-meta">
-      这里用于设置个人的特殊工作日（如请假、加班、轮班），会覆盖全局日历。
+    {{ ui.aps_context_bar([
+      {'label': '工号', 'value': operator.operator_id},
+      {'label': '姓名', 'value': operator.name}
+    ]) }}
+    <div class="muted">
       未配置日期会自动使用全局日历；全局也没配时，按默认规则处理（工作日 8 小时，周末/假期不排产）。
-    </p>
-    {{ ui.personnel_nav('list') }}
-    <div class="inline-flex-wrap mt-2">
-      {% set global_cal_url = safe_url_for('scheduler.calendar_page') %}
-      {% if global_cal_url %}
-        {{ ui.link_button('全局工作日历', global_cal_url, 'secondary', 'sm') }}
-      {% else %}
-        <span class="muted">全局工作日历暂不可用，请重启系统后重试。</span>
-      {% endif %}
-      {{ ui.link_button('返回人员详情', url_for('personnel.detail_page', operator_id=operator.operator_id), 'secondary', 'sm') }}
     </div>
-    {% if not global_cal_url %}
-      <details class="debug-details muted mt-2">
-        <summary>排查信息</summary>
-        全局工作日历入口尚未启用。<br/>
-        当前入口暂不可用，请联系管理员更新系统或重启服务。
-      </details>
-    {% endif %}
   </div>
 
   <div class="card wc-card-allow-overflow">
@@ -42,11 +34,11 @@
       </div>
     {% endif %}
     <form method="post" action="{{ url_for('personnel.operator_calendar_upsert', operator_id=operator.operator_id) }}">
-      <div class="form-row calendar-upsert-row">
-        <div class="form-field wc-date-wrap">
+      <div class="aps-calendar-form-grid">
+        <div class="form-field wc-date-wrap aps-calendar-date-field">
           <label>日期</label>
-          <div class="inline-flex-wrap">
-            <input id="wcDateInput" name="date" required placeholder="如：2026-03-13" class="w-160">
+          <div class="aps-date-picker-field">
+            <input id="wcDateInput" name="date" required placeholder="如：2026-03-13">
             {{ ui.button('选择', 'secondary', 'sm', type_attr='button', element_id='wcDatePickBtn') }}
           </div>
           <div id="wcDateHint" class="muted mt-2"></div>
@@ -61,48 +53,50 @@
             <div class="wc-cal-foot muted">已配置日期会高亮；周末会单独标识。</div>
           </div>
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-day-type">
           <label>类型</label>
           <select name="day_type">
             <option value="workday">工作日</option>
             <option value="holiday">假期</option>
           </select>
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-start">
           <label>班次开始</label>
-          <input type="time" name="shift_start" value="08:00" class="w-140">
+          <input type="time" name="shift_start" value="08:00">
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-end">
           <label>班次结束（可选）</label>
-          <input type="time" name="shift_end" class="w-140">
+          <input type="time" name="shift_end">
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-hours">
           <label>可用工时（小时）</label>
-          <input name="shift_hours" type="number" min="0" step="0.25" placeholder="如：8" class="w-140">
+          <input name="shift_hours" type="number" min="0" step="0.25" placeholder="如：8">
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-efficiency">
           <label>效率（大于 0）</label>
-          <input name="efficiency" type="number" min="0.01" step="0.01" placeholder="如：1.0" class="w-140">
+          <input name="efficiency" type="number" min="0.01" step="0.01" placeholder="如：1.0">
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-allow-normal">
           <label>允许普通件</label>
           <select name="allow_normal">
             <option value="yes">是</option>
             <option value="no">否</option>
           </select>
         </div>
-        <div class="form-field">
+        <div class="form-field aps-calendar-allow-urgent">
           <label>允许急件/特急</label>
           <select name="allow_urgent">
             <option value="yes">是</option>
             <option value="no">否</option>
           </select>
         </div>
-        <div class="form-field calendar-upsert-remark">
+        <div class="form-field aps-calendar-remark">
           <label>说明</label>
           <input name="remark" placeholder="可选">
         </div>
-        <div class="calendar-upsert-submit">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
+      </div>
+      <div class="aps-calendar-actions">
+        {{ ui.button('保存', 'primary', 'md', type_attr='submit') }}
       </div>
       {% if holiday_default_efficiency_degraded %}
         <div class="muted mt-2">提示：当前“假期工作效率”配置无效，页面不会自动补全假期效率；请先到排产参数页修复后再继续保存个人日历。</div>
@@ -117,6 +111,7 @@
   <div class="card">
     <h3>已配置个人日历</h3>
     {% if rows and rows|length > 0 %}
+      <div class="aps-table-scroll">
       <table>
         <thead>
           <tr>
@@ -147,6 +142,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂未单独配置（将使用全局工作日历）。</div>
     {% endif %}

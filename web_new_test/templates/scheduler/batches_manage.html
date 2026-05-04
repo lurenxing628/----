@@ -2,33 +2,33 @@
 {% import "components/ui_macros.html" as ui %}
 {% import "components/excel_action_cards.html" as excel_cards_ui %}
 {% block content %}
-  <div class="card">
+  <div class="card aps-page-hero">
     <div class="page-header">
       <div class="page-title-group"><h2 class="page-title">批次管理</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">
-      管理批次的新增、复制、删除和批量修改。
+    <p class="aps-page-purpose">
+      <strong>本页用于：</strong>维护排产批次，支持新增、导入、复制、删除和批量修改。
     </p>
     {{ ui.scheduler_nav('batches_manage') }}
   </div>
 
   {{ excel_cards_ui.action_cards(
     '批量维护',
-    '批量导入/导出批次信息；手工新增继续使用下方表单。',
+    '适合 Excel 下发计划、整批新增或更新批次。',
     excel_cards,
     ui
   ) }}
 
-  <div class="card">
-    <h3 class="section-title">新增批次</h3>
+  <div class="card aps-scheduler-filter-card">
+    <h3 class="section-title">手工新增批次</h3>
     <form method="post" action="{{ url_for('scheduler.create_batch') }}">
       <div class="aps-form-grid">
         <div class="form-field">
           <label for="batchManageBatchIdInput">批次号</label>
           <input id="batchManageBatchIdInput" name="batch_id" required placeholder="如：B001">
         </div>
-        <div class="form-field min-w-260">
+        <div class="form-field">
           <label for="batchManagePartNoInput">图号</label>
           <select id="batchManagePartNoInput" name="part_no" required>
             <option value="">（请选择）</option>
@@ -39,11 +39,11 @@
         </div>
         <div class="form-field">
           <label for="batchManageQuantityInput">数量</label>
-          <input id="batchManageQuantityInput" name="quantity" required placeholder="如：50" class="w-120">
+          <input id="batchManageQuantityInput" name="quantity" required placeholder="如：50">
         </div>
         <div class="form-field">
           <label for="batchManageDueDateInput">交期（可选）</label>
-          <input id="batchManageDueDateInput" type="date" name="due_date" class="w-160">
+          <input id="batchManageDueDateInput" type="date" name="due_date">
         </div>
         <div class="form-field">
           <label for="batchManagePriorityInput">优先级</label>
@@ -63,7 +63,7 @@
         </div>
         <div class="form-field">
           <label for="batchManageReadyDateInput">齐套日期（可选）</label>
-          <input id="batchManageReadyDateInput" type="date" name="ready_date" class="w-160">
+          <input id="batchManageReadyDateInput" type="date" name="ready_date">
         </div>
         <div class="form-field aps-form-span-2">
           <label for="batchManageRemarkInput">备注</label>
@@ -72,9 +72,9 @@
         <div class="form-field aps-form-span-all">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
-            发现问题就停止创建工艺路线
+            资料不完整就停下
           </label>
-          <div class="muted text-xs aps-help-note">只在零件还没有工序模板、需要按工艺路线补建工序时生效。勾选后：资料不完整就停止创建并提示原因。不勾选：能确认的工序会继续处理；缺少外协周期时，本次会先按 1 天记录并提醒你补成真实周期，批次号、图号、数量这些必填项有问题仍然会报错。</div>
+          <div class="muted text-xs aps-help-note">只在批次需要按零件路线生成工序时生效。勾选后：缺工种、缺供应商或外协周期不正确时，会停止创建并提示原因。不勾选：能确认的工序会先生成；缺少外协周期时会先按 1 天记录并提醒补正。</div>
         </div>
         <div class="aps-form-actions aps-form-actions-end">{{ ui.button('创建批次', 'primary', 'md', type_attr='submit') }}</div>
       </div>
@@ -84,7 +84,7 @@
   <div class="card">
     <h3 class="section-title">批次列表</h3>
     <form method="get" action="{{ url_for('scheduler.batches_manage_page') }}" class="mb-2">
-      <div class="aps-filter-bar">
+      <div class="aps-scheduler-filter-grid">
         <div class="form-field">
           <label for="batchManageStatusFilter">状态</label>
           <select id="batchManageStatusFilter" name="status">
@@ -105,7 +105,7 @@
             <option value="no" {% if only_ready=='no' %}selected{% endif %}>未齐套</option>
           </select>
         </div>
-        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('查询', 'primary', 'md', type_attr='submit') }}</div>
+        <div class="aps-scheduler-filter-actions">{{ ui.button('查询', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
 
@@ -176,13 +176,6 @@
         </table>
         </div>
 
-        <div class="action-bar mt-3">
-          {{ ui.button('复制所选批次', 'secondary', 'md', type_attr='submit', formaction=url_for('scheduler.bulk_copy_batches'), confirm='将把所选批次逐个复制一份（批次号末尾数字自动 +1，其它尽量保持一致）。确定继续？') }}
-          {{ ui.button('删除所选批次', 'danger', 'md', type_attr='submit', formaction=url_for('scheduler.bulk_delete_batches'), confirm='确定删除所选批次吗？会同时删除这些批次下面的工序和排程记录（如果有）。') }}
-          {{ ui.button('批量修改', 'primary', 'md', type_attr='submit', confirm='确定批量修改所选批次吗？仅会修改你填写的字段。') }}
-          <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
-        </div>
-
         <div class="aps-form-grid mt-3">
           <div class="form-field">
             <label for="batchManageBulkPriorityInput">批量优先级（可选）</label>
@@ -200,6 +193,18 @@
           <div class="form-field aps-form-span-2">
             <label for="batchManageBulkRemarkInput">批量备注（可选）</label>
             <input id="batchManageBulkRemarkInput" name="bulk_remark" placeholder="填写则覆盖备注（留空则不修改）">
+          </div>
+        </div>
+
+        <div class="aps-action-card mt-3">
+          <div class="aps-action-card-actions">
+            {{ ui.button('复制所选', 'secondary', 'md', type_attr='submit', formaction=url_for('scheduler.bulk_copy_batches'), confirm='将把所选批次逐个复制一份（批次号末尾数字自动 +1，其它尽量保持一致）。确定继续？') }}
+            {{ ui.button('删除所选', 'danger', 'md', type_attr='submit', formaction=url_for('scheduler.bulk_delete_batches'), confirm='确定删除所选批次吗？会同时删除这些批次下面的工序和排程记录（如果有）。') }}
+            {{ ui.button('修改所选', 'primary', 'md', type_attr='submit', confirm='确定批量修改所选批次吗？仅会修改你填写的字段。') }}
+            <span class="aps-action-card-status">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
+          </div>
+          <div class="aps-action-card-note">
+            批量修改只会更新已填写的字段；留空字段不会覆盖原数据。复制和删除只作用于已勾选的批次。
           </div>
         </div>
       </form>

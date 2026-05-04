@@ -61,33 +61,47 @@
             <div class="sidebar-header">
                 APS 智能排产
             </div>
+            {% set ep = request.endpoint or '' %}
             <nav class="sidebar-nav">
-                <a href="{{ url_for('dashboard.index') }}" class="nav-item {% if request.endpoint == 'dashboard.index' %}active{% endif %}">
+                <a href="{{ url_for('dashboard.index') }}"
+                   class="nav-item {% if ep == 'dashboard.index' %}active{% endif %}"
+                   {% if ep == 'dashboard.index' %}aria-current="page"{% endif %}>
                     首页
                 </a>
-                <a href="{{ url_for('scheduler.batches_page') }}" class="nav-item {% if 'scheduler' in (request.endpoint or '') %}active{% endif %}">
+                <a href="{{ url_for('scheduler.batches_page') }}"
+                   class="nav-item {% if ep.startswith('scheduler.') %}active{% endif %}"
+                   {% if ep.startswith('scheduler.') %}aria-current="page"{% endif %}>
                     排产调度
                 </a>
-                <a href="{{ url_for('process.list_parts') }}" class="nav-item {% if 'process' in (request.endpoint or '') %}active{% endif %}">
+                <a href="{{ url_for('process.list_parts') }}"
+                   class="nav-item {% if ep.startswith('process.') %}active{% endif %}"
+                   {% if ep.startswith('process.') %}aria-current="page"{% endif %}>
                     工艺管理
                 </a>
-                <a href="{{ url_for('personnel.list_page') }}" class="nav-item {% if 'personnel' in (request.endpoint or '') %}active{% endif %}">
+                <a href="{{ url_for('personnel.list_page') }}"
+                   class="nav-item {% if ep.startswith('personnel.') %}active{% endif %}"
+                   {% if ep.startswith('personnel.') %}aria-current="page"{% endif %}>
                     人员管理
                 </a>
-                <a href="{{ url_for('equipment.list_page') }}" class="nav-item {% if 'equipment' in (request.endpoint or '') %}active{% endif %}">
+                <a href="{{ url_for('equipment.list_page') }}"
+                   class="nav-item {% if ep.startswith('equipment.') %}active{% endif %}"
+                   {% if ep.startswith('equipment.') %}aria-current="page"{% endif %}>
                     设备管理
                 </a>
-                <a href="{{ url_for('material.materials_page') }}" class="nav-item {% if 'material' in (request.endpoint or '') %}active{% endif %}">
+                <a href="{{ url_for('material.materials_page') }}"
+                   class="nav-item {% if ep.startswith('material.') %}active{% endif %}"
+                   {% if ep.startswith('material.') %}aria-current="page"{% endif %}>
                     物料管理
                 </a>
-                <a href="{{ url_for('reports.index') }}" class="nav-item {% if 'reports' in (request.endpoint or '') %}active{% endif %}">
+                <a href="{{ url_for('reports.index') }}"
+                   class="nav-item {% if ep.startswith('reports.') %}active{% endif %}"
+                   {% if ep.startswith('reports.') %}aria-current="page"{% endif %}>
                     统计报表
                 </a>
-                <a href="{{ url_for('system.backup_page') }}" class="nav-item {% if 'system' in (request.endpoint or '') %}active{% endif %}">
+                <a href="{{ url_for('system.backup_page') }}"
+                   class="nav-item {% if ep.startswith('system.') %}active{% endif %}"
+                   {% if ep.startswith('system.') %}aria-current="page"{% endif %}>
                     系统管理
-                </a>
-                <a href="{{ url_for('excel_demo.index') }}" class="nav-item {% if 'excel_demo' in (request.endpoint or '') %}active{% endif %}">
-                    Excel 演示
                 </a>
             </nav>
             {{ ui.floating_manual_button() }}
@@ -101,26 +115,6 @@
             <header class="top-header">
                 <h2 style="font-size: 1.125rem; font-weight: 600;">{% block page_title %}{{ title or 'APS 系统' }}{% endblock %}</h2>
                 <div class="user-info text-muted aps-header-controls">
-                    <form action="{{ url_for('system.ui_mode_set') }}" method="POST" class="aps-mode-picker">
-                        <input type="hidden" name="next" value="{{ request.full_path }}">
-                        <span class="text-muted aps-mode-label">界面</span>
-                        <div class="aps-mode-seg" role="group" aria-label="界面模式">
-                            <button
-                                type="submit"
-                                name="mode"
-                                value="v1"
-                                class="aps-mode-seg-btn {% if ui_mode == 'v1' %}is-active{% endif %}"
-                                aria-pressed="{% if ui_mode == 'v1' %}true{% else %}false{% endif %}"
-                            >经典</button>
-                            <button
-                                type="submit"
-                                name="mode"
-                                value="v2"
-                                class="aps-mode-seg-btn {% if ui_mode == 'v2' %}is-active{% endif %}"
-                                aria-pressed="{% if ui_mode == 'v2' %}true{% else %}false{% endif %}"
-                            >现代</button>
-                        </div>
-                    </form>
                     <button
                         type="button"
                         id="apsTableDensityToggle"

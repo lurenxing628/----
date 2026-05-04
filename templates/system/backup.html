@@ -1,11 +1,14 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
-  <div class="card">
+  <div class="card aps-page-hero">
     <div class="page-header">
       <div class="page-title-group"><h2 class="page-title">系统管理 - 备份/恢复</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
+    <p class="aps-page-purpose">
+      <strong>本页用于：</strong>手动备份、恢复数据、清理旧备份，并切换现代/经典界面。
+    </p>
     {{ ui.system_nav('backup') }}
     <details class="muted">
       <summary>恢复说明</summary>
@@ -27,18 +30,50 @@
   </div>
 
   <div class="card">
+    <h3>界面设置</h3>
+    <p class="text-meta aps-copy-measure">
+      日常使用默认进入现代界面。经典界面只作为兼容入口保留，适合维护人员排查旧页面问题时临时切换。
+    </p>
+    <form action="{{ url_for('system.ui_mode_set') }}" method="POST" class="aps-system-mode-form">
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <div class="aps-system-mode-status">
+        当前界面：<strong>{{ '经典' if ui_mode == 'v1' else '现代' }}</strong>
+      </div>
+      <div class="aps-form-actions mt-2" role="group" aria-label="界面模式">
+        <button
+          type="submit"
+          name="mode"
+          value="v2"
+          class="btn btn-primary btn-md"
+          aria-pressed="{% if ui_mode == 'v2' %}true{% else %}false{% endif %}"
+        >使用现代界面</button>
+        <button
+          type="submit"
+          name="mode"
+          value="v1"
+          class="btn btn-secondary btn-md"
+          aria-pressed="{% if ui_mode == 'v1' %}true{% else %}false{% endif %}"
+        >切到经典界面</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
     <h3>备份列表</h3>
-    <div class="aps-form-actions mb-3">
-      <form method="post" action="{{ url_for('system.backup_create') }}" class="d-inline-block">
+    <div class="aps-settings-action-grid mb-3">
+      <form method="post" action="{{ url_for('system.backup_create') }}" class="aps-settings-action-card">
         {{ ui.button('手动备份', 'primary', 'md', type_attr='submit') }}
+        <div class="aps-summary-desc">立即生成一份当前数据备份。</div>
       </form>
-      <form method="post" action="{{ url_for('system.backup_cleanup') }}" class="d-inline-block">
-        {{ ui.button('清理过期备份（保留 ' ~ keep_days ~ ' 天）', 'secondary', 'md', type_attr='submit') }}
+      <form method="post" action="{{ url_for('system.backup_cleanup') }}" class="aps-settings-action-card">
+        {{ ui.button('清理过期备份', 'secondary', 'md', type_attr='submit') }}
+        <div class="aps-summary-desc">会保留最近 {{ keep_days }} 天的备份文件。</div>
       </form>
       {% if backups %}
-        <form id="backupBatchDeleteForm" method="post" action="{{ url_for('system.backup_delete_batch') }}" class="d-inline-block"
+        <form id="backupBatchDeleteForm" method="post" action="{{ url_for('system.backup_delete_batch') }}" class="aps-settings-action-card"
               data-confirm="确认批量删除选中的备份文件？删除后不可恢复。">
           {{ ui.button('批量删除选中', 'danger', 'md', type_attr='submit') }}
+          <div class="aps-summary-desc">只删除列表中已勾选的备份文件，删除后不能恢复。</div>
         </form>
       {% endif %}
     </div>
@@ -107,8 +142,8 @@
     {% set st_bc = job_state.auto_backup_cleanup if job_state else None %}
 
     <form method="post" action="{{ url_for('system.backup_settings') }}">
-      <div class="aps-form-grid">
-        <div class="aps-summary-item aps-form-span-2">
+      <div class="aps-settings-grid">
+        <div class="aps-summary-item">
           <div class="aps-summary-label">自动备份</div>
           <label class="mt-2 d-inline-block">
             <input type="checkbox" name="auto_backup_enabled" {{ 'checked' if settings and settings.auto_backup_enabled=='yes' else '' }}>
@@ -143,7 +178,7 @@
           {% endif %}
         </div>
 
-        <div class="aps-summary-item aps-form-span-2">
+        <div class="aps-summary-item">
           <div class="aps-summary-label">自动清理备份</div>
           <label class="mt-2 d-inline-block">
             <input type="checkbox" name="auto_backup_cleanup_enabled" {{ 'checked' if settings and settings.auto_backup_cleanup_enabled=='yes' else '' }}>
@@ -182,9 +217,9 @@
           {% endif %}
         </div>
 
-        <div class="aps-form-actions aps-form-span-all">
-          {{ ui.button('保存设置', 'primary', 'md', type_attr='submit') }}
-        </div>
+      </div>
+      <div class="aps-form-actions mt-3">
+        {{ ui.button('保存设置', 'primary', 'md', type_attr='submit') }}
       </div>
     </form>
   </div>
@@ -293,12 +328,14 @@
                 <td>
                   <form method="post" action="{{ url_for('system.plugin_toggle') }}">
                     <input type="hidden" name="plugin_id" value="{{ s.plugin_id }}">
-                    <label class="muted">
-                      <input type="checkbox" name="enabled" {{ 'checked' if s.enabled == 'yes' else '' }}>
-                      启用
-                    </label>
-                    {{ ui.button('保存', 'secondary', 'sm', type_attr='submit', class='ml-2') }}
-                    <div class="muted mt-1">
+                    <div class="aps-inline-form-actions">
+                      <label class="muted">
+                        <input type="checkbox" name="enabled" {{ 'checked' if s.enabled == 'yes' else '' }}>
+                        启用
+                      </label>
+                      {{ ui.button('保存', 'secondary', 'sm', type_attr='submit') }}
+                    </div>
+                    <div class="aps-table-cell-note">
                       保存后重启软件才会真正生效。<br/>
                       当前开关依据：
                       {% if s.enabled_source == 'config' %}

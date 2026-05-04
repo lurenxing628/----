@@ -164,7 +164,7 @@ class PartService:
             if parse_result is not None:
                 self._save_template_no_tx(part_no=pn, parse_result=parse_result)
 
-        # 如果填写了工艺路线字符串，则尝试自动解析（失败时仍保留零件）
+        # 如果填写了路线文字，则尝试生成工序清单（失败时仍保留零件）
         if rr and str(rr).strip() and not strict_mode:
             try:
                 auto_parse_result = self.reparse_and_save(part_no=pn, route_raw=rr, strict_mode=False)
@@ -172,10 +172,10 @@ class PartService:
             except (BusinessError, ValidationError) as exc:
                 # 不阻断创建；错误在详情页可见
                 detail = getattr(exc, "message", None) or str(exc)
-                safe_warning(self.logger, f"零件“{pn}”工艺路线自动解析失败，已保留零件：{detail}")
+                safe_warning(self.logger, f"零件“{pn}”路线文字生成工序清单失败，已保留零件：{detail}")
                 append_unique_text_messages(
                     user_warnings,
-                    f"零件已创建，但工序模板未成功生成，请检查工艺路线并重新解析。原因：{detail}",
+                    f"零件已创建，但工序清单未成功生成，请检查路线文字并重新生成工序清单。原因：{detail}",
                 )
 
         return self._get_or_raise(pn)

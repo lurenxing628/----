@@ -292,10 +292,10 @@ class MachineService:
         if self.repo.has_any_batch_operations_machine_reference():
             raise BusinessError(
                 ErrorCode.MACHINE_IN_USE,
-                "已有批次工序引用了设备，不能执行替换（清空后导入）。请先解除引用或改用覆盖/追加。",
+                "已有批次工序引用了设备，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。",
             )
         if self.repo.has_any_schedule_machine_reference():
             raise BusinessError(
                 ErrorCode.MACHINE_IN_USE,
-                "已有排程结果引用了设备，不能执行替换（清空后导入）。请先解除引用或改用覆盖/追加。",
+                "已有排程结果引用了设备，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。",
             )

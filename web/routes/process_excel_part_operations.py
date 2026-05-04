@@ -14,7 +14,7 @@ from web.ui_mode import render_ui_template as render_template
 from .process_bp import bp
 
 # ============================================================
-# Excel：零件工序模板导出（PartOperations）
+# Excel：零件工序清单导出（PartOperations）
 # ============================================================
 
 
@@ -22,7 +22,7 @@ from .process_bp import bp
 def excel_part_ops_page():
     return render_template(
         "process/excel_part_ops_export.html",
-        title="导出零件工序模板",
+        title="导出工序清单",
         export_url=url_for("process.excel_part_ops_export"),
         back_url=url_for("process.list_parts"),
         back_label="返回零件工艺模板",
@@ -61,7 +61,7 @@ def excel_part_ops_export():
         op_logger=getattr(g, "op_logger", None),
         module="process",
         target_type="part_operation",
-        template_or_export_type="零件工序模板导出.xlsx",
+        template_or_export_type="零件工序清单导出.xlsx",
         filters={},
         row_count=len(rows),
         time_range={},
@@ -71,6 +71,6 @@ def excel_part_ops_export():
     return send_file(
         output,
         as_attachment=True,
-        download_name="零件工序模板.xlsx",
+        download_name="零件工序清单.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )

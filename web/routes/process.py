@@ -3,13 +3,13 @@
 
 说明：为了降低单文件复杂度，将原 `web/routes/process.py` 按职责拆分：
 - `process_bp.py`：bp + 通用中文显示 + Excel 解析工具
-- `process_parts.py`：零件/工序模板/外部组
+- `process_parts.py`：零件/工序清单/外部组
 - `process_op_types.py`：工种配置页面
 - `process_suppliers.py`：供应商配置页面
 - `process_excel_op_types.py`：工种配置 Excel
 - `process_excel_suppliers.py`：供应商配置 Excel
 - `process_excel_routes.py`：零件工艺路线 Excel
-- `process_excel_part_operations.py`：零件工序模板导出
+- `process_excel_part_operations.py`：零件工序清单导出
 - `process_excel_part_operation_hours.py`：零件工序工时 Excel 导入/导出
 """
 
@@ -28,4 +28,3 @@ from . import process_suppliers as _suppliers  # noqa: F401
 from .process_bp import bp
 
 __all__ = ["bp"]
-

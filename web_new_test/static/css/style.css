@@ -15,6 +15,16 @@
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
     --radius-md: 0.375rem;
+    --sidebar-bg: #0f172a;
+    --sidebar-bg-soft: #111827;
+    --sidebar-border: rgba(148, 163, 184, 0.18);
+    --sidebar-text: #cbd5e1;
+    --sidebar-text-strong: #f8fafc;
+    --sidebar-muted: #94a3b8;
+    --sidebar-hover-bg: rgba(148, 163, 184, 0.10);
+    --sidebar-active-bg: #ffffff;
+    --sidebar-active-text: #0f172a;
+    --sidebar-active-accent: #60a5fa;
     /* Win7/离线友好：优先 Segoe UI + 微软雅黑，兼容中英文混排 */
     --font-family: "Segoe UI", "Microsoft YaHei", "Microsoft YaHei UI", system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC", Arial, sans-serif;
 }
@@ -47,27 +57,32 @@ button, input, select, textarea {
 
 .sidebar {
     width: var(--sidebar-width);
-    background-color: #1e293b;
-    color: #f8fafc;
+    background: linear-gradient(180deg, var(--sidebar-bg) 0%, var(--sidebar-bg-soft) 100%);
+    color: var(--sidebar-text);
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
+    border-right: 1px solid rgba(15, 23, 42, 0.22);
 }
 
 .sidebar-header {
     height: var(--header-height);
     display: flex;
     align-items: center;
-    padding: 0 1.5rem;
+    padding: 0 1.25rem;
     font-weight: bold;
-    font-size: 1.25rem;
-    border-bottom: 1px solid #334155;
-    color: white;
+    font-size: 1.15rem;
+    letter-spacing: 0.02em;
+    border-bottom: 1px solid var(--sidebar-border);
+    color: var(--sidebar-text-strong);
 }
 
 .sidebar-nav {
     flex: 1;
-    padding: 1rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.875rem 0.625rem;
     overflow-y: auto;
 }
 
@@ -75,22 +90,56 @@ button, input, select, textarea {
 .sidebar .sidebar-footnote {
     padding: 1rem;
     font-size: 0.75rem;
-    color: #94a3b8;
-    border-top: 1px solid #334155;
+    color: var(--sidebar-muted);
+    border-top: 1px solid var(--sidebar-border);
 }
 
 .nav-item {
-    display: block;
-    padding: 0.75rem 1.5rem;
-    color: #cbd5e1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 0.875rem;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: var(--sidebar-text);
     text-decoration: none;
+    font-weight: 600;
+    line-height: 1.2;
     /* Win7 友好：避免 transition: all 触发布局类属性进入动画管线 */
-    transition: background-color 0.2s, color 0.2s;
+    transition: background-color 0.2s, color 0.2s, border-color 0.2s;
 }
 
-.nav-item:hover, .nav-item.active {
-    background-color: #334155;
-    color: white;
+.nav-item:hover {
+    background: var(--sidebar-hover-bg);
+    color: var(--sidebar-text-strong);
+    text-decoration: none;
+}
+
+.nav-item.active,
+.nav-item[aria-current="page"] {
+    background: var(--sidebar-active-bg);
+    color: var(--sidebar-active-text);
+    border-color: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.22);
+}
+
+.nav-item.active::before,
+.nav-item[aria-current="page"]::before {
+    content: "";
+    position: absolute;
+    left: 0.45rem;
+    top: 0.65rem;
+    bottom: 0.65rem;
+    width: 3px;
+    border-radius: 999px;
+    background: var(--sidebar-active-accent);
+}
+
+.nav-item.active:hover,
+.nav-item[aria-current="page"]:hover {
+    background: var(--sidebar-active-bg);
+    color: var(--sidebar-active-text);
 }
 
 .main-content {

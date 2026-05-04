@@ -1,24 +1,11 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group">
-        <h2 class="page-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-chart"/></svg> 报表中心</h2>
-      </div>
-      <div class="page-actions page-actions-context"></div>
-    </div>
-    <p class="muted">这些报表主要根据排产历史版本来统计。请先完成一次排产；如果当前版本或日期范围没有结果，页面会显示为空，也不会导出空 Excel。</p>
-    {{ ui.reports_nav('index') }}
-    {% if has_history %}
-      <div class="aps-summary-grid">
-        {{ ui.summary_item('最新排产版本', 'v' ~ latest_version.version) }}
-        {{ ui.summary_item('超期批次', overdue_count ~ ' 个') }}
-      </div>
-    {% else %}
-      <div class="muted mt-2">暂无排产历史，请先执行排产后再查看报表。</div>
-    {% endif %}
-  </div>
+  {{ ui.aps_page_hero(
+    '报表中心',
+    '根据排产历史版本查看超期、资源负荷和停机影响；没有排产结果时页面会显示为空，也不会导出空 Excel。',
+    nav_html=ui.reports_nav('index')
+  ) }}
 
   {% if has_history %}
     <div class="stat-grid">
@@ -34,8 +21,10 @@
   {% endif %}
 
   <div class="card">
-    <h3>报表总览</h3>
-    <div class="muted mb-2">选择报表类型查看详细数据。有可导出的结果时，页面会提供 Excel 导出按钮。</div>
+    {{ ui.aps_card_header('报表总览', '选择报表类型查看详细数据。有可导出的结果时，页面会提供 Excel 导出按钮。') }}
+    {% if not has_history %}
+      <div class="muted mb-2">暂无排产历史，请先执行排产后再查看报表。</div>
+    {% endif %}
     <div class="nav-grid">
       <a href="{{ url_for('reports.overdue_page') }}" class="nav-card">
         <div class="nav-card-title"><svg class="icon"><use href="{{ url_for('static', filename='icons.svg') }}#icon-warn"/></svg> 超期清单</div>

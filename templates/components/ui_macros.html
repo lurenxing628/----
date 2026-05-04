@@ -55,6 +55,72 @@
 </div>
 {% endmacro %}
 
+{% macro aps_page_hero(title, purpose=None, actions_html='', nav_html='', meta_items=()) %}
+<div class="card aps-page-hero">
+  <div class="page-header">
+    <div class="page-title-group"><h2 class="page-title">{{ title }}</h2></div>
+    {% if actions_html %}
+      <div class="page-actions page-actions-context">{{ actions_html }}</div>
+    {% endif %}
+  </div>
+  {% if purpose %}
+    <p class="aps-page-purpose">
+      <strong>本页用于：</strong>{{ purpose }}
+    </p>
+  {% endif %}
+  {% if meta_items %}
+    <div class="aps-page-meta-row">
+      {% for item in meta_items %}
+        {% if item is mapping %}
+          <span><strong>{{ item.label }}：</strong>{{ item.value }}</span>
+        {% else %}
+          <span>{{ item }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% if nav_html %}
+    {{ nav_html }}
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro aps_context_bar(items, class='') %}
+  {% if items %}
+    <div class="aps-context-bar {{ class }}" role="list">
+      {% for item in items %}
+        {% if item is mapping %}
+          {% set value = item.value %}
+          {% if value is not none and value|string|trim != '' %}
+            <div class="aps-context-item" role="listitem">
+              <span class="aps-context-label">{{ item.label }}</span>
+              <span class="aps-context-value">{{ value }}</span>
+            </div>
+          {% endif %}
+        {% elif item %}
+          <div class="aps-context-item" role="listitem">
+            <span class="aps-context-value">{{ item }}</span>
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% macro aps_card_header(title, desc=None, actions_html='') %}
+<div class="aps-card-header">
+  <div>
+    <h3 class="aps-card-title">{{ title }}</h3>
+    {% if desc %}
+      <p class="aps-card-desc">{{ desc }}</p>
+    {% endif %}
+  </div>
+  {% if actions_html %}
+    <div class="aps-card-actions">{{ actions_html }}</div>
+  {% endif %}
+</div>
+{% endmacro %}
+
 {% macro manual_entry_url(endpoint=None, src=None) -%}
 {{ get_manual_url(endpoint=endpoint, src=src) or '' }}
 {%- endmacro %}
@@ -69,9 +135,9 @@
 
 {% macro excel_import_mode_help(mode_options=None) %}
 {% set default_mode_options = [
-  {'value': 'overwrite', 'label': '覆盖（相同编号更新）'},
-  {'value': 'append', 'label': '追加（已存在则跳过）'},
-  {'value': 'replace', 'label': '替换（清空后导入）'}
+  {'value': 'overwrite', 'label': '更新已有，新增缺少'},
+  {'value': 'append', 'label': '只导入新编号'},
+  {'value': 'replace', 'label': '清空本类数据后重导'}
 ] %}
 {% set selected_mode_options = mode_options if mode_options else default_mode_options %}
 <div class="field-help no-print">
@@ -79,7 +145,7 @@
   <ul class="list-tight">
     <li>模板文件只支持 <code>.xlsx</code>，表头不要改。</li>
     <li>系统只读取第一个工作表，不要把有效数据挪到第二个工作表。</li>
-    <li>先“上传并预览”，把错误行全部修完，再点“确认导入”。</li>
+    <li>先“上传 Excel 并检查”，把错误行全部修完，再点“确认写入系统”。</li>
     <li>只要有 1 行是“错误”，整份文件都不会导入。</li>
     <li>导入完成后，建议再导出一次当前数据做复核。</li>
     <li>单次上传文件大小不超过 16MB。</li>
@@ -88,12 +154,17 @@
   <ul class="list-tight">
     {% for opt in selected_mode_options %}
       {% set opt_value = excel_import_option_value(opt) | trim %}
-      {% if opt_value == 'overwrite' %}
-        <li><strong>覆盖</strong>：已存在的数据会更新，不存在的会新增。</li>
+      {% set opt_label = excel_import_option_label(opt) | trim %}
+      {% if opt_value == 'overwrite' and opt_label == '更新已有工时' %}
+        <li><strong>更新已有工时</strong>：编号和工序匹配的行会更新工时。</li>
+      {% elif opt_value == 'append' and opt_label == '只补空工时' %}
+        <li><strong>只补空工时</strong>：只补换型时间和单件工时都还是 0 的工序；已经填过工时的工序不会被改。</li>
+      {% elif opt_value == 'overwrite' %}
+        <li><strong>更新已有，新增缺少</strong>：编号已存在就更新，不存在就新增。</li>
       {% elif opt_value == 'append' %}
-        <li><strong>追加</strong>：已存在的数据跳过，只补新数据。</li>
+        <li><strong>只导入新编号</strong>：编号已存在的行会跳过，只补新数据。</li>
       {% elif opt_value == 'replace' %}
-        <li><strong>替换</strong>：先清空这一类数据再导入，执行前务必确认影响范围。</li>
+        <li><strong>清空本类数据后重导</strong>：先清空这一类数据，再按 Excel 写入；适合整批重做，执行前请确认影响范围。</li>
       {% endif %}
     {% endfor %}
   </ul>
@@ -112,7 +183,7 @@
   {{ link_button('执行排产', url_for('scheduler.batches_page'), 'primary' if active == 'batches' else 'secondary', size) }}
   {{ link_button('批次管理', url_for('scheduler.batches_manage_page'), 'primary' if active == 'batches_manage' else 'secondary', size) }}
   {{ link_button('高级设置/模板', url_for('scheduler.config_page'), 'primary' if active == 'config' else 'secondary', size) }}
-  {{ link_button('资源排班中心', url_for('scheduler.resource_dispatch_page'), 'primary' if active == 'resource_dispatch' else 'secondary', size) }}
+  {{ link_button('资源排班', url_for('scheduler.resource_dispatch_page'), 'primary' if active == 'resource_dispatch' else 'secondary', size) }}
   {{ link_button('设备甘特图', url_for('scheduler.gantt_page', view='machine'), 'primary' if active == 'gantt_machine' else 'secondary', size) }}
   {{ link_button('人员甘特图', url_for('scheduler.gantt_page', view='operator'), 'primary' if active == 'gantt_operator' else 'secondary', size) }}
   {{ link_button('排产优化分析', url_for('scheduler.analysis_page'), 'primary' if active == 'analysis' else 'secondary', size) }}

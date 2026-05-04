@@ -115,7 +115,7 @@ def _render_excel_routes_page(
 ):
     return render_template(
         "process/excel_import_routes.html",
-        title="批量维护零件工艺路线",
+        title="批量维护路线文字",
         existing_list=list(existing.values()),
         preview_rows=preview_rows,
         raw_rows_json=raw_rows_json,
@@ -224,7 +224,7 @@ def excel_routes_confirm():
         id_column="图号",
         extra_state=_route_parse_extra_state(part_svc, strict_mode=strict_mode),
     ):
-        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_routes_page(
             existing=existing,
             preview_rows=None,
@@ -270,7 +270,7 @@ def excel_routes_confirm():
             # 若存在批次引用，删除 Parts 会触发外键错误，因此这里做保护
             batch_q = BatchQueryService(g.db, op_logger=getattr(g, "op_logger", None))
             if batch_q.has_any():
-                raise ValidationError("已存在批次数据，不能执行“替换（清空后导入）”。请改用“覆盖/追加”。")
+                raise ValidationError("已存在批次数据，不能执行“清空本类数据后重导”。请改用“更新已有，新增缺少”或“只导入新编号”。")
             part_svc.delete_all_no_tx()
             existing = {}
 

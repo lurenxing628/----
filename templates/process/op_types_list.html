@@ -2,13 +2,13 @@
 {% import "components/ui_macros.html" as ui %}
 {% import "components/excel_action_cards.html" as excel_cards_ui %}
 {% block content %}
-  <div class="card">
+  <div class="card aps-page-hero">
     <div class="page-header">
       <div class="page-title-group"><h2 class="page-title">工种配置</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">
-      用于标记每道工序是自己做（自制）还是交给供应商做（外协）。添加零件或导入工艺路线时，如果没有勾选“发现问题就停下”，没配置过的工种会先按外协处理并提示你补；勾选后会直接报错，要求先补工种。
+    <p class="aps-page-purpose aps-copy-measure">
+      <strong>本页用于：</strong>维护自制/外协工种，供路线文字生成工序时使用。
     </p>
     {{ ui.process_nav('op_types') }}
   </div>

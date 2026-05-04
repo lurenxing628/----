@@ -139,37 +139,15 @@
     }
   </style>
 
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group"><h2 class="page-title">排产高级设置</h2></div>
-    </div>
-    <p class="page-subtitle text-meta">这里可以调整排产方式。日常建议先选常用方案，必要时再改详细设置。</p>
-    {{ ui.scheduler_nav('config') }}
-  </div>
+  {{ ui.aps_page_hero(
+    '排产高级设置',
+    '调整排产方式、常用方案和高级参数，日常建议先选常用方案，必要时再改详细设置。',
+    actions_html=ui.link_button('去执行排产', url_for('scheduler.batches_page'), 'primary', 'md'),
+    nav_html=ui.scheduler_nav('config')
+  ) }}
 
   <div class="card">
-    <h3 class="section-title">常用方案</h3>
-    <div class="aps-summary-grid">
-      {{ ui.summary_item('已选方案', current_config_state.baseline_label if current_config_state else ('自定义' if not active_preset or active_preset == 'custom' else active_preset), '这是当前设置对照的方案。') }}
-    {% if current_config_state %}
-      {{ ui.summary_item('当前运行配置', current_config_state.status_label, current_config_state.label) }}
-      {% if current_config_state.repair_notices %}
-        <ul class="muted scheduler-config-repair-notices aps-form-span-all">
-          {% for notice in current_config_state.repair_notices %}
-            <li>
-              {{ notice.message or current_config_state.label }}
-              {% if notice.field_labels %}
-                <div class="aps-summary-desc mt-1">涉及字段：{{ notice.field_labels|join('、') }}</div>
-              {% endif %}
-            </li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    {% endif %}
-    {% if auto_assign_persist_state %}
-      {{ ui.summary_item('保存系统补齐的设备和人员', auto_assign_persist_state.label, auto_assign_persist_state.description) }}
-    {% endif %}
-    </div>
+    {{ ui.aps_card_header('常用方案', '先切换常用方案；需要长期复用时，可以把当前高级设置保存成新方案。') }}
 
     {% set preset_apply_url = safe_url_for('scheduler.preset_apply') %}
     {% set preset_save_url = safe_url_for('scheduler.preset_save') %}
@@ -187,13 +165,13 @@
       </details>
     {% endif %}
 
-    <div class="aps-settings-grid mt-3">
+    <div class="aps-settings-action-grid mt-3">
       {% if preset_apply_url %}
-        <form method="post" action="{{ preset_apply_url }}" class="aps-filter-bar">
+        <form method="post" action="{{ preset_apply_url }}" class="aps-settings-action-card">
           <input type="hidden" name="next" value="{{ request.full_path }}">
           <div class="form-field">
-            <label>切换方案</label>
-            <select name="preset_name" data-auto-submit="1" class="w-220">
+            <label for="schedulerPresetApply">切换方案</label>
+            <select id="schedulerPresetApply" name="preset_name" data-auto-submit="1" class="w-220">
               <option value="custom" {% if not active_preset or active_preset == 'custom' %}selected{% endif %}>当前手动设置</option>
               {% for p in presets or [] %}
                 <option value="{{ p.name }}" {% if active_preset == p.name %}selected{% endif %}>{{ p.name }}</option>
@@ -204,20 +182,23 @@
       {% endif %}
 
       {% if preset_save_url %}
-        <form method="post" action="{{ preset_save_url }}" class="aps-filter-bar" data-confirm="将当前高级设置保存为新模板，确定？">
+        <form method="post" action="{{ preset_save_url }}" class="aps-settings-action-card" data-confirm="将当前高级设置保存为新模板，确定？">
           <div class="form-field">
-            <label>保存为新方案</label>
-            <input name="preset_name" placeholder="输入方案名称" class="w-220">
+            <label for="schedulerPresetSave">保存为新方案</label>
+            <input id="schedulerPresetSave" name="preset_name" placeholder="输入方案名称" class="w-220">
           </div>
-          <div class="aps-form-actions aps-form-actions-end">{{ ui.button('保存为方案', 'secondary', 'md', type_attr='submit') }}</div>
+          <div class="aps-form-actions">{{ ui.button('保存为方案', 'secondary', 'md', type_attr='submit') }}</div>
         </form>
       {% endif %}
+    </div>
 
-      {% if preset_delete_url %}
-        <form method="post" action="{{ preset_delete_url }}" class="aps-filter-bar" data-confirm="确定删除该模板吗？">
+    {% if preset_delete_url %}
+      <div class="aps-danger-zone">
+        <div class="aps-summary-label">危险操作</div>
+        <form method="post" action="{{ preset_delete_url }}" class="aps-form-grid" data-confirm="确定删除该模板吗？">
           <div class="form-field">
-            <label>删除方案</label>
-            <select name="preset_name" class="w-180">
+            <label for="schedulerPresetDelete">删除方案</label>
+            <select id="schedulerPresetDelete" name="preset_name" class="w-220">
               <option value="">（请选择）</option>
               {% for p in presets or [] %}
                 {% if p.name not in (builtin_presets or []) %}
@@ -228,6 +209,32 @@
           </div>
           <div class="aps-form-actions aps-form-actions-end">{{ ui.button('删除', 'danger', 'md', type_attr='submit') }}</div>
         </form>
+        <div class="aps-risk-note">只删除保存的方案，不会删除批次、工艺、设备、人员或已经生成的排程记录。</div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    {{ ui.aps_card_header('当前配置状态', '这里只显示当前设置和方案之间的关系，不会直接修改参数。') }}
+    <div class="aps-summary-grid">
+      {{ ui.summary_item('已选方案', current_config_state.baseline_label if current_config_state else ('自定义' if not active_preset or active_preset == 'custom' else active_preset), '这是当前设置对照的方案。') }}
+      {% if current_config_state %}
+        {{ ui.summary_item('当前运行配置', current_config_state.status_label, current_config_state.label) }}
+        {% if current_config_state.repair_notices %}
+          <ul class="muted scheduler-config-repair-notices aps-form-span-all">
+            {% for notice in current_config_state.repair_notices %}
+              <li>
+                {{ notice.message or current_config_state.label }}
+                {% if notice.field_labels %}
+                  <div class="aps-summary-desc mt-1">涉及字段：{{ notice.field_labels|join('、') }}</div>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endif %}
+      {% if auto_assign_persist_state %}
+        {{ ui.summary_item('保存系统补齐的设备和人员', auto_assign_persist_state.label, auto_assign_persist_state.description) }}
       {% endif %}
     </div>
   </div>

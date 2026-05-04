@@ -1,19 +1,16 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group"><h2 class="page-title">班组管理</h2></div>
-      <div class="page-actions page-actions-context"></div>
-    </div>
-    <p class="page-subtitle text-meta">维护人员/设备所属班组，并查看当前引用数量。</p>
-    {{ ui.personnel_nav('teams') }}
-  </div>
+  {{ ui.aps_page_hero(
+    '班组管理',
+    '维护人员和设备所属班组，并查看每个班组当前被引用的数量。',
+    nav_html=ui.personnel_nav('teams')
+  ) }}
 
   <div class="card">
-    <h3>新增班组</h3>
+    {{ ui.aps_card_header('新增班组', '新增后可在人员或设备信息里选择这个班组。') }}
     <form method="post" action="{{ url_for('personnel.create_team') }}">
-      <div class="form-row">
+      <div class="aps-form-grid">
         <div class="form-field">
           <label>班组编号</label>
           <input name="team_id" required placeholder="如：TEAM-01">
@@ -34,7 +31,7 @@
           <label>备注</label>
           <input name="remark" placeholder="可选">
         </div>
-        <div>{{ ui.button('添加班组', 'primary', 'md', type_attr='submit') }}</div>
+        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('添加班组', 'primary', 'md', type_attr='submit') }}</div>
       </div>
     </form>
   </div>

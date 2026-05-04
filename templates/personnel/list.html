@@ -2,18 +2,20 @@
 {% import "components/ui_macros.html" as ui %}
 {% import "components/excel_action_cards.html" as excel_cards_ui %}
 {% block content %}
-  <div class="card">
+  <div class="card aps-page-hero">
     <div class="page-header">
       <div class="page-title-group"><h2 class="page-title">人员管理</h2></div>
       <div class="page-actions page-actions-context"></div>
     </div>
-    <p class="page-subtitle text-meta">管理操作员及其可操作的设备。</p>
+    <p class="aps-page-purpose">
+      <strong>本页用于：</strong>维护操作员、班组、状态和可操作设备关系。
+    </p>
     {{ ui.personnel_nav('list') }}
   </div>
 
   {{ excel_cards_ui.action_cards(
     '批量维护',
-    '批量导入/导出人员信息、人员设备关联和人员专属工作日历；手工新增继续使用下方表单。',
+    '适合整批维护人员清单、人员设备关系和个人日历。',
     excel_cards,
     ui
   ) }}

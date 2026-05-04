@@ -99,7 +99,7 @@ def _render_excel_batches_page(
 ):
     return render_template(
         "scheduler/excel_import_batches.html",
-        title="批量维护批次信息",
+        title="批量维护批次",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(
             preview_rows,
@@ -114,7 +114,7 @@ def _render_excel_batches_page(
         strict_mode_supported=True,
         strict_mode=bool(strict_mode),
         strict_mode_label="发现问题就停下",
-        strict_mode_help="勾选后：按工艺路线补建工序时，资料不完整就停下，并提示哪一行、哪一项要补。不勾选：能确认的数据会继续处理，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正；但批次号、图号、数量这类必填项有问题仍然会报错。",
+        strict_mode_help="勾选后：按路线生成工序时，资料不完整就停下，并提示哪一行、哪一项要补。不勾选：能确认的数据会继续处理，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正；但批次号、图号、数量这类必填项有问题仍然会报错。",
         confirm_url=url_for("scheduler.excel_batches_confirm"),
         template_download_url=url_for("scheduler.excel_batches_template"),
         export_url=url_for("scheduler.excel_batches_export"),
@@ -255,7 +255,7 @@ def excel_batches_confirm():
             rows=rows,
         ),
     ):
-        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_batches_page(
             existing_list=_sorted_existing_list(existing_preview_data),
             preview_rows=None,
@@ -317,7 +317,7 @@ def excel_batches_confirm():
         skip_count=skip_count,
         error_count=error_count,
         errors_sample=list(import_stats.get("errors_sample") or []),
-        suffix="（已自动从模板生成/重建工序）" if auto_generate_ops else "",
+        suffix="（已按模板自动生成批次工序）" if auto_generate_ops else "",
     )
     if auto_generate_ops:
         _surface_schedule_warnings(batch_svc.consume_user_visible_warnings(), limit=3)

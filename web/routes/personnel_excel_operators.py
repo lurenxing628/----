@@ -72,7 +72,7 @@ def _render_excel_operator_page(
         )
     return render_template(
         "personnel/excel_import_operator.html",
-        title="批量维护人员基本信息",
+        title="批量维护人员",
         existing_list=existing_list,
         preview_rows=project_preview_rows_for_display(preview_rows, {"状态": operator_status_label}),
         raw_rows_json=raw_rows_json,
@@ -213,7 +213,7 @@ def excel_operator_confirm():
         id_column="工号",
         extra_state=_operator_team_snapshot(team_svc),
     ):
-        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_operator_page(
             existing=existing,
             preview_rows=None,

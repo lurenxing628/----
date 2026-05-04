@@ -1,14 +1,11 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group"><h2 class="page-title">物料管理 - 物料主数据</h2></div>
-      <div class="page-actions page-actions-context"></div>
-    </div>
-    <p class="page-subtitle text-meta">维护物料主数据，可在下方导航切换到批次齐套管理。</p>
-    {{ ui.material_nav('materials') }}
-  </div>
+  {{ ui.aps_page_hero(
+    '物料管理 - 物料主数据',
+    '维护物料编号、名称、规格、库存和状态，可在下方导航切换到批次齐套管理。',
+    nav_html=ui.material_nav('materials')
+  ) }}
 
   <div class="card">
     <h3>新增物料</h3>

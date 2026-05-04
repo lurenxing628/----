@@ -48,7 +48,7 @@ def _render_excel_op_type_page(
 ):
     return render_template(
         "process/excel_import_op_types.html",
-        title="批量维护工种配置",
+        title="批量维护工种",
         existing_list=list(existing.values()),
         preview_rows=project_preview_rows_for_display(preview_rows, {"归属": source_type_label}),
         raw_rows_json=raw_rows_json,
@@ -194,7 +194,7 @@ def excel_op_type_confirm():
     op_type_svc = OpTypeService(g.db, op_logger=getattr(g, "op_logger", None))
     existing = op_type_svc.build_existing_for_excel()
     if preview_baseline_is_stale(payload.preview_baseline, existing_data=existing, mode=mode, id_column="工种ID"):
-        flash("导入被拒绝：数据已变化，需重新预览后再确认导入。", "error")
+        flash("导入被拒绝：数据已变化，请重新上传 Excel 并检查后再确认写入。", "error")
         return _render_excel_op_type_page(
             existing=existing,
             preview_rows=None,

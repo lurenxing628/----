@@ -22,21 +22,36 @@
   {% set base_start_date = ((request.args.get('start_date') or '') | trim) or None %}
   {% set base_end_date = ((request.args.get('end_date') or '') | trim) or None %}
 
-  <div class="card">
-    <div class="page-header">
-      <div class="page-title-group">
-        <h2 class="page-title">甘特图（{{ '设备视图' if view=='machine' else '人员视图' }}）</h2>
-        <div class="aps-summary-grid mt-2">
-          {{ ui.summary_item('显示范围', week_start ~ ' ～ ' ~ week_end) }}
-          {{ ui.summary_item('版本', ('第 ' ~ version ~ ' 版') if version is not none else '暂无排产版本') }}
-        </div>
-      </div>
-      <div class="page-actions page-actions-context"></div>
-    </div>
-    {{ ui.scheduler_nav('gantt_' ~ view) }}
-  </div>
+  {{ ui.aps_page_hero(
+    '甘特图（' ~ ('设备视图' if view=='machine' else '人员视图') ~ '）',
+    '查看一周内排程任务在设备或人员上的时间安排，排产完成后这里会显示条形图。',
+    actions_html=ui.link_button('去执行排产', url_for('scheduler.batches_page'), 'primary', 'md'),
+    nav_html=ui.scheduler_nav('gantt_' ~ view)
+  ) }}
 
+  {% if not has_history %}
+  <div class="card aps-empty-state">
+    {{ ui.aps_context_bar([
+      {'label': '显示范围', 'value': week_start ~ ' ～ ' ~ week_end},
+      {'label': '版本', 'value': (('第 ' ~ version ~ ' 版') if version is not none else '暂无排产版本')}
+    ]) }}
+    <h3 class="section-title">还没有可查看的甘特图</h3>
+    <p class="text-meta">
+      系统里还没有排产版本。请先去执行一次排产；排产完成后，这里会显示设备或人员视角的排程条形图。
+      如果只是想先准备基础资料，可以先检查批次、工艺和工作日历。
+    </p>
+    <div class="aps-empty-state__actions">
+      {{ ui.link_button('执行排产', url_for('scheduler.batches_page'), 'primary', 'md') }}
+      {{ ui.link_button('批次管理', url_for('scheduler.batches_manage_page'), 'secondary', 'md') }}
+      {{ ui.link_button('工作日历配置', url_for('scheduler.calendar_page'), 'secondary', 'md') }}
+    </div>
+  </div>
+  {% else %}
   <div class="card">
+    {{ ui.aps_context_bar([
+      {'label': '显示范围', 'value': week_start ~ ' ～ ' ~ week_end},
+      {'label': '版本', 'value': (('第 ' ~ version ~ ' 版') if version is not none else '暂无排产版本')}
+    ]) }}
     {% set selected_version_row = namespace(item=None) %}
     {% for item in versions or [] %}
       {% if item.version == version %}
@@ -183,27 +198,22 @@
   </div>
 
   <div class="card">
-    {% if not has_history %}
-      <div class="error" role="alert" aria-live="assertive">
-        系统里还没有排产版本。请先在【排产调度】执行一次排产，然后再查看甘特图。
-      </div>
-    {% else %}
-      <div id="ganttEmpty" class="muted is-hidden">这个星期、这个版本没有可显示的排程。可以换一周或换一个版本看看。</div>
-      <div id="ganttError" class="error is-hidden" role="alert" aria-live="assertive"></div>
-      <div
-        id="gantt"
-        data-url="{{ data_url }}"
-        data-view="{{ view }}"
-        data-week-start="{{ week_start }}"
-        data-start-date="{{ start_date }}"
-        data-end-date="{{ end_date }}"
-        data-offset="{{ offset }}"
-        data-version="{{ version or '' }}"
-        data-has-history="{{ '1' if has_history else '0' }}"
-        data-fetch-timeout-ms="12000"
-      ></div>
-    {% endif %}
+    <div id="ganttEmpty" class="muted is-hidden">这个星期、这个版本没有可显示的排程。可以换一周或换一个版本看看。</div>
+    <div id="ganttError" class="error is-hidden" role="alert" aria-live="assertive"></div>
+    <div
+      id="gantt"
+      data-url="{{ data_url }}"
+      data-view="{{ view }}"
+      data-week-start="{{ week_start }}"
+      data-start-date="{{ start_date }}"
+      data-end-date="{{ end_date }}"
+      data-offset="{{ offset }}"
+      data-version="{{ version or '' }}"
+      data-has-history="{{ '1' if has_history else '0' }}"
+      data-fetch-timeout-ms="12000"
+    ></div>
   </div>
+  {% endif %}
 {% endblock %}
 
 {% block extra_scripts %}

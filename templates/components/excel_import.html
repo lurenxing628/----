@@ -1,14 +1,14 @@
-{# 通用 Excel 导入组件（上传 → 预览 → 确认导入） #}
+{# 通用 Excel 导入组件（上传 → 检查 → 确认写入） #}
 
 <div class="card">
-  <h2>{{ title or "Excel 导入" }}</h2>
-  <p class="muted">
-    上传 Excel 后先预览检查，确认无误再导入。
+  <h2>{{ title or "批量维护" }}</h2>
+  <p class="muted aps-copy-measure">
+    上传 Excel 后先检查，确认无误再写入系统。
   </p>
   {% set default_mode_options = [
-    {'value': 'overwrite', 'label': '覆盖（相同编号更新）'},
-    {'value': 'append', 'label': '追加（已存在则跳过）'},
-    {'value': 'replace', 'label': '替换（清空后导入）'}
+    {'value': 'overwrite', 'label': '更新已有，新增缺少'},
+    {'value': 'append', 'label': '只导入新编号'},
+    {'value': 'replace', 'label': '清空本类数据后重导'}
   ] %}
   {% set selected_mode_options = mode_options if mode_options else default_mode_options %}
   {% if ui is defined %}
@@ -19,9 +19,9 @@
       <ul class="list-tight">
         <li>模板文件只支持 <code>.xlsx</code>，表头不要改。</li>
         <li>系统只读取第一个工作表，不要把有效数据挪到第二个工作表。</li>
-        <li>先“上传并预览”，把错误行全部修完，再点“确认导入”。</li>
-        <li>预览阶段还有错误时，不能确认导入。</li>
-        <li>确认导入时，如果个别行临时写入失败，系统可能会先写入成功的行，并把失败的行单独提示出来。</li>
+        <li>先“上传 Excel 并检查”，把错误行全部修完，再点“确认写入系统”。</li>
+        <li>检查阶段还有错误时，不能确认写入系统。</li>
+        <li>确认写入时，如果个别行临时写入失败，系统可能会先写入成功的行，并把失败的行单独提示出来。</li>
         <li>导入完成后，建议再导出一次当前数据做复核。</li>
         <li>单次上传文件大小不超过 16MB。</li>
       </ul>
@@ -70,9 +70,9 @@
       </div>
       <div class="aps-form-actions aps-form-actions-end">
         {% if ui is defined %}
-          {{ ui.button('上传并预览', 'primary', 'md', type_attr='submit') }}
+          {{ ui.button('上传 Excel 并检查', 'primary', 'md', type_attr='submit') }}
         {% else %}
-          <button type="submit" class="btn btn-primary btn-md">上传并预览</button>
+          <button type="submit" class="btn btn-primary btn-md">上传 Excel 并检查</button>
         {% endif %}
       </div>
     </div>
@@ -84,7 +84,7 @@
 
 {% if preview_rows %}
   <div class="card">
-    <h3>导入预览</h3>
+    <h3>检查结果</h3>
     <p class="muted">行号对应 Excel 中的实际行数。</p>
 
     <div class="aps-table-scroll">
@@ -92,10 +92,9 @@
       <thead>
         <tr>
           <th class="w-90">行号</th>
-          <th class="w-120">状态</th>
-          <th class="w-260">提示</th>
-          <th>数据</th>
-          <th>变更字段</th>
+          <th class="w-120">结果</th>
+          <th class="w-260">问题或说明</th>
+          <th>详情</th>
         </tr>
       </thead>
       <tbody>
@@ -118,13 +117,19 @@
               {% endif %}
             </td>
             <td class="{{ 'error' if r.status.value == 'error' else '' }}">{{ r.message }}</td>
-            <td><pre>{{ preview_display_data | tojson_zh(2) }}</pre></td>
             <td>
-              {% if preview_display_changes %}
-                <pre>{{ preview_display_changes | tojson_zh(2) }}</pre>
-              {% else %}
-                <span class="muted">-</span>
-              {% endif %}
+              <details class="aps-row-detail">
+                <summary>查看数据</summary>
+                <div class="aps-row-detail-body">
+                  <div class="text-xs font-semibold">本行数据</div>
+                  <pre>{{ preview_display_data | tojson_zh(2) }}</pre>
+
+                  {% if preview_display_changes %}
+                    <div class="text-xs font-semibold">变更字段</div>
+                    <pre>{{ preview_display_changes | tojson_zh(2) }}</pre>
+                  {% endif %}
+                </div>
+              </details>
             </td>
           </tr>
         {% endfor %}
@@ -141,9 +146,9 @@
       {% endif %}
       <textarea name="raw_rows_json" class="d-none">{{ raw_rows_json }}</textarea>
       {% if ui is defined %}
-        {{ ui.button('确认导入（保存到系统）', 'primary', 'md', type_attr='submit') }}
+        {{ ui.button('确认写入系统', 'primary', 'md', type_attr='submit') }}
       {% else %}
-        <button type="submit" class="btn btn-primary btn-md">确认导入（保存到系统）</button>
+        <button type="submit" class="btn btn-primary btn-md">确认写入系统</button>
       {% endif %}
     </form>
   </div>
