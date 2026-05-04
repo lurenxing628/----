@@ -1,8 +1,8 @@
 # Phase0~Phase6 Web + Excel 端到端冒烟测试报告
 
-- 测试时间：2026-04-19 01:22:29
-- Python：3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]
-- 项目根目录（自动识别）：`D:\Github\APS Test`
+- 测试时间：2026-05-03 23:14:00
+- Python：3.8.10 (v3.8.10:3d8993a744, May  3 2021, 09:09:08)
+- 项目根目录（自动识别）：`/Users/lurenxing/Documents/GitHub/----`
 
 ## 1. 基础页面可用性（含 Scheduler）
 - GET /：200
@@ -48,4 +48,4 @@
 
 ## 结论
 - 通过：Phase0~Phase6 Web+Excel 关键链路端到端冒烟测试通过（含 Scheduler）。
-- 总耗时：2838 ms
+- 总耗时：929 ms
