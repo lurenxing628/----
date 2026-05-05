@@ -105,7 +105,9 @@ def main() -> None:
     tpl_path = os.path.join(repo_root, "templates", "scheduler", "batches.html")
     with open(tpl_path, "r", encoding="utf-8") as f:
         tpl = f.read()
-    assert 'name="strict_mode"' in tpl, "batches.html 缺少 strict_mode 入口"
+    assert "ui.toggle_row(" in tpl, "batches.html 应使用统一 toggle 宏渲染运行选项"
+    assert "'enforce_ready'" in tpl, "batches.html 缺少 enforce_ready 入口"
+    assert "'strict_mode'" in tpl, "batches.html 缺少 strict_mode 入口"
     assert "发现参数问题就停止排产" in tpl, "batches.html 缺少 strict_mode 文案"
 
     print("OK")

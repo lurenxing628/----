@@ -27,15 +27,19 @@ def test_scheduler_run_entry_is_visible_before_batch_table() -> None:
         run_grid_start = run_panel.index("aps-run-panel-grid")
         run_grid_end = run_panel.index("aps-run-panel-help", run_grid_start)
         run_grid = run_panel[run_grid_start:run_grid_end]
-        for field_name in ("start_dt", "end_date", "enforce_ready", "strict_mode"):
-            assert f'name="{field_name}"' in run_grid
+        assert 'name="start_dt"' in run_grid
+        assert 'name="end_date"' in run_grid
+        assert "'enforce_ready'" in run_grid
+        assert "'strict_mode'" in run_grid
         assert "派工方式、智能派工策略、自动分配设备人员" not in run_grid
         assert "aps-run-panel-status" in run_panel
         assert "aps-run-options" in run_panel
         assert "aps-run-options-title" in run_panel
-        assert run_panel.count('class="aps-run-option-row"') == 2
+        assert run_panel.count("ui.toggle_row(") == 2
+        assert run_panel.count("class='aps-run-option-row'") == 2
         assert "aps-choice-list aps-run-panel-options" not in run_panel
         assert 'class="aps-choice"' not in run_panel
+        assert "aps-settings-toggle-control aps-settings-toggle-control-icon" not in run_panel
         assert "启用齐套约束（未齐套禁止排产）" not in run_panel
         assert "未齐套批次不进入排产。" in run_panel
         assert "配置不合法时直接停下" in run_panel
@@ -50,8 +54,8 @@ def test_scheduler_run_entry_is_visible_before_batch_table() -> None:
             'id="jsSelectedCount"',
             'name="start_dt"',
             'name="end_date"',
-            'name="enforce_ready"',
-            'name="strict_mode"',
+            "'enforce_ready'",
+            "'strict_mode'",
             "scheduler.run_schedule",
             "scheduler.simulate_schedule",
         ):
@@ -100,6 +104,8 @@ def test_latest_schedule_snapshot_uses_dedicated_sections() -> None:
         assert "aps-latest-schedule-meta" in block
         assert "aps-latest-schedule-metrics" in block
         assert "aps-latest-schedule-status" in block
+        assert "latest_notice_items" in block
+        assert "ui.notice(item.title, item.body" in block
         assert "ui.summary_item_block('错误摘要'" in block
         assert "保存系统补齐的设备和人员" not in block
         assert "保存补齐资源" in block

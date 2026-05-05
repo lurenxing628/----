@@ -4,6 +4,7 @@ import pytest
 
 from web.viewmodels.scheduler_batches_page import (
     _ALGO_MODE_LABELS,
+    ScheduleHistoryDisplayValueError,
     build_latest_schedule_history_panel_state,
 )
 
@@ -58,8 +59,44 @@ def test_latest_history_panel_builds_template_ready_items() -> None:
     assert panel.latest_auto_assign_persist_state["label"] == "已启用"
 
 
+def test_latest_history_panel_keeps_real_zero_metrics() -> None:
+    panel = build_latest_schedule_history_panel_state(
+        latest_history={
+            "version": 8,
+            "strategy": "priority_first",
+            "result_status": "success",
+            "schedule_time": "2026-05-05 10:00:00",
+        },
+        latest_summary={
+            "algo": {
+                "mode": "improve",
+                "objective": "min_overdue",
+                "metrics": {
+                    "total_tardiness_hours": 0,
+                    "weighted_tardiness_hours": 0,
+                    "makespan_hours": 0,
+                    "changeover_count": 0,
+                    "machine_util_avg": 0,
+                },
+            },
+            "overdue_batches": {"count": 0},
+        },
+        latest_summary_parse_state={"parse_failed": False},
+        auto_assign_persist_display_builder=_auto_assign_state,
+    )
+
+    assert [item.value for item in panel.metric_items] == [
+        "0 个",
+        "0 小时",
+        "0 小时",
+        "0 小时",
+        "0 次",
+        "0.0%",
+    ]
+
+
 def test_latest_history_panel_rejects_unknown_strategy() -> None:
-    with pytest.raises(KeyError):
+    with pytest.raises(ScheduleHistoryDisplayValueError, match="未知排产策略：future_strategy"):
         build_latest_schedule_history_panel_state(
             latest_history={
                 "version": 1,
@@ -74,7 +111,7 @@ def test_latest_history_panel_rejects_unknown_strategy() -> None:
 
 
 def test_latest_history_panel_rejects_unknown_algo_mode() -> None:
-    with pytest.raises(KeyError):
+    with pytest.raises(ScheduleHistoryDisplayValueError, match="未知排产模式：future_mode"):
         build_latest_schedule_history_panel_state(
             latest_history={
                 "version": 1,
@@ -83,6 +120,76 @@ def test_latest_history_panel_rejects_unknown_algo_mode() -> None:
                 "schedule_time": "2026-05-05 10:00:00",
             },
             latest_summary={"algo": {"mode": "future_mode", "objective": "min_overdue"}},
+            latest_summary_parse_state={"parse_failed": False},
+            auto_assign_persist_display_builder=_auto_assign_state,
+        )
+
+
+def test_latest_history_panel_rejects_missing_metric_key() -> None:
+    with pytest.raises(ScheduleHistoryDisplayValueError, match="metrics 缺少字段：weighted_tardiness_hours"):
+        build_latest_schedule_history_panel_state(
+            latest_history={
+                "version": 1,
+                "strategy": "priority_first",
+                "result_status": "success",
+                "schedule_time": "2026-05-05 10:00:00",
+            },
+            latest_summary={
+                "algo": {
+                    "mode": "improve",
+                    "objective": "min_overdue",
+                    "metrics": {"total_tardiness_hours": 0},
+                }
+            },
+            latest_summary_parse_state={"parse_failed": False},
+            auto_assign_persist_display_builder=_auto_assign_state,
+        )
+
+
+@pytest.mark.parametrize("bad_value", (None, ""))
+def test_latest_history_panel_rejects_empty_metric_value(bad_value) -> None:
+    metrics = {
+        "total_tardiness_hours": 0,
+        "weighted_tardiness_hours": 0,
+        "makespan_hours": 0,
+        "changeover_count": 0,
+        "machine_util_avg": 0,
+    }
+    metrics["makespan_hours"] = bad_value
+
+    with pytest.raises(ScheduleHistoryDisplayValueError, match="metrics 字段为空：makespan_hours"):
+        build_latest_schedule_history_panel_state(
+            latest_history={
+                "version": 1,
+                "strategy": "priority_first",
+                "result_status": "success",
+                "schedule_time": "2026-05-05 10:00:00",
+            },
+            latest_summary={
+                "algo": {
+                    "mode": "improve",
+                    "objective": "min_overdue",
+                    "metrics": metrics,
+                }
+            },
+            latest_summary_parse_state={"parse_failed": False},
+            auto_assign_persist_display_builder=_auto_assign_state,
+        )
+
+
+def test_latest_history_panel_rejects_missing_overdue_count() -> None:
+    with pytest.raises(ScheduleHistoryDisplayValueError, match="metrics 缺少字段：count"):
+        build_latest_schedule_history_panel_state(
+            latest_history={
+                "version": 1,
+                "strategy": "priority_first",
+                "result_status": "success",
+                "schedule_time": "2026-05-05 10:00:00",
+            },
+            latest_summary={
+                "algo": {"mode": "improve", "objective": "min_overdue"},
+                "overdue_batches": {},
+            },
             latest_summary_parse_state={"parse_failed": False},
             auto_assign_persist_display_builder=_auto_assign_state,
         )

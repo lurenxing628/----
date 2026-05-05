@@ -24,6 +24,7 @@
 - 状态文案、状态 tone、勾选属性、禁用属性优先由 viewmodel 产出。
 - 模板只消费 `label / value / desc / tone / checked_attr / disabled_attr / items`。
 - 不在模板里用 `.get(key, "未知")` 或 `.get(key, "-")` 悄悄兜底未知业务状态。
+- 布局组件可以允许“没有按钮”“空列表”这类可选内容为空；这不等于允许业务状态、错误原因、展示文案在模板里悄悄兜底。
 
 ## 4. 表单规则
 
@@ -36,6 +37,8 @@
 
 原因是后端多处使用 `request.form.get(...)` 读取同名字段。checkbox 在前、hidden 在后时，勾选状态能读到 `yes`；顺序反过来时，勾选也可能读成 `no`。
 
+禁用开关要特别处理。浏览器不会提交 disabled checkbox，所以禁用且已勾选的开关必须让同名 hidden input 提交当前真实值，不能默认提交 `no`。
+
 ## 5. 表格规则
 
 表格按内容模型加类型类名：
@@ -44,6 +47,8 @@
 - `aps-table--multiline`：日志、错误、详情类表格，允许多行换行。
 - `aps-table--editable`：单元格里有 input、select、button、form。
 - `aps-table--actions-nowrap`：操作列不换行。
+
+表格内的一行轻量开关可以保留原生 checkbox。比如扩展功能状态表这类“一个单元格内有 checkbox、保存按钮和说明”的紧凑操作，不强制套页面级大 toggle；但表格本身要用 `aps-table--editable` 这类内容模型表达它是可编辑表格。
 
 表格列宽合同必须保留：
 

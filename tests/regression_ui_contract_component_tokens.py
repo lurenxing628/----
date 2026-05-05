@@ -57,10 +57,17 @@ def test_ui_macros_expose_shared_contract_components() -> None:
     ):
         assert f"macro {macro_name}(" in source
 
+    notice_start = source.index("{% macro notice(")
+    notice_block = source[notice_start : source.index("{% endmacro %}", notice_start)]
+    assert "role='status'" in notice_block
+    assert "aria_live='polite'" in notice_block
+    assert 'role="{{ role }}"' in notice_block
+
     toggle_start = source.index("{% macro toggle_row(")
     toggle_block = source[toggle_start : source.index("{% endmacro %}", toggle_start)]
     checkbox_index = toggle_block.index('type="checkbox"')
     hidden_index = toggle_block.index('type="hidden"')
     assert checkbox_index < hidden_index
     assert 'value="{{ value }}"' in toggle_block
-    assert 'value="{{ hidden_value }}"' in toggle_block
+    assert "submitted_value" in toggle_block
+    assert 'value="{{ submitted_value or hidden_value }}"' in toggle_block

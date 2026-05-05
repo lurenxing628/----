@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .scheduler_analysis_labels import objective_label_for
-from .scheduler_history_summary import strict_strategy_display_label
+from .scheduler_history_summary import ScheduleHistoryDisplayValueError, strict_strategy_display_label
 from .scheduler_summary_display import build_summary_display_state
 from .ui_presenters import UiNotice, UiSummaryItem
 
@@ -17,6 +17,15 @@ _ALGO_MODE_LABELS = {
     "greedy": "快速模式",
     "single": "单次排产",
 }
+
+_REQUIRED_METRIC_KEYS = (
+    "total_tardiness_hours",
+    "weighted_tardiness_hours",
+    "makespan_hours",
+    "changeover_count",
+    "machine_util_avg",
+)
+_LATEST_HISTORY_DEGRADED_MESSAGE = "最近一次排产历史摘要不完整，请到系统历史查看。"
 
 
 @dataclass(frozen=True)
@@ -206,17 +215,27 @@ def _latest_algo_mode_label(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
         return "-"
+    if raw not in _ALGO_MODE_LABELS:
+        raise ScheduleHistoryDisplayValueError(f"未知排产模式：{raw}")
     return _ALGO_MODE_LABELS[raw]
 
 
 def _metric_value(value: Any, unit: str) -> str:
-    amount = value or 0
-    return f"{amount} {unit}"
+    return f"{value} {unit}"
 
 
 def _metric_percent(value: Any) -> str:
-    amount = round(float(value or 0) * 100, 2)
+    amount = round(float(value) * 100, 2)
     return f"{amount}%"
+
+
+def _required_metric(metrics: Dict[str, Any], key: str) -> Any:
+    if key not in metrics:
+        raise ScheduleHistoryDisplayValueError(f"排产历史摘要 metrics 缺少字段：{key}")
+    value = metrics[key]
+    if value is None or value == "":
+        raise ScheduleHistoryDisplayValueError(f"排产历史摘要 metrics 字段为空：{key}")
+    return value
 
 
 def _latest_warning_state(
@@ -288,16 +307,70 @@ def _latest_metric_items(
     if isinstance(latest_summary, dict):
         overdue_batches = latest_summary.get("overdue_batches")
         if isinstance(overdue_batches, dict):
-            metric_items = (UiSummaryItem("超期数量", f"{overdue_batches.get('count') or 0} 个"),)
-    if not latest_metrics:
+            metric_items = (UiSummaryItem("超期数量", f"{_required_metric(overdue_batches, 'count')} 个"),)
+    if latest_metrics is None:
         return metric_items
+    for key in _REQUIRED_METRIC_KEYS:
+        _required_metric(latest_metrics, key)
     return (
         *metric_items,
-        UiSummaryItem("拖期", _metric_value(latest_metrics.get("total_tardiness_hours"), "小时")),
-        UiSummaryItem("加权拖期", _metric_value(latest_metrics.get("weighted_tardiness_hours"), "小时")),
-        UiSummaryItem("总工期", _metric_value(latest_metrics.get("makespan_hours"), "小时")),
-        UiSummaryItem("换型", _metric_value(latest_metrics.get("changeover_count"), "次")),
-        UiSummaryItem("设备利用率", _metric_percent(latest_metrics.get("machine_util_avg"))),
+        UiSummaryItem("拖期", _metric_value(latest_metrics["total_tardiness_hours"], "小时")),
+        UiSummaryItem("加权拖期", _metric_value(latest_metrics["weighted_tardiness_hours"], "小时")),
+        UiSummaryItem("总工期", _metric_value(latest_metrics["makespan_hours"], "小时")),
+        UiSummaryItem("换型", _metric_value(latest_metrics["changeover_count"], "次")),
+        UiSummaryItem("设备利用率", _metric_percent(latest_metrics["machine_util_avg"])),
+    )
+
+
+def build_degraded_latest_schedule_history_panel_state(
+    *,
+    latest_history: Optional[Dict[str, Any]],
+    latest_summary: Optional[Dict[str, Any]],
+    latest_summary_parse_state: Dict[str, Any],
+    error: ScheduleHistoryDisplayValueError,
+) -> LatestScheduleHistoryPanelState:
+    latest_summary_display = build_summary_display_state(
+        latest_summary if isinstance(latest_summary, dict) else None,
+        result_status=(latest_history or {}).get("result_status"),
+        parse_state=latest_summary_parse_state,
+    )
+    latest_warning_preview, latest_warning_total, latest_warning_hidden_count = _latest_warning_state(
+        latest_summary=latest_summary,
+        latest_summary_display=latest_summary_display,
+    )
+    latest_result_status_label = str(latest_summary_display.get("result_status_label") or "-")
+    head_items: Tuple[UiSummaryItem, ...] = ()
+    if latest_history:
+        head_items = (
+            UiSummaryItem("版本", f"v{latest_history.get('version') or '-'}"),
+            UiSummaryItem("结果", latest_result_status_label),
+            UiSummaryItem("排产时间", str(latest_history.get("schedule_time") or "-")),
+        )
+    return LatestScheduleHistoryPanelState(
+        latest_history=latest_history,
+        latest_summary=latest_summary,
+        latest_summary_display=latest_summary_display,
+        latest_objective_label="-",
+        latest_strategy_label="-",
+        latest_mode_label="-",
+        latest_result_status_label=latest_result_status_label,
+        latest_metrics=None,
+        head_items=head_items,
+        meta_items=(),
+        metric_items=(),
+        status_items=(),
+        notice_items=(
+            UiNotice(
+                "最近一次排产历史摘要不完整",
+                _LATEST_HISTORY_DEGRADED_MESSAGE,
+                tone="warning",
+            ),
+        ),
+        latest_auto_assign_persist_state=None,
+        latest_other_degradation_messages=(),
+        latest_warning_preview=latest_warning_preview,
+        latest_warning_total=latest_warning_total,
+        latest_warning_hidden_count=latest_warning_hidden_count,
     )
 
 
@@ -379,8 +452,10 @@ __all__ = [
     "LatestScheduleHistoryPanelState",
     "SchedulerBatchesPageViewModel",
     "SchedulerConfigPanelState",
+    "ScheduleHistoryDisplayValueError",
     "build_batch_rows",
     "build_batches_filter_state",
+    "build_degraded_latest_schedule_history_panel_state",
     "build_latest_schedule_history_panel_state",
     "build_scheduler_batches_page_view_model",
     "build_scheduler_config_panel_state",

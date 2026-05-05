@@ -12,8 +12,10 @@ from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.excel_entry_cards import scheduler_batch_excel_cards
 from web.viewmodels.scheduler_batches_page import (
+    ScheduleHistoryDisplayValueError,
     build_batch_rows,
     build_batches_filter_state,
+    build_degraded_latest_schedule_history_panel_state,
     build_latest_schedule_history_panel_state,
     build_scheduler_batches_page_view_model,
 )
@@ -79,12 +81,25 @@ def batches_page():
     latest_history, latest_summary, latest_summary_parse_state = _load_latest_schedule_history_panel_inputs(
         services.schedule_history_query_service
     )
-    latest_panel = build_latest_schedule_history_panel_state(
-        latest_history=latest_history,
-        latest_summary=latest_summary,
-        latest_summary_parse_state=latest_summary_parse_state,
-        auto_assign_persist_display_builder=build_auto_assign_persist_display_state,
-    )
+    try:
+        latest_panel = build_latest_schedule_history_panel_state(
+            latest_history=latest_history,
+            latest_summary=latest_summary,
+            latest_summary_parse_state=latest_summary_parse_state,
+            auto_assign_persist_display_builder=build_auto_assign_persist_display_state,
+        )
+    except ScheduleHistoryDisplayValueError as exc:
+        current_app.logger.warning(
+            "排产页最近历史摘要展示降级：version=%s reason=%s",
+            (latest_history or {}).get("version"),
+            exc,
+        )
+        latest_panel = build_degraded_latest_schedule_history_panel_state(
+            latest_history=latest_history,
+            latest_summary=latest_summary,
+            latest_summary_parse_state=latest_summary_parse_state,
+            error=exc,
+        )
     view_model = build_scheduler_batches_page_view_model(
         filter_state=filter_state,
         batches=view_rows,

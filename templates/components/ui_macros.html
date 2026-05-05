@@ -84,8 +84,8 @@
 </div>
 {% endmacro %}
 
-{% macro notice(title, body, tone='info', class='') %}
-<div class="aps-notice aps-tone-{{ tone }} {{ class }}" role="alert" aria-live="polite">
+{% macro notice(title, body, tone='info', class='', role='status', aria_live='polite') %}
+<div class="aps-notice aps-tone-{{ tone }} {{ class }}" role="{{ role }}" aria-live="{{ aria_live }}">
   <div class="aps-notice-title">{{ title }}</div>
   <div class="aps-notice-body">{{ body }}</div>
   {% if caller is defined %}
@@ -104,7 +104,7 @@
 </div>
 {% endmacro %}
 
-{% macro toggle_row(id, name, title, desc, checked_attr='', disabled_attr='', value='yes', hidden_value='no', class='') %}
+{% macro toggle_row(id, name, title, desc, checked_attr='', disabled_attr='', value='yes', hidden_value='no', submitted_value='', class='') %}
 <div class="aps-toggle-row {{ class }}">
   <label class="aps-toggle-control" for="{{ id }}">
     <input
@@ -125,7 +125,7 @@
     <label class="aps-toggle-title" for="{{ id }}">{{ title }}</label>
     <div class="aps-toggle-desc">{{ desc }}</div>
   </div>
-  <input type="hidden" name="{{ name }}" value="{{ hidden_value }}">
+  <input type="hidden" name="{{ name }}" value="{{ submitted_value or hidden_value }}">
 </div>
 {% endmacro %}
 

@@ -119,6 +119,9 @@
             </div>
           {% endfor %}
         </div>
+        {% for item in latest_notice_items %}
+          {{ ui.notice(item.title, item.body, tone=item.tone, class='mt-2', role='alert') }}
+        {% endfor %}
         <div class="aps-latest-schedule-meta">
           {% for item in latest_meta_items %}
             <div class="aps-latest-schedule-meta-item">
@@ -294,31 +297,27 @@
               </div>
               <div class="aps-run-options" role="group" aria-label="排产选项">
                 <div class="aps-run-options-title">排产选项</div>
-                <div class="aps-run-option-row">
-                  <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="runEnforceReady" aria-label="启用齐套约束">
-                    <input id="runEnforceReady" class="aps-settings-toggle-input" type="checkbox" name="enforce_ready" {{ 'checked' if cfg.enforce_ready_default=='yes' else '' }}>
-                    <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-                  </label>
-                  <span class="aps-run-option-copy">
-                    <label class="aps-run-option-title" for="runEnforceReady">启用齐套约束</label>
-                    <span class="aps-run-option-desc">未齐套批次不进入排产。</span>
-                  </span>
-                </div>
+                {{ ui.toggle_row(
+                  'runEnforceReady',
+                  'enforce_ready',
+                  '启用齐套约束',
+                  '未齐套批次不进入排产。',
+                  checked_attr='checked' if cfg.enforce_ready_default=='yes' else '',
+                  class='aps-run-option-row'
+                ) }}
                 {% if config_field_warnings.get('enforce_ready_default') %}
                   <div class="muted text-xs scheduler-config-field-warning aps-run-option-note">
                     {{ config_field_warnings.get('enforce_ready_default') }}
                   </div>
                 {% endif %}
-                <div class="aps-run-option-row">
-                  <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="runStrictMode" aria-label="启用发现参数问题就停止排产">
-                    <input id="runStrictMode" class="aps-settings-toggle-input" type="checkbox" name="strict_mode" value="yes">
-                    <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-                  </label>
-                  <span class="aps-run-option-copy">
-                    <label class="aps-run-option-title" for="runStrictMode">发现参数问题就停止排产</label>
-                    <span class="aps-run-option-desc">配置不合法时直接停下，并提示需要处理的设置。</span>
-                  </span>
-                </div>
+                {{ ui.toggle_row(
+                  'runStrictMode',
+                  'strict_mode',
+                  '发现参数问题就停止排产',
+                  '配置不合法时直接停下，并提示需要处理的设置。',
+                  submitted_value='no',
+                  class='aps-run-option-row'
+                ) }}
               </div>
             </div>
             <div class="aps-run-panel-help">

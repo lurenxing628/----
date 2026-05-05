@@ -77,6 +77,7 @@ def test_scheduler_batch_related_strict_options_are_no_longer_raw_checkbox_label
     assert "ui.toggle_row(" in component_source
     assert "'strict_mode'" in component_source
     assert "value=\"{{ value }}\"" in macro_source
+    assert "submitted_value or hidden_value" in macro_source
     assert "<label>\n          <input type=\"checkbox\" name=\"strict_mode\"" not in component_source
 
 
@@ -89,6 +90,8 @@ def test_run_option_css_is_scoped_to_the_right_surfaces() -> None:
     assert ".aps-run-panel-grid > .aps-run-options > .aps-run-options-title" in css
     assert ".aps-run-panel-grid > .aps-run-options > .aps-run-option-row + .aps-run-option-row" in css
     assert ".aps-form-toggle-field .aps-run-option-row" in css
+    assert ".aps-run-option-row .aps-toggle-control" in css
+    assert ".aps-run-option-row .aps-toggle-title" in css
 
 
 def main() -> None:

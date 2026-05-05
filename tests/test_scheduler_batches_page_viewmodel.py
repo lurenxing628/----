@@ -89,6 +89,7 @@ def _insert_history(
     version: int,
     result_summary: Any,
     result_status: str = "success",
+    strategy: str = "priority_first",
 ) -> None:
     conn = _with_db(db_path)
     try:
@@ -98,7 +99,7 @@ def _insert_history(
             INSERT INTO ScheduleHistory (version, strategy, batch_count, op_count, result_status, result_summary, created_by)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (version, "priority_first", 0, 0, result_status, raw_summary, "pytest"),
+            (version, strategy, 0, 0, result_status, raw_summary, "pytest"),
         )
         conn.commit()
     finally:
@@ -359,6 +360,56 @@ def test_batches_page_latest_summary_parse_failed_renders_history_and_warning(tm
     assert "还没有排过产" not in body
     assert "当前版本的排产摘要读取失败，页面仅展示基础历史信息。" in body
     assert "{invalid json" not in body
+
+
+@pytest.mark.parametrize(
+    ("strategy", "mode", "raw_value"),
+    (
+        ("future_strategy", "improve", "future_strategy"),
+        ("priority_first", "future_mode", "future_mode"),
+    ),
+)
+def test_batches_page_degrades_unknown_latest_history_display_value(
+    tmp_path,
+    monkeypatch,
+    strategy: str,
+    mode: str,
+    raw_value: str,
+) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    _insert_batch(db_path, batch_id="B-PENDING", status="pending")
+    _insert_history(
+        db_path,
+        version=9,
+        strategy=strategy,
+        result_summary={
+            "algo": {
+                "mode": mode,
+                "objective": "min_overdue",
+                "metrics": {
+                    "total_tardiness_hours": 0,
+                    "weighted_tardiness_hours": 0,
+                    "makespan_hours": 0,
+                    "changeover_count": 0,
+                    "machine_util_avg": 0,
+                },
+            },
+            "warnings": [],
+            "errors": [],
+        },
+    )
+
+    response = app.test_client().get("/scheduler/")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "最近一次排产历史摘要不完整，请到系统历史查看。" in body
+    assert 'aps-latest-schedule-value">v9' in body
+    assert "B-PENDING" in body
+    assert "jsRunScheduleForm" in body
+    assert "jsSelectedCount" in body
+    assert "batchesTable" in body
+    assert raw_value not in body
 
 
 def test_batches_page_latest_algo_config_snapshot_renders_public_snapshot_state(tmp_path, monkeypatch) -> None:

@@ -46,6 +46,7 @@ def test_system_logs_uses_separate_cards_and_stable_filter_grid() -> None:
     assert "aps-settings-cleanup-actions" in cleanup_block
     assert "ui.toggle_row(" in cleanup_block
     assert "page.cleanup_toggle" in cleanup_block
+    assert "submitted_value=page.cleanup_toggle.submitted_value" in cleanup_block
     assert cleanup_block.count("aps-settings-switch") == 0
     assert "启用自动清理日志" not in cleanup_block
     assert "按保留天数清理旧日志" not in cleanup_block
@@ -73,6 +74,9 @@ def test_system_logs_uses_separate_cards_and_stable_filter_grid() -> None:
     assert ".aps-toggle-title" in css
     assert ".aps-toggle-desc" in css
     assert ".aps-toggle-input:checked + .aps-toggle-track" in css
+    assert ".form-field .aps-toggle-control" in css
+    assert ".form-field .aps-toggle-title" in css
+    assert ".form-field .aps-toggle-desc" in css
     assert "minmax(118px, max-content)" in css
     assert "justify-self: start;" in css
     assert "grid-column: 1;" in css
@@ -102,6 +106,7 @@ def test_system_backup_auto_job_switches_use_readable_setting_rows() -> None:
 
     assert settings_block.count("aps-settings-toggle-row") == 2
     assert settings_block.count("ui.toggle_row(") == 2
+    assert settings_block.count("submitted_value=page.auto_backup") == 2
     assert settings_block.count("aps-settings-switch aps-settings-switch-compact") == 0
     assert settings_block.count("aps-settings-switch") == 0
     for field_name, title, desc in (

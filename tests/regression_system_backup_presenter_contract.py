@@ -127,6 +127,8 @@ def test_backup_toggle_rows_keep_checkbox_hidden_contract() -> None:
     assert page.auto_backup_toggle.name == "auto_backup_enabled"
     assert page.auto_backup_toggle.checked_attr == "checked"
     assert page.auto_backup_toggle.hidden_value == "no"
+    assert page.auto_backup_toggle.submitted_value == "no"
     assert page.auto_backup_cleanup_toggle.name == "auto_backup_cleanup_enabled"
     assert page.auto_backup_cleanup_toggle.checked_attr == ""
     assert page.auto_backup_cleanup_toggle.hidden_value == "no"
+    assert page.auto_backup_cleanup_toggle.submitted_value == "no"

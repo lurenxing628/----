@@ -54,12 +54,20 @@ class UiToggleRow:
     disabled_attr: str = ""
     value: str = "yes"
     hidden_value: str = "no"
+    submitted_value: str = ""
 
     def __post_init__(self) -> None:
         if self.checked_attr not in ("", "checked"):
             raise ValueError(f"checked_attr 只能是空字符串或 checked: {self.checked_attr!r}")
         if self.disabled_attr not in ("", "disabled"):
             raise ValueError(f"disabled_attr 只能是空字符串或 disabled: {self.disabled_attr!r}")
+        submitted_value = self.submitted_value
+        if not submitted_value:
+            if self.disabled_attr == "disabled" and self.checked_attr == "checked":
+                submitted_value = self.value
+            else:
+                submitted_value = self.hidden_value
+        object.__setattr__(self, "submitted_value", submitted_value)
 
 
 def validate_tone(tone: str) -> str:
@@ -70,11 +78,15 @@ def validate_tone(tone: str) -> str:
 
 
 def checked_attr(enabled: bool) -> str:
-    return "checked" if bool(enabled) else ""
+    if not isinstance(enabled, bool):
+        raise TypeError(f"checked_attr 只接受 bool，实际为：{enabled!r}")
+    return "checked" if enabled else ""
 
 
 def disabled_attr(disabled: bool) -> str:
-    return "disabled" if bool(disabled) else ""
+    if not isinstance(disabled, bool):
+        raise TypeError(f"disabled_attr 只接受 bool，实际为：{disabled!r}")
+    return "disabled" if disabled else ""
 
 
 __all__ = [

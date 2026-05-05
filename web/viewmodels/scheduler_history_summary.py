@@ -32,6 +32,10 @@ _VERSION_OPTION_STATUS_LABELS = {
 }
 
 
+class ScheduleHistoryDisplayValueError(ValueError):
+    """排产历史摘要里有无法安全展示的值。"""
+
+
 def strategy_display_label(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -43,6 +47,8 @@ def strict_strategy_display_label(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
         return "-"
+    if raw not in _STRATEGY_LABELS:
+        raise ScheduleHistoryDisplayValueError(f"未知排产策略：{raw}")
     return _STRATEGY_LABELS[raw]
 
 
@@ -105,6 +111,7 @@ __all__ = [
     "parse_history_summary_state",
     "parse_state_from_result",
     "parsed_history_summary_payload",
+    "ScheduleHistoryDisplayValueError",
     "strict_strategy_display_label",
     "strategy_display_label",
 ]

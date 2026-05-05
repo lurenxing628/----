@@ -4040,6 +4040,28 @@ html[data-theme="dark"] .aps-danger-zone {
   overflow-wrap: anywhere;
 }
 
+.form-field .aps-toggle-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  margin: 0;
+  color: var(--ui-text);
+  font-weight: 700;
+}
+
+.form-field .aps-toggle-title {
+  margin: 0;
+  color: var(--ui-text-strong);
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.form-field .aps-toggle-desc {
+  margin: 0;
+  color: var(--ui-text-subtle);
+}
+
 .aps-settings-cleanup-grid input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
 .aps-settings-cleanup-grid select {
   width: 100%;
@@ -4343,7 +4365,17 @@ html[data-theme="dark"] .aps-danger-zone {
   margin-top: 1px;
 }
 
+.aps-run-option-row .aps-toggle-control {
+  flex: 0 0 auto;
+  min-height: 24px;
+  margin-top: 1px;
+}
+
 .aps-run-option-row .aps-settings-toggle-text {
+  font-size: 13px;
+}
+
+.aps-run-option-row .aps-toggle-text {
   font-size: 13px;
 }
 
@@ -4361,12 +4393,24 @@ html[data-theme="dark"] .aps-danger-zone {
   overflow-wrap: anywhere;
 }
 
+.aps-run-option-row .aps-toggle-title {
+  color: var(--ui-text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .aps-run-option-desc {
   color: var(--ui-muted);
   font-size: 12px;
   line-height: 1.5;
   font-weight: 500;
   overflow-wrap: anywhere;
+}
+
+.aps-run-option-row .aps-toggle-desc {
+  color: var(--ui-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .aps-run-option-note {
