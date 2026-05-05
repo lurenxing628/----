@@ -1,17 +1,6 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
-  {% set strategy_zh = {
-      'priority_first': '优先级优先',
-      'due_date_first': '交期优先',
-      'weighted': '综合优先级和交期',
-      'fifo': '先进先出',
-      'improve': '优化排产',
-      'greedy': '快速排产',
-      'manual': '手动排产'
-    } %}
-  {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
-  {% set mode_zh = {'improve': '优化模式', 'greedy': '快速模式', 'single': '单次排产'} %}
   {{ ui.aps_page_hero(
     '排产调度',
     '筛选查看批次状态，执行排产，并进入批次管理维护批次。',
@@ -121,50 +110,27 @@
   <div class="card aps-latest-schedule-card">
     <h3 class="section-title">最近一次排产快照</h3>
     {% if latest_history %}
-      {% set latest_algo = latest_summary.algo if latest_summary and latest_summary.algo else none %}
-      {% set latest_metrics = latest_algo.metrics if latest_algo and latest_algo.metrics else none %}
       <div class="aps-latest-schedule">
         <div class="aps-latest-schedule-head">
-          <div class="aps-latest-schedule-head-item">
-            <span class="aps-latest-schedule-label">版本</span>
-            <strong class="aps-latest-schedule-value">v{{ latest_history.version }}</strong>
-          </div>
-          <div class="aps-latest-schedule-head-item aps-latest-schedule-head-item--result">
-            <span class="aps-latest-schedule-label">结果</span>
-            <strong class="aps-latest-schedule-value">{{ latest_summary_display.result_status_label or '-' }}</strong>
-          </div>
-          <div class="aps-latest-schedule-head-item">
-            <span class="aps-latest-schedule-label">排产时间</span>
-            <strong class="aps-latest-schedule-value">{{ latest_history.schedule_time }}</strong>
-          </div>
+          {% for item in latest_head_items %}
+            <div class="aps-latest-schedule-head-item">
+              <span class="aps-latest-schedule-label">{{ item.label }}</span>
+              <strong class="aps-latest-schedule-value">{{ item.value }}</strong>
+            </div>
+          {% endfor %}
         </div>
         <div class="aps-latest-schedule-meta">
-          <div class="aps-latest-schedule-meta-item">
-            <span class="aps-summary-label">排产方式</span>
-            <strong class="aps-summary-value">{{ strategy_zh.get(latest_history.strategy, latest_history.strategy or '-') }}</strong>
-          </div>
-          {% if latest_algo %}
+          {% for item in latest_meta_items %}
             <div class="aps-latest-schedule-meta-item">
-              <span class="aps-summary-label">模式</span>
-              <strong class="aps-summary-value">{{ mode_zh.get(latest_algo.mode, latest_algo.mode or '-') }}</strong>
+              <span class="aps-summary-label">{{ item.label }}</span>
+              <strong class="aps-summary-value">{{ item.value }}</strong>
             </div>
-            <div class="aps-latest-schedule-meta-item">
-              <span class="aps-summary-label">目标</span>
-              <strong class="aps-summary-value">{{ latest_objective_label }}</strong>
-            </div>
-          {% endif %}
+          {% endfor %}
         </div>
         <div class="aps-latest-schedule-metrics">
-          {% if latest_summary and latest_summary.overdue_batches %}
-            {{ ui.summary_item('超期数量', (latest_summary.overdue_batches.count or 0) ~ ' 个') }}
-          {% endif %}
-          {% if latest_metrics %}
-            {{ ui.summary_item('拖期', (latest_metrics.total_tardiness_hours or 0) ~ ' 小时') }}
-            {{ ui.summary_item('加权拖期', (latest_metrics.weighted_tardiness_hours or 0) ~ ' 小时') }}
-            {{ ui.summary_item('总工期', (latest_metrics.makespan_hours or 0) ~ ' 小时') }}
-            {{ ui.summary_item('换型', (latest_metrics.changeover_count or 0) ~ ' 次') }}
-            {{ ui.summary_item('设备利用率', (((latest_metrics.machine_util_avg or 0) * 100) | round(2)) ~ '%') }}
-          {% endif %}
+          {% for item in latest_metric_items %}
+            {{ ui.summary_item(item.label, item.value, item.desc, tone=item.tone) }}
+          {% endfor %}
         </div>
         {% if latest_auto_assign_persist_state %}
           <div class="aps-summary-status-line aps-latest-schedule-status">
@@ -404,9 +370,9 @@
               <td>{{ r.part_no }}</td>
               <td class="text-right">{{ r.quantity }}</td>
               <td>{% if r.due_date %}{{ r.due_date }}{% else %}<span class="muted">-</span>{% endif %}</td>
-              <td>{{ r.priority_zh }}</td>
-              <td>{{ r.ready_status_zh }}</td>
-              <td>{{ r.status_zh }}</td>
+              <td>{{ r.priority_label }}</td>
+              <td>{{ r.ready_status_label }}</td>
+              <td>{{ r.status_label }}</td>
               <td>
                 <div class="table-actions">
                   {{ ui.link_button('查看/编辑', url_for('scheduler.batch_detail', batch_id=r.batch_id), 'secondary', 'sm') }}

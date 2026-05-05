@@ -162,8 +162,16 @@ def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> N
     assert "scheduler-run-other-degradation-summary" in template_source
     assert "latest_other_degradation_messages" in template_source
     assert "最近一次排产快照" in template_source
-    assert "latest_objective_label" in template_source
-    assert "latest_summary_display.result_status_label" in template_source
+    assert "latest_objective_label" in _read("web/viewmodels/scheduler_batches_page.py")
+    assert "latest_head_items" in template_source
+    assert "latest_meta_items" in template_source
+    assert "latest_metric_items" in template_source
+    assert "latest_strategy_label" not in template_source
+    assert "latest_mode_label" not in template_source
+    assert "latest_result_status_label" in _read("web/viewmodels/scheduler_batches_page.py")
+    assert "strategy_zh" not in template_source
+    assert "mode_zh" not in template_source
+    assert "status_zh.get" not in template_source
     assert "status_zh.get(latest_history.result_status" not in template_source
     assert "scheduler-config-degraded-summary" in v2_template_source
     assert "scheduler-current-config-summary" in v2_template_source
@@ -177,8 +185,16 @@ def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> N
     assert "scheduler-run-other-degradation-summary" in v2_template_source
     assert "latest_other_degradation_messages" in v2_template_source
     assert "最近一次排产快照" in v2_template_source
-    assert "latest_objective_label" in v2_template_source
-    assert "latest_summary_display.result_status_label" in v2_template_source
+    assert "latest_objective_label" in _read("web/viewmodels/scheduler_batches_page.py")
+    assert "latest_head_items" in v2_template_source
+    assert "latest_meta_items" in v2_template_source
+    assert "latest_metric_items" in v2_template_source
+    assert "latest_strategy_label" not in v2_template_source
+    assert "latest_mode_label" not in v2_template_source
+    assert "latest_result_status_label" in _read("web/viewmodels/scheduler_batches_page.py")
+    assert "strategy_zh" not in v2_template_source
+    assert "mode_zh" not in v2_template_source
+    assert "status_zh.get" not in v2_template_source
     assert "status_zh.get(latest_history.result_status" not in v2_template_source
 
 

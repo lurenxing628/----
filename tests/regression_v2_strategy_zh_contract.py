@@ -1,5 +1,7 @@
 import os
 
+from web.viewmodels.scheduler_history_summary import strict_strategy_display_label
+
 
 def find_repo_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
@@ -22,17 +24,23 @@ def main() -> None:
         "weighted": "综合优先级和交期",
         "fifo": "先进先出",
     }
-    files = [
-        os.path.join(repo_root, "web_new_test", "templates", "scheduler", "batches.html"),
+    for key, label in expected.items():
+        if strict_strategy_display_label(key) != label:
+            raise RuntimeError(f"策略展示 helper 映射错误：{key} -> {label}")
+
+    gantt_files = [
         os.path.join(repo_root, "web_new_test", "templates", "scheduler", "gantt.html"),
     ]
-
-    for path in files:
+    for path in gantt_files:
         text = _read(path)
         for key, label in expected.items():
             token = f"'{key}': '{label}'"
             if token not in text:
                 raise RuntimeError(f"模板缺少 strategy_zh 映射：{os.path.relpath(path, repo_root)} -> {token}")
+
+    batches_text = _read(os.path.join(repo_root, "web_new_test", "templates", "scheduler", "batches.html"))
+    if "strategy_zh" in batches_text:
+        raise RuntimeError("排产执行页不应继续在模板里维护 strategy_zh 映射")
 
     print("OK")
 

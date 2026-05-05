@@ -19,9 +19,7 @@
     {% endif %}
 
     {% if settings and settings.dirty_fields %}
-      <div class="warning mt-2">
-        以下系统配置格式较旧，系统已先按能识别的值处理，请检查后保存：{{ (settings.dirty_field_labels or settings.dirty_fields) | join('、') }}。
-      </div>
+      {{ ui.notice('配置需要确认', '以下系统配置格式较旧，系统已先按能识别的值处理，请检查后保存：' ~ ((settings.dirty_field_labels or settings.dirty_fields) | join('、')) ~ '。', tone='warning', class='mt-2') }}
       <ul class="list-tight muted mt-2">
         {% for item in (settings.dirty_reason_items or []) %}
           <li>{{ item.label }}：{{ item.reason }}</li>
@@ -34,13 +32,17 @@
     <form method="post" action="{{ url_for('system.logs_settings') }}" class="mb-2">
       <div class="aps-settings-cleanup-grid">
         <div class="form-field aps-settings-enable-field">
-          <label for="logAutoCleanupEnabled">自动清理</label>
-          <label class="aps-settings-toggle-control" for="logAutoCleanupEnabled">
-            <input id="logAutoCleanupEnabled" class="aps-settings-toggle-input" type="checkbox" name="auto_log_cleanup_enabled" value="yes" {{ 'checked' if settings and settings.auto_log_cleanup_enabled=='yes' else '' }}>
-            <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-            <span class="aps-settings-toggle-text">启用</span>
-          </label>
-          <input type="hidden" name="auto_log_cleanup_enabled" value="no">
+          {{ ui.toggle_row(
+            page.cleanup_toggle.id,
+            page.cleanup_toggle.name,
+            page.cleanup_toggle.title,
+            page.cleanup_toggle.desc,
+            checked_attr=page.cleanup_toggle.checked_attr,
+            disabled_attr=page.cleanup_toggle.disabled_attr,
+            value=page.cleanup_toggle.value,
+            hidden_value=page.cleanup_toggle.hidden_value,
+            class='aps-settings-toggle-row'
+          ) }}
         </div>
         <div class="form-field aps-settings-keep-days">
           <label for="logAutoCleanupKeepDays">保留天数</label>
@@ -140,10 +142,10 @@
       </div>
     {% endif %}
     {% if not rows %}
-      <p class="muted">暂无记录。</p>
+      {{ ui.empty_state(page.empty_state.title, page.empty_state.desc) }}
     {% else %}
       <div class="aps-table-scroll">
-      <table id="systemLogsTable" class="table-sticky table-layout-fixed aps-table-xwide" data-col-resize="1" data-table-key="v2_systemLogsTable">
+      <table id="systemLogsTable" class="table-sticky table-layout-fixed aps-table aps-table--fixed aps-table--multiline aps-table--actions-nowrap aps-table-size-xwide" data-col-resize="1" data-table-key="v2_systemLogsTable">
         <thead>
           <tr>
             <th class="w-60" data-col-key="select" data-default-w="60" data-min-w="50">

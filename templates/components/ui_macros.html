@@ -72,6 +72,63 @@
 </div>
 {% endmacro %}
 
+{% macro summary_grid(items=None, class='') %}
+<div class="aps-summary-grid {{ class }}">
+  {% if caller is defined %}
+    {{ caller() }}
+  {% else %}
+    {% for item in items or [] %}
+      {{ summary_item(item.label, item.value, item.desc, tone=item.tone) }}
+    {% endfor %}
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro notice(title, body, tone='info', class='') %}
+<div class="aps-notice aps-tone-{{ tone }} {{ class }}" role="alert" aria-live="polite">
+  <div class="aps-notice-title">{{ title }}</div>
+  <div class="aps-notice-body">{{ body }}</div>
+  {% if caller is defined %}
+    <div class="aps-notice-actions">{{ caller() }}</div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro empty_state(title, desc, actions_html='', class='') %}
+<div class="aps-empty-state {{ class }}">
+  <h3 class="aps-empty-state-title">{{ title }}</h3>
+  <p class="aps-empty-state-desc">{{ desc }}</p>
+  {% if actions_html %}
+    <div class="aps-empty-state-actions">{{ actions_html }}</div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro toggle_row(id, name, title, desc, checked_attr='', disabled_attr='', value='yes', hidden_value='no', class='') %}
+<div class="aps-toggle-row {{ class }}">
+  <label class="aps-toggle-control" for="{{ id }}">
+    <input
+      id="{{ id }}"
+      class="aps-toggle-input"
+      type="checkbox"
+      name="{{ name }}"
+      value="{{ value }}"
+      {{ checked_attr }}
+      {{ disabled_attr }}
+    >
+    <span class="aps-toggle-track" aria-hidden="true">
+      <span class="aps-toggle-thumb"></span>
+    </span>
+    <span class="aps-toggle-text">启用</span>
+  </label>
+  <div class="aps-toggle-copy">
+    <label class="aps-toggle-title" for="{{ id }}">{{ title }}</label>
+    <div class="aps-toggle-desc">{{ desc }}</div>
+  </div>
+  <input type="hidden" name="{{ name }}" value="{{ hidden_value }}">
+</div>
+{% endmacro %}
+
 {% macro help_details(summary='查看说明', class='') %}
 <details class="aps-help-details {{ class }}">
   <summary>{{ summary }}</summary>

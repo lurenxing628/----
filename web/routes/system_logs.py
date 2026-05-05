@@ -7,6 +7,7 @@ from flask import flash, redirect, request, url_for
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.system_logs_vm import (
     build_operation_log_view_rows,
+    build_system_logs_page_view_model,
     resolve_operation_log_action_filter,
     resolve_operation_log_module_filter,
 )
@@ -56,11 +57,14 @@ def logs_page():
 
     from core.services.system import SystemMaintenanceService
 
+    settings = _get_system_cfg_snapshot().to_dict()
+
     return render_template(
         "system/logs.html",
         title="系统管理 - 操作日志",
         rows=view_rows,
-        settings=_get_system_cfg_snapshot().to_dict(),
+        settings=settings,
+        page=build_system_logs_page_view_model(settings),
         job_state=_get_job_state_map(),
         maintenance_limits={
             "max_log_delete_per_run": int(SystemMaintenanceService.MAX_LOG_DELETE_PER_RUN),

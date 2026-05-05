@@ -18,9 +18,7 @@
       </ul>
     </details>
     {% if settings and settings.dirty_fields %}
-      <div class="warning mt-2">
-        以下系统配置格式较旧，系统已先按能识别的值处理，请检查后保存：{{ (settings.dirty_field_labels or settings.dirty_fields) | join('、') }}。
-      </div>
+      {{ ui.notice('配置需要确认', '以下系统配置格式较旧，系统已先按能识别的值处理，请检查后保存：' ~ ((settings.dirty_field_labels or settings.dirty_fields) | join('、')) ~ '。', tone='warning', class='mt-2') }}
       <ul class="list-tight muted mt-2">
         {% for item in (settings.dirty_reason_items or []) %}
           <li>{{ item.label }}：{{ item.reason }}</li>
@@ -78,7 +76,7 @@
       {% endif %}
     </div>
     {% if not backups %}
-      <p class="muted">暂无备份文件。你可以先点击“手动备份”。</p>
+      {{ ui.empty_state(page.backup_empty_state.title, page.backup_empty_state.desc) }}
     {% else %}
       <div class="aps-table-scroll">
       <table id="backupFilesTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_backupFilesTable">
@@ -144,18 +142,17 @@
     <form method="post" action="{{ url_for('system.backup_settings') }}">
       <div class="aps-settings-grid">
         <div class="aps-summary-item">
-          <div class="aps-settings-toggle-row">
-            <label class="aps-settings-toggle-control" for="backupAutoBackupEnabled">
-              <input id="backupAutoBackupEnabled" class="aps-settings-toggle-input" type="checkbox" name="auto_backup_enabled" value="yes" {{ 'checked' if settings and settings.auto_backup_enabled=='yes' else '' }}>
-              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-              <span class="aps-settings-toggle-text">启用</span>
-            </label>
-            <div class="aps-settings-toggle-copy">
-              <label class="aps-settings-toggle-title" for="backupAutoBackupEnabled">自动备份</label>
-              <div class="aps-settings-toggle-desc">系统会在有人访问时按间隔检查是否需要备份；程序正常退出时也会按同一个开关生成退出备份。</div>
-            </div>
-          </div>
-          <input type="hidden" name="auto_backup_enabled" value="no">
+          {{ ui.toggle_row(
+            page.auto_backup_toggle.id,
+            page.auto_backup_toggle.name,
+            page.auto_backup_toggle.title,
+            page.auto_backup_toggle.desc,
+            checked_attr=page.auto_backup_toggle.checked_attr,
+            disabled_attr=page.auto_backup_toggle.disabled_attr,
+            value=page.auto_backup_toggle.value,
+            hidden_value=page.auto_backup_toggle.hidden_value,
+            class='aps-settings-toggle-row'
+          ) }}
           <div class="aps-form-grid mt-2">
             <div class="form-field">
               <label>间隔（分钟）</label>
@@ -183,18 +180,17 @@
         </div>
 
         <div class="aps-summary-item">
-          <div class="aps-settings-toggle-row">
-            <label class="aps-settings-toggle-control" for="backupAutoCleanupEnabled">
-              <input id="backupAutoCleanupEnabled" class="aps-settings-toggle-input" type="checkbox" name="auto_backup_cleanup_enabled" value="yes" {{ 'checked' if settings and settings.auto_backup_cleanup_enabled=='yes' else '' }}>
-              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-              <span class="aps-settings-toggle-text">启用</span>
-            </label>
-            <div class="aps-settings-toggle-copy">
-              <label class="aps-settings-toggle-title" for="backupAutoCleanupEnabled">自动清理备份</label>
-              <div class="aps-settings-toggle-desc">系统会按保留天数清理旧备份；只会按你设置的间隔检查，不会每次访问都删除。</div>
-            </div>
-          </div>
-          <input type="hidden" name="auto_backup_cleanup_enabled" value="no">
+          {{ ui.toggle_row(
+            page.auto_backup_cleanup_toggle.id,
+            page.auto_backup_cleanup_toggle.name,
+            page.auto_backup_cleanup_toggle.title,
+            page.auto_backup_cleanup_toggle.desc,
+            checked_attr=page.auto_backup_cleanup_toggle.checked_attr,
+            disabled_attr=page.auto_backup_cleanup_toggle.disabled_attr,
+            value=page.auto_backup_cleanup_toggle.value,
+            hidden_value=page.auto_backup_cleanup_toggle.hidden_value,
+            class='aps-settings-toggle-row'
+          ) }}
           <div class="aps-form-grid mt-2">
             <div class="form-field">
               <label>保留天数</label>
@@ -243,41 +239,8 @@
       </ul>
     </details>
     {% if plugin_status %}
-      {% set plugin_capability_count = (plugin_status.registry.capabilities | length) if plugin_status.registry and plugin_status.registry.capabilities else 0 %}
       {% set plugin_degradation_count = (plugin_status.degradation_events or []) | length %}
-      {% set plugin_conflict_count = plugin_status.conflicted_capabilities | length if plugin_status.conflicted_capabilities else 0 %}
-      {% if plugin_status.config_source == 'config' %}
-        {% set plugin_config_source_label = '全部来自系统配置' %}
-      {% elif plugin_status.config_source == 'mixed' %}
-        {% set plugin_config_source_label = '部分来自系统配置，部分按默认开关运行' %}
-      {% elif plugin_status.config_source == 'default_due_to_db_unavailable' %}
-        {% set plugin_config_source_label = '扩展功能设置暂时读取不到，系统已先按默认设置运行' %}
-      {% elif plugin_status.config_source == 'default_due_to_config_reader_failed' %}
-        {% set plugin_config_source_label = '扩展功能设置暂时读取不到，系统已先按默认设置运行' %}
-      {% elif plugin_status.config_source == 'default_due_to_config_read_failed' %}
-        {% set plugin_config_source_label = '扩展功能设置暂时读取不到，系统已先按默认设置运行' %}
-      {% else %}
-        {% set plugin_config_source_label = '当前按默认开关运行' %}
-      {% endif %}
-      {% if plugin_status.telemetry_persisted is sameas true %}
-        {% set plugin_telemetry_label = '已记录' %}
-        {% set plugin_telemetry_tone = 'success' %}
-      {% elif plugin_status.telemetry_persisted is sameas false %}
-        {% set plugin_telemetry_label = '记录失败' %}
-        {% set plugin_telemetry_tone = 'danger' %}
-      {% else %}
-        {% set plugin_telemetry_label = '-' %}
-        {% set plugin_telemetry_tone = 'neutral' %}
-      {% endif %}
-
-      <div class="aps-summary-grid aps-plugin-status-summary">
-        {{ ui.summary_item('加载时间', plugin_status.loaded_at or '-') }}
-        {{ ui.summary_item('配置来源', plugin_config_source_label, tone='info') }}
-        {{ ui.summary_item('已发现的可用功能', plugin_capability_count ~ ' 项') }}
-        {{ ui.summary_item('留痕状态', plugin_telemetry_label, tone=plugin_telemetry_tone) }}
-        {{ ui.summary_item('启动问题', plugin_degradation_count ~ ' 条', tone='danger' if plugin_status.degraded else 'success') }}
-        {{ ui.summary_item('冲突能力', plugin_conflict_count ~ ' 条', tone='warning' if plugin_conflict_count > 0 else 'success') }}
-      </div>
+      {{ ui.summary_grid(page.plugin_summary_items, class='aps-plugin-status-summary') }}
 
       <details class="debug-details mt-2">
         <summary>给维护人员看的信息</summary>
@@ -318,9 +281,9 @@
         </div>
       {% endif %}
 
-      {% if plugin_status.statuses and (plugin_status.statuses | length) > 0 %}
+      {% if page.plugin_status_rows and (page.plugin_status_rows | length) > 0 %}
         <div class="aps-table-scroll mt-3">
-        <table id="pluginStatusTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_pluginStatusTable">
+        <table id="pluginStatusTable" class="table-sticky table-layout-fixed aps-table aps-table--fixed aps-table--multiline aps-table-size-wide" data-col-resize="1" data-table-key="v2_pluginStatusTable">
           <thead>
             <tr>
               <th class="w-220" data-col-key="name" data-default-w="220" data-min-w="170">扩展功能</th>
@@ -331,51 +294,40 @@
             </tr>
           </thead>
           <tbody>
-            {% for s in plugin_status.statuses %}
+            {% for s in page.plugin_status_rows %}
               <tr>
                 <td>
-                  {{ s.name or '未命名扩展功能' }}
+                  {{ s.name }}
                   <details class="debug-details text-xs muted">
                     <summary>给维护人员看的信息</summary>
                     扩展功能编号已记录在系统日志中，需要排查时请从日志查看。
                   </details>
                 </td>
-                <td>{{ s.version or '-' }}</td>
+                <td>{{ s.version }}</td>
                 <td>
                   <form method="post" action="{{ url_for('system.plugin_toggle') }}">
                     <input type="hidden" name="plugin_id" value="{{ s.plugin_id }}">
                     <div class="aps-inline-form-actions">
                       <label class="muted">
-                        <input type="checkbox" name="enabled" {{ 'checked' if s.enabled == 'yes' else '' }}>
+                        <input type="checkbox" name="enabled" {{ s.enabled_checked_attr }}>
                         启用
                       </label>
                       {{ ui.button('保存', 'secondary', 'sm', type_attr='submit') }}
                     </div>
                     <div class="aps-table-cell-note">
                       保存后重启软件才会真正生效。<br/>
-                      当前开关依据：
-                      {% if s.enabled_source == 'config' %}
-                        系统配置
-                      {% elif s.enabled_source == 'default_due_to_db_unavailable' %}
-                        默认开关（扩展功能设置暂时读取不到）
-                      {% elif s.enabled_source == 'default_due_to_config_reader_failed' %}
-                        默认开关（扩展功能设置暂时读取不到）
-                      {% elif s.enabled_source == 'default_due_to_config_read_failed' %}
-                        默认开关（扩展功能设置暂时读取不到）
-                      {% else %}
-                        默认开关
-                      {% endif %}
+                      当前开关依据：{{ s.enabled_source_label }}
                     </div>
                   </form>
                 </td>
-                <td>{{ '已加载' if s.loaded == 'yes' else '未加载' }}</td>
+                <td>{{ s.loaded_label }}</td>
                 <td>
                   {% if s.error %}
                     <div class="muted max-w-520">{{ s.error }}</div>
                   {% else %}
                     <span class="muted">已准备好的功能：</span>
-                    {{ (s.capabilities | length) if s.capabilities else 0 }} 项
-                    {% if s.capabilities %}
+                    {{ s.capability_count }} 项
+                    {% if s.has_capabilities %}
                       <details class="debug-details text-xs muted">
                         <summary>给维护人员看的信息</summary>
                         已准备好的功能明细已记录在系统日志中。
@@ -389,10 +341,10 @@
         </table>
         </div>
       {% else %}
-        <div class="muted mt-2">未发现扩展功能文件。</div>
+        {{ ui.empty_state(page.plugin_empty_state.title, page.plugin_empty_state.desc, class='mt-2') }}
       {% endif %}
     {% else %}
-      <div class="muted">扩展功能状态未加载。</div>
+      {{ ui.empty_state(page.plugin_unloaded_empty_state.title, page.plugin_unloaded_empty_state.desc) }}
     {% endif %}
   </div>
 

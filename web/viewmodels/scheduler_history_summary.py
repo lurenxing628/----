@@ -39,6 +39,13 @@ def strategy_display_label(value: Any) -> str:
     return _STRATEGY_LABELS.get(raw, "未知排产策略")
 
 
+def strict_strategy_display_label(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "-"
+    return _STRATEGY_LABELS[raw]
+
+
 def parse_state_from_result(result: ResultSummaryParseResult) -> Dict[str, Any]:
     user_message = _PARSE_USER_MESSAGES.get(result.reason) if result.parse_failed else None
     state = result.to_parse_state(user_message=user_message)
@@ -98,5 +105,6 @@ __all__ = [
     "parse_history_summary_state",
     "parse_state_from_result",
     "parsed_history_summary_payload",
+    "strict_strategy_display_label",
     "strategy_display_label",
 ]

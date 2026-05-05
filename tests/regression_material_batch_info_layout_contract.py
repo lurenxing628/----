@@ -22,3 +22,25 @@ def test_batch_materials_batch_info_uses_summary_cards() -> None:
     assert "info-sep" not in block
     assert "当前齐套状态：<strong>" not in block
     assert "批次：<strong>" not in block
+
+
+def test_batch_materials_uses_shared_empty_state_and_table_types() -> None:
+    source = _read("templates/material/batch_materials.html")
+
+    assert "ui.empty_state('还没有物料'" in source
+    assert "ui.empty_state('该批次还没有物料需求'" in source
+    assert "stat-card" not in source
+
+    table_block = source[source.index('id="batchMaterialsTable"') : source.index("</table>", source.index('id="batchMaterialsTable"'))]
+    for token in (
+        "aps-table",
+        "aps-table--fixed",
+        "aps-table--editable",
+        "aps-table--actions-nowrap",
+        "aps-table-size-wide",
+        'data-table-key="v2_batchMaterialsTable"',
+        'data-col-resize="1"',
+        "data-default-w",
+        "data-min-w",
+    ):
+        assert token in table_block

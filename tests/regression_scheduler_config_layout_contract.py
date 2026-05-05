@@ -41,18 +41,22 @@ def test_scheduler_config_setting_switches_use_compact_toggle_controls() -> None
         switch_start = source.index('<div class="scheduler-config-switches">')
         switch_end = source.index('<div class="mt-3">', switch_start)
         switch_block = source[switch_start:switch_end]
+        macro_source = _read("templates/components/ui_macros.html")
 
         assert switch_block.count("scheduler-config-switch") >= len(setting_fields)
-        assert switch_block.count("aps-settings-toggle-control") == len(setting_fields)
-        assert switch_block.count("aps-settings-toggle-input") == len(setting_fields)
-        assert switch_block.count("aps-settings-toggle-track") == len(setting_fields)
-        assert switch_block.count("aps-settings-toggle-thumb") == len(setting_fields)
-        assert switch_block.count("aps-settings-toggle-text") == len(setting_fields)
+        assert switch_block.count("ui.toggle_row(") == len(setting_fields)
+        assert "aps-toggle-control" in macro_source
+        assert "aps-toggle-input" in macro_source
+        assert "aps-toggle-track" in macro_source
+        assert "aps-toggle-thumb" in macro_source
+        assert "aps-toggle-text" in macro_source
         assert 'label class="scheduler-config-switch-main"' not in switch_block
 
         for field_name in setting_fields:
-            assert f'name="{field_name}" value="yes"' in switch_block
-            assert f'type="hidden" name="{field_name}" value="no"' in switch_block
+            assert f"'{field_name}'" in switch_block
+        assert "type=\"checkbox\"" in macro_source
+        assert "type=\"hidden\"" in macro_source
+        assert macro_source.index('type="checkbox"') < macro_source.index('type="hidden"')
 
 
 def main() -> None:

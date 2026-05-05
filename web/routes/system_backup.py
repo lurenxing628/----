@@ -11,6 +11,7 @@ from core.infrastructure.database import ensure_schema
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.logging import OperationLogger
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.system_backup_page import build_system_backup_page_view_model
 
 from .system_backup_actions import run_backup_restore
 from .system_bp import bp
@@ -83,14 +84,16 @@ def backup_page():
     from core.services.system import SystemMaintenanceService
 
     plugin_status = current_app.config.get("PLUGIN_STATUS")
+    settings = cfg.to_dict()
     return render_template(
         "system/backup.html",
         title="系统管理 - 备份/恢复",
         backups=backups,
         keep_days=keep_days,
-        settings=cfg.to_dict(),
+        settings=settings,
         job_state=_get_job_state_map(),
         plugin_status=plugin_status,
+        page=build_system_backup_page_view_model(settings, plugin_status),
         maintenance_limits={
             "max_backup_delete_per_run": int(SystemMaintenanceService.MAX_BACKUP_DELETE_PER_RUN),
         },

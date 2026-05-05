@@ -206,12 +206,22 @@ def main() -> None:
     if ".aps-table-scroll > table.aps-scheduler-batch-table" not in css or "min-width: 990px;" not in css:
         raise RuntimeError("ui_contract.css 缺少批次表专用默认宽度保护")
 
+    if "#systemLogsTable td" in css:
+        raise RuntimeError("系统日志表格多行换行保护不应继续依赖 #systemLogsTable td 页面 ID")
     if (
-        "#systemLogsTable td" not in css
+        ".aps-table--multiline th" not in css
+        or ".aps-table--multiline td" not in css
+        or ".aps-table--actions-nowrap .table-actions" not in css
         or "overflow: visible;" not in css
         or "white-space: normal;" not in css
     ):
-        raise RuntimeError("ui_contract.css 缺少系统日志表格多行换行保护")
+        raise RuntimeError("ui_contract.css 缺少 aps-table--multiline / actions-nowrap 表格类型保护")
+
+    logs_source = _read(os.path.join(repo_root, "templates", "system", "logs.html"))
+    logs_table_block = _table_block(logs_source, 'id="systemLogsTable"')
+    for token in ("aps-table--multiline", "aps-table--actions-nowrap", "aps-table-size-xwide"):
+        if token not in logs_table_block:
+            raise RuntimeError(f"系统日志表格缺少表格类型类名：{token}")
 
     print("OK")
 

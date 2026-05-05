@@ -71,9 +71,12 @@ def test_scheduler_batch_related_strict_options_are_no_longer_raw_checkbox_label
     assert "<label><input type=\"checkbox\"" not in upload_block
 
     component_source = _read("templates/components/excel_import.html")
+    macro_source = _read("templates/components/ui_macros.html")
     assert "excelImportStrictMode" in component_source
     assert "aps-import-option-list" in component_source
-    assert 'name="strict_mode" value="yes"' in component_source
+    assert "ui.toggle_row(" in component_source
+    assert "'strict_mode'" in component_source
+    assert "value=\"{{ value }}\"" in macro_source
     assert "<label>\n          <input type=\"checkbox\" name=\"strict_mode\"" not in component_source
 
 

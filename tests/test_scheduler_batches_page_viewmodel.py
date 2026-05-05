@@ -187,6 +187,9 @@ def test_batch_rows_filter_ready_and_add_public_labels() -> None:
     assert rows[0]["priority_zh"] == "急件"
     assert rows[0]["ready_status_zh"] == "部分齐套"
     assert rows[0]["status_zh"] == "待排"
+    assert rows[0]["priority_label"] == "急件"
+    assert rows[0]["ready_status_label"] == "部分齐套"
+    assert rows[0]["status_label"] == "待排"
 
 
 def test_batches_page_defaults_to_pending_status_and_renders_pending_rows(tmp_path, monkeypatch) -> None:
@@ -415,9 +418,9 @@ def test_scheduler_batches_route_uses_page_view_model(tmp_path, monkeypatch) -> 
                     "part_no": "P-VM",
                     "quantity": 1,
                     "due_date": "2026-05-01",
-                    "priority_zh": "急件",
-                    "ready_status_zh": "齐套",
-                    "status_zh": "待排",
+                    "priority_label": "急件",
+                    "ready_status_label": "齐套",
+                    "status_label": "待排",
                 }
             ]
             return context

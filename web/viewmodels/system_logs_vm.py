@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+
+from .ui_presenters import UiEmptyState, UiToggleRow, checked_attr
 
 _LOG_LEVEL_LABELS = {
     "INFO": "信息",
@@ -63,6 +66,34 @@ _TARGET_TYPE_LABELS = {
     "supplier": "供应商",
     "week_plan": "周计划",
 }
+
+
+@dataclass(frozen=True)
+class SystemLogsPageState:
+    cleanup_toggle: UiToggleRow
+    empty_state: UiEmptyState
+
+
+def _settings_value(settings: Any, key: str) -> Any:
+    if isinstance(settings, dict):
+        return settings[key]
+    return getattr(settings, key)
+
+
+def build_system_logs_page_view_model(settings: Any) -> SystemLogsPageState:
+    return SystemLogsPageState(
+        cleanup_toggle=UiToggleRow(
+            id="logAutoCleanupEnabled",
+            name="auto_log_cleanup_enabled",
+            title="自动清理",
+            desc="按保留天数清理旧日志；系统会在有人操作页面且到达间隔后执行。",
+            checked_attr=checked_attr(_settings_value(settings, "auto_log_cleanup_enabled") == "yes"),
+        ),
+        empty_state=UiEmptyState(
+            title="暂无记录",
+            desc="当前筛选条件下没有找到操作日志，可以放宽时间、模块或级别后再查询。",
+        ),
+    )
 
 
 def _label(value: Any, labels: Dict[str, str], fallback: str) -> str:

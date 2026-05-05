@@ -1,0 +1,221 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Sequence
+
+from .ui_presenters import UiEmptyState, UiSummaryItem, UiToggleRow, checked_attr
+
+PLUGIN_CONFIG_SOURCE_LABELS = {
+    "config": "全部来自系统配置",
+    "mixed": "部分来自系统配置，部分按默认开关运行",
+    "default_due_to_db_unavailable": "扩展功能设置暂时读取不到，系统已先按默认设置运行",
+    "default_due_to_config_reader_failed": "扩展功能设置暂时读取不到，系统已先按默认设置运行",
+    "default_due_to_config_read_failed": "扩展功能设置暂时读取不到，系统已先按默认设置运行",
+    "default": "当前按默认开关运行",
+}
+
+PLUGIN_TELEMETRY_STATES = {
+    True: ("已记录", "success"),
+    False: ("记录失败", "danger"),
+    None: ("-", "neutral"),
+}
+
+PLUGIN_ENABLED_SOURCE_LABELS = {
+    "config": "系统配置",
+    "default_due_to_db_unavailable": "默认开关（扩展功能设置暂时读取不到）",
+    "default_due_to_config_reader_failed": "默认开关（扩展功能设置暂时读取不到）",
+    "default_due_to_config_read_failed": "默认开关（扩展功能设置暂时读取不到）",
+    "default": "默认开关",
+}
+
+PLUGIN_LOADED_LABELS = {
+    "yes": "已加载",
+    "no": "未加载",
+}
+
+
+@dataclass(frozen=True)
+class PluginStatusRow:
+    plugin_id: str
+    name: str
+    version: str
+    enabled_checked_attr: str
+    loaded_label: str
+    enabled_source_label: str
+    error: str
+    capability_count: int
+    has_capabilities: bool
+
+
+@dataclass(frozen=True)
+class SystemBackupPageState:
+    backup_empty_state: UiEmptyState
+    plugin_empty_state: UiEmptyState
+    plugin_unloaded_empty_state: UiEmptyState
+    auto_backup_toggle: UiToggleRow
+    auto_backup_cleanup_toggle: UiToggleRow
+    plugin_summary_items: Sequence[UiSummaryItem]
+    plugin_status_rows: Sequence[PluginStatusRow]
+
+
+def _value(source: Any, key: str) -> Any:
+    if isinstance(source, dict):
+        return source[key]
+    return getattr(source, key)
+
+
+def _optional_value(source: Any, key: str) -> Any:
+    if isinstance(source, dict):
+        return source.get(key)
+    return getattr(source, key, None)
+
+
+def _sequence_value(source: Any, key: str) -> Sequence[Any]:
+    value = _optional_value(source, key)
+    if value is None:
+        return ()
+    return tuple(value)
+
+
+def _text_or_dash(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if text else "-"
+
+
+def _yes_no(value: Any, *, field: str) -> str:
+    normalized = str(value or "").strip()
+    if normalized not in {"yes", "no"}:
+        raise ValueError(f"{field} 只能是 yes/no，实际为：{value!r}")
+    return normalized
+
+
+def _plugin_config_source_label(value: Any) -> str:
+    normalized = str(value or "").strip()
+    return PLUGIN_CONFIG_SOURCE_LABELS[normalized]
+
+
+def _plugin_telemetry_state(value: Any) -> tuple[str, str]:
+    return PLUGIN_TELEMETRY_STATES[value]
+
+
+def _plugin_enabled_source_label(value: Any) -> str:
+    normalized = str(value or "").strip()
+    return PLUGIN_ENABLED_SOURCE_LABELS[normalized]
+
+
+def build_backup_empty_state() -> UiEmptyState:
+    return UiEmptyState(
+        title="暂无备份文件",
+        desc="你可以先点击“手动备份”，生成一份当前数据备份。",
+    )
+
+
+def build_plugin_empty_state() -> UiEmptyState:
+    return UiEmptyState(
+        title="未发现扩展功能文件",
+        desc="系统没有发现随包交付的扩展功能文件。",
+    )
+
+
+def build_plugin_unloaded_empty_state() -> UiEmptyState:
+    return UiEmptyState(
+        title="扩展功能状态未加载",
+        desc="系统启动时还没有拿到扩展功能状态。",
+    )
+
+
+def build_backup_toggle_rows(settings: Any) -> tuple[UiToggleRow, UiToggleRow]:
+    return (
+        UiToggleRow(
+            id="backupAutoBackupEnabled",
+            name="auto_backup_enabled",
+            title="自动备份",
+            desc="系统会在有人访问时按间隔检查是否需要备份；程序正常退出时也会按同一个开关生成退出备份。",
+            checked_attr=checked_attr(_value(settings, "auto_backup_enabled") == "yes"),
+        ),
+        UiToggleRow(
+            id="backupAutoCleanupEnabled",
+            name="auto_backup_cleanup_enabled",
+            title="自动清理备份",
+            desc="系统会按保留天数清理旧备份；只会按你设置的间隔检查，不会每次访问都删除。",
+            checked_attr=checked_attr(_value(settings, "auto_backup_cleanup_enabled") == "yes"),
+        ),
+    )
+
+
+def build_plugin_summary_items(plugin_status: Any) -> Sequence[UiSummaryItem]:
+    if plugin_status is None:
+        return ()
+
+    registry = _optional_value(plugin_status, "registry") or {}
+    capabilities = _sequence_value(registry, "capabilities") if isinstance(registry, dict) else ()
+    degradation_events = _sequence_value(plugin_status, "degradation_events")
+    conflicted_capabilities = _sequence_value(plugin_status, "conflicted_capabilities")
+    telemetry_label, telemetry_tone = _plugin_telemetry_state(_value(plugin_status, "telemetry_persisted"))
+    degraded = bool(_optional_value(plugin_status, "degraded"))
+    conflict_count = len(conflicted_capabilities)
+
+    return (
+        UiSummaryItem("加载时间", _text_or_dash(_optional_value(plugin_status, "loaded_at"))),
+        UiSummaryItem("配置来源", _plugin_config_source_label(_value(plugin_status, "config_source")), tone="info"),
+        UiSummaryItem("已发现的可用功能", f"{len(capabilities)} 项"),
+        UiSummaryItem("留痕状态", telemetry_label, tone=telemetry_tone),
+        UiSummaryItem("启动问题", f"{len(degradation_events)} 条", tone="danger" if degraded else "success"),
+        UiSummaryItem("冲突能力", f"{conflict_count} 条", tone="warning" if conflict_count > 0 else "success"),
+    )
+
+
+def build_plugin_status_rows(plugin_status: Any) -> Sequence[PluginStatusRow]:
+    if plugin_status is None:
+        return ()
+
+    rows = []
+    for raw_row in _sequence_value(plugin_status, "statuses"):
+        row = dict(raw_row or {}) if isinstance(raw_row, dict) else raw_row
+        enabled = _yes_no(_value(row, "enabled"), field="plugin.enabled")
+        loaded = _yes_no(_value(row, "loaded"), field="plugin.loaded")
+        capabilities = _sequence_value(row, "capabilities")
+        rows.append(
+            PluginStatusRow(
+                plugin_id=str(_value(row, "plugin_id")),
+                name=str(_optional_value(row, "name") or "未命名扩展功能"),
+                version=_text_or_dash(_optional_value(row, "version")),
+                enabled_checked_attr=checked_attr(enabled == "yes"),
+                loaded_label=PLUGIN_LOADED_LABELS[loaded],
+                enabled_source_label=_plugin_enabled_source_label(_value(row, "enabled_source")),
+                error=str(_optional_value(row, "error") or ""),
+                capability_count=len(capabilities),
+                has_capabilities=bool(capabilities),
+            )
+        )
+    return tuple(rows)
+
+
+def build_system_backup_page_view_model(settings: Any, plugin_status: Any) -> SystemBackupPageState:
+    auto_backup_toggle, auto_backup_cleanup_toggle = build_backup_toggle_rows(settings)
+    return SystemBackupPageState(
+        backup_empty_state=build_backup_empty_state(),
+        plugin_empty_state=build_plugin_empty_state(),
+        plugin_unloaded_empty_state=build_plugin_unloaded_empty_state(),
+        auto_backup_toggle=auto_backup_toggle,
+        auto_backup_cleanup_toggle=auto_backup_cleanup_toggle,
+        plugin_summary_items=build_plugin_summary_items(plugin_status),
+        plugin_status_rows=build_plugin_status_rows(plugin_status),
+    )
+
+
+__all__ = [
+    "PLUGIN_CONFIG_SOURCE_LABELS",
+    "PLUGIN_ENABLED_SOURCE_LABELS",
+    "PLUGIN_LOADED_LABELS",
+    "PLUGIN_TELEMETRY_STATES",
+    "PluginStatusRow",
+    "SystemBackupPageState",
+    "build_backup_empty_state",
+    "build_backup_toggle_rows",
+    "build_plugin_empty_state",
+    "build_plugin_status_rows",
+    "build_plugin_summary_items",
+    "build_plugin_unloaded_empty_state",
+    "build_system_backup_page_view_model",
+]

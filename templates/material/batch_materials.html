@@ -30,19 +30,10 @@
   {% if not batch %}
     <div class="card aps-form-card">
       <h3 class="section-title">齐套概览</h3>
-      <div class="stat-grid">
-        <div class="stat-card type-success">
-          <div class="stat-card-label">齐套</div>
-          <div class="stat-card-value success">{{ ready_summary.yes }}</div>
-        </div>
-        <div class="stat-card type-info">
-          <div class="stat-card-label">部分齐套</div>
-          <div class="stat-card-value">{{ ready_summary.partial }}</div>
-        </div>
-        <div class="stat-card type-danger">
-          <div class="stat-card-label">未齐套</div>
-          <div class="stat-card-value danger">{{ ready_summary.no }}</div>
-        </div>
+      <div class="aps-summary-grid">
+        {{ ui.summary_item('齐套', ready_summary.yes, tone='success') }}
+        {{ ui.summary_item('部分齐套', ready_summary.partial, tone='info') }}
+        {{ ui.summary_item('未齐套', ready_summary.no, tone='danger') }}
       </div>
       <div class="muted mt-2">
         请在上方选择一个批次，查看并管理其物料需求。当某批次存在物料需求记录时，系统会自动根据到料情况更新齐套状态。
@@ -68,7 +59,7 @@
     <div class="card">
       <h3 class="section-title">新增物料需求</h3>
       {% if not material_options %}
-        <div class="muted">还没有物料，先去「物料管理」添加。</div>
+        {{ ui.empty_state('还没有物料', '请先去“物料管理”添加物料，再回到这里新增批次物料需求。') }}
       {% else %}
         <form method="post" action="{{ url_for('material.batch_material_add', batch_id=batch.batch_id) }}">
           <div class="aps-edit-form-grid">
@@ -99,13 +90,13 @@
     <div class="card">
       <h3 class="section-title">物料需求列表</h3>
       {% if not requirements %}
-        <div class="muted">该批次还没有物料需求。新增后系统会自动更新齐套状态。</div>
+        {{ ui.empty_state('该批次还没有物料需求', '新增后系统会自动更新齐套状态。') }}
       {% else %}
         {% for r in requirements %}
           <form id="bmform_{{ loop.index0 }}" method="post" action="{{ url_for('material.batch_material_update', bm_id=r.id) }}" class="d-none"></form>
         {% endfor %}
         <div class="aps-table-scroll">
-        <table id="batchMaterialsTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_batchMaterialsTable">
+        <table id="batchMaterialsTable" class="table-layout-fixed aps-table-wide aps-table aps-table--fixed aps-table--editable aps-table--actions-nowrap aps-table-size-wide" data-col-resize="1" data-table-key="v2_batchMaterialsTable">
           <thead>
             <tr>
               <th class="w-80" data-col-key="id" data-default-w="80" data-min-w="70">编号</th>

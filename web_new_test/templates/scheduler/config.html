@@ -103,7 +103,7 @@
 
   <div class="card">
     {{ ui.aps_card_header('当前配置状态', '这里只显示当前设置和方案之间的关系，不会直接修改参数。') }}
-    <div class="aps-summary-grid">
+    {% call ui.summary_grid() %}
       {{ ui.summary_item('已选方案', current_config_state.baseline_label if current_config_state else ('自定义' if not active_preset or active_preset == 'custom' else active_preset), '这是当前设置对照的方案。') }}
       {% if current_config_state %}
         {{ ui.summary_item('当前运行配置', current_config_state.status_label, current_config_state.label) }}
@@ -134,7 +134,7 @@
           {% endif %}
         </div>
       {% endif %}
-    </div>
+    {% endcall %}
   </div>
 
   <div class="card">
@@ -252,18 +252,14 @@
 
       <div class="scheduler-config-switches">
         <div class="scheduler-config-switch">
-          <div class="scheduler-config-switch-main">
-            <label class="aps-settings-toggle-control" for="freezeWindowEnabled">
-              <input id="freezeWindowEnabled" class="aps-settings-toggle-input" type="checkbox" name="freeze_window_enabled" value="yes" {{ 'checked' if cfg.freeze_window_enabled == 'yes' else '' }}>
-              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-              <span class="aps-settings-toggle-text">启用</span>
-            </label>
-            <span class="scheduler-config-switch-copy">
-              <label class="scheduler-config-switch-title" for="freezeWindowEnabled">{{ freeze_window_enabled_meta.label }}</label>
-              <span class="scheduler-config-switch-desc">{{ freeze_window_enabled_meta.hint }}</span>
-            </span>
-          </div>
-          <input type="hidden" name="freeze_window_enabled" value="no">
+          {{ ui.toggle_row(
+            'freezeWindowEnabled',
+            'freeze_window_enabled',
+            freeze_window_enabled_meta.label,
+            freeze_window_enabled_meta.hint,
+            checked_attr='checked' if cfg.freeze_window_enabled == 'yes' else '',
+            class='scheduler-config-switch-main'
+          ) }}
           <div class="scheduler-config-switch-extra">
             <input name="freeze_window_days" value="{{ cfg.freeze_window_days }}">
             <span class="scheduler-config-hint">{{ freeze_window_days_meta.unit }}</span>
@@ -273,66 +269,50 @@
         </div>
 
         <div class="scheduler-config-switch">
-          <div class="scheduler-config-switch-main">
-            <label class="aps-settings-toggle-control" for="preferPrimarySkill">
-              <input id="preferPrimarySkill" class="aps-settings-toggle-input" type="checkbox" name="prefer_primary_skill" value="yes" {{ 'checked' if cfg.prefer_primary_skill == 'yes' else '' }}>
-              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-              <span class="aps-settings-toggle-text">启用</span>
-            </label>
-            <span class="scheduler-config-switch-copy">
-              <label class="scheduler-config-switch-title" for="preferPrimarySkill">{{ prefer_primary_skill_meta.label }}</label>
-              <span class="scheduler-config-switch-desc">{{ prefer_primary_skill_meta.hint or '编辑工序选人时，下拉框把主操和高技能人员排在最前面。' }}</span>
-            </span>
-          </div>
-          <input type="hidden" name="prefer_primary_skill" value="no">
+          {{ ui.toggle_row(
+            'preferPrimarySkill',
+            'prefer_primary_skill',
+            prefer_primary_skill_meta.label,
+            prefer_primary_skill_meta.hint or '编辑工序选人时，下拉框把主操和高技能人员排在最前面。',
+            checked_attr='checked' if cfg.prefer_primary_skill == 'yes' else '',
+            class='scheduler-config-switch-main'
+          ) }}
           {{ render_config_field_warning("prefer_primary_skill") }}
         </div>
 
         <div class="scheduler-config-switch">
-          <div class="scheduler-config-switch-main">
-            <label class="aps-settings-toggle-control" for="enforceReadyDefault">
-              <input id="enforceReadyDefault" class="aps-settings-toggle-input" type="checkbox" name="enforce_ready_default" value="yes" {{ 'checked' if cfg.enforce_ready_default == 'yes' else '' }}>
-              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-              <span class="aps-settings-toggle-text">启用</span>
-            </label>
-            <span class="scheduler-config-switch-copy">
-              <label class="scheduler-config-switch-title" for="enforceReadyDefault">{{ enforce_ready_default_meta.label }}</label>
-              <span class="scheduler-config-switch-desc">{{ enforce_ready_default_meta.hint or '未齐套的订单不排。' }}</span>
-            </span>
-          </div>
-          <input type="hidden" name="enforce_ready_default" value="no">
+          {{ ui.toggle_row(
+            'enforceReadyDefault',
+            'enforce_ready_default',
+            enforce_ready_default_meta.label,
+            enforce_ready_default_meta.hint or '未齐套的订单不排。',
+            checked_attr='checked' if cfg.enforce_ready_default == 'yes' else '',
+            class='scheduler-config-switch-main'
+          ) }}
           {{ render_config_field_warning("enforce_ready_default") }}
         </div>
 
         <div class="scheduler-config-switch">
-          <div class="scheduler-config-switch-main">
-            <label class="aps-settings-toggle-control" for="autoAssignEnabled">
-              <input id="autoAssignEnabled" class="aps-settings-toggle-input" type="checkbox" name="auto_assign_enabled" value="yes" {{ 'checked' if cfg.auto_assign_enabled == 'yes' else '' }}>
-              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-              <span class="aps-settings-toggle-text">启用</span>
-            </label>
-            <span class="scheduler-config-switch-copy">
-              <label class="scheduler-config-switch-title" for="autoAssignEnabled">{{ auto_assign_enabled_meta.label }}</label>
-              <span class="scheduler-config-switch-desc">{{ auto_assign_enabled_meta.hint or '排产时自动为空白工序补设备和人员。' }}</span>
-            </span>
-          </div>
-          <input type="hidden" name="auto_assign_enabled" value="no">
+          {{ ui.toggle_row(
+            'autoAssignEnabled',
+            'auto_assign_enabled',
+            auto_assign_enabled_meta.label,
+            auto_assign_enabled_meta.hint or '排产时自动为空白工序补设备和人员。',
+            checked_attr='checked' if cfg.auto_assign_enabled == 'yes' else '',
+            class='scheduler-config-switch-main'
+          ) }}
           {{ render_config_field_warning("auto_assign_enabled") }}
         </div>
 
         <div class="scheduler-config-switch">
-          <div class="scheduler-config-switch-main">
-            <label class="aps-settings-toggle-control" for="orToolsEnabled">
-              <input id="orToolsEnabled" class="aps-settings-toggle-input" type="checkbox" name="ortools_enabled" value="yes" {{ 'checked' if cfg.ortools_enabled == 'yes' else '' }}>
-              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-              <span class="aps-settings-toggle-text">启用</span>
-            </label>
-            <span class="scheduler-config-switch-copy">
-              <label class="scheduler-config-switch-title" for="orToolsEnabled">{{ ortools_enabled_meta.label }}</label>
-              <span class="scheduler-config-switch-desc">{{ ortools_enabled_meta.hint or '只在精细计算时生效；系统会多花几秒尝试找更好的排法，优化目标就是当前页面选择的目标。' }} 不保证每次一定更好，但会在限定秒数内停下。</span>
-            </span>
-          </div>
-          <input type="hidden" name="ortools_enabled" value="no">
+          {{ ui.toggle_row(
+            'orToolsEnabled',
+            'ortools_enabled',
+            ortools_enabled_meta.label,
+            (ortools_enabled_meta.hint or '只在精细计算时生效；系统会多花几秒尝试找更好的排法，优化目标就是当前页面选择的目标。') ~ ' 不保证每次一定更好，但会在限定秒数内停下。',
+            checked_attr='checked' if cfg.ortools_enabled == 'yes' else '',
+            class='scheduler-config-switch-main'
+          ) }}
           <div class="scheduler-config-switch-extra">
             <input name="ortools_time_limit_seconds" value="{{ cfg.ortools_time_limit_seconds }}">
             <span class="scheduler-config-hint">{{ ortools_time_limit_seconds_meta.unit or '秒' }}</span>
