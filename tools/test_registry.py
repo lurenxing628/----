@@ -106,7 +106,15 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_safe_next_url_observability.py",
     "tests/test_holiday_default_efficiency_read_guard.py",
     "tests/regression_error_boundary_contract.py",
+    "tests/regression_mirror_template_sync.py",
     "tests/regression_gantt_critical_outline_sync.py",
+    "tests/regression_scheduler_config_layout_contract.py",
+    "tests/regression_scheduler_run_entry_layout_contract.py",
+    "tests/regression_action_card_button_layout_contract.py",
+    "tests/regression_calendar_layout_contract.py",
+    "tests/regression_gantt_layout_contract.py",
+    "tests/regression_stable_form_layout_allowlist.py",
+    "tests/regression_ui_contract_table_overflow_guard.py",
 )
 
 QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)

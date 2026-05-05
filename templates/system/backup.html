@@ -81,16 +81,16 @@
       <p class="muted">暂无备份文件。你可以先点击“手动备份”。</p>
     {% else %}
       <div class="aps-table-scroll">
-      <table class="table-sticky">
+      <table id="backupFilesTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_backupFilesTable">
         <thead>
           <tr>
-            <th class="w-60">
+            <th class="w-60" data-col-key="select" data-default-w="60" data-min-w="56" data-resize="0">
               <input type="checkbox" class="js-backup-select-all" title="全选" aria-label="全选备份">
             </th>
-            <th>文件名</th>
-            <th>创建时间</th>
-            <th>大小(MB)</th>
-            <th>操作</th>
+            <th class="w-320" data-col-key="filename" data-default-w="320" data-min-w="240">文件名</th>
+            <th class="w-180" data-col-key="created_at" data-default-w="180" data-min-w="150">创建时间</th>
+            <th class="w-120" data-col-key="size" data-default-w="120" data-min-w="100">大小(MB)</th>
+            <th class="w-180" data-col-key="actions" data-default-w="180" data-min-w="170" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -259,17 +259,19 @@
 
       {% if plugin_status.degraded %}
         <div class="warning mt-2">扩展功能启动时出现了问题，请先看下面的中文原因；仍看不懂时再让管理员查看问题编号。</div>
-        <ul class="list-tight muted mt-2">
-          {% for event in plugin_status.degradation_events or [] %}
-            <li>
-              {{ event.message }}
-              <details class="debug-details text-xs">
-                <summary>给维护人员看的信息</summary>
-                问题编号已记录，请联系维护人员查看日志。
-              </details>
-            </li>
-          {% endfor %}
-        </ul>
+        {% call ui.flash_details('查看 ' ~ ((plugin_status.degradation_events or [])|length) ~ ' 条启动问题') %}
+          <ul class="list-tight">
+            {% for event in plugin_status.degradation_events or [] %}
+              <li>
+                {{ event.message }}
+                <details class="debug-details text-xs">
+                  <summary>给维护人员看的信息</summary>
+                  问题编号已记录，请联系维护人员查看日志。
+                </details>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endcall %}
       {% endif %}
 
       <div class="muted mt-2">
@@ -287,31 +289,33 @@
       </div>
       {% if plugin_status.conflicted_capabilities and (plugin_status.conflicted_capabilities | length) > 0 %}
         <div class="muted mt-1">
-          冲突能力：
-          <ul class="list-tight">
-            {% for item in plugin_status.conflicted_capabilities %}
-              <li>
-                有两个扩展功能想处理同一类事情，系统已保留一个，另一个没有启用。
-                <details class="debug-details text-xs">
-                  <summary>给维护人员看的信息</summary>
-                  冲突细节已记录在系统日志中，需要排查时请从日志查看。
-                </details>
-              </li>
-            {% endfor %}
-          </ul>
+          冲突能力：{{ plugin_status.conflicted_capabilities|length }} 条
+          {% call ui.flash_details('查看冲突能力') %}
+            <ul class="list-tight">
+              {% for item in plugin_status.conflicted_capabilities %}
+                <li>
+                  有两个扩展功能想处理同一类事情，系统已保留一个，另一个没有启用。
+                  <details class="debug-details text-xs">
+                    <summary>给维护人员看的信息</summary>
+                    冲突细节已记录在系统日志中，需要排查时请从日志查看。
+                  </details>
+                </li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
         </div>
       {% endif %}
 
       {% if plugin_status.statuses and (plugin_status.statuses | length) > 0 %}
         <div class="aps-table-scroll mt-3">
-        <table class="table-sticky">
+        <table id="pluginStatusTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_pluginStatusTable">
           <thead>
             <tr>
-              <th class="w-200">扩展功能</th>
-              <th class="w-140">版本</th>
-              <th class="w-120">开关</th>
-              <th class="w-120">已加载</th>
-              <th>可用功能 / 问题说明</th>
+              <th class="w-220" data-col-key="name" data-default-w="220" data-min-w="170">扩展功能</th>
+              <th class="w-140" data-col-key="version" data-default-w="140" data-min-w="110">版本</th>
+              <th class="w-180" data-col-key="enabled" data-default-w="180" data-min-w="160" data-resize="1">开关</th>
+              <th class="w-120" data-col-key="loaded" data-default-w="120" data-min-w="100">已加载</th>
+              <th class="w-360" data-col-key="details" data-default-w="360" data-min-w="260">可用功能 / 问题说明</th>
             </tr>
           </thead>
           <tbody>

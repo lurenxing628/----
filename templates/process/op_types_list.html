@@ -20,10 +20,10 @@
     ui
   ) }}
 
-  <div class="card">
-    <h3>新增工种</h3>
+  <div class="card aps-form-card">
+    <h3 class="section-title">新增工种</h3>
     <form method="post" action="{{ url_for('process.create_op_type') }}">
-      <div class="aps-form-grid">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label>工种编号</label>
           <input name="op_type_id" required placeholder="如：OT001">
@@ -43,8 +43,8 @@
           <label>备注</label>
           <input name="remark" placeholder="可选">
         </div>
-        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('添加工种', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('添加工种', 'primary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 
@@ -63,14 +63,14 @@
     {% endif %}
     {% if op_types and op_types|length > 0 %}
       <div class="aps-table-scroll">
-      <table>
+      <table id="opTypesTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_opTypesTable">
         <thead>
           <tr>
-            <th class="w-140">工种编号</th>
-            <th class="w-220">工种名称</th>
-            <th class="w-120">归属</th>
-            <th>备注</th>
-            <th class="w-220">操作</th>
+            <th class="w-140" data-col-key="op_type_id" data-default-w="140" data-min-w="120">工种编号</th>
+            <th class="w-220" data-col-key="name" data-default-w="220" data-min-w="160">工种名称</th>
+            <th class="w-120" data-col-key="source" data-default-w="120" data-min-w="100">归属</th>
+            <th class="w-260" data-col-key="remark" data-default-w="260" data-min-w="180">备注</th>
+            <th class="w-220" data-col-key="actions" data-default-w="220" data-min-w="170" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>

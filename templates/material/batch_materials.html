@@ -10,7 +10,7 @@
   <div class="card">
     <h3 class="section-title">选择批次</h3>
     <form method="get" action="{{ url_for('material.batch_materials_page') }}">
-      <div class="form-row">
+      <div class="aps-query-form-grid">
         <div class="form-field min-w-320">
           <label for="batchMaterialBatchSelect">批次</label>
           <select id="batchMaterialBatchSelect" name="batch_id" class="w-280">
@@ -20,7 +20,7 @@
             {% endfor %}
           </select>
         </div>
-        <div>
+        <div class="aps-query-form-actions">
           {{ ui.button('查看', 'primary', 'md', type_attr='submit') }}
         </div>
       </div>
@@ -28,7 +28,7 @@
   </div>
 
   {% if not batch %}
-    <div class="card">
+    <div class="card aps-form-card">
       <h3 class="section-title">齐套概览</h3>
       <div class="stat-grid">
         <div class="stat-card type-success">
@@ -51,7 +51,7 @@
   {% endif %}
 
   {% if batch %}
-    <div class="card">
+    <div class="card aps-form-card">
       <h3 class="section-title">批次信息</h3>
       <div class="muted">
         批次：<strong>{{ batch.batch_id }}</strong>
@@ -75,7 +75,7 @@
         <div class="muted">还没有物料，先去「物料管理」添加。</div>
       {% else %}
         <form method="post" action="{{ url_for('material.batch_material_add', batch_id=batch.batch_id) }}">
-          <div class="form-row">
+          <div class="aps-edit-form-grid">
             <div class="form-field min-w-320">
               <label for="batchMaterialMaterialSelect">物料</label>
               <select id="batchMaterialMaterialSelect" name="material_id" required class="w-280">
@@ -94,10 +94,8 @@
               <label for="batchMaterialAvailableQtyInput">到料数量</label>
               <input id="batchMaterialAvailableQtyInput" name="available_qty" value="0" type="number" min="0" step="0.01" class="w-120">
             </div>
-            <div>
-              {{ ui.button('新增', 'primary', 'md', type_attr='submit') }}
-            </div>
           </div>
+          <div class="aps-form-footer">{{ ui.button('新增', 'primary', 'md', type_attr='submit') }}</div>
         </form>
       {% endif %}
     </div>
@@ -110,18 +108,19 @@
         {% for r in requirements %}
           <form id="bmform_{{ loop.index0 }}" method="post" action="{{ url_for('material.batch_material_update', bm_id=r.id) }}" class="d-none"></form>
         {% endfor %}
-        <table>
+        <div class="aps-table-scroll">
+        <table id="batchMaterialsTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_batchMaterialsTable">
           <thead>
             <tr>
-              <th class="w-80">编号</th>
-              <th class="w-140">物料编号</th>
-              <th class="w-200">名称</th>
-              <th class="w-160">规格</th>
-              <th class="w-120">单位</th>
-              <th class="w-140">需求数量</th>
-              <th class="w-140">到料数量</th>
-              <th class="w-120">齐套</th>
-              <th class="w-220">操作</th>
+              <th class="w-80" data-col-key="id" data-default-w="80" data-min-w="70">编号</th>
+              <th class="w-140" data-col-key="material_id" data-default-w="140" data-min-w="120">物料编号</th>
+              <th class="w-200" data-col-key="name" data-default-w="200" data-min-w="150">名称</th>
+              <th class="w-160" data-col-key="spec" data-default-w="160" data-min-w="120">规格</th>
+              <th class="w-120" data-col-key="unit" data-default-w="120" data-min-w="90">单位</th>
+              <th class="w-140" data-col-key="required_qty" data-default-w="140" data-min-w="120">需求数量</th>
+              <th class="w-140" data-col-key="received_qty" data-default-w="140" data-min-w="120">到料数量</th>
+              <th class="w-120" data-col-key="ready" data-default-w="120" data-min-w="100">齐套</th>
+              <th class="w-220" data-col-key="actions" data-default-w="220" data-min-w="170" data-resize="1">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -154,6 +153,7 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
       {% endif %}
     </div>
   {% endif %}

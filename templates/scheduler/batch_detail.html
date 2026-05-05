@@ -56,20 +56,20 @@
 
     {% if operations and operations|length > 0 %}
       <div class="aps-table-scroll">
-      <table id="batchOpsTable" class="mt-3 table-sticky-col table-layout-fixed" data-col-resize="1" data-table-key="v2_batchOpsTable">
+      <table id="batchOpsTable" class="mt-3 table-sticky-col table-layout-fixed aps-table-xwide" data-col-resize="1" data-table-key="v3_batchOpsTable">
         <thead>
           <tr>
-            <th class="w-140">工序编码</th>
-            <th class="w-80">工序</th>
-            <th class="w-160">工种</th>
-            <th class="w-100">归属</th>
-            <th class="w-200">设备</th>
-            <th class="w-200">人员</th>
-            <th class="w-120">换型（小时）</th>
-            <th class="w-120">单件（小时）</th>
-            <th class="w-220">供应商</th>
-            <th class="w-140">外协周期(天)</th>
-            <th class="w-120">操作</th>
+            <th class="w-140" data-col-key="op_code" data-default-w="140" data-min-w="120">工序编码</th>
+            <th class="w-80" data-col-key="seq" data-default-w="80" data-min-w="70">工序</th>
+            <th class="w-160" data-col-key="op_type" data-default-w="160" data-min-w="130">工种</th>
+            <th class="w-100" data-col-key="source" data-default-w="100" data-min-w="90">归属</th>
+            <th class="w-220" data-col-key="machine" data-default-w="220" data-min-w="180">设备</th>
+            <th class="w-220" data-col-key="operator" data-default-w="220" data-min-w="180">人员</th>
+            <th class="w-130" data-col-key="setup_hours" data-default-w="130" data-min-w="110">换型（小时）</th>
+            <th class="w-130" data-col-key="unit_hours" data-default-w="130" data-min-w="110">单件（小时）</th>
+            <th class="w-240" data-col-key="supplier" data-default-w="240" data-min-w="190">供应商</th>
+            <th class="w-150" data-col-key="ext_days" data-default-w="150" data-min-w="130">外协周期(天)</th>
+            <th class="w-120" data-col-key="actions" data-default-w="120" data-min-w="110" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>

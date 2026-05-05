@@ -51,7 +51,9 @@
             {{ strict_mode_label or '发现问题就停下' }}：能确认的数据会继续写入，真正错误的数据仍会报错
           {% endif %}
         </label>
-        <div class="muted">{{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续写入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}</div>
+        {% call ui.help_details('查看检查规则') %}
+          {{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续写入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}
+        {% endcall %}
       {% endif %}
       <div class="muted">如需切换上述选项，请重新上传 Excel 并检查。</div>
       <div class="mt-2">
@@ -68,7 +70,7 @@
       {{ ui.link_button('下载模板', template_download_url, 'secondary', 'md', target='_blank') }}
     </div>
     <form action="{{ preview_url }}" method="post" enctype="multipart/form-data">
-      <div class="aps-filter-bar mb-3">
+      <div class="aps-query-form-grid mb-3">
         <div class="form-field">
           <label>导入模式</label>
           <select name="mode">
@@ -90,15 +92,17 @@
       {% if strict_mode_supported %}
         <div class="mb-3">
           <label><input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}> {{ strict_mode_label or '发现问题就停下' }}</label>
-          <div class="muted text-xs">{{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续写入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}</div>
+          {% call ui.help_details('查看检查规则') %}
+            {{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续写入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}
+          {% endcall %}
         </div>
       {% endif %}
-      <div class="aps-filter-bar">
+      <div class="aps-query-form-grid">
         <div class="form-field">
           <label>选择文件</label>
           <input type="file" name="file" accept=".xlsx" required>
         </div>
-        <div class="aps-form-actions aps-form-actions-end">
+        <div class="aps-query-form-actions">
           {{ ui.button('上传 Excel 并检查', 'primary', 'md', type_attr='submit') }}
         </div>
       </div>
@@ -113,13 +117,13 @@
       <h3 class="section-title">检查结果</h3>
       <p class="text-meta">提示：行号对应 Excel 中的真实行号（标题行+1）。</p>
       <div class="aps-table-scroll">
-      <table>
+      <table id="excelBatchPreviewTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_excelBatchPreviewTable">
         <thead>
           <tr>
-            <th class="w-90">行号</th>
-            <th class="w-120">结果</th>
-            <th class="w-260">问题或说明</th>
-            <th>详情</th>
+            <th class="w-90" data-col-key="row_num" data-default-w="90" data-min-w="70">行号</th>
+            <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100">结果</th>
+            <th class="w-320" data-col-key="message" data-default-w="320" data-min-w="220">问题或说明</th>
+            <th class="w-260" data-col-key="detail" data-default-w="260" data-min-w="180">详情</th>
           </tr>
         </thead>
         <tbody>
@@ -165,17 +169,17 @@
     <h3 class="section-title">当前批次数据</h3>
     {% if existing_list and existing_list|length > 0 %}
       <div class="aps-table-scroll">
-      <table>
+      <table id="excelBatchesExistingTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_excelBatchesExistingTable">
         <thead>
           <tr>
-            <th class="w-140">批次号</th>
-            <th class="w-180">图号</th>
-            <th class="w-100">数量</th>
-            <th class="w-140">交期</th>
-            <th class="w-120">优先级</th>
-            <th class="w-140">齐套</th>
-            <th class="w-140">齐套日期</th>
-            <th>备注</th>
+            <th class="w-160" data-col-key="batch_id" data-default-w="160" data-min-w="130">批次号</th>
+            <th class="w-180" data-col-key="part_no" data-default-w="180" data-min-w="140">图号</th>
+            <th class="w-100" data-col-key="quantity" data-default-w="100" data-min-w="80">数量</th>
+            <th class="w-140" data-col-key="due_date" data-default-w="140" data-min-w="120">交期</th>
+            <th class="w-120" data-col-key="priority" data-default-w="120" data-min-w="100">优先级</th>
+            <th class="w-140" data-col-key="ready_status" data-default-w="140" data-min-w="110">齐套</th>
+            <th class="w-140" data-col-key="ready_date" data-default-w="140" data-min-w="120">齐套日期</th>
+            <th class="w-260" data-col-key="remark" data-default-w="260" data-min-w="180">备注</th>
           </tr>
         </thead>
         <tbody>

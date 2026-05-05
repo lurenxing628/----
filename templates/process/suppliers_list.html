@@ -20,13 +20,13 @@
     ui
   ) }}
 
-  <div class="card">
-    <h3>新增供应商</h3>
-    <div class="field-help">
+  <div class="card aps-form-card">
+    <h3 class="section-title">新增供应商</h3>
+    <div class="field-help mb-2">
       默认周期必须填大于 0 的天数。若一个外协工种有多个启用供应商，请停用多余的供应商，或确认编号排序后系统会选到你想要的那一个。
     </div>
     <form method="post" action="{{ url_for('process.create_supplier') }}">
-      <div class="aps-form-grid">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label>供应商编号</label>
           <input name="supplier_id" required placeholder="如：S001">
@@ -56,12 +56,12 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field aps-form-span-2">
+        <div class="form-field aps-field-wide">
           <label>备注</label>
           <input name="remark" placeholder="可选">
         </div>
-        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('添加供应商', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('添加供应商', 'primary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 
@@ -80,16 +80,16 @@
     {% endif %}
     {% if suppliers and suppliers|length > 0 %}
       <div class="aps-table-scroll">
-      <table>
+      <table id="suppliersTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_suppliersTable">
         <thead>
           <tr>
-            <th class="w-140">供应商编号</th>
-            <th class="w-240">名称</th>
-            <th class="w-160">对应工种</th>
-            <th class="w-120">默认周期（天）</th>
-            <th class="w-120">状态</th>
-            <th>备注</th>
-            <th class="w-220">操作</th>
+            <th class="w-140" data-col-key="supplier_id" data-default-w="140" data-min-w="120">供应商编号</th>
+            <th class="w-240" data-col-key="name" data-default-w="240" data-min-w="170">名称</th>
+            <th class="w-160" data-col-key="op_type" data-default-w="160" data-min-w="120">对应工种</th>
+            <th class="w-140" data-col-key="lead_days" data-default-w="140" data-min-w="120">默认周期（天）</th>
+            <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100">状态</th>
+            <th class="w-260" data-col-key="remark" data-default-w="260" data-min-w="180">备注</th>
+            <th class="w-220" data-col-key="actions" data-default-w="220" data-min-w="170" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>

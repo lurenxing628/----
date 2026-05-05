@@ -57,18 +57,18 @@
       {% endif %}
     {% else %}
       <div class="aps-table-scroll">
-      <table id="overdueTable" class="table-sticky table-layout-fixed" data-col-resize="1">
+      <table id="overdueTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_overdueTable">
         <thead>
           <tr>
-            <th style="width:120px;">类别</th>
-            <th style="width:140px;">批次号</th>
-            <th style="width:140px;">图号</th>
-            <th>名称</th>
-            <th style="width:120px;">数量</th>
-            <th style="width:140px;">交期</th>
-            <th style="width:200px;">完工/截至时间</th>
-            <th style="width:120px;">超期(天)</th>
-            <th style="width:120px;">超期(小时)</th>
+            <th class="w-120" data-col-key="bucket" data-default-w="120" data-min-w="100">类别</th>
+            <th class="w-160" data-col-key="batch_id" data-default-w="160" data-min-w="130">批次号</th>
+            <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
+            <th class="w-280" data-col-key="part_name" data-default-w="280" data-min-w="200">名称</th>
+            <th class="w-120" data-col-key="quantity" data-default-w="120" data-min-w="90">数量</th>
+            <th class="w-140" data-col-key="due_date" data-default-w="140" data-min-w="120">交期</th>
+            <th class="w-200" data-col-key="finish_time" data-default-w="200" data-min-w="160">完工/截至时间</th>
+            <th class="w-120" data-col-key="delay_days" data-default-w="120" data-min-w="100">超期(天)</th>
+            <th class="w-120" data-col-key="delay_hours" data-default-w="120" data-min-w="100">超期(小时)</th>
           </tr>
         </thead>
         <tbody>

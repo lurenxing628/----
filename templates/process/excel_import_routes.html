@@ -25,12 +25,12 @@
     <h3>当前零件数据</h3>
     {% if existing_list and existing_list|length > 0 %}
       <div class="aps-table-scroll">
-      <table>
+      <table id="excelRoutesExistingTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_excelRoutesExistingTable">
         <thead>
           <tr>
-            <th>图号</th>
-            <th>名称</th>
-            <th>路线文字（Excel 列名：工艺路线字符串）</th>
+            <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
+            <th class="w-220" data-col-key="part_name" data-default-w="220" data-min-w="160">名称</th>
+            <th class="w-360" data-col-key="route_text" data-default-w="360" data-min-w="240">路线文字（Excel 列名：工艺路线字符串）</th>
           </tr>
         </thead>
         <tbody>

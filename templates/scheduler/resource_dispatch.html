@@ -41,7 +41,7 @@
     nav_html=ui.scheduler_nav('resource_dispatch')
   ) }}
 
-  <div class="card">
+  <div class="card aps-query-card">
     {% set selected_version_row = namespace(item=None) %}
     {% for item in versions or [] %}
       {% if item.version == filters.version %}
@@ -57,7 +57,7 @@
         {'label': '版本', 'value': 'v' ~ filters.version}
       ]) }}
     {% endif %}
-    <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-form-grid">
+    <form method="get" action="{{ url_for('scheduler.resource_dispatch_page') }}" class="aps-query-form-grid aps-resource-query-grid">
       <div class="form-field">
         <label>视角</label>
         <select name="scope_type" id="rdScopeType" class="w-140">
@@ -134,7 +134,7 @@
           <input name="version" value="{{ filters.version or '' }}" class="w-160">
         {% endif %}
       </div>
-      <div class="aps-form-actions aps-form-actions-end">
+      <div class="aps-query-form-actions aps-resource-query-actions">
         {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
         {{ ui.link_button('重置', url_for('scheduler.resource_dispatch_page'), 'secondary', 'md') }}
       </div>
@@ -188,18 +188,18 @@
     </div>
   </div>
 
-  <div id="rdOverdueWarning" class="card flash-card flash-warning is-hidden" role="alert" aria-live="polite">
+  <div id="rdOverdueWarning" class="flash-card flash-warning is-hidden" role="alert" aria-live="polite">
     超期统计和标记可能不完整，请稍后重试或查看系统历史。
   </div>
 
-  <div id="rdDegradationSummary" class="card flash-card flash-warning is-hidden" role="alert" aria-live="polite">
+  <div id="rdDegradationSummary" class="flash-card flash-warning is-hidden" role="alert" aria-live="polite">
     <div>当前结果有需要注意的提示：</div>
     <ul id="rdDegradationList" class="list-tight mt-1"></ul>
   </div>
 
   <div id="rdResultCard" class="card {% if not has_history or not can_query %}is-hidden{% endif %}">
-    <div class="aps-filter-bar">
-      <div class="aps-form-actions" id="rdTabBar">
+    <div class="aps-resource-result-toolbar">
+      <div class="aps-resource-result-tabs" id="rdTabBar">
         {{ ui.button('任务明细', 'primary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabDetail') }}
         {{ ui.button('日历矩阵', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabCalendar') }}
         {{ ui.button('甘特图', 'secondary', 'md', class='rd-tab-btn', type_attr='button', element_id='rdTabGantt') }}
@@ -219,19 +219,19 @@
 
     <div id="rdDetailPanel" class="mt-3">
       <div class="aps-table-scroll">
-        <table class="table-sticky table-layout-fixed">
+        <table id="rdDetailTable" class="table-sticky table-layout-fixed aps-table-xwide" data-col-resize="1" data-table-key="v1_resourceDispatchDetail">
           <thead>
             <tr>
-              <th class="w-140">开始</th>
-              <th class="w-140">结束</th>
-              <th class="w-120">批次号</th>
-              <th class="w-140">图号</th>
-              <th class="w-120">工序编码</th>
-              <th class="w-80">工序</th>
-              <th>对应资源</th>
-              <th class="w-140">班组关系</th>
-              <th class="w-120">来源</th>
-              <th class="w-120">状态</th>
+              <th class="w-160" data-col-key="start" data-default-w="160" data-min-w="140">开始</th>
+              <th class="w-160" data-col-key="end" data-default-w="160" data-min-w="140">结束</th>
+              <th class="w-140" data-col-key="batch_id" data-default-w="140" data-min-w="120">批次号</th>
+              <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
+              <th class="w-140" data-col-key="op_code" data-default-w="140" data-min-w="120">工序编码</th>
+              <th class="w-80" data-col-key="seq" data-default-w="80" data-min-w="70">工序</th>
+              <th class="w-220" data-col-key="resource" data-default-w="220" data-min-w="180">对应资源</th>
+              <th class="w-140" data-col-key="team_relation" data-default-w="140" data-min-w="120">班组关系</th>
+              <th class="w-120" data-col-key="source" data-default-w="120" data-min-w="100">来源</th>
+              <th class="w-140" data-col-key="status" data-default-w="140" data-min-w="120">状态</th>
             </tr>
           </thead>
           <tbody id="rdDetailBody">
@@ -254,19 +254,19 @@
     <div id="rdTeamBlocks" class="mt-3 is-hidden">
       <h3>班组人员任务</h3>
       <div class="aps-table-scroll">
-        <table class="table-sticky table-layout-fixed">
+        <table id="rdTeamOperatorTable" class="table-sticky table-layout-fixed aps-table-xwide" data-col-resize="1" data-table-key="v1_resourceDispatchTeamOperator">
           <thead>
             <tr>
-              <th class="w-140">开始</th>
-              <th class="w-140">结束</th>
-              <th class="w-120">批次号</th>
-              <th class="w-140">图号</th>
-              <th class="w-120">工序编码</th>
-              <th class="w-80">工序</th>
-              <th>对应资源</th>
-              <th class="w-140">班组关系</th>
-              <th class="w-120">来源</th>
-              <th class="w-120">状态</th>
+              <th class="w-160" data-col-key="start" data-default-w="160" data-min-w="140">开始</th>
+              <th class="w-160" data-col-key="end" data-default-w="160" data-min-w="140">结束</th>
+              <th class="w-140" data-col-key="batch_id" data-default-w="140" data-min-w="120">批次号</th>
+              <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
+              <th class="w-140" data-col-key="op_code" data-default-w="140" data-min-w="120">工序编码</th>
+              <th class="w-80" data-col-key="seq" data-default-w="80" data-min-w="70">工序</th>
+              <th class="w-220" data-col-key="resource" data-default-w="220" data-min-w="180">对应资源</th>
+              <th class="w-140" data-col-key="team_relation" data-default-w="140" data-min-w="120">班组关系</th>
+              <th class="w-120" data-col-key="source" data-default-w="120" data-min-w="100">来源</th>
+              <th class="w-140" data-col-key="status" data-default-w="140" data-min-w="120">状态</th>
             </tr>
           </thead>
           <tbody id="rdTeamOperatorBody">
@@ -279,19 +279,19 @@
 
       <h3 class="mt-3">班组设备任务</h3>
       <div class="aps-table-scroll">
-        <table class="table-sticky table-layout-fixed">
+        <table id="rdTeamMachineTable" class="table-sticky table-layout-fixed aps-table-xwide" data-col-resize="1" data-table-key="v1_resourceDispatchTeamMachine">
           <thead>
             <tr>
-              <th class="w-140">开始</th>
-              <th class="w-140">结束</th>
-              <th class="w-120">批次号</th>
-              <th class="w-140">图号</th>
-              <th class="w-120">工序编码</th>
-              <th class="w-80">工序</th>
-              <th>对应资源</th>
-              <th class="w-140">班组关系</th>
-              <th class="w-120">来源</th>
-              <th class="w-120">状态</th>
+              <th class="w-160" data-col-key="start" data-default-w="160" data-min-w="140">开始</th>
+              <th class="w-160" data-col-key="end" data-default-w="160" data-min-w="140">结束</th>
+              <th class="w-140" data-col-key="batch_id" data-default-w="140" data-min-w="120">批次号</th>
+              <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
+              <th class="w-140" data-col-key="op_code" data-default-w="140" data-min-w="120">工序编码</th>
+              <th class="w-80" data-col-key="seq" data-default-w="80" data-min-w="70">工序</th>
+              <th class="w-220" data-col-key="resource" data-default-w="220" data-min-w="180">对应资源</th>
+              <th class="w-140" data-col-key="team_relation" data-default-w="140" data-min-w="120">班组关系</th>
+              <th class="w-120" data-col-key="source" data-default-w="120" data-min-w="100">来源</th>
+              <th class="w-140" data-col-key="status" data-default-w="140" data-min-w="120">状态</th>
             </tr>
           </thead>
           <tbody id="rdTeamMachineBody">
@@ -305,19 +305,19 @@
       <div id="rdTeamCrossWrap" class="is-hidden">
         <h3 class="mt-3">跨班组</h3>
         <div class="aps-table-scroll">
-          <table class="table-sticky table-layout-fixed">
+          <table id="rdTeamCrossTable" class="table-sticky table-layout-fixed aps-table-xwide" data-col-resize="1" data-table-key="v1_resourceDispatchTeamCross">
             <thead>
               <tr>
-                <th class="w-140">开始</th>
-                <th class="w-140">结束</th>
-                <th class="w-120">批次号</th>
-                <th class="w-140">图号</th>
-                <th class="w-120">工序编码</th>
-                <th class="w-80">工序</th>
-                <th>对应资源</th>
-                <th class="w-140">班组关系</th>
-                <th class="w-120">来源</th>
-                <th class="w-120">状态</th>
+                <th class="w-160" data-col-key="start" data-default-w="160" data-min-w="140">开始</th>
+                <th class="w-160" data-col-key="end" data-default-w="160" data-min-w="140">结束</th>
+                <th class="w-140" data-col-key="batch_id" data-default-w="140" data-min-w="120">批次号</th>
+                <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
+                <th class="w-140" data-col-key="op_code" data-default-w="140" data-min-w="120">工序编码</th>
+                <th class="w-80" data-col-key="seq" data-default-w="80" data-min-w="70">工序</th>
+                <th class="w-220" data-col-key="resource" data-default-w="220" data-min-w="180">对应资源</th>
+                <th class="w-140" data-col-key="team_relation" data-default-w="140" data-min-w="120">班组关系</th>
+                <th class="w-120" data-col-key="source" data-default-w="120" data-min-w="100">来源</th>
+                <th class="w-140" data-col-key="status" data-default-w="140" data-min-w="120">状态</th>
               </tr>
             </thead>
             <tbody id="rdTeamCrossBody">

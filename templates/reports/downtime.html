@@ -70,15 +70,15 @@
       {% endif %}
     {% else %}
       <div class="aps-table-scroll">
-      <table id="downtimeTable" class="table-sticky table-layout-fixed" data-col-resize="1">
+      <table id="downtimeTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_downtimeTable">
         <thead>
           <tr>
-            <th style="width:140px;">设备编号</th>
-            <th>设备名称</th>
-            <th style="width:140px;" class="text-right">停机时长(小时)</th>
-            <th style="width:120px;" class="text-right">停机次数</th>
-            <th style="width:160px;" class="text-right">与排程重叠(小时)</th>
-            <th style="width:120px;" class="text-right">重叠次数</th>
+            <th class="w-140" data-col-key="machine_id" data-default-w="140" data-min-w="120">设备编号</th>
+            <th class="w-260" data-col-key="machine_name" data-default-w="260" data-min-w="180">设备名称</th>
+            <th class="w-160 text-right" data-col-key="downtime_hours" data-default-w="160" data-min-w="130">停机时长(小时)</th>
+            <th class="w-120 text-right" data-col-key="downtime_count" data-default-w="120" data-min-w="90">停机次数</th>
+            <th class="w-180 text-right" data-col-key="overlap_hours" data-default-w="180" data-min-w="150">与排程重叠(小时)</th>
+            <th class="w-120 text-right" data-col-key="overlap_count" data-default-w="120" data-min-w="90">重叠次数</th>
           </tr>
         </thead>
         <tbody>

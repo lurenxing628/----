@@ -18,10 +18,10 @@
     </div>
   </div>
 
-  <div class="card">
-    <h3>基本信息</h3>
+  <div class="card aps-form-card">
+    <h3 class="section-title">基本信息</h3>
     <form method="post" action="{{ url_for('personnel.update_operator', operator_id=operator.operator_id) }}">
-      <div class="form-row">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label>工号</label>
           <input value="{{ operator.operator_id }}" disabled>
@@ -47,14 +47,14 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field flex-1 min-w-240">
+        <div class="form-field aps-field-wide">
           <label>备注</label>
           <input name="remark" value="{{ operator.remark or '' }}">
         </div>
-        <div class="inline-flex-wrap">
-          {{ ui.button('保存', 'primary', 'md', type_attr='submit') }}
-          {{ ui.link_button('返回列表', url_for('personnel.list_page'), 'secondary', 'sm') }}
-        </div>
+      </div>
+      <div class="aps-form-footer">
+        {{ ui.button('保存', 'primary', 'md', type_attr='submit') }}
+        {{ ui.link_button('返回列表', url_for('personnel.list_page'), 'secondary', 'sm') }}
       </div>
     </form>
   </div>
@@ -69,11 +69,13 @@
       <div class="warning mt-2">
         以下 {{ link_dirty_summary.row_count }} 条记录中有部分字段的旧格式已被系统自动修正；涉及字段：{{ link_dirty_summary.fields | join('、') }}。
       </div>
-      <ul class="list-tight muted mt-2">
-        {% for item in (link_dirty_summary.reason_items or []) %}
-          <li>{{ item.label }}：{{ item.reason }}</li>
-        {% endfor %}
-      </ul>
+      {% call ui.flash_details('查看自动修正明细') %}
+        <ul class="list-tight">
+          {% for item in (link_dirty_summary.reason_items or []) %}
+            <li>{{ item.label }}：{{ item.reason }}</li>
+          {% endfor %}
+        </ul>
+      {% endcall %}
     {% endif %}
     <!-- OperatorMachine -->
 
@@ -81,15 +83,16 @@
       {% for m in linked_machines %}
         <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_link', operator_id=operator.operator_id) }}" class="d-none"></form>
       {% endfor %}
-      <table>
+      <div class="aps-table-scroll">
+      <table id="operatorLinkedMachinesTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_operatorLinkedMachinesTable">
         <thead>
           <tr>
-            <th class="w-140">设备编号</th>
-            <th>设备名称</th>
-            <th class="w-120">设备状态</th>
-            <th class="w-140">技能等级</th>
-            <th class="w-120">主操</th>
-            <th class="w-220">操作</th>
+            <th class="w-140" data-col-key="machine_id" data-default-w="140" data-min-w="120">设备编号</th>
+            <th class="w-240" data-col-key="machine_name" data-default-w="240" data-min-w="170">设备名称</th>
+            <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100">设备状态</th>
+            <th class="w-140" data-col-key="skill" data-default-w="140" data-min-w="120">技能等级</th>
+            <th class="w-120" data-col-key="primary" data-default-w="120" data-min-w="100">主操</th>
+            <th class="w-220" data-col-key="actions" data-default-w="220" data-min-w="170" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -134,6 +137,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂无关联设备。</div>
     {% endif %}
@@ -142,7 +146,7 @@
     <h4>添加设备关联</h4>
     {% if available_machines and available_machines|length > 0 %}
       <form method="post" action="{{ url_for('personnel.add_link', operator_id=operator.operator_id) }}">
-        <div class="form-row">
+        <div class="aps-edit-form-grid">
           <div class="form-field">
             <label>选择设备</label>
             <select name="machine_id" required>
@@ -151,8 +155,8 @@
               {% endfor %}
             </select>
           </div>
-          <div>{{ ui.button('添加关联', 'primary', 'md', type_attr='submit') }}</div>
         </div>
+        <div class="aps-form-footer">{{ ui.button('添加关联', 'primary', 'md', type_attr='submit') }}</div>
       </form>
     {% else %}
       <div class="muted">暂无可选设备（可能尚未维护设备信息，或已全部关联）。</div>

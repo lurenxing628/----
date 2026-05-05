@@ -23,14 +23,20 @@ def test_calendar_forms_use_stable_date_picker_layout() -> None:
     assert ".aps-calendar-date-field {\n    grid-column: 1 / span 2;" in css
     assert ".aps-calendar-day-type {\n    grid-column: 3;\n    grid-row: 1;" in css
     assert ".aps-calendar-start {\n    grid-column: 4;\n    grid-row: 1;" in css
+    assert ".aps-table-scroll > .aps-calendar-table" in css
+    assert "min-width: 1240px;" in css
     max_900_block = css.split("@media (max-width: 900px)", 1)[1].split("@media", 1)[0]
     assert ".aps-calendar-date-field" not in max_900_block
 
     for rel_path in ("templates/scheduler/calendar.html", "templates/personnel/calendar.html"):
         source = _read(rel_path)
+        assert "wc-card-allow-overflow" in source
         assert "aps-calendar-form-grid" in source
         assert "aps-date-picker-field" in source
         assert "aps-calendar-actions" in source
+        assert "aps-table-scroll" in source
+        assert "aps-calendar-table" in source
+        assert "aps-calendar-remark-cell" in source
         assert source.index('class="aps-calendar-actions"') > source.index('class="aps-calendar-form-grid"')
         assert source.index('class="aps-calendar-actions"') > source.index('name="remark"')
         for field_name in (

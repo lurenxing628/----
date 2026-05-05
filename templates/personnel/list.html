@@ -20,10 +20,10 @@
     ui
   ) }}
 
-  <div class="card">
-    <h3>新增人员</h3>
+  <div class="card aps-form-card">
+    <h3 class="section-title">新增人员</h3>
     <form method="post" action="{{ url_for('personnel.create_operator') }}">
-      <div class="form-row">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label for="operatorIdInput">工号</label>
           <input id="operatorIdInput" name="operator_id" required placeholder="如：OP001">
@@ -49,12 +49,12 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field flex-1 min-w-240">
+        <div class="form-field aps-field-wide">
           <label for="operatorRemarkInput">备注</label>
           <input id="operatorRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div>{{ ui.button('添加人员', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('添加人员', 'primary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 
@@ -63,7 +63,7 @@
     <div class="muted mb-2">
       批量操作：可批量停用/启用/删除。若人员已被批次工序或排程引用，将禁止删除（请改为停用）。
     </div>
-    <form method="get" action="{{ url_for('personnel.list_page') }}" class="form-row mb-2">
+    <form method="get" action="{{ url_for('personnel.list_page') }}" class="aps-query-form-grid mb-2">
       <div class="form-field">
         <label for="personnelTeamFilter">班组筛选</label>
         <select id="personnelTeamFilter" name="team_id">
@@ -73,12 +73,14 @@
           {% endfor %}
         </select>
       </div>
-      <div>{{ ui.button('筛选', 'secondary', 'md', type_attr='submit') }}</div>
-      {% if selected_team_id %}
-        <div>{{ ui.link_button('清空筛选', url_for('personnel.list_page'), 'secondary', 'md') }}</div>
-      {% endif %}
+      <div class="aps-query-form-actions">
+        {{ ui.button('筛选', 'secondary', 'md', type_attr='submit') }}
+        {% if selected_team_id %}
+          {{ ui.link_button('清空筛选', url_for('personnel.list_page'), 'secondary', 'md') }}
+        {% endif %}
+      </div>
     </form>
-    <div class="form-row mb-2">
+    <div class="aps-search-row mb-2">
       <div class="form-field">
         <label for="personnelSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索</label>
         <input id="personnelSearchInput" data-table-search="personnelTable" placeholder="输入工号、姓名..." aria-label="搜索人员，输入工号或姓名关键词" class="w-260">
@@ -97,17 +99,17 @@
       </div>
     {% endif %}
     {% if operators and operators|length > 0 %}
-      <div class="overflow-x-auto">
-      <table id="personnelTable" class="table-sticky table-layout-fixed" data-col-resize="1">
+      <div class="aps-table-scroll">
+      <table id="personnelTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_personnelTable">
         <thead>
           <tr>
-            <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选人员"></th>
-            <th class="w-120">工号</th>
-            <th class="w-160">姓名</th>
-            <th class="w-180">班组</th>
-            <th class="w-120">状态</th>
-            <th>可操作设备</th>
-            <th class="w-160">操作</th>
+            <th class="w-60" data-col-key="select" data-default-w="60" data-min-w="56" data-resize="0"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选人员"></th>
+            <th class="w-140" data-col-key="operator_id" data-default-w="140" data-min-w="110">工号</th>
+            <th class="w-160" data-col-key="name" data-default-w="160" data-min-w="130">姓名</th>
+            <th class="w-180" data-col-key="team" data-default-w="180" data-min-w="140">班组</th>
+            <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100">状态</th>
+            <th class="w-280" data-col-key="machines" data-default-w="280" data-min-w="220">可操作设备</th>
+            <th class="w-180" data-col-key="actions" data-default-w="180" data-min-w="170" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -150,7 +152,7 @@
 
       <div class="action-bar mt-3">
         <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 人</span>
-        <div class="form-row">
+        <div class="aps-form-actions">
           <select name="status" form="bulkForm" aria-label="批量设置人员状态">
             <option value="active">批量设为：在岗</option>
             <option value="inactive">批量设为：停用/休假</option>

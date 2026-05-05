@@ -7,10 +7,10 @@
     nav_html=ui.equipment_nav('downtime_batch')
   ) }}
 
-  <div class="card aps-downtime-form-card">
+  <div class="card aps-form-card aps-downtime-form-card">
     {{ ui.aps_card_header('创建停机区间', '选择停机范围、时间和原因后创建记录。') }}
     <form method="post" action="{{ url_for('equipment.downtime_batch_create') }}">
-      <div class="aps-downtime-form-grid">
+      <div class="aps-edit-form-grid aps-downtime-form-grid">
         <div class="form-field aps-downtime-scope-type">
           <label>范围</label>
           <select name="scope_type" id="scopeType">
@@ -59,8 +59,8 @@
           <label>原因备注（可选）</label>
           <input name="reason_detail" placeholder="可选：更具体的停机原因说明">
         </div>
-        <div class="aps-downtime-actions">{{ ui.button('创建', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer aps-downtime-actions">{{ ui.button('创建', 'primary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 

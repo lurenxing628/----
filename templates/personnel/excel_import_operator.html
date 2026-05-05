@@ -21,14 +21,15 @@
   <div class="card">
     <h3>当前人员数据</h3>
     {% if existing_list and existing_list|length > 0 %}
-      <table>
+      <div class="aps-table-scroll">
+      <table id="excelOperatorExistingTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_excelOperatorExistingTable">
         <thead>
           <tr>
-            <th>工号</th>
-            <th>姓名</th>
-            <th>状态</th>
-            <th>班组</th>
-            <th>备注</th>
+            <th class="w-140" data-col-key="operator_id" data-default-w="140" data-min-w="120">工号</th>
+            <th class="w-240" data-col-key="operator_name" data-default-w="240" data-min-w="170">姓名</th>
+            <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100">状态</th>
+            <th class="w-160" data-col-key="team" data-default-w="160" data-min-w="120">班组</th>
+            <th class="w-280" data-col-key="remark" data-default-w="280" data-min-w="180">备注</th>
           </tr>
         </thead>
         <tbody>
@@ -43,6 +44,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂无数据（可先下载模板并导入）。</div>
     {% endif %}

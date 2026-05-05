@@ -10,10 +10,10 @@
     {{ ui.process_nav('suppliers') }}
   </div>
 
-  <div class="card">
+  <div class="card aps-form-card">
     <h3>基本信息</h3>
     <form method="post" action="{{ url_for('process.update_supplier', supplier_id=supplier.supplier_id) }}">
-      <div class="aps-form-grid">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label>供应商编号</label>
           <input value="{{ supplier.supplier_id }}" disabled>
@@ -43,12 +43,12 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field aps-form-span-2">
+        <div class="form-field aps-field-wide">
           <label>备注</label>
           <input name="remark" value="{{ supplier.remark or '' }}">
         </div>
-        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 {% endblock %}

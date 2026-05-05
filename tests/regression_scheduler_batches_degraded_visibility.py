@@ -312,7 +312,8 @@ def test_scheduler_batches_page_renders_provenance_and_hidden_degraded_html(tmp_
     assert "当前配置状态" in body
     assert "基线未记录" in body
     assert "当前运行配置缺少基线记录，无法确认与任何方案的一致性；请显式保存或重新应用方案。" in body
-    assert "当前配置有需要复核的修正项：" in body
-    assert "还有一些平时不直接显示的设置需要检查，请按下面提示处理：" in body
-    assert "保存系统补齐的设备和人员" in body
+    assert "个需要复核的修正项" in body
+    assert "平时不直接显示的设置需要检查" in body
+    assert "保存补齐资源" in body
+    assert "查看处理提示" in body
     assert "auto_assign_persist" not in body

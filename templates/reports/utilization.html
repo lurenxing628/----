@@ -68,15 +68,15 @@
       {% endif %}
     {% else %}
       <div class="aps-table-scroll">
-      <table id="utilizationMachineTable" class="table-sticky table-layout-fixed" data-col-resize="1">
+      <table id="utilizationMachineTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_utilizationMachineTable">
         <thead>
           <tr>
-            <th style="width:140px;">设备编号</th>
-            <th>设备名称</th>
-            <th style="width:140px;" class="text-right">负荷(小时)</th>
-            <th style="width:120px;" class="text-right">任务数</th>
-            <th style="width:140px;" class="text-right">可用工时(小时)</th>
-            <th style="width:120px;" class="text-right">利用率(%)</th>
+            <th class="w-140" data-col-key="machine_id" data-default-w="140" data-min-w="120">设备编号</th>
+            <th class="w-260" data-col-key="machine_name" data-default-w="260" data-min-w="180">设备名称</th>
+            <th class="w-140 text-right" data-col-key="hours" data-default-w="140" data-min-w="120">负荷(小时)</th>
+            <th class="w-120 text-right" data-col-key="task_count" data-default-w="120" data-min-w="90">任务数</th>
+            <th class="w-160 text-right" data-col-key="capacity_hours" data-default-w="160" data-min-w="130">可用工时(小时)</th>
+            <th class="w-120 text-right" data-col-key="utilization" data-default-w="120" data-min-w="100">利用率(%)</th>
           </tr>
         </thead>
         <tbody>
@@ -112,15 +112,15 @@
       {% endif %}
     {% else %}
       <div class="aps-table-scroll">
-      <table id="utilizationOperatorTable" class="table-sticky table-layout-fixed" data-col-resize="1">
+      <table id="utilizationOperatorTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_utilizationOperatorTable">
         <thead>
           <tr>
-            <th style="width:140px;">工号</th>
-            <th>姓名</th>
-            <th style="width:140px;" class="text-right">负荷(小时)</th>
-            <th style="width:120px;" class="text-right">任务数</th>
-            <th style="width:140px;" class="text-right">可用工时(小时)</th>
-            <th style="width:120px;" class="text-right">利用率(%)</th>
+            <th class="w-140" data-col-key="operator_id" data-default-w="140" data-min-w="120">工号</th>
+            <th class="w-260" data-col-key="operator_name" data-default-w="260" data-min-w="180">姓名</th>
+            <th class="w-140 text-right" data-col-key="hours" data-default-w="140" data-min-w="120">负荷(小时)</th>
+            <th class="w-120 text-right" data-col-key="task_count" data-default-w="120" data-min-w="90">任务数</th>
+            <th class="w-160 text-right" data-col-key="capacity_hours" data-default-w="160" data-min-w="130">可用工时(小时)</th>
+            <th class="w-120 text-right" data-col-key="utilization" data-default-w="120" data-min-w="100">利用率(%)</th>
           </tr>
         </thead>
         <tbody>

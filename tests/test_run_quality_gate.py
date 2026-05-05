@@ -343,6 +343,12 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_gantt_contract_snapshot.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_critical_chain_unavailable.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_quality_gate_scan_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_scheduler_run_entry_layout_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_action_card_button_layout_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_mirror_template_sync.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_stable_form_layout_allowlist.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_ui_contract_table_overflow_guard.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_gantt_layout_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_request_services_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_request_services_lazy_construction.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_request_services_failure_propagation.py" in module.REQUIRED_TEST_ARGS

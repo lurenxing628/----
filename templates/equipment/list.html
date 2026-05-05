@@ -20,10 +20,10 @@
     ui
   ) }}
 
-  <div class="card">
-    <h3>新增设备</h3>
+  <div class="card aps-form-card">
+    <h3 class="section-title">新增设备</h3>
     <form method="post" action="{{ url_for('equipment.create_machine') }}">
-      <div class="form-row">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label for="machineIdInput">设备编号</label>
           <input id="machineIdInput" name="machine_id" required placeholder="如：CNC-01">
@@ -62,12 +62,12 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field flex-1 min-w-240">
+        <div class="form-field aps-field-wide">
           <label for="machineRemarkInput">备注</label>
           <input id="machineRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div>{{ ui.button('添加设备', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('添加设备', 'primary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 
@@ -81,7 +81,7 @@
         计划停机状态读取失败，当前页面的“状态”列可能未展示“停机（计划）”覆盖状态，请查看日志并稍后刷新。
       </div>
     {% endif %}
-    <form method="get" action="{{ url_for('equipment.list_page') }}" class="form-row mb-2">
+    <form method="get" action="{{ url_for('equipment.list_page') }}" class="aps-query-form-grid mb-2">
       <div class="form-field">
         <label for="equipmentTeamFilter">班组筛选</label>
         <select id="equipmentTeamFilter" name="team_id">
@@ -91,12 +91,14 @@
           {% endfor %}
         </select>
       </div>
-      <div>{{ ui.button('筛选', 'secondary', 'md', type_attr='submit') }}</div>
-      {% if selected_team_id %}
-        <div>{{ ui.link_button('清空筛选', url_for('equipment.list_page'), 'secondary', 'md') }}</div>
-      {% endif %}
+      <div class="aps-query-form-actions">
+        {{ ui.button('筛选', 'secondary', 'md', type_attr='submit') }}
+        {% if selected_team_id %}
+          {{ ui.link_button('清空筛选', url_for('equipment.list_page'), 'secondary', 'md') }}
+        {% endif %}
+      </div>
     </form>
-    <div class="form-row mb-2">
+    <div class="aps-search-row mb-2">
       <div class="form-field">
         <label for="equipmentSearchInput"><svg class="icon-sm"><use href="{{ url_for('static', filename='icons.svg') }}#icon-search"/></svg> 搜索</label>
         <input id="equipmentSearchInput" data-table-search="equipmentTable" placeholder="输入设备编号、名称..." aria-label="搜索设备，输入设备编号或名称关键词" class="w-260">
@@ -115,18 +117,18 @@
       </div>
     {% endif %}
     {% if machines and machines|length > 0 %}
-      <div class="overflow-x-auto">
-      <table id="equipmentTable" class="table-sticky table-layout-fixed" data-col-resize="1">
+      <div class="aps-table-scroll">
+      <table id="equipmentTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_equipmentTable">
         <thead>
           <tr>
-            <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选设备"></th>
-            <th class="w-140">设备编号</th>
-            <th class="w-220">设备名称</th>
-            <th class="w-160">工种</th>
-            <th class="w-180">班组</th>
-            <th class="w-120">状态</th>
-            <th>可操作人员</th>
-            <th class="w-160">操作</th>
+            <th class="w-60" data-col-key="select" data-default-w="60" data-min-w="56" data-resize="0"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选设备"></th>
+            <th class="w-150" data-col-key="machine_id" data-default-w="150" data-min-w="120">设备编号</th>
+            <th class="w-220" data-col-key="name" data-default-w="220" data-min-w="160">设备名称</th>
+            <th class="w-160" data-col-key="op_type" data-default-w="160" data-min-w="120">工种</th>
+            <th class="w-180" data-col-key="team" data-default-w="180" data-min-w="140">班组</th>
+            <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100">状态</th>
+            <th class="w-260" data-col-key="operators" data-default-w="260" data-min-w="200">可操作人员</th>
+            <th class="w-180" data-col-key="actions" data-default-w="180" data-min-w="170" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -176,7 +178,7 @@
 
       <div class="action-bar mt-3">
         <span class="muted">已选 <strong id="jsSelectedCount">0</strong> 台设备</span>
-        <div class="form-row">
+        <div class="aps-form-actions">
           <select name="status" form="bulkForm" aria-label="批量设置设备状态">
             <option value="active">批量设为：可用</option>
             <option value="maintain">批量设为：维修</option>

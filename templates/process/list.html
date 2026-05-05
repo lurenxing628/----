@@ -20,10 +20,10 @@
     ui
   ) }}
 
-  <div class="card">
-    <h3>新增零件</h3>
+  <div class="card aps-form-card">
+    <h3 class="section-title">新增零件</h3>
     <form method="post" action="{{ url_for('process.create_part') }}">
-      <div class="aps-form-grid">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label for="partNoInput">图号</label>
           <input id="partNoInput" name="part_no" required placeholder="如：A1234">
@@ -32,7 +32,7 @@
           <label for="partNameInput">名称</label>
           <input id="partNameInput" name="part_name" required placeholder="如：壳体-大">
         </div>
-        <div class="form-field aps-form-span-2">
+        <div class="form-field aps-field-wide">
           <label for="routeRawInput">路线文字（可选，填写后会尝试生成工序清单）</label>
           <input id="routeRawInput" name="route_raw" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
         </div>
@@ -40,15 +40,17 @@
           <label for="partRemarkInput">备注</label>
           <input id="partRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div class="form-field aps-form-span-all">
+        <div class="form-field aps-field-full">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
             资料不完整就停下
           </label>
-          <div class="muted text-xs aps-help-note">勾选后：路线文字里有不认识的工种、没有启用的外协供应商，或外协周期无效时，会直接提示错误并停止创建。不勾选：零件会先保存；能确认的工序会继续处理，缺少外协周期这类可补项本次会先按 1 天记录，并在页面提醒你后续补正。</div>
+          {% call ui.help_details('查看生成工序规则') %}
+            勾选后：路线文字里有不认识的工种、没有启用的外协供应商，或外协周期无效时，会直接提示错误并停止创建。不勾选：零件会先保存；能确认的工序会继续处理，缺少外协周期这类可补项本次会先按 1 天记录，并在页面提醒你后续补正。
+          {% endcall %}
         </div>
-        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('添加零件', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('添加零件', 'primary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 
@@ -77,15 +79,15 @@
     {% endif %}
     {% if parts and parts|length > 0 %}
       <div class="aps-table-scroll">
-      <table id="partsTable" class="table-sticky table-layout-fixed" data-col-resize="1" data-table-key="v2_partsTable">
+      <table id="partsTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_partsTable">
         <thead>
           <tr>
-            <th class="w-60"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选零件"></th>
-            <th class="w-140">图号</th>
-            <th class="w-220">名称</th>
-            <th>路线文字</th>
-            <th class="w-120">工序清单</th>
-            <th class="w-160">操作</th>
+            <th class="w-60" data-col-key="select" data-default-w="60" data-min-w="50"><input type="checkbox" class="js-select-all" title="全选" aria-label="全选零件"></th>
+            <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
+            <th class="w-220" data-col-key="part_name" data-default-w="220" data-min-w="160">名称</th>
+            <th class="w-320" data-col-key="route_text" data-default-w="320" data-min-w="220">路线文字</th>
+            <th class="w-120" data-col-key="ops" data-default-w="120" data-min-w="100">工序清单</th>
+            <th class="w-160" data-col-key="actions" data-default-w="160" data-min-w="130" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>

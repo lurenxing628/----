@@ -26,7 +26,7 @@
     </div>
   </div>
 
-  <div class="card wc-card-allow-overflow">
+  <div class="card aps-form-card wc-card-allow-overflow">
     <h3>新增 / 更新某一天</h3>
     {% if holiday_default_efficiency_degraded %}
       <div class="flash-card flash-warning" role="alert" aria-live="polite">
@@ -101,9 +101,9 @@
       {% if holiday_default_efficiency_degraded %}
         <div class="muted mt-2">提示：当前“假期工作效率”配置无效，页面不会自动补全假期效率；请先到排产参数页修复后再继续保存个人日历。</div>
       {% else %}
-      <div class="muted mt-2">
-        提示：假期默认不排产（可用工时为 0）。若假期需要上班，请把可用工时设置为大于 0；效率留空时会按“假期工作效率”自动补充（当前：{{ holiday_default_efficiency }}）。
-      </div>
+        {% call ui.help_details('查看假期效率规则') %}
+          假期默认不排产（可用工时为 0）。若假期需要上班，请把可用工时设置为大于 0；效率留空时会按“假期工作效率”自动补充（当前：{{ holiday_default_efficiency }}）。
+        {% endcall %}
       {% endif %}
     </form>
   </div>
@@ -112,18 +112,18 @@
     <h3>已配置个人日历</h3>
     {% if rows and rows|length > 0 %}
       <div class="aps-table-scroll">
-      <table>
+      <table id="operatorCalendarTable" class="aps-calendar-table table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_operatorCalendarTable">
         <thead>
           <tr>
-            <th class="w-140">日期</th>
-            <th class="w-120">类型</th>
-            <th class="w-120">班次开始</th>
-            <th class="w-120">班次结束</th>
-            <th class="w-120">可用工时</th>
-            <th class="w-120">效率</th>
-            <th class="w-140">允许普通件</th>
-            <th class="w-140">允许急件</th>
-            <th>说明</th>
+            <th class="w-140" data-col-key="date" data-default-w="140" data-min-w="120">日期</th>
+            <th class="w-120" data-col-key="day_type" data-default-w="120" data-min-w="100">类型</th>
+            <th class="w-120" data-col-key="shift_start" data-default-w="120" data-min-w="110">班次开始</th>
+            <th class="w-120" data-col-key="shift_end" data-default-w="120" data-min-w="110">班次结束</th>
+            <th class="w-120" data-col-key="shift_hours" data-default-w="120" data-min-w="110">可用工时</th>
+            <th class="w-120" data-col-key="efficiency" data-default-w="120" data-min-w="100">效率</th>
+            <th class="w-140" data-col-key="allow_normal" data-default-w="140" data-min-w="120">允许普通件</th>
+            <th class="w-140" data-col-key="allow_urgent" data-default-w="140" data-min-w="120">允许急件</th>
+            <th class="w-240" data-col-key="remark" data-default-w="240" data-min-w="180">说明</th>
           </tr>
         </thead>
         <tbody>
@@ -137,7 +137,7 @@
               <td>{{ r.efficiency }}</td>
               <td>{{ r.allow_normal_zh }}</td>
               <td>{{ r.allow_urgent_zh }}</td>
-              <td>{% if r.remark %}{{ r.remark }}{% else %}<span class="muted">-</span>{% endif %}</td>
+              <td class="aps-calendar-remark-cell">{% if r.remark %}{{ r.remark }}{% else %}<span class="muted">-</span>{% endif %}</td>
             </tr>
           {% endfor %}
         </tbody>

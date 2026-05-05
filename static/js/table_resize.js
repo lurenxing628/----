@@ -189,6 +189,66 @@
     return parts.join("|");
   }
 
+  function parsePxValue(value) {
+    var s = String(value || "").trim();
+    if (!s) return 0;
+    var m = s.match(/^(\d+(?:\.\d+)?)px$/i);
+    if (!m) return 0;
+    var n = parseFloat(m[1]);
+    return isFinite(n) && n > 0 ? Math.round(n) : 0;
+  }
+
+  function getClassName(cell) {
+    if (!cell) return "";
+    try {
+      if (typeof cell.className === "string") {
+        return cell.className;
+      }
+      if (cell.getAttribute) {
+        return String(cell.getAttribute("class") || "");
+      }
+    } catch (_e0) {}
+    return "";
+  }
+
+  function getDeclaredCellWidth(cell) {
+    if (!cell || !cell.getAttribute) return 0;
+    var attrNames = ["data-default-w", "data-col-w"];
+    for (var i = 0; i < attrNames.length; i++) {
+      var attrWidth = parseInt(cell.getAttribute(attrNames[i]) || "", 10);
+      if (isFinite(attrWidth) && attrWidth > 0) {
+        return attrWidth;
+      }
+    }
+
+    var cls = getClassName(cell);
+    var classMatch = cls.match(/(?:^|\s)w-(\d+)(?:\s|$)/);
+    if (classMatch) {
+      var classWidth = parseInt(classMatch[1], 10);
+      if (isFinite(classWidth) && classWidth > 0) {
+        return classWidth;
+      }
+    }
+
+    try {
+      var styleWidth = parsePxValue(cell.style && cell.style.width);
+      if (styleWidth > 0) return styleWidth;
+    } catch (_e0) {}
+
+    try {
+      var styleAttr = String(cell.getAttribute("style") || "");
+      var styleMatch = styleAttr.match(/(?:^|;)\s*width\s*:\s*(\d+(?:\.\d+)?)px\s*(?:;|$)/i);
+      if (styleMatch) {
+        var inlineWidth = parseFloat(styleMatch[1]);
+        if (isFinite(inlineWidth) && inlineWidth > 0) {
+          return Math.round(inlineWidth);
+        }
+      }
+    } catch (_e1) {}
+
+    return 0;
+  }
+
   function sanitizeWidthArray(widths, logicalColCount, minWByCol) {
     if (!widths || !widths.length) return null;
     if (widths.length !== logicalColCount) return null;
@@ -243,10 +303,15 @@
       var cell = cells[i];
       var span = normalizeColSpan(cell.getAttribute ? cell.getAttribute("colspan") : 1);
       var w = 0;
-      try {
-        w = Math.round(cell.getBoundingClientRect().width);
-      } catch (_e0) {
-        w = cell.offsetWidth || 0;
+      if (span === 1) {
+        w = getDeclaredCellWidth(cell);
+      }
+      if (!isFinite(w) || w <= 0) {
+        try {
+          w = Math.round(cell.getBoundingClientRect().width);
+        } catch (_e0) {
+          w = cell.offsetWidth || 0;
+        }
       }
       if (!isFinite(w) || w <= 0) {
         w = 120;
@@ -263,6 +328,16 @@
       widths = widths.slice(0, logicalColCount);
     }
     return widths;
+  }
+
+  function buildWidthSig(widths) {
+    if (!widths || !widths.length) return "";
+    var parts = [];
+    for (var i = 0; i < widths.length; i++) {
+      var w = parseInt(widths[i], 10);
+      parts.push(isFinite(w) && w > 0 ? String(w) : "0");
+    }
+    return parts.join(",");
   }
 
   function ensureColgroup(table, logicalColCount) {
@@ -292,6 +367,24 @@
         w = 120;
       }
       cols[i].style.width = String(Math.round(w)) + "px";
+    }
+    applyTableMinWidthFromColgroup(colgroup.parentNode);
+  }
+
+  function applyTableMinWidthFromColgroup(table) {
+    if (!table || !table.querySelector) return;
+    var colgroup = table.querySelector("colgroup");
+    if (!colgroup || !colgroup.children) return;
+    var total = 0;
+    for (var i = 0; i < colgroup.children.length; i++) {
+      var col = colgroup.children[i];
+      var w = parseInt(col.style && col.style.width || "", 10);
+      if (isFinite(w) && w > 0) {
+        total += w;
+      }
+    }
+    if (total > 0) {
+      table.style.minWidth = String(Math.round(total)) + "px";
     }
   }
 
@@ -561,6 +654,7 @@
       var dx = drag.lastX - drag.startX;
       var w = clamp(drag.startW + dx, drag.minW, drag.maxW);
       drag.colEl.style.width = String(Math.round(w)) + "px";
+      applyTableMinWidthFromColgroup(drag.table);
     });
   }
 
@@ -576,6 +670,7 @@
     var dx = lastX - drag.startX;
     var w = clamp(drag.startW + dx, drag.minW, drag.maxW);
     drag.colEl.style.width = String(Math.round(w)) + "px";
+    applyTableMinWidthFromColgroup(drag.table);
   }
 
   function onDocMouseUp(e) {
@@ -687,6 +782,7 @@
     var minW = getMinW(th);
     var w = autoFitColumn(table, colIdx, th, minW, DEFAULT_MAX_W);
     colgroup.children[colIdx].style.width = String(Math.round(w)) + "px";
+    applyTableMinWidthFromColgroup(table);
     persistTableWidths(table, table.__aps_colresize_sig || "");
   }
 
@@ -744,9 +840,6 @@
     if (table.__aps_colresize_inited) return;
     table.__aps_colresize_inited = true;
 
-    var sig = buildHeaderSig(headerCells);
-    table.__aps_colresize_sig = sig;
-
     var minWByCol = computeMinWByCol(headerCells, logicalColCount);
 
     // measure default widths before injecting handles / colgroup
@@ -756,6 +849,9 @@
       defaultWidths = defaultSan;
     }
     table.__aps_colresize_default_widths = defaultWidths;
+
+    var sig = buildHeaderSig(headerCells) + "|w:" + buildWidthSig(defaultWidths);
+    table.__aps_colresize_sig = sig;
 
     // load persisted widths if sig matches
     var widthsToApply = defaultWidths;
@@ -790,7 +886,8 @@
     installHandles(table, headerCells, logicalColCount);
   }
 
-  function initAll() {
+  function initAll(root) {
+    var scope = root || document;
     try {
       initDensity();
     } catch (_e0) {}
@@ -807,7 +904,18 @@
       }
     } catch (_e1) {}
 
-    var tables = document.querySelectorAll('table[data-col-resize="1"]');
+    var tables = [];
+    try {
+      if (scope.matches && scope.matches('table[data-col-resize="1"]')) {
+        tables.push(scope);
+      }
+    } catch (_e2) {}
+    if (scope.querySelectorAll) {
+      var nestedTables = scope.querySelectorAll('table[data-col-resize="1"]');
+      for (var j = 0; j < nestedTables.length; j++) {
+        tables.push(nestedTables[j]);
+      }
+    }
     for (var i = 0; i < tables.length; i++) {
       try {
         initOneTable(tables[i]);
@@ -815,10 +923,13 @@
     }
   }
 
+  window.APS_InitResizableTables = function (root) {
+    initAll(root || document);
+  };
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initAll);
   } else {
     initAll();
   }
 })();
-

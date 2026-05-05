@@ -22,12 +22,12 @@
     <h3>当前工种数据</h3>
     {% if existing_list and existing_list|length > 0 %}
       <div class="aps-table-scroll">
-        <table>
+        <table id="excelOpTypesExistingTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_excelOpTypesExistingTable">
           <thead>
             <tr>
-              <th>工种编号</th>
-              <th>工种名称</th>
-              <th>归属</th>
+              <th class="w-140" data-col-key="op_type_id" data-default-w="140" data-min-w="120">工种编号</th>
+              <th class="w-220" data-col-key="name" data-default-w="220" data-min-w="160">工种名称</th>
+              <th class="w-120" data-col-key="source" data-default-w="120" data-min-w="100">归属</th>
             </tr>
           </thead>
           <tbody>

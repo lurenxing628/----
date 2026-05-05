@@ -15,6 +15,7 @@ def test_v2_mirror_templates_stay_in_sync_for_shared_pages() -> None:
         ("templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches.html"),
         ("templates/scheduler/batches_manage.html", "web_new_test/templates/scheduler/batches_manage.html"),
         ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"),
+        ("templates/scheduler/config_manual.html", "web_new_test/templates/scheduler/config_manual.html"),
         ("templates/scheduler/gantt.html", "web_new_test/templates/scheduler/gantt.html"),
     )
     for left, right in pairs:

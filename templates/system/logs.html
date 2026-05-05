@@ -141,21 +141,21 @@
       <p class="muted">暂无记录。</p>
     {% else %}
       <div class="aps-table-scroll">
-      <table class="table-sticky">
+      <table id="systemLogsTable" class="table-sticky table-layout-fixed aps-table-xwide" data-col-resize="1" data-table-key="v2_systemLogsTable">
         <thead>
           <tr>
-            <th class="w-60">
+            <th class="w-60" data-col-key="select" data-default-w="60" data-min-w="50">
               <input type="checkbox" class="js-log-select-all" title="全选" aria-label="全选日志">
             </th>
-            <th>日志序号</th>
-            <th>时间</th>
-            <th>级别</th>
-            <th>模块</th>
-            <th>动作</th>
-            <th>目标</th>
-            <th>错误</th>
-            <th>详情</th>
-            <th>操作</th>
+            <th class="w-120" data-col-key="row_no" data-default-w="120" data-min-w="100">日志序号</th>
+            <th class="w-180" data-col-key="log_time" data-default-w="180" data-min-w="150">时间</th>
+            <th class="w-100" data-col-key="level" data-default-w="100" data-min-w="80">级别</th>
+            <th class="w-140" data-col-key="module" data-default-w="140" data-min-w="110">模块</th>
+            <th class="w-160" data-col-key="action" data-default-w="160" data-min-w="120">动作</th>
+            <th class="w-180" data-col-key="target" data-default-w="180" data-min-w="130">目标</th>
+            <th class="w-280" data-col-key="error" data-default-w="280" data-min-w="200">错误</th>
+            <th class="w-180" data-col-key="detail" data-default-w="180" data-min-w="130">详情</th>
+            <th class="w-130" data-col-key="actions" data-default-w="130" data-min-w="110" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -189,7 +189,14 @@
               </td>
               <td>
                 {% if r.error_code or r.error_message %}
-                  <div class="error">{{ r.error_message or '处理失败' }}</div>
+                  {% if r.error_message %}
+                    <details class="aps-flash-details aps-table-cell-detail">
+                      <summary>查看错误</summary>
+                      <div class="aps-flash-details-body error">{{ r.error_message }}</div>
+                    </details>
+                  {% else %}
+                    <div class="error">处理失败</div>
+                  {% endif %}
                   {% if r.error_code %}
                     <details class="debug-details muted text-xs">
                       <summary>处理建议</summary>

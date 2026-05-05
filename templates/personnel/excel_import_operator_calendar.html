@@ -24,19 +24,20 @@
   <div class="card">
     <h3>当前个人日历数据</h3>
     {% if existing_list and existing_list|length > 0 %}
-      <table>
+      <div class="aps-table-scroll">
+      <table id="excelOperatorCalendarExistingTable" class="table-layout-fixed aps-table-xwide" data-col-resize="1" data-table-key="v2_excelOperatorCalendarExistingTable">
         <thead>
           <tr>
-            <th class="w-140">工号</th>
-            <th class="w-140">日期</th>
-            <th class="w-120">类型</th>
-            <th class="w-120">班次开始</th>
-            <th class="w-120">班次结束</th>
-            <th class="w-120">可用工时</th>
-            <th class="w-120">效率</th>
-            <th class="w-140">允许普通件</th>
-            <th class="w-140">允许急件</th>
-            <th>说明</th>
+            <th class="w-140" data-col-key="operator_id" data-default-w="140" data-min-w="120">工号</th>
+            <th class="w-140" data-col-key="date" data-default-w="140" data-min-w="120">日期</th>
+            <th class="w-120" data-col-key="day_type" data-default-w="120" data-min-w="100">类型</th>
+            <th class="w-120" data-col-key="shift_start" data-default-w="120" data-min-w="110">班次开始</th>
+            <th class="w-120" data-col-key="shift_end" data-default-w="120" data-min-w="110">班次结束</th>
+            <th class="w-120" data-col-key="shift_hours" data-default-w="120" data-min-w="110">可用工时</th>
+            <th class="w-120" data-col-key="efficiency" data-default-w="120" data-min-w="100">效率</th>
+            <th class="w-140" data-col-key="allow_normal" data-default-w="140" data-min-w="120">允许普通件</th>
+            <th class="w-140" data-col-key="allow_urgent" data-default-w="140" data-min-w="120">允许急件</th>
+            <th class="w-260" data-col-key="remark" data-default-w="260" data-min-w="180">说明</th>
           </tr>
         </thead>
         <tbody>
@@ -56,6 +57,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂未单独配置（将使用全局工作日历）。</div>
     {% endif %}

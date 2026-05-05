@@ -19,16 +19,22 @@ def test_scheduler_run_entry_is_visible_before_batch_table() -> None:
         assert source.index("排产操作") < source.index('id="batchesTable"')
         assert "先勾选下方待排批次，再执行排产。" in source
         assert "aps-filter-bar" not in source
-        assert "aps-scheduler-filter-grid" in source
+        assert "aps-query-form-grid" in source
 
         run_panel_start = source.index('<div class="aps-run-panel">')
         table_start = source.index('id="batchesTable"')
         run_panel = source[run_panel_start:table_start]
         run_grid_start = run_panel.index("aps-run-panel-grid")
-        run_grid_end = run_panel.index("aps-run-panel-actions", run_grid_start)
+        run_grid_end = run_panel.index("aps-run-panel-help", run_grid_start)
         run_grid = run_panel[run_grid_start:run_grid_end]
         for field_name in ("start_dt", "end_date", "enforce_ready", "strict_mode"):
             assert f'name="{field_name}"' in run_grid
+        assert "派工方式、智能派工策略、自动分配设备人员" not in run_grid
+        assert "aps-run-panel-status" in run_panel
+        assert "aps-run-panel-option" in run_panel
+        assert "aps-run-panel-help" in run_panel
+        assert "ui.help_details" in run_panel
+        assert "查看“发现参数问题就停止排产”的说明" in run_panel
 
         for marker in (
             'name="batch_ids"',
@@ -64,12 +70,34 @@ def test_scheduler_sub_pages_have_run_schedule_entry() -> None:
 def test_run_panel_container_breakpoint_has_room_for_declared_columns() -> None:
     css = _read("static/css/ui_contract.css")
     assert "@container (min-width: 1040px)" in css
+    assert ".aps-run-panel-grid" in css
+    assert ".aps-run-panel-help" in css
+    assert ".aps-run-panel-status" in css
+    assert "minmax(240px, 1fr)" in css
+    assert "minmax(190px, 0.8fr)" in css
+    assert "minmax(230px, 1fr)" in css
+
+
+def test_latest_schedule_snapshot_uses_dedicated_sections() -> None:
+    for rel_path in ("templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches.html"):
+        source = _read(rel_path)
+        block = source[source.index('class="card aps-latest-schedule-card"') : source.index("批次列表")]
+        assert "aps-latest-schedule-card" in block
+        assert "aps-latest-schedule-head" in block
+        assert "aps-latest-schedule-meta" in block
+        assert "aps-latest-schedule-metrics" in block
+        assert "aps-latest-schedule-status" in block
+        assert "aps-summary-grid" not in block
+        assert "保存系统补齐的设备和人员" not in block
+        assert "保存补齐资源" in block
+        assert "查看说明" in block
 
 
 def main() -> None:
     test_scheduler_run_entry_is_visible_before_batch_table()
     test_scheduler_sub_pages_have_run_schedule_entry()
     test_run_panel_container_breakpoint_has_room_for_declared_columns()
+    test_latest_schedule_snapshot_uses_dedicated_sections()
     print("OK")
 
 

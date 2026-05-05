@@ -22,15 +22,15 @@
     <h3>当前供应商数据</h3>
     {% if existing_list and existing_list|length > 0 %}
       <div class="aps-table-scroll">
-        <table>
+        <table id="excelSuppliersExistingTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_excelSuppliersExistingTable">
           <thead>
             <tr>
-              <th>供应商编号</th>
-              <th>名称</th>
-              <th>对应工种</th>
-              <th>默认周期</th>
-              <th>状态</th>
-              <th>备注</th>
+              <th class="w-140" data-col-key="supplier_id" data-default-w="140" data-min-w="120">供应商编号</th>
+              <th class="w-240" data-col-key="name" data-default-w="240" data-min-w="170">名称</th>
+              <th class="w-160" data-col-key="op_type" data-default-w="160" data-min-w="120">对应工种</th>
+              <th class="w-140" data-col-key="lead_days" data-default-w="140" data-min-w="120">默认周期</th>
+              <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100">状态</th>
+              <th class="w-260" data-col-key="remark" data-default-w="260" data-min-w="180">备注</th>
             </tr>
           </thead>
           <tbody>

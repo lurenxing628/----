@@ -28,8 +28,9 @@
     nav_html=ui.scheduler_nav('analysis')
   ) }}
 
-  <div class="card">
-    <form method="get" action="{{ url_for('scheduler.analysis_page') }}" class="aps-filter-bar">
+  <div class="card aps-query-card">
+    {{ ui.aps_card_header('筛选版本', '选择要查看的排产版本；有版本后可以直接跳到设备或人员甘特图。') }}
+    <form method="get" action="{{ url_for('scheduler.analysis_page') }}" class="aps-query-form-grid aps-version-picker-form">
       <div class="form-field">
         <label>选择版本</label>
         {% if versions and versions|length > 0 %}
@@ -47,11 +48,11 @@
           <span class="muted">暂无排产历史（请先执行一次排产/模拟）。</span>
         {% endif %}
       </div>
-      <div class="aps-form-actions aps-form-actions-end">
+      <div class="aps-query-form-actions">
         {{ ui.button('加载', 'primary', 'md', type_attr='submit') }}
       </div>
       {% if selected %}
-        <div class="toolbar-group">
+        <div class="aps-version-link-actions">
           {{ ui.link_button('查看设备甘特图', url_for('scheduler.gantt_page', view='machine', version=selected.version), 'secondary', 'md') }}
           {{ ui.link_button('查看人员甘特图', url_for('scheduler.gantt_page', view='operator', version=selected.version), 'secondary', 'md') }}
         </div>
@@ -68,16 +69,13 @@
   {% if selected %}
     <div class="card">
       <h3 class="section-title">版本概览</h3>
-      <div class="aps-summary-grid">
+      <div class="aps-summary-grid aps-summary-grid--version-overview">
         {{ ui.summary_item('版本', 'v' ~ selected.version) }}
         {{ ui.summary_item('时间', selected.schedule_time) }}
         {{ ui.summary_item('排产方式', selected.strategy_label or strategy_zh.get(selected.strategy, '未知排产方式')) }}
         {{ ui.summary_item('状态', selected_summary_display.result_status_label or status_zh.get(selected.result_status, '结果状态未知')) }}
         {{ ui.summary_item('创建人', selected.created_by or '-') }}
-      </div>
-
-      {% set algo = (selected_summary.algo if selected_summary and selected_summary.algo else {}) %}
-      <div class="aps-summary-grid">
+        {% set algo = (selected_summary.algo if selected_summary and selected_summary.algo else {}) %}
         {{ ui.summary_item('计算模式', mode_zh.get(algo.mode, algo.mode or '-')) }}
         {{ ui.summary_item('优化目标', algo_objective_label) }}
         {{ ui.summary_item('计算时间上限', (algo.time_budget_seconds or '-') ~ ' 秒') }}
@@ -116,12 +114,17 @@
       {% endif %}
       {% if selected_summary_display.display_secondary_degradation_messages %}
         <div class="flash-card flash-warning mt-2">
-          {% for item in selected_summary_display.display_secondary_degradation_messages %}
-            <div>
-              <strong>{{ item.label }}</strong>
-              {% if item.message %}：{{ item.message }}{% endif %}
-            </div>
-          {% endfor %}
+          <div>详细处理提示：{{ selected_summary_display.display_secondary_degradation_messages|length }} 条</div>
+          {% call ui.flash_details('查看详细处理提示') %}
+            <ul class="list-tight">
+              {% for item in selected_summary_display.display_secondary_degradation_messages %}
+                <li>
+                  <strong>{{ item.label }}</strong>
+                  {% if item.message %}：{{ item.message }}{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
         </div>
       {% endif %}
       {% if selected_summary_display.summary_parse_state.parse_failed %}
@@ -133,22 +136,26 @@
         <div class="flash-card flash-warning mt-2">
           <div>{{ selected_summary_display.primary_degradation.message }}</div>
           {% if selected_summary_display.primary_degradation.details %}
-            <ul class="list-tight mt-1">
-              {% for item in selected_summary_display.primary_degradation.details %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
+            {% call ui.flash_details('查看 ' ~ (selected_summary_display.primary_degradation.details|length) ~ ' 条明细') %}
+              <ul class="list-tight">
+                {% for item in selected_summary_display.primary_degradation.details %}
+                  <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            {% endcall %}
           {% endif %}
         </div>
       {% endif %}
       {% if selected_summary_display.warning_total %}
         <div class="flash-card flash-warning mt-2">
           <div>提醒：{{ selected_summary_display.warning_total }} 条</div>
-          <ul class="list-tight mt-1">
-            {% for item in selected_summary_display.warnings_preview %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
+          {% call ui.flash_details('查看前 ' ~ (selected_summary_display.warnings_preview|length) ~ ' 条提醒') %}
+            <ul class="list-tight">
+              {% for item in selected_summary_display.warnings_preview %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
           {% if selected_summary_display.warning_hidden_count > 0 %}
             <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条提醒，请到系统历史查看。</div>
           {% endif %}
@@ -157,11 +164,13 @@
       {% if selected_summary_display.error_total %}
         <div class="flash-card flash-warning mt-2">
           <div>错误摘要：{{ selected_summary_display.error_total }} 条</div>
-          <ul class="list-tight mt-1">
-            {% for item in selected_summary_display.errors_preview %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
+          {% call ui.flash_details('查看前 ' ~ (selected_summary_display.errors_preview|length) ~ ' 条错误') %}
+            <ul class="list-tight">
+              {% for item in selected_summary_display.errors_preview %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
           {% if selected_summary_display.error_hidden_count > 0 %}
             <div class="muted text-xs">另有 {{ selected_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
           {% endif %}
@@ -295,17 +304,17 @@
       {% endif %}
       {% if attempts and attempts|length > 0 %}
         <div class="aps-table-scroll">
-        <table id="analysisAttemptsTable" class="table-sticky table-layout-fixed" data-col-resize="1" data-table-key="v2_analysisAttemptsTable">
+        <table id="analysisAttemptsTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v3_analysisAttemptsTable">
           <thead>
             <tr>
-              <th>排序</th>
-              <th>方案来源</th>
-              <th>排序策略</th>
-              <th>派工</th>
-              <th>失败工序数</th>
-              <th data-col-key="objective">{{ objective_key_label }}</th>
-              <th>条形</th>
-              <th>综合评分</th>
+              <th class="w-80" data-col-key="rank" data-default-w="80" data-min-w="70">排序</th>
+              <th class="w-160" data-col-key="source" data-default-w="160" data-min-w="130">方案来源</th>
+              <th class="w-160" data-col-key="strategy" data-default-w="160" data-min-w="130">排序策略</th>
+              <th class="w-220" data-col-key="dispatch" data-default-w="220" data-min-w="180">派工</th>
+              <th class="w-120" data-col-key="failed_ops" data-default-w="120" data-min-w="100">失败工序数</th>
+              <th class="w-160" data-col-key="objective" data-default-w="160" data-min-w="130">{{ objective_key_label }}</th>
+              <th class="w-180" data-col-key="bar" data-default-w="180" data-min-w="150">条形</th>
+              <th class="w-140" data-col-key="score" data-default-w="140" data-min-w="120">综合评分</th>
             </tr>
           </thead>
           <tbody>

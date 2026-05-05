@@ -25,13 +25,13 @@
     nav_html=ui.scheduler_nav('week_plan')
   ) }}
 
-  <div class="card">
+  <div class="card aps-query-card">
     {{ ui.aps_card_header('查询与导出', '选择周范围和版本后查看预览，需要时导出当前周计划。') }}
     {{ ui.aps_context_bar([
       {'label': '周范围', 'value': week_start ~ ' ～ ' ~ week_end},
       {'label': '版本', 'value': (('v' ~ version) if version is not none else '暂无版本')}
     ]) }}
-    <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" class="aps-form-grid">
+    <form method="get" action="{{ url_for('scheduler.week_plan_page') }}" class="aps-query-form-grid aps-week-plan-query-grid">
       <div class="form-field">
         <label>排产区间（起）</label>
         <input type="date" name="start_date" value="{{ start_date }}" class="w-160">
@@ -58,10 +58,9 @@
           <input name="version" value="{{ version or '' }}" class="w-160">
         {% endif %}
       </div>
-      <div class="aps-form-actions aps-form-actions-end">
+      <div class="aps-query-form-actions">
         {{ ui.button('查询', 'primary', 'md', type_attr='submit') }}
       </div>
-      <div class="flex-1"></div>
     </form>
     {% if not versions or versions|length == 0 %}
       <div class="muted mt-2">暂无排产历史（请先执行排产生成版本）。</div>
@@ -96,25 +95,29 @@
         <div class="flash-card flash-warning mt-2">
           <div>{{ selected_summary_display.primary_degradation.message }}</div>
           {% if selected_summary_display.primary_degradation.details %}
-            <ul class="list-tight mt-1">
-              {% for item in selected_summary_display.primary_degradation.details %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
+            {% call ui.flash_details('查看 ' ~ (selected_summary_display.primary_degradation.details|length) ~ ' 条明细') %}
+              <ul class="list-tight">
+                {% for item in selected_summary_display.primary_degradation.details %}
+                  <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            {% endcall %}
           {% endif %}
         </div>
       {% endif %}
       {% if selected_summary_display.display_secondary_degradation_messages %}
         <div class="flash-card flash-warning mt-2">
-          <div>详细处理提示</div>
-          <ul class="list-tight mt-1">
-            {% for item in selected_summary_display.display_secondary_degradation_messages %}
-              <li>
-                <strong>{{ item.label or item.code or '提示' }}</strong>
-                {% if item.message %}：{{ item.message }}{% endif %}
-              </li>
-            {% endfor %}
-          </ul>
+          <div>详细处理提示：{{ selected_summary_display.display_secondary_degradation_messages|length }} 条</div>
+          {% call ui.flash_details('查看详细处理提示') %}
+            <ul class="list-tight">
+              {% for item in selected_summary_display.display_secondary_degradation_messages %}
+                <li>
+                  <strong>{{ item.label or item.code or '提示' }}</strong>
+                  {% if item.message %}：{{ item.message }}{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
         </div>
       {% endif %}
       {% if selected_summary_display.warning_pipeline_display %}
@@ -134,11 +137,13 @@
       {% if selected_summary_display.warning_total %}
         <div class="flash-card flash-warning mt-2">
           <div>提醒：{{ selected_summary_display.warning_total }} 条</div>
-          <ul class="list-tight mt-1">
-            {% for item in selected_summary_display.warnings_preview %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
+          {% call ui.flash_details('查看前 ' ~ (selected_summary_display.warnings_preview|length) ~ ' 条提醒') %}
+            <ul class="list-tight">
+              {% for item in selected_summary_display.warnings_preview %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
           {% if selected_summary_display.warning_hidden_count > 0 %}
             <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条提醒，请到系统历史查看。</div>
           {% endif %}
@@ -147,11 +152,13 @@
       {% if selected_summary_display.error_total %}
         <div class="flash-card flash-warning mt-2">
           <div>错误摘要：{{ selected_summary_display.error_total }} 条</div>
-          <ul class="list-tight mt-1">
-            {% for item in selected_summary_display.errors_preview %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
+          {% call ui.flash_details('查看前 ' ~ (selected_summary_display.errors_preview|length) ~ ' 条错误') %}
+            <ul class="list-tight">
+              {% for item in selected_summary_display.errors_preview %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
           {% if selected_summary_display.error_hidden_count > 0 %}
             <div class="muted text-xs">另有 {{ selected_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
           {% endif %}
@@ -167,16 +174,16 @@
     {% endif %}
     {% if preview_rows and preview_rows|length > 0 %}
       <div class="aps-table-scroll">
-        <table>
+        <table id="weekPlanPreviewTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_weekPlanPreviewTable">
           <thead>
             <tr>
-              <th class="w-120">日期</th>
-              <th class="w-120">批次号</th>
-              <th class="w-140">图号</th>
-              <th class="w-80">工序</th>
-              <th>设备</th>
-              <th>人员</th>
-              <th class="w-140">时段</th>
+              <th class="w-120" data-col-key="date" data-default-w="120" data-min-w="110">日期</th>
+              <th class="w-160" data-col-key="batch_id" data-default-w="160" data-min-w="130">批次号</th>
+              <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
+              <th class="w-80" data-col-key="op_seq" data-default-w="80" data-min-w="70">工序</th>
+              <th class="w-220" data-col-key="machine" data-default-w="220" data-min-w="160">设备</th>
+              <th class="w-220" data-col-key="operator" data-default-w="220" data-min-w="160">人员</th>
+              <th class="w-160" data-col-key="slot" data-default-w="160" data-min-w="140">时段</th>
             </tr>
           </thead>
           <tbody>

@@ -58,8 +58,9 @@
         {% set selected_version_row.item = item %}
       {% endif %}
     {% endfor %}
-    <div class="aps-form-grid">
-      <div class="form-field">
+    <div class="aps-gantt-control-panel">
+      <div class="aps-gantt-control-row">
+      <div class="aps-gantt-control-group">
         <label>视图</label>
         <div class="aps-form-actions">
           {% if view == 'machine' %}
@@ -72,7 +73,7 @@
         </div>
       </div>
 
-      <div class="form-field">
+      <div class="aps-gantt-control-group">
         <label>周切换</label>
         <div class="aps-form-actions">
           {{ ui.link_button('上周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset-1, version=version), 'secondary', 'sm') }}
@@ -80,51 +81,50 @@
           {{ ui.link_button('下周', url_for('scheduler.gantt_page', view=view, week_start=base_week_start, offset=offset+1, version=version), 'secondary', 'sm') }}
         </div>
       </div>
-
-      <div>
-        <form method="get" action="{{ url_for('scheduler.gantt_page') }}" class="aps-form-grid">
-          <input type="hidden" name="view" value="{{ view }}">
-          <div class="form-field">
-            <label>排产区间（起）</label>
-            <input type="date" name="start_date" value="{{ start_date }}" class="w-160">
-          </div>
-          <div class="form-field">
-            <label>排产区间（止）</label>
-            <input type="date" name="end_date" value="{{ end_date }}" class="w-160">
-          </div>
-          <div class="form-field">
-            <label title="任意日期，系统会自动归到周一">指定周</label>
-            <input name="week_start" value="{{ week_start }}" placeholder="如：2026-03-13" class="w-160">
-          </div>
-          <div class="form-field">
-            <label>版本</label>
-            {% if versions and versions|length > 0 %}
-              <select name="version" class="w-140">
-                {% for v in versions %}
-                  <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
-                    {% set option_status_label = v.result_status_label or (selected_result_status_label if v.version == version and selected_result_status_label else status_zh.get(v.result_status, '结果状态未知')) %}
-                    {{ ui.version_option_label(v, option_status_label) }}
-                  </option>
-                {% endfor %}
-              </select>
-            {% else %}
-              <input name="version" value="{{ version or '' }}" class="w-160">
-            {% endif %}
-          </div>
-          <div class="aps-form-actions aps-form-actions-end">{{ ui.button('加载', 'primary', 'md', type_attr='submit') }}</div>
-        </form>
-        {% if selected_version_row.item %}
-          <div class="aps-summary-grid aps-version-summary">
-            {{ ui.summary_item('版本', 'v' ~ selected_version_row.item.version) }}
-            {{ ui.summary_item('时间', selected_version_row.item.schedule_time) }}
-            {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
-            {{ ui.summary_item('结果', selected_version_row.item.result_status_label or selected_result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
-          </div>
-        {% endif %}
-        {% if not versions or versions|length == 0 %}
-          <div class="muted mt-2">还没有排产记录，先去排产页面执行一次吧。</div>
-        {% endif %}
       </div>
+
+      <form method="get" action="{{ url_for('scheduler.gantt_page') }}" class="aps-gantt-range-form">
+        <input type="hidden" name="view" value="{{ view }}">
+        <div class="form-field">
+          <label>排产区间（起）</label>
+          <input type="date" name="start_date" value="{{ start_date }}" class="w-160">
+        </div>
+        <div class="form-field">
+          <label>排产区间（止）</label>
+          <input type="date" name="end_date" value="{{ end_date }}" class="w-160">
+        </div>
+        <div class="form-field">
+          <label title="任意日期，系统会自动归到周一">指定周</label>
+          <input name="week_start" value="{{ week_start }}" placeholder="如：2026-03-13" class="w-160">
+        </div>
+        <div class="form-field">
+          <label>版本</label>
+          {% if versions and versions|length > 0 %}
+            <select name="version" class="w-140">
+              {% for v in versions %}
+                <option value="{{ v.version }}" {% if v.version == version %}selected{% endif %}>
+                  {% set option_status_label = v.result_status_label or (selected_result_status_label if v.version == version and selected_result_status_label else status_zh.get(v.result_status, '结果状态未知')) %}
+                  {{ ui.version_option_label(v, option_status_label) }}
+                </option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input name="version" value="{{ version or '' }}" class="w-160">
+          {% endif %}
+        </div>
+        <div class="aps-query-form-actions">{{ ui.button('加载', 'primary', 'md', type_attr='submit') }}</div>
+      </form>
+      {% if selected_version_row.item %}
+        <div class="aps-summary-grid aps-version-summary aps-gantt-version-summary">
+          {{ ui.summary_item('版本', 'v' ~ selected_version_row.item.version) }}
+          {{ ui.summary_item('时间', selected_version_row.item.schedule_time) }}
+          {{ ui.summary_item('排产方式', selected_version_row.item.strategy_label or strategy_zh.get(selected_version_row.item.strategy, '未知排产方式')) }}
+          {{ ui.summary_item('结果', selected_version_row.item.result_status_label or selected_result_status_label or status_zh.get(selected_version_row.item.result_status, '结果状态未知')) }}
+        </div>
+      {% endif %}
+      {% if not versions or versions|length == 0 %}
+        <div class="muted mt-2">还没有排产记录，先去排产页面执行一次吧。</div>
+      {% endif %}
     </div>
     <p class="text-meta mt-3">
       提示：默认按“批次”配色，可在下方切换为按优先级/来源/状态；红色边框表示该批次在该版本中被判定为“超期”。

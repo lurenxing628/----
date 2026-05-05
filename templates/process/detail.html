@@ -18,10 +18,10 @@
     {{ ui.process_nav('parts') }}
   </div>
 
-  <div class="card">
-    <h3>零件基础信息</h3>
+  <div class="card aps-form-card">
+    <h3 class="section-title">零件基础信息</h3>
     <form method="post" action="{{ url_for('process.update_part', part_no=part.part_no) }}">
-      <div class="aps-form-grid">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label>图号</label>
           <input value="{{ part.part_no }}" disabled>
@@ -30,7 +30,7 @@
           <label>名称</label>
           <input name="part_name" required value="{{ part.part_name }}">
         </div>
-        <div class="form-field aps-form-span-2">
+        <div class="form-field aps-field-wide">
           <label>路线文字</label>
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
           <div class="muted text-xs">提示：可包含空格、逗号、顿号、破折号等分隔符；生成工序清单时会统一处理。</div>
@@ -39,26 +39,28 @@
           <label>备注</label>
           <input name="remark" value="{{ part.remark or '' }}" placeholder="可选">
         </div>
-        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
     </form>
 
     <form method="post" action="{{ url_for('process.reparse_part', part_no=part.part_no) }}" class="mt-3">
-      <div class="aps-form-grid">
-        <div class="form-field aps-form-span-2">
+      <div class="aps-edit-form-grid">
+        <div class="form-field aps-field-wide">
           <label>用于生成工序清单的路线文字</label>
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
           <div class="muted">保存后，系统会按这段路线文字重新生成该零件的工序清单；如果生成失败，原工序清单不会被改动。</div>
         </div>
-        <div class="form-field aps-form-span-all">
+        <div class="form-field aps-field-full">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
             资料不完整就停下
           </label>
-          <div class="muted text-xs aps-help-note">勾选后：路线文字里有不认识的工种、没有启用的外协供应商，或外协周期无效时，会直接提示错误并停止生成。不勾选：能确认的工序会继续处理；缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，空路线、格式完全不对这类必须先改好的问题仍然会报错。</div>
+          {% call ui.help_details('查看生成工序规则') %}
+            勾选后：路线文字里有不认识的工种、没有启用的外协供应商，或外协周期无效时，会直接提示错误并停止生成。不勾选：能确认的工序会继续处理；缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，空路线、格式完全不对这类必须先改好的问题仍然会报错。
+          {% endcall %}
         </div>
-        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('按路线重新生成工序清单', 'secondary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('按路线重新生成工序清单', 'secondary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 
@@ -76,14 +78,14 @@
     <h3>工序清单</h3>
     {% if active_operations and active_operations|length > 0 %}
       <div class="aps-table-scroll">
-      <table>
+      <table id="partOperationsTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_partOperationsTable">
         <thead>
           <tr>
-            <th class="w-90">工序</th>
-            <th class="w-160">工种</th>
-            <th class="w-100">归属</th>
-            <th class="w-220">配置</th>
-            <th class="w-220">外协信息</th>
+            <th class="w-90" data-col-key="seq" data-default-w="90" data-min-w="70">工序</th>
+            <th class="w-160" data-col-key="op_type" data-default-w="160" data-min-w="120">工种</th>
+            <th class="w-100" data-col-key="source" data-default-w="100" data-min-w="80">归属</th>
+            <th class="w-280" data-col-key="config" data-default-w="280" data-min-w="220">配置</th>
+            <th class="w-280" data-col-key="external" data-default-w="280" data-min-w="220">外协信息</th>
           </tr>
         </thead>
         <tbody>
@@ -95,7 +97,7 @@
               <td>
                 {% if op.source == 'internal' %}
                   <form method="post" action="{{ url_for('process.update_internal_hours', part_no=part.part_no, seq=op.seq) }}">
-                    <div class="aps-form-grid">
+                    <div class="aps-inline-edit-grid">
                       <div class="form-field">
                         <label class="muted">换型（小时）</label>
                         <input name="setup_hours" class="w-90" value="{{ op.setup_hours or 0 }}">
@@ -149,7 +151,7 @@
         {% set gid = g.group_id %}
         {% set gops = ops_by_group.get(gid) or [] %}
         <div class="group-box">
-          <div class="aps-filter-bar">
+          <div class="aps-form-actions">
             <div>
               <strong>连续外协工序组：</strong>{{ gid }}（{{ g.start_seq }} - {{ g.end_seq }}）
               <div class="muted text-xs mt-1">模式：{{ merge_mode_zh(g.merge_mode) }}</div>
@@ -166,7 +168,7 @@
           </div>
 
           <form method="post" action="{{ url_for('process.set_group_mode', part_no=part.part_no, group_id=gid) }}" class="mt-3">
-            <div class="aps-form-grid">
+            <div class="aps-edit-form-grid">
               <div class="form-field">
                 <label>周期模式</label>
                 <select name="merge_mode">
@@ -174,32 +176,34 @@
                   <option value="merged" {% if g.merge_mode=='merged' %}selected{% endif %}>合并设置</option>
                 </select>
               </div>
-              <div class="form-field aps-form-span-2">
+              <div class="form-field aps-field-wide">
                 <label>整组周期（天，仅合并设置使用）</label>
                 <input name="total_days" value="{{ g.total_days if g.total_days is not none else '' }}" placeholder="如：3">
                 <div class="muted">提示：选择"合并设置"后，整组只按这里填的整组周期计算，下面每道工序的单独周期不再生效；选择"分别设置"时，这里的整组周期不生效，按下面每道工序各自的周期计算。</div>
               </div>
-              <div class="form-field min-w-260">
+              <div class="form-field aps-field-wide">
                 <label>
                   <input type="checkbox" name="strict_mode" value="yes">
                   资料不完整就停下
                 </label>
-                <div class="muted text-xs aps-help-note">勾选后：分别设置时，每道外协工序都必须填正确周期，填空、不是数字或小于等于 0 会直接报错。不勾选：系统会继续保存，并把没填好的外协周期先按 1 天记录，同时提醒你补成真实周期。</div>
+                {% call ui.help_details('查看外协周期规则') %}
+                  勾选后：分别设置时，每道外协工序都必须填正确周期，填空、不是数字或小于等于 0 会直接报错。不勾选：系统会继续保存，并把没填好的外协周期先按 1 天记录，同时提醒你补成真实周期。
+                {% endcall %}
               </div>
-              <div class="aps-form-actions aps-form-actions-end">
-                {{ ui.button('保存外协组设置', 'primary', 'md', type_attr='submit') }}
-              </div>
+            </div>
+            <div class="aps-form-footer">
+              {{ ui.button('保存外协组设置', 'primary', 'md', type_attr='submit') }}
             </div>
 
             {% if gops and gops|length > 0 %}
               <div class="aps-table-scroll">
-              <table class="mt-3">
+              <table class="mt-3 table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_partExternalGroupOpsTable{{ g.group_id }}">
                 <thead>
                   <tr>
-                    <th class="w-90">工序</th>
-                    <th class="w-160">工种</th>
-                    <th class="w-180">周期（天，仅分别设置使用）</th>
-                    <th>提示</th>
+                    <th class="w-90" data-col-key="seq" data-default-w="90" data-min-w="70">工序</th>
+                    <th class="w-160" data-col-key="op_type" data-default-w="160" data-min-w="120">工种</th>
+                    <th class="w-220" data-col-key="lead_days" data-default-w="220" data-min-w="170">周期（天，仅分别设置使用）</th>
+                    <th class="w-260" data-col-key="hint" data-default-w="260" data-min-w="180">提示</th>
                   </tr>
                 </thead>
                 <tbody>

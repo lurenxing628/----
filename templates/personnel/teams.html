@@ -7,10 +7,10 @@
     nav_html=ui.personnel_nav('teams')
   ) }}
 
-  <div class="card">
+  <div class="card aps-form-card">
     {{ ui.aps_card_header('新增班组', '新增后可在人员或设备信息里选择这个班组。') }}
     <form method="post" action="{{ url_for('personnel.create_team') }}">
-      <div class="aps-form-grid">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label>班组编号</label>
           <input name="team_id" required placeholder="如：TEAM-01">
@@ -31,8 +31,8 @@
           <label>备注</label>
           <input name="remark" placeholder="可选">
         </div>
-        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('添加班组', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('添加班组', 'primary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 
@@ -53,46 +53,48 @@
       {% for r in teams %}
         <form id="teamform_{{ loop.index0 }}" method="post" action="{{ url_for('personnel.update_team', team_id=r.team_id) }}"></form>
       {% endfor %}
-      <table>
-        <thead>
-          <tr>
-            <th class="w-140">班组编号</th>
-            <th class="w-220">班组名称</th>
-            <th class="w-120">状态</th>
-            <th class="w-100">人员数</th>
-            <th class="w-100">设备数</th>
-            <th>备注</th>
-            <th class="w-220">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in teams %}
+      <div class="aps-table-scroll">
+        <table id="teamsTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_teamsTable">
+          <thead>
             <tr>
-              <td>{{ r.team_id }}</td>
-              <td><input name="name" value="{{ r.name }}" form="teamform_{{ loop.index0 }}"></td>
-              <td>
-                <select name="status" form="teamform_{{ loop.index0 }}">
-                  {% for v, label in status_options %}
-                    <option value="{{ v }}" {% if r.status == v %}selected{% endif %}>{{ label }}</option>
-                  {% endfor %}
-                </select>
-              </td>
-              <td>{{ r.operator_count }}</td>
-              <td>{{ r.machine_count }}</td>
-              <td><input name="remark" value="{{ r.remark or '' }}" form="teamform_{{ loop.index0 }}"></td>
-              <td>
-                <div class="table-actions">
-                  {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='teamform_' ~ loop.index0) }}
-                  <form method="post" action="{{ url_for('personnel.delete_team', team_id=r.team_id) }}"
-                        data-confirm="确定删除班组 {{ r.team_id }} 吗？若仍被人员/设备引用将删除失败。">
-                    {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
-                  </form>
-                </div>
-              </td>
+              <th class="w-140" data-col-key="team_id" data-default-w="140" data-min-w="120">班组编号</th>
+              <th class="w-220" data-col-key="team_name" data-default-w="220" data-min-w="160">班组名称</th>
+              <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100">状态</th>
+              <th class="w-100" data-col-key="operators" data-default-w="100" data-min-w="80">人员数</th>
+              <th class="w-100" data-col-key="machines" data-default-w="100" data-min-w="80">设备数</th>
+              <th class="w-260" data-col-key="remark" data-default-w="260" data-min-w="180">备注</th>
+              <th class="w-220" data-col-key="actions" data-default-w="220" data-min-w="170" data-resize="1">操作</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for r in teams %}
+              <tr>
+                <td>{{ r.team_id }}</td>
+                <td><input name="name" value="{{ r.name }}" form="teamform_{{ loop.index0 }}"></td>
+                <td>
+                  <select name="status" form="teamform_{{ loop.index0 }}">
+                    {% for v, label in status_options %}
+                      <option value="{{ v }}" {% if r.status == v %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td>{{ r.operator_count }}</td>
+                <td>{{ r.machine_count }}</td>
+                <td><input name="remark" value="{{ r.remark or '' }}" form="teamform_{{ loop.index0 }}"></td>
+                <td>
+                  <div class="table-actions">
+                    {{ ui.button('保存', 'primary', 'sm', type_attr='submit', form='teamform_' ~ loop.index0) }}
+                    <form method="post" action="{{ url_for('personnel.delete_team', team_id=r.team_id) }}"
+                          data-confirm="确定删除班组 {{ r.team_id }} 吗？若仍被人员/设备引用将删除失败。">
+                      {{ ui.button('删除', 'danger', 'sm', type_attr='submit') }}
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
       <div class="muted">暂无班组，可在上方新增。</div>
     {% endif %}

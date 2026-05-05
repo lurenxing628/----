@@ -10,10 +10,10 @@
     {{ ui.process_nav('op_types') }}
   </div>
 
-  <div class="card">
+  <div class="card aps-form-card">
     <h3>基本信息</h3>
     <form method="post" action="{{ url_for('process.update_op_type', op_type_id=op_type.op_type_id) }}">
-      <div class="aps-form-grid">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label>工种编号</label>
           <input value="{{ op_type.op_type_id }}" disabled>
@@ -29,12 +29,12 @@
             <option value="external" {% if op_type.category=='external' %}selected{% endif %}>外协</option>
           </select>
         </div>
-        <div class="form-field aps-form-span-2">
+        <div class="form-field aps-field-wide">
           <label>备注</label>
           <input name="remark" value="{{ op_type.remark or '' }}">
         </div>
-        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('保存', 'primary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 {% endblock %}

@@ -91,8 +91,8 @@ def test_scheduler_batches_keeps_latest_history_when_summary_is_invalid(tmp_path
 
     assert resp.status_code == 200
     assert "最近一次排产快照" in body
-    assert 'aps-summary-label">版本' in body
-    assert 'aps-summary-value">v2' in body
+    assert 'aps-latest-schedule-label">版本' in body
+    assert 'aps-latest-schedule-value">v2' in body
     assert "还没有排过产" not in body
     assert any("排产页 排产摘要 解析失败（version=2" in item for item in warnings)
 

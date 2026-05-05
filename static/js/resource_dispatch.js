@@ -200,10 +200,10 @@
     }
 
     const html = [];
-    html.push('<table class="table-sticky"><thead><tr><th class="w-180">查询对象</th>');
+    html.push('<table id="rdCalendarTable" class="table-sticky table-layout-fixed aps-table-xwide" data-col-resize="1" data-table-key="v1_resourceDispatchCalendar"><thead><tr><th class="w-200" data-col-key="scope" data-default-w="200" data-min-w="160">查询对象</th>');
     for (let i = 0; i < headerList.length; i++) {
       const d = trim(headerList[i]);
-      html.push('<th class="w-160">' + escapeHtml(d) + '</th>');
+      html.push('<th class="w-180" data-col-key="day_' + escapeHtml(String(i)) + '" data-default-w="180" data-min-w="150">' + escapeHtml(d) + '</th>');
     }
     html.push('</tr></thead><tbody>');
     for (let r = 0; r < rowList.length; r++) {
@@ -230,6 +230,11 @@
     }
     html.push('</tbody></table>');
     wrap.innerHTML = html.join("");
+    if (typeof window.APS_InitResizableTables === "function") {
+      try {
+        window.APS_InitResizableTables(wrap);
+      } catch (_err) {}
+    }
   }
 
   function ganttPopup(task) {

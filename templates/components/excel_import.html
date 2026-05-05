@@ -14,18 +14,20 @@
   {% if ui is defined %}
     {{ ui.excel_import_mode_help(selected_mode_options) }}
   {% else %}
-    <div class="field-help no-print">
-      <strong>导入前先确认：</strong>
-      <ul class="list-tight">
-        <li>模板文件只支持 <code>.xlsx</code>，表头不要改。</li>
-        <li>系统只读取第一个工作表，不要把有效数据挪到第二个工作表。</li>
-        <li>先“上传 Excel 并检查”，把错误行全部修完，再点“确认写入系统”。</li>
-        <li>检查阶段还有错误时，不能确认写入系统。</li>
-        <li>确认写入时，如果个别行临时写入失败，系统可能会先写入成功的行，并把失败的行单独提示出来。</li>
-        <li>导入完成后，建议再导出一次当前数据做复核。</li>
-        <li>单次上传文件大小不超过 16MB。</li>
-      </ul>
-    </div>
+    <details class="aps-help-details field-help no-print">
+      <summary>导入前先确认</summary>
+      <div class="aps-help-details-body">
+        <ul class="list-tight">
+          <li>模板文件只支持 <code>.xlsx</code>，表头不要改。</li>
+          <li>系统只读取第一个工作表，不要把有效数据挪到第二个工作表。</li>
+          <li>先“上传 Excel 并检查”，把错误行全部修完，再点“确认写入系统”。</li>
+          <li>检查阶段还有错误时，不能确认写入系统。</li>
+          <li>确认写入时，如果个别行临时写入失败，系统可能会先写入成功的行，并把失败的行单独提示出来。</li>
+          <li>导入完成后，建议再导出一次当前数据做复核。</li>
+          <li>单次上传文件大小不超过 16MB。</li>
+        </ul>
+      </div>
+    </details>
   {% endif %}
 
   <div class="mb-3">
@@ -37,7 +39,7 @@
   </div>
 
   <form action="{{ preview_url }}" method="post" enctype="multipart/form-data">
-    <div class="aps-filter-bar mb-3">
+    <div class="aps-query-form-grid mb-3">
       <div class="form-field">
         <label for="excelImportMode">导入模式</label>
         <select id="excelImportMode" name="mode">
@@ -60,15 +62,21 @@
           <input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}>
           {{ strict_mode_label or '发现问题就停下' }}
         </label>
-        <div class="muted text-xs">{{ strict_mode_help or '勾选后：资料不完整就停下，并告诉你哪一行、哪一项要补。不勾选：能确认的数据会继续处理；但必填项为空、格式错误这类必须先改好的问题仍然会报错。' }}</div>
+        {% if ui is defined %}
+          {% call ui.help_details('查看检查规则') %}
+            {{ strict_mode_help or '勾选后：资料不完整就停下，并告诉你哪一行、哪一项要补。不勾选：能确认的数据会继续处理；但必填项为空、格式错误这类必须先改好的问题仍然会报错。' }}
+          {% endcall %}
+        {% else %}
+          <div class="muted text-xs">{{ strict_mode_help or '勾选后：资料不完整就停下，并告诉你哪一行、哪一项要补。不勾选：能确认的数据会继续处理；但必填项为空、格式错误这类必须先改好的问题仍然会报错。' }}</div>
+        {% endif %}
       </div>
     {% endif %}
-    <div class="aps-filter-bar mb-3">
+    <div class="aps-query-form-grid mb-3">
       <div class="form-field min-w-320">
         <label for="excelImportFile" class="muted">选择文件</label>
         <input id="excelImportFile" type="file" name="file" accept=".xlsx" required>
       </div>
-      <div class="aps-form-actions aps-form-actions-end">
+      <div class="aps-query-form-actions">
         {% if ui is defined %}
           {{ ui.button('上传 Excel 并检查', 'primary', 'md', type_attr='submit') }}
         {% else %}
@@ -88,13 +96,13 @@
     <p class="muted">行号对应 Excel 中的实际行数。</p>
 
     <div class="aps-table-scroll">
-    <table>
+    <table id="excelPreviewTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_excelPreviewTable">
       <thead>
         <tr>
-          <th class="w-90">行号</th>
-          <th class="w-120">结果</th>
-          <th class="w-260">问题或说明</th>
-          <th>详情</th>
+          <th class="w-90" data-col-key="row_num" data-default-w="90" data-min-w="70">行号</th>
+          <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100">结果</th>
+          <th class="w-320" data-col-key="message" data-default-w="320" data-min-w="220">问题或说明</th>
+          <th class="w-260" data-col-key="detail" data-default-w="260" data-min-w="180">详情</th>
         </tr>
       </thead>
       <tbody>

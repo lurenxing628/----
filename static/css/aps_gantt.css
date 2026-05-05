@@ -162,11 +162,88 @@
 }
 
 /* ---- toolbar controls (page-level) ---- */
-.aps-gantt-filter-grid {
+.aps-gantt-control-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.aps-gantt-control-row {
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+  justify-content: flex-start;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.aps-gantt-control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.aps-gantt-control-group > label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.aps-gantt-control-group .aps-form-actions {
+  margin-top: 0;
+  justify-content: flex-start;
+}
+
+.aps-gantt-range-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 0.9rem 1rem;
+  align-items: end;
+}
+
+.aps-gantt-range-form > *,
+.aps-gantt-range-form .form-field {
+  min-width: 0;
+}
+
+.aps-gantt-range-form .form-field > input,
+.aps-gantt-range-form .form-field > select {
+  width: 100%;
+  min-width: 0;
+}
+
+.aps-gantt-version-summary {
+  width: 100%;
+}
+
+@media (min-width: 1080px) {
+  .aps-gantt-range-form {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .aps-gantt-control-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .aps-gantt-control-group {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.aps-gantt-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
   align-items: flex-end;
+}
+.aps-gantt-filter-grid > * {
+  min-width: 0;
 }
 .aps-gantt-filter-item > label {
   display: inline-block;

@@ -76,25 +76,29 @@
           {% endif %}
           <div>{{ selected_summary_display.primary_degradation.message }}</div>
           {% if selected_summary_display.primary_degradation.details %}
-            <ul class="list-tight mt-1">
-              {% for item in selected_summary_display.primary_degradation.details %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
+            {% call ui.flash_details('查看 ' ~ (selected_summary_display.primary_degradation.details|length) ~ ' 条明细') %}
+              <ul class="list-tight">
+                {% for item in selected_summary_display.primary_degradation.details %}
+                  <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            {% endcall %}
           {% endif %}
         </div>
       {% endif %}
       {% if selected_summary_display.display_secondary_degradation_messages %}
         <div class="flash-card flash-warning mt-2">
           <div>告警 {{ selected_summary_display.display_secondary_degradation_messages|length }} 条</div>
-          <ul class="list-tight mt-1">
-            {% for item in selected_summary_display.display_secondary_degradation_messages %}
-              <li>
-                <strong>{{ item.label or item.code or '提示' }}</strong>
-                {% if item.message %}：{{ item.message }}{% endif %}
-              </li>
-            {% endfor %}
-          </ul>
+          {% call ui.flash_details('查看告警明细') %}
+            <ul class="list-tight">
+              {% for item in selected_summary_display.display_secondary_degradation_messages %}
+                <li>
+                  <strong>{{ item.label or item.code or '提示' }}</strong>
+                  {% if item.message %}：{{ item.message }}{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
         </div>
       {% endif %}
       {% if selected_summary_display.warning_pipeline_display %}
@@ -114,11 +118,13 @@
       {% if selected_summary_display.warning_total %}
         <div class="flash-card flash-warning mt-2">
           <div>提醒：{{ selected_summary_display.warning_total }} 条</div>
-          <ul class="list-tight mt-1">
-            {% for item in selected_summary_display.warnings_preview %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
+          {% call ui.flash_details('查看前 ' ~ (selected_summary_display.warnings_preview|length) ~ ' 条提醒') %}
+            <ul class="list-tight">
+              {% for item in selected_summary_display.warnings_preview %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
           {% if selected_summary_display.warning_hidden_count > 0 %}
             <div class="muted text-xs">另有 {{ selected_summary_display.warning_hidden_count }} 条提醒未在当前详情中展开。</div>
           {% endif %}
@@ -127,11 +133,13 @@
       {% if selected_summary_display.error_total %}
         <div class="flash-card flash-warning mt-2">
           <div>错误摘要：{{ selected_summary_display.error_total }} 条</div>
-          <ul class="list-tight mt-1">
-            {% for item in selected_summary_display.errors_preview %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
+          {% call ui.flash_details('查看前 ' ~ (selected_summary_display.errors_preview|length) ~ ' 条错误') %}
+            <ul class="list-tight">
+              {% for item in selected_summary_display.errors_preview %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endcall %}
           {% if selected_summary_display.error_hidden_count > 0 %}
             <div class="muted text-xs">另有 {{ selected_summary_display.error_hidden_count }} 条错误未在当前详情中展开。</div>
           {% endif %}
@@ -163,16 +171,16 @@
       <p class="muted">暂无排产历史记录，请先到排产调度页面执行一次排产。</p>
     {% else %}
       <div class="aps-table-scroll">
-      <table class="table-sticky">
+      <table id="systemHistoryTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_systemHistoryTable">
         <thead>
           <tr>
-            <th>编号</th>
-            <th>时间</th>
-            <th>版本</th>
-            <th>方式</th>
-            <th>批次/工序</th>
-            <th>结果</th>
-            <th>摘要与提示</th>
+            <th class="w-80" data-col-key="id" data-default-w="80" data-min-w="70">编号</th>
+            <th class="w-180" data-col-key="time" data-default-w="180" data-min-w="150">时间</th>
+            <th class="w-90" data-col-key="version" data-default-w="90" data-min-w="80">版本</th>
+            <th class="w-150" data-col-key="strategy" data-default-w="150" data-min-w="120">方式</th>
+            <th class="w-120" data-col-key="count" data-default-w="120" data-min-w="100">批次/工序</th>
+            <th class="w-120" data-col-key="result" data-default-w="120" data-min-w="100">结果</th>
+            <th class="w-360" data-col-key="summary" data-default-w="360" data-min-w="260">摘要与提示</th>
           </tr>
         </thead>
         <tbody>
@@ -192,14 +200,19 @@
                   <div>{{ r.result_summary_display.primary_degradation.message }}</div>
                 {% endif %}
                 {% if r.result_summary_display.display_secondary_degradation_messages %}
-                  <ul class="list-tight mt-1">
-                    {% for item in r.result_summary_display.display_secondary_degradation_messages %}
-                      <li>
-                        <strong>{{ item.label or item.code or '提示' }}</strong>
-                        {% if item.message %}：{{ item.message }}{% endif %}
-                      </li>
-                    {% endfor %}
-                  </ul>
+                  <details class="aps-flash-details aps-table-cell-detail">
+                    <summary>查看 {{ r.result_summary_display.display_secondary_degradation_messages|length }} 条处理提示</summary>
+                    <div class="aps-flash-details-body">
+                      <ul class="list-tight">
+                        {% for item in r.result_summary_display.display_secondary_degradation_messages %}
+                          <li>
+                            <strong>{{ item.label or item.code or '提示' }}</strong>
+                            {% if item.message %}：{{ item.message }}{% endif %}
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  </details>
                 {% endif %}
                 {% if r.result_summary_display.warning_total %}
                   <div class="muted">提醒 {{ r.result_summary_display.warning_total }} 条</div>

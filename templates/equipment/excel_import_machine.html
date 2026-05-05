@@ -21,14 +21,15 @@
   <div class="card">
     <h3>当前设备数据</h3>
     {% if existing_list and existing_list|length > 0 %}
-      <table>
+      <div class="aps-table-scroll">
+      <table id="excelMachineExistingTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_excelMachineExistingTable">
         <thead>
           <tr>
-            <th>设备编号</th>
-            <th>设备名称</th>
-            <th>工种</th>
-            <th>班组</th>
-            <th>状态</th>
+            <th class="w-160" data-col-key="machine_id" data-default-w="160" data-min-w="130">设备编号</th>
+            <th class="w-260" data-col-key="machine_name" data-default-w="260" data-min-w="180">设备名称</th>
+            <th class="w-160" data-col-key="op_type" data-default-w="160" data-min-w="120">工种</th>
+            <th class="w-160" data-col-key="team" data-default-w="160" data-min-w="120">班组</th>
+            <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100">状态</th>
           </tr>
         </thead>
         <tbody>
@@ -43,6 +44,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂无数据（可先下载模板并导入）。</div>
     {% endif %}

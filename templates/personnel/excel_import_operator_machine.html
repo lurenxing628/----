@@ -8,10 +8,10 @@
         {{ ui.link_button(back_label, back_url, 'secondary', 'md') }}
       </div>
     </div>
-    <p class="page-subtitle text-meta">
+    <p class="page-subtitle text-meta">导入前会校验人员和设备是否存在，并给出中文提示。</p>
+    {% call ui.help_details('导入前先看字段规则') %}
       导入/导出字段：工号、设备编号；可选字段：技能等级建议填中文初级/普通/熟练，主操设备建议填是/否。以前文件里填过其他说法的，系统会尽量读懂；新文件请填中文。
-      导入前会校验人员/设备是否存在，并给出中文提示。
-    </p>
+    {% endcall %}
     {{ ui.personnel_nav('list') }}
     <div class="mt-2">
       {{ ui.link_button('导出当前数据（人员设备关联.xlsx）', export_url, 'secondary', 'md') }}
@@ -24,15 +24,16 @@
   <div class="card">
     <h3>当前关联数据</h3>
     {% if existing_list and existing_list|length > 0 %}
-      <table>
+      <div class="aps-table-scroll">
+      <table id="excelOperatorMachineExistingTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_excelOperatorMachineExistingTable">
         <thead>
           <tr>
-            <th>工号</th>
-            <th>姓名</th>
-            <th>设备编号</th>
-            <th>设备名称</th>
-            <th>技能等级</th>
-            <th>主操设备</th>
+            <th class="w-140" data-col-key="operator_id" data-default-w="140" data-min-w="120">工号</th>
+            <th class="w-220" data-col-key="operator_name" data-default-w="220" data-min-w="160">姓名</th>
+            <th class="w-160" data-col-key="machine_id" data-default-w="160" data-min-w="130">设备编号</th>
+            <th class="w-240" data-col-key="machine_name" data-default-w="240" data-min-w="170">设备名称</th>
+            <th class="w-140" data-col-key="skill" data-default-w="140" data-min-w="120">技能等级</th>
+            <th class="w-140" data-col-key="primary" data-default-w="140" data-min-w="120">主操设备</th>
           </tr>
         </thead>
         <tbody>
@@ -48,6 +49,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂无关联数据（可先在人员详情页添加，或通过 Excel 导入）。</div>
     {% endif %}

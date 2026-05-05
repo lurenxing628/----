@@ -26,15 +26,15 @@
     <h3>当前工序工时（仅自制工序）</h3>
     {% if existing_list and existing_list|length > 0 %}
       <div class="aps-table-scroll">
-        <table>
+        <table id="excelPartHoursExistingTable" class="table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_excelPartHoursExistingTable">
           <thead>
             <tr>
-              <th>图号</th>
-              <th>工序</th>
-              <th>工种</th>
-              <th>归属</th>
-              <th>换型时间（小时）</th>
-              <th>单件工时（小时）</th>
+              <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130">图号</th>
+              <th class="w-90" data-col-key="seq" data-default-w="90" data-min-w="70">工序</th>
+              <th class="w-160" data-col-key="op_type" data-default-w="160" data-min-w="120">工种</th>
+              <th class="w-100" data-col-key="source" data-default-w="100" data-min-w="80">归属</th>
+              <th class="w-160" data-col-key="setup_hours" data-default-w="160" data-min-w="130">换型时间（小时）</th>
+              <th class="w-160" data-col-key="unit_hours" data-default-w="160" data-min-w="130">单件工时（小时）</th>
             </tr>
           </thead>
           <tbody>

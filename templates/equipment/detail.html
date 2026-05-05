@@ -10,10 +10,10 @@
     {{ ui.equipment_nav('list') }}
   </div>
 
-  <div class="card">
-    <h3>基本信息</h3>
+  <div class="card aps-form-card">
+    <h3 class="section-title">基本信息</h3>
     <form method="post" action="{{ url_for('equipment.update_machine', machine_id=machine.machine_id) }}">
-      <div class="form-row">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label>设备编号</label>
           <input value="{{ machine.machine_id }}" disabled>
@@ -52,14 +52,14 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field flex-1 min-w-240">
+        <div class="form-field aps-field-wide">
           <label>备注</label>
           <input name="remark" value="{{ machine.remark or '' }}">
         </div>
-        <div class="inline-flex-wrap">
-          {{ ui.button('保存', 'primary', 'md', type_attr='submit') }}
-          {{ ui.link_button('返回列表', url_for('equipment.list_page'), 'secondary', 'sm') }}
-        </div>
+      </div>
+      <div class="aps-form-footer">
+        {{ ui.button('保存', 'primary', 'md', type_attr='submit') }}
+        {{ ui.link_button('返回列表', url_for('equipment.list_page'), 'secondary', 'sm') }}
       </div>
     </form>
   </div>
@@ -76,15 +76,16 @@
       {% for op in linked_operators %}
         <form id="linkform_{{ loop.index0 }}" method="post" action="{{ url_for('equipment.update_link', machine_id=machine.machine_id) }}" class="d-none"></form>
       {% endfor %}
-      <table>
+      <div class="aps-table-scroll">
+      <table id="machineLinkedOperatorsTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_machineLinkedOperatorsTable">
         <thead>
           <tr>
-            <th class="w-140">工号</th>
-            <th>姓名</th>
-            <th class="w-120">人员状态</th>
-            <th class="w-140">技能等级</th>
-            <th class="w-120">主操</th>
-            <th class="w-220">操作</th>
+            <th class="w-140" data-col-key="operator_id" data-default-w="140" data-min-w="120">工号</th>
+            <th class="w-240" data-col-key="operator_name" data-default-w="240" data-min-w="170">姓名</th>
+            <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100">人员状态</th>
+            <th class="w-140" data-col-key="skill" data-default-w="140" data-min-w="120">技能等级</th>
+            <th class="w-120" data-col-key="primary" data-default-w="120" data-min-w="100">主操</th>
+            <th class="w-220" data-col-key="actions" data-default-w="220" data-min-w="170" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -123,6 +124,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂无关联人员。</div>
     {% endif %}
@@ -131,7 +133,7 @@
     <h4>添加人员关联</h4>
     {% if available_operators and available_operators|length > 0 %}
       <form method="post" action="{{ url_for('equipment.add_link', machine_id=machine.machine_id) }}">
-        <div class="form-row">
+        <div class="aps-edit-form-grid">
           <div class="form-field">
             <label>选择人员</label>
             <select name="operator_id" required>
@@ -140,15 +142,15 @@
               {% endfor %}
             </select>
           </div>
-          <div>{{ ui.button('添加关联', 'primary', 'md', type_attr='submit') }}</div>
         </div>
+        <div class="aps-form-footer">{{ ui.button('添加关联', 'primary', 'md', type_attr='submit') }}</div>
       </form>
     {% else %}
       <div class="muted">没有更多人员可选了。</div>
     {% endif %}
   </div>
 
-  <div class="card">
+  <div class="card aps-form-card">
     <h3>停机计划</h3>
     <p class="muted">设备的计划停机时间。</p>
     <div class="mt-2">
@@ -156,15 +158,16 @@
     </div>
 
     {% if downtime_rows and downtime_rows|length > 0 %}
-      <table>
+      <div class="aps-table-scroll">
+      <table id="machineDowntimeTable" class="table-sticky table-layout-fixed aps-table-wide" data-col-resize="1" data-table-key="v2_machineDowntimeTable">
         <thead>
           <tr>
-            <th class="w-80">编号</th>
-            <th class="w-200">开始</th>
-            <th class="w-200">结束</th>
-            <th class="w-160">原因</th>
-            <th>备注</th>
-            <th class="w-220">操作</th>
+            <th class="w-80" data-col-key="id" data-default-w="80" data-min-w="70">编号</th>
+            <th class="w-200" data-col-key="start_time" data-default-w="200" data-min-w="160">开始</th>
+            <th class="w-200" data-col-key="end_time" data-default-w="200" data-min-w="160">结束</th>
+            <th class="w-160" data-col-key="reason" data-default-w="160" data-min-w="120">原因</th>
+            <th class="w-260" data-col-key="remark" data-default-w="260" data-min-w="180">备注</th>
+            <th class="w-220" data-col-key="actions" data-default-w="220" data-min-w="170" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -192,6 +195,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="muted">暂无停机计划。</div>
     {% endif %}
@@ -199,7 +203,7 @@
     <hr/>
     <h4>新增停机</h4>
     <form method="post" action="{{ url_for('equipment.create_downtime', machine_id=machine.machine_id) }}">
-      <div class="form-row">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label>开始时间</label>
           <input name="start_time" required placeholder="如：2026-01-22 08:00" class="min-w-220">
@@ -216,12 +220,12 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-field flex-1 min-w-240">
+        <div class="form-field aps-field-wide">
           <label>原因备注（可选）</label>
           <input name="reason_detail" placeholder="可选：更具体的停机原因说明">
         </div>
-        <div>{{ ui.button('新增', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('新增', 'primary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 

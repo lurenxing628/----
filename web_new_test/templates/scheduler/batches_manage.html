@@ -20,10 +20,10 @@
     ui
   ) }}
 
-  <div class="card aps-scheduler-filter-card">
+  <div class="card aps-scheduler-filter-card aps-form-card">
     <h3 class="section-title">手工新增批次</h3>
     <form method="post" action="{{ url_for('scheduler.create_batch') }}">
-      <div class="aps-form-grid">
+      <div class="aps-edit-form-grid">
         <div class="form-field">
           <label for="batchManageBatchIdInput">批次号</label>
           <input id="batchManageBatchIdInput" name="batch_id" required placeholder="如：B001">
@@ -65,48 +65,48 @@
           <label for="batchManageReadyDateInput">齐套日期（可选）</label>
           <input id="batchManageReadyDateInput" type="date" name="ready_date">
         </div>
-        <div class="form-field aps-form-span-2">
+        <div class="form-field aps-field-wide">
           <label for="batchManageRemarkInput">备注</label>
           <input id="batchManageRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div class="form-field aps-form-span-all">
+        <div class="form-field aps-field-full">
           <label>
             <input type="checkbox" name="strict_mode" value="yes">
             资料不完整就停下
           </label>
-          <div class="muted text-xs aps-help-note">只在批次需要按零件路线生成工序时生效。勾选后：缺工种、缺供应商或外协周期不正确时，会停止创建并提示原因。不勾选：能确认的工序会先生成；缺少外协周期时会先按 1 天记录并提醒补正。</div>
+          {% call ui.help_details('查看生成工序规则') %}
+            只在批次需要按零件路线生成工序时生效。勾选后：缺工种、缺供应商或外协周期不正确时，会停止创建并提示原因。不勾选：能确认的工序会先生成；缺少外协周期时会先按 1 天记录并提醒补正。
+          {% endcall %}
         </div>
-        <div class="aps-form-actions aps-form-actions-end">{{ ui.button('创建批次', 'primary', 'md', type_attr='submit') }}</div>
       </div>
+      <div class="aps-form-footer">{{ ui.button('创建批次', 'primary', 'md', type_attr='submit') }}</div>
     </form>
   </div>
 
   <div class="card">
     <h3 class="section-title">批次列表</h3>
-    <form method="get" action="{{ url_for('scheduler.batches_manage_page') }}" class="mb-2">
-      <div class="aps-scheduler-filter-grid">
-        <div class="form-field">
-          <label for="batchManageStatusFilter">状态</label>
-          <select id="batchManageStatusFilter" name="status">
-            <option value="pending" {% if status=='pending' %}selected{% endif %}>待排</option>
-            <option value="scheduled" {% if status=='scheduled' %}selected{% endif %}>已排</option>
-            <option value="processing" {% if status=='processing' %}selected{% endif %}>加工中</option>
-            <option value="completed" {% if status=='completed' %}selected{% endif %}>已完成</option>
-            <option value="cancelled" {% if status=='cancelled' %}selected{% endif %}>已取消</option>
-            <option value="" {% if not status %}selected{% endif %}>（全部）</option>
-          </select>
-        </div>
-        <div class="form-field">
-          <label for="batchManageReadyFilter">筛选：齐套</label>
-          <select id="batchManageReadyFilter" name="only_ready">
-            <option value="" {% if not only_ready %}selected{% endif %}>（全部）</option>
-            <option value="yes" {% if only_ready=='yes' %}selected{% endif %}>齐套</option>
-            <option value="partial" {% if only_ready=='partial' %}selected{% endif %}>部分齐套</option>
-            <option value="no" {% if only_ready=='no' %}selected{% endif %}>未齐套</option>
-          </select>
-        </div>
-        <div class="aps-scheduler-filter-actions">{{ ui.button('查询', 'primary', 'md', type_attr='submit') }}</div>
+    <form method="get" action="{{ url_for('scheduler.batches_manage_page') }}" class="aps-query-form-grid mb-2">
+      <div class="form-field">
+        <label for="batchManageStatusFilter">状态</label>
+        <select id="batchManageStatusFilter" name="status">
+          <option value="pending" {% if status=='pending' %}selected{% endif %}>待排</option>
+          <option value="scheduled" {% if status=='scheduled' %}selected{% endif %}>已排</option>
+          <option value="processing" {% if status=='processing' %}selected{% endif %}>加工中</option>
+          <option value="completed" {% if status=='completed' %}selected{% endif %}>已完成</option>
+          <option value="cancelled" {% if status=='cancelled' %}selected{% endif %}>已取消</option>
+          <option value="" {% if not status %}selected{% endif %}>（全部）</option>
+        </select>
       </div>
+      <div class="form-field">
+        <label for="batchManageReadyFilter">筛选：齐套</label>
+        <select id="batchManageReadyFilter" name="only_ready">
+          <option value="" {% if not only_ready %}selected{% endif %}>（全部）</option>
+          <option value="yes" {% if only_ready=='yes' %}selected{% endif %}>齐套</option>
+          <option value="partial" {% if only_ready=='partial' %}selected{% endif %}>部分齐套</option>
+          <option value="no" {% if only_ready=='no' %}selected{% endif %}>未齐套</option>
+        </select>
+      </div>
+      <div class="aps-query-form-actions">{{ ui.button('查询', 'primary', 'md', type_attr='submit') }}</div>
     </form>
 
     {% if pager and pager.total_pages > 1 %}
@@ -137,18 +137,18 @@
       </div>
       <form method="post" action="{{ url_for('scheduler.bulk_update_batches') }}">
         <div class="aps-table-scroll">
-        <table id="batchesManageTable" data-table-key="v2_batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col" data-sort-enabled="1" data-col-resize="1">
+        <table id="batchesManageTable" data-table-key="v3_batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col aps-table-wide aps-scheduler-batch-table" data-sort-enabled="1" data-col-resize="1">
           <thead>
             <tr>
-              <th class="w-60"><input type="checkbox" class="js-select-all" title="全选"></th>
-              <th class="w-140" data-sort="text">批次号</th>
-              <th class="w-150" data-sort="text">图号</th>
-              <th class="w-100 text-right" data-sort="number">数量</th>
-              <th class="w-140" data-sort="date">交期</th>
-              <th class="w-120" data-sort="text">优先级</th>
-              <th class="w-120" data-sort="text">齐套</th>
-              <th class="w-120" data-sort="text">状态</th>
-              <th class="w-160">操作</th>
+              <th class="w-60" data-col-key="select" data-default-w="60" data-min-w="56" data-resize="0"><input type="checkbox" class="js-select-all" title="全选"></th>
+              <th class="w-160" data-col-key="batch_id" data-default-w="160" data-min-w="130" data-sort="text">批次号</th>
+              <th class="w-180" data-col-key="part_no" data-default-w="180" data-min-w="140" data-sort="text">图号</th>
+              <th class="w-100 text-right" data-col-key="quantity" data-default-w="100" data-min-w="80" data-sort="number">数量</th>
+              <th class="w-140" data-col-key="due_date" data-default-w="140" data-min-w="120" data-sort="date">交期</th>
+              <th class="w-120" data-col-key="priority" data-default-w="120" data-min-w="100" data-sort="text">优先级</th>
+              <th class="w-120" data-col-key="ready" data-default-w="120" data-min-w="100" data-sort="text">齐套</th>
+              <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100" data-sort="text">状态</th>
+              <th class="w-180" data-col-key="actions" data-default-w="180" data-min-w="170" data-resize="1">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -176,7 +176,7 @@
         </table>
         </div>
 
-        <div class="aps-form-grid mt-3">
+        <div class="aps-edit-form-grid mt-3">
           <div class="form-field">
             <label for="batchManageBulkPriorityInput">批量优先级（可选）</label>
             <select id="batchManageBulkPriorityInput" name="bulk_priority">
@@ -190,7 +190,7 @@
             <label for="batchManageBulkDueDateInput">批量交期（可选）</label>
             <input id="batchManageBulkDueDateInput" type="date" name="bulk_due_date">
           </div>
-          <div class="form-field aps-form-span-2">
+          <div class="form-field aps-field-wide">
             <label for="batchManageBulkRemarkInput">批量备注（可选）</label>
             <input id="batchManageBulkRemarkInput" name="bulk_remark" placeholder="填写则覆盖备注（留空则不修改）">
           </div>
