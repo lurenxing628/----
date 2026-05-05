@@ -348,6 +348,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_mirror_template_sync.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_stable_form_layout_allowlist.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_ui_contract_table_overflow_guard.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_system_logs_layout_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_form_run_option_checkbox_layout_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_layout_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_request_services_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_request_services_lazy_construction.py" in module.REQUIRED_TEST_ARGS

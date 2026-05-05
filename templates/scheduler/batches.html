@@ -231,18 +231,19 @@
         </div>
       {% endif %}
       {% if latest_summary_display.error_total %}
-        <div class="flash-card flash-warning mt-2">
-          <div>错误摘要：{{ latest_summary_display.error_total }} 条</div>
-          {% call ui.flash_details('查看前 ' ~ (latest_summary_display.errors_preview|length) ~ ' 条错误') %}
-            <ul class="list-tight">
-              {% for item in latest_summary_display.errors_preview %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
+        <div class="aps-summary-grid mt-2 aps-summary-health-grid">
+          {% call ui.summary_item_block('错误摘要', latest_summary_display.error_total ~ ' 条', 'danger') %}
+            {% call ui.flash_details('查看前 ' ~ (latest_summary_display.errors_preview|length) ~ ' 条错误') %}
+              <ul class="list-tight">
+                {% for item in latest_summary_display.errors_preview %}
+                  <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            {% endcall %}
+            {% if latest_summary_display.error_hidden_count > 0 %}
+              <div class="muted text-xs">另有 {{ latest_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
+            {% endif %}
           {% endcall %}
-          {% if latest_summary_display.error_hidden_count > 0 %}
-            <div class="muted text-xs">另有 {{ latest_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
-          {% endif %}
         </div>
       {% endif %}
     {% else %}
@@ -316,29 +317,42 @@
             </div>
             <div class="aps-run-panel-grid">
               <div class="form-field">
-                <label for="schedulerStartDtInput">排产开始时间（默认明天 08:00）</label>
+                <label for="schedulerStartDtInput">排产开始时间</label>
                 <input id="schedulerStartDtInput" type="datetime-local" name="start_dt" value="{{ (default_start_dt or '')|replace(' ', 'T') }}">
+                <div class="muted text-xs mt-1">默认明天 08:00。</div>
               </div>
               <div class="form-field">
-                <label for="schedulerEndDateInput">排产截止日期（可选）</label>
+                <label for="schedulerEndDateInput">排产截止日期</label>
                 <input id="schedulerEndDateInput" type="date" name="end_date">
+                <div class="muted text-xs mt-1">可选；填了以后会校验是否能在期限内完成。</div>
               </div>
-              <div class="aps-run-panel-option">
-                <label class="muted">
-                  <input type="checkbox" name="enforce_ready" {{ 'checked' if cfg.enforce_ready_default=='yes' else '' }}>
-                  启用齐套约束（未齐套禁止排产）
-                </label>
+              <div class="aps-run-options" role="group" aria-label="排产选项">
+                <div class="aps-run-options-title">排产选项</div>
+                <div class="aps-run-option-row">
+                  <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="runEnforceReady" aria-label="启用齐套约束">
+                    <input id="runEnforceReady" class="aps-settings-toggle-input" type="checkbox" name="enforce_ready" {{ 'checked' if cfg.enforce_ready_default=='yes' else '' }}>
+                    <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+                  </label>
+                  <span class="aps-run-option-copy">
+                    <label class="aps-run-option-title" for="runEnforceReady">启用齐套约束</label>
+                    <span class="aps-run-option-desc">未齐套批次不进入排产。</span>
+                  </span>
+                </div>
                 {% if config_field_warnings.get('enforce_ready_default') %}
-                  <div class="muted text-xs mt-1 scheduler-config-field-warning">
+                  <div class="muted text-xs scheduler-config-field-warning aps-run-option-note">
                     {{ config_field_warnings.get('enforce_ready_default') }}
                   </div>
                 {% endif %}
-              </div>
-              <div class="aps-run-panel-option">
-                <label class="muted">
-                  <input type="checkbox" name="strict_mode" value="yes">
-                  发现参数问题就停止排产
-                </label>
+                <div class="aps-run-option-row">
+                  <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="runStrictMode" aria-label="启用发现参数问题就停止排产">
+                    <input id="runStrictMode" class="aps-settings-toggle-input" type="checkbox" name="strict_mode" value="yes">
+                    <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+                  </label>
+                  <span class="aps-run-option-copy">
+                    <label class="aps-run-option-title" for="runStrictMode">发现参数问题就停止排产</label>
+                    <span class="aps-run-option-desc">配置不合法时直接停下，并提示需要处理的设置。</span>
+                  </span>
+                </div>
               </div>
             </div>
             <div class="aps-run-panel-help">
@@ -356,24 +370,24 @@
           </div>
         {% endif %}
         <div class="aps-table-scroll">
-        <table id="batchesTable" data-table-key="v3_batchesTable" class="table-sticky table-layout-fixed table-sticky-col aps-table-wide aps-scheduler-batch-table" data-sort-enabled="1" data-col-resize="1">
+        <table id="batchesTable" data-table-key="v4_batchesTable" class="table-sticky table-layout-fixed table-sticky-col aps-table-wide aps-scheduler-batch-table" data-sort-enabled="1" data-col-resize="1">
         <thead>
           <tr>
-            <th class="w-60" data-col-key="select" data-default-w="60" data-min-w="56" data-resize="0">
+            <th class="w-60" data-col-key="select" data-default-w="60" data-min-w="52" data-resize="0">
               {% if status == 'pending' %}
                 <input type="checkbox" class="js-select-all" title="全选">
               {% else %}
                 <span class="muted">-</span>
               {% endif %}
             </th>
-            <th class="w-160" data-col-key="batch_id" data-default-w="160" data-min-w="130" data-sort="text">批次号</th>
-            <th class="w-180" data-col-key="part_no" data-default-w="180" data-min-w="140" data-sort="text">图号</th>
-            <th class="w-100 text-right" data-col-key="quantity" data-default-w="100" data-min-w="80" data-sort="number">数量</th>
-            <th class="w-140" data-col-key="due_date" data-default-w="140" data-min-w="120" data-sort="date">交期</th>
-            <th class="w-120" data-col-key="priority" data-default-w="120" data-min-w="100" data-sort="text">优先级</th>
-            <th class="w-120" data-col-key="ready" data-default-w="120" data-min-w="100" data-sort="text">齐套</th>
-            <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100" data-sort="text">状态</th>
-            <th class="w-180" data-col-key="actions" data-default-w="180" data-min-w="170" data-resize="1">操作</th>
+            <th class="w-140" data-col-key="batch_id" data-default-w="140" data-min-w="110" data-sort="text">批次号</th>
+            <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130" data-sort="text">图号</th>
+            <th class="w-80 text-right" data-col-key="quantity" data-default-w="80" data-min-w="64" data-sort="number">数量</th>
+            <th class="w-120" data-col-key="due_date" data-default-w="120" data-min-w="104" data-sort="date">交期</th>
+            <th class="w-90" data-col-key="priority" data-default-w="90" data-min-w="76" data-sort="text">优先级</th>
+            <th class="w-100" data-col-key="ready" data-default-w="100" data-min-w="84" data-sort="text">齐套</th>
+            <th class="w-90" data-col-key="status" data-default-w="90" data-min-w="76" data-sort="text">状态</th>
+            <th class="w-150" data-col-key="actions" data-default-w="150" data-min-w="140" data-resize="1">操作</th>
           </tr>
         </thead>
         <tbody>

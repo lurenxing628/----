@@ -213,5 +213,9 @@ def main() -> None:
     print("OK")
 
 
+def test_regression_gantt_contract_snapshot() -> None:
+    main()
+
+
 if __name__ == "__main__":
     main()

@@ -170,6 +170,9 @@ def main() -> None:
     print("OK")
 
 
-if __name__ == "__main__":
+def test_regression_gantt_status_mode_semantics() -> None:
     main()
 
+
+if __name__ == "__main__":
+    main()

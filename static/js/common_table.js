@@ -159,7 +159,18 @@
     document.querySelectorAll('table[data-sort-enabled="1"] th[data-sort]').forEach(function (th) {
       th.style.cursor = "pointer";
       th.title = "点击排序";
-      th.addEventListener("click", function () {
+      th.addEventListener("click", function (event) {
+        if (document.body && document.body.classList && document.body.classList.contains("aps-col-resize-active")) {
+          return;
+        }
+        if (
+          event &&
+          event.target &&
+          event.target.closest &&
+          event.target.closest(".aps-col-resize-handle")
+        ) {
+          return;
+        }
         var table = th.closest("table");
         if (!table || table.getAttribute("data-sort-enabled") !== "1") {
           return;
@@ -230,4 +241,3 @@
     });
   }
 })();
-

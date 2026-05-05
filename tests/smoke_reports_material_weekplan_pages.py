@@ -62,6 +62,9 @@ def main() -> None:
     print("OK")
 
 
-if __name__ == "__main__":
+def test_smoke_reports_material_weekplan_pages() -> None:
     main()
 
+
+if __name__ == "__main__":
+    main()

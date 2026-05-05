@@ -34,13 +34,20 @@
     </p>
     <div class="mt-2">
       <form method="post" action="{{ url_for('scheduler.generate_ops', batch_id=batch.batch_id) }}"
+            class="aps-inline-run-action"
             data-confirm="确定要按最新工艺模板刷新本批次工序吗？这会清空本批次已补的设备、人员、工时、供应商和外协周期。">
-        <label class="d-inline-block mr-3">
-          <input type="checkbox" name="strict_mode" value="yes">
-          资料不完整就停下
-        </label>
+        <div class="aps-run-option-row">
+          <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="batchDetailStrictMode" aria-label="启用资料不完整就停下">
+            <input id="batchDetailStrictMode" class="aps-settings-toggle-input" type="checkbox" name="strict_mode" value="yes">
+            <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+          </label>
+          <span class="aps-run-option-copy">
+            <label class="aps-run-option-title" for="batchDetailStrictMode">资料不完整就停下</label>
+            <span class="aps-run-option-desc">工艺模板资料不完整时，不刷新本批次工序。</span>
+          </span>
+        </div>
         {{ ui.button('按最新工艺模板刷新本批次工序', 'secondary', 'md', type_attr='submit') }}
-        <span class="muted">用于工艺路线或工艺模板调整后同步到本批次。</span>
+        <span class="muted aps-inline-run-action-note">用于工艺路线或工艺模板调整后同步到本批次。</span>
         <div class="aps-risk-note">
           会清空本批次已补的设备、人员、工时、供应商和外协周期。刷新前请确认当前补充内容可以重新填写。
         </div>

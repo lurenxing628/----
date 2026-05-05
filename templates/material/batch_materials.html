@@ -52,20 +52,16 @@
 
   {% if batch %}
     <div class="card aps-form-card">
-      <h3 class="section-title">批次信息</h3>
-      <div class="muted">
-        批次：<strong>{{ batch.batch_id }}</strong>
-        <span class="info-sep">|</span>
-        图号：<strong>{{ batch.part_no }}</strong>
-        <span class="info-sep">|</span>
-        数量：<strong>{{ batch.quantity }}</strong>
-        <span class="info-sep">|</span>
-        当前齐套状态：<strong>{{ batch.ready_status_zh or '-' }}</strong>
-        {% if batch.ready_date %}
-          <span class="muted">（齐套日期：{{ batch.ready_date }}）</span>
-        {% endif %}
-        <span class="info-sep">|</span>
-        <a href="{{ url_for('scheduler.batch_detail', batch_id=batch.batch_id) }}">打开批次详情</a>
+      {% set batch_actions %}
+        {{ ui.link_button('打开批次详情', url_for('scheduler.batch_detail', batch_id=batch.batch_id), 'secondary', 'sm') }}
+      {% endset %}
+      {{ ui.aps_card_header('批次信息', actions_html=batch_actions) }}
+      <div class="aps-summary-grid aps-batch-info-grid">
+        {{ ui.summary_item('批次号', batch.batch_id) }}
+        {{ ui.summary_item('图号', batch.part_no) }}
+        {{ ui.summary_item('数量', batch.quantity) }}
+        {{ ui.summary_item('当前齐套状态', batch.ready_status_zh or '-') }}
+        {{ ui.summary_item('齐套日期', batch.ready_date or '暂无') }}
       </div>
     </div>
 

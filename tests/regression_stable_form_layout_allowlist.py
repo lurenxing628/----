@@ -106,12 +106,92 @@ def test_inline_editors_use_compact_grid_instead_of_card_form_grid() -> None:
     assert "aps-form-grid" not in block
 
 
+def test_dark_theme_readonly_and_disabled_controls_stay_dark() -> None:
+    css = _read("static/css/ui_contract.css")
+
+    for token in (
+        'html[data-theme="dark"] .readonly-value',
+        'html[data-theme="dark"] .form-control:disabled',
+        'html[data-theme="dark"] .form-control[readonly]',
+        'html[data-theme="dark"] input:not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):disabled',
+        'html[data-theme="dark"] input:not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="hidden"])[readonly]',
+        'html[data-theme="dark"] input[type="number"]:not(.form-control)',
+        'html[data-theme="dark"] input[type="file"]:disabled',
+        'html[data-theme="dark"] input[type="file"]:disabled::file-selector-button',
+        'html[data-theme="dark"] textarea:disabled',
+        'html[data-theme="dark"] textarea[readonly]',
+        'html[data-theme="dark"] select:disabled',
+        'html[data-theme="dark"] .aps-button-like-disabled',
+        'html[data-theme="dark"] .aps-summary-item-warning',
+        'html[data-theme="dark"] .manual-toc a:hover',
+        'html[data-theme="dark"] .badge-new',
+        'html[data-theme="dark"] .badge-update',
+        'html[data-theme="dark"] .badge-unchanged',
+        'html[data-theme="dark"] .badge-skip',
+        'html[data-theme="dark"] .badge-error',
+        ".aps-summary-item-success",
+        ".aps-summary-item-danger",
+        ".aps-summary-item-info",
+        ".aps-summary-item-neutral",
+        'html[data-theme="dark"] .aps-summary-item-success',
+        'html[data-theme="dark"] .aps-summary-item-danger',
+        'html[data-theme="dark"] .aps-summary-item-info',
+        'html[data-theme="dark"] .aps-summary-item-neutral',
+    ):
+        assert token in css
+
+    readonly_base_start = css.index(".readonly-value")
+    readonly_base_block = css[readonly_base_start : css.index("}", readonly_base_start)]
+    assert "border: 1px solid var(--ui-border)" in readonly_base_block
+
+    readonly_dark_start = css.index('html[data-theme="dark"] .readonly-value')
+    readonly_dark_block = css[readonly_dark_start : css.index("}", readonly_dark_start)]
+    assert "background: var(--ui-card-bg, #1e293b);" in readonly_dark_block
+    assert "border-color: var(--ui-border, #334155);" in readonly_dark_block
+    assert "color: var(--ui-text, #f1f5f9);" in readonly_dark_block
+    assert "background: #fff" not in readonly_dark_block
+    assert "background: #f8fafc" not in readonly_dark_block
+
+    disabled_dark_start = css.index('html[data-theme="dark"] .form-control:disabled')
+    disabled_dark_block = css[disabled_dark_start : css.index("}", disabled_dark_start)]
+    assert "background: var(--ui-card-bg, #1e293b);" in disabled_dark_block
+    assert "border: 1px solid var(--ui-border, #334155);" in disabled_dark_block
+    assert "border-color: #334155;" in disabled_dark_block
+    assert "color: #cbd5e1;" in disabled_dark_block
+    assert "background: #fff" not in disabled_dark_block
+    assert "background: #f8fafc" not in disabled_dark_block
+
+    manual_toc_hover_start = css.index('html[data-theme="dark"] .manual-toc a:hover')
+    manual_toc_hover_block = css[manual_toc_hover_start : css.index("}", manual_toc_hover_start)]
+    assert "background: var(--ui-card-bg, #1e293b);" in manual_toc_hover_block
+    assert "background: #e3f2fd" not in manual_toc_hover_block
+
+    for token in (
+        'html[data-theme="dark"] .badge-new',
+        'html[data-theme="dark"] .badge-update',
+        'html[data-theme="dark"] .badge-unchanged',
+        'html[data-theme="dark"] .badge-skip',
+        'html[data-theme="dark"] .badge-error',
+    ):
+        badge_dark_start = css.index(token)
+        badge_dark_block = css[badge_dark_start : css.index("}", badge_dark_start)]
+        assert "color:" in badge_dark_block
+        assert "border-color:" in badge_dark_block
+        assert "background: #fff" not in badge_dark_block
+        assert "background: #f1f5f9" not in badge_dark_block
+        assert "background: #fffbeb" not in badge_dark_block
+        assert "background: #fef2f2" not in badge_dark_block
+
+    assert "templates/system/backup.html" not in css
+
+
 def main() -> None:
     test_first_batch_pages_do_not_use_old_flex_filter_rows()
     test_frontend_entry_cards_use_shared_stable_layout()
     test_scheduler_query_controls_use_page_specific_layouts()
     test_shared_form_span_helpers_are_scoped_to_form_grids()
     test_inline_editors_use_compact_grid_instead_of_card_form_grid()
+    test_dark_theme_readonly_and_disabled_controls_stay_dark()
     print("OK")
 
 

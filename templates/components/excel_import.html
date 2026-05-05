@@ -57,11 +57,17 @@
       </div>
     </div>
     {% if strict_mode_supported %}
-      <div class="mb-3 aps-help-note">
-        <label>
-          <input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}>
-          {{ strict_mode_label or '发现问题就停下' }}
-        </label>
+      <div class="aps-import-option-list">
+        <div class="aps-run-option-row">
+          <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="excelImportStrictMode" aria-label="启用{{ strict_mode_label or '发现问题就停下' }}">
+            <input id="excelImportStrictMode" class="aps-settings-toggle-input" type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}>
+            <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+          </label>
+          <span class="aps-run-option-copy">
+            <label class="aps-run-option-title" for="excelImportStrictMode">{{ strict_mode_label or '发现问题就停下' }}</label>
+            <span class="aps-run-option-desc">{{ strict_mode_help or '资料不完整时先停下，并告诉你哪一行、哪一项要补。' }}</span>
+          </span>
+        </div>
         {% if ui is defined %}
           {% call ui.help_details('查看检查规则') %}
             {{ strict_mode_help or '勾选后：资料不完整就停下，并告诉你哪一行、哪一项要补。不勾选：能确认的数据会继续处理；但必填项为空、格式错误这类必须先改好的问题仍然会报错。' }}

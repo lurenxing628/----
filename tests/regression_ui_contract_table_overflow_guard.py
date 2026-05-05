@@ -22,6 +22,25 @@ def _assert_regex(text: str, pattern: str, msg: str) -> None:
         raise RuntimeError(msg + f"（pattern: {pattern}）")
 
 
+def _table_block(source: str, table_marker: str) -> str:
+    table_start = source.index(table_marker)
+    return source[table_start : source.index("</table>", table_start)]
+
+
+def _declared_widths(table_block: str, attr_name: str) -> list[int]:
+    return [int(x) for x in re.findall(rf'{attr_name}="(\d+)"', table_block)]
+
+
+def _declared_columns(table_block: str) -> list[tuple[str, int, int]]:
+    return [
+        (col_key, int(default_w), int(min_w))
+        for col_key, default_w, min_w in re.findall(
+            r'data-col-key="([^"]+)"[^>]*data-default-w="(\d+)"[^>]*data-min-w="(\d+)"',
+            table_block,
+        )
+    ]
+
+
 def main() -> None:
     repo_root = _find_repo_root()
     css_path = os.path.join(repo_root, "static", "css", "ui_contract.css")
@@ -80,15 +99,19 @@ def main() -> None:
         "applyTableMinWidthFromColgroup",
         "APS_InitResizableTables",
         "scope.matches",
+        'classList.contains("aps-table-scroll")',
+        'classList.contains("table-scroll")',
+        'classList.contains("overflow-x-auto")',
+        "holder.scrollLeft = 0",
     ):
         if token not in table_resize:
             raise RuntimeError(f"table_resize.js 缺少模板声明列宽支持：{token}")
 
     table_contracts = (
-        ("templates/scheduler/batches.html", 'id="batchesTable"', "v3_batchesTable"),
-        ("web_new_test/templates/scheduler/batches.html", 'id="batchesTable"', "v3_batchesTable"),
-        ("templates/scheduler/batches_manage.html", 'id="batchesManageTable"', "v3_batchesManageTable"),
-        ("web_new_test/templates/scheduler/batches_manage.html", 'id="batchesManageTable"', "v3_batchesManageTable"),
+        ("templates/scheduler/batches.html", 'id="batchesTable"', "v4_batchesTable"),
+        ("web_new_test/templates/scheduler/batches.html", 'id="batchesTable"', "v4_batchesTable"),
+        ("templates/scheduler/batches_manage.html", 'id="batchesManageTable"', "v4_batchesManageTable"),
+        ("web_new_test/templates/scheduler/batches_manage.html", 'id="batchesManageTable"', "v4_batchesManageTable"),
         ("templates/scheduler/batch_detail.html", 'id="batchOpsTable"', "v3_batchOpsTable"),
         ("templates/scheduler/analysis.html", 'id="analysisAttemptsTable"', "v3_analysisAttemptsTable"),
         ("templates/scheduler/week_plan.html", 'id="weekPlanPreviewTable"', "v2_weekPlanPreviewTable"),
@@ -153,12 +176,48 @@ def main() -> None:
         previous_table_end = source.rfind("</table>", 0, table_start)
         if wrapper_start < 0 or wrapper_start < previous_table_end:
             raise RuntimeError(f"{rel_path} 的 {table_marker} 没有被 aps-table-scroll 包住")
-        table_block = source[table_start : source.index("</table>", table_start)]
+        table_block = _table_block(source, table_marker)
         for token in ('data-col-resize="1"', f'data-table-key="{table_key}"', "data-default-w=", "data-min-w="):
             if token not in table_block:
                 raise RuntimeError(f"{rel_path} 的 {table_marker} 缺少表格列宽合同：{token}")
 
+    scheduler_batch_contracts = (
+        ("templates/scheduler/batches.html", 'id="batchesTable"'),
+        ("web_new_test/templates/scheduler/batches.html", 'id="batchesTable"'),
+        ("templates/scheduler/batches_manage.html", 'id="batchesManageTable"'),
+        ("web_new_test/templates/scheduler/batches_manage.html", 'id="batchesManageTable"'),
+    )
+    declared_shapes = []
+    for rel_path, table_marker in scheduler_batch_contracts:
+        source = _read(os.path.join(repo_root, rel_path))
+        table_block = _table_block(source, table_marker)
+        default_sum = sum(_declared_widths(table_block, "data-default-w"))
+        min_sum = sum(_declared_widths(table_block, "data-min-w"))
+        if default_sum > 1000:
+            raise RuntimeError(f"{rel_path} 的批次表默认列宽过大：{default_sum}px")
+        if min_sum > 900:
+            raise RuntimeError(f"{rel_path} 的批次表最小列宽过大：{min_sum}px")
+        if "v3_batchesTable" in table_block or "v3_batchesManageTable" in table_block:
+            raise RuntimeError(f"{rel_path} 仍在使用旧批次表列宽缓存 key")
+        declared_shapes.append(_declared_columns(table_block))
+    if len({tuple(shape) for shape in declared_shapes}) != 1:
+        raise RuntimeError("执行排产页与批次管理页的批次表列宽声明不一致")
+
+    if ".aps-table-scroll > table.aps-scheduler-batch-table" not in css or "min-width: 990px;" not in css:
+        raise RuntimeError("ui_contract.css 缺少批次表专用默认宽度保护")
+
+    if (
+        "#systemLogsTable td" not in css
+        or "overflow: visible;" not in css
+        or "white-space: normal;" not in css
+    ):
+        raise RuntimeError("ui_contract.css 缺少系统日志表格多行换行保护")
+
     print("OK")
+
+
+def test_ui_contract_table_overflow_guard() -> None:
+    main()
 
 
 if __name__ == "__main__":

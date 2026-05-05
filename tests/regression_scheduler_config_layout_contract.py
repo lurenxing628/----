@@ -28,8 +28,36 @@ def test_scheduler_config_separates_preset_actions_from_runtime_state() -> None:
         assert 'name="auto_assign_persist"' not in source
 
 
+def test_scheduler_config_setting_switches_use_compact_toggle_controls() -> None:
+    setting_fields = (
+        "freeze_window_enabled",
+        "prefer_primary_skill",
+        "enforce_ready_default",
+        "auto_assign_enabled",
+        "ortools_enabled",
+    )
+    for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
+        source = _read(rel_path)
+        switch_start = source.index('<div class="scheduler-config-switches">')
+        switch_end = source.index('<div class="mt-3">', switch_start)
+        switch_block = source[switch_start:switch_end]
+
+        assert switch_block.count("scheduler-config-switch") >= len(setting_fields)
+        assert switch_block.count("aps-settings-toggle-control") == len(setting_fields)
+        assert switch_block.count("aps-settings-toggle-input") == len(setting_fields)
+        assert switch_block.count("aps-settings-toggle-track") == len(setting_fields)
+        assert switch_block.count("aps-settings-toggle-thumb") == len(setting_fields)
+        assert switch_block.count("aps-settings-toggle-text") == len(setting_fields)
+        assert 'label class="scheduler-config-switch-main"' not in switch_block
+
+        for field_name in setting_fields:
+            assert f'name="{field_name}" value="yes"' in switch_block
+            assert f'type="hidden" name="{field_name}" value="no"' in switch_block
+
+
 def main() -> None:
     test_scheduler_config_separates_preset_actions_from_runtime_state()
+    test_scheduler_config_setting_switches_use_compact_toggle_controls()
     print("OK")
 
 

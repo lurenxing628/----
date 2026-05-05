@@ -31,7 +31,14 @@ def test_scheduler_run_entry_is_visible_before_batch_table() -> None:
             assert f'name="{field_name}"' in run_grid
         assert "派工方式、智能派工策略、自动分配设备人员" not in run_grid
         assert "aps-run-panel-status" in run_panel
-        assert "aps-run-panel-option" in run_panel
+        assert "aps-run-options" in run_panel
+        assert "aps-run-options-title" in run_panel
+        assert run_panel.count('class="aps-run-option-row"') == 2
+        assert "aps-choice-list aps-run-panel-options" not in run_panel
+        assert 'class="aps-choice"' not in run_panel
+        assert "启用齐套约束（未齐套禁止排产）" not in run_panel
+        assert "未齐套批次不进入排产。" in run_panel
+        assert "配置不合法时直接停下" in run_panel
         assert "aps-run-panel-help" in run_panel
         assert "ui.help_details" in run_panel
         assert "查看“发现参数问题就停止排产”的说明" in run_panel
@@ -73,9 +80,15 @@ def test_run_panel_container_breakpoint_has_room_for_declared_columns() -> None:
     assert ".aps-run-panel-grid" in css
     assert ".aps-run-panel-help" in css
     assert ".aps-run-panel-status" in css
+    assert ".aps-run-options" in css
+    assert ".aps-run-option-row" in css
+    assert ".aps-run-option-title" in css
+    assert ".aps-run-option-desc" in css
     assert "minmax(240px, 1fr)" in css
     assert "minmax(190px, 0.8fr)" in css
     assert "minmax(230px, 1fr)" in css
+    assert "@container (min-width: 760px) and (max-width: 1039px)" in css
+    assert "grid-column: 1 / -1" in css
 
 
 def test_latest_schedule_snapshot_uses_dedicated_sections() -> None:
@@ -87,10 +100,30 @@ def test_latest_schedule_snapshot_uses_dedicated_sections() -> None:
         assert "aps-latest-schedule-meta" in block
         assert "aps-latest-schedule-metrics" in block
         assert "aps-latest-schedule-status" in block
-        assert "aps-summary-grid" not in block
+        assert "ui.summary_item_block('错误摘要'" in block
         assert "保存系统补齐的设备和人员" not in block
         assert "保存补齐资源" in block
         assert "查看说明" in block
+
+
+def test_scheduler_error_summaries_render_as_summary_cards() -> None:
+    cases = (
+        ("templates/scheduler/analysis.html", "selected_summary_display.error_total"),
+        ("templates/scheduler/week_plan.html", "selected_summary_display.error_total"),
+        ("templates/scheduler/batches.html", "latest_summary_display.error_total"),
+        ("web_new_test/templates/scheduler/batches.html", "latest_summary_display.error_total"),
+        ("templates/system/history.html", "selected_summary_display.error_total"),
+    )
+    for rel_path, marker in cases:
+        source = _read(rel_path)
+        start = source.index(marker)
+        block = source[start : source.index("{% endif %}", start)]
+        assert "aps-summary-grid mt-2 aps-summary-health-grid" in block
+        assert "ui.summary_item_block('错误摘要'" in block
+        assert "'danger'" in block
+        assert "ui.flash_details('查看前 '" in block
+        assert "<div>错误摘要：" not in block
+        assert "flash-card flash-warning mt-2" not in block
 
 
 def main() -> None:
@@ -98,6 +131,7 @@ def main() -> None:
     test_scheduler_sub_pages_have_run_schedule_entry()
     test_run_panel_container_breakpoint_has_room_for_declared_columns()
     test_latest_schedule_snapshot_uses_dedicated_sections()
+    test_scheduler_error_summaries_render_as_summary_cards()
     print("OK")
 
 

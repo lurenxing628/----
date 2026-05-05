@@ -475,14 +475,24 @@
     return DEFAULT_MIN_W;
   }
 
+  function isTableScrollWrapper(el) {
+    if (!el || !el.classList) return false;
+    return (
+      el.classList.contains("aps-table-scroll") ||
+      el.classList.contains("table-scroll") ||
+      el.classList.contains("overflow-x-auto")
+    );
+  }
+
   function findWrapperToInsertTools(table) {
     if (!table || !table.parentElement) return table;
     var p = table.parentElement;
-    try {
-      if (p.classList && p.classList.contains("overflow-x-auto")) {
+    while (p && p !== document.body) {
+      if (isTableScrollWrapper(p)) {
         return p;
       }
-    } catch (_e0) {}
+      p = p.parentElement;
+    }
     return table;
   }
 
@@ -539,6 +549,10 @@
     var defaults = table.__aps_colresize_default_widths;
     if (colgroup && defaults && defaults.length) {
       applyColWidths(colgroup, defaults);
+    }
+    var holder = findWrapperToInsertTools(table);
+    if (holder && holder !== table && typeof holder.scrollLeft === "number") {
+      holder.scrollLeft = 0;
     }
     if (window.APS_Toast) {
       try {

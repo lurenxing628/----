@@ -35,10 +35,12 @@
       <div class="aps-settings-cleanup-grid">
         <div class="form-field aps-settings-enable-field">
           <label for="logAutoCleanupEnabled">自动清理</label>
-          <label class="muted">
-            <input id="logAutoCleanupEnabled" type="checkbox" name="auto_log_cleanup_enabled" {{ 'checked' if settings and settings.auto_log_cleanup_enabled=='yes' else '' }}>
-            启用
+          <label class="aps-settings-toggle-control" for="logAutoCleanupEnabled">
+            <input id="logAutoCleanupEnabled" class="aps-settings-toggle-input" type="checkbox" name="auto_log_cleanup_enabled" value="yes" {{ 'checked' if settings and settings.auto_log_cleanup_enabled=='yes' else '' }}>
+            <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+            <span class="aps-settings-toggle-text">启用</span>
           </label>
+          <input type="hidden" name="auto_log_cleanup_enabled" value="no">
         </div>
         <div class="form-field aps-settings-keep-days">
           <label for="logAutoCleanupKeepDays">保留天数</label>
@@ -167,7 +169,7 @@
               <td>
                 第 {{ loop.index }} 条
                 <details class="debug-details muted text-xs">
-                  <summary>给维护人员看的信息</summary>
+                  <summary>排查信息</summary>
                   日志内部号已记录，需要排查时请联系维护人员查看。
                 </details>
               </td>

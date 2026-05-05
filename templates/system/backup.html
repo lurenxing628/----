@@ -144,14 +144,18 @@
     <form method="post" action="{{ url_for('system.backup_settings') }}">
       <div class="aps-settings-grid">
         <div class="aps-summary-item">
-          <div class="aps-summary-label">自动备份</div>
-          <label class="mt-2 d-inline-block">
-            <input type="checkbox" name="auto_backup_enabled" {{ 'checked' if settings and settings.auto_backup_enabled=='yes' else '' }}>
-            启用
-          </label>
-          <div class="aps-summary-desc">
-            启用后，系统会在有人访问时按间隔检查是否需要备份；程序正常退出时也会按同一个开关生成退出备份。
+          <div class="aps-settings-toggle-row">
+            <label class="aps-settings-toggle-control" for="backupAutoBackupEnabled">
+              <input id="backupAutoBackupEnabled" class="aps-settings-toggle-input" type="checkbox" name="auto_backup_enabled" value="yes" {{ 'checked' if settings and settings.auto_backup_enabled=='yes' else '' }}>
+              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+              <span class="aps-settings-toggle-text">启用</span>
+            </label>
+            <div class="aps-settings-toggle-copy">
+              <label class="aps-settings-toggle-title" for="backupAutoBackupEnabled">自动备份</label>
+              <div class="aps-settings-toggle-desc">系统会在有人访问时按间隔检查是否需要备份；程序正常退出时也会按同一个开关生成退出备份。</div>
+            </div>
           </div>
+          <input type="hidden" name="auto_backup_enabled" value="no">
           <div class="aps-form-grid mt-2">
             <div class="form-field">
               <label>间隔（分钟）</label>
@@ -179,14 +183,18 @@
         </div>
 
         <div class="aps-summary-item">
-          <div class="aps-summary-label">自动清理备份</div>
-          <label class="mt-2 d-inline-block">
-            <input type="checkbox" name="auto_backup_cleanup_enabled" {{ 'checked' if settings and settings.auto_backup_cleanup_enabled=='yes' else '' }}>
-            启用
-          </label>
-          <div class="aps-summary-desc">
-            启用后，系统会按保留天数清理旧备份；只会按你设置的间隔检查，不会每次访问都删除。
+          <div class="aps-settings-toggle-row">
+            <label class="aps-settings-toggle-control" for="backupAutoCleanupEnabled">
+              <input id="backupAutoCleanupEnabled" class="aps-settings-toggle-input" type="checkbox" name="auto_backup_cleanup_enabled" value="yes" {{ 'checked' if settings and settings.auto_backup_cleanup_enabled=='yes' else '' }}>
+              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+              <span class="aps-settings-toggle-text">启用</span>
+            </label>
+            <div class="aps-settings-toggle-copy">
+              <label class="aps-settings-toggle-title" for="backupAutoCleanupEnabled">自动清理备份</label>
+              <div class="aps-settings-toggle-desc">系统会按保留天数清理旧备份；只会按你设置的间隔检查，不会每次访问都删除。</div>
+            </div>
           </div>
+          <input type="hidden" name="auto_backup_cleanup_enabled" value="no">
           <div class="aps-form-grid mt-2">
             <div class="form-field">
               <label>保留天数</label>
@@ -235,31 +243,49 @@
       </ul>
     </details>
     {% if plugin_status %}
-      <div class="muted mt-2">
-        加载时间：{{ plugin_status.loaded_at or '-' }}<br/>
-        配置来源：
-        {% if plugin_status.config_source == 'config' %}
-          全部来自系统配置
-        {% elif plugin_status.config_source == 'mixed' %}
-          部分来自系统配置，部分按默认开关运行
-        {% elif plugin_status.config_source == 'default_due_to_db_unavailable' %}
-          扩展功能设置暂时读取不到，系统已先按默认设置运行
-        {% elif plugin_status.config_source == 'default_due_to_config_reader_failed' %}
-          扩展功能设置暂时读取不到，系统已先按默认设置运行
-        {% elif plugin_status.config_source == 'default_due_to_config_read_failed' %}
-          扩展功能设置暂时读取不到，系统已先按默认设置运行
-        {% else %}
-          当前按默认开关运行
-        {% endif %}
-        <details class="debug-details mt-1">
-          <summary>给维护人员看的信息</summary>
-          <div>扩展功能文件位置已记录在系统日志中，需要排查时请从日志查看。</div>
-        </details>
+      {% set plugin_capability_count = (plugin_status.registry.capabilities | length) if plugin_status.registry and plugin_status.registry.capabilities else 0 %}
+      {% set plugin_degradation_count = (plugin_status.degradation_events or []) | length %}
+      {% set plugin_conflict_count = plugin_status.conflicted_capabilities | length if plugin_status.conflicted_capabilities else 0 %}
+      {% if plugin_status.config_source == 'config' %}
+        {% set plugin_config_source_label = '全部来自系统配置' %}
+      {% elif plugin_status.config_source == 'mixed' %}
+        {% set plugin_config_source_label = '部分来自系统配置，部分按默认开关运行' %}
+      {% elif plugin_status.config_source == 'default_due_to_db_unavailable' %}
+        {% set plugin_config_source_label = '扩展功能设置暂时读取不到，系统已先按默认设置运行' %}
+      {% elif plugin_status.config_source == 'default_due_to_config_reader_failed' %}
+        {% set plugin_config_source_label = '扩展功能设置暂时读取不到，系统已先按默认设置运行' %}
+      {% elif plugin_status.config_source == 'default_due_to_config_read_failed' %}
+        {% set plugin_config_source_label = '扩展功能设置暂时读取不到，系统已先按默认设置运行' %}
+      {% else %}
+        {% set plugin_config_source_label = '当前按默认开关运行' %}
+      {% endif %}
+      {% if plugin_status.telemetry_persisted is sameas true %}
+        {% set plugin_telemetry_label = '已记录' %}
+        {% set plugin_telemetry_tone = 'success' %}
+      {% elif plugin_status.telemetry_persisted is sameas false %}
+        {% set plugin_telemetry_label = '记录失败' %}
+        {% set plugin_telemetry_tone = 'danger' %}
+      {% else %}
+        {% set plugin_telemetry_label = '-' %}
+        {% set plugin_telemetry_tone = 'neutral' %}
+      {% endif %}
+
+      <div class="aps-summary-grid aps-plugin-status-summary">
+        {{ ui.summary_item('加载时间', plugin_status.loaded_at or '-') }}
+        {{ ui.summary_item('配置来源', plugin_config_source_label, tone='info') }}
+        {{ ui.summary_item('已发现的可用功能', plugin_capability_count ~ ' 项') }}
+        {{ ui.summary_item('留痕状态', plugin_telemetry_label, tone=plugin_telemetry_tone) }}
+        {{ ui.summary_item('启动问题', plugin_degradation_count ~ ' 条', tone='danger' if plugin_status.degraded else 'success') }}
+        {{ ui.summary_item('冲突能力', plugin_conflict_count ~ ' 条', tone='warning' if plugin_conflict_count > 0 else 'success') }}
       </div>
 
+      <details class="debug-details mt-2">
+        <summary>给维护人员看的信息</summary>
+        <div>扩展功能文件位置已记录在系统日志中，需要排查时请从日志查看。</div>
+      </details>
+
       {% if plugin_status.degraded %}
-        <div class="warning mt-2">扩展功能启动时出现了问题，请先看下面的中文原因；仍看不懂时再让管理员查看问题编号。</div>
-        {% call ui.flash_details('查看 ' ~ ((plugin_status.degradation_events or [])|length) ~ ' 条启动问题') %}
+        {% call ui.flash_details('查看 ' ~ plugin_degradation_count ~ ' 条启动问题', 'mt-2') %}
           <ul class="list-tight">
             {% for event in plugin_status.degradation_events or [] %}
               <li>
@@ -273,20 +299,6 @@
           </ul>
         {% endcall %}
       {% endif %}
-
-      <div class="muted mt-2">
-        已发现的可用功能：{{ (plugin_status.registry.capabilities | length) if plugin_status.registry and plugin_status.registry.capabilities else 0 }}
-      </div>
-      <div class="muted mt-1">
-        留痕状态：
-        {% if plugin_status.telemetry_persisted is sameas true %}
-          已记录
-        {% elif plugin_status.telemetry_persisted is sameas false %}
-          记录失败，请联系维护人员查看日志
-        {% else %}
-          -
-        {% endif %}
-      </div>
       {% if plugin_status.conflicted_capabilities and (plugin_status.conflicted_capabilities | length) > 0 %}
         <div class="muted mt-1">
           冲突能力：{{ plugin_status.conflicted_capabilities|length }} 条

@@ -40,11 +40,17 @@
           <label for="partRemarkInput">备注</label>
           <input id="partRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div class="form-field aps-field-full">
-          <label>
-            <input type="checkbox" name="strict_mode" value="yes">
-            资料不完整就停下
-          </label>
+        <div class="form-field aps-field-wide aps-form-toggle-field">
+          <div class="aps-run-option-row">
+            <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="processCreateStrictMode" aria-label="启用资料不完整就停下">
+              <input id="processCreateStrictMode" class="aps-settings-toggle-input" type="checkbox" name="strict_mode" value="yes">
+              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+            </label>
+            <span class="aps-run-option-copy">
+              <label class="aps-run-option-title" for="processCreateStrictMode">资料不完整就停下</label>
+              <span class="aps-run-option-desc">路线、工种、供应商或外协周期不完整时，先停下并提示你补齐。</span>
+            </span>
+          </div>
           {% call ui.help_details('查看生成工序规则') %}
             勾选后：路线文字里有不认识的工种、没有启用的外协供应商，或外协周期无效时，会直接提示错误并停止创建。不勾选：零件会先保存；能确认的工序会继续处理，缺少外协周期这类可补项本次会先按 1 天记录，并在页面提醒你后续补正。
           {% endcall %}

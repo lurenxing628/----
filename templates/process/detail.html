@@ -50,11 +50,17 @@
           <input name="route_raw" value="{{ part.route_raw or '' }}" placeholder="如：5数铣10钳20数车35标印40总检45表处理">
           <div class="muted">保存后，系统会按这段路线文字重新生成该零件的工序清单；如果生成失败，原工序清单不会被改动。</div>
         </div>
-        <div class="form-field aps-field-full">
-          <label>
-            <input type="checkbox" name="strict_mode" value="yes">
-            资料不完整就停下
-          </label>
+        <div class="form-field aps-field-wide aps-form-toggle-field">
+          <div class="aps-run-option-row">
+            <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="processReparseStrictMode" aria-label="启用资料不完整就停下">
+              <input id="processReparseStrictMode" class="aps-settings-toggle-input" type="checkbox" name="strict_mode" value="yes">
+              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+            </label>
+            <span class="aps-run-option-copy">
+              <label class="aps-run-option-title" for="processReparseStrictMode">资料不完整就停下</label>
+              <span class="aps-run-option-desc">路线、工种、供应商或外协周期不完整时，不覆盖现有工序。</span>
+            </span>
+          </div>
           {% call ui.help_details('查看生成工序规则') %}
             勾选后：路线文字里有不认识的工种、没有启用的外协供应商，或外协周期无效时，会直接提示错误并停止生成。不勾选：能确认的工序会继续处理；缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，空路线、格式完全不对这类必须先改好的问题仍然会报错。
           {% endcall %}
@@ -181,11 +187,17 @@
                 <input name="total_days" value="{{ g.total_days if g.total_days is not none else '' }}" placeholder="如：3">
                 <div class="muted">提示：选择"合并设置"后，整组只按这里填的整组周期计算，下面每道工序的单独周期不再生效；选择"分别设置"时，这里的整组周期不生效，按下面每道工序各自的周期计算。</div>
               </div>
-              <div class="form-field aps-field-wide">
-                <label>
-                  <input type="checkbox" name="strict_mode" value="yes">
-                  资料不完整就停下
-                </label>
+              <div class="form-field aps-form-toggle-field">
+                <div class="aps-run-option-row">
+                  <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="processGroupStrictMode{{ gid }}" aria-label="启用资料不完整就停下">
+                    <input id="processGroupStrictMode{{ gid }}" class="aps-settings-toggle-input" type="checkbox" name="strict_mode" value="yes">
+                    <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+                  </label>
+                  <span class="aps-run-option-copy">
+                    <label class="aps-run-option-title" for="processGroupStrictMode{{ gid }}">资料不完整就停下</label>
+                    <span class="aps-run-option-desc">外协周期没填好时，先停下并提示你补齐。</span>
+                  </span>
+                </div>
                 {% call ui.help_details('查看外协周期规则') %}
                   勾选后：分别设置时，每道外协工序都必须填正确周期，填空、不是数字或小于等于 0 会直接报错。不勾选：系统会继续保存，并把没填好的外协周期先按 1 天记录，同时提醒你补成真实周期。
                 {% endcall %}

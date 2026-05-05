@@ -34,23 +34,43 @@
         <input type="hidden" name="strict_mode" value="{{ 'yes' if strict_mode else 'no' }}">
       {% endif %}
       <textarea name="raw_rows_json" class="d-none">{{ raw_rows_json }}</textarea>
-      <label>
-        <input type="checkbox" value="1" {% if auto_generate_ops %}checked{% endif %} disabled>
-        {% if auto_generate_ops %}
-          确认写入时会按模板自动生成批次工序
-        {% else %}
-          确认写入时不会自动生成批次工序
+      <div class="aps-import-option-list">
+        <div class="aps-run-option-row">
+          <span class="aps-settings-toggle-control aps-settings-toggle-control-icon" aria-hidden="true">
+            <input class="aps-settings-toggle-input" type="checkbox" value="1" {% if auto_generate_ops %}checked{% endif %} disabled>
+            <span class="aps-settings-toggle-track"><span class="aps-settings-toggle-thumb"></span></span>
+          </span>
+          <span class="aps-run-option-copy">
+            <span class="aps-run-option-title">自动生成批次工序</span>
+            <span class="aps-run-option-desc">
+              {% if auto_generate_ops %}
+                确认写入时会按模板自动生成批次工序。
+              {% else %}
+                确认写入时不会自动生成批次工序。
+              {% endif %}
+            </span>
+          </span>
+        </div>
+        {% if strict_mode_supported %}
+          <div class="aps-run-option-row">
+            <span class="aps-settings-toggle-control aps-settings-toggle-control-icon" aria-hidden="true">
+              <input class="aps-settings-toggle-input" type="checkbox" value="yes" {% if strict_mode %}checked{% endif %} disabled>
+              <span class="aps-settings-toggle-track"><span class="aps-settings-toggle-thumb"></span></span>
+            </span>
+            <span class="aps-run-option-copy">
+              <span class="aps-run-option-title">{{ strict_mode_label or '发现问题就停下' }}</span>
+              <span class="aps-run-option-desc">
+                {% if strict_mode %}
+                  资料不完整就停下，并告诉你哪一行、哪里要补。
+                {% else %}
+                  能确认的数据会继续写入，真正错误的数据仍会报错。
+                {% endif %}
+              </span>
+            </span>
+          </div>
         {% endif %}
-      </label>
+      </div>
       {% if strict_mode_supported %}
-        <label class="d-block mt-2">
-          <input type="checkbox" value="yes" {% if strict_mode %}checked{% endif %} disabled>
-          {% if strict_mode %}
-            {{ strict_mode_label or '发现问题就停下' }}：资料不完整就停下，并告诉你哪一行、哪里要补
-          {% else %}
-            {{ strict_mode_label or '发现问题就停下' }}：能确认的数据会继续写入，真正错误的数据仍会报错
-          {% endif %}
-        </label>
         {% call ui.help_details('查看检查规则') %}
           {{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续写入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}
         {% endcall %}
@@ -80,23 +100,33 @@
           </select>
         </div>
       </div>
-      <div class="mb-3 aps-help-note">
-        <label>
-          <input type="checkbox" name="auto_generate_ops" value="1" {% if auto_generate_ops %}checked{% endif %}>
-          导入后自动生成批次工序（推荐）
-        </label>
-        <div class="muted text-xs">
-          检查会先核对批次字段，并记录当时的零件工艺资料；确认前如果工艺资料变了，系统会要求重新检查，避免用旧检查结果写入新数据。
+      <div class="aps-import-option-list">
+        <div class="aps-run-option-row">
+          <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="batchImportAutoOps" aria-label="启用导入后自动生成批次工序">
+            <input id="batchImportAutoOps" class="aps-settings-toggle-input" type="checkbox" name="auto_generate_ops" value="1" {% if auto_generate_ops %}checked{% endif %}>
+            <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+          </label>
+          <span class="aps-run-option-copy">
+            <label class="aps-run-option-title" for="batchImportAutoOps">导入后自动生成批次工序（推荐）</label>
+            <span class="aps-run-option-desc">检查会先核对批次字段，并记录当时的零件工艺资料，避免用旧检查结果写入新数据。</span>
+          </span>
         </div>
-      </div>
-      {% if strict_mode_supported %}
-        <div class="mb-3">
-          <label><input type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}> {{ strict_mode_label or '发现问题就停下' }}</label>
+        {% if strict_mode_supported %}
+          <div class="aps-run-option-row">
+            <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="batchImportStrictMode" aria-label="启用{{ strict_mode_label or '发现问题就停下' }}">
+              <input id="batchImportStrictMode" class="aps-settings-toggle-input" type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}>
+              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+            </label>
+            <span class="aps-run-option-copy">
+              <label class="aps-run-option-title" for="batchImportStrictMode">{{ strict_mode_label or '发现问题就停下' }}</label>
+              <span class="aps-run-option-desc">资料不完整时先停下，并告诉你哪一行、哪里要补。</span>
+            </span>
+          </div>
           {% call ui.help_details('查看检查规则') %}
             {{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续写入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}
           {% endcall %}
-        </div>
-      {% endif %}
+        {% endif %}
+      </div>
       <div class="aps-query-form-grid">
         <div class="form-field">
           <label>选择文件</label>

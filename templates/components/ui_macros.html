@@ -62,6 +62,16 @@
 </div>
 {% endmacro %}
 
+{% macro summary_item_block(label, value, tone='') %}
+<div class="aps-summary-item {% if tone %}aps-summary-item-{{ tone }}{% endif %}">
+  <div class="aps-summary-label">{{ label }}</div>
+  <div class="aps-summary-value">{{ value if value is not none and value != '' else '-' }}</div>
+  {% if caller is defined %}
+    {{ caller() }}
+  {% endif %}
+</div>
+{% endmacro %}
+
 {% macro help_details(summary='查看说明', class='') %}
 <details class="aps-help-details {{ class }}">
   <summary>{{ summary }}</summary>

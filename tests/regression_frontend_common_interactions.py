@@ -124,5 +124,9 @@ def main() -> None:
     print("OK")
 
 
+def test_regression_frontend_common_interactions() -> None:
+    main()
+
+
 if __name__ == "__main__":
     main()

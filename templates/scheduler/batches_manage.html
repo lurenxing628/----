@@ -69,11 +69,17 @@
           <label for="batchManageRemarkInput">备注</label>
           <input id="batchManageRemarkInput" name="remark" placeholder="可选">
         </div>
-        <div class="form-field aps-field-full">
-          <label>
-            <input type="checkbox" name="strict_mode" value="yes">
-            资料不完整就停下
-          </label>
+        <div class="form-field aps-field-wide aps-form-toggle-field">
+          <div class="aps-run-option-row">
+            <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="batchManageStrictMode" aria-label="启用资料不完整就停下">
+              <input id="batchManageStrictMode" class="aps-settings-toggle-input" type="checkbox" name="strict_mode" value="yes">
+              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
+            </label>
+            <span class="aps-run-option-copy">
+              <label class="aps-run-option-title" for="batchManageStrictMode">资料不完整就停下</label>
+              <span class="aps-run-option-desc">缺工种、供应商或外协周期不正确时，先停下并提示原因。</span>
+            </span>
+          </div>
           {% call ui.help_details('查看生成工序规则') %}
             只在批次需要按零件路线生成工序时生效。勾选后：缺工种、缺供应商或外协周期不正确时，会停止创建并提示原因。不勾选：能确认的工序会先生成；缺少外协周期时会先按 1 天记录并提醒补正。
           {% endcall %}
@@ -137,18 +143,18 @@
       </div>
       <form method="post" action="{{ url_for('scheduler.bulk_update_batches') }}">
         <div class="aps-table-scroll">
-        <table id="batchesManageTable" data-table-key="v3_batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col aps-table-wide aps-scheduler-batch-table" data-sort-enabled="1" data-col-resize="1">
+        <table id="batchesManageTable" data-table-key="v4_batchesManageTable" class="table-sticky table-layout-fixed table-sticky-col aps-table-wide aps-scheduler-batch-table" data-sort-enabled="1" data-col-resize="1">
           <thead>
             <tr>
-              <th class="w-60" data-col-key="select" data-default-w="60" data-min-w="56" data-resize="0"><input type="checkbox" class="js-select-all" title="全选"></th>
-              <th class="w-160" data-col-key="batch_id" data-default-w="160" data-min-w="130" data-sort="text">批次号</th>
-              <th class="w-180" data-col-key="part_no" data-default-w="180" data-min-w="140" data-sort="text">图号</th>
-              <th class="w-100 text-right" data-col-key="quantity" data-default-w="100" data-min-w="80" data-sort="number">数量</th>
-              <th class="w-140" data-col-key="due_date" data-default-w="140" data-min-w="120" data-sort="date">交期</th>
-              <th class="w-120" data-col-key="priority" data-default-w="120" data-min-w="100" data-sort="text">优先级</th>
-              <th class="w-120" data-col-key="ready" data-default-w="120" data-min-w="100" data-sort="text">齐套</th>
-              <th class="w-120" data-col-key="status" data-default-w="120" data-min-w="100" data-sort="text">状态</th>
-              <th class="w-180" data-col-key="actions" data-default-w="180" data-min-w="170" data-resize="1">操作</th>
+              <th class="w-60" data-col-key="select" data-default-w="60" data-min-w="52" data-resize="0"><input type="checkbox" class="js-select-all" title="全选"></th>
+              <th class="w-140" data-col-key="batch_id" data-default-w="140" data-min-w="110" data-sort="text">批次号</th>
+              <th class="w-160" data-col-key="part_no" data-default-w="160" data-min-w="130" data-sort="text">图号</th>
+              <th class="w-80 text-right" data-col-key="quantity" data-default-w="80" data-min-w="64" data-sort="number">数量</th>
+              <th class="w-120" data-col-key="due_date" data-default-w="120" data-min-w="104" data-sort="date">交期</th>
+              <th class="w-90" data-col-key="priority" data-default-w="90" data-min-w="76" data-sort="text">优先级</th>
+              <th class="w-100" data-col-key="ready" data-default-w="100" data-min-w="84" data-sort="text">齐套</th>
+              <th class="w-90" data-col-key="status" data-default-w="90" data-min-w="76" data-sort="text">状态</th>
+              <th class="w-150" data-col-key="actions" data-default-w="150" data-min-w="140" data-resize="1">操作</th>
             </tr>
           </thead>
           <tbody>

@@ -82,6 +82,7 @@ def test_dark_theme_covers_summary_and_details_contracts() -> None:
         'html[data-theme="dark"] .aps-latest-schedule-meta-item',
         'html[data-theme="dark"] .aps-help-details-body',
         'html[data-theme="dark"] .aps-flash-details-body',
+        'html[data-theme="dark"] .aps-context-bar',
         'html[data-theme="dark"] .aps-latest-schedule-head-item--result',
     ):
         assert token in css
