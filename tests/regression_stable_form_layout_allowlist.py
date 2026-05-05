@@ -82,10 +82,40 @@ def test_scheduler_query_controls_use_page_specific_layouts() -> None:
         ".aps-version-picker-form",
         ".aps-week-plan-query-grid",
         ".aps-resource-query-grid",
+        ".aps-query-card .aps-resource-query-grid > .aps-resource-query-actions",
         ".aps-summary-grid--version-overview",
         "@container (min-width: 900px)",
     ):
         assert token in css
+
+    resource_source = _read("templates/scheduler/resource_dispatch.html")
+    resource_form_start = resource_source.index(
+        '<form method="get" action="{{ url_for(\'scheduler.resource_dispatch_page\') }}" class="aps-query-form-grid aps-resource-query-grid">'
+    )
+    resource_form_end = resource_source.index("</form>", resource_form_start)
+    resource_form = resource_source[resource_form_start:resource_form_end]
+
+    actions_start = resource_form.index('class="aps-query-form-actions aps-resource-query-actions"')
+    assert actions_start > resource_form.index('name="version"')
+    assert "{{ ui.button('查询', 'primary', 'md', type_attr='submit') }}" in resource_form
+    assert "{{ ui.link_button('重置', url_for('scheduler.resource_dispatch_page'), 'secondary', 'md') }}" in resource_form
+    assert "aps-filter-bar" not in resource_form
+    assert "inline-flex-wrap" not in resource_form
+    assert "form-row" not in resource_form
+
+    resource_actions_css = css[css.index(".aps-query-card .aps-resource-query-grid > .aps-resource-query-actions") :]
+    resource_actions_css = resource_actions_css[: resource_actions_css.index("}", 1)]
+    assert "grid-column: span 2;" in resource_actions_css
+
+
+def test_scheduler_batch_manage_query_uses_batch_query_grid() -> None:
+    for rel_path in (
+        "templates/scheduler/batches_manage.html",
+        "web_new_test/templates/scheduler/batches_manage.html",
+    ):
+        source = _read(rel_path)
+        assert "aps-query-form-grid aps-scheduler-batches-query-grid" in source
+        assert "aps-query-form-actions" in source
 
 
 def test_shared_form_span_helpers_are_scoped_to_form_grids() -> None:

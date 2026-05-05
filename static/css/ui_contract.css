@@ -763,6 +763,10 @@ button.aps-theme-switch:focus-visible {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
+  .aps-query-card .aps-resource-query-grid > .aps-resource-query-actions {
+    grid-column: span 2;
+  }
+
   .aps-query-card .aps-version-picker-form {
     grid-template-columns: minmax(260px, 360px) auto auto;
   }
