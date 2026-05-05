@@ -412,6 +412,82 @@ def test_batches_page_degrades_unknown_latest_history_display_value(
     assert raw_value not in body
 
 
+@pytest.mark.parametrize(
+    ("strategy", "mode", "metrics"),
+    (
+        (
+            "",
+            "improve",
+            {
+                "total_tardiness_hours": 0,
+                "weighted_tardiness_hours": 0,
+                "makespan_hours": 0,
+                "changeover_count": 0,
+                "machine_util_avg": 0,
+            },
+        ),
+        (
+            "priority_first",
+            "",
+            {
+                "total_tardiness_hours": 0,
+                "weighted_tardiness_hours": 0,
+                "makespan_hours": 0,
+                "changeover_count": 0,
+                "machine_util_avg": 0,
+            },
+        ),
+        (
+            "priority_first",
+            "improve",
+            {
+                "total_tardiness_hours": 0,
+                "weighted_tardiness_hours": 0,
+                "makespan_hours": 0,
+                "changeover_count": 0,
+                "machine_util_avg": "abc",
+            },
+        ),
+    ),
+)
+def test_batches_page_degrades_incomplete_latest_history_display_value(
+    tmp_path,
+    monkeypatch,
+    strategy: str,
+    mode: str,
+    metrics: dict,
+) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    _insert_batch(db_path, batch_id="B-PENDING", status="pending")
+    _insert_history(
+        db_path,
+        version=10,
+        strategy=strategy,
+        result_summary={
+            "algo": {
+                "mode": mode,
+                "objective": "min_overdue",
+                "metrics": metrics,
+            },
+            "warnings": [],
+            "errors": [],
+        },
+    )
+
+    response = app.test_client().get("/scheduler/")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "最近一次排产历史摘要不完整，请到系统历史查看。" in body
+    assert 'aps-latest-schedule-value">v10' in body
+    assert "B-PENDING" in body
+    assert "jsRunScheduleForm" in body
+    assert "jsSelectedCount" in body
+    assert "batchesTable" in body
+    assert 'aps-latest-schedule-label">排产方式' not in body
+    assert "abc" not in body
+
+
 def test_batches_page_latest_algo_config_snapshot_renders_public_snapshot_state(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_history(

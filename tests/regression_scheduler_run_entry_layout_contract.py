@@ -88,11 +88,19 @@ def test_run_panel_container_breakpoint_has_room_for_declared_columns() -> None:
     assert ".aps-run-option-row" in css
     assert ".aps-run-option-title" in css
     assert ".aps-run-option-desc" in css
+    run_option_start = css.index(".aps-run-option-row {")
+    run_option_block = css[run_option_start : css.index(".aps-run-option-row + .aps-run-option-row", run_option_start)]
+    assert "width: 100%;" in run_option_block
+    assert "flex-wrap: nowrap;" in run_option_block
+    assert ".aps-run-option-row .aps-toggle-copy" in css
     assert "minmax(240px, 1fr)" in css
     assert "minmax(190px, 0.8fr)" in css
     assert "minmax(230px, 1fr)" in css
     assert "@container (min-width: 760px) and (max-width: 1039px)" in css
-    assert "grid-column: 1 / -1" in css
+    medium_start = css.index("@container (min-width: 760px) and (max-width: 1039px)")
+    medium_block = css[medium_start : css.index("@media (max-width: 1180px)", medium_start)]
+    assert "grid-column: 1 / -1" in medium_block
+    assert "repeat(2, minmax(0, 1fr))" not in medium_block
 
 
 def test_latest_schedule_snapshot_uses_dedicated_sections() -> None:

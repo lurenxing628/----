@@ -142,18 +142,7 @@
     <form method="post" action="{{ url_for('system.backup_settings') }}">
       <div class="aps-settings-grid">
         <div class="aps-summary-item">
-          {{ ui.toggle_row(
-            page.auto_backup_toggle.id,
-            page.auto_backup_toggle.name,
-            page.auto_backup_toggle.title,
-            page.auto_backup_toggle.desc,
-            checked_attr=page.auto_backup_toggle.checked_attr,
-            disabled_attr=page.auto_backup_toggle.disabled_attr,
-            value=page.auto_backup_toggle.value,
-            hidden_value=page.auto_backup_toggle.hidden_value,
-            submitted_value=page.auto_backup_toggle.submitted_value,
-            class='aps-settings-toggle-row'
-          ) }}
+          {{ ui.toggle(page.auto_backup_toggle, class='aps-settings-toggle-row') }}
           <div class="aps-form-grid mt-2">
             <div class="form-field">
               <label>间隔（分钟）</label>
@@ -181,18 +170,7 @@
         </div>
 
         <div class="aps-summary-item">
-          {{ ui.toggle_row(
-            page.auto_backup_cleanup_toggle.id,
-            page.auto_backup_cleanup_toggle.name,
-            page.auto_backup_cleanup_toggle.title,
-            page.auto_backup_cleanup_toggle.desc,
-            checked_attr=page.auto_backup_cleanup_toggle.checked_attr,
-            disabled_attr=page.auto_backup_cleanup_toggle.disabled_attr,
-            value=page.auto_backup_cleanup_toggle.value,
-            hidden_value=page.auto_backup_cleanup_toggle.hidden_value,
-            submitted_value=page.auto_backup_cleanup_toggle.submitted_value,
-            class='aps-settings-toggle-row'
-          ) }}
+          {{ ui.toggle(page.auto_backup_cleanup_toggle, class='aps-settings-toggle-row') }}
           <div class="aps-form-grid mt-2">
             <div class="form-field">
               <label>保留天数</label>

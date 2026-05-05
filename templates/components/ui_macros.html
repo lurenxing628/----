@@ -104,7 +104,30 @@
 </div>
 {% endmacro %}
 
+{% macro toggle(toggle, class='') %}
+{{ toggle_row(
+  toggle.id,
+  toggle.name,
+  toggle.title,
+  toggle.desc,
+  checked_attr=toggle.checked_attr,
+  disabled_attr=toggle.disabled_attr,
+  value=toggle.value,
+  hidden_value=toggle.hidden_value,
+  submitted_value=toggle.submitted_value,
+  class=class
+) }}
+{% endmacro %}
+
 {% macro toggle_row(id, name, title, desc, checked_attr='', disabled_attr='', value='yes', hidden_value='no', submitted_value='', class='') %}
+{% set final_submitted_value = submitted_value %}
+{% if not final_submitted_value %}
+  {% if disabled_attr == 'disabled' and checked_attr == 'checked' %}
+    {% set final_submitted_value = value %}
+  {% else %}
+    {% set final_submitted_value = hidden_value %}
+  {% endif %}
+{% endif %}
 <div class="aps-toggle-row {{ class }}">
   <label class="aps-toggle-control" for="{{ id }}">
     <input
@@ -125,7 +148,7 @@
     <label class="aps-toggle-title" for="{{ id }}">{{ title }}</label>
     <div class="aps-toggle-desc">{{ desc }}</div>
   </div>
-  <input type="hidden" name="{{ name }}" value="{{ submitted_value or hidden_value }}">
+  <input type="hidden" name="{{ name }}" value="{{ final_submitted_value }}">
 </div>
 {% endmacro %}
 

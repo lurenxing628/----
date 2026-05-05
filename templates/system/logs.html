@@ -32,18 +32,7 @@
     <form method="post" action="{{ url_for('system.logs_settings') }}" class="mb-2">
       <div class="aps-settings-cleanup-grid">
         <div class="form-field aps-settings-enable-field">
-          {{ ui.toggle_row(
-            page.cleanup_toggle.id,
-            page.cleanup_toggle.name,
-            page.cleanup_toggle.title,
-            page.cleanup_toggle.desc,
-            checked_attr=page.cleanup_toggle.checked_attr,
-            disabled_attr=page.cleanup_toggle.disabled_attr,
-            value=page.cleanup_toggle.value,
-            hidden_value=page.cleanup_toggle.hidden_value,
-            submitted_value=page.cleanup_toggle.submitted_value,
-            class='aps-settings-toggle-row'
-          ) }}
+          {{ ui.toggle(page.cleanup_toggle, class='aps-settings-toggle-row') }}
         </div>
         <div class="form-field aps-settings-keep-days">
           <label for="logAutoCleanupKeepDays">保留天数</label>

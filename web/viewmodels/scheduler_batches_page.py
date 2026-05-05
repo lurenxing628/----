@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -214,7 +215,7 @@ def _normalize_warning_texts(values: Any) -> List[str]:
 def _latest_algo_mode_label(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
-        return "-"
+        raise ScheduleHistoryDisplayValueError("排产历史摘要缺少排产模式")
     if raw not in _ALGO_MODE_LABELS:
         raise ScheduleHistoryDisplayValueError(f"未知排产模式：{raw}")
     return _ALGO_MODE_LABELS[raw]
@@ -224,8 +225,8 @@ def _metric_value(value: Any, unit: str) -> str:
     return f"{value} {unit}"
 
 
-def _metric_percent(value: Any) -> str:
-    amount = round(float(value) * 100, 2)
+def _metric_percent(metrics: Dict[str, Any], key: str) -> str:
+    amount = round(_metric_number(metrics, key) * 100, 2)
     return f"{amount}%"
 
 
@@ -235,6 +236,25 @@ def _required_metric(metrics: Dict[str, Any], key: str) -> Any:
     value = metrics[key]
     if value is None or value == "":
         raise ScheduleHistoryDisplayValueError(f"排产历史摘要 metrics 字段为空：{key}")
+    return value
+
+
+def _metric_number(metrics: Dict[str, Any], key: str) -> float:
+    value = _required_metric(metrics, key)
+    if isinstance(value, bool):
+        raise ScheduleHistoryDisplayValueError(f"排产历史摘要 metrics 字段不是数字：{key}")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ScheduleHistoryDisplayValueError(f"排产历史摘要 metrics 字段不是数字：{key}") from exc
+    if not math.isfinite(number):
+        raise ScheduleHistoryDisplayValueError(f"排产历史摘要 metrics 字段不是数字：{key}")
+    return number
+
+
+def _required_number_metric(metrics: Dict[str, Any], key: str) -> Any:
+    value = _required_metric(metrics, key)
+    _metric_number(metrics, key)
     return value
 
 
@@ -307,18 +327,20 @@ def _latest_metric_items(
     if isinstance(latest_summary, dict):
         overdue_batches = latest_summary.get("overdue_batches")
         if isinstance(overdue_batches, dict):
-            metric_items = (UiSummaryItem("超期数量", f"{_required_metric(overdue_batches, 'count')} 个"),)
+            metric_items = (UiSummaryItem("超期数量", f"{_required_number_metric(overdue_batches, 'count')} 个"),)
     if latest_metrics is None:
         return metric_items
-    for key in _REQUIRED_METRIC_KEYS:
-        _required_metric(latest_metrics, key)
+    total_tardiness = _required_number_metric(latest_metrics, "total_tardiness_hours")
+    weighted_tardiness = _required_number_metric(latest_metrics, "weighted_tardiness_hours")
+    makespan = _required_number_metric(latest_metrics, "makespan_hours")
+    changeover_count = _required_number_metric(latest_metrics, "changeover_count")
     return (
         *metric_items,
-        UiSummaryItem("拖期", _metric_value(latest_metrics["total_tardiness_hours"], "小时")),
-        UiSummaryItem("加权拖期", _metric_value(latest_metrics["weighted_tardiness_hours"], "小时")),
-        UiSummaryItem("总工期", _metric_value(latest_metrics["makespan_hours"], "小时")),
-        UiSummaryItem("换型", _metric_value(latest_metrics["changeover_count"], "次")),
-        UiSummaryItem("设备利用率", _metric_percent(latest_metrics["machine_util_avg"])),
+        UiSummaryItem("拖期", _metric_value(total_tardiness, "小时")),
+        UiSummaryItem("加权拖期", _metric_value(weighted_tardiness, "小时")),
+        UiSummaryItem("总工期", _metric_value(makespan, "小时")),
+        UiSummaryItem("换型", _metric_value(changeover_count, "次")),
+        UiSummaryItem("设备利用率", _metric_percent(latest_metrics, "machine_util_avg")),
     )
 
 
@@ -367,7 +389,9 @@ def build_degraded_latest_schedule_history_panel_state(
             ),
         ),
         latest_auto_assign_persist_state=None,
-        latest_other_degradation_messages=(),
+        latest_other_degradation_messages=list(
+            latest_summary_display.get("display_secondary_degradation_messages") or []
+        ),
         latest_warning_preview=latest_warning_preview,
         latest_warning_total=latest_warning_total,
         latest_warning_hidden_count=latest_warning_hidden_count,

@@ -46,7 +46,7 @@ def strategy_display_label(value: Any) -> str:
 def strict_strategy_display_label(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
-        return "-"
+        raise ScheduleHistoryDisplayValueError("排产历史缺少排产策略")
     if raw not in _STRATEGY_LABELS:
         raise ScheduleHistoryDisplayValueError(f"未知排产策略：{raw}")
     return _STRATEGY_LABELS[raw]

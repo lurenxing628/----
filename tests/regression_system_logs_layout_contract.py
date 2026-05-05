@@ -36,7 +36,7 @@ def test_system_logs_uses_separate_cards_and_stable_filter_grid() -> None:
         "auto_log_cleanup_interval_minutes",
     ):
         assert f'name="{field_name}"' in source
-    assert "cleanup_toggle.name" in source
+    assert "ui.toggle(page.cleanup_toggle" in source
     assert '"auto_log_cleanup_enabled"' in _read("web/viewmodels/system_logs_vm.py")
 
     cleanup_start = source.index("日志自动清理设置")
@@ -44,9 +44,8 @@ def test_system_logs_uses_separate_cards_and_stable_filter_grid() -> None:
     cleanup_block = source[cleanup_start:cleanup_end]
     assert cleanup_block.count("有人打开或操作页面时") == 1
     assert "aps-settings-cleanup-actions" in cleanup_block
-    assert "ui.toggle_row(" in cleanup_block
+    assert "ui.toggle(page.cleanup_toggle" in cleanup_block
     assert "page.cleanup_toggle" in cleanup_block
-    assert "submitted_value=page.cleanup_toggle.submitted_value" in cleanup_block
     assert cleanup_block.count("aps-settings-switch") == 0
     assert "启用自动清理日志" not in cleanup_block
     assert "按保留天数清理旧日志" not in cleanup_block
@@ -105,8 +104,7 @@ def test_system_backup_auto_job_switches_use_readable_setting_rows() -> None:
     settings_block = source[settings_start:settings_end]
 
     assert settings_block.count("aps-settings-toggle-row") == 2
-    assert settings_block.count("ui.toggle_row(") == 2
-    assert settings_block.count("submitted_value=page.auto_backup") == 2
+    assert settings_block.count("ui.toggle(page.auto_backup") == 2
     assert settings_block.count("aps-settings-switch aps-settings-switch-compact") == 0
     assert settings_block.count("aps-settings-switch") == 0
     for field_name, title, desc in (
@@ -128,6 +126,9 @@ def test_system_backup_auto_job_switches_use_readable_setting_rows() -> None:
     assert 'id="pluginStatusTable"' in plugin_block
     assert 'name="enabled"' in plugin_block
     assert "system.plugin_toggle" in plugin_block
+    assert "aps-table-toggle-row" not in plugin_block
+    assert 'label class="muted"' in plugin_block
+    assert '<input type="checkbox" name="enabled"' in plugin_block
 
     css = _read("static/css/ui_contract.css")
     readonly_dark_start = css.index('html[data-theme="dark"] .readonly-value')

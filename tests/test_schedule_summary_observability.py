@@ -221,7 +221,7 @@ def test_scheduler_batches_accepts_preparsed_result_summary_dict(tmp_path, monke
 
     class _StubHistoryItem:
         def to_dict(self):
-            return {"version": 2, "result_summary": summary}
+            return {"version": 2, "strategy": "priority_first", "result_summary": summary}
 
     class _StubHistoryService:
         def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):
@@ -262,6 +262,7 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
             {"code": "ortools_warmstart_failed", "message": "OR-Tools 预热失败，已回退常规求解。", "count": 1},
         ],
         "algo": {
+            "mode": "improve",
             "objective": "min_overdue",
             "config_snapshot": {"objective": "min_overdue"},
         },
@@ -332,7 +333,7 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
 
     class _StubHistoryItem:
         def to_dict(self):
-            return {"version": 2, "result_summary": summary}
+            return {"version": 2, "strategy": "priority_first", "result_summary": summary}
 
     class _StubHistoryService:
         def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):
