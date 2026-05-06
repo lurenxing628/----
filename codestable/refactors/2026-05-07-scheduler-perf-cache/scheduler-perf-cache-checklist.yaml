@@ -24,21 +24,22 @@ steps:
     exit_signal: Metrics contracts pass and compute_metrics complexity is below threshold.
   - id: final-quality-gate
     title: Run final quality gates and all benchmark scenarios
-    status: in_progress
+    status: completed
     exit_signal: Targeted tests, benchmark runs, ledger check, quality gate, and clean-worktree gate pass or remaining blockers are listed exactly.
 checks:
   - id: no-cross-run-cache
     title: No cross-run or disk business cache
-    status: pending
+    status: completed
   - id: no-public-output-drift
     title: No public result field drift
-    status: pending
+    status: completed
   - id: no-new-fallback
     title: No new silent fallback or swallowed error
-    status: pending
+    status: completed
   - id: no-new-test-debt
     title: No new xfail or test debt
-    status: in_progress
+    status: completed
   - id: quality-gate-clean
     title: Final clean quality gate is bound to a clean worktree
-    status: pending
+    status: blocked
+    blocker: Pre-existing dirty file evidence/ArchAudit/arch_audit_report.md is intentionally left untouched.

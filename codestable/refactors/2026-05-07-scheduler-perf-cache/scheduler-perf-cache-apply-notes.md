@@ -113,3 +113,29 @@ tags: [scheduler, performance, cache, quality-gate]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_compute_metrics_contract.py tests/regression_metrics_horizon_semantics.py tests/regression_metrics_to_dict_nonfinite_safe.py tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py tests/regression_due_exclusive_consistency.py tests/regression_priority_weight_case_insensitive.py tests/regression_objective_projection_contract.py tests/regression_weighted_tardiness_objective.py tests/regression_optimizer_public_summary_projection_contract.py tests/regression_scheduler_summary_result_summary_contract.py tests/regression_schedule_summary_v11_contract.py --tb=short`
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m radon cc -s core/algorithms/evaluation.py`
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold --tb=short`
+
+## Final verification
+
+- Status: completed with one clean-proof blocker.
+- Benchmark validation:
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .limcode/skills/aps-fjsp-benchmark/scripts/run_fjsp_benchmark.py --mode full`
+  - Result: `runs=20 valid=20`.
+  - Report: `evidence/Benchmark/fjsp_benchmark_report.md`.
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/benchmark_sgs_large_resource_pool.py`
+  - Result: large-pool estimator calls `601`, scheduled ops `1`, failed ops `0`; seed-fragment estimator calls `1`, scheduled ops `1201`, failed ops `0`.
+  - Report: `evidence/Benchmark/sgs_large_resource_pool_report.md`.
+- Governance validation:
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py`
+  - Result: `status=passed`, `collected_count=980`, `unexpected_failure_count=0`.
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check`
+  - Result: passed.
+- Quality gate validation:
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py`
+  - Result: exited before running gate because the worktree was dirty.
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --allow-dirty-worktree`
+  - Result: gate completed, but manifest was marked `passed_but_unbound`; return code was `2`, so this is not a clean proof.
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`
+  - Result: blocked by dirty worktree before running gate.
+- Remaining blocker:
+  - `evidence/ArchAudit/arch_audit_report.md` was dirty before this refactor and remains intentionally untouched.
+  - Full `git diff --check` reports trailing whitespace in that pre-existing file at lines 32 and 33.
