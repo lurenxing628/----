@@ -238,9 +238,8 @@ def _build_app(monkeypatch, config_service: _ConfigServiceStub) -> Flask:
                 "config_panel": _public_value(config_panel),
                 "current_config_state": _public_value(config_panel.current_config_state),
                 "auto_assign_persist_state": _public_value(config_panel.current_auto_assign_persist_state),
-                "current_config_summary_items": _public_value(config_panel.current_config_summary_items),
                 "current_config_notice_items": _public_value(config_panel.current_config_notice_items),
-                "current_auto_assign_persist_item": _public_value(config_panel.current_auto_assign_persist_item),
+                "current_config_display_items": _public_value(config_panel.current_config_display_items),
             }
         return ctx
 

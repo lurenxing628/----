@@ -88,6 +88,25 @@ def main() -> None:
     finally:
         conn.close()
 
+    # 批量删除混入非法编号时应整批拒绝，不应悄悄只删除合法 id=1。
+    rb = client.post(
+        "/system/logs/delete-batch",
+        data={"log_ids": ["1", "abc", "0", "-1", "1000000000001"]},
+        follow_redirects=True,
+    )
+    if rb.status_code != 200:
+        raise RuntimeError(f"POST /system/logs/delete-batch 混入非法编号返回 {rb.status_code}，期望 200")
+    if "日志编号不合法" not in rb.get_data(as_text=True):
+        raise RuntimeError("批量删除混入非法编号时，应向用户提示日志编号不合法")
+
+    conn = get_connection(test_db)
+    try:
+        c1 = int(conn.execute("SELECT COUNT(1) FROM OperationLogs WHERE id=1").fetchone()[0])
+        if c1 != 1:
+            raise RuntimeError("批量删除混入非法编号时不应删除 OperationLogs.id=1（但查询不到 id=1）")
+    finally:
+        conn.close()
+
     # log_id=1 应能正常删除
     r1 = client.post("/system/logs/delete", data={"log_id": "1"}, follow_redirects=True)
     if r1.status_code != 200:
@@ -106,4 +125,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

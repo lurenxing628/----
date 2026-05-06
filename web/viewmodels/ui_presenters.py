@@ -6,6 +6,8 @@ from typing import Any, Sequence
 from core.models.toggle_values import TOGGLE_SUBMIT_VALUES, normalize_toggle_submit_value
 
 VALID_TONES = frozenset({"neutral", "info", "success", "warning", "danger"})
+VALID_NOTICE_ROLES = frozenset({"", "status", "alert", "note"})
+VALID_ARIA_LIVE = frozenset({"", "polite", "assertive", "off"})
 
 
 @dataclass(frozen=True)
@@ -14,6 +16,7 @@ class UiSummaryItem:
     value: str
     desc: str = ""
     tone: str = "neutral"
+    details_summary: str = ""
 
     def __post_init__(self) -> None:
         validate_tone(self.tone)
@@ -33,6 +36,7 @@ class UiNotice:
 
     def __post_init__(self) -> None:
         validate_tone(self.tone)
+        validate_notice_a11y(self.role, self.aria_live)
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,7 @@ class UiDetailsNotice:
 
     def __post_init__(self) -> None:
         validate_tone(self.tone)
+        validate_notice_a11y(self.role, self.aria_live)
 
 
 @dataclass(frozen=True)
@@ -105,6 +110,15 @@ def validate_tone(tone: str) -> str:
     return normalized
 
 
+def validate_notice_a11y(role: str, aria_live: str) -> None:
+    normalized_role = str(role or "").strip()
+    normalized_aria_live = str(aria_live or "").strip()
+    if normalized_role not in VALID_NOTICE_ROLES:
+        raise ValueError(f"未知 notice role: {role!r}")
+    if normalized_aria_live not in VALID_ARIA_LIVE:
+        raise ValueError(f"未知 aria-live: {aria_live!r}")
+
+
 def _validate_toggle_submit_token(value: Any, *, field: str) -> str:
     normalized = normalize_toggle_submit_value(value)
     if normalized not in TOGGLE_SUBMIT_VALUES:
@@ -131,8 +145,11 @@ __all__ = [
     "UiNotice",
     "UiSummaryItem",
     "UiToggleRow",
+    "VALID_ARIA_LIVE",
+    "VALID_NOTICE_ROLES",
     "VALID_TONES",
     "checked_attr",
     "disabled_attr",
+    "validate_notice_a11y",
     "validate_tone",
 ]

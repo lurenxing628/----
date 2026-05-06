@@ -129,9 +129,10 @@ def test_scheduler_batches_route_reuses_shared_degraded_display_builder() -> Non
     assert "config_field_warnings" in display_state_source
     assert "config_degraded_fields" in display_state_source
     assert "config_hidden_warnings" in display_state_source
-    assert "current_config_summary_items" in batches_viewmodel_source
     assert "current_config_notice_items" in batches_viewmodel_source
-    assert "current_auto_assign_persist_item" in batches_viewmodel_source
+    assert "current_config_display_items" in batches_viewmodel_source
+    assert '"current_config_summary_items"' not in batches_viewmodel_source
+    assert '"current_auto_assign_persist_item"' not in batches_viewmodel_source
     assert "scheduler_config_panel" in batches_viewmodel_source
     assert "scheduler_batches_page" not in display_state_source
     assert "scheduler_config_panel" in display_state_source
@@ -158,9 +159,10 @@ def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> N
 
     assert "scheduler-config-degraded-summary" in template_source
     assert "scheduler-current-config-summary" in template_source
-    assert "current_config_summary_items" in template_source
+    assert "current_config_display_items" in template_source
     assert "current_config_notice_items" in template_source
-    assert "current_auto_assign_persist_item" in template_source
+    assert "current_config_summary_items" not in template_source
+    assert "current_auto_assign_persist_item" not in template_source
     assert "current_config_state.status_label" not in template_source
     assert "current_config_state.repair_notices" not in template_source
     assert "for notice in config_notice_items" not in template_source
@@ -191,9 +193,10 @@ def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> N
     assert "status_zh.get(latest_history.result_status" not in template_source
     assert "scheduler-config-degraded-summary" in v2_template_source
     assert "scheduler-current-config-summary" in v2_template_source
-    assert "current_config_summary_items" in v2_template_source
+    assert "current_config_display_items" in v2_template_source
     assert "current_config_notice_items" in v2_template_source
-    assert "current_auto_assign_persist_item" in v2_template_source
+    assert "current_config_summary_items" not in v2_template_source
+    assert "current_auto_assign_persist_item" not in v2_template_source
     assert "current_config_state.status_label" not in v2_template_source
     assert "current_config_state.repair_notices" not in v2_template_source
     assert "for notice in config_notice_items" not in v2_template_source

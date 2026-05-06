@@ -177,17 +177,56 @@ def test_backup_page_state_localizes_bad_plugin_status_to_notice(plugin_status) 
     assert page.plugin_summary_items == ()
     assert page.plugin_status_error_notice is not None
     assert page.plugin_status_error_notice.title == "扩展功能状态记录异常"
+    assert page.plugin_status_error_notice.role == "status"
+    assert page.plugin_status_error_notice.aria_live == "polite"
     assert page.plugin_status_error_notice.detail_items
     assert "原始值" in page.plugin_status_error_notice.detail_items[0]
 
 
-def test_backup_page_route_keeps_main_page_available_when_plugin_status_is_bad(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "plugin_status",
+    (
+        (lambda data: (data.pop("config_source"), data)[1])(_plugin_status()),
+        (lambda data: (data.pop("telemetry_persisted"), data)[1])(_plugin_status()),
+        _plugin_status(statuses=[None]),
+        _plugin_status(statuses=["bad"]),
+        _plugin_status(statuses="bad"),
+        _plugin_status(statuses={"plugin_id": "demo"}),
+        _plugin_status(statuses=1),
+        _plugin_status(statuses=[{"plugin_id": "demo_plugin"}]),
+        _plugin_status(registry={"capabilities": "abc"}),
+        _plugin_status(registry={"demo"}),
+        _plugin_status(degradation_events=[1]),
+        "bad-plugin-status",
+    ),
+)
+def test_backup_page_state_localizes_bad_plugin_status_shape_to_notice(plugin_status) -> None:
+    page = build_system_backup_page_view_model(_settings(), plugin_status)
+
+    assert page.plugin_status_loaded is True
+    assert page.plugin_status_rows == ()
+    assert page.plugin_summary_items == ()
+    assert page.plugin_status_error_notice is not None
+    assert page.plugin_status_error_notice.title == "扩展功能状态记录异常"
+    assert page.plugin_status_error_notice.detail_items
+    assert "扩展功能" in page.plugin_status_error_notice.detail_items[0]
+
+
+@pytest.mark.parametrize(
+    "plugin_status",
+    (
+        _plugin_status(config_source="future_source"),
+        _plugin_status(statuses=[None]),
+        _plugin_status(registry={"capabilities": "abc"}),
+    ),
+)
+def test_backup_page_route_keeps_main_page_available_when_plugin_status_is_bad(monkeypatch, plugin_status) -> None:
     import web.routes.system_backup as route_mod
 
     captured = {}
     app = Flask(__name__)
     app.secret_key = "backup-page-plugin-status-error"
-    app.config["PLUGIN_STATUS"] = _plugin_status(config_source="future_source")
+    app.config["PLUGIN_STATUS"] = plugin_status
 
     class _Cfg:
         auto_backup_keep_days = 9

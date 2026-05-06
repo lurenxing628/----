@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from flask import flash, g, redirect, request, url_for
+from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
 from web.routes.form_values import form_yes_no_value
@@ -37,13 +37,17 @@ def plugin_toggle():
         return redirect(url_for("system.backup_page"))
 
     if getattr(g, "op_logger", None) is not None:
-        g.op_logger.info(
-            module="plugins",
-            action="toggle",
-            target_type="plugin",
-            target_id=plugin_id,
-            detail={"enabled": enabled, "note": "修改后需重启应用生效"},
-        )
+        try:
+            g.op_logger.info(
+                module="plugins",
+                action="toggle",
+                target_type="plugin",
+                target_id=plugin_id,
+                detail={"enabled": enabled, "note": "修改后需重启应用生效"},
+            )
+        except Exception:
+            # 配置已经保存成功，后置留痕失败只记录日志，不把成功操作改成失败。
+            current_app.logger.exception("扩展功能开关保存成功后写入操作日志失败（不阻断）")
 
     enabled_label = "已开启" if enabled == "yes" else "已关闭"
     flash(f"扩展功能开关已保存，当前选择为{enabled_label}。重启软件后生效。", "success")

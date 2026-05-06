@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, cast
 
 import pytest
-from flask import Flask, g
+from flask import Flask, g, get_flashed_messages
 
 from web.ui_mode import UI_MODE_COOKIE_KEY
 
@@ -272,6 +272,60 @@ def test_system_logs_page_does_not_swallow_missing_request_service(monkeypatch) 
             route_mod.logs_page()
 
 
+def test_system_logs_batch_delete_rejects_invalid_ids_before_deleting(monkeypatch) -> None:
+    import web.routes.system_logs as route_mod
+
+    monkeypatch.setattr(route_mod, "url_for", lambda endpoint, **_kwargs: f"/{endpoint}")
+
+    app = _build_app()
+    operation_log_svc = _OperationLogServiceStub()
+
+    with app.test_request_context(
+        "/system/logs/delete-batch",
+        method="POST",
+        data={"log_ids": ["1", "abc", "0", "-1", "1000000000001"]},
+    ):
+        _bind_services(app, SimpleNamespace(operation_log_service=operation_log_svc))
+        response = route_mod.logs_delete_batch()
+        messages = get_flashed_messages(with_categories=True)
+
+    assert response.status_code in (301, 302)
+    assert operation_log_svc.delete_many_calls == []
+    assert messages
+    assert messages[-1][0] == "error"
+    assert "日志编号不合法" in messages[-1][1]
+    assert "abc" in messages[-1][1]
+    assert "1000000000001" in messages[-1][1]
+
+
+def test_system_logs_batch_delete_warns_when_some_valid_ids_are_missing(monkeypatch) -> None:
+    import web.routes.system_logs as route_mod
+
+    class _PartialDeleteOperationLogService(_OperationLogServiceStub):
+        def delete_by_ids(self, log_ids: List[int]) -> int:
+            self.delete_many_calls.append([int(x) for x in log_ids])
+            return 1
+
+    monkeypatch.setattr(route_mod, "url_for", lambda endpoint, **_kwargs: f"/{endpoint}")
+
+    app = _build_app()
+    operation_log_svc = _PartialDeleteOperationLogService()
+
+    with app.test_request_context(
+        "/system/logs/delete-batch",
+        method="POST",
+        data={"log_ids": ["1", "2"]},
+    ):
+        _bind_services(app, SimpleNamespace(operation_log_service=operation_log_svc))
+        response = route_mod.logs_delete_batch()
+        messages = get_flashed_messages(with_categories=True)
+
+    assert response.status_code in (301, 302)
+    assert operation_log_svc.delete_many_calls == [[1, 2]]
+    assert messages[-1][0] == "warning"
+    assert "未找到或已被删除" in messages[-1][1]
+
+
 def test_system_backup_and_logs_settings_use_request_services_without_g_db(monkeypatch) -> None:
     import web.routes.system_backup as backup_mod
     import web.routes.system_logs as logs_mod
@@ -370,6 +424,41 @@ def test_system_ui_mode_and_plugin_toggle_use_request_services_without_g_db(monk
             "description": "UI 模式：v1/v2（v2=新UI）",
         },
     ]
+
+
+def test_plugin_toggle_keeps_success_when_operation_log_fails(monkeypatch) -> None:
+    import web.routes.system_plugins as plugins_mod
+
+    class _BrokenOperationLogger:
+        def info(self, **_kwargs: Any) -> None:
+            raise RuntimeError("operation log broken")
+
+    monkeypatch.setattr(plugins_mod, "url_for", lambda endpoint, **_kwargs: f"/{endpoint}")
+
+    app = _build_app()
+    config_svc = _ConfigServiceStub()
+    services = SimpleNamespace(system_config_service=config_svc)
+
+    with app.test_request_context(
+        "/system/plugins/toggle",
+        method="POST",
+        data={"plugin_id": "demo_plugin", "enabled": "on"},
+    ):
+        _bind_services(app, services)
+        g.op_logger = _BrokenOperationLogger()
+        response = plugins_mod.plugin_toggle()
+        messages = get_flashed_messages(with_categories=True)
+
+    assert response.status_code in (301, 302)
+    assert config_svc.set_calls == [
+        {
+            "config_key": "plugin.demo_plugin.enabled",
+            "value": "yes",
+            "description": None,
+        }
+    ]
+    assert messages[-1][0] == "success"
+    assert "扩展功能开关已保存" in messages[-1][1]
 
 
 def test_system_ui_mode_route_does_not_swallow_missing_request_service() -> None:

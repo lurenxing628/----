@@ -26,9 +26,10 @@
 - 不在模板里用 `.get(key, "未知")` 或 `.get(key, "-")` 悄悄兜底未知业务状态。
 - 布局组件可以允许“没有按钮”“空列表”这类可选内容为空；这不等于允许业务状态、错误原因、展示文案在模板里悄悄兜底。
 - 新页面的摘要数据优先用 `UiSummaryItem` 和 `ui.summary_grid(items=...)`。如果业务上确实没有值，viewmodel 要明确传 `"-"`、`"未记录"`、`"暂未拿到"` 这类用户能看懂的文案，不要把空值交给模板自动补。
+- `summary_grid(items=...)` 是已经 presenter 化的严格入口，只渲染 `UiSummaryItem`。老的 `summary_item()` / `summary_item_block()` 是迁移期 legacy 宏，仍会把空值显示成 `-`，只用于还没 presenter 化的老页面。
 - 业务页面原则上只调用 `ui.toggle(toggle)`，也就是消费 viewmodel 已经算好的 `UiToggleRow`。
 - `_toggle_row_internal(...)` 是内部底层渲染宏，只给 `ui_macros.html` 内部使用；业务模板不要直接传 `checked_attr`、`disabled_attr`、`submitted_value`，避免把开关提交规则重新散落到模板里。
-- `summary_item()` / `summary_item_block()` 是迁移期 legacy 宏，仍会把空值显示成 `-`，只用于还没 presenter 化的老页面。新页面不要依赖这个兜底。
+- 外部运行状态可以严格校验，但页面入口不能因为一个外部状态坏值就整页打不开。比如扩展功能状态坏了，要让扩展功能卡片显示“状态记录异常”，备份、恢复、自动备份设置继续可用。
 
 ## 4. 表单规则
 

@@ -91,9 +91,23 @@ class SystemBackupPageState:
     plugin_status_error_notice: Optional[UiDetailsNotice] = None
 
 
-def _value(source: Any, key: str) -> Any:
+def _value(source: Any, key: str, *, source_name: str = "") -> Any:
     if isinstance(source, dict):
+        if key not in source and source_name:
+            raise PluginStatusDisplayContractError(
+                field=key,
+                value="<missing>",
+                source=source_name,
+                message="扩展功能状态缺少必需字段",
+            )
         return source[key]
+    if source_name and not hasattr(source, key):
+        raise PluginStatusDisplayContractError(
+            field=key,
+            value="<missing>",
+            source=source_name,
+            message="扩展功能状态缺少必需字段",
+        )
     return getattr(source, key)
 
 
@@ -103,11 +117,35 @@ def _optional_value(source: Any, key: str) -> Any:
     return getattr(source, key, None)
 
 
-def _sequence_value(source: Any, key: str) -> Sequence[Any]:
+def _sequence_value(source: Any, key: str, *, source_name: str = "") -> Sequence[Any]:
     value = _optional_value(source, key)
     if value is None:
         return ()
+    if isinstance(value, (str, bytes)) or not isinstance(value, (list, tuple)):
+        if source_name:
+            raise PluginStatusDisplayContractError(
+                field=key,
+                value=value,
+                source=source_name,
+                message="扩展功能状态字段结构不正确",
+            )
     return tuple(value)
+
+
+def _optional_object(source: Any, key: str, *, source_name: str) -> Any:
+    value = _optional_value(source, key)
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, (str, bytes, list, tuple, set, frozenset, int, float, bool)) or not hasattr(value, "__dict__"):
+        raise PluginStatusDisplayContractError(
+            field=key,
+            value=value,
+            source=source_name,
+            message="扩展功能状态字段结构不正确",
+        )
+    return value
 
 
 def _text_or_dash(value: Any) -> str:
@@ -213,17 +251,23 @@ def build_plugin_summary_items(plugin_status: Any) -> Sequence[UiSummaryItem]:
     if plugin_status is None:
         return ()
 
-    registry = _optional_value(plugin_status, "registry") or {}
-    capabilities = _sequence_value(registry, "capabilities") if isinstance(registry, dict) else ()
-    degradation_events = _sequence_value(plugin_status, "degradation_events")
-    conflicted_capabilities = _sequence_value(plugin_status, "conflicted_capabilities")
-    telemetry_label, telemetry_tone = _plugin_telemetry_state(_value(plugin_status, "telemetry_persisted"))
+    registry = _optional_object(plugin_status, "registry", source_name="plugin_status")
+    capabilities = _sequence_value(registry, "capabilities", source_name="plugin_status.registry")
+    degradation_events = _sequence_value(plugin_status, "degradation_events", source_name="plugin_status")
+    conflicted_capabilities = _sequence_value(plugin_status, "conflicted_capabilities", source_name="plugin_status")
+    telemetry_label, telemetry_tone = _plugin_telemetry_state(
+        _value(plugin_status, "telemetry_persisted", source_name="plugin_status")
+    )
     degraded = bool(_optional_value(plugin_status, "degraded"))
     conflict_count = len(conflicted_capabilities)
 
     return (
         UiSummaryItem("加载时间", _text_or_dash(_optional_value(plugin_status, "loaded_at"))),
-        UiSummaryItem("配置来源", _plugin_config_source_label(_value(plugin_status, "config_source")), tone="info"),
+        UiSummaryItem(
+            "配置来源",
+            _plugin_config_source_label(_value(plugin_status, "config_source", source_name="plugin_status")),
+            tone="info",
+        ),
         UiSummaryItem("已发现的可用功能", f"{len(capabilities)} 项"),
         UiSummaryItem("留痕状态", telemetry_label, tone=telemetry_tone),
         UiSummaryItem("启动问题", f"{len(degradation_events)} 条", tone="danger" if degraded else "success"),
@@ -236,12 +280,13 @@ def build_plugin_status_rows(plugin_status: Any) -> Sequence[PluginStatusRow]:
         return ()
 
     rows = []
-    for raw_row in _sequence_value(plugin_status, "statuses"):
+    for raw_row in _sequence_value(plugin_status, "statuses", source_name="plugin_status"):
         row = dict(raw_row or {}) if isinstance(raw_row, dict) else raw_row
-        enabled = _yes_no(_value(row, "enabled"), field="plugin.enabled")
-        loaded = _yes_no(_value(row, "loaded"), field="plugin.loaded")
-        capabilities = _sequence_value(row, "capabilities")
-        plugin_id = str(_value(row, "plugin_id"))
+        row_source = "plugin_status.statuses"
+        enabled = _yes_no(_value(row, "enabled", source_name=row_source), field="plugin.enabled")
+        loaded = _yes_no(_value(row, "loaded", source_name=row_source), field="plugin.loaded")
+        capabilities = _sequence_value(row, "capabilities", source_name=row_source)
+        plugin_id = str(_value(row, "plugin_id", source_name=row_source))
         plugin_name = str(_optional_value(row, "name") or "未命名扩展功能")
         toggle_id_suffix = _safe_dom_id_suffix(plugin_id)
         rows.append(
@@ -258,7 +303,9 @@ def build_plugin_status_rows(plugin_status: Any) -> Sequence[PluginStatusRow]:
                     checked_attr=checked_attr(enabled == "yes"),
                 ),
                 loaded_label=PLUGIN_LOADED_LABELS[loaded],
-                enabled_source_label=_plugin_enabled_source_label(_value(row, "enabled_source")),
+                enabled_source_label=_plugin_enabled_source_label(
+                    _value(row, "enabled_source", source_name=row_source)
+                ),
                 error=str(_optional_value(row, "error") or ""),
                 capability_count=len(capabilities),
                 has_capabilities=bool(capabilities),
@@ -272,8 +319,15 @@ def build_plugin_degradation_events(plugin_status: Any) -> Sequence[PluginDegrad
         return ()
 
     rows = []
-    for raw_event in _sequence_value(plugin_status, "degradation_events"):
+    for raw_event in _sequence_value(plugin_status, "degradation_events", source_name="plugin_status"):
         event = dict(raw_event or {}) if isinstance(raw_event, dict) else raw_event
+        if not isinstance(event, dict) and not hasattr(event, "message"):
+            raise PluginStatusDisplayContractError(
+                field="degradation_events",
+                value=raw_event,
+                source="plugin_status",
+                message="扩展功能启动问题结构不正确",
+            )
         message = str(_optional_value(event, "message") or "").strip() or "扩展功能启动时出现问题。"
         rows.append(PluginDegradationEventRow(message=message))
     return tuple(rows)
@@ -283,7 +337,10 @@ def build_plugin_conflict_rows(plugin_status: Any) -> Sequence[PluginConflictRow
     if plugin_status is None:
         return ()
 
-    return tuple(PluginConflictRow() for _item in _sequence_value(plugin_status, "conflicted_capabilities"))
+    return tuple(
+        PluginConflictRow()
+        for _item in _sequence_value(plugin_status, "conflicted_capabilities", source_name="plugin_status")
+    )
 
 
 def build_system_backup_page_view_model(settings: Any, plugin_status: Any) -> SystemBackupPageState:
@@ -307,6 +364,8 @@ def build_system_backup_page_view_model(settings: Any, plugin_status: Any) -> Sy
             tone="warning",
             detail_label="查看异常字段",
             detail_items=(exc.detail_text(),),
+            role="status",
+            aria_live="polite",
         )
     return SystemBackupPageState(
         backup_empty_state=build_backup_empty_state(),

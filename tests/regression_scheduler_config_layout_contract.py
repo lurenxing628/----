@@ -17,9 +17,10 @@ def test_scheduler_config_separates_preset_actions_from_runtime_state() -> None:
         assert "aps-danger-zone" in source
         assert "当前配置状态" in source
         assert source.index("常用方案") < source.index("当前配置状态") < source.index("排产策略配置")
-        assert "current_config_summary_items" in source
+        assert "current_config_display_items" in source
         assert "current_config_notice_items" in source
-        assert "current_auto_assign_persist_item" in source
+        assert "current_config_summary_items" not in source
+        assert "current_auto_assign_persist_item" not in source
         assert "current_config_state.status_label" not in source
         assert "current_config_state.repair_notices" not in source
         assert "auto_assign_persist_state.description" not in source

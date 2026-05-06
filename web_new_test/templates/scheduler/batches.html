@@ -48,18 +48,7 @@
   <div class="card aps-scheduler-filter-card">
     <h3 class="section-title">当前配置状态</h3>
     <div class="scheduler-current-config-summary">
-      {% call ui.summary_grid() %}
-        {% for item in current_config_summary_items %}
-          {{ ui.summary_item(item.label, item.value, item.desc, tone=item.tone) }}
-        {% endfor %}
-        {{ ui.summary_item(
-          current_auto_assign_persist_item.label,
-          current_auto_assign_persist_item.value,
-          current_auto_assign_persist_item.desc,
-          tone=current_auto_assign_persist_item.tone,
-          details_summary='查看说明'
-        ) }}
-      {% endcall %}
+      {{ ui.summary_grid(current_config_display_items) }}
       {% for notice in current_config_notice_items %}
         {{ ui.details_notice(notice, class='mt-2 scheduler-config-degraded-summary') }}
       {% endfor %}
@@ -224,11 +213,7 @@
             </div>
           {% endfor %}
         </div>
-        <div class="aps-latest-schedule-metrics">
-          {% for item in latest_metric_items %}
-            {{ ui.summary_item(item.label, item.value, item.desc, tone=item.tone) }}
-          {% endfor %}
-        </div>
+        {{ ui.summary_grid(latest_metric_items, class='aps-latest-schedule-metrics') }}
         {% if latest_auto_assign_persist_state %}
           <div class="aps-summary-status-line aps-latest-schedule-status">
             <div class="aps-summary-status-main">

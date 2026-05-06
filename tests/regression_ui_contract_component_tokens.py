@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 from jinja2 import Environment, FileSystemLoader
 
+from web.viewmodels.ui_presenters import UiSummaryItem
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -46,6 +48,10 @@ def _render_ui_macro(source: str) -> str:
             footer="",
             role="alert",
             aria_live="assertive",
+        ),
+        summary_items=(
+            UiSummaryItem("严格摘要", "明确值", "说明文字", tone="success"),
+            UiSummaryItem("折叠摘要", "未记录", "这是一段说明。", tone="warning", details_summary="查看说明"),
         ),
     )
 
@@ -120,6 +126,11 @@ def test_ui_macros_expose_shared_contract_components() -> None:
     assert "disabled_attr == 'disabled' and checked_attr == 'checked'" not in toggle_block
     assert 'value="{{ submitted_value }}"' in toggle_block
 
+    summary_grid_start = source.index("{% macro summary_grid(")
+    summary_grid_block = source[summary_grid_start : source.index("{% endmacro %}", summary_grid_start)]
+    assert "summary_item(" not in summary_grid_block
+    assert "_summary_item_presenter(item)" in summary_grid_block
+
 
 def test_notice_macro_defaults_to_static_message_and_allows_explicit_live_role() -> None:
     default_rendered = _render_ui_macro("{{ ui.notice('普通提示', '这是静态页面提示。') }}")
@@ -167,6 +178,17 @@ def test_summary_item_legacy_macro_still_shows_dash_for_old_pages() -> None:
     assert rendered.count('class="aps-summary-value">-</div>') == 2
 
 
+def test_summary_grid_uses_presenter_items_without_legacy_fallback() -> None:
+    rendered = _render_ui_macro("{{ ui.summary_grid(items=summary_items) }}")
+
+    assert "严格摘要" in rendered
+    assert "明确值" in rendered
+    assert "折叠摘要" in rendered
+    assert "未记录" in rendered
+    assert "查看说明" in rendered
+    assert 'class="aps-summary-value">-</div>' not in rendered
+
+
 def test_presenterized_pages_do_not_bypass_summary_item_values() -> None:
     for rel_path in ("templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches.html"):
         source = _read(rel_path)
@@ -176,13 +198,17 @@ def test_presenterized_pages_do_not_bypass_summary_item_values() -> None:
         assert "ui.summary_item('版本'" not in source
         assert "ui.summary_item('排产方式'" not in source
         assert "ui.summary_item('设备利用率'" not in source
+        assert "ui.summary_grid(current_config_display_items)" in source
+        assert "ui.summary_item(item.label" not in source
 
     for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
         source = _read(rel_path)
-        assert "current_config_summary_items" in source
-        assert "current_auto_assign_persist_item" in source
+        assert "ui.summary_grid(current_config_display_items)" in source
+        assert "current_config_summary_items" not in source
+        assert "current_auto_assign_persist_item" not in source
         assert "ui.summary_item(current_config_state" not in source
         assert "ui.summary_item(auto_assign_persist_state" not in source
+        assert "ui.summary_item(item.label" not in source
 
     backup_source = _read("templates/system/backup.html")
     plugin_block = backup_source[backup_source.index("扩展功能状态") :]

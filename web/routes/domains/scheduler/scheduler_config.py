@@ -341,9 +341,8 @@ def config_page():
         presets=config_panel.presets,
         active_preset=config_panel.active_preset,
         builtin_presets=config_panel.builtin_presets,
-        current_config_summary_items=config_panel.current_config_summary_items,
         current_config_notice_items=config_panel.current_config_notice_items,
-        current_auto_assign_persist_item=config_panel.current_auto_assign_persist_item,
+        current_config_display_items=config_panel.current_config_display_items,
         scheduler_config_toggles=scheduler_config_toggles,
     )
 

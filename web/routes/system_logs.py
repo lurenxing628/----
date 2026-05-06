@@ -25,6 +25,8 @@ from .system_utils import (
     _safe_int,
 )
 
+_MAX_OPERATION_LOG_ID = 10**12
+
 
 @bp.get("/logs")
 def logs_page():
@@ -103,16 +105,9 @@ def logs_settings():
 
 @bp.post("/logs/delete")
 def logs_delete():
-    raw = (request.form.get("log_id") or "").strip()
-    if not raw:
-        flash("缺少日志编号。", "error")
-        return redirect(url_for("system.logs_page"))
     try:
-        log_id = int(raw)
-    except (TypeError, ValueError):
-        flash("日志编号不合法，请填写正整数。", "error")
-        return redirect(url_for("system.logs_page"))
-    if log_id <= 0 or log_id > 10**12:
+        log_id = _parse_log_id(request.form.get("log_id"))
+    except ValueError:
         flash("日志编号不合法，请填写正整数。", "error")
         return redirect(url_for("system.logs_page"))
 
@@ -135,18 +130,40 @@ def logs_delete_batch():
         return redirect(url_for("system.logs_page"))
 
     ids: List[int] = []
-    for x in raw_ids:
+    invalid_ids: List[str] = []
+    for raw in raw_ids:
         try:
-            ids.append(int(str(x).strip()))
-        except (TypeError, ValueError):
-            continue
-    ids = [x for x in ids if x > 0]
-    if not ids:
-        flash("选择的日志 ID 不合法。", "error")
+            ids.append(_parse_log_id(raw))
+        except ValueError:
+            invalid_ids.append(_display_log_id(raw))
+
+    if invalid_ids:
+        flash("选择的日志编号不合法：" + "、".join(invalid_ids[:10]), "error")
         return redirect(url_for("system.logs_page"))
 
     svc = _get_operation_log_service()
     deleted = svc.delete_by_ids(ids)
 
-    flash(f"批量删除完成：成功 {deleted}。", "success" if deleted else "warning")
+    if deleted < len(ids):
+        flash(
+            f"批量删除完成：成功 {deleted}，有 {len(ids) - deleted} 条日志未找到或已被删除。",
+            "warning",
+        )
+    else:
+        flash(f"批量删除完成：成功 {deleted}。", "success" if deleted else "warning")
     return redirect(url_for("system.logs_page"))
+
+
+def _display_log_id(raw: Any) -> str:
+    return str(raw or "").strip() or "（空）"
+
+
+def _parse_log_id(raw: Any) -> int:
+    shown = _display_log_id(raw)
+    try:
+        log_id = int(shown)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("日志编号不合法") from exc
+    if log_id <= 0 or log_id > _MAX_OPERATION_LOG_ID:
+        raise ValueError("日志编号不合法")
+    return log_id

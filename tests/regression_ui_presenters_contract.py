@@ -25,6 +25,8 @@ def test_ui_tone_contract_rejects_unknown_values() -> None:
     with pytest.raises(ValueError, match="未知 UI tone"):
         UiSummaryItem("标题", "值", tone="mystery")
     with pytest.raises(ValueError, match="未知 UI tone"):
+        UiNotice("提示", "内容", tone="mystery")
+    with pytest.raises(ValueError, match="未知 UI tone"):
         UiDetailsNotice("提示", "内容", tone="mystery")
 
 
@@ -53,6 +55,15 @@ def test_notice_presenters_keep_accessibility_metadata_explicit() -> None:
     assert live_notice.aria_live == "polite"
     assert live_details.role == "alert"
     assert live_details.aria_live == "assertive"
+
+    note = UiNotice("说明", "内容", role="note", aria_live="off")
+    assert note.role == "note"
+    assert note.aria_live == "off"
+
+    with pytest.raises(ValueError, match="notice role"):
+        UiNotice("提示", "内容", role="button")
+    with pytest.raises(ValueError, match="aria-live"):
+        UiDetailsNotice("说明", "内容", aria_live="poltie")
 
 
 def test_toggle_attr_helpers_emit_only_html_attr_tokens() -> None:

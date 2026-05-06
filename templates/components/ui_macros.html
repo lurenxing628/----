@@ -74,13 +74,30 @@
 </div>
 {% endmacro %}
 
+{% macro _summary_item_presenter(item) %}
+<div class="aps-summary-item aps-summary-item-{{ item.tone }}">
+  <div class="aps-summary-label">{{ item.label }}</div>
+  <div class="aps-summary-value">{{ item.value }}</div>
+  {% if item.desc %}
+    {% if item.details_summary %}
+      <details class="aps-help-details aps-summary-help-details">
+        <summary>{{ item.details_summary }}</summary>
+        <div class="aps-help-details-body">{{ item.desc }}</div>
+      </details>
+    {% else %}
+      <div class="aps-summary-desc">{{ item.desc }}</div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endmacro %}
+
 {% macro summary_grid(items=None, class='') %}
 <div class="aps-summary-grid {{ class }}">
   {% if caller is defined %}
     {{ caller() }}
   {% else %}
     {% for item in items or [] %}
-      {{ summary_item(item.label, item.value, item.desc, tone=item.tone) }}
+      {{ _summary_item_presenter(item) }}
     {% endfor %}
   {% endif %}
 </div>

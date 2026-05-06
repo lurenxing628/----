@@ -27,6 +27,7 @@ class SchedulerConfigPanelState:
     current_config_summary_items: Sequence[UiSummaryItem]
     current_config_notice_items: Sequence[UiDetailsNotice]
     current_auto_assign_persist_item: UiSummaryItem
+    current_config_display_items: Sequence[UiSummaryItem]
 
 
 def _display_text(value: Any, *, fallback: str = "-") -> str:
@@ -100,6 +101,7 @@ def _current_auto_assign_persist_item(state: Dict[str, Any]) -> UiSummaryItem:
         "保存补齐资源",
         _display_text(state.get("label")),
         _display_text(state.get("description"), fallback=""),
+        details_summary="查看说明",
     )
 
 
@@ -132,6 +134,11 @@ def build_scheduler_config_panel_state(
         *_repair_notice_items(current_config_state),
         *notice_items,
     )
+    current_config_summary_items = _current_config_summary_items(
+        current_config_state=current_config_state,
+        active_preset=active_preset,
+    )
+    current_auto_assign_persist_item = _current_auto_assign_persist_item(current_auto_assign_persist_state)
     return SchedulerConfigPanelState(
         cfg=cfg,
         strategies=strategies,
@@ -146,12 +153,10 @@ def build_scheduler_config_panel_state(
         current_config_state=current_config_state,
         current_auto_assign_persist_state=current_auto_assign_persist_state,
         notice_items=notice_items,
-        current_config_summary_items=_current_config_summary_items(
-            current_config_state=current_config_state,
-            active_preset=active_preset,
-        ),
+        current_config_summary_items=current_config_summary_items,
         current_config_notice_items=current_config_notice_items,
-        current_auto_assign_persist_item=_current_auto_assign_persist_item(current_auto_assign_persist_state),
+        current_auto_assign_persist_item=current_auto_assign_persist_item,
+        current_config_display_items=(*current_config_summary_items, current_auto_assign_persist_item),
     )
 
 
