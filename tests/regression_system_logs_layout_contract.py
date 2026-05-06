@@ -132,6 +132,8 @@ def test_system_backup_auto_job_switches_use_readable_setting_rows() -> None:
     assert "system.plugin_toggle" in plugin_block
     assert "aps-table-toggle-row" not in plugin_block
     assert "ui.toggle(s.enabled_toggle" in plugin_block
+    assert "aps-plugin-toggle-row" in plugin_block
+    assert "aps-settings-toggle-row" not in plugin_block
     assert 'label class="muted"' not in plugin_block
     assert '<input type="checkbox" name="enabled"' not in plugin_block
     presenter_source = _read("web/viewmodels/system_backup_page.py")
@@ -139,6 +141,8 @@ def test_system_backup_auto_job_switches_use_readable_setting_rows() -> None:
     assert '"enabled"' in presenter_source
 
     css = _read("static/css/ui_contract.css")
+    assert ".aps-plugin-toggle-row .aps-toggle-copy" in css
+    assert "display: none;" in css[css.index(".aps-plugin-toggle-row .aps-toggle-copy") : css.index("}", css.index(".aps-plugin-toggle-row .aps-toggle-copy"))]
     readonly_dark_start = css.index('html[data-theme="dark"] .readonly-value')
     readonly_dark_block = css[readonly_dark_start : css.index("}", readonly_dark_start)]
     assert "background: var(--ui-card-bg, #1e293b);" in readonly_dark_block

@@ -392,8 +392,9 @@ def test_quality_workflow_uploads_quality_gate_manifest_artifact():
     assert re.search(r"(?m)^      PYTHONIOENCODING:\s*['\"]?utf-8['\"]?\s*$", quality_gate_job.group("body"))
     assert re.search(r"(?m)^      APS_CHROME_PATH:\s*C:\\Program Files\\Google\\Chrome\\Application\\chrome\.exe\s*$", quality_gate_job.group("body"))
     assert "安装 Node.js 24" in quality_gate_job.group("body")
-    assert "actions/setup-node" in quality_gate_job.group("body")
+    assert "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4" in quality_gate_job.group("body")
     assert "node-version: '24'" in quality_gate_job.group("body")
+    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4" in quality_gate_job.group("body")
 
 
 def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypatch, tmp_path):

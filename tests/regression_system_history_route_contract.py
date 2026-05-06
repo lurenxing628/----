@@ -300,3 +300,15 @@ def test_system_history_version_dropdown_uses_completion_status_label(tmp_path, 
     assert response.status_code == 200
     assert html.count("模拟排产 / 部分成功") >= 2
     assert "v3 · 部分成功" in html
+    assert "结果状态未知" not in html
+
+
+def test_system_history_template_uses_presenter_status_fields() -> None:
+    template = (REPO_ROOT / "templates" / "system" / "history.html").read_text(encoding="utf-8")
+
+    assert "status_zh" not in template
+    assert "status_zh.get" not in template
+    assert "{{ v.version_option_label }}" in template
+    assert "selected_summary_display.result_status_label" in template
+    assert "r.result_summary_display.result_status_label" in template
+    assert "aps-table--multiline" in template

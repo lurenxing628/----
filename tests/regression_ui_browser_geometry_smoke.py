@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import textwrap
@@ -16,7 +17,7 @@ from werkzeug.serving import make_server
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 SMOKE_PATHS = (
-    "/scheduler/batches?status=pending",
+    "/scheduler/?status=pending",
     "/scheduler/config",
     "/scheduler/batches",
     "/scheduler/excel/batches",
@@ -100,6 +101,22 @@ def _build_app(tmp_path, monkeypatch):
         schema_path=str(REPO_ROOT / "schema.sql"),
         backup_dir=None,
     )
+    conn = sqlite3.connect(str(tmp_path / "aps_ui_geometry.db"))
+    try:
+        conn.execute(
+            "INSERT INTO Parts (part_no, part_name, route_raw, route_parsed) VALUES (?, ?, ?, ?)",
+            ("P_UI_GEOMETRY", "浏览器几何测试零件", "", "no"),
+        )
+        conn.execute(
+            """
+            INSERT INTO Batches (batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("B_UI_GEOMETRY", "P_UI_GEOMETRY", "浏览器几何测试零件", 1, "2026-05-20", "normal", "yes", "pending"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     for name in list(sys.modules):
         if name == "app" or name.startswith("web.bootstrap.entrypoint") or name.startswith("web.bootstrap.factory"):
@@ -282,15 +299,52 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                       return style.backgroundColor.includes('255, 255, 255') || style.color === style.backgroundColor;
                     }).length;
                   const logsTable = document.querySelector('#systemLogsTable');
+                  function parseRgb(value) {
+                    const text = String(value || "");
+                    const start = text.indexOf("(");
+                    const end = text.indexOf(")");
+                    if (start < 0 || end <= start) return null;
+                    const channels = text.slice(start + 1, end).split(",").slice(0, 3)
+                      .map((part) => Number(String(part || "").trim()));
+                    return channels.every((item) => Number.isFinite(item)) ? channels : null;
+                  }
+                  function channelToLinear(value) {
+                    const normalized = value / 255;
+                    return normalized <= 0.03928
+                      ? normalized / 12.92
+                      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+                  }
+                  function luminance(rgb) {
+                    return 0.2126 * channelToLinear(rgb[0])
+                      + 0.7152 * channelToLinear(rgb[1])
+                      + 0.0722 * channelToLinear(rgb[2]);
+                  }
+                  function contrastRatio(a, b) {
+                    const high = Math.max(luminance(a), luminance(b));
+                    const low = Math.min(luminance(a), luminance(b));
+                    return (high + 0.05) / (low + 0.05);
+                  }
                   const requiredToggleByPath = {
-                    "/scheduler/batches": "batchManageStrictMode",
-                    "/scheduler/excel/batches": "batchImportAutoOps",
-                    "/process/": "processCreateStrictMode",
+                    "/scheduler/": ["runEnforceReady", "runStrictMode"],
+                    "/scheduler/batches": ["batchManageStrictMode"],
+                    "/scheduler/excel/batches": ["batchImportAutoOps", "batchImportStrictMode"],
+                    "/process/": ["processCreateStrictMode"],
                   };
-                  const requiredToggleId = requiredToggleByPath[location.pathname] || "";
-                  const requiredTogglePresent = requiredToggleId
-                    ? Boolean(document.getElementById(requiredToggleId))
-                    : true;
+                  const requiredToggleIds = requiredToggleByPath[location.pathname] || [];
+                  const missingRequiredToggleIds = requiredToggleIds
+                    .filter((id) => !document.getElementById(id));
+                  const darkLowContrastSummaryCount = [...document.querySelectorAll('.aps-summary-item')]
+                    .filter((el) => {
+                      const style = getComputedStyle(el);
+                      const fg = parseRgb(style.color);
+                      const bg = parseRgb(style.backgroundColor);
+                      return fg && bg && contrastRatio(fg, bg) < 3;
+                    }).length;
+                  const darkNoticeBadCount = [...document.querySelectorAll('.aps-notice')]
+                    .filter((el) => {
+                      const style = getComputedStyle(el);
+                      return style.backgroundColor.includes('255, 255, 255');
+                    }).length;
                   return JSON.stringify({
                     path: location.pathname + location.search,
                     width: window.innerWidth,
@@ -300,9 +354,11 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                     toggleOverlapCount,
                     visibleNotices,
                     darkSummaryBadCount,
+                    darkLowContrastSummaryCount,
+                    darkNoticeBadCount,
                     logsTableMultiline: logsTable ? logsTable.classList.contains('aps-table--multiline') : true,
-                    requiredToggleId,
-                    requiredTogglePresent,
+                    requiredToggleIds,
+                    missingRequiredToggleIds,
                   });
                 })()
               `;
@@ -371,13 +427,24 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
     overflowing = [item for item in results if item["bodyOverflow"]]
     overlapping_toggles = [item for item in results if item["toggleOverlapCount"]]
     bad_dark_summary = [item for item in results if item["darkSummaryBadCount"]]
+    bad_dark_summary_contrast = [item for item in results if item["darkLowContrastSummaryCount"]]
+    bad_dark_notice = [item for item in results if item["darkNoticeBadCount"]]
     bad_logs_table = [item for item in results if not item["logsTableMultiline"]]
-    missing_required_toggles = [item for item in results if not item["requiredTogglePresent"]]
+    missing_required_toggles = [item for item in results if item["missingRequiredToggleIds"]]
 
     assert overflowing == []
     assert overlapping_toggles == []
     assert bad_dark_summary == []
+    assert bad_dark_summary_contrast == []
+    assert bad_dark_notice == []
     assert bad_logs_table == []
     assert missing_required_toggles == []
     assert any(item["toggleCount"] > 0 for item in results)
     assert any(item["visibleNotices"] > 0 for item in results)
+
+
+def test_ui_browser_geometry_smoke_covers_scheduler_run_page() -> None:
+    assert "/scheduler/?status=pending" in SMOKE_PATHS
+    assert "/scheduler/batches?status=pending" not in SMOKE_PATHS
+    script_source = Path(__file__).read_text(encoding="utf-8")
+    assert '"/scheduler/": ["runEnforceReady", "runStrictMode"]' in script_source

@@ -38,9 +38,16 @@ def main() -> None:
             if token not in text:
                 raise RuntimeError(f"模板缺少 strategy_zh 映射：{os.path.relpath(path, repo_root)} -> {token}")
 
-    batches_text = _read(os.path.join(repo_root, "web_new_test", "templates", "scheduler", "batches.html"))
-    if "strategy_zh" in batches_text:
-        raise RuntimeError("排产执行页不应继续在模板里维护 strategy_zh 映射")
+    presenter_owned_templates = [
+        os.path.join(repo_root, "templates", "scheduler", "batches.html"),
+        os.path.join(repo_root, "web_new_test", "templates", "scheduler", "batches.html"),
+        os.path.join(repo_root, "templates", "system", "history.html"),
+    ]
+    for path in presenter_owned_templates:
+        text = _read(path)
+        for token in ("strategy_zh", "status_zh", "mode_zh", "status_zh.get", "strategy_zh.get", "mode_zh.get"):
+            if token in text:
+                raise RuntimeError(f"已收口页面不应继续在模板里维护本地状态映射：{os.path.relpath(path, repo_root)} -> {token}")
 
     print("OK")
 

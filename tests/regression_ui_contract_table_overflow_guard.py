@@ -223,6 +223,14 @@ def main() -> None:
         if token not in logs_table_block:
             raise RuntimeError(f"系统日志表格缺少表格类型类名：{token}")
 
+    history_source = _read(os.path.join(repo_root, "templates", "system", "history.html"))
+    history_table_block = _table_block(history_source, 'id="systemHistoryTable"')
+    for token in ("aps-table--multiline", "aps-table--actions-nowrap", "aps-table-size-wide"):
+        if token not in history_table_block:
+            raise RuntimeError(f"系统历史表格缺少表格类型类名：{token}")
+    if "#systemHistoryTable td" in css:
+        raise RuntimeError("系统历史表格多行换行保护不应继续依赖 #systemHistoryTable 页面 ID")
+
     print("OK")
 
 

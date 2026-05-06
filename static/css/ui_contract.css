@@ -1685,11 +1685,6 @@ table td {
   word-break: break-word;
 }
 
-#systemHistoryTable td:last-child {
-  white-space: normal;
-  word-break: break-word;
-}
-
 /* sticky-col shadow uses ::after outside cell; keep it visible */
 .table-layout-fixed.table-sticky-col td:first-child,
 .table-layout-fixed.table-sticky-col th:first-child {
@@ -4463,7 +4458,15 @@ html[data-theme="dark"] .aps-danger-zone {
 }
 
 .aps-plugin-toggle-row {
-  flex: 1 1 180px;
+  flex: 0 1 auto;
+  margin: 0;
+}
+
+.aps-plugin-toggle-row .aps-toggle-copy {
+  display: none;
+}
+
+.aps-plugin-toggle-row .aps-toggle-control {
   margin: 0;
 }
 
