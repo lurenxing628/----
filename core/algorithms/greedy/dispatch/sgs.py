@@ -15,6 +15,7 @@ from ..run_state import ScheduleRunState
 from .batch_order import _coerce_state, _schedule_op
 from .sgs_scoring import (
     _collect_sgs_candidates,
+    _positive_op_id,
     _score_external_candidate,
 )
 from .sgs_scoring import (
@@ -149,7 +150,9 @@ def _average_proc_hours(
             if batch and (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == INTERNAL:
                 sample = _append_proc_sample(samples, op=op, batch=batch, strict_mode=strict_mode)
                 if sample is not None:
-                    total_hours_by_op_id[int(getattr(op, "id", 0) or 0)] = float(sample)
+                    cache_key = _positive_op_id(getattr(op, "id", 0))
+                    if cache_key is not None:
+                        total_hours_by_op_id[cache_key] = float(sample)
     if samples:
         return sum(samples) / float(len(samples)), total_hours_by_op_id
     ctx.increment("dispatch_key_avg_proc_hours_fallback_count")

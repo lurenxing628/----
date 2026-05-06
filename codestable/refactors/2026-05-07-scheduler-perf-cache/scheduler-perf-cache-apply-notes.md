@@ -1,7 +1,7 @@
 ---
 doc_type: refactor-apply-notes
 refactor: 2026-05-07-scheduler-perf-cache
-status: in_progress
+status: completed
 tags: [scheduler, performance, cache, quality-gate]
 ---
 
@@ -113,6 +113,36 @@ tags: [scheduler, performance, cache, quality-gate]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_compute_metrics_contract.py tests/regression_metrics_horizon_semantics.py tests/regression_metrics_to_dict_nonfinite_safe.py tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py tests/regression_due_exclusive_consistency.py tests/regression_priority_weight_case_insensitive.py tests/regression_objective_projection_contract.py tests/regression_weighted_tardiness_objective.py tests/regression_optimizer_public_summary_projection_contract.py tests/regression_scheduler_summary_result_summary_contract.py tests/regression_schedule_summary_v11_contract.py --tb=short`
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m radon cc -s core/algorithms/evaluation.py`
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold --tb=short`
+
+## Review follow-up: SGS non-positive op_id cache boundary
+
+- Status: completed.
+- Changed files:
+  - `core/algorithms/greedy/dispatch/sgs.py`
+  - `core/algorithms/greedy/dispatch/sgs_scoring.py`
+  - `tests/test_sgs_total_hours_cache.py`
+  - `evidence/Benchmark/sgs_large_resource_pool_report.md`
+- Notes:
+  - Review found that `id=0` or missing operation ids could share cache key `0` in the SGS `total_hours` cache.
+  - SGS now only caches `total_hours` for positive integer operation ids.
+  - `id=0`, negative, missing, or non-integer ids stay on the original per-candidate validation path.
+  - Positive database operation ids keep the existing single-run derived cache benefit.
+  - Auto-assign choices, slot estimates, formal scheduling validation, and external operations remain uncached.
+- 10-run SGS benchmark:
+  - Warmup run was excluded from the formal statistics.
+  - Formal large-pool runs had median `0.010044s`, mean `0.010387s`, min `0.009663s`, max `0.012004s`.
+  - Formal 1000+ seed runs had median `0.108936s`, mean `0.109574s`, min `0.106659s`, max `0.118183s`.
+  - Compared with the earlier single pre-change sample, this is about `24.41%` faster for the large-pool scenario and about `10.34%` faster for the 1000+ seed scenario.
+  - This is post-change 10-run evidence compared with a single pre-change sample, not a strict 10-run baseline-vs-10-run-after experiment.
+- Validation:
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_sgs_total_hours_cache.py --tb=short` -> `4 passed`.
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_greedy_refactor_contracts.py tests/test_sgs_internal_scoring_matches_execution.py tests/regression_sgs_scoring_fallback_unscorable.py tests/regression_sgs_pre_sort_strict_nonfinite_rejected.py tests/regression_sgs_atc_penalize_missing_resources.py tests/regression_sgs_penalize_nonfinite_proc_hours.py --tb=short` -> `37 passed`.
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py tests/test_sgs_total_hours_cache.py` -> passed.
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold --tb=short` -> `2 passed`.
+  - `git diff --check` -> passed.
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/check_full_test_debt.py` -> `status=passed`, `collected_count=982`, `unexpected_failure_count=0`.
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/sync_debt_ledger.py check` -> passed.
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree` -> `质量门禁通过`.
 
 ## Final verification
 

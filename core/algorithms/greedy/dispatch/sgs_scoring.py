@@ -73,6 +73,16 @@ def _collect_sgs_candidates(
     return candidates
 
 
+def _positive_op_id(value: Any) -> Optional[int]:
+    if isinstance(value, bool):
+        return None
+    try:
+        op_id = int(value or 0)
+    except (TypeError, ValueError):
+        return None
+    return op_id if op_id > 0 else None
+
+
 def _score_external_candidate(
     *,
     ctx: Any,
@@ -224,15 +234,15 @@ def _scoring_total_hours(
     total_hours_by_op_id: Optional[Dict[int, float]] = None,
     op_id: Optional[int] = None,
 ) -> float:
-    if total_hours_by_op_id is not None:
-        cache_key = int(op_id if op_id is not None else getattr(op, "id", 0) or 0)
+    cache_key = _positive_op_id(op_id if op_id is not None else getattr(op, "id", 0))
+    if total_hours_by_op_id is not None and cache_key is not None:
         if cache_key in total_hours_by_op_id:
             return float(total_hours_by_op_id[cache_key])
     try:
         total_hours = validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode)
     except ValueError as exc:
         raise_strict_internal_hours_validation(op, batch, exc)
-    if total_hours_by_op_id is not None:
+    if total_hours_by_op_id is not None and cache_key is not None:
         total_hours_by_op_id[cache_key] = float(total_hours)
     return float(total_hours)
 
