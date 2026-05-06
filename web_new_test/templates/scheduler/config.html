@@ -104,37 +104,20 @@
   <div class="card">
     {{ ui.aps_card_header('当前配置状态', '这里只显示当前设置和方案之间的关系，不会直接修改参数。') }}
     {% call ui.summary_grid() %}
-      {{ ui.summary_item('已选方案', current_config_state.baseline_label if current_config_state else ('自定义' if not active_preset or active_preset == 'custom' else active_preset), '这是当前设置对照的方案。') }}
-      {% if current_config_state %}
-        {{ ui.summary_item('当前运行配置', current_config_state.status_label, current_config_state.label) }}
-        {% if current_config_state.repair_notices %}
-          <ul class="muted scheduler-config-repair-notices aps-summary-span-all">
-            {% for notice in current_config_state.repair_notices %}
-              <li>
-                {{ notice.message or current_config_state.label }}
-                {% if notice.field_labels %}
-                  <div class="aps-summary-desc mt-1">涉及字段：{{ notice.field_labels|join('、') }}</div>
-                {% endif %}
-              </li>
-            {% endfor %}
-          </ul>
-        {% endif %}
-      {% endif %}
-      {% if auto_assign_persist_state %}
-        <div class="aps-summary-status-line aps-summary-span-all">
-          <div class="aps-summary-status-main">
-            <span class="aps-summary-label">保存补齐资源</span>
-            <strong class="aps-summary-value">{{ auto_assign_persist_state.label }}</strong>
-          </div>
-          {% if auto_assign_persist_state.description %}
-            <details class="aps-help-details aps-summary-help-details">
-              <summary>查看说明</summary>
-              <div class="aps-help-details-body">{{ auto_assign_persist_state.description }}</div>
-            </details>
-          {% endif %}
-        </div>
-      {% endif %}
+      {% for item in current_config_summary_items %}
+        {{ ui.summary_item(item.label, item.value, item.desc, tone=item.tone) }}
+      {% endfor %}
+      {{ ui.summary_item(
+        current_auto_assign_persist_item.label,
+        current_auto_assign_persist_item.value,
+        current_auto_assign_persist_item.desc,
+        tone=current_auto_assign_persist_item.tone,
+        details_summary='查看说明'
+      ) }}
     {% endcall %}
+    {% for notice in current_config_notice_items %}
+      {{ ui.details_notice(notice, class='mt-2 scheduler-config-degraded-summary') }}
+    {% endfor %}
   </div>
 
   <div class="card">

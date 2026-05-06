@@ -187,7 +187,7 @@ def build_scheduler_config_toggles(cfg: Any, *, config_field_metadata: Dict[str,
     }
 
 
-def build_scheduler_batches_config_panel_state(cfg_svc: Any) -> Any:
+def build_scheduler_config_panel_state_from_service(cfg_svc: Any) -> Any:
     cfg = cfg_svc.get_snapshot()
     strategies = cfg_svc.get_available_strategies()
     config_field_metadata = get_scheduler_visible_config_field_metadata()
@@ -213,3 +213,7 @@ def build_scheduler_batches_config_panel_state(cfg_svc: Any) -> Any:
         builtin_presets=builtin_presets,
         auto_assign_persist_display_builder=build_auto_assign_persist_display_state,
     )
+
+
+def build_scheduler_batches_config_panel_state(cfg_svc: Any) -> Any:
+    return build_scheduler_config_panel_state_from_service(cfg_svc)

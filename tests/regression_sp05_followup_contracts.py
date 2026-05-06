@@ -38,7 +38,8 @@ def test_scheduler_config_page_requests_and_uses_visible_field_metadata() -> Non
     display_state_source = _read("web/routes/domains/scheduler/scheduler_config_display_state.py")
     template_source = _read("templates/scheduler/config.html") + _read("templates/scheduler/_config_switches.html")
 
-    assert "get_scheduler_visible_config_field_metadata" in route_source
+    assert "build_scheduler_config_panel_state_from_service" in route_source
+    assert "get_scheduler_visible_config_field_metadata" in display_state_source
     assert "build_scheduler_config_toggles" in route_source
     assert "scheduler_config_toggles=scheduler_config_toggles" in route_source
     for field in (
@@ -103,13 +104,10 @@ def test_scheduler_config_template_surfaces_shared_degraded_field_warning_contra
     display_state_source = _read("web/routes/domains/scheduler/scheduler_config_display_state.py")
     template_source = _read("templates/scheduler/config.html")
 
-    for token in (
-        "config_field_warnings",
-        "config_degraded_fields",
-        "config_hidden_warnings",
-        "build_config_degraded_display_state",
-    ):
+    for token in ("config_field_warnings", "config_degraded_fields", "config_hidden_warnings"):
         assert token in route_source
+    assert "build_scheduler_config_panel_state_from_service" in route_source
+    assert "build_config_degraded_display_state" in display_state_source
 
     assert "build_auto_assign_persist_display_state" in display_state_source
     assert '"missing"' in display_state_source

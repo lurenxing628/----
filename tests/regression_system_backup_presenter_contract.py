@@ -119,6 +119,16 @@ def test_system_backup_page_state_exposes_plugin_degradation_and_conflicts() -> 
     assert "系统已保留一个" in page.plugin_conflict_rows[0].message
 
 
+def test_plugin_degradation_event_without_message_uses_visible_problem_text() -> None:
+    page = build_system_backup_page_view_model(
+        _settings(),
+        _plugin_status(degraded=True, degradation_events=[{}]),
+    )
+
+    assert page.plugin_degradation_count == 1
+    assert page.plugin_degradation_events[0].message == "扩展功能启动时出现问题。"
+
+
 def test_plugin_status_rows_reject_unknown_enabled_source() -> None:
     status = _plugin_status(
         statuses=[

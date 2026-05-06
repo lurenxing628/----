@@ -77,6 +77,7 @@ class UiToggleRow:
     disabled_attr: str = ""
     value: str = "yes"
     hidden_value: str = "no"
+    # 这个值只代表 hidden input 的提交值；最终开关含义由 form_yes_no_value 读取同名字段后决定。
     submitted_value: str = ""
 
     def __post_init__(self) -> None:

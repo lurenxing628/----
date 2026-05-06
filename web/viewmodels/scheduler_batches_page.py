@@ -226,13 +226,11 @@ def _latest_history_items(
 
 
 def _latest_algo_items(
-    latest_algo: Any,
+    latest_algo: Dict[str, Any],
     *,
     meta_items: Tuple[UiSummaryItem, ...],
     auto_assign_persist_display_builder: _AutoAssignPersistDisplayBuilder,
 ) -> Tuple[str, str, Optional[Dict[str, Any]], Tuple[UiSummaryItem, ...], Optional[Dict[str, Any]]]:
-    if not isinstance(latest_algo, dict):
-        return "-", "-", None, meta_items, None
     objective_label = objective_label_for(latest_algo.get("objective"), algo=latest_algo)
     mode_label = _latest_algo_mode_label(latest_algo.get("mode"))
     latest_metrics = latest_algo.get("metrics") if isinstance(latest_algo.get("metrics"), dict) else None
@@ -249,6 +247,17 @@ def _latest_algo_items(
     )
 
 
+def _required_latest_algo(latest_summary: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if latest_summary is None:
+        return None
+    if "algo" not in latest_summary:
+        raise ScheduleHistoryDisplayValueError("排产历史摘要缺少 algo")
+    latest_algo = latest_summary.get("algo")
+    if not isinstance(latest_algo, dict):
+        raise ScheduleHistoryDisplayValueError("排产历史摘要 algo 字段不是对象")
+    return latest_algo
+
+
 def _latest_metric_items(
     latest_summary: Optional[Dict[str, Any]],
     latest_metrics: Optional[Dict[str, Any]],
@@ -260,16 +269,13 @@ def _latest_metric_items(
             metric_items = (UiSummaryItem("超期数量", f"{_required_number_metric(overdue_batches, 'count')} 个"),)
     if latest_metrics is None:
         return metric_items
-    total_tardiness = _required_number_metric(latest_metrics, "total_tardiness_hours")
-    weighted_tardiness = _required_number_metric(latest_metrics, "weighted_tardiness_hours")
-    makespan = _required_number_metric(latest_metrics, "makespan_hours")
-    changeover_count = _required_number_metric(latest_metrics, "changeover_count")
+    metric_values = {key: _required_number_metric(latest_metrics, key) for key in _REQUIRED_METRIC_KEYS}
     return (
         *metric_items,
-        UiSummaryItem("拖期", _metric_value(total_tardiness, "小时")),
-        UiSummaryItem("加权拖期", _metric_value(weighted_tardiness, "小时")),
-        UiSummaryItem("总工期", _metric_value(makespan, "小时")),
-        UiSummaryItem("换型", _metric_value(changeover_count, "次")),
+        UiSummaryItem("拖期", _metric_value(metric_values["total_tardiness_hours"], "小时")),
+        UiSummaryItem("加权拖期", _metric_value(metric_values["weighted_tardiness_hours"], "小时")),
+        UiSummaryItem("总工期", _metric_value(metric_values["makespan_hours"], "小时")),
+        UiSummaryItem("换型", _metric_value(metric_values["changeover_count"], "次")),
         UiSummaryItem("设备利用率", _metric_percent(latest_metrics, "machine_util_avg")),
     )
 
@@ -365,14 +371,19 @@ def build_latest_schedule_history_panel_state(
         latest_history,
         result_status_label=latest_result_status_label,
     )
-    latest_algo = latest_summary.get("algo") if isinstance(latest_summary, dict) else None
-    latest_objective_label, latest_mode_label, latest_metrics, meta_items, latest_auto_assign_persist_state = (
-        _latest_algo_items(
-            latest_algo,
-            meta_items=meta_items,
-            auto_assign_persist_display_builder=auto_assign_persist_display_builder,
+    latest_algo = _required_latest_algo(latest_summary)
+    latest_objective_label = "-"
+    latest_mode_label = "-"
+    latest_metrics = None
+    latest_auto_assign_persist_state = None
+    if latest_algo is not None:
+        latest_objective_label, latest_mode_label, latest_metrics, meta_items, latest_auto_assign_persist_state = (
+            _latest_algo_items(
+                latest_algo,
+                meta_items=meta_items,
+                auto_assign_persist_display_builder=auto_assign_persist_display_builder,
+            )
         )
-    )
     metric_items = _latest_metric_items(latest_summary, latest_metrics)
     return LatestScheduleHistoryPanelState(
         latest_history=latest_history,

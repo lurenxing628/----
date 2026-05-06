@@ -27,10 +27,8 @@ from web.viewmodels.page_manuals import (
 from ...navigation_utils import _safe_next_url
 from .scheduler_bp import bp
 from .scheduler_config_display_state import (
-    build_auto_assign_persist_display_state,
-    build_config_degraded_display_state,
+    build_scheduler_config_panel_state_from_service,
     build_scheduler_config_toggles,
-    get_scheduler_visible_config_field_metadata,
 )
 from .scheduler_config_feedback import (
     _flash_config_save_outcome,
@@ -311,51 +309,41 @@ def config_page():
     - 后续承载“配置模板/方案”
     """
     cfg_svc = g.services.config_service
-    cfg = cfg_svc.get_snapshot(strict_mode=False)
-    strategies = cfg_svc.get_available_strategies()
-    config_field_metadata = get_scheduler_visible_config_field_metadata()
-    config_field_warnings, config_degraded_fields, config_hidden_warnings = build_config_degraded_display_state(
-        cfg,
-        config_field_metadata=config_field_metadata,
+    config_panel = build_scheduler_config_panel_state_from_service(cfg_svc)
+    cfg = config_panel.cfg
+    config_field_warnings = config_panel.config_field_warnings
+    _warn_scheduler_config_degraded_once(
+        list(config_panel.config_degraded_fields),
+        hidden_warnings=list(config_panel.config_hidden_warnings),
     )
-    _warn_scheduler_config_degraded_once(config_degraded_fields, hidden_warnings=config_hidden_warnings)
     holiday_default_efficiency_display_value = float(cfg.holiday_default_efficiency)
     holiday_default_efficiency_degraded = "holiday_default_efficiency" in config_field_warnings
     holiday_default_efficiency_warning = config_field_warnings.get("holiday_default_efficiency")
 
-    preset_display_state = cfg_svc.get_preset_display_state(readonly=True, current_snapshot=cfg)
-    presets = list(preset_display_state.get("presets") or [])
-    active_preset = preset_display_state.get("active_preset")
-    builtin_presets = [
-        ConfigService.BUILTIN_PRESET_DEFAULT,
-        ConfigService.BUILTIN_PRESET_DUE_FIRST,
-        ConfigService.BUILTIN_PRESET_MIN_CHANGEOVER,
-        ConfigService.BUILTIN_PRESET_IMPROVE_SLOW,
-    ]
-    current_config_state = dict(preset_display_state.get("current_config_state") or {})
-    auto_assign_persist_state = build_auto_assign_persist_display_state(getattr(cfg, "auto_assign_persist", None))
     scheduler_config_toggles = build_scheduler_config_toggles(
         cfg,
-        config_field_metadata=config_field_metadata,
+        config_field_metadata=config_panel.config_field_metadata,
     )
 
     return render_template(
         "scheduler/config.html",
         title="排产高级设置",
+        config_panel=config_panel,
         cfg=cfg,
-        strategies=strategies,
-        config_field_metadata=config_field_metadata,
+        strategies=config_panel.strategies,
+        config_field_metadata=config_panel.config_field_metadata,
         config_field_warnings=config_field_warnings,
-        config_degraded_fields=config_degraded_fields,
-        config_hidden_warnings=config_hidden_warnings,
+        config_degraded_fields=config_panel.config_degraded_fields,
+        config_hidden_warnings=config_panel.config_hidden_warnings,
         holiday_default_efficiency_display_value=holiday_default_efficiency_display_value,
         holiday_default_efficiency_degraded=holiday_default_efficiency_degraded,
         holiday_default_efficiency_warning=holiday_default_efficiency_warning,
-        presets=presets,
-        active_preset=active_preset,
-        builtin_presets=builtin_presets,
-        current_config_state=current_config_state,
-        auto_assign_persist_state=auto_assign_persist_state,
+        presets=config_panel.presets,
+        active_preset=config_panel.active_preset,
+        builtin_presets=config_panel.builtin_presets,
+        current_config_summary_items=config_panel.current_config_summary_items,
+        current_config_notice_items=config_panel.current_config_notice_items,
+        current_auto_assign_persist_item=config_panel.current_auto_assign_persist_item,
         scheduler_config_toggles=scheduler_config_toggles,
     )
 

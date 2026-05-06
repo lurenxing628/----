@@ -23,6 +23,7 @@ SMOKE_PATHS = (
     "/scheduler/excel/batches",
     "/system/backup",
     "/system/logs",
+    "/system/history",
     "/process/",
     "/material/batches",
 )
@@ -51,12 +52,17 @@ EXPECTED_PAGE_SIGNALS = {
     "/system/backup": {
         "path": "/system/backup",
         "texts": ["系统管理 - 备份/恢复", "扩展功能状态"],
-        "ids": ["backupAutoBackupEnabled", "backupAutoCleanupEnabled"],
+        "ids": ["backupAutoBackupEnabled", "backupAutoCleanupEnabled", "pluginStatusTable"],
     },
     "/system/logs": {
         "path": "/system/logs",
         "texts": ["系统管理 - 操作日志", "筛选日志"],
         "ids": ["systemLogsTable"],
+    },
+    "/system/history": {
+        "path": "/system/history",
+        "texts": ["系统管理 - 排产历史", "最近排产记录"],
+        "ids": ["systemHistoryTable"],
     },
     "/process/": {
         "path": "/process/",
@@ -157,6 +163,40 @@ def _build_app(tmp_path, monkeypatch):
             """,
             ("B_UI_GEOMETRY", "P_UI_GEOMETRY", "浏览器几何测试零件", 1, "2026-05-20", "normal", "yes", "pending"),
         )
+        conn.execute(
+            """
+            INSERT INTO ScheduleHistory
+                (schedule_time, version, strategy, batch_count, op_count, result_status, result_summary, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "2026-05-06 09:00:00",
+                1,
+                "priority_first",
+                1,
+                1,
+                "success",
+                json.dumps(
+                    {
+                        "algo": {
+                            "mode": "improve",
+                            "objective": "min_overdue",
+                            "metrics": {
+                                "total_tardiness_hours": 0,
+                                "weighted_tardiness_hours": 0,
+                                "makespan_hours": 1,
+                                "changeover_count": 0,
+                                "machine_util_avg": 0.5,
+                            },
+                        },
+                        "warnings": [],
+                        "errors": [],
+                    },
+                    ensure_ascii=False,
+                ),
+                "ui-smoke",
+            ),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -167,7 +207,29 @@ def _build_app(tmp_path, monkeypatch):
 
     import app as app_mod
 
-    return app_mod.create_app()
+    app = app_mod.create_app()
+    app.config["PLUGIN_STATUS"] = {
+        "loaded_at": "2026-05-06 09:00:00",
+        "config_source": "config",
+        "telemetry_persisted": True,
+        "degraded": False,
+        "registry": {"capabilities": ("ui-smoke-capability",)},
+        "degradation_events": (),
+        "conflicted_capabilities": (),
+        "statuses": (
+            {
+                "plugin_id": "ui-smoke-plugin",
+                "name": "浏览器几何测试扩展",
+                "version": "1.0",
+                "enabled": "yes",
+                "loaded": "yes",
+                "enabled_source": "config",
+                "error": "",
+                "capabilities": ("ui-smoke-capability",),
+            },
+        ),
+    }
+    return app
 
 
 def _serve_app(app):
@@ -363,7 +425,10 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                     const start = text.indexOf("(");
                     const end = text.indexOf(")");
                     if (start < 0 || end <= start) return null;
-                    const channels = text.slice(start + 1, end).split(",").slice(0, 3)
+                    const parts = text.slice(start + 1, end).split(",");
+                    const alpha = parts.length >= 4 ? Number(String(parts[3] || "").trim()) : 1;
+                    if (Number.isFinite(alpha) && alpha === 0) return null;
+                    const channels = parts.slice(0, 3)
                       .map((part) => Number(String(part || "").trim()));
                     return channels.every((item) => Number.isFinite(item)) ? channels : null;
                   }
@@ -383,6 +448,53 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                     const low = Math.min(luminance(a), luminance(b));
                     return (high + 0.05) / (low + 0.05);
                   }
+                  function isVisible(el) {
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0;
+                  }
+                  function nearestBackground(el) {
+                    let node = el;
+                    while (node && node !== document.documentElement) {
+                      const bg = parseRgb(getComputedStyle(node).backgroundColor);
+                      if (bg) {
+                        return bg;
+                      }
+                      node = node.parentElement;
+                    }
+                    return parseRgb(getComputedStyle(document.body || document.documentElement).backgroundColor);
+                  }
+                  function lowContrastTextCount(selectors) {
+                    return selectors.flatMap((selector) => [...document.querySelectorAll(selector)])
+                      .filter((el) => isVisible(el))
+                      .filter((el) => {
+                        const fg = parseRgb(getComputedStyle(el).color);
+                        const bg = nearestBackground(el);
+                        return fg && bg && contrastRatio(fg, bg) < 3;
+                      }).length;
+                  }
+                  function multilineTableComputedOk(selector) {
+                    const table = document.querySelector(selector);
+                    if (!table) {
+                      return true;
+                    }
+                    if (!table.classList.contains('aps-table--multiline')) {
+                      return false;
+                    }
+                    const cells = [...table.querySelectorAll('thead th, tbody td')].filter((cell) => isVisible(cell));
+                    if (!cells.length) {
+                      return false;
+                    }
+                    return cells.slice(0, 12).every((cell) => {
+                      const style = getComputedStyle(cell);
+                      const wrapOk = style.overflowWrap === 'anywhere' || style.wordBreak !== 'normal';
+                      return (
+                        style.whiteSpace === 'normal'
+                        && style.textOverflow !== 'ellipsis'
+                        && style.overflow !== 'hidden'
+                        && wrapOk
+                      );
+                    });
+                  }
                   const requiredToggleByPath = {
                     "/scheduler/": ["runEnforceReady", "runStrictMode"],
                     "/scheduler/batches": ["batchManageStrictMode"],
@@ -399,11 +511,25 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                       const bg = parseRgb(style.backgroundColor);
                       return fg && bg && contrastRatio(fg, bg) < 3;
                     }).length;
+                  const darkLowContrastTextCount = lowContrastTextCount([
+                    '.aps-summary-label',
+                    '.aps-summary-value',
+                    '.aps-summary-desc',
+                    '.aps-notice-title',
+                    '.aps-notice-body',
+                    '.aps-toggle-title',
+                    '.aps-toggle-desc',
+                  ]);
                   const darkNoticeBadCount = [...document.querySelectorAll('.aps-notice')]
                     .filter((el) => {
                       const style = getComputedStyle(el);
                       return style.backgroundColor.includes('255, 255, 255');
                     }).length;
+                  const multilineTableChecks = {
+                    systemLogsTable: multilineTableComputedOk('#systemLogsTable'),
+                    pluginStatusTable: multilineTableComputedOk('#pluginStatusTable'),
+                    systemHistoryTable: multilineTableComputedOk('#systemHistoryTable'),
+                  };
                   return JSON.stringify({
                     path: finalPath,
                     expectedPath,
@@ -422,8 +548,10 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                     visibleNotices,
                     darkSummaryBadCount,
                     darkLowContrastSummaryCount,
+                    darkLowContrastTextCount,
                     darkNoticeBadCount,
-                    logsTableMultiline: logsTable ? logsTable.classList.contains('aps-table--multiline') : true,
+                    multilineTableChecks,
+                    logsTableMultiline: multilineTableChecks.systemLogsTable,
                     requiredToggleIds,
                     missingRequiredToggleIds,
                   });
@@ -506,8 +634,14 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
     overlapping_toggles = [item for item in results if item["toggleOverlapCount"]]
     bad_dark_summary = [item for item in results if item["darkSummaryBadCount"]]
     bad_dark_summary_contrast = [item for item in results if item["darkLowContrastSummaryCount"]]
+    bad_dark_text_contrast = [item for item in results if item["darkLowContrastTextCount"]]
     bad_dark_notice = [item for item in results if item["darkNoticeBadCount"]]
     bad_logs_table = [item for item in results if not item["logsTableMultiline"]]
+    bad_multiline_tables = [
+        item
+        for item in results
+        if any(not ok for ok in dict(item["multilineTableChecks"]).values())
+    ]
     missing_required_toggles = [item for item in results if item["missingRequiredToggleIds"]]
     bad_http_status = [item for item in results if item["httpStatus"] != 200]
     bad_shell = [item for item in results if not item["hasAppShell"]]
@@ -526,8 +660,10 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
     assert overlapping_toggles == []
     assert bad_dark_summary == []
     assert bad_dark_summary_contrast == []
+    assert bad_dark_text_contrast == []
     assert bad_dark_notice == []
     assert bad_logs_table == []
+    assert bad_multiline_tables == []
     assert missing_required_toggles == []
     assert any(item["toggleCount"] > 0 for item in results)
     assert any(item["visibleNotices"] > 0 for item in results)
@@ -536,10 +672,16 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
 def test_ui_browser_geometry_smoke_covers_scheduler_run_page() -> None:
     assert "/scheduler/?status=pending" in SMOKE_PATHS
     assert "/scheduler/batches?status=pending" not in SMOKE_PATHS
+    assert "/system/history" in SMOKE_PATHS
     assert EXPECTED_PAGE_SIGNALS["/scheduler/?status=pending"]["ids"] == [
         "jsRunScheduleForm",
         "runEnforceReady",
         "runStrictMode",
     ]
+    assert "pluginStatusTable" in EXPECTED_PAGE_SIGNALS["/system/backup"]["ids"]
+    assert EXPECTED_PAGE_SIGNALS["/system/history"]["ids"] == ["systemHistoryTable"]
     script_source = Path(__file__).read_text(encoding="utf-8")
     assert '"/scheduler/": ["runEnforceReady", "runStrictMode"]' in script_source
+    assert "multilineTableComputedOk('#systemLogsTable')" in script_source
+    assert "multilineTableComputedOk('#pluginStatusTable')" in script_source
+    assert "multilineTableComputedOk('#systemHistoryTable')" in script_source

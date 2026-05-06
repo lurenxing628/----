@@ -517,6 +517,39 @@ def test_batches_page_degrades_incomplete_latest_history_display_value(
     assert "abc" not in body
 
 
+@pytest.mark.parametrize(
+    "result_summary",
+    (
+        {},
+        {"algo": []},
+    ),
+)
+def test_batches_page_degrades_latest_history_missing_algo(
+    tmp_path,
+    monkeypatch,
+    result_summary: dict,
+) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    _insert_batch(db_path, batch_id="B-PENDING", status="pending")
+    _insert_history(
+        db_path,
+        version=11,
+        strategy="priority_first",
+        result_summary=result_summary,
+    )
+
+    response = app.test_client().get("/scheduler/")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "最近一次排产历史摘要不完整，请到系统历史查看。" in body
+    assert 'aps-latest-schedule-value">v11' in body
+    assert "B-PENDING" in body
+    assert "jsRunScheduleForm" in body
+    assert "batchesTable" in body
+    assert 'aps-latest-schedule-label">排产方式' not in body
+
+
 def test_batches_page_latest_algo_config_snapshot_renders_public_snapshot_state(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_history(

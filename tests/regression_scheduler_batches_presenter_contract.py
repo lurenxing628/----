@@ -159,8 +159,41 @@ def test_latest_history_panel_rejects_empty_algo_mode() -> None:
         )
 
 
-def test_latest_history_panel_rejects_missing_metric_key() -> None:
-    with pytest.raises(ScheduleHistoryDisplayValueError, match="metrics 缺少字段：weighted_tardiness_hours"):
+@pytest.mark.parametrize(
+    ("latest_summary", "message"),
+    (
+        ({}, "排产历史摘要缺少 algo"),
+        ({"algo": []}, "排产历史摘要 algo 字段不是对象"),
+        ({"algo": "bad"}, "排产历史摘要 algo 字段不是对象"),
+    ),
+)
+def test_latest_history_panel_rejects_missing_or_invalid_algo(latest_summary: dict, message: str) -> None:
+    with pytest.raises(ScheduleHistoryDisplayValueError, match=message):
+        build_latest_schedule_history_panel_state(
+            latest_history={
+                "version": 1,
+                "strategy": "priority_first",
+                "result_status": "success",
+                "schedule_time": "2026-05-05 10:00:00",
+            },
+            latest_summary=latest_summary,
+            latest_summary_parse_state={"parse_failed": False},
+            auto_assign_persist_display_builder=_auto_assign_state,
+        )
+
+
+@pytest.mark.parametrize("missing_key", scheduler_batches_page_vm._REQUIRED_METRIC_KEYS)
+def test_latest_history_panel_rejects_missing_metric_key(missing_key: str) -> None:
+    metrics = {
+        "total_tardiness_hours": 0,
+        "weighted_tardiness_hours": 0,
+        "makespan_hours": 0,
+        "changeover_count": 0,
+        "machine_util_avg": 0,
+    }
+    metrics.pop(missing_key)
+
+    with pytest.raises(ScheduleHistoryDisplayValueError, match=f"metrics 缺少字段：{missing_key}"):
         build_latest_schedule_history_panel_state(
             latest_history={
                 "version": 1,
@@ -172,7 +205,7 @@ def test_latest_history_panel_rejects_missing_metric_key() -> None:
                 "algo": {
                     "mode": "improve",
                     "objective": "min_overdue",
-                    "metrics": {"total_tardiness_hours": 0},
+                    "metrics": metrics,
                 }
             },
             latest_summary_parse_state={"parse_failed": False},

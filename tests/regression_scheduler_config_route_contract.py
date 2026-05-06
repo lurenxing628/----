@@ -213,12 +213,34 @@ class _ConfigServiceStub:
 def _build_app(monkeypatch, config_service: _ConfigServiceStub) -> Flask:
     import web.routes.scheduler_config as route_mod
 
+    def _public_value(value):
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        if isinstance(value, dict):
+            return {key: _public_value(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_public_value(item) for item in value]
+        if hasattr(value, "__dict__"):
+            return {key: _public_value(item) for key, item in value.__dict__.items()}
+        return str(value)
+
     def _render_template_context(_tpl, **ctx):
         toggles = ctx.get("scheduler_config_toggles")
         if toggles:
             ctx = {
                 **ctx,
                 "scheduler_config_toggles": {key: dict(value.__dict__) for key, value in toggles.items()},
+            }
+        config_panel = ctx.get("config_panel")
+        if config_panel:
+            ctx = {
+                **ctx,
+                "config_panel": _public_value(config_panel),
+                "current_config_state": _public_value(config_panel.current_config_state),
+                "auto_assign_persist_state": _public_value(config_panel.current_auto_assign_persist_state),
+                "current_config_summary_items": _public_value(config_panel.current_config_summary_items),
+                "current_config_notice_items": _public_value(config_panel.current_config_notice_items),
+                "current_auto_assign_persist_item": _public_value(config_panel.current_auto_assign_persist_item),
             }
         return ctx
 

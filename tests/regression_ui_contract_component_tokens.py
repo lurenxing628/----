@@ -26,7 +26,27 @@ def _render_ui_macro(source: str) -> str:
             value="yes",
             hidden_value="no",
             submitted_value="yes",
-        )
+        ),
+        details_notice=SimpleNamespace(
+            title="说明",
+            body="默认说明。",
+            tone="warning",
+            detail_label="查看明细",
+            detail_items=(),
+            footer="",
+            role="",
+            aria_live="",
+        ),
+        live_details_notice=SimpleNamespace(
+            title="强说明",
+            body="需要读到。",
+            tone="danger",
+            detail_label="查看明细",
+            detail_items=("第一条",),
+            footer="",
+            role="alert",
+            aria_live="assertive",
+        ),
     )
 
 
@@ -112,6 +132,15 @@ def test_notice_macro_defaults_to_static_message_and_allows_explicit_live_role()
     )
     assert 'role="alert"' in live_rendered
     assert 'aria-live="assertive"' in live_rendered
+
+    default_details = _render_ui_macro("{{ ui.details_notice(details_notice) }}")
+    assert "aps-notice" in default_details
+    assert 'role="' not in default_details
+    assert "aria-live" not in default_details
+
+    live_details = _render_ui_macro("{{ ui.details_notice(live_details_notice) }}")
+    assert 'role="alert"' in live_details
+    assert 'aria-live="assertive"' in live_details
 
 
 def test_toggle_object_keeps_disabled_checked_hidden_value_safe() -> None:

@@ -122,8 +122,9 @@ def test_scheduler_batches_route_reuses_shared_degraded_display_builder() -> Non
     assert "latest_other_degradation_messages" in batches_viewmodel_source
     assert 'page_metadata_for(["enforce_ready_default"])' not in route_source
     assert "scheduler_config_display_state" in config_route_source
-    assert 'preset_display_state.get("current_config_state")' in config_route_source
-    assert "get_scheduler_visible_config_field_metadata" in config_route_source
+    assert "build_scheduler_config_panel_state_from_service" in config_route_source
+    assert 'preset_display_state.get("current_config_state")' not in config_route_source
+    assert "get_scheduler_visible_config_field_metadata" in display_state_source
     assert "SCHEDULER_VISIBLE_CONFIG_FIELDS" in display_state_source
     assert "config_field_warnings" in display_state_source
     assert "config_degraded_fields" in display_state_source
