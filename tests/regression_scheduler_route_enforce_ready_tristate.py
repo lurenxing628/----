@@ -73,13 +73,32 @@ def _invoke_scheduler_simulate(form_data: Any):
 
 
 def _assert_form_parser_contract() -> None:
+    from core.infrastructure.errors import ValidationError
     from web.routes.form_values import form_optional_toggle_bool, form_toggle_bool, form_yes_no_value
 
     assert form_yes_no_value(MultiDict([("flag", "yes"), ("flag", "no")]), "flag") == "yes"
     assert form_yes_no_value(MultiDict([("flag", "no"), ("flag", "yes")]), "flag") == "yes"
     assert form_yes_no_value(MultiDict([("flag", "no")]), "flag") == "no"
     assert form_yes_no_value(MultiDict(), "flag", default="no") == "no"
-    assert form_yes_no_value(MultiDict([("flag", "maybe")]), "flag", default="yes") == "yes"
+    assert form_yes_no_value({"flag": ["no", "yes"]}, "flag") == "yes"
+    try:
+        form_yes_no_value(MultiDict([("flag", "maybe")]), "flag", default="yes")
+    except ValidationError as exc:
+        assert "flag 取值不合法" in exc.message
+    else:
+        raise AssertionError("字段已提交但取值不认识时，不应静默使用 default")
+    try:
+        form_toggle_bool(MultiDict([("flag", "maybe")]), "flag", default=False)
+    except ValidationError as exc:
+        assert "flag 取值不合法" in exc.message
+    else:
+        raise AssertionError("普通开关收到非法值时，不应静默按 False 处理")
+    try:
+        form_optional_toggle_bool(MultiDict([("flag", "maybe")]), "flag")
+    except ValidationError as exc:
+        assert "flag 取值不合法" in exc.message
+    else:
+        raise AssertionError("可选开关收到非法值时，不应静默按 False 处理")
     assert form_toggle_bool(MultiDict([("flag", "no"), ("flag", "on")]), "flag") is True
     assert form_toggle_bool(MultiDict([("flag", "no")]), "flag", default=True) is False
     assert form_optional_toggle_bool(MultiDict(), "flag") is None
@@ -148,8 +167,11 @@ def main() -> None:
     assert sim_false.get("strict_mode") is False, f"simulate 显式 false 应传递 False：{sim_false!r}"
 
     tpl_path = os.path.join(repo_root, "templates", "scheduler", "batches.html")
+    run_panel_path = os.path.join(repo_root, "templates", "scheduler", "_run_panel.html")
     with open(tpl_path, "r", encoding="utf-8") as f:
         tpl = f.read()
+    with open(run_panel_path, "r", encoding="utf-8") as f:
+        tpl += "\n" + f.read()
     assert "ui.toggle(option.toggle" in tpl, "batches.html 应通过 viewmodel toggle 对象渲染运行选项"
     assert "run_options" in tpl, "batches.html 缺少 run_options 入口"
     assert "发现参数问题就停止排产" in tpl, "batches.html 缺少 strict_mode 文案"

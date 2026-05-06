@@ -9,6 +9,7 @@ from flask import current_app, flash, g, redirect, request, send_file, url_for
 from core.infrastructure.errors import AppError
 from core.services.scheduler import ConfigService
 from web.error_boundary import user_visible_app_error_message
+from web.routes.form_values import form_yes_no_value
 from web.ui_mode import (
     get_full_manual_section_url,
     get_manual_url,
@@ -35,6 +36,16 @@ from .scheduler_config_feedback import (
     _flash_config_save_outcome,
     _flash_preset_apply_feedback,
     _format_preset_error_flash,
+)
+
+_SCHEDULER_CONFIG_TOGGLE_FIELDS = frozenset(
+    {
+        "prefer_primary_skill",
+        "enforce_ready_default",
+        "auto_assign_enabled",
+        "ortools_enabled",
+        "freeze_window_enabled",
+    }
 )
 
 
@@ -443,7 +454,10 @@ def _collect_scheduler_config_form_payload(form) -> Dict[str, Any]:
     ):
         if key not in form:
             continue
-        payload[key] = form.get(key)
+        if key in _SCHEDULER_CONFIG_TOGGLE_FIELDS:
+            payload[key] = form_yes_no_value(form, key)
+        else:
+            payload[key] = form.get(key)
     return payload
 
 

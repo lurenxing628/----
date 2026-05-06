@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from flask import Flask, g
+from werkzeug.datastructures import MultiDict
 
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config.config_field_spec import field_label_for
@@ -294,6 +295,61 @@ def test_scheduler_config_post_uses_atomic_save_entrypoint(monkeypatch) -> None:
     assert config_service.save_page_config_called is True
     assert config_service.saved_payload["dispatch_mode"] == "sgs"
     assert config_service.saved_payload["priority_weight"] == "0.4"
+
+
+def test_scheduler_config_post_parses_toggle_fields_without_order_dependency(monkeypatch) -> None:
+    config_service = _ConfigServiceStub()
+    app = _build_app(monkeypatch, config_service)
+    client = app.test_client()
+
+    response = client.post(
+        "/scheduler/config",
+        data=MultiDict(
+            [
+                ("sort_strategy", "priority_first"),
+                ("freeze_window_enabled", "no"),
+                ("freeze_window_enabled", "yes"),
+                ("prefer_primary_skill", "no"),
+                ("prefer_primary_skill", "on"),
+                ("enforce_ready_default", "false"),
+                ("enforce_ready_default", "1"),
+                ("auto_assign_enabled", "off"),
+                ("auto_assign_enabled", "true"),
+                ("ortools_enabled", "0"),
+                ("ortools_enabled", "y"),
+            ]
+        ),
+    )
+
+    assert response.status_code in (301, 302)
+    assert config_service.save_page_config_called is True
+    assert config_service.saved_payload["freeze_window_enabled"] == "yes"
+    assert config_service.saved_payload["prefer_primary_skill"] == "yes"
+    assert config_service.saved_payload["enforce_ready_default"] == "yes"
+    assert config_service.saved_payload["auto_assign_enabled"] == "yes"
+    assert config_service.saved_payload["ortools_enabled"] == "yes"
+
+
+def test_scheduler_config_post_rejects_invalid_toggle_value(monkeypatch) -> None:
+    config_service = _ConfigServiceStub()
+    app = _build_app(monkeypatch, config_service)
+    client = app.test_client()
+
+    response = client.post(
+        "/scheduler/config",
+        data=MultiDict(
+            [
+                ("sort_strategy", "priority_first"),
+                ("freeze_window_enabled", "maybe"),
+            ]
+        ),
+    )
+
+    assert response.status_code in (301, 302)
+    assert config_service.save_page_config_called is False
+    with client.session_transaction() as session:
+        flashes = list(session.get("_flashes") or [])
+    assert any("锁定近期排程填写不正确" in str(message) for _category, message in flashes), flashes
 
 
 def test_scheduler_config_post_only_passes_explicitly_submitted_fields(monkeypatch) -> None:
