@@ -369,9 +369,6 @@ def preset_apply():
         _flash_preset_apply_feedback(applied)
     except AppError as e:
         flash(user_visible_app_error_message(e), "error")
-    except Exception:
-        current_app.logger.exception("应用排产模板失败")
-        flash("应用方案失败，请稍后重试。", "error")
     return redirect(next_url)
 
 
@@ -399,9 +396,6 @@ def preset_save():
             )
     except AppError as e:
         flash(user_visible_app_error_message(e), "error")
-    except Exception:
-        current_app.logger.exception("保存排产模板失败")
-        flash("保存方案失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
 
 
@@ -414,9 +408,6 @@ def preset_delete():
         flash(f"已删除方案：{name}", "success")
     except AppError as e:
         flash(user_visible_app_error_message(e), "error")
-    except Exception:
-        current_app.logger.exception("删除排产模板失败")
-        flash("删除方案失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
 
 
@@ -466,9 +457,6 @@ def update_config():
         _flash_config_save_outcome(outcome)
     except AppError as e:
         flash(user_visible_app_error_message(e), "error")
-    except Exception:
-        current_app.logger.exception("保存排产配置失败")
-        flash("保存排产配置失败，请稍后重试。", "error")
     return redirect(url_for("scheduler.config_page"))
 @bp.post("/config/default")
 def restore_config_default():

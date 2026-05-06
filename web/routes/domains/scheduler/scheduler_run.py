@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional, Sequence, cast
 
-from flask import current_app, flash, g, redirect, request, url_for
+from flask import flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
 from web.routes.form_values import form_optional_toggle_bool, form_toggle_bool
@@ -55,8 +55,5 @@ def run_schedule():
         _flash_run_schedule_view_result(build_run_schedule_view_result(result))
     except AppError as e:
         flash(scheduler_user_visible_app_error_message(e), "error")
-    except Exception:
-        current_app.logger.exception("排产执行失败")
-        flash("排产失败，请稍后重试或联系管理员。", "error")
 
     return redirect(url_for("scheduler.batches_page"))

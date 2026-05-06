@@ -96,7 +96,7 @@ def test_ui_macros_expose_shared_contract_components() -> None:
         "empty_state",
         "summary_grid",
         "toggle",
-        "toggle_row",
+        "_toggle_row_internal",
     ):
         assert f"macro {macro_name}(" in source
 
@@ -109,7 +109,7 @@ def test_ui_macros_expose_shared_contract_components() -> None:
     assert "role='status'" not in notice_block
     assert "aria_live='polite'" not in notice_block
 
-    toggle_start = source.index("{% macro toggle_row(")
+    toggle_start = source.index("{% macro _toggle_row_internal(")
     toggle_block = source[toggle_start : source.index("{% endmacro %}", toggle_start)]
     checkbox_index = toggle_block.index('type="checkbox"')
     hidden_index = toggle_block.index('type="hidden"')
@@ -144,20 +144,6 @@ def test_notice_macro_defaults_to_static_message_and_allows_explicit_live_role()
 
 
 def test_toggle_object_keeps_disabled_checked_hidden_value_safe() -> None:
-    direct = _render_ui_macro(
-        "{{ ui.toggle_row('directToggle', 'direct_field', '直接开关', '直接说明', checked_attr='checked', disabled_attr='disabled', submitted_value='yes') }}"
-    )
-    assert 'id="directToggle"' in direct
-    assert 'type="checkbox"' in direct
-    assert 'name="direct_field" value="yes"' in direct
-    assert 'type="hidden" name="direct_field" value="yes"' in direct
-
-    direct_hidden = _render_ui_macro(
-        "{{ ui.toggle_row('directHiddenToggle', 'direct_hidden_field', '直接开关', '直接说明', submitted_value='0') }}"
-    )
-    assert 'id="directHiddenToggle"' in direct_hidden
-    assert 'type="hidden" name="direct_hidden_field" value="0"' in direct_hidden
-
     object_rendered = _render_ui_macro("{{ ui.toggle(toggle, class='object-row') }}")
     assert "object-row" in object_rendered
     assert 'id="objectToggle"' in object_rendered
@@ -172,6 +158,13 @@ def test_business_templates_do_not_call_low_level_toggle_row_macro_directly() ->
                 continue
             source = path.read_text(encoding="utf-8")
             assert "ui.toggle_row(" not in source, str(path.relative_to(REPO_ROOT))
+            assert "ui._toggle_row_internal(" not in source, str(path.relative_to(REPO_ROOT))
+
+
+def test_summary_item_legacy_macro_still_shows_dash_for_old_pages() -> None:
+    rendered = _render_ui_macro("{{ ui.summary_item('旧摘要', none) }}{% call ui.summary_item_block('旧块', '') %}{% endcall %}")
+
+    assert rendered.count('class="aps-summary-value">-</div>') == 2
 
 
 def test_presenterized_pages_do_not_bypass_summary_item_values() -> None:

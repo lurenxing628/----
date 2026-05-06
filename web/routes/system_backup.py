@@ -171,15 +171,19 @@ def backup_delete():
     try:
         os.remove(backup_path)
         if getattr(g, "op_logger", None) is not None:
-            g.op_logger.info(
-                module="system",
-                action="backup_delete",
-                target_type="backup",
-                target_id=filename,
-                detail={"filename": filename, "mode": "manual"},
-            )
+            try:
+                g.op_logger.info(
+                    module="system",
+                    action="backup_delete",
+                    target_type="backup",
+                    target_id=filename,
+                    detail={"filename": filename, "mode": "manual"},
+                )
+            except Exception:
+                # 备份文件已经删除成功，留痕失败只记录日志，不把成功操作改成失败。
+                current_app.logger.exception("删除备份成功后写入操作日志失败（不阻断）")
         flash(f"已删除备份：{filename}", "success")
-    except Exception:
+    except OSError:
         current_app.logger.exception("删除备份失败（filename=%s）", filename)
         flash("删除备份失败，请稍后重试。", "error")
     return redirect(url_for("system.backup_page"))
@@ -214,26 +218,30 @@ def backup_delete_batch():
             os.remove(p)
             ok += 1
             deleted.append(fn)
-        except Exception:
+        except OSError:
             current_app.logger.exception("批量删除备份失败（filename=%s）", fn)
             failed.append(fn)
             failed_details.append(f"{fn}: 删除失败，请查看日志")
             continue
 
     if getattr(g, "op_logger", None) is not None:
-        g.op_logger.info(
-            module="system",
-            action="backup_delete",
-            target_type="backup",
-            target_id=None,
-            detail={
-                "mode": "batch",
-                "deleted_count": int(ok),
-                "failed_count": int(len(failed)),
-                "deleted_sample": deleted[:20],
-                "failed_sample": failed[:20],
-            },
-        )
+        try:
+            g.op_logger.info(
+                module="system",
+                action="backup_delete",
+                target_type="backup",
+                target_id=None,
+                detail={
+                    "mode": "batch",
+                    "deleted_count": int(ok),
+                    "failed_count": int(len(failed)),
+                    "deleted_sample": deleted[:20],
+                    "failed_sample": failed[:20],
+                },
+            )
+        except Exception:
+            # 批量删除结果已经确定，留痕失败只记录日志，不影响用户看到删除结果。
+            current_app.logger.exception("批量删除备份后写入操作日志失败（不阻断）")
 
     flash(f"批量删除完成：成功 {ok}，失败 {len(failed)}。", "success" if ok else "warning")
     if failed:

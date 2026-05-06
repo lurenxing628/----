@@ -207,6 +207,11 @@
                     <summary>给维护人员看的信息</summary>
                     <div>详细内容已记录在日志中，需要排查时请联系维护人员。</div>
                   </details>
+                {% elif r.detail_parse_state in ['invalid_json', 'non_object'] %}
+                  <details class="debug-details muted">
+                    <summary>详情格式异常</summary>
+                    <div>详情记录格式异常，原始内容已保留在日志中，请维护人员查看。</div>
+                  </details>
                 {% elif r.detail %}
                   <details class="debug-details muted">
                     <summary>给维护人员看的信息</summary>

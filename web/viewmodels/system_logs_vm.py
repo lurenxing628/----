@@ -74,6 +74,10 @@ class SystemLogsPageState:
     empty_state: UiEmptyState
 
 
+class OperationLogViewRowContractError(ValueError):
+    """操作日志行无法转换成页面展示数据。"""
+
+
 def _settings_value(settings: Any, key: str) -> Any:
     if isinstance(settings, dict):
         return settings[key]
@@ -125,17 +129,19 @@ def resolve_operation_log_action_filter(value: Any) -> str:
     return _resolve_label_or_code(value, _ACTION_LABELS)
 
 
-def _safe_load_detail_obj(detail_raw: Any) -> Optional[Dict[str, Any]]:
+def _parse_detail_obj(detail_raw: Any) -> tuple[str, Optional[Dict[str, Any]]]:
     if detail_raw is None:
-        return None
+        return "empty", None
     s = str(detail_raw).strip()
     if not s:
-        return None
+        return "empty", None
     try:
         obj = json.loads(s)
-        return obj if isinstance(obj, dict) else None
-    except Exception:
-        return None
+    except json.JSONDecodeError:
+        return "invalid_json", None
+    if not isinstance(obj, dict):
+        return "non_object", None
+    return "ok", obj
 
 
 def build_operation_log_view_rows(items: List[Any]) -> List[Dict[str, Any]]:
@@ -148,12 +154,14 @@ def build_operation_log_view_rows(items: List[Any]) -> List[Dict[str, Any]]:
     for it in items or []:
         try:
             d = it.to_dict() if hasattr(it, "to_dict") else (it if isinstance(it, dict) else {})
-        except Exception:
-            d = {}
+        except Exception as exc:
+            raise OperationLogViewRowContractError("操作日志行无法转换为页面展示数据") from exc
         d["log_level_label"] = _label(d.get("log_level"), _LOG_LEVEL_LABELS, "其他等级")
         d["module_label"] = _label(d.get("module"), _MODULE_LABELS, "其他模块")
         d["action_label"] = _label(d.get("action"), _ACTION_LABELS, "其他操作")
         d["target_type_label"] = _label(d.get("target_type"), _TARGET_TYPE_LABELS, "其他对象")
-        d["detail_obj"] = _safe_load_detail_obj(d.get("detail"))
+        detail_parse_state, detail_obj = _parse_detail_obj(d.get("detail"))
+        d["detail_parse_state"] = detail_parse_state
+        d["detail_obj"] = detail_obj
         out.append(d)
     return out

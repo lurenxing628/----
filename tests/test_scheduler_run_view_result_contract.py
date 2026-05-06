@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from flask import Flask, g, get_flashed_messages
 
 from core.infrastructure.errors import ValidationError
@@ -261,7 +262,7 @@ def test_scheduler_run_route_flashes_missing_resource_user_message() -> None:
         route_mod.url_for = old_url_for
 
 
-def test_scheduler_run_route_flashes_generic_message_for_unexpected_error() -> None:
+def test_scheduler_run_route_lets_unexpected_error_reach_error_boundary() -> None:
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
     _reset_scheduler_route_modules()
@@ -279,12 +280,10 @@ def test_scheduler_run_route_flashes_generic_message_for_unexpected_error() -> N
         app.secret_key = "aps-test-unexpected-error"
         with app.test_request_context("/scheduler/run", method="POST", data={"batch_ids": ["B001"]}):
             g.services = SimpleNamespace(schedule_service=_StubScheduleService())
-            resp = route_mod.run_schedule()
+            with pytest.raises(RuntimeError, match="database password leaked"):
+                route_mod.run_schedule()
             flashes = get_flashed_messages(with_categories=True)
 
-        assert getattr(resp, "status_code", 0) in (301, 302)
-        assert resp.headers["Location"] == "/scheduler.batches_page"
-        assert [msg for cat, msg in flashes if cat == "error"] == ["排产失败，请稍后重试或联系管理员。"]
-        assert not any("database" in msg or "password" in msg or "RuntimeError" in msg for _cat, msg in flashes), flashes
+        assert flashes == []
     finally:
         route_mod.url_for = old_url_for

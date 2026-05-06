@@ -307,7 +307,3 @@ def simulate_schedule():
     except AppError as e:
         flash(scheduler_user_visible_app_error_message(e), "error")
         return redirect(url_for("scheduler.batches_page"))
-    except Exception:
-        current_app.logger.exception("模拟排产失败")
-        flash("模拟排产失败，请稍后重试。", "error")
-        return redirect(url_for("scheduler.batches_page"))

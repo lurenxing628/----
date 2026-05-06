@@ -109,7 +109,7 @@ def logs_delete():
         return redirect(url_for("system.logs_page"))
     try:
         log_id = int(raw)
-    except Exception:
+    except (TypeError, ValueError):
         flash("日志编号不合法，请填写正整数。", "error")
         return redirect(url_for("system.logs_page"))
     if log_id <= 0 or log_id > 10**12:
@@ -138,7 +138,7 @@ def logs_delete_batch():
     for x in raw_ids:
         try:
             ids.append(int(str(x).strip()))
-        except Exception:
+        except (TypeError, ValueError):
             continue
     ids = [x for x in ids if x > 0]
     if not ids:

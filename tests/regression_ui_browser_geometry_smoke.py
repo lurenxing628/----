@@ -24,6 +24,7 @@ SMOKE_PATHS = (
     "/system/backup",
     "/system/logs",
     "/system/history",
+    "/system/history?version=2",
     "/process/",
     "/material/batches",
 )
@@ -51,17 +52,22 @@ EXPECTED_PAGE_SIGNALS = {
     },
     "/system/backup": {
         "path": "/system/backup",
-        "texts": ["系统管理 - 备份/恢复", "扩展功能状态"],
+        "texts": ["系统管理 - 备份/恢复", "扩展功能状态", "启动问题"],
         "ids": ["backupAutoBackupEnabled", "backupAutoCleanupEnabled", "pluginStatusTable"],
     },
     "/system/logs": {
         "path": "/system/logs",
-        "texts": ["系统管理 - 操作日志", "筛选日志"],
+        "texts": ["系统管理 - 操作日志", "筛选日志", "详情格式异常"],
         "ids": ["systemLogsTable"],
     },
     "/system/history": {
         "path": "/system/history",
         "texts": ["系统管理 - 排产历史", "最近排产记录"],
+        "ids": ["systemHistoryTable"],
+    },
+    "/system/history?version=2": {
+        "path": "/system/history?version=2",
+        "texts": ["系统管理 - 排产历史", "版本详情：v2", "当前版本的排产摘要读取失败"],
         "ids": ["systemHistoryTable"],
     },
     "/process/": {
@@ -197,6 +203,41 @@ def _build_app(tmp_path, monkeypatch):
                 "ui-smoke",
             ),
         )
+        conn.execute(
+            """
+            INSERT INTO ScheduleHistory
+                (schedule_time, version, strategy, batch_count, op_count, result_status, result_summary, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "2026-05-06 10:00:00",
+                2,
+                "priority_first",
+                1,
+                1,
+                "failed",
+                "{bad json",
+                "ui-smoke",
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO OperationLogs
+                (log_time, log_level, module, action, target_type, target_id, detail, error_code, error_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "2026-05-06 10:30:00",
+                "ERROR",
+                "plugins",
+                "toggle",
+                "plugin",
+                "ui-smoke-plugin",
+                "{bad json",
+                "PLUGIN_LOAD_FAILED",
+                "插件加载失败，请查看系统日志。",
+            ),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -210,11 +251,14 @@ def _build_app(tmp_path, monkeypatch):
     app = app_mod.create_app()
     app.config["PLUGIN_STATUS"] = {
         "loaded_at": "2026-05-06 09:00:00",
-        "config_source": "config",
-        "telemetry_persisted": True,
-        "degraded": False,
+        "config_source": "default_due_to_config_read_failed",
+        "telemetry_persisted": False,
+        "degraded": True,
         "registry": {"capabilities": ("ui-smoke-capability",)},
-        "degradation_events": (),
+        "degradation_events": (
+            {"message": "扩展功能配置暂时读取不到，系统已按默认开关运行。"},
+            {"message": "插件加载失败，请查看系统日志。"},
+        ),
         "conflicted_capabilities": (),
         "statuses": (
             {
@@ -222,9 +266,9 @@ def _build_app(tmp_path, monkeypatch):
                 "name": "浏览器几何测试扩展",
                 "version": "1.0",
                 "enabled": "yes",
-                "loaded": "yes",
-                "enabled_source": "config",
-                "error": "",
+                "loaded": "no",
+                "enabled_source": "default_due_to_config_read_failed",
+                "error": "插件加载失败，请查看系统日志。",
                 "capabilities": ("ui-smoke-capability",),
             },
         ),
@@ -673,12 +717,16 @@ def test_ui_browser_geometry_smoke_covers_scheduler_run_page() -> None:
     assert "/scheduler/?status=pending" in SMOKE_PATHS
     assert "/scheduler/batches?status=pending" not in SMOKE_PATHS
     assert "/system/history" in SMOKE_PATHS
+    assert "/system/history?version=2" in SMOKE_PATHS
     assert EXPECTED_PAGE_SIGNALS["/scheduler/?status=pending"]["ids"] == [
         "jsRunScheduleForm",
         "runEnforceReady",
         "runStrictMode",
     ]
     assert "pluginStatusTable" in EXPECTED_PAGE_SIGNALS["/system/backup"]["ids"]
+    assert "启动问题" in EXPECTED_PAGE_SIGNALS["/system/backup"]["texts"]
+    assert "详情格式异常" in EXPECTED_PAGE_SIGNALS["/system/logs"]["texts"]
+    assert "当前版本的排产摘要读取失败" in EXPECTED_PAGE_SIGNALS["/system/history?version=2"]["texts"]
     assert EXPECTED_PAGE_SIGNALS["/system/history"]["ids"] == ["systemHistoryTable"]
     script_source = Path(__file__).read_text(encoding="utf-8")
     assert '"/scheduler/": ["runEnforceReady", "runStrictMode"]' in script_source

@@ -218,7 +218,9 @@
         <li>保存后只是记住开关，下次重启软件才会真正按新开关加载。</li>
       </ul>
     </details>
-    {% if page.plugin_status_loaded %}
+    {% if page.plugin_status_error_notice %}
+      {{ ui.details_notice(page.plugin_status_error_notice, class='mt-2 scheduler-config-degraded-summary') }}
+    {% elif page.plugin_status_loaded %}
       {{ ui.summary_grid(page.plugin_summary_items, class='aps-plugin-status-summary') }}
 
       <details class="debug-details mt-2">

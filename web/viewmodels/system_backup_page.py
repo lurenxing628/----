@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Optional, Sequence
 
-from .ui_presenters import UiEmptyState, UiSummaryItem, UiToggleRow, checked_attr
+from .ui_presenters import UiDetailsNotice, UiEmptyState, UiSummaryItem, UiToggleRow, checked_attr
 
 PLUGIN_CONFIG_SOURCE_LABELS = {
     "config": "全部来自系统配置",
@@ -59,6 +59,20 @@ class PluginConflictRow:
     message: str = "有两个扩展功能想处理同一类事情，系统已保留一个，另一个没有启用。"
 
 
+class PluginStatusDisplayContractError(ValueError):
+    """插件状态展示数据不符合 UI 合同。"""
+
+    def __init__(self, *, field: str, value: Any, source: str, message: str) -> None:
+        self.field = field
+        self.value = value
+        self.source = source
+        self.message = message
+        super().__init__(f"{message}：{source}.{field}={value!r}")
+
+    def detail_text(self) -> str:
+        return f"{self.message}；字段：{self.source}.{self.field}；原始值：{self.value!r}"
+
+
 @dataclass(frozen=True)
 class SystemBackupPageState:
     backup_empty_state: UiEmptyState
@@ -74,6 +88,7 @@ class SystemBackupPageState:
     plugin_degradation_events: Sequence[PluginDegradationEventRow]
     plugin_conflict_count: int
     plugin_conflict_rows: Sequence[PluginConflictRow]
+    plugin_status_error_notice: Optional[UiDetailsNotice] = None
 
 
 def _value(source: Any, key: str) -> Any:
@@ -103,21 +118,47 @@ def _text_or_dash(value: Any) -> str:
 def _yes_no(value: Any, *, field: str) -> str:
     normalized = str(value or "").strip()
     if normalized not in {"yes", "no"}:
-        raise ValueError(f"{field} 只能是 yes/no，实际为：{value!r}")
+        raise PluginStatusDisplayContractError(
+            field=field,
+            value=value,
+            source="plugin_status",
+            message="扩展功能状态字段只能是 yes/no",
+        )
     return normalized
 
 
 def _plugin_config_source_label(value: Any) -> str:
     normalized = str(value or "").strip()
+    if normalized not in PLUGIN_CONFIG_SOURCE_LABELS:
+        raise PluginStatusDisplayContractError(
+            field="config_source",
+            value=value,
+            source="plugin_status",
+            message="扩展功能配置来源未登记",
+        )
     return PLUGIN_CONFIG_SOURCE_LABELS[normalized]
 
 
 def _plugin_telemetry_state(value: Any) -> tuple[str, str]:
+    if value not in PLUGIN_TELEMETRY_STATES:
+        raise PluginStatusDisplayContractError(
+            field="telemetry_persisted",
+            value=value,
+            source="plugin_status",
+            message="扩展功能留痕状态未登记",
+        )
     return PLUGIN_TELEMETRY_STATES[value]
 
 
 def _plugin_enabled_source_label(value: Any) -> str:
     normalized = str(value or "").strip()
+    if normalized not in PLUGIN_ENABLED_SOURCE_LABELS:
+        raise PluginStatusDisplayContractError(
+            field="enabled_source",
+            value=value,
+            source="plugin_status.statuses",
+            message="扩展功能开关来源未登记",
+        )
     return PLUGIN_ENABLED_SOURCE_LABELS[normalized]
 
 
@@ -247,22 +288,41 @@ def build_plugin_conflict_rows(plugin_status: Any) -> Sequence[PluginConflictRow
 
 def build_system_backup_page_view_model(settings: Any, plugin_status: Any) -> SystemBackupPageState:
     auto_backup_toggle, auto_backup_cleanup_toggle = build_backup_toggle_rows(settings)
-    degradation_events = build_plugin_degradation_events(plugin_status)
-    conflict_rows = build_plugin_conflict_rows(plugin_status)
+    try:
+        plugin_summary_items = build_plugin_summary_items(plugin_status)
+        plugin_status_rows = build_plugin_status_rows(plugin_status)
+        degradation_events = build_plugin_degradation_events(plugin_status)
+        conflict_rows = build_plugin_conflict_rows(plugin_status)
+        plugin_error_notice = None
+        plugin_degraded = bool(_optional_value(plugin_status, "degraded")) if plugin_status is not None else False
+    except PluginStatusDisplayContractError as exc:
+        plugin_summary_items = ()
+        plugin_status_rows = ()
+        degradation_events = ()
+        conflict_rows = ()
+        plugin_degraded = True
+        plugin_error_notice = UiDetailsNotice(
+            title="扩展功能状态记录异常",
+            body="系统拿到的扩展功能状态里有不认识的字段值。备份、恢复和自动备份设置仍可继续使用；扩展功能状态请让维护人员查看。",
+            tone="warning",
+            detail_label="查看异常字段",
+            detail_items=(exc.detail_text(),),
+        )
     return SystemBackupPageState(
         backup_empty_state=build_backup_empty_state(),
         plugin_empty_state=build_plugin_empty_state(),
         plugin_unloaded_empty_state=build_plugin_unloaded_empty_state(),
         auto_backup_toggle=auto_backup_toggle,
         auto_backup_cleanup_toggle=auto_backup_cleanup_toggle,
-        plugin_summary_items=build_plugin_summary_items(plugin_status),
-        plugin_status_rows=build_plugin_status_rows(plugin_status),
+        plugin_summary_items=plugin_summary_items,
+        plugin_status_rows=plugin_status_rows,
         plugin_status_loaded=plugin_status is not None,
-        plugin_degraded=bool(_optional_value(plugin_status, "degraded")) if plugin_status is not None else False,
+        plugin_degraded=plugin_degraded,
         plugin_degradation_count=len(degradation_events),
         plugin_degradation_events=degradation_events,
         plugin_conflict_count=len(conflict_rows),
         plugin_conflict_rows=conflict_rows,
+        plugin_status_error_notice=plugin_error_notice,
     )
 
 
@@ -271,6 +331,7 @@ __all__ = [
     "PLUGIN_ENABLED_SOURCE_LABELS",
     "PLUGIN_LOADED_LABELS",
     "PLUGIN_TELEMETRY_STATES",
+    "PluginStatusDisplayContractError",
     "PluginConflictRow",
     "PluginDegradationEventRow",
     "PluginStatusRow",

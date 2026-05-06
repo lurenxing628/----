@@ -279,6 +279,12 @@ def _assert_form_parser_contract() -> None:
     assert form_yes_no_value(MultiDict([("flag", "no")]), "flag") == "no"
     assert form_yes_no_value(MultiDict(), "flag", default="no") == "no"
     assert form_yes_no_value({"flag": ["no", "yes"]}, "flag") == "yes"
+    assert form_yes_no_value({"flag": 0}, "flag") == "no"
+    assert form_yes_no_value({"flag": False}, "flag") == "no"
+    assert form_yes_no_value({"flag": [0]}, "flag") == "no"
+    assert form_yes_no_value({"flag": [False]}, "flag") == "no"
+    assert form_toggle_bool({"flag": 0}, "flag") is False
+    assert form_toggle_bool({"flag": False}, "flag") is False
     try:
         form_yes_no_value(MultiDict([("flag", "maybe")]), "flag", default="yes")
     except ValidationError as exc:

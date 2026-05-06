@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from core.infrastructure.errors import ValidationError
-from core.models.toggle_values import TOGGLE_FALSE_VALUES, TOGGLE_TRUE_VALUES
+from core.models.toggle_values import TOGGLE_FALSE_VALUES, TOGGLE_TRUE_VALUES, normalize_toggle_submit_value
 
 
 def _normalized_form_values(form: Any, name: str) -> list[str]:
@@ -19,7 +19,7 @@ def _normalized_form_values(form: Any, name: str) -> list[str]:
         else:
             raw_value = form.get(name)
             values = list(raw_value) if isinstance(raw_value, (list, tuple)) else [raw_value]
-    return [str(value or "").strip().lower() for value in values]
+    return [normalize_toggle_submit_value(value) for value in values]
 
 
 def form_yes_no_value(form: Any, name: str, *, default: str = "") -> str:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import pytest
+from flask import Flask
 
 from web.viewmodels.system_backup_page import (
     PLUGIN_CONFIG_SOURCE_LABELS,
     PLUGIN_ENABLED_SOURCE_LABELS,
     PLUGIN_TELEMETRY_STATES,
+    PluginStatusDisplayContractError,
     build_plugin_status_rows,
     build_plugin_summary_items,
     build_system_backup_page_view_model,
@@ -61,14 +63,14 @@ def test_plugin_config_source_labels_cover_declared_sources() -> None:
 def test_plugin_summary_items_reject_unknown_config_source() -> None:
     status = _plugin_status(config_source="future_source")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(PluginStatusDisplayContractError, match="config_source"):
         build_plugin_summary_items(status)
 
 
 def test_plugin_summary_items_reject_unknown_telemetry_state() -> None:
     status = _plugin_status(telemetry_persisted="yes")
 
-    with pytest.raises(KeyError):
+    with pytest.raises(PluginStatusDisplayContractError, match="telemetry_persisted"):
         build_plugin_summary_items(status)
 
 
@@ -146,15 +148,78 @@ def test_plugin_status_rows_reject_unknown_enabled_source() -> None:
         ]
     )
 
-    with pytest.raises(KeyError):
+    with pytest.raises(PluginStatusDisplayContractError, match="enabled_source"):
         build_plugin_status_rows(status)
 
 
 def test_plugin_status_rows_reject_invalid_yes_no_states() -> None:
     status = _plugin_status(statuses=[dict(_plugin_status()["statuses"][0], loaded="maybe")])
 
-    with pytest.raises(ValueError, match="plugin.loaded"):
+    with pytest.raises(PluginStatusDisplayContractError, match="plugin.loaded"):
         build_plugin_status_rows(status)
+
+
+@pytest.mark.parametrize(
+    "plugin_status",
+    (
+        _plugin_status(config_source="future_source"),
+        _plugin_status(telemetry_persisted="yes"),
+        _plugin_status(statuses=[dict(_plugin_status()["statuses"][0], enabled_source="future_source")]),
+        _plugin_status(statuses=[dict(_plugin_status()["statuses"][0], loaded="maybe")]),
+        _plugin_status(statuses=[dict(_plugin_status()["statuses"][0], enabled="maybe")]),
+    ),
+)
+def test_backup_page_state_localizes_bad_plugin_status_to_notice(plugin_status) -> None:
+    page = build_system_backup_page_view_model(_settings(), plugin_status)
+
+    assert page.plugin_status_loaded is True
+    assert page.plugin_status_rows == ()
+    assert page.plugin_summary_items == ()
+    assert page.plugin_status_error_notice is not None
+    assert page.plugin_status_error_notice.title == "扩展功能状态记录异常"
+    assert page.plugin_status_error_notice.detail_items
+    assert "原始值" in page.plugin_status_error_notice.detail_items[0]
+
+
+def test_backup_page_route_keeps_main_page_available_when_plugin_status_is_bad(monkeypatch) -> None:
+    import web.routes.system_backup as route_mod
+
+    captured = {}
+    app = Flask(__name__)
+    app.secret_key = "backup-page-plugin-status-error"
+    app.config["PLUGIN_STATUS"] = _plugin_status(config_source="future_source")
+
+    class _Cfg:
+        auto_backup_keep_days = 9
+
+        def to_dict(self):
+            return {
+                "auto_backup_enabled": "yes",
+                "auto_backup_interval_minutes": 60,
+                "auto_backup_cleanup_enabled": "no",
+                "auto_backup_keep_days": 9,
+                "auto_backup_cleanup_interval_minutes": 1440,
+            }
+
+    class _Mgr:
+        def list_backups(self):
+            return []
+
+    def _fake_render_template(template, **context):
+        captured.update(context)
+        return "rendered backup page"
+
+    monkeypatch.setattr(route_mod, "_get_system_cfg_snapshot", lambda: _Cfg())
+    monkeypatch.setattr(route_mod, "_get_backup_manager", lambda keep_days: _Mgr())
+    monkeypatch.setattr(route_mod, "_get_job_state_map", lambda: {})
+    monkeypatch.setattr(route_mod, "render_template", _fake_render_template)
+
+    with app.test_request_context("/system/backup"):
+        response = route_mod.backup_page()
+
+    assert response == "rendered backup page"
+    assert captured["page"].plugin_status_error_notice is not None
+    assert "扩展功能状态记录异常" == captured["page"].plugin_status_error_notice.title
 
 
 def test_plugin_status_rows_format_template_ready_fields() -> None:

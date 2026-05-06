@@ -27,7 +27,8 @@
 - 布局组件可以允许“没有按钮”“空列表”这类可选内容为空；这不等于允许业务状态、错误原因、展示文案在模板里悄悄兜底。
 - 新页面的摘要数据优先用 `UiSummaryItem` 和 `ui.summary_grid(items=...)`。如果业务上确实没有值，viewmodel 要明确传 `"-"`、`"未记录"`、`"暂未拿到"` 这类用户能看懂的文案，不要把空值交给模板自动补。
 - 业务页面原则上只调用 `ui.toggle(toggle)`，也就是消费 viewmodel 已经算好的 `UiToggleRow`。
-- `ui.toggle_row(...)` 是内部底层渲染宏，只给 `ui_macros.html` 内部和测试夹具使用；业务模板不要直接传 `checked_attr`、`disabled_attr`、`submitted_value`，避免把开关提交规则重新散落到模板里。
+- `_toggle_row_internal(...)` 是内部底层渲染宏，只给 `ui_macros.html` 内部使用；业务模板不要直接传 `checked_attr`、`disabled_attr`、`submitted_value`，避免把开关提交规则重新散落到模板里。
+- `summary_item()` / `summary_item_block()` 是迁移期 legacy 宏，仍会把空值显示成 `-`，只用于还没 presenter 化的老页面。新页面不要依赖这个兜底。
 
 ## 4. 表单规则
 
@@ -39,6 +40,8 @@
 ```
 
 后端必须用统一的 `form_yes_no_value()` / `form_toggle_bool()` 读取这类同名字段，不再依赖浏览器提交顺序。checkbox 在前、hidden 在后仍然要保留，因为这是当前组件合同，也方便排查表单输出是否正常。
+
+route 只处理可预期的 `AppError` / `ValidationError` 这类用户输入或业务边界错误。真正没预料到的代码错误交给统一 error boundary，不在页面路由里抓住后统一说“稍后重试”，避免把程序问题伪装成普通业务失败。
 
 禁用开关要特别处理。浏览器不会提交 disabled checkbox，所以禁用且已勾选的开关必须让同名 hidden input 提交当前真实值，不能默认提交 `no`。
 
@@ -85,3 +88,7 @@
 - 日志表多行换行要靠 `.aps-table--multiline`，不靠 `#systemLogsTable td` 页面 ID 特例。
 
 真实浏览器几何 smoke 已进入质量门禁，用来确认页面真实返回 200、打开的是正确业务页、没有明显 body 级横向撑破、开关文字没有压住轨道、暗色主题下主要提示和摘要仍可读。它不使用截图比对，只检查页面事实和浏览器算出来的样式。
+
+严格 presenter 可以因为未知状态失败，但页面级入口要把外部运行状态错误变成局部可见降级。例如扩展功能状态坏了，备份/恢复页主体仍要可用，扩展功能区域显示异常说明和维护人员明细。
+
+日志 detail 解析失败要显示成明确状态。页面不展示原始 detail，但不能把坏 JSON 当作“没有详情”。
