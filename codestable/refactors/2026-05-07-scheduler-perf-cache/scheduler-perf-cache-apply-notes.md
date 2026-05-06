@@ -94,3 +94,22 @@ tags: [scheduler, performance, cache, quality-gate]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_sgs_total_hours_cache.py tests/test_greedy_refactor_contracts.py tests/test_sgs_internal_scoring_matches_execution.py tests/regression_sgs_scoring_fallback_unscorable.py tests/regression_sgs_pre_sort_strict_nonfinite_rejected.py tests/regression_sgs_atc_penalize_missing_resources.py tests/regression_sgs_penalize_nonfinite_proc_hours.py --tb=short`
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/benchmark_sgs_large_resource_pool.py`
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold --tb=short`
+
+## Step 4: compute_metrics aggregation
+
+- Status: completed.
+- Changed files:
+  - `core/algorithms/evaluation.py`
+  - `tests/test_compute_metrics_contract.py`
+- Notes:
+  - Result rows are collected once into `_ResultMetricState`.
+  - Batch due-date and unscheduled accounting still walks `batches` separately.
+  - Machine changeover sorting stays per machine with the same `(start_time, end_time, op_id)` ordering.
+  - `ScheduleMetrics.to_dict()` and `objective_score()` were not changed.
+  - `compute_metrics()` radon complexity is now `A (3)`; `evaluation.py` is 349 lines.
+- Validation:
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/algorithms/evaluation.py tests/test_compute_metrics_contract.py`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_compute_metrics_contract.py --tb=short`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_compute_metrics_contract.py tests/regression_metrics_horizon_semantics.py tests/regression_metrics_to_dict_nonfinite_safe.py tests/regression_schedule_summary_invalid_due_and_unscheduled_counts.py tests/regression_due_exclusive_consistency.py tests/regression_priority_weight_case_insensitive.py tests/regression_objective_projection_contract.py tests/regression_weighted_tardiness_objective.py tests/regression_optimizer_public_summary_projection_contract.py tests/regression_scheduler_summary_result_summary_contract.py tests/regression_schedule_summary_v11_contract.py --tb=short`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m radon cc -s core/algorithms/evaluation.py`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold --tb=short`

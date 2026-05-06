@@ -20,11 +20,11 @@ steps:
     exit_signal: SGS contracts pass and invalid-hour behavior stays unchanged.
   - id: compute-metrics-aggregation
     title: Aggregate compute_metrics result state in one pass
-    status: in_progress
+    status: completed
     exit_signal: Metrics contracts pass and compute_metrics complexity is below threshold.
   - id: final-quality-gate
     title: Run final quality gates and all benchmark scenarios
-    status: pending
+    status: in_progress
     exit_signal: Targeted tests, benchmark runs, ledger check, quality gate, and clean-worktree gate pass or remaining blockers are listed exactly.
 checks:
   - id: no-cross-run-cache

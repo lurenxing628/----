@@ -100,185 +100,249 @@ class ScheduleMetrics:
         }
 
 
-def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> ScheduleMetrics:
-    # finish time per batch
-    finish_by_batch: Dict[str, datetime] = {}
+@dataclass
+class _ResultMetricState:
+    finish_by_batch: Dict[str, datetime] = field(default_factory=dict)
     min_start: Optional[datetime] = None
     max_end: Optional[datetime] = None
+    by_machine: Dict[str, List[ScheduleResult]] = field(default_factory=dict)
+    min_internal_start: Optional[datetime] = None
+    max_internal_end: Optional[datetime] = None
+    machine_busy: Dict[str, float] = field(default_factory=dict)
+    operator_busy: Dict[str, float] = field(default_factory=dict)
 
-    for r in results:
-        if not r.start_time or not r.end_time:
-            continue
-        bid = str(getattr(r, "batch_id", "") or "").strip()
-        if not bid:
-            continue
-        if min_start is None or r.start_time < min_start:
-            min_start = r.start_time
-        if max_end is None or r.end_time > max_end:
-            max_end = r.end_time
-        cur = finish_by_batch.get(bid)
-        if cur is None or r.end_time > cur:
-            finish_by_batch[bid] = r.end_time
 
-    overdue_count = 0
-    tardiness_hours = 0.0
-    weighted_tardiness_hours = 0.0
-    invalid_due_count = 0
-    unscheduled_batch_count = 0
-    invalid_due_batch_ids_sample: List[str] = []
-    unscheduled_batch_ids_sample: List[str] = []
-    for bid0, b in batches.items():
+@dataclass
+class _DueMetricState:
+    overdue_count: int = 0
+    tardiness_hours: float = 0.0
+    weighted_tardiness_hours: float = 0.0
+    invalid_due_count: int = 0
+    unscheduled_batch_count: int = 0
+    invalid_due_batch_ids_sample: List[str] = field(default_factory=list)
+    unscheduled_batch_ids_sample: List[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class _UtilizationMetrics:
+    makespan_internal_hours: float
+    machine_hours: List[float]
+    operator_hours: List[float]
+    machine_util_avg: float
+    operator_util_avg: float
+    util_defined: bool
+
+
+def compute_metrics(results: List[ScheduleResult], batches: Dict[str, Any]) -> ScheduleMetrics:
+    result_state = _collect_result_metric_state(results)
+    due_state = _compute_due_metrics(batches, result_state.finish_by_batch)
+    utilization = _build_utilization_metrics(result_state)
+
+    return ScheduleMetrics(
+        overdue_count=int(due_state.overdue_count),
+        total_tardiness_hours=float(due_state.tardiness_hours),
+        makespan_hours=float(_hours_between(result_state.min_start, result_state.max_end)),
+        changeover_count=int(_count_changeovers(result_state.by_machine)),
+        weighted_tardiness_hours=float(due_state.weighted_tardiness_hours),
+        makespan_internal_hours=float(utilization.makespan_internal_hours),
+        machine_used_count=int(len(utilization.machine_hours)),
+        operator_used_count=int(len(utilization.operator_hours)),
+        machine_busy_hours_total=float(sum(utilization.machine_hours) if utilization.machine_hours else 0.0),
+        operator_busy_hours_total=float(sum(utilization.operator_hours) if utilization.operator_hours else 0.0),
+        machine_util_avg=float(utilization.machine_util_avg),
+        operator_util_avg=float(utilization.operator_util_avg),
+        machine_load_cv=float(_cv(utilization.machine_hours)),
+        operator_load_cv=float(_cv(utilization.operator_hours)),
+        internal_horizon_hours=float(utilization.makespan_internal_hours),
+        util_defined=bool(utilization.util_defined),
+        invalid_due_count=int(due_state.invalid_due_count),
+        unscheduled_batch_count=int(due_state.unscheduled_batch_count),
+        invalid_due_batch_ids_sample=due_state.invalid_due_batch_ids_sample,
+        unscheduled_batch_ids_sample=due_state.unscheduled_batch_ids_sample,
+    )
+
+
+def _collect_result_metric_state(results: List[ScheduleResult]) -> _ResultMetricState:
+    state = _ResultMetricState()
+    for result in results:
+        st = getattr(result, "start_time", None)
+        et = getattr(result, "end_time", None)
+        if not st or not et:
+            continue
+        bid = str(getattr(result, "batch_id", "") or "").strip()
+        if bid:
+            _record_batch_finish(state, bid=bid, start_time=st, end_time=et)
+        if (getattr(result, "source", "") or "").strip().lower() == INTERNAL:
+            _record_internal_result(state, result=result, start_time=st, end_time=et)
+    return state
+
+
+def _record_batch_finish(state: _ResultMetricState, *, bid: str, start_time: datetime, end_time: datetime) -> None:
+    if state.min_start is None or start_time < state.min_start:
+        state.min_start = start_time
+    if state.max_end is None or end_time > state.max_end:
+        state.max_end = end_time
+    current_finish = state.finish_by_batch.get(bid)
+    if current_finish is None or end_time > current_finish:
+        state.finish_by_batch[bid] = end_time
+
+
+def _record_internal_result(
+    state: _ResultMetricState,
+    *,
+    result: ScheduleResult,
+    start_time: datetime,
+    end_time: datetime,
+) -> None:
+    if state.min_internal_start is None or start_time < state.min_internal_start:
+        state.min_internal_start = start_time
+    if state.max_internal_end is None or end_time > state.max_internal_end:
+        state.max_internal_end = end_time
+
+    duration_hours = _duration_hours(start_time, end_time)
+    machine_id = str(getattr(result, "machine_id", None) or "").strip()
+    if machine_id:
+        state.by_machine.setdefault(machine_id, []).append(result)
+        state.machine_busy[machine_id] = state.machine_busy.get(machine_id, 0.0) + float(duration_hours)
+    operator_id = str(getattr(result, "operator_id", None) or "").strip()
+    if operator_id:
+        state.operator_busy[operator_id] = state.operator_busy.get(operator_id, 0.0) + float(duration_hours)
+
+
+def _compute_due_metrics(batches: Dict[str, Any], finish_by_batch: Dict[str, datetime]) -> _DueMetricState:
+    state = _DueMetricState()
+    for bid0, batch in batches.items():
         bid = str(bid0 or "").strip()
         if not bid:
             continue
-        due_raw = getattr(b, "due_date", None)
-        due_d, due_invalid = _parse_due_date_state(due_raw)
-        if due_invalid:
-            invalid_due_count += 1
-            if len(invalid_due_batch_ids_sample) < 10:
-                invalid_due_batch_ids_sample.append(bid)
-        fin = finish_by_batch.get(bid)
-        if not fin:
-            unscheduled_batch_count += 1
-            if len(unscheduled_batch_ids_sample) < 20:
-                due_text = _due_text(due_raw)
-                if due_text:
-                    unscheduled_batch_ids_sample.append(f"{bid}({due_text})")
-                else:
-                    unscheduled_batch_ids_sample.append(bid)
-            continue
-        if not due_d:
-            continue
-        batch_due_exclusive = due_exclusive(due_d)
-        if fin >= batch_due_exclusive:
-            overdue_count += 1
-            delta_h = (fin - batch_due_exclusive).total_seconds() / 3600.0
-            tardiness_hours += delta_h
-            pr = normalize_priority(getattr(b, "priority", None), default="normal")
-            w = float(PRIORITY_WEIGHT.get(pr, 1.0))
-            weighted_tardiness_hours += (delta_h * w)
+        _record_batch_due_state(state, bid=bid, batch=batch, finish_time=finish_by_batch.get(bid))
+    return state
 
-    makespan_hours = 0.0
-    if min_start is not None and max_end is not None and max_end > min_start:
-        makespan_hours = (max_end - min_start).total_seconds() / 3600.0
 
-    # changeovers: per machine consecutive op_type change
-    by_machine: Dict[str, List[ScheduleResult]] = {}
-    for r in results:
-        if not r.start_time or not r.end_time:
-            continue
-        if (r.source or "").strip().lower() != INTERNAL:
-            continue
-        mid = str(getattr(r, "machine_id", None) or "").strip()
-        if not mid:
-            continue
-        by_machine.setdefault(mid, []).append(r)
+def _record_batch_due_state(
+    state: _DueMetricState,
+    *,
+    bid: str,
+    batch: Any,
+    finish_time: Optional[datetime],
+) -> None:
+    due_raw = getattr(batch, "due_date", None)
+    due_date_value, due_invalid = _parse_due_date_state(due_raw)
+    if due_invalid:
+        state.invalid_due_count += 1
+        if len(state.invalid_due_batch_ids_sample) < 10:
+            state.invalid_due_batch_ids_sample.append(bid)
+    if not finish_time:
+        _record_unscheduled_batch(state, bid=bid, due_raw=due_raw)
+        return
+    if due_date_value:
+        _record_tardiness_if_overdue(state, batch=batch, finish_time=finish_time, due_date_value=due_date_value)
 
+
+def _record_unscheduled_batch(state: _DueMetricState, *, bid: str, due_raw: Any) -> None:
+    state.unscheduled_batch_count += 1
+    if len(state.unscheduled_batch_ids_sample) >= 20:
+        return
+    due_text = _due_text(due_raw)
+    state.unscheduled_batch_ids_sample.append(f"{bid}({due_text})" if due_text else bid)
+
+
+def _record_tardiness_if_overdue(
+    state: _DueMetricState,
+    *,
+    batch: Any,
+    finish_time: datetime,
+    due_date_value: date,
+) -> None:
+    batch_due_exclusive = due_exclusive(due_date_value)
+    if finish_time < batch_due_exclusive:
+        return
+    state.overdue_count += 1
+    delta_hours = (finish_time - batch_due_exclusive).total_seconds() / 3600.0
+    state.tardiness_hours += float(delta_hours)
+    priority = normalize_priority(getattr(batch, "priority", None), default="normal")
+    state.weighted_tardiness_hours += float(delta_hours) * float(PRIORITY_WEIGHT.get(priority, 1.0))
+
+
+def _count_changeovers(by_machine: Dict[str, List[ScheduleResult]]) -> int:
     changeovers = 0
-    for _mid, lst in by_machine.items():
-        lst.sort(key=lambda x: (x.start_time or datetime.min, x.end_time or datetime.min, x.op_id))
-        prev_type: Optional[str] = None
-        for r in lst:
-            cur_type = (r.op_type_name or "").strip()
-            if not cur_type:
-                # op_type_name 缺失：不应制造“假换型”，也不应打断上一道有效类型
-                continue
-            if prev_type is None:
-                prev_type = cur_type
-                continue
-            if cur_type != prev_type:
-                changeovers += 1
-            prev_type = cur_type
+    for machine_results in by_machine.values():
+        machine_results.sort(key=lambda item: (item.start_time or datetime.min, item.end_time or datetime.min, item.op_id))
+        changeovers += _count_machine_changeovers(machine_results)
+    return int(changeovers)
 
-    # utilization & load balance（internal only）
-    min_int: Optional[datetime] = None
-    max_int: Optional[datetime] = None
-    machine_busy: Dict[str, float] = {}
-    operator_busy: Dict[str, float] = {}
-    for r in results:
-        if not r.start_time or not r.end_time:
+
+def _count_machine_changeovers(machine_results: List[ScheduleResult]) -> int:
+    changeovers = 0
+    previous_type: Optional[str] = None
+    for result in machine_results:
+        current_type = (result.op_type_name or "").strip()
+        if not current_type:
             continue
-        if (r.source or "").strip().lower() != INTERNAL:
-            continue
-        st = r.start_time
-        et = r.end_time
-        if min_int is None or st < min_int:
-            min_int = st
-        if max_int is None or et > max_int:
-            max_int = et
-        dur_h = max((et - st).total_seconds() / 3600.0, 0.0)
-        mid = str(getattr(r, "machine_id", None) or "").strip()
-        if mid:
-            machine_busy[mid] = machine_busy.get(mid, 0.0) + float(dur_h)
-        oid = str(getattr(r, "operator_id", None) or "").strip()
-        if oid:
-            operator_busy[oid] = operator_busy.get(oid, 0.0) + float(dur_h)
+        if previous_type is not None and current_type != previous_type:
+            changeovers += 1
+        previous_type = current_type
+    return int(changeovers)
 
-    makespan_internal_hours = 0.0
-    if min_int is not None and max_int is not None and max_int > min_int:
-        makespan_internal_hours = (max_int - min_int).total_seconds() / 3600.0
 
-    def _cv(vals: List[float]) -> float:
-        clean = []
-        for v in vals:
-            try:
-                fv = float(v)
-            except Exception:
-                continue
-            if math.isfinite(fv) and fv >= 0:
-                clean.append(fv)
-        if not clean:
-            return 0.0
-        if len(clean) <= 1:
-            return 0.0
-        m = statistics.fmean(clean)
-        if not math.isfinite(m) or m <= 0:
-            return 0.0
-        try:
-            return float(statistics.pstdev(clean) / m)
-        except Exception:
-            return 0.0
-
-    def _finite_non_negative(values: Dict[str, float]) -> List[float]:
-        out: List[float] = []
-        for v in values.values():
-            try:
-                fv = float(v)
-            except Exception:
-                continue
-            if math.isfinite(fv) and fv >= 0:
-                out.append(fv)
-        return out
-
-    machine_hours = _finite_non_negative(machine_busy)
-    operator_hours = _finite_non_negative(operator_busy)
-    horizon = float(makespan_internal_hours)
-    machine_util_avg = (sum(machine_hours) / (len(machine_hours) * horizon)) if machine_hours and horizon > 0 else 0.0
-    operator_util_avg = (sum(operator_hours) / (len(operator_hours) * horizon)) if operator_hours and horizon > 0 else 0.0
-    util_defined = bool(horizon > 0)
-
-    return ScheduleMetrics(
-        overdue_count=int(overdue_count),
-        total_tardiness_hours=float(tardiness_hours),
-        makespan_hours=float(makespan_hours),
-        changeover_count=int(changeovers),
-        weighted_tardiness_hours=float(weighted_tardiness_hours),
-        makespan_internal_hours=float(makespan_internal_hours),
-        machine_used_count=int(len(machine_hours)),
-        operator_used_count=int(len(operator_hours)),
-        machine_busy_hours_total=float(sum(machine_hours) if machine_hours else 0.0),
-        operator_busy_hours_total=float(sum(operator_hours) if operator_hours else 0.0),
-        machine_util_avg=float(machine_util_avg),
-        operator_util_avg=float(operator_util_avg),
-        machine_load_cv=float(_cv(machine_hours)),
-        operator_load_cv=float(_cv(operator_hours)),
-        internal_horizon_hours=float(horizon),
-        util_defined=util_defined,
-        invalid_due_count=int(invalid_due_count),
-        unscheduled_batch_count=int(unscheduled_batch_count),
-        invalid_due_batch_ids_sample=invalid_due_batch_ids_sample,
-        unscheduled_batch_ids_sample=unscheduled_batch_ids_sample,
+def _build_utilization_metrics(state: _ResultMetricState) -> _UtilizationMetrics:
+    horizon = float(_hours_between(state.min_internal_start, state.max_internal_end))
+    machine_hours = _finite_non_negative(state.machine_busy)
+    operator_hours = _finite_non_negative(state.operator_busy)
+    return _UtilizationMetrics(
+        makespan_internal_hours=float(horizon),
+        machine_hours=machine_hours,
+        operator_hours=operator_hours,
+        machine_util_avg=_util_avg(machine_hours, horizon),
+        operator_util_avg=_util_avg(operator_hours, horizon),
+        util_defined=bool(horizon > 0),
     )
+
+
+def _hours_between(start_time: Optional[datetime], end_time: Optional[datetime]) -> float:
+    if start_time is None or end_time is None or end_time <= start_time:
+        return 0.0
+    return (end_time - start_time).total_seconds() / 3600.0
+
+
+def _duration_hours(start_time: datetime, end_time: datetime) -> float:
+    return max((end_time - start_time).total_seconds() / 3600.0, 0.0)
+
+
+def _finite_non_negative(values: Dict[str, float]) -> List[float]:
+    out: List[float] = []
+    for value in values.values():
+        try:
+            float_value = float(value)
+        except Exception:
+            continue
+        if math.isfinite(float_value) and float_value >= 0:
+            out.append(float_value)
+    return out
+
+
+def _util_avg(hours: List[float], horizon: float) -> float:
+    return float(sum(hours) / (len(hours) * horizon)) if hours and horizon > 0 else 0.0
+
+
+def _cv(values: List[float]) -> float:
+    clean = []
+    for value in values:
+        try:
+            float_value = float(value)
+        except Exception:
+            continue
+        if math.isfinite(float_value) and float_value >= 0:
+            clean.append(float_value)
+    if len(clean) <= 1:
+        return 0.0
+    mean_value = statistics.fmean(clean)
+    if not math.isfinite(mean_value) or mean_value <= 0:
+        return 0.0
+    try:
+        return float(statistics.pstdev(clean) / mean_value)
+    except Exception:
+        return 0.0
 
 
 def objective_score(objective: str, metrics: ScheduleMetrics) -> Tuple[float, ...]:
