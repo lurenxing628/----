@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import time
 import traceback
 from datetime import date, datetime
@@ -19,6 +18,7 @@ from .optimizer_config import (
     ortools_time_limit_seconds,
     weighted_strategy_params,
 )
+from .schedule_signature_support import schedule_supports_strict_mode as _schedule_supports_strict_mode
 
 
 class SchedulerLike(Protocol):
@@ -28,21 +28,6 @@ class SchedulerLike(Protocol):
 
 def _step_config_snapshot(cfg: Any, *, strict_mode: bool) -> Any:
     return ensure_optimizer_config_snapshot(cfg, strict_mode=bool(strict_mode))
-
-
-def _schedule_supports_strict_mode(scheduler: SchedulerLike) -> Optional[bool]:
-    schedule_fn = getattr(scheduler, "schedule", None)
-    if not callable(schedule_fn):
-        return False
-    try:
-        signature = inspect.signature(schedule_fn)
-    except (TypeError, ValueError):
-        return None
-
-    for parameter in signature.parameters.values():
-        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
-            return True
-    return "strict_mode" in signature.parameters
 
 
 def _is_unexpected_strict_mode_type_error(exc: TypeError) -> bool:

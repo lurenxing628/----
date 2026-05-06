@@ -33,3 +33,21 @@ tags: [scheduler, performance, cache, quality-gate]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/benchmark_sgs_large_resource_pool.py`
 - These runs write scheduler evidence reports under `evidence/Benchmark/`.
 - They are part of the final verification for this refactor.
+
+## Step 1: strict_mode signature cache
+
+- Status: completed.
+- Changed files:
+  - `core/services/scheduler/run/schedule_signature_support.py`
+  - `core/services/scheduler/run/schedule_optimizer_steps.py`
+  - `tests/test_schedule_optimizer_strict_mode_signature_cache.py`
+- Notes:
+  - Stable bound-method signatures are cached by the underlying function object.
+  - Unhashable callable objects are not cached.
+  - Unknown signatures are not cached and still use the existing TypeError fallback.
+  - `_schedule_supports_strict_mode` remains available from `schedule_optimizer_steps.py` through an import alias.
+- Validation:
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/schedule_optimizer_steps.py core/services/scheduler/run/schedule_signature_support.py tests/test_schedule_optimizer_strict_mode_signature_cache.py`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_schedule_optimizer_strict_mode_signature_cache.py --tb=short`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_improve_dispatch_modes.py tests/test_optimizer_local_search_neighbor_dedup.py tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_strict_mode_raises_candidate_validation_error tests/regression_warmstart_failure_surfaces_degradation.py --tb=short`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold --tb=short`
