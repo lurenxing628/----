@@ -36,11 +36,29 @@ class ScheduleHistoryDisplayValueError(ValueError):
     """排产历史摘要里有无法安全展示的值。"""
 
 
-def strategy_display_label(value: Any) -> str:
+def _strategy_display_state(value: Any) -> Dict[str, str]:
     raw = str(value or "").strip()
     if not raw:
-        return "-"
-    return _STRATEGY_LABELS.get(raw, "未知排产策略")
+        return {
+            "label": "旧历史未记录",
+            "state": "missing",
+            "message": "这条历史没有记录排产方式，可能来自旧版本。",
+        }
+    if raw not in _STRATEGY_LABELS:
+        return {
+            "label": "历史记录异常",
+            "state": "invalid",
+            "message": f"历史记录里的排产方式“{raw}”没有登记，页面不把它当成正常策略显示。",
+        }
+    return {
+        "label": _STRATEGY_LABELS[raw],
+        "state": "ok",
+        "message": "",
+    }
+
+
+def strategy_display_label(value: Any) -> str:
+    return _strategy_display_state(value)["label"]
 
 
 def strict_strategy_display_label(value: Any) -> str:
@@ -81,7 +99,10 @@ def decorate_history_version_options(versions: Any) -> List[Dict[str, Any]]:
             parse_state=parse_state,
         )
         row["result_status_label"] = str(display_state.get("result_status_label") or "")
-        row["strategy_label"] = strategy_display_label(row.get("strategy"))
+        strategy_state = _strategy_display_state(row.get("strategy"))
+        row["strategy_label"] = strategy_state["label"]
+        row["strategy_display_state"] = strategy_state["state"]
+        row["strategy_display_message"] = strategy_state["message"]
         version_text = str(row.get("version") or "").strip()
         result_state = display_state.get("result_state") if isinstance(display_state, dict) else None
         outcome_status = str((result_state or {}).get("outcome_status") or "").strip()

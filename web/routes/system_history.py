@@ -38,7 +38,7 @@ def history_page():
     if ver is not None:
         item = q.get_by_version(ver)
         if item:
-            selected = item.to_dict()
+            selected = decorate_history_version_options([item.to_dict()])[0]
             parse_state = parse_history_summary_state(selected.get("result_summary"))
             log_history_summary_parse_warning(
                 parse_state,
@@ -56,7 +56,7 @@ def history_page():
             selected_missing_version = int(ver)
             selected_missing_message = f"v{int(ver)} 无对应排产历史"
 
-    items = [x.to_dict() for x in q.list_recent(limit=limit)]
+    items = decorate_history_version_options([x.to_dict() for x in q.list_recent(limit=limit)])
     for it in items:
         parse_state = parse_history_summary_state(it.get("result_summary"))
         log_history_summary_parse_warning(

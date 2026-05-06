@@ -129,10 +129,6 @@ def _format_error_sample(error_rows: List[Any]) -> str:
     return "；".join(items)
 
 
-def strict_mode_enabled(raw_value: Any) -> bool:
-    return str(raw_value or "").strip().lower() in {"1", "y", "yes", "true", "on"}
-
-
 def load_confirm_payload(
     raw_rows_json: Optional[str],
     preview_baseline: Optional[str],

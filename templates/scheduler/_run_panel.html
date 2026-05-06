@@ -21,7 +21,9 @@
       <div class="aps-run-options-title">排产选项</div>
       {% for option in run_options %}
         {{ ui.toggle(option.toggle, class='aps-run-option-row') }}
-        <div class="muted text-xs scheduler-config-field-warning aps-run-option-note">{{ option.note }}</div>
+        {% if option.note %}
+          <div class="muted text-xs scheduler-config-field-warning aps-run-option-note">{{ option.note }}</div>
+        {% endif %}
       {% endfor %}
     </div>
   </div>

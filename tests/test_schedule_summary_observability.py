@@ -356,7 +356,7 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
     assert ctx["current_config_state"]["degraded"] is True
     assert ctx["config_degraded_fields"] == ["enforce_ready_default"]
     assert ctx["config_hidden_warnings"]
-    assert ctx["latest_auto_assign_persist_state"]["value"] == "unknown"
+    assert ctx["latest_auto_assign_persist_state"]["value"] == "missing"
     assert ctx["latest_auto_assign_persist_state"]["enabled"] is None
     assert ctx["latest_summary_display"]["primary_degradation"]["details"] == [
         "组合并资料不完整",

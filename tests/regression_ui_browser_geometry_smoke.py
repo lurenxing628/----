@@ -18,9 +18,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SMOKE_PATHS = (
     "/scheduler/batches?status=pending",
     "/scheduler/config",
+    "/scheduler/batches",
+    "/scheduler/excel/batches",
     "/system/backup",
     "/system/logs",
-    "/material/batch-materials",
+    "/process/",
+    "/material/batches",
 )
 
 
@@ -36,7 +39,37 @@ def _find_chrome() -> str:
     for candidate in candidates:
         if candidate and Path(candidate).exists():
             return str(candidate)
-    pytest.skip("没有找到可用于 UI 几何 smoke 的 Chrome/Chromium。")
+    message = "没有找到可用于 UI 几何 smoke 的 Chrome/Chromium；CI 需要设置 APS_CHROME_PATH 或安装 Chrome。"
+    if os.environ.get("CI"):
+        pytest.fail(message)
+    pytest.skip(message)
+
+
+def _find_node_with_browser_runtime() -> str:
+    node = shutil.which("node")
+    message = "UI 浏览器几何 smoke 需要 Node.js，并且全局 fetch/WebSocket 必须可用。"
+    if not node:
+        if os.environ.get("CI"):
+            pytest.fail(message)
+        pytest.skip(message)
+    completed = subprocess.run(
+        [
+            node,
+            "-e",
+            "if (typeof fetch !== 'function' || typeof WebSocket !== 'function') process.exit(1)",
+        ],
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=10,
+    )
+    if completed.returncode != 0:
+        runtime_message = f"{message} 当前 Node 版本缺少 fetch 或 WebSocket，请使用 Node 24 或更新版本。"
+        if os.environ.get("CI"):
+            pytest.fail(runtime_message)
+        pytest.skip(runtime_message)
+    return node
 
 
 def _free_port() -> int:
@@ -84,7 +117,7 @@ def _serve_app(app):
     return server, f"http://127.0.0.1:{server.server_port}"
 
 
-def _run_chrome_geometry_probe(*, chrome_path: str, base_url: str, tmp_path: Path) -> list[dict]:
+def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: str, tmp_path: Path) -> list[dict]:
     script = tmp_path / "ui_geometry_probe.mjs"
     script.write_text(
         textwrap.dedent(
@@ -249,6 +282,15 @@ def _run_chrome_geometry_probe(*, chrome_path: str, base_url: str, tmp_path: Pat
                       return style.backgroundColor.includes('255, 255, 255') || style.color === style.backgroundColor;
                     }).length;
                   const logsTable = document.querySelector('#systemLogsTable');
+                  const requiredToggleByPath = {
+                    "/scheduler/batches": "batchManageStrictMode",
+                    "/scheduler/excel/batches": "batchImportAutoOps",
+                    "/process/": "processCreateStrictMode",
+                  };
+                  const requiredToggleId = requiredToggleByPath[location.pathname] || "";
+                  const requiredTogglePresent = requiredToggleId
+                    ? Boolean(document.getElementById(requiredToggleId))
+                    : true;
                   return JSON.stringify({
                     path: location.pathname + location.search,
                     width: window.innerWidth,
@@ -259,6 +301,8 @@ def _run_chrome_geometry_probe(*, chrome_path: str, base_url: str, tmp_path: Pat
                     visibleNotices,
                     darkSummaryBadCount,
                     logsTableMultiline: logsTable ? logsTable.classList.contains('aps-table--multiline') : true,
+                    requiredToggleId,
+                    requiredTogglePresent,
                   });
                 })()
               `;
@@ -291,7 +335,7 @@ def _run_chrome_geometry_probe(*, chrome_path: str, base_url: str, tmp_path: Pat
     )
     completed = subprocess.run(
         [
-            "node",
+            node_path,
             str(script),
             chrome_path,
             base_url,
@@ -311,10 +355,16 @@ def _run_chrome_geometry_probe(*, chrome_path: str, base_url: str, tmp_path: Pat
 
 def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, monkeypatch) -> None:
     chrome_path = _find_chrome()
+    node_path = _find_node_with_browser_runtime()
     app = _build_app(tmp_path, monkeypatch)
     server, base_url = _serve_app(app)
     try:
-        results = _run_chrome_geometry_probe(chrome_path=chrome_path, base_url=base_url, tmp_path=tmp_path)
+        results = _run_chrome_geometry_probe(
+            chrome_path=chrome_path,
+            node_path=node_path,
+            base_url=base_url,
+            tmp_path=tmp_path,
+        )
     finally:
         server.shutdown()
 
@@ -322,10 +372,12 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
     overlapping_toggles = [item for item in results if item["toggleOverlapCount"]]
     bad_dark_summary = [item for item in results if item["darkSummaryBadCount"]]
     bad_logs_table = [item for item in results if not item["logsTableMultiline"]]
+    missing_required_toggles = [item for item in results if not item["requiredTogglePresent"]]
 
     assert overflowing == []
     assert overlapping_toggles == []
     assert bad_dark_summary == []
     assert bad_logs_table == []
+    assert missing_required_toggles == []
     assert any(item["toggleCount"] > 0 for item in results)
     assert any(item["visibleNotices"] > 0 for item in results)

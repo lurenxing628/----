@@ -8,10 +8,11 @@ from flask import current_app, flash, g, redirect, request, url_for
 from core.infrastructure.errors import AppError
 from core.models.enums import MergeMode, PartOperationStatus, SourceType, YesNo
 from core.services.process import ExternalGroupService, PartService, SupplierService
+from web.routes.form_values import form_toggle_bool
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.excel_entry_cards import process_parts_excel_cards
+from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
-from .excel_utils import strict_mode_enabled as _strict_mode_enabled
 from .pagination import paginate_rows, parse_page_args
 from .process_bp import _merge_mode_zh, _source_zh, bp
 
@@ -85,6 +86,10 @@ def list_parts():
         parts=view_rows,
         pager=pager,
         excel_cards=process_parts_excel_cards(),
+        create_strict_toggle=build_strict_mode_toggle(
+            "processCreateStrictMode",
+            desc="路线、工种、供应商或外协周期不完整时，先停下并提示你补齐。",
+        ),
     )
 
 
@@ -94,11 +99,10 @@ def create_part():
     part_name = request.form.get("part_name")
     route_raw = request.form.get("route_raw")
     remark = request.form.get("remark")
-    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
-
     user_warnings: List[str] = []
     svc = PartService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
     try:
+        strict_mode = form_toggle_bool(request.form, "strict_mode")
         p = svc.create(
             part_no=part_no,
             part_name=part_name,
@@ -123,6 +127,12 @@ def part_detail(part_no: str):
     part = detail["part"].to_dict()
     ops = [o.to_dict() for o in detail["operations"]]
     groups = [gr.to_dict() for gr in detail["groups"]]
+    for group in groups:
+        group_id = str(group.get("group_id") or "")
+        group["strict_mode_toggle"] = build_strict_mode_toggle(
+            f"processGroupStrictMode{group_id}",
+            desc="外协周期没填好时，先停下并提示你补齐。",
+        )
 
     # 统计
     active_ops, total_count, internal_count, external_count = _summarize_active_ops(ops)
@@ -155,6 +165,10 @@ def part_detail(part_no: str):
         deletable_group_ids=deletable_group_ids,
         source_zh=_source_zh,
         merge_mode_zh=_merge_mode_zh,
+        reparse_strict_toggle=build_strict_mode_toggle(
+            "processReparseStrictMode",
+            desc="路线、工种、供应商或外协周期不完整时，不覆盖现有工序。",
+        ),
     )
 
 
@@ -215,11 +229,11 @@ def bulk_delete_parts():
 @bp.post("/parts/<part_no>/reparse")
 def reparse_part(part_no: str):
     route_raw = request.form.get("route_raw")
-    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     svc = PartService(g.db, op_logger=getattr(g, "op_logger", None))
 
     start = time.time()
     try:
+        strict_mode = form_toggle_bool(request.form, "strict_mode")
         result = svc.reparse_and_save(part_no=part_no, route_raw=route_raw, strict_mode=strict_mode)
     except AppError as e:
         flash(e.message, "error")
@@ -249,8 +263,6 @@ def update_internal_hours(part_no: str, seq: int):
 def set_group_mode(part_no: str, group_id: str):
     merge_mode = request.form.get("merge_mode") or MergeMode.SEPARATE.value
     total_days = request.form.get("total_days")
-    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
-
     per_op_days: Dict[int, Any] = {}
     for k, v in request.form.items():
         if not k.startswith("ext_days_"):
@@ -264,6 +276,7 @@ def set_group_mode(part_no: str, group_id: str):
     user_warnings: List[str] = []
     svc = ExternalGroupService(g.db, logger=current_app.logger, op_logger=getattr(g, "op_logger", None))
     try:
+        strict_mode = form_toggle_bool(request.form, "strict_mode")
         svc.set_merge_mode(
             group_id=group_id,
             merge_mode=merge_mode,

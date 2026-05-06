@@ -354,6 +354,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_scheduler_batches_presenter_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_system_logs_layout_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_form_run_option_checkbox_layout_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_scheduler_route_enforce_ready_tristate.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_ui_browser_geometry_smoke.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_layout_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_request_services_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_request_services_lazy_construction.py" in module.REQUIRED_TEST_ARGS
@@ -388,6 +390,10 @@ def test_quality_workflow_uploads_quality_gate_manifest_artifact():
     assert re.search(r"(?m)^    env:\s*$", quality_gate_job.group("body"))
     assert re.search(r"(?m)^      PYTHONUTF8:\s*['\"]?1['\"]?\s*$", quality_gate_job.group("body"))
     assert re.search(r"(?m)^      PYTHONIOENCODING:\s*['\"]?utf-8['\"]?\s*$", quality_gate_job.group("body"))
+    assert re.search(r"(?m)^      APS_CHROME_PATH:\s*C:\\Program Files\\Google\\Chrome\\Application\\chrome\.exe\s*$", quality_gate_job.group("body"))
+    assert "安装 Node.js 24" in quality_gate_job.group("body")
+    assert "actions/setup-node" in quality_gate_job.group("body")
+    assert "node-version: '24'" in quality_gate_job.group("body")
 
 
 def test_main_rebuilds_ignored_receipts_without_dirtying_clean_worktree(monkeypatch, tmp_path):

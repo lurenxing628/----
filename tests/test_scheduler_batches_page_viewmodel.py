@@ -191,9 +191,9 @@ def test_batch_rows_filter_ready_and_add_public_labels() -> None:
     )
 
     assert [row["batch_id"] for row in rows] == ["B001"]
-    assert rows[0]["priority_zh"] == "急件"
-    assert rows[0]["ready_status_zh"] == "部分齐套"
-    assert rows[0]["status_zh"] == "待排"
+    assert "priority_zh" not in rows[0]
+    assert "ready_status_zh" not in rows[0]
+    assert "status_zh" not in rows[0]
     assert rows[0]["priority_label"] == "急件"
     assert rows[0]["ready_status_label"] == "部分齐套"
     assert rows[0]["status_label"] == "待排"
@@ -335,6 +335,7 @@ def test_batches_page_empty_filtered_result_uses_filter_specific_message(tmp_pat
     assert response.status_code == 200
     assert "B-SCHEDULED" not in body
     assert "当前筛选条件下暂无批次数据，可以调整状态或齐套条件" in body
+    assert "aps-empty-state" in body
 
 
 def test_batches_page_renders_config_degraded_public_messages(tmp_path, monkeypatch) -> None:
@@ -368,7 +369,9 @@ def test_batches_page_without_latest_history_renders_empty_history_message(tmp_p
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "还没有排过产，排产后这里会显示结果。" in body
+    assert "aps-empty-state" in body
+    assert "还没有排过产" in body
+    assert "排产后这里会显示最近一次排产结果。" in body
     assert 'aps-summary-value">v' not in body
 
 

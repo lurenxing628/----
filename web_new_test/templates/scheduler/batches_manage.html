@@ -70,16 +70,7 @@
           <input id="batchManageRemarkInput" name="remark" placeholder="可选">
         </div>
         <div class="form-field aps-field-wide aps-form-toggle-field">
-          <div class="aps-run-option-row">
-            <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="batchManageStrictMode" aria-label="启用资料不完整就停下">
-              <input id="batchManageStrictMode" class="aps-settings-toggle-input" type="checkbox" name="strict_mode" value="yes">
-              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-            </label>
-            <span class="aps-run-option-copy">
-              <label class="aps-run-option-title" for="batchManageStrictMode">资料不完整就停下</label>
-              <span class="aps-run-option-desc">缺工种、供应商或外协周期不正确时，先停下并提示原因。</span>
-            </span>
-          </div>
+          {{ ui.toggle(batch_manage_strict_toggle, class='aps-run-option-row') }}
           {% call ui.help_details('查看生成工序规则') %}
             只在批次需要按零件路线生成工序时生效。勾选后：缺工种、缺供应商或外协周期不正确时，会停止创建并提示原因。不勾选：能确认的工序会先生成；缺少外协周期时会先按 1 天记录并提醒补正。
           {% endcall %}
@@ -167,9 +158,9 @@
                 <td>{{ r.part_no }}</td>
                 <td class="text-right">{{ r.quantity }}</td>
                 <td>{% if r.due_date %}{{ r.due_date }}{% else %}<span class="muted">-</span>{% endif %}</td>
-                <td>{{ r.priority_zh }}</td>
-                <td>{{ r.ready_status_zh }}</td>
-                <td>{{ r.status_zh }}</td>
+                <td>{{ r.priority_label }}</td>
+                <td>{{ r.ready_status_label }}</td>
+                <td>{{ r.status_label }}</td>
                 <td>
                   <div class="table-actions">
                     {{ ui.link_button('查看/编辑', url_for('scheduler.batch_detail', batch_id=r.batch_id), 'secondary', 'sm') }}

@@ -1,5 +1,6 @@
 import os
 import sys
+from io import BytesIO
 from types import SimpleNamespace
 from typing import Any, Dict
 
@@ -72,6 +73,149 @@ def _invoke_scheduler_simulate(form_data: Any):
         route_mod.url_for = old_url_for
 
 
+def _invoke_system_plugin_toggle(form_data: Any):
+    import web.routes.system_plugins as route_mod
+
+    captured: Dict[str, Any] = {}
+
+    class _StubConfigService:
+        def set_value(self, key, value, description=None):
+            captured["key"] = key
+            captured["value"] = value
+            captured["description"] = description
+
+    old_url_for = route_mod.url_for
+    old_get_svc = route_mod._get_system_config_service
+    route_mod.url_for = lambda endpoint, **kwargs: f"/{endpoint}"
+    route_mod._get_system_config_service = lambda: _StubConfigService()
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-secret"
+        with app.test_request_context("/system/plugins/toggle", method="POST", data=form_data):
+            g.op_logger = None
+            resp = route_mod.plugin_toggle()
+        assert getattr(resp, "status_code", 0) in (301, 302), "plugin_toggle 应返回 redirect"
+        return dict(captured)
+    finally:
+        route_mod.url_for = old_url_for
+        route_mod._get_system_config_service = old_get_svc
+
+
+def _invoke_process_create_part(form_data: Any):
+    import web.routes.process_parts as route_mod
+
+    captured: Dict[str, Any] = {}
+
+    class _StubPart:
+        part_no = "P001"
+        part_name = "测试件"
+
+    class _StubPartService:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create(self, **kwargs):
+            captured["strict_mode"] = kwargs.get("strict_mode")
+            return _StubPart()
+
+    old_url_for = route_mod.url_for
+    old_part_service = route_mod.PartService
+    route_mod.url_for = lambda endpoint, **kwargs: f"/{endpoint}"
+    route_mod.PartService = _StubPartService
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-secret"
+        with app.test_request_context("/process/parts/create", method="POST", data=form_data):
+            g.db = object()
+            g.op_logger = None
+            resp = route_mod.create_part()
+        assert getattr(resp, "status_code", 0) in (301, 302), "create_part 应返回 redirect"
+        return dict(captured)
+    finally:
+        route_mod.url_for = old_url_for
+        route_mod.PartService = old_part_service
+
+
+def _invoke_scheduler_create_batch(form_data: Any):
+    import web.routes.domains.scheduler.scheduler_batches as route_mod
+
+    captured: Dict[str, Any] = {}
+
+    class _StubBatch:
+        batch_id = "B001"
+
+    class _StubBatchService:
+        def create_batch_from_template(self, **kwargs):
+            captured["strict_mode"] = kwargs.get("strict_mode")
+            return _StubBatch()
+
+        def list_operations(self, batch_id):
+            return []
+
+        def consume_user_visible_warnings(self):
+            return []
+
+    old_url_for = route_mod.url_for
+    route_mod.url_for = lambda endpoint, **kwargs: f"/{endpoint}"
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-secret"
+        with app.test_request_context("/scheduler/batches/create", method="POST", data=form_data):
+            g.services = SimpleNamespace(batch_service=_StubBatchService())
+            resp = route_mod.create_batch()
+        assert getattr(resp, "status_code", 0) in (301, 302), "create_batch 应返回 redirect"
+        return dict(captured)
+    finally:
+        route_mod.url_for = old_url_for
+
+
+def _invoke_scheduler_excel_batches_preview(form_data: Any):
+    import web.routes.domains.scheduler.scheduler_excel_batches as route_mod
+
+    captured: Dict[str, Any] = {}
+
+    old_read_uploaded = route_mod._read_uploaded_xlsx
+    old_ensure_unique = route_mod._ensure_unique_ids
+    old_parse_mode = route_mod._parse_mode
+    old_baseline_extra_state = route_mod._batch_baseline_extra_state
+
+    def _stop_after_toggle(*args, **kwargs):
+        captured["auto_generate_ops"] = kwargs.get("auto_generate_ops")
+        captured["strict_mode"] = kwargs.get("strict_mode")
+        raise RuntimeError("stop after toggle parse")
+
+    route_mod._read_uploaded_xlsx = lambda file: [{"批次号": "B001"}]
+    route_mod._ensure_unique_ids = lambda *args, **kwargs: None
+    route_mod._parse_mode = lambda raw: SimpleNamespace(value=str(raw or "overwrite"))
+    route_mod._batch_baseline_extra_state = _stop_after_toggle
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-secret"
+        with app.test_request_context(
+            "/scheduler/excel/batches/preview",
+            method="POST",
+            data=form_data,
+            content_type="multipart/form-data",
+        ):
+            g.services = SimpleNamespace(
+                batch_service=SimpleNamespace(list=lambda: []),
+                part_service=SimpleNamespace(list=lambda: []),
+                part_operation_query_service=object(),
+                excel_service=SimpleNamespace(preview_import=lambda **kwargs: []),
+            )
+            g.op_logger = None
+            try:
+                route_mod.excel_batches_preview()
+            except RuntimeError as exc:
+                assert str(exc) == "stop after toggle parse"
+        return dict(captured)
+    finally:
+        route_mod._read_uploaded_xlsx = old_read_uploaded
+        route_mod._ensure_unique_ids = old_ensure_unique
+        route_mod._parse_mode = old_parse_mode
+        route_mod._batch_baseline_extra_state = old_baseline_extra_state
+
+
 def _assert_form_parser_contract() -> None:
     from core.infrastructure.errors import ValidationError
     from web.routes.form_values import form_optional_toggle_bool, form_toggle_bool, form_yes_no_value
@@ -87,12 +231,29 @@ def _assert_form_parser_contract() -> None:
         assert "flag 取值不合法" in exc.message
     else:
         raise AssertionError("字段已提交但取值不认识时，不应静默使用 default")
+    for bad_values in (
+        [("flag", "yes"), ("flag", "maybe")],
+        [("flag", "no"), ("flag", "maybe")],
+        [("flag", "maybe"), ("flag", "yes")],
+    ):
+        try:
+            form_yes_no_value(MultiDict(bad_values), "flag")
+        except ValidationError as exc:
+            assert "flag 取值不合法" in exc.message
+        else:
+            raise AssertionError(f"混入非法值时不应静默挑选合法值：{bad_values!r}")
     try:
         form_toggle_bool(MultiDict([("flag", "maybe")]), "flag", default=False)
     except ValidationError as exc:
         assert "flag 取值不合法" in exc.message
     else:
         raise AssertionError("普通开关收到非法值时，不应静默按 False 处理")
+    try:
+        form_toggle_bool(MultiDict([("flag", "no"), ("flag", "maybe")]), "flag", default=False)
+    except ValidationError as exc:
+        assert "flag 取值不合法" in exc.message
+    else:
+        raise AssertionError("普通开关混入非法值时，不应静默按合法 no 处理")
     try:
         form_optional_toggle_bool(MultiDict([("flag", "maybe")]), "flag")
     except ValidationError as exc:
@@ -165,6 +326,40 @@ def main() -> None:
     sim_false = _invoke_scheduler_simulate({"batch_ids": ["B001"], "enforce_ready": "no", "strict_mode": "false"})
     assert sim_false.get("enforce_ready") is False, f"simulate 显式 no 应传递 False：{sim_false!r}"
     assert sim_false.get("strict_mode") is False, f"simulate 显式 false 应传递 False：{sim_false!r}"
+
+    plugin_on = _invoke_system_plugin_toggle(
+        MultiDict([("plugin_id", "demo"), ("enabled", "no"), ("enabled", "yes")])
+    )
+    assert plugin_on.get("value") == "yes", f"插件开关同名反序提交应识别 yes：{plugin_on!r}"
+    plugin_off = _invoke_system_plugin_toggle({"plugin_id": "demo"})
+    assert plugin_off.get("value") == "no", f"插件开关未提交 enabled 时应按 no 保存：{plugin_off!r}"
+    plugin_invalid = _invoke_system_plugin_toggle({"plugin_id": "demo", "enabled": "maybe"})
+    assert "value" not in plugin_invalid, f"插件开关非法值不应静默保存：{plugin_invalid!r}"
+
+    process_create = _invoke_process_create_part(
+        MultiDict([("part_no", "P001"), ("part_name", "测试件"), ("strict_mode", "no"), ("strict_mode", "yes")])
+    )
+    assert process_create.get("strict_mode") is True, f"工艺新增 strict_mode 反序提交应识别 yes：{process_create!r}"
+
+    batch_create = _invoke_scheduler_create_batch(
+        MultiDict([("batch_id", "B001"), ("part_no", "P001"), ("quantity", "1"), ("strict_mode", "no"), ("strict_mode", "yes")])
+    )
+    assert batch_create.get("strict_mode") is True, f"批次新增 strict_mode 反序提交应识别 yes：{batch_create!r}"
+
+    batch_excel_preview = _invoke_scheduler_excel_batches_preview(
+        MultiDict(
+            [
+                ("mode", "overwrite"),
+                ("auto_generate_ops", "0"),
+                ("auto_generate_ops", "1"),
+                ("strict_mode", "no"),
+                ("strict_mode", "yes"),
+                ("file", (BytesIO(b"fake xlsx bytes"), "batches.xlsx")),
+            ]
+        )
+    )
+    assert batch_excel_preview.get("auto_generate_ops") is True, f"批次 Excel 自动生成工序反序提交应识别 yes：{batch_excel_preview!r}"
+    assert batch_excel_preview.get("strict_mode") is True, f"批次 Excel strict_mode 反序提交应识别 yes：{batch_excel_preview!r}"
 
     tpl_path = os.path.join(repo_root, "templates", "scheduler", "batches.html")
     run_panel_path = os.path.join(repo_root, "templates", "scheduler", "_run_panel.html")

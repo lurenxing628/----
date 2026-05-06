@@ -1,15 +1,6 @@
 {% extends "base.html" %}
 {% import "components/ui_macros.html" as ui %}
 {% block content %}
-  {% set strategy_zh = {
-      'priority_first': '优先级优先',
-      'due_date_first': '交期优先',
-      'weighted': '综合优先级和交期',
-      'fifo': '先进先出',
-      'improve': '优化排产',
-      'greedy': '快速排产',
-      'manual': '手动排产'
-    } %}
   {% set status_zh = {'success': '成功', 'partial': '部分成功', 'failed': '失败', 'simulated': '模拟排产', 'ok': '成功', 'fail': '失败', 'ok2': '成功'} %}
 
   {{ ui.aps_page_hero(
@@ -58,7 +49,7 @@
       <div class="aps-summary-grid aps-version-summary">
         {{ ui.summary_item('版本', 'v' ~ selected.version) }}
         {{ ui.summary_item('时间', selected.schedule_time) }}
-        {{ ui.summary_item('排产方式', strategy_zh.get(selected.strategy, '未知排产方式')) }}
+        {{ ui.summary_item('排产方式', selected.strategy_label, selected.strategy_display_message) }}
         {{ ui.summary_item('结果', selected_summary_display.result_status_label or status_zh.get(selected.result_status, '结果状态未知')) }}
         {{ ui.summary_item('批次', selected.batch_count) }}
         {{ ui.summary_item('工序', selected.op_count) }}
@@ -190,7 +181,12 @@
               <td>{{ r.id }}</td>
               <td>{{ r.schedule_time }}</td>
               <td>v{{ r.version }}</td>
-              <td>{{ strategy_zh.get(r.strategy, '未知排产方式') }}</td>
+              <td>
+                {{ r.strategy_label }}
+                {% if r.strategy_display_message %}
+                  <div class="muted text-xs">{{ r.strategy_display_message }}</div>
+                {% endif %}
+              </td>
               <td>{{ r.batch_count }} / {{ r.op_count }}</td>
               <td>{{ r.result_summary_display.result_status_label if r.result_summary_display else status_zh.get(r.result_status, '结果状态未知') }}</td>
               <td>

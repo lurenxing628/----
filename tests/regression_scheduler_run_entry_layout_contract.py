@@ -38,6 +38,7 @@ def test_scheduler_run_entry_is_visible_before_batch_table() -> None:
         assert "ui.toggle_row(" not in run_panel
         assert "class='aps-run-option-row'" in run_panel
         assert "aps-run-option-note" in run_panel
+        assert "{% if option.note %}" in run_panel
         assert "aps-choice-list aps-run-panel-options" not in run_panel
         assert 'class="aps-choice"' not in run_panel
         assert "aps-settings-toggle-control aps-settings-toggle-control-icon" not in run_panel
@@ -116,7 +117,8 @@ def test_run_panel_container_breakpoint_has_room_for_declared_columns() -> None:
 def test_latest_schedule_snapshot_uses_dedicated_sections() -> None:
     for rel_path in ("templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches.html"):
         source = _read(rel_path)
-        block = source[source.index('class="card aps-latest-schedule-card"') : source.index("批次列表")]
+        assert source.index("批次列表") < source.index('class="card aps-latest-schedule-card"')
+        block = source[source.index('class="card aps-latest-schedule-card"') :]
         assert "aps-latest-schedule-card" in block
         assert "aps-latest-schedule-head" in block
         assert "aps-latest-schedule-meta" in block
@@ -127,6 +129,7 @@ def test_latest_schedule_snapshot_uses_dedicated_sections() -> None:
         assert "ui.notice(item.title, item.body" in block
         assert "ui.details_notice(notice, class='mt-2 scheduler-run-degraded-summary')" in block
         assert "ui.summary_item_block('错误摘要'" in block
+        assert "ui.empty_state('还没有排过产'" in block
         assert "保存系统补齐的设备和人员" not in block
         assert "保存补齐资源" in block
         assert "查看说明" in block

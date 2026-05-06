@@ -32,6 +32,7 @@ def main():
     from flask import render_template
 
     from app import create_app  # noqa: WPS433 (repo-local import)
+    from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
     app = create_app()
 
@@ -82,6 +83,10 @@ def main():
         machine_operator_meta={},
         prefer_primary_skill="no",
         lazy_select_enabled=True,
+        batch_detail_strict_toggle=build_strict_mode_toggle(
+            "batchDetailGenerateOpsStrictMode",
+            desc="工序资料不完整时先停下，避免把缺资料的批次继续生成下去。",
+        ),
     )
 
     with app.test_request_context("/scheduler/batches/B_TEST?lazy_select=1"):
@@ -134,4 +139,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

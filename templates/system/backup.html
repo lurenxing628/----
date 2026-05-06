@@ -287,10 +287,7 @@
                   <form method="post" action="{{ url_for('system.plugin_toggle') }}">
                     <input type="hidden" name="plugin_id" value="{{ s.plugin_id }}">
                     <div class="aps-inline-form-actions">
-                      <label class="muted">
-                        <input type="checkbox" name="enabled" {{ s.enabled_checked_attr }}>
-                        启用
-                      </label>
+                      {{ ui.toggle(s.enabled_toggle, class='aps-run-option-row aps-plugin-toggle-row') }}
                       {{ ui.button('保存', 'secondary', 'sm', type_attr='submit') }}
                     </div>
                     <div class="aps-table-cell-note">

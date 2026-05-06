@@ -8,6 +8,7 @@ from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
 from web.error_boundary import user_visible_app_error_message
+from web.routes.form_values import form_toggle_bool
 from web.routes.history_summary_logging import log_history_summary_parse_warning
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.excel_entry_cards import scheduler_batch_excel_cards
@@ -20,8 +21,8 @@ from web.viewmodels.scheduler_batches_page import (
     build_scheduler_batches_page_view_model,
 )
 from web.viewmodels.scheduler_history_summary import parse_history_summary_state
+from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
-from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
 from ...navigation_utils import _safe_next_url
 from ...pagination import paginate_rows, parse_page_args
 from .scheduler_bp import (
@@ -143,9 +144,9 @@ def batches_manage_page():
         view_rows.append(
             {
                 **b.to_dict(),
-                "priority_zh": _priority_zh(b.priority),
-                "ready_status_zh": _ready_zh(b.ready_status),
-                "status_zh": _batch_status_zh(b.status),
+                "priority_label": _priority_zh(b.priority),
+                "ready_status_label": _ready_zh(b.ready_status),
+                "status_label": _batch_status_zh(b.status),
             }
         )
 
@@ -163,6 +164,10 @@ def batches_manage_page():
         part_options=part_options,
         pager=pager,
         excel_cards=scheduler_batch_excel_cards(),
+        batch_manage_strict_toggle=build_strict_mode_toggle(
+            "batchManageStrictMode",
+            desc="缺工种、供应商或外协周期不正确时，先停下并提示原因。",
+        ),
     )
 
 
@@ -175,11 +180,11 @@ def create_batch():
     priority = request.form.get("priority") or "normal"
     ready_status = request.form.get("ready_status") or "yes"
     ready_date = request.form.get("ready_date") or None
-    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     remark = request.form.get("remark") or None
 
     batch_svc = g.services.batch_service
     try:
+        strict_mode = form_toggle_bool(request.form, "strict_mode")
         # 创建批次默认强制生成工序（从零件模板；缺模板时会尝试自动解析 route_raw）
         b = batch_svc.create_batch_from_template(
             batch_id=batch_id,
@@ -368,10 +373,10 @@ def bulk_update_batches():
 @bp.post("/batches/<batch_id>/generate-ops")
 def generate_ops(batch_id: str):
     batch_svc = g.services.batch_service
-    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
     b = batch_svc.get(batch_id)
 
     try:
+        strict_mode = form_toggle_bool(request.form, "strict_mode")
         batch_svc.create_batch_from_template(
             batch_id=b.batch_id,
             part_no=b.part_no,

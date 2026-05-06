@@ -5,6 +5,7 @@ from web.viewmodels.scheduler_history_summary import (
     build_history_summary_display,
     decorate_history_version_options,
     parse_history_summary_state,
+    strategy_display_label,
 )
 
 
@@ -62,6 +63,30 @@ def test_decorate_history_version_options_preserves_status_label_contract() -> N
 
     assert decorated[0]["version"] == 3
     assert decorated[0]["result_status_label"] == "部分成功"
+    assert decorated[0]["strategy_display_state"] == "missing"
+    assert decorated[0]["strategy_label"] == "旧历史未记录"
+    assert "旧版本" in decorated[0]["strategy_display_message"]
+
+
+def test_strategy_display_label_marks_unknown_values_as_history_error() -> None:
+    assert strategy_display_label("priority_first") == "优先级优先"
+    assert strategy_display_label("") == "旧历史未记录"
+    assert strategy_display_label("future_strategy") == "历史记录异常"
+
+    decorated = decorate_history_version_options(
+        [
+            {
+                "version": 4,
+                "strategy": "future_strategy",
+                "result_status": "success",
+                "result_summary": '{"completion_status": "success"}',
+            }
+        ]
+    )
+    row = decorated[0]
+    assert row["strategy_display_state"] == "invalid"
+    assert row["strategy_label"] == "历史记录异常"
+    assert "future_strategy" in row["strategy_display_message"]
 
 
 def test_build_history_summary_display_keeps_parse_state_visible() -> None:

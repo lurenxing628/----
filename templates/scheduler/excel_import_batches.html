@@ -29,7 +29,7 @@
       <input type="hidden" name="mode" value="{{ mode }}">
       <input type="hidden" name="filename" value="{{ filename }}">
       <input type="hidden" name="preview_baseline" value="{{ preview_baseline or '' }}">
-      <input type="hidden" name="auto_generate_ops" value="{{ '1' if auto_generate_ops else '' }}">
+      <input type="hidden" name="auto_generate_ops" value="{{ '1' if auto_generate_ops else '0' }}">
       {% if strict_mode_supported %}
         <input type="hidden" name="strict_mode" value="{{ 'yes' if strict_mode else 'no' }}">
       {% endif %}
@@ -101,16 +101,7 @@
         </div>
       </div>
       <div class="aps-import-option-list">
-        <div class="aps-run-option-row">
-          <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="batchImportAutoOps" aria-label="启用导入后自动生成批次工序">
-            <input id="batchImportAutoOps" class="aps-settings-toggle-input" type="checkbox" name="auto_generate_ops" value="1" {% if auto_generate_ops %}checked{% endif %}>
-            <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-          </label>
-          <span class="aps-run-option-copy">
-            <label class="aps-run-option-title" for="batchImportAutoOps">导入后自动生成批次工序（推荐）</label>
-            <span class="aps-run-option-desc">检查会先核对批次字段，并记录当时的零件工艺资料，避免用旧检查结果写入新数据。</span>
-          </span>
-        </div>
+        {{ ui.toggle(auto_generate_ops_toggle, class='aps-run-option-row') }}
         {% if strict_mode_supported %}
           {{ ui.toggle(strict_mode_toggle, class='aps-run-option-row') }}
           {% call ui.help_details('查看检查规则') %}

@@ -6,6 +6,7 @@ from flask import g, request
 
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, SupplierStatus, YesNo
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.strict_mode_toggles import build_strict_mode_toggle
 
 from .scheduler_bp import _batch_status_zh, _priority_zh, _ready_zh, bp
 
@@ -258,4 +259,8 @@ def batch_detail(batch_id: str):
         machine_operator_meta=machine_operator_meta,
         prefer_primary_skill=prefer_primary_skill,
         lazy_select_enabled=lazy_select_enabled,
+        batch_detail_strict_toggle=build_strict_mode_toggle(
+            "batchDetailStrictMode",
+            desc="工艺模板资料不完整时，不刷新本批次工序。",
+        ),
     )

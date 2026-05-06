@@ -151,6 +151,10 @@ def test_plugin_status_rows_format_template_ready_fields() -> None:
 
     assert row.plugin_id == "demo_plugin"
     assert row.enabled_checked_attr == "checked"
+    assert row.enabled_toggle.id == "pluginEnabledToggle_demo_plugin"
+    assert row.enabled_toggle.name == "enabled"
+    assert row.enabled_toggle.checked_attr == "checked"
+    assert row.enabled_toggle.submitted_value == "no"
     assert row.loaded_label == "未加载"
     assert row.enabled_source_label == PLUGIN_ENABLED_SOURCE_LABELS["config"]
     assert row.capability_count == 1

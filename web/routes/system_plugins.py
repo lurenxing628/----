@@ -4,6 +4,9 @@ import re
 
 from flask import flash, g, redirect, request, url_for
 
+from core.infrastructure.errors import AppError
+from web.routes.form_values import form_yes_no_value
+
 from .system_bp import bp
 from .system_utils import _get_system_config_service
 
@@ -24,10 +27,14 @@ def plugin_toggle():
         flash("扩展功能编号格式不正确。请刷新页面后重新操作；如果仍然出现，请联系管理员检查扩展功能配置。", "error")
         return redirect(url_for("system.backup_page"))
 
-    enabled = "yes" if (request.form.get("enabled") or "").strip().lower() in ("on", "yes", "true", "1") else "no"
-    key = f"plugin.{plugin_id}.enabled"
-    svc = _get_system_config_service()
-    svc.set_value(key, enabled, description=None)
+    try:
+        enabled = form_yes_no_value(request.form, "enabled", default="no")
+        key = f"plugin.{plugin_id}.enabled"
+        svc = _get_system_config_service()
+        svc.set_value(key, enabled, description=None)
+    except AppError as e:
+        flash(e.message, "error")
+        return redirect(url_for("system.backup_page"))
 
     if getattr(g, "op_logger", None) is not None:
         g.op_logger.info(

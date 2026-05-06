@@ -4462,6 +4462,11 @@ html[data-theme="dark"] .aps-danger-zone {
   flex-wrap: wrap;
 }
 
+.aps-plugin-toggle-row {
+  flex: 1 1 180px;
+  margin: 0;
+}
+
 .aps-resource-result-toolbar {
   display: grid;
   grid-template-columns: 1fr minmax(180px, 240px);

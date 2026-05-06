@@ -114,6 +114,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_material_batch_info_layout_contract.py",
     "tests/regression_system_logs_layout_contract.py",
     "tests/regression_form_run_option_checkbox_layout_contract.py",
+    "tests/regression_scheduler_route_enforce_ready_tristate.py",
     "tests/regression_calendar_layout_contract.py",
     "tests/regression_gantt_layout_contract.py",
     "tests/regression_stable_form_layout_allowlist.py",

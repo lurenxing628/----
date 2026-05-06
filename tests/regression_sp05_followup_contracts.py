@@ -112,7 +112,10 @@ def test_scheduler_config_template_surfaces_shared_degraded_field_warning_contra
         assert token in route_source
 
     assert "build_auto_assign_persist_display_state" in display_state_source
-    assert '"unknown"' in display_state_source
+    assert '"missing"' in display_state_source
+    assert '"invalid"' in display_state_source
+    assert "旧历史未记录" in display_state_source
+    assert "记录异常" in display_state_source
     for token in (
         "scheduler-config-degraded-summary",
         "scheduler-config-field-warning",

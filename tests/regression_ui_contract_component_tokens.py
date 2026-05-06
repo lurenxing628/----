@@ -96,9 +96,9 @@ def test_ui_macros_expose_shared_contract_components() -> None:
     assert checkbox_index < hidden_index
     assert 'value="{{ value }}"' in toggle_block
     assert "submitted_value" in toggle_block
-    assert "final_submitted_value" not in toggle_block
-    assert "disabled_attr == 'disabled' and checked_attr == 'checked'" not in toggle_block
-    assert 'value="{{ submitted_value }}"' in toggle_block
+    assert "final_submitted_value" in toggle_block
+    assert "disabled_attr == 'disabled' and checked_attr == 'checked'" in toggle_block
+    assert 'value="{{ final_submitted_value }}"' in toggle_block
 
 
 def test_notice_macro_defaults_to_static_message_and_allows_explicit_live_role() -> None:
@@ -116,12 +116,18 @@ def test_notice_macro_defaults_to_static_message_and_allows_explicit_live_role()
 
 def test_toggle_object_keeps_disabled_checked_hidden_value_safe() -> None:
     direct = _render_ui_macro(
-        "{{ ui.toggle_row('directToggle', 'direct_field', '直接开关', '直接说明', checked_attr='checked', disabled_attr='disabled', submitted_value='yes') }}"
+        "{{ ui.toggle_row('directToggle', 'direct_field', '直接开关', '直接说明', checked_attr='checked', disabled_attr='disabled') }}"
     )
     assert 'id="directToggle"' in direct
     assert 'type="checkbox"' in direct
     assert 'name="direct_field" value="yes"' in direct
     assert 'type="hidden" name="direct_field" value="yes"' in direct
+
+    direct_hidden = _render_ui_macro(
+        "{{ ui.toggle_row('directHiddenToggle', 'direct_hidden_field', '直接开关', '直接说明', hidden_value='0') }}"
+    )
+    assert 'id="directHiddenToggle"' in direct_hidden
+    assert 'type="hidden" name="direct_hidden_field" value="0"' in direct_hidden
 
     object_rendered = _render_ui_macro("{{ ui.toggle(toggle, class='object-row') }}")
     assert "object-row" in object_rendered
@@ -152,8 +158,17 @@ def test_business_toggle_routes_use_order_independent_form_parsers() -> None:
             "_SCHEDULER_CONFIG_TOGGLE_FIELDS",
             'form_yes_no_value(form, key)',
         ),
+        "web/routes/system_plugins.py": (
+            'form_yes_no_value(request.form, "enabled", default="no")',
+        ),
+        "web/routes/process_parts.py": (
+            'form_toggle_bool(request.form, "strict_mode")',
+        ),
         "web/routes/domains/scheduler/scheduler_run.py": (
             'form_optional_toggle_bool(request.form, "enforce_ready")',
+            'form_toggle_bool(request.form, "strict_mode")',
+        ),
+        "web/routes/domains/scheduler/scheduler_batches.py": (
             'form_toggle_bool(request.form, "strict_mode")',
         ),
         "web/routes/domains/scheduler/scheduler_week_plan.py": (
@@ -166,10 +181,15 @@ def test_business_toggle_routes_use_order_independent_form_parsers() -> None:
         ),
         "web/routes/domains/scheduler/scheduler_excel_batches.py": (
             'form_toggle_bool(request.form, "strict_mode")',
+            'form_toggle_bool(request.form, "auto_generate_ops", default=False)',
             '"batchImportStrictMode"',
+            '"batchImportAutoOps"',
         ),
     }
     for rel_path, markers in route_contracts.items():
         source = _read(rel_path)
         for marker in markers:
             assert marker in source, f"{rel_path} 缺少 {marker}"
+
+    excel_utils_source = _read("web/routes/excel_utils.py")
+    assert "strict_mode_enabled" not in excel_utils_source

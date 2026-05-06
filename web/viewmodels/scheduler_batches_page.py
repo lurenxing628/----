@@ -169,9 +169,6 @@ def build_batch_rows(
                 "priority_label": priority_label(batch.priority),
                 "ready_status_label": ready_label(batch.ready_status),
                 "status_label": batch_status_label(batch.status),
-                "priority_zh": priority_label(batch.priority),
-                "ready_status_zh": ready_label(batch.ready_status),
-                "status_zh": batch_status_label(batch.status),
             }
         )
     return view_rows

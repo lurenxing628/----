@@ -40,6 +40,7 @@ class PluginStatusRow:
     name: str
     version: str
     enabled_checked_attr: str
+    enabled_toggle: UiToggleRow
     loaded_label: str
     enabled_source_label: str
     error: str
@@ -191,12 +192,22 @@ def build_plugin_status_rows(plugin_status: Any) -> Sequence[PluginStatusRow]:
         enabled = _yes_no(_value(row, "enabled"), field="plugin.enabled")
         loaded = _yes_no(_value(row, "loaded"), field="plugin.loaded")
         capabilities = _sequence_value(row, "capabilities")
+        plugin_id = str(_value(row, "plugin_id"))
+        plugin_name = str(_optional_value(row, "name") or "未命名扩展功能")
+        toggle_id_suffix = "".join(ch if ch.isalnum() else "_" for ch in plugin_id) or "plugin"
         rows.append(
             PluginStatusRow(
-                plugin_id=str(_value(row, "plugin_id")),
-                name=str(_optional_value(row, "name") or "未命名扩展功能"),
+                plugin_id=plugin_id,
+                name=plugin_name,
                 version=_text_or_dash(_optional_value(row, "version")),
                 enabled_checked_attr=checked_attr(enabled == "yes"),
+                enabled_toggle=UiToggleRow(
+                    id=f"pluginEnabledToggle_{toggle_id_suffix}",
+                    name="enabled",
+                    title="启用",
+                    desc=f"控制“{plugin_name}”下次启动时是否启用。",
+                    checked_attr=checked_attr(enabled == "yes"),
+                ),
                 loaded_label=PLUGIN_LOADED_LABELS[loaded],
                 enabled_source_label=_plugin_enabled_source_label(_value(row, "enabled_source")),
                 error=str(_optional_value(row, "error") or ""),

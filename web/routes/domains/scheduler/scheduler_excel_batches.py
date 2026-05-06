@@ -57,10 +57,6 @@ def _sorted_existing_list(existing_preview_data: Dict[str, Dict[str, Any]]) -> L
     return existing_list
 
 
-def _parse_auto_generate_ops(value: Any) -> bool:
-    return str(value or "").strip().lower() in ("1", "true", "on", "yes")
-
-
 def _build_existing_preview_data(batch_svc: BatchService) -> Tuple[Dict[str, Any], Dict[str, Dict[str, Any]]]:
     existing = {b.batch_id: b for b in batch_svc.list()}
     existing_preview_data = {
@@ -110,6 +106,15 @@ def _render_excel_batches_page(
         mode=mode_value,
         filename=filename,
         auto_generate_ops=auto_generate_ops,
+        auto_generate_ops_toggle=UiToggleRow(
+            "batchImportAutoOps",
+            "auto_generate_ops",
+            "导入后自动生成批次工序（推荐）",
+            "检查会先核对批次字段，并记录当时的零件工艺资料，避免用旧检查结果写入新数据。",
+            checked_attr=checked_attr(auto_generate_ops),
+            value="1",
+            hidden_value="0",
+        ),
         preview_url=url_for("scheduler.excel_batches_preview"),
         strict_mode_supported=True,
         strict_mode=bool(strict_mode),
@@ -149,7 +154,7 @@ def excel_batches_page():
 def excel_batches_preview():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
-    auto_generate_ops = _parse_auto_generate_ops(request.form.get("auto_generate_ops"))
+    auto_generate_ops = form_toggle_bool(request.form, "auto_generate_ops", default=False)
     strict_mode = form_toggle_bool(request.form, "strict_mode")
     file = request.files.get("file")
     if not file or not file.filename:
@@ -233,7 +238,7 @@ def excel_batches_confirm():
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
     strict_mode = form_toggle_bool(request.form, "strict_mode")
-    auto_generate_ops = _parse_auto_generate_ops(request.form.get("auto_generate_ops"))
+    auto_generate_ops = form_toggle_bool(request.form, "auto_generate_ops", default=False)
     payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
     rows = payload.rows
 

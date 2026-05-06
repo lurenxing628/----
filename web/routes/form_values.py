@@ -28,11 +28,12 @@ def form_yes_no_value(form: Any, name: str, *, default: str = "") -> str:
     values = _normalized_form_values(form, name)
     if not values:
         return _normalize_yes_no_default(default, name=name)
+    invalid_values = [value for value in values if value not in _TRUE_VALUES and value not in _FALSE_VALUES]
+    if invalid_values:
+        raise ValidationError(f"{name} 取值不合法，只能是 yes/no。", field=name)
     if any(value in _TRUE_VALUES for value in values):
         return "yes"
-    if any(value in _FALSE_VALUES for value in values):
-        return "no"
-    raise ValidationError(f"{name} 取值不合法，只能是 yes/no。", field=name)
+    return "no"
 
 
 def _normalize_yes_no_default(default: str, *, name: str) -> str:

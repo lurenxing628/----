@@ -86,73 +86,6 @@
     </div>
   </div>
 
-  <div class="card aps-latest-schedule-card">
-    <h3 class="section-title">最近一次排产快照</h3>
-    {% if latest_history %}
-      <div class="aps-latest-schedule">
-        <div class="aps-latest-schedule-head">
-          {% for item in latest_head_items %}
-            <div class="aps-latest-schedule-head-item">
-              <span class="aps-latest-schedule-label">{{ item.label }}</span>
-              <strong class="aps-latest-schedule-value">{{ item.value }}</strong>
-            </div>
-          {% endfor %}
-        </div>
-        {% for item in latest_notice_items %}
-          {{ ui.notice(item.title, item.body, tone=item.tone, class='mt-2') }}
-        {% endfor %}
-        <div class="aps-latest-schedule-meta">
-          {% for item in latest_meta_items %}
-            <div class="aps-latest-schedule-meta-item">
-              <span class="aps-summary-label">{{ item.label }}</span>
-              <strong class="aps-summary-value">{{ item.value }}</strong>
-            </div>
-          {% endfor %}
-        </div>
-        <div class="aps-latest-schedule-metrics">
-          {% for item in latest_metric_items %}
-            {{ ui.summary_item(item.label, item.value, item.desc, tone=item.tone) }}
-          {% endfor %}
-        </div>
-        {% if latest_auto_assign_persist_state %}
-          <div class="aps-summary-status-line aps-latest-schedule-status">
-            <div class="aps-summary-status-main">
-              <span class="aps-summary-label">保存补齐资源</span>
-              <strong class="aps-summary-value">{{ latest_auto_assign_persist_state.label }}</strong>
-            </div>
-            {% if latest_auto_assign_persist_state.description %}
-              <details class="aps-help-details aps-summary-help-details">
-                <summary>查看说明</summary>
-                <div class="aps-help-details-body">{{ latest_auto_assign_persist_state.description }}</div>
-              </details>
-            {% endif %}
-          </div>
-        {% endif %}
-      </div>
-      {% for notice in latest_detail_notice_items %}
-        {{ ui.details_notice(notice, class='mt-2 scheduler-run-degraded-summary') }}
-      {% endfor %}
-      {% if latest_summary_display.error_total %}
-        <div class="aps-summary-grid mt-2 aps-summary-health-grid">
-          {% call ui.summary_item_block('错误摘要', latest_summary_display.error_total ~ ' 条', 'danger') %}
-            {% call ui.flash_details('查看前 ' ~ (latest_summary_display.errors_preview|length) ~ ' 条错误') %}
-              <ul class="list-tight">
-                {% for item in latest_summary_display.errors_preview %}
-                  <li>{{ item }}</li>
-                {% endfor %}
-              </ul>
-            {% endcall %}
-            {% if latest_summary_display.error_hidden_count > 0 %}
-              <div class="muted text-xs">另有 {{ latest_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
-            {% endif %}
-          {% endcall %}
-        </div>
-      {% endif %}
-    {% else %}
-      <div class="muted">还没有排过产，排产后这里会显示结果。</div>
-    {% endif %}
-  </div>
-
   <div class="card">
     <h3 class="section-title">批次列表</h3>
     <form method="get" action="{{ url_for('scheduler.batches_page') }}" class="aps-query-form-grid aps-scheduler-batches-query-grid mb-2">
@@ -284,7 +217,74 @@
           </div>
         </form>
       {% endif %}
-      <div class="muted">当前筛选条件下暂无批次数据，可以调整状态或齐套条件，也可以到批次管理手动新增或通过 Excel 导入。</div>
+      {{ ui.empty_state('暂无批次数据', '当前筛选条件下暂无批次数据，可以调整状态或齐套条件，也可以到批次管理手动新增或通过 Excel 导入。') }}
+    {% endif %}
+  </div>
+
+  <div class="card aps-latest-schedule-card">
+    <h3 class="section-title">最近一次排产快照</h3>
+    {% if latest_history %}
+      <div class="aps-latest-schedule">
+        <div class="aps-latest-schedule-head">
+          {% for item in latest_head_items %}
+            <div class="aps-latest-schedule-head-item">
+              <span class="aps-latest-schedule-label">{{ item.label }}</span>
+              <strong class="aps-latest-schedule-value">{{ item.value }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+        {% for item in latest_notice_items %}
+          {{ ui.notice(item.title, item.body, tone=item.tone, class='mt-2') }}
+        {% endfor %}
+        <div class="aps-latest-schedule-meta">
+          {% for item in latest_meta_items %}
+            <div class="aps-latest-schedule-meta-item">
+              <span class="aps-summary-label">{{ item.label }}</span>
+              <strong class="aps-summary-value">{{ item.value }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="aps-latest-schedule-metrics">
+          {% for item in latest_metric_items %}
+            {{ ui.summary_item(item.label, item.value, item.desc, tone=item.tone) }}
+          {% endfor %}
+        </div>
+        {% if latest_auto_assign_persist_state %}
+          <div class="aps-summary-status-line aps-latest-schedule-status">
+            <div class="aps-summary-status-main">
+              <span class="aps-summary-label">保存补齐资源</span>
+              <strong class="aps-summary-value">{{ latest_auto_assign_persist_state.label }}</strong>
+            </div>
+            {% if latest_auto_assign_persist_state.description %}
+              <details class="aps-help-details aps-summary-help-details">
+                <summary>查看说明</summary>
+                <div class="aps-help-details-body">{{ latest_auto_assign_persist_state.description }}</div>
+              </details>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+      {% for notice in latest_detail_notice_items %}
+        {{ ui.details_notice(notice, class='mt-2 scheduler-run-degraded-summary') }}
+      {% endfor %}
+      {% if latest_summary_display.error_total %}
+        <div class="aps-summary-grid mt-2 aps-summary-health-grid">
+          {% call ui.summary_item_block('错误摘要', latest_summary_display.error_total ~ ' 条', 'danger') %}
+            {% call ui.flash_details('查看前 ' ~ (latest_summary_display.errors_preview|length) ~ ' 条错误') %}
+              <ul class="list-tight">
+                {% for item in latest_summary_display.errors_preview %}
+                  <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            {% endcall %}
+            {% if latest_summary_display.error_hidden_count > 0 %}
+              <div class="muted text-xs">另有 {{ latest_summary_display.error_hidden_count }} 条错误，请到系统历史查看。</div>
+            {% endif %}
+          {% endcall %}
+        </div>
+      {% endif %}
+    {% else %}
+      {{ ui.empty_state('还没有排过产', '排产后这里会显示最近一次排产结果。') }}
     {% endif %}
   </div>
 {% endblock %}

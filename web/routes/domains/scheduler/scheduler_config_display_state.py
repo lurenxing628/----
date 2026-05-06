@@ -106,11 +106,18 @@ def build_auto_assign_persist_display_state(value: Any) -> Dict[str, Any]:
             "label": "已关闭",
             "description": "系统帮你补上的设备和人员只用于本次结果，不改工序原来的资料。",
         }
+    if not normalized:
+        return {
+            "enabled": None,
+            "value": "missing",
+            "label": "旧历史未记录",
+            "description": "旧版本排产没有记录是否保存系统补上的设备和人员。",
+        }
     return {
         "enabled": None,
-        "value": "unknown",
-        "label": "未记录",
-        "description": "这次排产没有记录是否保存系统补上的设备和人员。",
+        "value": "invalid",
+        "label": "记录异常",
+        "description": "这条记录里的保存补齐资源取值不正确，请到系统历史查看。",
     }
 
 
