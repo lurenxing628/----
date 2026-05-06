@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -120,6 +121,13 @@ def _plugin_enabled_source_label(value: Any) -> str:
     return PLUGIN_ENABLED_SOURCE_LABELS[normalized]
 
 
+def _safe_dom_id_suffix(value: Any) -> str:
+    text = str(value or "")
+    readable = "".join(ch if ch.isalnum() else "_" for ch in text).strip("_") or "plugin"
+    digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
+    return f"{readable}_{digest}"
+
+
 def build_backup_empty_state() -> UiEmptyState:
     return UiEmptyState(
         title="暂无备份文件",
@@ -194,7 +202,7 @@ def build_plugin_status_rows(plugin_status: Any) -> Sequence[PluginStatusRow]:
         capabilities = _sequence_value(row, "capabilities")
         plugin_id = str(_value(row, "plugin_id"))
         plugin_name = str(_optional_value(row, "name") or "未命名扩展功能")
-        toggle_id_suffix = "".join(ch if ch.isalnum() else "_" for ch in plugin_id) or "plugin"
+        toggle_id_suffix = _safe_dom_id_suffix(plugin_id)
         rows.append(
             PluginStatusRow(
                 plugin_id=plugin_id,

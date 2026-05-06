@@ -27,6 +27,49 @@ SMOKE_PATHS = (
     "/material/batches",
 )
 
+EXPECTED_PAGE_SIGNALS = {
+    "/scheduler/?status=pending": {
+        "path": "/scheduler/?status=pending",
+        "texts": ["排产调度", "批次列表", "排产操作"],
+        "ids": ["jsRunScheduleForm", "runEnforceReady", "runStrictMode"],
+    },
+    "/scheduler/config": {
+        "path": "/scheduler/config",
+        "texts": ["排产高级设置", "保存当前设置"],
+        "ids": ["freezeWindowEnabled", "preferPrimarySkill", "enforceReadyDefault", "autoAssignEnabled", "orToolsEnabled"],
+    },
+    "/scheduler/batches": {
+        "path": "/scheduler/batches",
+        "texts": ["批次管理", "批次列表"],
+        "ids": ["batchManageStrictMode", "batchesManageTable"],
+    },
+    "/scheduler/excel/batches": {
+        "path": "/scheduler/excel/batches",
+        "texts": ["批量维护批次"],
+        "ids": ["batchImportAutoOps", "batchImportStrictMode"],
+    },
+    "/system/backup": {
+        "path": "/system/backup",
+        "texts": ["系统管理 - 备份/恢复", "扩展功能状态"],
+        "ids": ["backupAutoBackupEnabled", "backupAutoCleanupEnabled"],
+    },
+    "/system/logs": {
+        "path": "/system/logs",
+        "texts": ["系统管理 - 操作日志", "筛选日志"],
+        "ids": ["systemLogsTable"],
+    },
+    "/process/": {
+        "path": "/process/",
+        "texts": ["零件工艺模板"],
+        "ids": ["processCreateStrictMode", "partsTable"],
+    },
+    "/material/batches": {
+        "path": "/material/batches",
+        "texts": ["批次物料需求"],
+        "ids": ["batchMaterialBatchSelect"],
+    },
+}
+
 
 def _find_chrome() -> str:
     candidates = (
@@ -147,6 +190,7 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
             const chromePath = process.argv[2];
             const baseUrl = process.argv[3];
             const paths = JSON.parse(process.argv[4]);
+            const expectedByPath = JSON.parse(process.argv[5]);
             const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aps-ui-chrome-"));
 
             const chrome = spawn(chromePath, [
@@ -255,7 +299,9 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
               return await response.json();
             }
 
-            async function inspectPage(port, url, width) {
+            async function inspectPage(port, url, width, expected) {
+              const httpResponse = await fetch(url, { redirect: "manual" });
+              const httpStatus = httpResponse.status;
               const page = await newPage(port);
               const client = new CdpClient(page.webSocketDebuggerUrl);
               await client.open();
@@ -299,6 +345,19 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                       return style.backgroundColor.includes('255, 255, 255') || style.color === style.backgroundColor;
                     }).length;
                   const logsTable = document.querySelector('#systemLogsTable');
+                  const bodyText = document.body ? document.body.innerText || "" : "";
+                  const hasAppShell = Boolean(document.querySelector('meta[name="aps-ui-template-env"]'))
+                    && Boolean(document.querySelector('header nav, header.top-header, nav.sidebar-nav'))
+                    && Boolean(document.getElementById('apsThemeToggle'));
+                  const pageLooksError = /Traceback|Internal Server Error|Werkzeug|500 Internal|服务器内部错误|错误详情|Unhandled|Exception/i
+                    .test(bodyText);
+                  const expectedTexts = window.__APS_EXPECTED_SIGNALS__?.texts || [];
+                  const expectedIds = window.__APS_EXPECTED_SIGNALS__?.ids || [];
+                  const expectedPath = window.__APS_EXPECTED_SIGNALS__?.path || "";
+                  const finalPath = location.pathname + location.search;
+                  const missingExpectedTexts = expectedTexts.filter((text) => !bodyText.includes(text));
+                  const missingExpectedIds = expectedIds.filter((id) => !document.getElementById(id));
+                  const pathMismatch = Boolean(expectedPath && finalPath !== expectedPath);
                   function parseRgb(value) {
                     const text = String(value || "");
                     const start = text.indexOf("(");
@@ -346,7 +405,15 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                       return style.backgroundColor.includes('255, 255, 255');
                     }).length;
                   return JSON.stringify({
-                    path: location.pathname + location.search,
+                    path: finalPath,
+                    expectedPath,
+                    pathMismatch,
+                    httpStatus: ${httpStatus},
+                    title: document.title || "",
+                    hasAppShell,
+                    pageLooksError,
+                    missingExpectedTexts,
+                    missingExpectedIds,
                     width: window.innerWidth,
                     bodyOverflow,
                     maxScrollWidth,
@@ -362,11 +429,21 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
                   });
                 })()
               `;
+              await client.send("Runtime.evaluate", {
+                expression: `window.__APS_EXPECTED_SIGNALS__ = ${JSON.stringify(expected || {})};`,
+                returnByValue: true,
+              });
               const evaluated = await client.send("Runtime.evaluate", {
                 expression,
                 returnByValue: true,
                 awaitPromise: true,
               });
+              if (evaluated.exceptionDetails) {
+                throw new Error(`页面检查脚本执行失败：${JSON.stringify(evaluated.exceptionDetails)}`);
+              }
+              if (!evaluated.result || typeof evaluated.result.value !== "string") {
+                throw new Error(`页面检查脚本没有返回 JSON 字符串：${JSON.stringify(evaluated.result || {})}`);
+              }
               client.close();
               return JSON.parse(evaluated.result.value);
             }
@@ -376,7 +453,7 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
               const results = [];
               for (const pagePath of paths) {
                 for (const width of [1024, 768]) {
-                  results.push(await inspectPage(port, `${baseUrl}${pagePath}`, width));
+                  results.push(await inspectPage(port, `${baseUrl}${pagePath}`, width, expectedByPath[pagePath] || {}));
                 }
               }
               console.log(JSON.stringify(results));
@@ -396,6 +473,7 @@ def _run_chrome_geometry_probe(*, chrome_path: str, node_path: str, base_url: st
             chrome_path,
             base_url,
             json.dumps(SMOKE_PATHS, ensure_ascii=False),
+            json.dumps(EXPECTED_PAGE_SIGNALS, ensure_ascii=False),
         ],
         cwd=REPO_ROOT,
         text=True,
@@ -431,7 +509,19 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
     bad_dark_notice = [item for item in results if item["darkNoticeBadCount"]]
     bad_logs_table = [item for item in results if not item["logsTableMultiline"]]
     missing_required_toggles = [item for item in results if item["missingRequiredToggleIds"]]
+    bad_http_status = [item for item in results if item["httpStatus"] != 200]
+    bad_shell = [item for item in results if not item["hasAppShell"]]
+    error_pages = [item for item in results if item["pageLooksError"]]
+    wrong_paths = [item for item in results if item["pathMismatch"]]
+    missing_expected_texts = [item for item in results if item["missingExpectedTexts"]]
+    missing_expected_ids = [item for item in results if item["missingExpectedIds"]]
 
+    assert bad_http_status == []
+    assert bad_shell == []
+    assert error_pages == []
+    assert wrong_paths == []
+    assert missing_expected_texts == []
+    assert missing_expected_ids == []
     assert overflowing == []
     assert overlapping_toggles == []
     assert bad_dark_summary == []
@@ -446,5 +536,10 @@ def test_ui_pages_do_not_create_body_level_overflow_in_real_browser(tmp_path, mo
 def test_ui_browser_geometry_smoke_covers_scheduler_run_page() -> None:
     assert "/scheduler/?status=pending" in SMOKE_PATHS
     assert "/scheduler/batches?status=pending" not in SMOKE_PATHS
+    assert EXPECTED_PAGE_SIGNALS["/scheduler/?status=pending"]["ids"] == [
+        "jsRunScheduleForm",
+        "runEnforceReady",
+        "runStrictMode",
+    ]
     script_source = Path(__file__).read_text(encoding="utf-8")
     assert '"/scheduler/": ["runEnforceReady", "runStrictMode"]' in script_source

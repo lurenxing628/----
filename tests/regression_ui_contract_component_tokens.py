@@ -96,9 +96,9 @@ def test_ui_macros_expose_shared_contract_components() -> None:
     assert checkbox_index < hidden_index
     assert 'value="{{ value }}"' in toggle_block
     assert "submitted_value" in toggle_block
-    assert "final_submitted_value" in toggle_block
-    assert "disabled_attr == 'disabled' and checked_attr == 'checked'" in toggle_block
-    assert 'value="{{ final_submitted_value }}"' in toggle_block
+    assert "final_submitted_value" not in toggle_block
+    assert "disabled_attr == 'disabled' and checked_attr == 'checked'" not in toggle_block
+    assert 'value="{{ submitted_value }}"' in toggle_block
 
 
 def test_notice_macro_defaults_to_static_message_and_allows_explicit_live_role() -> None:
@@ -116,7 +116,7 @@ def test_notice_macro_defaults_to_static_message_and_allows_explicit_live_role()
 
 def test_toggle_object_keeps_disabled_checked_hidden_value_safe() -> None:
     direct = _render_ui_macro(
-        "{{ ui.toggle_row('directToggle', 'direct_field', '直接开关', '直接说明', checked_attr='checked', disabled_attr='disabled') }}"
+        "{{ ui.toggle_row('directToggle', 'direct_field', '直接开关', '直接说明', checked_attr='checked', disabled_attr='disabled', submitted_value='yes') }}"
     )
     assert 'id="directToggle"' in direct
     assert 'type="checkbox"' in direct
@@ -124,7 +124,7 @@ def test_toggle_object_keeps_disabled_checked_hidden_value_safe() -> None:
     assert 'type="hidden" name="direct_field" value="yes"' in direct
 
     direct_hidden = _render_ui_macro(
-        "{{ ui.toggle_row('directHiddenToggle', 'direct_hidden_field', '直接开关', '直接说明', hidden_value='0') }}"
+        "{{ ui.toggle_row('directHiddenToggle', 'direct_hidden_field', '直接开关', '直接说明', submitted_value='0') }}"
     )
     assert 'id="directHiddenToggle"' in direct_hidden
     assert 'type="hidden" name="direct_hidden_field" value="0"' in direct_hidden

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from core.services.scheduler.config import ConfigService
-from web.viewmodels.scheduler_batches_page import build_scheduler_config_panel_state
+from web.viewmodels.scheduler_config_panel import build_scheduler_config_panel_state
 from web.viewmodels.ui_presenters import UiToggleRow, checked_attr
 
 SCHEDULER_VISIBLE_CONFIG_FIELDS: Tuple[str, ...] = (

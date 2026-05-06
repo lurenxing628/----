@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
+
+from core.models.toggle_values import TOGGLE_SUBMIT_VALUES, normalize_toggle_submit_value
 
 VALID_TONES = frozenset({"neutral", "info", "success", "warning", "danger"})
 
@@ -15,6 +17,10 @@ class UiSummaryItem:
 
     def __post_init__(self) -> None:
         validate_tone(self.tone)
+        if not isinstance(self.value, str):
+            raise ValueError(f"UiSummaryItem.value 必须是展示字符串：{self.label!r}")
+        if not self.value.strip():
+            raise ValueError(f"UiSummaryItem.value 不能为空：{self.label!r}")
 
 
 @dataclass(frozen=True)
@@ -22,6 +28,8 @@ class UiNotice:
     title: str
     body: str
     tone: str = "info"
+    role: str = ""
+    aria_live: str = ""
 
     def __post_init__(self) -> None:
         validate_tone(self.tone)
@@ -35,6 +43,8 @@ class UiDetailsNotice:
     detail_label: str = "查看明细"
     detail_items: Sequence[str] = ()
     footer: str = ""
+    role: str = ""
+    aria_live: str = ""
 
     def __post_init__(self) -> None:
         validate_tone(self.tone)
@@ -74,7 +84,11 @@ class UiToggleRow:
             raise ValueError(f"checked_attr 只能是空字符串或 checked: {self.checked_attr!r}")
         if self.disabled_attr not in ("", "disabled"):
             raise ValueError(f"disabled_attr 只能是空字符串或 disabled: {self.disabled_attr!r}")
+        _validate_toggle_submit_token(self.value, field="value")
+        _validate_toggle_submit_token(self.hidden_value, field="hidden_value")
         submitted_value = self.submitted_value
+        if submitted_value:
+            _validate_toggle_submit_token(submitted_value, field="submitted_value")
         if not submitted_value:
             if self.disabled_attr == "disabled" and self.checked_attr == "checked":
                 submitted_value = self.value
@@ -87,6 +101,13 @@ def validate_tone(tone: str) -> str:
     normalized = str(tone or "").strip()
     if normalized not in VALID_TONES:
         raise ValueError(f"未知 UI tone: {tone!r}")
+    return normalized
+
+
+def _validate_toggle_submit_token(value: Any, *, field: str) -> str:
+    normalized = normalize_toggle_submit_value(value)
+    if normalized not in TOGGLE_SUBMIT_VALUES:
+        raise ValueError(f"{field} 不是合法 toggle 提交值：{value!r}")
     return normalized
 
 

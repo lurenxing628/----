@@ -3,9 +3,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from core.infrastructure.errors import ValidationError
-
-_TRUE_VALUES = frozenset({"yes", "y", "true", "1", "on"})
-_FALSE_VALUES = frozenset({"no", "n", "false", "0", "off"})
+from core.models.toggle_values import TOGGLE_FALSE_VALUES, TOGGLE_TRUE_VALUES
 
 
 def _normalized_form_values(form: Any, name: str) -> list[str]:
@@ -28,10 +26,12 @@ def form_yes_no_value(form: Any, name: str, *, default: str = "") -> str:
     values = _normalized_form_values(form, name)
     if not values:
         return _normalize_yes_no_default(default, name=name)
-    invalid_values = [value for value in values if value not in _TRUE_VALUES and value not in _FALSE_VALUES]
+    invalid_values = [
+        value for value in values if value not in TOGGLE_TRUE_VALUES and value not in TOGGLE_FALSE_VALUES
+    ]
     if invalid_values:
         raise ValidationError(f"{name} 取值不合法，只能是 yes/no。", field=name)
-    if any(value in _TRUE_VALUES for value in values):
+    if any(value in TOGGLE_TRUE_VALUES for value in values):
         return "yes"
     return "no"
 
@@ -40,9 +40,9 @@ def _normalize_yes_no_default(default: str, *, name: str) -> str:
     value = str(default or "").strip().lower()
     if not value:
         return ""
-    if value in _TRUE_VALUES:
+    if value in TOGGLE_TRUE_VALUES:
         return "yes"
-    if value in _FALSE_VALUES:
+    if value in TOGGLE_FALSE_VALUES:
         return "no"
     raise ValidationError(f"{name} 默认值不合法，只能是 yes/no。", field=name)
 

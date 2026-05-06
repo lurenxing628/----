@@ -19,6 +19,8 @@ def build_config_notice_items(
                 tone="warning",
                 detail_label="查看修正项",
                 detail_items=tuple(str(item) for item in config_degraded_field_labels),
+                role="status",
+                aria_live="polite",
             )
         )
     if config_hidden_warnings:
@@ -29,6 +31,8 @@ def build_config_notice_items(
                 tone="warning",
                 detail_label="查看处理提示",
                 detail_items=tuple(str(item) for item in config_hidden_warnings),
+                role="status",
+                aria_live="polite",
             )
         )
     return tuple(notices)
@@ -73,7 +77,7 @@ def latest_parse_notice_items(latest_summary_display: Dict[str, Any]) -> Tuple[U
     message = str(parse_state.get("user_message") or "").strip()
     if not message:
         return ()
-    return (UiNotice("排产历史摘要解析异常", message, tone="warning"),)
+    return (UiNotice("排产历史摘要解析异常", message, tone="warning", role="status", aria_live="polite"),)
 
 
 def _format_degradation_message(item: Dict[str, Any]) -> str:
@@ -103,6 +107,8 @@ def latest_detail_notice_items(
                 tone="warning",
                 detail_label=f"查看 {len(primary_details)} 条明细",
                 detail_items=primary_details,
+                role="status",
+                aria_live="polite",
             )
         )
 
@@ -123,6 +129,8 @@ def latest_detail_notice_items(
                 tone="warning",
                 detail_label=f"查看 {len(other_messages)} 条提示",
                 detail_items=other_messages,
+                role="status",
+                aria_live="polite",
             )
         )
 
@@ -138,6 +146,8 @@ def latest_detail_notice_items(
                 detail_label=f"查看前 {len(latest_warning_preview)} 条提醒",
                 detail_items=tuple(str(item) for item in latest_warning_preview),
                 footer=footer,
+                role="status",
+                aria_live="polite",
             )
         )
     return tuple(notices)

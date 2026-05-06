@@ -7,11 +7,11 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .scheduler_analysis_labels import objective_label_for
 from .scheduler_batches_notices import (
-    build_config_notice_items,
     latest_detail_notice_items,
     latest_parse_notice_items,
     latest_warning_state,
 )
+from .scheduler_config_panel import SchedulerConfigPanelState
 from .scheduler_history_summary import ScheduleHistoryDisplayValueError, strict_strategy_display_label
 from .scheduler_run_options import UiRunOption, build_run_options
 from .scheduler_summary_display import build_summary_display_state
@@ -41,23 +41,6 @@ class BatchesFilterState:
     status: str
     only_ready: str
     service_status: Optional[str]
-
-
-@dataclass(frozen=True)
-class SchedulerConfigPanelState:
-    cfg: Any
-    strategies: Sequence[Any]
-    config_field_metadata: Dict[str, Any]
-    config_field_warnings: Dict[str, str]
-    config_degraded_fields: Sequence[str]
-    config_degraded_field_labels: Tuple[str, ...]
-    config_hidden_warnings: Sequence[str]
-    presets: Sequence[Any]
-    active_preset: Any
-    builtin_presets: Sequence[str]
-    current_config_state: Dict[str, Any]
-    current_auto_assign_persist_state: Dict[str, Any]
-    notice_items: Sequence[UiDetailsNotice]
 
 
 @dataclass(frozen=True)
@@ -111,6 +94,9 @@ class SchedulerBatchesPageViewModel:
             "current_config_state": self.config_panel.current_config_state,
             "current_auto_assign_persist_state": self.config_panel.current_auto_assign_persist_state,
             "config_notice_items": self.config_panel.notice_items,
+            "current_config_summary_items": self.config_panel.current_config_summary_items,
+            "current_config_notice_items": self.config_panel.current_config_notice_items,
+            "current_auto_assign_persist_item": self.config_panel.current_auto_assign_persist_item,
             "latest_history": self.latest_panel.latest_history,
             "latest_summary": self.latest_panel.latest_summary,
             "latest_summary_display": self.latest_panel.latest_summary_display,
@@ -172,45 +158,6 @@ def build_batch_rows(
             }
         )
     return view_rows
-
-
-def build_scheduler_config_panel_state(
-    *,
-    cfg: Any,
-    strategies: Sequence[Any],
-    config_field_metadata: Dict[str, Any],
-    config_field_warnings: Dict[str, str],
-    config_degraded_fields: Sequence[str],
-    config_hidden_warnings: Sequence[str],
-    preset_display_state: Dict[str, Any],
-    builtin_presets: Sequence[str],
-    auto_assign_persist_display_builder: _AutoAssignPersistDisplayBuilder,
-) -> SchedulerConfigPanelState:
-    config_degraded_field_labels = tuple(
-        str(getattr(config_field_metadata.get(field), "label", "") or field)
-        for field in config_degraded_fields
-    )
-    notice_items = build_config_notice_items(
-        config_degraded_field_labels=config_degraded_field_labels,
-        config_hidden_warnings=config_hidden_warnings,
-    )
-    return SchedulerConfigPanelState(
-        cfg=cfg,
-        strategies=strategies,
-        config_field_metadata=config_field_metadata,
-        config_field_warnings=config_field_warnings,
-        config_degraded_fields=config_degraded_fields,
-        config_degraded_field_labels=config_degraded_field_labels,
-        config_hidden_warnings=config_hidden_warnings,
-        presets=list(preset_display_state.get("presets") or []),
-        active_preset=preset_display_state.get("active_preset"),
-        builtin_presets=builtin_presets,
-        current_config_state=dict(preset_display_state.get("current_config_state") or {}),
-        current_auto_assign_persist_state=auto_assign_persist_display_builder(
-            getattr(cfg, "auto_assign_persist", None)
-        ),
-        notice_items=notice_items,
-    )
 
 
 def _latest_algo_mode_label(value: Any) -> str:
@@ -375,6 +322,8 @@ def build_degraded_latest_schedule_history_panel_state(
                 "最近一次排产历史摘要不完整",
                 _LATEST_HISTORY_DEGRADED_MESSAGE,
                 tone="warning",
+                role="status",
+                aria_live="polite",
             ),
             *latest_parse_notice_items(latest_summary_display),
         ),
@@ -477,7 +426,6 @@ __all__ = [
     "BatchesFilterState",
     "LatestScheduleHistoryPanelState",
     "SchedulerBatchesPageViewModel",
-    "SchedulerConfigPanelState",
     "ScheduleHistoryDisplayValueError",
     "UiRunOption",
     "build_batch_rows",
@@ -486,6 +434,5 @@ __all__ = [
     "build_latest_schedule_history_panel_state",
     "build_run_options",
     "build_scheduler_batches_page_view_model",
-    "build_scheduler_config_panel_state",
     "_ALGO_MODE_LABELS",
 ]

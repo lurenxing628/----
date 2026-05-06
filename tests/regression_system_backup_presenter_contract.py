@@ -151,7 +151,7 @@ def test_plugin_status_rows_format_template_ready_fields() -> None:
 
     assert row.plugin_id == "demo_plugin"
     assert row.enabled_checked_attr == "checked"
-    assert row.enabled_toggle.id == "pluginEnabledToggle_demo_plugin"
+    assert row.enabled_toggle.id.startswith("pluginEnabledToggle_demo_plugin_")
     assert row.enabled_toggle.name == "enabled"
     assert row.enabled_toggle.checked_attr == "checked"
     assert row.enabled_toggle.submitted_value == "no"
@@ -159,6 +159,21 @@ def test_plugin_status_rows_format_template_ready_fields() -> None:
     assert row.enabled_source_label == PLUGIN_ENABLED_SOURCE_LABELS["config"]
     assert row.capability_count == 1
     assert row.has_capabilities is True
+
+
+def test_plugin_toggle_ids_do_not_collide_after_sanitizing() -> None:
+    status = _plugin_status(
+        statuses=[
+            dict(_plugin_status()["statuses"][0], plugin_id="demo-a"),
+            dict(_plugin_status()["statuses"][0], plugin_id="demo_a"),
+        ]
+    )
+
+    rows = build_plugin_status_rows(status)
+    ids = [row.enabled_toggle.id for row in rows]
+
+    assert len(ids) == 2
+    assert len(set(ids)) == 2
 
 
 def test_backup_toggle_rows_keep_checkbox_hidden_contract() -> None:
