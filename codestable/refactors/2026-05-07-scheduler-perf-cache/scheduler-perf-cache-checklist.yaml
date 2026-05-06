@@ -16,11 +16,11 @@ steps:
     exit_signal: Freeze-window contracts pass and freeze_window.py remains under 500 lines.
   - id: sgs-total-hours-cache
     title: Cache SGS internal total hours for scoring
-    status: in_progress
+    status: completed
     exit_signal: SGS contracts pass and invalid-hour behavior stays unchanged.
   - id: compute-metrics-aggregation
     title: Aggregate compute_metrics result state in one pass
-    status: pending
+    status: in_progress
     exit_signal: Metrics contracts pass and compute_metrics complexity is below threshold.
   - id: final-quality-gate
     title: Run final quality gates and all benchmark scenarios

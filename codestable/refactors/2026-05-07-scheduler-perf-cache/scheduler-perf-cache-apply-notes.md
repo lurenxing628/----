@@ -69,3 +69,28 @@ tags: [scheduler, performance, cache, quality-gate]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_freeze_window_fail_closed_contract.py --tb=short`
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_freeze_window_fail_closed_contract.py tests/regression_schedule_summary_freeze_state_contract.py tests/regression_schedule_input_collector_contract.py tests/regression_schedule_service_all_frozen_short_circuit.py tests/regression_analysis_page_version_default_latest.py tests/regression_scheduler_analysis_observability.py --tb=short`
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold --tb=short`
+
+## Step 3: SGS total-hours cache
+
+- Status: completed.
+- Changed files:
+  - `core/algorithms/greedy/dispatch/sgs.py`
+  - `core/algorithms/greedy/dispatch/sgs_scoring.py`
+  - `tests/test_sgs_total_hours_cache.py`
+  - `tests/benchmark_sgs_large_resource_pool.py`
+  - `evidence/Benchmark/sgs_large_resource_pool_report.md`
+- Notes:
+  - SGS now creates a local `op_id -> total_hours` cache inside one `dispatch_sgs()` run.
+  - Only successfully validated internal operation hours are cached.
+  - Invalid hours still fall through to the original scoring validation path and raise `ValidationError(field="setup_hours")`.
+  - Auto-assign choices, slot estimates, formal scheduling validation, and external operations are not cached.
+  - The SGS benchmark script was made compatible with the current `greedy.scheduler` module before running it.
+- Benchmark note:
+  - Pre-change SGS benchmark sample: large-pool estimator calls `601`, result count `1`, failed ops `0`; seed-fragment estimator calls `1`, result count `1201`, failed ops `0`.
+  - Post-change SGS benchmark sample: large-pool estimator calls `601`, result count `1`, failed ops `0`; seed-fragment estimator calls `1`, result count `1201`, failed ops `0`.
+- Validation:
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/algorithms/greedy/dispatch/sgs.py core/algorithms/greedy/dispatch/sgs_scoring.py tests/test_sgs_total_hours_cache.py tests/benchmark_sgs_large_resource_pool.py`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_sgs_total_hours_cache.py --tb=short`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_sgs_total_hours_cache.py tests/test_greedy_refactor_contracts.py tests/test_sgs_internal_scoring_matches_execution.py tests/regression_sgs_scoring_fallback_unscorable.py tests/regression_sgs_pre_sort_strict_nonfinite_rejected.py tests/regression_sgs_atc_penalize_missing_resources.py tests/regression_sgs_penalize_nonfinite_proc_hours.py --tb=short`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tests/benchmark_sgs_large_resource_pool.py`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold --tb=short`
