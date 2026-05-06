@@ -268,17 +268,17 @@ def simulate_schedule():
     - 选择批次执行一次“模拟排产”，落库到新版本（可追溯）
     - 不更新批次/工序状态（避免污染正式状态）
     """
-    batch_ids = request.form.getlist("batch_ids")
-    start_dt = request.form.get("start_dt") or None
-    end_date = request.form.get("end_date") or None
-    enforce_ready = form_optional_toggle_bool(request.form, "enforce_ready")
-    strict_mode = form_toggle_bool(request.form, "strict_mode")
-    if not batch_ids:
-        flash("请至少选择 1 个批次进行模拟排产。", "error")
-        return redirect(url_for("scheduler.batches_page"))
-
-    sch_svc = g.services.schedule_service
     try:
+        batch_ids = request.form.getlist("batch_ids")
+        start_dt = request.form.get("start_dt") or None
+        end_date = request.form.get("end_date") or None
+        enforce_ready = form_optional_toggle_bool(request.form, "enforce_ready")
+        strict_mode = form_toggle_bool(request.form, "strict_mode")
+        if not batch_ids:
+            flash("请至少选择 1 个批次进行模拟排产。", "error")
+            return redirect(url_for("scheduler.batches_page"))
+
+        sch_svc = g.services.schedule_service
         result = sch_svc.run_schedule(
             batch_ids=batch_ids,
             start_dt=start_dt,

@@ -100,7 +100,9 @@ def _label(value: Any, labels: Dict[str, str], fallback: str) -> str:
     key = str(value or "").strip()
     if not key:
         return "-"
-    return labels.get(key, fallback)
+    if key in labels:
+        return labels[key]
+    return f"{fallback}（{key}）"
 
 
 def _resolve_label_or_code(value: Any, labels: Dict[str, str]) -> str:
@@ -148,7 +150,7 @@ def build_operation_log_view_rows(items: List[Any]) -> List[Dict[str, Any]]:
             d = it.to_dict() if hasattr(it, "to_dict") else (it if isinstance(it, dict) else {})
         except Exception:
             d = {}
-        d["log_level_label"] = _label(d.get("log_level"), _LOG_LEVEL_LABELS, "其他")
+        d["log_level_label"] = _label(d.get("log_level"), _LOG_LEVEL_LABELS, "其他等级")
         d["module_label"] = _label(d.get("module"), _MODULE_LABELS, "其他模块")
         d["action_label"] = _label(d.get("action"), _ACTION_LABELS, "其他操作")
         d["target_type_label"] = _label(d.get("target_type"), _TARGET_TYPE_LABELS, "其他对象")

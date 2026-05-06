@@ -1045,8 +1045,9 @@ def test_scheduler_config_page_renders_provenance_and_hidden_degraded_html(tmp_p
     assert "常用方案" in body
     assert "基线未记录" in body
     assert "当前运行配置缺少基线记录，无法确认与任何方案的一致性；请显式保存或重新应用方案。" in body
-    assert "当前配置中有" in body
-    assert "来自旧数据或格式不标准，请检查后保存一次。" in body
+    assert "当前配置中有" not in body
+    assert "来自旧数据或格式不标准，请检查后保存一次。" not in body
+    assert "scheduler-config-degraded-summary" in body
     assert "平时不直接显示的设置“保存系统补齐的设备和人员”需要重新确认" in body
     assert "保存系统补齐的设备和人员" in body
     assert "auto_assign_persist" not in body

@@ -118,9 +118,10 @@ def test_scheduler_config_template_surfaces_shared_degraded_field_warning_contra
         "scheduler-config-degraded-summary",
         "scheduler-config-field-warning",
         "config_field_warnings.get(",
-        "config_degraded_fields",
     ):
         assert token in template_source
+    assert "config_degraded_fields" not in template_source
+    assert "config_hidden_warnings" not in template_source
 
 
 def test_scheduler_config_v2_template_matches_shared_metadata_and_warning_contract() -> None:

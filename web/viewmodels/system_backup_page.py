@@ -233,7 +233,8 @@ def build_plugin_degradation_events(plugin_status: Any) -> Sequence[PluginDegrad
     rows = []
     for raw_event in _sequence_value(plugin_status, "degradation_events"):
         event = dict(raw_event or {}) if isinstance(raw_event, dict) else raw_event
-        rows.append(PluginDegradationEventRow(message=str(_optional_value(event, "message") or "扩展功能启动时出现问题。")))
+        message = str(_optional_value(event, "message") or "").strip() or "扩展功能启动时出现问题。"
+        rows.append(PluginDegradationEventRow(message=message))
     return tuple(rows)
 
 

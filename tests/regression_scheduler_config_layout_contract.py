@@ -24,6 +24,12 @@ def test_scheduler_config_separates_preset_actions_from_runtime_state() -> None:
         assert "current_config_state.repair_notices" not in source
         assert "auto_assign_persist_state.description" not in source
         assert "auto_assign_persist_state.label" not in source
+        form_start = source.index("<h3 class=\"section-title\">排产策略配置</h3>")
+        form_end = source.index('<div class="scheduler-config-form-grid">', form_start)
+        form_intro = source[form_start:form_end]
+        assert "config_degraded_fields" not in form_intro
+        assert "config_hidden_warnings" not in form_intro
+        assert "flash-card flash-warning scheduler-config-degraded-summary" not in form_intro
 
         assert 'name="preset_name"' in source
         assert 'name="next"' in source

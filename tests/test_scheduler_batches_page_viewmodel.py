@@ -550,6 +550,50 @@ def test_batches_page_degrades_latest_history_missing_algo(
     assert 'aps-latest-schedule-label">排产方式' not in body
 
 
+@pytest.mark.parametrize(
+    "metrics_value",
+    (
+        None,
+        [],
+        "bad",
+    ),
+)
+def test_batches_page_degrades_latest_history_missing_or_invalid_metrics(
+    tmp_path,
+    monkeypatch,
+    metrics_value,
+) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    _insert_batch(db_path, batch_id="B-PENDING", status="pending")
+    algo = {
+        "mode": "improve",
+        "objective": "min_overdue",
+    }
+    if metrics_value is not None:
+        algo["metrics"] = metrics_value
+    _insert_history(
+        db_path,
+        version=12,
+        strategy="priority_first",
+        result_summary={
+            "algo": algo,
+            "warnings": [],
+            "errors": [],
+        },
+    )
+
+    response = app.test_client().get("/scheduler/")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "最近一次排产历史摘要不完整，请到系统历史查看。" in body
+    assert 'aps-latest-schedule-value">v12' in body
+    assert "B-PENDING" in body
+    assert "jsRunScheduleForm" in body
+    assert "batchesTable" in body
+    assert "设备利用率" not in body
+
+
 def test_batches_page_latest_algo_config_snapshot_renders_public_snapshot_state(tmp_path, monkeypatch) -> None:
     app, db_path = _build_app(tmp_path, monkeypatch)
     _insert_history(

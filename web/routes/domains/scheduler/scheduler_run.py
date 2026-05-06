@@ -37,13 +37,13 @@ def run_schedule():
     """
     执行排产（Phase 7）。
     """
-    batch_ids = request.form.getlist("batch_ids")
-    start_dt = request.form.get("start_dt") or None
-    end_date = request.form.get("end_date") or None
-    enforce_ready = form_optional_toggle_bool(request.form, "enforce_ready")
-    strict_mode = form_toggle_bool(request.form, "strict_mode")
-    sch_svc = g.services.schedule_service
     try:
+        batch_ids = request.form.getlist("batch_ids")
+        start_dt = request.form.get("start_dt") or None
+        end_date = request.form.get("end_date") or None
+        enforce_ready = form_optional_toggle_bool(request.form, "enforce_ready")
+        strict_mode = form_toggle_bool(request.form, "strict_mode")
+        sch_svc = g.services.schedule_service
         result = sch_svc.run_schedule(
             batch_ids=batch_ids,
             start_dt=start_dt,

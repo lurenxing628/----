@@ -25,8 +25,9 @@
 - 模板只消费 `label / value / desc / tone / checked_attr / disabled_attr / items`。
 - 不在模板里用 `.get(key, "未知")` 或 `.get(key, "-")` 悄悄兜底未知业务状态。
 - 布局组件可以允许“没有按钮”“空列表”这类可选内容为空；这不等于允许业务状态、错误原因、展示文案在模板里悄悄兜底。
+- 新页面的摘要数据优先用 `UiSummaryItem` 和 `ui.summary_grid(items=...)`。如果业务上确实没有值，viewmodel 要明确传 `"-"`、`"未记录"`、`"暂未拿到"` 这类用户能看懂的文案，不要把空值交给模板自动补。
 - 业务页面原则上只调用 `ui.toggle(toggle)`，也就是消费 viewmodel 已经算好的 `UiToggleRow`。
-- `ui.toggle_row(...)` 只给底层组件和测试夹具使用；业务模板不要直接传 `checked_attr`、`disabled_attr`、`submitted_value`，避免把开关提交规则重新散落到模板里。
+- `ui.toggle_row(...)` 是内部底层渲染宏，只给 `ui_macros.html` 内部和测试夹具使用；业务模板不要直接传 `checked_attr`、`disabled_attr`、`submitted_value`，避免把开关提交规则重新散落到模板里。
 
 ## 4. 表单规则
 
@@ -37,7 +38,7 @@
 <input type="hidden" name="xxx" value="no">
 ```
 
-原因是后端多处使用 `request.form.get(...)` 读取同名字段。checkbox 在前、hidden 在后时，勾选状态能读到 `yes`；顺序反过来时，勾选也可能读成 `no`。
+后端必须用统一的 `form_yes_no_value()` / `form_toggle_bool()` 读取这类同名字段，不再依赖浏览器提交顺序。checkbox 在前、hidden 在后仍然要保留，因为这是当前组件合同，也方便排查表单输出是否正常。
 
 禁用开关要特别处理。浏览器不会提交 disabled checkbox，所以禁用且已勾选的开关必须让同名 hidden input 提交当前真实值，不能默认提交 `no`。
 
@@ -75,7 +76,7 @@
 
 ## 7. 测试规则
 
-本轮先稳住静态合同测试和质量门禁，不把浏览器几何测试强制加入门禁。新增 UI 基础能力时，要补测试锁住：
+本轮同时保留静态合同测试和真实浏览器几何 smoke。新增 UI 基础能力时，要补测试锁住：
 
 - tone 只能是 `neutral / info / success / warning / danger`。
 - `checked_attr` 只能是空字符串或 `checked`。
@@ -83,4 +84,4 @@
 - checkbox 必须在同名 hidden input 前面。
 - 日志表多行换行要靠 `.aps-table--multiline`，不靠 `#systemLogsTable td` 页面 ID 特例。
 
-Codex 浏览器插件 smoke 属于本地人工验收：用于确认真实页面没有明显横向撑破、开关文字没有压住轨道、暗色主题下主要提示和摘要仍可读。它不写进 `tools/test_registry.py`，也不新增仓库级浏览器依赖。
+真实浏览器几何 smoke 已进入质量门禁，用来确认页面真实返回 200、打开的是正确业务页、没有明显 body 级横向撑破、开关文字没有压住轨道、暗色主题下主要提示和摘要仍可读。它不使用截图比对，只检查页面事实和浏览器算出来的样式。

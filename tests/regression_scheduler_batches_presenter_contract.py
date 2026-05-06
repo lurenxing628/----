@@ -182,6 +182,36 @@ def test_latest_history_panel_rejects_missing_or_invalid_algo(latest_summary: di
         )
 
 
+@pytest.mark.parametrize(
+    ("metrics_value", "message"),
+    (
+        (None, "排产历史摘要 algo 缺少 metrics"),
+        ([], "排产历史摘要 algo.metrics 字段不是对象"),
+        ("bad", "排产历史摘要 algo.metrics 字段不是对象"),
+    ),
+)
+def test_latest_history_panel_rejects_missing_or_invalid_metrics_block(metrics_value, message: str) -> None:
+    algo = {
+        "mode": "improve",
+        "objective": "min_overdue",
+    }
+    if metrics_value is not None:
+        algo["metrics"] = metrics_value
+
+    with pytest.raises(ScheduleHistoryDisplayValueError, match=message):
+        build_latest_schedule_history_panel_state(
+            latest_history={
+                "version": 1,
+                "strategy": "priority_first",
+                "result_status": "success",
+                "schedule_time": "2026-05-05 10:00:00",
+            },
+            latest_summary={"algo": algo},
+            latest_summary_parse_state={"parse_failed": False},
+            auto_assign_persist_display_builder=_auto_assign_state,
+        )
+
+
 @pytest.mark.parametrize("missing_key", scheduler_batches_page_vm._REQUIRED_METRIC_KEYS)
 def test_latest_history_panel_rejects_missing_metric_key(missing_key: str) -> None:
     metrics = {
@@ -297,7 +327,17 @@ def test_latest_history_panel_rejects_missing_overdue_count() -> None:
                 "schedule_time": "2026-05-05 10:00:00",
             },
             latest_summary={
-                "algo": {"mode": "improve", "objective": "min_overdue"},
+                "algo": {
+                    "mode": "improve",
+                    "objective": "min_overdue",
+                    "metrics": {
+                        "total_tardiness_hours": 0,
+                        "weighted_tardiness_hours": 0,
+                        "makespan_hours": 0,
+                        "changeover_count": 0,
+                        "machine_util_avg": 0,
+                    },
+                },
                 "overdue_batches": {},
             },
             latest_summary_parse_state={"parse_failed": False},
@@ -315,8 +355,18 @@ def test_latest_history_panel_rejects_non_numeric_overdue_count() -> None:
                     "result_status": "success",
                     "schedule_time": "2026-05-05 10:00:00",
                 },
-                latest_summary={
-                    "algo": {"mode": "improve", "objective": "min_overdue"},
+            latest_summary={
+                    "algo": {
+                        "mode": "improve",
+                        "objective": "min_overdue",
+                        "metrics": {
+                            "total_tardiness_hours": 0,
+                            "weighted_tardiness_hours": 0,
+                            "makespan_hours": 0,
+                            "changeover_count": 0,
+                            "machine_util_avg": 0,
+                        },
+                    },
                     "overdue_batches": {"count": bad_value},
                 },
                 latest_summary_parse_state={"parse_failed": False},
@@ -378,7 +428,19 @@ def test_latest_history_panel_builds_parse_and_warning_notices(monkeypatch) -> N
             "result_status": "success",
             "schedule_time": "2026-05-05 10:00:00",
         },
-        latest_summary={"algo": {"mode": "improve", "objective": "min_overdue"}},
+        latest_summary={
+            "algo": {
+                "mode": "improve",
+                "objective": "min_overdue",
+                "metrics": {
+                    "total_tardiness_hours": 0,
+                    "weighted_tardiness_hours": 0,
+                    "makespan_hours": 0,
+                    "changeover_count": 0,
+                    "machine_util_avg": 0,
+                },
+            }
+        },
         latest_summary_parse_state={"parse_failed": True},
         auto_assign_persist_display_builder=_auto_assign_state,
     )

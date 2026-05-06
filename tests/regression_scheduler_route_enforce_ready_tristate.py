@@ -4,7 +4,7 @@ from io import BytesIO
 from types import SimpleNamespace
 from typing import Any, Dict
 
-from flask import Flask, g
+from flask import Flask, g, get_flashed_messages
 from werkzeug.datastructures import MultiDict
 
 
@@ -40,6 +40,7 @@ def _invoke_scheduler_run(form_data: Any):
             g.app_logger = None
             g.op_logger = None
             resp = route_mod.run_schedule()
+            captured["flashes"] = get_flashed_messages(with_categories=True)
         assert getattr(resp, "status_code", 0) in (301, 302), "run_schedule 应返回 redirect"
         return dict(captured)
     finally:
@@ -67,6 +68,7 @@ def _invoke_scheduler_simulate(form_data: Any):
             g.app_logger = None
             g.op_logger = None
             resp = route_mod.simulate_schedule()
+            captured["flashes"] = get_flashed_messages(with_categories=True)
         assert getattr(resp, "status_code", 0) in (301, 302), "simulate_schedule 应返回 redirect"
         return dict(captured)
     finally:
@@ -95,6 +97,58 @@ def _invoke_system_plugin_toggle(form_data: Any):
             g.op_logger = None
             resp = route_mod.plugin_toggle()
         assert getattr(resp, "status_code", 0) in (301, 302), "plugin_toggle 应返回 redirect"
+        return dict(captured)
+    finally:
+        route_mod.url_for = old_url_for
+        route_mod._get_system_config_service = old_get_svc
+
+
+def _invoke_system_backup_settings(form_data: Any):
+    import web.routes.system_backup as route_mod
+
+    captured: Dict[str, Any] = {}
+
+    class _StubConfigService:
+        def update_backup_settings(self, **kwargs):
+            captured.update(kwargs)
+
+    old_url_for = route_mod.url_for
+    old_get_svc = route_mod._get_system_config_service
+    route_mod.url_for = lambda endpoint, **kwargs: f"/{endpoint}"
+    route_mod._get_system_config_service = lambda: _StubConfigService()
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-secret"
+        with app.test_request_context("/system/backup/settings", method="POST", data=form_data):
+            resp = route_mod.backup_settings()
+            captured["flashes"] = get_flashed_messages(with_categories=True)
+        assert getattr(resp, "status_code", 0) in (301, 302), "backup_settings 应返回 redirect"
+        return dict(captured)
+    finally:
+        route_mod.url_for = old_url_for
+        route_mod._get_system_config_service = old_get_svc
+
+
+def _invoke_system_logs_settings(form_data: Any):
+    import web.routes.system_logs as route_mod
+
+    captured: Dict[str, Any] = {}
+
+    class _StubConfigService:
+        def update_logs_settings(self, **kwargs):
+            captured.update(kwargs)
+
+    old_url_for = route_mod.url_for
+    old_get_svc = route_mod._get_system_config_service
+    route_mod.url_for = lambda endpoint, **kwargs: f"/{endpoint}"
+    route_mod._get_system_config_service = lambda: _StubConfigService()
+    try:
+        app = Flask(__name__)
+        app.secret_key = "aps-test-secret"
+        with app.test_request_context("/system/logs/settings", method="POST", data=form_data):
+            resp = route_mod.logs_settings()
+            captured["flashes"] = get_flashed_messages(with_categories=True)
+        assert getattr(resp, "status_code", 0) in (301, 302), "logs_settings 应返回 redirect"
         return dict(captured)
     finally:
         route_mod.url_for = old_url_for
@@ -267,6 +321,14 @@ def _assert_form_parser_contract() -> None:
     assert form_optional_toggle_bool(MultiDict([("flag", "no")]), "flag") is False
 
 
+def _assert_toggle_validation_flash(result: Dict[str, Any], *, field_name: str) -> None:
+    assert len(result) == 1 and "flashes" in result, f"非法 {field_name} 不应继续调用服务：{result!r}"
+    flashes = result["flashes"]
+    assert flashes, f"非法 {field_name} 应给用户闪现错误提示"
+    assert flashes[0][0] == "error", flashes
+    assert f"{field_name} 取值不合法" in flashes[0][1] or "参数填写不正确" in flashes[0][1], flashes
+
+
 def main() -> None:
     repo_root = find_repo_root()
     if repo_root not in sys.path:
@@ -299,6 +361,14 @@ def main() -> None:
     run_false = _invoke_scheduler_run({"batch_ids": ["B001"], "enforce_ready": "false", "strict_mode": "no"})
     assert run_false.get("enforce_ready") is False, f"显式 false 应传递 False：{run_false!r}"
     assert run_false.get("strict_mode") is False, f"显式 no 应传递 False：{run_false!r}"
+    _assert_toggle_validation_flash(
+        _invoke_scheduler_run({"batch_ids": ["B001"], "enforce_ready": "maybe", "strict_mode": "no"}),
+        field_name="enforce_ready",
+    )
+    _assert_toggle_validation_flash(
+        _invoke_scheduler_run({"batch_ids": ["B001"], "strict_mode": "maybe"}),
+        field_name="strict_mode",
+    )
 
     # /scheduler/simulate
     sim_default = _invoke_scheduler_simulate({"batch_ids": ["B001"]})
@@ -326,6 +396,14 @@ def main() -> None:
     sim_false = _invoke_scheduler_simulate({"batch_ids": ["B001"], "enforce_ready": "no", "strict_mode": "false"})
     assert sim_false.get("enforce_ready") is False, f"simulate 显式 no 应传递 False：{sim_false!r}"
     assert sim_false.get("strict_mode") is False, f"simulate 显式 false 应传递 False：{sim_false!r}"
+    _assert_toggle_validation_flash(
+        _invoke_scheduler_simulate({"batch_ids": ["B001"], "enforce_ready": "maybe", "strict_mode": "no"}),
+        field_name="enforce_ready",
+    )
+    _assert_toggle_validation_flash(
+        _invoke_scheduler_simulate({"batch_ids": ["B001"], "strict_mode": "maybe"}),
+        field_name="strict_mode",
+    )
 
     plugin_on = _invoke_system_plugin_toggle(
         MultiDict([("plugin_id", "demo"), ("enabled", "no"), ("enabled", "yes")])
@@ -335,6 +413,13 @@ def main() -> None:
     assert plugin_off.get("value") == "no", f"插件开关未提交 enabled 时应按 no 保存：{plugin_off!r}"
     plugin_invalid = _invoke_system_plugin_toggle({"plugin_id": "demo", "enabled": "maybe"})
     assert "value" not in plugin_invalid, f"插件开关非法值不应静默保存：{plugin_invalid!r}"
+
+    backup_invalid = _invoke_system_backup_settings(
+        {"auto_backup_enabled": "maybe", "auto_backup_cleanup_enabled": "no"}
+    )
+    _assert_toggle_validation_flash(backup_invalid, field_name="auto_backup_enabled")
+    logs_invalid = _invoke_system_logs_settings({"auto_log_cleanup_enabled": "maybe"})
+    _assert_toggle_validation_flash(logs_invalid, field_name="auto_log_cleanup_enabled")
 
     process_create = _invoke_process_create_part(
         MultiDict([("part_no", "P001"), ("part_name", "测试件"), ("strict_mode", "no"), ("strict_mode", "yes")])

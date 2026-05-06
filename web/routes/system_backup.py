@@ -145,15 +145,18 @@ def backup_settings():
     - 正常退出时的退出备份：与 auto_backup_enabled 共用同一开关
     - 自动清理备份：按请求触发
     """
-    svc = _get_system_config_service()
-    svc.update_backup_settings(
-        auto_backup_enabled=form_yes_no_value(request.form, "auto_backup_enabled"),
-        auto_backup_interval_minutes=request.form.get("auto_backup_interval_minutes"),
-        auto_backup_cleanup_enabled=form_yes_no_value(request.form, "auto_backup_cleanup_enabled"),
-        auto_backup_keep_days=request.form.get("auto_backup_keep_days"),
-        auto_backup_cleanup_interval_minutes=request.form.get("auto_backup_cleanup_interval_minutes"),
-    )
-    flash("备份自动任务设置已保存。", "success")
+    try:
+        svc = _get_system_config_service()
+        svc.update_backup_settings(
+            auto_backup_enabled=form_yes_no_value(request.form, "auto_backup_enabled"),
+            auto_backup_interval_minutes=request.form.get("auto_backup_interval_minutes"),
+            auto_backup_cleanup_enabled=form_yes_no_value(request.form, "auto_backup_cleanup_enabled"),
+            auto_backup_keep_days=request.form.get("auto_backup_keep_days"),
+            auto_backup_cleanup_interval_minutes=request.form.get("auto_backup_cleanup_interval_minutes"),
+        )
+        flash("备份自动任务设置已保存。", "success")
+    except AppError as e:
+        flash(e.message, "error")
     return redirect(url_for("system.backup_page"))
 
 

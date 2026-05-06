@@ -233,7 +233,7 @@ def _latest_algo_items(
 ) -> Tuple[str, str, Optional[Dict[str, Any]], Tuple[UiSummaryItem, ...], Optional[Dict[str, Any]]]:
     objective_label = objective_label_for(latest_algo.get("objective"), algo=latest_algo)
     mode_label = _latest_algo_mode_label(latest_algo.get("mode"))
-    latest_metrics = latest_algo.get("metrics") if isinstance(latest_algo.get("metrics"), dict) else None
+    latest_metrics = _required_latest_metrics(latest_algo)
     auto_assign_state = None
     config_snapshot = latest_algo.get("config_snapshot")
     if isinstance(config_snapshot, dict):
@@ -256,6 +256,15 @@ def _required_latest_algo(latest_summary: Optional[Dict[str, Any]]) -> Optional[
     if not isinstance(latest_algo, dict):
         raise ScheduleHistoryDisplayValueError("排产历史摘要 algo 字段不是对象")
     return latest_algo
+
+
+def _required_latest_metrics(latest_algo: Dict[str, Any]) -> Dict[str, Any]:
+    if "metrics" not in latest_algo:
+        raise ScheduleHistoryDisplayValueError("排产历史摘要 algo 缺少 metrics")
+    metrics = latest_algo.get("metrics")
+    if not isinstance(metrics, dict):
+        raise ScheduleHistoryDisplayValueError("排产历史摘要 algo.metrics 字段不是对象")
+    return metrics
 
 
 def _latest_metric_items(

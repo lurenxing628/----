@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from flask import flash, redirect, request, url_for
 
+from core.infrastructure.errors import AppError
 from web.routes.form_values import form_yes_no_value
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.system_logs_vm import (
@@ -87,13 +88,16 @@ def logs_page():
 
 @bp.post("/logs/settings")
 def logs_settings():
-    svc = _get_system_config_service()
-    svc.update_logs_settings(
-        auto_log_cleanup_enabled=form_yes_no_value(request.form, "auto_log_cleanup_enabled"),
-        auto_log_cleanup_keep_days=request.form.get("auto_log_cleanup_keep_days"),
-        auto_log_cleanup_interval_minutes=request.form.get("auto_log_cleanup_interval_minutes"),
-    )
-    flash("日志自动清理设置已保存。", "success")
+    try:
+        svc = _get_system_config_service()
+        svc.update_logs_settings(
+            auto_log_cleanup_enabled=form_yes_no_value(request.form, "auto_log_cleanup_enabled"),
+            auto_log_cleanup_keep_days=request.form.get("auto_log_cleanup_keep_days"),
+            auto_log_cleanup_interval_minutes=request.form.get("auto_log_cleanup_interval_minutes"),
+        )
+        flash("日志自动清理设置已保存。", "success")
+    except AppError as e:
+        flash(e.message, "error")
     return redirect(url_for("system.logs_page"))
 
 

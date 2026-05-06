@@ -174,6 +174,29 @@ def test_business_templates_do_not_call_low_level_toggle_row_macro_directly() ->
             assert "ui.toggle_row(" not in source, str(path.relative_to(REPO_ROOT))
 
 
+def test_presenterized_pages_do_not_bypass_summary_item_values() -> None:
+    for rel_path in ("templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches.html"):
+        source = _read(rel_path)
+        assert "latest_head_items" in source
+        assert "latest_meta_items" in source
+        assert "latest_metric_items" in source
+        assert "ui.summary_item('版本'" not in source
+        assert "ui.summary_item('排产方式'" not in source
+        assert "ui.summary_item('设备利用率'" not in source
+
+    for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
+        source = _read(rel_path)
+        assert "current_config_summary_items" in source
+        assert "current_auto_assign_persist_item" in source
+        assert "ui.summary_item(current_config_state" not in source
+        assert "ui.summary_item(auto_assign_persist_state" not in source
+
+    backup_source = _read("templates/system/backup.html")
+    plugin_block = backup_source[backup_source.index("扩展功能状态") :]
+    assert "ui.summary_grid(page.plugin_summary_items" in plugin_block
+    assert "ui.summary_item(" not in plugin_block
+
+
 def test_business_toggle_routes_use_order_independent_form_parsers() -> None:
     route_contracts = {
         "web/routes/system_backup.py": (

@@ -261,12 +261,19 @@ def test_scheduler_batches_surfaces_current_config_state_and_other_degradation_m
             {"code": "invalid_due_date", "message": "发现 2 个批次交期非法，已按空交期处理。", "count": 2},
             {"code": "ortools_warmstart_failed", "message": "OR-Tools 预热失败，已回退常规求解。", "count": 1},
         ],
-        "algo": {
-            "mode": "improve",
-            "objective": "min_overdue",
-            "config_snapshot": {"objective": "min_overdue"},
-        },
-    }
+            "algo": {
+                "mode": "improve",
+                "objective": "min_overdue",
+                "metrics": {
+                    "total_tardiness_hours": 0,
+                    "weighted_tardiness_hours": 0,
+                    "makespan_hours": 0,
+                    "changeover_count": 0,
+                    "machine_util_avg": 0,
+                },
+                "config_snapshot": {"objective": "min_overdue"},
+            },
+        }
 
     class _StubBatchService:
         def __init__(self, _conn, logger=None, op_logger=None, **_kwargs):

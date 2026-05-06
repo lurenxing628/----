@@ -353,6 +353,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_system_backup_presenter_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_scheduler_batches_presenter_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_system_logs_layout_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_system_logs_presenter_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_form_run_option_checkbox_layout_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_scheduler_route_enforce_ready_tristate.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_ui_browser_geometry_smoke.py" in module.REQUIRED_TEST_ARGS

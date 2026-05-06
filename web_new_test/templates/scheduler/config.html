@@ -123,32 +123,6 @@
   <div class="card">
     <h3 class="section-title">排产策略配置</h3>
     <form method="post" action="{{ url_for('scheduler.update_config') }}" data-autosave="true" data-autosave-key="scheduler-config-main" data-autosave-clear-on-success="1">
-      {% set degraded_field_labels = [] %}
-      {% for field_key in config_degraded_fields or [] %}
-        {% set metadata = config_field_metadata.get(field_key) %}
-        {% if metadata %}
-          {% set _ = degraded_field_labels.append(metadata.label) %}
-        {% else %}
-          {% set _ = degraded_field_labels.append('未命名设置项') %}
-        {% endif %}
-      {% endfor %}
-      {% if degraded_field_labels %}
-        <div class="flash-card flash-warning scheduler-config-degraded-summary" role="alert" aria-live="polite">
-          当前配置中有 {{ degraded_field_labels|join('、') }} 来自旧数据或格式不标准，请检查后保存一次。
-        </div>
-      {% endif %}
-      {% if config_hidden_warnings %}
-        <div class="flash-card flash-warning scheduler-config-degraded-summary" role="alert" aria-live="polite">
-          <div>还有 {{ config_hidden_warnings|length }} 条平时不直接显示的设置需要检查。</div>
-          {% call ui.flash_details('查看处理提示') %}
-            <ul class="list-tight">
-              {% for item in config_hidden_warnings %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
-          {% endcall %}
-        </div>
-      {% endif %}
       <div class="scheduler-config-form-grid">
         <div class="scheduler-config-field">
           <label>{{ sort_strategy_meta.label }}</label>
