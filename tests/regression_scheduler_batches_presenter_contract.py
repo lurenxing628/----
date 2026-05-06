@@ -214,7 +214,11 @@ def test_latest_history_panel_rejects_empty_metric_value(bad_value) -> None:
     (
         ("machine_util_avg", "abc"),
         ("machine_util_avg", {}),
+        ("machine_util_avg", True),
+        ("machine_util_avg", False),
         ("total_tardiness_hours", "N/A"),
+        ("total_tardiness_hours", True),
+        ("changeover_count", False),
         ("changeover_count", float("nan")),
     ),
 )
@@ -267,21 +271,22 @@ def test_latest_history_panel_rejects_missing_overdue_count() -> None:
 
 
 def test_latest_history_panel_rejects_non_numeric_overdue_count() -> None:
-    with pytest.raises(ScheduleHistoryDisplayValueError, match="metrics 字段不是数字：count"):
-        build_latest_schedule_history_panel_state(
-            latest_history={
-                "version": 1,
-                "strategy": "priority_first",
-                "result_status": "success",
-                "schedule_time": "2026-05-05 10:00:00",
-            },
-            latest_summary={
-                "algo": {"mode": "improve", "objective": "min_overdue"},
-                "overdue_batches": {"count": "N/A"},
-            },
-            latest_summary_parse_state={"parse_failed": False},
-            auto_assign_persist_display_builder=_auto_assign_state,
-        )
+    for bad_value in ("N/A", True, False):
+        with pytest.raises(ScheduleHistoryDisplayValueError, match="metrics 字段不是数字：count"):
+            build_latest_schedule_history_panel_state(
+                latest_history={
+                    "version": 1,
+                    "strategy": "priority_first",
+                    "result_status": "success",
+                    "schedule_time": "2026-05-05 10:00:00",
+                },
+                latest_summary={
+                    "algo": {"mode": "improve", "objective": "min_overdue"},
+                    "overdue_batches": {"count": bad_value},
+                },
+                latest_summary_parse_state={"parse_failed": False},
+                auto_assign_persist_display_builder=_auto_assign_state,
+            )
 
 
 def test_degraded_latest_history_panel_keeps_secondary_degradation_messages(monkeypatch) -> None:

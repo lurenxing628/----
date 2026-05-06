@@ -10,6 +10,7 @@ from core.infrastructure.backup import MaintenanceWindowError
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.logging import OperationLogger
+from web.routes.form_values import form_yes_no_value
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.system_backup_page import build_system_backup_page_view_model
 
@@ -147,9 +148,9 @@ def backup_settings():
     """
     svc = _get_system_config_service()
     svc.update_backup_settings(
-        auto_backup_enabled=request.form.get("auto_backup_enabled"),
+        auto_backup_enabled=form_yes_no_value(request.form, "auto_backup_enabled"),
         auto_backup_interval_minutes=request.form.get("auto_backup_interval_minutes"),
-        auto_backup_cleanup_enabled=request.form.get("auto_backup_cleanup_enabled"),
+        auto_backup_cleanup_enabled=form_yes_no_value(request.form, "auto_backup_cleanup_enabled"),
         auto_backup_keep_days=request.form.get("auto_backup_keep_days"),
         auto_backup_cleanup_interval_minutes=request.form.get("auto_backup_cleanup_interval_minutes"),
     )

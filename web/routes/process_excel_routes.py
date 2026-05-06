@@ -17,7 +17,9 @@ from core.services.common.excel_templates import build_xlsx_bytes, get_template_
 from core.services.common.normalize import is_blank_value
 from core.services.process import PartService
 from core.services.scheduler.batch_query_service import BatchQueryService
+from web.routes.form_values import form_toggle_bool
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.ui_presenters import UiToggleRow, checked_attr
 
 from .excel_utils import (
     build_error_rows_message,
@@ -28,9 +30,6 @@ from .excel_utils import (
     load_confirm_payload,
     preview_baseline_is_stale,
     send_excel_template_file,
-)
-from .excel_utils import (
-    strict_mode_enabled as _strict_mode_enabled,
 )
 from .process_bp import _ensure_unique_ids, _parse_mode, _read_uploaded_xlsx, bp
 
@@ -113,6 +112,7 @@ def _render_excel_routes_page(
     filename: Optional[str],
     strict_mode: bool,
 ):
+    strict_mode_help = "勾选后：资料不完整就停下，并告诉你哪一行、哪一项要补。不勾选：能确认的数据会继续处理，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正；但图号为空、格式错误这类必须先改好的问题仍然会报错。"
     return render_template(
         "process/excel_import_routes.html",
         title="批量维护路线文字",
@@ -130,8 +130,14 @@ def _render_excel_routes_page(
         back_label="返回零件工艺模板",
         strict_mode_supported=True,
         strict_mode=bool(strict_mode),
-        strict_mode_label="发现问题就停下",
-        strict_mode_help="勾选后：资料不完整就停下，并告诉你哪一行、哪一项要补。不勾选：能确认的数据会继续处理，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正；但图号为空、格式错误这类必须先改好的问题仍然会报错。",
+        strict_mode_toggle=UiToggleRow(
+            "excelImportStrictMode",
+            "strict_mode",
+            "发现问题就停下",
+            "资料不完整时先停下，并告诉你哪一行、哪一项要补。",
+            checked_attr=checked_attr(strict_mode),
+        ),
+        strict_mode_help_text=strict_mode_help,
     )
 
 
@@ -154,7 +160,7 @@ def excel_routes_page():
 def excel_routes_preview():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
-    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
+    strict_mode = form_toggle_bool(request.form, "strict_mode")
     file = request.files.get("file")
     if not file or not file.filename:
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
@@ -208,7 +214,7 @@ def excel_routes_preview():
 def excel_routes_confirm():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
-    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
+    strict_mode = form_toggle_bool(request.form, "strict_mode")
     filename = request.form.get("filename") or "unknown.xlsx"
     payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
     rows = payload.rows

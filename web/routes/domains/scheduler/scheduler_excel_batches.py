@@ -13,7 +13,9 @@ from core.services.common.excel_audit import log_excel_export, log_excel_import
 from core.services.common.excel_service import ImportMode
 from core.services.common.excel_templates import build_xlsx_bytes, get_template_definition
 from core.services.common.excel_validators import get_batch_row_validate_and_normalize
+from web.routes.form_values import form_toggle_bool
 from web.ui_mode import render_ui_template as render_template
+from web.viewmodels.ui_presenters import UiToggleRow, checked_attr
 
 from ...excel_utils import (
     build_error_rows_message,
@@ -26,9 +28,6 @@ from ...excel_utils import (
     preview_baseline_is_stale,
     project_preview_rows_for_display,
     send_excel_template_file,
-)
-from ...excel_utils import (
-    strict_mode_enabled as _strict_mode_enabled,
 )
 from . import scheduler_excel_batches_baseline as _baseline_helpers
 from .scheduler_bp import _surface_schedule_warnings, bp
@@ -97,6 +96,7 @@ def _render_excel_batches_page(
     auto_generate_ops: bool,
     strict_mode: bool,
 ):
+    strict_mode_help = "勾选后：按路线生成工序时，资料不完整就停下，并提示哪一行、哪一项要补。不勾选：能确认的数据会继续处理，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正；但批次号、图号、数量这类必填项有问题仍然会报错。"
     return render_template(
         "scheduler/excel_import_batches.html",
         title="批量维护批次",
@@ -113,8 +113,14 @@ def _render_excel_batches_page(
         preview_url=url_for("scheduler.excel_batches_preview"),
         strict_mode_supported=True,
         strict_mode=bool(strict_mode),
-        strict_mode_label="发现问题就停下",
-        strict_mode_help="勾选后：按路线生成工序时，资料不完整就停下，并提示哪一行、哪一项要补。不勾选：能确认的数据会继续处理，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正；但批次号、图号、数量这类必填项有问题仍然会报错。",
+        strict_mode_toggle=UiToggleRow(
+            "batchImportStrictMode",
+            "strict_mode",
+            "发现问题就停下",
+            "资料不完整时先停下，并告诉你哪一行、哪一项要补。",
+            checked_attr=checked_attr(strict_mode),
+        ),
+        strict_mode_help_text=strict_mode_help,
         confirm_url=url_for("scheduler.excel_batches_confirm"),
         template_download_url=url_for("scheduler.excel_batches_template"),
         export_url=url_for("scheduler.excel_batches_export"),
@@ -144,7 +150,7 @@ def excel_batches_preview():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     auto_generate_ops = _parse_auto_generate_ops(request.form.get("auto_generate_ops"))
-    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
+    strict_mode = form_toggle_bool(request.form, "strict_mode")
     file = request.files.get("file")
     if not file or not file.filename:
         raise ValidationError("请先选择要上传的 Excel 文件", field="file")
@@ -226,7 +232,7 @@ def excel_batches_confirm():
     start = time.time()
     mode = _parse_mode(request.form.get("mode", ImportMode.OVERWRITE.value))
     filename = request.form.get("filename") or "unknown.xlsx"
-    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
+    strict_mode = form_toggle_bool(request.form, "strict_mode")
     auto_generate_ops = _parse_auto_generate_ops(request.form.get("auto_generate_ops"))
     payload = load_confirm_payload(request.form.get("raw_rows_json"), request.form.get("preview_baseline"))
     rows = payload.rows

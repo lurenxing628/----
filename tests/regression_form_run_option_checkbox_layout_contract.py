@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+from web.viewmodels.ui_presenters import UiToggleRow
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -12,6 +16,40 @@ def _read(rel_path: str) -> str:
 def _slice(source: str, start: str, end: str) -> str:
     start_index = source.index(start)
     return source[start_index : source.index(end, start_index)]
+
+
+def _render_excel_import_component() -> str:
+    env = Environment(
+        loader=FileSystemLoader(str(REPO_ROOT / "templates")),
+        autoescape=select_autoescape(("html", "xml")),
+    )
+    env.filters["tojson_zh"] = lambda value, indent=None: "{}"
+    template = env.from_string(
+        "{% import 'components/ui_macros.html' as ui %}"
+        "{% include 'components/excel_import.html' %}"
+    )
+    return template.render(
+        title="测试导入",
+        template_download_url="/template.xlsx",
+        preview_url="/preview",
+        confirm_url="/confirm",
+        mode="overwrite",
+        mode_options=(),
+        strict_mode_supported=True,
+        strict_mode_toggle=UiToggleRow(
+            "excelImportStrictMode",
+            "strict_mode",
+            "发现问题就停下",
+            "资料不完整时先停下，并告诉你哪一行、哪一项要补。",
+            checked_attr="",
+        ),
+        strict_mode_help_text="勾选后：资料不完整就停下，并告诉你哪一行、哪一项要补。",
+        preview_rows=(),
+        existing_list=(),
+        raw_rows_json="",
+        preview_baseline="",
+        filename="",
+    )
 
 
 def test_form_run_options_use_compact_toggle_fields_in_process_pages() -> None:
@@ -66,20 +104,35 @@ def test_scheduler_batch_related_strict_options_are_no_longer_raw_checkbox_label
     assert "aps-import-option-list" in upload_block
     assert "batchImportAutoOps" in upload_block
     assert 'name="auto_generate_ops" value="1"' in upload_block
-    assert "batchImportStrictMode" in upload_block
-    assert 'name="strict_mode" value="yes"' in upload_block
+    assert "ui.toggle(strict_mode_toggle" in upload_block
     assert "<label><input type=\"checkbox\"" not in upload_block
 
     component_source = _read("templates/components/excel_import.html")
     macro_source = _read("templates/components/ui_macros.html")
-    assert "excelImportStrictMode" in component_source
     assert "aps-import-option-list" in component_source
-    assert "ui.toggle_row(" in component_source
-    assert "'strict_mode'" in component_source
+    assert "ui.toggle(strict_mode_toggle" in component_source
+    assert "strict_mode_label or" not in component_source
+    assert "strict_mode_help or" not in component_source
+    assert "checked_attr='checked' if strict_mode else ''" not in component_source
     assert "value=\"{{ value }}\"" in macro_source
     assert "final_submitted_value" in macro_source
     assert "disabled_attr == 'disabled' and checked_attr == 'checked'" in macro_source
     assert "<label>\n          <input type=\"checkbox\" name=\"strict_mode\"" not in component_source
+
+    route_source = _read("web/routes/domains/scheduler/scheduler_excel_batches.py")
+    assert "UiToggleRow(" in route_source
+    assert "\"batchImportStrictMode\"" in route_source
+
+
+def test_excel_import_component_renders_strict_mode_toggle_fields() -> None:
+    html = _render_excel_import_component()
+
+    assert 'id="excelImportStrictMode"' in html
+    assert 'type="checkbox"' in html
+    assert 'name="strict_mode"' in html
+    assert 'value="yes"' in html
+    assert 'type="hidden" name="strict_mode" value="no"' in html
+    assert html.index('id="excelImportStrictMode"') < html.index('type="hidden" name="strict_mode" value="no"')
 
 
 def test_run_option_css_is_scoped_to_the_right_surfaces() -> None:
@@ -90,6 +143,7 @@ def test_run_option_css_is_scoped_to_the_right_surfaces() -> None:
     assert ".aps-run-panel-grid > .aps-run-options" in css
     assert ".aps-run-options-title" in css
     assert ".aps-run-option-row + .aps-run-option-row" in css
+    assert ".aps-run-option-note + .aps-run-option-row" in css
     assert ".aps-form-toggle-field .aps-run-option-row" in css
     assert ".aps-run-option-row .aps-toggle-control" in css
     assert ".aps-run-option-row .aps-toggle-title" in css
@@ -98,6 +152,7 @@ def test_run_option_css_is_scoped_to_the_right_surfaces() -> None:
 def main() -> None:
     test_form_run_options_use_compact_toggle_fields_in_process_pages()
     test_scheduler_batch_related_strict_options_are_no_longer_raw_checkbox_labels()
+    test_excel_import_component_renders_strict_mode_toggle_fields()
     test_run_option_css_is_scoped_to_the_right_surfaces()
     print("OK")
 

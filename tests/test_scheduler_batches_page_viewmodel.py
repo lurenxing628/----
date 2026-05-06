@@ -124,6 +124,12 @@ def _select_markup(body: str, select_id: str) -> str:
     return body[start:end]
 
 
+def _assert_checkbox_before_hidden(body: str, *, field_name: str, checkbox_id: str, hidden_value: str) -> None:
+    checkbox_index = body.index(f'id="{checkbox_id}"')
+    hidden_index = body.index(f'type="hidden" name="{field_name}" value="{hidden_value}"', checkbox_index)
+    assert checkbox_index < hidden_index
+
+
 def test_batches_filter_state_preserves_default_and_empty_status_contract() -> None:
     default_state = build_batches_filter_state(has_status_arg=False, raw_status=None, raw_only_ready=None)
     empty_state = build_batches_filter_state(has_status_arg=True, raw_status="", raw_only_ready="partial")
@@ -207,6 +213,26 @@ def test_batches_page_defaults_to_pending_status_and_renders_pending_rows(tmp_pa
     assert 'value="pending" selected' in body
     assert "js-batch-check" in body
     assert "js-select-all" in body
+
+
+def test_batches_page_renders_run_option_toggle_fields(tmp_path, monkeypatch) -> None:
+    app, db_path = _build_app(tmp_path, monkeypatch)
+    _insert_batch(db_path, batch_id="B-PENDING", status="pending")
+
+    response = app.test_client().get("/scheduler/")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'id="jsRunScheduleForm"' in body
+    assert 'id="runEnforceReady"' in body
+    assert 'name="enforce_ready"' in body
+    assert 'id="runStrictMode"' in body
+    assert 'name="strict_mode"' in body
+    assert 'type="checkbox"' in body
+    assert 'type="hidden" name="enforce_ready" value="no"' in body
+    assert 'type="hidden" name="strict_mode" value="no"' in body
+    _assert_checkbox_before_hidden(body, field_name="enforce_ready", checkbox_id="runEnforceReady", hidden_value="no")
+    _assert_checkbox_before_hidden(body, field_name="strict_mode", checkbox_id="runStrictMode", hidden_value="no")
 
 
 def test_batches_page_empty_status_lists_all_statuses_without_run_controls(tmp_path, monkeypatch) -> None:

@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from flask import flash, redirect, request, url_for
 
+from web.routes.form_values import form_yes_no_value
 from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.system_logs_vm import (
     build_operation_log_view_rows,
@@ -88,7 +89,7 @@ def logs_page():
 def logs_settings():
     svc = _get_system_config_service()
     svc.update_logs_settings(
-        auto_log_cleanup_enabled=request.form.get("auto_log_cleanup_enabled"),
+        auto_log_cleanup_enabled=form_yes_no_value(request.form, "auto_log_cleanup_enabled"),
         auto_log_cleanup_keep_days=request.form.get("auto_log_cleanup_keep_days"),
         auto_log_cleanup_interval_minutes=request.form.get("auto_log_cleanup_interval_minutes"),
     )

@@ -11,6 +11,7 @@ from core.services.common.excel_audit import log_excel_export
 from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.scheduler.summary.schedule_summary_types import ScheduleResultStatus
 from web.error_boundary import user_visible_app_error_message
+from web.routes.form_values import form_optional_toggle_bool, form_toggle_bool
 from web.routes.history_summary_logging import (
     log_history_summary_parse_warning,
     log_history_version_option_parse_warnings,
@@ -19,7 +20,6 @@ from web.ui_mode import render_ui_template as render_template
 from web.viewmodels.scheduler_history_summary import decorate_history_version_options, parse_history_summary_state
 from web.viewmodels.scheduler_summary_display import build_summary_display_state
 
-from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
 from .scheduler_bp import (
     _surface_schedule_errors,
     _surface_schedule_warnings,
@@ -38,19 +38,6 @@ def _get_int_arg(name: str, default: int = 0) -> int:
         return int(str(raw).strip())
     except (TypeError, ValueError) as e:
         raise ValidationError(f"{name} 不合法（期望整数）", field=name) from e
-
-
-def _parse_optional_checkbox_flag(name: str):
-    """
-    解析 checkbox 三态：
-    - key 不存在：None（由服务层回退默认配置）
-    - key 存在且为真值：True
-    - key 存在但非真值：False
-    """
-    if name not in request.form:
-        return None
-    raw = request.form.get(name)
-    return str(raw or "").strip().lower() in ("yes", "y", "true", "1", "on")
 
 
 def _load_selected_week_plan_summary(services, version: int):
@@ -284,8 +271,8 @@ def simulate_schedule():
     batch_ids = request.form.getlist("batch_ids")
     start_dt = request.form.get("start_dt") or None
     end_date = request.form.get("end_date") or None
-    enforce_ready = _parse_optional_checkbox_flag("enforce_ready")
-    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
+    enforce_ready = form_optional_toggle_bool(request.form, "enforce_ready")
+    strict_mode = form_toggle_bool(request.form, "strict_mode")
     if not batch_ids:
         flash("请至少选择 1 个批次进行模拟排产。", "error")
         return redirect(url_for("scheduler.batches_page"))

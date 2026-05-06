@@ -4358,6 +4358,11 @@ html[data-theme="dark"] .aps-danger-zone {
   border-top: 1px solid rgba(148, 163, 184, 0.24);
 }
 
+.aps-run-option-note + .aps-run-option-row {
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
 .aps-run-option-row input[type="checkbox"],
 .aps-run-option-row input[type="radio"] {
   flex: 0 0 auto;
@@ -4426,6 +4431,10 @@ html[data-theme="dark"] .aps-danger-zone {
 .aps-run-option-note {
   margin-left: 24px;
   overflow-wrap: anywhere;
+}
+
+.aps-run-option-note:empty {
+  display: none;
 }
 
 .aps-run-panel-grid input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),

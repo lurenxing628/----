@@ -58,7 +58,7 @@
               <span class="aps-settings-toggle-track"><span class="aps-settings-toggle-thumb"></span></span>
             </span>
             <span class="aps-run-option-copy">
-              <span class="aps-run-option-title">{{ strict_mode_label or '发现问题就停下' }}</span>
+              <span class="aps-run-option-title">{{ strict_mode_toggle.title }}</span>
               <span class="aps-run-option-desc">
                 {% if strict_mode %}
                   资料不完整就停下，并告诉你哪一行、哪里要补。
@@ -72,7 +72,7 @@
       </div>
       {% if strict_mode_supported %}
         {% call ui.help_details('查看检查规则') %}
-          {{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续写入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}
+          {{ strict_mode_help_text }}
         {% endcall %}
       {% endif %}
       <div class="muted">如需切换上述选项，请重新上传 Excel 并检查。</div>
@@ -112,18 +112,9 @@
           </span>
         </div>
         {% if strict_mode_supported %}
-          <div class="aps-run-option-row">
-            <label class="aps-settings-toggle-control aps-settings-toggle-control-icon" for="batchImportStrictMode" aria-label="启用{{ strict_mode_label or '发现问题就停下' }}">
-              <input id="batchImportStrictMode" class="aps-settings-toggle-input" type="checkbox" name="strict_mode" value="yes" {% if strict_mode %}checked{% endif %}>
-              <span class="aps-settings-toggle-track" aria-hidden="true"><span class="aps-settings-toggle-thumb"></span></span>
-            </label>
-            <span class="aps-run-option-copy">
-              <label class="aps-run-option-title" for="batchImportStrictMode">{{ strict_mode_label or '发现问题就停下' }}</label>
-              <span class="aps-run-option-desc">资料不完整时先停下，并告诉你哪一行、哪里要补。</span>
-            </span>
-          </div>
+          {{ ui.toggle(strict_mode_toggle, class='aps-run-option-row') }}
           {% call ui.help_details('查看检查规则') %}
-            {{ strict_mode_help or '勾选后，资料不完整就停下，并告诉你哪一行、哪里要补；不勾选时，能确认的数据会继续写入，缺少外协周期这类可补项本次会先按 1 天记录并提醒你补正，但必填项缺失、格式错误、图号不存在这类必须先改好的问题仍然会报错。' }}
+            {{ strict_mode_help_text }}
           {% endcall %}
         {% endif %}
       </div>

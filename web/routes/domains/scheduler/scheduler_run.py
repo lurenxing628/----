@@ -5,9 +5,9 @@ from typing import Optional, Sequence, cast
 from flask import current_app, flash, g, redirect, request, url_for
 
 from core.infrastructure.errors import AppError
+from web.routes.form_values import form_optional_toggle_bool, form_toggle_bool
 from web.viewmodels.scheduler_run_view_result import RunScheduleViewResult, build_run_schedule_view_result
 
-from ...excel_utils import strict_mode_enabled as _strict_mode_enabled
 from .scheduler_bp import (
     _surface_schedule_errors,
     _surface_schedule_warnings,
@@ -15,19 +15,6 @@ from .scheduler_bp import (
     bp,
 )
 from .scheduler_user_messages import scheduler_user_visible_app_error_message
-
-
-def _parse_optional_checkbox_flag(name: str):
-    """
-    解析 checkbox 三态：
-    - key 不存在：None（由服务层回退默认配置）
-    - key 存在且为真值：True
-    - key 存在但非真值：False
-    """
-    if name not in request.form:
-        return None
-    raw = request.form.get(name)
-    return str(raw or "").strip().lower() in ("yes", "y", "true", "1", "on")
 
 
 def _flash_run_schedule_view_result(view_result: RunScheduleViewResult) -> None:
@@ -53,8 +40,8 @@ def run_schedule():
     batch_ids = request.form.getlist("batch_ids")
     start_dt = request.form.get("start_dt") or None
     end_date = request.form.get("end_date") or None
-    enforce_ready = _parse_optional_checkbox_flag("enforce_ready")
-    strict_mode = _strict_mode_enabled(request.form.get("strict_mode"))
+    enforce_ready = form_optional_toggle_bool(request.form, "enforce_ready")
+    strict_mode = form_toggle_bool(request.form, "strict_mode")
     sch_svc = g.services.schedule_service
     try:
         result = sch_svc.run_schedule(

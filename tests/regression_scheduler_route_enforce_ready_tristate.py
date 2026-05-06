@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Any, Dict
 
 from flask import Flask, g
+from werkzeug.datastructures import MultiDict
 
 
 def find_repo_root() -> str:
@@ -14,7 +15,7 @@ def find_repo_root() -> str:
     raise RuntimeError("未找到项目根目录：要求存在 app.py 与 schema.sql")
 
 
-def _invoke_scheduler_run(form_data: Dict[str, Any]):
+def _invoke_scheduler_run(form_data: Any):
     import web.routes.scheduler_run as route_mod
 
     captured: Dict[str, Any] = {}
@@ -44,7 +45,7 @@ def _invoke_scheduler_run(form_data: Dict[str, Any]):
         route_mod.url_for = old_url_for
 
 
-def _invoke_scheduler_simulate(form_data: Dict[str, Any]):
+def _invoke_scheduler_simulate(form_data: Any):
     import web.routes.scheduler_week_plan as route_mod
 
     captured: Dict[str, Any] = {}
@@ -71,10 +72,26 @@ def _invoke_scheduler_simulate(form_data: Dict[str, Any]):
         route_mod.url_for = old_url_for
 
 
+def _assert_form_parser_contract() -> None:
+    from web.routes.form_values import form_optional_toggle_bool, form_toggle_bool, form_yes_no_value
+
+    assert form_yes_no_value(MultiDict([("flag", "yes"), ("flag", "no")]), "flag") == "yes"
+    assert form_yes_no_value(MultiDict([("flag", "no"), ("flag", "yes")]), "flag") == "yes"
+    assert form_yes_no_value(MultiDict([("flag", "no")]), "flag") == "no"
+    assert form_yes_no_value(MultiDict(), "flag", default="no") == "no"
+    assert form_yes_no_value(MultiDict([("flag", "maybe")]), "flag", default="yes") == "yes"
+    assert form_toggle_bool(MultiDict([("flag", "no"), ("flag", "on")]), "flag") is True
+    assert form_toggle_bool(MultiDict([("flag", "no")]), "flag", default=True) is False
+    assert form_optional_toggle_bool(MultiDict(), "flag") is None
+    assert form_optional_toggle_bool(MultiDict([("flag", "no"), ("flag", "on")]), "flag") is True
+    assert form_optional_toggle_bool(MultiDict([("flag", "no")]), "flag") is False
+
+
 def main() -> None:
     repo_root = find_repo_root()
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
+    _assert_form_parser_contract()
 
     # /scheduler/run
     run_default = _invoke_scheduler_run({"batch_ids": ["B001"]})
@@ -84,6 +101,20 @@ def main() -> None:
     run_true = _invoke_scheduler_run({"batch_ids": ["B001"], "enforce_ready": "on", "strict_mode": "yes"})
     assert run_true.get("enforce_ready") is True, f"勾选 enforce_ready 时应传递 True：{run_true!r}"
     assert run_true.get("strict_mode") is True, f"勾选 strict_mode 时应传递 True：{run_true!r}"
+
+    run_reversed = _invoke_scheduler_run(
+        MultiDict(
+            [
+                ("batch_ids", "B001"),
+                ("enforce_ready", "no"),
+                ("enforce_ready", "yes"),
+                ("strict_mode", "no"),
+                ("strict_mode", "on"),
+            ]
+        )
+    )
+    assert run_reversed.get("enforce_ready") is True, f"同名 enforce_ready 反序提交应优先识别 yes：{run_reversed!r}"
+    assert run_reversed.get("strict_mode") is True, f"同名 strict_mode 反序提交应优先识别 yes：{run_reversed!r}"
 
     run_false = _invoke_scheduler_run({"batch_ids": ["B001"], "enforce_ready": "false", "strict_mode": "no"})
     assert run_false.get("enforce_ready") is False, f"显式 false 应传递 False：{run_false!r}"
@@ -98,6 +129,20 @@ def main() -> None:
     assert sim_true.get("enforce_ready") is True, f"simulate 勾选 enforce_ready 时应传递 True：{sim_true!r}"
     assert sim_true.get("strict_mode") is True, f"simulate 勾选 strict_mode 时应传递 True：{sim_true!r}"
 
+    sim_reversed = _invoke_scheduler_simulate(
+        MultiDict(
+            [
+                ("batch_ids", "B001"),
+                ("enforce_ready", "no"),
+                ("enforce_ready", "1"),
+                ("strict_mode", "no"),
+                ("strict_mode", "yes"),
+            ]
+        )
+    )
+    assert sim_reversed.get("enforce_ready") is True, f"simulate 同名 enforce_ready 反序提交应优先识别 yes：{sim_reversed!r}"
+    assert sim_reversed.get("strict_mode") is True, f"simulate 同名 strict_mode 反序提交应优先识别 yes：{sim_reversed!r}"
+
     sim_false = _invoke_scheduler_simulate({"batch_ids": ["B001"], "enforce_ready": "no", "strict_mode": "false"})
     assert sim_false.get("enforce_ready") is False, f"simulate 显式 no 应传递 False：{sim_false!r}"
     assert sim_false.get("strict_mode") is False, f"simulate 显式 false 应传递 False：{sim_false!r}"
@@ -105,12 +150,21 @@ def main() -> None:
     tpl_path = os.path.join(repo_root, "templates", "scheduler", "batches.html")
     with open(tpl_path, "r", encoding="utf-8") as f:
         tpl = f.read()
-    assert "ui.toggle_row(" in tpl, "batches.html 应使用统一 toggle 宏渲染运行选项"
-    assert "'enforce_ready'" in tpl, "batches.html 缺少 enforce_ready 入口"
-    assert "'strict_mode'" in tpl, "batches.html 缺少 strict_mode 入口"
+    assert "ui.toggle(option.toggle" in tpl, "batches.html 应通过 viewmodel toggle 对象渲染运行选项"
+    assert "run_options" in tpl, "batches.html 缺少 run_options 入口"
     assert "发现参数问题就停止排产" in tpl, "batches.html 缺少 strict_mode 文案"
 
+    vm_path = os.path.join(repo_root, "web", "viewmodels", "scheduler_run_options.py")
+    with open(vm_path, "r", encoding="utf-8") as f:
+        vm_source = f.read()
+    assert '"enforce_ready"' in vm_source, "scheduler_batches_page.py 缺少 enforce_ready toggle"
+    assert '"strict_mode"' in vm_source, "scheduler_batches_page.py 缺少 strict_mode toggle"
+
     print("OK")
+
+
+def test_scheduler_route_enforce_ready_tristate_contract() -> None:
+    main()
 
 
 if __name__ == "__main__":

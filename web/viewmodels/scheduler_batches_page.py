@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .scheduler_analysis_labels import objective_label_for
 from .scheduler_history_summary import ScheduleHistoryDisplayValueError, strict_strategy_display_label
+from .scheduler_run_options import UiRunOption, build_run_options
 from .scheduler_summary_display import build_summary_display_state
 from .ui_presenters import UiNotice, UiSummaryItem
 
@@ -82,6 +83,7 @@ class SchedulerBatchesPageViewModel:
     config_panel: SchedulerConfigPanelState
     latest_panel: LatestScheduleHistoryPanelState
     default_start_dt: str
+    run_options: Sequence[UiRunOption]
 
     def as_template_context(self) -> Dict[str, Any]:
         return {
@@ -119,6 +121,7 @@ class SchedulerBatchesPageViewModel:
             "latest_warning_total": self.latest_panel.latest_warning_total,
             "latest_warning_hidden_count": self.latest_panel.latest_warning_hidden_count,
             "default_start_dt": self.default_start_dt,
+            "run_options": self.run_options,
             "pager": self.pager,
         }
 
@@ -468,6 +471,10 @@ def build_scheduler_batches_page_view_model(
         config_panel=config_panel,
         latest_panel=latest_panel,
         default_start_dt=(current_time + timedelta(days=1)).strftime("%Y-%m-%d 08:00"),
+        run_options=build_run_options(
+            cfg=config_panel.cfg,
+            config_field_warnings=config_panel.config_field_warnings,
+        ),
     )
 
 
@@ -477,10 +484,12 @@ __all__ = [
     "SchedulerBatchesPageViewModel",
     "SchedulerConfigPanelState",
     "ScheduleHistoryDisplayValueError",
+    "UiRunOption",
     "build_batch_rows",
     "build_batches_filter_state",
     "build_degraded_latest_schedule_history_panel_state",
     "build_latest_schedule_history_panel_state",
+    "build_run_options",
     "build_scheduler_batches_page_view_model",
     "build_scheduler_config_panel_state",
     "_ALGO_MODE_LABELS",

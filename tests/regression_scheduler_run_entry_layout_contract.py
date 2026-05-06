@@ -29,20 +29,19 @@ def test_scheduler_run_entry_is_visible_before_batch_table() -> None:
         run_grid = run_panel[run_grid_start:run_grid_end]
         assert 'name="start_dt"' in run_grid
         assert 'name="end_date"' in run_grid
-        assert "'enforce_ready'" in run_grid
-        assert "'strict_mode'" in run_grid
+        assert "run_options" in run_grid
+        assert "ui.toggle(option.toggle" in run_grid
         assert "派工方式、智能派工策略、自动分配设备人员" not in run_grid
         assert "aps-run-panel-status" in run_panel
         assert "aps-run-options" in run_panel
         assert "aps-run-options-title" in run_panel
-        assert run_panel.count("ui.toggle_row(") == 2
-        assert run_panel.count("class='aps-run-option-row'") == 2
+        assert "ui.toggle_row(" not in run_panel
+        assert "class='aps-run-option-row'" in run_panel
+        assert "aps-run-option-note" in run_panel
         assert "aps-choice-list aps-run-panel-options" not in run_panel
         assert 'class="aps-choice"' not in run_panel
         assert "aps-settings-toggle-control aps-settings-toggle-control-icon" not in run_panel
         assert "启用齐套约束（未齐套禁止排产）" not in run_panel
-        assert "未齐套批次不进入排产。" in run_panel
-        assert "配置不合法时直接停下" in run_panel
         assert "aps-run-panel-help" in run_panel
         assert "ui.help_details" in run_panel
         assert "查看“发现参数问题就停止排产”的说明" in run_panel
@@ -54,12 +53,22 @@ def test_scheduler_run_entry_is_visible_before_batch_table() -> None:
             'id="jsSelectedCount"',
             'name="start_dt"',
             'name="end_date"',
-            "'enforce_ready'",
-            "'strict_mode'",
             "scheduler.run_schedule",
             "scheduler.simulate_schedule",
         ):
             assert marker in source
+
+        vm_source = _read("web/viewmodels/scheduler_run_options.py")
+        for marker in (
+            '"runEnforceReady"',
+            '"runStrictMode"',
+            '"enforce_ready"',
+            '"strict_mode"',
+            "UiRunOption",
+            "未齐套批次不进入排产。",
+            "配置不合法时直接停下",
+        ):
+            assert marker in vm_source
 
 
 def test_scheduler_sub_pages_have_run_schedule_entry() -> None:
@@ -93,6 +102,7 @@ def test_run_panel_container_breakpoint_has_room_for_declared_columns() -> None:
     assert "width: 100%;" in run_option_block
     assert "flex-wrap: nowrap;" in run_option_block
     assert ".aps-run-option-row .aps-toggle-copy" in css
+    assert ".aps-run-option-note:empty" in css
     assert "minmax(240px, 1fr)" in css
     assert "minmax(190px, 0.8fr)" in css
     assert "minmax(230px, 1fr)" in css
