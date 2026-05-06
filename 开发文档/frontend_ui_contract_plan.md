@@ -25,6 +25,8 @@
 - 模板只消费 `label / value / desc / tone / checked_attr / disabled_attr / items`。
 - 不在模板里用 `.get(key, "未知")` 或 `.get(key, "-")` 悄悄兜底未知业务状态。
 - 布局组件可以允许“没有按钮”“空列表”这类可选内容为空；这不等于允许业务状态、错误原因、展示文案在模板里悄悄兜底。
+- 业务页面原则上只调用 `ui.toggle(toggle)`，也就是消费 viewmodel 已经算好的 `UiToggleRow`。
+- `ui.toggle_row(...)` 只给底层组件和测试夹具使用；业务模板不要直接传 `checked_attr`、`disabled_attr`、`submitted_value`，避免把开关提交规则重新散落到模板里。
 
 ## 4. 表单规则
 
@@ -80,3 +82,5 @@
 - `disabled_attr` 只能是空字符串或 `disabled`。
 - checkbox 必须在同名 hidden input 前面。
 - 日志表多行换行要靠 `.aps-table--multiline`，不靠 `#systemLogsTable td` 页面 ID 特例。
+
+Codex 浏览器插件 smoke 属于本地人工验收：用于确认真实页面没有明显横向撑破、开关文字没有压住轨道、暗色主题下主要提示和摘要仍可读。它不写进 `tools/test_registry.py`，也不新增仓库级浏览器依赖。

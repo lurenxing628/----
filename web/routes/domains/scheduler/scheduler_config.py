@@ -28,6 +28,7 @@ from .scheduler_bp import bp
 from .scheduler_config_display_state import (
     build_auto_assign_persist_display_state,
     build_config_degraded_display_state,
+    build_scheduler_config_toggles,
     get_scheduler_visible_config_field_metadata,
 )
 from .scheduler_config_feedback import (
@@ -322,6 +323,10 @@ def config_page():
     ]
     current_config_state = dict(preset_display_state.get("current_config_state") or {})
     auto_assign_persist_state = build_auto_assign_persist_display_state(getattr(cfg, "auto_assign_persist", None))
+    scheduler_config_toggles = build_scheduler_config_toggles(
+        cfg,
+        config_field_metadata=config_field_metadata,
+    )
 
     return render_template(
         "scheduler/config.html",
@@ -340,6 +345,7 @@ def config_page():
         builtin_presets=builtin_presets,
         current_config_state=current_config_state,
         auto_assign_persist_state=auto_assign_persist_state,
+        scheduler_config_toggles=scheduler_config_toggles,
     )
 
 

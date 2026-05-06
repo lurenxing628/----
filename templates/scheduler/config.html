@@ -250,77 +250,7 @@
         </div>
       </div>
 
-      <div class="scheduler-config-switches">
-        <div class="scheduler-config-switch">
-          {{ ui.toggle_row(
-            'freezeWindowEnabled',
-            'freeze_window_enabled',
-            freeze_window_enabled_meta.label,
-            freeze_window_enabled_meta.hint,
-            checked_attr='checked' if cfg.freeze_window_enabled == 'yes' else '',
-            class='scheduler-config-switch-main'
-          ) }}
-          <div class="scheduler-config-switch-extra">
-            <input name="freeze_window_days" value="{{ cfg.freeze_window_days }}">
-            <span class="scheduler-config-hint">{{ freeze_window_days_meta.unit }}</span>
-          </div>
-          {{ render_config_field_warning("freeze_window_enabled") }}
-          {{ render_config_field_warning("freeze_window_days") }}
-        </div>
-
-        <div class="scheduler-config-switch">
-          {{ ui.toggle_row(
-            'preferPrimarySkill',
-            'prefer_primary_skill',
-            prefer_primary_skill_meta.label,
-            prefer_primary_skill_meta.hint or '编辑工序选人时，下拉框把主操和高技能人员排在最前面。',
-            checked_attr='checked' if cfg.prefer_primary_skill == 'yes' else '',
-            class='scheduler-config-switch-main'
-          ) }}
-          {{ render_config_field_warning("prefer_primary_skill") }}
-        </div>
-
-        <div class="scheduler-config-switch">
-          {{ ui.toggle_row(
-            'enforceReadyDefault',
-            'enforce_ready_default',
-            enforce_ready_default_meta.label,
-            enforce_ready_default_meta.hint or '未齐套的订单不排。',
-            checked_attr='checked' if cfg.enforce_ready_default == 'yes' else '',
-            class='scheduler-config-switch-main'
-          ) }}
-          {{ render_config_field_warning("enforce_ready_default") }}
-        </div>
-
-        <div class="scheduler-config-switch">
-          {{ ui.toggle_row(
-            'autoAssignEnabled',
-            'auto_assign_enabled',
-            auto_assign_enabled_meta.label,
-            auto_assign_enabled_meta.hint or '排产时自动为空白工序补设备和人员。',
-            checked_attr='checked' if cfg.auto_assign_enabled == 'yes' else '',
-            class='scheduler-config-switch-main'
-          ) }}
-          {{ render_config_field_warning("auto_assign_enabled") }}
-        </div>
-
-        <div class="scheduler-config-switch">
-          {{ ui.toggle_row(
-            'orToolsEnabled',
-            'ortools_enabled',
-            ortools_enabled_meta.label,
-            (ortools_enabled_meta.hint or '只在精细计算时生效；系统会多花几秒尝试找更好的排法，优化目标就是当前页面选择的目标。') ~ ' 不保证每次一定更好，但会在限定秒数内停下。',
-            checked_attr='checked' if cfg.ortools_enabled == 'yes' else '',
-            class='scheduler-config-switch-main'
-          ) }}
-          <div class="scheduler-config-switch-extra">
-            <input name="ortools_time_limit_seconds" value="{{ cfg.ortools_time_limit_seconds }}">
-            <span class="scheduler-config-hint">{{ ortools_time_limit_seconds_meta.unit or '秒' }}</span>
-          </div>
-          {{ render_config_field_warning("ortools_enabled") }}
-          {{ render_config_field_warning("ortools_time_limit_seconds") }}
-        </div>
-      </div>
+      {% include "scheduler/_config_switches.html" %}
 
       <div class="mt-3">
         {{ ui.button('保存当前设置', 'primary', 'md', type_attr='submit') }}

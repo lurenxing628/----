@@ -4952,28 +4952,28 @@ html[data-theme="dark"] .aps-choice {
 }
 
 html[data-theme="dark"] .aps-summary-item-warning {
-  background: #2a2416;
-  border-color: #92400e;
+  background: var(--ui-warning-bg);
+  border-color: var(--ui-warning-border);
 }
 
 html[data-theme="dark"] .aps-summary-item-success {
-  background: #064e3b;
-  border-color: #047857;
+  background: var(--ui-success-bg);
+  border-color: var(--ui-success-border);
 }
 
 html[data-theme="dark"] .aps-summary-item-danger {
-  background: #450a0a;
-  border-color: #b91c1c;
+  background: var(--ui-danger-bg);
+  border-color: var(--ui-danger-border);
 }
 
 html[data-theme="dark"] .aps-summary-item-info {
-  background: #13243a;
-  border-color: #2563eb;
+  background: var(--ui-info-bg);
+  border-color: var(--ui-info-border);
 }
 
 html[data-theme="dark"] .aps-summary-item-neutral {
-  background: #162032;
-  border-color: #334155;
+  background: var(--ui-neutral-bg);
+  border-color: var(--ui-neutral-border);
 }
 
 html[data-theme="dark"] .badge-new {

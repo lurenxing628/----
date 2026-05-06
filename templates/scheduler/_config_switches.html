@@ -1,0 +1,36 @@
+<div class="scheduler-config-switches">
+  <div class="scheduler-config-switch">
+    {{ ui.toggle(scheduler_config_toggles["freeze_window_enabled"], class='scheduler-config-switch-main') }}
+    <div class="scheduler-config-switch-extra">
+      <input name="freeze_window_days" value="{{ cfg.freeze_window_days }}">
+      <span class="scheduler-config-hint">{{ freeze_window_days_meta.unit }}</span>
+    </div>
+    {{ render_config_field_warning("freeze_window_enabled") }}
+    {{ render_config_field_warning("freeze_window_days") }}
+  </div>
+
+  <div class="scheduler-config-switch">
+    {{ ui.toggle(scheduler_config_toggles["prefer_primary_skill"], class='scheduler-config-switch-main') }}
+    {{ render_config_field_warning("prefer_primary_skill") }}
+  </div>
+
+  <div class="scheduler-config-switch">
+    {{ ui.toggle(scheduler_config_toggles["enforce_ready_default"], class='scheduler-config-switch-main') }}
+    {{ render_config_field_warning("enforce_ready_default") }}
+  </div>
+
+  <div class="scheduler-config-switch">
+    {{ ui.toggle(scheduler_config_toggles["auto_assign_enabled"], class='scheduler-config-switch-main') }}
+    {{ render_config_field_warning("auto_assign_enabled") }}
+  </div>
+
+  <div class="scheduler-config-switch">
+    {{ ui.toggle(scheduler_config_toggles["ortools_enabled"], class='scheduler-config-switch-main') }}
+    <div class="scheduler-config-switch-extra">
+      <input name="ortools_time_limit_seconds" value="{{ cfg.ortools_time_limit_seconds }}">
+      <span class="scheduler-config-hint">{{ ortools_time_limit_seconds_meta.unit or '秒' }}</span>
+    </div>
+    {{ render_config_field_warning("ortools_enabled") }}
+    {{ render_config_field_warning("ortools_time_limit_seconds") }}
+  </div>
+</div>

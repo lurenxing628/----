@@ -17,8 +17,9 @@ def _extract_block(source: str, marker: str) -> str:
 
 
 def test_scheduler_batch_actions_separate_buttons_and_long_notes() -> None:
+    run_panel = _read("templates/scheduler/_run_panel.html")
     for rel_path in ("templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches.html"):
-        source = _read(rel_path)
+        source = _read(rel_path) + run_panel
         assert "aps-run-panel" in source
         assert "aps-run-panel-actions" in source
         assert "aps-run-panel-status" in source
@@ -64,6 +65,8 @@ def test_help_details_keep_long_copy_out_of_primary_grid() -> None:
     )
     for rel_path, summary_text in checks:
         source = _read(rel_path)
+        if rel_path == "templates/scheduler/batches.html":
+            source += _read("templates/scheduler/_run_panel.html")
         assert "aps-help-details" in source or "ui.help_details" in source, rel_path
         assert summary_text in source, rel_path
 

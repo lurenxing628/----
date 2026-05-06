@@ -120,7 +120,7 @@
           {% endfor %}
         </div>
         {% for item in latest_notice_items %}
-          {{ ui.notice(item.title, item.body, tone=item.tone, class='mt-2', role='alert') }}
+          {{ ui.notice(item.title, item.body, tone=item.tone, class='mt-2') }}
         {% endfor %}
         <div class="aps-latest-schedule-meta">
           {% for item in latest_meta_items %}
@@ -276,46 +276,7 @@
       </div>
       <form id="jsRunScheduleForm" method="post" action="{{ url_for('scheduler.run_schedule') }}">
         {% if status == 'pending' %}
-          <div class="aps-run-panel">
-            <div class="aps-run-panel-header">
-              <div>
-                <h4 class="aps-run-panel-title">排产操作</h4>
-                <p class="aps-run-panel-desc">先勾选下方待排批次，再执行排产。</p>
-              </div>
-              <span class="aps-run-panel-status">已选 <strong id="jsSelectedCount">0</strong> 个批次</span>
-            </div>
-            <div class="aps-run-panel-grid">
-              <div class="form-field">
-                <label for="schedulerStartDtInput">排产开始时间</label>
-                <input id="schedulerStartDtInput" type="datetime-local" name="start_dt" value="{{ (default_start_dt or '')|replace(' ', 'T') }}">
-                <div class="muted text-xs mt-1">默认明天 08:00。</div>
-              </div>
-              <div class="form-field">
-                <label for="schedulerEndDateInput">排产截止日期</label>
-                <input id="schedulerEndDateInput" type="date" name="end_date">
-                <div class="muted text-xs mt-1">可选；填了以后会校验是否能在期限内完成。</div>
-              </div>
-              <div class="aps-run-options" role="group" aria-label="排产选项">
-                <div class="aps-run-options-title">排产选项</div>
-                {% for option in run_options %}
-                  {{ ui.toggle(option.toggle, class='aps-run-option-row') }}
-                  <div class="muted text-xs scheduler-config-field-warning aps-run-option-note">{{ option.note }}</div>
-                {% endfor %}
-              </div>
-            </div>
-            <div class="aps-run-panel-help">
-              {% call ui.help_details('查看“发现参数问题就停止排产”的说明') %}
-                勾选后：派工方式、智能派工策略、自动分配设备人员这几项如果配置不合法，会直接停止排产并提示原因。不勾选：系统会按页面提示的安全取值继续排产，并告诉你哪些设置需要重新保存。
-              {% endcall %}
-            </div>
-            <div class="aps-run-panel-actions">
-              {{ ui.button('执行排产', 'primary', 'md', type_attr='submit') }}
-              {{ ui.button('模拟排产（插单模拟）', 'success', 'md', type_attr='submit', formaction=url_for('scheduler.simulate_schedule'), confirm='将对所选批次执行一次【模拟排产】并生成新版本（不更新批次状态）。确定继续？') }}
-            </div>
-            <div class="aps-action-card-note">
-              设置截止日期后，若无法在期限内完成，系统会提示排产失败。工序的设备、人员、工时必须填写完整，否则排产会失败。
-            </div>
-          </div>
+          {% include "scheduler/_run_panel.html" %}
         {% endif %}
         <div class="aps-table-scroll">
         <table id="batchesTable" data-table-key="v4_batchesTable" class="table-sticky table-layout-fixed table-sticky-col aps-table-wide aps-scheduler-batch-table" data-sort-enabled="1" data-col-resize="1">

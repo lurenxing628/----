@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Tuple
 
 from core.services.scheduler.config import ConfigService
 from web.viewmodels.scheduler_batches_page import build_scheduler_config_panel_state
+from web.viewmodels.ui_presenters import UiToggleRow, checked_attr
 
 SCHEDULER_VISIBLE_CONFIG_FIELDS: Tuple[str, ...] = (
     "sort_strategy",
@@ -110,6 +111,72 @@ def build_auto_assign_persist_display_state(value: Any) -> Dict[str, Any]:
         "value": "unknown",
         "label": "未记录",
         "description": "这次排产没有记录是否保存系统补上的设备和人员。",
+    }
+
+
+def _config_field_label(config_field_metadata: Dict[str, Any], field: str) -> str:
+    metadata = config_field_metadata[field]
+    return str(getattr(metadata, "label", "") or field)
+
+
+def _config_field_hint(config_field_metadata: Dict[str, Any], field: str, *, default: str = "") -> str:
+    metadata = config_field_metadata[field]
+    return str(getattr(metadata, "hint", "") or default)
+
+
+def build_scheduler_config_toggles(cfg: Any, *, config_field_metadata: Dict[str, Any]) -> Dict[str, UiToggleRow]:
+    ortools_desc = (
+        _config_field_hint(
+            config_field_metadata,
+            "ortools_enabled",
+            default="只在精细计算时生效；系统会多花几秒尝试找更好的排法，优化目标就是当前页面选择的目标。",
+        )
+        + " 不保证每次一定更好，但会在限定秒数内停下。"
+    )
+    return {
+        "freeze_window_enabled": UiToggleRow(
+            id="freezeWindowEnabled",
+            name="freeze_window_enabled",
+            title=_config_field_label(config_field_metadata, "freeze_window_enabled"),
+            desc=_config_field_hint(config_field_metadata, "freeze_window_enabled"),
+            checked_attr=checked_attr(str(getattr(cfg, "freeze_window_enabled", "")).strip() == "yes"),
+        ),
+        "prefer_primary_skill": UiToggleRow(
+            id="preferPrimarySkill",
+            name="prefer_primary_skill",
+            title=_config_field_label(config_field_metadata, "prefer_primary_skill"),
+            desc=_config_field_hint(
+                config_field_metadata,
+                "prefer_primary_skill",
+                default="编辑工序选人时，下拉框把主操和高技能人员排在最前面。",
+            ),
+            checked_attr=checked_attr(str(getattr(cfg, "prefer_primary_skill", "")).strip() == "yes"),
+        ),
+        "enforce_ready_default": UiToggleRow(
+            id="enforceReadyDefault",
+            name="enforce_ready_default",
+            title=_config_field_label(config_field_metadata, "enforce_ready_default"),
+            desc=_config_field_hint(config_field_metadata, "enforce_ready_default", default="未齐套的订单不排。"),
+            checked_attr=checked_attr(str(getattr(cfg, "enforce_ready_default", "")).strip() == "yes"),
+        ),
+        "auto_assign_enabled": UiToggleRow(
+            id="autoAssignEnabled",
+            name="auto_assign_enabled",
+            title=_config_field_label(config_field_metadata, "auto_assign_enabled"),
+            desc=_config_field_hint(
+                config_field_metadata,
+                "auto_assign_enabled",
+                default="排产时自动为空白工序补设备和人员。",
+            ),
+            checked_attr=checked_attr(str(getattr(cfg, "auto_assign_enabled", "")).strip() == "yes"),
+        ),
+        "ortools_enabled": UiToggleRow(
+            id="orToolsEnabled",
+            name="ortools_enabled",
+            title=_config_field_label(config_field_metadata, "ortools_enabled"),
+            desc=ortools_desc,
+            checked_attr=checked_attr(str(getattr(cfg, "ortools_enabled", "")).strip() == "yes"),
+        ),
     }
 
 

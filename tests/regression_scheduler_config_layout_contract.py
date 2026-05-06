@@ -38,13 +38,13 @@ def test_scheduler_config_setting_switches_use_compact_toggle_controls() -> None
     )
     for rel_path in ("templates/scheduler/config.html", "web_new_test/templates/scheduler/config.html"):
         source = _read(rel_path)
-        switch_start = source.index('<div class="scheduler-config-switches">')
-        switch_end = source.index('<div class="mt-3">', switch_start)
-        switch_block = source[switch_start:switch_end]
+        assert '{% include "scheduler/_config_switches.html" %}' in source
+        switch_block = _read("templates/scheduler/_config_switches.html")
         macro_source = _read("templates/components/ui_macros.html")
 
         assert switch_block.count("scheduler-config-switch") >= len(setting_fields)
-        assert switch_block.count("ui.toggle_row(") == len(setting_fields)
+        assert switch_block.count("ui.toggle(") == len(setting_fields)
+        assert "ui.toggle_row(" not in switch_block
         assert "aps-toggle-control" in macro_source
         assert "aps-toggle-input" in macro_source
         assert "aps-toggle-track" in macro_source
@@ -53,7 +53,7 @@ def test_scheduler_config_setting_switches_use_compact_toggle_controls() -> None
         assert 'label class="scheduler-config-switch-main"' not in switch_block
 
         for field_name in setting_fields:
-            assert f"'{field_name}'" in switch_block
+            assert f'scheduler_config_toggles["{field_name}"]' in switch_block
         assert "type=\"checkbox\"" in macro_source
         assert "type=\"hidden\"" in macro_source
         assert macro_source.index('type="checkbox"') < macro_source.index('type="hidden"')

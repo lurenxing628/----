@@ -115,8 +115,9 @@ def test_scheduler_batch_related_strict_options_are_no_longer_raw_checkbox_label
     assert "strict_mode_help or" not in component_source
     assert "checked_attr='checked' if strict_mode else ''" not in component_source
     assert "value=\"{{ value }}\"" in macro_source
-    assert "final_submitted_value" in macro_source
-    assert "disabled_attr == 'disabled' and checked_attr == 'checked'" in macro_source
+    assert "value=\"{{ submitted_value }}\"" in macro_source
+    assert "final_submitted_value" not in macro_source
+    assert "disabled_attr == 'disabled' and checked_attr == 'checked'" not in macro_source
     assert "<label>\n          <input type=\"checkbox\" name=\"strict_mode\"" not in component_source
 
     route_source = _read("web/routes/domains/scheduler/scheduler_excel_batches.py")

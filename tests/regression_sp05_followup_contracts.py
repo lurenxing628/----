@@ -36,9 +36,11 @@ def test_error_handlers_prefer_config_service_field_labels() -> None:
 def test_scheduler_config_page_requests_and_uses_visible_field_metadata() -> None:
     route_source = _read("web/routes/domains/scheduler/scheduler_config.py")
     display_state_source = _read("web/routes/domains/scheduler/scheduler_config_display_state.py")
-    template_source = _read("templates/scheduler/config.html")
+    template_source = _read("templates/scheduler/config.html") + _read("templates/scheduler/_config_switches.html")
 
     assert "get_scheduler_visible_config_field_metadata" in route_source
+    assert "build_scheduler_config_toggles" in route_source
+    assert "scheduler_config_toggles=scheduler_config_toggles" in route_source
     for field in (
         "sort_strategy",
         "priority_weight",
@@ -64,14 +66,19 @@ def test_scheduler_config_page_requests_and_uses_visible_field_metadata() -> Non
         "priority_weight_meta.label",
         "due_weight_meta.label",
         "holiday_default_efficiency_meta.label",
-        "enforce_ready_default_meta.label",
-        "prefer_primary_skill_meta.label",
-        "auto_assign_enabled_meta.label",
-        "ortools_enabled_meta.label",
         "ortools_time_limit_seconds_meta.unit",
         "time_budget_seconds_meta.label",
     ):
         assert token in template_source
+    for field in (
+        "freeze_window_enabled",
+        "prefer_primary_skill",
+        "enforce_ready_default",
+        "auto_assign_enabled",
+        "ortools_enabled",
+    ):
+        assert f'scheduler_config_toggles["{field}"]' in template_source
+        assert f'"{field}"' in display_state_source
 
 
 def test_scheduler_config_template_shows_shared_preset_degradation_notice() -> None:
@@ -116,16 +123,13 @@ def test_scheduler_config_template_surfaces_shared_degraded_field_warning_contra
 
 
 def test_scheduler_config_v2_template_matches_shared_metadata_and_warning_contract() -> None:
-    template_source = _read("web_new_test/templates/scheduler/config.html")
+    template_source = _read("web_new_test/templates/scheduler/config.html") + _read("templates/scheduler/_config_switches.html")
 
     for token in (
         "sort_strategy_meta.label",
         "priority_weight_meta.label",
         "due_weight_meta.label",
         "holiday_default_efficiency_meta.label",
-        "prefer_primary_skill_meta.label",
-        "auto_assign_enabled_meta.label",
-        "ortools_enabled_meta.label",
         "ortools_time_limit_seconds_meta.unit",
         "time_budget_seconds_meta.label",
         "missing_preset_endpoints",
@@ -134,6 +138,14 @@ def test_scheduler_config_v2_template_matches_shared_metadata_and_warning_contra
         "config_field_warnings.get(",
     ):
         assert token in template_source
+    for field in (
+        "freeze_window_enabled",
+        "prefer_primary_skill",
+        "enforce_ready_default",
+        "auto_assign_enabled",
+        "ortools_enabled",
+    ):
+        assert f'scheduler_config_toggles["{field}"]' in template_source
 
 
 def test_scheduler_manual_path_source_requires_base_dir_and_distinguishes_missing_reasons() -> None:

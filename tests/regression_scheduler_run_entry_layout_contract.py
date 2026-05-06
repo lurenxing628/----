@@ -10,20 +10,20 @@ def _read(rel_path: str) -> str:
 
 
 def test_scheduler_run_entry_is_visible_before_batch_table() -> None:
+    run_panel = _read("templates/scheduler/_run_panel.html")
     for rel_path in ("templates/scheduler/batches.html", "web_new_test/templates/scheduler/batches.html"):
         source = _read(rel_path)
+        combined_source = source + run_panel
         assert 'id="jsRunScheduleForm"' in source
-        assert "aps-run-panel" in source
-        assert "aps-run-panel-grid" in source
-        assert "排产操作" in source
-        assert source.index("排产操作") < source.index('id="batchesTable"')
-        assert "先勾选下方待排批次，再执行排产。" in source
+        assert '{% include "scheduler/_run_panel.html" %}' in source
+        assert source.index('{% include "scheduler/_run_panel.html" %}') < source.index('id="batchesTable"')
+        assert "aps-run-panel" in run_panel
+        assert "aps-run-panel-grid" in run_panel
+        assert "排产操作" in run_panel
+        assert "先勾选下方待排批次，再执行排产。" in run_panel
         assert "aps-filter-bar" not in source
         assert "aps-query-form-grid" in source
 
-        run_panel_start = source.index('<div class="aps-run-panel">')
-        table_start = source.index('id="batchesTable"')
-        run_panel = source[run_panel_start:table_start]
         run_grid_start = run_panel.index("aps-run-panel-grid")
         run_grid_end = run_panel.index("aps-run-panel-help", run_grid_start)
         run_grid = run_panel[run_grid_start:run_grid_end]
@@ -56,7 +56,7 @@ def test_scheduler_run_entry_is_visible_before_batch_table() -> None:
             "scheduler.run_schedule",
             "scheduler.simulate_schedule",
         ):
-            assert marker in source
+            assert marker in combined_source
 
         vm_source = _read("web/viewmodels/scheduler_run_options.py")
         for marker in (

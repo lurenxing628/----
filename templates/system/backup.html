@@ -18,7 +18,7 @@
       </ul>
     </details>
     {% if settings and settings.dirty_fields %}
-      {{ ui.notice('配置需要确认', '以下系统配置格式较旧，系统已先按能识别的值处理，请检查后保存：' ~ ((settings.dirty_field_labels or settings.dirty_fields) | join('、')) ~ '。', tone='warning', class='mt-2', role='alert') }}
+      {{ ui.notice('配置需要确认', '以下系统配置格式较旧，系统已先按能识别的值处理，请检查后保存：' ~ ((settings.dirty_field_labels or settings.dirty_fields) | join('、')) ~ '。', tone='warning', class='mt-2') }}
       <ul class="list-tight muted mt-2">
         {% for item in (settings.dirty_reason_items or []) %}
           <li>{{ item.label }}：{{ item.reason }}</li>

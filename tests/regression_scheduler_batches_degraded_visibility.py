@@ -168,6 +168,7 @@ def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> N
     assert "latest_metric_items" in template_source
     assert "latest_notice_items" in template_source
     assert "ui.notice(item.title, item.body" in template_source
+    assert "ui.notice(item.title, item.body, tone=item.tone, class='mt-2', role='alert')" not in template_source
     assert "latest_strategy_label" not in template_source
     assert "latest_mode_label" not in template_source
     assert "latest_result_status_label" in _read("web/viewmodels/scheduler_batches_page.py")
@@ -193,6 +194,7 @@ def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> N
     assert "latest_metric_items" in v2_template_source
     assert "latest_notice_items" in v2_template_source
     assert "ui.notice(item.title, item.body" in v2_template_source
+    assert "ui.notice(item.title, item.body, tone=item.tone, class='mt-2', role='alert')" not in v2_template_source
     assert "latest_strategy_label" not in v2_template_source
     assert "latest_mode_label" not in v2_template_source
     assert "latest_result_status_label" in _read("web/viewmodels/scheduler_batches_page.py")

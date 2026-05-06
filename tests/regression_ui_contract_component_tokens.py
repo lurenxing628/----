@@ -81,9 +81,12 @@ def test_ui_macros_expose_shared_contract_components() -> None:
 
     notice_start = source.index("{% macro notice(")
     notice_block = source[notice_start : source.index("{% endmacro %}", notice_start)]
-    assert "role='status'" in notice_block
-    assert "aria_live='polite'" in notice_block
-    assert 'role="{{ role }}"' in notice_block
+    assert "role=''" in notice_block
+    assert "aria_live=''" in notice_block
+    assert "{% if role %} role=\"{{ role }}\"{% endif %}" in notice_block
+    assert "{% if aria_live %} aria-live=\"{{ aria_live }}\"{% endif %}" in notice_block
+    assert "role='status'" not in notice_block
+    assert "aria_live='polite'" not in notice_block
 
     toggle_start = source.index("{% macro toggle_row(")
     toggle_block = source[toggle_start : source.index("{% endmacro %}", toggle_start)]
@@ -92,14 +95,27 @@ def test_ui_macros_expose_shared_contract_components() -> None:
     assert checkbox_index < hidden_index
     assert 'value="{{ value }}"' in toggle_block
     assert "submitted_value" in toggle_block
-    assert "final_submitted_value" in toggle_block
-    assert "disabled_attr == 'disabled' and checked_attr == 'checked'" in toggle_block
-    assert 'value="{{ final_submitted_value }}"' in toggle_block
+    assert "final_submitted_value" not in toggle_block
+    assert "disabled_attr == 'disabled' and checked_attr == 'checked'" not in toggle_block
+    assert 'value="{{ submitted_value }}"' in toggle_block
 
 
-def test_toggle_macros_keep_disabled_checked_hidden_value_safe() -> None:
+def test_notice_macro_defaults_to_static_message_and_allows_explicit_live_role() -> None:
+    default_rendered = _render_ui_macro("{{ ui.notice('普通提示', '这是静态页面提示。') }}")
+    assert "aps-notice" in default_rendered
+    assert 'role="' not in default_rendered
+    assert "aria-live" not in default_rendered
+
+    live_rendered = _render_ui_macro(
+        "{{ ui.notice('强提醒', '需要立刻知道。', role='alert', aria_live='assertive') }}"
+    )
+    assert 'role="alert"' in live_rendered
+    assert 'aria-live="assertive"' in live_rendered
+
+
+def test_toggle_object_keeps_disabled_checked_hidden_value_safe() -> None:
     direct = _render_ui_macro(
-        "{{ ui.toggle_row('directToggle', 'direct_field', '直接开关', '直接说明', checked_attr='checked', disabled_attr='disabled') }}"
+        "{{ ui.toggle_row('directToggle', 'direct_field', '直接开关', '直接说明', checked_attr='checked', disabled_attr='disabled', submitted_value='yes') }}"
     )
     assert 'id="directToggle"' in direct
     assert 'type="checkbox"' in direct
@@ -110,3 +126,13 @@ def test_toggle_macros_keep_disabled_checked_hidden_value_safe() -> None:
     assert "object-row" in object_rendered
     assert 'id="objectToggle"' in object_rendered
     assert 'type="hidden" name="object_field" value="yes"' in object_rendered
+
+
+def test_business_templates_do_not_call_low_level_toggle_row_macro_directly() -> None:
+    allowed = {REPO_ROOT / "templates/components/ui_macros.html"}
+    for template_root in (REPO_ROOT / "templates", REPO_ROOT / "web_new_test/templates"):
+        for path in template_root.rglob("*.html"):
+            if path in allowed:
+                continue
+            source = path.read_text(encoding="utf-8")
+            assert "ui.toggle_row(" not in source, str(path.relative_to(REPO_ROOT))

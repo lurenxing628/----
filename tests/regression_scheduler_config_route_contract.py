@@ -201,7 +201,16 @@ class _ConfigServiceStub:
 def _build_app(monkeypatch, config_service: _ConfigServiceStub) -> Flask:
     import web.routes.scheduler_config as route_mod
 
-    monkeypatch.setattr(route_mod, "render_template", lambda _tpl, **ctx: ctx)
+    def _render_template_context(_tpl, **ctx):
+        toggles = ctx.get("scheduler_config_toggles")
+        if toggles:
+            ctx = {
+                **ctx,
+                "scheduler_config_toggles": {key: dict(value.__dict__) for key, value in toggles.items()},
+            }
+        return ctx
+
+    monkeypatch.setattr(route_mod, "render_template", _render_template_context)
 
     app = Flask(__name__)
     app.secret_key = "aps-scheduler-config-route"
@@ -233,6 +242,20 @@ def test_scheduler_config_route_uses_request_services(monkeypatch) -> None:
     assert payload["current_config_state"]["label"] == "当前以手动设置为准。"
     assert payload["auto_assign_persist_state"]["enabled"] is True
     assert payload["auto_assign_persist_state"]["label"]
+    toggles = payload["scheduler_config_toggles"]
+    assert set(toggles) == {
+        "freeze_window_enabled",
+        "prefer_primary_skill",
+        "enforce_ready_default",
+        "auto_assign_enabled",
+        "ortools_enabled",
+    }
+    assert toggles["freeze_window_enabled"]["id"] == "freezeWindowEnabled"
+    assert toggles["freeze_window_enabled"]["name"] == "freeze_window_enabled"
+    assert toggles["freeze_window_enabled"]["checked_attr"] == ""
+    assert toggles["freeze_window_enabled"]["submitted_value"] == "no"
+    assert toggles["ortools_enabled"]["id"] == "orToolsEnabled"
+    assert "不保证每次一定更好" in toggles["ortools_enabled"]["desc"]
 
     post_response = client.post("/scheduler/config/default")
 

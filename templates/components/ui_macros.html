@@ -84,8 +84,8 @@
 </div>
 {% endmacro %}
 
-{% macro notice(title, body, tone='info', class='', role='status', aria_live='polite') %}
-<div class="aps-notice aps-tone-{{ tone }} {{ class }}" role="{{ role }}" aria-live="{{ aria_live }}">
+{% macro notice(title, body, tone='info', class='', role='', aria_live='') %}
+<div class="aps-notice aps-tone-{{ tone }} {{ class }}"{% if role %} role="{{ role }}"{% endif %}{% if aria_live %} aria-live="{{ aria_live }}"{% endif %}>
   <div class="aps-notice-title">{{ title }}</div>
   <div class="aps-notice-body">{{ body }}</div>
   {% if caller is defined %}
@@ -119,15 +119,7 @@
 ) }}
 {% endmacro %}
 
-{% macro toggle_row(id, name, title, desc, checked_attr='', disabled_attr='', value='yes', hidden_value='no', submitted_value='', class='') %}
-{% set final_submitted_value = submitted_value %}
-{% if not final_submitted_value %}
-  {% if disabled_attr == 'disabled' and checked_attr == 'checked' %}
-    {% set final_submitted_value = value %}
-  {% else %}
-    {% set final_submitted_value = hidden_value %}
-  {% endif %}
-{% endif %}
+{% macro toggle_row(id, name, title, desc, checked_attr='', disabled_attr='', value='yes', hidden_value='no', submitted_value='no', class='') %}
 <div class="aps-toggle-row {{ class }}">
   <label class="aps-toggle-control" for="{{ id }}">
     <input
@@ -148,7 +140,7 @@
     <label class="aps-toggle-title" for="{{ id }}">{{ title }}</label>
     <div class="aps-toggle-desc">{{ desc }}</div>
   </div>
-  <input type="hidden" name="{{ name }}" value="{{ final_submitted_value }}">
+  <input type="hidden" name="{{ name }}" value="{{ submitted_value }}">
 </div>
 {% endmacro %}
 

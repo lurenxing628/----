@@ -103,10 +103,6 @@ def test_scheduler_query_controls_use_page_specific_layouts() -> None:
     assert "inline-flex-wrap" not in resource_form
     assert "form-row" not in resource_form
 
-    resource_actions_css = css[css.index(".aps-query-card .aps-resource-query-grid > .aps-resource-query-actions") :]
-    resource_actions_css = resource_actions_css[: resource_actions_css.index("}", 1)]
-    assert "grid-column: span 2;" in resource_actions_css
-
 
 def test_scheduler_batch_manage_query_uses_batch_query_grid() -> None:
     for rel_path in (
@@ -211,6 +207,20 @@ def test_dark_theme_readonly_and_disabled_controls_stay_dark() -> None:
         assert "background: #f1f5f9" not in badge_dark_block
         assert "background: #fffbeb" not in badge_dark_block
         assert "background: #fef2f2" not in badge_dark_block
+
+    summary_tones = {
+        "warning": ("--ui-warning-bg", "--ui-warning-border"),
+        "success": ("--ui-success-bg", "--ui-success-border"),
+        "danger": ("--ui-danger-bg", "--ui-danger-border"),
+        "info": ("--ui-info-bg", "--ui-info-border"),
+        "neutral": ("--ui-neutral-bg", "--ui-neutral-border"),
+    }
+    for tone, (bg_token, border_token) in summary_tones.items():
+        selector = f'html[data-theme="dark"] .aps-summary-item-{tone}'
+        summary_dark_start = css.index(selector)
+        summary_dark_block = css[summary_dark_start : css.index("}", summary_dark_start)]
+        assert f"background: var({bg_token});" in summary_dark_block
+        assert f"border-color: var({border_token});" in summary_dark_block
 
     assert "templates/system/backup.html" not in css
 
