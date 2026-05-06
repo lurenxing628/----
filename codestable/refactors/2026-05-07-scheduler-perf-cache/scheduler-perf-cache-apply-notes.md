@@ -51,3 +51,21 @@ tags: [scheduler, performance, cache, quality-gate]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_schedule_optimizer_strict_mode_signature_cache.py --tb=short`
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_improve_dispatch_modes.py tests/test_optimizer_local_search_neighbor_dedup.py tests/test_optimizer_build_order_once_per_strategy.py::test_ortools_strict_mode_raises_candidate_validation_error tests/regression_warmstart_failure_surfaces_degradation.py --tb=short`
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold --tb=short`
+
+## Step 2: freeze-window prefix grouping
+
+- Status: completed.
+- Changed files:
+  - `core/services/scheduler/run/freeze_window_prefixes.py`
+  - `core/services/scheduler/run/freeze_window.py`
+  - `tests/regression_freeze_window_fail_closed_contract.py`
+- Notes:
+  - Prefix helpers were moved out of `freeze_window.py`; the main file is now 481 lines.
+  - Prefix grouping is built only from the active `seed_operations`.
+  - Explicit `reschedulable_operations` subsets do not get expanded back to full `operations`.
+  - Batch-local prefix order follows the original seed operation list.
+- Validation:
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m ruff check core/services/scheduler/run/freeze_window.py core/services/scheduler/run/freeze_window_prefixes.py tests/regression_freeze_window_fail_closed_contract.py`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_freeze_window_fail_closed_contract.py --tb=short`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/regression_freeze_window_fail_closed_contract.py tests/regression_schedule_summary_freeze_state_contract.py tests/regression_schedule_input_collector_contract.py tests/regression_schedule_service_all_frozen_short_circuit.py tests/regression_analysis_page_version_default_latest.py tests/regression_scheduler_analysis_observability.py --tb=short`
+  - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_architecture_fitness.py::test_file_size_limit tests/test_architecture_fitness.py::test_cyclomatic_complexity_threshold --tb=short`
