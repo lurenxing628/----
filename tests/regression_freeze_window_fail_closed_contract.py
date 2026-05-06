@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from core.infrastructure.errors import ValidationError
+from core.services.scheduler.degradation_messages import FREEZE_WINDOW_DEGRADED_MESSAGE
 from core.services.scheduler.freeze_window import build_freeze_window_seed
 
 
@@ -731,5 +732,5 @@ def test_freeze_window_all_missing_prefix_surfaces_unapplied_status() -> None:
     assert meta.get("freeze_state") == "degraded", meta
     assert meta.get("freeze_applied") is False, meta
     assert meta.get("freeze_application_status") == "unapplied", meta
-    assert "未应用冻结窗口种子" in str(meta.get("freeze_degradation_reason") or ""), meta
+    assert meta.get("freeze_degradation_reason") == FREEZE_WINDOW_DEGRADED_MESSAGE, meta
     assert warnings, warnings

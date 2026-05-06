@@ -19,6 +19,7 @@ REPO_ROOT = find_repo_root()
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from core.services.scheduler.degradation_messages import FREEZE_WINDOW_DEGRADED_MESSAGE
 from core.services.scheduler.schedule_summary import build_result_summary
 
 
@@ -131,7 +132,7 @@ def test_schedule_summary_freeze_state_controls_hard_constraints() -> None:
     degraded_freeze = degraded_algo.get("freeze_window") or {}
     assert degraded_freeze.get("freeze_state") == "degraded", degraded_freeze
     assert degraded_freeze.get("freeze_application_status") == "unapplied", degraded_freeze
-    assert "未应用冻结窗口种子" in str(degraded_freeze.get("degradation_reason") or ""), degraded_freeze
+    assert degraded_freeze.get("degradation_reason") == FREEZE_WINDOW_DEGRADED_MESSAGE, degraded_freeze
     assert degraded_freeze.get("freeze_degradation_codes") == ["freeze_seed_unavailable"], degraded_freeze
     assert "freeze_window" not in (degraded_algo.get("hard_constraints") or []), degraded_algo
     warnings = degraded_summary.get("warnings") or []
