@@ -94,6 +94,28 @@
 </div>
 {% endmacro %}
 
+{% macro details_notice(notice, class='') %}
+<div class="aps-notice aps-tone-{{ notice.tone }} {{ class }}">
+  <div class="aps-notice-title">{{ notice.title }}</div>
+  <div class="aps-notice-body">{{ notice.body }}</div>
+  {% if notice.detail_items %}
+    <details class="aps-flash-details aps-notice-details">
+      <summary>{{ notice.detail_label }}</summary>
+      <div class="aps-flash-details-body">
+        <ul class="list-tight">
+          {% for item in notice.detail_items %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </details>
+  {% endif %}
+  {% if notice.footer %}
+    <div class="muted text-xs">{{ notice.footer }}</div>
+  {% endif %}
+</div>
+{% endmacro %}
+
 {% macro empty_state(title, desc, actions_html='', class='') %}
 <div class="aps-empty-state {{ class }}">
   <h3 class="aps-empty-state-title">{{ title }}</h3>

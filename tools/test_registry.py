@@ -122,6 +122,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_ui_presenters_contract.py",
     "tests/regression_system_backup_presenter_contract.py",
     "tests/regression_scheduler_batches_presenter_contract.py",
+    "tests/regression_ui_browser_geometry_smoke.py",
 )
 
 QUALITY_GATE_REQUIRED_TESTS = (QUALITY_GATE_SELFTEST_PATH, *QUALITY_GATE_GUARD_TESTS)

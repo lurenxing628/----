@@ -83,6 +83,42 @@ def test_plugin_summary_items_use_strict_labels_and_tones() -> None:
     assert by_label["启动问题"].tone == "danger"
 
 
+def test_system_backup_page_state_handles_unloaded_plugin_status() -> None:
+    page = build_system_backup_page_view_model(_settings(), None)
+
+    assert page.plugin_status_loaded is False
+    assert page.plugin_degraded is False
+    assert page.plugin_degradation_count == 0
+    assert page.plugin_degradation_events == ()
+    assert page.plugin_conflict_count == 0
+    assert page.plugin_conflict_rows == ()
+
+
+def test_system_backup_page_state_exposes_plugin_degradation_and_conflicts() -> None:
+    page = build_system_backup_page_view_model(
+        _settings(),
+        _plugin_status(
+            degraded=True,
+            degradation_events=[
+                {"message": "扩展功能配置暂时读取不到，系统已按默认开关运行。"},
+                {"message": "扩展功能留痕记录失败。"},
+            ],
+            conflicted_capabilities=["demo.capability", "demo.other"],
+        ),
+    )
+
+    assert page.plugin_status_loaded is True
+    assert page.plugin_degraded is True
+    assert page.plugin_degradation_count == 2
+    assert [item.message for item in page.plugin_degradation_events] == [
+        "扩展功能配置暂时读取不到，系统已按默认开关运行。",
+        "扩展功能留痕记录失败。",
+    ]
+    assert page.plugin_conflict_count == 2
+    assert len(page.plugin_conflict_rows) == 2
+    assert "系统已保留一个" in page.plugin_conflict_rows[0].message
+
+
 def test_plugin_status_rows_reject_unknown_enabled_source() -> None:
     status = _plugin_status(
         statuses=[

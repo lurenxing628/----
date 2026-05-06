@@ -154,20 +154,24 @@ def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> N
     assert "scheduler-current-config-summary" in template_source
     assert "current_config_state.status_label" in template_source
     assert "current_config_state.repair_notices" in template_source
-    assert "config_hidden_warnings" in template_source
-    assert "latest_summary_display.primary_degradation" in template_source
-    assert "latest_summary_display.summary_parse_state.parse_failed" in template_source
+    assert "config_notice_items" in template_source
+    assert "ui.details_notice(notice, class='mt-2 scheduler-config-degraded-summary')" in template_source
+    assert "latest_summary_display.primary_degradation" not in template_source
+    assert "latest_detail_notice_items" in template_source
+    assert "latest_summary_display.summary_parse_state.parse_failed" not in template_source
     assert "latest_summary_display.error_total" in template_source
     assert "scheduler-run-degraded-summary" in template_source
-    assert "scheduler-run-other-degradation-summary" in template_source
-    assert "latest_other_degradation_messages" in template_source
+    assert "scheduler-run-other-degradation-summary" not in template_source
+    assert "latest_other_degradation_messages" not in template_source
     assert "最近一次排产快照" in template_source
     assert "latest_objective_label" in _read("web/viewmodels/scheduler_batches_page.py")
     assert "latest_head_items" in template_source
     assert "latest_meta_items" in template_source
     assert "latest_metric_items" in template_source
     assert "latest_notice_items" in template_source
+    assert "latest_detail_notice_items" in template_source
     assert "ui.notice(item.title, item.body" in template_source
+    assert "ui.details_notice(notice, class='mt-2 scheduler-run-degraded-summary')" in template_source
     assert "ui.notice(item.title, item.body, tone=item.tone, class='mt-2', role='alert')" not in template_source
     assert "latest_strategy_label" not in template_source
     assert "latest_mode_label" not in template_source
@@ -180,20 +184,24 @@ def test_scheduler_batches_template_surfaces_field_level_degraded_warning() -> N
     assert "scheduler-current-config-summary" in v2_template_source
     assert "current_config_state.status_label" in v2_template_source
     assert "current_config_state.repair_notices" in v2_template_source
-    assert "config_hidden_warnings" in v2_template_source
-    assert "latest_summary_display.primary_degradation" in v2_template_source
-    assert "latest_summary_display.summary_parse_state.parse_failed" in v2_template_source
+    assert "config_notice_items" in v2_template_source
+    assert "ui.details_notice(notice, class='mt-2 scheduler-config-degraded-summary')" in v2_template_source
+    assert "latest_summary_display.primary_degradation" not in v2_template_source
+    assert "latest_detail_notice_items" in v2_template_source
+    assert "latest_summary_display.summary_parse_state.parse_failed" not in v2_template_source
     assert "latest_summary_display.error_total" in v2_template_source
     assert "scheduler-run-degraded-summary" in v2_template_source
-    assert "scheduler-run-other-degradation-summary" in v2_template_source
-    assert "latest_other_degradation_messages" in v2_template_source
+    assert "scheduler-run-other-degradation-summary" not in v2_template_source
+    assert "latest_other_degradation_messages" not in v2_template_source
     assert "最近一次排产快照" in v2_template_source
     assert "latest_objective_label" in _read("web/viewmodels/scheduler_batches_page.py")
     assert "latest_head_items" in v2_template_source
     assert "latest_meta_items" in v2_template_source
     assert "latest_metric_items" in v2_template_source
     assert "latest_notice_items" in v2_template_source
+    assert "latest_detail_notice_items" in v2_template_source
     assert "ui.notice(item.title, item.body" in v2_template_source
+    assert "ui.details_notice(notice, class='mt-2 scheduler-run-degraded-summary')" in v2_template_source
     assert "ui.notice(item.title, item.body, tone=item.tone, class='mt-2', role='alert')" not in v2_template_source
     assert "latest_strategy_label" not in v2_template_source
     assert "latest_mode_label" not in v2_template_source

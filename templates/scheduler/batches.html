@@ -80,30 +80,9 @@
         </div>
       {% endif %}
       </div>
-      {% if config_degraded_field_labels %}
-        <div class="flash-card flash-warning mt-2 scheduler-config-degraded-summary">
-          <div>当前配置有 {{ config_degraded_field_labels|length }} 个需要复核的修正项。</div>
-          {% call ui.flash_details('查看修正项') %}
-            <ul class="list-tight">
-              {% for item in config_degraded_field_labels %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
-          {% endcall %}
-        </div>
-      {% endif %}
-      {% if config_hidden_warnings %}
-        <div class="flash-card flash-warning mt-2 scheduler-config-degraded-summary">
-          <div>还有 {{ config_hidden_warnings|length }} 条平时不直接显示的设置需要检查。</div>
-          {% call ui.flash_details('查看处理提示') %}
-            <ul class="list-tight">
-              {% for item in config_hidden_warnings %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
-          {% endcall %}
-        </div>
-      {% endif %}
+      {% for notice in config_notice_items %}
+        {{ ui.details_notice(notice, class='mt-2 scheduler-config-degraded-summary') }}
+      {% endfor %}
     </div>
   </div>
 
@@ -150,55 +129,9 @@
           </div>
         {% endif %}
       </div>
-      {% if latest_summary_display.primary_degradation %}
-        <div class="flash-card flash-warning mt-2 scheduler-run-degraded-summary">
-          <div>{{ latest_summary_display.primary_degradation.message }}</div>
-          {% if latest_summary_display.primary_degradation.details %}
-            {% call ui.flash_details('查看 ' ~ (latest_summary_display.primary_degradation.details|length) ~ ' 条明细') %}
-              <ul class="list-tight">
-                {% for item in latest_summary_display.primary_degradation.details %}
-                  <li>{{ item }}</li>
-                {% endfor %}
-              </ul>
-            {% endcall %}
-          {% endif %}
-        </div>
-      {% endif %}
-      {% if latest_summary_display.summary_parse_state.parse_failed %}
-        <div class="flash-card flash-warning mt-2">
-          {{ latest_summary_display.summary_parse_state.user_message }}
-        </div>
-      {% endif %}
-      {% if latest_other_degradation_messages %}
-        <div class="flash-card flash-warning mt-2 scheduler-run-other-degradation-summary">
-          <div>其他需要注意的排产提示：</div>
-          {% call ui.flash_details('查看 ' ~ (latest_other_degradation_messages|length) ~ ' 条提示') %}
-            <ul class="list-tight">
-              {% for item in latest_other_degradation_messages %}
-                <li>
-                  <strong>{{ item.label }}</strong>
-                  {% if item.message %}：{{ item.message }}{% endif %}
-                </li>
-              {% endfor %}
-            </ul>
-          {% endcall %}
-        </div>
-      {% endif %}
-      {% if latest_warning_total %}
-        <div class="flash-card flash-warning mt-2">
-          <div>提醒：{{ latest_warning_total }} 条</div>
-          {% call ui.flash_details('查看前 ' ~ (latest_warning_preview|length) ~ ' 条提醒') %}
-            <ul class="list-tight">
-              {% for item in latest_warning_preview %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
-          {% endcall %}
-          {% if latest_warning_hidden_count > 0 %}
-            <div class="muted text-xs">另有 {{ latest_warning_hidden_count }} 条提醒，请到系统历史查看。</div>
-          {% endif %}
-        </div>
-      {% endif %}
+      {% for notice in latest_detail_notice_items %}
+        {{ ui.details_notice(notice, class='mt-2 scheduler-run-degraded-summary') }}
+      {% endfor %}
       {% if latest_summary_display.error_total %}
         <div class="aps-summary-grid mt-2 aps-summary-health-grid">
           {% call ui.summary_item_block('错误摘要', latest_summary_display.error_total ~ ' 条', 'danger') %}

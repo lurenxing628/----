@@ -124,6 +124,15 @@ def test_scheduler_batch_related_strict_options_are_no_longer_raw_checkbox_label
     assert "UiToggleRow(" in route_source
     assert "\"batchImportStrictMode\"" in route_source
 
+    process_route_source = _read("web/routes/process_excel_routes.py")
+    process_template_source = _read("templates/process/excel_import_routes.html")
+    assert '{% include "components/excel_import.html" with context %}' in process_template_source
+    assert "strict_mode_supported=True" in process_route_source
+    assert "UiToggleRow(" in process_route_source
+    assert "\"excelImportStrictMode\"" in process_route_source
+    assert "strict_mode_help_text" in process_route_source
+    assert process_route_source.count('form_toggle_bool(request.form, "strict_mode")') == 2
+
 
 def test_excel_import_component_renders_strict_mode_toggle_fields() -> None:
     html = _render_excel_import_component()

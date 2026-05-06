@@ -119,6 +119,11 @@ def test_system_backup_auto_job_switches_use_readable_setting_rows() -> None:
     plugin_block = source[source.index("扩展功能状态") :]
     assert "aps-plugin-status-summary" in plugin_block
     assert "ui.summary_grid(page.plugin_summary_items" in plugin_block
+    assert "{% if plugin_status %}" not in plugin_block
+    assert "plugin_status." not in plugin_block
+    assert "plugin_status.degraded" not in plugin_block
+    assert "plugin_status.degradation_events" not in plugin_block
+    assert "plugin_status.conflicted_capabilities" not in plugin_block
     assert '<div class="muted mt-2">\n        加载时间' not in plugin_block
     assert "加载时间：{{ plugin_status.loaded_at or '-' }}<br/>" not in plugin_block
     assert "plugin_config_source_label" not in plugin_block

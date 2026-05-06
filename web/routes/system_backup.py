@@ -93,7 +93,6 @@ def backup_page():
         keep_days=keep_days,
         settings=settings,
         job_state=_get_job_state_map(),
-        plugin_status=plugin_status,
         page=build_system_backup_page_view_model(settings, plugin_status),
         maintenance_limits={
             "max_backup_delete_per_run": int(SystemMaintenanceService.MAX_BACKUP_DELETE_PER_RUN),

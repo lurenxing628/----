@@ -72,6 +72,7 @@ def test_ui_macros_expose_shared_contract_components() -> None:
 
     for macro_name in (
         "notice",
+        "details_notice",
         "empty_state",
         "summary_grid",
         "toggle",
@@ -136,3 +137,39 @@ def test_business_templates_do_not_call_low_level_toggle_row_macro_directly() ->
                 continue
             source = path.read_text(encoding="utf-8")
             assert "ui.toggle_row(" not in source, str(path.relative_to(REPO_ROOT))
+
+
+def test_business_toggle_routes_use_order_independent_form_parsers() -> None:
+    route_contracts = {
+        "web/routes/system_backup.py": (
+            'form_yes_no_value(request.form, "auto_backup_enabled")',
+            'form_yes_no_value(request.form, "auto_backup_cleanup_enabled")',
+        ),
+        "web/routes/system_logs.py": (
+            'form_yes_no_value(request.form, "auto_log_cleanup_enabled")',
+        ),
+        "web/routes/domains/scheduler/scheduler_config.py": (
+            "_SCHEDULER_CONFIG_TOGGLE_FIELDS",
+            'form_yes_no_value(form, key)',
+        ),
+        "web/routes/domains/scheduler/scheduler_run.py": (
+            'form_optional_toggle_bool(request.form, "enforce_ready")',
+            'form_toggle_bool(request.form, "strict_mode")',
+        ),
+        "web/routes/domains/scheduler/scheduler_week_plan.py": (
+            'form_optional_toggle_bool(request.form, "enforce_ready")',
+            'form_toggle_bool(request.form, "strict_mode")',
+        ),
+        "web/routes/process_excel_routes.py": (
+            'form_toggle_bool(request.form, "strict_mode")',
+            '"excelImportStrictMode"',
+        ),
+        "web/routes/domains/scheduler/scheduler_excel_batches.py": (
+            'form_toggle_bool(request.form, "strict_mode")',
+            '"batchImportStrictMode"',
+        ),
+    }
+    for rel_path, markers in route_contracts.items():
+        source = _read(rel_path)
+        for marker in markers:
+            assert marker in source, f"{rel_path} 缺少 {marker}"

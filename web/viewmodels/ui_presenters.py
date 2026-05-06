@@ -28,6 +28,19 @@ class UiNotice:
 
 
 @dataclass(frozen=True)
+class UiDetailsNotice:
+    title: str
+    body: str
+    tone: str = "info"
+    detail_label: str = "查看明细"
+    detail_items: Sequence[str] = ()
+    footer: str = ""
+
+    def __post_init__(self) -> None:
+        validate_tone(self.tone)
+
+
+@dataclass(frozen=True)
 class UiAction:
     label: str
     endpoint: str
@@ -91,6 +104,7 @@ def disabled_attr(disabled: bool) -> str:
 
 __all__ = [
     "UiAction",
+    "UiDetailsNotice",
     "UiEmptyState",
     "UiNotice",
     "UiSummaryItem",

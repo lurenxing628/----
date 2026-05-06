@@ -218,8 +218,7 @@
         <li>保存后只是记住开关，下次重启软件才会真正按新开关加载。</li>
       </ul>
     </details>
-    {% if plugin_status %}
-      {% set plugin_degradation_count = (plugin_status.degradation_events or []) | length %}
+    {% if page.plugin_status_loaded %}
       {{ ui.summary_grid(page.plugin_summary_items, class='aps-plugin-status-summary') }}
 
       <details class="debug-details mt-2">
@@ -227,10 +226,10 @@
         <div>扩展功能文件位置已记录在系统日志中，需要排查时请从日志查看。</div>
       </details>
 
-      {% if plugin_status.degraded %}
-        {% call ui.flash_details('查看 ' ~ plugin_degradation_count ~ ' 条启动问题', 'mt-2') %}
+      {% if page.plugin_degraded %}
+        {% call ui.flash_details('查看 ' ~ page.plugin_degradation_count ~ ' 条启动问题', 'mt-2') %}
           <ul class="list-tight">
-            {% for event in plugin_status.degradation_events or [] %}
+            {% for event in page.plugin_degradation_events %}
               <li>
                 {{ event.message }}
                 <details class="debug-details text-xs">
@@ -242,14 +241,14 @@
           </ul>
         {% endcall %}
       {% endif %}
-      {% if plugin_status.conflicted_capabilities and (plugin_status.conflicted_capabilities | length) > 0 %}
+      {% if page.plugin_conflict_count > 0 %}
         <div class="muted mt-1">
-          冲突能力：{{ plugin_status.conflicted_capabilities|length }} 条
+          冲突能力：{{ page.plugin_conflict_count }} 条
           {% call ui.flash_details('查看冲突能力') %}
             <ul class="list-tight">
-              {% for item in plugin_status.conflicted_capabilities %}
+              {% for item in page.plugin_conflict_rows %}
                 <li>
-                  有两个扩展功能想处理同一类事情，系统已保留一个，另一个没有启用。
+                  {{ item.message }}
                   <details class="debug-details text-xs">
                     <summary>给维护人员看的信息</summary>
                     冲突细节已记录在系统日志中，需要排查时请从日志查看。

@@ -6,10 +6,16 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .scheduler_analysis_labels import objective_label_for
+from .scheduler_batches_notices import (
+    build_config_notice_items,
+    latest_detail_notice_items,
+    latest_parse_notice_items,
+    latest_warning_state,
+)
 from .scheduler_history_summary import ScheduleHistoryDisplayValueError, strict_strategy_display_label
 from .scheduler_run_options import UiRunOption, build_run_options
 from .scheduler_summary_display import build_summary_display_state
-from .ui_presenters import UiNotice, UiSummaryItem
+from .ui_presenters import UiDetailsNotice, UiNotice, UiSummaryItem
 
 _AutoAssignPersistDisplayBuilder = Callable[[Any], Dict[str, Any]]
 _BatchLabelBuilder = Callable[[str], str]
@@ -51,6 +57,7 @@ class SchedulerConfigPanelState:
     builtin_presets: Sequence[str]
     current_config_state: Dict[str, Any]
     current_auto_assign_persist_state: Dict[str, Any]
+    notice_items: Sequence[UiDetailsNotice]
 
 
 @dataclass(frozen=True)
@@ -68,6 +75,7 @@ class LatestScheduleHistoryPanelState:
     metric_items: Sequence[UiSummaryItem]
     status_items: Sequence[UiSummaryItem]
     notice_items: Sequence[UiNotice]
+    detail_notice_items: Sequence[UiDetailsNotice]
     latest_auto_assign_persist_state: Optional[Dict[str, Any]]
     latest_other_degradation_messages: Sequence[Dict[str, Any]]
     latest_warning_preview: Sequence[str]
@@ -102,6 +110,7 @@ class SchedulerBatchesPageViewModel:
             "builtin_presets": self.config_panel.builtin_presets,
             "current_config_state": self.config_panel.current_config_state,
             "current_auto_assign_persist_state": self.config_panel.current_auto_assign_persist_state,
+            "config_notice_items": self.config_panel.notice_items,
             "latest_history": self.latest_panel.latest_history,
             "latest_summary": self.latest_panel.latest_summary,
             "latest_summary_display": self.latest_panel.latest_summary_display,
@@ -115,6 +124,7 @@ class SchedulerBatchesPageViewModel:
             "latest_metric_items": self.latest_panel.metric_items,
             "latest_status_items": self.latest_panel.status_items,
             "latest_notice_items": self.latest_panel.notice_items,
+            "latest_detail_notice_items": self.latest_panel.detail_notice_items,
             "latest_auto_assign_persist_state": self.latest_panel.latest_auto_assign_persist_state,
             "latest_other_degradation_messages": self.latest_panel.latest_other_degradation_messages,
             "latest_warning_preview": self.latest_panel.latest_warning_preview,
@@ -183,6 +193,10 @@ def build_scheduler_config_panel_state(
         str(getattr(config_field_metadata.get(field), "label", "") or field)
         for field in config_degraded_fields
     )
+    notice_items = build_config_notice_items(
+        config_degraded_field_labels=config_degraded_field_labels,
+        config_hidden_warnings=config_hidden_warnings,
+    )
     return SchedulerConfigPanelState(
         cfg=cfg,
         strategies=strategies,
@@ -198,21 +212,8 @@ def build_scheduler_config_panel_state(
         current_auto_assign_persist_state=auto_assign_persist_display_builder(
             getattr(cfg, "auto_assign_persist", None)
         ),
+        notice_items=notice_items,
     )
-
-
-def _normalize_warning_texts(values: Any) -> List[str]:
-    if not isinstance(values, (list, tuple)):
-        return []
-    out: List[str] = []
-    seen = set()
-    for item in values:
-        text = str(item or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text)
-    return out
 
 
 def _latest_algo_mode_label(value: Any) -> str:
@@ -259,24 +260,6 @@ def _required_number_metric(metrics: Dict[str, Any], key: str) -> Any:
     value = _required_metric(metrics, key)
     _metric_number(metrics, key)
     return value
-
-
-def _latest_warning_state(
-    *,
-    latest_summary: Optional[Dict[str, Any]],
-    latest_summary_display: Dict[str, Any],
-) -> Tuple[List[str], int, int]:
-    latest_warning_messages = _normalize_warning_texts(
-        (latest_summary or {}).get("warnings") if isinstance(latest_summary, dict) else None
-    )
-    latest_warning_preview = list(latest_summary_display.get("warnings_preview") or [])
-    if not latest_warning_preview and not latest_summary_display.get("warning_total"):
-        latest_warning_preview = latest_warning_messages[:3]
-    latest_warning_total = int(latest_summary_display.get("warning_total") or len(latest_warning_messages))
-    latest_warning_hidden_count = int(
-        latest_summary_display.get("warning_hidden_count") or max(0, latest_warning_total - len(latest_warning_preview))
-    )
-    return latest_warning_preview, latest_warning_total, latest_warning_hidden_count
 
 
 def _latest_history_items(
@@ -359,11 +342,17 @@ def build_degraded_latest_schedule_history_panel_state(
         result_status=(latest_history or {}).get("result_status"),
         parse_state=latest_summary_parse_state,
     )
-    latest_warning_preview, latest_warning_total, latest_warning_hidden_count = _latest_warning_state(
+    latest_warning_preview, latest_warning_total, latest_warning_hidden_count = latest_warning_state(
         latest_summary=latest_summary,
         latest_summary_display=latest_summary_display,
     )
     latest_result_status_label = str(latest_summary_display.get("result_status_label") or "-")
+    detail_notice_items = latest_detail_notice_items(
+        latest_summary_display=latest_summary_display,
+        latest_warning_preview=latest_warning_preview,
+        latest_warning_total=latest_warning_total,
+        latest_warning_hidden_count=latest_warning_hidden_count,
+    )
     head_items: Tuple[UiSummaryItem, ...] = ()
     if latest_history:
         head_items = (
@@ -390,7 +379,9 @@ def build_degraded_latest_schedule_history_panel_state(
                 _LATEST_HISTORY_DEGRADED_MESSAGE,
                 tone="warning",
             ),
+            *latest_parse_notice_items(latest_summary_display),
         ),
+        detail_notice_items=detail_notice_items,
         latest_auto_assign_persist_state=None,
         latest_other_degradation_messages=list(
             latest_summary_display.get("display_secondary_degradation_messages") or []
@@ -413,11 +404,17 @@ def build_latest_schedule_history_panel_state(
         result_status=(latest_history or {}).get("result_status"),
         parse_state=latest_summary_parse_state,
     )
-    latest_warning_preview, latest_warning_total, latest_warning_hidden_count = _latest_warning_state(
+    latest_warning_preview, latest_warning_total, latest_warning_hidden_count = latest_warning_state(
         latest_summary=latest_summary,
         latest_summary_display=latest_summary_display,
     )
     latest_result_status_label = str(latest_summary_display.get("result_status_label") or "-")
+    detail_notice_items = latest_detail_notice_items(
+        latest_summary_display=latest_summary_display,
+        latest_warning_preview=latest_warning_preview,
+        latest_warning_total=latest_warning_total,
+        latest_warning_hidden_count=latest_warning_hidden_count,
+    )
     latest_strategy_label, head_items, meta_items = _latest_history_items(
         latest_history,
         result_status_label=latest_result_status_label,
@@ -444,7 +441,8 @@ def build_latest_schedule_history_panel_state(
         meta_items=meta_items,
         metric_items=metric_items,
         status_items=(),
-        notice_items=(),
+        notice_items=latest_parse_notice_items(latest_summary_display),
+        detail_notice_items=detail_notice_items,
         latest_auto_assign_persist_state=latest_auto_assign_persist_state,
         latest_other_degradation_messages=list(
             latest_summary_display.get("display_secondary_degradation_messages") or []

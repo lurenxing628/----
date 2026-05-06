@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from web.viewmodels.ui_presenters import (
+    UiDetailsNotice,
     UiNotice,
     UiSummaryItem,
     UiToggleRow,
@@ -17,11 +18,14 @@ def test_ui_tone_contract_rejects_unknown_values() -> None:
         assert validate_tone(tone) == tone
         assert UiSummaryItem("标题", "值", tone=tone).tone == tone
         assert UiNotice("提示", "内容", tone=tone).tone == tone
+        assert UiDetailsNotice("提示", "内容", tone=tone).tone == tone
 
     with pytest.raises(ValueError, match="未知 UI tone"):
         validate_tone("mystery")
     with pytest.raises(ValueError, match="未知 UI tone"):
         UiSummaryItem("标题", "值", tone="mystery")
+    with pytest.raises(ValueError, match="未知 UI tone"):
+        UiDetailsNotice("提示", "内容", tone="mystery")
 
 
 def test_toggle_attr_helpers_emit_only_html_attr_tokens() -> None:

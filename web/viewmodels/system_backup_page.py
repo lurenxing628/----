@@ -48,6 +48,16 @@ class PluginStatusRow:
 
 
 @dataclass(frozen=True)
+class PluginDegradationEventRow:
+    message: str
+
+
+@dataclass(frozen=True)
+class PluginConflictRow:
+    message: str = "有两个扩展功能想处理同一类事情，系统已保留一个，另一个没有启用。"
+
+
+@dataclass(frozen=True)
 class SystemBackupPageState:
     backup_empty_state: UiEmptyState
     plugin_empty_state: UiEmptyState
@@ -56,6 +66,12 @@ class SystemBackupPageState:
     auto_backup_cleanup_toggle: UiToggleRow
     plugin_summary_items: Sequence[UiSummaryItem]
     plugin_status_rows: Sequence[PluginStatusRow]
+    plugin_status_loaded: bool
+    plugin_degraded: bool
+    plugin_degradation_count: int
+    plugin_degradation_events: Sequence[PluginDegradationEventRow]
+    plugin_conflict_count: int
+    plugin_conflict_rows: Sequence[PluginConflictRow]
 
 
 def _value(source: Any, key: str) -> Any:
@@ -191,8 +207,28 @@ def build_plugin_status_rows(plugin_status: Any) -> Sequence[PluginStatusRow]:
     return tuple(rows)
 
 
+def build_plugin_degradation_events(plugin_status: Any) -> Sequence[PluginDegradationEventRow]:
+    if plugin_status is None:
+        return ()
+
+    rows = []
+    for raw_event in _sequence_value(plugin_status, "degradation_events"):
+        event = dict(raw_event or {}) if isinstance(raw_event, dict) else raw_event
+        rows.append(PluginDegradationEventRow(message=str(_optional_value(event, "message") or "扩展功能启动时出现问题。")))
+    return tuple(rows)
+
+
+def build_plugin_conflict_rows(plugin_status: Any) -> Sequence[PluginConflictRow]:
+    if plugin_status is None:
+        return ()
+
+    return tuple(PluginConflictRow() for _item in _sequence_value(plugin_status, "conflicted_capabilities"))
+
+
 def build_system_backup_page_view_model(settings: Any, plugin_status: Any) -> SystemBackupPageState:
     auto_backup_toggle, auto_backup_cleanup_toggle = build_backup_toggle_rows(settings)
+    degradation_events = build_plugin_degradation_events(plugin_status)
+    conflict_rows = build_plugin_conflict_rows(plugin_status)
     return SystemBackupPageState(
         backup_empty_state=build_backup_empty_state(),
         plugin_empty_state=build_plugin_empty_state(),
@@ -201,6 +237,12 @@ def build_system_backup_page_view_model(settings: Any, plugin_status: Any) -> Sy
         auto_backup_cleanup_toggle=auto_backup_cleanup_toggle,
         plugin_summary_items=build_plugin_summary_items(plugin_status),
         plugin_status_rows=build_plugin_status_rows(plugin_status),
+        plugin_status_loaded=plugin_status is not None,
+        plugin_degraded=bool(_optional_value(plugin_status, "degraded")) if plugin_status is not None else False,
+        plugin_degradation_count=len(degradation_events),
+        plugin_degradation_events=degradation_events,
+        plugin_conflict_count=len(conflict_rows),
+        plugin_conflict_rows=conflict_rows,
     )
 
 
@@ -209,11 +251,15 @@ __all__ = [
     "PLUGIN_ENABLED_SOURCE_LABELS",
     "PLUGIN_LOADED_LABELS",
     "PLUGIN_TELEMETRY_STATES",
+    "PluginConflictRow",
+    "PluginDegradationEventRow",
     "PluginStatusRow",
     "SystemBackupPageState",
     "build_backup_empty_state",
     "build_backup_toggle_rows",
     "build_plugin_empty_state",
+    "build_plugin_conflict_rows",
+    "build_plugin_degradation_events",
     "build_plugin_status_rows",
     "build_plugin_summary_items",
     "build_plugin_unloaded_empty_state",

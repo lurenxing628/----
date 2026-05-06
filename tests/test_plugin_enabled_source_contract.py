@@ -93,4 +93,5 @@ def test_system_backup_template_mentions_plugin_conflicts_and_telemetry_state() 
     assert "冲突能力" in template_text
     assert "留痕状态" in presenter_text
     assert "telemetry_persisted" in presenter_text
-    assert "conflicted_capabilities" in template_text
+    assert "conflicted_capabilities" in presenter_text
+    assert "conflicted_capabilities" not in template_text

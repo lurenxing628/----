@@ -123,7 +123,9 @@ def test_latest_schedule_snapshot_uses_dedicated_sections() -> None:
         assert "aps-latest-schedule-metrics" in block
         assert "aps-latest-schedule-status" in block
         assert "latest_notice_items" in block
+        assert "latest_detail_notice_items" in block
         assert "ui.notice(item.title, item.body" in block
+        assert "ui.details_notice(notice, class='mt-2 scheduler-run-degraded-summary')" in block
         assert "ui.summary_item_block('错误摘要'" in block
         assert "保存系统补齐的设备和人员" not in block
         assert "保存补齐资源" in block
