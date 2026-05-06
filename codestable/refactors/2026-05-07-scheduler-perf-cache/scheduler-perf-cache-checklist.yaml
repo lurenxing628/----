@@ -1,6 +1,6 @@
 doc_type: refactor-checklist
 refactor: 2026-05-07-scheduler-perf-cache
-status: in_progress
+status: completed
 steps:
   - id: baseline-and-docs
     title: Create refactor records and resolve baseline blockers
@@ -41,5 +41,5 @@ checks:
     status: completed
   - id: quality-gate-clean
     title: Final clean quality gate is bound to a clean worktree
-    status: blocked
-    blocker: Pre-existing dirty file evidence/ArchAudit/arch_audit_report.md is intentionally left untouched.
+    status: completed
+    proof: PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree

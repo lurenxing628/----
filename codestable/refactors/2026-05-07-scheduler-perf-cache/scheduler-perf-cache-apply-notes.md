@@ -116,7 +116,7 @@ tags: [scheduler, performance, cache, quality-gate]
 
 ## Final verification
 
-- Status: completed with one clean-proof blocker.
+- Status: completed with clean proof.
 - Benchmark validation:
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .limcode/skills/aps-fjsp-benchmark/scripts/run_fjsp_benchmark.py --mode full`
   - Result: `runs=20 valid=20`.
@@ -135,7 +135,9 @@ tags: [scheduler, performance, cache, quality-gate]
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --allow-dirty-worktree`
   - Result: gate completed, but manifest was marked `passed_but_unbound`; return code was `2`, so this is not a clean proof.
   - `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_quality_gate.py --require-clean-worktree`
-  - Result: blocked by dirty worktree before running gate.
-- Remaining blocker:
-  - `evidence/ArchAudit/arch_audit_report.md` was dirty before this refactor and remains intentionally untouched.
-  - Full `git diff --check` reports trailing whitespace in that pre-existing file at lines 32 and 33.
+  - Initial result: blocked by dirty worktree before running gate.
+  - Follow-up result after committing the refreshed architecture audit report: `质量门禁通过`.
+- Blocker resolution:
+  - `evidence/ArchAudit/arch_audit_report.md` had pre-existing staged refresh content and two trailing spaces.
+  - The trailing spaces were removed and the refreshed report was committed separately from scheduler performance code.
+  - Full `git diff --check` passes after that cleanup.
