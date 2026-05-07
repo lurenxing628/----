@@ -106,6 +106,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/regression_safe_next_url_observability.py",
     "tests/test_holiday_default_efficiency_read_guard.py",
     "tests/regression_error_boundary_contract.py",
+    "tests/regression_excel_template_contracts.py",
     "tests/regression_mirror_template_sync.py",
     "tests/regression_gantt_critical_outline_sync.py",
     "tests/regression_scheduler_config_layout_contract.py",

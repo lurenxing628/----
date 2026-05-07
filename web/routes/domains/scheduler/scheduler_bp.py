@@ -40,7 +40,12 @@ def _normalize_warning_texts(values: object) -> List[str]:
     return out
 
 
-def _surface_schedule_warnings(messages: object, *, limit: int = 5) -> None:
+def _surface_schedule_warnings(
+    messages: object,
+    *,
+    limit: int = 5,
+    remaining_message: str = "另有 {remaining} 条提醒，请到系统历史查看。",
+) -> None:
     warnings = _normalize_warning_texts(messages)
     if not warnings:
         return
@@ -49,7 +54,7 @@ def _surface_schedule_warnings(messages: object, *, limit: int = 5) -> None:
         flash(item, "warning")
     remaining = len(warnings) - len(shown)
     if remaining > 0:
-        flash(f"另有 {remaining} 条提醒，请到系统历史查看。", "warning")
+        flash(remaining_message.format(remaining=remaining), "warning")
 
 
 def _surface_schedule_errors(messages: Optional[Sequence[str]], *, total: Optional[int] = None, limit: int = 5) -> None:

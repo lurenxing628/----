@@ -113,6 +113,86 @@ def test_scheduler_batch_template_warning_surface(tmp_path, monkeypatch) -> None
         conn.close()
 
 
+def test_scheduler_batch_create_warning_remainder_uses_current_page_copy(tmp_path, monkeypatch) -> None:
+    app, conn = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    request_services_mod = importlib.import_module("web.bootstrap.request_services")
+
+    monkeypatch.setattr(
+        request_services_mod.BatchService,
+        "consume_user_visible_warnings",
+        lambda _self: [f"创建提醒 {idx}" for idx in range(1, 6)],
+    )
+
+    try:
+        resp = client.post(
+            "/scheduler/batches/create",
+            data={
+                "batch_id": "B_WARN_LIMIT",
+                "part_no": "P_ROUTE",
+                "quantity": "1",
+                "priority": "normal",
+                "ready_status": "yes",
+            },
+        )
+
+        assert resp.status_code in (301, 302)
+        with client.session_transaction() as sess:
+            flashes = list(sess.get("_flashes") or [])
+
+        warning_messages = [msg for cat, msg in flashes if cat == "warning"]
+        assert warning_messages[:3] == ["创建提醒 1", "创建提醒 2", "创建提醒 3"]
+        assert "另有 2 条提醒未在当前页显示，请处理已展示提醒后重新检查。" in warning_messages
+        assert not any("请到系统历史查看" in msg for msg in warning_messages)
+    finally:
+        conn.close()
+
+
+def test_scheduler_batch_generate_ops_warning_remainder_uses_current_page_copy(tmp_path, monkeypatch) -> None:
+    app, conn = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    request_services_mod = importlib.import_module("web.bootstrap.request_services")
+
+    try:
+        create_resp = client.post(
+            "/scheduler/batches/create",
+            data={
+                "batch_id": "B_WARN_REFRESH_LIMIT",
+                "part_no": "P_ROUTE",
+                "quantity": "1",
+                "priority": "normal",
+                "ready_status": "yes",
+            },
+        )
+        assert create_resp.status_code in (301, 302)
+        with client.session_transaction() as sess:
+            sess.pop("_flashes", None)
+
+        monkeypatch.setattr(
+            request_services_mod.BatchService,
+            "consume_user_visible_warnings",
+            lambda _self: [f"刷新提醒 {idx}" for idx in range(1, 6)],
+        )
+
+        refresh_resp = client.post("/scheduler/batches/B_WARN_REFRESH_LIMIT/generate-ops")
+
+        assert refresh_resp.status_code in (301, 302)
+        with client.session_transaction() as sess:
+            flashes = list(sess.get("_flashes") or [])
+
+        assert any("已刷新本批次工序：共" in msg for _cat, msg in flashes), flashes
+        warning_messages = [msg for cat, msg in flashes if cat == "warning"]
+        assert warning_messages[:3] == ["刷新提醒 1", "刷新提醒 2", "刷新提醒 3"]
+        assert "另有 2 条提醒未在当前页显示，请处理已展示提醒后重新检查。" in warning_messages
+        assert "刷新提醒 4" not in warning_messages
+        assert "刷新提醒 5" not in warning_messages
+        assert not any("系统历史" in msg for msg in warning_messages)
+    finally:
+        conn.close()
+
+
 def test_scheduler_excel_batch_confirm_surfaces_warnings_with_limit(tmp_path, monkeypatch) -> None:
     app, conn = _build_app(tmp_path, monkeypatch)
     client = app.test_client()
@@ -165,17 +245,20 @@ def test_scheduler_excel_batch_confirm_surfaces_warnings_with_limit(tmp_path, mo
                 "preview_baseline": preview_baseline,
                 "auto_generate_ops": "1",
             },
-            follow_redirects=True,
         )
 
-        body = confirm_resp.get_data(as_text=True)
-        assert confirm_resp.status_code == 200
-        assert "已按模板自动生成批次工序" in body
-        assert "第 1 条告警" in body
-        assert "第 2 条告警" in body
-        assert "第 3 条告警" in body
-        assert "另有 2 条提醒，请到系统历史查看。" in body
-        assert "第 4 条告警" not in body
-        assert "第 5 条告警" not in body
+        assert confirm_resp.status_code in (301, 302)
+        with client.session_transaction() as sess:
+            flashes = list(sess.get("_flashes") or [])
+
+        assert any("已按模板自动生成批次工序" in msg for _cat, msg in flashes), flashes
+        warning_messages = [msg for cat, msg in flashes if cat == "warning"]
+        assert "第 1 条告警" in warning_messages
+        assert "第 2 条告警" in warning_messages
+        assert "第 3 条告警" in warning_messages
+        assert "另有 2 条提醒未在当前页显示，请处理已展示提醒后重新检查。" in warning_messages
+        assert "第 4 条告警" not in warning_messages
+        assert "第 5 条告警" not in warning_messages
+        assert not any("请到系统历史查看" in msg for msg in warning_messages)
     finally:
         conn.close()

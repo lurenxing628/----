@@ -40,6 +40,8 @@ from .scheduler_config_display_state import (
 if TYPE_CHECKING:
     from core.services.scheduler import BatchService
 
+_CURRENT_PAGE_WARNING_REMAINING_MESSAGE = "另有 {remaining} 条提醒未在当前页显示，请处理已展示提醒后重新检查。"
+
 
 def _load_latest_schedule_history_panel_inputs(
     hist_q: Any,
@@ -199,7 +201,11 @@ def create_batch():
             strict_mode=strict_mode,
         )
         flash(f"已创建批次并生成工序：{b.batch_id}（共 {len(batch_svc.list_operations(b.batch_id))} 道工序）", "success")
-        _surface_schedule_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
+        _surface_schedule_warnings(
+            batch_svc.consume_user_visible_warnings(),
+            limit=3,
+            remaining_message=_CURRENT_PAGE_WARNING_REMAINING_MESSAGE,
+        )
         return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))
     except AppError as e:
         flash(user_visible_app_error_message(e), "error")
@@ -390,7 +396,11 @@ def generate_ops(batch_id: str):
         )
         cnt = len(batch_svc.list_operations(b.batch_id))
         flash(f"已刷新本批次工序：共 {cnt} 道工序。", "success")
-        _surface_schedule_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
+        _surface_schedule_warnings(
+            batch_svc.consume_user_visible_warnings(),
+            limit=3,
+            remaining_message=_CURRENT_PAGE_WARNING_REMAINING_MESSAGE,
+        )
     except AppError as e:
         flash(user_visible_app_error_message(e), "error")
     return redirect(url_for("scheduler.batch_detail", batch_id=b.batch_id))

@@ -333,6 +333,7 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/regression_scheduler_resource_dispatch_invalid_query_cleanup.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_schedule_summary_input_fallback_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_error_boundary_contract.py" in module.REQUIRED_TEST_ARGS
+    assert "tests/regression_excel_template_contracts.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_critical_outline_sync.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_route_version_normalizers_contract.py" in module.REQUIRED_TEST_ARGS
     assert "tests/regression_gantt_page_version_default_latest.py" in module.REQUIRED_TEST_ARGS

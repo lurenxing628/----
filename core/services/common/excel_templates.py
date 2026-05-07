@@ -170,6 +170,8 @@ _LEGACY_TEMPLATE_ENUM_VALUES: Set[str] = {
     "maintain",
     "internal",
     "external",
+    "内部",
+    "外部",
     "beginner",
     "normal",
     "expert",
@@ -180,6 +182,10 @@ _LEGACY_TEMPLATE_ENUM_VALUES: Set[str] = {
     "holiday",
     "yes",
     "no",
+}
+
+_EXTRA_ROW_LAYOUT_REPAIR_TEMPLATES: Set[str] = {
+    "工种配置.xlsx",
 }
 
 
@@ -230,11 +236,80 @@ def _inline_validation_texts(ws: Any) -> Set[str]:
     return texts
 
 
+def _validation_overlaps_column(dv: Any, one_based_col_idx: int) -> bool:
+    for cell_range in getattr(getattr(dv, "sqref", None), "ranges", []) or []:
+        if (
+            cell_range.min_col <= one_based_col_idx <= cell_range.max_col
+            and cell_range.max_row >= 2
+        ):
+            return True
+    return False
+
+
+def _remove_enum_validations(ws: Any, enum_col_indices: Iterable[int]) -> None:
+    validation_list = getattr(getattr(ws, "data_validations", None), "dataValidation", None)
+    if validation_list is None:
+        return
+    enum_columns = {col_idx + 1 for col_idx in enum_col_indices if isinstance(col_idx, int) and col_idx >= 0}
+    if not enum_columns:
+        return
+    ws.data_validations.dataValidation = [
+        dv
+        for dv in validation_list
+        if getattr(dv, "type", None) != "list"
+        or not any(_validation_overlaps_column(dv, col_idx) for col_idx in enum_columns)
+    ]
+
+
+def _refresh_existing_template_layout(path: str, template_def: Mapping[str, Any]) -> bool:
+    if str(template_def.get("filename") or "") not in _EXTRA_ROW_LAYOUT_REPAIR_TEMPLATES:
+        return False
+
+    format_spec = template_def.get("format_spec", {}) or {}
+    enum_cols = format_spec.get("enum_cols", {}) or {}
+    enum_col_indices = set(enum_cols)
+    if not enum_col_indices:
+        return False
+
+    sample_row_count = len(template_def.get("sample_rows") or [])
+    try:
+        wb = openpyxl.load_workbook(path)
+    except Exception:
+        return False
+    try:
+        ws = _active_sheet_or_none(wb)
+        if ws is None:
+            return False
+
+        non_empty_data_rows = _non_empty_data_rows(ws)
+        if len(non_empty_data_rows) <= sample_row_count:
+            return False
+
+        headers = [str(header).strip() for header in (template_def.get("headers") or [])]
+        current_headers = [_cell_text(ws.cell(1, col_idx).value) for col_idx in range(1, len(headers) + 1)]
+        enum_texts = _enum_texts_from_rows(non_empty_data_rows, enum_col_indices)
+        enum_texts.update(_inline_validation_texts(ws))
+        if current_headers == headers and not enum_texts & _LEGACY_TEMPLATE_ENUM_VALUES:
+            return False
+
+        for col_idx, header in enumerate(headers, start=1):
+            ws.cell(1, col_idx).value = header
+        _remove_enum_validations(ws, enum_col_indices)
+        _apply_sheet_layout(ws, format_spec=format_spec, data_row_count=ws.max_row - 1)
+        wb.save(path)
+        return True
+    except Exception:
+        return False
+    finally:
+        _close_workbook_quietly(wb)
+
+
 def _known_generated_template_needs_refresh(path: str, template_def: Mapping[str, Any]) -> bool:
     """Refresh old generated templates that still expose raw enum defaults.
 
     The guard is intentionally narrow: if a workbook contains user data beyond the
-    built-in sample rows, keep it untouched and let download serve the disk file.
+    built-in sample rows, keep it untouched unless that template has a known
+    safe in-place layout repair.
     """
     format_spec = template_def.get("format_spec", {}) or {}
     enum_col_indices = set(format_spec.get("enum_cols", {}) or {})
@@ -242,6 +317,7 @@ def _known_generated_template_needs_refresh(path: str, template_def: Mapping[str
         return False
 
     sample_row_count = len(template_def.get("sample_rows") or [])
+    can_repair_extra_rows = str(template_def.get("filename") or "") in _EXTRA_ROW_LAYOUT_REPAIR_TEMPLATES
     try:
         wb = openpyxl.load_workbook(path, data_only=True)
     except Exception:
@@ -252,9 +328,8 @@ def _known_generated_template_needs_refresh(path: str, template_def: Mapping[str
             return False
 
         non_empty_data_rows = _non_empty_data_rows(ws)
-        if len(non_empty_data_rows) > sample_row_count:
+        if len(non_empty_data_rows) > sample_row_count and not can_repair_extra_rows:
             return False
-
         enum_texts = _enum_texts_from_rows(non_empty_data_rows, enum_col_indices)
         enum_texts.update(_inline_validation_texts(ws))
 
@@ -439,6 +514,9 @@ def ensure_excel_templates(template_dir: str) -> Dict[str, Any]:
             and not _known_generated_template_needs_refresh(path, t)
         ):
             skipped.append(filename)
+            continue
+        if os.path.exists(path) and _refresh_existing_template_layout(path, t):
+            created.append(filename)
             continue
         _write_xlsx(
             path,

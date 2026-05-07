@@ -43,6 +43,8 @@ from .scheduler_utils import (
 if TYPE_CHECKING:
     from core.services.scheduler import BatchService
 
+_CURRENT_PAGE_WARNING_REMAINING_MESSAGE = "另有 {remaining} 条提醒未在当前页显示，请处理已展示提醒后重新检查。"
+
 _batch_baseline_extra_state = _baseline_helpers._batch_baseline_extra_state
 _build_template_ops_snapshot = _baseline_helpers._build_template_ops_snapshot
 
@@ -331,7 +333,11 @@ def excel_batches_confirm():
         suffix="（已按模板自动生成批次工序）" if auto_generate_ops else "",
     )
     if auto_generate_ops:
-        _surface_schedule_warnings(batch_svc.consume_user_visible_warnings(), limit=3)
+        _surface_schedule_warnings(
+            batch_svc.consume_user_visible_warnings(),
+            limit=3,
+            remaining_message=_CURRENT_PAGE_WARNING_REMAINING_MESSAGE,
+        )
 
     return redirect(url_for("scheduler.excel_batches_page"))
 
