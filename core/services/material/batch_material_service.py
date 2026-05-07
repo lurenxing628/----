@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
@@ -47,7 +46,7 @@ class BatchMaterialService:
             raise ValidationError("“批次号”不能为空", field="batch_id")
         return self.repo.list_with_material_details_by_batch(bid)
 
-    def add_requirement(self, batch_id: Any, material_id: Any, required_qty: Any, available_qty: Any = 0) -> None:
+    def add_requirement(self, batch_id: Any, material_id: Any, required_qty: Any, available_qty: Any = None) -> None:
         bid = self._norm_text(batch_id)
         mid = self._norm_text(material_id)
         if not bid:
@@ -62,7 +61,10 @@ class BatchMaterialService:
             raise BusinessError(ErrorCode.DUPLICATE_ENTRY, "该批次已存在该物料需求，无需重复添加。")
 
         req = self._norm_float_required(required_qty, field="需求数量", min_v=0.000001)
-        avail = self._norm_float_required(available_qty, field="到料数量", min_v=0.0)
+        if available_qty is None or str(available_qty).strip() == "":
+            avail = req
+        else:
+            avail = self._norm_float_required(available_qty, field="到料数量", min_v=0.0)
         # 设计意图：单行物料按“够/不够”二值判定；partial 仅用于批次汇总 ready_status（见 _calc_batch_ready）。
         ready = ReadyStatus.YES.value if avail >= req else ReadyStatus.NO.value
 
@@ -135,14 +137,14 @@ class BatchMaterialService:
         基于 BatchMaterials 判定批次齐套状态。
 
         规则（最小闭环）：
-        - 若该批次没有任何物料需求行：返回 ("", None) 表示“不接管 ready_status”（保留人工/Excel 值）
-        - 若全部需求行 ready_status=yes：批次 ready_status=yes，ready_date=今天（若原本已有 ready_date 则保留）
+        - 若该批次没有任何物料需求行：批次回到默认齐套，ready_date=NULL
+        - 若全部需求行 ready_status=yes：批次 ready_status=yes，ready_date 保留人工值；没有人工值则为 NULL
         - 若部分满足：ready_status=partial，ready_date=NULL
         - 全部不满足：ready_status=no，ready_date=NULL
         """
         rows = self.repo.list_by_batch(batch_id)
         if not rows:
-            return "", None
+            return ReadyStatus.YES.value, None
 
         total = len(rows)
         ready_cnt = sum(
@@ -150,9 +152,7 @@ class BatchMaterialService:
         )
         if ready_cnt >= total:
             b = self.batch_repo.get(batch_id)
-            if b and b.ready_date:
-                return ReadyStatus.YES.value, b.ready_date
-            return ReadyStatus.YES.value, date.today().isoformat()
+            return ReadyStatus.YES.value, b.ready_date if b and b.ready_date else None
         if ready_cnt > 0:
             return ReadyStatus.PARTIAL.value, None
         return ReadyStatus.NO.value, None
@@ -162,6 +162,4 @@ class BatchMaterialService:
         if not bid:
             return
         ready_status, ready_date = self._calc_batch_ready(bid)
-        if ready_status == "":
-            return
         self.batch_repo.update(bid, {"ready_status": ready_status, "ready_date": ready_date})

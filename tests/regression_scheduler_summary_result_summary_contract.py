@@ -147,6 +147,7 @@ def _build_summary_for_op(*, op_id: int):
         ],
         improvement_trace=[],
         frozen_op_ids=set(),
+        readiness_gate_enabled=True,
         simulate=True,
         t0=0.0,
     )
@@ -213,6 +214,7 @@ def test_result_summary_roundtrip_keeps_public_attempts_and_diagnostics_separate
     test_db = _prepare_db(tmp_path, monkeypatch)
 
     loaded = _persist_summary_roundtrip(test_db)
+    assert (loaded.get("readiness") or {}).get("gate_enabled") is True
 
     public_attempts = (loaded.get("algo") or {}).get("attempts") or []
     assert public_attempts

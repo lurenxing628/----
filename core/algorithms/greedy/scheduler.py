@@ -80,6 +80,7 @@ class GreedyScheduler:
         dispatch_mode: Optional[str] = None,
         dispatch_rule: Optional[str] = None,
         resource_pool: Optional[Dict[str, Any]] = None,
+        readiness_gate_enabled: bool = False,
         strict_mode: bool = False,
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         t0 = datetime.now()
@@ -99,10 +100,25 @@ class GreedyScheduler:
         )
         batches = build_normalized_batches_map(batches, warnings=warnings)
         machine_downtimes = _normalize_machine_downtimes(machine_downtimes)
-        batch_order = _build_batch_order(batches, params, batch_order_override=batch_order_override, strict_mode=bool(strict_mode))
+        batch_order = _build_batch_order(
+            batches,
+            params,
+            batch_order_override=batch_order_override,
+            readiness_gate_enabled=bool(readiness_gate_enabled),
+            strict_mode=bool(strict_mode),
+        )
         seed_results, seed_op_ids = _normalize_seed_inputs(seed_results, operations, warnings=warnings, algo_stats=algo_stats)
         sorted_ops = _sorted_unseeded_operations(operations, seed_op_ids=seed_op_ids, batch_order=batch_order, warnings=warnings, algo_stats=algo_stats)
-        state = _prepare_run_state(self.calendar, batches=batches, seed_results=seed_results, params=params, warnings=warnings, algo_stats=algo_stats, strict_mode=bool(strict_mode))
+        state = _prepare_run_state(
+            self.calendar,
+            batches=batches,
+            seed_results=seed_results,
+            params=params,
+            warnings=warnings,
+            algo_stats=algo_stats,
+            readiness_gate_enabled=bool(readiness_gate_enabled),
+            strict_mode=bool(strict_mode),
+        )
         ctx = ScheduleRunContext.from_legacy_scheduler(self)
         ctx.algo_stats = algo_stats
 
@@ -245,11 +261,23 @@ def _normalize_machine_downtimes(machine_downtimes: Optional[Dict[str, List[Tupl
     }
 
 
-def _build_batch_order(batches: Dict[str, Any], params: Any, *, batch_order_override: Optional[List[str]], strict_mode: bool) -> Dict[str, int]:
+def _build_batch_order(
+    batches: Dict[str, Any],
+    params: Any,
+    *,
+    batch_order_override: Optional[List[str]],
+    readiness_gate_enabled: bool,
+    strict_mode: bool,
+) -> Dict[str, int]:
     override_order = normalize_batch_order_override(batch_order_override, batches)
     if override_order and len(override_order) == len(batches):
         return {batch_id: index for index, batch_id in enumerate(override_order)}
-    batch_for_sort = build_batch_sort_inputs(batches, strict_mode=bool(strict_mode), strategy=params.strategy)
+    batch_for_sort = build_batch_sort_inputs(
+        batches,
+        strict_mode=bool(strict_mode),
+        strategy=params.strategy,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
+    )
     sorted_batches = StrategyFactory.create(params.strategy, **params.used_params).sort(batch_for_sort, base_date=params.base_time.date())
     if not override_order:
         return {batch.batch_id: index for index, batch in enumerate(sorted_batches)}
@@ -295,9 +323,20 @@ def _safe_op_id(op: Any) -> int:
         return 0
 
 
-def _prepare_run_state(calendar: Any, *, batches: Dict[str, Any], seed_results: Optional[List[ScheduleResult]], params: Any, warnings: List[str], algo_stats: Dict[str, Any], strict_mode: bool) -> ScheduleRunState:
+def _prepare_run_state(
+    calendar: Any,
+    *,
+    batches: Dict[str, Any],
+    seed_results: Optional[List[ScheduleResult]],
+    params: Any,
+    warnings: List[str],
+    algo_stats: Dict[str, Any],
+    readiness_gate_enabled: bool,
+    strict_mode: bool,
+) -> ScheduleRunState:
     state = ScheduleRunState(base_time=params.base_time)
-    _initialize_ready_progress(calendar, state=state, batches=batches, strict_mode=strict_mode)
+    if bool(readiness_gate_enabled):
+        _initialize_ready_progress(calendar, state=state, batches=batches, strict_mode=strict_mode)
     if seed_results:
         _apply_seed_results(state=state, seed_results=seed_results)
         warnings.extend(state.seed_resource_warnings())

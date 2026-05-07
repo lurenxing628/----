@@ -212,6 +212,7 @@ def main() -> None:
     assert [int(getattr(op, "id", 0) or 0) for op in collected.reschedulable_operations] == [1, 2], collected
     assert collected.missing_internal_resource_op_ids == {1}, collected
     assert int(collected.prev_version) == 5, collected
+    assert collected.readiness_gate_enabled is True, collected
     assert int(collected.optimizer_seed_version) == 6, collected
     assert collected.frozen_op_ids == {2}, collected
     assert [int(getattr(op, "id", 0) or 0) for op in collected.algo_ops_to_schedule] == [1], collected

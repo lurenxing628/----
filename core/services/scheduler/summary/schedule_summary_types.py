@@ -41,6 +41,7 @@ class SummaryBuildContext:
     input_build_outcome: Optional[BuildOutcome[Any]] = None
     downtime_meta: Optional[Dict[str, Any]] = None
     resource_pool_meta: Optional[Dict[str, Any]] = None
+    readiness_gate_enabled: bool = False
     algo_stats: Optional[Dict[str, Any]] = None
     algo_warnings: Optional[List[str]] = None
     warning_merge_status: Optional[Dict[str, Any]] = None

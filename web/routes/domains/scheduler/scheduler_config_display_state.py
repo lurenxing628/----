@@ -163,7 +163,7 @@ def build_scheduler_config_toggles(cfg: Any, *, config_field_metadata: Dict[str,
             id="enforceReadyDefault",
             name="enforce_ready_default",
             title=_config_field_label(config_field_metadata, "enforce_ready_default"),
-            desc=_config_field_hint(config_field_metadata, "enforce_ready_default", default="未齐套的订单不排。"),
+            desc=_config_field_hint(config_field_metadata, "enforce_ready_default", default="默认关闭。启用后，未齐套批次不排，齐套日期作为最早开工日。"),
             checked_attr=checked_attr(str(getattr(cfg, "enforce_ready_default", "")).strip() == "yes"),
         ),
         "auto_assign_enabled": UiToggleRow(

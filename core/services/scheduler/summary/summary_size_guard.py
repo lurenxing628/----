@@ -48,6 +48,7 @@ def _minimal_summary_for_size_guard(
         "summary_schema_version": _size_guard_scalar(result_summary_obj.get("summary_schema_version") or "1.2", max_chars=20),
         "is_simulation": bool(result_summary_obj.get("is_simulation") or False),
         "completion_status": _size_guard_scalar(result_summary_obj.get("completion_status"), max_chars=40),
+        "readiness": _size_guard_dict(result_summary_obj.get("readiness"), max_items=4, max_value_chars=40),
         "version": _size_guard_scalar(result_summary_obj.get("version"), max_chars=40),
         "strategy": _size_guard_scalar(result_summary_obj.get("strategy"), max_chars=80),
         "result_status": _size_guard_scalar(result_summary_obj.get("result_status"), max_chars=80),

@@ -6,6 +6,7 @@ from typing import Any, List
 import pytest
 
 import core.services.scheduler.run.schedule_signature_support as signature_support
+from core.infrastructure.errors import ValidationError
 from core.services.scheduler.run.schedule_optimizer_steps import _schedule_with_optional_strict_mode
 from core.services.scheduler.run.schedule_signature_support import clear_strict_mode_support_cache_for_tests
 
@@ -40,6 +41,30 @@ class _UnknownLegacyScheduler:
         self.calls.append(dict(kwargs))
         if "strict_mode" in kwargs:
             raise TypeError("schedule() got an unexpected keyword argument 'strict_mode'")
+        return {"ok": True, "kwargs": dict(kwargs)}
+
+
+class _UnknownReadinessLegacyScheduler:
+    def __init__(self) -> None:
+        self.calls: List[Any] = []
+
+    def schedule(self, **kwargs):
+        self.calls.append(dict(kwargs))
+        if "readiness_gate_enabled" in kwargs:
+            raise TypeError("schedule() got an unexpected keyword argument 'readiness_gate_enabled'")
+        return {"ok": True, "kwargs": dict(kwargs)}
+
+
+class _UnknownLegacyNoStrictNoReadinessScheduler:
+    def __init__(self) -> None:
+        self.calls: List[Any] = []
+
+    def schedule(self, **kwargs):
+        self.calls.append(dict(kwargs))
+        if "strict_mode" in kwargs:
+            raise TypeError("schedule() got an unexpected keyword argument 'strict_mode'")
+        if "readiness_gate_enabled" in kwargs:
+            raise TypeError("schedule() got an unexpected keyword argument 'readiness_gate_enabled'")
         return {"ok": True, "kwargs": dict(kwargs)}
 
 
@@ -101,6 +126,28 @@ def test_legacy_scheduler_does_not_receive_strict_mode_keyword(monkeypatch) -> N
     assert scheduler.calls == 2
 
 
+def test_legacy_scheduler_drops_disabled_readiness_keyword() -> None:
+    scheduler = _LegacyScheduler()
+
+    assert _schedule_with_optional_strict_mode(
+        scheduler,
+        strict_mode=False,
+        readiness_gate_enabled=False,
+        value=7,
+    ) == {"value": 7}
+    assert scheduler.calls == 1
+
+
+def test_legacy_scheduler_rejects_enabled_readiness_keyword() -> None:
+    with pytest.raises(ValidationError, match="不支持 readiness_gate_enabled"):
+        _schedule_with_optional_strict_mode(
+            _LegacyScheduler(),
+            strict_mode=False,
+            readiness_gate_enabled=True,
+            value=7,
+        )
+
+
 def test_unknown_signature_keeps_unexpected_keyword_fallback(monkeypatch) -> None:
     monkeypatch.setattr(
         signature_support.inspect,
@@ -114,6 +161,65 @@ def test_unknown_signature_keeps_unexpected_keyword_fallback(monkeypatch) -> Non
         "kwargs": {"value": 9},
     }
     assert scheduler.calls == [{"value": 9, "strict_mode": True}, {"value": 9}]
+
+
+def test_unknown_signature_drops_disabled_readiness_after_strict_fallback(monkeypatch) -> None:
+    monkeypatch.setattr(
+        signature_support.inspect,
+        "signature",
+        lambda obj: (_ for _ in ()).throw(ValueError("signature unavailable")),
+    )
+
+    scheduler = _UnknownLegacyNoStrictNoReadinessScheduler()
+
+    assert _schedule_with_optional_strict_mode(
+        scheduler,
+        strict_mode=True,
+        readiness_gate_enabled=False,
+        value=9,
+    ) == {"ok": True, "kwargs": {"value": 9}}
+
+    assert scheduler.calls == [
+        {"value": 9, "readiness_gate_enabled": False, "strict_mode": True},
+        {"value": 9, "readiness_gate_enabled": False},
+        {"value": 9},
+    ]
+
+
+def test_unknown_signature_only_retries_disabled_readiness_keyword(monkeypatch) -> None:
+    monkeypatch.setattr(
+        signature_support.inspect,
+        "signature",
+        lambda obj: (_ for _ in ()).throw(ValueError("signature unavailable")),
+    )
+
+    scheduler = _UnknownReadinessLegacyScheduler()
+    assert _schedule_with_optional_strict_mode(
+        scheduler,
+        strict_mode=False,
+        readiness_gate_enabled=False,
+        value=9,
+    ) == {"ok": True, "kwargs": {"value": 9, "strict_mode": False}}
+    assert scheduler.calls == [
+        {"value": 9, "readiness_gate_enabled": False, "strict_mode": False},
+        {"value": 9, "strict_mode": False},
+    ]
+
+
+def test_unknown_signature_rejects_enabled_readiness_keyword(monkeypatch) -> None:
+    monkeypatch.setattr(
+        signature_support.inspect,
+        "signature",
+        lambda obj: (_ for _ in ()).throw(ValueError("signature unavailable")),
+    )
+
+    with pytest.raises(ValidationError, match="不支持 readiness_gate_enabled"):
+        _schedule_with_optional_strict_mode(
+            _UnknownReadinessLegacyScheduler(),
+            strict_mode=False,
+            readiness_gate_enabled=True,
+            value=9,
+        )
 
 
 def test_unknown_signature_does_not_swallow_scheduler_body_type_error(monkeypatch) -> None:

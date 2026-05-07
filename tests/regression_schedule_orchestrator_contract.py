@@ -23,6 +23,7 @@ def _base_input() -> Any:
         cfg=SimpleNamespace(),
         cal_svc=SimpleNamespace(),
         cfg_svc=SimpleNamespace(),
+        readiness_gate_enabled=True,
         algo_ops_to_schedule=[SimpleNamespace(id=1, op_code="B001_10", batch_id="B001", seq=10, source="internal")],
         batches={"B001": SimpleNamespace(batch_id="B001")},
         start_dt_norm=datetime(2026, 1, 1, 8, 0, 0),
@@ -158,6 +159,7 @@ def main() -> None:
 
     def _stub_optimize_ok(**kwargs):
         captured_ok["optimize_strict_mode"] = kwargs.get("strict_mode")
+        captured_ok["readiness_gate_enabled"] = kwargs.get("readiness_gate_enabled")
         summary = SimpleNamespace(
             success=True,
             total_ops=1,
@@ -199,6 +201,7 @@ def main() -> None:
 
     assert captured_ok.get("allocate_calls") == 1, captured_ok
     assert captured_ok.get("optimize_strict_mode") is True, captured_ok
+    assert captured_ok.get("readiness_gate_enabled") is True, captured_ok
     assert outcome.version == 7, outcome
     assert outcome.result_status == "success", outcome
     assert outcome.time_cost_ms == 34, outcome
@@ -279,6 +282,7 @@ def main() -> None:
         "summary_merge_failed": False,
         "summary_merge_error": None,
     }, summary_ctx
+    assert summary_ctx.readiness_gate_enabled is True, summary_ctx
     assert summary_ctx.input_build_outcome is collected.algo_input_outcome, summary_ctx
 
     captured_invalid: Dict[str, Any] = {"allocate_calls": 0}

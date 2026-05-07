@@ -3,7 +3,7 @@
 {% block content %}
   {{ ui.aps_page_hero(
     '物料管理 - 批次物料需求（齐套判定）',
-    '设置批次所需物料及到货情况，系统会自动更新齐套状态；没有物料需求行的批次会保留人工或 Excel 的齐套值。',
+    '设置批次所需物料及到货情况，系统会自动更新齐套显示；没有物料需求行时默认按齐套显示。',
     nav_html=ui.material_nav('batch_materials')
   ) }}
 
@@ -79,7 +79,8 @@
             </div>
             <div class="form-field">
               <label for="batchMaterialAvailableQtyInput">到料数量</label>
-              <input id="batchMaterialAvailableQtyInput" name="available_qty" value="0" type="number" min="0" step="0.01" class="w-120">
+              <input id="batchMaterialAvailableQtyInput" name="available_qty" type="number" min="0" step="0.01" placeholder="留空=已到齐" class="w-120">
+              <div class="muted text-xs">不填时按需求数量到齐；明确填不足数量才显示未齐套。</div>
             </div>
           </div>
           <div class="aps-form-footer">{{ ui.button('新增', 'primary', 'md', type_attr='submit') }}</div>
@@ -90,7 +91,7 @@
     <div class="card">
       <h3 class="section-title">物料需求列表</h3>
       {% if not requirements %}
-        {{ ui.empty_state('该批次还没有物料需求', '新增后系统会自动更新齐套状态。') }}
+        {{ ui.empty_state('该批次还没有物料需求', '没有物料明细时默认按齐套显示。新增后系统会按到料数量更新齐套显示。') }}
       {% else %}
         {% for r in requirements %}
           <form id="bmform_{{ loop.index0 }}" method="post" action="{{ url_for('material.batch_material_update', bm_id=r.id) }}" class="d-none"></form>

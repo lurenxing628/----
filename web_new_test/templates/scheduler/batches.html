@@ -70,7 +70,7 @@
         </select>
       </div>
       <div class="form-field">
-        <label for="schedulerBatchesReadyFilter">筛选：齐套</label>
+        <label for="schedulerBatchesReadyFilter">筛选：齐套显示</label>
         <select id="schedulerBatchesReadyFilter" name="only_ready">
           <option value="" {% if not only_ready %}selected{% endif %}>（全部）</option>
           <option value="yes" {% if only_ready=='yes' %}selected{% endif %}>齐套</option>
@@ -129,7 +129,7 @@
             <th class="w-80 text-right" data-col-key="quantity" data-default-w="80" data-min-w="64" data-sort="number">数量</th>
             <th class="w-120" data-col-key="due_date" data-default-w="120" data-min-w="104" data-sort="date">交期</th>
             <th class="w-90" data-col-key="priority" data-default-w="90" data-min-w="76" data-sort="text">优先级</th>
-            <th class="w-100" data-col-key="ready" data-default-w="100" data-min-w="84" data-sort="text">齐套</th>
+            <th class="w-100" data-col-key="ready" data-default-w="100" data-min-w="84" data-sort="text">齐套显示</th>
             <th class="w-90" data-col-key="status" data-default-w="90" data-min-w="76" data-sort="text">状态</th>
             <th class="w-150" data-col-key="actions" data-default-w="150" data-min-w="140" data-resize="1">操作</th>
           </tr>

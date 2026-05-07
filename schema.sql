@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS Batches (
     due_date        DATE,
     priority        TEXT DEFAULT 'normal',
     ready_status    TEXT DEFAULT 'yes',
-    ready_date      DATE,                       -- 齐套日期（可选）：最早可开工日期（YYYY-MM-DD）
+    ready_date      DATE,                       -- 齐套日期（可选）：仅启用齐套检查时作为最早可开工日期（YYYY-MM-DD）
     status          TEXT DEFAULT 'pending',
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,

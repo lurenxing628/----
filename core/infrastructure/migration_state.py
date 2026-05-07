@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from .migrations.common import MigrationOutcome, column_exists, fallback_log
 
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
 
 
 class MigrationContractError(RuntimeError):
@@ -125,7 +125,26 @@ def detect_schema_is_current(conn: sqlite3.Connection) -> bool:
     for table, col in needed:
         if not column_exists(conn, table, col):
             return False
-    return _has_system_management_tables(conn) and _has_schedule_unique_index(conn)
+    return (
+        _has_system_management_tables(conn)
+        and _has_schedule_unique_index(conn)
+        and _batch_material_ready_default_is_no(conn)
+    )
+
+
+def _batch_material_ready_default_is_no(conn: sqlite3.Connection) -> bool:
+    try:
+        rows = conn.execute("PRAGMA table_info(BatchMaterials)").fetchall()
+    except sqlite3.OperationalError:
+        return False
+    for row in rows:
+        name = row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        if name != "ready_status":
+            continue
+        default_value = row["dflt_value"] if isinstance(row, sqlite3.Row) else row[4]
+        normalized = str(default_value or "").strip().strip("'\"").lower()
+        return normalized == "no"
+    return False
 
 
 def _has_system_management_tables(conn: sqlite3.Connection) -> bool:

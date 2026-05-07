@@ -18,7 +18,9 @@ from .optimizer_config import (
     ortools_time_limit_seconds,
     weighted_strategy_params,
 )
-from .schedule_signature_support import schedule_supports_strict_mode as _schedule_supports_strict_mode
+from .schedule_signature_support import (
+    schedule_with_optional_strict_mode as _schedule_with_optional_strict_mode,
+)
 
 
 class SchedulerLike(Protocol):
@@ -28,26 +30,6 @@ class SchedulerLike(Protocol):
 
 def _step_config_snapshot(cfg: Any, *, strict_mode: bool) -> Any:
     return ensure_optimizer_config_snapshot(cfg, strict_mode=bool(strict_mode))
-
-
-def _is_unexpected_strict_mode_type_error(exc: TypeError) -> bool:
-    message = str(exc or "")
-    return "strict_mode" in message and "unexpected keyword argument" in message
-
-
-def _schedule_with_optional_strict_mode(scheduler: SchedulerLike, *, strict_mode: bool = False, **kwargs):
-    supports_strict_mode = _schedule_supports_strict_mode(scheduler)
-    if supports_strict_mode is True:
-        return scheduler.schedule(**kwargs, strict_mode=bool(strict_mode))
-    if supports_strict_mode is False:
-        return scheduler.schedule(**kwargs)
-
-    try:
-        return scheduler.schedule(**kwargs, strict_mode=bool(strict_mode))
-    except TypeError as exc:
-        if not _is_unexpected_strict_mode_type_error(exc):
-            raise
-    return scheduler.schedule(**kwargs)
 
 
 def _solve_ortools_order(
@@ -104,6 +86,7 @@ def _evaluate_ortools_candidate(
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
+    readiness_gate_enabled: bool,
 ) -> Dict[str, Any]:
     res, summ, used_strat, used_params = _schedule_with_optional_strict_mode(
         scheduler,
@@ -120,6 +103,7 @@ def _evaluate_ortools_candidate(
         dispatch_mode=dispatch_mode_cfg,
         dispatch_rule=dispatch_rule_cfg,
         resource_pool=resource_pool,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
     )
     metrics = compute_metrics(res, batches)
     score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
@@ -217,6 +201,7 @@ def _run_ortools_warmstart(
     t_begin: float,
     logger: Any,
     optimizer_algo_stats: Optional[Dict[str, Any]] = None,
+    readiness_gate_enabled: bool = False,
     strict_mode: bool = False,
     clock: Optional[Callable[[], float]] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -258,6 +243,7 @@ def _run_ortools_warmstart(
             resource_pool=resource_pool,
             objective_name=objective_name,
             optimizer_algo_stats=optimizer_algo_stats,
+            readiness_gate_enabled=bool(readiness_gate_enabled),
         )
         _append_ortools_attempt(attempts=attempts, candidate=cand)
         if best is None or cand["score"] < best["score"]:
@@ -321,6 +307,7 @@ def _evaluate_multi_start_candidate(
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
+    readiness_gate_enabled: bool,
 ) -> Dict[str, Any]:
     res, summ, used_strat, used_params = _schedule_with_optional_strict_mode(
         scheduler,
@@ -337,6 +324,7 @@ def _evaluate_multi_start_candidate(
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
         resource_pool=resource_pool,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
     )
     metrics = compute_metrics(res, batches)
     score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
@@ -378,6 +366,7 @@ def _run_multi_start(
     t_begin: float,
     build_order: Any,
     optimizer_algo_stats: Optional[Dict[str, Any]] = None,
+    readiness_gate_enabled: bool = False,
     strict_mode: bool = False,
     clock: Optional[Callable[[], float]] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -434,6 +423,7 @@ def _run_multi_start(
                         resource_pool=resource_pool,
                         objective_name=objective_name,
                         optimizer_algo_stats=optimizer_algo_stats,
+                        readiness_gate_enabled=bool(readiness_gate_enabled),
                     ),
                     attempts=attempts,
                     strategy_key=k,

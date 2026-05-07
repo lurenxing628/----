@@ -79,6 +79,7 @@ def build_batch_sort_inputs(
     *,
     strict_mode: bool,
     strategy: SortStrategy,
+    readiness_gate_enabled: bool = False,
 ) -> List[BatchForSort]:
     batch_for_sort: List[BatchForSort] = []
     for batch_key, batch in (batches or {}).items():
@@ -90,8 +91,16 @@ def build_batch_sort_inputs(
                 batch_id=batch_id,
                 priority=str(getattr(batch, "priority", "") or "normal"),
                 due_date=_parse_due_date_for_sort(getattr(batch, "due_date", None), strict_mode=bool(strict_mode)),
-                ready_status=str(getattr(batch, "ready_status", "") or "yes"),
-                ready_date=_parse_ready_date_for_sort(getattr(batch, "ready_date", None), strict_mode=bool(strict_mode)),
+                ready_status=(
+                    str(getattr(batch, "ready_status", "") or "yes")
+                    if bool(readiness_gate_enabled)
+                    else "yes"
+                ),
+                ready_date=(
+                    _parse_ready_date_for_sort(getattr(batch, "ready_date", None), strict_mode=bool(strict_mode))
+                    if bool(readiness_gate_enabled)
+                    else None
+                ),
                 created_at=_parse_created_at_for_sort(
                     getattr(batch, "created_at", None), strict_mode=bool(strict_mode), strategy=strategy
                 ),

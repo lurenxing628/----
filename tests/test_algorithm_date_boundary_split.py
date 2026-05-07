@@ -85,7 +85,25 @@ def test_schedule_override_full_cover_skips_default_sort_only_for_due_and_create
     assert len(results) == 1
 
 
-def test_schedule_override_full_cover_still_validates_ready_date():
+def test_schedule_override_full_cover_ignores_ready_date_when_readiness_gate_disabled():
+    scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=_config())
+    batch = _batch("B1", due_date="bad-due", ready_date="bad-ready", created_at="bad-created")
+
+    results, summary, strategy, _params = scheduler.schedule(
+        operations=[_internal_op("B1")],
+        batches={"B1": batch},
+        strategy=SortStrategy.FIFO,
+        start_dt=datetime(2026, 1, 1, 8, 0, 0),
+        batch_order_override=["B1"],
+        strict_mode=True,
+    )
+
+    assert strategy == SortStrategy.FIFO
+    assert summary.failed_ops == 0
+    assert len(results) == 1
+
+
+def test_schedule_override_full_cover_validates_ready_date_when_readiness_gate_enabled():
     scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=_config())
     batch = _batch("B1", due_date="bad-due", ready_date="bad-ready", created_at="bad-created")
 
@@ -96,6 +114,7 @@ def test_schedule_override_full_cover_still_validates_ready_date():
             strategy=SortStrategy.FIFO,
             start_dt=datetime(2026, 1, 1, 8, 0, 0),
             batch_order_override=["B1"],
+            readiness_gate_enabled=True,
             strict_mode=True,
         )
 
@@ -139,8 +158,26 @@ def test_ready_date_adjust_errors_bubble_without_silent_fallback(strict_mode: bo
             batches={"B1": batch},
             strategy=SortStrategy.PRIORITY_FIRST,
             start_dt=datetime(2026, 1, 1, 8, 0, 0),
+            readiness_gate_enabled=True,
             strict_mode=strict_mode,
         )
+
+
+@pytest.mark.parametrize("strict_mode", [False, True])
+def test_ready_date_adjust_is_not_called_when_readiness_gate_disabled(strict_mode: bool):
+    scheduler = GreedyScheduler(calendar_service=_Calendar(raise_on_midnight=True), config_service=_config())
+    batch = _batch("B1", due_date="2026-01-02", ready_date="2026-01-03", created_at=None)
+
+    results, summary, _strategy, _params = scheduler.schedule(
+        operations=[],
+        batches={"B1": batch},
+        strategy=SortStrategy.PRIORITY_FIRST,
+        start_dt=datetime(2026, 1, 1, 8, 0, 0),
+        strict_mode=strict_mode,
+    )
+
+    assert results == []
+    assert summary.failed_ops == 0
 
 
 def test_optimize_schedule_created_at_strict_only_for_current_strategy(monkeypatch):
