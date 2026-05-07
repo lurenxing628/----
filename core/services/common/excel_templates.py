@@ -9,6 +9,8 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from .excel_template_defaults import get_default_templates
+
 
 def _close_workbook_quietly(wb: Any) -> None:
     try:
@@ -261,17 +263,44 @@ def _remove_enum_validations(ws: Any, enum_col_indices: Iterable[int]) -> None:
     ]
 
 
-def _refresh_existing_template_layout(path: str, template_def: Mapping[str, Any]) -> bool:
+def _template_layout_repair_plan(template_def: Mapping[str, Any]) -> Dict[str, Any] | None:
     if str(template_def.get("filename") or "") not in _EXTRA_ROW_LAYOUT_REPAIR_TEMPLATES:
-        return False
-
+        return None
     format_spec = template_def.get("format_spec", {}) or {}
-    enum_cols = format_spec.get("enum_cols", {}) or {}
-    enum_col_indices = set(enum_cols)
+    enum_col_indices = set(format_spec.get("enum_cols", {}) or {})
     if not enum_col_indices:
-        return False
+        return None
+    return {
+        "format_spec": format_spec,
+        "enum_col_indices": enum_col_indices,
+        "sample_row_count": len(template_def.get("sample_rows") or []),
+        "headers": [str(header).strip() for header in (template_def.get("headers") or [])],
+    }
 
-    sample_row_count = len(template_def.get("sample_rows") or [])
+
+def _current_headers(ws: Any, header_count: int) -> List[str]:
+    return [_cell_text(ws.cell(1, col_idx).value) for col_idx in range(1, header_count + 1)]
+
+
+def _template_needs_layout_repair(ws: Any, repair_plan: Mapping[str, Any]) -> bool:
+    non_empty_data_rows = _non_empty_data_rows(ws)
+    if len(non_empty_data_rows) <= int(repair_plan["sample_row_count"]):
+        return False
+    headers = list(repair_plan["headers"])
+    enum_texts = _enum_texts_from_rows(non_empty_data_rows, repair_plan["enum_col_indices"])
+    enum_texts.update(_inline_validation_texts(ws))
+    return _current_headers(ws, len(headers)) != headers or bool(enum_texts & _LEGACY_TEMPLATE_ENUM_VALUES)
+
+
+def _rewrite_template_headers(ws: Any, headers: Sequence[str]) -> None:
+    for col_idx, header in enumerate(headers, start=1):
+        ws.cell(1, col_idx).value = header
+
+
+def _refresh_existing_template_layout(path: str, template_def: Mapping[str, Any]) -> bool:
+    repair_plan = _template_layout_repair_plan(template_def)
+    if repair_plan is None:
+        return False
     try:
         wb = openpyxl.load_workbook(path)
     except Exception:
@@ -281,21 +310,12 @@ def _refresh_existing_template_layout(path: str, template_def: Mapping[str, Any]
         if ws is None:
             return False
 
-        non_empty_data_rows = _non_empty_data_rows(ws)
-        if len(non_empty_data_rows) <= sample_row_count:
+        if not _template_needs_layout_repair(ws, repair_plan):
             return False
 
-        headers = [str(header).strip() for header in (template_def.get("headers") or [])]
-        current_headers = [_cell_text(ws.cell(1, col_idx).value) for col_idx in range(1, len(headers) + 1)]
-        enum_texts = _enum_texts_from_rows(non_empty_data_rows, enum_col_indices)
-        enum_texts.update(_inline_validation_texts(ws))
-        if current_headers == headers and not enum_texts & _LEGACY_TEMPLATE_ENUM_VALUES:
-            return False
-
-        for col_idx, header in enumerate(headers, start=1):
-            ws.cell(1, col_idx).value = header
-        _remove_enum_validations(ws, enum_col_indices)
-        _apply_sheet_layout(ws, format_spec=format_spec, data_row_count=ws.max_row - 1)
+        _rewrite_template_headers(ws, repair_plan["headers"])
+        _remove_enum_validations(ws, repair_plan["enum_col_indices"])
+        _apply_sheet_layout(ws, format_spec=repair_plan["format_spec"], data_row_count=ws.max_row - 1)
         wb.save(path)
         return True
     except Exception:
@@ -345,150 +365,6 @@ def get_template_definition(filename: str) -> Dict[str, Any]:
         if str(item.get("filename")) == str(filename):
             return item
     raise KeyError(f"unknown template: {filename}")
-
-
-def get_default_templates() -> List[Dict[str, Any]]:
-    """
-    返回需要交付的 Excel 模板清单（文件名 + 表头 + 示例行）。
-
-    说明：
-    - 这些模板与各模块的“下载模板”接口保持一致（列名为中文）。
-    - 即便某些模块（如批次/日历）尚未在 Phase0~5 提供页面/接口，也可先把模板交付到目录中，
-      便于后续直接复用，减少再回读开发文档的成本。
-    """
-    return [
-        # 人员
-        {
-            "filename": "人员基本信息.xlsx",
-            "headers": ["工号", "姓名", "状态", "班组", "备注"],
-            "sample_rows": [["OP001", "张三", "在岗", None, "示例备注"]],
-            "format_spec": {
-                "text_cols": [0, 1, 3, 4],
-                "enum_cols": {2: ["在岗", "停用"]},
-                "column_widths": {0: 14, 1: 12, 2: 12, 3: 14, 4: 18},
-            },
-        },
-        {
-            "filename": "人员设备关联.xlsx",
-            "headers": ["工号", "设备编号", "技能等级", "主操设备"],
-            "sample_rows": [["OP001", "CNC-01", "普通", "是"]],
-            "format_spec": {
-                "text_cols": [0, 1],
-                "enum_cols": {2: ["初级", "普通", "熟练"], 3: ["是", "否"]},
-                "column_widths": {0: 14, 1: 14, 2: 12, 3: 12},
-            },
-        },
-        # 设备
-        {
-            "filename": "设备信息.xlsx",
-            "headers": ["设备编号", "设备名称", "工种", "班组", "状态"],
-            "sample_rows": [["CNC-01", "数控车床1", "数车", None, "可用"]],
-            "format_spec": {
-                "text_cols": [0, 1, 2, 3],
-                "enum_cols": {4: ["可用", "停用", "维修"]},
-                "column_widths": {0: 14, 1: 18, 2: 12, 3: 14, 4: 12},
-            },
-        },
-        {
-            "filename": "设备人员关联.xlsx",
-            "headers": ["设备编号", "工号", "技能等级", "主操设备"],
-            "sample_rows": [["CNC-01", "OP001", "普通", "是"]],
-            "format_spec": {
-                "text_cols": [0, 1],
-                "enum_cols": {2: ["初级", "普通", "熟练"], 3: ["是", "否"]},
-                "column_widths": {0: 14, 1: 14, 2: 12, 3: 12},
-            },
-        },
-        # 工艺
-        {
-            "filename": "工种配置.xlsx",
-            "headers": ["工种ID", "工种名称", "归属"],
-            "sample_rows": [["OT001", "数车", "自制"], ["OT002", "标印", "外协"]],
-            "format_spec": {
-                "text_cols": [0, 1],
-                "enum_cols": {2: ["自制", "外协"]},
-                "column_widths": {0: 14, 1: 16, 2: 12},
-            },
-        },
-        {
-            "filename": "供应商配置.xlsx",
-            "headers": ["供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"],
-            "sample_rows": [["S001", "外协-标印厂", "标印", 1, "启用", "示例备注"]],
-            "format_spec": {
-                "text_cols": [0, 1, 2, 4, 5],
-                "float_cols": [3],
-                "enum_cols": {4: ["启用", "停用"]},
-                "column_widths": {0: 14, 1: 18, 2: 14, 3: 12, 4: 12, 5: 18},
-            },
-        },
-        {
-            "filename": "零件工艺路线.xlsx",
-            "headers": ["图号", "名称", "工艺路线字符串"],
-            "sample_rows": [["A1234", "壳体-大", "5数铣10钳20数车35标印40总检45表处理"]],
-            "format_spec": {
-                "text_cols": [0, 1, 2],
-                "column_widths": {0: 14, 1: 18, 2: 32},
-            },
-        },
-        {
-            "filename": "零件工序工时.xlsx",
-            "headers": ["图号", "工序", "换型时间(h)", "单件工时(h)"],
-            "sample_rows": [["A1234", 5, 1.0, 0.25], ["A1234", 10, 0.5, 0.1]],
-            "format_spec": {
-                "text_cols": [0],
-                "int_cols": [1],
-                "float_cols": [2, 3],
-                "column_widths": {0: 14, 1: 10, 2: 14, 3: 14},
-            },
-        },
-        # 排产（后续阶段会接入接口/页面；模板先交付）
-        {
-            "filename": "批次信息.xlsx",
-            # 对齐路由 `web/routes/scheduler_excel_batches.py` 的兜底模板与导入字段（含齐套日期）
-            "headers": ["批次号", "图号", "数量", "交期", "优先级", "齐套", "齐套日期", "备注"],
-            "sample_rows": [
-                ["B001", "A1234", 50, "2026-01-25", "急件", "齐套", None, "示例"]
-            ],
-            "format_spec": {
-                "text_cols": [0, 1, 7],
-                "int_cols": [2],
-                "date_cols": [3, 6],
-                "enum_cols": {
-                    4: ["普通", "急件", "特急"],
-                    5: ["齐套", "未齐套", "部分齐套"],
-                },
-                "column_widths": {0: 14, 1: 14, 2: 10, 3: 12, 4: 12, 5: 12, 6: 12, 7: 18},
-            },
-        },
-        {
-            "filename": "工作日历.xlsx",
-            "headers": ["日期", "类型", "可用工时", "效率", "允许普通件", "允许急件", "说明"],
-            "sample_rows": [["2026-01-21", "工作日", 8, 1.0, "是", "是", "示例"]],
-            "format_spec": {
-                "date_cols": [0],
-                "float_cols": [2, 3],
-                "enum_cols": {1: ["工作日", "假期"], 4: ["是", "否"], 5: ["是", "否"]},
-                "text_cols": [6],
-                "column_widths": {0: 12, 1: 12, 2: 12, 3: 12, 4: 12, 5: 12, 6: 18},
-            },
-        },
-        {
-            "filename": "人员专属工作日历.xlsx",
-            "headers": ["工号", "日期", "类型", "班次开始", "班次结束", "可用工时", "效率", "允许普通件", "允许急件", "说明"],
-            "sample_rows": [
-                ["OP001", "2026-01-25", "假期", "08:00", "", 0, 0.8, "否", "否", "示例：休假"],
-                ["OP001", "2026-01-26", "假期", "08:00", "16:00", "", "", "是", "是", "示例：假期加班（用班次结束推导工时）"],
-            ],
-            "format_spec": {
-                "text_cols": [0, 9],
-                "date_cols": [1],
-                "time_cols": [3, 4],
-                "float_cols": [5, 6],
-                "enum_cols": {2: ["工作日", "假期"], 7: ["是", "否"], 8: ["是", "否"]},
-                "column_widths": {0: 14, 1: 12, 2: 12, 3: 10, 4: 10, 5: 12, 6: 12, 7: 12, 8: 12, 9: 18},
-            },
-        },
-    ]
 
 
 def ensure_excel_templates(template_dir: str) -> Dict[str, Any]:
