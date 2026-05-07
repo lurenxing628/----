@@ -1,12 +1,12 @@
 # APS 架构合规审计报告
 
-- 生成时间：2026-05-06 22:36:53
+- 生成时间：2026-05-07 23:35:37
 - 仓库根目录：`/Users/lurenxing/Documents/GitHub/----`
 
 ## 总结
-- 总问题数：81
+- 总问题数：66
   - 分层违反：0
-  - 文件超限：1
+  - 文件超限：2
   - 禁止模式：0
   - 命名问题：3
   - 裸字符串枚举：15
@@ -15,27 +15,20 @@
   - 公开方法缺返回类型注解：0
   - Service 循环依赖：0
   - Route 越层导入 Repository：0
-  - 潜在死代码公开方法：46
-  - 圈复杂度超标（>15）：15
-  - 圈复杂度扫描跳过：0
+  - 潜在死代码公开方法：45
+  - 圈复杂度超标（>15）：0
+  - 圈复杂度扫描跳过：1
   - 类型注解扫描跳过：0
   - Vulture 死代码（min_confidence=80）：0
   - Vulture 扫描跳过：1
-- 跳过/信息项总计：1（不影响 PASS/FAIL）
+- 跳过/信息项总计：2（不影响 PASS/FAIL）
 - 结论：FAIL（存在违反项）
-
-## 圈复杂度分布
-- A 简单(1-5): 1961 ##################################################
-- B 低(6-10): 459 ##################################################
-- C 中(11-20): 119 ##################################################
-- D 高(21-30): 4 ####
-- E 很高(31-40): 0
-- F 极高(41+): 0
 
 ## 分层违反
 - 无
 
 ## 文件超限
+- [SIZE] web/viewmodels/page_manuals_scheduler.py - 558 行（超过 500 行限制）
 - [SIZE] core/services/personnel/operator_machine_service.py - 504 行（超过 500 行限制）
 
 ## 禁止模式
@@ -124,31 +117,16 @@
 - [DEAD-CODE] core/services/scheduler/config/config_write_service.py:42 - 公开方法 set_fields_mark_custom() 无外部调用者（潜在死代码）
 - [DEAD-CODE] core/services/scheduler/config/config_write_service.py:99 - 公开方法 set_yes_no_field() 无外部调用者（潜在死代码）
 - [DEAD-CODE] core/services/scheduler/run/schedule_persistence.py:32 - 公开方法 to_repo_rows() 无外部调用者（潜在死代码）
-- [DEAD-CODE] core/services/scheduler/run/schedule_optimizer_steps.py:25 - 公开方法 schedule() 无外部调用者（潜在死代码）
 - [DEAD-CODE] core/services/system/system_config_service.py:198 - 公开方法 get_snapshot_readonly() 无外部调用者（潜在死代码）
 - [DEAD-CODE] core/services/system/system_config_service.py:204 - 公开方法 get_value_with_presence() 无外部调用者（潜在死代码）
 - [DEAD-CODE] core/services/personnel/resource_team_service.py:112 - 公开方法 get_usage_counts() 无外部调用者（潜在死代码）
 - [DEAD-CODE] core/services/process/part_operation_hours_excel_import_service.py:32 - 公开方法 add_error() 无外部调用者（潜在死代码）
 
 ## 圈复杂度超标
-- [COMPLEXITY] web/routes/process_excel_routes.py:214 excel_routes_confirm complexity=27 (rank D)
-- [COMPLEXITY] core/services/scheduler/resource_dispatch_excel.py:157 _summary_pairs complexity=19 (rank C)
-- [COMPLEXITY] core/services/scheduler/resource_dispatch_support.py:26 extract_overdue_batch_ids_with_meta complexity=19 (rank C)
-- [COMPLEXITY] core/services/scheduler/gantt_range.py:46 resolve_week_range complexity=16 (rank C)
-- [COMPLEXITY] core/services/scheduler/gantt_week_plan.py:32 build_week_plan_rows complexity=17 (rank C)
-- [COMPLEXITY] core/services/scheduler/operation_edit_service.py:168 update_external_operation complexity=21 (rank D)
-- [COMPLEXITY] core/services/equipment/machine_downtime_service.py:136 create_by_scope complexity=19 (rank C)
-- [COMPLEXITY] core/services/personnel/operator_machine_service.py:408 apply_import_links complexity=21 (rank D)
-- [COMPLEXITY] core/services/personnel/operator_machine_query_service.py:26 _normalize_row complexity=19 (rank C)
-- [COMPLEXITY] core/models/batch_operation.py:57 from_row complexity=21 (rank D)
-- [COMPLEXITY] core/models/calendar.py:23 from_row complexity=16 (rank C)
-- [COMPLEXITY] core/models/calendar.py:90 from_row complexity=17 (rank C)
-- [COMPLEXITY] core/models/part_operation.py:48 from_row complexity=16 (rank C)
-- [COMPLEXITY] core/infrastructure/database.py:90 ensure_schema complexity=16 (rank C)
-- [COMPLEXITY] core/infrastructure/migrations/v1.py:101 _sanitize_batch_dates complexity=20 (rank C)
+- 无
 
 ## 圈复杂度扫描跳过
-- 无
+- [COMPLEXITY] radon 未安装，跳过复杂度检查
 
 ## 类型注解扫描跳过
 - 无
